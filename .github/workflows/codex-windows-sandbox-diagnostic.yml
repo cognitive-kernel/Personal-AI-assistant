@@ -20,7 +20,7 @@ permissions:
 jobs:
   sandbox-diagnostic:
     runs-on: [self-hosted, Windows, X64, ollama]
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       AUTONOMOUS_ENGINEERING_MODEL: ${{ inputs.model || 'gpt-oss:20b' }}
       CODEX_WINDOWS_SANDBOX_BACKEND: mxc
@@ -129,3 +129,39 @@ jobs:
             throw "Workspace probe file remains after the smoke test; cleanup was not verified."
           }
           Write-Host "CODEX_WINDOWS_MXC_SERVICE_SMOKE_OK"
+
+      - name: Capture Ollama runtime context after Codex smoke
+        if: always()
+        timeout-minutes: 2
+        shell: powershell
+        run: |
+          try {
+            $runtime = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/ps" -TimeoutSec 8
+            $loadedModels = @($runtime.models)
+            if ($loadedModels.Count -eq 0) {
+              Write-Host "Ollama /api/ps reports no currently loaded model."
+            }
+            foreach ($loaded in $loadedModels) {
+              Write-Host ("Ollama runtime model: name={0}; context_length={1}; size_vram={2}; expires_at={3}" -f $loaded.name, $loaded.context_length, $loaded.size_vram, $loaded.expires_at)
+            }
+          } catch {
+            Write-Host "::warning::Could not read Ollama runtime context from /api/ps."
+            Write-Host $_.Exception.Message
+          }
+          try {
+            $showBody = @{ name = $env:AUTONOMOUS_ENGINEERING_MODEL; verbose = $true } | ConvertTo-Json -Compress
+            $modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -Body $showBody -ContentType "application/json" -TimeoutSec 15
+            $contextProperties = @($modelInfo.model_info.PSObject.Properties | Where-Object { $_.Name -match "context_length$" })
+            foreach ($property in $contextProperties) {
+              Write-Host ("Ollama model metadata {0}={1}" -f $property.Name, $property.Value)
+            }
+            $numCtx = [regex]::Match([string]$modelInfo.parameters, "(?im)^\s*num_ctx\s+(\d+)\s*$")
+            if ($numCtx.Success) {
+              Write-Host "Ollama Modelfile num_ctx: $($numCtx.Groups[1].Value)"
+            } else {
+              Write-Host "Ollama Modelfile has no explicit num_ctx parameter."
+            }
+          } catch {
+            Write-Host "::warning::Could not inspect Ollama model metadata."
+            Write-Host $_.Exception.Message
+          }
