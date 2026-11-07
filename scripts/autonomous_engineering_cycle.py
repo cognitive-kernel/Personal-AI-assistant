@@ -471,7 +471,7 @@ def save_pending_pr(value: dict[str, Any], repo: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + f".{os.getpid()}.tmp")
     try:
-        temporary.write_text(json.dumps(value, ensure_ascii=False, sort_keys=True) + "\\n", encoding="utf-8")
+        temporary.write_text(json.dumps(value, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
         temporary.replace(path)
     finally:
         temporary.unlink(missing_ok=True)
@@ -833,7 +833,7 @@ def run_cycle(args: argparse.Namespace) -> int:
             record(
                 args.run_id, args.run_attempt, "publication",
                 f"PR #{validated['number']} آمادهٔ بازبینی مالک است",
-                "CI دقیق موفق است؛ PR باز می‌ماند و هیچ ادغام یا وظیفهٔ بعدی به‌صورت خودکار انجام نمی‌شود",
+                "CI دقیق موفق است؛ PR برای بازبینی مالک باز می‌ماند و هیچ ادغام یا وظیفهٔ بعدی به‌صورت خودکار انجام نمی‌شود",
             )
             snapshot(args.run_id, args.run_attempt)
             print(f"PR #{validated['number']} passed exact-head checks and is awaiting owner review: {validated['url']}")
@@ -851,7 +851,7 @@ def run_cycle(args: argparse.Namespace) -> int:
         record(
             args.run_id, args.run_attempt, "publication",
             f"PR #{validated['number']} آمادهٔ بازبینی مالک است",
-            "CI دقیق موفق است؛ PR باز می‌ماند و هیچ ادغام یا وظیفهٔ بعدی به‌صورت خودکار انجام نمی‌شود",
+            "CI دقیق موفق است؛ PR برای بازبینی مالک باز می‌ماند و هیچ ادغام یا وظیفهٔ بعدی به‌صورت خودکار انجام نمی‌شود",
         )
         snapshot(args.run_id, args.run_attempt)
         print(f"PR #{validated['number']} passed exact-head checks and is awaiting owner review: {validated['url']}")
