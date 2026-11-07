@@ -687,14 +687,14 @@ def publish_pull_request(
         "base": "main",
         "draft": False,
         "body": (
-            f"## Autonomous engineering task {task_index}\\n\\n"
-            f"- Workflow run: https://github.com/{repo}/actions/runs/{run_id}\\n"
-            f"- Candidate commit: {head_sha}\\n"
-            "- Windows full test suite and repository quality gates passed before publication.\\n"
-            "- GitHub tests, browser E2E, and dependency audit are dispatched against this exact PR head.\\n"
-            "- The PR remains open for owner review; the controller never merges PRs automatically.\\n"
-            "- After the owner merges it, the controller verifies the exact merge SHA and post-merge CI before accepting the task or advancing the queue.\\n"
-            "- No deployment is performed.\\n"
+            f"## Autonomous engineering task {task_index}\n\n"
+            f"- Workflow run: https://github.com/{repo}/actions/runs/{run_id}\n"
+            f"- Candidate commit: {head_sha}\n"
+            "- Windows full test suite and repository quality gates passed before publication.\n"
+            "- GitHub tests, browser E2E, and dependency audit are dispatched against this exact PR head.\n"
+            "- The PR remains open for owner review; the controller never merges PRs automatically.\n"
+            "- After the owner merges it, the controller verifies the exact merge SHA and post-merge CI before accepting the task or advancing the queue.\n"
+            "- No deployment is performed.\n"
         ),
     })
     number = pr.get("number")
