@@ -1,5 +1,34 @@
 # Engineering Continuity Log
 
+## 2026-11-07 — PR #702: persistent Ollama context and reliable Codex smoke evidence
+
+### Evidence-based diagnosis
+
+- `main` now includes PR #701 as merge commit `a9c4522e94cf1558b616ca98510d1b8654e8e53e`; its durable-task and recovery changes are not being repeated here.
+- Windows diagnostic run [42355938096](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/42355938096) confirmed that the non-admin Runner can execute the official MXC compatibility probe and direct `cmd.exe` + Python probe. Those checks returned `MXC_SERVICE_OK` and `MXC_CMD_PYTHON_OK`.
+- The same run's Codex JSONL summary recorded five command starts/completions, zero agent messages, a completed turn, and 33,753 input tokens. The run failed the acceptance gate; it did not prove that the Codex tool path worked.
+- The previous context preflight sent `options.num_ctx=64000` only on its own `/api/generate` request. Codex later opens independent requests for the selected base model, whose effective default remained 8,192. Ollama's current guidance requires at least 64k for coding tools and supports a persistent `PARAMETER num_ctx` in a derived Modelfile.
+- The previous evidence parser required exactly one model-generated command and read the command string only from the completion event. That is brittle: command counts are model-controlled, and the Codex JSONL lifecycle must be correlated by item ID rather than assuming all fields are repeated in both events.
+
+### Corrective changes on the dedicated PR branch
+
+- `scripts/verify_ollama_context.ps1` now creates a separate `<selected-model>-codex-64k` model variant through Ollama's local `/api/create`, derived from the selected model with persistent `num_ctx=64000`. It verifies the saved Modelfile parameter through `/api/show`, loads the variant without request-level context overrides, and checks actual allocation through `/api/ps`.
+- The original selected model and Ollama server settings remain unchanged. The alias shares the base weights; no second model download, server restart, administrator credential, or privilege change is required. If 64k cannot be allocated, the workflow fails before Codex.
+- Both the Windows diagnostic and autonomous engineering workflows now pass the derived model to Codex and re-load/verify its saved 64k default after Codex execution.
+- `codex_smoke_evidence` now correlates command start/completion events by ID, uses the start event's command when the completion omits it, requires every observed command to complete successfully, and requires exactly one command to prove the complete workspace create/read/delete marker. It no longer requires the model to emit exactly one command overall.
+- Evidence JSON contains only bounded status/exit-code/fragment booleans and IDs; raw command text, output, and agent-message text are not persisted.
+- Regression coverage now includes completion events without a repeated command, multiple successful command events with one verified probe, failed/mismatched/duplicate events, redaction, and persistent-context enforcement in both workflows.
+- The diagnostic workflow is enabled for this dedicated branch so the self-hosted Windows job can be dispatched against the PR head.
+
+### Validation and residual risk
+
+- Exact-head GitHub CI for the updated PR head is pending; no test result is inferred from earlier commits.
+- The real Windows Runner diagnostic must pass on the final PR head, including the post-Codex 64k allocation check. The prior run remains a failure and is not retroactively reclassified.
+- Target-host memory/performance soak at 64k, full autonomous task execution, restart/recovery, staging restore/rollback, and owner acceptance remain open.
+- PR #702 remains unmerged. No direct write to `main`, unsandboxed fallback, elevation, or automatic merge was performed.
+- Issue #290 remains the overall acceptance tracker; Issue #52 still requires independent security review.
+
+
 ## 2026-11-02 — PR #680: continuous autonomous engineering controller
 
 - Current implementation branch: automation/codex-engineering-agent-rebased; current PR head: c943990de467694bc39bcee06738d75446007a73; base main: 60597e13e70a3014f6a1871290cf843d188ca45e. PR #680 is open, mergeable, and not yet merged.
