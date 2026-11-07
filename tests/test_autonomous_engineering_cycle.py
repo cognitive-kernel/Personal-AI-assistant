@@ -1029,6 +1029,39 @@ def test_codex_smoke_evidence_accepts_multiple_successful_calls_with_one_verifie
         "wrong_agent_message",
     ],
 )
+def test_codex_tool_smoke_does_not_require_a_final_text_message():
+    from scripts import autonomous_engineering_progress as progress
+
+    command = (
+        "python -c from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); "
+        "p.write_text('ok'); assert p.read_text() == 'ok'; p.unlink(); "
+        "print('CODEX_WORKSPACE_SANDBOX_OK')"
+    )
+    events = [
+        {"type": "item.started", "item": {
+            "id": "command-1", "type": "command_execution",
+            "command": command, "status": "in_progress",
+        }},
+        {"type": "item.completed", "item": {
+            "id": "command-1", "type": "command_execution",
+            "aggregated_output": "CODEX_WORKSPACE_SANDBOX_OK",
+            "exit_code": 0, "status": "completed",
+        }},
+        {"type": "turn.completed"},
+    ]
+
+    evidence = progress.codex_smoke_evidence(
+        events, "CODEX_WORKSPACE_SANDBOX_OK", "",
+        [".codex-sandbox-probe.tmp", "write_text", "read_text", "unlink"],
+    )
+
+    assert evidence["passed"] is True
+    assert evidence["agent_message_count"] == 0
+    assert evidence["checks"]["expected_agent_message"] is True
+    assert evidence["agent_message_matches_expected"] is True
+
+
+
 def test_codex_smoke_evidence_rejects_unproven_or_failed_execution(mutation: str):
     from scripts import autonomous_engineering_progress as progress
 
