@@ -909,3 +909,124 @@ def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkey
     )
 
     assert progress.run_codex(args) == 1
+
+
+def test_codex_smoke_evidence_requires_real_successful_command_and_final_turn():
+    from scripts import autonomous_engineering_progress as progress
+
+    command_started = {"type": "item.started", "item": {
+        "id": "command-1",
+        "type": "command_execution",
+        "command": "python -c from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok'); assert p.read_text() == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')",
+        "status": "in_progress",
+    }}
+    events = [
+        command_started,
+        {"type": "item.completed", "item": {
+            "id": "command-1",
+            "type": "command_execution",
+            "command": "python -c from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok'); assert p.read_text() == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')",
+            "aggregated_output": "CODEX_WORKSPACE_SANDBOX_OK\\n",
+            "exit_code": 0,
+            "status": "completed",
+        }},
+        {"type": "item.completed", "item": {
+            "type": "agent_message",
+            "text": "OLLAMA_PROVIDER_AND_SANDBOX_OK",
+        }},
+        {"type": "turn.completed", "usage": {"input_tokens": 10, "output_tokens": 2}},
+    ]
+
+    evidence = progress.codex_smoke_evidence(
+        events, "CODEX_WORKSPACE_SANDBOX_OK", "OLLAMA_PROVIDER_AND_SANDBOX_OK",
+        [".codex-sandbox-probe.tmp", "write_text", "read_text", "unlink"],
+    )
+
+    assert evidence["passed"] is True
+    assert all(evidence["checks"].values())
+    assert evidence["command_exit_code"] == 0
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "no_command",
+        "nonzero_exit",
+        "missing_output_marker",
+        "no_turn_completed",
+        "turn_failed",
+        "duplicate_command",
+        "wrong_command",
+        "missing_command_start",
+        "mismatched_command_start",
+        "wrong_agent_message",
+    ],
+)
+def test_codex_smoke_evidence_rejects_unproven_or_failed_execution(mutation: str):
+    from scripts import autonomous_engineering_progress as progress
+
+    command = {
+        "type": "item.completed",
+        "item": {
+            "id": "command-1",
+            "type": "command_execution",
+            "command": "python -c from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok'); assert p.read_text() == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')",
+            "aggregated_output": "CODEX_WORKSPACE_SANDBOX_OK\\n",
+            "exit_code": 0,
+            "status": "completed",
+        },
+    }
+    command_started = {"type": "item.started", "item": {
+        "id": "command-1",
+        "type": "command_execution",
+        "command": "python -c from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok'); assert p.read_text() == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')",
+        "status": "in_progress",
+    }}
+    message = {
+        "type": "item.completed",
+        "item": {"type": "agent_message", "text": "OLLAMA_PROVIDER_AND_SANDBOX_OK"},
+    }
+    events = [command_started, command, message, {"type": "turn.completed"}]
+
+    if mutation == "no_command":
+        events.remove(command)
+    elif mutation == "nonzero_exit":
+        command["item"]["exit_code"] = 1
+        command["item"]["status"] = "failed"
+    elif mutation == "missing_output_marker":
+        command["item"]["aggregated_output"] = "different output"
+    elif mutation == "no_turn_completed":
+        events.remove(events[-1])
+    elif mutation == "turn_failed":
+        events.append({"type": "turn.failed", "error": {"message": "failed"}})
+    elif mutation == "duplicate_command":
+        events.insert(1, dict(command))
+    elif mutation == "wrong_command":
+        command["item"]["command"] = "python -c print(CODEX_WORKSPACE_SANDBOX_OK)"
+    elif mutation == "missing_command_start":
+        events.remove(command_started)
+    elif mutation == "mismatched_command_start":
+        command_started["item"]["command"] = "python -c print(CODEX_WORKSPACE_SANDBOX_OK)"
+    elif mutation == "wrong_agent_message":
+        message["item"]["text"] = "I think it worked"
+
+    evidence = progress.codex_smoke_evidence(
+        events, "CODEX_WORKSPACE_SANDBOX_OK", "OLLAMA_PROVIDER_AND_SANDBOX_OK",
+        [".codex-sandbox-probe.tmp", "write_text", "read_text", "unlink"],
+    )
+
+    assert evidence["passed"] is False
+    assert not all(evidence["checks"].values())
+
+
+def test_codex_smoke_evidence_report_is_written_atomically(tmp_path: Path):
+    import json
+    from scripts import autonomous_engineering_progress as progress
+
+    destination = tmp_path / "nested" / "evidence.json"
+    evidence = {"passed": True, "checks": {"command_exit_code_zero": True}}
+
+    progress.write_smoke_evidence(str(destination), evidence)
+
+    assert json.loads(destination.read_text(encoding="utf-8")) == evidence
+    assert not destination.with_suffix(".json.tmp").exists()
