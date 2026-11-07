@@ -165,7 +165,10 @@ def codex_arguments(model: str, report: str) -> list[str]:
     backend = os.getenv("CODEX_WINDOWS_SANDBOX_BACKEND", "mxc").strip().casefold()
     if backend not in {"mxc", "elevated"}:
         raise ValueError("CODEX_WINDOWS_SANDBOX_BACKEND must be 'mxc' or 'elevated'.")
-    return [
+    reasoning_effort = os.getenv("CODEX_MODEL_REASONING_EFFORT", "").strip().casefold()
+    if reasoning_effort and reasoning_effort not in {"low", "medium", "high"}:
+        raise ValueError("CODEX_MODEL_REASONING_EFFORT must be 'low', 'medium', or 'high'.")
+    arguments = [
         "exec", "-c", 'model_provider="ollama"',
         "-c", f'windows.sandbox="{backend}"',
         "--oss", "--local-provider", "ollama",
@@ -173,6 +176,9 @@ def codex_arguments(model: str, report: str) -> list[str]:
         "--model", model, "--cd", str(ROOT),
         "--output-last-message", report, "--json", "-",
     ]
+    if reasoning_effort:
+        arguments[5:5] = ["-c", f'model_reasoning_effort="{reasoning_effort}"']
+    return arguments
 
 
 def codex_smoke_evidence(
