@@ -873,10 +873,10 @@ def test_codex_arguments_pin_ollama_and_selected_windows_sandbox(monkeypatch):
     assert arguments[:7] == [
         "exec", "-c", 'model_provider="ollama"',
         "-c", 'windows.sandbox="elevated"',
-        "--oss", "--local-provider",
+        "-c", "sandbox_workspace_write.exclude_slash_tmp=true",
     ]
-    assert arguments[7:9] == ["ollama", "--sandbox"]
-    assert arguments[9] == "workspace-write"
+    assert arguments[7:10] == ["--oss", "--local-provider", "ollama"]
+    assert arguments[10:12] == ["--sandbox", "workspace-write"]
     assert arguments[arguments.index("--model") + 1] == "gpt-oss:20b"
 
 
