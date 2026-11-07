@@ -23,12 +23,32 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: autonomous-local-engineering-${{ github.repository }}
-  cancel-in-progress: false
-
 jobs:
+  persist-manual-task:
+    if: github.event_name == 'workflow_dispatch' && inputs.manual_task != '' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, Windows, X64, ollama]
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out trusted main branch for task persistence
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Persist manual task before the schedule gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          MANUAL_TASK: ${{ inputs.manual_task || '' }}
+        shell: powershell
+        run: |
+          & "$env:GITHUB_WORKSPACE\scripts\persist_autonomous_manual_task.ps1"
+
   schedule-gate:
+    needs: persist-manual-task
+    if: always() && needs.persist-manual-task.result != 'failure' && needs.persist-manual-task.result != 'cancelled'
     runs-on: ubuntu-latest
     permissions:
       actions: write
@@ -97,7 +117,7 @@ jobs:
           fi
           if [[ "$EXECUTION_MODE" == "continuous" ]]; then
             echo "run_now=true" >> "$GITHUB_OUTPUT"
-            echo "Continuous mode is self-starting on the hourly heartbeat and chains the next run after every verified merge."
+            echo "Continuous mode is self-starting on the hourly heartbeat and chains the next run only after an owner-verified merge."
             exit 0
           fi
           case "$INTERVAL_HOURS" in
@@ -113,8 +133,11 @@ jobs:
           fi
 
   codex:
-    needs: schedule-gate
-    if: needs.schedule-gate.outputs.run_now == 'true' && github.ref == 'refs/heads/main'
+    needs: [persist-manual-task, schedule-gate]
+    if: always() && needs.schedule-gate.outputs.run_now == 'true' && github.ref == 'refs/heads/main' && needs.persist-manual-task.result != 'failure' && needs.persist-manual-task.result != 'cancelled'
+    concurrency:
+      group: autonomous-local-engineering-${{ github.repository }}
+      cancel-in-progress: false
     runs-on: [self-hosted, Windows, X64, ollama]
     timeout-minutes: 360
     permissions:
@@ -126,6 +149,12 @@ jobs:
       AUTONOMOUS_ENGINEERING_MODEL: ${{ vars.AUTONOMOUS_ENGINEERING_MODEL || 'gpt-oss:20b' }}
       AUTONOMOUS_ENGINEERING_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE || 'continuous' }}
     steps:
+      - name: Check out trusted main branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          persist-credentials: false
+
       - name: Use preinstalled system Python under the Runner service identity
         shell: powershell
         run: |
@@ -171,12 +200,6 @@ jobs:
           Write-Host "Checkpoint recovery is performed by the run-scoped Python controller after repository ownership is acquired."
           Write-Host "No workflow step may stop a watcher or edit checkpoint state through shared global filenames."
 
-      - name: Check out trusted main branch
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: main
-          persist-credentials: false
-
       - name: Record immutable base commit
         id: base
         shell: powershell
@@ -200,104 +223,6 @@ jobs:
         run: |
           python scripts/autonomous_engineering_progress.py snapshot --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT"
           if ($LASTEXITCODE -ne 0) { throw "Could not snapshot the accepted main-branch scorecard" }
-
-      - name: Ensure Codex CLI is installed for the Runner service account
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-          if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-            throw "Node.js must be installed system-wide and available in the Runner service PATH."
-          }
-          $npm = Get-Command npm -ErrorAction SilentlyContinue
-          if (-not $npm) {
-            throw "npm was not found in the Runner service PATH. Install Node.js LTS system-wide and restart the Runner service."
-          }
-          $npmPrefix = (npm config get prefix).Trim()
-          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($npmPrefix)) {
-            throw "Could not determine the Runner account's npm global prefix."
-          }
-          $env:PATH = "$npmPrefix;$env:PATH"
-          $requiredCodexVersion = "0.167.0"
-          $installedVersion = ""
-          if (Get-Command codex -ErrorAction SilentlyContinue) {
-            $installedVersion = (& codex --version 2>$null | Out-String).Trim()
-          }
-          if ($installedVersion -notmatch [regex]::Escape($requiredCodexVersion)) {
-            npm install --global "@openai/codex@$requiredCodexVersion"
-            if ($LASTEXITCODE -ne 0) { throw "Could not install the pinned Codex CLI $requiredCodexVersion for the Runner service account." }
-          }
-          $npmPrefix | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          $env:PATH = "$npmPrefix;$env:PATH"
-          $codexCommand = Get-Command codex -ErrorAction Stop
-          $verifiedVersion = (& $codexCommand.Source --version 2>&1 | Out-String).Trim()
-          Write-Host "Codex executable: $($codexCommand.Source)"
-          Write-Host "Codex version: $verifiedVersion"
-          if ($LASTEXITCODE -ne 0 -or $verifiedVersion -notmatch [regex]::Escape($requiredCodexVersion)) {
-            throw "Runner must use exactly Codex CLI $requiredCodexVersion; found '$verifiedVersion'."
-          }
-
-      - name: Verify local Ollama and Codex prerequisites
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-          $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-          $principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
-          if ($principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {
-            throw "The autonomous Runner must use a non-administrator service account"
-          }
-          $ollama = Get-Command ollama -ErrorAction Stop
-          $codex = Get-Command codex -ErrorAction Stop
-          $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 5
-          $model = $env:AUTONOMOUS_ENGINEERING_MODEL
-          $installed = @($tags.models | ForEach-Object { $_.name }) -contains $model
-          if (-not $installed) {
-            throw "Required local model '$model' is not installed. Run: ollama pull $model"
-          }
-          codex --version
-          if ($LASTEXITCODE -ne 0) { throw "Codex CLI is not executable in the Runner service account" }
-          ollama --version
-          if ($LASTEXITCODE -ne 0) { throw "Ollama CLI is not executable in the Runner service account" }
-
-      - name: Verify Ollama and a real workspace-confined Codex tool call
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-          $smokePrompt = Join-Path $env:RUNNER_TEMP "codex-windows-sandbox-smoke.md"
-          $probePath = Join-Path $env:GITHUB_WORKSPACE ".codex-sandbox-probe.tmp"
-          $smokePromptText = @'
-          Use the exec_command tool exactly once. Execute this command verbatim:
-          python -c "from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok', encoding='utf-8'); assert p.read_text(encoding='utf-8') == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')"
-          Do not use recursive directory listings, PowerShell directory traversal, or any other command. If and only if the command succeeds, reply with exactly: OLLAMA_PROVIDER_AND_SANDBOX_OK
-          '@
-          Set-Content -LiteralPath $smokePrompt -Value $smokePromptText -Encoding utf8
-          $selectedBackend = $null
-          foreach ($backend in @("mxc", "elevated")) {
-            if (Test-Path -LiteralPath $probePath) {
-              Remove-Item -LiteralPath $probePath -Force
-            }
-            $env:CODEX_WINDOWS_SANDBOX_BACKEND = $backend
-            $smokeReport = Join-Path $env:RUNNER_TEMP "codex-sandbox-$backend-report.md"
-            Write-Host "Testing Codex exec_command with the Windows '$backend' sandbox backend."
-            python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-$backend" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$smokePrompt" --report "$smokeReport"
-            $smokeExitCode = $LASTEXITCODE
-            $smokeOutput = ""
-            if (Test-Path -LiteralPath $smokeReport -PathType Leaf) {
-              $smokeOutput = Get-Content -LiteralPath $smokeReport -Raw
-            }
-            if (Test-Path -LiteralPath $probePath) {
-              Remove-Item -LiteralPath $probePath -Force
-            }
-            if ($smokeExitCode -eq 0 -and $smokeOutput -match "OLLAMA_PROVIDER_AND_SANDBOX_OK" -and $smokeOutput -match "CODEX_WORKSPACE_SANDBOX_OK") {
-              $selectedBackend = $backend
-              break
-            }
-            Write-Warning "Codex workspace-tool smoke test failed with '$backend'; trying the next supported sandbox backend."
-          }
-          if (-not $selectedBackend) {
-            throw "Neither MXC nor the pre-provisioned elevated Windows sandbox passed a real Codex exec_command workspace read/write/delete test. No unsandboxed fallback is permitted. Provision the elevated Codex sandbox for the Runner service identity or repair Windows sandbox policy, then rerun."
-          }
-          "CODEX_WINDOWS_SANDBOX_BACKEND=$selectedBackend" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          Write-Host "Verified Windows Codex sandbox backend: $selectedBackend"
 
       - name: Capture live GitHub state with the read-only workflow token
         env:
@@ -383,12 +308,23 @@ jobs:
           state_dir = Path(os.environ["PROGRAMDATA"]) / "PersonalAIAssistant" / "autonomous-engineering"
           state_dir.mkdir(parents=True, exist_ok=True)
           pending_path = state_dir / "pending-manual-task.txt"
+          pending_task = pending_path.read_text(encoding="utf-8") if pending_path.is_file() else ""
+          from scripts.autonomous_engineering_pending_task import validate_manual_task_submission
+          try:
+              validate_manual_task_submission(
+                  manual_task=manual_task,
+                  pending_task=pending_task,
+                  open_pull_requests=pulls,
+                  repository=repo,
+              )
+          except ValueError as exc:
+              raise SystemExit(str(exc)) from exc
           if manual_task:
               temporary = pending_path.with_suffix(".txt.tmp")
               temporary.write_text(manual_task, encoding="utf-8")
               temporary.replace(pending_path)
-          elif pending_path.is_file():
-              manual_task = pending_path.read_text(encoding="utf-8")
+          elif pending_task:
+              manual_task = pending_task
           if len(manual_task) > 2000 or "\x00" in manual_task:
               raise SystemExit("Persisted manual engineering task is invalid.")
           request = {
@@ -401,6 +337,136 @@ jobs:
           )
           '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\capture_state.py"
           python "$env:RUNNER_TEMP\capture_state.py"
+
+      - name: Ensure Codex CLI is installed for the Runner service account
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+            throw "Node.js must be installed system-wide and available in the Runner service PATH."
+          }
+          $npm = Get-Command npm -ErrorAction SilentlyContinue
+          if (-not $npm) {
+            throw "npm was not found in the Runner service PATH. Install Node.js LTS system-wide and restart the Runner service."
+          }
+          $npmPrefix = (npm config get prefix).Trim()
+          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($npmPrefix)) {
+            throw "Could not determine the Runner account's npm global prefix."
+          }
+          $env:PATH = "$npmPrefix;$env:PATH"
+          $requiredCodexVersion = "0.167.0"
+          $installedVersion = ""
+          if (Get-Command codex -ErrorAction SilentlyContinue) {
+            $installedVersion = (& codex --version 2>$null | Out-String).Trim()
+          }
+          if ($installedVersion -notmatch [regex]::Escape($requiredCodexVersion)) {
+            npm install --global "@openai/codex@$requiredCodexVersion"
+            if ($LASTEXITCODE -ne 0) { throw "Could not install the pinned Codex CLI $requiredCodexVersion for the Runner service account." }
+          }
+          $npmPrefix | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          $env:PATH = "$npmPrefix;$env:PATH"
+          $codexCommand = Get-Command codex -ErrorAction Stop
+          $verifiedVersion = (& $codexCommand.Source --version 2>&1 | Out-String).Trim()
+          Write-Host "Codex executable: $($codexCommand.Source)"
+          Write-Host "Codex version: $verifiedVersion"
+          if ($LASTEXITCODE -ne 0 -or $verifiedVersion -notmatch [regex]::Escape($requiredCodexVersion)) {
+            throw "Runner must use exactly Codex CLI $requiredCodexVersion; found '$verifiedVersion'."
+          }
+
+      - name: Verify local Ollama and Codex prerequisites
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
+          if ($principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {
+            throw "The autonomous Runner must use a non-administrator service account"
+          }
+          $ollama = Get-Command ollama -ErrorAction Stop
+          $codex = Get-Command codex -ErrorAction Stop
+          $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 5
+          $model = $env:AUTONOMOUS_ENGINEERING_MODEL
+          $installed = @($tags.models | ForEach-Object { $_.name }) -contains $model
+          if (-not $installed) {
+            throw "Required local model '$model' is not installed. Run: ollama pull $model"
+          }
+          codex --version
+          if ($LASTEXITCODE -ne 0) { throw "Codex CLI is not executable in the Runner service account" }
+          ollama --version
+          if ($LASTEXITCODE -ne 0) { throw "Ollama CLI is not executable in the Runner service account" }
+
+      - name: Verify the selected model's allocated Ollama context
+        timeout-minutes: 12
+        shell: powershell
+        run: |
+          & "$env:GITHUB_WORKSPACE\scripts\verify_ollama_context.ps1" -Model "$env:AUTONOMOUS_ENGINEERING_MODEL"
+
+      - name: Verify Ollama and a real workspace-confined Codex tool call
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $smokePrompt = Join-Path $env:RUNNER_TEMP "codex-windows-sandbox-smoke.md"
+          $probeFileName = ".codex-sandbox-probe-$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT).tmp"
+          $probePath = Join-Path $env:GITHUB_WORKSPACE $probeFileName
+          if (Test-Path -LiteralPath $probePath) {
+            throw "Workspace probe path already exists; refusing to overwrite it."
+          }
+          $smokePromptText = @"
+          Use the exec_command tool exactly once. Set its shell parameter to the absolute executable C:\Windows\System32\cmd.exe and set login to false. Do not use the default PowerShell shell.
+          Execute this command verbatim:
+          python -c "from pathlib import Path; p=Path('$probeFileName'); p.write_text('ok', encoding='utf-8'); assert p.read_text(encoding='utf-8') == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')"
+          For the exec_command arguments, set yield_time_ms to the integer 10000 (never null) and sandbox_permissions to "use_default". Never request escalation. Omit justification, prefix_rule, and additional_permissions. The command must run under the existing workspace-write sandbox.
+          Do not use recursive directory listings, PowerShell directory traversal, or any other command. If and only if the command succeeds, reply with exactly: OLLAMA_PROVIDER_AND_SANDBOX_OK
+          "@
+          Set-Content -LiteralPath $smokePrompt -Value $smokePromptText -Encoding utf8
+          $selectedBackend = $null
+          foreach ($backend in @("mxc", "elevated")) {
+            $env:CODEX_WINDOWS_SANDBOX_BACKEND = $backend
+            if ($backend -eq "mxc") {
+              Write-Host "Running the official standalone MXC compatibility probe under the Runner service identity."
+              $mxcProbeOutput = & codex -c windows.sandbox=mxc sandbox --include-managed-config --permission-profile :workspace -- cmd.exe /d /c echo MXC_SERVICE_OK 2>&1
+              $mxcProbeExitCode = $LASTEXITCODE
+              $mxcProbeOutput | ForEach-Object { Write-Host $_ }
+              Write-Host "MXC service-account probe exit code: $mxcProbeExitCode"
+              if ($mxcProbeExitCode -ne 0 -or (($mxcProbeOutput | Out-String) -notmatch "MXC_SERVICE_OK")) {
+                Write-Warning "The standalone MXC compatibility probe failed; checking only the pre-provisioned elevated sandbox next."
+                continue
+              }
+            }
+            $smokeReport = Join-Path $env:RUNNER_TEMP "codex-sandbox-$backend-report.md"
+            $evidenceReport = Join-Path $env:RUNNER_TEMP "codex-sandbox-$backend-evidence.json"
+            Write-Host "Testing Codex exec_command with the Windows '$backend' sandbox backend."
+            python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-$backend" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$smokePrompt" --report "$smokeReport" --require-command-output "CODEX_WORKSPACE_SANDBOX_OK" --expected-agent-message "OLLAMA_PROVIDER_AND_SANDBOX_OK" --events-report "$evidenceReport" --require-command-fragment "$probeFileName" --require-command-fragment "write_text" --require-command-fragment "read_text" --require-command-fragment "unlink"
+            $smokeExitCode = $LASTEXITCODE
+            Write-Host "Codex smoke exit code for '$backend': $smokeExitCode"
+            if (Test-Path -LiteralPath $smokeReport -PathType Leaf) {
+              Write-Host "Codex final agent message for '$backend':"
+              Get-Content -LiteralPath $smokeReport -Raw | Write-Host
+            } else {
+              Write-Warning "Codex did not create the final agent-message report for '$backend'."
+            }
+            $smokeEvidence = $null
+            if (Test-Path -LiteralPath $evidenceReport -PathType Leaf) {
+              $smokeEvidence = Get-Content -LiteralPath $evidenceReport -Raw | ConvertFrom-Json
+              Write-Host "Codex JSONL command-execution evidence for '$backend':"
+              $smokeEvidence | ConvertTo-Json -Depth 8 | Write-Host
+            } else {
+              Write-Warning "Codex did not create JSONL command-execution evidence for '$backend'."
+            }
+            if (Test-Path -LiteralPath $probePath) {
+              throw "Workspace probe file remains after '$backend'; refusing to delete or overwrite an unverified artifact."
+            }
+            if ($smokeExitCode -eq 0 -and $smokeEvidence -and $smokeEvidence.passed) {
+              $selectedBackend = $backend
+              break
+            }
+            Write-Warning "Codex workspace-tool smoke test failed with '$backend'; trying the next supported sandbox backend."
+          }
+          if (-not $selectedBackend) {
+            throw "Neither MXC nor the pre-provisioned elevated Windows sandbox passed a verified Codex JSONL workspace create/read/delete test. No unsandboxed fallback is permitted."
+          }
+          "CODEX_WINDOWS_SANDBOX_BACKEND=$selectedBackend" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Verified Windows Codex sandbox backend: $selectedBackend"
 
       - name: Install project dependencies for local test execution
         env:
@@ -452,8 +518,9 @@ jobs:
           configuration, real databases, or user data. Do not force-push, commit, push branches,
           create PRs, merge, deploy, or perform irreversible actions. The trusted workflow
           controller alone commits and pushes the task branch, creates a PR, dispatches exact-head
-          GitHub checks, and may merge only after every required check succeeds and the exact PR
-          head and main base remain unchanged. The Codex process itself never receives the workflow
+          GitHub checks, and leave the PR open for owner review. The controller never merges a PR.
+          After the owner merges it, the controller verifies the exact merge SHA and post-merge checks
+          before accepting the task or advancing. The Codex process itself never receives the workflow
           token and never performs GitHub publication or merge operations.
           Do not start a dependent task while a prior generated PR is open. Do not weaken tests or
           security controls. If blocked, record the exact blocker and continue with an independent
@@ -470,9 +537,10 @@ jobs:
           QUEUE_EMPTY when no independently actionable task remains in the engineering ledger;
           TASK_BLOCKED when the task cannot safely be completed. Do not claim completion without evidence.
           Each workflow run handles one bounded task and publishes one PR after the full Windows
-          test suite and quality gates pass. The trusted controller merges it only after exact-SHA
-          GitHub checks pass, then dispatches the next isolated run from refreshed main in continuous
-          mode. The overall continuous queue is not capped at eight tasks or one workflow run.
+          test suite and quality gates pass. The trusted controller leaves the PR open for owner
+          review. Only after an owner merges it does the controller validate the exact merge SHA and
+          post-merge GitHub checks, clear the durable task, and dispatch the next isolated run from
+          refreshed main in continuous mode. The overall continuous queue is not capped at eight tasks or one workflow run.
           The submitted manual task is durable and must be continued across retries and restarts until its verified merge; the trusted controller clears it only after acceptance. No task is treated as accepted
           or complete for project progress until its PR is merged and post-merge evidence is recorded.
           '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\codex-prompt.md"
@@ -487,7 +555,7 @@ jobs:
           "paused=$($paused.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           if ($paused) { Write-Host "Safe pause is active; no new engineering task will start." }
 
-      - name: Execute one isolated task, validate, and merge after all gates pass
+      - name: Execute one isolated task, validate, and publish for owner review
         if: steps.pause.outputs.paused != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -497,4 +565,4 @@ jobs:
           $ErrorActionPreference = "Stop"
           $env:PATH = "$env:GITHUB_WORKSPACE\.venv\Scripts;$env:PATH"
           python scripts/autonomous_engineering_cycle.py run --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$env:RUNNER_TEMP\codex-prompt.md" --mode "$env:AUTONOMOUS_ENGINEERING_MODE"
-          if ($LASTEXITCODE -ne 0) { throw "Autonomous task, tests, exact-SHA validation, or verified merge failed" }
+          if ($LASTEXITCODE -ne 0) { throw "Autonomous task, tests, exact-SHA validation, or PR publication failed" }

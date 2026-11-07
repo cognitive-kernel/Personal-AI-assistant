@@ -30,6 +30,8 @@ PROTECTED = {
     "scripts/autonomous_engineering_cycle.py",
     "scripts/autonomous_engineering_progress.py",
     "scripts/autonomous_engineering_checkpoint.py",
+    "scripts/autonomous_engineering_pending_task.py",
+    "scripts/persist_autonomous_manual_task.ps1",
 }
 MARKERS = re.compile(r"(?m)^(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)\s*$")
 CYCLE_LIMIT = 6 * 60 * 60
@@ -435,10 +437,78 @@ def graphql(token: str, query: str, variables: dict[str, Any]) -> dict[str, Any]
     return data if isinstance(data, dict) else {}
 
 
+def _autonomous_state_dir() -> Path:
+    configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
+    if configured:
+        return Path(os.path.expandvars(configured)).expanduser()
+    if os.getenv("PROGRAMDATA"):
+        return Path(os.environ["PROGRAMDATA"]) / "PersonalAIAssistant" / "autonomous-engineering"
+    return Path.home() / ".personal-ai-assistant" / "autonomous-engineering"
+
+
+def _pending_pr_path() -> Path:
+    return _autonomous_state_dir() / "pending-autonomous-pr.json"
+
+
+def save_pending_pr(value: dict[str, Any], repo: str) -> None:
+    string_fields = ("url", "head_sha", "base_sha", "branch", "run_id")
+    if (
+        not isinstance(value, dict)
+        or isinstance(value.get("number"), bool)
+        or not isinstance(value.get("number"), int)
+        or value["number"] < 1
+        or any(not isinstance(value.get(key), str) or not value[key] for key in string_fields)
+        or isinstance(value.get("task"), bool)
+        or not isinstance(value.get("task"), int)
+        or value["task"] < 1
+        or not re.fullmatch(r"[0-9a-f]{40}", value["head_sha"])
+        or not re.fullmatch(r"[0-9a-f]{40}", value["base_sha"])
+        or not value["branch"].startswith("codex/local-engineering-")
+        or value["url"] != f"https://github.com/{repo}/pull/{value['number']}"
+    ):
+        raise RuntimeError("Refusing to persist invalid pending PR metadata.")
+    path = _pending_pr_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + f".{os.getpid()}.tmp")
+    try:
+        temporary.write_text(json.dumps(value, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def load_pending_pr() -> dict[str, Any] | None:
+    path = _pending_pr_path()
+    if not path.exists():
+        return None
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise RuntimeError("Pending PR state is unreadable; preserving it and refusing a new task.") from exc
+    required = ("number", "url", "head_sha", "base_sha", "branch", "run_id", "task")
+    if (
+        not isinstance(value, dict)
+        or isinstance(value.get("number"), bool)
+        or not isinstance(value.get("number"), int)
+        or value["number"] < 1
+        or any(not isinstance(value.get(key), str) or not value[key] for key in required if key not in {"number", "task"})
+        or isinstance(value.get("task"), bool)
+        or not isinstance(value.get("task"), int)
+        or value["task"] < 1
+        or not re.fullmatch(r"[0-9a-f]{40}", str(value.get("head_sha", "")))
+        or not re.fullmatch(r"[0-9a-f]{40}", str(value.get("base_sha", "")))
+    ):
+        raise RuntimeError("Pending PR state violates its durable contract; preserving it and refusing a new task.")
+    return value
+
+
+def clear_pending_pr() -> None:
+    _pending_pr_path().unlink(missing_ok=True)
+
+
 def clear_pending_task() -> None:
-    if os.name == "nt" and os.getenv("PROGRAMDATA"):
-        state_dir = Path(os.environ["PROGRAMDATA"]) / "PersonalAIAssistant" / "autonomous-engineering"
-        (state_dir / "pending-manual-task.txt").unlink(missing_ok=True)
+    if os.name == "nt":
+        (_autonomous_state_dir() / "pending-manual-task.txt").unlink(missing_ok=True)
 
 
 def find_open_autonomous_pr(token: str, repo: str) -> dict[str, Any] | None:
@@ -474,7 +544,7 @@ def find_open_autonomous_pr(token: str, repo: str) -> dict[str, Any] | None:
 
 def complete_pending_pr(token: str, repo: str, pending: dict[str, Any], run_id: str, task: int) -> dict[str, Any]:
     number = pending.get("number")
-    if not isinstance(number, int):
+    if not isinstance(number, int) or isinstance(number, bool):
         raise RuntimeError("The pending autonomous PR has no valid number.")
     current = api(token, repo, "GET", f"pulls/{number}")
     head = current.get("head") or {}
@@ -488,6 +558,7 @@ def complete_pending_pr(token: str, repo: str, pending: dict[str, Any], run_id: 
         author != "github-actions[bot]"
         or head_repository != repo
         or current.get("state") != "open"
+        or current.get("merged") is True
         or base.get("ref") != "main"
         or not isinstance(branch, str)
         or not branch.startswith("codex/local-engineering-")
@@ -508,7 +579,7 @@ def complete_pending_pr(token: str, repo: str, pending: dict[str, Any], run_id: 
         """, {"pullRequestId": node_id})
         ready = (transition.get("convertPullRequestToReadyForReview") or {}).get("pullRequest") or {}
         if ready.get("isDraft") is not False:
-            raise RuntimeError("GitHub did not confirm that the pending PR is ready for automatic validation.")
+            raise RuntimeError("GitHub did not confirm that the pending PR is ready for owner review.")
     dispatch_and_wait_all(
         token, repo, ("tests.yml", "browser-e2e.yml", "dependency-audit.yml"), branch, head_sha
     )
@@ -518,27 +589,83 @@ def complete_pending_pr(token: str, repo: str, pending: dict[str, Any], run_id: 
         (refreshed.get("head") or {}).get("sha") != head_sha
         or (refreshed.get("base") or {}).get("sha") != base_sha
         or refreshed.get("draft") is not False
+        or refreshed.get("state") != "open"
+        or refreshed.get("merged") is True
         or (main.get("commit") or {}).get("sha") != base_sha
     ):
-        raise RuntimeError("Pending PR changed during revalidation; refusing automatic merge.")
-    merged = api(token, repo, "PUT", f"pulls/{number}/merge", {
-        "sha": head_sha,
-        "merge_method": "squash",
-    })
-    if not isinstance(merged, dict) or merged.get("merged") is not True:
-        raise RuntimeError(f"GitHub did not confirm recovery merge of PR #{number}.")
-    merge_sha = merged.get("sha")
-    if not isinstance(merge_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", merge_sha):
-        raise RuntimeError("GitHub returned an invalid recovery merge SHA.")
-    clear_checkpoint(run_id, task)
+        raise RuntimeError("Pending PR changed during revalidation; it remains unaccepted.")
+    url = refreshed.get("html_url")
+    if not isinstance(url, str) or url != f"https://github.com/{repo}/pull/{number}":
+        raise RuntimeError("GitHub returned an unexpected pull request URL.")
+    save_pending_pr({
+        "number": number,
+        "url": url,
+        "head_sha": head_sha,
+        "base_sha": base_sha,
+        "branch": branch,
+        "run_id": str(pending.get("run_id") or run_id),
+        "task": int(pending.get("task") or task),
+    }, repo)
+    return {
+        "number": number,
+        "url": url,
+        "head_sha": head_sha,
+        "base_sha": base_sha,
+        "validated": True,
+        "merged": False,
+        "awaiting_review": True,
+        "draft": False,
+    }
+
+
+def complete_merged_pr(token: str, repo: str, pending: dict[str, Any]) -> dict[str, Any]:
+    number = pending.get("number")
+    if not isinstance(number, int) or isinstance(number, bool):
+        raise RuntimeError("The pending autonomous PR has no valid number.")
+    current = api(token, repo, "GET", f"pulls/{number}")
+    head = current.get("head") or {}
+    base = current.get("base") or {}
+    merge_sha = current.get("merge_commit_sha")
+    if (
+        current.get("state") != "closed"
+        or current.get("merged") is not True
+        or (current.get("user") or {}).get("login") != "github-actions[bot]"
+        or (head.get("repo") or {}).get("full_name") != repo
+        or base.get("ref") != "main"
+        or base.get("sha") != merge_sha
+        or head.get("ref") != pending.get("branch")
+        or head.get("sha") != pending.get("head_sha")
+        or current.get("html_url") != pending.get("url")
+        or not isinstance(merge_sha, str)
+        or not re.fullmatch(r"[0-9a-f]{40}", merge_sha)
+    ):
+        raise RuntimeError("The saved PR was not merged as the exact reviewed candidate; task state is preserved.")
+    main = api(token, repo, "GET", "branches/main")
+    if (main.get("commit") or {}).get("sha") != merge_sha:
+        raise RuntimeError("main moved after the reviewed PR merge; refusing to advance the engineering queue.")
+    dispatch_and_wait_all(
+        token, repo, ("tests.yml", "browser-e2e.yml", "dependency-audit.yml"), "main", merge_sha
+    )
     confirmed = api(token, repo, "GET", f"pulls/{number}")
-    if confirmed.get("merged") is not True:
-        raise RuntimeError(f"GitHub did not confirm merged state for PR #{number}.")
     main_after_merge = api(token, repo, "GET", "branches/main")
-    if (main_after_merge.get("commit") or {}).get("sha") != merge_sha:
-        raise RuntimeError("The recovery merge was accepted but main does not point to the confirmed merge commit.")
-    clear_checkpoint(run_id, task)
-    return {"number": number, "url": pending.get("url"), "head_sha": head_sha, "merge_sha": merge_sha, "merged": True}
+    if (
+        confirmed.get("merged") is not True
+        or confirmed.get("merge_commit_sha") != merge_sha
+        or (confirmed.get("head") or {}).get("sha") != pending.get("head_sha")
+        or (main_after_merge.get("commit") or {}).get("sha") != merge_sha
+    ):
+        raise RuntimeError("Post-merge validation changed or main no longer points to the reviewed merge.")
+    clear_checkpoint()
+    clear_pending_task()
+    clear_pending_pr()
+    return {
+        "number": number,
+        "url": pending.get("url"),
+        "head_sha": pending.get("head_sha"),
+        "merge_sha": merge_sha,
+        "merged": True,
+        "post_merge_validated": True,
+    }
 
 
 def publish_pull_request(
@@ -560,13 +687,14 @@ def publish_pull_request(
         "base": "main",
         "draft": False,
         "body": (
-            f"## Autonomous engineering task {task_index}\\n\\n"
-            f"- Workflow run: https://github.com/{repo}/actions/runs/{run_id}\\n"
-            f"- Candidate commit: {head_sha}\\n"
-            "- Windows full test suite and repository quality gates passed before publication.\\n"
-            "- GitHub tests, browser E2E, and dependency audit are dispatched against this exact PR head.\\n"
-            "- The trusted controller merges this PR automatically after exact-SHA validation succeeds.\\n"
-            "- No deployment is performed.\\n"
+            f"## Autonomous engineering task {task_index}\n\n"
+            f"- Workflow run: https://github.com/{repo}/actions/runs/{run_id}\n"
+            f"- Candidate commit: {head_sha}\n"
+            "- Windows full test suite and repository quality gates passed before publication.\n"
+            "- GitHub tests, browser E2E, and dependency audit are dispatched against this exact PR head.\n"
+            "- The PR remains open for owner review; the controller never merges PRs automatically.\n"
+            "- After the owner merges it, the controller verifies the exact merge SHA and post-merge CI before accepting the task or advancing the queue.\n"
+            "- No deployment is performed.\n"
         ),
     })
     number = pr.get("number")
@@ -594,41 +722,47 @@ def publish_pull_request(
         token, repo, ("tests.yml", "browser-e2e.yml", "dependency-audit.yml"), branch, pr_head
     )
     refreshed_pr = api(token, repo, "GET", f"pulls/{number}")
-    current_main = api(token, repo, "GET", "branches/main")
     refreshed_head = (refreshed_pr.get("head") or {}).get("sha")
+    url = refreshed_pr.get("html_url")
+    if refreshed_head != head_sha:
+        raise RuntimeError("The PR head changed during exact-SHA validation; preserving the task for revalidation.")
+    if not isinstance(url, str) or url != f"https://github.com/{repo}/pull/{number}":
+        raise RuntimeError("GitHub returned an unexpected pull request URL.")
+    pending_state = {
+        "number": number,
+        "url": url,
+        "head_sha": head_sha,
+        "base_sha": base_sha,
+        "branch": branch,
+        "run_id": run_id,
+        "task": task_index,
+    }
+    if refreshed_pr.get("merged") is True:
+        save_pending_pr(pending_state, repo)
+        return {**pending_state, "validated": True, "merged": True, "owner_merged": True}
+    if refreshed_pr.get("state") != "open" or refreshed_pr.get("draft") is not False:
+        raise RuntimeError("The PR was closed or changed before owner-review handoff; preserving the task.")
+    current_main = api(token, repo, "GET", "branches/main")
     refreshed_base = (refreshed_pr.get("base") or {}).get("sha")
     current_main_sha = (current_main.get("commit") or {}).get("sha")
-    if refreshed_head != head_sha or refreshed_base != base_sha or current_main_sha != base_sha:
+    if refreshed_base != base_sha or current_main_sha != base_sha:
+        latest_pr = api(token, repo, "GET", f"pulls/{number}")
+        if latest_pr.get("merged") is True and (latest_pr.get("head") or {}).get("sha") == head_sha:
+            save_pending_pr(pending_state, repo)
+            return {**pending_state, "validated": True, "merged": True, "owner_merged": True}
         raise RuntimeError(
             "The PR head or main base changed during validation; the PR remains open and must be revalidated."
         )
-    url = refreshed_pr.get("html_url")
-    if not isinstance(url, str) or url != f"https://github.com/{repo}/pull/{number}":
-        raise RuntimeError("GitHub returned an unexpected pull request URL.")
 
-    merged = api(token, repo, "PUT", f"pulls/{number}/merge", {
-        "sha": head_sha,
-        "merge_method": "squash",
-    })
-    if not isinstance(merged, dict) or merged.get("merged") is not True:
-        raise RuntimeError(f"GitHub did not confirm merge of validated PR #{number}.")
-    merge_sha = merged.get("sha")
-    if not isinstance(merge_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", merge_sha):
-        raise RuntimeError(f"GitHub returned an invalid merge commit for PR #{number}.")
-    confirmed_pr = api(token, repo, "GET", f"pulls/{number}")
-    if not isinstance(confirmed_pr, dict) or confirmed_pr.get("merged") is not True:
-        raise RuntimeError(f"GitHub merge confirmation is missing for PR #{number}.")
-    main_after_merge = api(token, repo, "GET", "branches/main")
-    if (main_after_merge.get("commit") or {}).get("sha") != merge_sha:
-        raise RuntimeError("The merge was accepted but main does not point to the confirmed merge commit.")
-
+    save_pending_pr(pending_state, repo)
     return {
         "number": number,
         "url": url,
         "head_sha": head_sha,
         "base_sha": base_sha,
-        "merge_sha": merge_sha,
-        "merged": True,
+        "validated": True,
+        "merged": False,
+        "awaiting_review": True,
         "draft": False,
     }
 
@@ -671,28 +805,56 @@ def run_cycle(args: argparse.Namespace) -> int:
     if not token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
         raise RuntimeError("A valid workflow token and repository are required.")
 
+    saved_pending_pr = load_pending_pr()
+    if saved_pending_pr is not None:
+        current_pending = api(token, repo, "GET", f"pulls/{saved_pending_pr['number']}")
+        if current_pending.get("merged") is True:
+            recovered = complete_merged_pr(token, repo, saved_pending_pr)
+            record(
+                args.run_id, args.run_attempt, "complete",
+                f"وظیفهٔ PR #{recovered['number']} پس از بازبینی مالک پذیرفته شد",
+                f"ادغام دستی و CI پس از ادغام روی SHA دقیق {recovered['merge_sha']} تأیید شد",
+                status="completed",
+            )
+            snapshot(args.run_id, args.run_attempt)
+            if args.mode == "continuous":
+                api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {
+                    "ref": "main",
+                    "inputs": {"manual_task": ""},
+                })
+            return 0
+        if current_pending.get("state") == "open":
+            record(
+                args.run_id, args.run_attempt, "recovery",
+                f"بازیابی PR #{saved_pending_pr['number']}",
+                "اعتبارسنجی مجدد PR باز؛ منتظر بازبینی و ادغام دستی مالک",
+            )
+            validated = complete_pending_pr(token, repo, saved_pending_pr, args.run_id, int(saved_pending_pr["task"]))
+            record(
+                args.run_id, args.run_attempt, "publication",
+                f"PR #{validated['number']} آمادهٔ بازبینی مالک است",
+                "CI دقیق موفق است؛ PR برای بازبینی مالک باز می‌ماند و هیچ ادغام یا وظیفهٔ بعدی به‌صورت خودکار انجام نمی‌شود",
+            )
+            snapshot(args.run_id, args.run_attempt)
+            print(f"PR #{validated['number']} passed exact-head checks and is awaiting owner review: {validated['url']}")
+            return 0
+        raise RuntimeError("The saved autonomous PR was closed without a confirmed merge; pending task and checkpoint are preserved.")
+
     pending_pr = find_open_autonomous_pr(token, repo)
     if pending_pr:
         record(
             args.run_id, args.run_attempt, "recovery",
-            "بازیابی PR تأییدشدهٔ قبلی",
-            f"اعتبارسنجی مجدد PR #{pending_pr.get('number')} و ادامه از آخرین تغییر منتشرشده",
+            f"بازیابی PR #{pending_pr.get('number')}",
+            "اعتبارسنجی PR باز و ثبت وضعیت پایدار؛ منتظر بازبینی و ادغام دستی مالک",
         )
-        recovered = complete_pending_pr(token, repo, pending_pr, args.run_id, 1)
+        validated = complete_pending_pr(token, repo, pending_pr, args.run_id, 1)
         record(
-            args.run_id, args.run_attempt, "complete",
-            f"وظیفهٔ بازیابی‌شده ادغام شد",
-            f"PR #{recovered['number']} پس از اعتبارسنجی مجدد ادغام شد؛ merge={recovered['merge_sha'][:12]}",
-            status="completed",
+            args.run_id, args.run_attempt, "publication",
+            f"PR #{validated['number']} آمادهٔ بازبینی مالک است",
+            "CI دقیق موفق است؛ PR برای بازبینی مالک باز می‌ماند و هیچ ادغام یا وظیفهٔ بعدی به‌صورت خودکار انجام نمی‌شود",
         )
-        clear_checkpoint(args.run_id, 1)
-        clear_pending_task()
         snapshot(args.run_id, args.run_attempt)
-        if args.mode == "continuous":
-            api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {
-                "ref": "main",
-                "inputs": {"manual_task": ""},
-            })
+        print(f"PR #{validated['number']} passed exact-head checks and is awaiting owner review: {validated['url']}")
         return 0
 
     started = time.monotonic()
@@ -876,27 +1038,34 @@ def run_cycle(args: argparse.Namespace) -> int:
     if not isinstance(pr_number, int) or not isinstance(pr_url, str) or not isinstance(pr_head, str):
         raise RuntimeError("The published PR metadata is incomplete.")
 
-    if published_pr.get("merged") is not True:
-        raise RuntimeError("The candidate PR was not confirmed as merged; the engineering queue cannot advance.")
-    merge_sha = published_pr.get("merge_sha")
+    if published_pr.get("merged") is True and published_pr.get("owner_merged") is True:
+        accepted = complete_merged_pr(token, repo, published_pr)
+        record(
+            args.run_id, args.run_attempt, "complete",
+            f"وظیفهٔ {task} پس از ادغام دستی مالک پذیرفته شد",
+            f"PR #{pr_number} و CI پس از ادغام روی SHA دقیق {accepted['merge_sha']} تأیید شدند",
+            status="completed",
+        )
+        snapshot(args.run_id, args.run_attempt)
+        request_file.unlink(missing_ok=True)
+        if args.mode == "continuous":
+            api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {
+                "ref": "main",
+                "inputs": {"manual_task": ""},
+            })
+            print(f"Owner-merged task {task} accepted as PR #{pr_number}; next cycle dispatched from main: {pr_url}")
+        else:
+            print(f"Owner-merged task {task} accepted as PR #{pr_number}; scheduled mode resumes at its next interval: {pr_url}")
+        return 0
+    if published_pr.get("validated") is not True or published_pr.get("merged") is not False:
+        raise RuntimeError("The candidate PR did not complete exact-head validation and durable owner-review handoff.")
     record(
-        args.run_id, args.run_attempt, "complete",
-        f"وظیفهٔ {task} ادغام شد",
-        f"PR #{pr_number} با موفقیت و پس از اعتبارسنجی کامل در main ادغام شد؛ merge={str(merge_sha)[:12]}",
-        status="completed",
+        args.run_id, args.run_attempt, "publication",
+        f"PR #{pr_number} آمادهٔ بازبینی مالک است",
+        "تمام کنترل‌های دقیق روی head موفق شدند؛ PR برای تصمیم مالک باز می‌ماند و checkpoint/task تا ادغام دستی حفظ می‌شوند",
     )
-    clear_checkpoint(args.run_id, task)
-    clear_pending_task()
     snapshot(args.run_id, args.run_attempt)
-    request_file.unlink(missing_ok=True)
-    if args.mode == "continuous":
-        api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {
-            "ref": "main",
-            "inputs": {"manual_task": ""},
-        })
-        print(f"Task {task} merged as PR #{pr_number}; the next continuous cycle was dispatched from main: {pr_url}")
-    else:
-        print(f"Task {task} merged as PR #{pr_number}; scheduled mode will resume at its next configured interval: {pr_url}")
+    print(f"Task {task} passed exact-head checks and is awaiting owner review; no automatic merge or queue advance: {pr_url}")
     return 0
 
 def main() -> int:

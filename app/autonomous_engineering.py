@@ -140,7 +140,7 @@ def _github_snapshot() -> dict[str, Any]:
         result = _run(
             [
                 gh, "run", "list", "--repo", _repository(), "--workflow", _WORKFLOW,
-                "--limit", "5", "--json",
+                "--limit", "30", "--json",
                 "databaseId,status,conclusion,createdAt,url,headBranch",
             ],
             timeout=12,
@@ -149,7 +149,7 @@ def _github_snapshot() -> dict[str, Any]:
             try:
                 parsed = json.loads(result.stdout)
                 if isinstance(parsed, list):
-                    recent_runs = [
+                    mapped_runs = [
                         {
                             "id": item.get("databaseId"),
                             "status": item.get("status"),
@@ -158,9 +158,16 @@ def _github_snapshot() -> dict[str, Any]:
                             "url": item.get("url"),
                             "branch": item.get("headBranch"),
                         }
-                        for item in parsed[:5]
+                        for item in parsed
                         if isinstance(item, dict)
                     ]
+                    recent_runs = mapped_runs[:5]
+                    visible_ids = {item["id"] for item in recent_runs}
+                    active_states = {"queued", "in_progress", "waiting", "requested", "pending"}
+                    recent_runs.extend(
+                        item for item in mapped_runs[5:]
+                        if item.get("status") in active_states and item.get("id") not in visible_ids
+                    )
                     runs_available = True
             except ValueError:
                 recent_runs = []
@@ -442,9 +449,6 @@ def resume_autonomous_engineering() -> dict[str, Any]:
     result = _run([gh, "variable", "set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body", "false", "--repo", _repository()], timeout=15)
     if not result or result.returncode != 0:
         raise HTTPException(status_code=502, detail="ثبت ادامه در GitHub ناموفق بود.")
-    reset = _run([gh, "variable", "set", "AUTONOMOUS_ENGINEERING_FAILURE_STREAK", "--body", "0", "--repo", _repository()], timeout=15)
-    if not reset or reset.returncode != 0:
-        raise HTTPException(status_code=502, detail="ادامه ثبت شد اما بازنشانی شمارندهٔ خطا ناموفق بود.")
     dispatched = _run([gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main"], timeout=20)
     if not dispatched or dispatched.returncode != 0:
         raise HTTPException(status_code=502, detail="ادامه ثبت شد اما اجرای چرخه به GitHub ارسال نشد.")
@@ -462,7 +466,7 @@ def cancel_autonomous_engineering() -> dict[str, Any]:
     result = _run(
         [
             gh, "run", "list", "--repo", _repository(), "--workflow", _WORKFLOW,
-            "--limit", "10", "--json", "databaseId,status",
+            "--limit", "30", "--json", "databaseId,status",
         ],
         timeout=12,
     )

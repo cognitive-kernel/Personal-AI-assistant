@@ -182,7 +182,7 @@ def test_pause_sets_durable_repository_variable(monkeypatch):
     ]
 
 
-def test_resume_clears_pause_and_failure_counter_then_dispatches(monkeypatch):
+def test_resume_clears_pause_and_dispatches_without_legacy_failure_counter(monkeypatch):
     calls = []
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
     monkeypatch.setattr(agent, "_run", lambda command, timeout=8: calls.append(command) or subprocess.CompletedProcess(command, 0, "", ""))
@@ -191,8 +191,8 @@ def test_resume_clears_pause_and_failure_counter_then_dispatches(monkeypatch):
 
     assert result["paused"] is False
     assert calls[1][2:5] == ["set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body"]
-    assert calls[2][2:5] == ["set", "AUTONOMOUS_ENGINEERING_FAILURE_STREAK", "--body"]
-    assert calls[3][1:3] == ["workflow", "run"]
+    assert calls[2][1:3] == ["workflow", "run"]
+    assert all("AUTONOMOUS_ENGINEERING_FAILURE_STREAK" not in call for call in calls)
 
 
 def test_autonomous_recovery_workflow_retries_continuous_failures_without_an_automatic_retry_limit():
@@ -518,7 +518,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "Initialize live progress before prerequisite checks" in workflow
     assert "Preserve and stop checkpoint watcher from an interrupted run" not in workflow
     assert "scripts/autonomous_engineering_checkpoint.py" in workflow
-    assert workflow.index("Snapshot accepted scorecard from trusted main") < workflow.index("Execute one isolated task, validate, and merge after all gates pass")
+    assert workflow.index("Snapshot accepted scorecard from trusted main") < workflow.index("Execute one isolated task, validate, and publish for owner review")
     assert workflow.count("snapshot --run-id") == 1
     progress_writer = (root / "scripts" / "autonomous_engineering_progress.py").read_text(encoding="utf-8")
     cycle_controller = (root / "scripts" / "autonomous_engineering_cycle.py").read_text(encoding="utf-8")
@@ -528,10 +528,13 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "scripts/autonomous_engineering_cycle.py run" in workflow
     assert "contents: write" in workflow and "pull-requests: write" in workflow and "actions: write" in workflow
     assert "publish_pull_request" in cycle_controller and "dispatch_and_wait_all" in cycle_controller
-    assert 'pulls/{number}/merge' in cycle_controller
+    assert "save_pending_pr" in cycle_controller
+    assert "complete_merged_pr" in cycle_controller
+    assert "clear_pending_pr" in cycle_controller
+    assert 'api(token, repo, "PUT", f"pulls/{number}/merge"' not in cycle_controller
+    assert "awaiting owner review" in cycle_controller
     assert '"draft": False' in cycle_controller
     assert "complete_pending_pr" in cycle_controller
-    assert "pulls/{number}/merge" in cycle_controller
     assert "AUTONOMOUS_ENGINEERING_PAUSED" in workflow
     assert "AUTONOMOUS_ENGINEERING_INTERVAL_HOURS" in workflow
     assert "types: [closed]" not in workflow
@@ -769,3 +772,102 @@ def test_dispatch_rejects_safe_paused_state(monkeypatch):
 
     assert error.value.status_code == 409
     assert "توقف ایمن" in error.value.detail
+
+
+def test_github_snapshot_inspects_same_run_window_as_schedule_gate(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    runs = [
+        {
+            "databaseId": index + 1,
+            "status": "completed",
+            "conclusion": "success",
+            "createdAt": "2026-11-06T00:00:00Z",
+            "url": f"https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/{index + 1}",
+            "headBranch": "main",
+        }
+        for index in range(29)
+    ]
+    runs.append({
+        "databaseId": 999,
+        "status": "queued",
+        "conclusion": None,
+        "createdAt": "2026-11-05T00:00:00Z",
+        "url": "https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/999",
+        "headBranch": "main",
+    })
+
+    def fake_run(command, timeout=8):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "list"]:
+            return subprocess.CompletedProcess(command, 0, json.dumps(runs), "")
+        if command[1:3] == ["variable", "list"]:
+            return subprocess.CompletedProcess(command, 0, "[]", "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    result = agent._github_snapshot()
+
+    run_command = next(command for command in calls if command[1:3] == ["run", "list"])
+    assert run_command[run_command.index("--limit") + 1] == "30"
+    assert len(result["recent_runs"]) == 6
+    assert result["recent_runs"][-1]["status"] == "queued"
+
+
+def test_cancel_finds_active_run_after_ten_newer_completed_runs(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    runs = [
+        {"databaseId": index + 1, "status": "completed"}
+        for index in range(30)
+    ]
+    runs[-1] = {"databaseId": 999, "status": "in_progress"}
+
+    def fake_run(command, timeout=8):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "list"]:
+            return subprocess.CompletedProcess(command, 0, json.dumps(runs), "")
+        if command[1:3] == ["run", "cancel"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    result = agent.cancel_autonomous_engineering()
+
+    assert result["run_id"] == 999
+    list_command = next(command for command in calls if command[1:3] == ["run", "list"])
+    assert list_command[list_command.index("--limit") + 1] == "30"
+    assert calls[-1][1:3] == ["run", "cancel"]
+    assert calls[-1][3] == "999"
+
+
+def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_codex_requirement():
+    root = Path(__file__).resolve().parents[1]
+    context_gate = (root / "scripts" / "verify_ollama_context.ps1").read_text(encoding="utf-8")
+    production = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    diagnostic = (root / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml").read_text(encoding="utf-8")
+    # PowerShell accepts both Windows separators and forward slashes; compare
+    # normalized paths so the contract is independent of YAML path spelling.
+    production_paths = production.replace("\\", "/")
+    diagnostic_paths = diagnostic.replace("\\", "/")
+
+    assert "/api/generate" in context_gate
+    assert "keep_alive" in context_gate
+    assert "options = @{ num_ctx = $MinimumContextLength }" in context_gate
+    assert "/api/ps" in context_gate
+    assert "context_length" in context_gate
+    assert "64000" in context_gate
+    assert "Settings -> Context Length" in context_gate
+    assert production_paths.count("scripts/verify_ollama_context.ps1") == 1
+    assert diagnostic_paths.count("scripts/verify_ollama_context.ps1") == 1
+    assert production_paths.index("scripts/verify_ollama_context.ps1") < production_paths.index("Verify Ollama and a real workspace-confined Codex tool call")
+    assert diagnostic_paths.index("scripts/verify_ollama_context.ps1") < diagnostic_paths.index("Probe MXC and Codex exec_command")
+    assert ".codex-sandbox-probe-$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT).tmp" in production
+    assert ".codex-sandbox-probe.tmp" not in production
+    assert '--require-command-fragment "$probeFileName"' in production

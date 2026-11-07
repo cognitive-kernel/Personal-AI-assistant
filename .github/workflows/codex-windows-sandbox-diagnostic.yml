@@ -1,6 +1,11 @@
 name: Codex Windows Sandbox Diagnostic
 
 on:
+  push:
+    branches:
+      - fix/autonomous-task-preservation
+    paths:
+      - .github/workflows/codex-windows-sandbox-diagnostic.yml
   workflow_dispatch:
     inputs:
       model:
@@ -13,11 +18,71 @@ permissions:
   contents: read
 
 jobs:
+  cancel-stale-diagnostics:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Cancel older queued diagnostics for this branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+          CURRENT_RUN_NUMBER: ${{ github.run_number }}
+        shell: pwsh
+        run: |
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+          }
+          $branch = [uri]::EscapeDataString("fix/autonomous-task-preservation")
+          $uri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/workflows/codex-windows-sandbox-diagnostic.yml/runs?branch=$branch&per_page=100"
+          try {
+            $response = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get -TimeoutSec 15
+            foreach ($run in @($response.workflow_runs)) {
+              if ([int64]$run.run_number -ge [int64]$env:CURRENT_RUN_NUMBER) { continue }
+              $shouldCancel = $run.status -eq "queued"
+              if ($run.status -eq "in_progress") {
+                try {
+                  $jobsUri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)/jobs?per_page=100"
+                  $jobResponse = Invoke-RestMethod -Uri $jobsUri -Headers $headers -Method Get -TimeoutSec 15
+                  $sandboxJobs = @($jobResponse.jobs | Where-Object { $_.name -eq "sandbox-diagnostic" })
+                  $activeSandbox = @($sandboxJobs | Where-Object { $_.status -eq "in_progress" }).Count -gt 0
+                  $shouldCancel = -not $activeSandbox
+                } catch {
+                  Write-Warning "Could not inspect jobs for older run $($run.id): $($_.Exception.Message)"
+                }
+              }
+              if ($shouldCancel) {
+                $cancelUri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)/cancel"
+                try {
+                  Invoke-RestMethod -Uri $cancelUri -Headers $headers -Method Post -TimeoutSec 15 | Out-Null
+                  Start-Sleep -Seconds 2
+                  $afterCancel = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)" -Headers $headers -Method Get -TimeoutSec 15
+                  if ($afterCancel.status -ne "completed") {
+                    $forceCancelUri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)/force-cancel"
+                    Invoke-RestMethod -Uri $forceCancelUri -Headers $headers -Method Post -TimeoutSec 15 | Out-Null
+                    Write-Host "Force-cancelled stale diagnostic run $($run.id) after normal cancellation remained pending."
+                  } else {
+                    Write-Host "Cancelled stale diagnostic run $($run.id) (run number $($run.run_number))."
+                  }
+                } catch {
+                  Write-Warning "Could not cancel stale run $($run.id): $($_.Exception.Message)"
+                }
+              }
+            }
+          } catch {
+            Write-Warning "Could not list diagnostic runs; continuing without cleanup: $($_.Exception.Message)"
+          }
+
   sandbox-diagnostic:
-    runs-on: [self-hosted, Windows]
-    timeout-minutes: 15
+    needs: cancel-stale-diagnostics
+    runs-on: [self-hosted, Windows, X64, ollama]
+    timeout-minutes: 20
     env:
-      AUTONOMOUS_ENGINEERING_MODEL: ${{ inputs.model }}
+      AUTONOMOUS_ENGINEERING_MODEL: ${{ inputs.model || 'gpt-oss:20b' }}
       CODEX_WINDOWS_SANDBOX_BACKEND: mxc
     steps:
       - name: Checkout repository
@@ -58,6 +123,13 @@ jobs:
             throw "Ollama model '$env:AUTONOMOUS_ENGINEERING_MODEL' is not installed."
           }
 
+      - name: Verify the selected model's allocated Ollama context
+        # Explicitly request the Codex 64k minimum; verify actual allocation before any tool smoke.
+        timeout-minutes: 12
+        shell: powershell
+        run: |
+          & "$env:GITHUB_WORKSPACE\scripts\verify_ollama_context.ps1" -Model "$env:AUTONOMOUS_ENGINEERING_MODEL"
+
       - name: Probe MXC and Codex exec_command under the Runner identity
         shell: powershell
         run: |
@@ -67,6 +139,8 @@ jobs:
           if ($principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {
             throw "Diagnostic must run as the non-administrator Runner service identity."
           }
+          $runnerProcess = Get-CimInstance Win32_Process -Filter "ProcessId=$PID"
+          Write-Host "Runner PowerShell session ID: $($runnerProcess.SessionId)"
           Write-Host "USERPROFILE=$env:USERPROFILE"
           Write-Host "CODEX_HOME=$env:CODEX_HOME"
           $codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE ".codex" }
@@ -82,24 +156,81 @@ jobs:
           if ($probeExitCode -ne 0 -or (($probeOutput | Out-String) -notmatch "MXC_SERVICE_OK")) {
             throw "The official MXC compatibility probe failed under the Runner service identity."
           }
+          $cmdProbeOutput = & codex -c windows.sandbox=mxc sandbox --include-managed-config --permission-profile :workspace -- cmd.exe /d /c python -c "print('MXC_CMD_PYTHON_OK')" 2>&1
+          $cmdProbeExitCode = $LASTEXITCODE
+          $cmdProbeOutput | ForEach-Object { Write-Host $_ }
+          Write-Host "MXC cmd.exe plus Python probe exit code: $cmdProbeExitCode"
+          if ($cmdProbeExitCode -ne 0 -or (($cmdProbeOutput | Out-String) -notmatch "MXC_CMD_PYTHON_OK")) {
+            throw "MXC can start cmd.exe but cannot complete the direct Python child probe."
+          }
           $prompt = Join-Path $env:RUNNER_TEMP "codex-windows-sandbox-smoke.md"
           $report = Join-Path $env:RUNNER_TEMP "codex-windows-sandbox-report.md"
-          @'
-          Use the exec_command tool exactly once. Execute this command verbatim:
-          python -c "from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok', encoding='utf-8'); assert p.read_text(encoding='utf-8') == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')"
+          $evidence = Join-Path $env:RUNNER_TEMP "codex-windows-sandbox-evidence.json"
+          $probeFileName = ".codex-sandbox-probe-$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT).tmp"
+          $probePath = Join-Path $env:GITHUB_WORKSPACE $probeFileName
+          if (Test-Path -LiteralPath $probePath) { throw "Workspace probe path already exists for this run attempt; refusing to overwrite it." }
+          $promptText = @"
+          Use the exec_command tool exactly once. Set its shell parameter to the absolute executable C:\Windows\System32\cmd.exe. Do not use the default PowerShell shell.
+          Execute this command verbatim:
+          python -c "from pathlib import Path; p=Path('$probeFileName'); p.write_text('ok', encoding='utf-8'); assert p.read_text(encoding='utf-8') == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')"
           Set yield_time_ms to integer 10000 and sandbox_permissions to "use_default". Never request escalation. Do not run any other command. If successful, reply exactly: OLLAMA_PROVIDER_AND_SANDBOX_OK
-          '@ | Set-Content -LiteralPath $prompt -Encoding utf8
-          python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-mxc" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$prompt" --report "$report"
+          "@
+          Set-Content -LiteralPath $prompt -Value $promptText -Encoding utf8
+          python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-mxc" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$prompt" --report "$report" --require-command-output "CODEX_WORKSPACE_SANDBOX_OK" --expected-agent-message "OLLAMA_PROVIDER_AND_SANDBOX_OK" --events-report "$evidence" --require-command-fragment "$probeFileName" --require-command-fragment "write_text" --require-command-fragment "read_text" --require-command-fragment "unlink"
           $smokeExitCode = $LASTEXITCODE
           Write-Host "Codex smoke exit code: $smokeExitCode"
           if (Test-Path -LiteralPath $report -PathType Leaf) {
-            $smokeOutput = Get-Content -LiteralPath $report -Raw
-            Write-Host "Codex final smoke report:"
-            Write-Host $smokeOutput
+            Write-Host "Codex final agent message:"
+            Get-Content -LiteralPath $report -Raw | Write-Host
           } else {
-            throw "Codex did not produce a final smoke report."
+            throw "Codex did not produce a final agent-message report."
           }
-          if ($smokeExitCode -ne 0 -or $smokeOutput -notmatch "OLLAMA_PROVIDER_AND_SANDBOX_OK" -or $smokeOutput -notmatch "CODEX_WORKSPACE_SANDBOX_OK") {
-            throw "MXC process probe passed, but Codex exec_command workspace read/write/delete smoke test failed."
+          if (-not (Test-Path -LiteralPath $evidence -PathType Leaf)) {
+            throw "Codex did not produce JSONL command-execution evidence."
+          }
+          $smokeEvidence = Get-Content -LiteralPath $evidence -Raw | ConvertFrom-Json
+          Write-Host "Codex JSONL smoke evidence:"
+          $smokeEvidence | ConvertTo-Json -Depth 8 | Write-Host
+          if ($smokeExitCode -ne 0 -or -not $smokeEvidence.passed) {
+            throw "MXC compatibility probe passed, but the actual Codex JSONL command-execution proof failed."
+          }
+          if (Test-Path -LiteralPath $probePath) {
+            throw "Workspace probe file remains after the smoke test; cleanup was not verified."
           }
           Write-Host "CODEX_WINDOWS_MXC_SERVICE_SMOKE_OK"
+
+      - name: Capture Ollama runtime context after Codex smoke
+        if: always()
+        timeout-minutes: 2
+        shell: powershell
+        run: |
+          try {
+            $runtime = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/ps" -TimeoutSec 8
+            $loadedModels = @($runtime.models)
+            if ($loadedModels.Count -eq 0) {
+              Write-Host "Ollama /api/ps reports no currently loaded model."
+            }
+            foreach ($loaded in $loadedModels) {
+              Write-Host ("Ollama runtime model: name={0}; context_length={1}; size_vram={2}; expires_at={3}" -f $loaded.name, $loaded.context_length, $loaded.size_vram, $loaded.expires_at)
+            }
+          } catch {
+            Write-Host "::warning::Could not read Ollama runtime context from /api/ps."
+            Write-Host $_.Exception.Message
+          }
+          try {
+            $showBody = @{ model = $env:AUTONOMOUS_ENGINEERING_MODEL; verbose = $true } | ConvertTo-Json -Compress
+            $modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -Body $showBody -ContentType "application/json" -TimeoutSec 15
+            $contextProperties = @($modelInfo.model_info.PSObject.Properties | Where-Object { $_.Name -match "context_length$" })
+            foreach ($property in $contextProperties) {
+              Write-Host ("Ollama model metadata {0}={1}" -f $property.Name, $property.Value)
+            }
+            $numCtx = [regex]::Match([string]$modelInfo.parameters, "(?im)^\s*num_ctx\s+(\d+)\s*$")
+            if ($numCtx.Success) {
+              Write-Host "Ollama Modelfile num_ctx: $($numCtx.Groups[1].Value)"
+            } else {
+              Write-Host "Ollama Modelfile has no explicit num_ctx parameter."
+            }
+          } catch {
+            Write-Host "::warning::Could not inspect Ollama model metadata."
+            Write-Host $_.Exception.Message
+          }

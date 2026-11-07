@@ -175,6 +175,101 @@ def codex_arguments(model: str, report: str) -> list[str]:
     ]
 
 
+def codex_smoke_evidence(
+    events: list[dict[str, Any]],
+    expected_command_output: str,
+    expected_agent_message: str,
+    required_command_fragments: list[str] | None = None,
+) -> dict[str, Any]:
+    started_commands = [
+        event["item"]
+        for event in events
+        if event.get("type") == "item.started"
+        and isinstance(event.get("item"), dict)
+        and event["item"].get("type") == "command_execution"
+    ]
+    completed_commands = [
+        event["item"]
+        for event in events
+        if event.get("type") == "item.completed"
+        and isinstance(event.get("item"), dict)
+        and event["item"].get("type") == "command_execution"
+    ]
+    agent_messages = [
+        event["item"].get("text", "")
+        for event in events
+        if event.get("type") == "item.completed"
+        and isinstance(event.get("item"), dict)
+        and event["item"].get("type") == "agent_message"
+    ]
+    turn_completed = any(event.get("type") == "turn.completed" for event in events)
+    turn_failed = any(event.get("type") in {"turn.failed", "error"} for event in events)
+
+    command = completed_commands[0] if len(completed_commands) == 1 else {}
+    started_command = started_commands[0] if len(started_commands) == 1 else {}
+    command_output = str(command.get("aggregated_output", ""))
+    final_message = agent_messages[-1].strip() if agent_messages else ""
+    required_fragments = required_command_fragments or []
+    command_fragments_present = all(fragment in str(command.get("command", "")) for fragment in required_fragments)
+    checks = {
+        "exactly_one_command_started": len(started_commands) == 1,
+        "exactly_one_command_execution": len(completed_commands) == 1,
+        "command_start_matches_completion": (
+            len(started_commands) == 1
+            and len(completed_commands) == 1
+            and started_command.get("id") == command.get("id")
+            and started_command.get("command") == command.get("command")
+        ),
+        "command_completed": command.get("status") == "completed",
+        "command_exit_code_zero": command.get("exit_code") == 0,
+        "command_output_marker_present": expected_command_output in command_output,
+        "required_command_fragments_present": command_fragments_present,
+        "turn_completed": turn_completed,
+        "turn_not_failed": not turn_failed,
+        "expected_agent_message": final_message == expected_agent_message,
+    }
+    completed_turns = [event for event in events if event.get("type") == "turn.completed"]
+    usage = completed_turns[-1].get("usage", {}) if completed_turns else {}
+    event_types = [str(event.get("type", "")) for event in events]
+    item_types = [
+        str(event["item"].get("type", ""))
+        for event in events
+        if isinstance(event.get("item"), dict)
+    ]
+    turn_usage = {
+        key: usage[key]
+        for key in ("input_tokens", "output_tokens", "total_tokens")
+        if isinstance(usage, dict) and key in usage
+    }
+    return {
+        "passed": all(checks.values()),
+        "checks": checks,
+        "command": str(command.get("command", "")),
+        "command_status": command.get("status"),
+        "command_exit_code": command.get("exit_code"),
+        "command_output_marker": expected_command_output in command_output,
+        "required_command_fragments_present": command_fragments_present,
+        "agent_message": final_message,
+        "turn_completed": turn_completed,
+        "turn_failed": turn_failed,
+        "event_count": len(events),
+        "event_types": event_types,
+        "item_types": item_types,
+        "command_started_count": len(started_commands),
+        "command_completed_count": len(completed_commands),
+        "agent_message_count": len(agent_messages),
+        "turn_usage": turn_usage,
+    }
+
+
+def write_smoke_evidence(path: str, evidence: dict[str, Any]) -> None:
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_suffix(destination.suffix + ".tmp")
+    temporary.write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(destination)
+
+
 def run_codex(args: argparse.Namespace) -> int:
     executable = shutil.which("codex")
     if not executable:
@@ -208,6 +303,7 @@ def run_codex(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
     last_signature: tuple[Any, ...] | None = None
+    smoke_events: list[dict[str, Any]] = []
     if not input_broken:
         persist({
             "run_id": args.run_id, "run_attempt": args.run_attempt, "status": "running",
@@ -223,6 +319,18 @@ def run_codex(args: argparse.Namespace) -> int:
                 continue
             if not isinstance(event, dict):
                 continue
+            if getattr(args, "require_command_output", None) or getattr(args, "expected_agent_message", None):
+                if (
+                    event.get("type") in {"item.started", "item.completed", "turn.completed", "turn.failed", "error"}
+                    and (
+                        event.get("type") != "item.completed"
+                        or (
+                            isinstance(event.get("item"), dict)
+                            and (event["item"].get("type") == "command_execution" or (event.get("type") == "item.completed" and event["item"].get("type") == "agent_message"))
+                        )
+                    )
+                ):
+                    smoke_events.append(event)
             completed, total, active_title = plan_state()
             activity = active_title or codex_activity(event) or "عامل در حال کار روی وظیفهٔ جاری است"
             signature = (activity, completed, total)
@@ -239,6 +347,26 @@ def run_codex(args: argparse.Namespace) -> int:
         return_code = process.wait()
         if input_broken and return_code == 0:
             return_code = 1
+        expected_output = getattr(args, "require_command_output", None)
+        expected_message = getattr(args, "expected_agent_message", None)
+        evidence_path = getattr(args, "events_report", None)
+        if expected_output or expected_message:
+            evidence = codex_smoke_evidence(
+                smoke_events,
+                expected_output or "",
+                expected_message or "",
+                getattr(args, "require_command_fragment", None),
+            )
+            if evidence_path:
+                write_smoke_evidence(evidence_path, evidence)
+            print(
+                "Codex command-execution smoke evidence: "
+                + json.dumps(evidence, ensure_ascii=False, sort_keys=True),
+                file=sys.stderr,
+            )
+            if not evidence["passed"]:
+                print("Codex JSONL smoke evidence did not satisfy every required check.", file=sys.stderr)
+                return_code = return_code or 1
         completed, total, active_title = plan_state()
         persist({
             "run_id": args.run_id, "run_attempt": args.run_attempt,
@@ -369,6 +497,10 @@ def main() -> int:
     codex.add_argument("--model", required=True)
     codex.add_argument("--prompt", required=True)
     codex.add_argument("--report", required=True)
+    codex.add_argument("--require-command-output")
+    codex.add_argument("--expected-agent-message")
+    codex.add_argument("--events-report")
+    codex.add_argument("--require-command-fragment", action="append", default=[])
     snapshot = sub.add_parser("snapshot")
     snapshot.add_argument("--run-id", required=True)
     snapshot.add_argument("--run-attempt", default="1")

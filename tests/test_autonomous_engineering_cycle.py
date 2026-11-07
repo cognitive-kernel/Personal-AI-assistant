@@ -46,7 +46,7 @@ def test_validate_paths_rejects_protected_traversal_and_non_allowlisted_paths(pa
         cycle.validate_paths([path])
 
 
-def test_failed_local_and_github_checks_retry_same_task_then_auto_merge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_failed_local_and_github_checks_retry_same_task_then_wait_for_owner_merge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     prompt = tmp_path / "prompt.md"
     prompt.write_text("Complete the selected task.", encoding="utf-8")
     monkeypatch.setattr(cycle, "ROOT", tmp_path)
@@ -83,17 +83,27 @@ def test_failed_local_and_github_checks_retry_same_task_then_auto_merge(tmp_path
         published.append(args)
         if len(published) == 1:
             raise RuntimeError("Per-task draft PR publication failed: Required workflow tests.yml failed for candidate SHA.")
-        return {
+        pending = {
             "number": 42,
             "url": "https://github.com/owner/repository/pull/42",
-            "head_sha": "candidate-sha",
-            "base_sha": "base-sha",
+            "head_sha": "c" * 40,
+            "base_sha": "b" * 40,
+            "branch": "codex/local-engineering-123-1-task-1",
+            "run_id": "123",
+            "task": 1,
+        }
+        cycle.save_pending_pr(pending, "owner/repository")
+        return {
+            **pending,
+            "validated": True,
+            "merged": False,
+            "awaiting_review": True,
             "draft": False,
-            "merged": True,
-            "merge_sha": "e" * 40,
         }
 
     monkeypatch.setattr(cycle, "publish_pr_subprocess", fake_publish)
+    monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: (_ for _ in ()).throw(AssertionError("checkpoint cleared before owner merge")))
+    monkeypatch.setattr(cycle, "clear_pending_task", lambda: (_ for _ in ()).throw(AssertionError("manual task cleared before owner merge")))
     calls = {"codex": 0, "pytest": 0}
 
     def fake_run(command, *, env=None, capture=False):
@@ -121,6 +131,7 @@ def test_failed_local_and_github_checks_retry_same_task_then_auto_merge(tmp_path
     ci_retry_prompt = tmp_path / "codex-retry-prompt-1-3.md"
     assert "Exact failure output" in local_retry_prompt.read_text(encoding="utf-8")
     assert "GitHub-hosted verification failed" in ci_retry_prompt.read_text(encoding="utf-8")
+    assert cycle.load_pending_pr()["number"] == 42
 
 
 
@@ -194,7 +205,7 @@ def test_complete_pending_pr_rejects_non_controller_author(monkeypatch: pytest.M
         }, "102", 1)
 
 
-def test_run_cycle_recovers_open_task_pr_without_waiting_for_human(
+def test_run_cycle_recovers_open_task_pr_and_waits_for_owner_merge(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ):
     records = []
@@ -207,8 +218,11 @@ def test_run_cycle_recovers_open_task_pr_without_waiting_for_human(
     })
     monkeypatch.setattr(cycle, "complete_pending_pr", lambda *args: {
         "number": 77, "url": "https://github.com/owner/repository/pull/77",
-        "head_sha": "a" * 40, "merge_sha": "c" * 40, "merged": True,
+        "head_sha": "a" * 40, "base_sha": "b" * 40,
+        "validated": True, "merged": False, "awaiting_review": True,
     })
+    monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: (_ for _ in ()).throw(AssertionError("checkpoint cleared before owner merge")))
+    monkeypatch.setattr(cycle, "clear_pending_task", lambda: (_ for _ in ()).throw(AssertionError("manual task cleared before owner merge")))
     monkeypatch.setattr(cycle, "api", lambda *args, **kwargs: {})
     monkeypatch.setattr(cycle, "snapshot", lambda *args: None)
     monkeypatch.setattr(cycle, "record", lambda *args, **kwargs: records.append((args, kwargs)))
@@ -220,17 +234,19 @@ def test_run_cycle_recovers_open_task_pr_without_waiting_for_human(
 
     assert cycle.run_cycle(args) == 0
     assert len(records) == 2
-    assert records[-1][1]["status"] == "completed"
-    assert records[-1][0][2] == "complete"
+    assert records[-1][0][2] == "publication"
+    assert "بازبینی مالک" in records[-1][0][4]
 
 
-def test_publish_pull_request_merges_only_after_exact_sha_checks(monkeypatch: pytest.MonkeyPatch):
+def test_publish_pull_request_leaves_exact_sha_validated_pr_open_for_owner_merge(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     base_sha = "b" * 40
     head_sha = "c" * 40
-    merge_sha = "e" * 40
     calls = []
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "autonomous-state"))
     created = {
         "number": 12,
+        "state": "open",
+        "merged": False,
         "draft": False,
         "user": {"login": "github-actions[bot]"},
         "head": {"sha": head_sha, "repo": {"full_name": "owner/repository"}},
@@ -249,12 +265,9 @@ def test_publish_pull_request_merges_only_after_exact_sha_checks(monkeypatch: py
             assert payload["draft"] is False
             return created
         if method == "GET" and path == "pulls/12":
-            return {**refreshed, "merged": True} if any(x[0] == "PUT" for x in calls if len(x) > 1) else refreshed
+            return refreshed
         if method == "GET" and path == "branches/main":
-            return {"commit": {"sha": merge_sha if any(x[0] == "PUT" for x in calls if len(x) > 1) else base_sha}}
-        if method == "PUT" and path == "pulls/12/merge":
-            assert payload == {"sha": head_sha, "merge_method": "squash"}
-            return {"merged": True, "sha": merge_sha}
+            return {"commit": {"sha": base_sha}}
         raise AssertionError((method, path, payload))
 
     monkeypatch.setattr(cycle, "api", fake_api)
@@ -271,12 +284,17 @@ def test_publish_pull_request_merges_only_after_exact_sha_checks(monkeypatch: py
         "url": "https://github.com/owner/repository/pull/12",
         "head_sha": head_sha,
         "base_sha": base_sha,
-        "merge_sha": merge_sha,
-        "merged": True,
+        "validated": True,
+        "merged": False,
+        "awaiting_review": True,
         "draft": False,
     }
     assert len(validations) == 1
-    assert any(call[0] == "PUT" and call[1] == "pulls/12/merge" for call in calls if len(call) > 1)
+    assert not any(call[0] == "PUT" and str(call[1]).endswith("/merge") for call in calls if len(call) > 1)
+    created_payload = next(call[2] for call in calls if call[0] == "POST" and call[1] == "pulls")
+    assert "\n" in created_payload["body"]
+    assert "\\n" not in created_payload["body"]
+    assert cycle.load_pending_pr()["number"] == 12
 
 def test_publish_pull_request_rejects_non_controller_authored_pr(monkeypatch: pytest.MonkeyPatch):
     base_sha = "b" * 40
@@ -337,7 +355,7 @@ def test_publish_pull_request_rejects_head_changed_after_exact_sha_checks(
     )
     monkeypatch.setattr(cycle, "dispatch_and_wait_all", lambda *args: None)
 
-    with pytest.raises(RuntimeError, match="head or main base changed"):
+    with pytest.raises(RuntimeError, match="PR head changed during exact-SHA validation"):
         cycle.publish_pull_request(
             "token", "owner/repository", "codex/local-engineering-1-1-task-1",
             1, "123", head_sha, base_sha,
@@ -649,10 +667,10 @@ def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pyt
     assert cycle.start_checkpoint_watcher("a" * 40, "105", 1) is not None
 
 
-def test_complete_pending_draft_pr_revalidates_checks_then_merges(monkeypatch: pytest.MonkeyPatch):
+def test_complete_pending_draft_pr_revalidates_checks_and_leaves_pr_open(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     base_sha = "b" * 40
     head_sha = "c" * 40
-    merge_sha = "e" * 40
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "autonomous-state"))
     current = {
         "number": 77,
         "state": "open",
@@ -665,18 +683,15 @@ def test_complete_pending_draft_pr_revalidates_checks_then_merges(monkeypatch: p
             "repo": {"full_name": "owner/repository"},
         },
         "base": {"ref": "main", "sha": base_sha},
+        "html_url": "https://github.com/owner/repository/pull/77",
     }
     ready = {**current, "draft": False}
-    confirmed = {**ready, "merged": True}
     calls = []
-    responses = [current, ready, {"commit": {"sha": base_sha}}, {"merged": True, "sha": merge_sha}, confirmed, {"commit": {"sha": merge_sha}}]
+    responses = [current, ready, {"commit": {"sha": base_sha}}]
 
     def fake_api(token, repo, method, path, payload=None):
         calls.append((method, path, payload))
         if method == "GET" and path in {"pulls/77", "branches/main"}:
-            return responses.pop(0)
-        if method == "PUT" and path == "pulls/77/merge":
-            assert payload == {"sha": head_sha, "merge_method": "squash"}
             return responses.pop(0)
         raise AssertionError((method, path, payload))
 
@@ -686,7 +701,7 @@ def test_complete_pending_draft_pr_revalidates_checks_then_merges(monkeypatch: p
     })
     validations = []
     monkeypatch.setattr(cycle, "dispatch_and_wait_all", lambda *args: validations.append(args))
-    monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: None)
+    monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: (_ for _ in ()).throw(AssertionError("checkpoint cleared before owner merge")))
 
     result = cycle.complete_pending_pr("token", "owner/repository", {
         "number": 77,
@@ -698,10 +713,12 @@ def test_complete_pending_draft_pr_revalidates_checks_then_merges(monkeypatch: p
         "node_id": "PR_node",
     }, "77", 1)
 
-    assert result["merged"] is True
-    assert result["merge_sha"] == merge_sha
+    assert result["validated"] is True
+    assert result["merged"] is False
+    assert result["awaiting_review"] is True
     assert len(validations) == 1
-    assert any(call[0] == "PUT" and call[1] == "pulls/77/merge" for call in calls)
+    assert not any(call[0] == "PUT" and str(call[1]).endswith("/merge") for call in calls)
+    assert cycle.load_pending_pr()["number"] == 77
 
 
 
@@ -909,3 +926,233 @@ def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkey
     )
 
     assert progress.run_codex(args) == 1
+
+
+def test_codex_smoke_evidence_requires_real_successful_command_and_final_turn():
+    from scripts import autonomous_engineering_progress as progress
+
+    command_started = {"type": "item.started", "item": {
+        "id": "command-1",
+        "type": "command_execution",
+        "command": "python -c from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok'); assert p.read_text() == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')",
+        "status": "in_progress",
+    }}
+    events = [
+        command_started,
+        {"type": "item.completed", "item": {
+            "id": "command-1",
+            "type": "command_execution",
+            "command": "python -c from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok'); assert p.read_text() == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')",
+            "aggregated_output": "CODEX_WORKSPACE_SANDBOX_OK\\n",
+            "exit_code": 0,
+            "status": "completed",
+        }},
+        {"type": "item.completed", "item": {
+            "type": "agent_message",
+            "text": "OLLAMA_PROVIDER_AND_SANDBOX_OK",
+        }},
+        {"type": "turn.completed", "usage": {"input_tokens": 10, "output_tokens": 2}},
+    ]
+
+    evidence = progress.codex_smoke_evidence(
+        events, "CODEX_WORKSPACE_SANDBOX_OK", "OLLAMA_PROVIDER_AND_SANDBOX_OK",
+        [".codex-sandbox-probe.tmp", "write_text", "read_text", "unlink"],
+    )
+
+    assert evidence["passed"] is True
+    assert all(evidence["checks"].values())
+    assert evidence["command_exit_code"] == 0
+    assert evidence["event_types"] == ["item.started", "item.completed", "item.completed", "turn.completed"]
+    assert evidence["item_types"] == ["command_execution", "command_execution", "agent_message"]
+    assert evidence["command_started_count"] == 1
+    assert evidence["command_completed_count"] == 1
+    assert evidence["agent_message_count"] == 1
+    assert evidence["turn_usage"] == {"input_tokens": 10, "output_tokens": 2}
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "no_command",
+        "nonzero_exit",
+        "missing_output_marker",
+        "no_turn_completed",
+        "turn_failed",
+        "duplicate_command",
+        "wrong_command",
+        "missing_command_start",
+        "mismatched_command_start",
+        "wrong_agent_message",
+    ],
+)
+def test_codex_smoke_evidence_rejects_unproven_or_failed_execution(mutation: str):
+    from scripts import autonomous_engineering_progress as progress
+
+    command = {
+        "type": "item.completed",
+        "item": {
+            "id": "command-1",
+            "type": "command_execution",
+            "command": "python -c from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok'); assert p.read_text() == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')",
+            "aggregated_output": "CODEX_WORKSPACE_SANDBOX_OK\\n",
+            "exit_code": 0,
+            "status": "completed",
+        },
+    }
+    command_started = {"type": "item.started", "item": {
+        "id": "command-1",
+        "type": "command_execution",
+        "command": "python -c from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok'); assert p.read_text() == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')",
+        "status": "in_progress",
+    }}
+    message = {
+        "type": "item.completed",
+        "item": {"type": "agent_message", "text": "OLLAMA_PROVIDER_AND_SANDBOX_OK"},
+    }
+    events = [command_started, command, message, {"type": "turn.completed"}]
+
+    if mutation == "no_command":
+        events.remove(command)
+    elif mutation == "nonzero_exit":
+        command["item"]["exit_code"] = 1
+        command["item"]["status"] = "failed"
+    elif mutation == "missing_output_marker":
+        command["item"]["aggregated_output"] = "different output"
+    elif mutation == "no_turn_completed":
+        events.remove(events[-1])
+    elif mutation == "turn_failed":
+        events.append({"type": "turn.failed", "error": {"message": "failed"}})
+    elif mutation == "duplicate_command":
+        events.insert(1, dict(command))
+    elif mutation == "wrong_command":
+        command["item"]["command"] = "python -c print(CODEX_WORKSPACE_SANDBOX_OK)"
+    elif mutation == "missing_command_start":
+        events.remove(command_started)
+    elif mutation == "mismatched_command_start":
+        command_started["item"]["command"] = "python -c print(CODEX_WORKSPACE_SANDBOX_OK)"
+    elif mutation == "wrong_agent_message":
+        message["item"]["text"] = "I think it worked"
+
+    evidence = progress.codex_smoke_evidence(
+        events, "CODEX_WORKSPACE_SANDBOX_OK", "OLLAMA_PROVIDER_AND_SANDBOX_OK",
+        [".codex-sandbox-probe.tmp", "write_text", "read_text", "unlink"],
+    )
+
+    assert evidence["passed"] is False
+    assert not all(evidence["checks"].values())
+
+
+def test_codex_smoke_evidence_report_is_written_atomically(tmp_path: Path):
+    import json
+    from scripts import autonomous_engineering_progress as progress
+
+    destination = tmp_path / "nested" / "evidence.json"
+    evidence = {"passed": True, "checks": {"command_exit_code_zero": True}}
+
+    progress.write_smoke_evidence(str(destination), evidence)
+
+    assert json.loads(destination.read_text(encoding="utf-8")) == evidence
+    assert not destination.with_suffix(".json.tmp").exists()
+
+def test_windows_sandbox_diagnostic_cancels_only_older_queued_runs_and_uses_unique_probe_paths():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml").read_text(encoding="utf-8")
+    cleanup_start = workflow.index("  cancel-stale-diagnostics:")
+    sandbox_start = workflow.index("  sandbox-diagnostic:")
+    cleanup_job = workflow[cleanup_start:sandbox_start]
+    sandbox_job = workflow[sandbox_start:]
+
+    assert "runs-on: ubuntu-latest" in cleanup_job
+    assert "actions: write" in cleanup_job
+    assert "continue-on-error: true" in cleanup_job
+    assert "run.status -eq \"queued\"" in cleanup_job
+    assert "actions/runs/$($run.id)/jobs?per_page=100" in cleanup_job
+    assert "run.status -eq \"in_progress\"" in cleanup_job
+    assert "activeSandbox" in cleanup_job
+    assert "sandboxJobs | Where-Object { $_.status -eq \"in_progress\" }" in cleanup_job
+    assert "$shouldCancel = -not $activeSandbox" in cleanup_job
+    assert "run.run_number -ge" in cleanup_job
+    assert "continue" in cleanup_job
+    assert "/cancel" in cleanup_job
+    assert "/force-cancel" in cleanup_job
+    assert "concurrency:" not in cleanup_job
+    assert "needs: cancel-stale-diagnostics" in sandbox_job
+    sandbox_job_header = sandbox_job.split("steps:", 1)[0]
+    assert "if: always()" not in sandbox_job_header
+    assert "scripts/verify_ollama_context.ps1" in workflow.replace("\\", "/")
+    assert "GITHUB_RUN_ID" in sandbox_job
+    assert "GITHUB_RUN_ATTEMPT" in sandbox_job
+    assert ".codex-sandbox-probe-$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT).tmp" in sandbox_job
+    assert "--require-command-fragment \"$probeFileName\"" in sandbox_job
+    assert ".codex-sandbox-probe.tmp" not in sandbox_job
+
+def test_complete_merged_pr_requires_owner_merge_and_post_merge_exact_sha_checks(monkeypatch: pytest.MonkeyPatch):
+    merge_sha = "e" * 40
+    head_sha = "c" * 40
+    pending = {
+        "number": 88,
+        "url": "https://github.com/owner/repository/pull/88",
+        "head_sha": head_sha,
+        "base_sha": "b" * 40,
+        "branch": "codex/local-engineering-88-1-task-1",
+        "run_id": "88",
+        "task": 1,
+    }
+    current = {
+        "number": 88,
+        "state": "closed",
+        "merged": True,
+        "merge_commit_sha": merge_sha,
+        "html_url": "https://github.com/owner/repository/pull/88",
+        "user": {"login": "github-actions[bot]"},
+        "head": {
+            "ref": pending["branch"],
+            "sha": head_sha,
+            "repo": {"full_name": "owner/repository"},
+        },
+        "base": {"ref": "main", "sha": merge_sha},
+    }
+    calls = []
+    monkeypatch.setattr(cycle, "api", lambda token, repo, method, path, payload=None: (
+        calls.append((method, path, payload))
+        or current if path == "pulls/88"
+        else {"commit": {"sha": merge_sha}}
+    ))
+    validations = []
+    cleared = []
+    monkeypatch.setattr(cycle, "dispatch_and_wait_all", lambda *args: validations.append(args))
+    monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: cleared.append("checkpoint"))
+    monkeypatch.setattr(cycle, "clear_pending_task", lambda: cleared.append("task"))
+    monkeypatch.setattr(cycle, "clear_pending_pr", lambda: cleared.append("pending-pr"))
+
+    result = cycle.complete_merged_pr("token", "owner/repository", pending)
+
+    assert result["merged"] is True
+    assert result["post_merge_validated"] is True
+    assert result["merge_sha"] == merge_sha
+    assert validations == [("token", "owner/repository", ("tests.yml", "browser-e2e.yml", "dependency-audit.yml"), "main", merge_sha)]
+    assert cleared == ["checkpoint", "task", "pending-pr"]
+    assert not any(method == "PUT" and str(path).endswith("/merge") for method, path, _ in calls)
+
+
+def test_pending_pr_state_round_trips_atomically_and_rejects_corruption(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "state"))
+    pending = {
+        "number": 91,
+        "url": "https://github.com/owner/repository/pull/91",
+        "head_sha": "c" * 40,
+        "base_sha": "b" * 40,
+        "branch": "codex/local-engineering-91-1-task-1",
+        "run_id": "91",
+        "task": 1,
+    }
+
+    cycle.save_pending_pr(pending, "owner/repository")
+    assert cycle.load_pending_pr() == pending
+    assert not cycle._pending_pr_path().with_name(cycle._pending_pr_path().name + f".{__import__('os').getpid()}.tmp").exists()
+
+    cycle._pending_pr_path().write_text("{broken", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="unreadable"):
+        cycle.load_pending_pr()
