@@ -352,7 +352,7 @@ def test_publish_pull_request_rejects_head_changed_after_exact_sha_checks(
     )
     monkeypatch.setattr(cycle, "dispatch_and_wait_all", lambda *args: None)
 
-    with pytest.raises(RuntimeError, match="head or main base changed"):
+    with pytest.raises(RuntimeError, match="PR head changed during exact-SHA validation"):
         cycle.publish_pull_request(
             "token", "owner/repository", "codex/local-engineering-1-1-task-1",
             1, "123", head_sha, base_sha,
