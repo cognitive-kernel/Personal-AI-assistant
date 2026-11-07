@@ -393,6 +393,11 @@ def codex_smoke_evidence(
             "required_fragments": fragment_checks,
             "output_marker_present": output_marker_present,
             "failure_category": None if succeeded else diagnostic_failure_category(completed),
+            # Preserve only a short sanitized failure signature and field names.
+            # This is essential for diagnosing real Runner failures without
+            # publishing raw commands, stdout/stderr, credentials, or paths.
+            "failure_field_names": [] if succeeded else _diagnostic_field_names(completed),
+            "failure_signature": None if succeeded else _sanitize_error_signature(completed),
         }
         command_summaries.append(summary)
         if succeeded and command_payload_matches and fragments_present and output_marker_present:
