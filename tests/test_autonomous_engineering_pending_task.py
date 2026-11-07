@@ -86,22 +86,29 @@ def test_manual_task_is_persisted_before_codex_and_ollama_preflight():
     assert capture < codex_install < ollama_check < sandbox_smoke
 
 
-def test_manual_task_persistence_precedes_every_runner_prerequisite_check():
+def test_manual_task_persistence_precedes_schedule_gate_and_runner_prerequisites():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
     workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
-    checkout = workflow.index("Check out trusted main branch")
-    persistence = workflow.index("Persist manual task before any runner prerequisite checks")
-    first_preflight = workflow.index("Use preinstalled system Python under the Runner service identity")
-    capture = workflow.index("Capture live GitHub state with the read-only workflow token")
+    persist_start = workflow.index("  persist-manual-task:")
+    gate_start = workflow.index("  schedule-gate:")
+    codex_start = workflow.index("  codex:")
+    persist_job = workflow[persist_start:gate_start]
+    gate_job = workflow[gate_start:codex_start]
+    codex_job = workflow[codex_start:]
 
-    assert checkout < persistence < first_preflight < capture
-    assert "actions/checkout@" in workflow
-    assert "persist-credentials: false" in workflow
-    assert "persist_autonomous_manual_task.ps1" in workflow
-
-
+    assert persist_start < gate_start < codex_start
+    assert "if: github.event_name == 'workflow_dispatch' && inputs.manual_task != ''" in persist_job
+    assert "runs-on: [self-hosted, Windows, X64, ollama]" in persist_job
+    assert "ref: main" in persist_job
+    assert "persist-credentials: false" in persist_job
+    assert "persist_autonomous_manual_task.ps1" in persist_job
+    assert "needs: persist-manual-task" in gate_job
+    assert "if: always()" in gate_job
+    assert "needs: [persist-manual-task, schedule-gate]" in codex_job
+    assert "if: always()" in codex_job
+    assert "Persist manual task before any runner prerequisite checks" not in codex_job
 def test_early_manual_task_persistence_script_is_protected_and_validated_in_ci():
     from pathlib import Path
 
