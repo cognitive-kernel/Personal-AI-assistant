@@ -1049,6 +1049,7 @@ def test_windows_sandbox_diagnostic_cancels_only_older_queued_runs_and_uses_uniq
 
     assert "runs-on: ubuntu-latest" in cleanup_job
     assert "actions: write" in cleanup_job
+    assert "continue-on-error: true" in cleanup_job
     assert "run.status -eq \"queued\"" in cleanup_job
     assert "actions/runs/$($run.id)/jobs?per_page=100" in cleanup_job
     assert "run.status -eq \"in_progress\"" in cleanup_job
@@ -1058,9 +1059,10 @@ def test_windows_sandbox_diagnostic_cancels_only_older_queued_runs_and_uses_uniq
     assert "run.run_number -ge" in cleanup_job
     assert "continue" in cleanup_job
     assert "/cancel" in cleanup_job
+    assert "/force-cancel" in cleanup_job
     assert "concurrency:" not in cleanup_job
     assert "needs: cancel-stale-diagnostics" in sandbox_job
-    assert "if: always()" in sandbox_job
+    assert "if: always()" not in sandbox_job
     assert "GITHUB_RUN_ID" in sandbox_job
     assert "GITHUB_RUN_ATTEMPT" in sandbox_job
     assert ".codex-sandbox-probe-$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT).tmp" in sandbox_job
