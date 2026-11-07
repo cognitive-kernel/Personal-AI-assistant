@@ -61,6 +61,23 @@ def test_codex_smoke_evidence_reports_each_command_without_logging_raw_commands(
 
 
 
+def test_codex_diagnostic_uses_bounded_reasoning_effort_without_changing_default(monkeypatch):
+    import pytest
+    from scripts import autonomous_engineering_progress as progress
+
+    monkeypatch.setenv("CODEX_MODEL_REASONING_EFFORT", "low")
+    arguments = progress.codex_arguments("gpt-oss:20b-codex-64k", "report.md")
+    assert ["-c", 'model_reasoning_effort="low"'] == arguments[5:7]
+
+    monkeypatch.delenv("CODEX_MODEL_REASONING_EFFORT")
+    default_arguments = progress.codex_arguments("gpt-oss:20b-codex-64k", "report.md")
+    assert "model_reasoning_effort" not in " ".join(default_arguments)
+
+    monkeypatch.setenv("CODEX_MODEL_REASONING_EFFORT", "unbounded")
+    with pytest.raises(ValueError, match="CODEX_MODEL_REASONING_EFFORT"):
+        progress.codex_arguments("gpt-oss:20b-codex-64k", "report.md")
+
+
 def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     from pathlib import Path
 
@@ -82,6 +99,7 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert 'steps.context_preflight.outcome == \'success\'' in autonomous
     assert 'fix/automation-codex-context-smoke-20261107' in diagnostic
     assert 'CODEX_WINDOWS_SANDBOX_BACKEND: mxc' in diagnostic
+    assert 'CODEX_MODEL_REASONING_EFFORT: low' in diagnostic
     assert 'run-name: "Codex Windows Sandbox Diagnostic #' in diagnostic
     cleanup_job = diagnostic.split("  sandbox-diagnostic:", 1)[0]
     assert '$branch = [uri]::EscapeDataString($env:GITHUB_REF_NAME)' in cleanup_job
