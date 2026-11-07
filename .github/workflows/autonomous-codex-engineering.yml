@@ -400,7 +400,6 @@ jobs:
         shell: powershell
         run: |
           & "$env:GITHUB_WORKSPACE\scripts\verify_ollama_context.ps1" -Model "$env:AUTONOMOUS_ENGINEERING_MODEL"
-          if ($LASTEXITCODE -ne 0) { throw "Ollama runtime context validation failed." }
 
       - name: Verify Ollama and a real workspace-confined Codex tool call
         shell: powershell
