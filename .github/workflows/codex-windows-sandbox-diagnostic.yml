@@ -23,9 +23,6 @@ jobs:
     permissions:
       actions: write
       contents: read
-    concurrency:
-      group: codex-sandbox-diagnostic-cleanup-${{ github.ref }}
-      cancel-in-progress: false
     steps:
       - name: Cancel older queued diagnostics for this branch
         env:
