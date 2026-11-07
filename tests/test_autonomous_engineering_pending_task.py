@@ -91,11 +91,14 @@ def test_manual_task_persistence_precedes_every_runner_prerequisite_check():
 
     root = Path(__file__).resolve().parents[1]
     workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    checkout = workflow.index("Check out trusted main branch")
     persistence = workflow.index("Persist manual task before any runner prerequisite checks")
     first_preflight = workflow.index("Use preinstalled system Python under the Runner service identity")
     capture = workflow.index("Capture live GitHub state with the read-only workflow token")
 
-    assert persistence < first_preflight < capture
+    assert checkout < persistence < first_preflight < capture
+    assert "actions/checkout@" in workflow
+    assert "persist-credentials: false" in workflow
     assert "persist_autonomous_manual_task.ps1" in workflow
 
 
