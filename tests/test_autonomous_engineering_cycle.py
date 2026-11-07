@@ -1060,6 +1060,7 @@ def test_codex_tool_smoke_does_not_require_a_final_text_message():
         "missing_command_start",
         "mismatched_command_start",
         "wrong_agent_message",
+        "item_error",
     ],
 )
 def test_codex_smoke_evidence_rejects_unproven_or_failed_execution(mutation: str):
@@ -1110,6 +1111,11 @@ def test_codex_smoke_evidence_rejects_unproven_or_failed_execution(mutation: str
         command_started["item"]["command"] = "python -c print(CODEX_WORKSPACE_SANDBOX_OK)"
     elif mutation == "wrong_agent_message":
         message["item"]["text"] = "I think it worked"
+    elif mutation == "item_error":
+        events.append({
+            "type": "item.completed",
+            "item": {"type": "error", "message": "tool execution failed"},
+        })
 
     evidence = progress.codex_smoke_evidence(
         events, "CODEX_WORKSPACE_SANDBOX_OK", "OLLAMA_PROVIDER_AND_SANDBOX_OK",
