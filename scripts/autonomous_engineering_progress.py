@@ -241,6 +241,21 @@ def codex_smoke_evidence(
         for key in ("input_tokens", "output_tokens", "total_tokens")
         if isinstance(usage, dict) and key in usage
     }
+    command_summaries = []
+    for completed in completed_commands:
+        command_text = str(completed.get("command", ""))
+        output_text = str(completed.get("aggregated_output", ""))
+        command_summaries.append({
+            "id": str(completed.get("id", "")),
+            "status": completed.get("status"),
+            "exit_code": completed.get("exit_code"),
+            "required_fragments": {
+                fragment: fragment in command_text
+                for fragment in required_fragments
+            },
+            "output_marker_present": expected_command_output in output_text,
+        })
+
     return {
         "passed": all(checks.values()),
         "checks": checks,
@@ -259,6 +274,7 @@ def codex_smoke_evidence(
         "command_completed_count": len(completed_commands),
         "agent_message_count": len(agent_messages),
         "turn_usage": turn_usage,
+        "command_summaries": command_summaries,
     }
 
 
