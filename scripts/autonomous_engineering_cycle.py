@@ -1025,27 +1025,15 @@ def run_cycle(args: argparse.Namespace) -> int:
     if not isinstance(pr_number, int) or not isinstance(pr_url, str) or not isinstance(pr_head, str):
         raise RuntimeError("The published PR metadata is incomplete.")
 
-    if published_pr.get("merged") is not True:
-        raise RuntimeError("The candidate PR was not confirmed as merged; the engineering queue cannot advance.")
-    merge_sha = published_pr.get("merge_sha")
+    if published_pr.get("validated") is not True or published_pr.get("merged") is not False:
+        raise RuntimeError("The candidate PR did not complete exact-head validation and durable owner-review handoff.")
     record(
-        args.run_id, args.run_attempt, "complete",
-        f"وظیفهٔ {task} ادغام شد",
-        f"PR #{pr_number} با موفقیت و پس از اعتبارسنجی کامل در main ادغام شد؛ merge={str(merge_sha)[:12]}",
-        status="completed",
+        args.run_id, args.run_attempt, "publication",
+        f"PR #{pr_number} آمادهٔ بازبینی مالک است",
+        "تمام کنترل‌های دقیق روی head موفق شدند؛ PR برای تصمیم مالک باز می‌ماند و checkpoint/task تا ادغام دستی حفظ می‌شوند",
     )
-    clear_checkpoint(args.run_id, task)
-    clear_pending_task()
     snapshot(args.run_id, args.run_attempt)
-    request_file.unlink(missing_ok=True)
-    if args.mode == "continuous":
-        api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {
-            "ref": "main",
-            "inputs": {"manual_task": ""},
-        })
-        print(f"Task {task} merged as PR #{pr_number}; the next continuous cycle was dispatched from main: {pr_url}")
-    else:
-        print(f"Task {task} merged as PR #{pr_number}; scheduled mode will resume at its next configured interval: {pr_url}")
+    print(f"Task {task} passed exact-head checks and is awaiting owner review; no automatic merge or queue advance: {pr_url}")
     return 0
 
 def main() -> int:
