@@ -182,3 +182,6 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert "CODEX_WORKSPACE_SANDBOX_OK" in diagnostic
     assert "Call exec_command once only" in diagnostic
     assert "do not retry, change the command, or print the success marker" in diagnostic
+    assert "echo ok>$probeFileName && type $probeFileName && del $probeFileName" in diagnostic
+    assert "--require-command-fragment \"echo\" --require-command-fragment \"type\" --require-command-fragment \"del\"" in diagnostic
+    assert "python -c \"from pathlib import Path" not in diagnostic
