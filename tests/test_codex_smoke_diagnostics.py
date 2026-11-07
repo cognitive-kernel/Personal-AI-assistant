@@ -90,9 +90,12 @@ def test_codex_smoke_evidence_classifies_failures_without_retaining_raw_output()
     assert evidence["error_categories"] == ["process_launch_rejected", "no_error_detail"]
     assert "message" in evidence["error_summaries"][0]["field_names"]
     assert "code" in evidence["error_summaries"][0]["field_names"]
+    signature = evidence["error_summaries"][0]["signature"]
+    assert "CreateProcess rejected: blocked by policy" in signature
+    assert "C:\\Users" not in signature
     serialized = __import__("json").dumps(evidence)
-    assert "Access is denied" not in serialized
-    assert "blocked by policy" not in serialized
+    assert "C:\\Users" not in serialized
+    assert "python -c secret" not in serialized
     assert "private-command" not in serialized
 
 
