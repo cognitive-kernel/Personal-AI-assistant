@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/autonomous-task-preservation
+      - fix/automation-codex-context-smoke-20261107
     paths:
       - .github/workflows/codex-windows-sandbox-diagnostic.yml
   workflow_dispatch:
@@ -124,7 +125,8 @@ jobs:
           }
 
       - name: Verify the selected model's allocated Ollama context
-        # Explicitly request the Codex 64k minimum; verify actual allocation before any tool smoke.
+        id: context_preflight
+        # Create and verify a persistent model variant with PARAMETER num_ctx=64000.
         timeout-minutes: 12
         shell: powershell
         run: |
@@ -170,10 +172,10 @@ jobs:
           $probePath = Join-Path $env:GITHUB_WORKSPACE $probeFileName
           if (Test-Path -LiteralPath $probePath) { throw "Workspace probe path already exists for this run attempt; refusing to overwrite it." }
           $promptText = @"
-          Use the exec_command tool exactly once. Set its shell parameter to the absolute executable C:\Windows\System32\cmd.exe. Do not use the default PowerShell shell.
-          Execute this command verbatim:
+          Use the exec_command tool with shell set to the absolute executable C:\Windows\System32\cmd.exe. Do not use the default PowerShell shell.
+          Execute this single self-contained command verbatim:
           python -c "from pathlib import Path; p=Path('$probeFileName'); p.write_text('ok', encoding='utf-8'); assert p.read_text(encoding='utf-8') == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')"
-          Set yield_time_ms to integer 10000 and sandbox_permissions to "use_default". Never request escalation. Do not run any other command. If successful, reply exactly: OLLAMA_PROVIDER_AND_SANDBOX_OK
+          Set yield_time_ms to integer 10000 and sandbox_permissions to "use_default". Never request escalation or additional permissions. Do not inspect the repository or run unrelated commands. If the command succeeds, reply exactly: OLLAMA_PROVIDER_AND_SANDBOX_OK
           "@
           Set-Content -LiteralPath $prompt -Value $promptText -Encoding utf8
           python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-mxc" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$prompt" --report "$report" --require-command-output "CODEX_WORKSPACE_SANDBOX_OK" --expected-agent-message "OLLAMA_PROVIDER_AND_SANDBOX_OK" --events-report "$evidence" --require-command-fragment "$probeFileName" --require-command-fragment "write_text" --require-command-fragment "read_text" --require-command-fragment "unlink"
@@ -199,38 +201,9 @@ jobs:
           }
           Write-Host "CODEX_WINDOWS_MXC_SERVICE_SMOKE_OK"
 
-      - name: Capture Ollama runtime context after Codex smoke
-        if: always()
+      - name: Verify persistent Ollama context after Codex smoke
+        if: always() && steps.context_preflight.outcome == 'success'
         timeout-minutes: 2
         shell: powershell
         run: |
-          try {
-            $runtime = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/ps" -TimeoutSec 8
-            $loadedModels = @($runtime.models)
-            if ($loadedModels.Count -eq 0) {
-              Write-Host "Ollama /api/ps reports no currently loaded model."
-            }
-            foreach ($loaded in $loadedModels) {
-              Write-Host ("Ollama runtime model: name={0}; context_length={1}; size_vram={2}; expires_at={3}" -f $loaded.name, $loaded.context_length, $loaded.size_vram, $loaded.expires_at)
-            }
-          } catch {
-            Write-Host "::warning::Could not read Ollama runtime context from /api/ps."
-            Write-Host $_.Exception.Message
-          }
-          try {
-            $showBody = @{ model = $env:AUTONOMOUS_ENGINEERING_MODEL; verbose = $true } | ConvertTo-Json -Compress
-            $modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -Body $showBody -ContentType "application/json" -TimeoutSec 15
-            $contextProperties = @($modelInfo.model_info.PSObject.Properties | Where-Object { $_.Name -match "context_length$" })
-            foreach ($property in $contextProperties) {
-              Write-Host ("Ollama model metadata {0}={1}" -f $property.Name, $property.Value)
-            }
-            $numCtx = [regex]::Match([string]$modelInfo.parameters, "(?im)^\s*num_ctx\s+(\d+)\s*$")
-            if ($numCtx.Success) {
-              Write-Host "Ollama Modelfile num_ctx: $($numCtx.Groups[1].Value)"
-            } else {
-              Write-Host "Ollama Modelfile has no explicit num_ctx parameter."
-            }
-          } catch {
-            Write-Host "::warning::Could not inspect Ollama model metadata."
-            Write-Host $_.Exception.Message
-          }
+          & "$env:GITHUB_WORKSPACE\scripts\verify_ollama_context.ps1" -Model "$env:AUTONOMOUS_ENGINEERING_MODEL" -VerifyOnly
