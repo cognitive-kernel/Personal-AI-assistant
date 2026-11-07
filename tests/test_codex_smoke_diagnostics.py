@@ -75,7 +75,10 @@ def test_codex_smoke_evidence_classifies_failures_without_retaining_raw_output()
             "aggregated_output": "Access is denied.",
         }},
         {"type": "item.completed", "item": {
-            "type": "error", "message": "MXC sandbox blocked command execution",
+            "type": "error", "error": {
+                "code": "exec_command_failed",
+                "message": "CreateProcess rejected: blocked by policy",
+            },
         }},
         {"type": "turn.failed"},
     ]
@@ -84,9 +87,12 @@ def test_codex_smoke_evidence_classifies_failures_without_retaining_raw_output()
 
     assert evidence["command_summaries"][0]["failure_category"] == "permission_denied"
     assert evidence["error_event_count"] == 2
-    assert evidence["error_categories"] == ["sandbox_denied", "no_error_detail"]
+    assert evidence["error_categories"] == ["process_launch_rejected", "no_error_detail"]
+    assert "message" in evidence["error_summaries"][0]["field_names"]
+    assert "code" in evidence["error_summaries"][0]["field_names"]
     serialized = __import__("json").dumps(evidence)
     assert "Access is denied" not in serialized
+    assert "blocked by policy" not in serialized
     assert "private-command" not in serialized
 
 
