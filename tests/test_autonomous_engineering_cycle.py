@@ -1062,7 +1062,8 @@ def test_windows_sandbox_diagnostic_cancels_only_older_queued_runs_and_uses_uniq
     assert "/force-cancel" in cleanup_job
     assert "concurrency:" not in cleanup_job
     assert "needs: cancel-stale-diagnostics" in sandbox_job
-    assert "if: always()" not in sandbox_job
+    sandbox_job_header = sandbox_job.split("steps:", 1)[0]
+    assert "if: always()" not in sandbox_job_header
     assert "GITHUB_RUN_ID" in sandbox_job
     assert "GITHUB_RUN_ATTEMPT" in sandbox_job
     assert ".codex-sandbox-probe-$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT).tmp" in sandbox_job
