@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -157,6 +158,40 @@ def codex_command(executable: str, arguments: list[str]) -> list[str]:
     return [executable, *arguments]
 
 
+def write_codex_model_catalog(model: str, context_window: int = 64000) -> Path:
+    """Provide Codex metadata for the Ollama-created model alias."""
+    safe_model = re.sub(r"[^A-Za-z0-9_.-]", "_", model)
+    catalog_path = Path(tempfile.gettempdir()) / f"codex-model-catalog-{os.getpid()}-{safe_model}.json"
+    catalog = {
+        "models": [
+            {
+                "slug": model,
+                "display_name": model,
+                "context_window": context_window,
+                "shell_type": "default",
+                "visibility": "list",
+                "supported_in_api": True,
+                "priority": 0,
+                "truncation_policy": {"mode": "bytes", "limit": 10000},
+                "input_modalities": ["text"],
+                "base_instructions": "",
+                "support_verbosity": True,
+                "default_verbosity": "low",
+                "supports_parallel_tool_calls": False,
+                "supports_reasoning_summaries": False,
+                "supported_reasoning_levels": [
+                    {"effort": "low", "description": "Low reasoning effort"},
+                    {"effort": "medium", "description": "Medium reasoning effort"},
+                    {"effort": "high", "description": "High reasoning effort"},
+                ],
+                "experimental_supported_tools": [],
+            }
+        ]
+    }
+    catalog_path.write_text(json.dumps(catalog, ensure_ascii=False, indent=2), encoding="utf-8")
+    return catalog_path
+
+
 def codex_arguments(model: str, report: str) -> list[str]:
     # Pin the provider and the Windows sandbox backend explicitly. The native
     # unelevated backend in affected Codex CLI releases can reject exec_command
@@ -165,7 +200,12 @@ def codex_arguments(model: str, report: str) -> list[str]:
     backend = os.getenv("CODEX_WINDOWS_SANDBOX_BACKEND", "mxc").strip().casefold()
     if backend not in {"mxc", "elevated"}:
         raise ValueError("CODEX_WINDOWS_SANDBOX_BACKEND must be 'mxc' or 'elevated'.")
-    return [
+    reasoning_effort = os.getenv("CODEX_MODEL_REASONING_EFFORT", "").strip().casefold()
+    if reasoning_effort and reasoning_effort not in {"low", "medium", "high"}:
+        raise ValueError("CODEX_MODEL_REASONING_EFFORT must be 'low', 'medium', or 'high'.")
+    catalog_path = write_codex_model_catalog(model)
+    print(f"Codex model catalog metadata: model={model}, context_window=64000")
+    arguments = [
         "exec", "-c", 'model_provider="ollama"',
         "-c", f'windows.sandbox="{backend}"',
         "--oss", "--local-provider", "ollama",
@@ -173,6 +213,85 @@ def codex_arguments(model: str, report: str) -> list[str]:
         "--model", model, "--cd", str(ROOT),
         "--output-last-message", report, "--json", "-",
     ]
+    # On Windows, the legacy workspace-write policy can project the Unix
+    # /tmp special root onto a drive-root path and create an unsupported split
+    # writable-root set for exec_command. Exclude that unintended root while
+    # preserving the workspace and the normal per-user temp directory.
+    config_overrides = [
+        "sandbox_workspace_write.exclude_slash_tmp=true",
+        f"model_catalog_json={json.dumps(str(catalog_path))}",
+    ]
+    if reasoning_effort:
+        config_overrides.insert(0, f'model_reasoning_effort="{reasoning_effort}"')
+    arguments[5:5] = [part for override in config_overrides for part in ("-c", override)]
+    return arguments
+
+
+def _diagnostic_error_text(value: Any, depth: int = 0) -> str:
+    """Read only structured error fields for classification; never persist their values."""
+    if depth > 3:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        allowed = {"item", "error", "message", "reason", "detail", "stderr", "stdout", "aggregated_output", "code", "kind"}
+        return " ".join(
+            _diagnostic_error_text(child, depth + 1)
+            for key, child in value.items()
+            if str(key).casefold() in allowed
+        )
+    if isinstance(value, list):
+        return " ".join(_diagnostic_error_text(child, depth + 1) for child in value[:8])
+    return ""
+
+
+def _diagnostic_field_names(value: Any, depth: int = 0) -> list[str]:
+    if depth > 3 or not isinstance(value, dict):
+        return []
+    names = set(value)
+    for key in ("item", "error", "details", "cause"):
+        names.update(_diagnostic_field_names(value.get(key), depth + 1))
+    return sorted(str(name) for name in names)
+
+
+def _sanitize_error_signature(value: Any) -> str:
+    """Retain a short, path- and quote-redacted error signature, never raw command/output."""
+    text = _diagnostic_error_text(value)
+    if not text:
+        return ""
+    text = re.sub(r"(?i)\\\\[^\\/\s]+\\[^\\/\s]+(?:\\[^\\/\s]+)*", "<network-path>", text)
+    text = re.sub(r"(?i)\b[A-Z]:\\[^\s\"'<>]+", "<windows-path>", text)
+    text = re.sub(r'"[^"]{1,240}"', '"<quoted>"', text)
+    text = re.sub(r"'[^']{1,240}'", "'<quoted>'", text)
+    text = re.sub(r"(?i)bearer\s+\S+", "Bearer <redacted>", text)
+    text = re.sub(r"(?i)\b(?:api[_-]?key|token|password)\s*[:=]\s*\S+", "<redacted>", text)
+    text = re.sub(r"\b[0-9a-fA-F]{16,}\b", "<id>", text)
+    return " ".join(text.split())[:240]
+
+def diagnostic_failure_category(message: Any) -> str:
+    """Classify an error without retaining command text or process output."""
+    text = _diagnostic_error_text(message).casefold()
+    if not text.strip():
+        return "no_error_detail"
+    if "blocked by policy" in text or ("createprocess" in text and "rejected" in text):
+        return "process_launch_rejected"
+    if any(token in text for token in ("unsupportedoperation", "restricted-token", "split writable root")):
+        return "unsupported_sandbox_policy"
+    if any(token in text for token in ("access is denied", "access denied", "permission denied", "unauthorized")):
+        return "permission_denied"
+    if "sandbox" in text and any(token in text for token in ("denied", "blocked", "violation", "permission")):
+        return "sandbox_denied"
+    if any(token in text for token in ("timed out", "timeout", "deadline exceeded")):
+        return "timeout"
+    if any(token in text for token in ("not recognized as an internal or external command", "command not found", "executable not found")):
+        return "executable_not_found"
+    if any(token in text for token in ("cannot find the path", "path not found", "no such file or directory")):
+        return "path_not_found"
+    if any(token in text for token in ("invalid argument", "unknown argument", "unexpected argument", "invalid tool arguments")):
+        return "invalid_tool_arguments"
+    if any(token in text for token in ("failed to spawn", "failed to start process", "could not start process")):
+        return "process_start_failed"
+    return "unclassified_error"
 
 
 def codex_smoke_evidence(
@@ -196,38 +315,107 @@ def codex_smoke_evidence(
         and event["item"].get("type") == "command_execution"
     ]
     agent_messages = [
-        event["item"].get("text", "")
+        str(event["item"].get("text", "")).strip()
         for event in events
         if event.get("type") == "item.completed"
         and isinstance(event.get("item"), dict)
         and event["item"].get("type") == "agent_message"
     ]
     turn_completed = any(event.get("type") == "turn.completed" for event in events)
-    turn_failed = any(event.get("type") in {"turn.failed", "error"} for event in events)
-
-    command = completed_commands[0] if len(completed_commands) == 1 else {}
-    started_command = started_commands[0] if len(started_commands) == 1 else {}
-    command_output = str(command.get("aggregated_output", ""))
-    final_message = agent_messages[-1].strip() if agent_messages else ""
+    error_events = [
+        event for event in events
+        if event.get("type") in {"turn.failed", "error"}
+        or (isinstance(event.get("item"), dict) and event["item"].get("type") == "error")
+    ]
+    turn_failed = bool(error_events)
+    error_summaries = [
+        {
+            "category": diagnostic_failure_category(event),
+            "field_names": _diagnostic_field_names(event),
+            "signature": _sanitize_error_signature(event),
+        }
+        for event in error_events
+    ]
+    error_categories = [summary["category"] for summary in error_summaries]
     required_fragments = required_command_fragments or []
-    command_fragments_present = all(fragment in str(command.get("command", "")) for fragment in required_fragments)
+
+    def index_by_id(items: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], bool]:
+        indexed: dict[str, dict[str, Any]] = {}
+        duplicate_or_missing_id = False
+        for item in items:
+            item_id = str(item.get("id", "")).strip()
+            if not item_id or item_id in indexed:
+                duplicate_or_missing_id = True
+                continue
+            indexed[item_id] = item
+        return indexed, duplicate_or_missing_id
+
+    started_by_id, duplicate_start_ids = index_by_id(started_commands)
+    completed_by_id, duplicate_completion_ids = index_by_id(completed_commands)
+    ids_match = (
+        not duplicate_start_ids
+        and not duplicate_completion_ids
+        and bool(started_by_id)
+        and set(started_by_id) == set(completed_by_id)
+        and len(started_commands) == len(started_by_id)
+        and len(completed_commands) == len(completed_by_id)
+    )
+
+    command_summaries: list[dict[str, Any]] = []
+    verified_probes: list[dict[str, Any]] = []
+    all_commands_succeeded = bool(completed_commands)
+    all_command_payloads_match = ids_match
+
+    for completed in completed_commands:
+        item_id = str(completed.get("id", "")).strip()
+        started = started_by_id.get(item_id, {})
+        started_text = str(started.get("command", "")).strip()
+        completed_text = str(completed.get("command", "")).strip()
+        command_text = completed_text or started_text
+        command_payload_matches = bool(command_text) and (
+            not started_text or not completed_text or started_text == completed_text
+        )
+        output_text = str(completed.get("aggregated_output", ""))
+        fragment_checks = {
+            fragment: fragment in command_text
+            for fragment in required_fragments
+        }
+        fragments_present = all(fragment_checks.values())
+        output_marker_present = bool(expected_command_output) and expected_command_output in output_text
+        succeeded = completed.get("status") == "completed" and completed.get("exit_code") == 0
+        all_commands_succeeded = all_commands_succeeded and succeeded
+        all_command_payloads_match = all_command_payloads_match and command_payload_matches
+        summary = {
+            "id": item_id,
+            "status": completed.get("status"),
+            "exit_code": completed.get("exit_code"),
+            "start_completed_match": command_payload_matches,
+            "required_fragments": fragment_checks,
+            "output_marker_present": output_marker_present,
+            "failure_category": None if succeeded else diagnostic_failure_category(completed),
+            # Preserve only a short sanitized failure signature and field names.
+            # This is essential for diagnosing real Runner failures without
+            # publishing raw commands, stdout/stderr, credentials, or paths.
+            "failure_field_names": [] if succeeded else _diagnostic_field_names(completed),
+            "failure_signature": None if succeeded else _sanitize_error_signature(completed),
+        }
+        command_summaries.append(summary)
+        if succeeded and command_payload_matches and fragments_present and output_marker_present:
+            verified_probes.append(completed)
+
+    final_message = agent_messages[-1] if agent_messages else ""
+    exactly_one_verified_probe = len(verified_probes) == 1
+    proof_command = verified_probes[0] if exactly_one_verified_probe else {}
     checks = {
-        "exactly_one_command_started": len(started_commands) == 1,
-        "exactly_one_command_execution": len(completed_commands) == 1,
-        "command_start_matches_completion": (
-            len(started_commands) == 1
-            and len(completed_commands) == 1
-            and started_command.get("id") == command.get("id")
-            and started_command.get("command") == command.get("command")
-        ),
-        "command_completed": command.get("status") == "completed",
-        "command_exit_code_zero": command.get("exit_code") == 0,
-        "command_output_marker_present": expected_command_output in command_output,
-        "required_command_fragments_present": command_fragments_present,
+        "command_events_are_paired": ids_match,
+        "command_payloads_match": all_command_payloads_match,
+        "all_commands_completed_successfully": all_commands_succeeded,
+        "exactly_one_verified_workspace_probe": exactly_one_verified_probe,
         "turn_completed": turn_completed,
         "turn_not_failed": not turn_failed,
-        "expected_agent_message": final_message == expected_agent_message,
+        "expected_agent_message": not expected_agent_message or final_message == expected_agent_message,
     }
+
     completed_turns = [event for event in events if event.get("type") == "turn.completed"]
     usage = completed_turns[-1].get("usage", {}) if completed_turns else {}
     event_types = [str(event.get("type", "")) for event in events]
@@ -241,17 +429,21 @@ def codex_smoke_evidence(
         for key in ("input_tokens", "output_tokens", "total_tokens")
         if isinstance(usage, dict) and key in usage
     }
+
+    # Evidence deliberately contains no raw command, prompt, output, or agent text.
     return {
         "passed": all(checks.values()),
         "checks": checks,
-        "command": str(command.get("command", "")),
-        "command_status": command.get("status"),
-        "command_exit_code": command.get("exit_code"),
-        "command_output_marker": expected_command_output in command_output,
-        "required_command_fragments_present": command_fragments_present,
-        "agent_message": final_message,
+        "command_status": proof_command.get("status"),
+        "command_exit_code": proof_command.get("exit_code"),
+        "command_output_marker": exactly_one_verified_probe,
+        "required_command_fragments_present": exactly_one_verified_probe,
+        "agent_message_matches_expected": not expected_agent_message or final_message == expected_agent_message,
         "turn_completed": turn_completed,
         "turn_failed": turn_failed,
+        "error_event_count": len(error_events),
+        "error_categories": error_categories,
+        "error_summaries": error_summaries,
         "event_count": len(events),
         "event_types": event_types,
         "item_types": item_types,
@@ -259,8 +451,8 @@ def codex_smoke_evidence(
         "command_completed_count": len(completed_commands),
         "agent_message_count": len(agent_messages),
         "turn_usage": turn_usage,
+        "command_summaries": command_summaries,
     }
-
 
 def write_smoke_evidence(path: str, evidence: dict[str, Any]) -> None:
     destination = Path(path)
@@ -326,7 +518,7 @@ def run_codex(args: argparse.Namespace) -> int:
                         event.get("type") != "item.completed"
                         or (
                             isinstance(event.get("item"), dict)
-                            and (event["item"].get("type") == "command_execution" or (event.get("type") == "item.completed" and event["item"].get("type") == "agent_message"))
+                            and event["item"].get("type") in {"command_execution", "agent_message", "error"}
                         )
                     )
                 ):

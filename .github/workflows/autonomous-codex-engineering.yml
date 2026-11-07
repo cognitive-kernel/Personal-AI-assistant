@@ -396,6 +396,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Ollama CLI is not executable in the Runner service account" }
 
       - name: Verify the selected model's allocated Ollama context
+        id: context_preflight
         timeout-minutes: 12
         shell: powershell
         run: |
@@ -412,10 +413,10 @@ jobs:
             throw "Workspace probe path already exists; refusing to overwrite it."
           }
           $smokePromptText = @"
-          Use the exec_command tool exactly once. Set its shell parameter to the absolute executable C:\Windows\System32\cmd.exe and set login to false. Do not use the default PowerShell shell.
-          Execute this command verbatim:
+          Use the exec_command tool with shell set to the absolute executable C:\Windows\System32\cmd.exe and login set to false. Do not use the default PowerShell shell.
+          Execute this single self-contained command verbatim:
           python -c "from pathlib import Path; p=Path('$probeFileName'); p.write_text('ok', encoding='utf-8'); assert p.read_text(encoding='utf-8') == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')"
-          For the exec_command arguments, set yield_time_ms to the integer 10000 (never null) and sandbox_permissions to "use_default". Never request escalation. Omit justification, prefix_rule, and additional_permissions. The command must run under the existing workspace-write sandbox.
+          For the exec_command arguments, set yield_time_ms to the integer 10000 (never null) and sandbox_permissions to "use_default". Never request escalation or additional permissions. Omit justification, prefix_rule, and additional_permissions. Do not inspect the repository or run unrelated commands. The command must run under the existing workspace-write sandbox.
           Do not use recursive directory listings, PowerShell directory traversal, or any other command. If and only if the command succeeds, reply with exactly: OLLAMA_PROVIDER_AND_SANDBOX_OK
           "@
           Set-Content -LiteralPath $smokePrompt -Value $smokePromptText -Encoding utf8
@@ -566,3 +567,10 @@ jobs:
           $env:PATH = "$env:GITHUB_WORKSPACE\.venv\Scripts;$env:PATH"
           python scripts/autonomous_engineering_cycle.py run --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$env:RUNNER_TEMP\codex-prompt.md" --mode "$env:AUTONOMOUS_ENGINEERING_MODE"
           if ($LASTEXITCODE -ne 0) { throw "Autonomous task, tests, exact-SHA validation, or PR publication failed" }
+
+      - name: Verify persistent Ollama context after autonomous Codex task
+        if: always() && steps.pause.outputs.paused != 'true' && steps.context_preflight.outcome == 'success'
+        timeout-minutes: 2
+        shell: powershell
+        run: |
+          & "$env:GITHUB_WORKSPACE\scripts\verify_ollama_context.ps1" -Model "$env:AUTONOMOUS_ENGINEERING_MODEL" -VerifyOnly

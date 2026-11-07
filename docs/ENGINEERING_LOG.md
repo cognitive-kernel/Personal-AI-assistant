@@ -1,5 +1,60 @@
 # Engineering Continuity Log
 
+## 2026-11-07 — Owner Windows development environment baseline
+
+Captured from the owner's PowerShell output on 2026-11-07. This is a user-reported workstation snapshot, not a CI-runner inventory.
+
+- Working directory: `D:\Projects\Personal-AI-assistant-main`
+- Shell: Windows PowerShell
+- Python: `3.11.9`
+- Codex CLI: `0.166.0`
+- Ollama: `0.40.13`
+- Installed Ollama models at capture time:
+  | Model | Model ID | Reported size |
+  |---|---|---:|
+  | `gpt-oss:20b-codex-64k` | `4830dbfde727` | 13 GB |
+  | `gpt-oss:20b` | `f38aa0c53da5` | 13 GB |
+  | `gemma4:12b` | `6114515d63c1` | 8.0 GB |
+  | `qwen3:14b` | `bdbd181c33f2` | 9.3 GB |
+  | `qwen3:8b` | `500a1f067a9f` | 5.2 GB |
+  | `qwen2.5:7b` | `845dbda0ea48` | 4.7 GB |
+
+Use this recorded baseline in subsequent troubleshooting instead of repeatedly asking for these version/model details. Recheck only when a relevant version or installed model is changed, or when fresh runtime evidence is specifically required. The model inventory and reported modification times are time-sensitive and must not be treated as permanent state.
+
+---
+
+## 2026-11-07 — PR #702: persistent Ollama context and reliable Codex smoke evidence
+
+### Evidence-based diagnosis
+
+- `main` now includes PR #701 as merge commit `a9c4522e94cf1558b616ca98510d1b8654e8e53e`; its durable-task and recovery changes are not being repeated here.
+- Windows diagnostic run [42355938096](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/42355938096) confirmed that the non-admin Runner can execute the official MXC compatibility probe and direct `cmd.exe` + Python probe. Those checks returned `MXC_SERVICE_OK` and `MXC_CMD_PYTHON_OK`.
+- The same run's Codex JSONL summary recorded five command starts/completions, zero agent messages, a completed turn, and 33,753 input tokens. The run failed the acceptance gate; it did not prove that the Codex tool path worked.
+- The previous context preflight sent `options.num_ctx=64000` only on its own `/api/generate` request. Codex later opens independent requests for the selected base model, whose effective default remained 8,192. Ollama's current guidance requires at least 64k for coding tools and supports a persistent `PARAMETER num_ctx` in a derived Modelfile.
+- The previous evidence parser required exactly one model-generated command and read the command string only from the completion event. That is brittle: command counts are model-controlled, and the Codex JSONL lifecycle must be correlated by item ID rather than assuming all fields are repeated in both events.
+
+### Corrective changes on the dedicated PR branch
+
+- `scripts/verify_ollama_context.ps1` now creates a separate `<selected-model>-codex-64k` model variant through Ollama's local `/api/create`, derived from the selected model with persistent `num_ctx=64000`. It verifies the saved Modelfile parameter through `/api/show`, loads the variant without request-level context overrides, and checks actual allocation through `/api/ps`.
+- The original selected model and Ollama server settings remain unchanged. The alias shares the base weights; no second model download, server restart, administrator credential, or privilege change is required. If 64k cannot be allocated, the workflow fails before Codex.
+- Both the Windows diagnostic and autonomous engineering workflows now pass the derived model to Codex and re-load/verify its saved 64k default after Codex execution.
+- `codex_smoke_evidence` now correlates command start/completion events by ID, uses the start event's command when the completion omits it, requires every observed command to complete successfully, and requires exactly one command to prove the complete workspace create/read/delete marker. It no longer requires the model to emit exactly one command overall.
+- Evidence JSON contains only bounded status/exit-code/fragment booleans and IDs; raw command text, output, and agent-message text are not persisted.
+- The diagnostic smoke no longer requires a final natural-language agent message: its contract is a completed, non-failed turn plus verified workspace command evidence. This does not weaken real autonomous task completion, which still requires the exact machine-readable task marker and owner-verified PR lifecycle.
+- Regression coverage now includes completion events without a repeated command, multiple successful command events with one verified probe, failed/mismatched/duplicate events, redaction, and persistent-context enforcement in both workflows.
+- The diagnostic workflow is enabled for this dedicated branch so the self-hosted Windows job can be dispatched against the PR head.
+- Diagnostic cleanup now queries the actual `GITHUB_REF_NAME`, cancels only older queued runs, and preserves an active sandbox job. The Codex probe uses non-login `cmd.exe`, a bounded 25-minute step/30-minute job timeout, and an exact branch/SHA run label.
+- Item-level Codex error events are retained in smoke evidence and fail closed; the diagnostic smoke's final natural-language message is optional, while actual autonomous task completion markers remain mandatory.
+
+### Validation and residual risk
+
+- Exact-head GitHub CI for the updated PR head is pending; no test result is inferred from earlier commits.
+- The real Windows Runner diagnostic must pass on the final PR head, including the post-Codex 64k allocation check. The prior run remains a failure and is not retroactively reclassified.
+- Target-host memory/performance soak at 64k, full autonomous task execution, restart/recovery, staging restore/rollback, and owner acceptance remain open.
+- PR #702 remains unmerged. No direct write to `main`, unsandboxed fallback, elevation, or automatic merge was performed.
+- Issue #290 remains the overall acceptance tracker; Issue #52 still requires independent security review.
+
+
 ## 2026-11-02 — PR #680: continuous autonomous engineering controller
 
 - Current implementation branch: automation/codex-engineering-agent-rebased; current PR head: c943990de467694bc39bcee06738d75446007a73; base main: 60597e13e70a3014f6a1871290cf843d188ca45e. PR #680 is open, mergeable, and not yet merged.
