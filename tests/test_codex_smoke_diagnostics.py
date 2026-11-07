@@ -80,7 +80,7 @@ def test_codex_smoke_evidence_classifies_failures_without_retaining_raw_output()
         {"type": "turn.failed"},
     ]
 
-    evidence = progress.codex_smoke_evidence(events, "MARKER", "", ["private-command"])
+    evidence = progress.codex_smoke_evidence(events, "MARKER", "", [])
 
     assert evidence["command_summaries"][0]["failure_category"] == "permission_denied"
     assert evidence["error_event_count"] == 2
