@@ -870,13 +870,17 @@ def test_codex_arguments_pin_ollama_and_selected_windows_sandbox(monkeypatch):
     monkeypatch.setenv("CODEX_WINDOWS_SANDBOX_BACKEND", "elevated")
     arguments = progress.codex_arguments("gpt-oss:20b", "codex-report.md")
 
-    assert arguments[:7] == [
+    assert arguments[:5] == [
         "exec", "-c", 'model_provider="ollama"',
         "-c", 'windows.sandbox="elevated"',
-        "-c", "sandbox_workspace_write.exclude_slash_tmp=true",
     ]
-    assert arguments[7:10] == ["--oss", "--local-provider", "ollama"]
-    assert arguments[10:12] == ["--sandbox", "workspace-write"]
+    overrides = [
+        arguments[i + 1] for i, value in enumerate(arguments[:-1]) if value == "-c"
+    ]
+    assert "sandbox_workspace_write.exclude_slash_tmp=true" in overrides
+    assert any(value.startswith("model_catalog_json=") for value in overrides)
+    assert arguments[9:12] == ["--oss", "--local-provider", "ollama"]
+    assert arguments[12:14] == ["--sandbox", "workspace-write"]
     assert arguments[arguments.index("--model") + 1] == "gpt-oss:20b"
 
 
