@@ -99,7 +99,7 @@ def test_manual_task_persistence_precedes_schedule_gate_and_runner_prerequisites
     codex_job = workflow[codex_start:]
 
     assert persist_start < gate_start < codex_start
-    assert "if: github.event_name == 'workflow_dispatch' && inputs.manual_task != ''" in persist_job
+    assert "if: github.event_name == 'workflow_dispatch' && inputs.manual_task != '' && github.ref == 'refs/heads/main'" in persist_job
     assert "runs-on: [self-hosted, Windows, X64, ollama]" in persist_job
     assert "ref: main" in persist_job
     assert "persist-credentials: false" in persist_job
