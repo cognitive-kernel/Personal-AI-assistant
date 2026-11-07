@@ -46,7 +46,7 @@ def test_validate_paths_rejects_protected_traversal_and_non_allowlisted_paths(pa
         cycle.validate_paths([path])
 
 
-def test_failed_local_and_github_checks_retry_same_task_then_auto_merge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_failed_local_and_github_checks_retry_same_task_then_wait_for_owner_merge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     prompt = tmp_path / "prompt.md"
     prompt.write_text("Complete the selected task.", encoding="utf-8")
     monkeypatch.setattr(cycle, "ROOT", tmp_path)
@@ -83,17 +83,27 @@ def test_failed_local_and_github_checks_retry_same_task_then_auto_merge(tmp_path
         published.append(args)
         if len(published) == 1:
             raise RuntimeError("Per-task draft PR publication failed: Required workflow tests.yml failed for candidate SHA.")
-        return {
+        pending = {
             "number": 42,
             "url": "https://github.com/owner/repository/pull/42",
-            "head_sha": "candidate-sha",
-            "base_sha": "base-sha",
+            "head_sha": "c" * 40,
+            "base_sha": "b" * 40,
+            "branch": "codex/local-engineering-123-1-task-1",
+            "run_id": "123",
+            "task": 1,
+        }
+        cycle.save_pending_pr(pending, "owner/repository")
+        return {
+            **pending,
+            "validated": True,
+            "merged": False,
+            "awaiting_review": True,
             "draft": False,
-            "merged": True,
-            "merge_sha": "e" * 40,
         }
 
     monkeypatch.setattr(cycle, "publish_pr_subprocess", fake_publish)
+    monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: (_ for _ in ()).throw(AssertionError("checkpoint cleared before owner merge")))
+    monkeypatch.setattr(cycle, "clear_pending_task", lambda: (_ for _ in ()).throw(AssertionError("manual task cleared before owner merge")))
     calls = {"codex": 0, "pytest": 0}
 
     def fake_run(command, *, env=None, capture=False):
@@ -121,6 +131,7 @@ def test_failed_local_and_github_checks_retry_same_task_then_auto_merge(tmp_path
     ci_retry_prompt = tmp_path / "codex-retry-prompt-1-3.md"
     assert "Exact failure output" in local_retry_prompt.read_text(encoding="utf-8")
     assert "GitHub-hosted verification failed" in ci_retry_prompt.read_text(encoding="utf-8")
+    assert cycle.load_pending_pr()["number"] == 42
 
 
 
@@ -194,7 +205,7 @@ def test_complete_pending_pr_rejects_non_controller_author(monkeypatch: pytest.M
         }, "102", 1)
 
 
-def test_run_cycle_recovers_open_task_pr_without_waiting_for_human(
+def test_run_cycle_recovers_open_task_pr_and_waits_for_owner_merge(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ):
     records = []
@@ -207,8 +218,11 @@ def test_run_cycle_recovers_open_task_pr_without_waiting_for_human(
     })
     monkeypatch.setattr(cycle, "complete_pending_pr", lambda *args: {
         "number": 77, "url": "https://github.com/owner/repository/pull/77",
-        "head_sha": "a" * 40, "merge_sha": "c" * 40, "merged": True,
+        "head_sha": "a" * 40, "base_sha": "b" * 40,
+        "validated": True, "merged": False, "awaiting_review": True,
     })
+    monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: (_ for _ in ()).throw(AssertionError("checkpoint cleared before owner merge")))
+    monkeypatch.setattr(cycle, "clear_pending_task", lambda: (_ for _ in ()).throw(AssertionError("manual task cleared before owner merge")))
     monkeypatch.setattr(cycle, "api", lambda *args, **kwargs: {})
     monkeypatch.setattr(cycle, "snapshot", lambda *args: None)
     monkeypatch.setattr(cycle, "record", lambda *args, **kwargs: records.append((args, kwargs)))
@@ -220,15 +234,15 @@ def test_run_cycle_recovers_open_task_pr_without_waiting_for_human(
 
     assert cycle.run_cycle(args) == 0
     assert len(records) == 2
-    assert records[-1][1]["status"] == "completed"
-    assert records[-1][0][2] == "complete"
+    assert records[-1][0][2] == "publication"
+    assert "بازبینی مالک" in records[-1][0][4]
 
 
-def test_publish_pull_request_merges_only_after_exact_sha_checks(monkeypatch: pytest.MonkeyPatch):
+def test_publish_pull_request_leaves_exact_sha_validated_pr_open_for_owner_merge(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     base_sha = "b" * 40
     head_sha = "c" * 40
-    merge_sha = "e" * 40
     calls = []
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "autonomous-state"))
     created = {
         "number": 12,
         "draft": False,
@@ -249,12 +263,9 @@ def test_publish_pull_request_merges_only_after_exact_sha_checks(monkeypatch: py
             assert payload["draft"] is False
             return created
         if method == "GET" and path == "pulls/12":
-            return {**refreshed, "merged": True} if any(x[0] == "PUT" for x in calls if len(x) > 1) else refreshed
+            return refreshed
         if method == "GET" and path == "branches/main":
-            return {"commit": {"sha": merge_sha if any(x[0] == "PUT" for x in calls if len(x) > 1) else base_sha}}
-        if method == "PUT" and path == "pulls/12/merge":
-            assert payload == {"sha": head_sha, "merge_method": "squash"}
-            return {"merged": True, "sha": merge_sha}
+            return {"commit": {"sha": base_sha}}
         raise AssertionError((method, path, payload))
 
     monkeypatch.setattr(cycle, "api", fake_api)
@@ -271,12 +282,14 @@ def test_publish_pull_request_merges_only_after_exact_sha_checks(monkeypatch: py
         "url": "https://github.com/owner/repository/pull/12",
         "head_sha": head_sha,
         "base_sha": base_sha,
-        "merge_sha": merge_sha,
-        "merged": True,
+        "validated": True,
+        "merged": False,
+        "awaiting_review": True,
         "draft": False,
     }
     assert len(validations) == 1
-    assert any(call[0] == "PUT" and call[1] == "pulls/12/merge" for call in calls if len(call) > 1)
+    assert not any(call[0] == "PUT" and str(call[1]).endswith("/merge") for call in calls if len(call) > 1)
+    assert cycle.load_pending_pr()["number"] == 12
 
 def test_publish_pull_request_rejects_non_controller_authored_pr(monkeypatch: pytest.MonkeyPatch):
     base_sha = "b" * 40
@@ -649,10 +662,10 @@ def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pyt
     assert cycle.start_checkpoint_watcher("a" * 40, "105", 1) is not None
 
 
-def test_complete_pending_draft_pr_revalidates_checks_then_merges(monkeypatch: pytest.MonkeyPatch):
+def test_complete_pending_draft_pr_revalidates_checks_and_leaves_pr_open(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     base_sha = "b" * 40
     head_sha = "c" * 40
-    merge_sha = "e" * 40
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "autonomous-state"))
     current = {
         "number": 77,
         "state": "open",
@@ -667,16 +680,12 @@ def test_complete_pending_draft_pr_revalidates_checks_then_merges(monkeypatch: p
         "base": {"ref": "main", "sha": base_sha},
     }
     ready = {**current, "draft": False}
-    confirmed = {**ready, "merged": True}
     calls = []
-    responses = [current, ready, {"commit": {"sha": base_sha}}, {"merged": True, "sha": merge_sha}, confirmed, {"commit": {"sha": merge_sha}}]
+    responses = [current, ready, {"commit": {"sha": base_sha}}]
 
     def fake_api(token, repo, method, path, payload=None):
         calls.append((method, path, payload))
         if method == "GET" and path in {"pulls/77", "branches/main"}:
-            return responses.pop(0)
-        if method == "PUT" and path == "pulls/77/merge":
-            assert payload == {"sha": head_sha, "merge_method": "squash"}
             return responses.pop(0)
         raise AssertionError((method, path, payload))
 
@@ -686,7 +695,7 @@ def test_complete_pending_draft_pr_revalidates_checks_then_merges(monkeypatch: p
     })
     validations = []
     monkeypatch.setattr(cycle, "dispatch_and_wait_all", lambda *args: validations.append(args))
-    monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: None)
+    monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: (_ for _ in ()).throw(AssertionError("checkpoint cleared before owner merge")))
 
     result = cycle.complete_pending_pr("token", "owner/repository", {
         "number": 77,
@@ -698,10 +707,12 @@ def test_complete_pending_draft_pr_revalidates_checks_then_merges(monkeypatch: p
         "node_id": "PR_node",
     }, "77", 1)
 
-    assert result["merged"] is True
-    assert result["merge_sha"] == merge_sha
+    assert result["validated"] is True
+    assert result["merged"] is False
+    assert result["awaiting_review"] is True
     assert len(validations) == 1
-    assert any(call[0] == "PUT" and call[1] == "pulls/77/merge" for call in calls)
+    assert not any(call[0] == "PUT" and str(call[1]).endswith("/merge") for call in calls)
+    assert cycle.load_pending_pr()["number"] == 77
 
 
 
