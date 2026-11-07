@@ -8,6 +8,12 @@ on:
       - fix/automation-codex-context-smoke-20261107
     paths:
       - .github/workflows/codex-windows-sandbox-diagnostic.yml
+      - .github/workflows/autonomous-codex-engineering.yml
+      - scripts/autonomous_engineering_progress.py
+      - scripts/verify_ollama_context.ps1
+      - tests/test_autonomous_engineering.py
+      - tests/test_autonomous_engineering_cycle.py
+      - tests/test_codex_smoke_diagnostics.py
   workflow_dispatch:
     inputs:
       model:
