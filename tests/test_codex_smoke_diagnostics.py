@@ -82,6 +82,7 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert 'steps.context_preflight.outcome == \'success\'' in autonomous
     assert 'fix/automation-codex-context-smoke-20261107' in diagnostic
     assert 'CODEX_WINDOWS_SANDBOX_BACKEND: mxc' in diagnostic
+    assert 'run-name: "Codex Windows Sandbox Diagnostic #' in diagnostic
     assert "Use the exec_command tool exactly once" not in diagnostic
     assert "Use the exec_command tool exactly once" not in autonomous
     assert "single self-contained command" in diagnostic
