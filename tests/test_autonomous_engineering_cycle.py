@@ -678,6 +678,7 @@ def test_complete_pending_draft_pr_revalidates_checks_and_leaves_pr_open(monkeyp
             "repo": {"full_name": "owner/repository"},
         },
         "base": {"ref": "main", "sha": base_sha},
+        "html_url": "https://github.com/owner/repository/pull/77",
     }
     ready = {**current, "draft": False}
     calls = []
@@ -1081,3 +1082,71 @@ def test_windows_sandbox_diagnostic_cancels_only_older_queued_runs_and_uses_uniq
     assert ".codex-sandbox-probe-$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT).tmp" in sandbox_job
     assert "--require-command-fragment \"$probeFileName\"" in sandbox_job
     assert ".codex-sandbox-probe.tmp" not in sandbox_job
+
+def test_complete_merged_pr_requires_owner_merge_and_post_merge_exact_sha_checks(monkeypatch: pytest.MonkeyPatch):
+    merge_sha = "e" * 40
+    head_sha = "c" * 40
+    pending = {
+        "number": 88,
+        "url": "https://github.com/owner/repository/pull/88",
+        "head_sha": head_sha,
+        "base_sha": "b" * 40,
+        "branch": "codex/local-engineering-88-1-task-1",
+        "run_id": "88",
+        "task": 1,
+    }
+    current = {
+        "number": 88,
+        "state": "closed",
+        "merged": True,
+        "merge_commit_sha": merge_sha,
+        "user": {"login": "github-actions[bot]"},
+        "head": {
+            "ref": pending["branch"],
+            "sha": head_sha,
+            "repo": {"full_name": "owner/repository"},
+        },
+        "base": {"ref": "main"},
+    }
+    calls = []
+    monkeypatch.setattr(cycle, "api", lambda token, repo, method, path, payload=None: (
+        calls.append((method, path, payload))
+        or current if path == "pulls/88"
+        else {"commit": {"sha": merge_sha}}
+    ))
+    validations = []
+    cleared = []
+    monkeypatch.setattr(cycle, "dispatch_and_wait_all", lambda *args: validations.append(args))
+    monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: cleared.append("checkpoint"))
+    monkeypatch.setattr(cycle, "clear_pending_task", lambda: cleared.append("task"))
+    monkeypatch.setattr(cycle, "clear_pending_pr", lambda: cleared.append("pending-pr"))
+
+    result = cycle.complete_merged_pr("token", "owner/repository", pending)
+
+    assert result["merged"] is True
+    assert result["post_merge_validated"] is True
+    assert result["merge_sha"] == merge_sha
+    assert validations == [("token", "owner/repository", ("tests.yml", "browser-e2e.yml", "dependency-audit.yml"), "main", merge_sha)]
+    assert cleared == ["checkpoint", "task", "pending-pr"]
+    assert not any(method == "PUT" and str(path).endswith("/merge") for method, path, _ in calls)
+
+
+def test_pending_pr_state_round_trips_atomically_and_rejects_corruption(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "state"))
+    pending = {
+        "number": 91,
+        "url": "https://github.com/owner/repository/pull/91",
+        "head_sha": "c" * 40,
+        "base_sha": "b" * 40,
+        "branch": "codex/local-engineering-91-1-task-1",
+        "run_id": "91",
+        "task": 1,
+    }
+
+    cycle.save_pending_pr(pending, "owner/repository")
+    assert cycle.load_pending_pr() == pending
+    assert not cycle._pending_pr_path().with_name(cycle._pending_pr_path().name + f".{__import__('os').getpid()}.tmp").exists()
+
+    cycle._pending_pr_path().write_text("{broken", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="unreadable"):
+        cycle.load_pending_pr()
