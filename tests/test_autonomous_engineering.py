@@ -518,7 +518,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "Initialize live progress before prerequisite checks" in workflow
     assert "Preserve and stop checkpoint watcher from an interrupted run" not in workflow
     assert "scripts/autonomous_engineering_checkpoint.py" in workflow
-    assert workflow.index("Snapshot accepted scorecard from trusted main") < workflow.index("Execute one isolated task, validate, and merge after all gates pass")
+    assert workflow.index("Snapshot accepted scorecard from trusted main") < workflow.index("Execute one isolated task, validate, and publish for owner review")
     assert workflow.count("snapshot --run-id") == 1
     progress_writer = (root / "scripts" / "autonomous_engineering_progress.py").read_text(encoding="utf-8")
     cycle_controller = (root / "scripts" / "autonomous_engineering_cycle.py").read_text(encoding="utf-8")
@@ -528,10 +528,13 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "scripts/autonomous_engineering_cycle.py run" in workflow
     assert "contents: write" in workflow and "pull-requests: write" in workflow and "actions: write" in workflow
     assert "publish_pull_request" in cycle_controller and "dispatch_and_wait_all" in cycle_controller
-    assert 'pulls/{number}/merge' in cycle_controller
+    assert "save_pending_pr" in cycle_controller
+    assert "complete_merged_pr" in cycle_controller
+    assert "clear_pending_pr" in cycle_controller
+    assert 'api(token, repo, "PUT", f"pulls/{number}/merge"' not in cycle_controller
+    assert "awaiting owner review" in cycle_controller
     assert '"draft": False' in cycle_controller
     assert "complete_pending_pr" in cycle_controller
-    assert "pulls/{number}/merge" in cycle_controller
     assert "AUTONOMOUS_ENGINEERING_PAUSED" in workflow
     assert "AUTONOMOUS_ENGINEERING_INTERVAL_HOURS" in workflow
     assert "types: [closed]" not in workflow
