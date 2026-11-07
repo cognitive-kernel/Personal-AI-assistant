@@ -45,6 +45,7 @@ def test_codex_smoke_evidence_reports_each_command_without_logging_raw_commands(
                 "probe": True, "create": True, "read": False, "unlink": False,
             },
             "output_marker_present": False,
+            "failure_category": None,
         },
         {
             "id": "cmd-2",
@@ -55,9 +56,38 @@ def test_codex_smoke_evidence_reports_each_command_without_logging_raw_commands(
                 "probe": True, "create": False, "read": True, "unlink": True,
             },
             "output_marker_present": True,
+            "failure_category": None,
         },
     ]
     assert all("command" not in item for item in evidence["command_summaries"])
+
+
+
+def test_codex_smoke_evidence_classifies_failures_without_retaining_raw_output():
+    events = [
+        {"type": "item.started", "item": {
+            "id": "failed-command", "type": "command_execution",
+            "command": "python -c private-command",
+        }},
+        {"type": "item.completed", "item": {
+            "id": "failed-command", "type": "command_execution",
+            "status": "failed", "exit_code": 1,
+            "aggregated_output": "Access is denied.",
+        }},
+        {"type": "item.completed", "item": {
+            "type": "error", "message": "MXC sandbox blocked command execution",
+        }},
+        {"type": "turn.failed"},
+    ]
+
+    evidence = progress.codex_smoke_evidence(events, "MARKER", "", ["private-command"])
+
+    assert evidence["command_summaries"][0]["failure_category"] == "permission_denied"
+    assert evidence["error_event_count"] == 2
+    assert evidence["error_categories"] == ["sandbox_denied", "no_error_detail"]
+    serialized = __import__("json").dumps(evidence)
+    assert "Access is denied" not in serialized
+    assert "private-command" not in serialized
 
 
 
@@ -113,3 +143,5 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert "single self-contained command" in autonomous
     assert "--expected-agent-message" not in diagnostic
     assert "CODEX_WORKSPACE_SANDBOX_OK" in diagnostic
+    assert "Call exec_command once only" in diagnostic
+    assert "do not retry, change the command, or print the success marker" in diagnostic
