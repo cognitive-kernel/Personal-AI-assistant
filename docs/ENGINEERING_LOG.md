@@ -261,3 +261,11 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - PR [#701](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/701) remains open and unmerged. No merge or direct-main write was performed.
 - The independent Windows service-account Codex sandbox smoke remains pending under PR [#699](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/699). GitHub-hosted CI does not prove the real self-hosted Runner can execute the Codex workspace tool. No target-host success is claimed.
 - Actual engineering hours for this checkpoint were not measured; no time-based actual is inferred from conversation duration. No acceptance-score increase is recorded.
+
+## 2026-11-07 — Fix manual-task persistence on clean Windows Runner workspaces
+
+- Root cause: the workflow invoked `scripts/persist_autonomous_manual_task.ps1` from `GITHUB_WORKSPACE` before running `actions/checkout`. A newly provisioned or cleaned self-hosted Runner could therefore lack the script at the point of invocation, preventing the durable task from being saved.
+- Correction: move the pinned, trusted-`main` checkout ahead of the persistence step while keeping persistence ahead of system-Python, Ollama, and Codex preflight. Checkout uses `persist-credentials: false`; the workflow token is not persisted in Git configuration.
+- Regression: extend `test_manual_task_persistence_precedes_every_runner_prerequisite_check` to require the order checkout < persistence < Python preflight < live-state capture, and assert checkout credential persistence remains disabled.
+- Implementation commit: `e1d47d05bc30cf536e1f8a98bd8e272d4590b53a`; regression commit: `0745b50e30a38a08421d6083af8b16eaa750e0c0`.
+- Static source/order validation passed. Full pytest, Windows storage regressions, browser E2E, dependency audit, and exact-head CI for the updated branch are pending; no test or target-host success is claimed for these follow-up commits.
