@@ -228,6 +228,19 @@ def codex_smoke_evidence(
         "turn_not_failed": not turn_failed,
         "expected_agent_message": final_message == expected_agent_message,
     }
+    completed_turns = [event for event in events if event.get("type") == "turn.completed"]
+    usage = completed_turns[-1].get("usage", {}) if completed_turns else {}
+    event_types = [str(event.get("type", "")) for event in events]
+    item_types = [
+        str(event["item"].get("type", ""))
+        for event in events
+        if isinstance(event.get("item"), dict)
+    ]
+    turn_usage = {
+        key: usage[key]
+        for key in ("input_tokens", "output_tokens", "total_tokens")
+        if isinstance(usage, dict) and key in usage
+    }
     return {
         "passed": all(checks.values()),
         "checks": checks,
@@ -239,6 +252,13 @@ def codex_smoke_evidence(
         "agent_message": final_message,
         "turn_completed": turn_completed,
         "turn_failed": turn_failed,
+        "event_count": len(events),
+        "event_types": event_types,
+        "item_types": item_types,
+        "command_started_count": len(started_commands),
+        "command_completed_count": len(completed_commands),
+        "agent_message_count": len(agent_messages),
+        "turn_usage": turn_usage,
     }
 
 
