@@ -20,6 +20,7 @@ permissions:
 jobs:
   cancel-stale-diagnostics:
     runs-on: ubuntu-latest
+    continue-on-error: true
     permissions:
       actions: write
       contents: read
@@ -58,7 +59,15 @@ jobs:
                 $cancelUri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)/cancel"
                 try {
                   Invoke-RestMethod -Uri $cancelUri -Headers $headers -Method Post -TimeoutSec 15 | Out-Null
-                  Write-Host "Cancelled stale diagnostic run $($run.id) (run number $($run.run_number), status $($run.status))."
+                  Start-Sleep -Seconds 2
+                  $afterCancel = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)" -Headers $headers -Method Get -TimeoutSec 15
+                  if ($afterCancel.status -ne "completed") {
+                    $forceCancelUri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)/force-cancel"
+                    Invoke-RestMethod -Uri $forceCancelUri -Headers $headers -Method Post -TimeoutSec 15 | Out-Null
+                    Write-Host "Force-cancelled stale diagnostic run $($run.id) after normal cancellation remained pending."
+                  } else {
+                    Write-Host "Cancelled stale diagnostic run $($run.id) (run number $($run.run_number))."
+                  }
                 } catch {
                   Write-Warning "Could not cancel stale run $($run.id): $($_.Exception.Message)"
                 }
@@ -70,7 +79,6 @@ jobs:
 
   sandbox-diagnostic:
     needs: cancel-stale-diagnostics
-    if: always()
     runs-on: [self-hosted, Windows, X64, ollama]
     timeout-minutes: 20
     env:
