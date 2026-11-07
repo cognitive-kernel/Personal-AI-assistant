@@ -8,7 +8,13 @@ if ([string]::IsNullOrWhiteSpace($env:PROGRAMDATA)) {
     throw "PROGRAMDATA is unavailable; the manual task cannot be persisted safely."
 }
 
-$stateDir = Join-Path $env:PROGRAMDATA "PersonalAIAssistant\autonomous-engineering"
+$configuredStateDir = [string]$env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR
+if ([string]::IsNullOrWhiteSpace($configuredStateDir)) {
+    $stateDir = Join-Path $env:PROGRAMDATA "PersonalAIAssistant\autonomous-engineering"
+} else {
+    $expandedStateDir = [Environment]::ExpandEnvironmentVariables($configuredStateDir)
+    $stateDir = [System.IO.Path]::GetFullPath($expandedStateDir)
+}
 New-Item -ItemType Directory -Path $stateDir -Force | Out-Null
 $pendingPath = Join-Path $stateDir "pending-manual-task.txt"
 $pendingPrPath = Join-Path $stateDir "pending-autonomous-pr.json"
