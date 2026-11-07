@@ -63,6 +63,22 @@ def test_codex_smoke_evidence_reports_each_command_without_logging_raw_commands(
 
 
 
+def test_codex_model_catalog_registers_the_64k_ollama_alias():
+    model = "gpt-oss:20b-codex-64k"
+    path = progress.write_codex_model_catalog(model)
+    catalog = __import__("json").loads(path.read_text(encoding="utf-8"))
+    assert len(catalog["models"]) == 1
+    entry = catalog["models"][0]
+    assert entry["slug"] == model
+    assert entry["context_window"] == 64000
+    assert entry["shell_type"] == "default"
+    assert entry["input_modalities"] == ["text"]
+    assert [level["effort"] for level in entry["supported_reasoning_levels"]] == [
+        "low", "medium", "high"
+    ]
+
+
+
 def test_codex_smoke_evidence_classifies_failures_without_retaining_raw_output():
     events = [
         {"type": "item.started", "item": {
@@ -106,15 +122,23 @@ def test_codex_diagnostic_uses_bounded_reasoning_effort_without_changing_default
 
     monkeypatch.setenv("CODEX_MODEL_REASONING_EFFORT", "low")
     arguments = progress.codex_arguments("gpt-oss:20b-codex-64k", "report.md")
-    assert ["-c", 'model_reasoning_effort="low"'] == arguments[5:7]
-    assert ["-c", "sandbox_workspace_write.exclude_slash_tmp=true"] == arguments[7:9]
+    overrides = [
+        arguments[i + 1] for i, value in enumerate(arguments[:-1]) if value == "-c"
+    ]
+    assert 'model_reasoning_effort="low"' in overrides
+    assert "sandbox_workspace_write.exclude_slash_tmp=true" in overrides
+    assert any(value.startswith("model_catalog_json=") for value in overrides)
 
     monkeypatch.delenv("CODEX_MODEL_REASONING_EFFORT")
     default_arguments = progress.codex_arguments("gpt-oss:20b-codex-64k", "report.md")
-    assert "model_reasoning_effort" not in " ".join(default_arguments)
-    assert ["-c", "sandbox_workspace_write.exclude_slash_tmp=true"] in [
-        default_arguments[i:i + 2] for i in range(len(default_arguments) - 1)
+    default_overrides = [
+        default_arguments[i + 1]
+        for i, value in enumerate(default_arguments[:-1])
+        if value == "-c"
     ]
+    assert not any(value.startswith("model_reasoning_effort=") for value in default_overrides)
+    assert "sandbox_workspace_write.exclude_slash_tmp=true" in default_overrides
+    assert any(value.startswith("model_catalog_json=") for value in default_overrides)
 
     monkeypatch.setenv("CODEX_MODEL_REASONING_EFFORT", "unbounded")
     with pytest.raises(ValueError, match="CODEX_MODEL_REASONING_EFFORT"):
