@@ -291,6 +291,9 @@ def test_publish_pull_request_leaves_exact_sha_validated_pr_open_for_owner_merge
     }
     assert len(validations) == 1
     assert not any(call[0] == "PUT" and str(call[1]).endswith("/merge") for call in calls if len(call) > 1)
+    created_payload = next(call[2] for call in calls if call[0] == "POST" and call[1] == "pulls")
+    assert "\n" in created_payload["body"]
+    assert "\\n" not in created_payload["body"]
     assert cycle.load_pending_pr()["number"] == 12
 
 def test_publish_pull_request_rejects_non_controller_authored_pr(monkeypatch: pytest.MonkeyPatch):
