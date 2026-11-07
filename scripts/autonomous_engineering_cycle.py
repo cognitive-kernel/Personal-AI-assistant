@@ -450,21 +450,21 @@ def _pending_pr_path() -> Path:
     return _autonomous_state_dir() / "pending-autonomous-pr.json"
 
 
-def save_pending_pr(value: dict[str, Any]) -> None:
-    required = ("number", "url", "head_sha", "base_sha", "branch", "run_id", "task")
+def save_pending_pr(value: dict[str, Any], repo: str) -> None:
+    string_fields = ("url", "head_sha", "base_sha", "branch", "run_id")
     if (
         not isinstance(value, dict)
         or isinstance(value.get("number"), bool)
         or not isinstance(value.get("number"), int)
         or value["number"] < 1
-        or any(not isinstance(value.get(key), str) or not value[key] for key in required if key != "number")
+        or any(not isinstance(value.get(key), str) or not value[key] for key in string_fields)
         or isinstance(value.get("task"), bool)
         or not isinstance(value.get("task"), int)
         or value["task"] < 1
         or not re.fullmatch(r"[0-9a-f]{40}", value["head_sha"])
         or not re.fullmatch(r"[0-9a-f]{40}", value["base_sha"])
         or not value["branch"].startswith("codex/local-engineering-")
-        or value["url"] != f"https://github.com/{os.getenv('GH_REPO', '').strip()}/pull/{value['number']}"
+        or value["url"] != f"https://github.com/{repo}/pull/{value['number']}"
     ):
         raise RuntimeError("Refusing to persist invalid pending PR metadata.")
     path = _pending_pr_path()
@@ -606,7 +606,7 @@ def complete_pending_pr(token: str, repo: str, pending: dict[str, Any], run_id: 
         "branch": branch,
         "run_id": str(pending.get("run_id") or run_id),
         "task": int(pending.get("task") or task),
-    })
+    }, repo)
     return {
         "number": number,
         "url": url,
