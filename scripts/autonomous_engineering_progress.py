@@ -193,7 +193,7 @@ def _diagnostic_error_text(value: Any, depth: int = 0) -> str:
     if isinstance(value, str):
         return value
     if isinstance(value, dict):
-        allowed = {"error", "message", "reason", "detail", "stderr", "stdout", "aggregated_output", "code", "kind"}
+        allowed = {"item", "error", "message", "reason", "detail", "stderr", "stdout", "aggregated_output", "code", "kind"}
         return " ".join(
             _diagnostic_error_text(child, depth + 1)
             for key, child in value.items()
