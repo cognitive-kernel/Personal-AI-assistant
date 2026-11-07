@@ -124,6 +124,7 @@ jobs:
           }
 
       - name: Verify the selected model's allocated Ollama context
+        # Explicitly request the Codex 64k minimum; verify actual allocation before any tool smoke.
         timeout-minutes: 12
         shell: powershell
         run: |
