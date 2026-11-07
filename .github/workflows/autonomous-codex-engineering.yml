@@ -401,6 +401,12 @@ jobs:
         run: |
           & "$env:GITHUB_WORKSPACE\scripts\verify_ollama_context.ps1" -Model "$env:AUTONOMOUS_ENGINEERING_MODEL"
 
+      - name: Verify the selected model's allocated Ollama context
+        timeout-minutes: 12
+        shell: powershell
+        run: |
+          & "$env:GITHUB_WORKSPACE\scripts\verify_ollama_context.ps1" -Model "$env:AUTONOMOUS_ENGINEERING_MODEL"
+
       - name: Verify Ollama and a real workspace-confined Codex tool call
         shell: powershell
         run: |
