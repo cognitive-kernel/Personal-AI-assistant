@@ -123,6 +123,13 @@ jobs:
             throw "Ollama model '$env:AUTONOMOUS_ENGINEERING_MODEL' is not installed."
           }
 
+      - name: Verify the selected model's allocated Ollama context
+        timeout-minutes: 12
+        shell: powershell
+        run: |
+          & "$env:GITHUB_WORKSPACE\scripts\verify_ollama_context.ps1" -Model "$env:AUTONOMOUS_ENGINEERING_MODEL"
+          if ($LASTEXITCODE -ne 0) { throw "Ollama runtime context validation failed." }
+
       - name: Probe MXC and Codex exec_command under the Runner identity
         shell: powershell
         run: |
