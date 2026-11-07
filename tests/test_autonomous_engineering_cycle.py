@@ -1100,13 +1100,14 @@ def test_complete_merged_pr_requires_owner_merge_and_post_merge_exact_sha_checks
         "state": "closed",
         "merged": True,
         "merge_commit_sha": merge_sha,
+        "html_url": "https://github.com/owner/repository/pull/88",
         "user": {"login": "github-actions[bot]"},
         "head": {
             "ref": pending["branch"],
             "sha": head_sha,
             "repo": {"full_name": "owner/repository"},
         },
-        "base": {"ref": "main"},
+        "base": {"ref": "main", "sha": merge_sha},
     }
     calls = []
     monkeypatch.setattr(cycle, "api", lambda token, repo, method, path, payload=None: (
