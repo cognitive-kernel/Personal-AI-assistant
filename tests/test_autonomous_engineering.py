@@ -842,3 +842,22 @@ def test_cancel_finds_active_run_after_ten_newer_completed_runs(monkeypatch):
     assert list_command[list_command.index("--limit") + 1] == "30"
     assert calls[-1][1:3] == ["run", "cancel"]
     assert calls[-1][3] == "999"
+
+
+def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_codex_requirement():
+    root = Path(__file__).resolve().parents[1]
+    context_gate = (root / "scripts" / "verify_ollama_context.ps1").read_text(encoding="utf-8")
+    production = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    diagnostic = (root / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml").read_text(encoding="utf-8")
+
+    assert "/api/generate" in context_gate
+    assert "keep_alive" in context_gate
+    assert "/api/ps" in context_gate
+    assert "context_length" in context_gate
+    assert "64000" in context_gate
+    assert "Settings -> Context Length" in context_gate
+    assert production.index("scripts/verify_ollama_context.ps1") < production.index("Verify Ollama and a real workspace-confined Codex tool call")
+    assert diagnostic.index("scripts/verify_ollama_context.ps1") < diagnostic.index("Probe MXC and Codex exec_command")
+    assert ".codex-sandbox-probe-$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT).tmp" in production
+    assert ".codex-sandbox-probe.tmp" not in production
+    assert '--require-command-fragment "$probeFileName"' in production
