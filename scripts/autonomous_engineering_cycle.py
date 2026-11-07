@@ -633,8 +633,10 @@ def complete_merged_pr(token: str, repo: str, pending: dict[str, Any]) -> dict[s
         or (current.get("user") or {}).get("login") != "github-actions[bot]"
         or (head.get("repo") or {}).get("full_name") != repo
         or base.get("ref") != "main"
+        or base.get("sha") != merge_sha
         or head.get("ref") != pending.get("branch")
         or head.get("sha") != pending.get("head_sha")
+        or current.get("html_url") != pending.get("url")
         or not isinstance(merge_sha, str)
         or not re.fullmatch(r"[0-9a-f]{40}", merge_sha)
     ):
