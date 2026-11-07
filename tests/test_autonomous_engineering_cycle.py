@@ -1014,21 +1014,6 @@ def test_codex_smoke_evidence_accepts_multiple_successful_calls_with_one_verifie
     assert evidence["checks"]["exactly_one_verified_workspace_probe"] is True
 
 
-@pytest.mark.parametrize(
-    "mutation",
-    [
-        "no_command",
-        "nonzero_exit",
-        "missing_output_marker",
-        "no_turn_completed",
-        "turn_failed",
-        "duplicate_command",
-        "wrong_command",
-        "missing_command_start",
-        "mismatched_command_start",
-        "wrong_agent_message",
-    ],
-)
 def test_codex_tool_smoke_does_not_require_a_final_text_message():
     from scripts import autonomous_engineering_progress as progress
 
@@ -1062,6 +1047,21 @@ def test_codex_tool_smoke_does_not_require_a_final_text_message():
 
 
 
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "no_command",
+        "nonzero_exit",
+        "missing_output_marker",
+        "no_turn_completed",
+        "turn_failed",
+        "duplicate_command",
+        "wrong_command",
+        "missing_command_start",
+        "mismatched_command_start",
+        "wrong_agent_message",
+    ],
+)
 def test_codex_smoke_evidence_rejects_unproven_or_failed_execution(mutation: str):
     from scripts import autonomous_engineering_progress as progress
 
