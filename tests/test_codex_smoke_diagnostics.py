@@ -98,10 +98,14 @@ def test_codex_diagnostic_uses_bounded_reasoning_effort_without_changing_default
     monkeypatch.setenv("CODEX_MODEL_REASONING_EFFORT", "low")
     arguments = progress.codex_arguments("gpt-oss:20b-codex-64k", "report.md")
     assert ["-c", 'model_reasoning_effort="low"'] == arguments[5:7]
+    assert ["-c", "sandbox_workspace_write.exclude_slash_tmp=true"] == arguments[7:9]
 
     monkeypatch.delenv("CODEX_MODEL_REASONING_EFFORT")
     default_arguments = progress.codex_arguments("gpt-oss:20b-codex-64k", "report.md")
     assert "model_reasoning_effort" not in " ".join(default_arguments)
+    assert ["-c", "sandbox_workspace_write.exclude_slash_tmp=true"] in [
+        default_arguments[i:i + 2] for i in range(len(default_arguments) - 1)
+    ]
 
     monkeypatch.setenv("CODEX_MODEL_REASONING_EFFORT", "unbounded")
     with pytest.raises(ValueError, match="CODEX_MODEL_REASONING_EFFORT"):
