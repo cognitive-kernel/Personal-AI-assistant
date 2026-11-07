@@ -149,7 +149,7 @@ jobs:
             Write-Host $_.Exception.Message
           }
           try {
-            $showBody = @{ name = $env:AUTONOMOUS_ENGINEERING_MODEL; verbose = $true } | ConvertTo-Json -Compress
+            $showBody = @{ model = $env:AUTONOMOUS_ENGINEERING_MODEL; verbose = $true } | ConvertTo-Json -Compress
             $modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -Body $showBody -ContentType "application/json" -TimeoutSec 15
             $contextProperties = @($modelInfo.model_info.PSObject.Properties | Where-Object { $_.Name -match "context_length$" })
             foreach ($property in $contextProperties) {
