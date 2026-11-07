@@ -245,6 +245,8 @@ def test_publish_pull_request_leaves_exact_sha_validated_pr_open_for_owner_merge
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "autonomous-state"))
     created = {
         "number": 12,
+        "state": "open",
+        "merged": False,
         "draft": False,
         "user": {"login": "github-actions[bot]"},
         "head": {"sha": head_sha, "repo": {"full_name": "owner/repository"}},
