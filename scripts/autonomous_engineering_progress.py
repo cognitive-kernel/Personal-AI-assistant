@@ -176,6 +176,11 @@ def codex_arguments(model: str, report: str) -> list[str]:
         "--model", model, "--cd", str(ROOT),
         "--output-last-message", report, "--json", "-",
     ]
+    # On Windows, the legacy workspace-write policy can project the Unix
+    # /tmp special root onto a drive-root path and create an unsupported split
+    # writable-root set for exec_command. Exclude that unintended root while
+    # preserving the workspace and the normal per-user temp directory.
+    arguments[5:5] = ["-c", "sandbox_workspace_write.exclude_slash_tmp=true"]
     if reasoning_effort:
         arguments[5:5] = ["-c", f'model_reasoning_effort="{reasoning_effort}"']
     return arguments
