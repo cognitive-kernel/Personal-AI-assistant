@@ -156,7 +156,7 @@ jobs:
           ref: main
           persist-credentials: false
 
-            - name: Use preinstalled system Python under the Runner service identity
+      - name: Use preinstalled system Python under the Runner service identity
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
