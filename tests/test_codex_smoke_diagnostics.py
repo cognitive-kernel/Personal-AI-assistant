@@ -83,6 +83,8 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert 'fix/automation-codex-context-smoke-20261107' in diagnostic
     assert 'CODEX_WINDOWS_SANDBOX_BACKEND: mxc' in diagnostic
     assert 'run-name: "Codex Windows Sandbox Diagnostic #' in diagnostic
+    cleanup_job = diagnostic.split("  sandbox-diagnostic:", 1)[0]
+    assert '$branch = [uri]::EscapeDataString($env:GITHUB_REF_NAME)' in cleanup_job
     assert "Use the exec_command tool exactly once" not in diagnostic
     assert "Use the exec_command tool exactly once" not in autonomous
     assert "single self-contained command" in diagnostic
