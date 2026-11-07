@@ -1049,7 +1049,10 @@ def test_windows_sandbox_diagnostic_cancels_only_older_queued_runs_and_uses_uniq
 
     assert "runs-on: ubuntu-latest" in cleanup_job
     assert "actions: write" in cleanup_job
-    assert "status=queued" in cleanup_job
+    assert "run.status -eq \"queued\"" in cleanup_job
+    assert "actions/runs/$($run.id)/jobs?per_page=100" in cleanup_job
+    assert "run.status -eq \"in_progress\"" in cleanup_job
+    assert "status -eq \"queued\"" in cleanup_job
     assert "run.run_number -lt" in cleanup_job
     assert "/cancel" in cleanup_job
     assert "concurrency:" not in cleanup_job
