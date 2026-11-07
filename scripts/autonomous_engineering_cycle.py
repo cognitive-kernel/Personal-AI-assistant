@@ -440,7 +440,7 @@ def graphql(token: str, query: str, variables: dict[str, Any]) -> dict[str, Any]
 def _autonomous_state_dir() -> Path:
     configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
     if configured:
-        return Path(configured).expanduser()
+        return Path(os.path.expandvars(configured)).expanduser()
     if os.getenv("PROGRAMDATA"):
         return Path(os.environ["PROGRAMDATA"]) / "PersonalAIAssistant" / "autonomous-engineering"
     return Path.home() / ".personal-ai-assistant" / "autonomous-engineering"
