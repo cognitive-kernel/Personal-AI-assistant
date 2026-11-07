@@ -1052,7 +1052,7 @@ def test_windows_sandbox_diagnostic_cancels_only_older_queued_runs_and_uses_uniq
     assert "status=queued" in cleanup_job
     assert "run.run_number -lt" in cleanup_job
     assert "/cancel" in cleanup_job
-    assert "cancel-in-progress: false" in cleanup_job
+    assert "concurrency:" not in cleanup_job
     assert "needs: cancel-stale-diagnostics" in sandbox_job
     assert "if: always()" in sandbox_job
     assert "GITHUB_RUN_ID" in sandbox_job
