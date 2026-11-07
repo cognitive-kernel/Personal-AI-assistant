@@ -130,13 +130,6 @@ jobs:
         run: |
           & "$env:GITHUB_WORKSPACE\scripts\verify_ollama_context.ps1" -Model "$env:AUTONOMOUS_ENGINEERING_MODEL"
 
-      - name: Verify the selected model's allocated Ollama context
-        timeout-minutes: 12
-        shell: powershell
-        run: |
-          # Explicitly request the Codex 64k minimum; verify actual allocation before any tool smoke.
-          & "$env:GITHUB_WORKSPACE\scripts\verify_ollama_context.ps1" -Model "$env:AUTONOMOUS_ENGINEERING_MODEL"
-
       - name: Probe MXC and Codex exec_command under the Runner identity
         shell: powershell
         run: |
