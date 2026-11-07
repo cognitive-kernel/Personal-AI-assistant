@@ -46,6 +46,8 @@ def test_codex_smoke_evidence_reports_each_command_without_logging_raw_commands(
             },
             "output_marker_present": False,
             "failure_category": None,
+            "failure_field_names": [],
+            "failure_signature": None,
         },
         {
             "id": "cmd-2",
@@ -57,6 +59,8 @@ def test_codex_smoke_evidence_reports_each_command_without_logging_raw_commands(
             },
             "output_marker_present": True,
             "failure_category": None,
+            "failure_field_names": [],
+            "failure_signature": None,
         },
     ]
     assert all("command" not in item for item in evidence["command_summaries"])
