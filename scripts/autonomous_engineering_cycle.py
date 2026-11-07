@@ -756,7 +756,10 @@ def publish_pull_request(
 
     save_pending_pr(pending_state, repo)
     return {
-        **pending_state,
+        "number": number,
+        "url": url,
+        "head_sha": head_sha,
+        "base_sha": base_sha,
         "validated": True,
         "merged": False,
         "awaiting_review": True,
