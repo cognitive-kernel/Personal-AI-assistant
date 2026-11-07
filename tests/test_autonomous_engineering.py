@@ -869,7 +869,8 @@ def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_c
     assert "options = @{ num_ctx = $MinimumContextLength }" not in context_gate
     assert "AUTONOMOUS_ENGINEERING_MODEL=$codexModel" in context_gate
     assert production_paths.count("scripts/verify_ollama_context.ps1") == 2
-    assert diagnostic_paths.count("scripts/verify_ollama_context.ps1") == 2
+    diagnostic_job = diagnostic_paths.split("  sandbox-diagnostic:", 1)[1]
+    assert diagnostic_job.count("scripts/verify_ollama_context.ps1") == 2
     assert "-VerifyOnly" in production
     assert "-VerifyOnly" in diagnostic
     assert production_paths.index("scripts/verify_ollama_context.ps1") < production_paths.index("Verify Ollama and a real workspace-confined Codex tool call")
