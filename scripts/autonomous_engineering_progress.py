@@ -181,6 +181,28 @@ def codex_arguments(model: str, report: str) -> list[str]:
     return arguments
 
 
+def diagnostic_failure_category(message: Any) -> str:
+    """Classify an error without retaining command text or process output."""
+    text = str(message or "").casefold()
+    if not text.strip():
+        return "no_error_detail"
+    if any(token in text for token in ("access is denied", "access denied", "permission denied", "unauthorized")):
+        return "permission_denied"
+    if "sandbox" in text and any(token in text for token in ("denied", "blocked", "violation", "permission")):
+        return "sandbox_denied"
+    if any(token in text for token in ("timed out", "timeout", "deadline exceeded")):
+        return "timeout"
+    if any(token in text for token in ("not recognized as an internal or external command", "command not found", "executable not found")):
+        return "executable_not_found"
+    if any(token in text for token in ("cannot find the path", "path not found", "no such file or directory")):
+        return "path_not_found"
+    if any(token in text for token in ("invalid argument", "unknown argument", "unexpected argument", "invalid tool arguments")):
+        return "invalid_tool_arguments"
+    if any(token in text for token in ("failed to spawn", "failed to start process", "could not start process")):
+        return "process_start_failed"
+    return "unclassified_error"
+
+
 def codex_smoke_evidence(
     events: list[dict[str, Any]],
     expected_command_output: str,
@@ -209,14 +231,17 @@ def codex_smoke_evidence(
         and event["item"].get("type") == "agent_message"
     ]
     turn_completed = any(event.get("type") == "turn.completed" for event in events)
-    turn_failed = any(
-        event.get("type") in {"turn.failed", "error"}
-        or (
-            isinstance(event.get("item"), dict)
-            and event["item"].get("type") == "error"
-        )
-        for event in events
-    )
+    error_events = [
+        event for event in events
+        if event.get("type") in {"turn.failed", "error"}
+        or (isinstance(event.get("item"), dict) and event["item"].get("type") == "error")
+    ]
+    turn_failed = bool(error_events)
+    error_categories = []
+    for event in error_events:
+        item = event.get("item") if isinstance(event.get("item"), dict) else {}
+        detail = item.get("message") or item.get("error") or event.get("message") or event.get("error")
+        error_categories.append(diagnostic_failure_category(detail))
     required_fragments = required_command_fragments or []
 
     def index_by_id(items: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], bool]:
@@ -272,6 +297,7 @@ def codex_smoke_evidence(
             "start_completed_match": command_payload_matches,
             "required_fragments": fragment_checks,
             "output_marker_present": output_marker_present,
+            "failure_category": None if succeeded else diagnostic_failure_category(output_text),
         }
         command_summaries.append(summary)
         if succeeded and command_payload_matches and fragments_present and output_marker_present:
@@ -315,6 +341,8 @@ def codex_smoke_evidence(
         "agent_message_matches_expected": not expected_agent_message or final_message == expected_agent_message,
         "turn_completed": turn_completed,
         "turn_failed": turn_failed,
+        "error_event_count": len(error_events),
+        "error_categories": error_categories,
         "event_count": len(events),
         "event_types": event_types,
         "item_types": item_types,
