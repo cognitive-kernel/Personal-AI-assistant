@@ -722,19 +722,13 @@ def publish_pull_request(
         token, repo, ("tests.yml", "browser-e2e.yml", "dependency-audit.yml"), branch, pr_head
     )
     refreshed_pr = api(token, repo, "GET", f"pulls/{number}")
-    current_main = api(token, repo, "GET", "branches/main")
     refreshed_head = (refreshed_pr.get("head") or {}).get("sha")
-    refreshed_base = (refreshed_pr.get("base") or {}).get("sha")
-    current_main_sha = (current_main.get("commit") or {}).get("sha")
-    if refreshed_head != head_sha or refreshed_base != base_sha or current_main_sha != base_sha:
-        raise RuntimeError(
-            "The PR head or main base changed during validation; the PR remains open and must be revalidated."
-        )
     url = refreshed_pr.get("html_url")
+    if refreshed_head != head_sha:
+        raise RuntimeError("The PR head changed during exact-SHA validation; preserving the task for revalidation.")
     if not isinstance(url, str) or url != f"https://github.com/{repo}/pull/{number}":
         raise RuntimeError("GitHub returned an unexpected pull request URL.")
-
-    save_pending_pr({
+    pending_state = {
         "number": number,
         "url": url,
         "head_sha": head_sha,
@@ -742,12 +736,27 @@ def publish_pull_request(
         "branch": branch,
         "run_id": run_id,
         "task": task_index,
-    }, repo)
+    }
+    if refreshed_pr.get("merged") is True:
+        save_pending_pr(pending_state, repo)
+        return {**pending_state, "validated": True, "merged": True, "owner_merged": True}
+    if refreshed_pr.get("state") != "open" or refreshed_pr.get("draft") is not False:
+        raise RuntimeError("The PR was closed or changed before owner-review handoff; preserving the task.")
+    current_main = api(token, repo, "GET", "branches/main")
+    refreshed_base = (refreshed_pr.get("base") or {}).get("sha")
+    current_main_sha = (current_main.get("commit") or {}).get("sha")
+    if refreshed_base != base_sha or current_main_sha != base_sha:
+        latest_pr = api(token, repo, "GET", f"pulls/{number}")
+        if latest_pr.get("merged") is True and (latest_pr.get("head") or {}).get("sha") == head_sha:
+            save_pending_pr(pending_state, repo)
+            return {**pending_state, "validated": True, "merged": True, "owner_merged": True}
+        raise RuntimeError(
+            "The PR head or main base changed during validation; the PR remains open and must be revalidated."
+        )
+
+    save_pending_pr(pending_state, repo)
     return {
-        "number": number,
-        "url": url,
-        "head_sha": head_sha,
-        "base_sha": base_sha,
+        **pending_state,
         "validated": True,
         "merged": False,
         "awaiting_review": True,
@@ -1026,6 +1035,25 @@ def run_cycle(args: argparse.Namespace) -> int:
     if not isinstance(pr_number, int) or not isinstance(pr_url, str) or not isinstance(pr_head, str):
         raise RuntimeError("The published PR metadata is incomplete.")
 
+    if published_pr.get("merged") is True and published_pr.get("owner_merged") is True:
+        accepted = complete_merged_pr(token, repo, published_pr)
+        record(
+            args.run_id, args.run_attempt, "complete",
+            f"وظیفهٔ {task} پس از ادغام دستی مالک پذیرفته شد",
+            f"PR #{pr_number} و CI پس از ادغام روی SHA دقیق {accepted['merge_sha']} تأیید شدند",
+            status="completed",
+        )
+        snapshot(args.run_id, args.run_attempt)
+        request_file.unlink(missing_ok=True)
+        if args.mode == "continuous":
+            api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {
+                "ref": "main",
+                "inputs": {"manual_task": ""},
+            })
+            print(f"Owner-merged task {task} accepted as PR #{pr_number}; next cycle dispatched from main: {pr_url}")
+        else:
+            print(f"Owner-merged task {task} accepted as PR #{pr_number}; scheduled mode resumes at its next interval: {pr_url}")
+        return 0
     if published_pr.get("validated") is not True or published_pr.get("merged") is not False:
         raise RuntimeError("The candidate PR did not complete exact-head validation and durable owner-review handoff.")
     record(
