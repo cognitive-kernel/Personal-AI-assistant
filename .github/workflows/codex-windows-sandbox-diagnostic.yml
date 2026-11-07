@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - fix/autonomous-task-preservation
+    paths:
+      - .github/workflows/codex-windows-sandbox-diagnostic.yml
   workflow_dispatch:
     inputs:
       model:
