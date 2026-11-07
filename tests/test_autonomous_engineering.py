@@ -852,6 +852,10 @@ def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_c
     context_gate = (root / "scripts" / "verify_ollama_context.ps1").read_text(encoding="utf-8")
     production = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
     diagnostic = (root / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml").read_text(encoding="utf-8")
+    # PowerShell accepts both Windows separators and forward slashes; compare
+    # normalized paths so the contract is independent of YAML path spelling.
+    production_paths = production.replace("\\", "/")
+    diagnostic_paths = diagnostic.replace("\\", "/")
 
     assert "/api/generate" in context_gate
     assert "keep_alive" in context_gate
@@ -860,10 +864,10 @@ def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_c
     assert "context_length" in context_gate
     assert "64000" in context_gate
     assert "Settings -> Context Length" in context_gate
-    assert production.count("scripts/verify_ollama_context.ps1") == 1
-    assert diagnostic.count("scripts/verify_ollama_context.ps1") == 1
-    assert production.index("scripts/verify_ollama_context.ps1") < production.index("Verify Ollama and a real workspace-confined Codex tool call")
-    assert diagnostic.index("scripts/verify_ollama_context.ps1") < diagnostic.index("Probe MXC and Codex exec_command")
+    assert production_paths.count("scripts/verify_ollama_context.ps1") == 1
+    assert diagnostic_paths.count("scripts/verify_ollama_context.ps1") == 1
+    assert production_paths.index("scripts/verify_ollama_context.ps1") < production_paths.index("Verify Ollama and a real workspace-confined Codex tool call")
+    assert diagnostic_paths.index("scripts/verify_ollama_context.ps1") < diagnostic_paths.index("Probe MXC and Codex exec_command")
     assert ".codex-sandbox-probe-$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT).tmp" in production
     assert ".codex-sandbox-probe.tmp" not in production
     assert '--require-command-fragment "$probeFileName"' in production
