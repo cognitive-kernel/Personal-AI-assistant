@@ -108,7 +108,11 @@ def test_manual_task_persistence_precedes_schedule_gate_and_runner_prerequisites
     assert "if: always()" in gate_job
     assert "needs: [persist-manual-task, schedule-gate]" in codex_job
     assert "if: always()" in codex_job
+    assert "concurrency:" in codex_job
+    assert "group: autonomous-local-engineering-${{ github.repository }}" in codex_job
     assert "Persist manual task before any runner prerequisite checks" not in codex_job
+    workflow_header = workflow.split("jobs:", 1)[0]
+    assert "concurrency:" not in workflow_header
 def test_early_manual_task_persistence_script_is_protected_and_validated_in_ci():
     from pathlib import Path
 
