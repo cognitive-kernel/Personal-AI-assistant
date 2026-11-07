@@ -18,7 +18,49 @@ permissions:
   contents: read
 
 jobs:
+  cancel-stale-diagnostics:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    concurrency:
+      group: codex-sandbox-diagnostic-cleanup-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - name: Cancel older queued diagnostics for this branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+          CURRENT_RUN_NUMBER: ${{ github.run_number }}
+        shell: pwsh
+        run: |
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+          }
+          $branch = [uri]::EscapeDataString("fix/autonomous-task-preservation")
+          $uri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/workflows/codex-windows-sandbox-diagnostic.yml/runs?branch=$branch&status=queued&per_page=100"
+          try {
+            $response = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get -TimeoutSec 15
+            foreach ($run in @($response.workflow_runs)) {
+              if ([int64]$run.run_number -lt [int64]$env:CURRENT_RUN_NUMBER) {
+                $cancelUri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)/cancel"
+                try {
+                  Invoke-RestMethod -Uri $cancelUri -Headers $headers -Method Post -TimeoutSec 15 | Out-Null
+                  Write-Host "Cancelled stale queued diagnostic run $($run.id) (run number $($run.run_number))."
+                } catch {
+                  Write-Warning "Could not cancel stale queued run $($run.id): $($_.Exception.Message)"
+                }
+              }
+            }
+          } catch {
+            Write-Warning "Could not list queued diagnostics; continuing without cleanup: $($_.Exception.Message)"
+          }
+
   sandbox-diagnostic:
+    needs: cancel-stale-diagnostics
+    if: always()
     runs-on: [self-hosted, Windows, X64, ollama]
     timeout-minutes: 20
     env:
@@ -99,15 +141,17 @@ jobs:
           $prompt = Join-Path $env:RUNNER_TEMP "codex-windows-sandbox-smoke.md"
           $report = Join-Path $env:RUNNER_TEMP "codex-windows-sandbox-report.md"
           $evidence = Join-Path $env:RUNNER_TEMP "codex-windows-sandbox-evidence.json"
-          $probePath = Join-Path $env:GITHUB_WORKSPACE ".codex-sandbox-probe.tmp"
-          if (Test-Path -LiteralPath $probePath) { throw "Workspace probe path already exists; refusing to overwrite it." }
-          @'
+          $probeFileName = ".codex-sandbox-probe-$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT).tmp"
+          $probePath = Join-Path $env:GITHUB_WORKSPACE $probeFileName
+          if (Test-Path -LiteralPath $probePath) { throw "Workspace probe path already exists for this run attempt; refusing to overwrite it." }
+          $promptText = @"
           Use the exec_command tool exactly once. Set its shell parameter to the absolute executable C:\Windows\System32\cmd.exe. Do not use the default PowerShell shell.
           Execute this command verbatim:
-          python -c "from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok', encoding='utf-8'); assert p.read_text(encoding='utf-8') == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')"
+          python -c "from pathlib import Path; p=Path('$probeFileName'); p.write_text('ok', encoding='utf-8'); assert p.read_text(encoding='utf-8') == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')"
           Set yield_time_ms to integer 10000 and sandbox_permissions to "use_default". Never request escalation. Do not run any other command. If successful, reply exactly: OLLAMA_PROVIDER_AND_SANDBOX_OK
-          '@ | Set-Content -LiteralPath $prompt -Encoding utf8
-          python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-mxc" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$prompt" --report "$report" --require-command-output "CODEX_WORKSPACE_SANDBOX_OK" --expected-agent-message "OLLAMA_PROVIDER_AND_SANDBOX_OK" --events-report "$evidence" --require-command-fragment ".codex-sandbox-probe.tmp" --require-command-fragment "write_text" --require-command-fragment "read_text" --require-command-fragment "unlink"
+          "@
+          Set-Content -LiteralPath $prompt -Value $promptText -Encoding utf8
+          python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-mxc" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$prompt" --report "$report" --require-command-output "CODEX_WORKSPACE_SANDBOX_OK" --expected-agent-message "OLLAMA_PROVIDER_AND_SANDBOX_OK" --events-report "$evidence" --require-command-fragment "$probeFileName" --require-command-fragment "write_text" --require-command-fragment "read_text" --require-command-fragment "unlink"
           $smokeExitCode = $LASTEXITCODE
           Write-Host "Codex smoke exit code: $smokeExitCode"
           if (Test-Path -LiteralPath $report -PathType Leaf) {
