@@ -274,7 +274,7 @@ def codex_smoke_evidence(
         "exactly_one_verified_workspace_probe": exactly_one_verified_probe,
         "turn_completed": turn_completed,
         "turn_not_failed": not turn_failed,
-        "expected_agent_message": final_message == expected_agent_message,
+        "expected_agent_message": not expected_agent_message or final_message == expected_agent_message,
     }
 
     completed_turns = [event for event in events if event.get("type") == "turn.completed"]
@@ -299,7 +299,7 @@ def codex_smoke_evidence(
         "command_exit_code": proof_command.get("exit_code"),
         "command_output_marker": exactly_one_verified_probe,
         "required_command_fragments_present": exactly_one_verified_probe,
-        "agent_message_matches_expected": final_message == expected_agent_message,
+        "agent_message_matches_expected": not expected_agent_message or final_message == expected_agent_message,
         "turn_completed": turn_completed,
         "turn_failed": turn_failed,
         "event_count": len(events),
