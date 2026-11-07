@@ -282,6 +282,14 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - The real Windows service-account Codex smoke has not yet passed. Preliminary run [42338759730](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/42338759730) remains in progress; strict-label run [42339406012](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/42339406012) is queued. No target-host success is claimed.
 - Owner-side local Windows validation, soak/recovery/rollback, human acceptance, and independent security review remain open. PR #701 remains unmerged; no acceptance-score increase is recorded.
 
+## 2026-11-07 — Codex context allocation root cause and enforced preflight
+
+- The real Windows Runner diagnostic [run 42346702200](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/42346702200) established the exact mismatch: model metadata advertised 131,072 tokens, but Ollama's active `/api/ps` allocation was only **8,192 tokens**. The strict diagnostic correctly failed before starting Codex; its follow-up independently reported the same 8,192-token runtime allocation.
+- Root cause was the warm-up/preflight not requesting a larger runtime context. Ollama's API supports the `options.num_ctx` generation parameter and exposes the actual loaded allocation as `/api/ps.models[].context_length`; see [API request options](https://github.com/ollama/ollama/blob/main/docs/api.md) and [API schema](https://github.com/ollama/ollama/blob/main/docs/openapi.yaml).
+- Updated `scripts/verify_ollama_context.ps1` to explicitly request `options.num_ctx=64000`, keep the model resident, and fail closed unless the loaded runtime actually reports at least 64,000 tokens. Both production and diagnostic workflows run this gate before any Codex task. The regression test asserts the explicit request and gate ordering.
+- The Windows diagnostic has not yet been rerun against this updated preflight; it must prove that the target host can allocate 64k and then pass the real Codex JSONL tool-execution smoke. If the host cannot allocate the requested context, no task is dispatched to Codex.
+- No PR has been merged. The current PR head must pass its complete exact-head CI and a new real Windows Runner diagnostic before acceptance.
+
 ## 2026-11-07 — Real Windows Runner result and Codex provider diagnosis
 
 - Preliminary service-account diagnostic [run 42338759730](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/42338759730) failed closed. It confirmed the Runner is non-admin (`runner-svc`), Codex CLI `0.167.0`, Ollama `0.40.13`, and direct MXC plus `cmd.exe`/Python execution succeed. The actual Codex turn completed without a final agent message or a command-execution event; this is not a successful sandbox result.
