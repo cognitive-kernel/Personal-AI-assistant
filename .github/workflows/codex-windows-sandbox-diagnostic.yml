@@ -184,7 +184,7 @@ jobs:
           Use the exec_command tool with shell set to the absolute executable C:\Windows\System32\cmd.exe and login set to false. Do not use the default PowerShell shell.
           Execute this single self-contained command verbatim:
           python -c "from pathlib import Path; p=Path('$probeFileName'); p.write_text('ok', encoding='utf-8'); assert p.read_text(encoding='utf-8') == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')"
-          Set yield_time_ms to integer 10000 and sandbox_permissions to "use_default". Never request escalation or additional permissions. Do not inspect the repository or run unrelated commands. If the command succeeds, reply exactly: OLLAMA_PROVIDER_AND_SANDBOX_OK
+          Set yield_time_ms to integer 10000 and sandbox_permissions to "use_default". Never request escalation or additional permissions. Do not inspect the repository or run unrelated commands. Call exec_command once only. If it returns a nonzero exit code or any error, do not retry, change the command, or print the success marker; stop and report failure. Only after the exact command succeeds, reply exactly: OLLAMA_PROVIDER_AND_SANDBOX_OK
           "@
           Set-Content -LiteralPath $prompt -Value $promptText -Encoding utf8
           Write-Host "Codex diagnostic reasoning effort: $env:CODEX_MODEL_REASONING_EFFORT"
