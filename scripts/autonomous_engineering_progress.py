@@ -196,7 +196,7 @@ def codex_smoke_evidence(
         and event["item"].get("type") == "command_execution"
     ]
     agent_messages = [
-        event["item"].get("text", "")
+        str(event["item"].get("text", "")).strip()
         for event in events
         if event.get("type") == "item.completed"
         and isinstance(event.get("item"), dict)
@@ -204,30 +204,79 @@ def codex_smoke_evidence(
     ]
     turn_completed = any(event.get("type") == "turn.completed" for event in events)
     turn_failed = any(event.get("type") in {"turn.failed", "error"} for event in events)
-
-    command = completed_commands[0] if len(completed_commands) == 1 else {}
-    started_command = started_commands[0] if len(started_commands) == 1 else {}
-    command_output = str(command.get("aggregated_output", ""))
-    final_message = agent_messages[-1].strip() if agent_messages else ""
     required_fragments = required_command_fragments or []
-    command_fragments_present = all(fragment in str(command.get("command", "")) for fragment in required_fragments)
+
+    def index_by_id(items: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], bool]:
+        indexed: dict[str, dict[str, Any]] = {}
+        duplicate_or_missing_id = False
+        for item in items:
+            item_id = str(item.get("id", "")).strip()
+            if not item_id or item_id in indexed:
+                duplicate_or_missing_id = True
+                continue
+            indexed[item_id] = item
+        return indexed, duplicate_or_missing_id
+
+    started_by_id, duplicate_start_ids = index_by_id(started_commands)
+    completed_by_id, duplicate_completion_ids = index_by_id(completed_commands)
+    ids_match = (
+        not duplicate_start_ids
+        and not duplicate_completion_ids
+        and bool(started_by_id)
+        and set(started_by_id) == set(completed_by_id)
+        and len(started_commands) == len(started_by_id)
+        and len(completed_commands) == len(completed_by_id)
+    )
+
+    command_summaries: list[dict[str, Any]] = []
+    verified_probes: list[dict[str, Any]] = []
+    all_commands_succeeded = bool(completed_commands)
+    all_command_payloads_match = ids_match
+
+    for completed in completed_commands:
+        item_id = str(completed.get("id", "")).strip()
+        started = started_by_id.get(item_id, {})
+        started_text = str(started.get("command", "")).strip()
+        completed_text = str(completed.get("command", "")).strip()
+        command_text = completed_text or started_text
+        command_payload_matches = bool(command_text) and (
+            not started_text or not completed_text or started_text == completed_text
+        )
+        output_text = str(completed.get("aggregated_output", ""))
+        fragment_checks = {
+            fragment: fragment in command_text
+            for fragment in required_fragments
+        }
+        fragments_present = all(fragment_checks.values())
+        output_marker_present = bool(expected_command_output) and expected_command_output in output_text
+        succeeded = completed.get("status") == "completed" and completed.get("exit_code") == 0
+        all_commands_succeeded = all_commands_succeeded and succeeded
+        all_command_payloads_match = all_command_payloads_match and command_payload_matches
+        summary = {
+            "id": item_id,
+            "status": completed.get("status"),
+            "exit_code": completed.get("exit_code"),
+            "start_completed_match": command_payload_matches,
+            "required_fragments": fragment_checks,
+            "output_marker_present": output_marker_present,
+        }
+        command_summaries.append(summary)
+        if succeeded and command_payload_matches and fragments_present and output_marker_present:
+            verified_probes.append(completed)
+
+    final_message = agent_messages[-1] if agent_messages else ""
+    exactly_one_verified_probe = len(verified_probes) == 1
+    proof_command = verified_probes[0] if exactly_one_verified_probe else {}
     checks = {
-        "exactly_one_command_started": len(started_commands) == 1,
-        "exactly_one_command_execution": len(completed_commands) == 1,
-        "command_start_matches_completion": (
-            len(started_commands) == 1
-            and len(completed_commands) == 1
-            and started_command.get("id") == command.get("id")
-            and started_command.get("command") == command.get("command")
-        ),
-        "command_completed": command.get("status") == "completed",
-        "command_exit_code_zero": command.get("exit_code") == 0,
-        "command_output_marker_present": expected_command_output in command_output,
-        "required_command_fragments_present": command_fragments_present,
+        "command_events_are_paired": ids_match,
+        "command_payloads_match": all_command_payloads_match,
+        "all_commands_completed_successfully": all_commands_succeeded,
+        "exactly_one_verified_workspace_probe": exactly_one_verified_probe,
         "turn_completed": turn_completed,
         "turn_not_failed": not turn_failed,
         "expected_agent_message": final_message == expected_agent_message,
     }
+
     completed_turns = [event for event in events if event.get("type") == "turn.completed"]
     usage = completed_turns[-1].get("usage", {}) if completed_turns else {}
     event_types = [str(event.get("type", "")) for event in events]
@@ -241,30 +290,16 @@ def codex_smoke_evidence(
         for key in ("input_tokens", "output_tokens", "total_tokens")
         if isinstance(usage, dict) and key in usage
     }
-    command_summaries = []
-    for completed in completed_commands:
-        command_text = str(completed.get("command", ""))
-        output_text = str(completed.get("aggregated_output", ""))
-        command_summaries.append({
-            "id": str(completed.get("id", "")),
-            "status": completed.get("status"),
-            "exit_code": completed.get("exit_code"),
-            "required_fragments": {
-                fragment: fragment in command_text
-                for fragment in required_fragments
-            },
-            "output_marker_present": expected_command_output in output_text,
-        })
 
+    # Evidence deliberately contains no raw command, prompt, output, or agent text.
     return {
         "passed": all(checks.values()),
         "checks": checks,
-        "command": str(command.get("command", "")),
-        "command_status": command.get("status"),
-        "command_exit_code": command.get("exit_code"),
-        "command_output_marker": expected_command_output in command_output,
-        "required_command_fragments_present": command_fragments_present,
-        "agent_message": final_message,
+        "command_status": proof_command.get("status"),
+        "command_exit_code": proof_command.get("exit_code"),
+        "command_output_marker": exactly_one_verified_probe,
+        "required_command_fragments_present": exactly_one_verified_probe,
+        "agent_message_matches_expected": final_message == expected_agent_message,
         "turn_completed": turn_completed,
         "turn_failed": turn_failed,
         "event_count": len(events),
@@ -276,7 +311,6 @@ def codex_smoke_evidence(
         "turn_usage": turn_usage,
         "command_summaries": command_summaries,
     }
-
 
 def write_smoke_evidence(path: str, evidence: dict[str, Any]) -> None:
     destination = Path(path)
