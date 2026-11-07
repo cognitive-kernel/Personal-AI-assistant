@@ -48,7 +48,8 @@ jobs:
                   $jobsUri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)/jobs?per_page=100"
                   $jobResponse = Invoke-RestMethod -Uri $jobsUri -Headers $headers -Method Get -TimeoutSec 15
                   $sandboxJobs = @($jobResponse.jobs | Where-Object { $_.name -eq "sandbox-diagnostic" })
-                  $shouldCancel = @($sandboxJobs | Where-Object { $_.status -eq "queued" }).Count -gt 0
+                  $activeSandbox = @($sandboxJobs | Where-Object { $_.status -eq "in_progress" }).Count -gt 0
+                  $shouldCancel = -not $activeSandbox
                 } catch {
                   Write-Warning "Could not inspect jobs for older run $($run.id): $($_.Exception.Message)"
                 }
