@@ -653,22 +653,22 @@ def test_linux_installer_patch_fails_closed_when_upstream_function_changes(tmp_p
 def test_ensure_ollama_list_uses_bounded_timeout_and_preserves_installed_chat_model(monkeypatch, capsys):
     monkeypatch.setattr(installer, "_find_ollama", lambda: "ollama")
     monkeypatch.setenv("OLLAMA_MODEL", "qwen2.5:7b")
-    captured = {}
+    calls = []
 
     def fake_run(command, **kwargs):
-        captured["command"] = command
-        captured["kwargs"] = kwargs
+        calls.append((command, kwargs))
         return subprocess.CompletedProcess(
-            command, 0, "NAME ID SIZE\\nqwen2.5:7b abc 1GB\\n", ""
+            command, 0, "NAME ID SIZE\nqwen2.5:7b abc 1GB\n", ""
         )
 
     monkeypatch.setattr(installer.subprocess, "run", fake_run)
 
     installer._ensure_ollama()
 
-    assert captured["command"] == ["ollama", "list"]
-    assert captured["kwargs"]["timeout"] == 30
-    assert captured["kwargs"]["capture_output"] is True
+    assert len(calls) == 1
+    assert calls[0][0] == ["ollama", "list"]
+    assert calls[0][1]["timeout"] == 30
+    assert calls[0][1]["capture_output"] is True
     assert "بررسی اتصال به سرویس Ollama" in capsys.readouterr().out
 
 
