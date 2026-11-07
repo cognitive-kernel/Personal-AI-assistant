@@ -1036,3 +1036,27 @@ def test_codex_smoke_evidence_report_is_written_atomically(tmp_path: Path):
 
     assert json.loads(destination.read_text(encoding="utf-8")) == evidence
     assert not destination.with_suffix(".json.tmp").exists()
+
+def test_windows_sandbox_diagnostic_cancels_only_older_queued_runs_and_uses_unique_probe_paths():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml").read_text(encoding="utf-8")
+    cleanup_start = workflow.index("  cancel-stale-diagnostics:")
+    sandbox_start = workflow.index("  sandbox-diagnostic:")
+    cleanup_job = workflow[cleanup_start:sandbox_start]
+    sandbox_job = workflow[sandbox_start:]
+
+    assert "runs-on: ubuntu-latest" in cleanup_job
+    assert "actions: write" in cleanup_job
+    assert "status=queued" in cleanup_job
+    assert "run.run_number -lt" in cleanup_job
+    assert "/cancel" in cleanup_job
+    assert "cancel-in-progress: false" in cleanup_job
+    assert "needs: cancel-stale-diagnostics" in sandbox_job
+    assert "if: always()" in sandbox_job
+    assert "GITHUB_RUN_ID" in sandbox_job
+    assert "GITHUB_RUN_ATTEMPT" in sandbox_job
+    assert ".codex-sandbox-probe-$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT).tmp" in sandbox_job
+    assert "--require-command-fragment \"$probeFileName\"" in sandbox_job
+    assert ".codex-sandbox-probe.tmp" not in sandbox_job
