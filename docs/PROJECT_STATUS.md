@@ -4,18 +4,21 @@
 
 ## وضعیت فعلی اتوماسیون — PR #701
 
-- مبنای `main`: `4185c97319f5508294ba33b201064df3b59f1628`. PR [#680](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/680) و PR [#689](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/689) ادغام شده‌اند.
-- PR [#701](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/701) باز و mergeable است؛ شاخهٔ `fix/autonomous-task-preservation`. head و وضعیت آخرین CI همیشه در توضیحات خود PR ثبت می‌شوند. آخرین کد بررسی‌شده با SHA `81464adea1ae37ed745b37ecb4c2010a87d9c273` تمام CI را گذرانده است؛ تغییرات مستندسازی بعدی نیز باید روی head نهایی دوباره CI شوند.
-- دامنهٔ PR #701: حفظ وظیفهٔ دستی، recovery/resume، هم‌ترازی داشبورد و cancel با active-run gate، ذخیرهٔ وظیفه پیش از schedule gate، serialization در job اجرای Codex، و اثبات اجرای واقعی Codex در Windows sandbox با JSONL.
-- آزمون مقدماتی Windows [run 42338759730](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/42338759730) شکست خورد: هویت غیرادمین و اجرای مستقیم MXC/cmd.exe/Python موفق بودند، اما Codex هیچ پیام نهایی یا رویداد اجرای دستور تولید نکرد. strict run [42338994817](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/42338994817) در حال اجراست؛ تشخیص تکمیلی context و JSONL در [run 42339968999](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/42339968999) در صف است.
-- PR [#699](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/699) از نظر کد در PR #701 ادغام شده و پس از تعیین تکلیف strict Sandbox smoke به‌عنوان PR تکراری بسته می‌شود.
-- PR [#700](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/700) با عنوان «Fix indefinite wait during Ollama startup check» جداگانه باز است و در این تغییرات ادغام نشده است؛ پس از بسته‌شدن گیت‌های durability و sandbox باید جداگانه بررسی شود.
-- تست‌های محلی روی Windows میزبان مالک، soak/recovery/rollback و پذیرش انسانی هنوز انجام نشده‌اند. هیچ ادغامی انجام نشده و هیچ افزایش امتیاز پذیرش ثبت نمی‌شود. Issue #52 نیز همچنان نیازمند بازبینی امنیتی مستقل است.
+- مبنای `main`: `4185c97319f5508294ba33b201064df3b59f1628`. PR [#701](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/701) باز و mergeable است؛ شاخهٔ `fix/autonomous-task-preservation`. این PR هنوز ادغام نشده است.
+- دامنهٔ اصلاحات: حفظ وظیفهٔ دستی و checkpoint، بازیابی امن، هم‌ترازی داشبورد و cancel با active-run gate، اجرای persistence پیش از schedule gate، کنترل context واقعی Ollama، یکتاسازی فایل probe، و چرخهٔ PR با بازبینی و ادغام دستی مالک.
+- تشخیص واقعی Windows Runner در [run 42340997965](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/42340997965): حساب سرویس `runner-svc` غیرادمین است؛ Codex 0.167.0، Ollama 0.40.13، MXC و اجرای مستقیم `cmd.exe`/Python کار می‌کنند. اما Codex پیام نهایی عامل تولید نکرد و JSONL چهار مورد اجرای دستور ثبت کرد؛ بنابراین آزمون strict Sandbox ناموفق است.
+- ریشهٔ خطای Codex: `/api/ps` مقدار context تخصیص‌یافتهٔ مدل `gpt-oss:20b` را فقط **۸٬۱۹۲ توکن** گزارش کرد، درحالی‌که metadata مدل حداکثر **۱۳۱٬۰۷۲** را نشان می‌دهد. حداکثر مدل به معنی context فعال نیست. راهنمای رسمی اتصال Codex به Ollama حداقل ۶۴k را لازم می‌داند.
+- اسکریپت `scripts/verify_ollama_context.ps1` مدل انتخابی را روی همان endpoint محلی warm-up می‌کند و context واقعی را از `/api/ps` می‌خواند؛ اگر کمتر از ۶۴٬۰۰۰ باشد، پیش از شروع Codex fail-closed می‌شود. workflow اصلی و diagnostic هر دو این gate را اجرا می‌کنند. میزبان باید Context Length را روی حداقل 64k تنظیم و Ollama/مدل را restart/reload کند؛ Runner غیرادمین مجاز یا قادر به تغییر امن این تنظیم سرویس نیست.
+- فایل آزمایشی Sandbox در workflow اصلی و diagnostic برای هر `GITHUB_RUN_ID` و `GITHUB_RUN_ATTEMPT` یکتا است؛ JSONL باید همان نام را اثبات کند و فایل باقی‌مانده موجب شکست می‌شود.
+- **ادغام خودکار PR حذف شده است.** Issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290) ادغام خودکار را ممنوع می‌کند. کنترلر پس از CI موفق، PR را برای بازبینی مالک باز می‌گذارد و metadata آن را در `pending-autonomous-pr.json` نگه می‌دارد؛ checkpoint و وظیفه پاک نمی‌شوند. پس از ادغام دستی مالک، اجرای بعدی merge SHA دقیق را تأیید می‌کند و سه workflow تست، browser E2E و dependency audit را روی همان SHA پس از ادغام اجرا می‌کند. فقط پس از موفقیت آن‌ها task/checkpoint پاک می‌شود و صف continuous می‌تواند ادامه یابد. PR بسته‌شده بدون merge یا تغییر یافته fail-closed می‌ماند.
+- PR [#699](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/699) از نظر parser و تست‌ها در #701 ادغام شده اما تا موفقیت strict Sandbox smoke باز می‌ماند. PR [#700](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/700) مربوط به timeout بررسی startup Ollama است و جداگانه بررسی خواهد شد.
+- Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) همچنان نیازمند بازبینی امنیتی مستقل است. Issue #290 مرجع acceptance کل پروژه باقی می‌ماند. تست soak/recovery/rollback و پذیرش مالک روی میزبان مقصد نیز باز هستند.
 
 ## وضعیت باقی‌مانده و سیاست ادغام
 
-- PR #701 تا موفقیت اجرای واقعی Codex با حساب سرویس غیرادمین روی Runner دقیق، سبز بودن CI روی head نهایی، و تأیید محلی مالک نباید merge شود.
-- هیچ workflowی نباید وظیفهٔ دستی را پیش از ذخیره‌سازی رد یا جایگزین کند؛ persistence پیش از schedule gate اجرا می‌شود و concurrency فقط job اجرای Codex را serialize می‌کند.
+- PR #701 تا سبزشدن CI روی head نهایی، context عملیاتی حداقل ۶۴k، موفقیت اجرای واقعی Codex با حساب سرویس غیرادمین، و تأیید محلی مالک نباید ادغام شود.
+- کنترلر هرگز PR را خودکار ادغام نمی‌کند؛ فقط پس از ادغام دستی مالک، merge SHA دقیق و CI پس از ادغام را بررسی می‌کند.
+- وظیفهٔ دستی و checkpoint تا تأیید merge و post-merge CI حفظ می‌شوند؛ وظیفهٔ جدید نمی‌تواند وضعیت قبلی را جایگزین کند.
 - مرجع جزئیات عملیاتی: `docs/operations/CODEX_AUTONOMOUS_ENGINEERING.md`. مرجع تغییرات و شواهد: `docs/ENGINEERING_LOG.md`.
 
 ## وضعیت کنسول مهندسی خودکار — جزئیات عملکرد
