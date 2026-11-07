@@ -203,7 +203,14 @@ def codex_smoke_evidence(
         and event["item"].get("type") == "agent_message"
     ]
     turn_completed = any(event.get("type") == "turn.completed" for event in events)
-    turn_failed = any(event.get("type") in {"turn.failed", "error"} for event in events)
+    turn_failed = any(
+        event.get("type") in {"turn.failed", "error"}
+        or (
+            isinstance(event.get("item"), dict)
+            and event["item"].get("type") == "error"
+        )
+        for event in events
+    )
     required_fragments = required_command_fragments or []
 
     def index_by_id(items: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], bool]:
@@ -376,7 +383,7 @@ def run_codex(args: argparse.Namespace) -> int:
                         event.get("type") != "item.completed"
                         or (
                             isinstance(event.get("item"), dict)
-                            and (event["item"].get("type") == "command_execution" or (event.get("type") == "item.completed" and event["item"].get("type") == "agent_message"))
+                            and event["item"].get("type") in {"command_execution", "agent_message", "error"}
                         )
                     )
                 ):
