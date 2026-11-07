@@ -186,11 +186,42 @@ def codex_arguments(model: str, report: str) -> list[str]:
     return arguments
 
 
+def _diagnostic_error_text(value: Any, depth: int = 0) -> str:
+    """Read only structured error fields for classification; never persist their values."""
+    if depth > 3:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        allowed = {"error", "message", "reason", "detail", "stderr", "stdout", "aggregated_output", "code", "kind"}
+        return " ".join(
+            _diagnostic_error_text(child, depth + 1)
+            for key, child in value.items()
+            if str(key).casefold() in allowed
+        )
+    if isinstance(value, list):
+        return " ".join(_diagnostic_error_text(child, depth + 1) for child in value[:8])
+    return ""
+
+
+def _diagnostic_field_names(value: Any, depth: int = 0) -> list[str]:
+    if depth > 3 or not isinstance(value, dict):
+        return []
+    names = set(value)
+    for key in ("item", "error", "details", "cause"):
+        names.update(_diagnostic_field_names(value.get(key), depth + 1))
+    return sorted(str(name) for name in names)
+
+
 def diagnostic_failure_category(message: Any) -> str:
     """Classify an error without retaining command text or process output."""
-    text = str(message or "").casefold()
+    text = _diagnostic_error_text(message).casefold()
     if not text.strip():
         return "no_error_detail"
+    if "blocked by policy" in text or ("createprocess" in text and "rejected" in text):
+        return "process_launch_rejected"
+    if any(token in text for token in ("unsupportedoperation", "restricted-token", "split writable root")):
+        return "unsupported_sandbox_policy"
     if any(token in text for token in ("access is denied", "access denied", "permission denied", "unauthorized")):
         return "permission_denied"
     if "sandbox" in text and any(token in text for token in ("denied", "blocked", "violation", "permission")):
@@ -242,11 +273,14 @@ def codex_smoke_evidence(
         or (isinstance(event.get("item"), dict) and event["item"].get("type") == "error")
     ]
     turn_failed = bool(error_events)
-    error_categories = []
-    for event in error_events:
-        item = event.get("item") if isinstance(event.get("item"), dict) else {}
-        detail = item.get("message") or item.get("error") or event.get("message") or event.get("error")
-        error_categories.append(diagnostic_failure_category(detail))
+    error_summaries = [
+        {
+            "category": diagnostic_failure_category(event),
+            "field_names": _diagnostic_field_names(event),
+        }
+        for event in error_events
+    ]
+    error_categories = [summary["category"] for summary in error_summaries]
     required_fragments = required_command_fragments or []
 
     def index_by_id(items: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], bool]:
@@ -302,7 +336,7 @@ def codex_smoke_evidence(
             "start_completed_match": command_payload_matches,
             "required_fragments": fragment_checks,
             "output_marker_present": output_marker_present,
-            "failure_category": None if succeeded else diagnostic_failure_category(output_text),
+            "failure_category": None if succeeded else diagnostic_failure_category(completed),
         }
         command_summaries.append(summary)
         if succeeded and command_payload_matches and fragments_present and output_marker_present:
@@ -348,6 +382,7 @@ def codex_smoke_evidence(
         "turn_failed": turn_failed,
         "error_event_count": len(error_events),
         "error_categories": error_categories,
+        "error_summaries": error_summaries,
         "event_count": len(events),
         "event_types": event_types,
         "item_types": item_types,
