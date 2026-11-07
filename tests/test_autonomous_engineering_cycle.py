@@ -974,6 +974,40 @@ def test_codex_smoke_evidence_requires_a_real_successful_command_and_final_turn(
     assert all("command" not in item for item in evidence["command_summaries"])
 
 
+
+
+def test_codex_smoke_evidence_exposes_only_sanitized_command_failure_details():
+    from scripts import autonomous_engineering_progress as progress
+
+    events = [
+        {"type": "item.started", "item": {
+            "id": "command-1", "type": "command_execution",
+            "command": "python -c private-command", "status": "in_progress",
+        }},
+        {"type": "item.completed", "item": {
+            "id": "command-1", "type": "command_execution",
+            "aggregated_output": (
+                "The system cannot find the path specified: "
+                "C:\\Users\\runner-svc\\AppData\\Local\\Temp\\private.tmp"
+            ),
+            "exit_code": 1, "status": "failed",
+        }},
+        {"type": "turn.completed"},
+    ]
+
+    evidence = progress.codex_smoke_evidence(
+        events, "CODEX_WORKSPACE_SANDBOX_OK", "", ["private-command"],
+    )
+
+    failure = evidence["command_summaries"][0]
+    assert evidence["passed"] is False
+    assert failure["failure_category"] == "path_not_found"
+    assert "aggregated_output" in failure["failure_field_names"]
+    assert "<windows-path>" in failure["failure_signature"]
+    assert "runner-svc" not in failure["failure_signature"]
+    assert "private-command" not in failure["failure_signature"]
+    assert "private.tmp" not in failure["failure_signature"]
+
 def test_codex_smoke_evidence_accepts_multiple_successful_calls_with_one_verified_probe():
     from scripts import autonomous_engineering_progress as progress
 
