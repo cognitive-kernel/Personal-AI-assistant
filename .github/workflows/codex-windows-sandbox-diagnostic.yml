@@ -37,22 +37,34 @@ jobs:
             "X-GitHub-Api-Version" = "2022-11-28"
           }
           $branch = [uri]::EscapeDataString("fix/autonomous-task-preservation")
-          $uri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/workflows/codex-windows-sandbox-diagnostic.yml/runs?branch=$branch&status=queued&per_page=100"
+          $uri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/workflows/codex-windows-sandbox-diagnostic.yml/runs?branch=$branch&per_page=100"
           try {
             $response = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get -TimeoutSec 15
             foreach ($run in @($response.workflow_runs)) {
-              if ([int64]$run.run_number -lt [int64]$env:CURRENT_RUN_NUMBER) {
+              if ([int64]$run.run_number -ge [int64]$env:CURRENT_RUN_NUMBER) { continue }
+              $shouldCancel = $run.status -eq "queued"
+              if ($run.status -eq "in_progress") {
+                try {
+                  $jobsUri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)/jobs?per_page=100"
+                  $jobResponse = Invoke-RestMethod -Uri $jobsUri -Headers $headers -Method Get -TimeoutSec 15
+                  $sandboxJobs = @($jobResponse.jobs | Where-Object { $_.name -eq "sandbox-diagnostic" })
+                  $shouldCancel = @($sandboxJobs | Where-Object { $_.status -eq "queued" }).Count -gt 0
+                } catch {
+                  Write-Warning "Could not inspect jobs for older run $($run.id): $($_.Exception.Message)"
+                }
+              }
+              if ($shouldCancel) {
                 $cancelUri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)/cancel"
                 try {
                   Invoke-RestMethod -Uri $cancelUri -Headers $headers -Method Post -TimeoutSec 15 | Out-Null
-                  Write-Host "Cancelled stale queued diagnostic run $($run.id) (run number $($run.run_number))."
+                  Write-Host "Cancelled stale diagnostic run $($run.id) (run number $($run.run_number), status $($run.status))."
                 } catch {
-                  Write-Warning "Could not cancel stale queued run $($run.id): $($_.Exception.Message)"
+                  Write-Warning "Could not cancel stale run $($run.id): $($_.Exception.Message)"
                 }
               }
             }
           } catch {
-            Write-Warning "Could not list queued diagnostics; continuing without cleanup: $($_.Exception.Message)"
+            Write-Warning "Could not list diagnostic runs; continuing without cleanup: $($_.Exception.Message)"
           }
 
   sandbox-diagnostic:
