@@ -126,6 +126,12 @@ jobs:
       AUTONOMOUS_ENGINEERING_MODEL: ${{ vars.AUTONOMOUS_ENGINEERING_MODEL || 'gpt-oss:20b' }}
       AUTONOMOUS_ENGINEERING_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE || 'continuous' }}
     steps:
+      - name: Check out trusted main branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          persist-credentials: false
+
       - name: Persist manual task before any runner prerequisite checks
         if: github.event_name == 'workflow_dispatch' && inputs.manual_task != ''
         env:
@@ -179,12 +185,6 @@ jobs:
           $ErrorActionPreference = "Stop"
           Write-Host "Checkpoint recovery is performed by the run-scoped Python controller after repository ownership is acquired."
           Write-Host "No workflow step may stop a watcher or edit checkpoint state through shared global filenames."
-
-      - name: Check out trusted main branch
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: main
-          persist-credentials: false
 
       - name: Record immutable base commit
         id: base
