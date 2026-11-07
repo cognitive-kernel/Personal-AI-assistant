@@ -213,6 +213,21 @@ def _diagnostic_field_names(value: Any, depth: int = 0) -> list[str]:
     return sorted(str(name) for name in names)
 
 
+def _sanitize_error_signature(value: Any) -> str:
+    """Retain a short, path- and quote-redacted error signature, never raw command/output."""
+    text = _diagnostic_error_text(value)
+    if not text:
+        return ""
+    text = re.sub(r"(?i)\\\\[^\\\\/\\s]+\\\\[^\\\\/\\s]+(?:\\\\[^\\\\/\\s]+)*", "<network-path>", text)
+    text = re.sub(r"(?i)\\b[A-Z]:\\\\[^\\s\"'<>]+", "<windows-path>", text)
+    text = re.sub(r'"[^"\\r\\n]{1,240}"', '"<quoted>"', text)
+    text = re.sub(r"'[^'\\r\\n]{1,240}'", "'<quoted>'", text)
+    text = re.sub(r"(?i)(bearer\\s+)[A-Za-z0-9._~+/=-]+", r"\\1<redacted>", text)
+    text = re.sub(r"(?i)\\b(?:api[_-]?key|token|password)(\\s*[:=]\\s*)[^\\s,;]+", r"\\1<redacted>", text)
+    text = re.sub(r"\\b[0-9a-fA-F]{16,}\\b", "<id>", text)
+    return re.sub(r"\\s+", " ", text).strip()[:240]
+
+
 def diagnostic_failure_category(message: Any) -> str:
     """Classify an error without retaining command text or process output."""
     text = _diagnostic_error_text(message).casefold()
@@ -277,6 +292,7 @@ def codex_smoke_evidence(
         {
             "category": diagnostic_failure_category(event),
             "field_names": _diagnostic_field_names(event),
+            "signature": _sanitize_error_signature(event),
         }
         for event in error_events
     ]
