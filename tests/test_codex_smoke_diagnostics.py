@@ -169,6 +169,11 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert 'PARAMETER\\s+num_ctx' in context_script
     assert 'AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH=$selectedContext' in context_script
     assert 'AUTONOMOUS_ENGINEERING_MODEL=$codexModel' in context_script
+    assert '$hardwareSafeContext = Get-AutomaticContext -Maximum $maximum -Info $modelInfo' in context_script
+    assert '[Math]::Min($requestedContext, [Math]::Min($maximum, $hardwareSafeContext))' in context_script
+    assert 'manual-clamped-to-hardware' in context_script
+    assert '$selectedContext -gt $hardwareSafeContext' in context_script
+    assert 'Re-run context selection before Codex starts' in context_script
     assert '-VerifyOnly' in diagnostic
     assert '-VerifyOnly' in autonomous
     assert 'Verify persistent Ollama context after Codex smoke' in diagnostic
