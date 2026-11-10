@@ -378,13 +378,17 @@ def chat(
     model_details_meta = model_details_payload.get("details", {})
     architecture = model_details_meta.get("family") if isinstance(model_details_meta, dict) else None
     maximum_context = _model_context_metadata(model_info if isinstance(model_info, dict) else {}, architecture)
-    limits = runtime_limits({
+    runtime_settings = {
         "ollama_num_ctx": settings.get(f"{prefix}_ollama_num_ctx", settings.get("ollama_num_ctx", 4096)),
         "ollama_num_thread": settings.get(f"{prefix}_ollama_num_thread", settings.get("ollama_num_thread", 0)),
         "cpu_resource_limit_percent": settings.get("cpu_resource_limit_percent", 90),
         "ram_budget_max_gb": settings.get("ram_budget_max_gb", 25),
         "ram_safety_reserve_gb": settings.get("ram_safety_reserve_gb", 4),
-    }, hardware, maximum_context_tokens=maximum_context)
+    }
+    if maximum_context is None:
+        limits = runtime_limits(runtime_settings, hardware)
+    else:
+        limits = runtime_limits(runtime_settings, hardware, maximum_context_tokens=maximum_context)
     keep_alive = model_keep_alive(purpose, hardware, settings)
     messages = []
     if isinstance(system_prompt, str) and system_prompt.strip():
