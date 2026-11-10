@@ -159,6 +159,7 @@ def test_researched_path_queues_next_lesson_only_after_previous_job_succeeds(
             for item in sources
         ],
         model="gpt-oss:20b",
+        model_selection={"status": "configured_fallback", "selected_model": "gpt-oss:20b"},
     )
 
     first = learning.start_researched_path_learning(path_id)
@@ -201,6 +202,7 @@ def test_researched_path_does_not_advance_after_failed_lesson(learning_store, mo
             for item in [_source(1), _source(2), _source(3)]
         ],
         model="gpt-oss:20b",
+        model_selection={"status": "configured_fallback", "selected_model": "gpt-oss:20b"},
     )
     first = learning.start_researched_path_learning(path_id)
     first_topic_id = learning.get_learning_path(path_id)["topics"][0]["id"]
