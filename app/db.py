@@ -76,6 +76,16 @@ def init_databases() -> None:
                     "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
                     (json.dumps(existing_settings["ollama_model"]), "chat_ollama_model"),
                 )
+            # Move only the former built-in learning default. Preserve any custom
+            # model choice and honor an explicit environment override.
+            if (
+                existing_settings.get("learning_ollama_model") == "qwen3:8b"
+                and os.getenv("LEARNING_OLLAMA_MODEL") is None
+            ):
+                conn.execute(
+                    "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
+                    (json.dumps("gpt-oss:20b"), "learning_ollama_model"),
+                )
 
 
 def get_settings() -> dict[str, Any]:
