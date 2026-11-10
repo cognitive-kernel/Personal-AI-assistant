@@ -67,14 +67,14 @@ def test_codex_smoke_evidence_reports_each_command_without_logging_raw_commands(
 
 
 
-def test_codex_model_catalog_registers_the_64k_ollama_alias():
-    model = "gpt-oss:20b-codex-64k"
-    path = progress.write_codex_model_catalog(model)
+def test_codex_model_catalog_registers_the_selected_ollama_context():
+    model = "gpt-oss:20b-codex-ctx32768"
+    path = progress.write_codex_model_catalog(model, context_window=4096)
     catalog = __import__("json").loads(path.read_text(encoding="utf-8"))
     assert len(catalog["models"]) == 1
     entry = catalog["models"][0]
     assert entry["slug"] == model
-    assert entry["context_window"] == 64000
+    assert entry["context_window"] == 4096
     assert entry["shell_type"] == "default"
     assert entry["input_modalities"] == ["text"]
     assert [level["effort"] for level in entry["supported_reasoning_levels"]] == [
@@ -125,13 +125,16 @@ def test_codex_diagnostic_uses_bounded_reasoning_effort_without_changing_default
     from scripts import autonomous_engineering_progress as progress
 
     monkeypatch.setenv("CODEX_MODEL_REASONING_EFFORT", "low")
-    arguments = progress.codex_arguments("gpt-oss:20b-codex-64k", "report.md")
+    arguments = progress.codex_arguments("gpt-oss:20b-codex-ctx32768", "report.md")
     overrides = [
         arguments[i + 1] for i, value in enumerate(arguments[:-1]) if value == "-c"
     ]
     assert 'model_reasoning_effort="low"' in overrides
     assert "sandbox_workspace_write.exclude_slash_tmp=true" in overrides
     assert any(value.startswith("model_catalog_json=") for value in overrides)
+    assert "model_providers.ollama.stream_idle_timeout_ms=900000" in overrides
+    assert "model_providers.ollama.stream_max_retries=10" in overrides
+    assert "model_providers.ollama.request_max_retries=4" in overrides
 
     monkeypatch.delenv("CODEX_MODEL_REASONING_EFFORT")
     default_arguments = progress.codex_arguments("gpt-oss:20b-codex-64k", "report.md")
@@ -143,6 +146,9 @@ def test_codex_diagnostic_uses_bounded_reasoning_effort_without_changing_default
     assert not any(value.startswith("model_reasoning_effort=") for value in default_overrides)
     assert "sandbox_workspace_write.exclude_slash_tmp=true" in default_overrides
     assert any(value.startswith("model_catalog_json=") for value in default_overrides)
+    assert "model_providers.ollama.stream_idle_timeout_ms=900000" in default_overrides
+    assert "model_providers.ollama.stream_max_retries=10" in default_overrides
+    assert "model_providers.ollama.request_max_retries=4" in default_overrides
 
     monkeypatch.setenv("CODEX_MODEL_REASONING_EFFORT", "unbounded")
     with pytest.raises(ValueError, match="CODEX_MODEL_REASONING_EFFORT"):
@@ -159,8 +165,9 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
 
     assert 'model = $codexModel' in context_script
     assert 'from = $baseModel' in context_script
-    assert 'parameters = @{ num_ctx = $MinimumContextLength }' in context_script
+    assert 'parameters = @{ num_ctx = $selectedContext }' in context_script
     assert 'PARAMETER\\s+num_ctx' in context_script
+    assert 'AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH=$selectedContext' in context_script
     assert 'AUTONOMOUS_ENGINEERING_MODEL=$codexModel' in context_script
     assert '-VerifyOnly' in diagnostic
     assert '-VerifyOnly' in autonomous
@@ -197,10 +204,29 @@ def test_context_preflight_reuses_existing_codex_alias_without_duplicate_suffix(
         Path(__file__).resolve().parents[1] / "scripts" / "verify_ollama_context.ps1"
     ).read_text(encoding="utf-8")
 
-    assert '$codexSuffix = "-codex-64k"' in script
-    assert '$Model.EndsWith($codexSuffix, [System.StringComparison]::OrdinalIgnoreCase)' in script
-    assert '$Model.Substring(0, $Model.Length - $codexSuffix.Length)' in script
-    assert '$codexModel = "$Model$codexSuffix"' in script
+    assert '$codexModel = "$baseModel-codex-ctx$selectedContext"' in script
     assert 'from = $baseModel' in script
-    assert '$existingNumCtx.Success' in script
+    assert '$existingContext.Success' in script
 
+
+
+
+def test_codex_model_catalog_uses_selected_context_from_environment(monkeypatch):
+    import json
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "32768")
+    path = progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx32768")
+    catalog = json.loads(path.read_text(encoding="utf-8"))
+    assert catalog["models"][0]["context_window"] == 32768
+
+
+def test_settings_expose_visible_installed_model_selectors_and_manual_context_inputs():
+    from pathlib import Path
+
+    html = (Path(__file__).resolve().parents[1] / "app" / "static" / "index.html").read_text(encoding="utf-8")
+    for profile in ("chat", "learning", "programming"):
+        assert f'id="{profile}-model-installed"' in html
+        assert f'id="{profile}-model"' in html
+        assert f'id="{profile}-ctx" type="number"' in html
+        assert f'id="{profile}-model-installed"' in html
+    assert 'const result=await api("/api/models")' in html
+    assert 'installedSelect?.addEventListener("change"' in html

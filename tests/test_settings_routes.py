@@ -203,22 +203,22 @@ def test_settings_api_rejects_context_when_model_limit_cannot_be_verified(settin
     assert db.get_settings()["chat_ollama_num_ctx"] == before["chat_ollama_num_ctx"]
 
 
-def test_settings_api_rejects_model_change_that_invalidates_saved_context(settings_client, monkeypatch):
+def test_settings_api_auto_reduces_context_when_new_model_has_a_smaller_limit(settings_client, monkeypatch):
     db.update_settings({"chat_ollama_model": "existing-model:7b", "chat_ollama_num_ctx": 2048})
-    before = db.get_settings()
     monkeypatch.setattr(ollama, "model_details", lambda name, context_tokens=None: {
         "name": name,
         "maximum_context_tokens": 1024 if name == "small-model:1b" else 32768,
+        "recommended_context_tokens": 1024,
     })
     response = settings_client.patch(
         "/api/settings",
         json={"values": {"chat_ollama_model": "small-model:1b"}},
     )
-    assert response.status_code == 422
-    assert "1024" in response.json()["detail"]
+    assert response.status_code == 200
     after = db.get_settings()
-    assert after["chat_ollama_model"] == before["chat_ollama_model"]
-
+    assert after["chat_ollama_model"] == "small-model:1b"
+    assert after["chat_ollama_num_ctx"] == 1024
+    assert after["ollama_num_ctx"] == 1024
 
 def test_model_details_endpoint_exposes_context_and_selected_context_estimate(settings_client, monkeypatch):
     captured = {}
@@ -253,3 +253,35 @@ def test_hardware_diagnostics_endpoint_returns_cpu_ram_gpu_and_ollama_state(sett
     assert response.status_code == 200
     assert response.json()["hardware"]["gpu_devices"][0]["memory_free_mb"] is None
     assert response.json()["ollama_running_models"][0]["processor"] == "CPU"
+
+
+
+def test_settings_api_auto_selects_context_when_model_changes_without_manual_value(settings_client, monkeypatch):
+    monkeypatch.setattr(ollama, "model_details", lambda name, context_tokens=None: {
+        "name": name,
+        "maximum_context_tokens": 65536,
+        "recommended_context_tokens": 32768,
+    })
+    response = settings_client.patch(
+        "/api/settings",
+        json={"values": {"chat_ollama_model": "local:8b"}},
+    )
+    assert response.status_code == 200
+    assert response.json()["chat_ollama_model"] == "local:8b"
+    assert response.json()["chat_ollama_num_ctx"] == 32768
+    assert response.json()["ollama_num_ctx"] == 32768
+
+
+def test_settings_api_preserves_manual_model_selection_when_context_is_unchanged(settings_client, monkeypatch):
+    before = db.get_settings()
+    monkeypatch.setattr(ollama, "model_details", lambda name, context_tokens=None: {
+        "name": name, "maximum_context_tokens": None,
+    })
+    response = settings_client.patch(
+        "/api/settings",
+        json={"values": {"chat_ollama_model": "manual-model:latest"}},
+    )
+    assert response.status_code == 200
+    after = db.get_settings()
+    assert after["chat_ollama_model"] == "manual-model:latest"
+    assert after["chat_ollama_num_ctx"] == before["chat_ollama_num_ctx"]

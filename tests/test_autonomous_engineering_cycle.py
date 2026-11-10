@@ -879,8 +879,15 @@ def test_codex_arguments_pin_ollama_and_selected_windows_sandbox(monkeypatch):
     ]
     assert "sandbox_workspace_write.exclude_slash_tmp=true" in overrides
     assert any(value.startswith("model_catalog_json=") for value in overrides)
-    assert arguments[9:12] == ["--oss", "--local-provider", "ollama"]
-    assert arguments[12:14] == ["--sandbox", "workspace-write"]
+    assert arguments[arguments.index("--oss"):arguments.index("--oss") + 3] == [
+        "--oss", "--local-provider", "ollama",
+    ]
+    assert arguments[arguments.index("--sandbox"):arguments.index("--sandbox") + 2] == [
+        "--sandbox", "workspace-write",
+    ]
+    assert "model_providers.ollama.stream_idle_timeout_ms=900000" in overrides
+    assert "model_providers.ollama.stream_max_retries=10" in overrides
+    assert "model_providers.ollama.request_max_retries=4" in overrides
     assert arguments[arguments.index("--model") + 1] == "gpt-oss:20b"
 
 

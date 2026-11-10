@@ -2165,6 +2165,16 @@ def test_browser_settings_form_persists_values_and_surfaces_api_failure():
             timeout=10000,
         )
         assert page.locator("#ollama-model-options option").count() == 1
+        for select_id in ("chat-model-installed", "learning-model-installed", "programming-model-installed"):
+            assert page.locator(f"#{select_id} option[value='ci-model']").count() == 1
+        page.locator("#chat-model-installed").select_option("ci-model")
+        assert page.locator("#chat-model").input_value() == "ci-model"
+        context_input = page.locator("#chat-ctx")
+        assert context_input.get_attribute("type") == "number"
+        original_context = context_input.input_value()
+        context_input.fill("3072")
+        assert context_input.input_value() == "3072"
+        context_input.fill(original_context)
         assert page.locator("#programming-context").evaluate("node => node.maxLength") == 12000
         invalid_fields = page.locator("#settings-form :invalid").evaluate_all(
             "nodes => nodes.map(node => ({id: node.id, value: node.value, type: node.type, min: node.min, max: node.max}))"

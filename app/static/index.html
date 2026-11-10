@@ -233,11 +233,11 @@
 <div id="self-improvement-list"></div>
 </section>
 <section id="settings-section"><h2>تنظیمات محلی</h2><p class="muted">فهرست مدل‌ها از Ollama محلی خوانده می‌شود. نام مدل قابل تایپ دستی است، اما برای اعتبارسنجی سقف context باید metadata همان مدل از Ollama قابل دریافت باشد؛ مدل نصب‌نشده یا فاقد metadata برای ذخیره context تأیید نمی‌شود. تنظیم هر بخش مستقل ذخیره می‌شود. مدل، context، thread و timeout در درخواست بعدی استفاده می‌شوند؛ تغییر تعداد کارهای هم‌زمان پس از راه‌اندازی مجدد برنامه اعمال می‌شود.</p><datalist id="ollama-model-options"></datalist><button id="refresh-ollama-models" type="button">به‌روزرسانی فهرست مدل‌های نصب‌شده</button><form id="settings-form">
-<fieldset><legend>گفتگو</legend><label>نام مدل Ollama برای چت<input id="chat-model" list="ollama-model-options" required autocomplete="off"></label><label>تعداد توکن زمینه<input id="chat-ctx" type="number" min="512" max="1048576" step="1" required></label><p id="chat-ctx-hint" class="muted" aria-live="polite">در حال بررسی سقف مدل…</p><label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="chat-threads" type="number" min="0" max="64" required></label><label>مهلت درخواست (ثانیه)<input id="chat-timeout" type="number" min="5" max="600" required></label><label>حداکثر کار هم‌زمان گفتگو<input id="chat-concurrency" type="number" min="1" max="8" required></label><label>حداکثر طول پیام گفتگو (کاراکتر)<input id="chat-source-limit" type="number" min="1000" max="12000" step="1000" required></label><label>مدت نگه‌داشتن مدل در RAM<select id="chat-keep-alive"><option value="auto">خودکار بر اساس RAM آزاد</option><option value="0">تخلیه پس از پاسخ</option><option value="1m">۱ دقیقه</option><option value="5m">۵ دقیقه</option><option value="10m">۱۰ دقیقه</option><option value="30m">۳۰ دقیقه</option></select></label></fieldset>
-<fieldset><legend>یادگیری و آموزش</legend><label>نام مدل Ollama برای یادگیری<input id="learning-model" list="ollama-model-options" required autocomplete="off"></label><label>تعداد توکن زمینه<input id="learning-ctx" type="number" min="512" max="1048576" step="1" required></label><p id="learning-ctx-hint" class="muted" aria-live="polite">در حال بررسی سقف مدل…</p><label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="learning-threads" type="number" min="0" max="64" required></label><label>مهلت درخواست (ثانیه)<input id="learning-timeout" type="number" min="5" max="600" required></label><label>حداکثر یادگیری هم‌زمان<input id="learning-concurrency" type="number" min="1" max="8" required></label><label>حداکثر طول متن منبع یادگیری (کاراکتر)<input id="learning-source-limit" type="number" min="1000" max="100000" step="1000" required></label><label>مدت نگه‌داشتن مدل در RAM<select id="learning-keep-alive"><option value="0">تخلیه پس از پاسخ (پیش‌فرض)</option><option value="auto">خودکار بر اساس RAM آزاد</option><option value="1m">۱ دقیقه</option><option value="5m">۵ دقیقه</option><option value="10m">۱۰ دقیقه</option><option value="30m">۳۰ دقیقه</option></select></label></fieldset>
+<fieldset><legend>گفتگو</legend><label>مدل‌های نصب‌شده برای چت<select id="chat-model-installed"><option value="">انتخاب مدل نصب‌شده</option></select></label><label>نام مدل Ollama برای چت (یا ورود دستی)<input id="chat-model" list="ollama-model-options" required autocomplete="off"></label><label>تعداد توکن زمینه<input id="chat-ctx" type="number" min="512" max="1048576" step="1" required></label><p id="chat-ctx-hint" class="muted" aria-live="polite">در حال بررسی سقف مدل…</p><label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="chat-threads" type="number" min="0" max="64" required></label><label>مهلت درخواست (ثانیه)<input id="chat-timeout" type="number" min="5" max="600" required></label><label>حداکثر کار هم‌زمان گفتگو<input id="chat-concurrency" type="number" min="1" max="8" required></label><label>حداکثر طول پیام گفتگو (کاراکتر)<input id="chat-source-limit" type="number" min="1000" max="12000" step="1000" required></label><label>مدت نگه‌داشتن مدل در RAM<select id="chat-keep-alive"><option value="auto">خودکار بر اساس RAM آزاد</option><option value="0">تخلیه پس از پاسخ</option><option value="1m">۱ دقیقه</option><option value="5m">۵ دقیقه</option><option value="10m">۱۰ دقیقه</option><option value="30m">۳۰ دقیقه</option></select></label></fieldset>
+<fieldset><legend>یادگیری و آموزش</legend><label>مدل‌های نصب‌شده برای یادگیری<select id="learning-model-installed"><option value="">انتخاب مدل نصب‌شده</option></select></label><label>نام مدل Ollama برای یادگیری (یا ورود دستی)<input id="learning-model" list="ollama-model-options" required autocomplete="off"></label><label>تعداد توکن زمینه<input id="learning-ctx" type="number" min="512" max="1048576" step="1" required></label><p id="learning-ctx-hint" class="muted" aria-live="polite">در حال بررسی سقف مدل…</p><label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="learning-threads" type="number" min="0" max="64" required></label><label>مهلت درخواست (ثانیه)<input id="learning-timeout" type="number" min="5" max="600" required></label><label>حداکثر یادگیری هم‌زمان<input id="learning-concurrency" type="number" min="1" max="8" required></label><label>حداکثر طول متن منبع یادگیری (کاراکتر)<input id="learning-source-limit" type="number" min="1000" max="100000" step="1000" required></label><label>مدت نگه‌داشتن مدل در RAM<select id="learning-keep-alive"><option value="0">تخلیه پس از پاسخ (پیش‌فرض)</option><option value="auto">خودکار بر اساس RAM آزاد</option><option value="1m">۱ دقیقه</option><option value="5m">۵ دقیقه</option><option value="10m">۱۰ دقیقه</option><option value="30m">۳۰ دقیقه</option></select></label></fieldset>
 <fieldset><legend>ارزش و هزینهٔ یادگیری</legend><label>پروفایل هزینه/کیفیت مدل‌ها (JSON)<textarea id="learning-cost-profiles" aria-label="پروفایل هزینه و کیفیت مدل‌ها به قالب JSON" rows="6" maxlength="12000" spellcheck="false" placeholder='{"model-name":{"provider":"local","input_cost_microusd_per_1k_tokens":0,"output_cost_microusd_per_1k_tokens":0,"quality_score":0.8,"energy_wh_per_1k_tokens":null}}'></textarea></label><label>حداقل کیفیت مدل (۰ تا ۱)<input id="learning-min-quality" type="number" min="0" max="1" step="0.05" required></label><label>سقف هزینهٔ تخمینی هر وظیفه (میکرودلار؛ خالی = بدون سقف)<input id="learning-task-budget" type="number" min="0" step="1"></label><p class="muted">هزینه و انرژی فقط با نرخ‌های صریح شما برآورد می‌شوند؛ نرخ نامشخص هرگز صفر فرض نمی‌شود. این سقف برآورد هزینه است و تضمین سقف سخت هزینهٔ واقعی نیست. quality_score یک تنظیم مدیر است و تضمین کیفیت مدل نیست. برای مدل محلی، هزینهٔ پولی و انرژی را فقط در صورت داشتن برآورد واقعی وارد کنید.</p></fieldset>
 <fieldset><legend>بازبین‌های هوش مصنوعی بیرونی</legend><label>پیکربندی providerها (JSON؛ کلید API در تنظیمات ذخیره نشود)<textarea id="learning-external-review-providers" aria-label="پیکربندی providerهای بازبینی هوش مصنوعی بیرونی" rows="6" maxlength="12000" spellcheck="false" placeholder='[{"provider_id":"provider_a","enabled":true,"data_sharing_approved":true,"base_url":"https://api.example.com/v1","host_allowlist":["api.example.com"],"model":"model-name","model_revision":"pinned-model-version","api_key_env":"LEARNING_REVIEW_API_KEY_PROVIDER_A"}]'></textarea></label><p class="muted">فعال‌سازی این بخش یعنی ارسال متن نامزد دانش و گزیده‌های منبع به provider انتخاب‌شده. هر provider باید enabled و data_sharing_approved داشته باشد، میزبان HTTPS در allowlist باشد و پاسخ system_fingerprint بدهد؛ کلید فقط از متغیر محیطی با پیشوند LEARNING_REVIEW_API_KEY_ خوانده می‌شود. بدون اثر انگشت مدل، خروجی inconclusive است.</p></fieldset>
-<fieldset><legend>برنامه‌نویسی و تست</legend><label>نام مدل Ollama برای برنامه‌نویسی<input id="programming-model" list="ollama-model-options" required autocomplete="off"></label><label>تعداد توکن زمینه<input id="programming-ctx" type="number" min="512" max="1048576" step="1" required></label><p id="programming-ctx-hint" class="muted" aria-live="polite">در حال بررسی سقف مدل…</p><label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="programming-threads" type="number" min="0" max="64" required></label><label>مهلت درخواست (ثانیه)<input id="programming-timeout" type="number" min="5" max="600" required></label><label>حداکثر کار هم‌زمان برنامه‌نویسی<input id="programming-concurrency" type="number" min="1" max="8" required></label><label>حداکثر طول متن منبع برنامه‌نویسی (کاراکتر)<input id="programming-source-limit" type="number" min="1000" max="65536" step="1000" required></label><label>مدت نگه‌داشتن مدل در RAM<select id="programming-keep-alive"><option value="0">تخلیه پس از پاسخ (پیش‌فرض)</option><option value="auto">خودکار بر اساس RAM آزاد</option><option value="1m">۱ دقیقه</option><option value="5m">۵ دقیقه</option><option value="10m">۱۰ دقیقه</option><option value="30m">۳۰ دقیقه</option></select></label></fieldset>
+<fieldset><legend>برنامه‌نویسی و تست</legend><label>مدل‌های نصب‌شده برای برنامه‌نویسی<select id="programming-model-installed"><option value="">انتخاب مدل نصب‌شده</option></select></label><label>نام مدل Ollama برای برنامه‌نویسی (یا ورود دستی)<input id="programming-model" list="ollama-model-options" required autocomplete="off"></label><label>تعداد توکن زمینه<input id="programming-ctx" type="number" min="512" max="1048576" step="1" required></label><p id="programming-ctx-hint" class="muted" aria-live="polite">در حال بررسی سقف مدل…</p><label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="programming-threads" type="number" min="0" max="64" required></label><label>مهلت درخواست (ثانیه)<input id="programming-timeout" type="number" min="5" max="600" required></label><label>حداکثر کار هم‌زمان برنامه‌نویسی<input id="programming-concurrency" type="number" min="1" max="8" required></label><label>حداکثر طول متن منبع برنامه‌نویسی (کاراکتر)<input id="programming-source-limit" type="number" min="1000" max="65536" step="1000" required></label><label>مدت نگه‌داشتن مدل در RAM<select id="programming-keep-alive"><option value="0">تخلیه پس از پاسخ (پیش‌فرض)</option><option value="auto">خودکار بر اساس RAM آزاد</option><option value="1m">۱ دقیقه</option><option value="5m">۵ دقیقه</option><option value="10m">۱۰ دقیقه</option><option value="30m">۳۰ دقیقه</option></select></label></fieldset>
 <fieldset><legend>بازبینی مستقل دانش factual</legend><label>نام مدل مستقل Ollama (خالی = غیرفعال)<input id="factual-review-model" list="ollama-model-options" autocomplete="off"></label><p>این مدل باید نصب شده و digest آن با همهٔ مدل‌های تولید متفاوت باشد. بازبینی با سقف ۴۵ ثانیه و حداکثر ۵۰۰ توکن خروجی اجرا می‌شود.</p></fieldset>
 <fieldset><legend>سقف مستقل استفاده از منابع سخت‌افزاری</legend><label><input id="gpu-enabled" type="checkbox"> فعال‌سازی استفاده از GPU</label><p class="muted">GPU به‌صورت پیش‌فرض غیرفعال است. در حالت غیرفعال، به Ollama درخواست استفاده از CPU به‌جای GPU داده می‌شود. این گزینه به‌تنهایی سخت‌افزار را خاموش نمی‌کند.</p><p class="muted">هر سقف مستقل است و از ۱۰ تا ۹۵ درصد قابل تنظیم است. CPU علاوه بر پایش، تعداد thread را هم محدود می‌کند. RAM و GPU هنگام شروع درخواست پایش می‌شوند؛ این برنامه نمی‌تواند مصرف پردازش خارجی Ollama را به‌صورت سخت در سطح سیستم‌عامل محدود کند. تشخیص GPU چندسازنده‌ای است و از ابزارهای درایور و شمارنده‌های عمومی سیستم‌عامل استفاده می‌کند؛ اگر فقط نام کارت شناسایی شود اما معیار مصرف/حافظه در دسترس نباشد، آن معیار «نامشخص» نمایش داده می‌شود. وضعیت واقعی استفادهٔ Ollama از GPU از اندازهٔ حافظهٔ VRAM تخصیص‌یافته در /api/ps گزارش می‌شود.</p><label>حداکثر استفاده از CPU (%)<input id="cpu-resource-limit" type="number" min="10" max="95" step="1" required></label><label>حداکثر استفاده از RAM (%)<input id="ram-resource-limit" type="number" min="10" max="95" step="1" required></label><label>حداکثر استفاده از GPU و حافظهٔ گرافیکی (%)<input id="gpu-resource-limit" type="number" min="10" max="95" step="1" required></label><label>حداکثر سقف RAM برای مدل و حاشیهٔ امن (گیگابایت، حداکثر ۲۵)<input id="ram-budget-max" type="number" min="1" max="25" step="1" required></label><label>حاشیهٔ امن RAM برای سیستم‌عامل (گیگابایت)<input id="ram-safety-reserve" type="number" min="1" max="8" step="1" required></label><p class="muted">بودجهٔ مؤثر از RAM واقعاً در دسترس پس از کسر حاشیهٔ امن محاسبه می‌شود و از سقف بالا بیشتر نمی‌شود؛ این مقدار رزرو اجباری RAM یا محدودیت سخت سیستم‌عامل نیست.</p></fieldset><section class="panel"><h3>تحلیل زندهٔ سخت‌افزار و مدل انتخابی</h3><p id="hardware-diagnostics" class="muted" aria-live="polite">در حال جمع‌آوری اطلاعات سخت‌افزار…</p><p class="muted">حافظه اشتراکی GPU بخشی از RAM سیستم است و ظرفیت مستقل از RAM محسوب نمی‌شود؛ مقادیر اختصاصی و اشتراکی جداگانه نمایش داده می‌شوند.</p></section><button type="submit">ذخیره تنظیمات</button></form><pre id="settings-output" role="status" aria-live="polite"></pre></section>
 <script>
@@ -1371,15 +1371,35 @@ async function refreshOllamaModels() {
  const list=el("ollama-model-options");
  if(!list) return;
  list.replaceChildren();
+ const installedSelects = [
+  ["chat-model-installed","chat-model"],
+  ["learning-model-installed","learning-model"],
+  ["programming-model-installed","programming-model"]
+ ];
+ for(const [selectId] of installedSelects) {
+  const select=el(selectId);
+  if(select) select.replaceChildren(new Option("انتخاب مدل نصب‌شده",""));
+ }
  try {
   const result=await api("/api/models");
-  for(const model of result.models||[]) {
-   if(!model.name) continue;
-   const option=document.createElement("option");
-   option.value=model.name;
-   option.label=model.size ? model.name+" — "+Math.round(model.size/1073741824*10)/10+" GiB" : model.name;
-   list.append(option);
+  const models=Array.isArray(result.models)?result.models:[];
+  for(const model of models) {
+   if(!model || typeof model.name!=="string" || !model.name.trim()) continue;
+   const label=model.size ? model.name+" — "+Math.round(model.size/1073741824*10)/10+" GiB" : model.name;
+   const datalistOption=document.createElement("option");
+   datalistOption.value=model.name;
+   datalistOption.label=label;
+   list.append(datalistOption);
+   for(const [selectId] of installedSelects) {
+    const select=el(selectId);
+    if(select) select.add(new Option(label,model.name));
+   }
   }
+  for(const [selectId,inputId] of installedSelects) {
+   const select=el(selectId), input=el(inputId);
+   if(select && input && models.some(model=>model && model.name===input.value.trim())) select.value=input.value.trim();
+  }
+  el("settings-output").textContent="مدل‌های نصب‌شدهٔ Ollama: "+models.filter(model=>model&&typeof model.name==="string").length;
  } catch(error) {
   el("settings-output").textContent="فهرست مدل‌های نصب‌شده دریافت نشد؛ نام مدل را می‌توانید دستی وارد کنید. "+error.message;
  }
@@ -1392,17 +1412,22 @@ const modelContextProfiles = [
  ["learning","learning-model","learning-ctx","learning-ctx-hint"],
  ["programming","programming-model","programming-ctx","programming-ctx-hint"]
 ];
-async function refreshModelContextHint(profile) {
+async function refreshModelContextHint(profile, applyRecommendation=false) {
  const [,modelId,contextId,hintId]=profile;
  const model=el(modelId).value.trim();
- const context=Number(el(contextId).value);
+ let context=Number(el(contextId).value);
  const input=el(contextId);
  const hint=el(hintId);
  if(!model) { hint.textContent="ابتدا مدل را انتخاب کنید."; input.setCustomValidity(""); return; }
  hint.textContent="در حال دریافت metadata مدل و برآورد حافظه…";
  try {
-  const data=await api("/api/model-details?name="+encodeURIComponent(model)+"&context_tokens="+encodeURIComponent(context));
+  let data=await api("/api/model-details?name="+encodeURIComponent(model)+"&context_tokens="+encodeURIComponent(context));
   const maximum=data.maximum_context_tokens;
+  if(applyRecommendation && Number.isInteger(data.recommended_context_tokens) && data.recommended_context_tokens>=512) {
+   context=data.recommended_context_tokens;
+   el(contextId).value=String(context);
+   data=await api("/api/model-details?name="+encodeURIComponent(model)+"&context_tokens="+encodeURIComponent(context));
+  }
   if(Number.isInteger(maximum) && maximum>=512) {
    input.max=String(maximum);
    const invalid=context>maximum;
@@ -1412,7 +1437,8 @@ async function refreshModelContextHint(profile) {
    const estimateText=estimate.total_ram_gib_float16!=null
     ? " | RAM تخمینی در اجرای CPU-only و این context: "+estimate.total_ram_gib_float16+" GiB (وزن‌ها + KV cache با فرض FP16)"
     : " | برآورد دقیق RAM ممکن نیست؛ metadata ابعاد KV cache کامل نیست.";
-   hint.textContent="حداکثر مدل: "+maximum.toLocaleString()+" توکن؛ مقدار فعلی: "+context.toLocaleString()+" توکن"+(modelSpecs?"؛ اندازه/کوانتیزیشن: "+modelSpecs:"")+estimateText
+   const recommended=data.recommended_context_tokens;
+   hint.textContent="حداکثر پشتیبانی مدل: "+maximum.toLocaleString()+" توکن؛ پیشنهاد امن بر اساس منابع فعلی: "+(Number.isInteger(recommended)?recommended.toLocaleString():"نامشخص")+" توکن؛ مقدار انتخابی: "+context.toLocaleString()+" توکن"+(modelSpecs?"؛ اندازه/کوانتیزیشن: "+modelSpecs:"")+estimateText
     +(invalid?" | مقدار فعلی بیش از حد مجاز است.":"");
   } else {
    input.max="1048576";
@@ -1484,10 +1510,22 @@ async function refreshHardwareDiagnostics(profile=modelContextProfiles[0]) {
  } catch(error) { output.textContent="تحلیل سخت‌افزار در دسترس نیست: "+error.message; }
 }
 for(const profile of modelContextProfiles) {
- const [,modelId,contextId]=profile;
+ const [purpose,modelId,contextId]=profile;
+ const installedSelect=el(purpose+"-model-installed");
  const refreshProfileDiagnostics=async()=>{await refreshModelContextHint(profile);await refreshHardwareDiagnostics(profile);};
- el(modelId)?.addEventListener("change",refreshProfileDiagnostics);
+ installedSelect?.addEventListener("change",async()=>{
+  const selected=installedSelect.value;
+  if(!selected) return;
+  el(modelId).value=selected;
+  await refreshModelContextHint(profile,true);
+  await refreshHardwareDiagnostics(profile);
+ });
+ el(modelId)?.addEventListener("input",()=>{
+  if(installedSelect && installedSelect.value!==el(modelId).value.trim()) installedSelect.value="";
+ });
+ el(modelId)?.addEventListener("change",async()=>{await refreshModelContextHint(profile,true);await refreshHardwareDiagnostics(profile);});
  el(modelId)?.addEventListener("blur",refreshProfileDiagnostics);
+ el(contextId)?.addEventListener("input",()=>{el(contextId).setCustomValidity("");});
  el(contextId)?.addEventListener("change",refreshProfileDiagnostics);
 }
 

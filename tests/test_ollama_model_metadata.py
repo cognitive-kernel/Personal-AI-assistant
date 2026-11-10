@@ -47,6 +47,133 @@ def test_model_details_does_not_invent_context_or_kv_estimate(monkeypatch):
     result = ollama.model_details("model:7b", context_tokens=4096)
 
     assert result["maximum_context_tokens"] is None
+    assert result["recommended_context_tokens"] == 512
     assert result["context_metadata_available"] is False
     assert result["memory_estimate"] is None
     assert result["running"] is None
+
+
+
+def test_model_details_recommends_context_within_model_and_memory_limits(monkeypatch):
+    monkeypatch.setattr(ollama, "_request", lambda path, payload=None, timeout=None: (
+        {
+            "details": {"parameter_size": "8B", "quantization_level": "Q4_K_M", "family": "llama"},
+            "model_info": {
+                "llama.context_length": 131072,
+                "llama.block_count": 32,
+                "llama.attention.head_count_kv": 8,
+                "llama.attention.key_length": 128,
+                "llama.attention.value_length": 128,
+            },
+        } if path == "/api/show" else {"models": []}
+    ))
+    monkeypatch.setattr(ollama, "list_models", lambda: [{"name": "llama:8b", "size": 5_000_000_000}])
+    monkeypatch.setattr(ollama, "get_settings", lambda: {"ram_budget_max_gb": 25, "ram_safety_reserve_gb": 4, "gpu_enabled": False})
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {
+        "logical_cpu_count": 8, "total_ram_gb": 32, "available_ram_gb": 25,
+        "gpu_devices": [], "gpu_available": False,
+    })
+    result = ollama.model_details("llama:8b")
+    assert result["maximum_context_tokens"] == 131072
+    assert result["recommended_context_tokens"] == 65536
+    assert result["recommended_context_tokens"] <= result["maximum_context_tokens"]
+
+
+def test_model_details_uses_conservative_context_when_ram_is_low(monkeypatch):
+    monkeypatch.setattr(ollama, "_request", lambda path, payload=None, timeout=None: (
+        {
+            "details": {"family": "llama"},
+            "model_info": {"llama.context_length": 32768},
+        } if path == "/api/show" else {"models": []}
+    ))
+    monkeypatch.setattr(ollama, "list_models", lambda: [{"name": "llama:8b", "size": 5_000_000_000}])
+    monkeypatch.setattr(ollama, "get_settings", lambda: {"ram_budget_max_gb": 25, "ram_safety_reserve_gb": 4, "gpu_enabled": False})
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {
+        "logical_cpu_count": 8, "total_ram_gb": 8, "available_ram_gb": 5,
+        "gpu_devices": [], "gpu_available": False,
+    })
+    result = ollama.model_details("llama:8b")
+    assert result["recommended_context_tokens"] == 512
+
+
+def test_chat_clamps_requested_context_to_verified_model_maximum(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr(ollama, "get_settings", lambda: {
+        "chat_ollama_model": "llama:8b",
+        "chat_ollama_num_ctx": 65536,
+        "chat_ollama_num_thread": 0,
+        "cpu_resource_limit_percent": 90,
+        "ram_budget_max_gb": 25,
+        "ram_safety_reserve_gb": 4,
+        "gpu_enabled": False,
+    })
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {
+        "logical_cpu_count": 8,
+        "total_ram_gb": 32,
+        "available_ram_gb": 24,
+        "gpu_devices": [],
+        "gpu_available": False,
+    })
+    monkeypatch.setattr(ollama, "model_keep_alive", lambda *args: "5m")
+    from app import usage_metrics
+    monkeypatch.setattr(usage_metrics, "record_ollama_response", lambda **kwargs: None)
+
+    def fake_request(path, payload=None, timeout=None):
+        calls.append((path, payload))
+        if path == "/api/show":
+            return {
+                "details": {"family": "llama"},
+                "model_info": {"llama.context_length": 8192},
+            }
+        if path == "/api/chat":
+            return {"message": {"content": "ok"}}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(ollama, "_request", fake_request)
+
+    assert ollama.chat("hello") == "ok"
+    chat_payload = next(payload for path, payload in calls if path == "/api/chat")
+    assert chat_payload["options"]["num_ctx"] == 8192
+
+
+def test_chat_refuses_to_send_when_model_context_metadata_is_unavailable(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr(ollama, "get_settings", lambda: {
+        "chat_ollama_model": "unknown:latest",
+        "chat_ollama_num_ctx": 65536,
+        "chat_ollama_num_thread": 0,
+        "cpu_resource_limit_percent": 90,
+        "ram_budget_max_gb": 25,
+        "ram_safety_reserve_gb": 4,
+    })
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {
+        "logical_cpu_count": 8,
+        "total_ram_gb": 32,
+        "available_ram_gb": 24,
+        "gpu_devices": [],
+        "gpu_available": False,
+    })
+
+    def fake_request(path, payload=None, timeout=None):
+        calls.append(path)
+        if path == "/api/show":
+            return {"details": {"family": "unknown"}, "model_info": {}}
+        raise AssertionError("Chat request must not be sent without verified context metadata.")
+
+    monkeypatch.setattr(ollama, "_request", fake_request)
+
+    import pytest
+    with pytest.raises(ollama.OllamaError, match="verifiable context_length"):
+        ollama.chat("hello")
+    assert calls == ["/api/show"]
+
+
+def test_model_context_metadata_prefers_architecture_and_uses_conservative_fallback():
+    model_info = {
+        "llama.context_length": 32768,
+        "vision.context_length": 4096,
+    }
+    assert ollama._model_context_metadata(model_info, "llama") == 32768
+    assert ollama._model_context_metadata(model_info, "unknown") == 4096

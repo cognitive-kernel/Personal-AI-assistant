@@ -41,6 +41,15 @@ def test_runtime_limits_apply_middle_memory_cap():
     assert limits == {"cpu_threads": 5, "num_ctx": 4096}
 
 
+def test_runtime_limits_clamp_to_selected_model_maximum():
+    limits = runtime_limits(
+        {"ollama_num_thread": 0, "ollama_num_ctx": 65536},
+        {"logical_cpu_count": 8, "total_ram_gb": 32, "available_ram_gb": 25},
+        maximum_context_tokens=32768,
+    )
+    assert limits["num_ctx"] == 32768
+
+
 def test_runtime_limits_enforce_minimum_context():
     limits = runtime_limits(
         {"ollama_num_thread": 0, "ollama_num_ctx": 128},

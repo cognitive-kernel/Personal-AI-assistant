@@ -399,7 +399,12 @@ def dynamic_ram_budget_gb(
     return round(max(0.0, min(float(maximum), float(available)) - float(reserve)), 2)
 
 
-def runtime_limits(settings: dict[str, Any], hardware: dict[str, Any] | None = None) -> dict[str, int]:
+def runtime_limits(
+    settings: dict[str, Any],
+    hardware: dict[str, Any] | None = None,
+    *,
+    maximum_context_tokens: int | None = None,
+) -> dict[str, int]:
     hardware = hardware or detect_hardware()
     cpu_count = max(1, int(hardware.get("logical_cpu_count") or 1))
     configured_threads = int(settings.get("ollama_num_thread", 0) or 0)
@@ -416,9 +421,10 @@ def runtime_limits(settings: dict[str, Any], hardware: dict[str, Any] | None = N
     elif ram_budget < 8:
         context = min(context, 4096)
     else:
-        # The selected model's verified metadata provides the hard context ceiling.
-        # Do not impose the old global 8k cap on models that support larger contexts.
+        # The model metadata, not a global constant, defines the hard ceiling.
         context = min(context, 1048576)
+    if isinstance(maximum_context_tokens, int) and not isinstance(maximum_context_tokens, bool) and maximum_context_tokens >= 512:
+        context = min(context, maximum_context_tokens)
     return {"cpu_threads": max(1, threads), "num_ctx": max(512, context)}
 
 

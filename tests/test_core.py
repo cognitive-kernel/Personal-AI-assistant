@@ -698,7 +698,9 @@ def test_ollama_chat_uses_dedicated_profile_settings(tmp_path, monkeypatch):
     })
     captured = {}
 
-    def fake_request(path, payload, timeout=None):
+    def fake_request(path, payload=None, timeout=None):
+        if path == "/api/show":
+            return {"details": {"family": "llama"}, "model_info": {"llama.context_length": 32768}}
         captured.update(path=path, payload=payload, timeout=timeout)
         return {"message": {"content": "سلام"}}
 
@@ -774,7 +776,9 @@ def test_ollama_chat_sends_ram_aware_keep_alive_and_profile_options(monkeypatch)
         "total_ram_gb": 32,
         "available_ram_gb": 25,
     })
-    def fake_request(path, payload, timeout=None):
+    def fake_request(path, payload=None, timeout=None):
+        if path == "/api/show":
+            return {"details": {"family": "llama"}, "model_info": {"llama.context_length": 32768}}
         captured.update(path=path, payload=payload, timeout=timeout)
         return {"message": {"content": "ok"}}
     monkeypatch.setattr(ollama, "_request", fake_request)
@@ -806,7 +810,11 @@ def test_ollama_chat_respects_configured_ram_budget(monkeypatch):
     monkeypatch.setattr(
         ollama,
         "_request",
-        lambda path, payload, timeout=None: captured.update(payload=payload) or {"message": {"content": "ok"}},
+        lambda path, payload=None, timeout=None: (
+            {"details": {"family": "llama"}, "model_info": {"llama.context_length": 32768}}
+            if path == "/api/show"
+            else captured.update(payload=payload) or {"message": {"content": "ok"}}
+        ),
     )
 
     assert ollama.chat("hello", purpose="chat") == "ok"
@@ -834,7 +842,11 @@ def test_ollama_programming_model_is_unloaded_after_request(monkeypatch):
     })
     monkeypatch.setattr(
         ollama, "_request",
-        lambda path, payload, timeout=None: captured.update(payload=payload) or {"message": {"content": "ok"}},
+        lambda path, payload=None, timeout=None: (
+            {"details": {"family": "qwen"}, "model_info": {"qwen.context_length": 32768}}
+            if path == "/api/show"
+            else captured.update(payload=payload) or {"message": {"content": "ok"}}
+        ),
     )
 
     assert ollama.chat("review this code", purpose="programming") == "ok"

@@ -212,13 +212,16 @@ def test_ollama_chat_places_trusted_system_prompt_before_history(monkeypatch):
         lambda: {"ollama_model": "test-model", "ollama_timeout_seconds": 5},
     )
     monkeypatch.setattr(ollama, "detect_hardware", lambda: {})
-    monkeypatch.setattr(ollama, "runtime_limits", lambda *_args: {"num_ctx": 1024, "cpu_threads": 2})
+    monkeypatch.setattr(ollama, "runtime_limits", lambda *_args, **_kwargs: {"num_ctx": 1024, "cpu_threads": 2})
     captured = {}
     monkeypatch.setattr(
         ollama,
         "_request",
-        lambda path, payload, **_kwargs: captured.update(path=path, payload=payload)
-        or {"message": {"content": "ok"}},
+        lambda path, payload=None, **_kwargs: (
+            {"details": {"family": "llama"}, "model_info": {"llama.context_length": 8192}}
+            if path == "/api/show"
+            else captured.update(path=path, payload=payload) or {"message": {"content": "ok"}}
+        ),
     )
     assert ollama.chat(
         "current question",
