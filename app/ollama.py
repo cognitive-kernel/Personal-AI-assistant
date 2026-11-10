@@ -246,10 +246,27 @@ def model_details(model: str, context_tokens: int | None = None) -> dict[str, An
     }
 
 
-def runtime_diagnostics(model: str | None = None, context_tokens: int | None = None) -> dict[str, Any]:
+def runtime_diagnostics(
+    model: str | None = None,
+    context_tokens: int | None = None,
+    purpose: str = "chat",
+) -> dict[str, Any]:
     """Combine host telemetry with Ollama's observed loaded-model allocation."""
     hardware = detect_hardware()
-    result: dict[str, Any] = {"hardware": hardware, "ollama_running_models": []}
+    settings = get_settings()
+    profile = purpose if purpose in {"chat", "learning", "programming"} else "chat"
+    requested_context = context_tokens if isinstance(context_tokens, int) and not isinstance(context_tokens, bool) else settings.get(f"{profile}_ollama_num_ctx", settings.get("ollama_num_ctx", 2048))
+    result: dict[str, Any] = {
+        "hardware": hardware,
+        "ollama_running_models": [],
+        "runtime_limits": runtime_limits({
+            "ollama_num_ctx": requested_context,
+            "ollama_num_thread": settings.get(f"{profile}_ollama_num_thread", settings.get("ollama_num_thread", 0)),
+            "cpu_resource_limit_percent": settings.get("cpu_resource_limit_percent", 90),
+            "ram_budget_max_gb": settings.get("ram_budget_max_gb", 25),
+            "ram_safety_reserve_gb": settings.get("ram_safety_reserve_gb", 4),
+        }, hardware),
+    }
     try:
         running = _request("/api/ps", timeout=4).get("models", [])
         if isinstance(running, list):
