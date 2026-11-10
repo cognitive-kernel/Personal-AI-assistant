@@ -168,3 +168,12 @@ def test_chat_refuses_to_send_when_model_context_metadata_is_unavailable(monkeyp
     with pytest.raises(ollama.OllamaError, match="verifiable context_length"):
         ollama.chat("hello")
     assert calls == ["/api/show"]
+
+
+def test_model_context_metadata_prefers_architecture_and_uses_conservative_fallback():
+    model_info = {
+        "llama.context_length": 32768,
+        "vision.context_length": 4096,
+    }
+    assert ollama._model_context_metadata(model_info, "llama") == 32768
+    assert ollama._model_context_metadata(model_info, "unknown") == 4096
