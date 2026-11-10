@@ -186,20 +186,31 @@ try {
             $createdAt = 0.0
             $claimedAt = 0.0
             if (
-                $ownerRecord.schema_version -ne 1 -or
+                $ownerRecord.schema_version -is [bool] -or
+                -not ($ownerRecord.schema_version -is [int] -or $ownerRecord.schema_version -is [long]) -or
+                [long]$ownerRecord.schema_version -ne 1 -or
+                -not ($ownerRecord.task_sha256 -is [string]) -or
                 [string]$ownerRecord.task_sha256 -cne $taskDigest -or
+                -not ($ownerRecord.owner_run_id -is [string]) -or
                 [string]::IsNullOrWhiteSpace([string]$ownerRecord.owner_run_id) -or
+                -not ($ownerRecord.submitted_run_id -is [string]) -or
                 [string]::IsNullOrWhiteSpace([string]$ownerRecord.submitted_run_id) -or
+                -not ($ownerRecord.owner_attempt -is [int] -or $ownerRecord.owner_attempt -is [long]) -or
                 -not [int]::TryParse([string]$ownerRecord.owner_attempt, [ref]$ownerAttempt) -or
                 $ownerAttempt -lt 1 -or
+                -not ($ownerRecord.submitted_attempt -is [int] -or $ownerRecord.submitted_attempt -is [long]) -or
                 -not [int]::TryParse([string]$ownerRecord.submitted_attempt, [ref]$submittedAttempt) -or
                 $submittedAttempt -lt 1 -or
+                -not ($ownerRecord.claim_count -is [int] -or $ownerRecord.claim_count -is [long]) -or
                 -not [int]::TryParse([string]$ownerRecord.claim_count, [ref]$claimCount) -or
                 $claimCount -lt 1 -or
+                -not ($ownerRecord.created_at -is [double] -or $ownerRecord.created_at -is [int] -or $ownerRecord.created_at -is [long]) -or
                 -not [double]::TryParse([string]$ownerRecord.created_at, [ref]$createdAt) -or
                 [double]::IsNaN($createdAt) -or [double]::IsInfinity($createdAt) -or $createdAt -le 0 -or
+                -not ($ownerRecord.claimed_at -is [double] -or $ownerRecord.claimed_at -is [int] -or $ownerRecord.claimed_at -is [long]) -or
                 -not [double]::TryParse([string]$ownerRecord.claimed_at, [ref]$claimedAt) -or
                 [double]::IsNaN($claimedAt) -or [double]::IsInfinity($claimedAt) -or $claimedAt -le 0 -or
+                -not ($ownerRecord.source -is [string]) -or
                 [string]$ownerRecord.source -notin @("manual_dispatch", "recovery", "legacy_migration")
             ) {
                 throw "Owner metadata violates schema v1 or does not match the pending task."
