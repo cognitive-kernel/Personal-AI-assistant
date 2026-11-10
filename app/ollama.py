@@ -217,6 +217,7 @@ def _model_memory_estimate(
     model: str,
     model_info: dict[str, Any],
     details: dict[str, Any],
+    weight_bytes: int | None,
     context_tokens: int | None = None,
 ) -> dict[str, Any] | None:
     """Build a conservative model-memory estimate from Ollama's measured metadata."""
@@ -224,14 +225,20 @@ def _model_memory_estimate(
 
     def metadata_number(suffix: str) -> int | None:
         preferred = f"{architecture}{suffix}" if architecture else None
-        keys = [preferred] if preferred else []
-        keys.extend(
-            key for key in model_info
-            if str(key).endswith(suffix) and key not in keys
-        )
+        if preferred:
+            value = model_info.get(preferred)
+            if (
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and math.isfinite(value)
+                and value > 0
+            ):
+                return int(value)
+            return None
         values = []
-        for key in keys:
-            value = model_info.get(key)
+        for key, value in model_info.items():
+            if not str(key).endswith(suffix):
+                continue
             if (
                 isinstance(value, (int, float))
                 and not isinstance(value, bool)
@@ -239,10 +246,8 @@ def _model_memory_estimate(
                 and value > 0
             ):
                 values.append(int(value))
-        if preferred and values:
-            return values[0]
         # Without a family, accept only an unambiguous metadata dimension.
-        return values[0] if len(set(values)) == 1 else None
+        return values[0] if values and len(set(values)) == 1 else None
 
     layers = metadata_number(".block_count")
     kv_heads = metadata_number(".attention.head_count_kv")
@@ -255,9 +260,6 @@ def _model_memory_estimate(
     if not all((layers, kv_heads, key_length, value_length)):
         return None
 
-    tags = list_models()
-    tag = next((item for item in tags if item.get("name") == model), None)
-    weight_bytes = tag.get("size") if isinstance(tag, dict) else None
     if isinstance(weight_bytes, bool) or not isinstance(weight_bytes, int) or weight_bytes <= 0:
         return None
 
@@ -268,6 +270,7 @@ def _model_memory_estimate(
     cache_bytes_upper_bound = dimensions_per_token * 4
     cache_bytes_fp16 = dimensions_per_token * 2
     estimate: dict[str, Any] = {
+        "weight_size_bytes": weight_bytes,
         "weights_gib": weights_gib,
         "overhead_gib": max(0.5, weights_gib * 0.10),
         "kv_cache_bytes_per_token": cache_bytes_upper_bound,
@@ -339,7 +342,9 @@ def model_details(model: str, context_tokens: int | None = None) -> dict[str, An
     model_info = info.get("model_info") if isinstance(info.get("model_info"), dict) else {}
     details = info.get("details") if isinstance(info.get("details"), dict) else {}
     maximum_context = _model_context_metadata(model_info, details.get("family"))
-    estimate = _model_memory_estimate(name, model_info, details, context_tokens)
+    tag = next((item for item in list_models() if item.get("name") == name), None)
+    weight_bytes = tag.get("size") if isinstance(tag, dict) else None
+    estimate = _model_memory_estimate(name, model_info, details, weight_bytes, context_tokens)
     running = _request("/api/ps", timeout=4).get("models", [])
     running_item = next((item for item in running if isinstance(item, dict) and item.get("name") == name), None) if isinstance(running, list) else None
     hardware = detect_hardware()
@@ -351,9 +356,7 @@ def model_details(model: str, context_tokens: int | None = None) -> dict[str, An
         "maximum_context_tokens": maximum_context,
         "recommended_context_tokens": recommended_context,
         "context_metadata_available": maximum_context is not None,
-        "weight_size_bytes": (
-            next((item.get("size") for item in list_models() if item.get("name") == name and isinstance(item.get("size"), int)), None)
-        ),
+        "weight_size_bytes": weight_bytes,
         "architecture": details.get("family"),
         "memory_estimate": estimate,
         "memory_estimate_note": (
