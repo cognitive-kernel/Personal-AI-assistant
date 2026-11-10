@@ -47,7 +47,7 @@ def test_model_details_does_not_invent_context_or_kv_estimate(monkeypatch):
     result = ollama.model_details("model:7b", context_tokens=4096)
 
     assert result["maximum_context_tokens"] is None
-    assert result["recommended_context_tokens"] == 512
+    assert result["recommended_context_tokens"] is None
     assert result["context_metadata_available"] is False
     assert result["memory_estimate"] is None
     assert result["running"] is None
@@ -75,8 +75,10 @@ def test_model_details_recommends_context_within_model_and_memory_limits(monkeyp
     })
     result = ollama.model_details("llama:8b")
     assert result["maximum_context_tokens"] == 131072
-    assert result["recommended_context_tokens"] == 65536
+    assert result["recommended_context_tokens"] == 32768
     assert result["recommended_context_tokens"] <= result["maximum_context_tokens"]
+    assert result["memory_estimate"]["kv_cache_dtype"].startswith("unknown; FP32 upper bound")
+    assert result["memory_estimate"]["kv_cache_bytes_per_token_upper_bound"] == 32 * 8 * 256 * 4
 
 
 def test_model_details_uses_conservative_context_when_ram_is_low(monkeypatch):
@@ -93,7 +95,7 @@ def test_model_details_uses_conservative_context_when_ram_is_low(monkeypatch):
         "gpu_devices": [], "gpu_available": False,
     })
     result = ollama.model_details("llama:8b")
-    assert result["recommended_context_tokens"] == 512
+    assert result["recommended_context_tokens"] is None
 
 
 def test_chat_clamps_requested_context_to_verified_model_maximum(monkeypatch):
@@ -124,13 +126,20 @@ def test_chat_clamps_requested_context_to_verified_model_maximum(monkeypatch):
         if path == "/api/show":
             return {
                 "details": {"family": "llama"},
-                "model_info": {"llama.context_length": 8192},
+                "model_info": {
+                    "llama.context_length": 8192,
+                    "llama.block_count": 32,
+                    "llama.attention.head_count_kv": 8,
+                    "llama.attention.key_length": 128,
+                    "llama.attention.value_length": 128,
+                },
             }
         if path == "/api/chat":
             return {"message": {"content": "ok"}}
         raise AssertionError(path)
 
     monkeypatch.setattr(ollama, "_request", fake_request)
+    monkeypatch.setattr(ollama, "list_models", lambda: [{"name": "llama:8b", "size": 5_000_000_000}])
 
     assert ollama.chat("hello") == "ok"
     chat_payload = next(payload for path, payload in calls if path == "/api/chat")
@@ -168,6 +177,72 @@ def test_chat_refuses_to_send_when_model_context_metadata_is_unavailable(monkeyp
     with pytest.raises(ollama.OllamaError, match="verifiable context_length"):
         ollama.chat("hello")
     assert calls == ["/api/show"]
+
+
+
+def test_chat_refuses_when_hardware_safe_context_cannot_be_estimated(monkeypatch):
+    calls = []
+    monkeypatch.setattr(ollama, "get_settings", lambda: {
+        "chat_ollama_model": "unknown-architecture:latest",
+        "chat_ollama_num_ctx": 8192,
+        "chat_ollama_num_thread": 0,
+        "cpu_resource_limit_percent": 90,
+        "ram_budget_max_gb": 25,
+        "ram_safety_reserve_gb": 4,
+        "gpu_enabled": False,
+    })
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {
+        "logical_cpu_count": 8, "available_ram_gb": 24, "gpu_devices": [],
+    })
+    monkeypatch.setattr(ollama, "list_models", lambda: [{"name": "unknown-architecture:latest", "size": 2_000_000_000}])
+    monkeypatch.setattr(ollama, "model_keep_alive", lambda *args: "0")
+
+    def fake_request(path, payload=None, timeout=None):
+        calls.append(path)
+        if path == "/api/show":
+            return {
+                "details": {"family": "unknown"},
+                "model_info": {"unknown.context_length": 32768},
+            }
+        raise AssertionError("No inference may run without a verified hardware-safe context.")
+
+    monkeypatch.setattr(ollama, "_request", fake_request)
+    import pytest
+    with pytest.raises(ollama.OllamaError, match="Cannot calculate a hardware-safe context"):
+        ollama.chat("hello")
+    assert calls == ["/api/show"]
+
+
+def test_intel_shared_gpu_memory_does_not_inflate_safe_context(monkeypatch):
+    monkeypatch.setattr(ollama, "get_settings", lambda: {
+        "ram_budget_max_gb": 25, "ram_safety_reserve_gb": 4, "gpu_enabled": True,
+    })
+    hardware = {
+        "available_ram_gb": 8,
+        "gpu_devices": [{
+            "vendor": "Intel", "name": "Intel UHD Graphics 730",
+            "device_type": "integrated", "memory_free_mb": 8192,
+        }],
+    }
+    estimate = {
+        "weights_gib": 2.0,
+        "overhead_gib": 0.5,
+        "kv_cache_bytes_per_token_upper_bound": 1024 * 1024,
+    }
+    assert ollama._recommended_context_tokens(32768, estimate, hardware) == 1024
+
+
+def test_safe_context_is_unavailable_when_calculated_fit_is_below_minimum(monkeypatch):
+    monkeypatch.setattr(ollama, "get_settings", lambda: {
+        "ram_budget_max_gb": 25, "ram_safety_reserve_gb": 4, "gpu_enabled": False,
+    })
+    hardware = {"available_ram_gb": 5, "gpu_devices": []}
+    estimate = {
+        "weights_gib": 1.0,
+        "overhead_gib": 0.5,
+        "kv_cache_bytes_per_token_upper_bound": 1024 * 1024 * 1024,
+    }
+    assert ollama._recommended_context_tokens(32768, estimate, hardware) is None
 
 
 def test_model_context_metadata_prefers_architecture_and_uses_conservative_fallback():
