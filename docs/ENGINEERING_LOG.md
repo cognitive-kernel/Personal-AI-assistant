@@ -362,3 +362,14 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Repository policy issue #290 explicitly prohibits automatic PR merges. Removed controller calls to the GitHub PR merge endpoint. Exact-head CI now results in an open PR for owner review. Added atomic durable `pending-autonomous-pr.json` state; task/checkpoint are retained until the owner manually merges. The next controller run verifies the exact merge SHA, runs tests/browser E2E/dependency audit against that exact post-merge SHA, then clears pending task/checkpoint and advances continuous mode. Closed-unmerged or changed PRs fail closed.
 - Updated the early manual-task persistence script to reject new task replacement while pending PR/post-merge state exists. Updated workflow prompt and operations guide to reflect owner review and post-merge validation.
 - Exact-head CI for the current PR head is recorded in the PR body. Strict real-runner Codex execution and owner-side Windows acceptance remain blocked until the 64k runtime context is configured. PR #701 remains open; no merge or acceptance-score increase is claimed.
+
+
+## 2026-11-10 — Checkpoint ownership and recovery hardening (PR #707)
+
+- Root cause confirmed in `scripts/autonomous_engineering_checkpoint.py`: process inspection/termination errors, including `psutil.AccessDenied`, were swallowed. Restore and cleanup then proceeded without proof that the watcher had stopped. PID reuse was not distinguished from the recorded watcher.
+- Extracted repository worktree lock ownership into `scripts/autonomous_engineering_execution_lock.py`, preserving the existing import surface from the cycle orchestrator. OS-level locks remain authoritative and are released by the operating system after process death; lock metadata is diagnostic only.
+- Extracted watcher process identity and shutdown into `scripts/autonomous_engineering_checkpoint_process.py`. New checkpoint schema 4 records process creation time; controller readiness is checked against the actual spawned PID and creation time.
+- Access denied, ambiguous process identity, legacy active watchers without creation-time identity, failed termination/reaping, and mismatched live command lines now block recovery/cleanup. Checkpoint state is preserved.
+- Added fault-injection tests for access denied, PID reuse, command-line mismatch, legacy live process, process kill/reap, restore/clear preservation, and watcher-start preservation. Added execution-lock crash-release tests.
+- ADR-014 and the operations guide now document the ownership contract and compatibility behavior.
+- PR [#707](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/707) is Draft. Exact-head CI and owner-side Windows Runner validation are pending. No merge or target-host success is claimed.
