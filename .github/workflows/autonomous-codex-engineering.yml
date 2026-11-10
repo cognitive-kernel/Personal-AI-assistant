@@ -328,17 +328,29 @@ jobs:
           pending_path = state_dir / "pending-manual-task.txt"
           pending_pr_path = state_dir / "pending-autonomous-pr.json"
           with durable_state_lock(state_dir):
-              if manual_task and pending_pr_path.exists():
+              if manual_task:
                   try:
-                      pending_pr_state = json.loads(pending_pr_path.read_text(encoding="utf-8"))
-                  except (OSError, ValueError) as exc:
-                      raise SystemExit("Pending autonomous PR state is unreadable; refusing a new manual task.") from exc
-                  if not isinstance(pending_pr_state, dict) or not pending_pr_state.get("number"):
-                      raise SystemExit("Pending autonomous PR state is invalid; refusing a new manual task.")
-                  raise SystemExit(
-                      f"Autonomous PR #{pending_pr_state['number']} is awaiting owner merge or post-merge validation."
-                  )
-              pending_task = pending_path.read_text(encoding="utf-8") if pending_path.is_file() else ""
+                      pending_pr_raw = pending_pr_path.read_text(encoding="utf-8")
+                  except FileNotFoundError:
+                      pending_pr_raw = ""
+                  except OSError as exc:
+                      raise SystemExit("Pending autonomous PR state cannot be read; refusing a new manual task.") from exc
+                  if pending_pr_raw:
+                      try:
+                          pending_pr_state = json.loads(pending_pr_raw)
+                      except ValueError as exc:
+                          raise SystemExit("Pending autonomous PR state is malformed; refusing a new manual task.") from exc
+                      if not isinstance(pending_pr_state, dict) or not pending_pr_state.get("number"):
+                          raise SystemExit("Pending autonomous PR state is invalid; refusing a new manual task.")
+                      raise SystemExit(
+                          f"Autonomous PR #{pending_pr_state['number']} is awaiting owner merge or post-merge validation."
+                      )
+              try:
+                  pending_task = pending_path.read_text(encoding="utf-8")
+              except FileNotFoundError:
+                  pending_task = ""
+              except OSError as exc:
+                  raise SystemExit("Pending manual task cannot be read safely.") from exc
               try:
                   validate_manual_task_submission(
                       manual_task=manual_task,
