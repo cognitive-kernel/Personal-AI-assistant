@@ -5,7 +5,6 @@ import sys
 from typing import Any
 
 MIN_CONTEXT_TOKENS = 512
-CONTEXT_ALIGNMENT_TOKENS = 512
 GIB = 1024 ** 3
 DEFAULT_RAM_RESERVE_BYTES = 4 * GIB
 MIN_MODEL_OVERHEAD_BYTES = GIB // 2
@@ -103,11 +102,7 @@ def select_context_window(
             "Available RAM cannot hold the model weights and required safety reserve."
         )
 
-    hardware_maximum = cache_budget_bytes // bytes_per_token
-    hardware_maximum = min(maximum, hardware_maximum)
-    hardware_maximum = (
-        hardware_maximum // CONTEXT_ALIGNMENT_TOKENS
-    ) * CONTEXT_ALIGNMENT_TOKENS
+    hardware_maximum = min(maximum, cache_budget_bytes // bytes_per_token)
     if hardware_maximum < MIN_CONTEXT_TOKENS:
         raise OllamaModelMetadataError(
             "Available RAM cannot safely support the minimum 512-token context."
@@ -115,7 +110,6 @@ def select_context_window(
 
     requested = requested_context_tokens
     selected = min(requested if requested is not None else maximum, maximum, hardware_maximum)
-    selected = (selected // CONTEXT_ALIGNMENT_TOKENS) * CONTEXT_ALIGNMENT_TOKENS
     if selected < MIN_CONTEXT_TOKENS:
         raise OllamaModelMetadataError("No safe Codex context window could be selected.")
 
