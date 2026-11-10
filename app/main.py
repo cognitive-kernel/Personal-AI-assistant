@@ -766,8 +766,8 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
                 raise HTTPException(status_code=422, detail=f"{key} must be an integer.")
             if not low <= raw_value <= high:
                 raise HTTPException(status_code=422, detail=f"{key} must be between {low} and {high}.")
-    # Context limits are model-specific. If metadata cannot be verified, fail closed
-    # rather than silently accepting a value that may exceed the selected model.
+    # Context limits are model-specific. Context edits require verifiable metadata;
+    # manual model-name changes remain compatible when the existing context is unchanged.
     current_settings = db.get_settings()
     context_profiles = {
         "chat_ollama_num_ctx": "chat_ollama_model",
