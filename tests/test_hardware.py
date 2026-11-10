@@ -243,3 +243,72 @@ def test_ram_ceiling_subtracts_safety_reserve_before_context_selection():
     )
     assert limits["num_ctx"] == 2048
 
+
+
+def test_detect_gpu_uses_generic_windows_telemetry_for_single_adapter(monkeypatch):
+    import json
+    monkeypatch.setattr(hardware.os, "name", "nt")
+    payload = {
+        "Adapters": [{"Name": "Intel(R) UHD Graphics 730", "PNPDeviceID": "PCI\\VEN_8086&DEV_4692", "AdapterRAM": 2147483648}],
+        "Counters": [
+            {"Path": r"\\GPU Engine(*)\\Utilization Percentage", "InstanceName": "pid_1_luid_0x00000000_0x0000_phys_0_eng_0_engtype_3D", "CookedValue": 18.5},
+            {"Path": r"\\GPU Adapter Memory(*)\\Dedicated Usage", "InstanceName": "luid_0x00000000_0x0000_phys_0", "CookedValue": 268435456},
+            {"Path": r"\\GPU Adapter Memory(*)\\Shared Usage", "InstanceName": "luid_0x00000000_0x0000_phys_0", "CookedValue": 536870912},
+        ],
+    }
+    monkeypatch.setattr(hardware, "_run_gpu_command", lambda *args, **kwargs: json.dumps(payload))
+    result = hardware._detect_windows_gpus()
+    assert len(result) == 1
+    assert result[0]["vendor"] == "Intel"
+    assert result[0]["utilization_percent"] == 18.5
+    assert result[0]["memory_used_mb"] == 256
+    assert result[0]["shared_memory_used_mb"] == 512
+
+
+def test_detect_gpu_keeps_discovered_device_when_metrics_are_unknown(monkeypatch):
+    monkeypatch.setattr(hardware, "_detect_nvidia_gpus", lambda: [])
+    monkeypatch.setattr(hardware, "_detect_rocm_gpus", lambda: [])
+    monkeypatch.setattr(hardware, "_detect_windows_gpus", lambda: [{
+        "index": 0, "name": "Future GPU", "vendor": "Unknown",
+        "utilization_percent": None, "memory_used_mb": None,
+        "memory_total_mb": None, "memory_free_mb": None,
+        "memory_percent": None, "telemetry": "device-enumeration-only",
+    }])
+    result = hardware.detect_gpu()
+    assert result["gpu_available"] is True
+    assert result["gpu_count"] == 1
+    assert result["gpu_utilization_percent"] is None
+    assert result["gpu_memory_percent"] is None
+    assert result["gpu_telemetry_complete"] is False
+
+
+def test_resource_headroom_does_not_compare_unknown_gpu_metrics(monkeypatch):
+    monkeypatch.setattr(hardware, "psutil", SimpleNamespace(
+        cpu_percent=lambda interval: 20.0,
+        virtual_memory=lambda: SimpleNamespace(percent=30.0, available=8 * 1024**3),
+    ))
+    monkeypatch.setattr(hardware, "detect_gpu", lambda: {
+        "gpu_available": True,
+        "gpu_utilization_percent": None,
+        "gpu_memory_percent": None,
+    })
+    hardware.ensure_resource_headroom({
+        "gpu_enabled": True,
+        "cpu_resource_limit_percent": 90,
+        "ram_resource_limit_percent": 90,
+        "gpu_resource_limit_percent": 90,
+    })
+
+
+def test_detect_hardware_exposes_cpu_available_capacity(monkeypatch):
+    monkeypatch.setattr(hardware, "psutil", SimpleNamespace(
+        cpu_percent=lambda interval: 37.5,
+        virtual_memory=lambda: SimpleNamespace(total=16 * 1024**3, available=9 * 1024**3),
+    ))
+    monkeypatch.setattr(hardware, "detect_gpu", lambda: {
+        "gpu_available": False, "gpu_count": 0, "gpu_utilization_percent": None,
+        "gpu_memory_percent": None, "gpu_devices": [], "gpu_telemetry": "unavailable",
+    })
+    result = hardware.detect_hardware()
+    assert result["cpu_utilization_percent"] == 37.5
+    assert result["cpu_available_percent"] == 62.5
