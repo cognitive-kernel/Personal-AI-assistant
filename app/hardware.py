@@ -154,7 +154,9 @@ try {
   }
   foreach ($item in $memory) {
     $counters += [pscustomobject]@{ Path='GPU Adapter Memory Dedicated Usage'; InstanceName=$item.Name; CookedValue=$item.DedicatedUsage }
+    $counters += [pscustomobject]@{ Path='GPU Adapter Memory Dedicated Limit'; InstanceName=$item.Name; CookedValue=$item.DedicatedLimit }
     $counters += [pscustomobject]@{ Path='GPU Adapter Memory Shared Usage'; InstanceName=$item.Name; CookedValue=$item.SharedUsage }
+    $counters += [pscustomobject]@{ Path='GPU Adapter Memory Shared Limit'; InstanceName=$item.Name; CookedValue=$item.SharedLimit }
   }
 } catch {}
 [pscustomobject]@{Adapters=$adapters; Counters=$counters} | ConvertTo-Json -Depth 5 -Compress
@@ -192,6 +194,8 @@ try {
         engine = [float(row["CookedValue"]) for row in matching if "gpu engine" in str(row.get("Path", "")).casefold() and isinstance(row.get("CookedValue"), (int, float))]
         dedicated = [float(row["CookedValue"]) for row in matching if "dedicated usage" in str(row.get("Path", "")).casefold() and isinstance(row.get("CookedValue"), (int, float))]
         shared = [float(row["CookedValue"]) for row in matching if "shared usage" in str(row.get("Path", "")).casefold() and isinstance(row.get("CookedValue"), (int, float))]
+        dedicated_limits = [float(row["CookedValue"]) for row in matching if "dedicated limit" in str(row.get("Path", "")).casefold() and isinstance(row.get("CookedValue"), (int, float))]
+        shared_limits = [float(row["CookedValue"]) for row in matching if "shared limit" in str(row.get("Path", "")).casefold() and isinstance(row.get("CookedValue"), (int, float))]
         total_mb = None
         try:
             raw_ram = int(adapter.get("AdapterRAM") or 0)
@@ -200,12 +204,24 @@ try {
         except (TypeError, ValueError):
             pass
         used_mb = round(sum(dedicated) / (1024 ** 2), 1) if dedicated else None
+        if dedicated_limits:
+            total_mb = round(max(dedicated_limits) / (1024 ** 2), 1)
+        shared_used_mb = round(sum(shared) / (1024 ** 2), 1) if shared else None
+        shared_total_mb = round(max(shared_limits) / (1024 ** 2), 1) if shared_limits else None
+        dedicated_free_mb = max(0, round(total_mb - used_mb, 1)) if total_mb is not None and used_mb is not None else None
+        shared_free_mb = max(0, round(shared_total_mb - shared_used_mb, 1)) if shared_total_mb is not None and shared_used_mb is not None else None
+        usable_free_mb = (dedicated_free_mb or 0) + (shared_free_mb or 0) if dedicated_free_mb is not None or shared_free_mb is not None else None
+        usable_total_mb = (total_mb or 0) + (shared_total_mb or 0) if total_mb is not None or shared_total_mb is not None else None
         devices.append({
             "index": index, "name": name, "vendor": vendor,
             "utilization_percent": round(min(100.0, max(engine)), 1) if engine else None,
             "memory_used_mb": used_mb, "memory_total_mb": total_mb,
-            "memory_free_mb": max(0, round(total_mb - used_mb, 1)) if total_mb is not None and used_mb is not None else None,
-            "shared_memory_used_mb": round(sum(shared) / (1024 ** 2), 1) if shared else None,
+            "memory_free_mb": dedicated_free_mb,
+            "shared_memory_used_mb": shared_used_mb,
+            "shared_memory_total_mb": shared_total_mb,
+            "shared_memory_free_mb": shared_free_mb,
+            "usable_memory_total_mb": usable_total_mb,
+            "usable_memory_free_mb": usable_free_mb,
             "memory_percent": round(used_mb * 100 / total_mb, 1) if total_mb and used_mb is not None else None,
             "telemetry": "windows-performance-counters" if matching else "wmi-device-only",
         })
