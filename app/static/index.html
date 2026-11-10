@@ -1430,7 +1430,11 @@ async function refreshHardwareDiagnostics(profile=modelContextProfiles[0]) {
  const model=el(modelId)?.value.trim()||"";
  const context=Number(el(contextId)?.value||0);
  try {
-  const data=await api("/api/hardware/diagnostics"+(model?"?model="+encodeURIComponent(model)+"&context_tokens="+encodeURIComponent(context):""));
+  const purpose=profile[0];
+  const query=new URLSearchParams({purpose});
+  if(model) query.set("model",model);
+  if(context>=512) query.set("context_tokens",String(context));
+  const data=await api("/api/hardware/diagnostics?"+query.toString());
   const h=data.hardware||{};
   const cpu=h.cpu_utilization_percent==null?"نامشخص":h.cpu_utilization_percent+"% مصرف / "+h.cpu_available_percent+"% ظرفیت آزاد تقریبی";
   const ram=h.available_ram_gb==null?"نامشخص":h.available_ram_gb+" GiB آزاد از "+h.total_ram_gb+" GiB";
@@ -1467,7 +1471,9 @@ async function refreshHardwareDiagnostics(profile=modelContextProfiles[0]) {
   const gpuFit=gpuEstimate==null?"نیاز VRAM تخمینی نامشخص است."
    :gpuFreeGb==null?"مقدار VRAM آزاد قابل‌اندازه‌گیری نیست."
    :(gpuEstimate<=gpuFreeGb?"برآورد full-offload در VRAM آزاد جا می‌شود.":"برآورد full-offload از VRAM آزاد بیشتر است؛ ممکن است اجرای ترکیبی CPU/GPU یا CPU لازم شود.");
-  output.textContent="CPU: "+h.logical_cpu_count+" thread منطقی؛ "+cpu+"؛ RAM: "+ram+"؛ GPU: "+(gpuLines.length?gpuLines.join(" | "):"هیچ GPU شناسایی نشد یا اطلاعات دستگاه در دسترس نیست.")
+  const effectiveContext=data.runtime_limits?.num_ctx;
+  const contextStatus=effectiveContext==null?"": "؛ context مؤثر پس از محدودیت سخت‌افزار: "+Number(effectiveContext).toLocaleString()+" توکن"+(effectiveContext<context?" (کمتر از مقدار انتخابی)": "");
+  output.textContent="CPU: "+h.logical_cpu_count+" thread منطقی؛ "+cpu+"؛ RAM: "+ram+"؛ GPU: "+(gpuLines.length?gpuLines.join(" | "):"هیچ GPU شناسایی نشد یا اطلاعات دستگاه در دسترس نیست.")+contextStatus
    +(running.length?"؛ تخصیص واقعی Ollama: "+running.join(" | "):"؛ مدل فعالی در Ollama گزارش نشده است.")
    +(estimate!=null?"؛ نیاز تخمینی RAM مدل در context انتخابی: "+estimate+" GiB. "+fit:"؛ "+fit)+"؛ وضعیت GPU: "+gpuStatus+(gpuEstimate!=null?"؛ VRAM لازم برای offload کامل (تخمینی): "+gpuEstimate+" GiB؛ "+gpuFit:"؛ "+gpuFit);
  } catch(error) { output.textContent="تحلیل سخت‌افزار در دسترس نیست: "+error.message; }
