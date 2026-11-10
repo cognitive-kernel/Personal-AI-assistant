@@ -1339,6 +1339,23 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_browser_learning_retry_schedule ON browser_learning_courses(status, next_retry_at, id)",
         ),
     ),
+    Migration(
+        42,
+        "research-first-learning-curriculum-provenance",
+        (
+            """CREATE TABLE learning_path_research (
+                path_id INTEGER PRIMARY KEY REFERENCES learning_paths(id) ON DELETE CASCADE,
+                requested_topic TEXT NOT NULL CHECK(length(trim(requested_topic)) BETWEEN 1 AND 300),
+                outline_json TEXT NOT NULL,
+                outline_sha256 TEXT NOT NULL CHECK(length(outline_sha256) = 64),
+                model_name TEXT NOT NULL CHECK(length(trim(model_name)) BETWEEN 1 AND 200),
+                source_count INTEGER NOT NULL CHECK(source_count >= 3),
+                sources_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_learning_path_research_created ON learning_path_research(created_at DESC, path_id)",
+        ),
+    ),
 )
 
 
@@ -1811,23 +1828,7 @@ CLOUD_RESOURCE_MIGRATIONS = (
             "CREATE INDEX idx_cloud_selection_decisions_candidate ON cloud_resource_selection_decisions(candidate_id, evaluated_at DESC)",
         ),
     ),
-    Migration(
-        32,
-        "research-first-learning-curriculum-provenance",
-        (
-            """CREATE TABLE learning_path_research (
-                path_id INTEGER PRIMARY KEY REFERENCES learning_paths(id) ON DELETE CASCADE,
-                requested_topic TEXT NOT NULL CHECK(length(trim(requested_topic)) BETWEEN 1 AND 300),
-                outline_json TEXT NOT NULL,
-                outline_sha256 TEXT NOT NULL CHECK(length(outline_sha256) = 64),
-                model_name TEXT NOT NULL CHECK(length(trim(model_name)) BETWEEN 1 AND 200),
-                source_count INTEGER NOT NULL CHECK(source_count >= 3),
-                sources_json TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )""",
-            "CREATE INDEX idx_learning_path_research_created ON learning_path_research(created_at DESC, path_id)",
-        ),
-    ),
+
 )
 
 
