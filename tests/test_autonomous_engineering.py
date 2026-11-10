@@ -879,6 +879,10 @@ def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_c
     assert "context_length" in context_gate
     assert "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH" in context_gate
     assert "Get-AutomaticContext" in context_gate
+    assert "Assert-ToolCallingCapability" in context_gate
+    assert "ollama_context.py" in context_gate
+    assert "return [int64][Math]::Min($Maximum, 512)" not in context_gate
+    assert "return [int64][Math]::Min($Maximum, 2048)" not in context_gate
     assert "AUTONOMOUS_ENGINEERING_MODEL=$codexModel" in context_gate
     assert production_paths.count("scripts/verify_ollama_context.ps1") == 2
     diagnostic_job = diagnostic_paths.split("  sandbox-diagnostic:", 1)[1]
