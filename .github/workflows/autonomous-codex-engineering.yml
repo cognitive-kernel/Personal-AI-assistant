@@ -322,6 +322,7 @@ jobs:
               pending_task_owner_path,
               validate_pending_task_owner_unlocked,
           )
+          from scripts.autonomous_engineering_pending_pr_state import recover_pending_state_cleanup_unlocked
 
           state_dir = execution_state_directory()
           state_dir.mkdir(parents=True, exist_ok=True)
@@ -329,6 +330,10 @@ jobs:
           pending_pr_path = state_dir / "pending-autonomous-pr.json"
           manual_task_supplied = bool(manual_task)
           with durable_state_lock(state_dir):
+              try:
+                  recover_pending_state_cleanup_unlocked(state_dir)
+              except RuntimeError as exc:
+                  raise SystemExit(f"Pending-state cleanup recovery failed: {exc}") from exc
               if manual_task:
                   pending_pr_found = True
                   try:
