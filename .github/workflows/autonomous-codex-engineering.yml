@@ -128,7 +128,7 @@ jobs:
     concurrency:
       group: autonomous-local-engineering-${{ github.repository }}
       cancel-in-progress: false
-    runs-on: [self-hosted, Windows, X64, ollama]
+    runs-on: [self-hosted, Windows, X64, ollama, autonomous-state-owner]
     timeout-minutes: 360
     permissions:
       contents: write
