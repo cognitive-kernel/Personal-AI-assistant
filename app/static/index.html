@@ -1409,7 +1409,7 @@ async function refreshModelContextHint(profile) {
    input.setCustomValidity(invalid?"مقدار context از حداکثر پشتیبانی مدل بیشتر است.":"");
    const estimate=data.memory_estimate||{};
    const estimateText=estimate.total_ram_gib_float16!=null
-    ? " | RAM تخمینی در این context: "+estimate.total_ram_gib_float16+" GiB (وزن‌ها + KV cache با فرض FP16)"
+    ? " | RAM تخمینی در اجرای CPU-only و این context: "+estimate.total_ram_gib_float16+" GiB (وزن‌ها + KV cache با فرض FP16)"
     : " | برآورد دقیق RAM ممکن نیست؛ metadata ابعاد KV cache کامل نیست.";
    hint.textContent="حداکثر مدل: "+maximum.toLocaleString()+" توکن؛ مقدار فعلی: "+context.toLocaleString()+" توکن"+estimateText
     +(invalid?" | مقدار فعلی بیش از حد مجاز است.":"");
