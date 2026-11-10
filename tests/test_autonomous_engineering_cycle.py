@@ -913,6 +913,7 @@ def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkey
     monkeypatch.setattr(progress, "persist", lambda record: True)
     monkeypatch.setattr(progress, "PLAN_FILE", tmp_path / ".agent-progress.json")
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "progress"))
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "32768")
 
     class BrokenInput:
         def write(self, value):
