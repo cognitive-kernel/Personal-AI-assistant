@@ -144,6 +144,10 @@ def test_manual_task_state_uses_one_cross_process_lock_and_capture_is_read_only(
     assert "$stateMutex.WaitOne" in script
     assert "$stateMutex.ReleaseMutex()" in script
     assert "Another autonomous run is active or queued" in script
+    assert "pending-manual-task-owner.json" in script
+    assert "taskDigest" in script
+    assert "schema_version = 1" in script
+    assert "claim_count" in script
     assert "with durable_state_lock(state_dir)" in capture
     assert "The manual task input was not durably persisted" in capture
     assert "temporary.replace(pending_path)" not in capture
