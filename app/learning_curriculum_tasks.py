@@ -116,6 +116,16 @@ def _collect_sources(
         if isinstance(checkpoint, dict) and isinstance(checkpoint.get("outline"), dict)
         else None
     )
+    preserved_model = (
+        checkpoint.get("model")
+        if isinstance(checkpoint, dict) and isinstance(checkpoint.get("model"), str)
+        else None
+    )
+    preserved_model_selection = (
+        checkpoint.get("model_selection")
+        if isinstance(checkpoint, dict) and isinstance(checkpoint.get("model_selection"), dict)
+        else None
+    )
     seen = {item["url"] for item in sources}
     for query in queries:
         if query in completed_queries:
@@ -127,6 +137,8 @@ def _collect_sources(
             "completed_queries": completed_queries,
             "sources": sources,
             **({"outline": preserved_outline} if preserved_outline is not None else {}),
+            **({"model": preserved_model} if preserved_model is not None else {}),
+            **({"model_selection": preserved_model_selection} if preserved_model_selection is not None else {}),
         })
         try:
             documents = web_sources.discover_sources(query, limit=5)
@@ -156,6 +168,8 @@ def _collect_sources(
             "completed_queries": completed_queries,
             "sources": sources,
             **({"outline": preserved_outline} if preserved_outline is not None else {}),
+            **({"model": preserved_model} if preserved_model is not None else {}),
+            **({"model_selection": preserved_model_selection} if preserved_model_selection is not None else {}),
         })
 
     domains = {urlsplit(item["url"]).hostname for item in sources}
