@@ -54,16 +54,28 @@ function Get-AutomaticContext {
         if ($os.FreePhysicalMemory -gt 0) {
             $freeRamGiB = [double]$os.FreePhysicalMemory / 1MB
         }
-    } catch { }
-    if ($null -eq $freeRamGiB) { return [int64][Math]::Min($Maximum, 512) }
-
-    $tags = Invoke-RestMethod -Uri "$baseUrl/api/tags" -Method Get -TimeoutSec 10
-    $tag = @($tags.models | Where-Object { $_.name -eq $Model }) | Select-Object -First 1
-    if (-not $tag -or $null -eq $tag.size -or [int64]$tag.size -le 0) {
-        return [int64][Math]::Min($Maximum, 2048)
+    } catch {
+        throw "Cannot calculate a hardware-safe context because Windows available-RAM telemetry is unavailable."
     }
-    $weightsGiB = [double]$tag.size / 1GB
+    if ($null -eq $freeRamGiB -or [double]::IsNaN($freeRamGiB) -or [double]::IsInfinity($freeRamGiB) -or $freeRamGiB -le 0) {
+        throw "Cannot calculate a hardware-safe context because Windows available-RAM telemetry is invalid."
+    }
+
+    try {
+        $tags = Invoke-RestMethod -Uri "$baseUrl/api/tags" -Method Get -TimeoutSec 10
+    } catch {
+        throw "Cannot calculate a hardware-safe context because Ollama model inventory is unavailable."
+    }
+    $tag = @($tags.models | Where-Object { $_.name -eq $Model }) | Select-Object -First 1
+    $weightBytes = 0L
+    if (-not $tag -or $null -eq $tag.size -or -not [int64]::TryParse([string]$tag.size, [ref]$weightBytes) -or $weightBytes -le 0) {
+        throw "Cannot calculate a hardware-safe context because the selected model's weight size is unavailable."
+    }
+    $weightsGiB = [double]$weightBytes / 1GB
     $architecture = [string]$Info.details.family
+    if ([string]::IsNullOrWhiteSpace($architecture) -or $null -eq $Info.model_info) {
+        throw "Cannot calculate a hardware-safe context because Ollama architecture metadata is incomplete."
+    }
     $modelInfo = $Info.model_info
     $layers = $null
     $heads = $null
@@ -76,26 +88,42 @@ function Get-AutomaticContext {
         if ($property.Name -eq ($architecture + ".attention.key_length")) { $keyLength = [double]$property.Value }
         if ($property.Name -eq ($architecture + ".attention.value_length")) { $valueLength = [double]$property.Value }
     }
-    if ($null -eq $valueLength) { $valueLength = $keyLength }
-    if (-not $layers -or -not $heads -or -not $keyLength -or -not $valueLength) {
-        return [int64][Math]::Min($Maximum, 2048)
+    if ($null -eq $heads) {
+        foreach ($property in $modelInfo.PSObject.Properties) {
+            if ($property.Name -eq ($architecture + ".attention.head_count")) { $heads = [double]$property.Value }
+        }
+    }
+    foreach ($dimension in @($layers, $heads, $keyLength, $valueLength)) {
+        if ($null -eq $dimension -or $dimension -le 0 -or [double]::IsNaN($dimension) -or [double]::IsInfinity($dimension)) {
+            throw "Cannot calculate a hardware-safe context because KV-cache architecture dimensions are incomplete or invalid."
+        }
     }
 
-    # Conservative CPU/RAM estimate: model weights + FP16 KV cache + 10% overhead,
-    # while preserving 4 GiB for Windows and other applications.
-    $bytesPerToken = $layers * $heads * ($keyLength + $valueLength) * 2
+    # Ollama does not consistently expose the active KV-cache dtype. Budget
+    # four bytes per KV element (FP32 upper bound), not an assumed FP16 cache.
+    $bytesPerToken = $layers * $heads * ($keyLength + $valueLength) * 4
+    if ($bytesPerToken -le 0 -or [double]::IsNaN($bytesPerToken) -or [double]::IsInfinity($bytesPerToken)) {
+        throw "Cannot calculate a hardware-safe context because the KV-cache size estimate is invalid."
+    }
+
+    # Available RAM already reflects current host pressure. Preserve another
+    # 4 GiB for Windows and other applications, then reserve model weights and overhead.
     $budgetGiB = [Math]::Max(0, $freeRamGiB - 4)
-    $cacheBudgetBytes = [Math]::Max(0, ($budgetGiB - $weightsGiB - [Math]::Max(0.5, $weightsGiB * 0.10)) * 1GB)
-    if ($bytesPerToken -le 0 -or $cacheBudgetBytes -le 0) {
-        return [int64][Math]::Min($Maximum, 512)
+    $overheadGiB = [Math]::Max(0.5, $weightsGiB * 0.10)
+    $cacheBudgetBytes = [Math]::Max(0, ($budgetGiB - $weightsGiB - $overheadGiB) * 1GB)
+    if ($cacheBudgetBytes -le 0) {
+        throw "The selected model weights and system reserve leave no safe memory budget for KV cache."
     }
 
     $fit = [int64][Math]::Floor($cacheBudgetBytes / $bytesPerToken)
-    $selected = [int64]512
-    foreach ($candidate in @(1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576)) {
+    $selected = [int64]0
+    foreach ($candidate in @(512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576)) {
         if ($candidate -le $Maximum -and $candidate -le $fit) {
             $selected = [int64]$candidate
         }
+    }
+    if ($selected -lt 512) {
+        throw "The measured hardware budget cannot safely support the minimum 512-token context for '$Model'."
     }
     return $selected
 }
@@ -214,6 +242,7 @@ $warmupBody = @{
     prompt = "Reply with OK."
     stream = $false
     keep_alive = "10m"
+    options = @{ num_ctx = $selectedContext }
 } | ConvertTo-Json -Depth 4 -Compress
 try {
     $null = Invoke-RestMethod -Uri "$baseUrl/api/generate" -Method Post -ContentType "application/json" -Body $warmupBody -TimeoutSec $TimeoutSeconds
@@ -227,7 +256,7 @@ Write-Host "Persistent Codex model: $codexModel"
 Write-Host "Model maximum context: $maximum tokens"
 Write-Host "Selected Codex context: $selectedContext tokens"
 Write-Host "Ollama allocated runtime context: $allocated tokens"
-if ($allocated -lt $selectedContext) {
-    throw "Ollama allocated only $allocated tokens for '$codexModel'; selected context is $selectedContext. No Codex task may proceed."
+if ($allocated -ne $selectedContext) {
+    throw "Ollama allocated $allocated tokens for '$codexModel'; the selected context is $selectedContext. Runtime context must match exactly before Codex may proceed."
 }
 Write-Host "OLLAMA_RUNTIME_CONTEXT_OK"
