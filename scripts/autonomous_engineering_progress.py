@@ -158,14 +158,25 @@ def codex_command(executable: str, arguments: list[str]) -> list[str]:
     return [executable, *arguments]
 
 
+def _verified_codex_context_window() -> int:
+    raw_context = os.getenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "").strip()
+    if not raw_context:
+        raise ValueError(
+            "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH is missing; the verified Ollama context preflight must run before Codex."
+        )
+    try:
+        context_window = int(raw_context)
+    except ValueError:
+        raise ValueError("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH must be an integer.") from None
+    if not 512 <= context_window <= 1048576:
+        raise ValueError("Codex context window must be between 512 and 1048576 tokens.")
+    return context_window
+
+
 def write_codex_model_catalog(model: str, context_window: int | None = None) -> Path:
     """Provide Codex metadata using the exact context selected and verified by Ollama."""
     if context_window is None:
-        raw_context = os.getenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "4096").strip()
-        try:
-            context_window = int(raw_context)
-        except ValueError:
-            raise ValueError("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH must be an integer.") from None
+        context_window = _verified_codex_context_window()
     if isinstance(context_window, bool) or not isinstance(context_window, int) or not 512 <= context_window <= 1048576:
         raise ValueError("Codex context window must be between 512 and 1048576 tokens.")
     safe_model = re.sub(r"[^A-Za-z0-9_.-]", "_", model)
@@ -211,7 +222,7 @@ def codex_arguments(model: str, report: str) -> list[str]:
     reasoning_effort = os.getenv("CODEX_MODEL_REASONING_EFFORT", "").strip().casefold()
     if reasoning_effort and reasoning_effort not in {"low", "medium", "high"}:
         raise ValueError("CODEX_MODEL_REASONING_EFFORT must be 'low', 'medium', or 'high'.")
-    context_window = int(os.getenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "4096"))
+    context_window = _verified_codex_context_window()
     catalog_path = write_codex_model_catalog(model, context_window=context_window)
     print(f"Codex model catalog metadata: model={model}, context_window={context_window}")
     arguments = [
