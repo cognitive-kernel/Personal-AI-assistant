@@ -1460,7 +1460,7 @@ async function refreshHardwareDiagnostics(profile=modelContextProfiles[0]) {
     :gpuEnabled?"GPU فعال شده اما دستگاه/درایور قابل شناسایی نیست."
     :"استفاده از GPU در تنظیمات غیرفعال است.");
   const gpuEstimate=selected?.memory_estimate?.full_gpu_vram_gib_float16;
-  const gpuFreeValues=(h.gpu_devices||[]).map(g=>g.memory_free_mb).filter(value=>Number.isFinite(Number(value)));
+  const gpuFreeValues=(h.gpu_devices||[]).map(g=>g.memory_free_mb).filter(value=>value!==null && value!==undefined && Number.isFinite(Number(value)));
   const gpuFreeGb=gpuFreeValues.length?gpuFreeValues.reduce((sum,value)=>sum+Number(value),0)/1024:null;
   const gpuFit=gpuEstimate==null?"نیاز VRAM تخمینی نامشخص است."
    :gpuFreeGb==null?"مقدار VRAM آزاد قابل‌اندازه‌گیری نیست."
