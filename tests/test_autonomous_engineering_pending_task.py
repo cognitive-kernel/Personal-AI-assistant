@@ -150,12 +150,15 @@ def test_manual_task_state_uses_one_cross_process_lock_and_capture_is_read_only(
     assert "Get-AutonomousTaskDigest" in task_state_module
     assert "schema_version = 1" in task_state_module
     assert "claim_count" in task_state_module
+    assert "Recover-AutonomousPendingStateCleanup" in task_state_module
+    assert "pending-state-cleanup.json" in task_state_module
     assert "with durable_state_lock(state_dir)" in capture
     assert "The manual task input was not durably persisted" in capture
     assert "temporary.replace(pending_path)" not in capture
     assert "execution_state_directory()" in capture
     assert "claim_pending_task_owner_unlocked" in capture
     assert "validate_pending_task_owner_unlocked" in capture
+    assert "recover_pending_state_cleanup_unlocked" in capture
     assert "owner_path = pending_task_owner_path(state_dir)" in capture
 
 
