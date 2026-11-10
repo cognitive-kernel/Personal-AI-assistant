@@ -566,11 +566,13 @@ def test_checkpoint_watcher_real_process_publishes_run_scoped_readiness(
         assert metadata is not None, (
             process.stdout.read() if process.poll() is not None else "watcher readiness timed out"
         )
-        assert metadata["schema_version"] == 3
+        assert metadata["schema_version"] == 4
         assert metadata["base_sha"] == base_sha
         assert metadata["run_id"] == run_id
         assert metadata["task"] == task
         assert metadata["watcher_pid"] == process.pid
+        assert isinstance(metadata["watcher_started_at"], (int, float))
+        assert metadata["watcher_started_at"] > 0
         assert not ready_path.exists(), "Readiness must not depend on a secondary marker file"
     finally:
         checkpoint.paths(run_id, task)["stop"].write_text("stop\\n", encoding="utf-8")
@@ -591,7 +593,7 @@ def test_checkpoint_readiness_is_committed_without_a_secondary_marker(
     state = tmp_path / "ProgramData"
     monkeypatch.setattr(checkpoint, "store_dir", lambda: state)
 
-    def prepare_snapshot(base_sha, run_id, task, watcher_pid):
+    def prepare_snapshot(base_sha, run_id, task, watcher_pid, watcher_started_at):
         paths = checkpoint.paths(run_id, task)
         state.mkdir(parents=True, exist_ok=True)
         metadata = build_checkpoint_metadata(
@@ -599,6 +601,7 @@ def test_checkpoint_readiness_is_committed_without_a_secondary_marker(
             run_id=run_id,
             task=task,
             watcher_pid=watcher_pid,
+            watcher_started_at=watcher_started_at,
             updated_at=1.0,
             patch_bytes=0,
         )
@@ -643,12 +646,13 @@ def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pyt
         def __init__(self, *args, **kwargs):
             checkpoint.paths("105", 1)["metadata"].write_text(
                 json.dumps({
-                    "schema_version": 3,
+                    "schema_version": 4,
                     "watcher_ready": True,
                     "run_id": "105",
                     "task": 1,
                     "base_sha": "a" * 40,
                     "watcher_pid": 4321,
+                    "watcher_started_at": 1234.5,
                 }),
                 encoding="utf-8",
             )
@@ -733,6 +737,7 @@ def test_checkpoint_readiness_contract_rejects_wrong_owner_or_base():
         run_id="run-1",
         task=2,
         watcher_pid=4321,
+        watcher_started_at=1234.5,
         updated_at=1.0,
         patch_bytes=0,
     )
@@ -823,9 +828,10 @@ def test_checkpoint_watcher_uses_base_interpreter_with_venv_dependencies(
             captured["env"] = kwargs["env"]
             checkpoint.paths("107", 1)["metadata"].write_text(
                 json.dumps({
-                    "schema_version": 3, "watcher_ready": True,
+                    "schema_version": 4, "watcher_ready": True,
                     "run_id": "107", "task": 1, "base_sha": "a" * 40,
                     "watcher_pid": self.pid,
+                    "watcher_started_at": 1234.5,
                 }),
                 encoding="utf-8",
             )
