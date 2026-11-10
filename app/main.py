@@ -728,7 +728,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         if key in values and (not isinstance(values[key], str) or values[key] not in keep_alive_values):
             raise HTTPException(status_code=422, detail=f"{key} must be one of: auto, 0, 1m, 5m, 10m, 30m.")
     numeric_ranges = [
-        ("ollama_timeout_seconds", 5, 600), ("ollama_num_ctx", 512, 8192),
+        ("ollama_timeout_seconds", 5, 600), ("ollama_num_ctx", 512, 1048576),
         ("ollama_num_thread", 0, 64),
         ("cpu_resource_limit_percent", 10, 95),
         ("ram_resource_limit_percent", 10, 95),
@@ -739,7 +739,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
     for prefix in ("chat", "learning", "programming"):
         numeric_ranges.extend([
             (f"{prefix}_ollama_timeout_seconds", 5, 600),
-            (f"{prefix}_ollama_num_ctx", 512, 8192),
+            (f"{prefix}_ollama_num_ctx", 512, 1048576),
             (f"{prefix}_ollama_num_thread", 0, 64),
             (f"{prefix}_max_concurrent_jobs", 1, 8),
         ])
@@ -755,6 +755,41 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
                 raise HTTPException(status_code=422, detail=f"{key} must be an integer.")
             if not low <= raw_value <= high:
                 raise HTTPException(status_code=422, detail=f"{key} must be between {low} and {high}.")
+    # Context limits are model-specific. If metadata cannot be verified, fail closed
+    # rather than silently accepting a value that may exceed the selected model.
+    current_settings = db.get_settings()
+    context_profiles = {
+        "ollama_num_ctx": "ollama_model",
+        "chat_ollama_num_ctx": "chat_ollama_model",
+        "learning_ollama_num_ctx": "learning_ollama_model",
+        "programming_ollama_num_ctx": "programming_ollama_model",
+    }
+    for context_key, model_key in context_profiles.items():
+        if context_key not in values:
+            continue
+        model_name = values.get(model_key, current_settings.get(model_key) or current_settings.get("ollama_model"))
+        if model_key == "ollama_model" and "chat_ollama_model" in values:
+            model_name = values["chat_ollama_model"]
+        if not isinstance(model_name, str) or not model_name.strip():
+            raise HTTPException(status_code=422, detail=f"{context_key} requires a selected Ollama model.")
+        try:
+            metadata = ollama.model_details(model_name.strip())
+        except ollama.OllamaError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Cannot verify the maximum context for {model_name}: {exc}",
+            ) from exc
+        maximum = metadata.get("maximum_context_tokens")
+        if not isinstance(maximum, int) or maximum < 512:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Maximum context metadata is unavailable for {model_name}; context cannot be safely validated.",
+            )
+        if values[context_key] > maximum:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{context_key} cannot exceed {maximum} tokens supported by {model_name}.",
+            )
     for key in ("ollama_model", "chat_ollama_model", "learning_ollama_model", "programming_ollama_model"):
         if key in values and (
             not isinstance(values[key], str) or not values[key].strip() or len(values[key]) > 200
