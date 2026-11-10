@@ -20,8 +20,8 @@ MIN_TOPICS = 8
 MAX_TOPICS = 40
 MAX_SOURCE_DOCUMENTS = 6
 MIN_SOURCE_DOCUMENTS = 3
-MAX_SOURCE_EXCERPT_CHARS = 350
-MAX_PROMPT_CHARS = 8000
+MAX_SOURCE_EXCERPT_CHARS = 250
+MAX_PROMPT_CHARS = 6000
 
 _SEARCH_QUERY_SUFFIXES = (
     "complete syllabus curriculum fundamentals advanced topics",
@@ -245,7 +245,7 @@ def _generate_outline(
     request = {
         "requested_subject": topic,
         "maximum_ordered_topics": max_topics,
-        "user_supplied_context": source_text[:1500],
+        "user_supplied_context": source_text[:500],
         "research_sources": source_material,
         "requirements": [
             "Create the most comprehensive useful syllabus for the exact requested subject, not a generic course.",
@@ -276,7 +276,7 @@ def _generate_outline(
             system_prompt=system_prompt,
             purpose="learning",
             model_override=model,
-            num_predict=1000,
+            num_predict=800,
         )
         return _parse_outline(response, max_topics)
     except ValueError as first_error:
