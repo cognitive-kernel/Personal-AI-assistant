@@ -237,7 +237,7 @@ def test_model_details_endpoint_exposes_context_and_selected_context_estimate(se
 
 
 def test_hardware_diagnostics_endpoint_returns_cpu_ram_gpu_and_ollama_state(settings_client, monkeypatch):
-    monkeypatch.setattr(ollama, "runtime_diagnostics", lambda model=None, context_tokens=None: {
+    monkeypatch.setattr(ollama, "runtime_diagnostics", lambda model=None, context_tokens=None, purpose="chat": {
         "hardware": {
             "logical_cpu_count": 12,
             "cpu_utilization_percent": 25,
