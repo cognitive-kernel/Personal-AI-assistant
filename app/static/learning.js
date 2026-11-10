@@ -568,20 +568,6 @@ async function stopLesson(path, topic, stopButton, output) {
  }
 }
 
-async function loadLearningCurricula() {
- try {
-  const data = await learningApi("/api/learning/curricula");
-  const select = learningEl("curriculum-select");
-  select.replaceChildren();
-  data.curricula.forEach(course => {
-   const option = document.createElement("option");
-   option.value = course.slug;
-   option.textContent = course.title + " (" + course.topic_count + " سرفصل)";
-   select.append(option);
-  });
- } catch (error) { learningEl("paths-output").textContent = error.message; }
-}
-
 async function loadLearningPaths() {
  try {
   const data = await learningApi("/api/learning/paths");
@@ -665,33 +651,35 @@ async function loadLearningPaths() {
     details.append(references);
    }
 
-   const syncControls = document.createElement("div");
-   syncControls.className = "path-sync-controls";
-   const syncButton = document.createElement("button");
-   syncButton.type = "button";
-   syncButton.textContent = "همگام‌سازی سرفصل‌ها";
-   const syncOutput = document.createElement("p");
-   syncOutput.setAttribute("role", "status");
-   syncButton.addEventListener("click", async () => {
-    syncButton.disabled = true;
-    syncOutput.textContent = "در حال بررسی مسیر و حفظ سوابق موجود…";
-    try {
-     const result = await learningApi("/api/learning/paths/" + path.id + "/sync", {method: "POST"});
-     const summary = result.sync || {};
-     await loadLearningPaths();
-     learningEl("paths-output").textContent =
-      "همگام‌سازی انجام شد. سرفصل جدید: " + (summary.added_topic_count || 0) +
-      "؛ سرفصل قدیمیِ بدون سابقه حذف‌شده: " + (summary.removed_legacy_count || 0) +
-      "؛ سرفصل قدیمی دارای سابقه و حفظ‌شده: " + (summary.retained_legacy_count || 0) +
-      ". وضعیت‌ها، امتیازها و کارهای مرتبط حفظ شدند.";
-    } catch (error) {
-     syncOutput.textContent = "خطا در همگام‌سازی مسیر: " + error.message;
-    } finally {
-     syncButton.disabled = false;
-    }
-   });
-   syncControls.append(syncButton, syncOutput);
-   details.append(syncControls);
+   if (!path.research) {
+    const syncControls = document.createElement("div");
+    syncControls.className = "path-sync-controls";
+    const syncButton = document.createElement("button");
+    syncButton.type = "button";
+    syncButton.textContent = "همگام‌سازی سرفصل‌ها";
+    const syncOutput = document.createElement("p");
+    syncOutput.setAttribute("role", "status");
+    syncButton.addEventListener("click", async () => {
+     syncButton.disabled = true;
+     syncOutput.textContent = "در حال بررسی مسیر و حفظ سوابق موجود…";
+     try {
+      const result = await learningApi("/api/learning/paths/" + path.id + "/sync", {method: "POST"});
+      const summary = result.sync || {};
+      await loadLearningPaths();
+      learningEl("paths-output").textContent =
+       "همگام‌سازی انجام شد. سرفصل جدید: " + (summary.added_topic_count || 0) +
+       "؛ سرفصل قدیمیِ بدون سابقه حذف‌شده: " + (summary.removed_legacy_count || 0) +
+       "؛ سرفصل قدیمی دارای سابقه و حفظ‌شده: " + (summary.retained_legacy_count || 0) +
+       ". وضعیت‌ها، امتیازها و کارهای مرتبط حفظ شدند.";
+     } catch (error) {
+      syncOutput.textContent = "خطا در همگام‌سازی مسیر: " + error.message;
+     } finally {
+      syncButton.disabled = false;
+     }
+    });
+    syncControls.append(syncButton, syncOutput);
+    details.append(syncControls);
+   }
 
    const proposalControls = document.createElement("section");
    proposalControls.className = "curriculum-proposal-controls";
@@ -978,26 +966,14 @@ async function refreshLearningCapabilities() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
- const enroll = learningEl("enroll-curriculum");
- if (!enroll) return;
- enroll.addEventListener("click", async () => {
-  const slug = learningEl("curriculum-select").value;
-  if (!slug) return;
-  try {
-   const path = await learningApi("/api/learning/paths", {method: "POST", body: JSON.stringify({slug})});
-   learningEl("paths-output").textContent = "مسیر ثبت شد: " + path.title;
-   await loadLearningPaths();
-  } catch (error) { learningEl("paths-output").textContent = error.message; }
- });
  learningEl("refresh-paths").addEventListener("click", loadLearningPaths);
  learningEl("refresh-due-reviews").addEventListener("click", refreshDueLearningReviews);
  learningEl("refresh-learning-recommendations").addEventListener("click", refreshLearningRecommendations);
  learningEl("refresh-capability-map").addEventListener("click", refreshLearningCapabilities);
- loadLearningCurricula();
  loadLearningPaths();
  refreshDueLearningReviews();
  refreshLearningRecommendations();
-});
+});;
 
 
 // Phase one: acquire lessons through the user's authenticated ChatGPT tab in local Chrome.
