@@ -174,7 +174,11 @@ def list_models() -> list[dict[str, Any]]:
     ]
 
 
-def _model_context_metadata(model_info: dict[str, Any]) -> int | None:
+def _model_context_metadata(model_info: dict[str, Any], architecture: str | None = None) -> int | None:
+    if isinstance(architecture, str) and architecture:
+        preferred = model_info.get(architecture + ".context_length")
+        if isinstance(preferred, int) and not isinstance(preferred, bool) and preferred >= 512:
+            return preferred
     values = [
         value for key, value in model_info.items()
         if str(key).endswith(".context_length")
@@ -234,7 +238,7 @@ def model_details(model: str, context_tokens: int | None = None) -> dict[str, An
     info = _request("/api/show", {"model": name}, timeout=8)
     model_info = info.get("model_info") if isinstance(info.get("model_info"), dict) else {}
     details = info.get("details") if isinstance(info.get("details"), dict) else {}
-    maximum_context = _model_context_metadata(model_info)
+    maximum_context = _model_context_metadata(model_info, details.get("family"))
     def first_number(suffixes: tuple[str, ...]) -> int | None:
         for key, value in model_info.items():
             if str(key).endswith(suffixes) and isinstance(value, int) and not isinstance(value, bool) and value > 0:
@@ -369,8 +373,11 @@ def chat(
     model = str(model_override if model_override is not None else settings.get(f"{prefix}_ollama_model", settings.get("ollama_model", "qwen2.5:7b"))).strip()
     if not model or len(model) > 200:
         raise ValueError("model must be a non-empty name of at most 200 characters.")
-    model_info = _request("/api/show", {"model": model}, timeout=8).get("model_info", {})
-    maximum_context = _model_context_metadata(model_info if isinstance(model_info, dict) else {})
+    model_details_payload = _request("/api/show", {"model": model}, timeout=8)
+    model_info = model_details_payload.get("model_info", {})
+    model_details_meta = model_details_payload.get("details", {})
+    architecture = model_details_meta.get("family") if isinstance(model_details_meta, dict) else None
+    maximum_context = _model_context_metadata(model_info if isinstance(model_info, dict) else {}, architecture)
     limits = runtime_limits({
         "ollama_num_ctx": settings.get(f"{prefix}_ollama_num_ctx", settings.get("ollama_num_ctx", 4096)),
         "ollama_num_thread": settings.get(f"{prefix}_ollama_num_thread", settings.get("ollama_num_thread", 0)),
