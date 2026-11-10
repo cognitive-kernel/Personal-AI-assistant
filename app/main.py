@@ -811,7 +811,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
                 metadata = ollama.model_details(model_name.strip())
                 model_metadata_cache[model_name.strip()] = metadata
         except ollama.OllamaError as exc:
-            if context_changed or model_changed:
+            if context_changed:
                 raise HTTPException(
                     status_code=422,
                     detail=f"Cannot verify the maximum context for {model_name}: {exc}",
@@ -828,7 +828,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
                 if model_key == "chat_ollama_model":
                     values["ollama_num_ctx"] = context_value
         if not isinstance(maximum, int) or maximum < 512:
-            if context_changed or model_changed:
+            if context_changed:
                 raise HTTPException(
                     status_code=422,
                     detail=f"Maximum context metadata is unavailable for {model_name}; context cannot be safely validated.",
