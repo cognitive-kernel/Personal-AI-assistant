@@ -280,6 +280,8 @@ def _generate_outline(
         prompt,
         model,
         topic=topic,
+        generation_scope="curriculum_outline_generation_single_repair",
+        completion_token_budget=800,
     )
     if selected_model != model:
         raise learning.LearningError("Curriculum generation attempted to substitute the configured learning model.")
