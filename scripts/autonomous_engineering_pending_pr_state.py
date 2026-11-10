@@ -61,6 +61,7 @@ def _cleanup_marker_path(state_dir: Path) -> Path:
 
 
 def _write_cleanup_marker_unlocked(state_dir: Path) -> None:
+    state_dir.mkdir(parents=True, exist_ok=True)
     marker = _cleanup_marker_path(state_dir)
     record = {
         "schema_version": 1,
