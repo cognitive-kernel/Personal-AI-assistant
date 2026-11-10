@@ -6,11 +6,11 @@ The learning cost manager is an advisory selector only when no hard constraint i
 
 ## Selection contract
 
-1. Read the configured per-model cost/quality profiles and enumerate locally installed Ollama models.
-2. Consider only installed models with valid explicit cost rates and a configured quality score at or above the minimum threshold.
-3. Estimate the maximum applicable job cost across initial generation, one permitted repair, and one optional claim-review request when usable web evidence exists. The claim-review prompt estimate uses the same bounded evidence and payload builder as execution, with a maximum 10,000-character answer. Prompt estimates are deliberately conservative and tokenizer-independent; completion allowance is 1,200 + 1,400 tokens for generation/repair and 1,000 for claim review.
-4. Select the lowest estimated-cost eligible model. Ties prefer the higher configured quality score, then a stable model-name order.
-5. Use the same selected model for initial generation, repair, and any optional claim review so the estimated job budget and actual model selection remain coherent. Reserve the claim-review request in the durable per-job/global token ledger before calling Ollama.
+1. Read the configured `learning_ollama_model` and enumerate installed Ollama models when cost/quality profiles are configured.
+2. The configured learning model is the only eligible candidate. A cheaper or higher-scored chat/programming/other installed model must never replace it; this lane is pinned to `gpt-oss:20b` by default.
+3. If a profile or hard quality/budget constraint is configured, evaluate only that pinned model against its explicit profile. If it is not installed or its profile does not satisfy the constraints, fail closed before generation.
+4. Estimate the maximum applicable job cost across initial generation, one permitted repair, and one optional claim-review request when usable web evidence exists. The claim-review prompt estimate uses the same bounded evidence and payload builder as execution, with a maximum 10,000-character answer. Prompt estimates are deliberately conservative and tokenizer-independent; completion allowance is 1,200 + 1,400 tokens for generation/repair and 1,000 for claim review.
+5. Use the same pinned model for initial generation, repair, and any optional claim review so the estimated job budget and actual model selection remain coherent. Reserve the claim-review request in the durable per-job/global token ledger before calling Ollama.
 
 ## Fail-closed behavior
 
