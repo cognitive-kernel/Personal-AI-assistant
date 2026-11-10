@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -16,7 +17,6 @@ def _state(tmp_path: Path) -> tuple[dict[str, object], dict[str, Path]]:
         "stop": tmp_path / "checkpoint.stop",
     }
     paths["patch"].write_bytes(b"preserve this patch")
-    paths["metadata"].write_text('{"run_id":"run-9","task":2}', encoding="utf-8")
     metadata = {
         "schema_version": 4,
         "run_id": "run-9",
@@ -25,7 +25,10 @@ def _state(tmp_path: Path) -> tuple[dict[str, object], dict[str, Path]]:
         "watcher_pid": 4321,
         "watcher_started_at": 1234.5,
         "watcher_ready": True,
+        "updated_at": 1.0,
+        "patch_bytes": len(b"preserve this patch"),
     }
+    paths["metadata"].write_text(json.dumps(metadata), encoding="utf-8")
     return metadata, paths
 
 
