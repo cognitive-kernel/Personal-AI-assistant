@@ -53,10 +53,10 @@ function Get-AutomaticContext {
     $modelInfo = $Info.model_info
     $layers = $null; $heads = $null; $keyLength = $null; $valueLength = $null
     foreach ($property in $modelInfo.PSObject.Properties) {
-        if ($property.Name -eq "$architecture.block_count") { $layers = [double]$property.Value }
-        if ($property.Name -eq "$architecture.attention.head_count_kv") { $heads = [double]$property.Value }
-        if ($property.Name -eq "$architecture.attention.key_length") { $keyLength = [double]$property.Value }
-        if ($property.Name -eq "$architecture.attention.value_length") { $valueLength = [double]$property.Value }
+        if ($property.Name -eq "${architecture}.block_count") { $layers = [double]$property.Value }
+        if ($property.Name -eq "${architecture}.attention.head_count_kv") { $heads = [double]$property.Value }
+        if ($property.Name -eq "${architecture}.attention.key_length") { $keyLength = [double]$property.Value }
+        if ($property.Name -eq "${architecture}.attention.value_length") { $valueLength = [double]$property.Value }
     }
     if ($null -eq $valueLength) { $valueLength = $keyLength }
     if (-not $layers -or -not $heads -or -not $keyLength -or -not $valueLength) {
