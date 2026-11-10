@@ -148,3 +148,18 @@ def test_manual_task_state_uses_one_cross_process_lock_and_capture_is_read_only(
     assert "The manual task input was not durably persisted" in capture
     assert "temporary.replace(pending_path)" not in capture
     assert "execution_state_directory()" in capture
+
+
+def test_workflow_pins_local_durable_state_to_one_runner_and_rejects_dropped_manual_tasks():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    provision = (root / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
+
+    assert "runs-on: [self-hosted, Windows, X64, ollama, autonomous-state-owner]" in workflow
+    assert '"--labels", "ollama,autonomous-state-owner"' in provision
+    assert "Ensure-AutonomousStateOwnerLabel" in provision
+    assert "Another Runner already owns the autonomous-state-owner label" in provision
+    assert "A manual task was not accepted because autonomous engineering is paused" in workflow
+    assert "A manual task was not accepted because another run is active or queued" in workflow
