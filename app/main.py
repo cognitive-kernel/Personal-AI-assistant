@@ -828,7 +828,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
                 if model_key == "chat_ollama_model":
                     values["ollama_num_ctx"] = context_value
         if not isinstance(maximum, int) or maximum < 512:
-            if context_changed:
+            if context_changed or model_changed:
                 raise HTTPException(
                     status_code=422,
                     detail=f"Maximum context metadata is unavailable for {model_name}; context cannot be safely validated.",
