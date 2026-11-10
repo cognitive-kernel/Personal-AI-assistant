@@ -173,6 +173,100 @@ def list_models() -> list[dict[str, Any]]:
         for item in models if isinstance(item, dict)
     ]
 
+
+def model_details(model: str) -> dict[str, Any]:
+    """Return local Ollama model metadata and a clearly-labelled context/memory estimate."""
+    name = str(model or "").strip()
+    if not name or len(name) > 200:
+        raise OllamaError("Model name is invalid.")
+    info = _request("/api/show", {"model": name, "verbose": True}, timeout=8)
+    model_info = info.get("model_info") if isinstance(info.get("model_info"), dict) else {}
+    details = info.get("details") if isinstance(info.get("details"), dict) else {}
+    context_values = [
+        value for key, value in model_info.items()
+        if str(key).endswith(".context_length") and isinstance(value, int) and not isinstance(value, bool) and value > 0
+    ]
+    maximum_context = max(context_values) if context_values else None
+    def first_number(suffixes: tuple[str, ...]) -> int | None:
+        for key, value in model_info.items():
+            if str(key).endswith(suffixes) and isinstance(value, int) and not isinstance(value, bool) and value > 0:
+                return value
+        return None
+    layers = first_number((".block_count",))
+    kv_heads = first_number((".attention.head_count_kv", ".attention.head_count"))
+    key_length = first_number((".attention.key_length",))
+    value_length = first_number((".attention.value_length",))
+    if value_length is None:
+        value_length = key_length
+    # Ollama metadata does not consistently expose KV-cache element precision.
+    # Use a float16 planning estimate only when architecture dimensions are known.
+    kv_cache_bytes_per_token = (
+        2 * layers * kv_heads * (key_length + value_length)
+        if layers and kv_heads and key_length and value_length else None
+    )
+    tags = list_models()
+    tag = next((item for item in tags if item.get("name") == name), None)
+    weight_bytes = tag.get("size") if tag and isinstance(tag.get("size"), int) else None
+    running = _request("/api/ps", timeout=4).get("models", [])
+    running_item = next((item for item in running if isinstance(item, dict) and item.get("name") == name), None) if isinstance(running, list) else None
+    quantization = details.get("quantization_level")
+    parameter_size = details.get("parameter_size")
+    estimate = None
+    if weight_bytes is not None and kv_cache_bytes_per_token is not None:
+        estimate = {
+            "weights_gib": round(weight_bytes / (1024 ** 3), 2),
+            "kv_cache_gib_float16": None,
+            "overhead_gib": round(max(0.5, weight_bytes * 0.10 / (1024 ** 3)), 2),
+        }
+        if maximum_context is not None:
+            kv_bytes = kv_cache_bytes_per_token * maximum_context * 2
+            estimate["kv_cache_gib_float16"] = round(kv_bytes / (1024 ** 3), 2)
+            estimate["total_ram_gib_float16"] = round(
+                weight_bytes / (1024 ** 3) + kv_bytes / (1024 ** 3) + estimate["overhead_gib"], 2
+            )
+    return {
+        "name": name,
+        "parameter_size": parameter_size,
+        "quantization": quantization,
+        "maximum_context_tokens": maximum_context,
+        "context_metadata_available": maximum_context is not None,
+        "weight_size_bytes": weight_bytes,
+        "architecture": details.get("family"),
+        "memory_estimate": estimate,
+        "memory_estimate_note": "Planning estimate only; KV cache assumes float16 and is omitted when architecture dimensions are unavailable.",
+        "running": {
+            "context_length": running_item.get("context_length"),
+            "size_bytes": running_item.get("size"),
+            "size_vram_bytes": running_item.get("size_vram"),
+            "processor": running_item.get("details", {}).get("format") if isinstance(running_item.get("details"), dict) else None,
+        } if running_item else None,
+    }
+
+
+def runtime_diagnostics(model: str | None = None) -> dict[str, Any]:
+    """Combine host telemetry with Ollama's observed loaded-model allocation."""
+    hardware = detect_hardware()
+    result: dict[str, Any] = {"hardware": hardware, "ollama_running_models": []}
+    try:
+        running = _request("/api/ps", timeout=4).get("models", [])
+        if isinstance(running, list):
+            result["ollama_running_models"] = [
+                {
+                    "name": item.get("name"),
+                    "context_length": item.get("context_length"),
+                    "size_bytes": item.get("size"),
+                    "size_vram_bytes": item.get("size_vram"),
+                    "processor": item.get("details", {}).get("format") if isinstance(item.get("details"), dict) else None,
+                }
+                for item in running if isinstance(item, dict)
+            ]
+    except OllamaError as exc:
+        result["ollama_ps_error"] = str(exc)
+    if model:
+        result["selected_model"] = model_details(model)
+    return result
+
+
 def chat(
     message: str,
     history: list[dict[str, str]] | None = None,
