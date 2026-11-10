@@ -38,6 +38,7 @@ try {
     if (-not $stateMutexOwned) {
         throw "Timed out waiting for the autonomous engineering durable-state mutex."
     }
+    $null = Recover-AutonomousPendingStateCleanup -StateDirectory $stateDir
 
     $headers = @{
         Accept = "application/vnd.github+json"
