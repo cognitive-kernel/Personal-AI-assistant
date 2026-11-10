@@ -36,6 +36,9 @@ try {
         Authorization = "Bearer $env:GH_TOKEN"
         "X-GitHub-Api-Version" = "2022-11-28"
     } -TimeoutSec 25
+    if ($null -eq $workflowRuns -or $null -eq $workflowRuns.workflow_runs) {
+        throw "GitHub returned an invalid workflow-run listing; refusing to accept a manual task."
+    }
     $currentRunId = [string]$env:GITHUB_RUN_ID
     $otherActiveRuns = @($workflowRuns.workflow_runs | Where-Object {
         [string]$_.id -ne $currentRunId -and
