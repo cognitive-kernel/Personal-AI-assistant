@@ -184,7 +184,7 @@ def _model_context_metadata(model_info: dict[str, Any], architecture: str | None
         if str(key).endswith(".context_length")
         and isinstance(value, int) and not isinstance(value, bool) and value >= 512
     ]
-    return max(values) if values else None
+    return min(values) if values else None
 
 
 def _recommended_context_tokens(
