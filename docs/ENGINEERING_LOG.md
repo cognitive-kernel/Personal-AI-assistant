@@ -385,3 +385,12 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Pending PR read/save/clear operations use the same mutex. PR publication persists its owner record before dispatching CI; recovery persists a discovered PR before CI revalidation. Post-merge cleanup removes the pending task and pending PR in one locked transaction.
 - Added Python cross-process exclusion/crash-release tests and a Windows-only PowerShell/Python mutex interoperability test. Added publication-order and atomic-clear regressions.
 - Added ADR-015 and updated the operations guide. Exact-head CI and the real self-hosted Runner workflow remain the acceptance gates; no merge is claimed.
+
+
+## 2026-11-10 — Checkpoint lifetime ownership and single-host state affinity (PR #707)
+
+- Added scripts/autonomous_engineering_checkpoint_lock.py. The checkpoint watcher holds the OS lock for its entire lifetime; a duplicate watcher fails before touching state. Snapshot, restore, stop, cleanup, and legacy migration serialize on the same checkpoint-store lock. Process termination/crash releases the OS lock.
+- Recovery now acquires checkpoint-store ownership after stopping/reaping the recorded watcher, revalidates metadata, and verifies the patch byte count before applying. Corrupt, incomplete, or mismatched checkpoint records block fallback to older snapshots. The reader preserves v2/v3/v4 metadata compatibility.
+- The first exact-head focused CI run 42835796058 exposed two stale test seams that monkeypatched the public snapshot wrapper while the watcher correctly calls its lock-held internal operation. Windows storage regressions passed in that run; the test seams were corrected in commit 982c720588101210c2c23721a59cdbef1a79a72b. This is a test failure, not evidence that the earlier CI run passed.
+- The durable-state mutex is host-local. To prevent sequential GitHub jobs from landing on different self-hosted hosts with separate ProgramData state, the workflow now requires the unique autonomous-state-owner runner label. provision_autonomous_runner.ps1 adds/verifies that label and refuses an incomplete inventory or a second owner. The workflow schedule gate explicitly fails a manual task dispatch while paused or another run is active, rather than silently dropping it.
+- ADR-014 and ADR-015, the operations guide, setup UI, project status, and regression tests were updated to match these contracts. Exact-head Linux/Windows CI, browser E2E, dependency audit, and target Windows Runner acceptance remain required. No merge is performed.
