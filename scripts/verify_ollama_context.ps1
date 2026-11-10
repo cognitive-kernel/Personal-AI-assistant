@@ -132,6 +132,10 @@ if ($VerifyOnly) {
     if ($null -eq $maximum -or $selectedContext -gt $maximum) {
         throw "The persisted Codex context $selectedContext exceeds or cannot be verified against the model maximum."
     }
+    $hardwareSafeContext = Get-AutomaticContext -Maximum $maximum -Info $modelInfo
+    if ($selectedContext -gt $hardwareSafeContext) {
+        throw "The persisted Codex context $selectedContext exceeds the current hardware-safe limit $hardwareSafeContext. Re-run context selection before Codex starts."
+    }
 } else {
     if ($Model -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]*(?::[A-Za-z0-9._-]+)?$') {
         throw "Model name contains unsupported characters; refusing to construct a persistent Codex model variant."
