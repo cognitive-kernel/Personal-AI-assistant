@@ -23,7 +23,7 @@
 ### Test observations and validation gates
 
 - Earlier exact-head CI runs exposed real failures rather than being marked successful: test fixtures still expected the removed 512/2048 fallback; one inventory assertion assumed input order instead of the API's deterministic sorted order; a settings-route assertion still expected the old fallback behavior; and a Codex process test did not provide the now-required preflight context. These test expectations/fixtures were corrected; production validation was not weakened.
-- On head 5f034658346c1db5a8ea3d719906e27035e39fb5, Windows storage regressions and dependency audit passed; the main test suite and browser E2E were in progress at the last check. A documentation refresh follows and requires exact-head checks again.
+- On implementation/test head 8c9e6d723a8aa8a6547ed237d09ec908e90d7e7f, the full suite passed with 1,965 passed / 50 deselected; Windows storage regressions, browser E2E, and dependency audit also passed. Runs: tests #42862794223, browser #42862794156, dependency audit #42862794211. The subsequent status/documentation-only checkpoint ran the suite successfully and had final benchmarks in progress; the final documentation commit triggers another exact-head CI pass.
 - Windows diagnostic run #95 is queued for the self-hosted labels Windows, X64, and ollama. The owner's workstation is powered off, so no claim is made for live Ollama/Codex execution, actual /api/ps allocation, local testing, or full autonomous-cycle acceptance.
 - PR #708 remains Draft and unmerged. No unsandboxed fallback, Runner privilege increase, merge bypass, or direct-main modification was performed.
 
