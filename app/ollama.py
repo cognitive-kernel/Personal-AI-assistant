@@ -241,7 +241,7 @@ def model_details(model: str, context_tokens: int | None = None) -> dict[str, An
             "context_length": running_item.get("context_length"),
             "size_bytes": running_item.get("size"),
             "size_vram_bytes": running_item.get("size_vram"),
-            "processor": running_item.get("details", {}).get("format") if isinstance(running_item.get("details"), dict) else None,
+            "processor": ("GPU" if isinstance(running_item.get("size_vram"), int) and running_item.get("size_vram") > 0 else "CPU" if isinstance(running_item.get("size_vram"), int) else None),
         } if running_item else None,
     }
 
