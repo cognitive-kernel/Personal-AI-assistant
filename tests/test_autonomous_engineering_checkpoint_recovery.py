@@ -187,3 +187,19 @@ def test_read_metadata_distinguishes_absent_from_corrupt_state(
     paths["metadata"].write_text("[]", encoding="utf-8")
     with pytest.raises(RuntimeError, match="invalid shape"):
         checkpoint.read_metadata("run-9", 2)
+
+
+def test_unreadable_metadata_blocks_mutation(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    _, paths = _state(tmp_path)
+    original_read_text = Path.read_text
+
+    def denied(path: Path, *args, **kwargs):
+        if path == paths["metadata"]:
+            raise PermissionError("simulated access denied")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", denied)
+    monkeypatch.setattr(checkpoint, "paths", lambda run_id, task: paths)
+
+    with pytest.raises(RuntimeError, match="metadata cannot be read"):
+        checkpoint.read_metadata("run-9", 2)
