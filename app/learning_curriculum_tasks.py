@@ -233,7 +233,7 @@ def _generate_outline(
     source_text: str,
     sources: list[dict[str, str]],
     model: str,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     source_material = [
         {
             "title": item["title"],
@@ -261,6 +261,14 @@ def _generate_outline(
     prompt = json.dumps(request, ensure_ascii=False, separators=(",", ":"))
     if len(prompt) > MAX_PROMPT_CHARS:
         raise ValueError("Research material exceeds the safe curriculum prompt limit.")
+    selected_model, model_selection = learning._select_learning_generation_model(
+        get_settings(),
+        prompt,
+        model,
+        topic=topic,
+    )
+    if selected_model != model:
+        raise learning.LearningError("Curriculum generation attempted to substitute the configured learning model.")
     system_prompt = (
         "You are the curriculum architect for a source-oriented local learning system. "
         "Produce a comprehensive, technically accurate, ordered syllabus. "
@@ -275,10 +283,10 @@ def _generate_outline(
             prompt,
             system_prompt=system_prompt,
             purpose="learning",
-            model_override=model,
+            model_override=selected_model,
             num_predict=800,
         )
-        return _parse_outline(response, max_topics)
+        return _parse_outline(response, max_topics), model_selection
     except ValueError as first_error:
         repair_prompt = json.dumps({
             "task": "Repair the previous curriculum response into valid JSON matching the exact schema.",
@@ -309,6 +317,7 @@ def _persist_researched_path(
     outline: dict[str, Any],
     sources: list[dict[str, str]],
     model: str,
+    model_selection: dict[str, Any],
 ) -> tuple[int, str]:
     topic_sha256 = hashlib.sha256(topic.encode("utf-8")).hexdigest()
     slug = f"researched-{task_id}-{topic_sha256[:12]}"
@@ -336,9 +345,13 @@ def _persist_researched_path(
             connection.execute(
                 """INSERT INTO learning_path_research(
                        path_id, requested_topic, outline_json, outline_sha256,
-                       model_name, source_count, sources_json
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (path_id, topic, outline_json, outline_sha256, model, len(sources), sources_json),
+                       model_name, model_selection_json, source_count, sources_json
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    path_id, topic, outline_json, outline_sha256, model,
+                    json.dumps(model_selection, ensure_ascii=False, sort_keys=True),
+                    len(sources), sources_json,
+                ),
             )
         for position, lesson_topic in enumerate(outline["topics"], 1):
             connection.execute(
@@ -398,11 +411,15 @@ def handle_curriculum_task(
         if not model:
             raise PermanentTaskError("The learning Ollama model is not configured.")
         try:
-            outline = _generate_outline(topic, max_topics, source_text, sources, model)
+            outline, model_selection = _generate_outline(
+                topic, max_topics, source_text, sources, model
+            )
         except ollama.OllamaError as exc:
             if exc.retryable:
                 raise RetryableTaskError("Local learning model is temporarily unavailable.") from exc
             raise PermanentTaskError("The configured local learning model could not generate the curriculum.") from exc
+        except learning.LearningError as exc:
+            raise PermanentTaskError(str(exc)) from exc
         except (TypeError, ValueError) as exc:
             raise PermanentTaskError("The curriculum outline failed strict validation.") from exc
         context.checkpoint({
@@ -412,10 +429,16 @@ def handle_curriculum_task(
             "completed_queries": [f"{topic} {suffix}" for suffix in _SEARCH_QUERY_SUFFIXES],
             "sources": sources,
             "outline": outline,
+            "model_selection": model_selection,
         })
     else:
         # Never trust a checkpointed model response without validating its full contract again.
         outline = _parse_outline(json.dumps(outline, ensure_ascii=False), max_topics)
+        model_selection = (
+            current_checkpoint.get("model_selection")
+            if isinstance(current_checkpoint.get("model_selection"), dict)
+            else {"status": "checkpointed_configured_model", "selected_model": model}
+        )
 
     model = str(get_settings().get("learning_ollama_model", "")).strip()
     path_id, outline_sha256 = _persist_researched_path(
@@ -424,6 +447,7 @@ def handle_curriculum_task(
         outline=outline,
         sources=sources,
         model=model,
+        model_selection=model_selection,
     )
     context.checkpoint({
         "phase": "curriculum_persisted",
@@ -434,6 +458,7 @@ def handle_curriculum_task(
         "outline_sha256": outline_sha256,
         "outline": outline,
         "sources": sources,
+        "model_selection": model_selection,
     })
     queue_result = learning.start_researched_path_learning(path_id, allow_retry=False)
     return {
@@ -446,6 +471,7 @@ def handle_curriculum_task(
         "sources": [{"title": item["title"], "url": item["url"], "sha256": item["sha256"]} for item in sources],
         "outline_sha256": outline_sha256,
         "model": model,
+        "model_selection": model_selection,
         "queued_count": queue_result.get("queued_count", 0),
         "queued_job_ids": queue_result.get("job_ids", []),
         "active_job_id": queue_result.get("active_job_id"),
