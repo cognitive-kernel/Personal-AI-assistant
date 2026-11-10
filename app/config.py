@@ -26,7 +26,7 @@ class Defaults:
     ollama_num_ctx: int = _int_env("OLLAMA_NUM_CTX", 2048)
     ollama_num_thread: int = _int_env("OLLAMA_NUM_THREAD", 0)
     chat_ollama_model: str = os.getenv("CHAT_OLLAMA_MODEL", os.getenv("OLLAMA_MODEL", "qwen2.5:7b"))
-    learning_ollama_model: str = os.getenv("LEARNING_OLLAMA_MODEL", "qwen3:8b")
+    learning_ollama_model: str = os.getenv("LEARNING_OLLAMA_MODEL", "gpt-oss:20b")
     programming_ollama_model: str = os.getenv("PROGRAMMING_OLLAMA_MODEL", "qwen3:14b")
     factual_review_ollama_model: str = os.getenv("FACTUAL_REVIEW_OLLAMA_MODEL", "")
     settings_db_path: str = os.getenv("SETTINGS_DB_PATH", "data/settings.db")
