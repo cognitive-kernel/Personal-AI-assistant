@@ -17,9 +17,11 @@ from typing import Any
 
 try:
     from .autonomous_engineering_checkpoint_contract import metadata_confirms_watcher_ready
+    from .autonomous_engineering_checkpoint_process import process_start_time
     from .autonomous_engineering_execution_lock import repository_execution_lock
 except ImportError:  # Direct script execution from the scripts directory.
     from autonomous_engineering_checkpoint_contract import metadata_confirms_watcher_ready
+    from autonomous_engineering_checkpoint_process import process_start_time
     from autonomous_engineering_execution_lock import repository_execution_lock
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -115,6 +117,19 @@ def start_checkpoint_watcher(base_sha: str, run_id: str, task: int) -> subproces
             stderr=subprocess.STDOUT, close_fds=True, creationflags=flags,
             env=watcher_env,
         )
+    try:
+        expected_watcher_started_at = process_start_time(process.pid)
+    except RuntimeError as exc:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+        raise RuntimeError(
+            "The checkpoint watcher process identity could not be verified; startup was aborted."
+        ) from exc
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         if error_path.is_file():
@@ -148,6 +163,7 @@ def start_checkpoint_watcher(base_sha: str, run_id: str, task: int) -> subproces
                 run_id=run_id,
                 task=task,
                 watcher_pid=process.pid,
+                watcher_started_at=expected_watcher_started_at,
             ):
                 return process
         except (OSError, ValueError, AttributeError):
