@@ -58,3 +58,9 @@ def test_execution_state_directory_uses_configured_shared_root(monkeypatch, tmp_
     configured = tmp_path / "shared-state"
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(configured))
     assert execution_state_directory() == configured
+
+
+def test_cycle_orchestrator_preserves_public_lock_api_via_module_boundary():
+    from scripts import autonomous_engineering_cycle as cycle
+
+    assert cycle.repository_execution_lock is repository_execution_lock
