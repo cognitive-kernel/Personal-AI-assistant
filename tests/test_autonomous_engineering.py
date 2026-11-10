@@ -150,6 +150,10 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="save-agent-settings"' in page
     assert 'id="storage-state"' in page
     assert "checks.progress_storage_accessible" in agent_script
+    assert "gpt-oss:20b" not in page
+    assert 'هیچ مدل نصب‌شده‌ای از Ollama شناسایی نشد' in agent_script
+    assert "model_context_length" in agent_script
+    assert "model_supports_tools" in agent_script
 
 
 def test_autonomous_engineering_routes_are_registered():
@@ -968,3 +972,14 @@ def test_save_settings_rejects_uninstalled_model_before_persisting(monkeypatch):
         )
 
     assert error.value.status_code == 422
+
+
+def test_app_and_runner_readiness_scripts_require_model_context_and_tool_capability():
+    root = Path(__file__).resolve().parents[1]
+    for name in ("check_autonomous_agent.ps1", "check_autonomous_runner.ps1"):
+        script = (root / "scripts" / name).read_text(encoding="utf-8")
+        assert "/api/show" in script
+        assert ".context_length" in script
+        assert '"tools"' in script
+        assert "Model context metadata" in script
+        assert "Model tool calling" in script
