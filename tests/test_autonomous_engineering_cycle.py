@@ -870,13 +870,17 @@ def test_codex_arguments_pin_ollama_and_selected_windows_sandbox(monkeypatch):
     monkeypatch.setenv("CODEX_WINDOWS_SANDBOX_BACKEND", "elevated")
     arguments = progress.codex_arguments("gpt-oss:20b", "codex-report.md")
 
-    assert arguments[:7] == [
+    assert arguments[:5] == [
         "exec", "-c", 'model_provider="ollama"',
         "-c", 'windows.sandbox="elevated"',
-        "--oss", "--local-provider",
     ]
-    assert arguments[7:9] == ["ollama", "--sandbox"]
-    assert arguments[9] == "workspace-write"
+    overrides = [
+        arguments[i + 1] for i, value in enumerate(arguments[:-1]) if value == "-c"
+    ]
+    assert "sandbox_workspace_write.exclude_slash_tmp=true" in overrides
+    assert any(value.startswith("model_catalog_json=") for value in overrides)
+    assert arguments[9:12] == ["--oss", "--local-provider", "ollama"]
+    assert arguments[12:14] == ["--sandbox", "workspace-write"]
     assert arguments[arguments.index("--model") + 1] == "gpt-oss:20b"
 
 
@@ -928,28 +932,27 @@ def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkey
     assert progress.run_codex(args) == 1
 
 
-def test_codex_smoke_evidence_requires_real_successful_command_and_final_turn():
+def test_codex_smoke_evidence_requires_a_real_successful_command_and_final_turn():
     from scripts import autonomous_engineering_progress as progress
 
-    command_started = {"type": "item.started", "item": {
-        "id": "command-1",
-        "type": "command_execution",
-        "command": "python -c from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok'); assert p.read_text() == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')",
-        "status": "in_progress",
-    }}
+    command_text = (
+        "python -c from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); "
+        "p.write_text('ok'); assert p.read_text() == 'ok'; p.unlink(); "
+        "print('CODEX_WORKSPACE_SANDBOX_OK')"
+    )
     events = [
-        command_started,
+        {"type": "item.started", "item": {
+            "id": "command-1", "type": "command_execution",
+            "command": command_text, "status": "in_progress",
+        }},
+        # Codex CLI completion events may omit command; correlate by item.id.
         {"type": "item.completed", "item": {
-            "id": "command-1",
-            "type": "command_execution",
-            "command": "python -c from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok'); assert p.read_text() == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')",
+            "id": "command-1", "type": "command_execution",
             "aggregated_output": "CODEX_WORKSPACE_SANDBOX_OK\\n",
-            "exit_code": 0,
-            "status": "completed",
+            "exit_code": 0, "status": "completed",
         }},
         {"type": "item.completed", "item": {
-            "type": "agent_message",
-            "text": "OLLAMA_PROVIDER_AND_SANDBOX_OK",
+            "type": "agent_message", "text": "OLLAMA_PROVIDER_AND_SANDBOX_OK",
         }},
         {"type": "turn.completed", "usage": {"input_tokens": 10, "output_tokens": 2}},
     ]
@@ -962,12 +965,124 @@ def test_codex_smoke_evidence_requires_real_successful_command_and_final_turn():
     assert evidence["passed"] is True
     assert all(evidence["checks"].values())
     assert evidence["command_exit_code"] == 0
-    assert evidence["event_types"] == ["item.started", "item.completed", "item.completed", "turn.completed"]
-    assert evidence["item_types"] == ["command_execution", "command_execution", "agent_message"]
     assert evidence["command_started_count"] == 1
     assert evidence["command_completed_count"] == 1
     assert evidence["agent_message_count"] == 1
     assert evidence["turn_usage"] == {"input_tokens": 10, "output_tokens": 2}
+    assert "command" not in evidence
+    assert "agent_message" not in evidence
+    assert all("command" not in item for item in evidence["command_summaries"])
+
+
+
+
+def test_codex_smoke_evidence_exposes_only_sanitized_command_failure_details():
+    from scripts import autonomous_engineering_progress as progress
+
+    events = [
+        {"type": "item.started", "item": {
+            "id": "command-1", "type": "command_execution",
+            "command": "python -c private-command", "status": "in_progress",
+        }},
+        {"type": "item.completed", "item": {
+            "id": "command-1", "type": "command_execution",
+            "aggregated_output": (
+                "The system cannot find the path specified: "
+                "C:\\Users\\runner-svc\\AppData\\Local\\Temp\\private.tmp"
+            ),
+            "exit_code": 1, "status": "failed",
+        }},
+        {"type": "turn.completed"},
+    ]
+
+    evidence = progress.codex_smoke_evidence(
+        events, "CODEX_WORKSPACE_SANDBOX_OK", "", ["private-command"],
+    )
+
+    failure = evidence["command_summaries"][0]
+    assert evidence["passed"] is False
+    assert failure["failure_category"] == "path_not_found"
+    assert "aggregated_output" in failure["failure_field_names"]
+    assert "<windows-path>" in failure["failure_signature"]
+    assert "runner-svc" not in failure["failure_signature"]
+    assert "private-command" not in failure["failure_signature"]
+    assert "private.tmp" not in failure["failure_signature"]
+
+def test_codex_smoke_evidence_accepts_multiple_successful_calls_with_one_verified_probe():
+    from scripts import autonomous_engineering_progress as progress
+
+    probe = (
+        "python -c from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); "
+        "p.write_text('ok'); assert p.read_text() == 'ok'; p.unlink(); "
+        "print('CODEX_WORKSPACE_SANDBOX_OK')"
+    )
+    events = [
+        {"type": "item.started", "item": {
+            "id": "command-1", "type": "command_execution",
+            "command": "python -c print('bounded-precheck')", "status": "in_progress",
+        }},
+        {"type": "item.completed", "item": {
+            "id": "command-1", "type": "command_execution",
+            "aggregated_output": "bounded-precheck", "exit_code": 0, "status": "completed",
+        }},
+        {"type": "item.started", "item": {
+            "id": "command-2", "type": "command_execution",
+            "command": probe, "status": "in_progress",
+        }},
+        {"type": "item.completed", "item": {
+            "id": "command-2", "type": "command_execution",
+            "aggregated_output": "CODEX_WORKSPACE_SANDBOX_OK", "exit_code": 0, "status": "completed",
+        }},
+        {"type": "item.completed", "item": {
+            "type": "agent_message", "text": "OLLAMA_PROVIDER_AND_SANDBOX_OK",
+        }},
+        {"type": "turn.completed"},
+    ]
+
+    evidence = progress.codex_smoke_evidence(
+        events, "CODEX_WORKSPACE_SANDBOX_OK", "OLLAMA_PROVIDER_AND_SANDBOX_OK",
+        [".codex-sandbox-probe.tmp", "write_text", "read_text", "unlink"],
+    )
+
+    assert evidence["passed"] is True
+    assert evidence["command_started_count"] == 2
+    assert evidence["command_completed_count"] == 2
+    assert evidence["checks"]["command_events_are_paired"] is True
+    assert evidence["checks"]["all_commands_completed_successfully"] is True
+    assert evidence["checks"]["exactly_one_verified_workspace_probe"] is True
+
+
+def test_codex_tool_smoke_does_not_require_a_final_text_message():
+    from scripts import autonomous_engineering_progress as progress
+
+    command = (
+        "python -c from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); "
+        "p.write_text('ok'); assert p.read_text() == 'ok'; p.unlink(); "
+        "print('CODEX_WORKSPACE_SANDBOX_OK')"
+    )
+    events = [
+        {"type": "item.started", "item": {
+            "id": "command-1", "type": "command_execution",
+            "command": command, "status": "in_progress",
+        }},
+        {"type": "item.completed", "item": {
+            "id": "command-1", "type": "command_execution",
+            "aggregated_output": "CODEX_WORKSPACE_SANDBOX_OK",
+            "exit_code": 0, "status": "completed",
+        }},
+        {"type": "turn.completed"},
+    ]
+
+    evidence = progress.codex_smoke_evidence(
+        events, "CODEX_WORKSPACE_SANDBOX_OK", "",
+        [".codex-sandbox-probe.tmp", "write_text", "read_text", "unlink"],
+    )
+
+    assert evidence["passed"] is True
+    assert evidence["agent_message_count"] == 0
+    assert evidence["checks"]["expected_agent_message"] is True
+    assert evidence["agent_message_matches_expected"] is True
+
 
 
 @pytest.mark.parametrize(
@@ -983,27 +1098,29 @@ def test_codex_smoke_evidence_requires_real_successful_command_and_final_turn():
         "missing_command_start",
         "mismatched_command_start",
         "wrong_agent_message",
+        "item_error",
     ],
 )
 def test_codex_smoke_evidence_rejects_unproven_or_failed_execution(mutation: str):
     from scripts import autonomous_engineering_progress as progress
 
+    command_text = (
+        "python -c from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); "
+        "p.write_text('ok'); assert p.read_text() == 'ok'; p.unlink(); "
+        "print('CODEX_WORKSPACE_SANDBOX_OK')"
+    )
     command = {
         "type": "item.completed",
         "item": {
-            "id": "command-1",
-            "type": "command_execution",
-            "command": "python -c from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok'); assert p.read_text() == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')",
+            "id": "command-1", "type": "command_execution",
+            "command": command_text,
             "aggregated_output": "CODEX_WORKSPACE_SANDBOX_OK\\n",
-            "exit_code": 0,
-            "status": "completed",
+            "exit_code": 0, "status": "completed",
         },
     }
     command_started = {"type": "item.started", "item": {
-        "id": "command-1",
-        "type": "command_execution",
-        "command": "python -c from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok'); assert p.read_text() == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')",
-        "status": "in_progress",
+        "id": "command-1", "type": "command_execution",
+        "command": command_text, "status": "in_progress",
     }}
     message = {
         "type": "item.completed",
@@ -1032,6 +1149,11 @@ def test_codex_smoke_evidence_rejects_unproven_or_failed_execution(mutation: str
         command_started["item"]["command"] = "python -c print(CODEX_WORKSPACE_SANDBOX_OK)"
     elif mutation == "wrong_agent_message":
         message["item"]["text"] = "I think it worked"
+    elif mutation == "item_error":
+        events.append({
+            "type": "item.completed",
+            "item": {"type": "error", "message": "tool execution failed"},
+        })
 
     evidence = progress.codex_smoke_evidence(
         events, "CODEX_WORKSPACE_SANDBOX_OK", "OLLAMA_PROVIDER_AND_SANDBOX_OK",
@@ -1040,7 +1162,6 @@ def test_codex_smoke_evidence_rejects_unproven_or_failed_execution(mutation: str
 
     assert evidence["passed"] is False
     assert not all(evidence["checks"].values())
-
 
 def test_codex_smoke_evidence_report_is_written_atomically(tmp_path: Path):
     import json
