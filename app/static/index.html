@@ -1416,10 +1416,11 @@ async function refreshModelContextHint(profile) {
    input.setCustomValidity("");
    hint.textContent="حداکثر context در metadata این مدل موجود نیست؛ برای جلوگیری از تنظیم اشتباه، امکان تأیید context وجود ندارد.";
   }
-  await refreshHardwareDiagnostics(profile);
  } catch(error) {
   input.setCustomValidity("");
   hint.textContent="اطلاعات مدل دریافت نشد: "+error.message;
+ } finally {
+  await refreshHardwareDiagnostics(profile);
  }
 }
 async function refreshHardwareDiagnostics(profile=modelContextProfiles[0]) {
