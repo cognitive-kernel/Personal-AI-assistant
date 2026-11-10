@@ -15,9 +15,9 @@ def learning_store(tmp_path, monkeypatch):
 
 
 class RecordingContext:
-    def __init__(self, task_id=1):
+    def __init__(self, task_id=1, checkpoint_data=None):
         self.task_id = task_id
-        self.checkpoint_data = None
+        self.checkpoint_data = checkpoint_data
         self.checkpoints = []
 
     def checkpoint(self, value):
@@ -139,6 +139,16 @@ def test_research_task_persists_sources_outline_and_starts_only_first_lesson(
     assert path["topics"][0]["status"] == "in_progress"
     assert all(item["status"] == "pending" for item in path["topics"][1:])
     assert context.checkpoint_data["phase"] == "curriculum_persisted"
+
+    retry_context = RecordingContext(task["id"], context.checkpoint_data)
+    retried = learning_curriculum_tasks.handle_curriculum_task(
+        task["payload"], context.checkpoint_data, retry_context
+    )
+    assert retried["path_id"] == result["path_id"]
+    assert retried["outline_sha256"] == result["outline_sha256"]
+    assert len(discovered) == 4
+    assert len(model_calls) == 1
+    assert retried["queue_status"] == "already_active"
 
 
 def test_researched_path_queues_next_lesson_only_after_previous_job_succeeds(
