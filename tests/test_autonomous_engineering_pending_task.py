@@ -148,6 +148,9 @@ def test_manual_task_state_uses_one_cross_process_lock_and_capture_is_read_only(
     assert "The manual task input was not durably persisted" in capture
     assert "temporary.replace(pending_path)" not in capture
     assert "execution_state_directory()" in capture
+    assert "claim_pending_task_owner_unlocked" in capture
+    assert "validate_pending_task_owner_unlocked" in capture
+    assert "pending-manual-task-owner.json" in capture
 
 
 def test_workflow_pins_local_durable_state_to_one_runner_and_rejects_dropped_manual_tasks():
