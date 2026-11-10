@@ -19,6 +19,7 @@ try:
         process_start_time,
         stop_owned_watcher,
     )
+    from .autonomous_engineering_state_paths import execution_state_directory
 except ImportError:  # Direct script execution from the scripts directory.
     from autonomous_engineering_checkpoint_contract import (
         SCHEMA_VERSION,
@@ -28,19 +29,14 @@ except ImportError:  # Direct script execution from the scripts directory.
         process_start_time,
         stop_owned_watcher,
     )
+    from autonomous_engineering_state_paths import execution_state_directory
 
 ROOT = Path(__file__).resolve().parents[1]
 POLL_SECONDS = 20
 
 
 def store_dir() -> Path:
-    configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
-    if configured:
-        return Path(configured).expanduser()
-    program_data = os.getenv("PROGRAMDATA")
-    if program_data:
-        return Path(program_data) / "PersonalAIAssistant" / "autonomous-engineering"
-    return Path.home() / ".personal-ai-assistant" / "autonomous-engineering"
+    return execution_state_directory()
 
 
 def _identity(run_id: str, task: int) -> str:
