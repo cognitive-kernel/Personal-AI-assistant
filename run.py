@@ -24,6 +24,7 @@ INSTALLERS = PREREQUISITES / "installers"
 CACHE_MANIFEST = PREREQUISITES / "manifest.json"
 MIN_PYTHON = (3, 11)
 DEFAULT_MODEL = "qwen2.5:7b"
+DEFAULT_LEARNING_MODEL = "gpt-oss:20b"
 _OLLAMA_RELEASE_API = "https://api.github.com/repos/ollama/ollama/releases/latest"
 _OLLAMA_RELEASE_TAG = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$")
 _OLLAMA_LINUX_ASSET = re.compile(r"^ollama-linux-(?:amd64|arm64)(?:-rocm|-jetpack[56])?\.tar\.zst$")
@@ -815,16 +816,41 @@ def _ensure_ollama() -> None:
         print(listed.stderr, file=sys.stderr, flush=True)
     if listed.returncode != 0:
         raise RuntimeError("Ollama نصب است اما سرویس آن در دسترس نیست. سرویس Ollama را اجرا کنید و دوباره تلاش کنید.")
-    model = os.environ.get("OLLAMA_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
     installed_models = {
         line.split()[0] for line in (listed.stdout or "").splitlines()
         if line.strip() and not line.lstrip().startswith("NAME ")
     }
-    if model not in installed_models:
-        print(f"مدل {model} نصب نیست؛ دریافت مدل شروع می‌شود ...", flush=True)
+    required_models = (
+        ("مدل عمومی", os.environ.get("OLLAMA_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL),
+        (
+            "مدل یادگیری",
+            os.environ.get("LEARNING_OLLAMA_MODEL", DEFAULT_LEARNING_MODEL).strip()
+            or DEFAULT_LEARNING_MODEL,
+        ),
+    )
+    missing_models: list[str] = []
+    for role, model in required_models:
+        if model in installed_models or model in missing_models:
+            continue
+        print(f"{role} {model} نصب نیست؛ دریافت مدل شروع می‌شود ...", flush=True)
         pulled = _run([executable, "pull", model])
         if pulled.returncode != 0:
-            raise RuntimeError(f"دریافت مدل {model} ناموفق بود؛ برنامه اجرا نشد.")
+            raise RuntimeError(f"دریافت {role} {model} ناموفق بود؛ برنامه اجرا نشد.")
+        missing_models.append(model)
+
+    if missing_models:
+        verified = subprocess.run(
+            [executable, "list"], cwd=ROOT, text=True, capture_output=True, check=False
+        )
+        if verified.returncode != 0:
+            raise RuntimeError("تأیید مدل‌های دریافت‌شده از Ollama ناموفق بود.")
+        verified_models = {
+            line.split()[0] for line in (verified.stdout or "").splitlines()
+            if line.strip() and not line.lstrip().startswith("NAME ")
+        }
+        absent = [model for model in missing_models if model not in verified_models]
+        if absent:
+            raise RuntimeError("مدل‌های موردنیاز پس از دریافت در Ollama دیده نشدند: " + ", ".join(absent))
 
 
 def main() -> int:
