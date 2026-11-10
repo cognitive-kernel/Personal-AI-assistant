@@ -1507,7 +1507,7 @@ def get_learning_path(path_id: int) -> dict[str, Any]:
             (path_id,),
         ).fetchall()]
         research_row = conn.execute(
-            "SELECT requested_topic, outline_json, outline_sha256, model_name, source_count, sources_json, created_at "
+            "SELECT requested_topic, outline_json, outline_sha256, model_name, model_selection_json, source_count, sources_json, created_at "
             "FROM learning_path_research WHERE path_id=?",
             (path_id,),
         ).fetchone()
@@ -1521,10 +1521,15 @@ def get_learning_path(path_id: int) -> dict[str, Any]:
     if research_row is not None:
         try:
             outline = json.loads(research_row["outline_json"])
+            model_selection = json.loads(research_row["model_selection_json"])
             stored_sources = json.loads(research_row["sources_json"])
         except (TypeError, json.JSONDecodeError) as exc:
             raise LearningError("Persisted research curriculum metadata is invalid.") from exc
-        if not isinstance(outline, dict) or not isinstance(stored_sources, list):
+        if (
+            not isinstance(outline, dict)
+            or not isinstance(model_selection, dict)
+            or not isinstance(stored_sources, list)
+        ):
             raise LearningError("Persisted research curriculum metadata has an invalid shape.")
         sources = [
             {
