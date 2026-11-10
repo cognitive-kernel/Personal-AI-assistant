@@ -161,7 +161,7 @@ def codex_command(executable: str, arguments: list[str]) -> list[str]:
 def write_codex_model_catalog(model: str, context_window: int | None = None) -> Path:
     """Provide Codex metadata using the exact context selected and verified by Ollama."""
     if context_window is None:
-        raw_context = os.getenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000").strip()
+        raw_context = os.getenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "4096").strip()
         try:
             context_window = int(raw_context)
         except ValueError:
@@ -211,7 +211,7 @@ def codex_arguments(model: str, report: str) -> list[str]:
     reasoning_effort = os.getenv("CODEX_MODEL_REASONING_EFFORT", "").strip().casefold()
     if reasoning_effort and reasoning_effort not in {"low", "medium", "high"}:
         raise ValueError("CODEX_MODEL_REASONING_EFFORT must be 'low', 'medium', or 'high'.")
-    context_window = int(os.getenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000"))
+    context_window = int(os.getenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "4096"))
     catalog_path = write_codex_model_catalog(model, context_window=context_window)
     print(f"Codex model catalog metadata: model={model}, context_window={context_window}")
     arguments = [
