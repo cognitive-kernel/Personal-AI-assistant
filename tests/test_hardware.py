@@ -278,6 +278,7 @@ def test_detect_gpu_keeps_discovered_device_when_metrics_are_unknown(monkeypatch
         "memory_total_mb": None, "memory_free_mb": None,
         "memory_percent": None, "telemetry": "device-enumeration-only",
     }])
+    monkeypatch.setattr(hardware, "_detect_vulkan_gpus", lambda: [])
     result = hardware.detect_gpu()
     assert result["gpu_available"] is True
     assert result["gpu_count"] == 1
