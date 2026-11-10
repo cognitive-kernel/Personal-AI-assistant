@@ -68,9 +68,20 @@
 </form>
 <pre id="browser-learning-output" role="status" aria-live="polite">هنوز دوره‌ای در این مسیر ایجاد نشده است.</pre>
 <div id="browser-learning-courses" aria-live="polite">فهرست دوره‌های هوش‌به‌هوش هنوز بارگذاری نشده است.</div>
-</div><form id="learning-form"><input id="topic" required maxlength="300" placeholder="موضوع یادگیری" aria-label="موضوع یادگیری">
-<textarea id="source-text" rows="4" maxlength="100000" placeholder="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد" aria-label="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد"></textarea><button type="submit">ایجاد کار یادگیری</button></form>
-<p class="muted">درس می‌تواند از منابع وب استفاده کند، اما بررسی مدل به‌تنهایی تأیید علمی مستقل نیست. نتیجهٔ آزمون فعلاً تطبیق متنی دقیق است.</p><pre id="learning-output"></pre><h3>نامزدهای موقت درس</h3><p class="muted">درس‌های پذیرفته‌شده تا پیش از اجرای آزمون مستقل در وضعیت موقت می‌مانند. ثبت طرح آزمون به‌معنی اجرای آزمون یا ارتقای دانش نیست.</p><button id="refresh-learning-candidates" type="button">بارگذاری نامزدهای موقت</button><div id="learning-candidates" aria-live="polite">نامزدها هنوز بارگذاری نشده‌اند.</div><div id="assessment-form-container"></div><h3>صف بازبینی انسانی</h3><p class="muted">کارهای یادگیری با خطای نهایی یا رد کیفیت در این صف ثبت می‌شوند. بازبینی، حذف یا ارتقای خودکار دانش انجام نمی‌دهد.</p><button id="refresh-learning-escalations" type="button">به‌روزرسانی صف بازبینی</button><div id="learning-escalations" aria-live="polite">صف بازبینی هنوز بارگذاری نشده است.</div><h3>بازبینی منبع دانش factual</h3><p class="muted">فقط ادعاهای خام دارای منبع در این صف هستند. تأیید شما ادعا را حداکثر به سطح L1 می‌رساند؛ برای L2 همچنان آزمون مستقل لازم است. ادعاهای پرخطر برای بررسی بیشتر فعال نمی‌شوند.</p><button id="refresh-factual-review-queue" type="button">بارگذاری ادعاهای نیازمند بازبینی منبع</button><div id="factual-review-queue" aria-live="polite">صف منبع هنوز بارگذاری نشده است.</div><h3>آزمون کنترل‌شدهٔ ادعاهای Python</h3><p class="muted">فقط ادعاهای Python در سطح L1 با منبع قابل‌ردیابی نمایش داده می‌شوند. اجرای آزمون به رضایت جاری sandbox، test harness بررسی‌شده توسط انسان، oracle مستقل و تطبیق دقیق نسخه نیاز دارد؛ شکست یا نتیجهٔ نامشخص ادعا را به L2 ارتقا نمی‌دهد.</p><button id="refresh-factual-test-queue" type="button">بارگذاری ادعاهای آمادهٔ آزمون</button><div id="factual-test-queue" aria-live="polite">صف آزمون هنوز بارگذاری نشده است.</div><h3>تاریخچهٔ نتایج آزمون factual</h3><p class="muted">نتیجه، نسخهٔ محیط، hash کد/گزارش و سطح اعتماد فعلی ادعا را نشان می‌دهد. ثبت یا اجرای وظیفه به‌تنهایی به معنی موفقیت یا ارتقای دانش نیست.</p><button id="refresh-factual-test-history" type="button">به‌روزرسانی تاریخچهٔ آزمون‌ها</button><div id="factual-test-history" aria-live="polite">تاریخچهٔ آزمون هنوز بارگذاری نشده است.</div></section></div>
+</div>
+<form id="learning-form">
+<label for="topic">موضوع یا نام درس برای پژوهش و آموزش
+<input id="topic" required maxlength="300" placeholder="مثلاً معماری و برنامه‌نویسی سیستم‌عامل Linux" aria-label="موضوع یا نام درس برای پژوهش و آموزش"></label>
+<div class="cloud-form-grid">
+<label for="max-topics">حداکثر تعداد سرفصل‌ها
+<input id="max-topics" type="number" min="8" max="40" value="40" required aria-label="حداکثر تعداد سرفصل‌ها"></label>
+</div>
+<textarea id="source-text" rows="3" maxlength="100000" placeholder="متن یا منبع تکمیلی اختیاری برای دقیق‌ترشدن محدودهٔ پژوهش" aria-label="متن یا منبع تکمیلی اختیاری"></textarea>
+<button type="submit">پژوهش اینترنتی، ساخت سرفصل‌ها و شروع یادگیری</button>
+</form>
+<p class="muted">ابتدا منابع وب بررسی و سرفصل‌های جامع و مرتب‌شده استخراج می‌شوند؛ سپس هر درس با مدل محلی gpt-oss:20b تولید می‌شود و درس بعدی فقط پس از پایان موفق درس قبلی وارد صف خواهد شد. محتوای تولیدشده تا زمان ارزیابی مستقل، تأیید علمی محسوب نمی‌شود.</p>
+<pre id="learning-output" role="status" aria-live="polite"></pre>
+<div id="learning-outline-output" aria-live="polite"></div><h3>نامزدهای موقت درس</h3><p class="muted">درس‌های پذیرفته‌شده تا پیش از اجرای آزمون مستقل در وضعیت موقت می‌مانند. ثبت طرح آزمون به‌معنی اجرای آزمون یا ارتقای دانش نیست.</p><button id="refresh-learning-candidates" type="button">بارگذاری نامزدهای موقت</button><div id="learning-candidates" aria-live="polite">نامزدها هنوز بارگذاری نشده‌اند.</div><div id="assessment-form-container"></div><h3>صف بازبینی انسانی</h3><p class="muted">کارهای یادگیری با خطای نهایی یا رد کیفیت در این صف ثبت می‌شوند. بازبینی، حذف یا ارتقای خودکار دانش انجام نمی‌دهد.</p><button id="refresh-learning-escalations" type="button">به‌روزرسانی صف بازبینی</button><div id="learning-escalations" aria-live="polite">صف بازبینی هنوز بارگذاری نشده است.</div><h3>بازبینی منبع دانش factual</h3><p class="muted">فقط ادعاهای خام دارای منبع در این صف هستند. تأیید شما ادعا را حداکثر به سطح L1 می‌رساند؛ برای L2 همچنان آزمون مستقل لازم است. ادعاهای پرخطر برای بررسی بیشتر فعال نمی‌شوند.</p><button id="refresh-factual-review-queue" type="button">بارگذاری ادعاهای نیازمند بازبینی منبع</button><div id="factual-review-queue" aria-live="polite">صف منبع هنوز بارگذاری نشده است.</div><h3>آزمون کنترل‌شدهٔ ادعاهای Python</h3><p class="muted">فقط ادعاهای Python در سطح L1 با منبع قابل‌ردیابی نمایش داده می‌شوند. اجرای آزمون به رضایت جاری sandbox، test harness بررسی‌شده توسط انسان، oracle مستقل و تطبیق دقیق نسخه نیاز دارد؛ شکست یا نتیجهٔ نامشخص ادعا را به L2 ارتقا نمی‌دهد.</p><button id="refresh-factual-test-queue" type="button">بارگذاری ادعاهای آمادهٔ آزمون</button><div id="factual-test-queue" aria-live="polite">صف آزمون هنوز بارگذاری نشده است.</div><h3>تاریخچهٔ نتایج آزمون factual</h3><p class="muted">نتیجه، نسخهٔ محیط، hash کد/گزارش و سطح اعتماد فعلی ادعا را نشان می‌دهد. ثبت یا اجرای وظیفه به‌تنهایی به معنی موفقیت یا ارتقای دانش نیست.</p><button id="refresh-factual-test-history" type="button">به‌روزرسانی تاریخچهٔ آزمون‌ها</button><div id="factual-test-history" aria-live="polite">تاریخچهٔ آزمون هنوز بارگذاری نشده است.</div></section></div>
 <section id="task-manager-section"><h2>مدیریت وظایف</h2>
 <p class="muted">وظایف صف‌شده در این بخش باقی می‌مانند و پس از بارگذاری مجدد قابل مشاهده‌اند. متن payload نمایش داده نمی‌شود. می‌توانید وظایف در حال اجرا را متوقف یا لغو کنید و وظایف متوقف‌شده را ادامه دهید.</p>
 <div class="cloud-actions">
@@ -101,10 +112,8 @@
 </div>
 <pre id="tasks-output" role="status" aria-live="polite">فهرست وظایف هنوز بارگذاری نشده است.</pre>
 <div id="tasks-container"></div></section>
-<section id="learning-paths-section"><h2>مسیرهای آموزشی</h2>
-<p class="muted">یک دوره را ثبت‌نام کنید و وضعیت سرفصل‌ها و پیشرفت آن را پیگیری کنید.</p>
-<label>انتخاب دوره<select id="curriculum-select"><option value="">در حال بارگذاری دوره‌ها…</option></select></label>
-<button id="enroll-curriculum" type="button">ثبت‌نام در دوره</button>
+<section id="learning-paths-section"><h2>مسیرهای آموزشی پژوهش‌محور</h2>
+<p class="muted">مسیرها از موضوعی که وارد کرده‌اید و پس از پژوهش اینترنتی ساخته می‌شوند؛ دورهٔ پیش‌فرضی برای ثبت‌نام یا تحمیل سرفصل ثابت وجود ندارد. مسیرهای ذخیره‌شده و سوابق قبلی حفظ می‌شوند.</p>
 <button id="refresh-paths" type="button">بارگذاری مسیرهای من</button>
 <button id="refresh-due-reviews" type="button">نمایش مرورهای سررسیدشده</button>
 <button id="refresh-learning-recommendations" type="button">پیشنهاد گام بعدی یادگیری</button>
@@ -1052,13 +1061,78 @@ function showLearningJob(result) {
  container.append(form);
 }
 el("learning-form").addEventListener("submit", async event => {
- event.preventDefault(); el("learning-output").textContent="کار یادگیری ثبت شد؛ وضعیت در حال بررسی است…";
+ event.preventDefault();
+ const output=el("learning-output");
+ const outline=el("learning-outline-output");
+ const submit=el("learning-form").querySelector('button[type="submit"]');
+ output.textContent="درخواست پژوهش اینترنتی و ساخت سرفصل‌ها در صف ثبت می‌شود…";
+ outline.replaceChildren();
  el("assessment-form-container").replaceChildren();
+ submit.disabled=true;
  try {
-  const job=await api("/api/learning/jobs",{method:"POST",body:JSON.stringify({topic:el("topic").value,source_text:el("source-text").value||null})});
-  const poll=async()=>{const result=await api("/api/learning/jobs/"+job.id);showLearningJob(result);if(["queued","running"].includes(result.status))setTimeout(poll,1500);else refreshLearningEscalations();};
-  showLearningJob(job);setTimeout(poll,1000);
- } catch(error) { el("learning-output").textContent=error.message; }
+  const task=await api("/api/learning/courses",{method:"POST",body:JSON.stringify({
+   topic:el("topic").value,
+   max_topics:Number(el("max-topics").value),
+   source_text:el("source-text").value||null
+  })});
+  const taskId=task.task_id;
+  output.textContent="وظیفهٔ پژوهش ثبت شد؛ شناسه: "+taskId+"؛ در حال جست‌وجوی منابع و ساخت سرفصل‌ها…";
+  const poll=async()=>{
+   try {
+    const state=await api("/api/learning/courses/tasks/"+taskId);
+    if(state.status==="succeeded"){
+     const result=state.result||{};
+     output.textContent="پژوهش کامل شد. مدل: "+(result.model||"نامشخص")+
+      "؛ منابع استفاده‌شده: "+(result.source_count||0)+
+      "؛ سرفصل‌ها: "+((result.topics||[]).length)+
+      "؛ درس‌های در صف: "+(result.queued_count||0)+
+      "\nمسیر آموزشی شمارهٔ "+result.path_id+" ایجاد شد.";
+     const heading=document.createElement("h3");
+     heading.textContent=result.title||"سرفصل‌های استخراج‌شده";
+     outline.append(heading);
+     if(result.notes){
+      const note=document.createElement("p"); note.textContent=result.notes; outline.append(note);
+     }
+     const list=document.createElement("ol");
+     (result.topics||[]).forEach(item=>{
+      const li=document.createElement("li"); li.textContent=item; list.append(li);
+     });
+     outline.append(list);
+     if(Array.isArray(result.sources)&&result.sources.length){
+      const sourceHeading=document.createElement("h4"); sourceHeading.textContent="منابع پژوهش";
+      const sourceList=document.createElement("ul");
+      result.sources.forEach(source=>{
+       const li=document.createElement("li");
+       const link=document.createElement("a"); link.href=source.url; link.target="_blank";
+       link.rel="noopener noreferrer"; link.textContent=source.title||source.url;
+       li.append(link); sourceList.append(li);
+      });
+      outline.append(sourceHeading,sourceList);
+     }
+     const refresh=el("refresh-paths"); if(refresh)refresh.click();
+     submit.disabled=false;
+     return;
+    }
+    if(["failed","cancelled"].includes(state.status)){
+     output.textContent="ساخت مسیر آموزشی ناموفق شد: "+(state.error||state.status);
+     submit.disabled=false;
+     return;
+    }
+    const phase=state.progress?.phase||state.status;
+    const count=state.progress?.source_count||0;
+    output.textContent="وضعیت پژوهش: "+phase+"؛ منابع دریافت‌شده: "+count+
+     "؛ شناسهٔ وظیفه: "+taskId;
+    setTimeout(poll,2000);
+   } catch(error){
+    output.textContent="دریافت وضعیت وظیفه با خطا مواجه شد: "+error.message+"؛ تلاش مجدد…";
+    setTimeout(poll,5000);
+   }
+  };
+  setTimeout(poll,1000);
+ } catch(error) {
+  output.textContent=error.message;
+  submit.disabled=false;
+ }
 });
 async function refreshLearningCandidates() {
  const container=el("learning-candidates");
