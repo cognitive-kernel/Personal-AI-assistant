@@ -93,3 +93,75 @@ def test_model_details_uses_conservative_context_when_ram_is_low(monkeypatch):
     })
     result = ollama.model_details("llama:8b")
     assert result["recommended_context_tokens"] == 2048
+
+
+def test_chat_clamps_requested_context_to_verified_model_maximum(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr(ollama, "get_settings", lambda: {
+        "chat_ollama_model": "llama:8b",
+        "chat_ollama_num_ctx": 65536,
+        "chat_ollama_num_thread": 0,
+        "cpu_resource_limit_percent": 90,
+        "ram_budget_max_gb": 25,
+        "ram_safety_reserve_gb": 4,
+        "gpu_enabled": False,
+    })
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {
+        "logical_cpu_count": 8,
+        "total_ram_gb": 32,
+        "available_ram_gb": 24,
+        "gpu_devices": [],
+        "gpu_available": False,
+    })
+    monkeypatch.setattr(ollama, "model_keep_alive", lambda *args: "5m")
+
+    def fake_request(path, payload=None, timeout=None):
+        calls.append((path, payload))
+        if path == "/api/show":
+            return {
+                "details": {"family": "llama"},
+                "model_info": {"llama.context_length": 8192},
+            }
+        if path == "/api/chat":
+            return {"message": {"content": "ok"}}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(ollama, "_request", fake_request)
+
+    assert ollama.chat("hello") == "ok"
+    chat_payload = next(payload for path, payload in calls if path == "/api/chat")
+    assert chat_payload["options"]["num_ctx"] == 8192
+
+
+def test_chat_refuses_to_send_when_model_context_metadata_is_unavailable(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr(ollama, "get_settings", lambda: {
+        "chat_ollama_model": "unknown:latest",
+        "chat_ollama_num_ctx": 65536,
+        "chat_ollama_num_thread": 0,
+        "cpu_resource_limit_percent": 90,
+        "ram_budget_max_gb": 25,
+        "ram_safety_reserve_gb": 4,
+    })
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {
+        "logical_cpu_count": 8,
+        "total_ram_gb": 32,
+        "available_ram_gb": 24,
+        "gpu_devices": [],
+        "gpu_available": False,
+    })
+
+    def fake_request(path, payload=None, timeout=None):
+        calls.append(path)
+        if path == "/api/show":
+            return {"details": {"family": "unknown"}, "model_info": {}}
+        raise AssertionError("Chat request must not be sent without verified context metadata.")
+
+    monkeypatch.setattr(ollama, "_request", fake_request)
+
+    import pytest
+    with pytest.raises(ollama.OllamaError, match="verifiable context_length"):
+        ollama.chat("hello")
+    assert calls == ["/api/show"]
