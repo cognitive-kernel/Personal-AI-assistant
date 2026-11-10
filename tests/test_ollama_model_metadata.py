@@ -50,3 +50,44 @@ def test_model_details_does_not_invent_context_or_kv_estimate(monkeypatch):
     assert result["context_metadata_available"] is False
     assert result["memory_estimate"] is None
     assert result["running"] is None
+
+
+
+def test_model_details_recommends_context_within_model_and_memory_limits(monkeypatch):
+    monkeypatch.setattr(ollama, "_request", lambda path, payload=None, timeout=None: (
+        {
+            "details": {"parameter_size": "8B", "quantization_level": "Q4_K_M", "family": "llama"},
+            "model_info": {
+                "llama.context_length": 131072,
+                "llama.block_count": 32,
+                "llama.attention.head_count_kv": 8,
+                "llama.attention.key_length": 128,
+                "llama.attention.value_length": 128,
+            },
+        } if path == "/api/show" else {"models": []}
+    ))
+    monkeypatch.setattr(ollama, "list_models", lambda: [{"name": "llama:8b", "size": 5_000_000_000}])
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {
+        "logical_cpu_count": 8, "total_ram_gb": 32, "available_ram_gb": 25,
+        "gpu_devices": [], "gpu_available": False,
+    })
+    result = ollama.model_details("llama:8b")
+    assert result["maximum_context_tokens"] == 131072
+    assert result["recommended_context_tokens"] == 65536
+    assert result["recommended_context_tokens"] <= result["maximum_context_tokens"]
+
+
+def test_model_details_uses_conservative_context_when_ram_is_low(monkeypatch):
+    monkeypatch.setattr(ollama, "_request", lambda path, payload=None, timeout=None: (
+        {
+            "details": {"family": "llama"},
+            "model_info": {"llama.context_length": 32768},
+        } if path == "/api/show" else {"models": []}
+    ))
+    monkeypatch.setattr(ollama, "list_models", lambda: [{"name": "llama:8b", "size": 5_000_000_000}])
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {
+        "logical_cpu_count": 8, "total_ram_gb": 8, "available_ram_gb": 5,
+        "gpu_devices": [], "gpu_available": False,
+    })
+    result = ollama.model_details("llama:8b")
+    assert result["recommended_context_tokens"] == 2048
