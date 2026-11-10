@@ -478,9 +478,9 @@ def clear_pending_pr() -> None:
 
 
 def clear_pending_task() -> None:
-    if os.name == "nt":
-        with durable_state_lock(_autonomous_state_dir()):
-            (_autonomous_state_dir() / "pending-manual-task.txt").unlink(missing_ok=True)
+    state_dir = _autonomous_state_dir()
+    with durable_state_lock(state_dir):
+        (state_dir / "pending-manual-task.txt").unlink(missing_ok=True)
 
 
 def clear_pending_state() -> None:
@@ -488,8 +488,7 @@ def clear_pending_state() -> None:
     state_dir = _autonomous_state_dir()
     with durable_state_lock(state_dir):
         (state_dir / "pending-autonomous-pr.json").unlink(missing_ok=True)
-        if os.name == "nt":
-            (state_dir / "pending-manual-task.txt").unlink(missing_ok=True)
+        (state_dir / "pending-manual-task.txt").unlink(missing_ok=True)
 
 
 def find_open_autonomous_pr(token: str, repo: str) -> dict[str, Any] | None:
