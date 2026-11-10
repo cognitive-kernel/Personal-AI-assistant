@@ -370,12 +370,14 @@ def runtime_limits(settings: dict[str, Any], hardware: dict[str, Any] | None = N
     ram_budget = dynamic_ram_budget_gb(settings, hardware)
     context = int(settings.get("ollama_num_ctx", 2048) or 2048)
     if ram_budget is None or ram_budget < 4:
-        # Missing/low available-memory telemetry must not select a large context.
+        # Missing/low available-memory telemetry keeps a conservative context.
         context = min(context, 2048)
     elif ram_budget < 8:
         context = min(context, 4096)
     else:
-        context = min(context, 8192)
+        # The selected model's verified metadata provides the hard context ceiling.
+        # Do not impose the old global 8k cap on models that support larger contexts.
+        context = min(context, 1048576)
     return {"cpu_threads": max(1, threads), "num_ctx": max(512, context)}
 
 
