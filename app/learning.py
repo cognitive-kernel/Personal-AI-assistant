@@ -741,7 +741,7 @@ def _select_learning_generation_model(
         return selected_model, selection_record
     if constrained:
         raise LearningError(
-            "The configured learning model is not installed or has no eligible cost/quality profile."
+            "No installed learning model has an eligible profile satisfying the configured budget and quality threshold; the configured model remains pinned."
         )
     return fallback_model, {
         **selection_record,
