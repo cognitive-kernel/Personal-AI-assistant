@@ -136,6 +136,7 @@ def test_manual_task_state_uses_one_cross_process_lock_and_capture_is_read_only(
     root = Path(__file__).resolve().parents[1]
     workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
     script = (root / "scripts" / "persist_autonomous_manual_task.ps1").read_text(encoding="utf-8")
+    task_state_module = (root / "scripts" / "AutonomousEngineeringTaskState.psm1").read_text(encoding="utf-8")
     capture_start = workflow.index("from scripts.autonomous_engineering_state_paths import execution_state_directory")
     capture_end = workflow.index("Ensure Codex CLI is installed", capture_start)
     capture = workflow[capture_start:capture_end]
@@ -144,10 +145,11 @@ def test_manual_task_state_uses_one_cross_process_lock_and_capture_is_read_only(
     assert "$stateMutex.WaitOne" in script
     assert "$stateMutex.ReleaseMutex()" in script
     assert "Another autonomous run is active or queued" in script
+    assert "AutonomousEngineeringTaskState.psm1" in script
     assert "pending-manual-task-owner.json" in script
-    assert "taskDigest" in script
-    assert "schema_version = 1" in script
-    assert "claim_count" in script
+    assert "Get-AutonomousTaskDigest" in task_state_module
+    assert "schema_version = 1" in task_state_module
+    assert "claim_count" in task_state_module
     assert "with durable_state_lock(state_dir)" in capture
     assert "The manual task input was not durably persisted" in capture
     assert "temporary.replace(pending_path)" not in capture
