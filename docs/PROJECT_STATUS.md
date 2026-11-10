@@ -1,10 +1,10 @@
 # وضعیت یکپارچهٔ پروژه
 
-> تاریخ بازبینی: 2026-11-07. این بخش وضعیت جاری را مشخص می‌کند؛ یادداشت‌های قدیمی‌تر پایین سند، snapshotهای تاریخی هستند.
+> تاریخ بازبینی: 2026-11-10. این بخش وضعیت جاری را مشخص می‌کند؛ یادداشت‌های قدیمی‌تر پایین سند، snapshotهای تاریخی هستند.
 
 ## وضعیت فعلی اتوماسیون — PR #702
 
-- مبنای فعلی `main`: `a9c4522e94cf1558b616ca98510d1b8654e8e53e`. PR [#701](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/701) در همین SHA ادغام شده است؛ اصلاحات حفظ وظیفهٔ دستی، checkpoint، recovery، هم‌ترازی داشبورد و ترتیب persistence پیش از schedule gate اکنون بخشی از main هستند.
+- مبنای فعلی `main`: `a01e414ea3124213bc4d06496f55c74ad6ef9ef4`. PR [#701](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/701) در همین SHA ادغام شده است؛ اصلاحات حفظ وظیفهٔ دستی، checkpoint، recovery، هم‌ترازی داشبورد و ترتیب persistence پیش از schedule gate اکنون بخشی از main هستند.
 - PR [#702](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/702) روی شاخهٔ `fix/automation-codex-context-smoke-20261107` باز و هنوز ادغام‌نشده است. این PR برای رفع دو گیت باقیماندهٔ Codex/Ollama روی Windows Runner است.
 - شواهد آخرین اجرای ناموفق پیش از اصلاحات: [run 42355938096](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/42355938096). حساب غیرمدیر Runner توانست MXC، اجرای مستقیم `cmd.exe` و Python را با markerهای `MXC_SERVICE_OK` و `MXC_CMD_PYTHON_OK` اجرا کند؛ اما اجرای واقعی Codex پنج command event داشت، هیچ agent message نساخت و smoke gate شکست خورد. این اجرا موفق محسوب نمی‌شود.
 - ریشهٔ Context: preflight قبلی فقط در درخواست warm-up مقدار `options.num_ctx=64000` را می‌فرستاد. درخواست‌های مستقل Codex از مدل پایه دوباره با مقدار پیش‌فرض ۸۱۹۲ بارگذاری می‌شدند. سقف Context مدل در metadata، Context تخصیص‌یافتهٔ runtime را اثبات نمی‌کند.
@@ -35,6 +35,8 @@
 **مبنای وضعیت:** PR #664، #667، #668 و #669 قبلاً مستندات، صف پایدار یادگیری، لاگ مهندسی، scorecard و کنترل تشخیص زبان را به main افزودند. PR #671 نیز ذخیرهٔ exception خام و diagnostics کنترل‌نشده در کشف منابع ابری را حذف کرد و با squash commit `2a5c83bf0ba924f4a2c8f206338a04872562d72d` ادغام شد. Exact-head CI برای PR #671 موفق است؛ post-merge tests، dashboard smoke، dependency audit و Windows storage روی SHA فعلی همگی موفق شده‌اند. Issue #52، پذیرش میزبان هدف، staging restore/rollback و ارزیابی زنده همچنان دروازه‌های باز هستند.
 
 ## 1.1 تغییرات جدید پس از snapshot قبلی
+
+- PR [#709](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/709) (Draft): بازطراحی فرم اصلی یادگیری به مسیر پژوهش‌محور؛ جست‌وجوی چندعبارتی وب، ساخت سرفصل ۸ تا ۴۰تایی با مدل محلی پیکربندی‌شده (پیش‌فرض `gpt-oss:20b`)، ثبت provenance در migration 42 و صف ترتیبی که فقط پس از موفقیت هر درس به درس بعدی می‌رود. کاتالوگ ثابت از UI اصلی حذف شده اما API و داده‌های قدیمی برای سازگاری حفظ شده‌اند؛ مسیر Chrome/ChatGPT تغییر نکرده است. شاخه: `feature/researched-learning-curriculum-gpt-oss-20b-20261110`. Exact-head tests، Windows storage، browser E2E و dependency audit هنوز در حال اجرا هستند؛ اعتبارسنجی واقعی روی میزبان Windows 32GB/i5-12400 نیز باز است و PR merge نمی‌شود.
 
 - PR [#641](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/641): تابع maintenance دوره‌ای AI-learning اکنون reconciliation idempotent وظایف `learning.run_job` را اجرا می‌کند تا شکست موقت enqueue در زمان اجرای برنامه بدون restart ترمیم شود. خطای reconciliation مستقل ثبت می‌شود و مانع اجرای factual/browser maintenance نمی‌شود. دو regression برای ایجاد دقیقاً یک task و ادامهٔ maintenance پس از خطای تزریق‌شده اضافه شده‌اند؛ ADR-017 قرارداد را ثبت می‌کند. commit موجود در `main`: `8d7674cde9ebb5684ab6102eecf4e0ca8a0a824d`. CI پس از ادغام این SHA هنوز مستقلاً تأیید نشده است.
 - PR [#642](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/642): آزمون Chromium برای فعال‌سازی Skip Link، انتقال focus به main landmark، پیمایش صفحه‌کلید به تمام ۱۵ مقصد ناوبری و فعال‌سازی مسیر مدیریت وظایف با Enter اضافه شد. تغییر runtime ندارد. CI روی head دقیق `87d888490499c7f405f4a8798a17767837ded4df`: 1752 passed و 5 skipped؛ Windows storage، browser E2E و dependency audit موفق. ادغام در `main`: `c6a28ce21cfaa6130bed36e7fbb173e4cf39a9be`. آزمون دستی screen-reader همچنان دروازهٔ انسانی است.
@@ -107,6 +109,8 @@
 
 ### 2.1 یادگیری و دانش
 
+- [ ] مسیر پژوهش‌محور موضوع‌به‌سرفصل‌به‌درس با `gpt-oss:20b` در PR [#709](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/709) پیاده‌سازی شده است؛ تا سبزشدن exact-head CI و اجرای آزمون میزبان هدف، قابلیت در وضعیت پذیرش‌نشده باقی می‌ماند.
+
 شرح جامع رفتار فعلی، محدودیت‌ها، سطوح شواهد، ارزیابی و نقشهٔ راه یادگیری در [راهنمای جامع زیرسامانه یادگیری](LEARNING.md) نگهداری می‌شود تا این سند به مرجع تکراری تبدیل نشود.
 
 ### 2.2 اجرای وظایف، رابط و کنترل تغییرات
@@ -131,6 +135,7 @@
 - [ ] تکمیل ممیزی کل مخزن، مرزهای مالکیت داده و وابستگی‌های زمان اجرا؛ بررسی فایل‌های GitHub به‌تنهایی ممیزی کامل checkout نیست.
 - [ ] اجرای ابزار baseline روی میزبان هدف و نگهداری گزارش redacted شامل commit/runtime و سلامت ذخیره‌سازی.
 - [ ] اجرای benchmark صف و آزمون‌های بار/بازیابی روی سخت‌افزار هدف و آرشیو نتایج.
+- [ ] اعتبارسنجی مدل `gpt-oss:20b` و صف درس‌های پژوهش‌محور روی Windows با RAM 32GB و Core i5-12400؛ ثبت زمان بارگذاری، peak RAM، زمان هر درس و کیفیت فارسی/انگلیسی.
 - [ ] تکمیل fault injection و سناریوهای توقف/لغو/بازیابی برای همهٔ انواع وظیفه.
 - [ ] تمرین عملی backup، restore روی staging و update/rollback طبق runbook.
 - [ ] تکمیل بازبینی امنیتی مستقل برای [Issue #52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) و ثبت نتیجهٔ اصلاحات.
