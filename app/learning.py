@@ -1556,7 +1556,7 @@ def get_learning_path(path_id: int) -> dict[str, Any]:
             "outline": outline,
             "outline_sha256": research_row["outline_sha256"],
             "model": research_row["model_name"],
-            "model_selection": json.loads(research_row["model_selection_json"]),
+            "model_selection": model_selection,
             "source_count": research_row["source_count"],
             "sources": sources,
             "created_at": research_row["created_at"],
