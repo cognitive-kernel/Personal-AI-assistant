@@ -159,8 +159,9 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
 
     assert 'model = $codexModel' in context_script
     assert 'from = $baseModel' in context_script
-    assert 'parameters = @{ num_ctx = $MinimumContextLength }' in context_script
+    assert 'parameters = @{ num_ctx = $selectedContext }' in context_script
     assert 'PARAMETER\\s+num_ctx' in context_script
+    assert 'AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH=$selectedContext' in context_script
     assert 'AUTONOMOUS_ENGINEERING_MODEL=$codexModel' in context_script
     assert '-VerifyOnly' in diagnostic
     assert '-VerifyOnly' in autonomous
@@ -197,10 +198,16 @@ def test_context_preflight_reuses_existing_codex_alias_without_duplicate_suffix(
         Path(__file__).resolve().parents[1] / "scripts" / "verify_ollama_context.ps1"
     ).read_text(encoding="utf-8")
 
-    assert '$codexSuffix = "-codex-64k"' in script
-    assert '$Model.EndsWith($codexSuffix, [System.StringComparison]::OrdinalIgnoreCase)' in script
-    assert '$Model.Substring(0, $Model.Length - $codexSuffix.Length)' in script
-    assert '$codexModel = "$Model$codexSuffix"' in script
+    assert '$codexModel = "$baseModel-codex-ctx$selectedContext"' in script
     assert 'from = $baseModel' in script
-    assert '$existingNumCtx.Success' in script
+    assert '$existingContext.Success' in script
 
+
+
+
+def test_codex_model_catalog_uses_selected_context_from_environment(monkeypatch):
+    import json
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "32768")
+    path = progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx32768")
+    catalog = json.loads(path.read_text(encoding="utf-8"))
+    assert catalog["models"][0]["context_window"] == 32768
