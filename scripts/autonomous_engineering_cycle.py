@@ -652,73 +652,76 @@ def publish_pull_request(
     token: str, repo: str, branch: str, task_index: int, run_id: str,
     head_sha: str, base_sha: str,
 ) -> dict[str, Any]:
-    env = git_auth_env(token)
-    checked(["git", "push", "origin", f"HEAD:refs/heads/{branch}"], env=env)
+    checked(["git", "push", "origin", f"HEAD:refs/heads/{branch}"], env=git_auth_env(token))
     owner = repo.split("/", 1)[0]
-    existing = api(
-        token, repo, "GET",
-        f"pulls?state=open&head={quote(owner + ':' + branch, safe='')}&base=main&per_page=5",
-    )
-    if not isinstance(existing, list):
-        raise RuntimeError("GitHub returned an invalid pull request lookup.")
-    pr = existing[0] if existing else api(token, repo, "POST", "pulls", {
-        "title": f"Autonomous engineering task {task_index} (run {run_id})",
-        "head": branch,
-        "base": "main",
-        "draft": False,
-        "body": (
-            f"## Autonomous engineering task {task_index}\n\n"
-            f"- Workflow run: https://github.com/{repo}/actions/runs/{run_id}\n"
-            f"- Candidate commit: {head_sha}\n"
-            "- Windows full test suite and repository quality gates passed before publication.\n"
-            "- GitHub tests, browser E2E, and dependency audit are dispatched against this exact PR head.\n"
-            "- The PR remains open for owner review; the controller never merges PRs automatically.\n"
-            "- After the owner merges it, the controller verifies the exact merge SHA and post-merge CI before accepting the task or advancing the queue.\n"
-            "- No deployment is performed.\n"
-        ),
-    })
-    number = pr.get("number")
-    pr_head = (pr.get("head") or {}).get("sha")
-    pr_head_repository = ((pr.get("head") or {}).get("repo") or {}).get("full_name")
-    pr_base = (pr.get("base") or {}).get("ref")
-    pr_base_sha = (pr.get("base") or {}).get("sha")
-    pr_author = (pr.get("user") or {}).get("login")
-    if (
-        not isinstance(number, int)
-        or pr_author != "github-actions[bot]"
-        or pr_head_repository != repo
-    ):
-        raise RuntimeError("Refusing publication: PR was not created by the trusted controller in this repository.")
-    if (
-        not isinstance(pr_head, str)
-        or pr_head != head_sha
-        or pr_base != "main"
-        or pr_base_sha != base_sha
-        or pr.get("draft") is not False
-    ):
-        raise RuntimeError("The PR head or main base changed before publication could be validated.")
+
+    # Serialize remote PR creation with manual-task persistence. Persist the
+    # durable PR owner record immediately, before independent CI dispatch.
+    with durable_state_lock(_autonomous_state_dir()):
+        existing = api(
+            token, repo, "GET",
+            f"pulls?state=open&head={quote(owner + ':' + branch, safe='')}&base=main&per_page=5",
+        )
+        if not isinstance(existing, list):
+            raise RuntimeError("GitHub returned an invalid pull request lookup.")
+        pr = existing[0] if existing else api(token, repo, "POST", "pulls", {
+            "title": f"Autonomous engineering task {task_index} (run {run_id})",
+            "head": branch,
+            "base": "main",
+            "draft": False,
+            "body": (
+                f"## Autonomous engineering task {task_index}\n\n"
+                f"- Workflow run: https://github.com/{repo}/actions/runs/{run_id}\n"
+                f"- Candidate commit: {head_sha}\n"
+                "- Windows full test suite and repository quality gates passed before publication.\n"
+                "- GitHub tests, browser E2E, and dependency audit are dispatched against this exact PR head.\n"
+                "- The PR remains open for owner review; the controller never merges PRs automatically.\n"
+                "- After the owner merges it, the controller verifies the exact merge SHA and post-merge CI before accepting the task or advancing the queue.\n"
+                "- No deployment is performed.\n"
+            ),
+        })
+        number = pr.get("number")
+        pr_head = (pr.get("head") or {}).get("sha")
+        pr_head_repository = ((pr.get("head") or {}).get("repo") or {}).get("full_name")
+        pr_base = (pr.get("base") or {}).get("ref")
+        pr_base_sha = (pr.get("base") or {}).get("sha")
+        pr_author = (pr.get("user") or {}).get("login")
+        if (
+            not isinstance(number, int)
+            or pr_author != "github-actions[bot]"
+            or pr_head_repository != repo
+        ):
+            raise RuntimeError("Refusing publication: PR was not created by the trusted controller in this repository.")
+        if (
+            not isinstance(pr_head, str)
+            or pr_head != head_sha
+            or pr_base != "main"
+            or pr_base_sha != base_sha
+            or pr.get("draft") is not False
+        ):
+            raise RuntimeError("The PR head or main base changed before publication could be validated.")
+        url = pr.get("html_url")
+        if not isinstance(url, str) or url != f"https://github.com/{repo}/pull/{number}":
+            raise RuntimeError("GitHub returned an unexpected pull request URL.")
+        pending_state = {
+            "number": number,
+            "url": url,
+            "head_sha": head_sha,
+            "base_sha": base_sha,
+            "branch": branch,
+            "run_id": run_id,
+            "task": task_index,
+        }
+        _save_pending_pr_unlocked(pending_state, repo)
 
     dispatch_and_wait_all(
         token, repo, ("tests.yml", "browser-e2e.yml", "dependency-audit.yml"), branch, pr_head
     )
     refreshed_pr = api(token, repo, "GET", f"pulls/{number}")
     refreshed_head = (refreshed_pr.get("head") or {}).get("sha")
-    url = refreshed_pr.get("html_url")
     if refreshed_head != head_sha:
         raise RuntimeError("The PR head changed during exact-SHA validation; preserving the task for revalidation.")
-    if not isinstance(url, str) or url != f"https://github.com/{repo}/pull/{number}":
-        raise RuntimeError("GitHub returned an unexpected pull request URL.")
-    pending_state = {
-        "number": number,
-        "url": url,
-        "head_sha": head_sha,
-        "base_sha": base_sha,
-        "branch": branch,
-        "run_id": run_id,
-        "task": task_index,
-    }
     if refreshed_pr.get("merged") is True:
-        save_pending_pr(pending_state, repo)
         return {**pending_state, "validated": True, "merged": True, "owner_merged": True}
     if refreshed_pr.get("state") != "open" or refreshed_pr.get("draft") is not False:
         raise RuntimeError("The PR was closed or changed before owner-review handoff; preserving the task.")
@@ -726,20 +729,11 @@ def publish_pull_request(
     refreshed_base = (refreshed_pr.get("base") or {}).get("sha")
     current_main_sha = (current_main.get("commit") or {}).get("sha")
     if refreshed_base != base_sha or current_main_sha != base_sha:
-        latest_pr = api(token, repo, "GET", f"pulls/{number}")
-        if latest_pr.get("merged") is True and (latest_pr.get("head") or {}).get("sha") == head_sha:
-            save_pending_pr(pending_state, repo)
-            return {**pending_state, "validated": True, "merged": True, "owner_merged": True}
         raise RuntimeError(
             "The PR head or main base changed during validation; the PR remains open and must be revalidated."
         )
-
-    save_pending_pr(pending_state, repo)
     return {
-        "number": number,
-        "url": url,
-        "head_sha": head_sha,
-        "base_sha": base_sha,
+        **pending_state,
         "validated": True,
         "merged": False,
         "awaiting_review": True,
