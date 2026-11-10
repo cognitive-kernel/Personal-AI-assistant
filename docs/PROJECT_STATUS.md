@@ -1,5 +1,16 @@
 # وضعیت یکپارچهٔ پروژه
 
+> آخرین به‌روزرسانی مهندسی: 2026-11-10
+
+## مالکیت اجرای خودکار و بازیابی checkpoint — PR #707
+
+- PR [#707](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/707) به‌صورت Draft و بر مبنای `main` باز است؛ ادغام نشده است.
+- ریشهٔ نقص: `stop_existing_watcher()` خطای `AccessDenied` و خطاهای دیگر بررسی/توقف فرایند را نادیده می‌گرفت و بازیابی/پاک‌سازی را ادامه می‌داد. مالکیت فرایند نیز فقط با PID و تطبیق سست command line تشخیص داده می‌شد؛ PID reuse و هویت واقعی فرایند تازه ایجادشده کنترل نمی‌شد.
+- اصلاح معماری: قفل انحصاری worktree از orchestrator به `scripts/autonomous_engineering_execution_lock.py` منتقل شده و API سازگار قبلی در `cycle.py` حفظ شده است. چرخهٔ عمر watcher در `scripts/autonomous_engineering_checkpoint_process.py` مستقل شده است.
+- قرارداد checkpoint به schema 4 ارتقا یافته و readiness به run/task/base SHA/PID/process creation time متصل شده است. AccessDenied، هویت مبهم، فرایند legacy فعال بدون هویت شروع، timeout و عدم reap باعث توقف fail-closed می‌شوند؛ checkpoint پاک یا overwrite نمی‌شود.
+- Regressionهای fault-injection، تطبیق هویت فرایند، crash-release قفل، حفظ checkpoint در restore/clear ناموفق و startup مالک قبلی اضافه شده‌اند.
+- **اعتبارسنجی:** اجرای exact-head CI برای SHA نهایی PR #707 در انتظار است. اجرای واقعی روی Runner ویندوزی مالک، crash/restart و restore/cleanup نیز هنوز انجام/تأیید نشده‌اند. تا تکمیل این شواهد، این اصلاحات پذیرفته‌شده یا آمادهٔ ادغام محسوب نمی‌شوند.
+
 > تاریخ بازبینی: 2026-11-07. این بخش وضعیت جاری را مشخص می‌کند؛ یادداشت‌های قدیمی‌تر پایین سند، snapshotهای تاریخی هستند.
 
 ## وضعیت فعلی اتوماسیون — PR #702
