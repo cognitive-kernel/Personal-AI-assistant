@@ -36,7 +36,7 @@
 
 ## 1.1 تغییرات جدید پس از snapshot قبلی
 
-- PR [#709](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/709) (Draft): بازطراحی فرم اصلی یادگیری به مسیر پژوهش‌محور؛ جست‌وجوی چندعبارتی وب، ساخت سرفصل ۸ تا ۴۰تایی با مدل محلی پیکربندی‌شده (پیش‌فرض `gpt-oss:20b`)، ثبت provenance در migration 42 و صف ترتیبی که فقط پس از موفقیت هر درس به درس بعدی می‌رود. کاتالوگ ثابت از UI اصلی حذف شده اما API و داده‌های قدیمی برای سازگاری حفظ شده‌اند؛ مسیر Chrome/ChatGPT تغییر نکرده است. شاخه: `feature/researched-learning-curriculum-gpt-oss-20b-20261110`. Exact-head tests، Windows storage، browser E2E و dependency audit هنوز در حال اجرا هستند؛ اعتبارسنجی واقعی روی میزبان Windows 32GB/i5-12400 نیز باز است و PR merge نمی‌شود.
+- PR [#709](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/709) (Draft): بازطراحی فرم اصلی یادگیری به مسیر پژوهش‌محور؛ جست‌وجوی چندعبارتی وب، ساخت سرفصل ۸ تا ۴۰تایی با مدل محلی پیکربندی‌شده (پیش‌فرض `gpt-oss:20b`)، ثبت provenance در migration 42 و صف ترتیبی که فقط پس از موفقیت هر درس به درس بعدی می‌رود. کاتالوگ ثابت از UI اصلی حذف شده اما API و داده‌های قدیمی برای سازگاری حفظ شده‌اند؛ مسیر Chrome/ChatGPT تغییر نکرده است. شاخه: `feature/researched-learning-curriculum-gpt-oss-20b-20261110`. Exact-head CI روی commit `f602ef585bab49de24e40efc45d55f3e1e4889f5` سبز است: ۱۹۶۴ تست موفق، ۵۰ مورد deselected، Windows storage regressions، browser E2E و dependency audit همگی موفق. اعتبارسنجی واقعی مدل روی میزبان Windows 32GB/i5-12400 هنوز باز است؛ PR تا تکمیل این گیت merge نمی‌شود.
 
 - PR [#641](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/641): تابع maintenance دوره‌ای AI-learning اکنون reconciliation idempotent وظایف `learning.run_job` را اجرا می‌کند تا شکست موقت enqueue در زمان اجرای برنامه بدون restart ترمیم شود. خطای reconciliation مستقل ثبت می‌شود و مانع اجرای factual/browser maintenance نمی‌شود. دو regression برای ایجاد دقیقاً یک task و ادامهٔ maintenance پس از خطای تزریق‌شده اضافه شده‌اند؛ ADR-017 قرارداد را ثبت می‌کند. commit موجود در `main`: `8d7674cde9ebb5684ab6102eecf4e0ca8a0a824d`. CI پس از ادغام این SHA هنوز مستقلاً تأیید نشده است.
 - PR [#642](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/642): آزمون Chromium برای فعال‌سازی Skip Link، انتقال focus به main landmark، پیمایش صفحه‌کلید به تمام ۱۵ مقصد ناوبری و فعال‌سازی مسیر مدیریت وظایف با Enter اضافه شد. تغییر runtime ندارد. CI روی head دقیق `87d888490499c7f405f4a8798a17767837ded4df`: 1752 passed و 5 skipped؛ Windows storage، browser E2E و dependency audit موفق. ادغام در `main`: `c6a28ce21cfaa6130bed36e7fbb173e4cf39a9be`. آزمون دستی screen-reader همچنان دروازهٔ انسانی است.
@@ -109,7 +109,8 @@
 
 ### 2.1 یادگیری و دانش
 
-- [ ] مسیر پژوهش‌محور موضوع‌به‌سرفصل‌به‌درس با `gpt-oss:20b` در PR [#709](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/709) پیاده‌سازی شده است؛ تا سبزشدن exact-head CI و اجرای آزمون میزبان هدف، قابلیت در وضعیت پذیرش‌نشده باقی می‌ماند.
+- [x] مسیر پژوهش‌محور موضوع‌به‌سرفصل‌به‌درس با `gpt-oss:20b` در PR [#709](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/709) پیاده‌سازی شده و exact-head CI روی `f602ef5` سبز است (۱۹۶۴ تست موفق، ۵۰ مورد deselected؛ Windows storage، browser E2E و dependency audit موفق).
+- [ ] آزمون واقعی بارگذاری/استنتاج و سنجش RAM/latency/کیفیت روی میزبان هدف؛ تا تکمیل این گیت قابلیت merge نمی‌شود.
 
 شرح جامع رفتار فعلی، محدودیت‌ها، سطوح شواهد، ارزیابی و نقشهٔ راه یادگیری در [راهنمای جامع زیرسامانه یادگیری](LEARNING.md) نگهداری می‌شود تا این سند به مرجع تکراری تبدیل نشود.
 
