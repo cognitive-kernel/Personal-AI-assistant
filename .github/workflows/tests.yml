@@ -65,7 +65,7 @@ jobs:
       - name: Parse all PowerShell scripts
         shell: pwsh
         run: |
-          $files = Get-ChildItem -LiteralPath scripts -Filter *.ps1 -File -Recurse
+          $files = Get-ChildItem -LiteralPath scripts -File -Recurse | Where-Object { $_.Extension -in @(".ps1", ".psm1") }
           foreach ($file in $files) {
             $tokens = $null
             $errors = $null
@@ -75,7 +75,7 @@ jobs:
               throw "PowerShell syntax validation failed."
             }
           }
-          Write-Host "Parsed $($files.Count) PowerShell scripts successfully."
+          Write-Host "Parsed $($files.Count) PowerShell scripts/modules successfully."
       - name: Test SQLite migration, restore, and staging cleanup on Windows
         run: >-
           python -m pytest -q
