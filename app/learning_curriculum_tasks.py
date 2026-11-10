@@ -18,10 +18,10 @@ from .task_worker import PermanentTaskError, RetryableTaskError, TaskContext
 CURRICULUM_TASK_TYPE = "learning.plan_curriculum"
 MIN_TOPICS = 8
 MAX_TOPICS = 40
-MAX_SOURCE_DOCUMENTS = 10
+MAX_SOURCE_DOCUMENTS = 6
 MIN_SOURCE_DOCUMENTS = 3
-MAX_SOURCE_EXCERPT_CHARS = 900
-MAX_PROMPT_CHARS = 11000
+MAX_SOURCE_EXCERPT_CHARS = 350
+MAX_PROMPT_CHARS = 8000
 
 _SEARCH_QUERY_SUFFIXES = (
     "complete syllabus curriculum fundamentals advanced topics",
@@ -269,6 +269,7 @@ def _generate_outline(
             system_prompt=system_prompt,
             purpose="learning",
             model_override=model,
+            num_predict=1000,
         )
         return _parse_outline(response, max_topics)
     except ValueError as first_error:
@@ -289,6 +290,7 @@ def _generate_outline(
             system_prompt=system_prompt,
             purpose="learning",
             model_override=model,
+            num_predict=1000,
         )
         return _parse_outline(repaired, max_topics)
 
