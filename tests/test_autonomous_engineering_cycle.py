@@ -1316,3 +1316,57 @@ def test_clear_pending_state_removes_task_and_pr_in_one_transaction(
 
     assert not (state_dir / "pending-manual-task.txt").exists()
     assert not (state_dir / "pending-autonomous-pr.json").exists()
+
+
+def test_recovered_open_pr_is_persisted_before_exact_sha_ci(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    head_sha = "a" * 40
+    base_sha = "b" * 40
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "state"))
+    current = {
+        "number": 79,
+        "state": "open",
+        "merged": False,
+        "draft": False,
+        "html_url": "https://github.com/owner/repository/pull/79",
+        "user": {"login": "github-actions[bot]"},
+        "head": {
+            "ref": "codex/local-engineering-79-1-task-1",
+            "sha": head_sha,
+            "repo": {"full_name": "owner/repository"},
+        },
+        "base": {"ref": "main", "sha": base_sha},
+    }
+
+    def fake_api(token, repo, method, path, payload=None):
+        if method == "GET" and path == "pulls/79":
+            return current
+        if method == "GET" and path == "branches/main":
+            return {"commit": {"sha": base_sha}}
+        raise AssertionError((method, path, payload))
+
+    monkeypatch.setattr(cycle, "api", fake_api)
+
+    def dispatch_after_owner_record(*args):
+        pending = cycle.load_pending_pr()
+        assert pending["number"] == 79
+        assert pending["head_sha"] == head_sha
+
+    monkeypatch.setattr(cycle, "dispatch_and_wait_all", dispatch_after_owner_record)
+
+    result = cycle.complete_pending_pr(
+        "token",
+        "owner/repository",
+        {
+            "number": 79,
+            "head_sha": head_sha,
+            "base_sha": base_sha,
+            "branch": "codex/local-engineering-79-1-task-1",
+        },
+        "79",
+        1,
+    )
+
+    assert result["validated"] is True
+    assert result["awaiting_review"] is True
