@@ -351,3 +351,28 @@ def test_corrupt_newer_checkpoint_blocks_fallback_to_older_valid_snapshot(
 
     with pytest.raises(RuntimeError, match="unreadable; refusing stale-checkpoint fallback"):
         checkpoint._latest_checkpoint()
+
+
+def test_checkpoint_store_lock_is_released_after_abrupt_owner_exit(tmp_path: Path):
+    import subprocess
+    import sys
+
+    root = Path(__file__).resolve().parents[1]
+    code = (
+        "import os; from pathlib import Path; "
+        "from scripts.autonomous_engineering_checkpoint_lock import checkpoint_store_lock; "
+        f"lock=checkpoint_store_lock(Path({str(tmp_path)!r})); "
+        "lock.__enter__(); os._exit(31)"
+    )
+    child = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert child.returncode == 31
+
+    with checkpoint.checkpoint_store_lock(tmp_path, timeout_seconds=2):
+        pass
