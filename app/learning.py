@@ -705,6 +705,10 @@ def _select_learning_generation_model(
         and isinstance(item.get("name"), str)
         and item["name"].strip()
     })
+    if fallback_model not in installed_names:
+        raise LearningError(
+            f"The configured learning model '{fallback_model}' is not installed in Ollama."
+        )
     # The learning lane is pinned to its configured model. Cost/quality
     # profiles may accept or reject it, but may never silently substitute another model.
     selection_candidates = [fallback_model] if fallback_model in installed_names else []
