@@ -164,19 +164,25 @@ def test_accepted_initial_lesson_has_no_repair_prompt_provenance(learning_store,
 
 
 
-def test_learning_generation_uses_cheapest_installed_model_meeting_quality_and_budget(
+def test_learning_generation_pins_configured_model_even_when_another_is_cheaper(
     learning_store, monkeypatch
 ):
     db.update_settings({
+        "learning_ollama_model": "pinned:latest",
         "learning_model_cost_profiles": {
             "cheap:latest": {
                 "input_cost_microusd_per_1k_tokens": 100,
                 "output_cost_microusd_per_1k_tokens": 100,
                 "quality_score": 0.85,
             },
-            "premium:latest": {
+            "pinned:latest": {
                 "input_cost_microusd_per_1k_tokens": 500,
                 "output_cost_microusd_per_1k_tokens": 500,
+                "quality_score": 0.99,
+            },
+            "premium:latest": {
+                "input_cost_microusd_per_1k_tokens": 700,
+                "output_cost_microusd_per_1k_tokens": 700,
                 "quality_score": 0.99,
             },
         },
@@ -185,7 +191,7 @@ def test_learning_generation_uses_cheapest_installed_model_meeting_quality_and_b
     })
     monkeypatch.setattr(
         ollama, "list_models",
-        lambda: [{"name": "cheap:latest"}, {"name": "premium:latest"}],
+        lambda: [{"name": "cheap:latest"}, {"name": "premium:latest"}, {"name": "pinned:latest"}],
     )
     calls = []
     monkeypatch.setattr(
@@ -206,8 +212,8 @@ def test_learning_generation_uses_cheapest_installed_model_meeting_quality_and_b
     provenance = finished["quality"]["generation_provenance"]
     assert finished["status"] == "completed"
     assert len(calls) == 1
-    assert calls[0]["model"] == "cheap:latest"
-    assert provenance["model_id"] == "cheap:latest"
+    assert calls[0]["model"] == "pinned:latest"
+    assert provenance["model_id"] == "pinned:latest"
     assert provenance["model_selection"]["status"] == "selected"
     assert provenance["model_selection"]["estimated_cost_microusd"] <= 100000
     assert provenance["model_selection"]["budget_scope"] == "lesson_generation_single_repair_and_optional_claim_review"
@@ -217,6 +223,7 @@ def test_learning_generation_fails_closed_when_no_model_meets_explicit_budget(
     learning_store, monkeypatch
 ):
     db.update_settings({
+        "learning_ollama_model": "over-budget:latest",
         "learning_model_cost_profiles": {
             "over-budget:latest": {
                 "input_cost_microusd_per_1k_tokens": 100000,
@@ -322,6 +329,7 @@ def test_web_claim_review_uses_selected_model_and_is_included_in_task_cost_estim
         "The parser reports the location of the invalid input so callers can correct the source data."
     )
     db.update_settings({
+        "learning_ollama_model": "cheap:latest",
         "learning_model_cost_profiles": {
             "cheap:latest": {
                 "input_cost_microusd_per_1k_tokens": 100,
