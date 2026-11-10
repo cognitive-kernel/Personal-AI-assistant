@@ -768,17 +768,24 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
     # rather than silently accepting a value that may exceed the selected model.
     current_settings = db.get_settings()
     context_profiles = {
-        "ollama_num_ctx": "ollama_model",
         "chat_ollama_num_ctx": "chat_ollama_model",
         "learning_ollama_num_ctx": "learning_ollama_model",
         "programming_ollama_num_ctx": "programming_ollama_model",
     }
     for context_key, model_key in context_profiles.items():
-        if context_key not in values:
+        generic_chat_change = model_key == "chat_ollama_model" and (
+            "ollama_model" in values or "ollama_num_ctx" in values
+        )
+        if context_key not in values and model_key not in values and not generic_chat_change:
             continue
-        model_name = values.get(model_key, current_settings.get(model_key) or current_settings.get("ollama_model"))
-        if model_key == "ollama_model" and "chat_ollama_model" in values:
-            model_name = values["chat_ollama_model"]
+        context_value = values.get(
+            context_key,
+            values.get("ollama_num_ctx", current_settings.get(context_key)),
+        )
+        model_name = values.get(
+            model_key,
+            values.get("ollama_model") if model_key == "chat_ollama_model" else current_settings.get(model_key),
+        )
         if not isinstance(model_name, str) or not model_name.strip():
             raise HTTPException(status_code=422, detail=f"{context_key} requires a selected Ollama model.")
         try:
@@ -794,7 +801,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
                 status_code=422,
                 detail=f"Maximum context metadata is unavailable for {model_name}; context cannot be safely validated.",
             )
-        if values[context_key] > maximum:
+        if isinstance(context_value, int) and not isinstance(context_value, bool) and context_value > maximum:
             raise HTTPException(
                 status_code=422,
                 detail=f"{context_key} cannot exceed {maximum} tokens supported by {model_name}.",
