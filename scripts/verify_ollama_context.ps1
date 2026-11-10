@@ -23,6 +23,12 @@ function Get-ModelInfo {
 
 function Get-MaximumContext {
     param([Parameter(Mandatory = $true)]$Info)
+    $architecture = [string]$Info.details.family
+    $preferredKey = $architecture + ".context_length"
+    $preferred = $Info.model_info.PSObject.Properties[$preferredKey]
+    if ($preferred -and $preferred.Value -is [ValueType] -and [int64]$preferred.Value -ge 512) {
+        return [int64]$preferred.Value
+    }
     $values = @(
         $Info.model_info.PSObject.Properties |
         Where-Object {
