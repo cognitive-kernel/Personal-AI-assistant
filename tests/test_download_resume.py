@@ -469,6 +469,8 @@ def test_linux_installer_is_pinned_to_the_verified_release_tag(tmp_path, monkeyp
     verified_installer_path = tmp_path / "ollama-install-verified.sh"
     monkeypatch.setattr(installer.platform, "system", lambda: "Linux")
     monkeypatch.setattr(installer.platform, "machine", lambda: "x86_64")
+    monkeypatch.setenv("OLLAMA_MODEL", "qwen2.5:7b")
+    monkeypatch.setenv("LEARNING_OLLAMA_MODEL", "qwen2.5:7b")
     monkeypatch.setattr(installer, "_patch_linux_install_script", lambda _path: verified_installer_path)
     monkeypatch.setattr(installer, "_find_ollama", lambda: next(find_results))
     monkeypatch.setattr(installer, "_latest_ollama_release_assets", lambda: release)
