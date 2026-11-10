@@ -705,11 +705,12 @@ def _select_learning_generation_model(
         and isinstance(item.get("name"), str)
         and item["name"].strip()
     })
-    # Estimates are conservative and tokenizer-independent; actual provider
-    # counters are recorded separately by each model-assisted stage.
+    # The learning lane is pinned to its configured model. Cost/quality
+    # profiles may accept or reject it, but may never silently substitute another model.
+    selection_candidates = [fallback_model] if fallback_model in installed_names else []
     selection = select_learning_model(
         settings,
-        installed_names,
+        selection_candidates,
         estimated_prompt_tokens=estimated_prompt_tokens,
         estimated_completion_tokens=estimated_completion_tokens,
         minimum_quality_score=float(minimum_quality),
@@ -736,14 +737,14 @@ def _select_learning_generation_model(
         return selected_model, selection_record
     if constrained:
         raise LearningError(
-            "No installed learning model has explicit cost and quality profiles that satisfy the configured constraints."
+            "The configured learning model is not installed or has no eligible cost/quality profile."
         )
     return fallback_model, {
         **selection_record,
-        "status": "no_eligible_profile_fallback",
+        "status": "configured_model_profile_unavailable",
         "reason": (
-            "No installed model has a usable configured cost profile; using the configured model "
-            "with unknown estimated cost."
+            "The configured learning model is not installed or has no usable cost profile; "
+            "the configured model remains selected and no alternate model is substituted."
         ),
         "selected_model": fallback_model,
     }
