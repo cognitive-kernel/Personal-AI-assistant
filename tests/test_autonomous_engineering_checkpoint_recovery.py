@@ -91,3 +91,67 @@ def test_watcher_start_does_not_replace_state_when_previous_owner_is_ambiguous(
     assert paths["patch"].read_bytes() == b"preserve this patch"
     assert ready.read_text(encoding="utf-8") == "old readiness"
     assert error.read_text(encoding="utf-8") == "old error"
+
+
+def test_checkpoint_watcher_real_process_stops_before_restore(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    import json
+    import os
+    import subprocess
+    import sys
+    import time
+
+    root = Path(__file__).resolve().parents[1]
+    base_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=root, check=True,
+        capture_output=True, text=True,
+    ).stdout.strip()
+    state = tmp_path / "real-process-checkpoint-state"
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(state))
+    env = os.environ.copy()
+    env["AUTONOMOUS_ENGINEERING_PROGRESS_DIR"] = str(state)
+    executable = getattr(sys, "_base_executable", sys.executable)
+    process = subprocess.Popen(
+        [
+            executable,
+            str(root / "scripts" / "autonomous_engineering_checkpoint.py"),
+            "watch",
+            "--base-sha", base_sha,
+            "--run-id", f"real-stop-{os.getpid()}",
+            "--task", "1",
+            "--interval", "5",
+        ],
+        cwd=root,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    metadata_path = state / f"worktree-checkpoint-real-stop-{os.getpid()}-1.json"
+    try:
+        deadline = time.monotonic() + 20
+        metadata = None
+        while time.monotonic() < deadline and process.poll() is None:
+            if metadata_path.is_file():
+                try:
+                    candidate = json.loads(metadata_path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    candidate = None
+                if isinstance(candidate, dict) and candidate.get("watcher_ready") is True:
+                    metadata = candidate
+                    break
+            time.sleep(0.1)
+        assert metadata is not None, (
+            process.stdout.read() if process.poll() is not None else "watcher readiness timed out"
+        )
+        checkpoint.stop_existing_watcher(metadata)
+        process.wait(timeout=10)
+        assert process.poll() is not None
+        assert metadata_path.is_file()
+        assert checkpoint.paths(f"real-stop-{os.getpid()}", 1)["patch"].is_file()
+        assert checkpoint.restore(base_sha) is False
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
