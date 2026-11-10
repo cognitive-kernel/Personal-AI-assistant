@@ -106,6 +106,7 @@ def _load_startup_bootstrap():
 
 
 def test_startup_bootstrap_reads_project_dependencies():
+    assert bootstrap.DEFAULT_LEARNING_MODEL == "gpt-oss:20b"
     bootstrap = _load_startup_bootstrap()
 
     requirements = bootstrap._requirements(dev=False)
@@ -719,14 +720,14 @@ def test_settings_accept_independent_model_profiles(tmp_path, monkeypatch):
     db.init_databases()
     saved = db.update_settings({
         "chat_ollama_model": "qwen2.5:7b",
-        "learning_ollama_model": "qwen3:8b",
+        "learning_ollama_model": "gpt-oss:20b",
         "programming_ollama_model": "qwen3:14b",
         "chat_max_concurrent_jobs": 2,
         "learning_max_concurrent_jobs": 3,
         "programming_max_concurrent_jobs": 1,
     })
     assert saved["chat_ollama_model"] == "qwen2.5:7b"
-    assert saved["learning_ollama_model"] == "qwen3:8b"
+    assert saved["learning_ollama_model"] == "gpt-oss:20b"
     assert saved["programming_ollama_model"] == "qwen3:14b"
     assert saved["chat_max_concurrent_jobs"] == 2
     assert saved["learning_max_concurrent_jobs"] == 3
