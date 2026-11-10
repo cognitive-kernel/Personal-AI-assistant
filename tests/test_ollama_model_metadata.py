@@ -73,7 +73,7 @@ def test_model_details_recommends_context_within_model_and_memory_limits(monkeyp
     })
     result = ollama.model_details("llama:8b")
     assert result["maximum_context_tokens"] == 131072
-    assert result["recommended_context_tokens"] == 65536
+    assert result["recommended_context_tokens"] == 8192
     assert result["recommended_context_tokens"] <= result["maximum_context_tokens"]
 
 
