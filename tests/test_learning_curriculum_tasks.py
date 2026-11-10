@@ -244,6 +244,47 @@ def test_research_requires_multiple_usable_web_domains(learning_store, monkeypat
     assert context.checkpoint_data["phase"] == "web_research_retry"
 
 
+def test_ollama_chat_applies_curriculum_output_token_limit(monkeypatch):
+    from app import ollama, usage_metrics
+
+    captured = {}
+    monkeypatch.setattr(ollama, "get_settings", lambda: {
+        "learning_ollama_timeout_seconds": 300,
+        "learning_ollama_num_ctx": 2048,
+        "learning_ollama_num_thread": 1,
+        "cpu_resource_limit_percent": 90,
+        "ram_budget_max_gb": 25,
+        "ram_safety_reserve_gb": 4,
+        "gpu_enabled": False,
+    })
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {"logical_cpu_count": 12})
+    monkeypatch.setattr(ollama, "runtime_limits", lambda *_args, **_kwargs: {
+        "num_ctx": 2048, "cpu_threads": 1,
+    })
+    monkeypatch.setattr(ollama, "model_keep_alive", lambda *_args, **_kwargs: "5m")
+
+    def fake_request(path, payload=None, **_kwargs):
+        if path == "/api/show":
+            return {
+                "model_info": {"llama.context_length": 2048},
+                "details": {"family": "llama"},
+            }
+        captured.update(payload)
+        return {"message": {"content": "{}"}}
+
+    monkeypatch.setattr(ollama, "_request", fake_request)
+    monkeypatch.setattr(usage_metrics, "record_ollama_response", lambda **_kwargs: None)
+    result = ollama.chat(
+        "Build a course outline",
+        purpose="learning",
+        model_override="gpt-oss:20b",
+        num_predict=800,
+    )
+    assert result == "{}"
+    assert captured["options"]["num_predict"] == 800
+    assert captured["model"] == "gpt-oss:20b"
+
+
 def test_dashboard_uses_researched_courses_and_hides_preset_catalog_controls():
     from pathlib import Path
 
