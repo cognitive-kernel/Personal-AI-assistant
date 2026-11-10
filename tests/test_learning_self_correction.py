@@ -534,6 +534,7 @@ def test_web_claim_review_does_not_repeat_an_already_reserved_review_stage(
     db.update_settings({
         "learning_ollama_model": "cheap:latest",
         "learning_model_cost_profiles": {
+            "cheap:latest": {
                 "input_cost_microusd_per_1k_tokens": 100,
                 "output_cost_microusd_per_1k_tokens": 100,
                 "quality_score": 0.9,
