@@ -22,17 +22,30 @@
   function renderModels(models, selectedModel) {
     const select = $("ollama-model");
     if (document.activeElement === select) return;
-    const names = Array.isArray(models) ? models.filter(name => typeof name === "string") : [];
-    if (!names.includes("gpt-oss:20b")) names.unshift("gpt-oss:20b");
-    if (selectedModel && !names.includes(selectedModel)) names.unshift(selectedModel);
+    const installed = [...new Set(
+      Array.isArray(models) ? models.filter(name => typeof name === "string" && name.trim()) : []
+    )];
+    const savedModelMissing = Boolean(selectedModel) && !installed.includes(selectedModel);
+    const names = [...installed];
+    if (savedModelMissing) names.unshift(selectedModel);
     select.replaceChildren();
-    for (const name of [...new Set(names)]) {
+    if (!names.length) {
+      const option = document.createElement("option");
+      option.value = "";
+      option.disabled = true;
+      option.textContent = "هیچ مدل نصب‌شده‌ای از Ollama شناسایی نشد";
+      select.append(option);
+      select.value = "";
+      return;
+    }
+    for (const name of names) {
       const option = document.createElement("option");
       option.value = name;
-      option.textContent = name + (name === "gpt-oss:20b" ? " (پیش‌فرض)" : "");
+      option.textContent = name + (savedModelMissing && name === selectedModel ? " (ذخیره‌شده؛ نصب نیست)" : "");
+      if (savedModelMissing && name === selectedModel) option.dataset.installed = "false";
       select.append(option);
     }
-    select.value = selectedModel || "gpt-oss:20b";
+    select.value = selectedModel && names.includes(selectedModel) ? selectedModel : installed[0] || "";
   }
   function renderRuns(runs) {
     const host = $("recent-runs");
@@ -80,9 +93,15 @@
       const checks = data.checks || {};
       labels.ollama.textContent = stateText(checks.ollama_online);
       $("ollama-detail").textContent = checks.ollama_online ? "پاسخ از 127.0.0.1:11434 دریافت شد." : "سرویس محلی در دسترس نیست.";
-      labels.model.textContent = stateText(checks.model_installed);
-      $("model-detail").textContent = "مدل انتخاب‌شده: " + String(data.model || "نامشخص") +
-        (checks.model_installed ? "" : "؛ نصب نشده است. برای نصب: ollama pull " + String(data.model || ""));
+      const modelReady = checks.model_installed && checks.model_context_metadata_available && checks.model_supports_tools;
+      labels.model.textContent = stateText(modelReady);
+      const contextLength = Number(data.model_context_length);
+      const contextText = Number.isSafeInteger(contextLength) && contextLength >= 512
+        ? "؛ حداکثر Context مدل: " + contextLength.toLocaleString() + " توکن"
+        : "؛ حداکثر Context از metadata مدل تأیید نشد";
+      const toolsText = checks.model_supports_tools ? "؛ قابلیت tools تأیید شد" : "؛ قابلیت tools تأیید نشد";
+      $("model-detail").textContent = "مدل انتخاب‌شده: " + String(data.model || "انتخاب نشده") +
+        (checks.model_installed ? "" : "؛ نصب نیست") + contextText + toolsText;
       renderModels(data.models, data.model);
       const executionMode = data.execution_mode || "continuous";
       if (document.activeElement !== $("execution-mode")) {
