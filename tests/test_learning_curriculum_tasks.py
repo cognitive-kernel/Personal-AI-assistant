@@ -125,13 +125,14 @@ def test_research_task_persists_sources_outline_and_starts_only_first_lesson(
     assert len(discovered) == 4
     assert model_calls[0]["purpose"] == "learning"
     assert model_calls[0]["model_override"] == db.get_settings()["learning_ollama_model"]
-    assert model_calls[0]["num_predict"] == 1000
+    assert model_calls[0]["num_predict"] == 800
     assert result["source_count"] == 4
     assert result["queued_count"] == 1
     assert len(result["queued_job_ids"]) == 1
     path = learning.get_learning_path(result["path_id"])
     assert path["research"]["requested_topic"] == "موضوع فنی"
     assert path["research"]["model"] == db.get_settings()["learning_ollama_model"]
+    assert path["research"]["model_selection"]["selected_model"] == db.get_settings()["learning_ollama_model"]
     assert path["research"]["outline_sha256"] == result["outline_sha256"]
     assert len(path["research"]["sources"]) == 4
     assert len(path["topics"]) == len(_outline()["topics"])
