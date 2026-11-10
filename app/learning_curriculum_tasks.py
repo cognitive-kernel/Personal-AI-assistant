@@ -111,6 +111,11 @@ def _collect_sources(
     completed_queries, sources = _valid_checkpoint(
         checkpoint, topic_sha256=topic_sha256, queries=queries
     )
+    preserved_outline = (
+        checkpoint.get("outline")
+        if isinstance(checkpoint, dict) and isinstance(checkpoint.get("outline"), dict)
+        else None
+    )
     seen = {item["url"] for item in sources}
     for query in queries:
         if query in completed_queries:
@@ -121,6 +126,7 @@ def _collect_sources(
             "queries": queries,
             "completed_queries": completed_queries,
             "sources": sources,
+            **({"outline": preserved_outline} if preserved_outline is not None else {}),
         })
         try:
             documents = web_sources.discover_sources(query, limit=5)
@@ -149,6 +155,7 @@ def _collect_sources(
             "queries": queries,
             "completed_queries": completed_queries,
             "sources": sources,
+            **({"outline": preserved_outline} if preserved_outline is not None else {}),
         })
 
     domains = {urlsplit(item["url"]).hostname for item in sources}
@@ -421,6 +428,8 @@ def handle_curriculum_task(
     context.checkpoint({
         "phase": "curriculum_persisted",
         "topic_sha256": topic_sha256,
+        "queries": [f"{topic} {suffix}" for suffix in _SEARCH_QUERY_SUFFIXES],
+        "completed_queries": [f"{topic} {suffix}" for suffix in _SEARCH_QUERY_SUFFIXES],
         "path_id": path_id,
         "outline_sha256": outline_sha256,
         "outline": outline,
