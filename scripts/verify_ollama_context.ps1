@@ -144,19 +144,24 @@ if ($VerifyOnly) {
         throw "Ollama did not publish a verifiable context_length for '$baseModel'; Codex cannot select a safe context."
     }
 
+    # Resolve the hardware ceiling for the selected model before considering
+    # either automatic or manually requested context. Manual input is a request,
+    # never permission to exceed available host memory.
+    $hardwareSafeContext = Get-AutomaticContext -Maximum $maximum -Info $modelInfo
     $manualContext = [string]$env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH
     if (-not [string]::IsNullOrWhiteSpace($manualContext)) {
-        $selectedContext = 0L
-        if (-not [int64]::TryParse($manualContext, [ref]$selectedContext) -or $selectedContext -lt 512) {
+        $requestedContext = 0L
+        if (-not [int64]::TryParse($manualContext, [ref]$requestedContext) -or $requestedContext -lt 512) {
             throw "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH must be an integer of at least 512."
         }
-        if ($selectedContext -gt $maximum) {
-            throw "Requested context $selectedContext exceeds model '$baseModel' maximum $maximum."
-        }
-        $selectionMode = "manual"
+        $selectedContext = [int64][Math]::Min($requestedContext, [Math]::Min($maximum, $hardwareSafeContext))
+        $selectionMode = if ($selectedContext -lt $requestedContext) { "manual-clamped-to-hardware" } else { "manual" }
     } else {
-        $selectedContext = Get-AutomaticContext -Maximum $maximum -Info $modelInfo
+        $selectedContext = $hardwareSafeContext
         $selectionMode = "automatic"
+    }
+    if ($selectedContext -lt 512) {
+        throw "No safe context of at least 512 tokens is available for model '$baseModel'."
     }
 
     $codexModel = "$baseModel-codex-ctx$selectedContext"
