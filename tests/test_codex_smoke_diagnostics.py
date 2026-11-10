@@ -67,14 +67,14 @@ def test_codex_smoke_evidence_reports_each_command_without_logging_raw_commands(
 
 
 
-def test_codex_model_catalog_registers_the_64k_ollama_alias():
-    model = "gpt-oss:20b-codex-64k"
+def test_codex_model_catalog_registers_the_selected_ollama_context():
+    model = "gpt-oss:20b-codex-ctx32768"
     path = progress.write_codex_model_catalog(model)
     catalog = __import__("json").loads(path.read_text(encoding="utf-8"))
     assert len(catalog["models"]) == 1
     entry = catalog["models"][0]
     assert entry["slug"] == model
-    assert entry["context_window"] == 64000
+    assert entry["context_window"] == 4096
     assert entry["shell_type"] == "default"
     assert entry["input_modalities"] == ["text"]
     assert [level["effort"] for level in entry["supported_reasoning_levels"]] == [
@@ -125,7 +125,7 @@ def test_codex_diagnostic_uses_bounded_reasoning_effort_without_changing_default
     from scripts import autonomous_engineering_progress as progress
 
     monkeypatch.setenv("CODEX_MODEL_REASONING_EFFORT", "low")
-    arguments = progress.codex_arguments("gpt-oss:20b-codex-64k", "report.md")
+    arguments = progress.codex_arguments("gpt-oss:20b-codex-ctx32768", "report.md")
     overrides = [
         arguments[i + 1] for i, value in enumerate(arguments[:-1]) if value == "-c"
     ]
