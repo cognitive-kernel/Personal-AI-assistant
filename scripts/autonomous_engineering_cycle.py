@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
 import base64
 import json
 import os
@@ -14,12 +13,14 @@ import urllib.error
 import urllib.request
 from urllib.parse import quote
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 try:
     from .autonomous_engineering_checkpoint_contract import metadata_confirms_watcher_ready
+    from .autonomous_engineering_execution_lock import repository_execution_lock
 except ImportError:  # Direct script execution from the scripts directory.
     from autonomous_engineering_checkpoint_contract import metadata_confirms_watcher_ready
+    from autonomous_engineering_execution_lock import repository_execution_lock
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKPOINT_SCRIPT = Path(__file__).resolve().with_name("autonomous_engineering_checkpoint.py")
@@ -35,69 +36,6 @@ PROTECTED = {
 }
 MARKERS = re.compile(r"(?m)^(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)\s*$")
 CYCLE_LIMIT = 6 * 60 * 60
-
-
-@contextlib.contextmanager
-def repository_execution_lock(run_id: str, run_attempt: str) -> Iterator[None]:
-    """Serialize all worktree-mutating autonomous cycles across processes and workflow entry points."""
-    configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
-    if configured:
-        state_dir = Path(configured).expanduser()
-    elif os.getenv("PROGRAMDATA"):
-        state_dir = Path(os.environ["PROGRAMDATA"]) / "PersonalAIAssistant" / "autonomous-engineering"
-    else:
-        state_dir = Path.home() / ".personal-ai-assistant" / "autonomous-engineering"
-    state_dir.mkdir(parents=True, exist_ok=True)
-    lock_path = state_dir / "repository-execution.lock"
-    handle = lock_path.open("a+b")
-    try:
-        if os.name == "nt":
-            import msvcrt
-            handle.seek(0, os.SEEK_END)
-            if handle.tell() == 0:
-                handle.write(b"0")
-                handle.flush()
-            handle.seek(0)
-            try:
-                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-            except OSError as exc:
-                raise RuntimeError(
-                    "Another autonomous execution owns this repository worktree. "
-                    "This run exited without touching its checkpoint or working tree."
-                ) from exc
-        else:
-            import fcntl
-            try:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except OSError as exc:
-                raise RuntimeError(
-                    "Another autonomous execution owns this repository worktree. "
-                    "This run exited without touching its checkpoint or working tree."
-                ) from exc
-        handle.seek(0)
-        handle.truncate()
-        handle.write(json.dumps({
-            "pid": os.getpid(),
-            "run_id": run_id,
-            "run_attempt": run_attempt,
-            "host": __import__("socket").gethostname(),
-            "acquired_at": time.time(),
-        }).encode("utf-8"))
-        handle.flush()
-        yield
-    finally:
-        try:
-            if os.name == "nt":
-                import msvcrt
-                handle.seek(0)
-                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-            else:
-                import fcntl
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-        except OSError:
-            pass
-        handle.close()
-
 
 
 def run(command: list[str], *, env: dict[str, str] | None = None, capture: bool = False) -> subprocess.CompletedProcess[str]:
