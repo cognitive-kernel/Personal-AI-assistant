@@ -285,3 +285,22 @@ def test_settings_api_preserves_manual_model_selection_when_context_is_unchanged
     after = db.get_settings()
     assert after["chat_ollama_model"] == "manual-model:latest"
     assert after["chat_ollama_num_ctx"] == before["chat_ollama_num_ctx"]
+
+
+def test_settings_api_does_not_invent_context_when_safe_recommendation_is_unavailable(settings_client, monkeypatch):
+    db.update_settings({"chat_ollama_model": "existing-model:7b", "chat_ollama_num_ctx": 2048})
+    monkeypatch.setattr(ollama, "model_details", lambda name, context_tokens=None: {
+        "name": name,
+        "maximum_context_tokens": 32768,
+        "recommended_context_tokens": None,
+    })
+
+    response = settings_client.patch(
+        "/api/settings",
+        json={"values": {"chat_ollama_model": "new-model:8b"}},
+    )
+
+    assert response.status_code == 200
+    after = db.get_settings()
+    assert after["chat_ollama_model"] == "new-model:8b"
+    assert after["chat_ollama_num_ctx"] == 2048
