@@ -95,6 +95,19 @@ def test_reused_pid_is_not_terminated(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert process.killed is False
 
 
+def test_matching_command_with_mismatched_creation_time_is_ambiguous(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    script = tmp_path / "autonomous_engineering_checkpoint.py"
+    process = FakeProcess(created=9999.0, command=_command(script))
+    monkeypatch.setattr(process_control.psutil, "Process", lambda pid: process)
+
+    with pytest.raises(RuntimeError, match="ownership is ambiguous"):
+        process_control.stop_owned_watcher(_metadata(script), script_path=script)
+
+    assert process.terminated is False
+
+
 def test_live_pid_with_mismatched_command_blocks_recovery(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     script = tmp_path / "autonomous_engineering_checkpoint.py"
     process = FakeProcess(command=["python.exe", "different.py", "watch"])
