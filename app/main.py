@@ -784,9 +784,9 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
             values.get("ollama_num_ctx", current_settings.get(context_key)),
         )
         model_name = values.get(model_key)
-        if model_name is None:
+        if not isinstance(model_name, str) or not model_name.strip():
             model_name = (
-                values.get("ollama_model", current_settings.get(model_key))
+                values.get("ollama_model") or current_settings.get(model_key) or current_settings.get("ollama_model")
                 if model_key == "chat_ollama_model"
                 else current_settings.get(model_key)
             )
