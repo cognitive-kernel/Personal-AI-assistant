@@ -174,7 +174,7 @@ def list_models() -> list[dict[str, Any]]:
     ]
 
 
-def model_details(model: str) -> dict[str, Any]:
+def model_details(model: str, context_tokens: int | None = None) -> dict[str, Any]:
     """Return local Ollama model metadata and a clearly-labelled context/memory estimate."""
     name = str(model or "").strip()
     if not name or len(name) > 200:
@@ -201,7 +201,7 @@ def model_details(model: str) -> dict[str, Any]:
     # Ollama metadata does not consistently expose KV-cache element precision.
     # Use a float16 planning estimate only when architecture dimensions are known.
     kv_cache_bytes_per_token = (
-        2 * layers * kv_heads * (key_length + value_length)
+        layers * kv_heads * (key_length + value_length) * 2
         if layers and kv_heads and key_length and value_length else None
     )
     tags = list_models()
@@ -218,8 +218,10 @@ def model_details(model: str) -> dict[str, Any]:
             "kv_cache_gib_float16": None,
             "overhead_gib": round(max(0.5, weight_bytes * 0.10 / (1024 ** 3)), 2),
         }
-        if maximum_context is not None:
-            kv_bytes = kv_cache_bytes_per_token * maximum_context * 2
+        effective_context = context_tokens if isinstance(context_tokens, int) and not isinstance(context_tokens, bool) and context_tokens > 0 else maximum_context
+        estimate["context_tokens"] = effective_context
+        if effective_context is not None:
+            kv_bytes = kv_cache_bytes_per_token * effective_context
             estimate["kv_cache_gib_float16"] = round(kv_bytes / (1024 ** 3), 2)
             estimate["total_ram_gib_float16"] = round(
                 weight_bytes / (1024 ** 3) + kv_bytes / (1024 ** 3) + estimate["overhead_gib"], 2
