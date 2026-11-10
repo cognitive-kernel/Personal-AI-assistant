@@ -1349,6 +1349,7 @@ LEARNING_MIGRATIONS = (
                 outline_json TEXT NOT NULL,
                 outline_sha256 TEXT NOT NULL CHECK(length(outline_sha256) = 64),
                 model_name TEXT NOT NULL CHECK(length(trim(model_name)) BETWEEN 1 AND 200),
+                model_selection_json TEXT NOT NULL DEFAULT '{}',
                 source_count INTEGER NOT NULL CHECK(source_count >= 3),
                 sources_json TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
