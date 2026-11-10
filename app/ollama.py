@@ -361,6 +361,7 @@ def chat(
     *,
     purpose: str = "chat",
     model_override: str | None = None,
+    num_predict: int | None = None,
 ) -> str:
     if purpose not in {"chat", "learning", "programming", "factual_review", "research_plan"}:
         raise ValueError("purpose must be chat, learning, programming, factual_review, or research_plan.")
@@ -407,6 +408,10 @@ def chat(
         message_limit = min(72000, max(12000, int(settings.get("programming_source_max_chars", 12000)) + 6500))
     messages.append({"role": "user", "content": message[:message_limit]})
     options = {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"]}
+    if num_predict is not None:
+        if isinstance(num_predict, bool) or not isinstance(num_predict, int) or not 1 <= num_predict <= 8192:
+            raise ValueError("num_predict must be an integer between 1 and 8192.")
+        options["num_predict"] = num_predict
     if purpose == "factual_review":
         options["num_ctx"] = min(int(options["num_ctx"]), 4096)
         options["num_predict"] = 500
