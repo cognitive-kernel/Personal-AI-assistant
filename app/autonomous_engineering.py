@@ -73,6 +73,17 @@ def _run(command: list[str], timeout: int = 8) -> subprocess.CompletedProcess[st
 
 
 def _ollama_status(model: str) -> dict[str, Any]:
+    empty = {
+        "online": False,
+        "model": model,
+        "model_installed": False,
+        "models": [],
+        "model_context_length": None,
+        "model_capabilities": [],
+        "model_supports_tools": False,
+        "model_metadata_available": False,
+        "model_metadata_error": "Ollama metadata is unavailable.",
+    }
     try:
         request = urllib.request.Request(
             "http://127.0.0.1:11434/api/tags",
@@ -80,23 +91,64 @@ def _ollama_status(model: str) -> dict[str, Any]:
         )
         # Local Ollama metadata must never be sent through an environment proxy.
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        with opener.open(request, timeout=2) as response:
-            payload = json.loads(response.read(2_000_000).decode("utf-8"))
+        with opener.open(request, timeout=3) as response:
+            payload = json.loads(response.read(8_000_000).decode("utf-8"))
         models = payload.get("models", []) if isinstance(payload, dict) else []
-        names = sorted(
+        names = sorted({
             str(item.get("name", ""))
             for item in models
             if isinstance(item, dict) and item.get("name")
-        )
+        })
         installed = model in names
-        return {
+        result = {
+            **empty,
             "online": True,
-            "model": model,
             "model_installed": installed,
-            "models": names[:40],
+            "models": names,
+            "model_metadata_error": None if installed else "The saved model is not installed locally.",
         }
+        if not installed:
+            return result
+
+        show_request = urllib.request.Request(
+            "http://127.0.0.1:11434/api/show",
+            data=json.dumps({"model": model, "verbose": True}).encode("utf-8"),
+            headers={"Accept": "application/json", "Content-Type": "application/json"},
+            method="POST",
+        )
+        with opener.open(show_request, timeout=5) as response:
+            details_payload = json.loads(response.read(8_000_000).decode("utf-8"))
+        if not isinstance(details_payload, dict):
+            raise ValueError("Ollama /api/show returned an invalid response.")
+        details = details_payload.get("details") if isinstance(details_payload.get("details"), dict) else {}
+        model_info = details_payload.get("model_info") if isinstance(details_payload.get("model_info"), dict) else {}
+        architecture = details.get("family")
+        raw_context = model_info.get(f"{architecture}.context_length") if isinstance(architecture, str) and architecture else None
+        context_length = (
+            raw_context
+            if isinstance(raw_context, int) and not isinstance(raw_context, bool) and raw_context >= 512
+            else None
+        )
+        raw_capabilities = details_payload.get("capabilities")
+        capabilities = sorted({
+            value for value in raw_capabilities
+            if isinstance(value, str) and value
+        }) if isinstance(raw_capabilities, list) else []
+        supports_tools = "tools" in capabilities
+        metadata_available = context_length is not None
+        result.update({
+            "model_context_length": context_length,
+            "model_capabilities": capabilities,
+            "model_supports_tools": supports_tools,
+            "model_metadata_available": metadata_available,
+            "model_metadata_error": (
+                None if metadata_available else
+                "Ollama did not publish a valid architecture-specific context_length."
+            ),
+        })
+        return result
     except (OSError, ValueError, urllib.error.URLError, TimeoutError):
-        return {"online": False, "model": model, "model_installed": False, "models": []}
+        return empty
 
 
 def _codex_status() -> dict[str, Any]:
@@ -217,6 +269,8 @@ def collect_status() -> dict[str, Any]:
     checks = {
         "ollama_online": ollama["online"],
         "model_installed": ollama["model_installed"],
+        "model_context_metadata_available": ollama.get("model_metadata_available") is True,
+        "model_supports_tools": ollama.get("model_supports_tools") is True,
         "codex_installed": codex["installed"],
         "runner_running": runner["running"],
         "github_cli_authenticated": github["authenticated"],
@@ -243,6 +297,10 @@ def collect_status() -> dict[str, Any]:
         "workflow": _WORKFLOW,
         "model": model,
         "models": ollama.get("models", []),
+        "model_context_length": ollama.get("model_context_length"),
+        "model_capabilities": ollama.get("model_capabilities", []),
+        "model_supports_tools": ollama.get("model_supports_tools", False),
+        "model_metadata_error": ollama.get("model_metadata_error"),
         "interval_hours": interval_hours,
         "execution_mode": execution_mode,
         "paused": paused,
@@ -354,6 +412,15 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
         raise HTTPException(status_code=422, detail="فاصلهٔ اجرا باید یکی از ۱، ۲، ۴، ۶، ۱۲ یا ۲۴ ساعت باشد.")
     if payload.execution_mode not in {"scheduled", "continuous"}:
         raise HTTPException(status_code=422, detail="حالت اجرا معتبر نیست.")
+    local_model = _ollama_status(model)
+    if not local_model.get("online"):
+        raise HTTPException(status_code=503, detail="سرویس Ollama محلی در دسترس نیست؛ مدل ذخیره نشد.")
+    if not local_model.get("model_installed"):
+        raise HTTPException(status_code=422, detail="مدل انتخاب‌شده در فهرست مدل‌های نصب‌شدهٔ Ollama وجود ندارد.")
+    if not local_model.get("model_metadata_available"):
+        raise HTTPException(status_code=422, detail="حداکثر Context مدل از metadata معتبر Ollama قابل تأیید نیست؛ مدل ذخیره نشد.")
+    if not local_model.get("model_supports_tools"):
+        raise HTTPException(status_code=422, detail="مدل انتخاب‌شده قابلیت tools را اعلام نکرده و برای Codex قابل استفاده نیست.")
     gh = shutil.which("gh")
     if not gh:
         raise HTTPException(status_code=503, detail="GitHub CLI نصب نشده است.")
