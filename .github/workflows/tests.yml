@@ -45,8 +45,18 @@ jobs:
           python-version: "3.11"
       - name: Install project and test dependencies
         run: python -m pip install -e ".[dev]"
-      - name: Run real checkpoint watcher integration on Windows
-        run: python -m pytest -q tests/test_autonomous_engineering_cycle.py -k real_process
+      - name: Run real checkpoint watcher startup, stop, and recovery on Windows
+        run: >-
+          python -m pytest -q
+          tests/test_autonomous_engineering_cycle.py
+          tests/test_autonomous_engineering_checkpoint_recovery.py
+          -k real_process
+      - name: Run checkpoint ownership and recovery fault injection on Windows
+        run: >-
+          python -m pytest -q
+          tests/test_autonomous_engineering_checkpoint_process.py
+          tests/test_autonomous_engineering_execution_lock.py
+          tests/test_autonomous_engineering_checkpoint_recovery.py
       - name: Parse all PowerShell scripts
         shell: pwsh
         run: |
