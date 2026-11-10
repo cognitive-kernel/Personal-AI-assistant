@@ -10,8 +10,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-import psutil
-
 try:
     from .autonomous_engineering_checkpoint_contract import (
         SCHEMA_VERSION,
