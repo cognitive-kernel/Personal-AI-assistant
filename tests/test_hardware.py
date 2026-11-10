@@ -420,3 +420,28 @@ def test_detect_gpu_merges_duplicate_provider_records_without_losing_metrics(mon
     assert result["gpu_devices"][0]["memory_free_mb"] == 6144
     assert result["gpu_devices"][0]["shared_memory_free_mb"] == 4096
     assert "windows-performance-counters" in result["gpu_devices"][0]["telemetry"]
+
+def test_windows_gpu_shared_memory_is_capped_by_host_ram_available(monkeypatch):
+    import json
+    payload = {
+        "Adapters": [{"Name": "Intel UHD", "PNPDeviceID": "PCI\\\\VEN_8086&DEV_1234", "AdapterRAM": 1073741824}],
+        "Counters": [
+            {"Path": "GPU Engine Utilization Percentage", "InstanceName": "luid_0_phys_0", "CookedValue": 12},
+            {"Path": "GPU Adapter Memory Dedicated Usage", "InstanceName": "luid_0_phys_0", "CookedValue": 268435456},
+            {"Path": "GPU Adapter Memory Dedicated Limit", "InstanceName": "luid_0_phys_0", "CookedValue": 1073741824},
+            {"Path": "GPU Adapter Memory Shared Usage", "InstanceName": "luid_0_phys_0", "CookedValue": 536870912},
+            {"Path": "GPU Adapter Memory Shared Limit", "InstanceName": "luid_0_phys_0", "CookedValue": 8589934592},
+        ],
+    }
+    monkeypatch.setattr(hardware.os, "name", "nt")
+    monkeypatch.setattr(hardware, "_run_gpu_command", lambda *args, **kwargs: json.dumps(payload))
+    monkeypatch.setattr(hardware, "psutil", SimpleNamespace(
+        virtual_memory=lambda: SimpleNamespace(available=1024 * 1024**2),
+    ))
+
+    device = hardware._detect_windows_gpus()[0]
+
+    assert device["shared_memory_free_mb"] == 7680
+    assert device["usable_shared_memory_free_mb"] == 1024
+    assert device["usable_memory_free_mb"] == 1792
+    assert device["usable_memory_scope"] == "dedicated+shared"
