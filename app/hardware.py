@@ -273,24 +273,41 @@ def _detect_vulkan_gpus() -> list[dict[str, Any]]:
 
 
 def detect_gpu() -> dict[str, Any]:
-    """Discover GPUs across vendors; missing telemetry remains unknown, never zero."""
-    providers = (
-        (("nvidia-smi", _detect_nvidia_gpus),
-         ("windows-performance-counters", _detect_windows_gpus),
-         ("vulkan", _detect_vulkan_gpus))
+    """Discover all GPUs across vendors; missing telemetry remains unknown, never zero."""
+    detectors = (
+        [_detect_nvidia_gpus, _detect_rocm_gpus, _detect_windows_gpus, _detect_vulkan_gpus]
         if os.name == "nt"
-        else (("nvidia-smi", _detect_nvidia_gpus),
-              ("rocm-smi", _detect_rocm_gpus),
-              ("vulkan", _detect_vulkan_gpus))
+        else [_detect_nvidia_gpus, _detect_rocm_gpus, _detect_vulkan_gpus]
     )
     devices: list[dict[str, Any]] = []
-    for provider, detector in providers:
+    identities: dict[tuple[str, str], dict[str, Any]] = {}
+    for detector in detectors:
         try:
-            devices = detector()
+            discovered = detector()
         except Exception:
-            devices = []
-        if devices:
-            break
+            discovered = []
+        for device in discovered:
+            if not isinstance(device, dict) or not device.get("name"):
+                continue
+            vendor = str(device.get("vendor") or "Unknown").strip().casefold()
+            name = " ".join(str(device["name"]).casefold().split())
+            identity = (vendor, name)
+            existing = identities.get(identity)
+            if existing is None:
+                normalized = dict(device)
+                normalized["index"] = len(devices)
+                devices.append(normalized)
+                identities[identity] = normalized
+                continue
+            # Keep measured vendor-specific values; generic providers may only
+            # fill gaps. This also avoids duplicate entries for the same adapter.
+            for key, value in device.items():
+                if key == "telemetry" and value:
+                    current = str(existing.get(key) or "")
+                    if str(value) not in current.split(","):
+                        existing[key] = ",".join(filter(None, [current, str(value)]))
+                elif existing.get(key) is None and value is not None:
+                    existing[key] = value
     measurable_util = [d["utilization_percent"] for d in devices if isinstance(d.get("utilization_percent"), (int, float))]
     measurable_memory = [d["memory_percent"] for d in devices if isinstance(d.get("memory_percent"), (int, float))]
     telemetry_names = sorted({str(d.get("telemetry")) for d in devices if d.get("telemetry")})
