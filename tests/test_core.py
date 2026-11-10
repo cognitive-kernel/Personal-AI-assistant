@@ -149,6 +149,13 @@ def test_research_curriculum_schema_migration_is_registered_and_applied(tmp_path
             )
         }
     assert "learning_path_research" in tables
+    with db.learning_connection() as connection:
+        columns = {
+            row["name"] for row in connection.execute(
+                "PRAGMA table_info(learning_path_research)"
+            )
+        }
+    assert "model_selection_json" in columns
 
 
 def test_learning_curriculum_catalog_includes_requested_system_tracks():
