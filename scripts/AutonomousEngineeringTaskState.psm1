@@ -74,6 +74,55 @@ function Read-AutonomousTaskOwnerRecord {
     return $record
 }
 
+function Recover-AutonomousPendingStateCleanup {
+    param([Parameter(Mandatory=$true)][string]$StateDirectory)
+    $markerPath = Join-Path $StateDirectory "pending-state-cleanup.json"
+    try {
+        $raw = [System.IO.File]::ReadAllText($markerPath, [System.Text.Encoding]::UTF8)
+    } catch [System.IO.FileNotFoundException] {
+        return $false
+    } catch [System.IO.DirectoryNotFoundException] {
+        return $false
+    } catch {
+        throw "Pending-state cleanup marker cannot be read safely. $($_.Exception.Message)"
+    }
+    if ([string]::IsNullOrWhiteSpace($raw)) {
+        throw "Pending-state cleanup marker is empty; preserving all durable state."
+    }
+    try {
+        $marker = $raw | ConvertFrom-Json
+    } catch {
+        throw "Pending-state cleanup marker is malformed; preserving all durable state."
+    }
+    $createdAt = 0.0
+    if (
+        $marker.schema_version -is [bool] -or
+        -not ($marker.schema_version -is [int] -or $marker.schema_version -is [long]) -or
+        [long]$marker.schema_version -ne 1 -or
+        [string]$marker.operation -cne "clear_after_verified_post_merge" -or
+        -not ($marker.run_id -is [string]) -or
+        [string]::IsNullOrWhiteSpace([string]$marker.run_id) -or
+        -not ($marker.created_at -is [double] -or $marker.created_at -is [int] -or $marker.created_at -is [long]) -or
+        -not [double]::TryParse([string]$marker.created_at, [ref]$createdAt) -or
+        [double]::IsNaN($createdAt) -or [double]::IsInfinity($createdAt) -or $createdAt -le 0
+    ) {
+        throw "Pending-state cleanup marker violates schema v1; preserving all durable state."
+    }
+
+    foreach ($name in @(
+        "pending-autonomous-pr.json",
+        "pending-manual-task.txt",
+        "pending-manual-task-owner.json"
+    )) {
+        $path = Join-Path $StateDirectory $name
+        if (Test-Path -LiteralPath $path -PathType Leaf) {
+            Remove-Item -LiteralPath $path -Force -ErrorAction Stop
+        }
+    }
+    Remove-Item -LiteralPath $markerPath -Force -ErrorAction Stop
+    return $true
+}
+
 function Write-AutonomousTaskOwnerRecord {
     param(
         [Parameter(Mandatory=$true)][string]$Path,
@@ -132,4 +181,4 @@ function Write-AutonomousTaskOwnerRecord {
     return $record
 }
 
-Export-ModuleMember -Function Get-AutonomousTaskDigest, Read-AutonomousTaskOwnerRecord, Write-AutonomousTaskOwnerRecord
+Export-ModuleMember -Function Get-AutonomousTaskDigest, Read-AutonomousTaskOwnerRecord, Write-AutonomousTaskOwnerRecord, Recover-AutonomousPendingStateCleanup
