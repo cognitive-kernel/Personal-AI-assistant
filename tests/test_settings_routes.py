@@ -158,3 +158,45 @@ def test_settings_api_rejects_non_integer_numeric_settings_atomically(
     after = db.get_settings()
     assert after[key] == before[key]
     assert after["chat_ollama_model"] == before["chat_ollama_model"]
+
+
+def test_settings_api_rejects_context_above_selected_model_limit_atomically(settings_client, monkeypatch):
+    before = db.get_settings()
+    monkeypatch.setattr(ollama, "model_details", lambda name, context_tokens=None: {
+        "name": name, "maximum_context_tokens": 32768,
+    })
+    response = settings_client.patch(
+        "/api/settings",
+        json={"values": {"chat_ollama_model": "local:8b", "chat_ollama_num_ctx": 65536}},
+    )
+    assert response.status_code == 422
+    assert "32768" in response.json()["detail"]
+    after = db.get_settings()
+    assert after["chat_ollama_model"] == before["chat_ollama_model"]
+    assert after["chat_ollama_num_ctx"] == before["chat_ollama_num_ctx"]
+
+
+def test_settings_api_accepts_context_below_selected_model_limit(settings_client, monkeypatch):
+    monkeypatch.setattr(ollama, "model_details", lambda name, context_tokens=None: {
+        "name": name, "maximum_context_tokens": 65536,
+    })
+    response = settings_client.patch(
+        "/api/settings",
+        json={"values": {"chat_ollama_model": "local:8b", "chat_ollama_num_ctx": 16384}},
+    )
+    assert response.status_code == 200
+    assert response.json()["chat_ollama_num_ctx"] == 16384
+
+
+def test_settings_api_rejects_context_when_model_limit_cannot_be_verified(settings_client, monkeypatch):
+    before = db.get_settings()
+    monkeypatch.setattr(ollama, "model_details", lambda name, context_tokens=None: {
+        "name": name, "maximum_context_tokens": None,
+    })
+    response = settings_client.patch(
+        "/api/settings",
+        json={"values": {"chat_ollama_num_ctx": 4096}},
+    )
+    assert response.status_code == 422
+    assert "metadata" in response.json()["detail"]
+    assert db.get_settings()["chat_ollama_num_ctx"] == before["chat_ollama_num_ctx"]
