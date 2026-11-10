@@ -185,7 +185,7 @@ def test_codex_context_selection_uses_minimum_of_request_model_and_safe_memory()
     model_info = {
         "llama.context_length": 131072,
         "llama.block_count": 32,
-        "llama.attention.head_count_kv": 8,
+        "llama.attention.head_count_kv": 64,
         "llama.attention.key_length": 128,
         "llama.attention.value_length": 128,
     }
