@@ -187,6 +187,32 @@ def _model_context_metadata(model_info: dict[str, Any], architecture: str | None
     return min(values) if values else None
 
 
+def _dedicated_gpu_budget_gb(hardware: dict[str, Any]) -> float | None:
+    """Return one adapter's measured dedicated VRAM; never count shared system RAM."""
+    devices = hardware.get("gpu_devices")
+    if not isinstance(devices, list) or len(devices) != 1:
+        return None
+    device = devices[0]
+    if not isinstance(device, dict):
+        return None
+    device_type = str(device.get("device_type") or "").casefold()
+    vendor = str(device.get("vendor") or "").casefold()
+    name = str(device.get("name") or "").casefold()
+    if "integrated" in device_type or (
+        vendor == "intel" and any(token in name for token in ("uhd", "iris", "integrated"))
+    ):
+        return None
+    free_mb = device.get("memory_free_mb")
+    if (
+        isinstance(free_mb, bool)
+        or not isinstance(free_mb, (int, float))
+        or not math.isfinite(free_mb)
+        or free_mb <= 0
+    ):
+        return None
+    return float(free_mb) / 1024
+
+
 def _recommended_context_tokens(
     maximum_context: int | None,
     memory_estimate: dict[str, Any] | None,
@@ -207,18 +233,12 @@ def _recommended_context_tokens(
     if not all(isinstance(value, (int, float)) and math.isfinite(value) and value >= 0 for value in (weights, overhead, cache_per_token)):
         return min(maximum_context, 2048)
     if get_settings().get("gpu_enabled") is True:
-        devices = hardware.get("gpu_devices")
-        if isinstance(devices, list) and devices:
-            free_values = [
-                device.get("usable_memory_free_mb", device.get("memory_free_mb"))
-                for device in devices if isinstance(device, dict)
-            ]
-            known_free = [float(value) for value in free_values if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0]
-            if known_free and len(known_free) == len(devices):
-                gpu_budget = sum(known_free) / 1024
-                # Prefer a full-GPU estimate only when all model weights plus overhead fit.
-                if gpu_budget > float(weights) + float(overhead):
-                    budget = gpu_budget
+        gpu_budget = _dedicated_gpu_budget_gb(hardware)
+        # Only dedicated VRAM is an independent budget. Integrated-GPU shared
+        # memory is already included in host available RAM and must never replace
+        # or be added to that same RAM budget.
+        if gpu_budget is not None and gpu_budget > float(weights) + float(overhead):
+            budget = gpu_budget
     available_for_cache = max(0.0, budget - float(weights) - float(overhead))
     if available_for_cache <= 0 or cache_per_token <= 0:
         return min(maximum_context, 512)
@@ -373,7 +393,13 @@ def chat(
     model = str(model_override if model_override is not None else settings.get(f"{prefix}_ollama_model", settings.get("ollama_model", "qwen2.5:7b"))).strip()
     if not model or len(model) > 200:
         raise ValueError("model must be a non-empty name of at most 200 characters.")
-    model_details_payload = _request("/api/show", {"model": model}, timeout=8)
+    # Context metadata is useful when available, but older/custom Ollama model
+    # manifests may omit it. Keep those models usable with a conservative fallback
+    # instead of turning an optional diagnostic field into a hard runtime dependency.
+    try:
+        model_details_payload = _request("/api/show", {"model": model}, timeout=8)
+    except OllamaError:
+        model_details_payload = {}
     model_info = model_details_payload.get("model_info", {})
     model_details_meta = model_details_payload.get("details", {})
     architecture = model_details_meta.get("family") if isinstance(model_details_meta, dict) else None
@@ -385,15 +411,12 @@ def chat(
         "ram_budget_max_gb": settings.get("ram_budget_max_gb", 25),
         "ram_safety_reserve_gb": settings.get("ram_safety_reserve_gb", 4),
     }
-    if maximum_context is None:
-        raise OllamaError(
-            f"Ollama did not publish a verifiable context_length for '{model}'; "
-            "refusing to send a request with an unverified context limit."
-        )
     limits = runtime_limits(
         runtime_settings,
         hardware,
-        maximum_context_tokens=maximum_context,
+        # Models without context metadata use a conservative 2k ceiling.
+        # Ollama remains the final authority and may reject an unsupported value.
+        maximum_context_tokens=maximum_context if maximum_context is not None else 2048,
     )
     keep_alive = model_keep_alive(purpose, hardware, settings)
     messages = []
