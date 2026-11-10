@@ -403,7 +403,7 @@ def _pending_pr_path() -> Path:
     return _autonomous_state_dir() / "pending-autonomous-pr.json"
 
 
-def save_pending_pr(value: dict[str, Any], repo: str) -> None:
+def _save_pending_pr_unlocked(value: dict[str, Any], repo: str) -> None:
     string_fields = ("url", "head_sha", "base_sha", "branch", "run_id")
     if (
         not isinstance(value, dict)
@@ -424,19 +424,31 @@ def save_pending_pr(value: dict[str, Any], repo: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + f".{os.getpid()}.tmp")
     try:
-        temporary.write_text(json.dumps(value, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+        temporary.write_text(
+            json.dumps(value, ensure_ascii=False, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
         temporary.replace(path)
     finally:
         temporary.unlink(missing_ok=True)
 
 
-def load_pending_pr() -> dict[str, Any] | None:
+def save_pending_pr(value: dict[str, Any], repo: str) -> None:
+    with durable_state_lock(_autonomous_state_dir()):
+        _save_pending_pr_unlocked(value, repo)
+
+
+def _load_pending_pr_unlocked() -> dict[str, Any] | None:
     path = _pending_pr_path()
-    if not path.exists():
-        return None
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise RuntimeError("Pending PR state is unreadable; preserving it and refusing a new task.") from exc
+    try:
+        value = json.loads(raw)
+    except ValueError as exc:
         raise RuntimeError("Pending PR state is unreadable; preserving it and refusing a new task.") from exc
     required = ("number", "url", "head_sha", "base_sha", "branch", "run_id", "task")
     if (
@@ -455,13 +467,29 @@ def load_pending_pr() -> dict[str, Any] | None:
     return value
 
 
+def load_pending_pr() -> dict[str, Any] | None:
+    with durable_state_lock(_autonomous_state_dir()):
+        return _load_pending_pr_unlocked()
+
+
 def clear_pending_pr() -> None:
-    _pending_pr_path().unlink(missing_ok=True)
+    with durable_state_lock(_autonomous_state_dir()):
+        _pending_pr_path().unlink(missing_ok=True)
 
 
 def clear_pending_task() -> None:
     if os.name == "nt":
-        (_autonomous_state_dir() / "pending-manual-task.txt").unlink(missing_ok=True)
+        with durable_state_lock(_autonomous_state_dir()):
+            (_autonomous_state_dir() / "pending-manual-task.txt").unlink(missing_ok=True)
+
+
+def clear_pending_state() -> None:
+    """Clear the accepted PR and its submitted task as one durable-state transaction."""
+    state_dir = _autonomous_state_dir()
+    with durable_state_lock(state_dir):
+        (state_dir / "pending-autonomous-pr.json").unlink(missing_ok=True)
+        if os.name == "nt":
+            (state_dir / "pending-manual-task.txt").unlink(missing_ok=True)
 
 
 def find_open_autonomous_pr(token: str, repo: str) -> dict[str, Any] | None:
@@ -609,8 +637,7 @@ def complete_merged_pr(token: str, repo: str, pending: dict[str, Any]) -> dict[s
     ):
         raise RuntimeError("Post-merge validation changed or main no longer points to the reviewed merge.")
     clear_checkpoint()
-    clear_pending_task()
-    clear_pending_pr()
+    clear_pending_state()
     return {
         "number": number,
         "url": pending.get("url"),
