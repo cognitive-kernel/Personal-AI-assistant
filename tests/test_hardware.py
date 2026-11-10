@@ -270,6 +270,7 @@ def test_detect_gpu_uses_generic_windows_telemetry_for_single_adapter(monkeypatc
 
 
 def test_detect_gpu_keeps_discovered_device_when_metrics_are_unknown(monkeypatch):
+    monkeypatch.setattr(hardware.os, "name", "nt")
     monkeypatch.setattr(hardware, "_detect_nvidia_gpus", lambda: [])
     monkeypatch.setattr(hardware, "_detect_rocm_gpus", lambda: [])
     monkeypatch.setattr(hardware, "_detect_windows_gpus", lambda: [{
