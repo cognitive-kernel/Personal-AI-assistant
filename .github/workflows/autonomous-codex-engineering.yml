@@ -147,6 +147,7 @@ jobs:
       actions: write
     env:
       AUTONOMOUS_ENGINEERING_MODEL: ${{ vars.AUTONOMOUS_ENGINEERING_MODEL || 'gpt-oss:20b' }}
+      AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH: ${{ vars.AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH || '' }}
       AUTONOMOUS_ENGINEERING_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE || 'continuous' }}
     steps:
       - name: Check out trusted main branch
