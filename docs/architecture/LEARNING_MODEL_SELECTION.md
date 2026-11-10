@@ -23,6 +23,6 @@ The learning engine is intentionally pinned to the configured `learning_ollama_m
 
 ## Provenance and limitations
 
-Every generated lesson records the selected model, selection status/reason, candidate count, estimated cost, estimated prompt/completion token counts, estimate method, and generation-phase budget scope in `quality.generation_provenance.model_selection`. Actual Ollama token counters remain in provider usage fields.
+Every generated lesson records the selected model, selection status/reason, candidate count, estimated cost, estimated prompt/completion token counts, estimate method, and generation-phase budget scope in `quality.generation_provenance.model_selection`. Research-first curriculum outlines record the same selected-model provenance in `learning_path_research.model_selection_json`. Actual Ollama token counters remain in provider usage fields.
 
 Scope: the monetary estimate includes generation, one repair, and optional claim review when usable web sources exist. The separate durable request/token ledger reserves claim review as its own idempotent stage. Provider-reported usage remains authoritative for observed token counts; the monetary estimate is not a provider invoice or hard billing cap. Configured quality scores are operator-supplied estimates, not live benchmark results. The character-based prompt estimate is conservative but cannot exactly reproduce model-specific tokenization. Live Persian/English quality evaluation, independent adjudication, and target-host verification remain separate acceptance gates.
