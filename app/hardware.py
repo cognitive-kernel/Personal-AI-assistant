@@ -239,12 +239,12 @@ def _detect_vulkan_gpus() -> list[dict[str, Any]]:
     output = _run_gpu_command(["vulkaninfo", "--summary"], timeout=3.0)
     if not output:
         return []
-    blocks = re.split(r"(?m)^\\s*GPU\\d+\\s*:\\s*$", output)
+    blocks = re.split(r"(?m)^\s*GPU\d+\s*:\s*$", output)
     devices = []
     for index, block in enumerate(blocks[1:]):
-        name_match = re.search(r"(?m)^\\s*deviceName\\s*=\\s*(.+?)\\s*$", block)
-        vendor_match = re.search(r"(?m)^\\s*vendorID\\s*=\\s*(0x[0-9a-fA-F]+|\\d+)\\s*$", block)
-        type_match = re.search(r"(?m)^\\s*deviceType\\s*=\\s*(.+?)\\s*$", block)
+        name_match = re.search(r"(?m)^\s*deviceName\s*=\s*(.+?)\s*$", block)
+        vendor_match = re.search(r"(?m)^\s*vendorID\s*=\s*(0x[0-9a-fA-F]+|\d+)\s*$", block)
+        type_match = re.search(r"(?m)^\s*deviceType\s*=\s*(.+?)\s*$", block)
         if not name_match:
             continue
         vendor_id = vendor_match.group(1).lower() if vendor_match else ""
