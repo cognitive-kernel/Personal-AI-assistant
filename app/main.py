@@ -818,6 +818,15 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
                 ) from exc
             continue
         maximum = metadata.get("maximum_context_tokens")
+        explicit_context = context_key in values or (generic_chat_change and "ollama_num_ctx" in values)
+        if model_changed and not explicit_context:
+            context_value = metadata.get("recommended_context_tokens")
+            if not isinstance(context_value, int) or isinstance(context_value, bool) or context_value < 512:
+                context_value = min(maximum, 2048) if isinstance(maximum, int) and maximum >= 512 else None
+            if context_value is not None:
+                values[context_key] = context_value
+                if model_key == "chat_ollama_model":
+                    values["ollama_num_ctx"] = context_value
         if not isinstance(maximum, int) or maximum < 512:
             if context_changed:
                 raise HTTPException(
