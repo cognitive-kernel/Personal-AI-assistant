@@ -1964,6 +1964,8 @@ def queue_next_researched_path_topic(path_topic_id: int) -> dict[str, Any] | Non
 
 def start_path_learning(path_id: int) -> dict[str, Any]:
     path = get_learning_path(path_id)
+    if path.get("research"):
+        return start_researched_path_learning(path_id, allow_retry=True)
     queued_ids: list[int] = []
     skipped_active = 0
     skipped_completed = 0
