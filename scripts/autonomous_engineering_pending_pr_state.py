@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -54,8 +56,75 @@ def save_pending_pr_unlocked(value: dict[str, Any], repo: str) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _cleanup_marker_path(state_dir: Path) -> Path:
+    return state_dir / "pending-state-cleanup.json"
+
+
+def _write_cleanup_marker_unlocked(state_dir: Path) -> None:
+    marker = _cleanup_marker_path(state_dir)
+    record = {
+        "schema_version": 1,
+        "operation": "clear_after_verified_post_merge",
+        "run_id": os.getenv("GITHUB_RUN_ID", "local"),
+        "created_at": time.time(),
+    }
+    temporary = marker.with_name(marker.name + f".{os.getpid()}.tmp")
+    try:
+        temporary.write_text(
+            json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        temporary.replace(marker)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def recover_pending_state_cleanup_unlocked(state_dir: Path) -> bool:
+    """Resume an accepted post-merge cleanup interrupted by process termination."""
+    marker = _cleanup_marker_path(state_dir)
+    try:
+        raw = marker.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise RuntimeError("Pending-state cleanup marker is unreadable; preserving all state.") from exc
+    try:
+        record = json.loads(raw)
+    except ValueError as exc:
+        raise RuntimeError("Pending-state cleanup marker is malformed; preserving all state.") from exc
+    if (
+        not isinstance(record, dict)
+        or isinstance(record.get("schema_version"), bool)
+        or record.get("schema_version") != 1
+        or record.get("operation") != "clear_after_verified_post_merge"
+        or not isinstance(record.get("run_id"), str)
+        or not record["run_id"]
+        or isinstance(record.get("created_at"), bool)
+        or not isinstance(record.get("created_at"), (int, float))
+        or not math.isfinite(float(record["created_at"]))
+        or record["created_at"] <= 0
+    ):
+        raise RuntimeError("Pending-state cleanup marker violates schema v1; preserving all state.")
+    for filename in (
+        "pending-autonomous-pr.json",
+        "pending-manual-task.txt",
+        "pending-manual-task-owner.json",
+    ):
+        (state_dir / filename).unlink(missing_ok=True)
+    marker.unlink(missing_ok=True)
+    return True
+
+
+def recover_pending_state_cleanup() -> bool:
+    state_dir = autonomous_state_directory()
+    with durable_state_lock(state_dir):
+        return recover_pending_state_cleanup_unlocked(state_dir)
+
+
 def save_pending_pr(value: dict[str, Any], repo: str) -> None:
-    with durable_state_lock(autonomous_state_directory()):
+    state_dir = autonomous_state_directory()
+    with durable_state_lock(state_dir):
+        recover_pending_state_cleanup_unlocked(state_dir)
         save_pending_pr_unlocked(value, repo)
 
 
@@ -91,7 +160,9 @@ def load_pending_pr_unlocked() -> dict[str, Any] | None:
 
 
 def load_pending_pr() -> dict[str, Any] | None:
-    with durable_state_lock(autonomous_state_directory()):
+    state_dir = autonomous_state_directory()
+    with durable_state_lock(state_dir):
+        recover_pending_state_cleanup_unlocked(state_dir)
         return load_pending_pr_unlocked()
 
 
@@ -108,9 +179,9 @@ def clear_pending_task() -> None:
 
 
 def clear_pending_state() -> None:
-    """Clear the accepted PR and its submitted task as one durable-state transaction."""
+    """Commit an idempotent cleanup intent, then clear accepted task/PR state."""
     state_dir = autonomous_state_directory()
     with durable_state_lock(state_dir):
-        (state_dir / "pending-autonomous-pr.json").unlink(missing_ok=True)
-        (state_dir / "pending-manual-task.txt").unlink(missing_ok=True)
-        (state_dir / "pending-manual-task-owner.json").unlink(missing_ok=True)
+        recover_pending_state_cleanup_unlocked(state_dir)
+        _write_cleanup_marker_unlocked(state_dir)
+        recover_pending_state_cleanup_unlocked(state_dir)
