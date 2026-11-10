@@ -133,9 +133,56 @@ if ($VerifyOnly) {
     $codexModel = "$baseModel-codex-ctx$selectedContext"
     $existingInfo = $null
     try { $existingInfo = Get-ModelInfo -ModelName $codexModel } catch { }
-    $existingContext = 0L
-    $existingMatch = $false
-    if ($existingInfo -and [int64]::TryParse([string]$existingInfo.modelfile, [ref]$existingContext)) { $existingMatch = $existingContext -eq $selectedContext }
+    $existingContext = [regex]::Match([string]$existingInfo.modelfile, '(?im)^\s*PARAMETER\s+num_ctx\s+(\d+)\s*    if (-not $existingMatch) {
+        $createBody = @{
+            model = $codexModel
+            from = $baseModel
+            parameters = @{ num_ctx = $selectedContext }
+            stream = $false
+        } | ConvertTo-Json -Depth 5 -Compress
+        try {
+            $null = Invoke-RestMethod -Uri "$baseUrl/api/create" -Method Post -ContentType "application/json" -Body $createBody -TimeoutSec $TimeoutSeconds
+        } catch {
+            throw "Ollama could not create persistent Codex model '$codexModel' at context $selectedContext. $($_.Exception.Message)"
+        }
+    }
+    $modelInfo = Get-ModelInfo -ModelName $codexModel
+    $savedContext = [regex]::Match([string]$modelInfo.modelfile, '(?im)^\s*PARAMETER\s+num_ctx\s+(\d+)\s*$')
+    if (-not $savedContext.Success -or [int64]$savedContext.Groups[1].Value -ne $selectedContext) {
+        throw "Persistent model '$codexModel' does not declare the selected num_ctx $selectedContext."
+    }
+    if ($env:GITHUB_ENV) {
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_MODEL=$codexModel" -Encoding utf8
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH=$selectedContext" -Encoding utf8
+    } else {
+        $env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH = [string]$selectedContext
+    }
+    Write-Host "Context selection mode: $selectionMode"
+}
+
+$warmupBody = @{
+    model = $codexModel
+    prompt = "Reply with OK."
+    stream = $false
+    keep_alive = "10m"
+} | ConvertTo-Json -Depth 4 -Compress
+try {
+    $null = Invoke-RestMethod -Uri "$baseUrl/api/generate" -Method Post -ContentType "application/json" -Body $warmupBody -TimeoutSec $TimeoutSeconds
+} catch {
+    throw "Ollama could not load persistent Codex model '$codexModel' at context $selectedContext. $($_.Exception.Message)"
+}
+$allocated = Get-AllocatedContext -ModelName $codexModel
+Write-Host "Ollama base model: $Model"
+Write-Host "Persistent Codex model: $codexModel"
+Write-Host "Model maximum context: $maximum tokens"
+Write-Host "Selected Codex context: $selectedContext tokens"
+Write-Host "Ollama allocated runtime context: $allocated tokens"
+if ($allocated -lt $selectedContext) {
+    throw "Ollama allocated only $allocated tokens for '$codexModel'; selected context is $selectedContext. No Codex task may proceed."
+}
+Write-Host "OLLAMA_RUNTIME_CONTEXT_OK"
+)
+    $existingMatch = $existingContext.Success -and [int64]$existingContext.Groups[1].Value -eq $selectedContext
     if (-not $existingMatch) {
         $createBody = @{
             model = $codexModel
