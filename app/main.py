@@ -783,10 +783,13 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
             context_key,
             values.get("ollama_num_ctx", current_settings.get(context_key)),
         )
-        model_name = values.get(
-            model_key,
-            values.get("ollama_model") if model_key == "chat_ollama_model" else current_settings.get(model_key),
-        )
+        model_name = values.get(model_key)
+        if model_name is None:
+            model_name = (
+                values.get("ollama_model", current_settings.get(model_key))
+                if model_key == "chat_ollama_model"
+                else current_settings.get(model_key)
+            )
         existing_model = current_settings.get(model_key) or current_settings.get("ollama_model")
         existing_context = current_settings.get(context_key, current_settings.get("ollama_num_ctx"))
         # The dashboard submits every field. Unchanged profiles do not need an Ollama
