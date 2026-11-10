@@ -11,6 +11,7 @@ import urllib.request
 from typing import Any
 from .db import get_settings
 from .hardware import detect_hardware, ensure_resource_headroom, model_keep_alive, runtime_limits
+from .ollama_context import OllamaModelMetadataError, maximum_context_tokens
 
 class OllamaError(RuntimeError):
     def __init__(self, message: str, *, retryable: bool = False) -> None:
@@ -175,12 +176,10 @@ def list_models() -> list[dict[str, Any]]:
 
 
 def _model_context_metadata(model_info: dict[str, Any], architecture: str | None = None) -> int | None:
-    if not isinstance(model_info, dict) or not isinstance(architecture, str) or not architecture:
+    try:
+        return maximum_context_tokens(model_info, architecture)
+    except OllamaModelMetadataError:
         return None
-    value = model_info.get(architecture + ".context_length")
-    if isinstance(value, int) and not isinstance(value, bool) and value >= 512:
-        return value
-    return None
 
 
 def _recommended_context_tokens(
