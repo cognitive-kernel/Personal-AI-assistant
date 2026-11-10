@@ -189,3 +189,18 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert "echo ok>$probeFileName && type $probeFileName && del $probeFileName" in diagnostic
     assert "--require-command-fragment \"echo\" --require-command-fragment \"type\" --require-command-fragment \"del\"" in diagnostic
     assert "python -c \"from pathlib import Path" not in diagnostic
+
+def test_context_preflight_reuses_existing_codex_alias_without_duplicate_suffix():
+    from pathlib import Path
+
+    script = (
+        Path(__file__).resolve().parents[1] / "scripts" / "verify_ollama_context.ps1"
+    ).read_text(encoding="utf-8")
+
+    assert '$codexSuffix = "-codex-64k"' in script
+    assert '$Model.EndsWith($codexSuffix, [System.StringComparison]::OrdinalIgnoreCase)' in script
+    assert '$Model.Substring(0, $Model.Length - $codexSuffix.Length)' in script
+    assert '$codexModel = "$Model$codexSuffix"' in script
+    assert 'from = $baseModel' in script
+    assert '$existingNumCtx.Success' in script
+
