@@ -1392,17 +1392,22 @@ const modelContextProfiles = [
  ["learning","learning-model","learning-ctx","learning-ctx-hint"],
  ["programming","programming-model","programming-ctx","programming-ctx-hint"]
 ];
-async function refreshModelContextHint(profile) {
+async function refreshModelContextHint(profile, applyRecommendation=false) {
  const [,modelId,contextId,hintId]=profile;
  const model=el(modelId).value.trim();
- const context=Number(el(contextId).value);
+ let context=Number(el(contextId).value);
  const input=el(contextId);
  const hint=el(hintId);
  if(!model) { hint.textContent="ابتدا مدل را انتخاب کنید."; input.setCustomValidity(""); return; }
  hint.textContent="در حال دریافت metadata مدل و برآورد حافظه…";
  try {
-  const data=await api("/api/model-details?name="+encodeURIComponent(model)+"&context_tokens="+encodeURIComponent(context));
+  let data=await api("/api/model-details?name="+encodeURIComponent(model)+"&context_tokens="+encodeURIComponent(context));
   const maximum=data.maximum_context_tokens;
+  if(applyRecommendation && Number.isInteger(data.recommended_context_tokens) && data.recommended_context_tokens>=512) {
+   context=data.recommended_context_tokens;
+   el(contextId).value=String(context);
+   data=await api("/api/model-details?name="+encodeURIComponent(model)+"&context_tokens="+encodeURIComponent(context));
+  }
   if(Number.isInteger(maximum) && maximum>=512) {
    input.max=String(maximum);
    const invalid=context>maximum;
@@ -1486,7 +1491,7 @@ async function refreshHardwareDiagnostics(profile=modelContextProfiles[0]) {
 for(const profile of modelContextProfiles) {
  const [,modelId,contextId]=profile;
  const refreshProfileDiagnostics=async()=>{await refreshModelContextHint(profile);await refreshHardwareDiagnostics(profile);};
- el(modelId)?.addEventListener("change",refreshProfileDiagnostics);
+ el(modelId)?.addEventListener("change",async()=>{await refreshModelContextHint(profile,true);await refreshHardwareDiagnostics(profile);});
  el(modelId)?.addEventListener("blur",refreshProfileDiagnostics);
  el(contextId)?.addEventListener("change",refreshProfileDiagnostics);
 }
