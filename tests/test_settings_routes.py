@@ -190,7 +190,7 @@ def test_settings_api_accepts_context_below_selected_model_limit(settings_client
 
 def test_settings_api_rejects_context_when_model_limit_cannot_be_verified(settings_client, monkeypatch):
     before = db.get_settings()
-    db.update_settings({"chat_ollama_model": "existing-model:7b"})
+    db.update_settings({"chat_ollama_model": "existing-model:7b", "chat_ollama_num_ctx": 2048})
     monkeypatch.setattr(ollama, "model_details", lambda name, context_tokens=None: {
         "name": name, "maximum_context_tokens": None,
     })
@@ -204,6 +204,7 @@ def test_settings_api_rejects_context_when_model_limit_cannot_be_verified(settin
 
 
 def test_settings_api_rejects_model_change_that_invalidates_saved_context(settings_client, monkeypatch):
+    db.update_settings({"chat_ollama_model": "existing-model:7b", "chat_ollama_num_ctx": 2048})
     before = db.get_settings()
     monkeypatch.setattr(ollama, "model_details", lambda name, context_tokens=None: {
         "name": name,
