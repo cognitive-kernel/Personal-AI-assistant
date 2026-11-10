@@ -620,6 +620,8 @@ def _select_learning_generation_model(
     *,
     claim_review_sources: list[dict[str, Any]] | None = None,
     topic: str = "",
+    generation_scope: str = "lesson_generation_single_repair_and_optional_claim_review",
+    completion_token_budget: int = 2600,
 ) -> tuple[str, dict[str, Any]]:
     """Apply configured cost/quality policy without silently bypassing hard constraints."""
     from .learning_cost_manager import select_learning_model
@@ -643,6 +645,15 @@ def _select_learning_generation_model(
     ):
         raise LearningError("Learning task budget must be a non-negative integer or null.")
 
+    if not isinstance(generation_scope, str) or not generation_scope.strip() or len(generation_scope) > 120:
+        raise LearningError("Learning model generation scope is invalid.")
+    if (
+        isinstance(completion_token_budget, bool)
+        or not isinstance(completion_token_budget, int)
+        or not 1 <= completion_token_budget <= 8192
+    ):
+        raise LearningError("Learning model completion token budget must be between 1 and 8192.")
+
     claim_review_prompt_tokens = 0
     if claim_review_sources:
         from .claim_review import estimate_review_prompt_tokens
@@ -656,8 +667,8 @@ def _select_learning_generation_model(
     estimated_prompt_tokens = (
         one_prompt_estimate * 2 + 1500 + claim_review_prompt_tokens
     )
-    estimated_completion_tokens = 2600 + (1000 if claim_review_prompt_tokens else 0)
-    budget_scope = "lesson_generation_single_repair_and_optional_claim_review"
+    estimated_completion_tokens = completion_token_budget + (1000 if claim_review_prompt_tokens else 0)
+    budget_scope = generation_scope.strip()
 
     constrained = budget_microusd is not None or minimum_quality > 0
     if not profiles:
