@@ -1443,7 +1443,8 @@ async function refreshHardwareDiagnostics(profile=modelContextProfiles[0]) {
    const utilization=g.utilization_percent==null?"مصرف نامشخص":g.utilization_percent+"% مصرف";
    const dedicated=g.memory_free_mb==null?"حافظه اختصاصی آزاد نامشخص":Math.round(g.memory_free_mb/1024*10)/10+" GiB آزاد از "+(g.memory_total_mb==null?"نامشخص":Math.round(g.memory_total_mb/1024*10)/10+" GiB اختصاصی");
    const shared=g.shared_memory_total_mb==null?"حافظه اشتراکی نامشخص":(g.shared_memory_free_mb==null?"حافظه اشتراکی آزاد نامشخص":Math.round(g.shared_memory_free_mb/1024*10)/10+" GiB آزاد از "+Math.round(g.shared_memory_total_mb/1024*10)/10+" GiB اشتراکی");
-   return (g.vendor||"GPU")+" — "+(g.name||"نامشخص")+"؛ "+utilization+"؛ "+dedicated+"؛ "+shared+"؛ سنجش: "+(g.telemetry||"نامشخص");
+   const usable=g.usable_memory_free_mb==null?"مقدار حافظه قابل‌اندازه‌گیری نامشخص":Math.round(g.usable_memory_free_mb/1024*10)/10+" GiB حافظه آزاد قابل‌اندازه‌گیری ("+(g.usable_memory_scope||"نامشخص")+")";
+   return (g.vendor||"GPU")+" — "+(g.name||"نامشخص")+"؛ "+utilization+"؛ "+dedicated+"؛ "+shared+"؛ "+usable+"؛ سنجش: "+(g.telemetry||"نامشخص");
   });
   const running=(data.ollama_running_models||[]).map(item=>{
    const vram=item.size_vram_bytes==null?"VRAM تخصیص‌یافته نامشخص":(item.size_vram_bytes/1024**3).toFixed(2)+" GiB VRAM تخصیص‌یافته";
@@ -1469,9 +1470,12 @@ async function refreshHardwareDiagnostics(profile=modelContextProfiles[0]) {
   const gpuEstimate=selected?.memory_estimate?.full_gpu_vram_gib_float16;
   const gpuFreeValues=(h.gpu_devices||[]).map(g=>Object.prototype.hasOwnProperty.call(g,"usable_memory_free_mb")?g.usable_memory_free_mb:g.memory_free_mb).filter(value=>value!==null && value!==undefined && Number.isFinite(Number(value)));
   const gpuFreeGb=gpuFreeValues.length?gpuFreeValues.reduce((sum,value)=>sum+Number(value),0)/1024:null;
+  const gpuMemoryComplete=(h.gpu_devices||[]).every(g=>g.usable_memory_scope==="dedicated+shared" || ["NVIDIA","AMD"].includes(g.vendor));
   const gpuFit=gpuEstimate==null?"نیاز VRAM تخمینی نامشخص است."
    :gpuFreeGb==null?"مقدار VRAM آزاد قابل‌اندازه‌گیری نیست."
-   :(gpuEstimate<=gpuFreeGb?"برآورد full-offload در VRAM آزاد جا می‌شود.":"برآورد full-offload از VRAM آزاد بیشتر است؛ ممکن است اجرای ترکیبی CPU/GPU یا CPU لازم شود.");
+   :(gpuEstimate<=gpuFreeGb?"برآورد full-offload در حافظه اندازه‌گیری‌شده جا می‌شود."
+    :gpuMemoryComplete?"برآورد full-offload از VRAM آزاد بیشتر است؛ ممکن است اجرای ترکیبی CPU/GPU یا CPU لازم شود."
+    :"حافظه آزاد فقط به‌صورت جزئی اندازه‌گیری شده؛ تناسب full-offload نامشخص است.");
   const effectiveContext=data.runtime_limits?.num_ctx;
   const contextStatus=effectiveContext==null?"": "؛ context مؤثر پس از محدودیت سخت‌افزار: "+Number(effectiveContext).toLocaleString()+" توکن"+(effectiveContext<context?" (کمتر از مقدار انتخابی)": "");
   output.textContent="CPU: "+h.logical_cpu_count+" thread منطقی؛ "+cpu+"؛ RAM: "+ram+"؛ GPU: "+(gpuLines.length?gpuLines.join(" | "):"هیچ GPU شناسایی نشد یا اطلاعات دستگاه در دسترس نیست.")+contextStatus
