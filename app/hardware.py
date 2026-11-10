@@ -91,32 +91,46 @@ def _detect_rocm_gpus() -> list[dict[str, Any]]:
         payload = json.loads(output)
     except (ValueError, TypeError):
         return []
-    devices = []
     if not isinstance(payload, dict):
-        return devices
+        return []
+    devices = []
     for index, (key, item) in enumerate(payload.items()):
         if not isinstance(item, dict):
             continue
-        flat = {str(k).casefold(): v for k, v in item.items()}
-        def number(*needles):
+        flat = {str(k).casefold().strip(): v for k, v in item.items()}
+        def byte_value(*names):
+            for name in names:
+                value = flat.get(name)
+                try:
+                    return int(str(value).replace(",", "").strip())
+                except (TypeError, ValueError):
+                    continue
+            return None
+        def percent_value(*needles):
             for name, value in flat.items():
                 if any(needle in name for needle in needles):
                     try:
-                        return float(str(value).replace("%", "").replace(" MB", "").replace(",", "").strip())
+                        number = float(str(value).replace("%", "").replace(",", "").strip())
+                        return number if 0 <= number <= 100 else None
                     except (TypeError, ValueError):
                         continue
             return None
-        total = number("vram total", "memory total")
-        used = number("vram used", "memory used")
-        util = number("gpu use", "gpu utilization")
-        if total is None and used is None and util is None:
+        total_bytes = byte_value("vram total memory (b)", "vram_total_memory_b")
+        used_bytes = byte_value("vram total used memory (b)", "vram_total_used_memory_b")
+        total_mb = round(total_bytes / (1024 ** 2), 1) if total_bytes is not None and total_bytes > 0 else None
+        used_mb = round(used_bytes / (1024 ** 2), 1) if used_bytes is not None and used_bytes >= 0 else None
+        util = percent_value("gpu use", "gpu utilization")
+        if total_mb is None and used_mb is None and util is None:
             continue
         devices.append({
-            "index": index, "name": str(flat.get("card series", flat.get("product name", key))),
-            "vendor": "AMD", "utilization_percent": util,
-            "memory_used_mb": used, "memory_total_mb": total,
-            "memory_free_mb": max(0, total - used) if total is not None and used is not None else None,
-            "memory_percent": round(used * 100 / total, 1) if total and used is not None else None,
+            "index": index,
+            "name": str(flat.get("card series", flat.get("card model", flat.get("marketing name", key)))),
+            "vendor": "AMD",
+            "utilization_percent": util,
+            "memory_used_mb": used_mb,
+            "memory_total_mb": total_mb,
+            "memory_free_mb": max(0, total_mb - used_mb) if total_mb is not None and used_mb is not None else None,
+            "memory_percent": round(used_mb * 100 / total_mb, 1) if total_mb and used_mb is not None else None,
             "telemetry": "rocm-smi",
         })
     return devices
