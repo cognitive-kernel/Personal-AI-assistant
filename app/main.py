@@ -622,6 +622,22 @@ def models() -> dict[str, Any]:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@app.get("/api/model-details")
+def model_details(name: str = Query(min_length=1, max_length=200)) -> dict[str, Any]:
+    try:
+        return ollama.model_details(name)
+    except ollama.OllamaError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/api/hardware/diagnostics")
+def hardware_diagnostics(model: str | None = Query(default=None, max_length=200)) -> dict[str, Any]:
+    try:
+        return ollama.runtime_diagnostics(model.strip() if isinstance(model, str) and model.strip() else None)
+    except ollama.OllamaError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @app.get("/api/conversations")
 def list_chat_conversations(limit: int = Query(default=100, ge=1, le=500)) -> dict[str, Any]:
     return {"conversations": chat_history.list_conversations(limit=limit)}
