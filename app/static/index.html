@@ -1383,6 +1383,8 @@ async function refreshOllamaModels() {
  } catch(error) {
   el("settings-output").textContent="فهرست مدل‌های نصب‌شده دریافت نشد؛ نام مدل را می‌توانید دستی وارد کنید. "+error.message;
  }
+ for(const profile of modelContextProfiles) await refreshModelContextHint(profile);
+ await refreshHardwareDiagnostics(modelContextProfiles[0]);
 }
 
 const modelContextProfiles = [
