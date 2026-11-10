@@ -67,6 +67,7 @@ def test_model_details_recommends_context_within_model_and_memory_limits(monkeyp
         } if path == "/api/show" else {"models": []}
     ))
     monkeypatch.setattr(ollama, "list_models", lambda: [{"name": "llama:8b", "size": 5_000_000_000}])
+    monkeypatch.setattr(ollama, "get_settings", lambda: {"ram_budget_max_gb": 25, "ram_safety_reserve_gb": 4, "gpu_enabled": False})
     monkeypatch.setattr(ollama, "detect_hardware", lambda: {
         "logical_cpu_count": 8, "total_ram_gb": 32, "available_ram_gb": 25,
         "gpu_devices": [], "gpu_available": False,
@@ -85,6 +86,7 @@ def test_model_details_uses_conservative_context_when_ram_is_low(monkeypatch):
         } if path == "/api/show" else {"models": []}
     ))
     monkeypatch.setattr(ollama, "list_models", lambda: [{"name": "llama:8b", "size": 5_000_000_000}])
+    monkeypatch.setattr(ollama, "get_settings", lambda: {"ram_budget_max_gb": 25, "ram_safety_reserve_gb": 4, "gpu_enabled": False})
     monkeypatch.setattr(ollama, "detect_hardware", lambda: {
         "logical_cpu_count": 8, "total_ram_gb": 8, "available_ram_gb": 5,
         "gpu_devices": [], "gpu_available": False,
