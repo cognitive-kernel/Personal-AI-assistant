@@ -1,5 +1,39 @@
 # Engineering Continuity Log
 
+## 2026-11-10 — PR #708: Codex startup, installed-model discovery, and fail-closed context selection
+
+### Evidence-based diagnosis
+
+- The original Codex startup failure was reproduced in GitHub Actions: the MXC compatibility probe succeeded, but Codex rejected the configuration before any JSONL event because model_providers.ollama is a reserved built-in provider ID.
+- The offending model_providers.ollama.stream_idle_timeout_ms, stream_max_retries, and request_max_retries CLI overrides were removed. The Windows sandbox backend and workspace-write remain enabled.
+- Review of the actual model-selection/data path found that the dashboard added an uninstalled gpt-oss:20b option, truncated the installed inventory at 40, and did not show selected-model capability metadata. The diagnostic workflow could also fall back to gpt-oss:20b instead of using the saved AUTONOMOUS_ENGINEERING_MODEL.
+- Review of the Context path found that the PowerShell preflight returned 512/2048 when RAM, weight size, or KV metadata was unavailable; the Codex catalog independently defaulted to 4096 when verified context was absent. The general Ollama model-details path also fell back to unrelated architecture context values and fabricated 512/2048 recommendations.
+
+### Corrective changes
+
+- Added app/ollama_context.py as the shared fail-closed context selector. It requires the exact architecture context limit, model weight size, available physical RAM, layer count, KV-head count, key length, and value length. It computes the minimum of requested context (if supplied), model maximum, and safe hardware capacity; reserves 4 GiB for Windows/other processes and at least 0.5 GiB or 10% of weights for overhead; assumes FP16 KV cache for a conservative planning estimate; and aligns down to 512 tokens. Missing inputs or insufficient capacity produce a hard error, never a guessed token count.
+- Updated scripts/verify_ollama_context.ps1 to verify the selected model's tools capability and architecture-specific maximum, require the exact installed model size and Windows RAM telemetry, invoke the shared selector, and clamp the requested context to the minimum of all three constraints. The derived Ollama model variant stores the selected num_ctx; /api/show and /api/ps verify persistent and actual runtime context before and after Codex.
+- Removed the 4096 default from scripts/autonomous_engineering_progress.py; Codex arguments and model catalog creation now require the verified preflight context.
+- Updated app/autonomous_engineering.py: full installed-model inventory, selected-model /api/show metadata, readiness checks for context and tools, and save-time validation that the model is installed and supported. An /api/show failure is reported as selected-model metadata failure without falsely declaring the Ollama server offline.
+- Updated the autonomous-engineering UI to stop inserting an uninstalled default model. The diagnostic workflow now uses the saved model variable and is triggered by changes to model/context code.
+- Updated general app/ollama.py model metadata to require exact architecture keys and return no recommendation when the memory estimate cannot be established. Removed the 2048 fallback from the settings model-change path; an existing context is preserved when no recommendation is available, while context edits still require a verifiable model maximum.
+- Added regression coverage for all-model inventory, sorted inventory, saved-model validation, missing metadata, tool support, hardware-bounded selection, context fallback rejection, and Codex startup without a preflight context.
+- Updated this branch's test/browser/dependency workflow push filters so exact-head checks run for commits created on the PR branch.
+
+### Test observations and validation gates
+
+- Earlier exact-head CI runs exposed real failures rather than being marked successful: test fixtures still expected the removed 512/2048 fallback; one inventory assertion assumed input order instead of the API's deterministic sorted order; a settings-route assertion still expected the old fallback behavior; and a Codex process test did not provide the now-required preflight context. These test expectations/fixtures were corrected; production validation was not weakened.
+- On head 5f034658346c1db5a8ea3d719906e27035e39fb5, Windows storage regressions and dependency audit passed; the main test suite and browser E2E were in progress at the last check. A documentation refresh follows and requires exact-head checks again.
+- Windows diagnostic run #95 is queued for the self-hosted labels Windows, X64, and ollama. The owner's workstation is powered off, so no claim is made for live Ollama/Codex execution, actual /api/ps allocation, local testing, or full autonomous-cycle acceptance.
+- PR #708 remains Draft and unmerged. No unsandboxed fallback, Runner privilege increase, merge bypass, or direct-main modification was performed.
+
+### Master engineering prompt enforcement amendment
+
+- Added a mandatory pre-implementation clause to docs/MASTER_ENGINEERING_PROMPT.md on branch docs/master-engineering-continuity-prompt, commit a33c0d0a423332b29d1be5c1a3fa67b7690adfbf. It makes prior findings, reported requirements, known defects, failing tests, warnings, limitations, and unresolved acceptance criteria binding obligations; work must stop when evidence/access is missing rather than guess or claim completion.
+- A prompt clause alone cannot guarantee error-free execution; the project must enforce it through regression tests, exact-head CI, target-host evidence, and explicit unresolved-gate tracking.
+
+---
+
 ## 2026-11-07 — Owner Windows development environment baseline
 
 Captured from the owner's PowerShell output on 2026-11-07. This is a user-reported workstation snapshot, not a CI-runner inventory.
