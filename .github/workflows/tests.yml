@@ -59,6 +59,7 @@ jobs:
           tests/test_autonomous_engineering_checkpoint_recovery.py
           tests/test_autonomous_engineering_state_lock.py
           tests/test_autonomous_engineering_pending_task_state.py
+          tests/test_autonomous_engineering_pending_pr_state.py
           -k "not real_process"
       - name: Verify repository lock exclusion across Windows processes
         run: python -m pytest -q tests/test_autonomous_engineering_cycle.py -k repository_execution_lock
