@@ -1451,7 +1451,7 @@ async function refreshHardwareDiagnostics(profile=modelContextProfiles[0]) {
   const selected=data.selected_model;
   const estimate=selected?.memory_estimate?.total_ram_gib_float16;
   const settings=await api("/api/settings");
-  const availableRam=Number(h.available_ram_gb);
+  const availableRam=h.available_ram_gb==null?NaN:Number(h.available_ram_gb);
   const budget=Number.isFinite(availableRam)
    ? Math.max(0,Math.min(availableRam,Number(settings.ram_budget_max_gb||25))-Number(settings.ram_safety_reserve_gb||4))
    : null;
