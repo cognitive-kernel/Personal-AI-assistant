@@ -115,6 +115,8 @@ def test_chat_clamps_requested_context_to_verified_model_maximum(monkeypatch):
         "gpu_available": False,
     })
     monkeypatch.setattr(ollama, "model_keep_alive", lambda *args: "5m")
+    from app import usage_metrics
+    monkeypatch.setattr(usage_metrics, "record_ollama_response", lambda **kwargs: None)
 
     def fake_request(path, payload=None, timeout=None):
         calls.append((path, payload))
