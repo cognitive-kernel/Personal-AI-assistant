@@ -233,8 +233,16 @@ jobs:
         shell: powershell
         run: |
           @'
-          import json, os, urllib.error, urllib.request
+          import json, os, sys, urllib.error, urllib.request
           from pathlib import Path
+
+          # This helper runs from RUNNER_TEMP, so Python would otherwise put only
+          # that temporary directory on sys.path. Resolve imports from the checked-out
+          # repository explicitly, independent of the process working directory.
+          workspace = Path(os.environ["GITHUB_WORKSPACE"]).resolve()
+          if not (workspace / "scripts" / "autonomous_engineering_pending_task.py").is_file():
+              raise SystemExit(f"Repository helper module is missing from workspace: {workspace}")
+          sys.path.insert(0, str(workspace))
 
           repo = os.environ["GH_REPO"]
           token = os.environ["GH_TOKEN"]
