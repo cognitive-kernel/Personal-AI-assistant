@@ -929,6 +929,28 @@ def learning_jobs(limit: int = 50) -> dict[str, Any]:
     return {"jobs": learning.list_jobs(limit)}
 
 
+@app.get("/api/learning/courses/tasks/{task_id}")
+def researched_learning_course_task(task_id: int) -> dict[str, Any]:
+    task = task_manager.get_task(task_id)
+    if task is None or task.get("task_type") != learning_curriculum_tasks.CURRICULUM_TASK_TYPE:
+        raise HTTPException(status_code=404, detail="Researched learning course task not found.")
+    checkpoint = task.get("checkpoint") if isinstance(task.get("checkpoint"), dict) else {}
+    sources = checkpoint.get("sources") if isinstance(checkpoint.get("sources"), list) else []
+    return {
+        "id": task["id"],
+        "status": task["status"],
+        "result": task.get("result"),
+        "error": task.get("error"),
+        "attempts": task.get("attempts"),
+        "progress": {
+            "phase": checkpoint.get("phase", "queued"),
+            "source_count": len(sources),
+        },
+        "created_at": task.get("created_at"),
+        "updated_at": task.get("updated_at"),
+    }
+
+
 @app.post("/api/learning/browser/courses", status_code=202)
 def create_browser_learning_course(request: BrowserLearningRequest, background_tasks: BackgroundTasks) -> dict[str, Any]:
     try:
