@@ -15,7 +15,8 @@ def learning_store(tmp_path, monkeypatch):
 
 
 class RecordingContext:
-    def __init__(self):
+    def __init__(self, task_id=1):
+        self.task_id = task_id
         self.checkpoint_data = None
         self.checkpoints = []
 
@@ -115,7 +116,7 @@ def test_research_task_persists_sources_outline_and_starts_only_first_lesson(
         {"topic": "موضوع فنی", "max_topics": 20, "source_text": ""},
         max_attempts=3,
     )
-    context = RecordingContext()
+    context = RecordingContext(task["id"])
 
     result = learning_curriculum_tasks.handle_curriculum_task(
         task["payload"], None, context
