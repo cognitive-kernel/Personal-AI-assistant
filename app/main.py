@@ -811,7 +811,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
                 metadata = ollama.model_details(model_name.strip())
                 model_metadata_cache[model_name.strip()] = metadata
         except ollama.OllamaError as exc:
-            if context_changed:
+            if context_changed or model_changed:
                 raise HTTPException(
                     status_code=422,
                     detail=f"Cannot verify the maximum context for {model_name}: {exc}",
