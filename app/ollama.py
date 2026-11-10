@@ -386,9 +386,15 @@ def chat(
         "ram_safety_reserve_gb": settings.get("ram_safety_reserve_gb", 4),
     }
     if maximum_context is None:
-        limits = runtime_limits(runtime_settings, hardware)
-    else:
-        limits = runtime_limits(runtime_settings, hardware, maximum_context_tokens=maximum_context)
+        raise OllamaError(
+            f"Ollama did not publish a verifiable context_length for '{model}'; "
+            "refusing to send a request with an unverified context limit."
+        )
+    limits = runtime_limits(
+        runtime_settings,
+        hardware,
+        maximum_context_tokens=maximum_context,
+    )
     keep_alive = model_keep_alive(purpose, hardware, settings)
     messages = []
     if isinstance(system_prompt, str) and system_prompt.strip():
