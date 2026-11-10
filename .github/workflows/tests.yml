@@ -57,6 +57,8 @@ jobs:
           tests/test_autonomous_engineering_checkpoint_process.py
           tests/test_autonomous_engineering_execution_lock.py
           tests/test_autonomous_engineering_checkpoint_recovery.py
+      - name: Verify repository lock exclusion across Windows processes
+        run: python -m pytest -q tests/test_autonomous_engineering_cycle.py -k repository_execution_lock
       - name: Parse all PowerShell scripts
         shell: pwsh
         run: |
