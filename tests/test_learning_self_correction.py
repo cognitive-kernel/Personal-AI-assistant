@@ -438,6 +438,7 @@ def test_web_claim_review_budget_covers_generation_repair_and_review(
         "The parser reports the location of the invalid input so callers can correct the source data."
     )
     db.update_settings({
+        "learning_ollama_model": "selected:latest",
         "learning_model_cost_profiles": {
             "selected:latest": {
                 "input_cost_microusd_per_1k_tokens": 100,
@@ -531,8 +532,8 @@ def test_web_claim_review_does_not_repeat_an_already_reserved_review_stage(
         "The parser reports the location of the invalid input so callers can correct the source data."
     )
     db.update_settings({
+        "learning_ollama_model": "cheap:latest",
         "learning_model_cost_profiles": {
-            "cheap:latest": {
                 "input_cost_microusd_per_1k_tokens": 100,
                 "output_cost_microusd_per_1k_tokens": 100,
                 "quality_score": 0.9,
