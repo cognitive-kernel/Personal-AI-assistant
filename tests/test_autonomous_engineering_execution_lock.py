@@ -68,3 +68,20 @@ def test_cycle_orchestrator_preserves_public_lock_api_via_module_boundary():
     from scripts import autonomous_engineering_cycle as cycle
 
     assert cycle.repository_execution_lock is repository_execution_lock
+
+
+def test_progress_checkpoint_and_controller_share_expanded_state_root(
+    monkeypatch, tmp_path: Path,
+):
+    from scripts import autonomous_engineering_checkpoint as checkpoint
+    from scripts import autonomous_engineering_cycle as cycle
+    from scripts import autonomous_engineering_progress as progress
+
+    monkeypatch.setenv("AUTONOMOUS_STATE_TEST_ROOT", str(tmp_path / "resolved-state"))
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "$AUTONOMOUS_STATE_TEST_ROOT")
+
+    expected = tmp_path / "resolved-state"
+    assert execution_state_directory() == expected
+    assert progress.store_dir() == expected
+    assert checkpoint.store_dir() == expected
+    assert cycle._autonomous_state_dir() == expected
