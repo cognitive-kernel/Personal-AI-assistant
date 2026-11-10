@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 import math
 import os
 import subprocess
@@ -16,9 +17,17 @@ def detect_hardware() -> dict[str, Any]:
         available_ram_gb = round(memory.available / (1024**3), 2)
     else:
         total_ram_gb = available_ram_gb = None
+    cpu_utilization_percent = None
+    if psutil:
+        try:
+            cpu_utilization_percent = round(float(psutil.cpu_percent(interval=0.1)), 1)
+        except (OSError, RuntimeError, TypeError, ValueError):
+            cpu_utilization_percent = None
     gpu = detect_gpu()
     return {
         "logical_cpu_count": logical_cpus,
+        "cpu_utilization_percent": cpu_utilization_percent,
+        "cpu_available_percent": round(max(0.0, 100.0 - cpu_utilization_percent), 1) if cpu_utilization_percent is not None else None,
         "total_ram_gb": total_ram_gb,
         "available_ram_gb": available_ram_gb,
         **gpu,
