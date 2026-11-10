@@ -623,9 +623,12 @@ def models() -> dict[str, Any]:
 
 
 @app.get("/api/model-details")
-def model_details(name: str = Query(min_length=1, max_length=200)) -> dict[str, Any]:
+def model_details(
+    name: str = Query(min_length=1, max_length=200),
+    context_tokens: int | None = Query(default=None, ge=512, le=1048576),
+) -> dict[str, Any]:
     try:
-        return ollama.model_details(name)
+        return ollama.model_details(name, context_tokens)
     except ollama.OllamaError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
