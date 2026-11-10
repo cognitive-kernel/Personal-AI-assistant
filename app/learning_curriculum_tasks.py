@@ -45,8 +45,8 @@ def validate_curriculum_payload(payload: Any) -> tuple[str, int, str]:
         raise ValueError(f"max_topics must be an integer from {MIN_TOPICS} to {MAX_TOPICS}.")
     if source_text is None:
         source_text = ""
-    if not isinstance(source_text, str) or len(source_text) > 100000:
-        raise ValueError("source_text must contain at most 100000 characters.")
+    if not isinstance(source_text, str) or len(source_text) > 500:
+        raise ValueError("source_text must contain at most 500 characters.")
     return topic.strip(), max_topics, source_text.strip()
 
 
@@ -282,7 +282,7 @@ def _generate_outline(
     request = {
         "requested_subject": topic,
         "maximum_ordered_topics": max_topics,
-        "user_supplied_context": source_text[:500],
+        "user_supplied_context": source_text,
         "research_sources": source_material,
         "requirements": [
             "Create the most comprehensive useful syllabus for the exact requested subject, not a generic course.",
