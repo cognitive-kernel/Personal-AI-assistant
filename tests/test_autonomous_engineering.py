@@ -15,7 +15,7 @@ def test_status_readiness_requires_every_local_dependency(monkeypatch):
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_MODEL", "gpt-oss:20b")
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_REPOSITORY", "cognitive-kernel/Personal-AI-assistant")
     monkeypatch.setattr(agent, "_ollama_status", lambda model: {
-        "online": True, "model": model, "model_installed": True, "models": [model]
+        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 32768, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
@@ -34,7 +34,7 @@ def test_status_readiness_requires_every_local_dependency(monkeypatch):
 
 def test_status_is_not_ready_when_local_model_is_missing(monkeypatch):
     monkeypatch.setattr(agent, "_ollama_status", lambda model: {
-        "online": True, "model": model, "model_installed": False, "models": []
+        "online": True, "model": model, "model_installed": False, "models": [], "model_context_length": None, "model_capabilities": [], "model_supports_tools": False, "model_metadata_available": False
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
@@ -52,7 +52,7 @@ def test_status_is_not_ready_when_local_model_is_missing(monkeypatch):
 
 def test_app_readiness_does_not_require_codex_in_the_app_account(monkeypatch):
     monkeypatch.setattr(agent, "_ollama_status", lambda model: {
-        "online": True, "model": model, "model_installed": True, "models": [model]
+        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 32768, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": False, "version": None})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
@@ -69,7 +69,7 @@ def test_app_readiness_does_not_require_codex_in_the_app_account(monkeypatch):
 
 def test_status_is_not_ready_when_shared_progress_storage_is_unavailable(monkeypatch):
     monkeypatch.setattr(agent, "_ollama_status", lambda model: {
-        "online": True, "model": model, "model_installed": True, "models": [model]
+        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 32768, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
@@ -214,9 +214,13 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
 
     class FakeOpener:
         def open(self, request, timeout):
-            captured["url"] = request.full_url
-            captured["timeout"] = timeout
-            return io.BytesIO(b'{"models":[{"name":"gpt-oss:20b"}]}')
+            captured.setdefault("requests", []).append((request.full_url, timeout))
+            if request.full_url.endswith("/api/tags"):
+                return io.BytesIO(b'{"models":[{"name":"gpt-oss:20b"}]}')
+            return io.BytesIO(
+                b'{"details":{"family":"llama"},"model_info":{"llama.context_length":32768},'
+                b'"capabilities":["completion","tools"]}'
+            )
 
     def fake_build_opener(*handlers):
         captured["proxy_maps"] = [
@@ -233,10 +237,14 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
     result = agent._ollama_status("gpt-oss:20b")
 
     assert captured["proxy_maps"] == [{}]
-    assert captured["url"] == "http://127.0.0.1:11434/api/tags"
-    assert captured["timeout"] == 2
+    assert captured["requests"] == [
+        ("http://127.0.0.1:11434/api/tags", 3),
+        ("http://127.0.0.1:11434/api/show", 5),
+    ]
     assert result["online"] is True
     assert result["model_installed"] is True
+    assert result["model_context_length"] == 32768
+    assert result["model_supports_tools"] is True
 
 
 def test_github_snapshot_fails_closed_when_run_list_is_unavailable(monkeypatch):
@@ -275,6 +283,10 @@ def test_dispatch_fails_closed_when_run_list_is_unavailable(monkeypatch):
 def test_save_settings_updates_model_and_hourly_interval(monkeypatch):
     calls = []
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "_ollama_status", lambda model: {
+        "online": True, "model": model, "model_installed": True,
+        "model_metadata_available": True, "model_supports_tools": True,
+    })
 
     def fake_run(command, timeout=8):
         calls.append(command)
@@ -744,7 +756,7 @@ def test_live_progress_does_not_freeze_legacy_awaiting_review_state(monkeypatch)
 
 def test_status_distinguishes_prerequisite_readiness_from_paused_dispatch(monkeypatch):
     monkeypatch.setattr(agent, "_ollama_status", lambda model: {
-        "online": True, "model": model, "model_installed": True, "models": [model]
+        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 32768, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
