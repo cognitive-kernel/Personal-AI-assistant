@@ -39,7 +39,7 @@ function Get-MaximumContext {
         ForEach-Object { [int64]$_.Value }
     )
     if ($values.Count -eq 0) { return $null }
-    [int64](($values | Measure-Object -Maximum).Maximum)
+    [int64](($values | Measure-Object -Minimum).Minimum)
 }
 
 function Get-AutomaticContext {
