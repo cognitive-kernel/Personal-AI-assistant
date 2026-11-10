@@ -47,6 +47,7 @@ def test_model_details_does_not_invent_context_or_kv_estimate(monkeypatch):
     result = ollama.model_details("model:7b", context_tokens=4096)
 
     assert result["maximum_context_tokens"] is None
+    assert result["recommended_context_tokens"] == 512
     assert result["context_metadata_available"] is False
     assert result["memory_estimate"] is None
     assert result["running"] is None
@@ -92,7 +93,7 @@ def test_model_details_uses_conservative_context_when_ram_is_low(monkeypatch):
         "gpu_devices": [], "gpu_available": False,
     })
     result = ollama.model_details("llama:8b")
-    assert result["recommended_context_tokens"] == 2048
+    assert result["recommended_context_tokens"] == 512
 
 
 def test_chat_clamps_requested_context_to_verified_model_maximum(monkeypatch):
