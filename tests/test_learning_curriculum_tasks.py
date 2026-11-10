@@ -83,6 +83,17 @@ def test_curriculum_payload_is_bounded_and_rejects_unknown_fields():
         })
 
 
+def test_research_queries_preserve_each_search_angle_with_maximum_topic_length():
+    topic = "x" * 300
+    queries = learning_curriculum_tasks._research_queries(topic)
+    assert len(queries) == len(learning_curriculum_tasks._SEARCH_QUERY_SUFFIXES)
+    assert all(len(query) <= 300 for query in queries)
+    assert all(
+        query.endswith(suffix)
+        for query, suffix in zip(queries, learning_curriculum_tasks._SEARCH_QUERY_SUFFIXES)
+    )
+
+
 def test_outline_parser_requires_unique_ordered_topics_and_complete_minimum():
     parsed = learning_curriculum_tasks._parse_outline(
         json.dumps(_outline(), ensure_ascii=False), 20
