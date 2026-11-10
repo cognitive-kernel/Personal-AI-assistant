@@ -47,7 +47,7 @@ def test_model_details_does_not_invent_context_or_kv_estimate(monkeypatch):
     result = ollama.model_details("model:7b", context_tokens=4096)
 
     assert result["maximum_context_tokens"] is None
-    assert result["recommended_context_tokens"] == 512
+    assert result["recommended_context_tokens"] is None
     assert result["context_metadata_available"] is False
     assert result["memory_estimate"] is None
     assert result["running"] is None
@@ -83,7 +83,13 @@ def test_model_details_uses_conservative_context_when_ram_is_low(monkeypatch):
     monkeypatch.setattr(ollama, "_request", lambda path, payload=None, timeout=None: (
         {
             "details": {"family": "llama"},
-            "model_info": {"llama.context_length": 32768},
+            "model_info": {
+                "llama.context_length": 32768,
+                "llama.block_count": 32,
+                "llama.attention.head_count_kv": 8,
+                "llama.attention.key_length": 128,
+                "llama.attention.value_length": 128,
+            },
         } if path == "/api/show" else {"models": []}
     ))
     monkeypatch.setattr(ollama, "list_models", lambda: [{"name": "llama:8b", "size": 5_000_000_000}])
@@ -93,7 +99,7 @@ def test_model_details_uses_conservative_context_when_ram_is_low(monkeypatch):
         "gpu_devices": [], "gpu_available": False,
     })
     result = ollama.model_details("llama:8b")
-    assert result["recommended_context_tokens"] == 512
+    assert result["recommended_context_tokens"] is None
 
 
 def test_chat_clamps_requested_context_to_verified_model_maximum(monkeypatch):
@@ -170,13 +176,13 @@ def test_chat_refuses_to_send_when_model_context_metadata_is_unavailable(monkeyp
     assert calls == ["/api/show"]
 
 
-def test_model_context_metadata_prefers_architecture_and_uses_conservative_fallback():
+def test_model_context_metadata_requires_exact_architecture_metadata():
     model_info = {
         "llama.context_length": 32768,
         "vision.context_length": 4096,
     }
     assert ollama._model_context_metadata(model_info, "llama") == 32768
-    assert ollama._model_context_metadata(model_info, "unknown") == 4096
+    assert ollama._model_context_metadata(model_info, "unknown") is None
 
 
 def test_codex_context_selection_uses_minimum_of_request_model_and_safe_memory():
