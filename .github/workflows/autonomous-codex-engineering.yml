@@ -29,31 +29,7 @@ permissions:
   contents: read
 
 jobs:
-  persist-manual-task:
-    if: github.event_name == 'workflow_dispatch' && inputs.manual_task != '' && github.ref == 'refs/heads/main'
-    runs-on: [self-hosted, Windows, X64, ollama]
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - name: Check out trusted main branch for task persistence
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: main
-          persist-credentials: false
-
-      - name: Persist manual task before the schedule gate
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          MANUAL_TASK: ${{ inputs.manual_task || '' }}
-        shell: powershell
-        run: |
-          & "$env:GITHUB_WORKSPACE\scripts\persist_autonomous_manual_task.ps1"
-
   schedule-gate:
-    needs: persist-manual-task
-    if: always() && needs.persist-manual-task.result != 'failure' && needs.persist-manual-task.result != 'cancelled'
     runs-on: ubuntu-latest
     permissions:
       actions: write
@@ -138,8 +114,8 @@ jobs:
           fi
 
   codex:
-    needs: [persist-manual-task, schedule-gate]
-    if: always() && needs.schedule-gate.outputs.run_now == 'true' && github.ref == 'refs/heads/main' && needs.persist-manual-task.result != 'failure' && needs.persist-manual-task.result != 'cancelled'
+    needs: schedule-gate
+    if: needs.schedule-gate.outputs.run_now == 'true' && github.ref == 'refs/heads/main'
     concurrency:
       group: autonomous-local-engineering-${{ github.repository }}
       cancel-in-progress: false
@@ -160,6 +136,16 @@ jobs:
         with:
           ref: main
           persist-credentials: false
+
+      - name: Persist manual task under the controller's runner and concurrency ownership
+        if: github.event_name == 'workflow_dispatch' && inputs.manual_task != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          MANUAL_TASK: ${{ inputs.manual_task || '' }}
+        shell: powershell
+        run: |
+          & "$env:GITHUB_WORKSPACE\scripts\persist_autonomous_manual_task.ps1"
 
       - name: Use preinstalled system Python under the Runner service identity
         shell: powershell
