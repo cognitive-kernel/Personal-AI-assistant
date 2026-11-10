@@ -561,6 +561,18 @@ def complete_pending_pr(token: str, repo: str, pending: dict[str, Any], run_id: 
         ready = (transition.get("convertPullRequestToReadyForReview") or {}).get("pullRequest") or {}
         if ready.get("isDraft") is not False:
             raise RuntimeError("GitHub did not confirm that the pending PR is ready for owner review.")
+    provisional_url = current.get("html_url")
+    if not isinstance(provisional_url, str) or provisional_url != f"https://github.com/{repo}/pull/{number}":
+        raise RuntimeError("Pending PR URL is invalid; preserving the existing task state.")
+    save_pending_pr({
+        "number": number,
+        "url": provisional_url,
+        "head_sha": head_sha,
+        "base_sha": base_sha,
+        "branch": branch,
+        "run_id": str(pending.get("run_id") or run_id),
+        "task": int(pending.get("task") or task),
+    }, repo)
     dispatch_and_wait_all(
         token, repo, ("tests.yml", "browser-e2e.yml", "dependency-audit.yml"), branch, head_sha
     )
