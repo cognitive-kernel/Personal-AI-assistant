@@ -451,7 +451,7 @@ def handle_curriculum_task(
         checkpoint=checkpoint,
         context=context,
     )
-    current_checkpoint = context.checkpoint_data or {}
+    current_checkpoint = context.checkpoint_data or checkpoint or {}
     if not isinstance(current_checkpoint, dict):
         current_checkpoint = {}
     outline = current_checkpoint.get("outline")
