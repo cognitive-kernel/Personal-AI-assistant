@@ -69,7 +69,7 @@ def test_codex_smoke_evidence_reports_each_command_without_logging_raw_commands(
 
 def test_codex_model_catalog_registers_the_selected_ollama_context():
     model = "gpt-oss:20b-codex-ctx32768"
-    path = progress.write_codex_model_catalog(model)
+    path = progress.write_codex_model_catalog(model, context_window=4096)
     catalog = __import__("json").loads(path.read_text(encoding="utf-8"))
     assert len(catalog["models"]) == 1
     entry = catalog["models"][0]
