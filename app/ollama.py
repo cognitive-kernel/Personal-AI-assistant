@@ -174,6 +174,45 @@ def list_models() -> list[dict[str, Any]]:
     ]
 
 
+def _model_context_metadata(model_info: dict[str, Any]) -> int | None:
+    values = [
+        value for key, value in model_info.items()
+        if str(key).endswith(".context_length")
+        and isinstance(value, int) and not isinstance(value, bool) and value >= 512
+    ]
+    return max(values) if values else None
+
+
+def _recommended_context_tokens(
+    maximum_context: int | None,
+    memory_estimate: dict[str, Any] | None,
+    hardware: dict[str, Any],
+) -> int:
+    """Choose the largest conventional context that fits the measured safe RAM budget."""
+    if maximum_context is None:
+        return 2048
+    from .hardware import dynamic_ram_budget_gb
+    budget = dynamic_ram_budget_gb(get_settings(), hardware)
+    if budget is None or budget < 4:
+        return min(maximum_context, 2048)
+    if not isinstance(memory_estimate, dict):
+        return min(maximum_context, 4096)
+    weights = memory_estimate.get("weights_gib")
+    overhead = memory_estimate.get("overhead_gib", 0.5)
+    cache_per_token = memory_estimate.get("kv_cache_bytes_per_token")
+    if not all(isinstance(value, (int, float)) and math.isfinite(value) and value >= 0 for value in (weights, overhead, cache_per_token)):
+        return min(maximum_context, 4096)
+    available_for_cache = max(0.0, budget - float(weights) - float(overhead))
+    if available_for_cache <= 0 or cache_per_token <= 0:
+        return min(maximum_context, 2048)
+    fit = int(available_for_cache * (1024 ** 3) / cache_per_token)
+    candidate = 512
+    for value in (1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576):
+        if value <= maximum_context and value <= fit:
+            candidate = value
+    return candidate
+
+
 def model_details(model: str, context_tokens: int | None = None) -> dict[str, Any]:
     """Return local Ollama model metadata and a clearly-labelled context/memory estimate."""
     name = str(model or "").strip()
@@ -182,11 +221,7 @@ def model_details(model: str, context_tokens: int | None = None) -> dict[str, An
     info = _request("/api/show", {"model": name}, timeout=8)
     model_info = info.get("model_info") if isinstance(info.get("model_info"), dict) else {}
     details = info.get("details") if isinstance(info.get("details"), dict) else {}
-    context_values = [
-        value for key, value in model_info.items()
-        if str(key).endswith(".context_length") and isinstance(value, int) and not isinstance(value, bool) and value > 0
-    ]
-    maximum_context = max(context_values) if context_values else None
+    maximum_context = _model_context_metadata(model_info)
     def first_number(suffixes: tuple[str, ...]) -> int | None:
         for key, value in model_info.items():
             if str(key).endswith(suffixes) and isinstance(value, int) and not isinstance(value, bool) and value > 0:
@@ -217,6 +252,7 @@ def model_details(model: str, context_tokens: int | None = None) -> dict[str, An
             "weights_gib": round(weight_bytes / (1024 ** 3), 2),
             "kv_cache_gib_float16": None,
             "overhead_gib": round(max(0.5, weight_bytes * 0.10 / (1024 ** 3)), 2),
+            "kv_cache_bytes_per_token": kv_cache_bytes_per_token,
         }
         effective_context = context_tokens if isinstance(context_tokens, int) and not isinstance(context_tokens, bool) and context_tokens > 0 else maximum_context
         estimate["context_tokens"] = effective_context
@@ -227,11 +263,14 @@ def model_details(model: str, context_tokens: int | None = None) -> dict[str, An
                 weight_bytes / (1024 ** 3) + kv_bytes / (1024 ** 3) + estimate["overhead_gib"], 2
             )
             estimate["full_gpu_vram_gib_float16"] = estimate["total_ram_gib_float16"]
+    hardware = detect_hardware()
+    recommended_context = _recommended_context_tokens(maximum_context, estimate, hardware)
     return {
         "name": name,
         "parameter_size": parameter_size,
         "quantization": quantization,
         "maximum_context_tokens": maximum_context,
+        "recommended_context_tokens": recommended_context,
         "context_metadata_available": maximum_context is not None,
         "weight_size_bytes": weight_bytes,
         "architecture": details.get("family"),
@@ -303,20 +342,22 @@ def chat(
     settings = get_settings()
     prefix = purpose
     hardware = detect_hardware()
-    limits = runtime_limits({
-        "ollama_num_ctx": settings.get(f"{prefix}_ollama_num_ctx", settings.get("ollama_num_ctx", 4096)),
-        "ollama_num_thread": settings.get(f"{prefix}_ollama_num_thread", settings.get("ollama_num_thread", 0)),
-        "cpu_resource_limit_percent": settings.get("cpu_resource_limit_percent", 90),
-        "ram_budget_max_gb": settings.get("ram_budget_max_gb", 25),
-        "ram_safety_reserve_gb": settings.get("ram_safety_reserve_gb", 4),
-    }, hardware)
-    keep_alive = model_keep_alive(purpose, hardware, settings)
     request_timeout = int(settings.get(f"{prefix}_ollama_timeout_seconds", settings.get("ollama_timeout_seconds", 120)))
     if purpose in {"factual_review", "research_plan"}:
         request_timeout = max(1, min(request_timeout, 45))
     model = str(model_override if model_override is not None else settings.get(f"{prefix}_ollama_model", settings.get("ollama_model", "qwen2.5:7b"))).strip()
     if not model or len(model) > 200:
         raise ValueError("model must be a non-empty name of at most 200 characters.")
+    model_info = _request("/api/show", {"model": model}, timeout=8).get("model_info", {})
+    maximum_context = _model_context_metadata(model_info if isinstance(model_info, dict) else {})
+    limits = runtime_limits({
+        "ollama_num_ctx": settings.get(f"{prefix}_ollama_num_ctx", settings.get("ollama_num_ctx", 4096)),
+        "ollama_num_thread": settings.get(f"{prefix}_ollama_num_thread", settings.get("ollama_num_thread", 0)),
+        "cpu_resource_limit_percent": settings.get("cpu_resource_limit_percent", 90),
+        "ram_budget_max_gb": settings.get("ram_budget_max_gb", 25),
+        "ram_safety_reserve_gb": settings.get("ram_safety_reserve_gb", 4),
+    }, hardware, maximum_context_tokens=maximum_context)
+    keep_alive = model_keep_alive(purpose, hardware, settings)
     messages = []
     if isinstance(system_prompt, str) and system_prompt.strip():
         messages.append({"role": "system", "content": system_prompt.strip()[:6000]})
