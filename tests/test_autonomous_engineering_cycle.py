@@ -1310,12 +1310,14 @@ def test_clear_pending_state_removes_task_and_pr_in_one_transaction(
     state_dir.mkdir()
     (state_dir / "pending-manual-task.txt").write_text("task", encoding="utf-8")
     (state_dir / "pending-autonomous-pr.json").write_text("{}", encoding="utf-8")
+    (state_dir / "pending-manual-task-owner.json").write_text("{}", encoding="utf-8")
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(state_dir))
 
     cycle.clear_pending_state()
 
     assert not (state_dir / "pending-manual-task.txt").exists()
     assert not (state_dir / "pending-autonomous-pr.json").exists()
+    assert not (state_dir / "pending-manual-task-owner.json").exists()
 
 
 def test_recovered_open_pr_is_persisted_before_exact_sha_ci(
