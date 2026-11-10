@@ -345,12 +345,16 @@ jobs:
                       raise SystemExit(
                           f"Autonomous PR #{pending_pr_state['number']} is awaiting owner merge or post-merge validation."
                       )
+              pending_task_found = True
               try:
                   pending_task = pending_path.read_text(encoding="utf-8")
               except FileNotFoundError:
+                  pending_task_found = False
                   pending_task = ""
               except OSError as exc:
                   raise SystemExit("Pending manual task cannot be read safely.") from exc
+              if pending_task_found and not pending_task.strip():
+                  raise SystemExit("Pending manual task state is empty; refusing to continue.")
               try:
                   validate_manual_task_submission(
                       manual_task=manual_task,
