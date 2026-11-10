@@ -1396,7 +1396,7 @@ async function refreshModelContextHint(profile) {
  const context=Number(el(contextId).value);
  const input=el(contextId);
  const hint=el(hintId);
- if(!model) { hint.textContent="ابتدا مدل را انتخاب کنید."; input.setCustomValidity(""); await refreshHardwareDiagnostics(profile); return; }
+ if(!model) { hint.textContent="ابتدا مدل را انتخاب کنید."; input.setCustomValidity(""); return; }
  hint.textContent="در حال دریافت metadata مدل و برآورد حافظه…";
  try {
   const data=await api("/api/model-details?name="+encodeURIComponent(model)+"&context_tokens="+encodeURIComponent(context));
@@ -1419,8 +1419,6 @@ async function refreshModelContextHint(profile) {
  } catch(error) {
   input.setCustomValidity("");
   hint.textContent="اطلاعات مدل دریافت نشد: "+error.message;
- } finally {
-  await refreshHardwareDiagnostics(profile);
  }
 }
 async function refreshHardwareDiagnostics(profile=modelContextProfiles[0]) {
@@ -1480,9 +1478,10 @@ async function refreshHardwareDiagnostics(profile=modelContextProfiles[0]) {
 }
 for(const profile of modelContextProfiles) {
  const [,modelId,contextId]=profile;
- el(modelId)?.addEventListener("change",()=>refreshModelContextHint(profile));
- el(modelId)?.addEventListener("blur",()=>refreshModelContextHint(profile));
- el(contextId)?.addEventListener("input",()=>refreshModelContextHint(profile));
+ const refreshProfileDiagnostics=async()=>{await refreshModelContextHint(profile);await refreshHardwareDiagnostics(profile);};
+ el(modelId)?.addEventListener("change",refreshProfileDiagnostics);
+ el(modelId)?.addEventListener("blur",refreshProfileDiagnostics);
+ el(contextId)?.addEventListener("change",refreshProfileDiagnostics);
 }
 
 el("refresh-ollama-models").addEventListener("click", refreshOllamaModels);
