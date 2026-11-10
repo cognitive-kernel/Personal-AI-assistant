@@ -103,7 +103,7 @@ def test_failed_local_and_github_checks_retry_same_task_then_wait_for_owner_merg
 
     monkeypatch.setattr(cycle, "publish_pr_subprocess", fake_publish)
     monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: (_ for _ in ()).throw(AssertionError("checkpoint cleared before owner merge")))
-    monkeypatch.setattr(cycle, "clear_pending_task", lambda: (_ for _ in ()).throw(AssertionError("manual task cleared before owner merge")))
+    monkeypatch.setattr(cycle, "clear_pending_state", lambda: (_ for _ in ()).throw(AssertionError("pending state cleared before owner merge")))
     calls = {"codex": 0, "pytest": 0}
 
     def fake_run(command, *, env=None, capture=False):
@@ -222,7 +222,7 @@ def test_run_cycle_recovers_open_task_pr_and_waits_for_owner_merge(
         "validated": True, "merged": False, "awaiting_review": True,
     })
     monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: (_ for _ in ()).throw(AssertionError("checkpoint cleared before owner merge")))
-    monkeypatch.setattr(cycle, "clear_pending_task", lambda: (_ for _ in ()).throw(AssertionError("manual task cleared before owner merge")))
+    monkeypatch.setattr(cycle, "clear_pending_state", lambda: (_ for _ in ()).throw(AssertionError("pending state cleared before owner merge")))
     monkeypatch.setattr(cycle, "api", lambda *args, **kwargs: {})
     monkeypatch.setattr(cycle, "snapshot", lambda *args: None)
     monkeypatch.setattr(cycle, "record", lambda *args, **kwargs: records.append((args, kwargs)))
@@ -1264,8 +1264,7 @@ def test_complete_merged_pr_requires_owner_merge_and_post_merge_exact_sha_checks
     cleared = []
     monkeypatch.setattr(cycle, "dispatch_and_wait_all", lambda *args: validations.append(args))
     monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: cleared.append("checkpoint"))
-    monkeypatch.setattr(cycle, "clear_pending_task", lambda: cleared.append("task"))
-    monkeypatch.setattr(cycle, "clear_pending_pr", lambda: cleared.append("pending-pr"))
+    monkeypatch.setattr(cycle, "clear_pending_state", lambda: cleared.append("pending-state"))
 
     result = cycle.complete_merged_pr("token", "owner/repository", pending)
 
@@ -1273,7 +1272,7 @@ def test_complete_merged_pr_requires_owner_merge_and_post_merge_exact_sha_checks
     assert result["post_merge_validated"] is True
     assert result["merge_sha"] == merge_sha
     assert validations == [("token", "owner/repository", ("tests.yml", "browser-e2e.yml", "dependency-audit.yml"), "main", merge_sha)]
-    assert cleared == ["checkpoint", "task", "pending-pr"]
+    assert cleared == ["checkpoint", "pending-state"]
     assert not any(method == "PUT" and str(path).endswith("/merge") for method, path, _ in calls)
 
 
