@@ -75,6 +75,12 @@ def test_curriculum_payload_is_bounded_and_rejects_unknown_fields():
             "source_text": None,
             "unexpected": True,
         })
+    with pytest.raises(ValueError, match="500"):
+        learning_curriculum_tasks.validate_curriculum_payload({
+            "topic": "Linux",
+            "max_topics": 40,
+            "source_text": "x" * 501,
+        })
 
 
 def test_outline_parser_requires_unique_ordered_topics_and_complete_minimum():
