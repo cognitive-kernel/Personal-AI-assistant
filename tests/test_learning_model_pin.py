@@ -99,8 +99,8 @@ def test_startup_installs_and_verifies_learning_model_separately(monkeypatch):
     monkeypatch.delenv("OLLAMA_MODEL", raising=False)
     monkeypatch.delenv("LEARNING_OLLAMA_MODEL", raising=False)
     list_outputs = iter([
-        "NAME ID SIZE\\nqwen2.5:7b abc 4GB\\n",
-        "NAME ID SIZE\\nqwen2.5:7b abc 4GB\\ngpt-oss:20b def 14GB\\n",
+        "NAME ID SIZE\nqwen2.5:7b abc 4GB\n",
+        "NAME ID SIZE\nqwen2.5:7b abc 4GB\ngpt-oss:20b def 14GB\n",
     ])
     monkeypatch.setattr(
         bootstrap.subprocess,
@@ -131,7 +131,7 @@ def test_startup_respects_explicit_learning_model_override(monkeypatch):
         bootstrap.subprocess,
         "run",
         lambda command, **kwargs: subprocess.CompletedProcess(
-            command, 0, "NAME ID SIZE\\nqwen2.5:7b abc 4GB\\n", ""
+            command, 0, "NAME ID SIZE\nqwen2.5:7b abc 4GB\n", ""
         ),
     )
     pull_commands = []
@@ -156,7 +156,7 @@ def test_startup_fails_when_learning_model_pull_fails(monkeypatch):
         bootstrap.subprocess,
         "run",
         lambda command, **kwargs: subprocess.CompletedProcess(
-            command, 0, "NAME ID SIZE\\nqwen2.5:7b abc 4GB\\n", ""
+            command, 0, "NAME ID SIZE\nqwen2.5:7b abc 4GB\n", ""
         ),
     )
     monkeypatch.setattr(
