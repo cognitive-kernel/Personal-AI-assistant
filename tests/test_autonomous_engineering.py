@@ -890,3 +890,77 @@ def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_c
     assert ".codex-sandbox-probe-$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT).tmp" in production
     assert ".codex-sandbox-probe.tmp" not in production
     assert '--require-command-fragment "$probeFileName"' in production
+
+
+def test_ollama_status_returns_every_installed_model_without_inserting_defaults(monkeypatch):
+    names = [f"model-{index}:latest" for index in range(55)]
+    selected = names[-1]
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            if request.full_url.endswith("/api/tags"):
+                payload = {"models": [{"name": name} for name in names]}
+            else:
+                payload = {
+                    "details": {"family": "llama"},
+                    "model_info": {"llama.context_length": 32768},
+                    "capabilities": ["completion", "tools"],
+                }
+            return io.BytesIO(json.dumps(payload).encode("utf-8"))
+
+    monkeypatch.setattr(agent.urllib.request, "build_opener", lambda *handlers: FakeOpener())
+
+    result = agent._ollama_status(selected)
+
+    assert result["models"] == names
+    assert len(result["models"]) == 55
+    assert "gpt-oss:20b" not in result["models"]
+    assert result["model_installed"] is True
+
+
+def test_ollama_status_keeps_server_online_when_selected_model_metadata_fails(monkeypatch):
+    class FakeOpener:
+        def open(self, request, timeout):
+            if request.full_url.endswith("/api/tags"):
+                return io.BytesIO(b'{"models":[{"name":"model:latest"}]}')
+            raise OSError("metadata endpoint unavailable")
+
+    monkeypatch.setattr(agent.urllib.request, "build_opener", lambda *handlers: FakeOpener())
+
+    result = agent._ollama_status("model:latest")
+
+    assert result["online"] is True
+    assert result["model_installed"] is True
+    assert result["model_metadata_available"] is False
+    assert result["model_supports_tools"] is False
+    assert "OSError" in result["model_metadata_error"]
+
+
+def test_save_settings_rejects_model_without_explicit_tool_calling_support(monkeypatch):
+    monkeypatch.setattr(agent, "_ollama_status", lambda model: {
+        "online": True, "model_installed": True,
+        "model_metadata_available": True, "model_supports_tools": False,
+    })
+    monkeypatch.setattr(agent.shutil, "which", lambda _: pytest.fail("GitHub settings must not be changed."))
+
+    with pytest.raises(HTTPException, match="قابلیت tools") as error:
+        agent.save_autonomous_engineering_settings(
+            agent.EngineeringSettings(model="model:latest", interval_hours=4, execution_mode="continuous")
+        )
+
+    assert error.value.status_code == 422
+
+
+def test_save_settings_rejects_uninstalled_model_before_persisting(monkeypatch):
+    monkeypatch.setattr(agent, "_ollama_status", lambda model: {
+        "online": True, "model_installed": False,
+        "model_metadata_available": False, "model_supports_tools": False,
+    })
+    monkeypatch.setattr(agent.shutil, "which", lambda _: pytest.fail("GitHub settings must not be changed."))
+
+    with pytest.raises(HTTPException) as error:
+        agent.save_autonomous_engineering_settings(
+            agent.EngineeringSettings(model="missing:latest", interval_hours=4, execution_mode="continuous")
+        )
+
+    assert error.value.status_code == 422
