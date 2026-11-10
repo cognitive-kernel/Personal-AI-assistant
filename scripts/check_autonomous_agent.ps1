@@ -11,13 +11,28 @@ $checks = @()
 
 $ollamaOnline = $false
 $modelInstalled = $false
+$modelContextLength = $null
+$modelSupportsTools = $false
 try {
     $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 4
     $ollamaOnline = $true
     $modelInstalled = @($tags.models | ForEach-Object { $_.name }) -contains $model
+    if ($modelInstalled) {
+        $modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -ContentType "application/json" -Body (@{ model = $model; verbose = $true } | ConvertTo-Json -Compress) -TimeoutSec 8
+        $architecture = [string]$modelInfo.details.family
+        $contextKey = $architecture + ".context_length"
+        $rawContext = $modelInfo.model_info.PSObject.Properties[$contextKey]
+        $parsedContext = 0L
+        if ($rawContext -and [int64]::TryParse([string]$rawContext.Value, [ref]$parsedContext) -and $parsedContext -ge 512) {
+            $modelContextLength = $parsedContext
+        }
+        $modelSupportsTools = @($modelInfo.capabilities | ForEach-Object { [string]$_ }) -contains "tools"
+    }
 } catch {}
 $checks += [pscustomobject]@{ Component = "Ollama server"; Ready = $ollamaOnline; Detail = if ($ollamaOnline) { "127.0.0.1:11434" } else { "Start the local Ollama service" } }
 $checks += [pscustomobject]@{ Component = "Local model"; Ready = $modelInstalled; Detail = if ($modelInstalled) { $model } else { "Install the configured model in Ollama" } }
+$checks += [pscustomobject]@{ Component = "Model context metadata"; Ready = ($null -ne $modelContextLength); Detail = if ($null -ne $modelContextLength) { "$modelContextLength tokens maximum" } else { "Ollama /api/show did not report a valid architecture context_length" } }
+$checks += [pscustomobject]@{ Component = "Model tool calling"; Ready = $modelSupportsTools; Detail = if ($modelSupportsTools) { "Ollama advertises tools capability" } else { "Selected model does not advertise tools capability required by Codex" } }
 
 $ghCommand = Get-Command gh -ErrorAction SilentlyContinue
 $ghReady = $false
