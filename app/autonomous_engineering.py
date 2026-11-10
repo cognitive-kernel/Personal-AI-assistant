@@ -84,40 +84,50 @@ def _ollama_status(model: str) -> dict[str, Any]:
         "model_metadata_available": False,
         "model_metadata_error": "Ollama metadata is unavailable.",
     }
+    # Local Ollama metadata must never be sent through an environment proxy.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    request = urllib.request.Request(
+        "http://127.0.0.1:11434/api/tags",
+        headers={"Accept": "application/json"},
+    )
     try:
-        request = urllib.request.Request(
-            "http://127.0.0.1:11434/api/tags",
-            headers={"Accept": "application/json"},
-        )
-        # Local Ollama metadata must never be sent through an environment proxy.
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         with opener.open(request, timeout=3) as response:
-            payload = json.loads(response.read(8_000_000).decode("utf-8"))
+            body = response.read(8_000_001)
+        if len(body) > 8_000_000:
+            raise ValueError("Ollama /api/tags response exceeded the safety limit.")
+        payload = json.loads(body.decode("utf-8"))
         models = payload.get("models", []) if isinstance(payload, dict) else []
         names = sorted({
             str(item.get("name", ""))
             for item in models
             if isinstance(item, dict) and item.get("name")
         })
-        installed = model in names
-        result = {
-            **empty,
-            "online": True,
-            "model_installed": installed,
-            "models": names,
-            "model_metadata_error": None if installed else "The saved model is not installed locally.",
-        }
-        if not installed:
-            return result
+    except (OSError, ValueError, urllib.error.URLError, TimeoutError):
+        return empty
 
-        show_request = urllib.request.Request(
-            "http://127.0.0.1:11434/api/show",
-            data=json.dumps({"model": model, "verbose": True}).encode("utf-8"),
-            headers={"Accept": "application/json", "Content-Type": "application/json"},
-            method="POST",
-        )
+    installed = model in names
+    result = {
+        **empty,
+        "online": True,
+        "model_installed": installed,
+        "models": names,
+        "model_metadata_error": None if installed else "The saved model is not installed locally.",
+    }
+    if not installed:
+        return result
+
+    show_request = urllib.request.Request(
+        "http://127.0.0.1:11434/api/show",
+        data=json.dumps({"model": model, "verbose": True}).encode("utf-8"),
+        headers={"Accept": "application/json", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
         with opener.open(show_request, timeout=5) as response:
-            details_payload = json.loads(response.read(8_000_000).decode("utf-8"))
+            body = response.read(8_000_001)
+        if len(body) > 8_000_000:
+            raise ValueError("Ollama /api/show response exceeded the safety limit.")
+        details_payload = json.loads(body.decode("utf-8"))
         if not isinstance(details_payload, dict):
             raise ValueError("Ollama /api/show returned an invalid response.")
         details = details_payload.get("details") if isinstance(details_payload.get("details"), dict) else {}
@@ -134,22 +144,20 @@ def _ollama_status(model: str) -> dict[str, Any]:
             value for value in raw_capabilities
             if isinstance(value, str) and value
         }) if isinstance(raw_capabilities, list) else []
-        supports_tools = "tools" in capabilities
         metadata_available = context_length is not None
         result.update({
             "model_context_length": context_length,
             "model_capabilities": capabilities,
-            "model_supports_tools": supports_tools,
+            "model_supports_tools": "tools" in capabilities,
             "model_metadata_available": metadata_available,
             "model_metadata_error": (
                 None if metadata_available else
                 "Ollama did not publish a valid architecture-specific context_length."
             ),
         })
-        return result
-    except (OSError, ValueError, urllib.error.URLError, TimeoutError):
-        return empty
-
+    except (OSError, ValueError, urllib.error.URLError, TimeoutError) as exc:
+        result["model_metadata_error"] = f"Could not verify selected-model metadata: {type(exc).__name__}"
+    return result
 
 def _codex_status() -> dict[str, Any]:
     executable = shutil.which("codex")
