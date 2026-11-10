@@ -124,6 +124,7 @@ def test_codex_diagnostic_uses_bounded_reasoning_effort_without_changing_default
     import pytest
     from scripts import autonomous_engineering_progress as progress
 
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "32768")
     monkeypatch.setenv("CODEX_MODEL_REASONING_EFFORT", "low")
     arguments = progress.codex_arguments("gpt-oss:20b-codex-ctx32768", "report.md")
     overrides = [
