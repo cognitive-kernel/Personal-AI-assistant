@@ -115,7 +115,11 @@ function Recover-AutonomousPendingStateCleanup {
         "pending-manual-task-owner.json"
     )) {
         $path = Join-Path $StateDirectory $name
-        if (Test-Path -LiteralPath $path -PathType Leaf) {
+        if (Test-Path -LiteralPath $path) {
+            $item = Get-Item -LiteralPath $path -Force -ErrorAction Stop
+            if ($item.PSIsContainer) {
+                throw "Pending-state path '$name' is a directory; preserving the cleanup marker."
+            }
             Remove-Item -LiteralPath $path -Force -ErrorAction Stop
         }
     }
