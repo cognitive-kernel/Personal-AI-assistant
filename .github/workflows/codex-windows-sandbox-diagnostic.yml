@@ -91,6 +91,7 @@ jobs:
     timeout-minutes: 30
     env:
       AUTONOMOUS_ENGINEERING_MODEL: ${{ inputs.model || 'gpt-oss:20b' }}
+      AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH: ${{ vars.AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH || '' }}
       CODEX_WINDOWS_SANDBOX_BACKEND: mxc
       CODEX_MODEL_REASONING_EFFORT: low
     steps:
