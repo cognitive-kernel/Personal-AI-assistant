@@ -78,10 +78,13 @@ def init_databases() -> None:
                 )
             # Move only the former built-in learning default. Preserve any custom
             # model choice and honor an explicit environment override.
-            if (
-                existing_settings.get("learning_ollama_model") == "qwen3:8b"
-                and os.getenv("LEARNING_OLLAMA_MODEL") is None
-            ):
+            learning_model_override = os.getenv("LEARNING_OLLAMA_MODEL")
+            if isinstance(learning_model_override, str) and learning_model_override.strip():
+                conn.execute(
+                    "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
+                    (json.dumps(learning_model_override.strip()), "learning_ollama_model"),
+                )
+            elif existing_settings.get("learning_ollama_model") == "qwen3:8b":
                 conn.execute(
                     "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
                     (json.dumps("gpt-oss:20b"), "learning_ollama_model"),
