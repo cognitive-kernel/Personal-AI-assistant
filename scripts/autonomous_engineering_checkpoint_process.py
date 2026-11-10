@@ -125,16 +125,22 @@ def stop_owned_watcher(
             )
         return
 
-    # A different creation time proves that the stored PID has been reused.
-    if abs(actual_start - float(expected_start)) > 0.02:
-        return
-    if not _owns_watcher_command(
+    command_matches = _owns_watcher_command(
         command,
         script_path=script_path,
         run_id=run_id,
         task=task,
         base_sha=base_sha,
-    ):
+    )
+    if abs(actual_start - float(expected_start)) > 0.02:
+        if command_matches:
+            raise RuntimeError(
+                f"Checkpoint PID {pid} matches the recorded watcher command but its process creation time differs; "
+                "ownership is ambiguous, so recovery and cleanup are blocked."
+            )
+        # The PID now belongs to a different command/process; never terminate it.
+        return
+    if not command_matches:
         raise RuntimeError(
             f"Checkpoint PID {pid} is alive but its command line does not match the recorded run/task; "
             "refusing recovery or cleanup."
