@@ -499,7 +499,7 @@ def test_checkpoint_watcher_persists_initial_snapshot_error(monkeypatch: pytest.
     def fail_snapshot(*args, **kwargs):
         raise RuntimeError("simulated snapshot failure")
 
-    monkeypatch.setattr(checkpoint, "write_snapshot", fail_snapshot)
+    monkeypatch.setattr(checkpoint, "_write_snapshot_unlocked", fail_snapshot)
 
     with pytest.raises(RuntimeError, match="simulated snapshot failure"):
         checkpoint.watch("a" * 40, "104", 1, 5)
@@ -616,7 +616,7 @@ def test_checkpoint_readiness_is_committed_without_a_secondary_marker(
         )
         paths["stop"].write_text("stop\n", encoding="utf-8")
 
-    monkeypatch.setattr(checkpoint, "write_snapshot", prepare_snapshot)
+    monkeypatch.setattr(checkpoint, "_write_snapshot_unlocked", prepare_snapshot)
     assert checkpoint.watch("a" * 40, "106", 1, 5) == 0
 
     metadata = json.loads(
