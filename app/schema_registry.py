@@ -1810,7 +1810,7 @@ CLOUD_RESOURCE_MIGRATIONS = (
             "CREATE INDEX idx_cloud_selection_decisions_plan ON cloud_resource_selection_decisions(plan_id, eligible_for_adapter_review, id)",
             "CREATE INDEX idx_cloud_selection_decisions_candidate ON cloud_resource_selection_decisions(candidate_id, evaluated_at DESC)",
         ),
-    ),,
+    ),
     Migration(
         32,
         "research-first-learning-curriculum-provenance",
