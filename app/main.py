@@ -14,7 +14,7 @@ from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, StrictBool, StrictFloat, StrictInt, ConfigDict
 from . import backup_scheduler, assessment_review, browser_learning, knowledge_lifecycle_tasks, learning_knowledge_graph_tasks, learning_capabilities_routes, learning_recommendations, spaced_repetition, chat_feedback, chat_history, chat_research, cloud_resources, curricula, db, experience_tasks, factual_verification_tasks, learning, ollama, programming_tasks, research_planner, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, list_learning_escalations, reconcile_queued_learning_tasks, resolve_learning_escalation
-from . import learning_review_tasks
+from . import learning_review_tasks, learning_curriculum_tasks
 from .learning_observability import collect_learning_operational_metrics
 from .task_runtime import TaskRuntime
 from .config import defaults
@@ -374,6 +374,7 @@ def startup() -> None:
         research_planner.RESEARCH_PLAN_TASK_TYPE: research_planner.handle_research_plan_task,
     }
     learning_handlers = {
+        learning_curriculum_tasks.CURRICULUM_TASK_TYPE: learning_curriculum_tasks.handle_curriculum_task,
         LEARNING_TASK_TYPE: handle_learning_job,
         learning_review_tasks.LEARNING_REVIEW_TASK_TYPE: learning_review_tasks.handle_candidate_review,
         learning_review_tasks.LEARNING_SANDBOX_REVIEW_TASK_TYPE: learning_review_tasks.handle_candidate_sandbox_review,
@@ -513,6 +514,14 @@ class SettingsPatch(BaseModel):
 class LearningRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=300)
     source_text: str | None = Field(default=None, max_length=100000)
+
+class LearningCurriculumRequest(BaseModel):
+    topic: str = Field(min_length=1, max_length=300)
+    max_topics: StrictInt = Field(default=40, ge=8, le=40)
+    source_text: str | None = Field(default=None, max_length=100000)
+
+    model_config = ConfigDict(extra="forbid")
+
 
 class BrowserLearningRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=300)
@@ -888,6 +897,24 @@ def learning_curriculum(slug: str) -> dict[str, Any]:
     if result is None:
         raise HTTPException(status_code=404, detail="Learning curriculum not found.")
     return result
+
+
+@app.post("/api/learning/courses", status_code=202)
+def create_researched_learning_course(request: LearningCurriculumRequest) -> dict[str, Any]:
+    try:
+        task = learning_curriculum_tasks.enqueue_curriculum_task(
+            request.topic,
+            max_topics=request.max_topics,
+            source_text=request.source_text,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "task_id": task["id"],
+        "status": task["status"],
+        "task_type": task["task_type"],
+        "message": "پژوهش وب و ساخت فهرست سرفصل‌ها در صف پایدار ثبت شد.",
+    }
 
 
 @app.post("/api/learning/jobs", status_code=202)
