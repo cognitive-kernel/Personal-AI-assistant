@@ -973,7 +973,7 @@ document.addEventListener("DOMContentLoaded", () => {
  loadLearningPaths();
  refreshDueLearningReviews();
  refreshLearningRecommendations();
-});;
+});
 
 
 // Phase one: acquire lessons through the user's authenticated ChatGPT tab in local Chrome.
