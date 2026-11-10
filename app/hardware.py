@@ -36,7 +36,7 @@ def detect_hardware() -> dict[str, Any]:
             "CPU thread count is capped by the configurable CPU resource percentage.",
             "RAM budget is computed from currently available memory minus a safety reserve and capped by a configurable maximum; it is not a hard OS quota.",
             "RAM and GPU thresholds are monitored independently; external Ollama memory/compute cannot be hard-capped by this application.",
-            "GPU discovery tries vendor tools and Windows generic performance counters; unavailable metrics remain unknown.",
+            "GPU discovery tries vendor tools, Windows generic performance counters, and Vulkan enumeration; unavailable metrics remain unknown.",
         ],
     }
 
