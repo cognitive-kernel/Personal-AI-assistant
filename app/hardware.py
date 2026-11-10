@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import subprocess
 from typing import Any
 try:
@@ -232,12 +233,47 @@ try {
     return devices
 
 
+
+def _detect_vulkan_gpus() -> list[dict[str, Any]]:
+    """Vendor-neutral device enumeration fallback; Vulkan summary has no live utilization."""
+    output = _run_gpu_command(["vulkaninfo", "--summary"], timeout=3.0)
+    if not output:
+        return []
+    blocks = re.split(r"(?m)^\\s*GPU\\d+\\s*:\\s*$", output)
+    devices = []
+    for index, block in enumerate(blocks[1:]):
+        name_match = re.search(r"(?m)^\\s*deviceName\\s*=\\s*(.+?)\\s*$", block)
+        vendor_match = re.search(r"(?m)^\\s*vendorID\\s*=\\s*(0x[0-9a-fA-F]+|\\d+)\\s*$", block)
+        type_match = re.search(r"(?m)^\\s*deviceType\\s*=\\s*(.+?)\\s*$", block)
+        if not name_match:
+            continue
+        vendor_id = vendor_match.group(1).lower() if vendor_match else ""
+        vendor = {
+            "0x10de": "NVIDIA", "0x1002": "AMD", "0x8086": "Intel",
+            "4318": "NVIDIA", "4098": "AMD", "32902": "Intel",
+        }.get(vendor_id, "Unknown")
+        devices.append({
+            "index": index,
+            "name": name_match.group(1).strip(),
+            "vendor": vendor,
+            "device_type": type_match.group(1).strip() if type_match else None,
+            "utilization_percent": None,
+            "memory_used_mb": None,
+            "memory_total_mb": None,
+            "memory_free_mb": None,
+            "memory_percent": None,
+            "telemetry": "vulkan-device-enumeration-only",
+        })
+    return devices
+
+
 def detect_gpu() -> dict[str, Any]:
     """Discover GPUs across vendors; missing telemetry remains unknown, never zero."""
     providers = (
         ("nvidia-smi", _detect_nvidia_gpus),
         ("rocm-smi", _detect_rocm_gpus),
         ("windows-performance-counters", _detect_windows_gpus),
+        ("vulkan", _detect_vulkan_gpus),
     )
     devices: list[dict[str, Any]] = []
     for provider, detector in providers:
