@@ -187,6 +187,32 @@ def _model_context_metadata(model_info: dict[str, Any], architecture: str | None
     return min(values) if values else None
 
 
+def _dedicated_gpu_budget_gb(hardware: dict[str, Any]) -> float | None:
+    """Return measured dedicated VRAM; shared integrated-GPU RAM is not separate memory."""
+    devices = hardware.get("gpu_devices")
+    if not isinstance(devices, list) or len(devices) != 1:
+        return None
+    device = devices[0]
+    if not isinstance(device, dict):
+        return None
+    device_type = str(device.get("device_type") or "").casefold()
+    vendor = str(device.get("vendor") or "").casefold()
+    name = str(device.get("name") or "").casefold()
+    if "integrated" in device_type or (
+        vendor == "intel" and any(token in name for token in ("uhd", "iris", "integrated"))
+    ):
+        return None
+    free_mb = device.get("memory_free_mb")
+    if (
+        isinstance(free_mb, bool)
+        or not isinstance(free_mb, (int, float))
+        or not math.isfinite(free_mb)
+        or free_mb <= 0
+    ):
+        return None
+    return float(free_mb) / 1024
+
+
 def _recommended_context_tokens(
     maximum_context: int | None,
     memory_estimate: dict[str, Any] | None,
@@ -207,18 +233,10 @@ def _recommended_context_tokens(
     if not all(isinstance(value, (int, float)) and math.isfinite(value) and value >= 0 for value in (weights, overhead, cache_per_token)):
         return min(maximum_context, 2048)
     if get_settings().get("gpu_enabled") is True:
-        devices = hardware.get("gpu_devices")
-        if isinstance(devices, list) and devices:
-            free_values = [
-                device.get("usable_memory_free_mb", device.get("memory_free_mb"))
-                for device in devices if isinstance(device, dict)
-            ]
-            known_free = [float(value) for value in free_values if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0]
-            if known_free and len(known_free) == len(devices):
-                gpu_budget = sum(known_free) / 1024
-                # Prefer a full-GPU estimate only when all model weights plus overhead fit.
-                if gpu_budget > float(weights) + float(overhead):
-                    budget = gpu_budget
+        gpu_budget = _dedicated_gpu_budget_gb(hardware)
+        # Shared iGPU memory is already part of host RAM; never count it twice.
+        if gpu_budget is not None and gpu_budget > float(weights) + float(overhead):
+            budget = gpu_budget
     available_for_cache = max(0.0, budget - float(weights) - float(overhead))
     if available_for_cache <= 0 or cache_per_token <= 0:
         return min(maximum_context, 512)
