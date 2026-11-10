@@ -304,10 +304,10 @@ def _generate_outline(
             repair_prompt,
             system_prompt=system_prompt,
             purpose="learning",
-            model_override=model,
-            num_predict=1000,
+            model_override=selected_model,
+            num_predict=800,
         )
-        return _parse_outline(repaired, max_topics)
+        return _parse_outline(repaired, max_topics), model_selection
 
 
 def _persist_researched_path(
@@ -324,6 +324,9 @@ def _persist_researched_path(
     outline_json = json.dumps(outline, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     outline_sha256 = hashlib.sha256(outline_json.encode("utf-8")).hexdigest()
     sources_json = json.dumps(sources, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    model_selection_json = json.dumps(
+        model_selection, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
     with learning_connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
         connection.execute(
@@ -337,10 +340,16 @@ def _persist_researched_path(
             raise RuntimeError("Research curriculum path could not be persisted.")
         path_id = int(path["id"])
         existing = connection.execute(
-            "SELECT outline_sha256 FROM learning_path_research WHERE path_id=?", (path_id,)
+            "SELECT outline_sha256, model_name, model_selection_json "
+            "FROM learning_path_research WHERE path_id=?",
+            (path_id,),
         ).fetchone()
-        if existing is not None and existing["outline_sha256"] != outline_sha256:
-            raise RuntimeError("Persisted curriculum differs from the task checkpoint; refusing to overwrite it.")
+        if existing is not None and (
+            existing["outline_sha256"] != outline_sha256
+            or existing["model_name"] != model
+            or existing["model_selection_json"] != model_selection_json
+        ):
+            raise RuntimeError("Persisted curriculum provenance differs from the task checkpoint; refusing to overwrite it.")
         if existing is None:
             connection.execute(
                 """INSERT INTO learning_path_research(
@@ -349,7 +358,7 @@ def _persist_researched_path(
                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     path_id, topic, outline_json, outline_sha256, model,
-                    json.dumps(model_selection, ensure_ascii=False, sort_keys=True),
+                    model_selection_json,
                     len(sources), sources_json,
                 ),
             )
@@ -404,12 +413,14 @@ def handle_curriculum_task(
         context=context,
     )
     current_checkpoint = context.checkpoint_data or {}
-    outline = current_checkpoint.get("outline") if isinstance(current_checkpoint, dict) else None
+    if not isinstance(current_checkpoint, dict):
+        current_checkpoint = {}
+    outline = current_checkpoint.get("outline")
+    configured_model = str(get_settings().get("learning_ollama_model", "")).strip()
+    if not configured_model:
+        raise PermanentTaskError("The learning Ollama model is not configured.")
     if not isinstance(outline, dict):
-        settings = get_settings()
-        model = str(settings.get("learning_ollama_model", "")).strip()
-        if not model:
-            raise PermanentTaskError("The learning Ollama model is not configured.")
+        model = configured_model
         try:
             outline, model_selection = _generate_outline(
                 topic, max_topics, source_text, sources, model
@@ -429,18 +440,22 @@ def handle_curriculum_task(
             "completed_queries": [f"{topic} {suffix}" for suffix in _SEARCH_QUERY_SUFFIXES],
             "sources": sources,
             "outline": outline,
+            "model": model,
             "model_selection": model_selection,
         })
     else:
         # Never trust a checkpointed model response without validating its full contract again.
         outline = _parse_outline(json.dumps(outline, ensure_ascii=False), max_topics)
+        model = current_checkpoint.get("model", configured_model)
+        if not isinstance(model, str) or not model.strip() or len(model) > 200:
+            raise PermanentTaskError("The checkpointed curriculum model identity is invalid.")
         model_selection = (
             current_checkpoint.get("model_selection")
             if isinstance(current_checkpoint.get("model_selection"), dict)
             else {"status": "checkpointed_configured_model", "selected_model": model}
         )
-
-    model = str(get_settings().get("learning_ollama_model", "")).strip()
+    if model_selection.get("selected_model") != model:
+        raise PermanentTaskError("The curriculum model provenance does not match the model used.")
     path_id, outline_sha256 = _persist_researched_path(
         task_id=context.task_id,
         topic=topic,
@@ -458,6 +473,7 @@ def handle_curriculum_task(
         "outline_sha256": outline_sha256,
         "outline": outline,
         "sources": sources,
+        "model": model,
         "model_selection": model_selection,
     })
     queue_result = learning.start_researched_path_learning(path_id, allow_retry=False)
