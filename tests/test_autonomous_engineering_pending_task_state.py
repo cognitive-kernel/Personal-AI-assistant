@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -8,6 +10,7 @@ import pytest
 from scripts.autonomous_engineering_pending_task_state import (
     claim_pending_task_owner_unlocked,
     pending_task_owner_path,
+    task_digest,
     validate_pending_task_owner_unlocked,
 )
 from scripts.autonomous_engineering_state_lock import durable_state_lock
@@ -87,3 +90,22 @@ def test_task_owner_requires_valid_run_identity_and_attempt(tmp_path: Path):
         claim_pending_task_owner_unlocked(
             tmp_path, "Task", "4002", 0, source="recovery",
         )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="PowerShell/.NET SHA-256 interoperability is Windows-only")
+def test_powershell_and_python_compute_identical_task_digest():
+    task = "Repair checkpoint ownership — خطای بازیابی"
+    script = (
+        "$sha = [System.Security.Cryptography.SHA256]::Create(); "
+        f"$bytes = [System.Text.Encoding]::UTF8.GetBytes('{task}'); "
+        "$digest = [BitConverter]::ToString($sha.ComputeHash($bytes)).Replace('-', '').ToLowerInvariant(); "
+        "$sha.Dispose(); Write-Output $digest"
+    )
+    result = subprocess.run(
+        ["pwsh", "-NoProfile", "-Command", script],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=10,
+    )
+    assert result.stdout.strip() == task_digest(task)
