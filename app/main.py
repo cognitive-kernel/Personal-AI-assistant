@@ -792,28 +792,37 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
             )
         existing_model = current_settings.get(model_key) or current_settings.get("ollama_model")
         existing_context = current_settings.get(context_key, current_settings.get("ollama_num_ctx"))
-        # The dashboard submits every field. Unchanged profiles do not need an Ollama
-        # round-trip, so ordinary settings remain editable while Ollama is offline.
-        if model_name == existing_model and context_value == existing_context:
+        context_changed = context_value != existing_context
+        model_changed = model_name != existing_model
+        # Unchanged profiles do not need an Ollama round-trip. Manual model names
+        # remain saveable when context is unchanged; a context edit requires verifiable
+        # model metadata, and a known model limit is enforced even on model-only edits.
+        if not context_changed and not model_changed:
             continue
         if not isinstance(model_name, str) or not model_name.strip():
-            raise HTTPException(status_code=422, detail=f"{context_key} requires a selected Ollama model.")
+            if context_changed:
+                raise HTTPException(status_code=422, detail=f"{context_key} requires a selected Ollama model.")
+            continue
         try:
             metadata = model_metadata_cache.get(model_name.strip())
             if metadata is None:
                 metadata = ollama.model_details(model_name.strip())
                 model_metadata_cache[model_name.strip()] = metadata
         except ollama.OllamaError as exc:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Cannot verify the maximum context for {model_name}: {exc}",
-            ) from exc
+            if context_changed:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Cannot verify the maximum context for {model_name}: {exc}",
+                ) from exc
+            continue
         maximum = metadata.get("maximum_context_tokens")
         if not isinstance(maximum, int) or maximum < 512:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Maximum context metadata is unavailable for {model_name}; context cannot be safely validated.",
-            )
+            if context_changed:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Maximum context metadata is unavailable for {model_name}; context cannot be safely validated.",
+                )
+            continue
         if isinstance(context_value, int) and not isinstance(context_value, bool) and context_value > maximum:
             raise HTTPException(
                 status_code=422,
