@@ -359,7 +359,7 @@ def enqueue_curriculum_task(
             "max_topics": normalized_max,
             "source_text": normalized_source,
         },
-        priority=10,
+        priority=0,
         max_attempts=3,
     )
 
