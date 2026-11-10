@@ -8,16 +8,11 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
+try:
+    from .autonomous_engineering_state_paths import execution_state_directory
+except ImportError:  # Direct script execution from the scripts directory.
+    from autonomous_engineering_state_paths import execution_state_directory
 
-def execution_state_directory() -> Path:
-    """Resolve the single local state directory shared by controller entry points."""
-    configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
-    if configured:
-        return Path(configured).expanduser()
-    program_data = os.getenv("PROGRAMDATA")
-    if program_data:
-        return Path(program_data) / "PersonalAIAssistant" / "autonomous-engineering"
-    return Path.home() / ".personal-ai-assistant" / "autonomous-engineering"
 
 
 @contextmanager
