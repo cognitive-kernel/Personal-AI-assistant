@@ -312,3 +312,22 @@ def test_detect_hardware_exposes_cpu_available_capacity(monkeypatch):
     result = hardware.detect_hardware()
     assert result["cpu_utilization_percent"] == 37.5
     assert result["cpu_available_percent"] == 62.5
+
+
+def test_rocm_vram_byte_counters_are_converted_to_mebibytes(monkeypatch):
+    import json
+    payload = {
+        "card0": {
+            "Card series": "AMD Radeon RX 7900 XTX",
+            "VRAM Total Memory (B)": "25753026560",
+            "VRAM Total Used Memory (B)": "1073741824",
+            "GPU use (%)": "42",
+        }
+    }
+    monkeypatch.setattr(hardware, "_run_gpu_command", lambda *args, **kwargs: json.dumps(payload))
+    devices = hardware._detect_rocm_gpus()
+    assert len(devices) == 1
+    assert devices[0]["vendor"] == "AMD"
+    assert devices[0]["memory_total_mb"] == round(25753026560 / 1024**2, 1)
+    assert devices[0]["memory_used_mb"] == 1024
+    assert devices[0]["utilization_percent"] == 42
