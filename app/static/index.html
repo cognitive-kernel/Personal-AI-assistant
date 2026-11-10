@@ -1434,9 +1434,9 @@ async function refreshModelContextHint(profile, applyRecommendation=false) {
    input.setCustomValidity(invalid?"مقدار context از حداکثر پشتیبانی مدل بیشتر است.":"");
    const estimate=data.memory_estimate||{};
    const modelSpecs=[data.parameter_size,data.quantization].filter(Boolean).join(" / ");
-   const estimateText=estimate.total_ram_gib_float16!=null
-    ? " | RAM تخمینی در اجرای CPU-only و این context: "+estimate.total_ram_gib_float16+" GiB (وزن‌ها + KV cache با فرض FP16)"
-    : " | برآورد دقیق RAM ممکن نیست؛ metadata ابعاد KV cache کامل نیست.";
+   const estimateText=estimate.total_ram_gib_upper_bound!=null
+    ? " | سقف محافظه‌کارانه RAM در اجرای CPU-only و این context: "+estimate.total_ram_gib_upper_bound.toFixed(2)+" GiB (KV cache با بودجه‌بندی FP32)"
+    : " | پیشنهاد امن محاسبه نشد؛ اندازه مدل، ابعاد KV cache یا RAM آزاد قابل‌تأیید نیست.";
    const recommended=data.recommended_context_tokens;
    hint.textContent="حداکثر پشتیبانی مدل: "+maximum.toLocaleString()+" توکن؛ پیشنهاد امن بر اساس منابع فعلی: "+(Number.isInteger(recommended)?recommended.toLocaleString():"نامشخص")+" توکن؛ مقدار انتخابی: "+context.toLocaleString()+" توکن"+(modelSpecs?"؛ اندازه/کوانتیزیشن: "+modelSpecs:"")+estimateText
     +(invalid?" | مقدار فعلی بیش از حد مجاز است.":"");
