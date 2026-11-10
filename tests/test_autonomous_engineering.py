@@ -860,13 +860,13 @@ def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_c
     assert "/api/create" in context_gate
     assert "/api/show" in context_gate
     assert "/api/generate" in context_gate
-    assert "parameters = @{ num_ctx = $MinimumContextLength }" in context_gate
+    assert "parameters = @{ num_ctx = $selectedContext }" in context_gate
     assert "PARAMETER\\s+num_ctx" in context_gate
     assert "keep_alive" in context_gate
     assert "/api/ps" in context_gate
     assert "context_length" in context_gate
-    assert "64000" in context_gate
-    assert "options = @{ num_ctx = $MinimumContextLength }" not in context_gate
+    assert "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH" in context_gate
+    assert "recommended" in context_gate
     assert "AUTONOMOUS_ENGINEERING_MODEL=$codexModel" in context_gate
     assert production_paths.count("scripts/verify_ollama_context.ps1") == 2
     diagnostic_job = diagnostic_paths.split("  sandbox-diagnostic:", 1)[1]
