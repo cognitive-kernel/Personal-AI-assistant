@@ -194,8 +194,8 @@ try {
         engine = [float(row["CookedValue"]) for row in matching if "gpu engine" in str(row.get("Path", "")).casefold() and isinstance(row.get("CookedValue"), (int, float))]
         dedicated = [float(row["CookedValue"]) for row in matching if "dedicated usage" in str(row.get("Path", "")).casefold() and isinstance(row.get("CookedValue"), (int, float))]
         shared = [float(row["CookedValue"]) for row in matching if "shared usage" in str(row.get("Path", "")).casefold() and isinstance(row.get("CookedValue"), (int, float))]
-        dedicated_limits = [float(row["CookedValue"]) for row in matching if "dedicated limit" in str(row.get("Path", "")).casefold() and isinstance(row.get("CookedValue"), (int, float))]
-        shared_limits = [float(row["CookedValue"]) for row in matching if "shared limit" in str(row.get("Path", "")).casefold() and isinstance(row.get("CookedValue"), (int, float))]
+        dedicated_limits = [float(row["CookedValue"]) for row in matching if "dedicated limit" in str(row.get("Path", "")).casefold() and isinstance(row.get("CookedValue"), (int, float)) and row["CookedValue"] > 0]
+        shared_limits = [float(row["CookedValue"]) for row in matching if "shared limit" in str(row.get("Path", "")).casefold() and isinstance(row.get("CookedValue"), (int, float)) and row["CookedValue"] > 0]
         total_mb = None
         try:
             raw_ram = int(adapter.get("AdapterRAM") or 0)
@@ -210,8 +210,12 @@ try {
         shared_total_mb = round(max(shared_limits) / (1024 ** 2), 1) if shared_limits else None
         dedicated_free_mb = max(0, round(total_mb - used_mb, 1)) if total_mb is not None and used_mb is not None else None
         shared_free_mb = max(0, round(shared_total_mb - shared_used_mb, 1)) if shared_total_mb is not None and shared_used_mb is not None else None
-        usable_free_mb = (dedicated_free_mb or 0) + (shared_free_mb or 0) if dedicated_free_mb is not None or shared_free_mb is not None else None
-        usable_total_mb = (total_mb or 0) + (shared_total_mb or 0) if total_mb is not None or shared_total_mb is not None else None
+        if shared_limits:
+            usable_free_mb = dedicated_free_mb + shared_free_mb if dedicated_free_mb is not None and shared_free_mb is not None else None
+            usable_total_mb = total_mb + shared_total_mb if total_mb is not None and shared_total_mb is not None else None
+        else:
+            usable_free_mb = dedicated_free_mb
+            usable_total_mb = total_mb
         devices.append({
             "index": index, "name": name, "vendor": vendor,
             "utilization_percent": round(min(100.0, max(engine)), 1) if engine else None,
