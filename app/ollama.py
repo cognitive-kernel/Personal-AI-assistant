@@ -179,7 +179,7 @@ def model_details(model: str, context_tokens: int | None = None) -> dict[str, An
     name = str(model or "").strip()
     if not name or len(name) > 200:
         raise OllamaError("Model name is invalid.")
-    info = _request("/api/show", {"model": name, "verbose": True}, timeout=8)
+    info = _request("/api/show", {"model": name}, timeout=8)
     model_info = info.get("model_info") if isinstance(info.get("model_info"), dict) else {}
     details = info.get("details") if isinstance(info.get("details"), dict) else {}
     context_values = [
