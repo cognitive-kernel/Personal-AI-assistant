@@ -16,14 +16,18 @@ def test_execution_lock_records_owner_metadata_and_releases_after_scope(
 ):
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path))
     with repository_execution_lock("run-1", "attempt-2"):
-        import json
+        pass
 
-        metadata = json.loads((tmp_path / "repository-execution.lock").read_text(encoding="utf-8"))
-        assert metadata["pid"] == os.getpid()
-        assert metadata["run_id"] == "run-1"
-        assert metadata["run_attempt"] == "attempt-2"
-        assert metadata["host"]
-        assert metadata["acquired_at"] > 0
+    # Windows byte-range locks also prevent a second handle from reading the
+    # locked file; inspect its diagnostic metadata after ownership is released.
+    import json
+
+    metadata = json.loads((tmp_path / "repository-execution.lock").read_text(encoding="utf-8"))
+    assert metadata["pid"] == os.getpid()
+    assert metadata["run_id"] == "run-1"
+    assert metadata["run_attempt"] == "attempt-2"
+    assert metadata["host"]
+    assert metadata["acquired_at"] > 0
 
     with repository_execution_lock("run-2", "attempt-1"):
         pass
