@@ -1,7 +1,7 @@
 # ADR-014: Atomic readiness and ownership for autonomous checkpoints
 
 - **Status:** Proposed — pending exact-head CI and target-runner verification
-- **Date:** 2026-11-05
+- **Date:** 2026-11-10
 - **Scope:** Autonomous engineering checkpoint startup and recovery
 
 ## Context
