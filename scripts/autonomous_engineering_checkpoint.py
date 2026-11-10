@@ -122,6 +122,52 @@ def read_metadata(run_id: str, task: int) -> dict[str, Any] | None:
         raise RuntimeError(
             "Checkpoint metadata has an invalid shape; refusing to replace or recover unknown owner state."
         )
+    schema = value.get("schema_version")
+    run_id = value.get("run_id")
+    task = value.get("task")
+    base_sha = value.get("base_sha")
+    updated_at = value.get("updated_at")
+    patch_bytes = value.get("patch_bytes")
+    watcher_pid = value.get("watcher_pid")
+    watcher_started_at = value.get("watcher_started_at")
+    watcher_ready = value.get("watcher_ready")
+    if (
+        isinstance(schema, bool) or schema not in {2, 3, 4}
+        or not isinstance(run_id, str) or not run_id
+        or isinstance(task, bool) or not isinstance(task, int) or task < 1
+        or not isinstance(base_sha, str) or len(base_sha) != 40
+        or any(ch not in "0123456789abcdef" for ch in base_sha)
+        or isinstance(updated_at, bool) or not isinstance(updated_at, (int, float))
+        or not math.isfinite(float(updated_at))
+        or isinstance(patch_bytes, bool) or not isinstance(patch_bytes, int) or patch_bytes < 0
+        or (
+            watcher_pid is not None
+            and (
+                isinstance(watcher_pid, bool)
+                or not isinstance(watcher_pid, int)
+                or watcher_pid <= 0
+            )
+        )
+        or (watcher_ready is not None and not isinstance(watcher_ready, bool))
+        or (
+            watcher_started_at is not None
+            and (
+                isinstance(watcher_started_at, bool)
+                or not isinstance(watcher_started_at, (int, float))
+                or not math.isfinite(float(watcher_started_at))
+                or watcher_started_at <= 0
+            )
+        )
+        or (
+            schema == 4 and watcher_ready is True
+            and (watcher_pid is None or watcher_started_at is None)
+        )
+    ):
+        raise RuntimeError(
+            "Checkpoint metadata violates its supported v2-v4 ownership contract; "
+            "refusing to replace or recover unknown owner state."
+        )
+    _identity(run_id, task)
     return value
 
 
