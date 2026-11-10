@@ -1502,19 +1502,63 @@ def get_learning_path(path_id: int) -> dict[str, Any]:
             "SELECT id, topic, position, status, latest_score, updated_at FROM learning_path_topics WHERE path_id=? ORDER BY position",
             (path_id,),
         ).fetchall()]
+        research_row = conn.execute(
+            "SELECT requested_topic, outline_json, outline_sha256, model_name, source_count, sources_json, created_at "
+            "FROM learning_path_research WHERE path_id=?",
+            (path_id,),
+        ).fetchone()
     total = len(topics)
     completed = sum(1 for item in topics if item["status"] == "completed")
     in_progress = sum(1 for item in topics if item["status"] == "in_progress")
     result = dict(path)
     course = curricula.get_curriculum(str(result.get("curriculum_slug", "")))
+    reference_urls = list(course.get("reference_urls", [])) if course else []
+    research = None
+    if research_row is not None:
+        try:
+            outline = json.loads(research_row["outline_json"])
+            stored_sources = json.loads(research_row["sources_json"])
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise LearningError("Persisted research curriculum metadata is invalid.") from exc
+        if not isinstance(outline, dict) or not isinstance(stored_sources, list):
+            raise LearningError("Persisted research curriculum metadata has an invalid shape.")
+        sources = [
+            {
+                "title": item["title"],
+                "url": item["url"],
+                "sha256": item["sha256"],
+            }
+            for item in stored_sources
+            if isinstance(item, dict)
+            and isinstance(item.get("title"), str)
+            and isinstance(item.get("url"), str)
+            and isinstance(item.get("sha256"), str)
+        ]
+        reference_urls = [
+            {
+                "title": item["title"],
+                "url": item["url"],
+                "description": "منبع استفاده‌شده در پژوهش ساخت سرفصل‌ها؛ محتوای آن مستقلاً تأیید نشده است.",
+            }
+            for item in sources
+        ]
+        research = {
+            "requested_topic": research_row["requested_topic"],
+            "outline": outline,
+            "outline_sha256": research_row["outline_sha256"],
+            "model": research_row["model_name"],
+            "source_count": research_row["source_count"],
+            "sources": sources,
+            "created_at": research_row["created_at"],
+        }
     result.update({
         "topics": topics, "topic_count": total, "completed_count": completed,
         "in_progress_count": in_progress,
         "progress_percent": round(100 * completed / total, 2) if total else 0.0,
-        "reference_urls": list(course.get("reference_urls", [])) if course else [],
+        "reference_urls": reference_urls,
+        "research": research,
     })
     return result
-
 
 def list_learning_paths() -> list[dict[str, Any]]:
     with learning_connection() as conn:
