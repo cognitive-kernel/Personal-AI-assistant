@@ -84,6 +84,24 @@ def test_access_denied_blocks_recovery_instead_of_being_ignored(monkeypatch: pyt
         process_control.stop_owned_watcher(_metadata(script), script_path=script)
 
 
+def test_access_denied_while_reading_command_line_blocks_recovery(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    script = tmp_path / "autonomous_engineering_checkpoint.py"
+
+    class DeniedCommandProcess(FakeProcess):
+        def cmdline(self) -> list[str]:
+            raise psutil.AccessDenied(pid=4321)
+
+    monkeypatch.setattr(
+        process_control.psutil, "Process",
+        lambda pid: DeniedCommandProcess(),
+    )
+
+    with pytest.raises(RuntimeError, match="Cannot verify checkpoint watcher PID"):
+        process_control.stop_owned_watcher(_metadata(script), script_path=script)
+
+
 def test_reused_pid_is_not_terminated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     script = tmp_path / "autonomous_engineering_checkpoint.py"
     process = FakeProcess(created=9999.0, command=["unrelated.exe"])
