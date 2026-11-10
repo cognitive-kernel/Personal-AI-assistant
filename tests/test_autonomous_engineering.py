@@ -920,7 +920,7 @@ def test_ollama_status_returns_every_installed_model_without_inserting_defaults(
 
     result = agent._ollama_status(selected)
 
-    assert result["models"] == names
+    assert result["models"] == sorted(names)
     assert len(result["models"]) == 55
     assert "gpt-oss:20b" not in result["models"]
     assert result["model_installed"] is True
