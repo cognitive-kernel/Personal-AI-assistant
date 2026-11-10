@@ -707,9 +707,13 @@ def _select_learning_generation_model(
     })
     # Estimates are conservative and tokenizer-independent; actual provider
     # counters are recorded separately by each model-assisted stage.
+    # The learning lane is pinned to its configured model. Cost/quality
+    # profiles may accept or reject that model, but must never silently switch
+    # lesson generation to a different installed model.
+    selection_candidates = [fallback_model] if fallback_model in installed_names else []
     selection = select_learning_model(
         settings,
-        installed_names,
+        selection_candidates,
         estimated_prompt_tokens=estimated_prompt_tokens,
         estimated_completion_tokens=estimated_completion_tokens,
         minimum_quality_score=float(minimum_quality),
