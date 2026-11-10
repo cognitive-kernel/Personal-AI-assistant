@@ -194,18 +194,18 @@ def _recommended_context_tokens(
 ) -> int:
     """Choose the largest conventional context that fits the measured safe RAM budget."""
     if maximum_context is None:
-        return 2048
+        return 512
     from .hardware import dynamic_ram_budget_gb
     budget = dynamic_ram_budget_gb(get_settings(), hardware)
     if budget is None or budget < 4:
-        return min(maximum_context, 2048)
+        return min(maximum_context, 512)
     if not isinstance(memory_estimate, dict):
-        return min(maximum_context, 4096)
+        return min(maximum_context, 2048)
     weights = memory_estimate.get("weights_gib")
     overhead = memory_estimate.get("overhead_gib", 0.5)
     cache_per_token = memory_estimate.get("kv_cache_bytes_per_token")
     if not all(isinstance(value, (int, float)) and math.isfinite(value) and value >= 0 for value in (weights, overhead, cache_per_token)):
-        return min(maximum_context, 4096)
+        return min(maximum_context, 2048)
     if get_settings().get("gpu_enabled") is True:
         devices = hardware.get("gpu_devices")
         if isinstance(devices, list) and devices:
@@ -221,7 +221,7 @@ def _recommended_context_tokens(
                     budget = gpu_budget
     available_for_cache = max(0.0, budget - float(weights) - float(overhead))
     if available_for_cache <= 0 or cache_per_token <= 0:
-        return min(maximum_context, 2048)
+        return min(maximum_context, 512)
     fit = int(available_for_cache * (1024 ** 3) / cache_per_token)
     candidate = 512
     for value in (1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576):
