@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
 from .autonomous_engineering_progress import get_progress, storage_accessible
+from .ollama_context import OllamaModelMetadataError, maximum_context_tokens, supports_tool_calling
 
 _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
 
@@ -133,12 +134,10 @@ def _ollama_status(model: str) -> dict[str, Any]:
         details = details_payload.get("details") if isinstance(details_payload.get("details"), dict) else {}
         model_info = details_payload.get("model_info") if isinstance(details_payload.get("model_info"), dict) else {}
         architecture = details.get("family")
-        raw_context = model_info.get(f"{architecture}.context_length") if isinstance(architecture, str) and architecture else None
-        context_length = (
-            raw_context
-            if isinstance(raw_context, int) and not isinstance(raw_context, bool) and raw_context >= 512
-            else None
-        )
+        try:
+            context_length = maximum_context_tokens(model_info, architecture)
+        except OllamaModelMetadataError:
+            context_length = None
         raw_capabilities = details_payload.get("capabilities")
         capabilities = sorted({
             value for value in raw_capabilities
@@ -148,7 +147,7 @@ def _ollama_status(model: str) -> dict[str, Any]:
         result.update({
             "model_context_length": context_length,
             "model_capabilities": capabilities,
-            "model_supports_tools": "tools" in capabilities,
+            "model_supports_tools": supports_tool_calling(capabilities),
             "model_metadata_available": metadata_available,
             "model_metadata_error": (
                 None if metadata_available else
