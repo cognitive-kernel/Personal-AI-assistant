@@ -274,3 +274,28 @@ def test_codex_tool_calling_requires_explicit_ollama_tools_capability():
     assert supports_tool_calling(["completion", "tools", "thinking"]) is True
     assert supports_tool_calling(["completion", "thinking"]) is False
     assert supports_tool_calling(None) is False
+
+
+def test_codex_context_selection_preserves_exact_minimum_without_rounding():
+    from app.ollama_context import select_context_window
+
+    result = select_context_window(
+        model_info={
+            "llama.context_length": 16384,
+            "llama.block_count": 1,
+            "llama.attention.head_count_kv": 1,
+            "llama.attention.key_length": 64,
+            "llama.attention.value_length": 64,
+        },
+        architecture="llama",
+        model_weight_bytes=1024**3,
+        available_memory_bytes=16 * 1024**3,
+        requested_context_tokens=10001,
+    )
+
+    assert result["selected_context_tokens"] == min(
+        result["requested_context_tokens"],
+        result["maximum_context_tokens"],
+        result["hardware_maximum_context_tokens"],
+    )
+    assert result["selected_context_tokens"] == 10001
