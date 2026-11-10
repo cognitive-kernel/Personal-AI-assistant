@@ -140,7 +140,7 @@ jobs:
 
       - name: Verify the selected model's allocated Ollama context
         id: context_preflight
-        # Create and verify a persistent model variant with PARAMETER num_ctx=64000.
+        # Select, persist, and verify a context bounded by model metadata and available memory.
         timeout-minutes: 12
         shell: powershell
         run: |
