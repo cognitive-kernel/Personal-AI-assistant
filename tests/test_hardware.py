@@ -365,3 +365,58 @@ def test_runtime_limits_allow_large_model_context_when_ram_budget_is_ample():
         {"logical_cpu_count": 12, "total_ram_gb": 32, "available_ram_gb": 26},
     )
     assert limits["num_ctx"] == 65536
+
+def test_detect_gpu_combines_devices_from_multiple_vendors(monkeypatch):
+    monkeypatch.setattr(hardware.os, "name", "nt")
+    monkeypatch.setattr(hardware, "_detect_nvidia_gpus", lambda: [{
+        "index": 0, "name": "NVIDIA RTX", "vendor": "NVIDIA",
+        "utilization_percent": 30, "memory_used_mb": 1024,
+        "memory_total_mb": 8192, "memory_free_mb": 7168,
+        "memory_percent": 12.5, "telemetry": "nvidia-smi",
+    }])
+    monkeypatch.setattr(hardware, "_detect_rocm_gpus", lambda: [])
+    monkeypatch.setattr(hardware, "_detect_windows_gpus", lambda: [{
+        "index": 0, "name": "Intel UHD 730", "vendor": "Intel",
+        "utilization_percent": None, "memory_used_mb": None,
+        "memory_total_mb": None, "memory_free_mb": None,
+        "memory_percent": None, "telemetry": "wmi-device-only",
+    }])
+    monkeypatch.setattr(hardware, "_detect_vulkan_gpus", lambda: [{
+        "index": 0, "name": "AMD Radeon", "vendor": "AMD",
+        "utilization_percent": None, "memory_used_mb": None,
+        "memory_total_mb": None, "memory_free_mb": None,
+        "memory_percent": None, "telemetry": "vulkan-device-enumeration-only",
+    }])
+
+    result = hardware.detect_gpu()
+
+    assert result["gpu_available"] is True
+    assert result["gpu_count"] == 3
+    assert {device["vendor"] for device in result["gpu_devices"]} == {"NVIDIA", "Intel", "AMD"}
+
+
+def test_detect_gpu_merges_duplicate_provider_records_without_losing_metrics(monkeypatch):
+    monkeypatch.setattr(hardware.os, "name", "nt")
+    monkeypatch.setattr(hardware, "_detect_nvidia_gpus", lambda: [{
+        "index": 0, "name": "NVIDIA GeForce RTX 4060", "vendor": "NVIDIA",
+        "utilization_percent": 40, "memory_used_mb": 2048,
+        "memory_total_mb": 8192, "memory_free_mb": 6144,
+        "memory_percent": 25, "telemetry": "nvidia-smi",
+    }])
+    monkeypatch.setattr(hardware, "_detect_rocm_gpus", lambda: [])
+    monkeypatch.setattr(hardware, "_detect_windows_gpus", lambda: [{
+        "index": 0, "name": "NVIDIA GeForce RTX 4060", "vendor": "NVIDIA",
+        "utilization_percent": None, "memory_used_mb": None,
+        "memory_total_mb": None, "memory_free_mb": None,
+        "memory_percent": None, "telemetry": "windows-performance-counters",
+        "shared_memory_free_mb": 4096,
+    }])
+    monkeypatch.setattr(hardware, "_detect_vulkan_gpus", lambda: [])
+
+    result = hardware.detect_gpu()
+
+    assert result["gpu_count"] == 1
+    assert result["gpu_devices"][0]["utilization_percent"] == 40
+    assert result["gpu_devices"][0]["memory_free_mb"] == 6144
+    assert result["gpu_devices"][0]["shared_memory_free_mb"] == 4096
+    assert "windows-performance-counters" in result["gpu_devices"][0]["telemetry"]
