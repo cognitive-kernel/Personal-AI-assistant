@@ -133,12 +133,14 @@ $adapters = @(Get-CimInstance Win32_VideoController | ForEach-Object {
 })
 $counters = @()
 try {
-  $counters = (Get-Counter -Counter @(
-    '\GPU Engine(*)\Utilization Percentage',
-    '\GPU Adapter Memory(*)\Dedicated Usage',
-    '\GPU Adapter Memory(*)\Shared Usage'
-  ) -SampleInterval 1 -MaxSamples 1).CounterSamples | ForEach-Object {
-    [pscustomobject]@{ Path=$_.Path; InstanceName=$_.InstanceName; CookedValue=$_.CookedValue }
+  $engine = @(Get-CimInstance -Namespace root/cimv2 -ClassName Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine)
+  $memory = @(Get-CimInstance -Namespace root/cimv2 -ClassName Win32_PerfFormattedData_GPUPerformanceCounters_GPUAdapterMemory)
+  foreach ($item in $engine) {
+    $counters += [pscustomobject]@{ Path='GPU Engine Utilization Percentage'; InstanceName=$item.Name; CookedValue=$item.UtilizationPercentage }
+  }
+  foreach ($item in $memory) {
+    $counters += [pscustomobject]@{ Path='GPU Adapter Memory Dedicated Usage'; InstanceName=$item.Name; CookedValue=$item.DedicatedUsage }
+    $counters += [pscustomobject]@{ Path='GPU Adapter Memory Shared Usage'; InstanceName=$item.Name; CookedValue=$item.SharedUsage }
   }
 } catch {}
 [pscustomobject]@{Adapters=$adapters; Counters=$counters} | ConvertTo-Json -Depth 5 -Compress
