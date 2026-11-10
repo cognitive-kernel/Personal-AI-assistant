@@ -23,7 +23,7 @@ on:
     inputs:
       model:
         description: "Installed local Ollama model"
-        required: true
+        required: false
         type: string
         default: ""
       context_length:
