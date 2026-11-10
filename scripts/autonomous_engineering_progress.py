@@ -215,8 +215,7 @@ def codex_arguments(model: str, report: str) -> list[str]:
     catalog_path = write_codex_model_catalog(model, context_window=context_window)
     print(f"Codex model catalog metadata: model={model}, context_window={context_window}")
     arguments = [
-        "exec", "-c", 'model_provider="ollama"',
-        "-c", f'windows.sandbox="{backend}"',
+        "exec", "-c", f'windows.sandbox="{backend}"',
         "--oss", "--local-provider", "ollama",
         "--sandbox", "workspace-write",
         "--model", model, "--cd", str(ROOT),
@@ -236,7 +235,7 @@ def codex_arguments(model: str, report: str) -> list[str]:
     ]
     if reasoning_effort:
         config_overrides.insert(0, f'model_reasoning_effort="{reasoning_effort}"')
-    arguments[5:5] = [part for override in config_overrides for part in ("-c", override)]
+    arguments[3:3] = [part for override in config_overrides for part in ("-c", override)]
     return arguments
 
 
