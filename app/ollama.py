@@ -324,6 +324,14 @@ def runtime_diagnostics(
     if model:
         try:
             result["selected_model"] = model_details(model, context_tokens)
+            maximum = result["selected_model"].get("maximum_context_tokens")
+            result["runtime_limits"] = runtime_limits({
+                "ollama_num_ctx": requested_context,
+                "ollama_num_thread": settings.get(f"{profile}_ollama_num_thread", settings.get("ollama_num_thread", 0)),
+                "cpu_resource_limit_percent": settings.get("cpu_resource_limit_percent", 90),
+                "ram_budget_max_gb": settings.get("ram_budget_max_gb", 25),
+                "ram_safety_reserve_gb": settings.get("ram_safety_reserve_gb", 4),
+            }, hardware, maximum_context_tokens=maximum if isinstance(maximum, int) else None)
         except OllamaError as exc:
             result["selected_model_error"] = str(exc)
     return result
