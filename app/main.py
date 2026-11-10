@@ -820,10 +820,10 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         maximum = metadata.get("maximum_context_tokens")
         explicit_context = context_key in values or (generic_chat_change and "ollama_num_ctx" in values)
         if model_changed and not explicit_context:
+            # Auto-select only when both model and current-host memory metadata
+            # support a defensible estimate. Never invent a 2k fallback ceiling.
             context_value = metadata.get("recommended_context_tokens")
-            if not isinstance(context_value, int) or isinstance(context_value, bool) or context_value < 512:
-                context_value = min(maximum, 2048) if isinstance(maximum, int) and maximum >= 512 else None
-            if context_value is not None:
+            if isinstance(context_value, int) and not isinstance(context_value, bool) and context_value >= 512:
                 values[context_key] = context_value
                 if model_key == "chat_ollama_model":
                     values["ollama_num_ctx"] = context_value
@@ -834,6 +834,21 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
                     detail=f"Maximum context metadata is unavailable for {model_name}; context cannot be safely validated.",
                 )
             continue
+        hardware_safe_context = metadata.get("recommended_context_tokens")
+        if context_changed and (
+            not isinstance(hardware_safe_context, int)
+            or isinstance(hardware_safe_context, bool)
+            or hardware_safe_context < 512
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail=f"A hardware-safe context cannot be calculated for {model_name}; verify model weights, KV-cache metadata, and available RAM first.",
+            )
+        if context_changed and isinstance(context_value, int) and context_value > hardware_safe_context:
+            context_value = hardware_safe_context
+            values[context_key] = context_value
+            if model_key == "chat_ollama_model":
+                values["ollama_num_ctx"] = context_value
         if isinstance(context_value, int) and not isinstance(context_value, bool) and context_value > maximum:
             raise HTTPException(
                 status_code=422,
