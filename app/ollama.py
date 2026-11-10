@@ -344,7 +344,13 @@ def model_details(model: str, context_tokens: int | None = None) -> dict[str, An
     maximum_context = _model_context_metadata(model_info, details.get("family"))
     tag = next((item for item in list_models() if item.get("name") == name), None)
     weight_bytes = tag.get("size") if isinstance(tag, dict) else None
-    estimate = _model_memory_estimate(name, model_info, details, weight_bytes, context_tokens)
+    estimate = _model_memory_estimate(
+        name,
+        model_info,
+        details,
+        weight_bytes,
+        context_tokens if context_tokens is not None else maximum_context,
+    )
     running = _request("/api/ps", timeout=4).get("models", [])
     running_item = next((item for item in running if isinstance(item, dict) and item.get("name") == name), None) if isinstance(running, list) else None
     hardware = detect_hardware()
