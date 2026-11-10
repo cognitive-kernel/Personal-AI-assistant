@@ -177,3 +177,28 @@ def test_model_context_metadata_prefers_architecture_and_uses_conservative_fallb
     }
     assert ollama._model_context_metadata(model_info, "llama") == 32768
     assert ollama._model_context_metadata(model_info, "unknown") == 4096
+
+def test_integrated_intel_gpu_shared_memory_is_not_counted_as_dedicated_vram():
+    hardware = {
+        "gpu_devices": [{
+            "vendor": "Intel",
+            "name": "Intel UHD Graphics 730",
+            "device_type": "integrated",
+            "memory_free_mb": 8192,
+        }]
+    }
+    assert ollama._dedicated_gpu_budget_gb(hardware) is None
+
+
+def test_discrete_gpu_uses_only_measured_dedicated_vram():
+    hardware = {
+        "gpu_devices": [{
+            "vendor": "NVIDIA",
+            "name": "GeForce RTX",
+            "device_type": "discrete",
+            "memory_free_mb": 6144,
+            "usable_memory_free_mb": 12288,
+        }]
+    }
+    assert ollama._dedicated_gpu_budget_gb(hardware) == 6.0
+
