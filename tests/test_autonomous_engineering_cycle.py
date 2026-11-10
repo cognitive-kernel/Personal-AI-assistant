@@ -754,6 +754,10 @@ def test_checkpoint_readiness_contract_rejects_wrong_owner_or_base():
     assert not metadata_confirms_watcher_ready(
         metadata, base_sha="a" * 40, run_id="run-1", task=2, watcher_pid=4322
     )
+    assert not metadata_confirms_watcher_ready(
+        metadata, base_sha="a" * 40, run_id="run-1", task=2,
+        watcher_pid=4321, watcher_started_at=9999.0,
+    )
 
 def test_checkpoint_paths_are_isolated_for_each_run_and_task(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     from scripts import autonomous_engineering_checkpoint as checkpoint
