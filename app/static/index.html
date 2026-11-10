@@ -1417,7 +1417,8 @@ async function refreshModelContextHint(profile, applyRecommendation=false) {
    const estimateText=estimate.total_ram_gib_float16!=null
     ? " | RAM تخمینی در اجرای CPU-only و این context: "+estimate.total_ram_gib_float16+" GiB (وزن‌ها + KV cache با فرض FP16)"
     : " | برآورد دقیق RAM ممکن نیست؛ metadata ابعاد KV cache کامل نیست.";
-   hint.textContent="حداکثر مدل: "+maximum.toLocaleString()+" توکن؛ مقدار فعلی: "+context.toLocaleString()+" توکن"+(modelSpecs?"؛ اندازه/کوانتیزیشن: "+modelSpecs:"")+estimateText
+   const recommended=data.recommended_context_tokens;
+   hint.textContent="حداکثر پشتیبانی مدل: "+maximum.toLocaleString()+" توکن؛ پیشنهاد امن بر اساس منابع فعلی: "+(Number.isInteger(recommended)?recommended.toLocaleString():"نامشخص")+" توکن؛ مقدار انتخابی: "+context.toLocaleString()+" توکن"+(modelSpecs?"؛ اندازه/کوانتیزیشن: "+modelSpecs:"")+estimateText
     +(invalid?" | مقدار فعلی بیش از حد مجاز است.":"");
   } else {
    input.max="1048576";
