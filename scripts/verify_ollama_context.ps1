@@ -133,7 +133,10 @@ if ($VerifyOnly) {
     $codexModel = "$baseModel-codex-ctx$selectedContext"
     $existingInfo = $null
     try { $existingInfo = Get-ModelInfo -ModelName $codexModel } catch { }
-    $existingContext = [regex]::Match([string]$existingInfo.modelfile, '(?im)^\s*PARAMETER\s+num_ctx\s+(\d+)\s*        $createBody = @{
+    $existingContext = [regex]::Match([string]$existingInfo.modelfile, '(?im)^\s*PARAMETER\s+num_ctx\s+(\d+)\s*$')
+    $existingMatch = $existingContext.Success -and [int64]$existingContext.Groups[1].Value -eq $selectedContext
+    if (-not $existingMatch) {
+        $createBody = @{
             model = $codexModel
             from = $baseModel
             parameters = @{ num_ctx = $selectedContext }
