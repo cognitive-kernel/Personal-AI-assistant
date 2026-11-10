@@ -211,12 +211,16 @@ try {
         shared_total_mb = round(max(shared_limits) / (1024 ** 2), 1) if shared_limits else None
         dedicated_free_mb = max(0, round(total_mb - used_mb, 1)) if total_mb is not None and used_mb is not None else None
         shared_free_mb = max(0, round(shared_total_mb - shared_used_mb, 1)) if shared_total_mb is not None and shared_used_mb is not None else None
-        if shared_limits:
-            usable_free_mb = dedicated_free_mb + shared_free_mb if dedicated_free_mb is not None and shared_free_mb is not None else None
-            usable_total_mb = total_mb + shared_total_mb if total_mb is not None and shared_total_mb is not None else None
-        else:
-            usable_free_mb = dedicated_free_mb
-            usable_total_mb = total_mb
+        known_free_parts = [value for value in (dedicated_free_mb, shared_free_mb) if value is not None]
+        known_total_parts = [value for value in (total_mb, shared_total_mb) if value is not None]
+        usable_free_mb = sum(known_free_parts) if known_free_parts else None
+        usable_total_mb = sum(known_total_parts) if known_total_parts else None
+        usable_memory_scope = (
+            "dedicated+shared" if dedicated_free_mb is not None and shared_free_mb is not None
+            else "dedicated-only" if dedicated_free_mb is not None
+            else "shared-only" if shared_free_mb is not None
+            else "unknown"
+        )
         devices.append({
             "index": index, "name": name, "vendor": vendor,
             "utilization_percent": round(min(100.0, max(engine)), 1) if engine else None,
@@ -227,6 +231,7 @@ try {
             "shared_memory_free_mb": shared_free_mb,
             "usable_memory_total_mb": usable_total_mb,
             "usable_memory_free_mb": usable_free_mb,
+            "usable_memory_scope": usable_memory_scope,
             "memory_percent": round(used_mb * 100 / total_mb, 1) if total_mb and used_mb is not None else None,
             "telemetry": "windows-performance-counters" if matching else "wmi-device-only",
         })
