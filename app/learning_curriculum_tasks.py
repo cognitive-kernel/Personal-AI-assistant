@@ -102,6 +102,13 @@ def _valid_checkpoint(
     return completed_queries, sources
 
 
+def _research_queries(topic: str) -> list[str]:
+    return [
+        f"{topic[:max(1, 299 - len(suffix))].strip()} {suffix}".strip()
+        for suffix in _SEARCH_QUERY_SUFFIXES
+    ]
+
+
 def _collect_sources(
     topic: str,
     *,
@@ -109,7 +116,7 @@ def _collect_sources(
     checkpoint: Any,
     context: TaskContext,
 ) -> list[dict[str, str]]:
-    queries = [f"{topic} {suffix}" for suffix in _SEARCH_QUERY_SUFFIXES]
+    queries = _research_queries(topic)
     completed_queries, sources = _valid_checkpoint(
         checkpoint, topic_sha256=topic_sha256, queries=queries
     )
@@ -506,8 +513,8 @@ def handle_curriculum_task(
     context.checkpoint({
         "phase": "curriculum_persisted",
         "topic_sha256": topic_sha256,
-        "queries": [f"{topic} {suffix}" for suffix in _SEARCH_QUERY_SUFFIXES],
-        "completed_queries": [f"{topic} {suffix}" for suffix in _SEARCH_QUERY_SUFFIXES],
+        "queries": _research_queries(topic),
+        "completed_queries": _research_queries(topic),
         "path_id": path_id,
         "outline_sha256": outline_sha256,
         "outline": outline,
