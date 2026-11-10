@@ -335,3 +335,24 @@ def test_rocm_vram_byte_counters_are_converted_to_mebibytes(monkeypatch):
     assert devices[0]["memory_total_mb"] == round(25753026560 / 1024**2, 1)
     assert devices[0]["memory_used_mb"] == 1024
     assert devices[0]["utilization_percent"] == 42
+
+
+def test_vulkan_fallback_discovers_vendor_and_leaves_live_metrics_unknown(monkeypatch):
+    output = """Devices:
+========
+GPU0:
+    deviceName = Intel(R) UHD Graphics 730
+    deviceType = PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU
+    vendorID = 0x8086
+GPU1:
+    deviceName = Future Vendor GPU
+    deviceType = PHYSICAL_DEVICE_TYPE_DISCRETE_GPU
+"""
+    monkeypatch.setattr(hardware, "_run_gpu_command", lambda *args, **kwargs: output)
+    devices = hardware._detect_vulkan_gpus()
+    assert len(devices) == 2
+    assert devices[0]["vendor"] == "Intel"
+    assert devices[0]["name"] == "Intel(R) UHD Graphics 730"
+    assert devices[0]["utilization_percent"] is None
+    assert devices[0]["memory_free_mb"] is None
+    assert devices[1]["vendor"] == "Unknown"
