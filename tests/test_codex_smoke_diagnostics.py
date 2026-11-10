@@ -170,6 +170,13 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert 'manual-clamped-to-hardware' in context_script
     assert '$selectedContext -gt $hardwareSafeContext' in context_script
     assert 'Re-run context selection before Codex starts' in context_script
+    assert '$bytesPerToken = $layers * $heads * ($keyLength + $valueLength) * 4' in context_script
+    assert '$selected = [int64]0' in context_script
+    assert 'The measured hardware budget cannot safely support the minimum 512-token context' in context_script
+    assert 'Cannot calculate a hardware-safe context because KV-cache architecture dimensions are incomplete or invalid' in context_script
+    assert 'return [int64][Math]::Min($Maximum, 2048)' not in context_script
+    assert 'options = @{ num_ctx = $selectedContext }' in context_script
+    assert 'if ($allocated -ne $selectedContext)' in context_script
     assert '-VerifyOnly' in diagnostic
     assert '-VerifyOnly' in autonomous
     assert 'Verify persistent Ollama context after Codex smoke' in diagnostic
