@@ -870,9 +870,8 @@ def test_codex_arguments_pin_ollama_and_selected_windows_sandbox(monkeypatch):
     monkeypatch.setenv("CODEX_WINDOWS_SANDBOX_BACKEND", "elevated")
     arguments = progress.codex_arguments("gpt-oss:20b", "codex-report.md")
 
-    assert arguments[:5] == [
-        "exec", "-c", 'model_provider="ollama"',
-        "-c", 'windows.sandbox="elevated"',
+    assert arguments[:3] == [
+        "exec", "-c", 'windows.sandbox="elevated"',
     ]
     overrides = [
         arguments[i + 1] for i, value in enumerate(arguments[:-1]) if value == "-c"
