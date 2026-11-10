@@ -253,7 +253,9 @@ def test_detect_gpu_uses_generic_windows_telemetry_for_single_adapter(monkeypatc
         "Counters": [
             {"Path": r"\\GPU Engine(*)\\Utilization Percentage", "InstanceName": "pid_1_luid_0x00000000_0x0000_phys_0_eng_0_engtype_3D", "CookedValue": 18.5},
             {"Path": r"\\GPU Adapter Memory(*)\\Dedicated Usage", "InstanceName": "luid_0x00000000_0x0000_phys_0", "CookedValue": 268435456},
+            {"Path": r"\\GPU Adapter Memory(*)\\Dedicated Limit", "InstanceName": "luid_0x00000000_0x0000_phys_0", "CookedValue": 2147483648},
             {"Path": r"\\GPU Adapter Memory(*)\\Shared Usage", "InstanceName": "luid_0x00000000_0x0000_phys_0", "CookedValue": 536870912},
+            {"Path": r"\\GPU Adapter Memory(*)\\Shared Limit", "InstanceName": "luid_0x00000000_0x0000_phys_0", "CookedValue": 4294967296},
         ],
     }
     monkeypatch.setattr(hardware, "_run_gpu_command", lambda *args, **kwargs: json.dumps(payload))
@@ -263,6 +265,8 @@ def test_detect_gpu_uses_generic_windows_telemetry_for_single_adapter(monkeypatc
     assert result[0]["utilization_percent"] == 18.5
     assert result[0]["memory_used_mb"] == 256
     assert result[0]["shared_memory_used_mb"] == 512
+    assert result[0]["shared_memory_total_mb"] == 4096
+    assert result[0]["usable_memory_free_mb"] == 5376
 
 
 def test_detect_gpu_keeps_discovered_device_when_metrics_are_unknown(monkeypatch):
