@@ -1396,7 +1396,7 @@ async function refreshModelContextHint(profile) {
  const context=Number(el(contextId).value);
  const input=el(contextId);
  const hint=el(hintId);
- if(!model) { hint.textContent="ابتدا مدل را انتخاب کنید."; input.setCustomValidity(""); return; }
+ if(!model) { hint.textContent="ابتدا مدل را انتخاب کنید."; input.setCustomValidity(""); await refreshHardwareDiagnostics(profile); return; }
  hint.textContent="در حال دریافت metadata مدل و برآورد حافظه…";
  try {
   const data=await api("/api/model-details?name="+encodeURIComponent(model)+"&context_tokens="+encodeURIComponent(context));
