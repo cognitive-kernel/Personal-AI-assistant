@@ -158,7 +158,7 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     autonomous = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
 
     assert 'model = $codexModel' in context_script
-    assert 'from = $Model' in context_script
+    assert 'from = $baseModel' in context_script
     assert 'parameters = @{ num_ctx = $MinimumContextLength }' in context_script
     assert 'PARAMETER\\s+num_ctx' in context_script
     assert 'AUTONOMOUS_ENGINEERING_MODEL=$codexModel' in context_script
