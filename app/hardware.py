@@ -225,7 +225,7 @@ def detect_gpu() -> dict[str, Any]:
         "gpu_devices": devices,
         "gpu_telemetry": telemetry if devices else "unavailable",
         "gpu_telemetry_complete": bool(devices) and all(
-            d.get("utilization_percent") is not None and d.get("memory_total_mb") is not None
+            d.get("utilization_percent") is not None and d.get("memory_used_mb") is not None and d.get("memory_total_mb") is not None
             for d in devices
         ),
     }
