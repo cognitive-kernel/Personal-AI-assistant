@@ -1296,3 +1296,18 @@ def test_pending_pr_state_round_trips_atomically_and_rejects_corruption(tmp_path
     cycle._pending_pr_path().write_text("{broken", encoding="utf-8")
     with pytest.raises(RuntimeError, match="unreadable"):
         cycle.load_pending_pr()
+
+
+def test_clear_pending_state_removes_task_and_pr_in_one_transaction(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    state_dir = tmp_path / "durable-state"
+    state_dir.mkdir()
+    (state_dir / "pending-manual-task.txt").write_text("task", encoding="utf-8")
+    (state_dir / "pending-autonomous-pr.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(state_dir))
+
+    cycle.clear_pending_state()
+
+    assert not (state_dir / "pending-manual-task.txt").exists()
+    assert not (state_dir / "pending-autonomous-pr.json").exists()
