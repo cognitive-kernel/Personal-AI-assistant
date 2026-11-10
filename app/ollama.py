@@ -226,6 +226,7 @@ def model_details(model: str, context_tokens: int | None = None) -> dict[str, An
             estimate["total_ram_gib_float16"] = round(
                 weight_bytes / (1024 ** 3) + kv_bytes / (1024 ** 3) + estimate["overhead_gib"], 2
             )
+            estimate["full_gpu_vram_gib_float16"] = estimate["total_ram_gib_float16"]
     return {
         "name": name,
         "parameter_size": parameter_size,
