@@ -634,9 +634,15 @@ def model_details(
 
 
 @app.get("/api/hardware/diagnostics")
-def hardware_diagnostics(model: str | None = Query(default=None, max_length=200)) -> dict[str, Any]:
+def hardware_diagnostics(
+    model: str | None = Query(default=None, max_length=200),
+    context_tokens: int | None = Query(default=None, ge=512, le=1048576),
+) -> dict[str, Any]:
     try:
-        return ollama.runtime_diagnostics(model.strip() if isinstance(model, str) and model.strip() else None)
+        return ollama.runtime_diagnostics(
+            model.strip() if isinstance(model, str) and model.strip() else None,
+            context_tokens,
+        )
     except ollama.OllamaError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
