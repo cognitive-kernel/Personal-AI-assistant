@@ -253,3 +253,20 @@ def test_hardware_diagnostics_endpoint_returns_cpu_ram_gpu_and_ollama_state(sett
     assert response.status_code == 200
     assert response.json()["hardware"]["gpu_devices"][0]["memory_free_mb"] is None
     assert response.json()["ollama_running_models"][0]["processor"] == "CPU"
+
+
+
+def test_settings_api_auto_selects_context_when_model_changes_without_manual_value(settings_client, monkeypatch):
+    monkeypatch.setattr(ollama, "model_details", lambda name, context_tokens=None: {
+        "name": name,
+        "maximum_context_tokens": 65536,
+        "recommended_context_tokens": 32768,
+    })
+    response = settings_client.patch(
+        "/api/settings",
+        json={"values": {"chat_ollama_model": "local:8b"}},
+    )
+    assert response.status_code == 200
+    assert response.json()["chat_ollama_model"] == "local:8b"
+    assert response.json()["chat_ollama_num_ctx"] == 32768
+    assert response.json()["ollama_num_ctx"] == 32768
