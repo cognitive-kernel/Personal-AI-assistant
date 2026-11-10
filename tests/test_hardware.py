@@ -356,3 +356,11 @@ GPU1:
     assert devices[0]["utilization_percent"] is None
     assert devices[0]["memory_free_mb"] is None
     assert devices[1]["vendor"] == "Unknown"
+
+
+def test_runtime_limits_allow_large_model_context_when_ram_budget_is_ample():
+    limits = hardware.runtime_limits(
+        {"ollama_num_thread": 0, "ollama_num_ctx": 65536},
+        {"logical_cpu_count": 12, "total_ram_gb": 32, "available_ram_gb": 26},
+    )
+    assert limits["num_ctx"] == 65536
