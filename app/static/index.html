@@ -1413,12 +1413,12 @@ async function refreshModelContextHint(profile) {
     +(invalid?" | مقدار فعلی بیش از حد مجاز است.":"");
   } else {
    input.max="1048576";
-   input.setCustomValidity("سقف context مدل از metadata قابل تأیید نیست؛ ذخیره این مقدار مجاز نیست.");
+   input.setCustomValidity("");
    hint.textContent="حداکثر context در metadata این مدل موجود نیست؛ برای جلوگیری از تنظیم اشتباه، امکان تأیید context وجود ندارد.";
   }
   await refreshHardwareDiagnostics(profile);
  } catch(error) {
-  input.setCustomValidity("برای اعتبارسنجی context باید metadata مدل از Ollama دریافت شود.");
+  input.setCustomValidity("");
   hint.textContent="اطلاعات مدل دریافت نشد: "+error.message;
  }
 }
