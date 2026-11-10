@@ -34,6 +34,7 @@ def test_restore_preserves_checkpoint_when_watcher_ownership_cannot_be_verified(
 ):
     metadata, paths = _state(tmp_path)
     monkeypatch.setattr(checkpoint, "_latest_checkpoint", lambda: (metadata, paths))
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: tmp_path)
 
     def refuse_stop(_metadata):
         raise RuntimeError("access denied; watcher may still be writing")
@@ -53,6 +54,7 @@ def test_clear_preserves_all_checkpoint_files_when_watcher_stop_fails(
 ):
     metadata, paths = _state(tmp_path)
     monkeypatch.setattr(checkpoint, "paths", lambda run_id, task: paths)
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: tmp_path)
     monkeypatch.setattr(checkpoint, "read_metadata", lambda run_id, task: metadata)
 
     def refuse_stop(_metadata):
@@ -77,6 +79,7 @@ def test_watcher_start_does_not_replace_state_when_previous_owner_is_ambiguous(
     ready.write_text("old readiness", encoding="utf-8")
     error.write_text("old error", encoding="utf-8")
     monkeypatch.setattr(checkpoint, "paths", lambda run_id, task: paths)
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: tmp_path)
     monkeypatch.setattr(checkpoint, "watcher_marker_paths", lambda run_id, task: (ready, error))
     monkeypatch.setattr(checkpoint, "read_metadata", lambda run_id, task: metadata)
 
@@ -203,3 +206,90 @@ def test_unreadable_metadata_blocks_mutation(monkeypatch: pytest.MonkeyPatch, tm
 
     with pytest.raises(RuntimeError, match="metadata cannot be read"):
         checkpoint.read_metadata("run-9", 2)
+
+
+def test_checkpoint_store_lock_is_exclusive_across_processes_and_recovers_after_crash(
+    tmp_path: Path,
+):
+    import os
+    import subprocess
+    import sys
+    import time
+
+    root = Path(__file__).resolve().parents[1]
+    code = (
+        "import os, time; from pathlib import Path; "
+        "from scripts.autonomous_engineering_checkpoint_lock import checkpoint_store_lock; "
+        f"with_lock=checkpoint_store_lock(Path({str(tmp_path)!r})); "
+        "with_lock.__enter__(); time.sleep(1.0); with_lock.__exit__(None,None,None)"
+    )
+    child = subprocess.Popen(
+        [sys.executable, "-c", code],
+        cwd=root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                with checkpoint.checkpoint_store_lock(tmp_path, timeout_seconds=0):
+                    pass
+            except TimeoutError:
+                break
+            time.sleep(0.02)
+        else:
+            pytest.fail("A second process acquired checkpoint ownership while the watcher held it.")
+    finally:
+        child.wait(timeout=10)
+
+    with checkpoint.checkpoint_store_lock(tmp_path, timeout_seconds=1):
+        pass
+
+
+def test_checkpoint_watcher_rejects_duplicate_owner_before_mutating_state(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    import subprocess
+    import sys
+    import time
+
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: tmp_path)
+    state = checkpoint.paths("duplicate-run", 1)
+    state["patch"].write_bytes(b"existing checkpoint")
+    state["metadata"].write_text(
+        '{"run_id":"duplicate-run","task":1,"base_sha":"' + "a" * 40 + '"}',
+        encoding="utf-8",
+    )
+    code = (
+        "import time; from pathlib import Path; "
+        "from scripts.autonomous_engineering_checkpoint_lock import checkpoint_store_lock; "
+        f"lock=checkpoint_store_lock(Path({str(tmp_path)!r})); "
+        "lock.__enter__(); time.sleep(2.0); lock.__exit__(None,None,None)"
+    )
+    child = subprocess.Popen(
+        [sys.executable, "-c", code],
+        cwd=root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                with checkpoint.checkpoint_store_lock(tmp_path, timeout_seconds=0):
+                    pass
+            except TimeoutError:
+                break
+            time.sleep(0.02)
+        else:
+            pytest.fail("Test owner did not acquire checkpoint lock.")
+
+        with pytest.raises(TimeoutError):
+            checkpoint.watch("a" * 40, "duplicate-run", 1, 5)
+        assert state["patch"].read_bytes() == b"existing checkpoint"
+    finally:
+        child.wait(timeout=10)
