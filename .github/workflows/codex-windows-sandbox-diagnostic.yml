@@ -10,6 +10,10 @@ on:
     paths:
       - .github/workflows/codex-windows-sandbox-diagnostic.yml
       - .github/workflows/autonomous-codex-engineering.yml
+      - app/autonomous_engineering.py
+      - app/main.py
+      - app/ollama.py
+      - app/ollama_context.py
       - scripts/autonomous_engineering_progress.py
       - scripts/verify_ollama_context.ps1
       - tests/test_autonomous_engineering.py
