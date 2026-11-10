@@ -98,7 +98,7 @@ def test_powershell_and_python_compute_identical_task_digest():
     script = (
         "$sha = [System.Security.Cryptography.SHA256]::Create(); "
         f"$bytes = [System.Text.Encoding]::UTF8.GetBytes('{task}'); "
-        "$digest = [BitConverter]::ToString($sha.ComputeHash($bytes)).Replace('-', '').ToLowerInvariant(); "
+        "$digest = [BitConverter]::ToString($sha.ComputeHash($bytes)).Replace("-", "").ToLowerInvariant(); "
         "$sha.Dispose(); Write-Output $digest"
     )
     result = subprocess.run(
