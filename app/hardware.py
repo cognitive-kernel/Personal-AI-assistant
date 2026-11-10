@@ -26,48 +26,198 @@ def detect_hardware() -> dict[str, Any]:
             "CPU thread count is capped by the configurable CPU resource percentage.",
             "RAM budget is computed from currently available memory minus a safety reserve and capped by a configurable maximum; it is not a hard OS quota.",
             "RAM and GPU thresholds are monitored independently; external Ollama memory/compute cannot be hard-capped by this application.",
-            "GPU telemetry is currently available for NVIDIA devices through nvidia-smi; unsupported or absent GPUs are reported as unknown.",
+            "GPU discovery tries vendor tools and Windows generic performance counters; unavailable metrics remain unknown.",
         ],
     }
 
 
-def detect_gpu() -> dict[str, Any]:
-    """Read NVIDIA utilization and VRAM using nvidia-smi without a shell."""
+def _run_gpu_command(command: list[str], timeout: float = 2.0) -> str | None:
     try:
-        result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=1.5, check=False,
+        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False)
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return None
+
+
+def _detect_nvidia_gpus() -> list[dict[str, Any]]:
+    output = _run_gpu_command([
+        "nvidia-smi",
+        "--query-gpu=name,utilization.gpu,memory.used,memory.total",
+        "--format=csv,noheader,nounits",
+    ])
+    if not output:
+        return []
+    devices = []
+    for index, line in enumerate(output.splitlines()):
+        parts = [part.strip() for part in line.split(",", 3)]
+        if len(parts) != 4:
+            continue
+        try:
+            utilization, used_mb, total_mb = (int(part) for part in parts[1:])
+        except ValueError:
+            continue
+        if not 0 <= utilization <= 100 or total_mb <= 0 or not 0 <= used_mb <= total_mb:
+            continue
+        devices.append({
+            "index": index,
+            "name": parts[0],
+            "vendor": "NVIDIA",
+            "utilization_percent": utilization,
+            "memory_used_mb": used_mb,
+            "memory_total_mb": total_mb,
+            "memory_free_mb": total_mb - used_mb,
+            "memory_percent": round(used_mb * 100 / total_mb, 1),
+            "telemetry": "nvidia-smi",
+        })
+    return devices
+
+
+def _detect_rocm_gpus() -> list[dict[str, Any]]:
+    output = _run_gpu_command(["rocm-smi", "--showproductname", "--showuse", "--showmeminfo", "vram", "--json"])
+    if not output:
+        return []
+    try:
+        payload = json.loads(output)
+    except (ValueError, TypeError):
+        return []
+    devices = []
+    if not isinstance(payload, dict):
+        return devices
+    for index, (key, item) in enumerate(payload.items()):
+        if not isinstance(item, dict):
+            continue
+        flat = {str(k).casefold(): v for k, v in item.items()}
+        def number(*needles):
+            for name, value in flat.items():
+                if any(needle in name for needle in needles):
+                    try:
+                        return float(str(value).replace("%", "").replace(" MB", "").replace(",", "").strip())
+                    except (TypeError, ValueError):
+                        continue
+            return None
+        total = number("vram total", "memory total")
+        used = number("vram used", "memory used")
+        util = number("gpu use", "gpu utilization")
+        if total is None and used is None and util is None:
+            continue
+        devices.append({
+            "index": index, "name": str(flat.get("card series", flat.get("product name", key))),
+            "vendor": "AMD", "utilization_percent": util,
+            "memory_used_mb": used, "memory_total_mb": total,
+            "memory_free_mb": max(0, total - used) if total is not None and used is not None else None,
+            "memory_percent": round(used * 100 / total, 1) if total and used is not None else None,
+            "telemetry": "rocm-smi",
+        })
+    return devices
+
+
+def _detect_windows_gpus() -> list[dict[str, Any]]:
+    """Use Windows WMI plus generic GPU performance counters (works across vendors)."""
+    if os.name != "nt":
+        return []
+    script = r"""
+$ErrorActionPreference = 'SilentlyContinue'
+$adapters = @(Get-CimInstance Win32_VideoController | ForEach-Object {
+  [pscustomobject]@{ Name=$_.Name; PNPDeviceID=$_.PNPDeviceID; AdapterRAM=$_.AdapterRAM }
+})
+$counters = @()
+try {
+  $counters = (Get-Counter -Counter @(
+    '\GPU Engine(*)\Utilization Percentage',
+    '\GPU Adapter Memory(*)\Dedicated Usage',
+    '\GPU Adapter Memory(*)\Shared Usage'
+  ) -SampleInterval 1 -MaxSamples 1).CounterSamples | ForEach-Object {
+    [pscustomobject]@{ Path=$_.Path; InstanceName=$_.InstanceName; CookedValue=$_.CookedValue }
+  }
+} catch {}
+[pscustomobject]@{Adapters=$adapters; Counters=$counters} | ConvertTo-Json -Depth 5 -Compress
+"""
+    output = _run_gpu_command(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script], timeout=4.0)
+    if not output:
+        return []
+    try:
+        payload = json.loads(output)
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(payload, dict):
+        return []
+    adapters = payload.get("Adapters") or []
+    counters = payload.get("Counters") or []
+    if isinstance(adapters, dict):
+        adapters = [adapters]
+    if isinstance(counters, dict):
+        counters = [counters]
+    devices = []
+    for index, adapter in enumerate(adapters):
+        if not isinstance(adapter, dict):
+            continue
+        name = str(adapter.get("Name") or "Unknown GPU")
+        pnp = str(adapter.get("PNPDeviceID") or "")
+        vendor = "Intel" if "VEN_8086" in pnp.upper() or "INTEL" in name.upper() else (
+            "AMD" if "VEN_1002" in pnp.upper() or "AMD" in name.upper() else (
+                "NVIDIA" if "VEN_10DE" in pnp.upper() or "NVIDIA" in name.upper() else "Unknown"
+            )
         )
-        if result.returncode != 0 or not result.stdout.strip():
-            raise ValueError("nvidia-smi returned no GPU telemetry")
-        rows = []
-        for line in result.stdout.splitlines():
-            parts = [part.strip() for part in line.split(",")]
-            if len(parts) != 3:
-                raise ValueError("unexpected nvidia-smi output")
-            utilization, used_mb, total_mb = (int(part) for part in parts)
-            if not (0 <= utilization <= 100 and 0 <= used_mb <= total_mb and total_mb > 0):
-                raise ValueError("invalid GPU telemetry")
-            rows.append({
-                "utilization_percent": utilization,
-                "memory_used_mb": used_mb,
-                "memory_total_mb": total_mb,
-                "memory_percent": round(used_mb * 100 / total_mb, 1),
-            })
-        if not rows:
-            raise ValueError("no NVIDIA GPUs detected")
-        return {
-            "gpu_available": True, "gpu_count": len(rows),
-            "gpu_utilization_percent": max(row["utilization_percent"] for row in rows),
-            "gpu_memory_percent": max(row["memory_percent"] for row in rows),
-            "gpu_devices": rows, "gpu_telemetry": "nvidia-smi",
-        }
-    except (OSError, ValueError, subprocess.SubprocessError):
-        return {
-            "gpu_available": False, "gpu_count": 0,
-            "gpu_utilization_percent": None, "gpu_memory_percent": None,
-            "gpu_devices": [], "gpu_telemetry": "unavailable",
-        }
+        matching = [row for row in counters if isinstance(row, dict) and (
+            str(index) in str(row.get("InstanceName", "")) or
+            name.casefold().replace(" ", "_") in str(row.get("InstanceName", "")).casefold()
+        )]
+        engine = [float(row["CookedValue"]) for row in matching if "gpu engine" in str(row.get("Path", "")).casefold() and isinstance(row.get("CookedValue"), (int, float))]
+        dedicated = [float(row["CookedValue"]) for row in matching if "dedicated usage" in str(row.get("Path", "")).casefold() and isinstance(row.get("CookedValue"), (int, float))]
+        shared = [float(row["CookedValue"]) for row in matching if "shared usage" in str(row.get("Path", "")).casefold() and isinstance(row.get("CookedValue"), (int, float))]
+        total_mb = None
+        try:
+            raw_ram = int(adapter.get("AdapterRAM") or 0)
+            if raw_ram > 0:
+                total_mb = round(raw_ram / (1024 ** 2), 1)
+        except (TypeError, ValueError):
+            pass
+        used_mb = round(sum(dedicated) / (1024 ** 2), 1) if dedicated else None
+        devices.append({
+            "index": index, "name": name, "vendor": vendor,
+            "utilization_percent": round(min(100.0, max(engine)), 1) if engine else None,
+            "memory_used_mb": used_mb, "memory_total_mb": total_mb,
+            "memory_free_mb": max(0, round(total_mb - used_mb, 1)) if total_mb is not None and used_mb is not None else None,
+            "shared_memory_used_mb": round(sum(shared) / (1024 ** 2), 1) if shared else None,
+            "memory_percent": round(used_mb * 100 / total_mb, 1) if total_mb and used_mb is not None else None,
+            "telemetry": "windows-performance-counters" if matching else "wmi-device-only",
+        })
+    return devices
+
+
+def detect_gpu() -> dict[str, Any]:
+    """Discover GPUs across vendors; missing telemetry remains unknown, never zero."""
+    providers = (
+        ("nvidia-smi", _detect_nvidia_gpus),
+        ("rocm-smi", _detect_rocm_gpus),
+        ("windows-performance-counters", _detect_windows_gpus),
+    )
+    devices: list[dict[str, Any]] = []
+    for provider, detector in providers:
+        try:
+            devices = detector()
+        except Exception:
+            devices = []
+        if devices:
+            break
+    measurable_util = [d["utilization_percent"] for d in devices if isinstance(d.get("utilization_percent"), (int, float))]
+    measurable_memory = [d["memory_percent"] for d in devices if isinstance(d.get("memory_percent"), (int, float))]
+    telemetry_names = sorted({str(d.get("telemetry")) for d in devices if d.get("telemetry")})
+    telemetry = ",".join(telemetry_names) if telemetry_names else "device-enumeration-only"
+    return {
+        "gpu_available": bool(devices),
+        "gpu_count": len(devices),
+        "gpu_utilization_percent": round(max(measurable_util), 1) if measurable_util else None,
+        "gpu_memory_percent": round(max(measurable_memory), 1) if measurable_memory else None,
+        "gpu_devices": devices,
+        "gpu_telemetry": telemetry if devices else "unavailable",
+        "gpu_telemetry_complete": bool(devices) and all(
+            d.get("utilization_percent") is not None and d.get("memory_total_mb") is not None
+            for d in devices
+        ),
+    }
 
 def _resource_limit(settings: dict[str, Any] | None, key: str) -> float:
     value = (settings or {}).get(key, 90)
