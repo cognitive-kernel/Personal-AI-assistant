@@ -772,6 +772,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         "learning_ollama_num_ctx": "learning_ollama_model",
         "programming_ollama_num_ctx": "programming_ollama_model",
     }
+    model_metadata_cache: dict[str, dict[str, Any]] = {}
     for context_key, model_key in context_profiles.items():
         generic_chat_change = model_key == "chat_ollama_model" and (
             "ollama_model" in values or "ollama_num_ctx" in values
@@ -786,10 +787,19 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
             model_key,
             values.get("ollama_model") if model_key == "chat_ollama_model" else current_settings.get(model_key),
         )
+        existing_model = current_settings.get(model_key) or current_settings.get("ollama_model")
+        existing_context = current_settings.get(context_key, current_settings.get("ollama_num_ctx"))
+        # The dashboard submits every field. Unchanged profiles do not need an Ollama
+        # round-trip, so ordinary settings remain editable while Ollama is offline.
+        if model_name == existing_model and context_value == existing_context:
+            continue
         if not isinstance(model_name, str) or not model_name.strip():
             raise HTTPException(status_code=422, detail=f"{context_key} requires a selected Ollama model.")
         try:
-            metadata = ollama.model_details(model_name.strip())
+            metadata = model_metadata_cache.get(model_name.strip())
+            if metadata is None:
+                metadata = ollama.model_details(model_name.strip())
+                model_metadata_cache[model_name.strip()] = metadata
         except ollama.OllamaError as exc:
             raise HTTPException(
                 status_code=422,
