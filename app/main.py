@@ -374,8 +374,8 @@ def startup() -> None:
         research_planner.RESEARCH_PLAN_TASK_TYPE: research_planner.handle_research_plan_task,
     }
     learning_handlers = {
-        learning_curriculum_tasks.CURRICULUM_TASK_TYPE: learning_curriculum_tasks.handle_curriculum_task,
         LEARNING_TASK_TYPE: handle_learning_job,
+        learning_curriculum_tasks.CURRICULUM_TASK_TYPE: learning_curriculum_tasks.handle_curriculum_task,
         learning_review_tasks.LEARNING_REVIEW_TASK_TYPE: learning_review_tasks.handle_candidate_review,
         learning_review_tasks.LEARNING_SANDBOX_REVIEW_TASK_TYPE: learning_review_tasks.handle_candidate_sandbox_review,
         knowledge_lifecycle_tasks.KNOWLEDGE_VALIDATE_TASK_TYPE: knowledge_lifecycle_tasks.handle_validate_candidate,
