@@ -293,3 +293,61 @@ def test_checkpoint_watcher_rejects_duplicate_owner_before_mutating_state(
         assert state["patch"].read_bytes() == b"existing checkpoint"
     finally:
         child.wait(timeout=10)
+
+
+@pytest.mark.parametrize(("schema", "include_patch_bytes"), [(2, False), (3, True), (4, True)])
+def test_latest_checkpoint_reads_supported_v2_v3_v4_records(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    schema: int,
+    include_patch_bytes: bool,
+):
+    import json
+
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: tmp_path)
+    state = checkpoint.paths(f"schema-{schema}", 1)
+    state["patch"].write_bytes(b"legacy-compatible patch")
+    metadata = {
+        "schema_version": schema,
+        "run_id": f"schema-{schema}",
+        "task": 1,
+        "base_sha": "a" * 40,
+        "updated_at": float(schema),
+        "watcher_pid": None,
+        "watcher_ready": False,
+    }
+    if include_patch_bytes:
+        metadata["patch_bytes"] = len(b"legacy-compatible patch")
+    state["metadata"].write_text(json.dumps(metadata), encoding="utf-8")
+
+    latest = checkpoint._latest_checkpoint()
+
+    assert latest is not None
+    assert latest[0]["schema_version"] == schema
+    assert latest[1]["patch"].read_bytes() == b"legacy-compatible patch"
+
+
+def test_corrupt_newer_checkpoint_blocks_fallback_to_older_valid_snapshot(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    import json
+
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: tmp_path)
+    older = checkpoint.paths("older", 1)
+    older["patch"].write_bytes(b"older patch")
+    older_metadata = {
+        "schema_version": 3,
+        "run_id": "older",
+        "task": 1,
+        "base_sha": "a" * 40,
+        "updated_at": 1.0,
+        "patch_bytes": len(b"older patch"),
+    }
+    older["metadata"].write_text(json.dumps(older_metadata), encoding="utf-8")
+
+    newer = checkpoint.paths("newer", 1)
+    newer["patch"].write_bytes(b"newer patch")
+    newer["metadata"].write_text("{broken", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="unreadable; refusing stale-checkpoint fallback"):
+        checkpoint._latest_checkpoint()
