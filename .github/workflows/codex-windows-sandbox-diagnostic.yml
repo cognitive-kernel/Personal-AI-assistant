@@ -6,6 +6,7 @@ on:
     branches:
       - fix/autonomous-task-preservation
       - fix/automation-codex-context-smoke-20261107
+      - fix/codex-builtin-ollama-config-20261110
     paths:
       - .github/workflows/codex-windows-sandbox-diagnostic.yml
       - .github/workflows/autonomous-codex-engineering.yml
