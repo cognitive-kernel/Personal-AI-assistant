@@ -1444,11 +1444,24 @@ async function refreshHardwareDiagnostics(profile=modelContextProfiles[0]) {
   });
   const selected=data.selected_model;
   const estimate=selected?.memory_estimate?.total_ram_gib_float16;
-  const budget=Math.max(0,Math.min(Number(h.available_ram_gb||0),Number((await api("/api/settings")).ram_budget_max_gb||25))-Number((await api("/api/settings")).ram_safety_reserve_gb||4));
-  const fit=estimate==null?"قابلیت تناسب RAM نامشخص است؛ metadata کافی برای KV cache وجود ندارد.":(estimate<=budget?"برآورد RAM در بودجه فعلی جا می‌شود.":"برآورد RAM از بودجه امن فعلی بیشتر است.");
+  const settings=await api("/api/settings");
+  const availableRam=Number(h.available_ram_gb);
+  const budget=Number.isFinite(availableRam)
+   ? Math.max(0,Math.min(availableRam,Number(settings.ram_budget_max_gb||25))-Number(settings.ram_safety_reserve_gb||4))
+   : null;
+  const fit=estimate==null?"قابلیت تناسب RAM نامشخص است؛ metadata کافی برای KV cache وجود ندارد."
+   :budget==null?"تناسب RAM نامشخص است؛ سنجش RAM آزاد در دسترس نیست."
+   :(estimate<=budget?"برآورد RAM در بودجه امن فعلی جا می‌شود.":"برآورد RAM از بودجه امن فعلی بیشتر است.");
+  const gpuEnabled=settings.gpu_enabled===true;
+  const gpuRunning=(data.ollama_running_models||[]).find(item=>item.name===model);
+  const gpuStatus=gpuRunning?.processor==="GPU"?"Ollama برای این مدل VRAM تخصیص داده است."
+   :gpuRunning?.processor==="CPU"?"این مدل اکنون روی CPU اجرا می‌شود."
+   :(gpuEnabled && h.gpu_available?"GPU شناسایی شده و گزینه فعال است؛ استفاده واقعی تا بارگذاری مدل تأیید نمی‌شود."
+    :gpuEnabled?"GPU فعال شده اما دستگاه/درایور قابل شناسایی نیست."
+    :"استفاده از GPU در تنظیمات غیرفعال است.");
   output.textContent="CPU: "+h.logical_cpu_count+" thread منطقی؛ "+cpu+"؛ RAM: "+ram+"؛ GPU: "+(gpuLines.length?gpuLines.join(" | "):"هیچ GPU شناسایی نشد یا اطلاعات دستگاه در دسترس نیست.")
    +(running.length?"؛ تخصیص واقعی Ollama: "+running.join(" | "):"؛ مدل فعالی در Ollama گزارش نشده است.")
-   +(estimate!=null?"؛ نیاز تخمینی RAM مدل در context انتخابی: "+estimate+" GiB. "+fit:"؛ "+fit);
+   +(estimate!=null?"؛ نیاز تخمینی RAM مدل در context انتخابی: "+estimate+" GiB. "+fit:"؛ "+fit)+"؛ وضعیت GPU: "+gpuStatus;
  } catch(error) { output.textContent="تحلیل سخت‌افزار در دسترس نیست: "+error.message; }
 }
 for(const profile of modelContextProfiles) {
