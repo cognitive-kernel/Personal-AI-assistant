@@ -134,6 +134,10 @@ def test_learning_model_setting_migrates_only_the_previous_builtin_default(tmp_p
     db.init_databases()
     assert db.get_settings()["learning_ollama_model"] == "custom-learning:latest"
 
+    monkeypatch.setenv("LEARNING_OLLAMA_MODEL", "env-learning:latest")
+    db.init_databases()
+    assert db.get_settings()["learning_ollama_model"] == "env-learning:latest"
+
 
 def test_research_curriculum_schema_migration_is_registered_and_applied(tmp_path, monkeypatch):
     from app.schema_registry import LEARNING_MIGRATIONS
