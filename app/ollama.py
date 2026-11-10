@@ -408,6 +408,8 @@ def chat(
         message_limit = min(72000, max(12000, int(settings.get("programming_source_max_chars", 12000)) + 6500))
     messages.append({"role": "user", "content": message[:message_limit]})
     options = {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"]}
+    if not bool(settings.get("gpu_enabled", False)):
+        options["num_gpu"] = 0
     if num_predict is not None:
         if isinstance(num_predict, bool) or not isinstance(num_predict, int) or not 1 <= num_predict <= 8192:
             raise ValueError("num_predict must be an integer between 1 and 8192.")
