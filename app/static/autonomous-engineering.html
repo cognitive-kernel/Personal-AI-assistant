@@ -47,7 +47,7 @@
 </div>
 <div class="status-grid">
 <article class="status-card"><span class="status-label">سرویس Ollama</span><strong id="ollama-state">—</strong><p id="ollama-detail">اتصال محلی بررسی نشده است.</p></article>
-<article class="status-card"><span class="status-label">مدل کدنویسی</span><strong id="model-state">—</strong><p id="model-detail">مدل موردنیاز: gpt-oss:20b</p></article>
+<article class="status-card"><span class="status-label">مدل کدنویسی</span><strong id="model-state">—</strong><p id="model-detail">مدل ذخیره‌شده، سقف Context و قابلیت tools هنوز بررسی نشده‌اند.</p></article>
 <article class="status-card"><span class="status-label">Codex CLI در حساب برنامه</span><strong id="codex-state">—</strong><p id="codex-detail">نصب و نسخه بررسی نشده است.</p></article>
 <article class="status-card"><span class="status-label">GitHub Runner</span><strong id="runner-state">—</strong><p id="runner-detail">فرایند Runner.Listener بررسی نشده است.</p></article>
 <article class="status-card"><span class="status-label">GitHub CLI</span><strong id="github-state">—</strong><p id="github-detail">احراز هویت محلی بررسی نشده است.</p></article>
@@ -81,7 +81,7 @@
     <label class="field">
       <span>مدل نصب‌شدهٔ Ollama</span>
       <select id="ollama-model" name="model">
-        <option value="gpt-oss:20b">gpt-oss:20b (پیش‌فرض)</option>
+        <option value="" disabled selected>در حال دریافت فهرست مدل‌های نصب‌شده…</option>
       </select>
     </label>
     <label class="field field-wide">
@@ -167,7 +167,7 @@
 <p class="eyebrow">ONE-TIME SETUP</p>
 <h2 id="setup-title">راه‌اندازی روی ویندوز</h2>
 <ol class="setup-list">
-<li><strong>Ollama را نصب و مدل را دریافت کنید.</strong><p>در ترمینال اجرا کنید:</p><code>ollama pull gpt-oss:20b</code></li>
+<li><strong>Ollama را نصب و مدل را دریافت کنید.</strong><p>در ترمینال اجرا کنید:</p><code>ollama pull نام-مدل-انتخابی</code></li>
 <li><strong>Node.js LTS و GitHub CLI را آماده کنید.</strong><p>Node.js باید system-wide در PATH ویندوز باشد. با حسابی که برنامهٔ محلی را اجرا می‌کند، نشست موجود Chrome را برای احراز هویت GitHub به‌کار بگیرید:</p><code>gh auth login --web</code></li>
 <li><strong>Runner را در صورت نیاز provision کنید.</strong><p>اسکریپت موجود، حساب Windows اختصاصی و غیرمدیر (حساب سرویس) و Runner ویندوز با برچسب ollama را ایجاد و ACL فضای پیشرفت را تنظیم می‌کند. به PowerShell مدیر و مجوز Administration: write در مخزن نیاز دارد. اگر Runner از قبل به‌درستی نصب شده، آن را دوباره provision نکنید.</p><code>powershell -ExecutionPolicy Bypass -File .\scripts\provision_autonomous_runner.ps1 -Repository "cognitive-kernel/Personal-AI-assistant" -RunnerAccount "runner-svc" -AppAccount "app-user"</code></li>
 <li><strong>آمادگی هر دو حساب را بررسی کنید.</strong><p>ابتدا از حساب برنامه و سپس از حساب سرویس Runner بررسی کنید:</p><code>powershell -ExecutionPolicy Bypass -File .\scripts\check_autonomous_agent.ps1</code><code>powershell -ExecutionPolicy Bypass -File .\scripts\check_autonomous_runner.ps1</code></li>
