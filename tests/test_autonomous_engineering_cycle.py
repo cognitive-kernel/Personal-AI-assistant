@@ -273,7 +273,12 @@ def test_publish_pull_request_leaves_exact_sha_validated_pr_open_for_owner_merge
 
     monkeypatch.setattr(cycle, "api", fake_api)
     validations = []
-    monkeypatch.setattr(cycle, "dispatch_and_wait_all", lambda *args: validations.append(args))
+
+    def dispatch_after_owner_record(*args):
+        validations.append(args)
+        assert cycle.load_pending_pr()["number"] == 12
+
+    monkeypatch.setattr(cycle, "dispatch_and_wait_all", dispatch_after_owner_record)
 
     result = cycle.publish_pull_request(
         "token", "owner/repository", "codex/local-engineering-1-1-task-1",
