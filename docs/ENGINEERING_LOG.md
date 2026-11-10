@@ -373,3 +373,15 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Added fault-injection tests for access denied, PID reuse, command-line mismatch, legacy live process, process kill/reap, restore/clear preservation, and watcher-start preservation. Added execution-lock crash-release tests.
 - ADR-014 and the operations guide now document the ownership contract and compatibility behavior.
 - PR [#707](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/707) is Draft. Exact-head CI and owner-side Windows Runner validation are pending. No merge or target-host success is claimed.
+
+
+## 2026-11-10 — Durable task/PR state transaction ownership (PR #707)
+
+- Root cause: manual-task persistence ran in a prerequisite job outside the codex job's concurrency group. Python and PowerShell independently read/wrote the single pending-task slot and pending-PR record; atomic file replacement alone did not serialize the read/validate/write transaction.
+- Added `scripts/autonomous_engineering_state_lock.py`. Windows uses the same named kernel mutex from Python and PowerShell; POSIX uses a bounded `flock`. An abandoned mutex is reacquired, then durable state is validated before mutation.
+- Unified state-root resolution in `scripts/autonomous_engineering_state_paths.py`.
+- PowerShell manual-task persistence now holds the mutex while checking active/queued workflow runs, validating pending task/PR records, checking open autonomous PRs, and atomically writing the single task slot. It rejects a new task during another active run rather than accepting work that could be erased by the current run's completion.
+- The workflow capture step now reads the durable task under the same mutex and does not write it a second time.
+- Pending PR read/save/clear operations use the same mutex. PR publication persists its owner record before dispatching CI; recovery persists a discovered PR before CI revalidation. Post-merge cleanup removes the pending task and pending PR in one locked transaction.
+- Added Python cross-process exclusion/crash-release tests and a Windows-only PowerShell/Python mutex interoperability test. Added publication-order and atomic-clear regressions.
+- Added ADR-015 and updated the operations guide. Exact-head CI and the real self-hosted Runner workflow remain the acceptance gates; no merge is claimed.
