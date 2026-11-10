@@ -19,6 +19,7 @@ try:
         process_start_time,
         stop_owned_watcher,
     )
+    from .autonomous_engineering_checkpoint_lock import checkpoint_store_lock
     from .autonomous_engineering_state_paths import execution_state_directory
 except ImportError:  # Direct script execution from the scripts directory.
     from autonomous_engineering_checkpoint_contract import (
@@ -29,6 +30,7 @@ except ImportError:  # Direct script execution from the scripts directory.
         process_start_time,
         stop_owned_watcher,
     )
+    from autonomous_engineering_checkpoint_lock import checkpoint_store_lock
     from autonomous_engineering_state_paths import execution_state_directory
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -122,7 +124,7 @@ def read_metadata(run_id: str, task: int) -> dict[str, Any] | None:
     return value
 
 
-def write_snapshot(
+def _write_snapshot_unlocked(
     base_sha: str,
     run_id: str,
     task: int,
@@ -184,38 +186,52 @@ def write_snapshot(
     _atomic_write(state["metadata"], json.dumps(metadata, ensure_ascii=False, sort_keys=True) + "\n")
 
 
+def write_snapshot(
+    base_sha: str,
+    run_id: str,
+    task: int,
+    watcher_pid: int | None = None,
+    watcher_started_at: float | None = None,
+) -> None:
+    with checkpoint_store_lock(store_dir()):
+        _write_snapshot_unlocked(
+            base_sha, run_id, task, watcher_pid, watcher_started_at,
+        )
+
+
 def watch(base_sha: str, run_id: str, task: int, interval: int) -> int:
     state = paths(run_id, task)
     ready_path, error_path = watcher_marker_paths(run_id, task)
     state["directory"].mkdir(parents=True, exist_ok=True)
-    # Reconcile any previous owner before replacing this run/task's markers.
-    # A live but unverifiable owner blocks startup instead of being overwritten.
-    stop_existing_watcher(read_metadata(run_id, task))
-    state["stop"].unlink(missing_ok=True)
-    ready_path.unlink(missing_ok=True)
-    error_path.unlink(missing_ok=True)
-    watcher_started_at = process_start_time(os.getpid())
-    try:
-        write_snapshot(base_sha, run_id, task, os.getpid(), watcher_started_at)
-        # The atomic metadata replacement above is the only readiness signal.
-        # Do not perform a second synchronous marker write here: a filesystem
-        # stall must not block the watcher after its durable snapshot is saved.
-    except Exception as exc:
+    # The watcher owns the checkpoint store for its full lifetime. A second
+    # watcher fails immediately instead of stopping or overwriting this owner.
+    with checkpoint_store_lock(store_dir(), timeout_seconds=0):
+        # Reconcile legacy watchers that predate the lifetime lock. A current
+        # watcher cannot reach this point while holding the same OS lock.
+        stop_existing_watcher(read_metadata(run_id, task))
+        state["stop"].unlink(missing_ok=True)
+        ready_path.unlink(missing_ok=True)
+        error_path.unlink(missing_ok=True)
+        watcher_started_at = process_start_time(os.getpid())
         try:
-            _atomic_write(error_path, f"{type(exc).__name__}: {exc}\n")
-        except OSError as marker_exc:
-            print(
-                f"Watcher startup failed ({type(exc).__name__}: {exc}); "
-                f"error marker also failed ({type(marker_exc).__name__}: {marker_exc})",
-                file=sys.stderr,
-            )
-        raise
-    while not state["stop"].exists():
-        try:
-            write_snapshot(base_sha, run_id, task, os.getpid(), watcher_started_at)
-        except (OSError, RuntimeError) as exc:
-            print(f"Checkpoint snapshot skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
-        time.sleep(max(5, min(interval, 120)))
+            _write_snapshot_unlocked(base_sha, run_id, task, os.getpid(), watcher_started_at)
+            # Atomic metadata replacement is the readiness commit point.
+        except Exception as exc:
+            try:
+                _atomic_write(error_path, f"{type(exc).__name__}: {exc}\n")
+            except OSError as marker_exc:
+                print(
+                    f"Watcher startup failed ({type(exc).__name__}: {exc}); "
+                    f"error marker also failed ({type(marker_exc).__name__}: {marker_exc})",
+                    file=sys.stderr,
+                )
+            raise
+        while not state["stop"].exists():
+            try:
+                _write_snapshot_unlocked(base_sha, run_id, task, os.getpid(), watcher_started_at)
+            except (OSError, RuntimeError) as exc:
+                print(f"Checkpoint snapshot skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
+            time.sleep(max(5, min(interval, 120)))
     return 0
 
 
@@ -278,44 +294,50 @@ def restore(base_sha: str) -> bool:
     metadata, state = latest
     stop_existing_watcher(metadata)
     _atomic_write(state["stop"], "stop\n")
-    current_head = git("rev-parse", "HEAD").stdout.strip()
-    if current_head != base_sha:
-        raise RuntimeError("The checked-out HEAD does not match the immutable base SHA; checkpoint was preserved.")
-    saved_base = metadata.get("base_sha")
-    if saved_base != base_sha:
-        print(
-            "Checkpoint base differs from current main; attempting a strict context-checked restore. "
-            "The checkpoint remains untouched if any hunk cannot be applied cleanly.",
-            file=sys.stderr,
+    with checkpoint_store_lock(store_dir()):
+        current_metadata = read_metadata(str(metadata["run_id"]), int(metadata["task"]))
+        if current_metadata is None or current_metadata.get("base_sha") != metadata.get("base_sha"):
+            raise RuntimeError("Checkpoint ownership changed during recovery; preserving all checkpoint data.")
+        current_head = git("rev-parse", "HEAD").stdout.strip()
+        if current_head != base_sha:
+            raise RuntimeError("The checked-out HEAD does not match the immutable base SHA; checkpoint was preserved.")
+        saved_base = metadata.get("base_sha")
+        if saved_base != base_sha:
+            print(
+                "Checkpoint base differs from current main; attempting a strict context-checked restore. "
+                "The checkpoint remains untouched if any hunk cannot be applied cleanly.",
+                file=sys.stderr,
+            )
+        # Git patches are byte-oriented. Passing text input makes subprocess
+        # translate newlines on Windows, corrupting patch context before Git sees it.
+        patch = state["patch"].read_bytes()
+        if metadata.get("patch_bytes") != len(patch):
+            raise RuntimeError("Checkpoint patch size does not match its ownership metadata; preserving it.")
+        if not patch.strip():
+            if state["plan"].is_file():
+                (ROOT / ".agent-progress.json").write_bytes(state["plan"].read_bytes())
+            return False
+        check = subprocess.run(
+            ["git", "apply", "--check", "--binary"],
+            input=patch,
+            cwd=ROOT,
+            capture_output=True,
+            check=False,
         )
-    # Git patches are byte-oriented. Passing text input makes subprocess
-    # translate newlines on Windows, corrupting patch context before Git sees it.
-    patch = state["patch"].read_bytes()
-    if not patch.strip():
+        if check.returncode:
+            raise RuntimeError("The saved worktree checkpoint no longer applies cleanly; it was preserved.")
+        apply = subprocess.run(
+            ["git", "apply", "--binary"],
+            input=patch,
+            cwd=ROOT,
+            capture_output=True,
+            check=False,
+        )
+        if apply.returncode:
+            raise RuntimeError("Could not restore the saved worktree checkpoint; it was preserved.")
         if state["plan"].is_file():
             (ROOT / ".agent-progress.json").write_bytes(state["plan"].read_bytes())
-        return False
-    check = subprocess.run(
-        ["git", "apply", "--check", "--binary"],
-        input=patch,
-        cwd=ROOT,
-        capture_output=True,
-        check=False,
-    )
-    if check.returncode:
-        raise RuntimeError("The saved worktree checkpoint no longer applies cleanly; it was preserved.")
-    apply = subprocess.run(
-        ["git", "apply", "--binary"],
-        input=patch,
-        cwd=ROOT,
-        capture_output=True,
-        check=False,
-    )
-    if apply.returncode:
-        raise RuntimeError("Could not restore the saved worktree checkpoint; it was preserved.")
-    if state["plan"].is_file():
-        (ROOT / ".agent-progress.json").write_bytes(state["plan"].read_bytes())
-    return True
+        return True
 
 
 def snapshot(base_sha: str, run_id: str, task: int) -> None:
@@ -326,20 +348,21 @@ def stop(run_id: str, task: int) -> None:
     state = paths(run_id, task)
     metadata = read_metadata(run_id, task)
     stop_existing_watcher(metadata)
-    _atomic_write(state["stop"], "stop\n")
+    with checkpoint_store_lock(store_dir()):
+        _atomic_write(state["stop"], "stop\n")
 
 
 def clear(run_id: str, task: int) -> None:
     state = paths(run_id, task)
     metadata = read_metadata(run_id, task)
     stop_existing_watcher(metadata)
-    _atomic_write(state["stop"], "stop\n")
-    for key in ("patch", "metadata", "plan", "stop"):
-        state[key].unlink(missing_ok=True)
-    ready, error = watcher_marker_paths(run_id, task)
-    ready.unlink(missing_ok=True)
-    error.unlink(missing_ok=True)
-
+    with checkpoint_store_lock(store_dir()):
+        _atomic_write(state["stop"], "stop\n")
+        for key in ("patch", "metadata", "plan", "stop"):
+            state[key].unlink(missing_ok=True)
+        ready, error = watcher_marker_paths(run_id, task)
+        ready.unlink(missing_ok=True)
+        error.unlink(missing_ok=True)
 
 
 def clear_latest() -> None:
@@ -348,12 +371,16 @@ def clear_latest() -> None:
         return
     metadata, state = latest
     stop_existing_watcher(metadata)
-    _atomic_write(state["stop"], "stop\n")
-    for key in ("patch", "metadata", "plan", "stop"):
-        state[key].unlink(missing_ok=True)
-    ready, error = watcher_marker_paths(str(metadata["run_id"]), int(metadata["task"]))
-    ready.unlink(missing_ok=True)
-    error.unlink(missing_ok=True)
+    with checkpoint_store_lock(store_dir()):
+        current_metadata = read_metadata(str(metadata["run_id"]), int(metadata["task"]))
+        if current_metadata is None:
+            raise RuntimeError("Checkpoint disappeared during cleanup; preserving unknown ownership state.")
+        _atomic_write(state["stop"], "stop\n")
+        for key in ("patch", "metadata", "plan", "stop"):
+            state[key].unlink(missing_ok=True)
+        ready, error = watcher_marker_paths(str(metadata["run_id"]), int(metadata["task"]))
+        ready.unlink(missing_ok=True)
+        error.unlink(missing_ok=True)
 
 
 def main() -> int:
