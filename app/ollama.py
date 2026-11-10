@@ -202,6 +202,19 @@ def _recommended_context_tokens(
     cache_per_token = memory_estimate.get("kv_cache_bytes_per_token")
     if not all(isinstance(value, (int, float)) and math.isfinite(value) and value >= 0 for value in (weights, overhead, cache_per_token)):
         return min(maximum_context, 4096)
+    if get_settings().get("gpu_enabled") is True:
+        devices = hardware.get("gpu_devices")
+        if isinstance(devices, list) and devices:
+            free_values = [
+                device.get("usable_memory_free_mb", device.get("memory_free_mb"))
+                for device in devices if isinstance(device, dict)
+            ]
+            known_free = [float(value) for value in free_values if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0]
+            if known_free and len(known_free) == len(devices):
+                gpu_budget = sum(known_free) / 1024
+                # Prefer a full-GPU estimate only when all model weights plus overhead fit.
+                if gpu_budget > float(weights) + float(overhead):
+                    budget = gpu_budget
     available_for_cache = max(0.0, budget - float(weights) - float(overhead))
     if available_for_cache <= 0 or cache_per_token <= 0:
         return min(maximum_context, 2048)
