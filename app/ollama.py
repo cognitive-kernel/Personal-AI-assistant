@@ -266,7 +266,10 @@ def runtime_diagnostics(model: str | None = None, context_tokens: int | None = N
     except OllamaError as exc:
         result["ollama_ps_error"] = str(exc)
     if model:
-        result["selected_model"] = model_details(model, context_tokens)
+        try:
+            result["selected_model"] = model_details(model, context_tokens)
+        except OllamaError as exc:
+            result["selected_model_error"] = str(exc)
     return result
 
 
