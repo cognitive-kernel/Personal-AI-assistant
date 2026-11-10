@@ -155,3 +155,35 @@ def test_checkpoint_watcher_real_process_stops_before_restore(
         if process.poll() is None:
             process.kill()
             process.wait(timeout=5)
+
+
+def test_malformed_metadata_blocks_watcher_start_without_overwriting_files(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    _, paths = _state(tmp_path)
+    paths["metadata"].write_text("{not-json", encoding="utf-8")
+    ready = tmp_path / "checkpoint.ready"
+    error = tmp_path / "checkpoint.error"
+    ready.write_text("existing-ready", encoding="utf-8")
+    error.write_text("existing-error", encoding="utf-8")
+    monkeypatch.setattr(checkpoint, "paths", lambda run_id, task: paths)
+    monkeypatch.setattr(checkpoint, "watcher_marker_paths", lambda run_id, task: (ready, error))
+
+    with pytest.raises(RuntimeError, match="metadata is malformed"):
+        checkpoint.watch("a" * 40, "run-9", 2, 5)
+
+    assert paths["patch"].read_bytes() == b"preserve this patch"
+    assert ready.read_text(encoding="utf-8") == "existing-ready"
+    assert error.read_text(encoding="utf-8") == "existing-error"
+
+
+def test_read_metadata_distinguishes_absent_from_corrupt_state(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    _, paths = _state(tmp_path)
+    monkeypatch.setattr(checkpoint, "paths", lambda run_id, task: paths)
+
+    assert checkpoint.read_metadata("run-9", 2)["run_id"] == "run-9"
+    paths["metadata"].write_text("[]", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="invalid shape"):
+        checkpoint.read_metadata("run-9", 2)
