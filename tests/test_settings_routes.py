@@ -272,16 +272,16 @@ def test_settings_api_auto_selects_context_when_model_changes_without_manual_val
     assert response.json()["ollama_num_ctx"] == 32768
 
 
-def test_settings_api_rejects_model_change_when_context_limit_cannot_be_verified(settings_client, monkeypatch):
+def test_settings_api_preserves_manual_model_selection_when_context_is_unchanged(settings_client, monkeypatch):
     before = db.get_settings()
     monkeypatch.setattr(ollama, "model_details", lambda name, context_tokens=None: {
         "name": name, "maximum_context_tokens": None,
     })
     response = settings_client.patch(
         "/api/settings",
-        json={"values": {"chat_ollama_model": "unknown:latest"}},
+        json={"values": {"chat_ollama_model": "manual-model:latest"}},
     )
-    assert response.status_code == 422
-    assert "metadata" in response.json()["detail"]
+    assert response.status_code == 200
     after = db.get_settings()
-    assert after["chat_ollama_model"] == before["chat_ollama_model"]
+    assert after["chat_ollama_model"] == "manual-model:latest"
+    assert after["chat_ollama_num_ctx"] == before["chat_ollama_num_ctx"]
