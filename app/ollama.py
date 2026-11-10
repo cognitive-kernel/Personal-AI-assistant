@@ -414,9 +414,11 @@ def chat(
     limits = runtime_limits(
         runtime_settings,
         hardware,
-        # Models without context metadata use a conservative 2k ceiling.
-        # Ollama remains the final authority and may reject an unsupported value.
-        maximum_context_tokens=maximum_context if maximum_context is not None else 2048,
+        # Clamp to the selected model's verified maximum when available. If an
+        # older/custom manifest omits this optional field, retain the hardware
+        # budget and let Ollama validate the requested context instead of
+        # imposing an unrelated global 2k limit on every such model.
+        maximum_context_tokens=maximum_context,
     )
     keep_alive = model_keep_alive(purpose, hardware, settings)
     messages = []
