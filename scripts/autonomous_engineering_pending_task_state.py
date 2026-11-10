@@ -29,7 +29,8 @@ def _validate_owner_record(record: Any, task: str) -> dict[str, Any]:
     integer_fields = ("owner_attempt", "submitted_attempt", "claim_count")
     timestamp_fields = ("created_at", "claimed_at")
     if (
-        record.get("schema_version") != SCHEMA_VERSION
+        isinstance(record.get("schema_version"), bool)
+        or record.get("schema_version") != SCHEMA_VERSION
         or any(not isinstance(record.get(key), str) or not record[key] for key in (
             "task_sha256", "owner_run_id", "submitted_run_id", "source"
         ))
