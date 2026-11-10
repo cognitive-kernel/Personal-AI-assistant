@@ -1083,10 +1083,12 @@ el("learning-form").addEventListener("submit", async event => {
     const state=await api("/api/learning/courses/tasks/"+taskId);
     if(state.status==="succeeded"){
      const result=state.result||{};
+     const activeLessonCount=result.queued_count||(result.active_job_id?1:0);
      output.textContent="پژوهش کامل شد. مدل: "+(result.model||"نامشخص")+
       "؛ منابع استفاده‌شده: "+(result.source_count||0)+
       "؛ سرفصل‌ها: "+((result.topics||[]).length)+
-      "؛ درس‌های در صف: "+(result.queued_count||0)+
+      "؛ همهٔ سرفصل‌ها در صف ترتیبی ثبت شدند و تولید درس‌ها یکی‌یکی انجام می‌شود؛ اکنون "+
+      activeLessonCount+" درس فعال/در صف اجراست."+
       "\nمسیر آموزشی شمارهٔ "+result.path_id+" ایجاد شد.";
      const heading=document.createElement("h3");
      heading.textContent=result.title||"سرفصل‌های استخراج‌شده";
