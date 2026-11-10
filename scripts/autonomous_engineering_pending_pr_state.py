@@ -105,7 +105,6 @@ def clear_pending_task() -> None:
     with durable_state_lock(state_dir):
         (state_dir / "pending-manual-task.txt").unlink(missing_ok=True)
         (state_dir / "pending-manual-task-owner.json").unlink(missing_ok=True)
-        (state_dir / "pending-manual-task-owner.json").unlink(missing_ok=True)
 
 
 def clear_pending_state() -> None:
@@ -114,3 +113,4 @@ def clear_pending_state() -> None:
     with durable_state_lock(state_dir):
         (state_dir / "pending-autonomous-pr.json").unlink(missing_ok=True)
         (state_dir / "pending-manual-task.txt").unlink(missing_ok=True)
+        (state_dir / "pending-manual-task-owner.json").unlink(missing_ok=True)
