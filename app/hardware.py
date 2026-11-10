@@ -21,7 +21,7 @@ def detect_hardware() -> dict[str, Any]:
     if psutil:
         try:
             cpu_utilization_percent = round(float(psutil.cpu_percent(interval=0.1)), 1)
-        except (OSError, RuntimeError, TypeError, ValueError):
+        except Exception:
             cpu_utilization_percent = None
     gpu = detect_gpu()
     return {
@@ -170,7 +170,7 @@ try {
             )
         )
         matching = [row for row in counters if isinstance(row, dict) and (
-            str(index) in str(row.get("InstanceName", "")) or
+            len(adapters) == 1 or
             name.casefold().replace(" ", "_") in str(row.get("InstanceName", "")).casefold()
         )]
         engine = [float(row["CookedValue"]) for row in matching if "gpu engine" in str(row.get("Path", "")).casefold() and isinstance(row.get("CookedValue"), (int, float))]
@@ -258,9 +258,9 @@ def ensure_resource_headroom(settings: dict[str, Any] | None = None) -> None:
         violations.append(f"RAM {memory_percent:.1f}% (limit {ram_limit:.0f}%)")
     gpu = detect_gpu() if gpu_enabled else {"gpu_available": False}
     if gpu["gpu_available"]:
-        if gpu["gpu_utilization_percent"] >= gpu_limit:
+        if isinstance(gpu.get("gpu_utilization_percent"), (int, float)) and gpu["gpu_utilization_percent"] >= gpu_limit:
             violations.append(f"GPU compute {gpu['gpu_utilization_percent']}% (limit {gpu_limit:.0f}%)")
-        if gpu["gpu_memory_percent"] >= gpu_limit:
+        if isinstance(gpu.get("gpu_memory_percent"), (int, float)) and gpu["gpu_memory_percent"] >= gpu_limit:
             violations.append(f"GPU memory {gpu['gpu_memory_percent']:.1f}% (limit {gpu_limit:.0f}%)")
     if violations:
         raise RuntimeError("Resource usage is at or above configured limits: " + "; ".join(violations) + ".")
