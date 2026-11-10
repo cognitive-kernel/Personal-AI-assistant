@@ -329,13 +329,17 @@ jobs:
           pending_pr_path = state_dir / "pending-autonomous-pr.json"
           with durable_state_lock(state_dir):
               if manual_task:
+                  pending_pr_found = True
                   try:
                       pending_pr_raw = pending_pr_path.read_text(encoding="utf-8")
                   except FileNotFoundError:
+                      pending_pr_found = False
                       pending_pr_raw = ""
                   except OSError as exc:
                       raise SystemExit("Pending autonomous PR state cannot be read; refusing a new manual task.") from exc
-                  if pending_pr_raw:
+                  if pending_pr_found:
+                      if not pending_pr_raw.strip():
+                          raise SystemExit("Pending autonomous PR state is empty; refusing a new manual task.")
                       try:
                           pending_pr_state = json.loads(pending_pr_raw)
                       except ValueError as exc:
