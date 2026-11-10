@@ -95,11 +95,10 @@ def test_task_owner_requires_valid_run_identity_and_attempt(tmp_path: Path):
 @pytest.mark.skipif(os.name != "nt", reason="PowerShell/.NET SHA-256 interoperability is Windows-only")
 def test_powershell_and_python_compute_identical_task_digest():
     task = "Repair checkpoint ownership — خطای بازیابی"
+    module_path = Path(__file__).resolve().parents[1] / "scripts" / "AutonomousEngineeringTaskState.psm1"
     script = (
-        "$sha = [System.Security.Cryptography.SHA256]::Create(); "
-        f"$bytes = [System.Text.Encoding]::UTF8.GetBytes('{task}'); "
-        "$digest = [BitConverter]::ToString($sha.ComputeHash($bytes)).Replace("-", "").ToLowerInvariant(); "
-        "$sha.Dispose(); Write-Output $digest"
+        f"Import-Module '{module_path}'; "
+        f"Get-AutonomousTaskDigest -Task '{task}'"
     )
     result = subprocess.run(
         ["pwsh", "-NoProfile", "-Command", script],
