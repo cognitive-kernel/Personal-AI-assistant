@@ -1435,8 +1435,9 @@ async function refreshHardwareDiagnostics(profile=modelContextProfiles[0]) {
   const ram=h.available_ram_gb==null?"نامشخص":h.available_ram_gb+" GiB آزاد از "+h.total_ram_gb+" GiB";
   const gpuLines=(h.gpu_devices||[]).map(g=>{
    const utilization=g.utilization_percent==null?"مصرف نامشخص":g.utilization_percent+"% مصرف";
-   const memory=g.memory_free_mb==null?"حافظه آزاد نامشخص":Math.round(g.memory_free_mb/1024*10)/10+" GiB آزاد از "+(g.memory_total_mb==null?"نامشخص":Math.round(g.memory_total_mb/1024*10)/10+" GiB");
-   return (g.vendor||"GPU")+" — "+(g.name||"نامشخص")+"؛ "+utilization+"؛ "+memory+"؛ سنجش: "+(g.telemetry||"نامشخص");
+   const dedicated=g.memory_free_mb==null?"حافظه اختصاصی آزاد نامشخص":Math.round(g.memory_free_mb/1024*10)/10+" GiB آزاد از "+(g.memory_total_mb==null?"نامشخص":Math.round(g.memory_total_mb/1024*10)/10+" GiB اختصاصی");
+   const shared=g.shared_memory_total_mb==null?"حافظه اشتراکی نامشخص":(g.shared_memory_free_mb==null?"حافظه اشتراکی آزاد نامشخص":Math.round(g.shared_memory_free_mb/1024*10)/10+" GiB آزاد از "+Math.round(g.shared_memory_total_mb/1024*10)/10+" GiB اشتراکی");
+   return (g.vendor||"GPU")+" — "+(g.name||"نامشخص")+"؛ "+utilization+"؛ "+dedicated+"؛ "+shared+"؛ سنجش: "+(g.telemetry||"نامشخص");
   });
   const running=(data.ollama_running_models||[]).map(item=>{
    const vram=item.size_vram_bytes==null?"VRAM تخصیص‌یافته نامشخص":(item.size_vram_bytes/1024**3).toFixed(2)+" GiB VRAM تخصیص‌یافته";
@@ -1460,7 +1461,7 @@ async function refreshHardwareDiagnostics(profile=modelContextProfiles[0]) {
     :gpuEnabled?"GPU فعال شده اما دستگاه/درایور قابل شناسایی نیست."
     :"استفاده از GPU در تنظیمات غیرفعال است.");
   const gpuEstimate=selected?.memory_estimate?.full_gpu_vram_gib_float16;
-  const gpuFreeValues=(h.gpu_devices||[]).map(g=>g.memory_free_mb).filter(value=>value!==null && value!==undefined && Number.isFinite(Number(value)));
+  const gpuFreeValues=(h.gpu_devices||[]).map(g=>Object.prototype.hasOwnProperty.call(g,"usable_memory_free_mb")?g.usable_memory_free_mb:g.memory_free_mb).filter(value=>value!==null && value!==undefined && Number.isFinite(Number(value)));
   const gpuFreeGb=gpuFreeValues.length?gpuFreeValues.reduce((sum,value)=>sum+Number(value),0)/1024:null;
   const gpuFit=gpuEstimate==null?"نیاز VRAM تخمینی نامشخص است."
    :gpuFreeGb==null?"مقدار VRAM آزاد قابل‌اندازه‌گیری نیست."
