@@ -820,27 +820,23 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         maximum = metadata.get("maximum_context_tokens")
         explicit_context = context_key in values or (generic_chat_change and "ollama_num_ctx" in values)
         if not isinstance(maximum, int) or isinstance(maximum, bool) or maximum < 512:
-            if context_changed or model_changed:
+            if context_changed:
                 raise HTTPException(
                     status_code=422,
                     detail=f"Maximum context metadata is unavailable for {model_name}; context cannot be safely validated.",
                 )
             continue
         if model_changed and not explicit_context:
-            context_value = metadata.get("recommended_context_tokens")
+            recommended = metadata.get("recommended_context_tokens")
             if (
-                not isinstance(context_value, int)
-                or isinstance(context_value, bool)
-                or context_value < 512
-                or context_value > maximum
+                isinstance(recommended, int)
+                and not isinstance(recommended, bool)
+                and 512 <= recommended <= maximum
             ):
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"A safe context could not be derived from the installed model metadata and current hardware for {model_name}; choose an explicit context only after verifying available resources.",
-                )
-            values[context_key] = context_value
-            if model_key == "chat_ollama_model":
-                values["ollama_num_ctx"] = context_value
+                context_value = recommended
+                values[context_key] = context_value
+                if model_key == "chat_ollama_model":
+                    values["ollama_num_ctx"] = context_value
         if isinstance(context_value, int) and not isinstance(context_value, bool) and context_value > maximum:
             raise HTTPException(
                 status_code=422,
