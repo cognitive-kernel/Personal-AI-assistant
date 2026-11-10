@@ -248,11 +248,12 @@ def test_publish_pull_request_leaves_exact_sha_validated_pr_open_for_owner_merge
         "state": "open",
         "merged": False,
         "draft": False,
+        "html_url": "https://github.com/owner/repository/pull/12",
         "user": {"login": "github-actions[bot]"},
         "head": {"sha": head_sha, "repo": {"full_name": "owner/repository"}},
         "base": {"ref": "main", "sha": base_sha},
     }
-    refreshed = {**created, "html_url": "https://github.com/owner/repository/pull/12"}
+    refreshed = {**created}
 
     monkeypatch.setattr(cycle, "git_auth_env", lambda token: {})
     monkeypatch.setattr(cycle, "checked", lambda command, **kwargs: calls.append(("git", command)) or "")
