@@ -867,6 +867,7 @@ def test_windows_codex_command_uses_call_without_nested_cmd_quoting(monkeypatch)
 def test_codex_arguments_pin_ollama_and_selected_windows_sandbox(monkeypatch):
     from scripts import autonomous_engineering_progress as progress
 
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "32768")
     monkeypatch.setenv("CODEX_WINDOWS_SANDBOX_BACKEND", "elevated")
     arguments = progress.codex_arguments("gpt-oss:20b", "codex-report.md")
 
