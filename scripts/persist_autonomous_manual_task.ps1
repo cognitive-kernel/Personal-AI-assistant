@@ -119,7 +119,18 @@ try {
     if ($existingTask -and $existingTask -cne $manualTask) {
         throw "Another manual task is still pending. It cannot be replaced before its verified merge."
     }
-    $ownerFound = Test-Path -LiteralPath $taskOwnerPath -PathType Leaf
+    $ownerFound = $true
+    try {
+        $ownerRaw = [System.IO.File]::ReadAllText($taskOwnerPath, [System.Text.Encoding]::UTF8)
+    } catch [System.IO.FileNotFoundException] {
+        $ownerFound = $false
+        $ownerRaw = ""
+    } catch [System.IO.DirectoryNotFoundException] {
+        $ownerFound = $false
+        $ownerRaw = ""
+    } catch {
+        throw "Pending task owner metadata cannot be read safely; preserving the task. $($_.Exception.Message)"
+    }
     if (-not $existingTaskFound -and $ownerFound) {
         throw "Pending task owner metadata exists without its task; preserving unknown state."
     }
@@ -167,7 +178,6 @@ try {
 
     if ($ownerFound) {
         try {
-            $ownerRaw = [System.IO.File]::ReadAllText($taskOwnerPath, [System.Text.Encoding]::UTF8)
             if ([string]::IsNullOrWhiteSpace($ownerRaw)) { throw "Owner metadata is empty." }
             $ownerRecord = $ownerRaw | ConvertFrom-Json
             $ownerAttempt = 0
