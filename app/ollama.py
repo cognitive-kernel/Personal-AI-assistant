@@ -245,7 +245,7 @@ def model_details(model: str, context_tokens: int | None = None) -> dict[str, An
     }
 
 
-def runtime_diagnostics(model: str | None = None) -> dict[str, Any]:
+def runtime_diagnostics(model: str | None = None, context_tokens: int | None = None) -> dict[str, Any]:
     """Combine host telemetry with Ollama's observed loaded-model allocation."""
     hardware = detect_hardware()
     result: dict[str, Any] = {"hardware": hardware, "ollama_running_models": []}
@@ -258,14 +258,14 @@ def runtime_diagnostics(model: str | None = None) -> dict[str, Any]:
                     "context_length": item.get("context_length"),
                     "size_bytes": item.get("size"),
                     "size_vram_bytes": item.get("size_vram"),
-                    "processor": item.get("details", {}).get("format") if isinstance(item.get("details"), dict) else None,
+                    "processor": ("GPU" if isinstance(item.get("size_vram"), int) and item.get("size_vram") > 0 else "CPU" if isinstance(item.get("size_vram"), int) else None),
                 }
                 for item in running if isinstance(item, dict)
             ]
     except OllamaError as exc:
         result["ollama_ps_error"] = str(exc)
     if model:
-        result["selected_model"] = model_details(model)
+        result["selected_model"] = model_details(model, context_tokens)
     return result
 
 
