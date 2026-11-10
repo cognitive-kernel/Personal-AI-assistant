@@ -175,6 +175,8 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert 'fix/automation-codex-context-smoke-20261107' in diagnostic
     assert 'CODEX_WINDOWS_SANDBOX_BACKEND: mxc' in diagnostic
     assert 'CODEX_MODEL_REASONING_EFFORT: low' in diagnostic
+    assert "vars.AUTONOMOUS_ENGINEERING_MODEL" in diagnostic
+    assert "inputs.model || 'gpt-oss:20b'" not in diagnostic
     assert 'run-name: "Codex Windows Sandbox Diagnostic #' in diagnostic
     cleanup_job = diagnostic.split("  sandbox-diagnostic:", 1)[0]
     assert '$branch = [uri]::EscapeDataString($env:GITHUB_REF_NAME)' in cleanup_job
