@@ -18,7 +18,9 @@ from .task_worker import PermanentTaskError, RetryableTaskError, TaskContext
 CURRICULUM_TASK_TYPE = "learning.plan_curriculum"
 MIN_TOPICS = 8
 MAX_TOPICS = 40
-MAX_SOURCE_DOCUMENTS = 6
+MAX_SOURCE_DOCUMENTS = 8
+MAX_PROMPT_SOURCE_EXCERPTS = 4
+MAX_SOURCES_PER_DOMAIN = 3
 MIN_SOURCE_DOCUMENTS = 3
 MAX_SOURCE_EXCERPT_CHARS = 250
 MAX_PROMPT_CHARS = 6000
@@ -83,8 +85,8 @@ def _valid_checkpoint(
         )
         normalized_url = _normalized_source_url(url) if isinstance(url, str) else None
         if (
-            not isinstance(title, str) or not title.strip() or len(title) > 300
-            or normalized_url is None
+            not isinstance(title, str) or not title.strip() or len(title) > 150
+            or normalized_url is None or len(normalized_url) > 250
             or not isinstance(excerpt, str) or not excerpt.strip() or len(excerpt) > MAX_SOURCE_EXCERPT_CHARS
             or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)
             or normalized_url in seen
@@ -148,9 +150,16 @@ def _collect_sources(
             if len(sources) >= MAX_SOURCE_DOCUMENTS:
                 break
             url = _normalized_source_url(document.url)
-            title = str(document.title).strip()[:300]
+            title = str(document.title).strip()[:150]
             body = str(document.text).strip()
-            if not url or not title or len(body) < 100 or url in seen:
+            if not url or len(url) > 250 or not title or len(body) < 100 or url in seen:
+                continue
+            domain = urlsplit(url).hostname or ""
+            domain_count = sum(
+                1 for existing in sources
+                if (urlsplit(existing["url"]).hostname or "") == domain
+            )
+            if domain_count >= MAX_SOURCES_PER_DOMAIN:
                 continue
             excerpt = body[:MAX_SOURCE_EXCERPT_CHARS]
             sources.append({
@@ -248,11 +257,25 @@ def _generate_outline(
     sources: list[dict[str, str]],
     model: str,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    prompt_excerpt_urls: set[str] = set()
+    prompt_domains: set[str] = set()
+    for item in sources:
+        domain = urlsplit(item["url"]).hostname or ""
+        if domain not in prompt_domains:
+            prompt_excerpt_urls.add(item["url"])
+            prompt_domains.add(domain)
+        if len(prompt_excerpt_urls) >= MAX_PROMPT_SOURCE_EXCERPTS:
+            break
+    if len(prompt_excerpt_urls) < MAX_PROMPT_SOURCE_EXCERPTS:
+        for item in sources:
+            if len(prompt_excerpt_urls) >= MAX_PROMPT_SOURCE_EXCERPTS:
+                break
+            prompt_excerpt_urls.add(item["url"])
     source_material = [
         {
             "title": item["title"],
             "url": item["url"],
-            "excerpt": item["excerpt"],
+            "excerpt": item["excerpt"] if item["url"] in prompt_excerpt_urls else "",
         }
         for item in sources
     ]
