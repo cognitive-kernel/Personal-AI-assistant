@@ -1459,9 +1459,15 @@ async function refreshHardwareDiagnostics(profile=modelContextProfiles[0]) {
    :(gpuEnabled && h.gpu_available?"GPU شناسایی شده و گزینه فعال است؛ استفاده واقعی تا بارگذاری مدل تأیید نمی‌شود."
     :gpuEnabled?"GPU فعال شده اما دستگاه/درایور قابل شناسایی نیست."
     :"استفاده از GPU در تنظیمات غیرفعال است.");
+  const gpuEstimate=selected?.memory_estimate?.full_gpu_vram_gib_float16;
+  const gpuFreeValues=(h.gpu_devices||[]).map(g=>g.memory_free_mb).filter(value=>Number.isFinite(Number(value)));
+  const gpuFreeGb=gpuFreeValues.length?gpuFreeValues.reduce((sum,value)=>sum+Number(value),0)/1024:null;
+  const gpuFit=gpuEstimate==null?"نیاز VRAM تخمینی نامشخص است."
+   :gpuFreeGb==null?"مقدار VRAM آزاد قابل‌اندازه‌گیری نیست."
+   :(gpuEstimate<=gpuFreeGb?"برآورد full-offload در VRAM آزاد جا می‌شود.":"برآورد full-offload از VRAM آزاد بیشتر است؛ ممکن است اجرای ترکیبی CPU/GPU یا CPU لازم شود.");
   output.textContent="CPU: "+h.logical_cpu_count+" thread منطقی؛ "+cpu+"؛ RAM: "+ram+"؛ GPU: "+(gpuLines.length?gpuLines.join(" | "):"هیچ GPU شناسایی نشد یا اطلاعات دستگاه در دسترس نیست.")
    +(running.length?"؛ تخصیص واقعی Ollama: "+running.join(" | "):"؛ مدل فعالی در Ollama گزارش نشده است.")
-   +(estimate!=null?"؛ نیاز تخمینی RAM مدل در context انتخابی: "+estimate+" GiB. "+fit:"؛ "+fit)+"؛ وضعیت GPU: "+gpuStatus;
+   +(estimate!=null?"؛ نیاز تخمینی RAM مدل در context انتخابی: "+estimate+" GiB. "+fit:"؛ "+fit)+"؛ وضعیت GPU: "+gpuStatus+(gpuEstimate!=null?"؛ VRAM لازم برای offload کامل (تخمینی): "+gpuEstimate+" GiB؛ "+gpuFit:"؛ "+gpuFit);
  } catch(error) { output.textContent="تحلیل سخت‌افزار در دسترس نیست: "+error.message; }
 }
 for(const profile of modelContextProfiles) {
