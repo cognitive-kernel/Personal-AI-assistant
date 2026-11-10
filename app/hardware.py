@@ -211,14 +211,29 @@ try {
         shared_total_mb = round(max(shared_limits) / (1024 ** 2), 1) if shared_limits else None
         dedicated_free_mb = max(0, round(total_mb - used_mb, 1)) if total_mb is not None and used_mb is not None else None
         shared_free_mb = max(0, round(shared_total_mb - shared_used_mb, 1)) if shared_total_mb is not None and shared_used_mb is not None else None
-        known_free_parts = [value for value in (dedicated_free_mb, shared_free_mb) if value is not None]
+        # WDDM's shared-memory limit is a maximum, not a promise that all of it is
+        # currently free. Cap the usable shared portion by host RAM actually available.
+        host_available_mb = None
+        if psutil is not None:
+            try:
+                host_available = getattr(psutil.virtual_memory(), "available", None)
+                if isinstance(host_available, (int, float)) and not isinstance(host_available, bool) and math.isfinite(host_available) and host_available >= 0:
+                    host_available_mb = round(host_available / (1024 ** 2), 1)
+            except Exception:
+                host_available_mb = None
+        usable_shared_free_mb = (
+            min(shared_free_mb, host_available_mb)
+            if shared_free_mb is not None and host_available_mb is not None
+            else None
+        )
+        known_free_parts = [value for value in (dedicated_free_mb, usable_shared_free_mb) if value is not None]
         known_total_parts = [value for value in (total_mb, shared_total_mb) if value is not None]
         usable_free_mb = sum(known_free_parts) if known_free_parts else None
         usable_total_mb = sum(known_total_parts) if known_total_parts else None
         usable_memory_scope = (
-            "dedicated+shared" if dedicated_free_mb is not None and shared_free_mb is not None
+            "dedicated+shared" if dedicated_free_mb is not None and usable_shared_free_mb is not None
             else "dedicated-only" if dedicated_free_mb is not None
-            else "shared-only" if shared_free_mb is not None
+            else "shared-only" if usable_shared_free_mb is not None
             else "unknown"
         )
         devices.append({
@@ -229,6 +244,7 @@ try {
             "shared_memory_used_mb": shared_used_mb,
             "shared_memory_total_mb": shared_total_mb,
             "shared_memory_free_mb": shared_free_mb,
+            "usable_shared_memory_free_mb": usable_shared_free_mb,
             "usable_memory_total_mb": usable_total_mb,
             "usable_memory_free_mb": usable_free_mb,
             "usable_memory_scope": usable_memory_scope,
