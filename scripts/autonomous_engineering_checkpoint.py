@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import subprocess
 import sys
@@ -275,12 +276,53 @@ def _latest_checkpoint() -> tuple[dict[str, Any], dict[str, Path]] | None:
     for metadata_path in directory.glob("worktree-checkpoint-*.json"):
         try:
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-            run_id, task = metadata["run_id"], int(metadata["task"])
-            state = paths(str(run_id), task)
-            if state["metadata"] == metadata_path and state["patch"].is_file():
-                candidates.append((float(metadata.get("updated_at", 0)), metadata, state))
-        except (OSError, ValueError, KeyError, TypeError):
-            continue
+        except (OSError, ValueError) as exc:
+            raise RuntimeError(
+                f"Checkpoint metadata {metadata_path.name} is unreadable; refusing stale-checkpoint fallback."
+            ) from exc
+        if not isinstance(metadata, dict):
+            raise RuntimeError(
+                f"Checkpoint metadata {metadata_path.name} has an invalid shape; preserving all checkpoint state."
+            )
+        schema = metadata.get("schema_version")
+        run_id = metadata.get("run_id")
+        task = metadata.get("task")
+        base_sha = metadata.get("base_sha")
+        updated_at = metadata.get("updated_at")
+        patch_bytes = metadata.get("patch_bytes")
+        if (
+            isinstance(schema, bool) or schema not in {2, 3, 4}
+            or not isinstance(run_id, str) or not run_id
+            or isinstance(task, bool) or not isinstance(task, int) or task < 1
+            or not isinstance(base_sha, str) or len(base_sha) != 40
+            or any(ch not in "0123456789abcdef" for ch in base_sha)
+            or isinstance(updated_at, bool) or not isinstance(updated_at, (int, float))
+            or not math.isfinite(float(updated_at))
+            or (
+                patch_bytes is not None
+                and (
+                    isinstance(patch_bytes, bool)
+                    or not isinstance(patch_bytes, int)
+                    or patch_bytes < 0
+                )
+            )
+            or (schema in {3, 4} and patch_bytes is None)
+        ):
+            raise RuntimeError(
+                f"Checkpoint metadata {metadata_path.name} violates its supported v2-v4 contract; "
+                "preserving all checkpoint state."
+            )
+        state = paths(run_id, task)
+        if state["metadata"] != metadata_path or not state["patch"].is_file():
+            raise RuntimeError(
+                f"Checkpoint {metadata_path.name} is incomplete; refusing to restore an older checkpoint."
+            )
+        actual_patch_bytes = state["patch"].stat().st_size
+        if patch_bytes is not None and patch_bytes != actual_patch_bytes:
+            raise RuntimeError(
+                f"Checkpoint {metadata_path.name} patch size does not match its metadata; preserving it."
+            )
+        candidates.append((float(updated_at), metadata, state))
     if not candidates:
         return None
     _, metadata, state = max(candidates, key=lambda item: item[0])
