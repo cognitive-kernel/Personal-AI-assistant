@@ -10,7 +10,13 @@ import psutil
 
 def process_start_time(pid: int) -> float:
     """Return the OS creation time used to distinguish a process from a reused PID."""
-    return float(psutil.Process(pid).create_time())
+    try:
+        value = float(psutil.Process(pid).create_time())
+    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError) as exc:
+        raise RuntimeError(f"Cannot verify OS process creation time for PID {pid}.") from exc
+    if not math.isfinite(value) or value <= 0:
+        raise RuntimeError(f"OS returned an invalid process creation time for PID {pid}.")
+    return value
 
 
 def _same_path(left: str, right: Path) -> bool:
