@@ -262,6 +262,8 @@ def handle_learning_job(
             _record_learning_escalation(
                 context.task_id, job_id, "quality_rejected", job.get("error") or "Lesson did not pass quality checks."
             )
+        if status == "completed" and job.get("path_topic_id") is not None:
+            learning.queue_next_researched_path_topic(int(job["path_topic_id"]))
         return {"job_id": job_id, "learning_status": status, "already_terminal": True}
 
     # A task is reclaimed only after its previous lease expires. A stale learning
@@ -328,4 +330,6 @@ def handle_learning_job(
         raise learning.LearningError(
             f"Learning job {job_id} returned without a terminal result (status={status!r})"
         )
+    if status == "completed" and result.get("path_topic_id") is not None:
+        learning.queue_next_researched_path_topic(int(result["path_topic_id"]))
     return {"job_id": job_id, "learning_status": status, "already_terminal": False}
