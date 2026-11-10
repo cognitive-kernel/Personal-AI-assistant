@@ -448,5 +448,6 @@ def handle_curriculum_task(
         "model": model,
         "queued_count": queue_result.get("queued_count", 0),
         "queued_job_ids": queue_result.get("job_ids", []),
+        "active_job_id": queue_result.get("active_job_id"),
         "queue_status": queue_result.get("status", "queued"),
     }
