@@ -327,6 +327,7 @@ jobs:
           state_dir.mkdir(parents=True, exist_ok=True)
           pending_path = state_dir / "pending-manual-task.txt"
           pending_pr_path = state_dir / "pending-autonomous-pr.json"
+          manual_task_supplied = bool(manual_task)
           with durable_state_lock(state_dir):
               if manual_task:
                   pending_pr_found = True
@@ -383,7 +384,7 @@ jobs:
                       raise SystemExit("Workflow run attempt is invalid; refusing to claim pending task.") from exc
                   owner_source = (
                       "legacy_migration" if not owner_path.exists()
-                      else ("manual_dispatch" if manual_task else "recovery")
+                      else ("manual_dispatch" if manual_task_supplied else "recovery")
                   )
                   try:
                       claim_pending_task_owner_unlocked(
