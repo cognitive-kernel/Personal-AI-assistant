@@ -14,7 +14,7 @@ The primary `learning-form` accepted a topic and created one lesson job. It did 
 2. The task searches multiple complementary web queries and requires at least three usable HTTPS pages from at least two domains. Search failure must not silently fall back to model-only syllabus generation.
 3. The configured learning model generates a JSON outline with 8–40 unique, ordered topics. The default learning model is `gpt-oss:20b`; chat and programming model settings remain independent.
 4. Persist the generated outline, its SHA-256 digest, the model name, model-selection provenance, and bounded source provenance in `learning_path_research` (learning schema migration 42).
-5. Queue only the first lesson. A successful lesson completion advances the same path to the next lesson. A failed, rejected, or cancelled lesson blocks automatic advancement until an explicit resume action. This prevents parallel generation and preserves lesson history.
+5. Persist every outline topic in order in `learning_path_topics` as the durable course queue, but enqueue only the first execution job. A successful lesson completion creates the next execution job. A failed, rejected, or cancelled lesson blocks automatic advancement until an explicit resume action. This prevents parallel generation and preserves lesson history.
 6. Remove preset curriculum enrollment controls from the primary UI. Keep legacy curriculum APIs and existing paths/data for backward compatibility; do not delete prior user data.
 7. The Chrome/ChatGPT browser-learning feature remains separate and unchanged.
 
