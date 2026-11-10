@@ -51,7 +51,7 @@
 <section id="chat-section"><h2>گفتگو و پژوهش</h2><p class="muted">گفتگوها در پایگاه دادهٔ محلی ذخیره می‌شوند و با رفتن به صفحه‌های دیگر یا تازه‌سازی حذف نمی‌شوند. ایجاد گفتگوی جدید، گفتگوهای قبلی را نگه می‌دارد.</p><div class="cloud-actions"><label for="chat-conversation-select">تاریخچهٔ گفتگو<select id="chat-conversation-select"><option value="">در حال بارگذاری…</option></select></label><button id="chat-new-conversation" type="button">گفتگوی جدید</button><button id="chat-delete-conversation" type="button" class="danger" disabled>حذف گفتگوی انتخاب‌شده</button><button id="chat-refresh-conversations" type="button">به‌روزرسانی تاریخچه</button></div><div id="chat-messages" aria-live="polite" aria-label="پیام‌های گفتگو"></div><form id="chat-form"><textarea id="message" dir="auto" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید" aria-label="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output" role="status" aria-live="polite"></pre></section>
 <section id="learning-section"><h2>یادگیری</h2>
 <div id="browser-learning-panel" class="panel">
-<h3>مسیر اول: یادگیری هوش‌به‌هوش با ChatGPT در Chrome</h3>
+<h3>مسیر جداگانه و اختیاری: یادگیری با ChatGPT در Chrome</h3>
 <p class="muted">این مسیر از نشست واردشدهٔ ChatGPT در Chrome استفاده می‌کند: ابتدا سرفصل‌ها را می‌گیرد، سپس هر درس را جداگانه درخواست می‌کند و هر پاسخ را همراه با hash و وضعیت در پایگاه داده ذخیره می‌کند. محتوای دریافت‌شده تا زمان ارزیابی، تأییدشده محسوب نمی‌شود.</p>
 <p class="muted">پیش‌نیاز: Playwright را با <code>python -m pip install -e ".[browser]"</code> نصب کنید. سپس Chrome را با یک پروفایل جداگانه و پورت DevTools محلی اجرا کنید؛ وارد ChatGPT شوید و صفحهٔ ChatGPT را باز نگه دارید. پورت DevTools را روی شبکه منتشر نکنید.</p>
 <form id="browser-learning-form">
@@ -69,6 +69,7 @@
 <pre id="browser-learning-output" role="status" aria-live="polite">هنوز دوره‌ای در این مسیر ایجاد نشده است.</pre>
 <div id="browser-learning-courses" aria-live="polite">فهرست دوره‌های هوش‌به‌هوش هنوز بارگذاری نشده است.</div>
 </div>
+<h3>مسیر اصلی: پژوهش اینترنتی و آموزش با مدل محلی</h3>
 <form id="learning-form">
 <label for="topic">موضوع یا نام درس برای پژوهش و آموزش
 <input id="topic" required maxlength="300" placeholder="مثلاً معماری و برنامه‌نویسی سیستم‌عامل Linux" aria-label="موضوع یا نام درس برای پژوهش و آموزش"></label>
