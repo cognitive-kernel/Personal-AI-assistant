@@ -460,11 +460,31 @@ def chat(
             f"Ollama did not publish a verifiable context_length for '{model}'; "
             "refusing to send a request with an unverified context limit."
         )
+    tag = next((item for item in list_models() if item.get("name") == model), None)
+    weight_bytes = tag.get("size") if isinstance(tag, dict) else None
+    memory_estimate = _model_memory_estimate(
+        model,
+        model_info if isinstance(model_info, dict) else {},
+        model_details_meta if isinstance(model_details_meta, dict) else {},
+        weight_bytes,
+    )
+    hardware_safe_context = _recommended_context_tokens(maximum_context, memory_estimate, hardware)
+    if hardware_safe_context is None:
+        raise OllamaError(
+            f"Cannot calculate a hardware-safe context for '{model}': verified model weights, "
+            "KV-cache dimensions, or available-memory telemetry are missing or insufficient. "
+            "No inference request was sent."
+        )
     limits = runtime_limits(
         runtime_settings,
         hardware,
         maximum_context_tokens=maximum_context,
     )
+    # Final context is bounded by the user's setting, model metadata, and the
+    # current host budget. runtime_limits supplies the configured request cap.
+    limits["num_ctx"] = min(limits["num_ctx"], maximum_context, hardware_safe_context)
+    if limits["num_ctx"] < 512:
+        raise OllamaError(f"No hardware-safe context of at least 512 tokens is available for '{model}'.")
     keep_alive = model_keep_alive(purpose, hardware, settings)
     messages = []
     if isinstance(system_prompt, str) and system_prompt.strip():
