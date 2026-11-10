@@ -1,5 +1,30 @@
 # Engineering Continuity Log
 
+## 2026-11-10 — Dedicated learning lane pinned to gpt-oss:20b
+
+### Repository evidence and root cause
+
+- Reviewed the engineering protocol from `docs/master-engineering-continuity-prompt/docs/MASTER_ENGINEERING_PROMPT.md` and the latest repository commit `a01e414ea3124213bc4d06496f55c74ad6ef9ef4`; all work is isolated on `feature/learning-gpt-oss-20b-20261110`.
+- The learning default was `qwen3:8b` in `app/config.py`, while `run.py` installed only the general `OLLAMA_MODEL` (default `qwen2.5:7b`). Existing settings rows were seeded with `INSERT OR IGNORE`, so changing a Python default alone would not update existing installations.
+- The cost/quality selector could choose any installed model with a valid profile, which could silently divert lesson generation away from the requested learning model.
+- The generic chat/runtime default is intentionally unchanged to avoid changing chat and autonomous-engineering behavior.
+
+### Changes on the dedicated branch
+
+- Set the learning-lane default and documented environment override to `gpt-oss:20b`.
+- Added a narrow, repeatable settings upgrade from the previous built-in `qwen3:8b` default to `gpt-oss:20b`; explicit custom learning-model choices are preserved.
+- Extended startup prerequisites to pull the dedicated learning model when absent and verify that Ollama lists it after the pull. The general model remains independently configured.
+- Pinned learning cost/quality eligibility to the configured learning model; profiles can constrain that model but cannot select a different model.
+- Added regression coverage for default migration, custom-setting preservation, model pinning, fail-closed constraints, automatic pull, explicit environment override, and pull failure.
+
+### Validation and residual risk
+
+- GitHub Actions exact-head validation has not yet completed; no passing result is claimed at this point.
+- The official Ollama model listing identifies `gpt-oss:20b` as a 14 GB MXFP4 model with up to 128K context. This confirms model availability/format, not actual performance on the owner's machine.
+- No local target-host or human test is being used as a prerequisite for continued implementation. The repository's merge rule still prohibits merging without target-host validation; this branch will remain unmerged if that gate is unavailable.
+
+---
+
 ## 2026-11-07 — Owner Windows development environment baseline
 
 Captured from the owner's PowerShell output on 2026-11-07. This is a user-reported workstation snapshot, not a CI-runner inventory.
