@@ -896,6 +896,7 @@ def test_codex_arguments_reject_unverified_windows_sandbox_backend(monkeypatch):
     import pytest
     from scripts import autonomous_engineering_progress as progress
 
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "32768")
     monkeypatch.setenv("CODEX_WINDOWS_SANDBOX_BACKEND", "danger-full-access")
     with pytest.raises(ValueError, match="must be 'mxc' or 'elevated'"):
         progress.codex_arguments("gpt-oss:20b", "codex-report.md")
@@ -1285,3 +1286,12 @@ def test_pending_pr_state_round_trips_atomically_and_rejects_corruption(tmp_path
     cycle._pending_pr_path().write_text("{broken", encoding="utf-8")
     with pytest.raises(RuntimeError, match="unreadable"):
         cycle.load_pending_pr()
+
+
+def test_codex_arguments_refuse_to_invent_context_without_ollama_preflight(monkeypatch):
+    import pytest
+    from scripts import autonomous_engineering_progress as progress
+
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", raising=False)
+    with pytest.raises(ValueError, match="verified Ollama context preflight"):
+        progress.codex_arguments("qwen3:14b-codex-ctx32768", "codex-report.md")
