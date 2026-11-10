@@ -288,6 +288,7 @@ def test_ollama_chat_applies_curriculum_output_token_limit(monkeypatch):
     )
     assert result == "{}"
     assert captured["options"]["num_predict"] == 800
+    assert captured["options"]["num_gpu"] == 0
     assert captured["model"] == "gpt-oss:20b"
 
 
