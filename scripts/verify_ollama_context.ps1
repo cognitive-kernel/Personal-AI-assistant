@@ -24,80 +24,78 @@ function Get-ModelInfo {
 function Get-MaximumContext {
     param([Parameter(Mandatory = $true)]$Info)
     $architecture = [string]$Info.details.family
-    $preferredKey = $architecture + ".context_length"
-    $preferred = $Info.model_info.PSObject.Properties[$preferredKey]
-    if ($preferred -and $preferred.Value -is [ValueType] -and [int64]$preferred.Value -ge 512) {
-        return [int64]$preferred.Value
+    if ([string]::IsNullOrWhiteSpace($architecture)) {
+        throw "Ollama did not report the selected model architecture."
     }
-    $values = @(
-        $Info.model_info.PSObject.Properties |
-        Where-Object {
-            $_.Name -match '\.context_length$' -and
-            $_.Value -is [ValueType] -and
-            [int64]$_.Value -ge 512
-        } |
-        ForEach-Object { [int64]$_.Value }
-    )
-    if ($values.Count -eq 0) { return $null }
-    [int64](($values | Measure-Object -Minimum).Minimum)
+    $key = $architecture + ".context_length"
+    $property = $Info.model_info.PSObject.Properties[$key]
+    $maximum = 0L
+    if (-not $property -or -not [int64]::TryParse([string]$property.Value, [ref]$maximum) -or $maximum -lt 512) {
+        throw "Ollama did not publish a valid architecture-specific context limit ('$key')."
+    }
+    return $maximum
+}
+
+function Assert-ToolCallingCapability {
+    param([Parameter(Mandatory = $true)]$Info)
+    $capabilities = @($Info.capabilities | ForEach-Object { [string]$_ })
+    if ($capabilities -notcontains "tools") {
+        throw "Selected Ollama model does not explicitly advertise the required 'tools' capability."
+    }
 }
 
 function Get-AutomaticContext {
     param(
-        [Parameter(Mandatory = $true)][int64]$Maximum,
-        [Parameter(Mandatory = $true)]$Info
+        [Parameter(Mandatory = $true)]$Info,
+        [Parameter(Mandatory = $true)][string]$ModelName,
+        [Nullable[long]]$RequestedContext
     )
 
-    $freeRamGiB = $null
     try {
         $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
-        if ($os.FreePhysicalMemory -gt 0) {
-            $freeRamGiB = [double]$os.FreePhysicalMemory / 1MB
-        }
-    } catch { }
-    if ($null -eq $freeRamGiB) { return [int64][Math]::Min($Maximum, 512) }
-
-    $tags = Invoke-RestMethod -Uri "$baseUrl/api/tags" -Method Get -TimeoutSec 10
-    $tag = @($tags.models | Where-Object { $_.name -eq $Model }) | Select-Object -First 1
-    if (-not $tag -or $null -eq $tag.size -or [int64]$tag.size -le 0) {
-        return [int64][Math]::Min($Maximum, 2048)
+    } catch {
+        throw "Windows physical-memory telemetry is unavailable; refusing to guess a Codex context. $($_.Exception.Message)"
     }
-    $weightsGiB = [double]$tag.size / 1GB
-    $architecture = [string]$Info.details.family
-    $modelInfo = $Info.model_info
-    $layers = $null
-    $heads = $null
-    $keyLength = $null
-    $valueLength = $null
-
-    foreach ($property in $modelInfo.PSObject.Properties) {
-        if ($property.Name -eq ($architecture + ".block_count")) { $layers = [double]$property.Value }
-        if ($property.Name -eq ($architecture + ".attention.head_count_kv")) { $heads = [double]$property.Value }
-        if ($property.Name -eq ($architecture + ".attention.key_length")) { $keyLength = [double]$property.Value }
-        if ($property.Name -eq ($architecture + ".attention.value_length")) { $valueLength = [double]$property.Value }
+    if ($null -eq $os.FreePhysicalMemory -or [int64]$os.FreePhysicalMemory -le 0) {
+        throw "Windows did not report available physical memory; refusing to guess a Codex context."
     }
-    if ($null -eq $valueLength) { $valueLength = $keyLength }
-    if (-not $layers -or -not $heads -or -not $keyLength -or -not $valueLength) {
-        return [int64][Math]::Min($Maximum, 2048)
+    $availableMemoryBytes = [int64]$os.FreePhysicalMemory * 1KB
+
+    try {
+        $tags = Invoke-RestMethod -Uri "$baseUrl/api/tags" -Method Get -TimeoutSec 10
+    } catch {
+        throw "Could not inspect installed Ollama model sizes for context planning. $($_.Exception.Message)"
+    }
+    $tag = @($tags.models | Where-Object { $_.name -eq $ModelName }) | Select-Object -First 1
+    $weightBytes = 0L
+    if (-not $tag -or -not [int64]::TryParse([string]$tag.size, [ref]$weightBytes) -or $weightBytes -le 0) {
+        throw "Ollama did not report a valid installed-model size for '$ModelName'."
     }
 
-    # Conservative CPU/RAM estimate: model weights + FP16 KV cache + 10% overhead,
-    # while preserving 4 GiB for Windows and other applications.
-    $bytesPerToken = $layers * $heads * ($keyLength + $valueLength) * 2
-    $budgetGiB = [Math]::Max(0, $freeRamGiB - 4)
-    $cacheBudgetBytes = [Math]::Max(0, ($budgetGiB - $weightsGiB - [Math]::Max(0.5, $weightsGiB * 0.10)) * 1GB)
-    if ($bytesPerToken -le 0 -or $cacheBudgetBytes -le 0) {
-        return [int64][Math]::Min($Maximum, 512)
+    $selectionInput = @{
+        model_info = $Info.model_info
+        architecture = [string]$Info.details.family
+        model_weight_bytes = $weightBytes
+        available_memory_bytes = $availableMemoryBytes
+        requested_context_tokens = $RequestedContext
+    } | ConvertTo-Json -Depth 30 -Compress
+    $helperPath = Join-Path (Split-Path -Parent $PSScriptRoot) "app\ollama_context.py"
+    if (-not (Test-Path -LiteralPath $helperPath -PathType Leaf)) {
+        throw "The shared Ollama context-selection module is missing: $helperPath"
     }
-
-    $fit = [int64][Math]::Floor($cacheBudgetBytes / $bytesPerToken)
-    $selected = [int64]512
-    foreach ($candidate in @(1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576)) {
-        if ($candidate -le $Maximum -and $candidate -le $fit) {
-            $selected = [int64]$candidate
-        }
+    $selectionOutput = $selectionInput | & python $helperPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "Fail-closed Ollama context selection failed; see the metadata/host diagnostic above."
     }
-    return $selected
+    try {
+        $selection = ($selectionOutput -join "`n") | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        throw "The Ollama context-selection module returned invalid JSON."
+    }
+    if ($null -eq $selection.selected_context_tokens -or [int64]$selection.selected_context_tokens -lt 512) {
+        throw "The Ollama context-selection module did not return a valid selected context."
+    }
+    return $selection
 }
 
 function Get-AllocatedContext {
@@ -128,9 +126,10 @@ if ($VerifyOnly) {
         throw "The selected Codex context was not persisted for runtime verification."
     }
     $modelInfo = Get-ModelInfo -ModelName $codexModel
+    Assert-ToolCallingCapability -Info $modelInfo
     $maximum = Get-MaximumContext -Info $modelInfo
-    if ($null -eq $maximum -or $selectedContext -gt $maximum) {
-        throw "The persisted Codex context $selectedContext exceeds or cannot be verified against the model maximum."
+    if ($selectedContext -gt $maximum) {
+        throw "The persisted Codex context $selectedContext exceeds the model maximum $maximum."
     }
 } else {
     if ($Model -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]*(?::[A-Za-z0-9._-]+)?$') {
@@ -139,25 +138,32 @@ if ($VerifyOnly) {
 
     $baseModel = $Model
     $modelInfo = Get-ModelInfo -ModelName $baseModel
+    Assert-ToolCallingCapability -Info $modelInfo
     $maximum = Get-MaximumContext -Info $modelInfo
-    if ($null -eq $maximum) {
-        throw "Ollama did not publish a verifiable context_length for '$baseModel'; Codex cannot select a safe context."
-    }
 
+    $requestedContext = $null
     $manualContext = [string]$env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH
     if (-not [string]::IsNullOrWhiteSpace($manualContext)) {
-        $selectedContext = 0L
-        if (-not [int64]::TryParse($manualContext, [ref]$selectedContext) -or $selectedContext -lt 512) {
+        $parsedContext = 0L
+        if (-not [int64]::TryParse($manualContext, [ref]$parsedContext) -or $parsedContext -lt 512) {
             throw "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH must be an integer of at least 512."
         }
-        if ($selectedContext -gt $maximum) {
-            throw "Requested context $selectedContext exceeds model '$baseModel' maximum $maximum."
-        }
-        $selectionMode = "manual"
+        $requestedContext = [Nullable[long]]$parsedContext
+        $selectionMode = "requested-and-safely-clamped"
     } else {
-        $selectedContext = Get-AutomaticContext -Maximum $maximum -Info $modelInfo
         $selectionMode = "automatic"
     }
+    $contextSelection = Get-AutomaticContext -Info $modelInfo -ModelName $baseModel -RequestedContext $requestedContext
+    $selectedContext = [int64]$contextSelection.selected_context_tokens
+    if ($selectedContext -gt $maximum) {
+        throw "Selected context $selectedContext exceeds the model maximum $maximum."
+    }
+    Write-Host "Model maximum context: $($contextSelection.maximum_context_tokens) tokens"
+    Write-Host "Hardware-safe context ceiling: $($contextSelection.hardware_maximum_context_tokens) tokens"
+    if ($null -ne $requestedContext) {
+        Write-Host "Requested context: $requestedContext tokens"
+    }
+    Write-Host "Final context: min(requested, model maximum, safe hardware capacity) = $selectedContext tokens"
 
     $codexModel = "$baseModel-codex-ctx$selectedContext"
     $existingInfo = $null
@@ -185,6 +191,7 @@ if ($VerifyOnly) {
     }
 
     $modelInfo = Get-ModelInfo -ModelName $codexModel
+    Assert-ToolCallingCapability -Info $modelInfo
     $savedContext = [regex]::Match(
         [string]$modelInfo.modelfile,
         '(?im)^\s*PARAMETER\s+num_ctx\s+(\d+)\s*$'
