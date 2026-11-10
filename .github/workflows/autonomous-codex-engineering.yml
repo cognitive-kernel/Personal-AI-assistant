@@ -317,6 +317,11 @@ jobs:
           from scripts.autonomous_engineering_state_paths import execution_state_directory
           from scripts.autonomous_engineering_state_lock import durable_state_lock
           from scripts.autonomous_engineering_pending_task import validate_manual_task_submission
+          from scripts.autonomous_engineering_pending_task_state import (
+              claim_pending_task_owner_unlocked,
+              pending_task_owner_path,
+              validate_pending_task_owner_unlocked,
+          )
 
           state_dir = execution_state_directory()
           state_dir.mkdir(parents=True, exist_ok=True)
@@ -369,6 +374,28 @@ jobs:
                   )
               elif pending_task:
                   manual_task = pending_task
+              owner_path = pending_task_owner_path(state_dir)
+              if pending_task:
+                  run_id = os.environ.get("GITHUB_RUN_ID", "")
+                  try:
+                      run_attempt = int(os.environ.get("GITHUB_RUN_ATTEMPT", "1"))
+                  except ValueError as exc:
+                      raise SystemExit("Workflow run attempt is invalid; refusing to claim pending task.") from exc
+                  owner_source = (
+                      "legacy_migration" if not owner_path.exists()
+                      else ("manual_dispatch" if manual_task else "recovery")
+                  )
+                  try:
+                      claim_pending_task_owner_unlocked(
+                          state_dir, pending_task, run_id, run_attempt, source=owner_source,
+                      )
+                      validate_pending_task_owner_unlocked(
+                          state_dir, pending_task, run_id, run_attempt,
+                      )
+                  except (RuntimeError, ValueError) as exc:
+                      raise SystemExit(f"Pending task ownership validation failed: {exc}") from exc
+              elif owner_path.exists():
+                  raise SystemExit("Pending task owner metadata exists without its task; preserving unknown state.")
           if len(manual_task) > 2000 or "\x00" in manual_task:
               raise SystemExit("Persisted manual engineering task is invalid.")
           request = {
