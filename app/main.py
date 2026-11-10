@@ -518,7 +518,7 @@ class LearningRequest(BaseModel):
 class LearningCurriculumRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=300)
     max_topics: StrictInt = Field(default=40, ge=8, le=40)
-    source_text: str | None = Field(default=None, max_length=100000)
+    source_text: str | None = Field(default=None, max_length=500)
 
     model_config = ConfigDict(extra="forbid")
 
