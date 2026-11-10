@@ -58,7 +58,30 @@ if (-not $VerifyOnly) {
         } catch {
             throw "Could not inspect the selected Codex model '$codexModel' before reuse. Verify that Ollama is reachable and the model is installed. $($_.Exception.Message)"
         }
-        $existingNumCtx = [regex]::Match([string]$existingInfo.modelfile, '(?im)^\s*PARAMETER\s+num_ctx\s+(\d+)\s*
+        $existingNumCtx = [regex]::Match([string]$existingInfo.modelfile, '(?im)^ *PARAMETER +num_ctx +([0-9]+) *$')
+        $needsCreate = -not ($existingNumCtx.Success -and [int64]$existingNumCtx.Groups[1].Value -ge $MinimumContextLength)
+    } else {
+        $codexModel = "$Model$codexSuffix"
+    }
+
+    if ($needsCreate) {
+        if ([string]::IsNullOrWhiteSpace($baseModel)) {
+            throw "Cannot derive the base Ollama model name from '$Model'."
+        }
+        $createBody = @{
+            model = $codexModel
+            from = $baseModel
+            parameters = @{ num_ctx = $MinimumContextLength }
+            stream = $false
+        } | ConvertTo-Json -Depth 5 -Compress
+
+        try {
+            $createResult = Invoke-RestMethod -Uri "$baseUrl/api/create" -Method Post -ContentType "application/json" -Body $createBody -TimeoutSec $TimeoutSeconds
+        } catch {
+            throw "Ollama could not create the persistent 64k Codex model '$codexModel' from base model '$baseModel'. Check available memory and model compatibility. $($_.Exception.Message)"
+        }
+    }
+
     try {
         $showBody = @{ model = $codexModel; verbose = $true } | ConvertTo-Json -Compress
         $modelInfo = Invoke-RestMethod -Uri "$baseUrl/api/show" -Method Post -Body $showBody -ContentType "application/json" -TimeoutSec 20
