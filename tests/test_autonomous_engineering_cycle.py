@@ -885,9 +885,7 @@ def test_codex_arguments_pin_ollama_and_selected_windows_sandbox(monkeypatch):
     assert arguments[arguments.index("--sandbox"):arguments.index("--sandbox") + 2] == [
         "--sandbox", "workspace-write",
     ]
-    assert "model_providers.ollama.stream_idle_timeout_ms=900000" in overrides
-    assert "model_providers.ollama.stream_max_retries=10" in overrides
-    assert "model_providers.ollama.request_max_retries=4" in overrides
+    assert not any(value.startswith("model_providers.ollama.") for value in overrides)
     assert arguments[arguments.index("--model") + 1] == "gpt-oss:20b"
 
 
