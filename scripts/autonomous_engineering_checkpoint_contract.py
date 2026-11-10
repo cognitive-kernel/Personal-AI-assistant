@@ -46,6 +46,7 @@ def metadata_confirms_watcher_ready(
     run_id: str,
     task: int,
     watcher_pid: int,
+    watcher_started_at: float | None = None,
 ) -> bool:
     """Accept readiness only from the exact run/task/base and a versioned OS process identity."""
     started_at = metadata.get("watcher_started_at") if isinstance(metadata, dict) else None
@@ -61,4 +62,13 @@ def metadata_confirms_watcher_ready(
         and not isinstance(started_at, bool)
         and math.isfinite(started_at)
         and started_at > 0
+        and (
+            watcher_started_at is None
+            or (
+                isinstance(watcher_started_at, (int, float))
+                and not isinstance(watcher_started_at, bool)
+                and math.isfinite(watcher_started_at)
+                and abs(float(started_at) - float(watcher_started_at)) <= 0.02
+            )
+        )
     )
