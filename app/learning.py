@@ -1886,6 +1886,82 @@ def stop_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
     }
 
 
+def start_researched_path_learning(
+    path_id: int, *, allow_retry: bool = False
+) -> dict[str, Any]:
+    """Queue only the first unfinished lesson; later lessons follow terminal success."""
+    path = get_learning_path(path_id)
+    if not path.get("research"):
+        raise KeyError(f"Researched learning path {path_id} not found.")
+    skipped_completed = 0
+    for topic in path["topics"]:
+        if topic["status"] == "completed":
+            skipped_completed += 1
+            continue
+        with learning_connection() as conn:
+            latest = conn.execute(
+                "SELECT id, status FROM learning_jobs WHERE path_topic_id=? ORDER BY id DESC LIMIT 1",
+                (topic["id"],),
+            ).fetchone()
+        if latest is not None and latest["status"] in {"queued", "running"}:
+            return {
+                "path_id": path_id, "queued_count": 0, "job_ids": [],
+                "status": "already_active", "active_job_id": int(latest["id"]),
+                "skipped_completed_count": skipped_completed,
+                "message": "درس جاری در حال اجرا یا در صف است؛ درس بعدی تا پایان آن شروع نمی‌شود.",
+            }
+        if latest is not None and latest["status"] == "completed":
+            continue
+        if latest is not None and latest["status"] in {"failed", "rejected", "cancelled", "superseded"} and not allow_retry:
+            return {
+                "path_id": path_id, "queued_count": 0, "job_ids": [],
+                "status": "blocked_by_previous_lesson",
+                "blocked_topic": topic["topic"],
+                "message": "ادامهٔ صف به‌دلیل ناموفق‌بودن درس قبلی متوقف است؛ برای تلاش دوباره، شروع مسیر را انتخاب کنید.",
+            }
+        job = create_job(topic["topic"], path_topic_id=int(topic["id"]))
+        with learning_connection() as conn:
+            conn.execute(
+                "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP "
+                "WHERE id=? AND path_id=? AND status!='completed'",
+                (topic["id"], path_id),
+            )
+        task = _enqueue_learning_job(int(job["id"]))
+        return {
+            "path_id": path_id,
+            "queued_count": 1,
+            "job_ids": [int(job["id"])],
+            "task_id": task["id"],
+            "status": "queued",
+            "skipped_completed_count": skipped_completed,
+            "message": "فقط درس بعدی صف‌بندی شد؛ درس بعدی پس از پایان موفق این درس اضافه می‌شود.",
+        }
+    return {
+        "path_id": path_id, "queued_count": 0, "job_ids": [],
+        "status": "completed", "skipped_completed_count": skipped_completed,
+        "message": "تمام درس‌های این مسیر تولید شده‌اند.",
+    }
+
+
+def queue_next_researched_path_topic(path_topic_id: int) -> dict[str, Any] | None:
+    """Advance a researched path only after its current lesson completed successfully."""
+    with learning_connection() as conn:
+        row = conn.execute(
+            "SELECT path_id FROM learning_path_topics WHERE id=?",
+            (path_topic_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        path_id = int(row["path_id"])
+        is_researched = conn.execute(
+            "SELECT 1 FROM learning_path_research WHERE path_id=?",
+            (path_id,),
+        ).fetchone()
+    if is_researched is None:
+        return None
+    return start_researched_path_learning(path_id, allow_retry=False)
+
+
 def start_path_learning(path_id: int) -> dict[str, Any]:
     path = get_learning_path(path_id)
     queued_ids: list[int] = []
