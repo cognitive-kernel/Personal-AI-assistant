@@ -1,4 +1,5 @@
 $ErrorActionPreference = "Stop"
+Import-Module (Join-Path $PSScriptRoot "AutonomousEngineeringTaskState.psm1") -Force
 
 $manualTask = [string]$env:MANUAL_TASK
 if ([string]::IsNullOrWhiteSpace($manualTask)) {
@@ -119,20 +120,13 @@ try {
     if ($existingTask -and $existingTask -cne $manualTask) {
         throw "Another manual task is still pending. It cannot be replaced before its verified merge."
     }
-    $ownerFound = $true
-    try {
-        $ownerRaw = [System.IO.File]::ReadAllText($taskOwnerPath, [System.Text.Encoding]::UTF8)
-    } catch [System.IO.FileNotFoundException] {
-        $ownerFound = $false
-        $ownerRaw = ""
-    } catch [System.IO.DirectoryNotFoundException] {
-        $ownerFound = $false
-        $ownerRaw = ""
-    } catch {
-        throw "Pending task owner metadata cannot be read safely; preserving the task. $($_.Exception.Message)"
-    }
-    if (-not $existingTaskFound -and $ownerFound) {
-        throw "Pending task owner metadata exists without its task; preserving unknown state."
+    if ($existingTaskFound) {
+        $ownerRecord = Read-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $existingTask
+    } else {
+        $ownerRecord = Read-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task ""
+        if ($null -ne $ownerRecord) {
+            throw "Pending task owner metadata exists without its task; preserving unknown state."
+        }
     }
 
     $pullsUri = "https://api.github.com/repos/$env:GH_REPO/pulls?state=open&per_page=100"
@@ -162,99 +156,21 @@ try {
         }
     }
 
-    $shaProvider = [System.Security.Cryptography.SHA256]::Create()
-    try {
-        $taskDigest = [BitConverter]::ToString(
-            $shaProvider.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($manualTask))
-        ).Replace("-", "").ToLowerInvariant()
-    } finally {
-        $shaProvider.Dispose()
-    }
     $runAttempt = 0
     if (-not [int]::TryParse([string]$env:GITHUB_RUN_ATTEMPT, [ref]$runAttempt) -or $runAttempt -lt 1) {
         throw "Workflow run attempt is invalid; refusing to claim the pending task."
     }
-    $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0
-
-    if ($ownerFound) {
-        try {
-            if ([string]::IsNullOrWhiteSpace($ownerRaw)) { throw "Owner metadata is empty." }
-            $ownerRecord = $ownerRaw | ConvertFrom-Json
-            $ownerAttempt = 0
-            $submittedAttempt = 0
-            $claimCount = 0
-            $createdAt = 0.0
-            $claimedAt = 0.0
-            if (
-                $ownerRecord.schema_version -is [bool] -or
-                -not ($ownerRecord.schema_version -is [int] -or $ownerRecord.schema_version -is [long]) -or
-                [long]$ownerRecord.schema_version -ne 1 -or
-                -not ($ownerRecord.task_sha256 -is [string]) -or
-                [string]$ownerRecord.task_sha256 -cne $taskDigest -or
-                -not ($ownerRecord.owner_run_id -is [string]) -or
-                [string]::IsNullOrWhiteSpace([string]$ownerRecord.owner_run_id) -or
-                -not ($ownerRecord.submitted_run_id -is [string]) -or
-                [string]::IsNullOrWhiteSpace([string]$ownerRecord.submitted_run_id) -or
-                -not ($ownerRecord.owner_attempt -is [int] -or $ownerRecord.owner_attempt -is [long]) -or
-                -not [int]::TryParse([string]$ownerRecord.owner_attempt, [ref]$ownerAttempt) -or
-                $ownerAttempt -lt 1 -or
-                -not ($ownerRecord.submitted_attempt -is [int] -or $ownerRecord.submitted_attempt -is [long]) -or
-                -not [int]::TryParse([string]$ownerRecord.submitted_attempt, [ref]$submittedAttempt) -or
-                $submittedAttempt -lt 1 -or
-                -not ($ownerRecord.claim_count -is [int] -or $ownerRecord.claim_count -is [long]) -or
-                -not [int]::TryParse([string]$ownerRecord.claim_count, [ref]$claimCount) -or
-                $claimCount -lt 1 -or
-                -not ($ownerRecord.created_at -is [double] -or $ownerRecord.created_at -is [int] -or $ownerRecord.created_at -is [long]) -or
-                -not [double]::TryParse([string]$ownerRecord.created_at, [ref]$createdAt) -or
-                [double]::IsNaN($createdAt) -or [double]::IsInfinity($createdAt) -or $createdAt -le 0 -or
-                -not ($ownerRecord.claimed_at -is [double] -or $ownerRecord.claimed_at -is [int] -or $ownerRecord.claimed_at -is [long]) -or
-                -not [double]::TryParse([string]$ownerRecord.claimed_at, [ref]$claimedAt) -or
-                [double]::IsNaN($claimedAt) -or [double]::IsInfinity($claimedAt) -or $claimedAt -le 0 -or
-                -not ($ownerRecord.source -is [string]) -or
-                [string]$ownerRecord.source -notin @("manual_dispatch", "recovery", "legacy_migration")
-            ) {
-                throw "Owner metadata violates schema v1 or does not match the pending task."
-            }
-        } catch {
-            throw "Pending task owner metadata is invalid; preserving the task. $($_.Exception.Message)"
-        }
-        if (
-            [string]$ownerRecord.owner_run_id -ne [string]$env:GITHUB_RUN_ID -or
-            $ownerAttempt -ne $runAttempt
-        ) {
-            $ownerRecord.owner_run_id = [string]$env:GITHUB_RUN_ID
-            $ownerRecord.owner_attempt = $runAttempt
-            $ownerRecord.claimed_at = $now
-            $ownerRecord.claim_count = $claimCount + 1
-        }
-    } else {
-        $source = if ($existingTaskFound) { "legacy_migration" } else { "manual_dispatch" }
-        $ownerRecord = [ordered]@{
-            schema_version = 1
-            task_sha256 = $taskDigest
-            submitted_run_id = [string]$env:GITHUB_RUN_ID
-            submitted_attempt = $runAttempt
-            owner_run_id = [string]$env:GITHUB_RUN_ID
-            owner_attempt = $runAttempt
-            created_at = $now
-            claimed_at = $now
-            claim_count = 1
-            source = $source
-        }
+    $ownerSource = if ($existingTaskFound) { "legacy_migration" } else { "manual_dispatch" }
+    $ownerArgs = @{
+        Path = $taskOwnerPath
+        Task = $manualTask
+        RunId = [string]$env:GITHUB_RUN_ID
+        RunAttempt = $runAttempt
+        Source = $ownerSource
+        Existing = $ownerRecord
     }
+    $null = Write-AutonomousTaskOwnerRecord @ownerArgs
 
-    $ownerTemporaryPath = Join-Path $stateDir ("pending-manual-task-owner-" + $env:GITHUB_RUN_ID + "-" + $env:GITHUB_RUN_ATTEMPT + ".tmp")
-    try {
-        $ownerJson = $ownerRecord | ConvertTo-Json -Depth 5 -Compress
-        [System.IO.File]::WriteAllText(
-            $ownerTemporaryPath, $ownerJson, [System.Text.UTF8Encoding]::new($false)
-        )
-        Move-Item -LiteralPath $ownerTemporaryPath -Destination $taskOwnerPath -Force
-    } finally {
-        if (Test-Path -LiteralPath $ownerTemporaryPath) {
-            Remove-Item -LiteralPath $ownerTemporaryPath -Force
-        }
-    }
     Write-Host "Manual task persisted to the durable runner state before prerequisite checks."
 } finally {
     if ($stateMutexOwned) {
