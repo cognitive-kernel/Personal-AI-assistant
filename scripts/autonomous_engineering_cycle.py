@@ -104,8 +104,7 @@ def start_checkpoint_watcher(base_sha: str, run_id: str, task: int) -> subproces
         watcher_executable, str(CHECKPOINT_SCRIPT), "watch",
         "--base-sha", base_sha, "--run-id", run_id, "--task", str(task),
     ]
-    configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
-    state_dir = Path(configured).expanduser() if configured else Path(os.environ["PROGRAMDATA"]) / "PersonalAIAssistant" / "autonomous-engineering"
+    state_dir = execution_state_directory()
     metadata_path = state_dir / f"worktree-checkpoint-{run_id}-{task}.json"
     marker_id = f"{run_id}-{task}"
     ready_path = state_dir / f"worktree-checkpoint-{marker_id}.ready"
