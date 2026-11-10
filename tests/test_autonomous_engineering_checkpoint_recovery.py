@@ -379,3 +379,18 @@ def test_checkpoint_store_lock_is_released_after_abrupt_owner_exit(tmp_path: Pat
 
     with checkpoint.checkpoint_store_lock(tmp_path, timeout_seconds=2):
         pass
+
+
+def test_read_metadata_rejects_unsupported_schema_before_mutation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    _, paths = _state(tmp_path)
+    monkeypatch.setattr(checkpoint, "paths", lambda run_id, task: paths)
+    value = json.loads(paths["metadata"].read_text(encoding="utf-8"))
+    value["schema_version"] = 99
+    paths["metadata"].write_text(json.dumps(value), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="supported v2-v4 ownership contract"):
+        checkpoint.read_metadata("run-9", 2)
+
+    assert paths["patch"].read_bytes() == b"preserve this patch"
