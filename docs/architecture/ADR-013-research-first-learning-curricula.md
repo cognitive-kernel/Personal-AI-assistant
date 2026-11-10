@@ -1,31 +1,3 @@
-# ADR-013: Research-first local learning curricula
+# ADR-013 research-first curriculum draft — superseded
 
-- **Status:** Proposed
-- **Date:** 2026-11-10
-- **Decision owners:** Repository maintainers
-
-## Context
-
-The primary `learning-form` accepted a topic and created one lesson job. It did not first research the subject, produce a comprehensive ordered syllabus, or coordinate lesson generation as a course. A separate preset curriculum catalog exposed fixed topics, while the Chrome/ChatGPT learning flow had a different outline-first interaction. The user requires the primary local learning engine to accept only a topic or lesson name, discover the subject's scope from public web sources, build the fullest useful ordered outline, and teach its lessons sequentially with `gpt-oss:20b`.
-
-## Decision
-
-1. The primary learning form creates a durable `learning.plan_curriculum` task; it does not enroll the user in a built-in curriculum.
-2. The task searches multiple complementary web queries and requires at least three usable HTTPS pages from at least two domains. Search failure must not silently fall back to model-only syllabus generation.
-3. The configured learning model generates a JSON outline with 8–40 unique, ordered topics. The default learning model is `gpt-oss:20b`; chat and programming model settings remain independent.
-4. Persist the generated outline, its SHA-256 digest, the model name, and bounded source provenance in `learning_path_research` (learning schema migration 42).
-5. Queue only the first lesson. A successful lesson completion advances the same path to the next lesson. A failed, rejected, or cancelled lesson blocks automatic advancement until an explicit resume action. This prevents parallel generation and preserves lesson history.
-6. Remove preset curriculum enrollment controls from the primary UI. Keep legacy curriculum APIs and existing paths/data for backward compatibility; do not delete prior user data.
-7. The Chrome/ChatGPT browser-learning feature remains separate and unchanged.
-
-## Consequences
-
-- Curriculum generation is checkpointed and recoverable through the existing durable task queue.
-- Every generated course can show the web references used to build its outline, without representing those references as independent scientific verification.
-- The configured learning model is pinned; cost/quality profiles may reject it but cannot silently replace it with another model.
-- The local bootstrap installs and verifies both the general model and the dedicated learning model.
-- Sequential generation may take longer than bulk parallel generation, but lesson order and per-course serialization are deterministic.
-
-## Validation and residual risk
-
-Automated tests must cover checkpoint recovery, source diversity, strict outline validation, idempotent persistence, one-at-a-time queue advancement, failure blocking, model pinning, settings migration, and UI removal of preset enrollment. GitHub Actions must pass on the exact PR head. The user's Windows host (32 GB RAM, Core i5-12400, integrated graphics) still requires a real run to verify model loading, RAM use, inference latency, and Persian/English lesson quality. No merge is permitted until the repository's required host-validation gate is satisfied.
+This filename collided with the repository's existing ADR-013 numbering. The research-first local learning curriculum decision is recorded under [ADR-018](ADR-018-research-first-learning-curricula.md). This file is retained temporarily to make the correction auditable and must not be treated as an accepted decision record.
