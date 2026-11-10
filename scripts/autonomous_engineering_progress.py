@@ -158,8 +158,16 @@ def codex_command(executable: str, arguments: list[str]) -> list[str]:
     return [executable, *arguments]
 
 
-def write_codex_model_catalog(model: str, context_window: int = 64000) -> Path:
-    """Provide Codex metadata for the Ollama-created model alias."""
+def write_codex_model_catalog(model: str, context_window: int | None = None) -> Path:
+    """Provide Codex metadata using the exact context selected and verified by Ollama."""
+    if context_window is None:
+        raw_context = os.getenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000").strip()
+        try:
+            context_window = int(raw_context)
+        except ValueError:
+            raise ValueError("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH must be an integer.") from None
+    if isinstance(context_window, bool) or not isinstance(context_window, int) or not 512 <= context_window <= 1048576:
+        raise ValueError("Codex context window must be between 512 and 1048576 tokens.")
     safe_model = re.sub(r"[^A-Za-z0-9_.-]", "_", model)
     catalog_path = Path(tempfile.gettempdir()) / f"codex-model-catalog-{os.getpid()}-{safe_model}.json"
     catalog = {
@@ -203,8 +211,9 @@ def codex_arguments(model: str, report: str) -> list[str]:
     reasoning_effort = os.getenv("CODEX_MODEL_REASONING_EFFORT", "").strip().casefold()
     if reasoning_effort and reasoning_effort not in {"low", "medium", "high"}:
         raise ValueError("CODEX_MODEL_REASONING_EFFORT must be 'low', 'medium', or 'high'.")
-    catalog_path = write_codex_model_catalog(model)
-    print(f"Codex model catalog metadata: model={model}, context_window=64000")
+    context_window = int(os.getenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000"))
+    catalog_path = write_codex_model_catalog(model, context_window=context_window)
+    print(f"Codex model catalog metadata: model={model}, context_window={context_window}")
     arguments = [
         "exec", "-c", 'model_provider="ollama"',
         "-c", f'windows.sandbox="{backend}"',
