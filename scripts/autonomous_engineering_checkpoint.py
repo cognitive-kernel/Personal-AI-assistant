@@ -17,10 +17,18 @@ try:
         SCHEMA_VERSION,
         build_checkpoint_metadata,
     )
+    from .autonomous_engineering_checkpoint_process import (
+        process_start_time,
+        stop_owned_watcher,
+    )
 except ImportError:  # Direct script execution from the scripts directory.
     from autonomous_engineering_checkpoint_contract import (
         SCHEMA_VERSION,
         build_checkpoint_metadata,
+    )
+    from autonomous_engineering_checkpoint_process import (
+        process_start_time,
+        stop_owned_watcher,
     )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -92,33 +100,9 @@ def _atomic_write(path: Path, data: str | bytes) -> None:
 
 
 def stop_existing_watcher(metadata: dict[str, Any] | None) -> None:
-    if not isinstance(metadata, dict):
-        return
-    pid = metadata.get("watcher_pid")
-    expected_run = metadata.get("run_id")
-    expected_task = metadata.get("task")
-    if not isinstance(pid, int) or pid <= 0 or pid == os.getpid():
-        return
-    try:
-        process = psutil.Process(pid)
-        command = process.cmdline()
-        command_text = " ".join(command).casefold()
-        if (
-            "autonomous_engineering_checkpoint.py" in command_text
-            and "watch" in command_text
-            and expected_run is not None
-            and str(expected_run) in command
-            and expected_task is not None
-            and str(expected_task) in command
-        ):
-            process.terminate()
-            try:
-                process.wait(timeout=3)
-            except psutil.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=3)
-    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
-        return
+    stop_owned_watcher(metadata, script_path=Path(__file__).resolve())
+
+
 
 
 def read_metadata(run_id: str, task: int) -> dict[str, Any] | None:
@@ -129,7 +113,13 @@ def read_metadata(run_id: str, task: int) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
-def write_snapshot(base_sha: str, run_id: str, task: int, watcher_pid: int | None = None) -> None:
+def write_snapshot(
+    base_sha: str,
+    run_id: str,
+    task: int,
+    watcher_pid: int | None = None,
+    watcher_started_at: float | None = None,
+) -> None:
     state = paths(run_id, task)
     state["directory"].mkdir(parents=True, exist_ok=True)
     # The watcher runs concurrently with Codex. Never use the repository's
@@ -176,6 +166,7 @@ def write_snapshot(base_sha: str, run_id: str, task: int, watcher_pid: int | Non
         run_id=run_id,
         task=task,
         watcher_pid=watcher_pid,
+        watcher_started_at=watcher_started_at,
         updated_at=time.time(),
         patch_bytes=state["patch"].stat().st_size if state["patch"].exists() else 0,
     )
@@ -188,12 +179,15 @@ def watch(base_sha: str, run_id: str, task: int, interval: int) -> int:
     state = paths(run_id, task)
     ready_path, error_path = watcher_marker_paths(run_id, task)
     state["directory"].mkdir(parents=True, exist_ok=True)
-    # A watcher owns only its own stop/readiness/error markers and never clears another run's state.
+    # Reconcile any previous owner before replacing this run/task's markers.
+    # A live but unverifiable owner blocks startup instead of being overwritten.
+    stop_existing_watcher(read_metadata(run_id, task))
     state["stop"].unlink(missing_ok=True)
     ready_path.unlink(missing_ok=True)
     error_path.unlink(missing_ok=True)
+    watcher_started_at = process_start_time(os.getpid())
     try:
-        write_snapshot(base_sha, run_id, task, os.getpid())
+        write_snapshot(base_sha, run_id, task, os.getpid(), watcher_started_at)
         # The atomic metadata replacement above is the only readiness signal.
         # Do not perform a second synchronous marker write here: a filesystem
         # stall must not block the watcher after its durable snapshot is saved.
@@ -209,7 +203,7 @@ def watch(base_sha: str, run_id: str, task: int, interval: int) -> int:
         raise
     while not state["stop"].exists():
         try:
-            write_snapshot(base_sha, run_id, task, os.getpid())
+            write_snapshot(base_sha, run_id, task, os.getpid(), watcher_started_at)
         except (OSError, RuntimeError) as exc:
             print(f"Checkpoint snapshot skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
         time.sleep(max(5, min(interval, 120)))
