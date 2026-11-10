@@ -132,6 +132,9 @@ def test_codex_diagnostic_uses_bounded_reasoning_effort_without_changing_default
     assert 'model_reasoning_effort="low"' in overrides
     assert "sandbox_workspace_write.exclude_slash_tmp=true" in overrides
     assert any(value.startswith("model_catalog_json=") for value in overrides)
+    assert "model_providers.ollama.stream_idle_timeout_ms=900000" in overrides
+    assert "model_providers.ollama.stream_max_retries=10" in overrides
+    assert "model_providers.ollama.request_max_retries=4" in overrides
 
     monkeypatch.delenv("CODEX_MODEL_REASONING_EFFORT")
     default_arguments = progress.codex_arguments("gpt-oss:20b-codex-64k", "report.md")
@@ -143,6 +146,9 @@ def test_codex_diagnostic_uses_bounded_reasoning_effort_without_changing_default
     assert not any(value.startswith("model_reasoning_effort=") for value in default_overrides)
     assert "sandbox_workspace_write.exclude_slash_tmp=true" in default_overrides
     assert any(value.startswith("model_catalog_json=") for value in default_overrides)
+    assert "model_providers.ollama.stream_idle_timeout_ms=900000" in default_overrides
+    assert "model_providers.ollama.stream_max_retries=10" in default_overrides
+    assert "model_providers.ollama.request_max_retries=4" in default_overrides
 
     monkeypatch.setenv("CODEX_MODEL_REASONING_EFFORT", "unbounded")
     with pytest.raises(ValueError, match="CODEX_MODEL_REASONING_EFFORT"):
@@ -211,3 +217,16 @@ def test_codex_model_catalog_uses_selected_context_from_environment(monkeypatch)
     path = progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx32768")
     catalog = json.loads(path.read_text(encoding="utf-8"))
     assert catalog["models"][0]["context_window"] == 32768
+
+
+def test_settings_expose_visible_installed_model_selectors_and_manual_context_inputs():
+    from pathlib import Path
+
+    html = (Path(__file__).resolve().parents[1] / "app" / "static" / "index.html").read_text(encoding="utf-8")
+    for profile in ("chat", "learning", "programming"):
+        assert f'id="{profile}-model-installed"' in html
+        assert f'id="{profile}-model"' in html
+        assert f'id="{profile}-ctx" type="number"' in html
+        assert f'id="{profile}-model-installed"' in html
+    assert 'const result=await api("/api/models")' in html
+    assert 'installedSelect?.addEventListener("change"' in html
