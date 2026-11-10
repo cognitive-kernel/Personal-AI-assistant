@@ -275,10 +275,13 @@ def _detect_vulkan_gpus() -> list[dict[str, Any]]:
 def detect_gpu() -> dict[str, Any]:
     """Discover GPUs across vendors; missing telemetry remains unknown, never zero."""
     providers = (
-        ("nvidia-smi", _detect_nvidia_gpus),
-        ("rocm-smi", _detect_rocm_gpus),
-        ("windows-performance-counters", _detect_windows_gpus),
-        ("vulkan", _detect_vulkan_gpus),
+        (("nvidia-smi", _detect_nvidia_gpus),
+         ("windows-performance-counters", _detect_windows_gpus),
+         ("vulkan", _detect_vulkan_gpus))
+        if os.name == "nt"
+        else (("nvidia-smi", _detect_nvidia_gpus),
+              ("rocm-smi", _detect_rocm_gpus),
+              ("vulkan", _detect_vulkan_gpus))
     )
     devices: list[dict[str, Any]] = []
     for provider, detector in providers:
