@@ -489,7 +489,7 @@ def test_linux_installer_is_pinned_to_the_verified_release_tag(tmp_path, monkeyp
         installer.subprocess,
         "run",
         lambda command, **kwargs: subprocess.CompletedProcess(
-            command, 0, "NAME ID SIZE\nqwen2.5:7b abc 1GB\n", ""
+            command, 0, "NAME ID SIZE\nqwen2.5:7b abc 1GB\ngpt-oss:20b def 13GB\n", ""
         ),
     )
 
