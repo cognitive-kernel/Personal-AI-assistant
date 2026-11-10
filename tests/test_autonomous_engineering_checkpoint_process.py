@@ -102,6 +102,24 @@ def test_access_denied_while_reading_command_line_blocks_recovery(
         process_control.stop_owned_watcher(_metadata(script), script_path=script)
 
 
+def test_access_denied_while_terminating_watcher_blocks_recovery(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    script = tmp_path / "autonomous_engineering_checkpoint.py"
+
+    class DeniedTerminateProcess(FakeProcess):
+        def terminate(self) -> None:
+            raise psutil.AccessDenied(pid=4321)
+
+    monkeypatch.setattr(
+        process_control.psutil, "Process",
+        lambda pid: DeniedTerminateProcess(command=_command(script)),
+    )
+
+    with pytest.raises(RuntimeError, match="could not be stopped and reaped"):
+        process_control.stop_owned_watcher(_metadata(script), script_path=script)
+
+
 def test_reused_pid_is_not_terminated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     script = tmp_path / "autonomous_engineering_checkpoint.py"
     process = FakeProcess(created=9999.0, command=["unrelated.exe"])
