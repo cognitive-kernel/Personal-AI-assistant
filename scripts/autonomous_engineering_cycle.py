@@ -19,10 +19,14 @@ try:
     from .autonomous_engineering_checkpoint_contract import metadata_confirms_watcher_ready
     from .autonomous_engineering_checkpoint_process import process_start_time
     from .autonomous_engineering_execution_lock import repository_execution_lock
+    from .autonomous_engineering_state_lock import durable_state_lock
+    from .autonomous_engineering_state_paths import execution_state_directory
 except ImportError:  # Direct script execution from the scripts directory.
     from autonomous_engineering_checkpoint_contract import metadata_confirms_watcher_ready
     from autonomous_engineering_checkpoint_process import process_start_time
     from autonomous_engineering_execution_lock import repository_execution_lock
+    from autonomous_engineering_state_lock import durable_state_lock
+    from autonomous_engineering_state_paths import execution_state_directory
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKPOINT_SCRIPT = Path(__file__).resolve().with_name("autonomous_engineering_checkpoint.py")
@@ -392,12 +396,7 @@ def graphql(token: str, query: str, variables: dict[str, Any]) -> dict[str, Any]
 
 
 def _autonomous_state_dir() -> Path:
-    configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
-    if configured:
-        return Path(os.path.expandvars(configured)).expanduser()
-    if os.getenv("PROGRAMDATA"):
-        return Path(os.environ["PROGRAMDATA"]) / "PersonalAIAssistant" / "autonomous-engineering"
-    return Path.home() / ".personal-ai-assistant" / "autonomous-engineering"
+    return execution_state_directory()
 
 
 def _pending_pr_path() -> Path:
