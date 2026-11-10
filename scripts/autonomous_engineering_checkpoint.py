@@ -100,11 +100,26 @@ def stop_existing_watcher(metadata: dict[str, Any] | None) -> None:
 
 
 def read_metadata(run_id: str, task: int) -> dict[str, Any] | None:
+    metadata_path = paths(run_id, task)["metadata"]
     try:
-        value = json.loads(paths(run_id, task)["metadata"].read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        raw = metadata_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
         return None
-    return value if isinstance(value, dict) else None
+    except OSError as exc:
+        raise RuntimeError(
+            "Checkpoint metadata cannot be read; refusing to replace or recover unknown owner state."
+        ) from exc
+    try:
+        value = json.loads(raw)
+    except ValueError as exc:
+        raise RuntimeError(
+            "Checkpoint metadata is malformed; refusing to replace or recover unknown owner state."
+        ) from exc
+    if not isinstance(value, dict):
+        raise RuntimeError(
+            "Checkpoint metadata has an invalid shape; refusing to replace or recover unknown owner state."
+        )
+    return value
 
 
 def write_snapshot(
