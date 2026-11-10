@@ -667,6 +667,7 @@ def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pyt
             return 0
 
     monkeypatch.setattr(cycle.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(cycle, "process_start_time", lambda pid: 1234.5)
 
     assert cycle.start_checkpoint_watcher("a" * 40, "105", 1) is not None
 
@@ -846,6 +847,7 @@ def test_checkpoint_watcher_uses_base_interpreter_with_venv_dependencies(
             return 0
 
     monkeypatch.setattr(cycle.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(cycle, "process_start_time", lambda pid: 1234.5)
     monkeypatch.setattr(cycle.time, "monotonic", lambda: 0.0)
 
     assert cycle.start_checkpoint_watcher("a" * 40, "107", 1) is not None
