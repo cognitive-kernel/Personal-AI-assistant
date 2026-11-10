@@ -319,26 +319,41 @@ jobs:
           manual_task = os.getenv("MANUAL_TASK", "")
           if len(manual_task) > 2000 or "\x00" in manual_task:
               raise SystemExit("Manual engineering task must be at most 2000 characters and contain no NUL bytes.")
-          state_dir = Path(os.environ["PROGRAMDATA"]) / "PersonalAIAssistant" / "autonomous-engineering"
+          from scripts.autonomous_engineering_state_paths import execution_state_directory
+          from scripts.autonomous_engineering_state_lock import durable_state_lock
+          from scripts.autonomous_engineering_pending_task import validate_manual_task_submission
+
+          state_dir = execution_state_directory()
           state_dir.mkdir(parents=True, exist_ok=True)
           pending_path = state_dir / "pending-manual-task.txt"
-          pending_task = pending_path.read_text(encoding="utf-8") if pending_path.is_file() else ""
-          from scripts.autonomous_engineering_pending_task import validate_manual_task_submission
-          try:
-              validate_manual_task_submission(
-                  manual_task=manual_task,
-                  pending_task=pending_task,
-                  open_pull_requests=pulls,
-                  repository=repo,
-              )
-          except ValueError as exc:
-              raise SystemExit(str(exc)) from exc
-          if manual_task:
-              temporary = pending_path.with_suffix(".txt.tmp")
-              temporary.write_text(manual_task, encoding="utf-8")
-              temporary.replace(pending_path)
-          elif pending_task:
-              manual_task = pending_task
+          pending_pr_path = state_dir / "pending-autonomous-pr.json"
+          with durable_state_lock(state_dir):
+              if manual_task and pending_pr_path.exists():
+                  try:
+                      pending_pr_state = json.loads(pending_pr_path.read_text(encoding="utf-8"))
+                  except (OSError, ValueError) as exc:
+                      raise SystemExit("Pending autonomous PR state is unreadable; refusing a new manual task.") from exc
+                  if not isinstance(pending_pr_state, dict) or not pending_pr_state.get("number"):
+                      raise SystemExit("Pending autonomous PR state is invalid; refusing a new manual task.")
+                  raise SystemExit(
+                      f"Autonomous PR #{pending_pr_state['number']} is awaiting owner merge or post-merge validation."
+                  )
+              pending_task = pending_path.read_text(encoding="utf-8") if pending_path.is_file() else ""
+              try:
+                  validate_manual_task_submission(
+                      manual_task=manual_task,
+                      pending_task=pending_task,
+                      open_pull_requests=pulls,
+                      repository=repo,
+                  )
+              except ValueError as exc:
+                  raise SystemExit(str(exc)) from exc
+              if manual_task and pending_task != manual_task:
+                  raise SystemExit(
+                      "The manual task input was not durably persisted before schedule gating; refusing to continue."
+                  )
+              elif pending_task:
+                  manual_task = pending_task
           if len(manual_task) > 2000 or "\x00" in manual_task:
               raise SystemExit("Persisted manual engineering task is invalid.")
           request = {
