@@ -1470,7 +1470,7 @@ async function refreshHardwareDiagnostics(profile=modelContextProfiles[0]) {
   const gpuEstimate=selected?.memory_estimate?.full_gpu_vram_gib_float16;
   const gpuFreeValues=(h.gpu_devices||[]).map(g=>Object.prototype.hasOwnProperty.call(g,"usable_memory_free_mb")?g.usable_memory_free_mb:g.memory_free_mb).filter(value=>value!==null && value!==undefined && Number.isFinite(Number(value)));
   const gpuFreeGb=gpuFreeValues.length?gpuFreeValues.reduce((sum,value)=>sum+Number(value),0)/1024:null;
-  const gpuMemoryComplete=(h.gpu_devices||[]).every(g=>g.usable_memory_scope==="dedicated+shared" || ["NVIDIA","AMD"].includes(g.vendor));
+  const gpuMemoryComplete=(h.gpu_devices||[]).every(g=>g.usable_memory_scope==="dedicated+shared" || ["nvidia-smi","rocm-smi"].includes(g.telemetry));
   const gpuFit=gpuEstimate==null?"نیاز VRAM تخمینی نامشخص است."
    :gpuFreeGb==null?"مقدار VRAM آزاد قابل‌اندازه‌گیری نیست."
    :(gpuEstimate<=gpuFreeGb?"برآورد full-offload در حافظه اندازه‌گیری‌شده جا می‌شود."
