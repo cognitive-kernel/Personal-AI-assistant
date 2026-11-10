@@ -85,7 +85,13 @@ def test_model_details_uses_conservative_context_when_ram_is_low(monkeypatch):
     monkeypatch.setattr(ollama, "_request", lambda path, payload=None, timeout=None: (
         {
             "details": {"family": "llama"},
-            "model_info": {"llama.context_length": 32768},
+            "model_info": {
+                "llama.context_length": 32768,
+                "llama.block_count": 32,
+                "llama.attention.head_count_kv": 8,
+                "llama.attention.key_length": 128,
+                "llama.attention.value_length": 128,
+            },
         } if path == "/api/show" else {"models": []}
     ))
     monkeypatch.setattr(ollama, "list_models", lambda: [{"name": "llama:8b", "size": 5_000_000_000}])
@@ -144,6 +150,49 @@ def test_chat_clamps_requested_context_to_verified_model_maximum(monkeypatch):
     assert ollama.chat("hello") == "ok"
     chat_payload = next(payload for path, payload in calls if path == "/api/chat")
     assert chat_payload["options"]["num_ctx"] == 8192
+
+
+
+def test_chat_clamps_context_to_current_hardware_budget_not_only_model_maximum(monkeypatch):
+    calls = []
+    monkeypatch.setattr(ollama, "get_settings", lambda: {
+        "chat_ollama_model": "llama:8b",
+        "chat_ollama_num_ctx": 65536,
+        "chat_ollama_num_thread": 0,
+        "cpu_resource_limit_percent": 90,
+        "ram_budget_max_gb": 25,
+        "ram_safety_reserve_gb": 4,
+        "gpu_enabled": False,
+    })
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {
+        "logical_cpu_count": 8, "available_ram_gb": 8, "gpu_devices": [],
+    })
+    monkeypatch.setattr(ollama, "list_models", lambda: [{"name": "llama:8b", "size": 2_000_000_000}])
+    monkeypatch.setattr(ollama, "model_keep_alive", lambda *args: "0")
+    from app import usage_metrics
+    monkeypatch.setattr(usage_metrics, "record_ollama_response", lambda **kwargs: None)
+
+    def fake_request(path, payload=None, timeout=None):
+        calls.append((path, payload))
+        if path == "/api/show":
+            return {
+                "details": {"family": "llama"},
+                "model_info": {
+                    "llama.context_length": 131072,
+                    "llama.block_count": 32,
+                    "llama.attention.head_count_kv": 8,
+                    "llama.attention.key_length": 128,
+                    "llama.attention.value_length": 128,
+                },
+            }
+        if path == "/api/chat":
+            return {"message": {"content": "ok"}}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(ollama, "_request", fake_request)
+    assert ollama.chat("hello") == "ok"
+    payload = next(payload for path, payload in calls if path == "/api/chat")
+    assert payload["options"]["num_ctx"] == 4096
 
 
 def test_chat_refuses_to_send_when_model_context_metadata_is_unavailable(monkeypatch):
