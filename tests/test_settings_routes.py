@@ -216,3 +216,38 @@ def test_settings_api_rejects_model_change_that_invalidates_saved_context(settin
     assert "1024" in response.json()["detail"]
     after = db.get_settings()
     assert after["chat_ollama_model"] == before["chat_ollama_model"]
+
+
+def test_model_details_endpoint_exposes_context_and_selected_context_estimate(settings_client, monkeypatch):
+    captured = {}
+    def fake_details(name, context_tokens=None):
+        captured.update(name=name, context_tokens=context_tokens)
+        return {
+            "name": name,
+            "maximum_context_tokens": 65536,
+            "memory_estimate": {"context_tokens": context_tokens, "total_ram_gib_float16": 12.5},
+        }
+    monkeypatch.setattr(ollama, "model_details", fake_details)
+    response = settings_client.get("/api/model-details?name=local%3A8b&context_tokens=16384")
+    assert response.status_code == 200
+    assert response.json()["maximum_context_tokens"] == 65536
+    assert response.json()["memory_estimate"]["context_tokens"] == 16384
+    assert captured == {"name": "local:8b", "context_tokens": 16384}
+
+
+def test_hardware_diagnostics_endpoint_returns_cpu_ram_gpu_and_ollama_state(settings_client, monkeypatch):
+    monkeypatch.setattr(ollama, "runtime_diagnostics", lambda model=None, context_tokens=None: {
+        "hardware": {
+            "logical_cpu_count": 12,
+            "cpu_utilization_percent": 25,
+            "cpu_available_percent": 75,
+            "available_ram_gb": 12,
+            "gpu_available": True,
+            "gpu_devices": [{"name": "Intel UHD", "memory_free_mb": None}],
+        },
+        "ollama_running_models": [{"name": model, "context_length": context_tokens, "size_vram_bytes": 0, "processor": "CPU"}] if model else [],
+    })
+    response = settings_client.get("/api/hardware/diagnostics?model=local%3A8b&context_tokens=8192")
+    assert response.status_code == 200
+    assert response.json()["hardware"]["gpu_devices"][0]["memory_free_mb"] is None
+    assert response.json()["ollama_running_models"][0]["processor"] == "CPU"
