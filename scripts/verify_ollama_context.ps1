@@ -55,11 +55,14 @@ function Get-AutomaticContext {
             $freeRamGiB = [double]$os.FreePhysicalMemory / 1MB
         }
     } catch { }
-    if ($null -eq $freeRamGiB) { return [int64][Math]::Min($Maximum, 2048) }
+    if ($null -eq $freeRamGiB) { return [int64][Math]::Min($Maximum, 512) }
 
     $tags = Invoke-RestMethod -Uri "$baseUrl/api/tags" -Method Get -TimeoutSec 10
     $tag = @($tags.models | Where-Object { $_.name -eq $Model }) | Select-Object -First 1
-    $weightsGiB = if ($tag -and $tag.size -gt 0) { [double]$tag.size / 1GB } else { 0 }
+    if (-not $tag -or $null -eq $tag.size -or [int64]$tag.size -le 0) {
+        return [int64][Math]::Min($Maximum, 2048)
+    }
+    $weightsGiB = [double]$tag.size / 1GB
     $architecture = [string]$Info.details.family
     $modelInfo = $Info.model_info
     $layers = $null
@@ -75,7 +78,7 @@ function Get-AutomaticContext {
     }
     if ($null -eq $valueLength) { $valueLength = $keyLength }
     if (-not $layers -or -not $heads -or -not $keyLength -or -not $valueLength) {
-        return [int64][Math]::Min($Maximum, 4096)
+        return [int64][Math]::Min($Maximum, 2048)
     }
 
     # Conservative CPU/RAM estimate: model weights + FP16 KV cache + 10% overhead,
@@ -84,7 +87,7 @@ function Get-AutomaticContext {
     $budgetGiB = [Math]::Max(0, $freeRamGiB - 4)
     $cacheBudgetBytes = [Math]::Max(0, ($budgetGiB - $weightsGiB - [Math]::Max(0.5, $weightsGiB * 0.10)) * 1GB)
     if ($bytesPerToken -le 0 -or $cacheBudgetBytes -le 0) {
-        return [int64][Math]::Min($Maximum, 2048)
+        return [int64][Math]::Min($Maximum, 512)
     }
 
     $fit = [int64][Math]::Floor($cacheBudgetBytes / $bytesPerToken)
