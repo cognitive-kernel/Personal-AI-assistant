@@ -536,9 +536,9 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Prompt merge policy now distinguishes reproducible exact-SHA automated gates from owner-local, target-host, physical-device, and human acceptance. Unavailable tests remain NOT RUN/PENDING and are not silently passed; they do not block routine code delivery by default. Repository-enforced checks and independent security approval are not bypassed.
 - Curriculum source delivery changed from repeatedly sending the same first eight sources to round-robin source batches. The task forces continuation until all retained source records have been presented to the learning model, even if the model prematurely returns `has_more=false`. Evidence-only continuation batches can complete without inventing duplicate topic titles.
 - Removed fixed caps on topic source URL count, version/year/date array count, and coverage-area count. The JSON response and prompt budgets remain per-request safety bounds; the full curriculum remains checkpointed and resumable.
-- Web source retrieval now permits up to 30 fetched pages per query request, and curriculum/release-watch callers request that page size. The provider request cap is per request, not a total course/source cap.
+- Initial curriculum research now requests up to 30 fetched pages per query request. Release-watch polling retains its previous five-result page to preserve existing source-fingerprint semantics; its query set now also covers documentation errata, compatibility changes, security CVEs, deprecations, removals, and EOL. Neither per-query page size caps the total course.
 - Added regression tests for 103-source round-robin pagination, complete review of 17 sources across three batches despite premature model completion, metadata arrays with 45 releases/source URLs, and web retrieval above five pages.
-- Exact-head CI has not yet run for this branch. The tests and implementation are pending automated verification; no local/target-host/human test is claimed. Remaining known gaps include robust extraction of publication/release/update dates from varied web pages, retaining/synthesizing full source bodies beyond excerpts, a durable canonical subject/release coverage ledger, automated candidate-to-course promotion, lesson correction/revision workflow, and verification of all provider-role settings/temporary overrides.
+- Exact-head CI has not yet run for this branch. The tests and implementation are pending automated verification; no local/target-host/human test is claimed. Remaining known gaps include a durable canonical subject/release coverage ledger, automated candidate-to-course promotion, lesson correction/revision workflow, and verification of all provider-role settings/temporary overrides.
 
 
 
@@ -558,4 +558,13 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Curriculum chronology now uses the recorded release date first, then release year, and product-specific version order when dates are unavailable. This avoids relying only on lexical version labels and supports prerelease ordering before stable releases.
 - Added regressions for release dates that conflict with otherwise ascending version labels and for release-candidate versions sorting before the matching stable release.
 - These changes are awaiting exact-head CI.
+
+
+
+## Current-state correction — PR #710 merged; PR #711 is the active learning continuation
+
+- Any earlier dated entry in this log stating that PR #710 was open, Draft, or waiting for local/target-host testing describes a historical snapshot and is superseded. PR #710 merged into `main` on 2026-11-11 as `9e198a0640593bcc3892f3a97aa8956ba522653c`.
+- The current follow-up is PR #711, branch `feature/universal-learning-contract-v2`. Its exact head and CI status must be read from live GitHub; no earlier SHA or test result applies to it.
+- The source-body retention and common HTML publication/modified-date extraction work is implemented in this follow-up with migration 46. It must not continue to be listed as an outstanding gap once its exact-head CI passes.
+- Release-watch polling intentionally remains at five results per query to avoid changing existing fingerprints solely because the initial curriculum discovery page was expanded. The watch query set itself is broader; any changed fingerprint after this query-set expansion is an intentional additive refresh, not an assertion that every update was already detected.
 
