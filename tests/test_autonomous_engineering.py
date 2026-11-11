@@ -15,7 +15,7 @@ def test_status_readiness_requires_every_local_dependency(monkeypatch):
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_MODEL", "gpt-oss:20b")
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_REPOSITORY", "cognitive-kernel/Personal-AI-assistant")
     monkeypatch.setattr(agent, "_ollama_status", lambda model: {
-        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 65536, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True
+        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 65536, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True, "model_context_supported": True
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
@@ -52,7 +52,7 @@ def test_status_is_not_ready_when_local_model_is_missing(monkeypatch):
 
 def test_app_readiness_does_not_require_codex_in_the_app_account(monkeypatch):
     monkeypatch.setattr(agent, "_ollama_status", lambda model: {
-        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 65536, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True
+        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 65536, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True, "model_context_supported": True
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": False, "version": None})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
@@ -69,7 +69,7 @@ def test_app_readiness_does_not_require_codex_in_the_app_account(monkeypatch):
 
 def test_status_is_not_ready_when_shared_progress_storage_is_unavailable(monkeypatch):
     monkeypatch.setattr(agent, "_ollama_status", lambda model: {
-        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 65536, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True
+        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 65536, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True, "model_context_supported": True
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
@@ -963,7 +963,7 @@ def test_live_progress_does_not_freeze_legacy_awaiting_review_state(monkeypatch)
 
 def test_status_distinguishes_prerequisite_readiness_from_paused_dispatch(monkeypatch):
     monkeypatch.setattr(agent, "_ollama_status", lambda model: {
-        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 65536, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True
+        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 65536, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True, "model_context_supported": True
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
@@ -1133,6 +1133,9 @@ def test_ollama_status_returns_every_installed_model_without_inserting_defaults(
     assert len(result["models"]) == 55
     assert "gpt-oss:20b" not in result["models"]
     assert result["model_installed"] is True
+    assert result["model_metadata_available"] is True
+    assert result["model_context_supported"] is False
+    assert "64000" in result["model_context_error"]
 
 
 def test_ollama_status_keeps_server_online_when_selected_model_metadata_fails(monkeypatch):
