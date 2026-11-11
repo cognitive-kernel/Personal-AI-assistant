@@ -609,10 +609,9 @@ def maintain_release_watch(*, limit: int = 3) -> dict[str, int]:
                         """UPDATE learning_release_watch
                            SET last_checked_at=CURRENT_TIMESTAMP,
                                next_check_at=datetime('now', '+6 hours'),
-                               last_source_fingerprint=?, last_task_id=?,
-                               updated_at=CURRENT_TIMESTAMP
+                               last_task_id=?, updated_at=CURRENT_TIMESTAMP
                            WHERE path_id=? AND status='active'""",
-                        (current_fingerprint, int(task["id"]), path_id),
+                        (int(task["id"]), path_id),
                     )
                 queued += 1
             checked += 1
