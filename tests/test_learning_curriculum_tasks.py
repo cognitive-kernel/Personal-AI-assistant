@@ -864,7 +864,11 @@ def test_curriculum_prompt_includes_evidence_from_every_research_angle(monkeypat
     assert len(included) == len(queries)
     assert {item["research_query"] for item in included} == set(queries)
     assert all(item["excerpt"] for item in included)
+    assert all(item["content_chunk_index"] == 1 for item in included)
+    assert all(item["content_chunk_count"] == 1 for item in included)
+    assert all(item["content_complete"] is False for item in included)
     requirements = captured[0]["requirements"]
+    assert any("delivered in sequential content chunks" in item for item in requirements)
     assert any("regardless of publisher authority" in item for item in requirements)
     assert any("Do not discard unofficial" in item for item in requirements)
     assert any("every relevant source class" in item for item in requirements)
