@@ -251,6 +251,23 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
     assert result["model_supports_tools"] is True
 
 
+def test_ollama_status_lists_installed_models_without_selecting_one(monkeypatch):
+    class FakeOpener:
+        def open(self, request, timeout):
+            assert request.full_url == "http://127.0.0.1:11434/api/tags"
+            return io.BytesIO(b'{"models":[{"name":"z-model:latest"},{"name":"a-model:7b"}]}')
+
+    monkeypatch.setattr(agent.urllib.request, "build_opener", lambda *args: FakeOpener())
+
+    result = agent._ollama_status("")
+
+    assert result["online"] is True
+    assert result["models"] == ["a-model:7b", "z-model:latest"]
+    assert result["model"] == ""
+    assert result["model_installed"] is False
+    assert result["model_metadata_error"] == "No Ollama model is saved in repository settings."
+
+
 def test_github_snapshot_fails_closed_when_run_list_is_unavailable(monkeypatch):
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
     calls = []
@@ -382,11 +399,15 @@ def test_collect_status_never_uses_process_environment_as_model_fallback(monkeyp
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_MODEL", "gpt-oss:20b")
     observed = {}
     monkeypatch.setattr(agent, "_github_snapshot", lambda: {"settings": {}, "authenticated": False, "recent_runs": [], "runs_available": False})
-    monkeypatch.setattr(agent, "_ollama_status", lambda model: observed.setdefault("model", model) or {
-        "online": False, "model": model, "model_installed": False, "models": [],
-        "model_context_length": None, "model_capabilities": [],
-        "model_supports_tools": False, "model_metadata_available": False,
-    })
+    def fake_ollama_status(model):
+        observed["model"] = model
+        return {
+            "online": False, "model": model, "model_installed": False, "models": [],
+            "model_context_length": None, "model_capabilities": [],
+            "model_supports_tools": False, "model_metadata_available": False,
+        }
+
+    monkeypatch.setattr(agent, "_ollama_status", fake_ollama_status)
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": False, "version": None})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": False, "process_detected": False})
     monkeypatch.setattr(agent, "storage_accessible", lambda: False)
