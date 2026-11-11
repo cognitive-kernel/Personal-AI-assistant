@@ -130,6 +130,62 @@ def _research_queries(topic: str) -> list[str]:
     ]
 
 
+def _source_metadata_for_checkpoint(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep full page bodies in the source-text table, not repeated task checkpoints."""
+    return [
+        {key: value for key, value in item.items() if key != "content"}
+        for item in sources
+    ]
+
+
+def _persist_source_body(task_id: int, source: dict[str, Any], body: str) -> None:
+    if not isinstance(body, str) or not body.strip():
+        return
+    provenance = {
+        "title": str(source.get("title", ""))[:300],
+        "query": str(source.get("query", ""))[:300],
+        "publication_date": source.get("publication_date"),
+        "last_updated": source.get("last_updated"),
+        "retrieved_at": source.get("retrieved_at"),
+    }
+    with learning_connection() as connection:
+        connection.execute(
+            """INSERT OR IGNORE INTO learning_research_source_text(
+                   task_id, source_url, content_sha256, content, provenance_json
+               ) VALUES (?, ?, ?, ?, ?)""",
+            (
+                task_id, source["url"], source["sha256"], body,
+                json.dumps(provenance, ensure_ascii=False, sort_keys=True),
+            ),
+        )
+
+
+def _hydrate_source_bodies(
+    task_id: int, sources: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    if not sources:
+        return []
+    with learning_connection() as connection:
+        rows = connection.execute(
+            """SELECT source_url, content_sha256, content
+               FROM learning_research_source_text
+               WHERE task_id=?""",
+            (task_id,),
+        ).fetchall()
+    stored = {
+        (str(row["source_url"]), str(row["content_sha256"])): str(row["content"])
+        for row in rows
+    }
+    hydrated: list[dict[str, Any]] = []
+    for item in sources:
+        value = dict(item)
+        body = stored.get((str(value.get("url", "")), str(value.get("sha256", ""))))
+        value["content"] = body if body else str(value.get("excerpt", ""))
+        value["content_complete"] = bool(body)
+        hydrated.append(value)
+    return hydrated
+
+
 def _collect_sources(
     topic: str,
     *,
@@ -141,6 +197,27 @@ def _collect_sources(
     completed_queries, sources = _valid_checkpoint(
         checkpoint, topic_sha256=topic_sha256, queries=queries
     )
+    sources = _hydrate_source_bodies(context.task_id, sources)
+    # Older checkpoints kept only the first excerpt. Re-fetch those exact public
+    # URLs where possible so their full page bodies can join the evidence ledger.
+    for source in sources:
+        if source.get("content_complete"):
+            continue
+        try:
+            document = web_sources.fetch_public_document(source["url"], source["title"])
+        except web_sources.SourceFetchError:
+            continue
+        body = str(document.text).strip()
+        if not body:
+            continue
+        source["sha256"] = hashlib.sha256(body.encode("utf-8")).hexdigest()
+        source["excerpt"] = body[:MAX_SOURCE_EXCERPT_CHARS]
+        source["publication_date"] = document.publication_date
+        source["last_updated"] = document.last_updated
+        source["retrieved_at"] = datetime.now(timezone.utc).isoformat()
+        source["content"] = body
+        source["content_complete"] = True
+        _persist_source_body(context.task_id, source, body)
     preserved_outline = (
         checkpoint.get("outline")
         if isinstance(checkpoint, dict) and isinstance(checkpoint.get("outline"), dict)
@@ -165,7 +242,7 @@ def _collect_sources(
             "topic_sha256": topic_sha256,
             "queries": queries,
             "completed_queries": completed_queries,
-            "sources": sources,
+            "sources": _source_metadata_for_checkpoint(sources),
             **({"outline": preserved_outline} if preserved_outline is not None else {}),
             **({"model": preserved_model} if preserved_model is not None else {}),
             **({"model_selection": preserved_model_selection} if preserved_model_selection is not None else {}),
@@ -181,7 +258,7 @@ def _collect_sources(
             if not url or len(url) > 250 or not title or len(body) < 100 or url in seen:
                 continue
             excerpt = body[:MAX_SOURCE_EXCERPT_CHARS]
-            sources.append({
+            source = {
                 "title": title,
                 "url": url,
                 "excerpt": excerpt,
@@ -190,7 +267,9 @@ def _collect_sources(
                 "last_updated": getattr(document, "last_updated", None),
                 "retrieved_at": datetime.now(timezone.utc).isoformat(),
                 "query": query,
-            })
+            }
+            _persist_source_body(context.task_id, source, body)
+            sources.append(source)
             seen.add(url)
         completed_queries.append(query)
         context.checkpoint({
@@ -198,7 +277,7 @@ def _collect_sources(
             "topic_sha256": topic_sha256,
             "queries": queries,
             "completed_queries": completed_queries,
-            "sources": sources,
+            "sources": _source_metadata_for_checkpoint(sources),
             **({"outline": preserved_outline} if preserved_outline is not None else {}),
             **({"model": preserved_model} if preserved_model is not None else {}),
             **({"model_selection": preserved_model_selection} if preserved_model_selection is not None else {}),
@@ -208,7 +287,7 @@ def _collect_sources(
     # curriculum admission gates. Continue with every usable result (including
     # zero results); downstream lesson generation labels model-only or sparse
     # evidence as unverified instead of losing the user's learning request.
-    return sources
+    return _hydrate_source_bodies(context.task_id, sources)
 
 
 def _version_order_key(value: str) -> tuple[int, ...] | None:
