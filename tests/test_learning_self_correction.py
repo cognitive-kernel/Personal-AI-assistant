@@ -92,6 +92,7 @@ def test_malformed_initial_response_enters_bounded_repair_cycle(learning_store, 
     assert quality["generation_provenance"]["initial_response_malformed"] is True
     assert quality["generation_provenance"]["repair_response_valid"] is True
     assert quality["generation_provenance"]["attempt_count"] == 2
+    assert [call["options"]["num_predict"] for call in calls] == [3900, 3900]
     assert len(quality["generation_provenance"]["repair_prompt_sha256"]) == 64
     assert quality["generation_provenance"]["prompt_registry_version"] == 1
     assert quality["generation_provenance"]["prompt_version"] == "learning-lesson-v3"
@@ -161,6 +162,9 @@ def test_accepted_initial_lesson_has_no_repair_prompt_provenance(learning_store,
     assert "compatibility/configuration level" in instruction
     assert "If sources disagree" in instruction
     assert "Never invent a version, date, source" in instruction
+    assert "There is no arbitrary maximum word count" in instruction
+    assert "200-260 instructional words" not in instruction
+    assert calls[0]["options"]["num_predict"] == 3900
     provenance = finished["quality"]["generation_provenance"]
     assert provenance["prompt_version"] == "learning-lesson-v3"
     assert provenance["repair_prompt_version"] is None
