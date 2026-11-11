@@ -660,10 +660,13 @@ def fetch_public_document(
 
 
 def discover_sources(query: str, *, limit: int = 3) -> list[SourceDocument]:
-    """Search and fetch public pages; raise when search providers cannot return results."""
+    """Search and fetch a resumable page of public sources for one research query."""
     if not isinstance(query, str) or not query.strip():
         return SourceDocumentList()
-    candidates = _search_results(query.strip()[:300], max(1, min(5, limit)))
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise ValueError("limit must be a positive integer.")
+    page_limit = min(30, limit)
+    candidates = _search_results(query.strip()[:300], page_limit)
     fetch_diagnostics: dict[str, object] = {
         "candidate_count": len(candidates),
         "attempted_count": 0,
@@ -686,6 +689,6 @@ def discover_sources(query: str, *, limit: int = 3) -> list[SourceDocument]:
             continue
         documents.append(document)
         fetch_diagnostics["fetched_count"] = int(fetch_diagnostics["fetched_count"]) + 1
-        if len(documents) >= max(1, min(5, limit)):
+        if len(documents) >= page_limit:
             break
     return documents
