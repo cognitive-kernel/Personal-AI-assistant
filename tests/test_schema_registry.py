@@ -155,12 +155,13 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
 
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
-        assert LEARNING_MIGRATIONS[-1].version == 44
+        assert LEARNING_MIGRATIONS[-1].version == 45
         usage_columns = {row[1] for row in connection.execute("PRAGMA table_info(model_usage_events)")}
         graph_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_knowledge_graph_edges)")}
         browser_columns = {row[1] for row in connection.execute("PRAGMA table_info(browser_learning_courses)")}
         topic_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_path_topics)")}
         release_watch_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_release_watch)")}
+        chat_candidate_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_chat_candidates)")}
         candidate_review_columns = {row[1] for row in connection.execute("PRAGMA table_info(knowledge_candidate_reviews)")}
         experience_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_experiences)")}
         assert {"task_id", "purpose", "model_name", "estimated_cost_microusd"} <= usage_columns
@@ -170,6 +171,7 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         assert {"topic", "cdp_url", "max_lessons", "status"} <= browser_columns
         assert {"applicability_json", "source_urls_json", "hierarchy_path", "depth"} <= topic_columns
         assert {"path_id", "status", "last_checked_at", "next_check_at", "last_source_fingerprint", "last_task_id"} <= release_watch_columns
+        assert {"conversation_id", "message_id", "user_message_id", "source_kind", "topic_hint", "content", "content_sha256", "provenance_json", "status"} <= chat_candidate_columns
         assert connection.execute("SELECT applicability_json, source_urls_json, hierarchy_path, depth FROM learning_path_topics WHERE id=?", (path_topic_id,)).fetchone() == ("{}", "[]", "", 0)
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
