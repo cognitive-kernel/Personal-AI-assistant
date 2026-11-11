@@ -441,7 +441,7 @@ def test_browser_learning_retry_migration_preserves_existing_courses():
         )
         connection.commit()
 
-        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 44
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 45
 
         row = connection.execute(
             """SELECT topic, status, retry_count, next_retry_at
@@ -785,7 +785,7 @@ def test_release_watch_migration_seeds_existing_researched_curricula_without_cha
         )
         connection.commit()
 
-        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 44
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 45
         watch = connection.execute(
             "SELECT status, last_source_fingerprint, last_task_id FROM learning_release_watch WHERE path_id=?",
             (path_id,),
