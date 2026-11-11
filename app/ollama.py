@@ -387,7 +387,7 @@ def chat(
             or not isinstance(num_ctx_override, int)
             or not 512 <= num_ctx_override <= maximum_context
         ):
-            raise ValueError("num_ctx_override must be a supported context length for the selected model.")
+            raise OllamaError("The selected model cannot provide the required learning context length.")
         configured_context = max(int(configured_context), num_ctx_override)
     runtime_settings = {
         "ollama_num_ctx": configured_context,
