@@ -871,3 +871,119 @@ def test_curriculum_prompt_includes_evidence_from_every_research_angle(monkeypat
     assert not any("only when authoritative sources establish them" in item for item in requirements)
 
 
+
+
+def test_every_retained_source_is_reviewed_across_resumable_curriculum_batches(learning_store, monkeypatch):
+    queries = learning_curriculum_tasks._research_queries("Python")
+    sources = [
+        {
+            "title": f"Evidence source {index}",
+            "url": f"https://archive.example.test/source/{index}",
+            "excerpt": f"Release and compatibility evidence {index}. " * 8,
+            "sha256": __import__("hashlib").sha256(str(index).encode()).hexdigest(),
+            "publication_date": None,
+            "last_updated": None,
+            "retrieved_at": "2026-11-11T00:00:00+00:00",
+            "query": queries[index % len(queries)],
+        }
+        for index in range(17)
+    ]
+    monkeypatch.setattr(
+        learning_curriculum_tasks, "get_settings",
+        lambda: {"learning_ollama_model": "gpt-oss:20b"},
+    )
+    monkeypatch.setattr(
+        learning_curriculum_tasks, "_collect_sources",
+        lambda *_args, **_kwargs: sources,
+    )
+    monkeypatch.setattr(
+        learning, "start_researched_path_learning",
+        lambda _path_id, allow_retry=False: {"queued_count": 0, "job_ids": [], "status": "complete"},
+    )
+    topic_pages = []
+    for batch in range(2):
+        names = [f"Curriculum topic {batch * 12 + index + 1}" for index in range(12)]
+        topic_pages.append({
+            "title": "Complete Python curriculum",
+            "topics": names,
+            "notes": "",
+            "coverage_areas": [f"Coverage {batch}"],
+            "topic_metadata": {
+                name: {
+                    "applicability": {"status": "unverified"},
+                    "source_urls": [],
+                    "hierarchy_path": name,
+                    "depth": 0,
+                }
+                for name in names
+            },
+            # Deliberately claim completion early; source pagination must override it.
+            "has_more": False,
+            "next_focus": "",
+        })
+    final_page = {
+        "title": "Complete Python curriculum",
+        "topics": topic_pages[0]["topics"] + topic_pages[1]["topics"],
+        "notes": "",
+        "coverage_areas": ["Final evidence review"],
+        "topic_metadata": {
+            **topic_pages[0]["topic_metadata"],
+            **topic_pages[1]["topic_metadata"],
+        },
+        "has_more": False,
+        "next_focus": "",
+    }
+    calls = []
+    def fake_generate(_topic, _size, _source_text, retained_sources, model, *, batch_index=0, **_kwargs):
+        calls.append({
+            "batch_index": batch_index,
+            "model": model,
+            "source_urls": [
+                item["url"]
+                for item in learning_curriculum_tasks._source_evidence_batch(retained_sources, batch_index)
+            ],
+        })
+        page = topic_pages[batch_index] if batch_index < 2 else final_page
+        return page, {"selected_model": "gpt-oss:20b"}
+
+    monkeypatch.setattr(learning_curriculum_tasks, "_generate_outline", fake_generate)
+    task = task_manager.create_task(
+        learning_curriculum_tasks.CURRICULUM_TASK_TYPE,
+        {"topic": "Python", "batch_size": 24, "source_text": ""},
+        max_attempts=3,
+    )
+    result = learning_curriculum_tasks.handle_curriculum_task(
+        task["payload"], None, RecordingContext(task["id"])
+    )
+
+    reviewed_urls = [url for call in calls for url in call["source_urls"]]
+    assert [call["batch_index"] for call in calls] == [0, 1, 2]
+    assert len(reviewed_urls) == len(sources)
+    assert set(reviewed_urls) == {item["url"] for item in sources}
+    assert len(set(reviewed_urls)) == len(sources)
+    assert all(call["model"] == "gpt-oss:20b" for call in calls)
+    assert result["topic_count"] == 24
+
+
+def test_source_evidence_batches_are_round_robin_and_unbounded_by_total_source_count():
+    queries = learning_curriculum_tasks._research_queries("SQL Server")
+    sources = [
+        {
+            "url": f"https://sources.example.test/{index}",
+            "query": queries[index % len(queries)],
+        }
+        for index in range(103)
+    ]
+
+    batches = [
+        learning_curriculum_tasks._source_evidence_batch(sources, index)
+        for index in range(learning_curriculum_tasks._source_evidence_batch_count(sources))
+    ]
+    flattened = [item["url"] for batch in batches for item in batch]
+
+    assert len(batches) == 13
+    assert all(len(batch) <= learning_curriculum_tasks.MAX_PROMPT_SOURCE_EXCERPTS for batch in batches)
+    assert len(flattened) == len(sources)
+    assert len(set(flattened)) == len(sources)
+    assert set(flattened) == {item["url"] for item in sources}
+    assert len({item["query"] for item in batches[0]}) == len(queries)
