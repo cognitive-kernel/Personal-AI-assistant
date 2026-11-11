@@ -39,7 +39,7 @@
 - Runner provisioning reads the saved repository variable when `-Model` is omitted and independently verifies that exact model is installed, exposes its architecture-specific context limit, and advertises `tools`.
 - Repository model/interval/mode writes now snapshot existing values and roll back prior successful writes if a later variable update fails. Regression tests cover rollback and no-fallback behavior.
 - README's autonomous-engineering description and the operational guide were aligned with the implementation. The README target-hardware values were preserved unchanged.
-- Current exact-head CI runs are queued on `3e73d2b0aea840502be51db5c6d6b8b985245a91`; Windows diagnostic #104 is queued because the owner machine is powered off. Neither live host acceptance nor local/human acceptance is claimed.
+- Current exact-head CI runs are queued on `619b27bc0c22ccae4e3603642b8c7756ca6ff01d` (tests #43029186593, browser E2E #43029186567, dependency audit #43029186631); Windows diagnostic #106 is queued because the owner machine is powered off. Neither live host acceptance nor local/human acceptance is claimed.
 
 
 ---
