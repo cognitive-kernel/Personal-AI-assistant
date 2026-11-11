@@ -160,7 +160,6 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         graph_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_knowledge_graph_edges)")}
         browser_columns = {row[1] for row in connection.execute("PRAGMA table_info(browser_learning_courses)")}
         topic_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_path_topics)")}
-        path_topic_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_path_topics)")}
         candidate_review_columns = {row[1] for row in connection.execute("PRAGMA table_info(knowledge_candidate_reviews)")}
         experience_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_experiences)")}
         assert {"task_id", "purpose", "model_name", "estimated_cost_microusd"} <= usage_columns
@@ -170,7 +169,6 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         assert {"topic", "cdp_url", "max_lessons", "status"} <= browser_columns
         assert {"applicability_json", "source_urls_json", "hierarchy_path", "depth"} <= topic_columns
         assert connection.execute("SELECT applicability_json, source_urls_json, hierarchy_path, depth FROM learning_path_topics WHERE id=?", (topic_id,)).fetchone() == ("{}", "[]", "", 0)
-        assert {"applicability_json", "source_urls_json", "hierarchy_path", "depth"} <= path_topic_columns
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
         job_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_jobs)")}
