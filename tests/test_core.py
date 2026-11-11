@@ -455,7 +455,7 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
 
 
 
-def test_learning_job_rejects_missing_outcomes_instead_of_copying_questions(tmp_path, monkeypatch):
+def test_learning_job_retains_lesson_when_learning_outcomes_are_missing(tmp_path, monkeypatch):
     import json
 
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
@@ -499,10 +499,13 @@ def test_learning_job_rejects_missing_outcomes_instead_of_copying_questions(tmp_
     finished = learning.get_job(job["id"])
 
     assert len(calls) == 2, "missing outcomes must trigger the repair attempt"
-    assert finished["status"] == "rejected"
+    assert finished["status"] == "completed"
     assert finished["quality"]["accepted"] is False
     assert any("هدف یادگیری" in reason for reason in finished["quality"]["reasons"])
-    assert finished["lesson"] is None
+    assert finished["quality"]["lesson_retained"] is True
+    assert finished["lesson"] == lesson
+    assert finished["assessment"]["questions"] == response_without_outcomes["questions"]
+    assert finished["assessment"]["learning_outcomes"] is None
 
 
 def test_concurrent_run_job_calls_only_claim_queued_job_once(tmp_path, monkeypatch):
