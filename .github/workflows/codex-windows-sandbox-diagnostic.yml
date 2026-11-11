@@ -123,6 +123,19 @@ jobs:
               foreach ($run in @($response.workflow_runs)) {
                 if ($run.head_sha -eq $env:GITHUB_SHA) { continue }
                 if ($run.status -notin @("queued", "in_progress")) { continue }
+                # A stale diagnostic may finish after a newer push. Cancel only
+                # runs whose commit is a strict ancestor of this diagnostic SHA.
+                $compareUri = "https://api.github.com/repos/$env:GH_REPOSITORY/compare/$($run.head_sha)...$env:GITHUB_SHA"
+                try {
+                  $comparison = Invoke-RestMethod -Uri $compareUri -Headers $headers -Method Get -TimeoutSec 15
+                } catch {
+                  Write-Warning "Could not establish commit ancestry for $workflowFile run $($run.id); leaving it untouched: $($_.Exception.Message)"
+                  continue
+                }
+                if ($comparison.status -ne "ahead" -or [int]$comparison.behind_by -ne 0 -or [int]$comparison.ahead_by -le 0) {
+                  Write-Host "Keeping $workflowFile run $($run.id): its commit is not a strict ancestor of $env:GITHUB_SHA."
+                  continue
+                }
                 $cancelUri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)/cancel"
                 try {
                   Invoke-RestMethod -Uri $cancelUri -Headers $headers -Method Post -TimeoutSec 15 | Out-Null
