@@ -10,6 +10,7 @@ import ipaddress
 import re
 import socket
 from dataclasses import dataclass
+from datetime import date, datetime
 from html.parser import HTMLParser
 import urllib.error
 import urllib.parse
@@ -52,6 +53,8 @@ class SourceDocument:
     url: str
     title: str
     text: str
+    publication_date: str | None = None
+    last_updated: str | None = None
 
 
 class SearchResultList(list[tuple[str, str]]):
@@ -365,10 +368,63 @@ class _PageTextParser(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.title_parts: list[str] = []
         self.text_parts: list[str] = []
+        self.publication_date: str | None = None
+        self.last_updated: str | None = None
         self._in_title = False
         self._ignored_depth = 0
 
+    @staticmethod
+    def _normalized_date(value: str) -> str | None:
+        candidate = " ".join(value.strip().split())
+        if not candidate or len(candidate) > 100:
+            return None
+        if re.fullmatch(r"\d{4}", candidate):
+            return candidate
+        if re.fullmatch(r"\d{4}-\d{2}", candidate):
+            try:
+                year, month = (int(part) for part in candidate.split("-"))
+                date(year, month, 1)
+                return candidate
+            except ValueError:
+                return None
+        iso_candidate = candidate.replace("Z", "+00:00")
+        try:
+            return datetime.fromisoformat(iso_candidate).date().isoformat()
+        except ValueError:
+            try:
+                return date.fromisoformat(candidate).isoformat()
+            except ValueError:
+                return None
+
+    def _record_date(self, key: str, value: str) -> None:
+        normalized = self._normalized_date(value)
+        if not normalized:
+            return
+        normalized_key = key.casefold().replace("_", "").replace("-", "").replace(":", "").replace(".", "")
+        if normalized_key in {
+            "articlepublishedtime", "datepublished", "published", "publishdate",
+            "publicationdate", "citationpublicationdate", "dcdateissued",
+            "datecreated", "pubdate",
+        } and self.publication_date is None:
+            self.publication_date = normalized
+        elif normalized_key in {
+            "articlemodifiedtime", "datemodified", "modified", "lastmodified",
+            "lastupdated", "dctermsmodified", "dcmodified", "updatetime",
+        } and self.last_updated is None:
+            self.last_updated = normalized
+
     def handle_starttag(self, tag: str, attrs) -> None:
+        values = {str(key).casefold(): str(value) for key, value in attrs if value is not None}
+        if tag == "meta":
+            key = (
+                values.get("property") or values.get("name")
+                or values.get("itemprop") or values.get("http-equiv") or ""
+            )
+            self._record_date(key, values.get("content", ""))
+        elif tag == "time":
+            key = values.get("itemprop", "")
+            if key:
+                self._record_date(key, values.get("datetime", ""))
         if tag == "title":
             self._in_title = True
         if tag in self._IGNORED:
@@ -466,7 +522,7 @@ def _normalize_search_results(
         if title.strip() and identity not in seen:
             seen.add(identity)
             unique.append((" ".join(title.split())[:300], normalized))
-        if len(unique) >= max(1, min(10, limit)):
+        if len(unique) >= max(1, min(30, limit)):
             break
     return unique
 
@@ -631,6 +687,8 @@ def _fetch_document(url: str, title_hint: str, *, max_chars: int = 6000) -> Sour
     if parsed.scheme.casefold() != "https":
         raise SourceFetchError("HTTPS is required for research source documents.")
     content, content_type = _open(url, max_bytes=MAX_RESPONSE_BYTES)
+    publication_date = None
+    last_updated = None
     if content_type == "text/plain":
         title = title_hint
         text = content
@@ -638,6 +696,8 @@ def _fetch_document(url: str, title_hint: str, *, max_chars: int = 6000) -> Sour
         parser = _PageTextParser()
         parser.feed(content)
         title = " ".join("".join(parser.title_parts).split()) or title_hint
+        publication_date = parser.publication_date
+        last_updated = parser.last_updated
         raw_text = "".join(parser.text_parts)
         # Keep paragraph/list boundaries for contextual relevance checks, while
         # normalizing spaces within each block for compact storage and search.
@@ -647,7 +707,7 @@ def _fetch_document(url: str, title_hint: str, *, max_chars: int = 6000) -> Sour
     text = text.strip()[:max_chars]
     if len(text) < 100:
         raise SourceFetchError("Source page did not contain enough readable text.")
-    return SourceDocument(url=url, title=title[:300], text=text)
+    return SourceDocument(url=url, title=title[:300], text=text, publication_date=publication_date, last_updated=last_updated)
 
 
 def fetch_public_document(
@@ -660,10 +720,13 @@ def fetch_public_document(
 
 
 def discover_sources(query: str, *, limit: int = 3) -> list[SourceDocument]:
-    """Search and fetch public pages; raise when search providers cannot return results."""
+    """Search and fetch a resumable page of public sources for one research query."""
     if not isinstance(query, str) or not query.strip():
         return SourceDocumentList()
-    candidates = _search_results(query.strip()[:300], max(1, min(5, limit)))
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise ValueError("limit must be a positive integer.")
+    page_limit = min(30, limit)
+    candidates = _search_results(query.strip()[:300], page_limit)
     fetch_diagnostics: dict[str, object] = {
         "candidate_count": len(candidates),
         "attempted_count": 0,
@@ -686,6 +749,6 @@ def discover_sources(query: str, *, limit: int = 3) -> list[SourceDocument]:
             continue
         documents.append(document)
         fetch_diagnostics["fetched_count"] = int(fetch_diagnostics["fetched_count"]) + 1
-        if len(documents) >= max(1, min(5, limit)):
+        if len(documents) >= page_limit:
             break
     return documents

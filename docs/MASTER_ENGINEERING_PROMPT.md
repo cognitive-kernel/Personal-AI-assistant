@@ -168,7 +168,7 @@ Explicitly distinguish:
 
 Never describe memory or RAG updates as model training. User feedback must not automatically become trusted knowledge. Preserve verification, provenance, review, and rollback controls.
 
-A prompt test or lexical benchmark is not proof of model quality. Use versioned evaluation datasets, pinned model versions/digests when possible, structured scoring, and human adjudication where required. Record failures such as wrong-language answers, unsupported claims, missing citations, or unsafe knowledge promotion.
+A prompt test or lexical benchmark is not proof of model quality. Use versioned evaluation datasets, pinned model versions/digests when possible, structured scoring, and automated semantic adjudication by an independently configured reviewer model. Human adjudication is not a routine learning or lesson-acceptance gate; retain it only where an explicit legal, safety, or governance requirement mandates it. Record failures such as wrong-language answers, unsupported claims, missing citations, or unsafe knowledge promotion.
 
 ### 5.5 Security
 
@@ -196,6 +196,47 @@ Identify unused/duplicate dependencies, version constraints, known vulnerabiliti
 ## Universal, Version-Aware Learning Contract (Mandatory for Every Subject)
 
 This contract applies to every user-named subject: programming languages, databases, operating systems, networking, virtualization, standards, protocols, sciences, humanities, and any other domain. SQL Server and Python are examples only; never constrain a syllabus to learner examples, current skill level, or a preset catalog.
+
+### Mandatory subject-agnostic completeness and release ledger
+
+- The user's subject name is the scope. Examples, questions, code snippets, current task, skill level, or supplied source text are context only; none may narrow, replace, or cap the independently researched syllabus.
+- Before teaching, produce a durable subject map and a release ledger. The map must enumerate the domain's full taxonomy and identify which branches are evergreen, versioned, editioned, standards-based, or date-driven. It must explicitly list discovered coverage areas, prerequisites, and unresolved gaps.
+- For a versioned subject, the release ledger must cover every discoverable release line from the earliest documented public release to the latest discoverable release. Capture all known release identifiers and dates/year, including maintenance and security releases, and mark gaps in historical archives instead of silently skipping them. Never infer that one major release represents every patch or cumulative update.
+- Each lesson and each claim must be linked to its own applicable release/date range and one or more source records. A course-level version label is insufficient. Where a source applies to several versions, record that range explicitly; where applicability is unknown, preserve the observation as unverified and do not present it as current fact.
+- Sort release groups by actual release chronology, not lexical version-string order. Use release dates when known; use the product's documented version ordering only when dates are unavailable. Preserve parallel release branches and platform-specific timelines rather than forcing them into one false linear sequence.
+- Do not use fixed source counts, fixed numbers of versions, fixed years, fixed lesson totals, or fixed evidence totals as course-completion criteria. Any transport, prompt, or context limit must be implemented as resumable pagination/map-reduce with durable cursors and a completion ledger. Every retained source must eventually be considered by synthesis and every relevant source claim must be traceable to resulting topics or an explicit exclusion reason.
+- Do not declare a curriculum complete merely because the model returned `has_more=false`. Completion requires a coverage audit against the subject map, earliest-to-latest release ledger, prerequisite graph, and unresolved-gap list. If the model cannot establish completeness, keep the curriculum open and continue discovery.
+
+### Lesson source and applicability record
+
+For every lesson, persist a machine-readable record containing:
+- subject identifier and canonical topic path;
+- exact lesson revision and immutable predecessor reference;
+- product/project/standard name and release identifier;
+- release date and year, or an explicit unknown marker with reason;
+- edition, build, platform, architecture, compatibility level, execution mode, and prerequisite constraints when applicable;
+- per-claim source URL, title, source class, source publication/update date, retrieval timestamp, content hash, and exact claim/lesson linkage;
+- confidence, corroboration, conflict, freshness, and verification status;
+- model/provider/profile/model identifier used to generate, summarize, assess, or correct the lesson;
+- known limitations, test evidence, and the next scheduled release-watch time.
+
+Never substitute documentation modification time for product release date. Never attach a generic source list to every topic without verifying topic-level relevance.
+
+### Release monitoring and correction completion
+
+- Release monitoring must be durable per subject and release family, with persisted cursors, last successful scan, provider diagnostics, retry schedule, and source fingerprints. A fixed per-cycle processing batch is permitted only when due work remains queued and is guaranteed to resume; it must not cap the number of watched subjects or releases.
+- Search independently for new releases, patch/hotfix/cumulative updates, security bulletins, errata, documentation corrections, compatibility changes, deprecations, removals, and EOL notices. New material triggers an additive correction/research task and impact analysis against dependent lessons and examples.
+- Preserve historical course and lesson revisions. A correction creates a new revision, links its predecessor, records the reason and evidence, and updates only current applicability pointers after validation.
+- If a user reports that code, a query, command, or instruction failed, capture the exact lesson revision, claimed version/platform, input, expected result, actual result, and error output when available. Automatically reproduce in a safe test environment, isolate the cause, research alternatives, correct the lesson, and add a regression test. If reproduction is unavailable, retain the report and corrected hypothesis as unverified rather than discarding it.
+- No human approval is required for routine candidate collection, research, draft correction, or safe automated tests. Security-sensitive actions, destructive data operations, and changes to trust/permission boundaries retain their existing safeguards.
+
+### Model selection and migration acceptance
+
+- The default learning model is `gpt-oss:20b` only when it is actually installed/reachable and compatible with the selected provider. If unavailable, report the learning lane as blocked; never silently switch models.
+- Settings must expose persistent and temporary selection for provider, model/LLM, endpoint, and role (at minimum learning generation, lesson repair, semantic assessment, chat, research, coding, and embeddings). A change must take effect through the existing adapter without source-code edits, database resets, or reinstalling the application.
+- Temporary overrides must be scoped to the requested operation/session and must not overwrite persistent settings. Persistent changes must survive restart and must be reflected in task/model provenance.
+- Provider changes must validate required fields and capabilities before activation, preserve previous working settings on failure, and avoid sending local data to remote endpoints unless the user explicitly configured that remote provider. Secrets remain in the approved secret mechanism, never in plain settings or logs.
+- Automated tests must exercise switching Ollama to an OpenAI-compatible local endpoint and back, temporary overrides, persistence after restart, unavailable model/provider behavior, and ensuring every learning task uses the selected model identity.
 
 ### Subject discovery and chronological syllabus
 - Independently infer and research the complete subject taxonomy: prerequisites, fundamentals, terminology, history, architecture, internals, methods, tools, practical workflows, advanced/specialist topics, operations, security, diagnostics, failure recovery, performance, integrations, alternatives, and projects where relevant.
@@ -233,7 +274,7 @@ This contract applies to every user-named subject: programming languages, databa
 
 ### Engineering execution for learning
 - Add regression tests for subject-agnostic curricula, chronological version ordering, date provenance, complete evidence delivery across bounded batches, non-destructive correction, semantic assessment tolerance, release-watch deduplication, and provider migration.
-- Do not stop development merely because target-host or human acceptance tests are unavailable. Continue independent implementation, static analysis, CI, mocks, and reproducible tests. Keep explicit merge gates intact: never claim unavailable tests passed and never merge to `main` before exact-head CI and required target-host tests actually pass.
+- Do not stop development merely because target-host or human acceptance tests are unavailable. Continue independent implementation, static analysis, CI, mocks, and reproducible tests. Keep exact-head automated CI and repository-enforced approvals as merge gates. Do not wait for unavailable owner-local, target-host, physical-device, or human acceptance tests when they are not explicitly required by branch protection; record them as NOT RUN / PENDING and continue.
 - The prompt edit alone does not complete this requirement. Code, migrations, documentation, tests, and operational evidence must agree.
 
 ## 6. Testing and quality gates
@@ -256,7 +297,7 @@ Assess all applicable checks:
 
 For every skipped test, determine the exact cause. Decide whether it is obsolete, invalid, environment-dependent, or unsupported. Fix the environment/test when possible. Remove a test only when its behavior is genuinely obsolete and the removal is justified. Never delete or skip a meaningful test merely to improve reported counts. Report passed, failed, skipped, and deselected separately. A dedicated workflow must explicitly select its environment-dependent tests.
 
-A suite is not fully verified if required tests were silently excluded. Every result must identify the exact tested SHA, workflow, environment, and test scope.
+A suite is not fully verified if required tests were silently excluded. Every result must identify the exact tested SHA, workflow, environment, and test scope. A test that requires an unavailable owner machine, physical device, private environment, or human judgment is not silently treated as passed, but it is also not a reason to stop implementation or withhold an otherwise safe merge whose automated gates are green. Keep that acceptance item open and continue all reproducible automation.
 
 ## 7. Workstream strategy
 
@@ -298,7 +339,7 @@ For each workstream:
 13. Verify the resulting commit on `main` and post-merge CI.
 14. Update the engineering log and acceptance ledger.
 
-Do not combine unrelated fixes. Do not merge a PR with failing required checks, unresolved blocking review comments, unknown conflicts, or an unverified head SHA.
+Do not combine unrelated fixes. Do not merge a PR with failing required automated checks, unresolved blocking review comments, unknown conflicts, or an unverified head SHA. User-local/manual tests and human acceptance are tracked separately and must not stall independent engineering or routine code delivery unless repository branch protection explicitly makes a named check mandatory.
 
 ## 8. Documentation requirements
 
@@ -327,11 +368,11 @@ Every completion statement must cite evidence or be labeled unverified. Never co
 - Target PRs to `main`.
 - Never force-push, rewrite shared history, or commit directly to `main`.
 - Include problem, root cause, solution, risks, tests, documentation, and linked issues in each PR.
-- Verify exact PR head SHA, required checks, review state, and mergeability before merging.
+- Verify exact PR head SHA, required automated checks, required review state, and mergeability before merging. Do not wait for optional local/manual acceptance or target-host execution when the user has explicitly excluded them from the delivery gate; record them as outstanding acceptance evidence.
 - Use the repository-permitted merge strategy.
 - After merge, verify PR state, merge commit, `main` SHA, and post-merge CI.
 - Do not close issues until their acceptance criteria and evidence are complete.
-- Do not bypass required independent approval or external security review. Routine changes are pre-authorized by the repository owner for autonomous merge only after all exact-SHA local and GitHub quality gates pass; no per-task human confirmation is required.
+- Do not bypass required independent approval or external security review. Routine changes are pre-authorized by the repository owner for autonomous merge after exact-SHA automated tests and required GitHub checks pass; no per-task human confirmation or owner-local test is required unless repository branch protection explicitly requires it.
 
 A successful merge-tool response alone is not sufficient proof; verify the repository state afterward.
 
@@ -403,7 +444,7 @@ For tasks requiring the user's local hardware/private data, target Windows host,
 4. Mark the gate BLOCKED or HUMAN/EXTERNAL REVIEW REQUIRED.
 5. Continue independent engineering tasks.
 
-Do not stop the entire project because one external gate is blocked. Do not fabricate evidence.
+Do not stop the entire project because one external gate is blocked. Do not fabricate evidence. Owner-local, target-host, physical-device, and human acceptance activities are not merge gates by default under this project instruction. Continue with mocks, simulations, static analysis, CI, and other reproducible checks; report each unavailable activity as NOT RUN / PENDING, never as passed. Required independent security review and repository-enforced approvals remain mandatory and may not be bypassed.
 
 ## 14. Required handoff at the end of every session
 

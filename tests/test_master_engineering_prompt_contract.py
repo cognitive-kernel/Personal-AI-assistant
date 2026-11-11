@@ -19,6 +19,21 @@ def test_master_prompt_defines_universal_version_aware_learning_contract():
         "Default the learning lane to `gpt-oss:20b`",
         "Provider, model/LLM, endpoint, and role-specific routing must be changeable in application settings",
         "Do not stop development merely because target-host or human acceptance tests are unavailable",
+        "The user's subject name is the scope. Examples, questions, code snippets, current task, skill level, or supplied source text are context only",
+        "Do not use fixed source counts, fixed numbers of versions, fixed years, fixed lesson totals, or fixed evidence totals as course-completion criteria",
+        "Every retained source must eventually be considered by synthesis",
+        "A course-level version label is insufficient",
+        "Sort release groups by actual release chronology, not lexical version-string order",
+        "A test that requires an unavailable owner machine, physical device, private environment, or human judgment is not silently treated as passed",
+        "Owner-local, target-host, physical-device, and human acceptance activities are not merge gates by default",
+        "Temporary overrides must be scoped to the requested operation/session",
+        "A correction creates a new revision, links its predecessor, records the reason and evidence",
+        "automated semantic adjudication by an independently configured reviewer model",
+        "Human adjudication is not a routine learning or lesson-acceptance gate",
+        "Human approval is not required for routine evidence gathering, draft correction, tests, or versioned lesson updates.",
     )
     for requirement in required_contract:
         assert requirement in prompt
+
+    assert "never merge to `main` before exact-head CI and required target-host tests actually pass" not in prompt
+    assert "Owner-local, target-host, physical-device, and human acceptance activities are not merge gates by default" in prompt

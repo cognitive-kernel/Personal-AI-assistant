@@ -781,3 +781,78 @@ def test_discovery_skips_http_candidates_and_keeps_https_source(monkeypatch):
     assert documents.fetch_diagnostics["attempted_count"] == 2
     assert documents.fetch_diagnostics["fetched_count"] == 1
     assert documents.fetch_diagnostics["failure_counts"] == {"SourceFetchError": 1}
+
+
+def test_discover_sources_fetches_more_than_five_results_when_requested(monkeypatch):
+    candidates = web_sources.SearchResultList([
+        (f"Source {index}", f"https://example.org/source/{index}")
+        for index in range(1, 13)
+    ])
+    captured = {}
+    def search(_query, limit):
+        captured["limit"] = limit
+        return candidates
+    monkeypatch.setattr(web_sources, "_search_results", search)
+    monkeypatch.setattr(
+        web_sources,
+        "_fetch_document",
+        lambda url, title: web_sources.SourceDocument(
+            url=url, title=title, text=("Complete source body for learning. " * 5)
+        ),
+    )
+
+    documents = web_sources.discover_sources("release history", limit=12)
+
+    assert captured["limit"] == 12
+    assert len(documents) == 12
+    assert documents.fetch_diagnostics["attempted_count"] == 12
+    assert documents.fetch_diagnostics["fetched_count"] == 12
+
+
+def test_discover_sources_keeps_provider_page_limit_bounded(monkeypatch):
+    captured = {}
+    def search(_query, limit):
+        captured["limit"] = limit
+        return []
+    monkeypatch.setattr(web_sources, "_search_results", search)
+    monkeypatch.setattr(
+        web_sources,
+        "_fetch_document",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("no candidates expected")),
+    )
+
+    web_sources.discover_sources("release history", limit=500)
+
+    assert captured["limit"] == 30
+
+
+def test_page_text_parser_extracts_publication_and_last_updated_dates():
+    parser = web_sources._PageTextParser()
+    parser.feed(
+        '<html><head><meta property="article:published_time" content="2024-05-10T10:00:00Z">'
+        '<meta property="article:modified_time" content="2025-01-02T11:30:00Z">'
+        '<meta name="DC.date.issued" content="2023-04-01"></head>'
+        '<body><h1>Release notes</h1><p>' + ("Release details and fixes. " * 12) + "</p></body></html>"
+    )
+
+    assert parser.publication_date == "2024-05-10"
+    assert parser.last_updated == "2025-01-02"
+
+
+def test_fetch_document_persists_source_date_metadata(monkeypatch):
+    html = (
+        '<html><head><title>Release notes</title>'
+        '<meta name="datePublished" content="2022-11-16">'
+        '<meta name="last-modified" content="2024-02-20">'
+        '</head><body><h1>Release notes</h1><p>'
+        + ("Version release and maintenance details. " * 10)
+        + "</p></body></html>"
+    )
+    monkeypatch.setattr(web_sources, "_open", lambda _url, max_bytes: (html, "text/html"))
+
+    document = web_sources.fetch_public_document(
+        "https://docs.example.test/releases", "Release notes"
+    )
+
+    assert document.publication_date == "2022-11-16"
+    assert document.last_updated == "2024-02-20"

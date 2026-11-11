@@ -527,3 +527,44 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - The subject hint is the originating user query, not yet a canonical taxonomy label; candidate-to-course promotion remains a separate workflow. The ingestion path covers assistant messages persisted in local chat history, not transient responses that are never stored.
 - Exact-head CI on `e62342e79d882c44e07340e28a728bcbf03846ab`: main suite **2028 passed / 50 deselected**; Windows storage **11 passed / 47 deselected**; browser E2E and dependency audit succeeded; generated learning artifacts, Markdown links, import-cycle guard, retrieval benchmark and claim-to-test coverage benchmark all succeeded. The claim-to-test benchmark passed 10/10 with zero false accepts and zero false rejects.
 - Target-host execution and a live `gpt-oss:20b` benchmark were intentionally excluded from the merge gate at the user's direction and are not claimed as completed.
+
+
+## Universal learning contract v2 — source coverage and delivery policy
+
+- Branch: `feature/universal-learning-contract-v2`, based on post-PR-710 main commit `9e198a0640593bcc3892f3a97aa8956ba522653c`.
+- Master prompt strengthened with subject-map and release-ledger requirements, exact per-lesson/per-claim source and applicability provenance, true release-date ordering (not lexical version ordering), resumable evidence processing with no total source/version/year/lesson caps, release monitoring and additive correction revisions, and persistent/temporary provider/model selection acceptance.
+- Prompt merge policy now distinguishes reproducible exact-SHA automated gates from owner-local, target-host, physical-device, and human acceptance. Unavailable tests remain NOT RUN/PENDING and are not silently passed; they do not block routine code delivery by default. Repository-enforced checks and independent security approval are not bypassed.
+- Curriculum source delivery changed from repeatedly sending the same first eight sources to round-robin source batches. The task forces continuation until all retained source records have been presented to the learning model, even if the model prematurely returns `has_more=false`. Evidence-only continuation batches can complete without inventing duplicate topic titles.
+- Removed fixed caps on topic source URL count, version/year/date array count, and coverage-area count. The JSON response and prompt budgets remain per-request safety bounds; the full curriculum remains checkpointed and resumable.
+- Initial curriculum research now requests up to 30 fetched pages per query request. Release-watch polling retains its previous five-result page to preserve existing source-fingerprint semantics; its query set now also covers documentation errata, compatibility changes, security CVEs, deprecations, removals, and EOL. Neither per-query page size caps the total course.
+- Added regression tests for 103-source round-robin pagination, complete review of 17 sources across three batches despite premature model completion, metadata arrays with 45 releases/source URLs, and web retrieval above five pages.
+- Exact-head CI has not yet run for this branch. The tests and implementation are pending automated verification; no local/target-host/human test is claimed. Remaining known gaps include a durable canonical subject/release coverage ledger, automated candidate-to-course promotion, lesson correction/revision workflow, and verification of all provider-role settings/temporary overrides.
+
+
+
+### Full-source retention and publication-date provenance
+
+- Added learning schema migration 46, `complete-curriculum-source-body-retention`, with `learning_research_source_text`. Full fetched page text is stored once per task/source hash and linked to the resulting immutable research path; repeated task checkpoints and `learning_path_research.sources_json` retain only source metadata/excerpts.
+- Curriculum research now rehydrates complete bodies from the source-text table. Legacy checkpoints with excerpt-only evidence attempt to re-fetch their exact known HTTPS URLs; if unavailable, the excerpt remains explicitly incomplete and is never represented as a complete page.
+- Each full source body is split into ordered 1,000-character evidence chunks. Chunks are interleaved across research query angles and source records, and the existing source-batch continuation now covers every chunk before the model may finish the curriculum.
+- HTML metadata extraction records common publication and modification fields (`article:published_time`, `datePublished`, `DC.date.issued`, `article:modified_time`, `dateModified`, `last-modified`, and `time[itemprop]`). Unknown dates remain null; retrieval timestamps are stored separately.
+- Migration tests now assert schema version 46 and source-body table structure; curriculum tests cover full-body persistence/chunk order; web-source tests cover publication/update metadata. Exact-head CI is pending.
+- The web retrieval page remains capped at 30 results per query request by provider/request safety limits; the number of queries, source bodies, source chunks, and total course batches is not capped by that page size.
+
+
+
+### Release chronology validator refinement
+
+- Curriculum chronology now uses the recorded release date first, then release year, and product-specific version order when dates are unavailable. This avoids relying only on lexical version labels and supports prerelease ordering before stable releases.
+- Added regressions for release dates that conflict with otherwise ascending version labels and for release-candidate versions sorting before the matching stable release.
+- These changes are awaiting exact-head CI.
+
+
+
+## Current-state correction — PR #710 merged; PR #711 is the active learning continuation
+
+- Any earlier dated entry in this log stating that PR #710 was open, Draft, or waiting for local/target-host testing describes a historical snapshot and is superseded. PR #710 merged into `main` on 2026-11-11 as `9e198a0640593bcc3892f3a97aa8956ba522653c`.
+- The current follow-up is PR #711, branch `feature/universal-learning-contract-v2`. Its exact head and CI status must be read from live GitHub; no earlier SHA or test result applies to it.
+- The source-body retention and common HTML publication/modified-date extraction work is implemented in this follow-up with migration 46. It must not continue to be listed as an outstanding gap once its exact-head CI passes.
+- Release-watch polling intentionally remains at five results per query to avoid changing existing fingerprints solely because the initial curriculum discovery page was expanded. The watch query set itself is broader; any changed fingerprint after this query-set expansion is an intentional additive refresh, not an assertion that every update was already detected.
+

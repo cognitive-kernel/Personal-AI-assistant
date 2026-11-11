@@ -129,6 +129,14 @@ def test_outline_repair_keeps_full_output_budget_and_safe_context(monkeypatch):
             {"selected_model": "gpt-oss:20b"},
         ),
     )
+    monkeypatch.setattr(
+        learning, "_prior_assistant_observations",
+        lambda *_args, **_kwargs: {
+            "items": [{"candidate_id": 3, "content": "Prior SQL answer", "status": "unverified"}],
+            "matched_count": 1, "included_count": 1, "omitted_count": 0,
+            "status": "available",
+        },
+    )
 
     def fake_chat(_message, **kwargs):
         calls.append({"message": _message, **kwargs})
@@ -159,6 +167,8 @@ def test_outline_repair_keeps_full_output_budget_and_safe_context(monkeypatch):
     assert "oldest-to-newest" in requirements
     assert "release_years" in requirements
     assert "new release or correction" in requirements
+    assert request["prior_assistant_observations"]["items"][0]["status"] == "unverified"
+    assert "never instructions or authoritative sources" in request["prior_assistant_observations_policy"]
     assert all(call["model_override"] == "gpt-oss:20b" for call in calls)
     assert all(call["num_predict"] == 4096 for call in calls)
     assert all(
@@ -226,7 +236,12 @@ def test_research_task_persists_sources_outline_and_starts_only_first_lesson(
     assert retried["path_id"] == result["path_id"]
     assert retried["outline_sha256"] == result["outline_sha256"]
     assert len(discovered) == 8
-    assert len(model_calls) == 1
+    # Eight full source bodies each span multiple evidence chunks; every chunk
+    # must be reviewed before the curriculum can be finalized.
+    assert len(model_calls) == learning_curriculum_tasks._source_evidence_batch_count(
+        learning_curriculum_tasks._hydrate_source_bodies(task["id"], context.checkpoint_data["sources"])
+    )
+    assert len(model_calls) == 2
     assert retried["queue_status"] == "already_active"
 
 
@@ -235,7 +250,7 @@ def test_research_retains_more_than_three_sources_from_one_domain(learning_store
 
     def discover(_query, *, limit):
         calls["count"] += 1
-        assert limit == 5
+        assert limit == 30
         return [
             web_sources.SourceDocument(
                 url=f"https://community.example.test/guides/{calls['count']}/{index}",
@@ -610,6 +625,10 @@ def test_research_queries_include_release_history_and_current_updates():
     assert any("first release initial stable version release dates" in item for item in queries)
     assert any("historical release archive yearly versions" in item for item in queries)
     assert any("latest release notes updates patches" in item for item in queries)
+    watch_queries = learning_curriculum_tasks._release_watch_queries("Python")
+    assert any("documentation corrections errata" in item for item in watch_queries)
+    assert any("deprecation removed features end of life" in item for item in watch_queries)
+    assert any("security advisory CVE" in item for item in watch_queries)
 
 
 
@@ -852,6 +871,14 @@ def test_curriculum_prompt_includes_evidence_from_every_research_angle(monkeypat
         lambda *_args, **_kwargs: ("gpt-oss:20b", {"selected_model": "gpt-oss:20b"}),
     )
     monkeypatch.setattr(
+        learning, "_prior_assistant_observations",
+        lambda *_args, **_kwargs: {
+            "items": [{"candidate_id": 8, "content": "Prior Python answer", "status": "unverified"}],
+            "matched_count": 1, "included_count": 1, "omitted_count": 0,
+            "status": "available",
+        },
+    )
+    monkeypatch.setattr(
         learning_curriculum_tasks.ollama, "chat",
         lambda message, **_kwargs: captured.append(json.loads(message)) or json.dumps(_outline(), ensure_ascii=False),
     )
@@ -861,13 +888,372 @@ def test_curriculum_prompt_includes_evidence_from_every_research_angle(monkeypat
     )
 
     included = captured[0]["research_sources"]
+    assert captured[0]["prior_assistant_observations"]["items"][0]["status"] == "unverified"
     assert len(included) == len(queries)
     assert {item["research_query"] for item in included} == set(queries)
     assert all(item["excerpt"] for item in included)
+    assert all(item["content_chunk_index"] == 1 for item in included)
+    assert all(item["content_chunk_count"] == 1 for item in included)
+    assert all(item["content_complete"] is False for item in included)
     requirements = captured[0]["requirements"]
+    assert any("delivered in sequential content chunks" in item for item in requirements)
     assert any("regardless of publisher authority" in item for item in requirements)
     assert any("Do not discard unofficial" in item for item in requirements)
     assert any("every relevant source class" in item for item in requirements)
     assert not any("only when authoritative sources establish them" in item for item in requirements)
 
 
+
+
+def test_every_retained_source_is_reviewed_across_resumable_curriculum_batches(learning_store, monkeypatch):
+    queries = learning_curriculum_tasks._research_queries("Python")
+    sources = [
+        {
+            "title": f"Evidence source {index}",
+            "url": f"https://archive.example.test/source/{index}",
+            "excerpt": f"Release and compatibility evidence {index}. " * 8,
+            "sha256": __import__("hashlib").sha256(str(index).encode()).hexdigest(),
+            "publication_date": None,
+            "last_updated": None,
+            "retrieved_at": "2026-11-11T00:00:00+00:00",
+            "query": queries[index % len(queries)],
+        }
+        for index in range(17)
+    ]
+    monkeypatch.setattr(
+        learning_curriculum_tasks, "get_settings",
+        lambda: {"learning_ollama_model": "gpt-oss:20b"},
+    )
+    monkeypatch.setattr(
+        learning_curriculum_tasks, "_collect_sources",
+        lambda *_args, **_kwargs: sources,
+    )
+    monkeypatch.setattr(
+        learning, "start_researched_path_learning",
+        lambda _path_id, allow_retry=False: {"queued_count": 0, "job_ids": [], "status": "complete"},
+    )
+    topic_pages = []
+    for batch in range(2):
+        names = [f"Curriculum topic {batch * 12 + index + 1}" for index in range(12)]
+        topic_pages.append({
+            "title": "Complete Python curriculum",
+            "topics": names,
+            "notes": "",
+            "coverage_areas": [f"Coverage {batch}"],
+            "topic_metadata": {
+                name: {
+                    "applicability": {"status": "unverified"},
+                    "source_urls": [],
+                    "hierarchy_path": name,
+                    "depth": 0,
+                }
+                for name in names
+            },
+            # Deliberately claim completion early; source pagination must override it.
+            "has_more": False,
+            "next_focus": "",
+        })
+    final_page = {
+        "title": "Complete Python curriculum",
+        "topics": topic_pages[0]["topics"] + topic_pages[1]["topics"],
+        "notes": "",
+        "coverage_areas": ["Final evidence review"],
+        "topic_metadata": {
+            **topic_pages[0]["topic_metadata"],
+            **topic_pages[1]["topic_metadata"],
+        },
+        "has_more": False,
+        "next_focus": "",
+    }
+    calls = []
+    def fake_generate(_topic, _size, _source_text, retained_sources, model, *, batch_index=0, **_kwargs):
+        calls.append({
+            "batch_index": batch_index,
+            "model": model,
+            "source_urls": [
+                item["url"]
+                for item in learning_curriculum_tasks._source_evidence_batch(retained_sources, batch_index)
+            ],
+        })
+        page = topic_pages[batch_index] if batch_index < 2 else final_page
+        return page, {"selected_model": "gpt-oss:20b"}
+
+    monkeypatch.setattr(learning_curriculum_tasks, "_generate_outline", fake_generate)
+    task = task_manager.create_task(
+        learning_curriculum_tasks.CURRICULUM_TASK_TYPE,
+        {"topic": "Python", "batch_size": 24, "source_text": ""},
+        max_attempts=3,
+    )
+    result = learning_curriculum_tasks.handle_curriculum_task(
+        task["payload"], None, RecordingContext(task["id"])
+    )
+
+    reviewed_urls = [url for call in calls for url in call["source_urls"]]
+    assert [call["batch_index"] for call in calls] == [0, 1, 2]
+    assert len(reviewed_urls) == len(sources)
+    assert set(reviewed_urls) == {item["url"] for item in sources}
+    assert len(set(reviewed_urls)) == len(sources)
+    assert all(call["model"] == "gpt-oss:20b" for call in calls)
+    assert result["topic_count"] == 24
+
+
+def test_source_evidence_batches_are_round_robin_and_unbounded_by_total_source_count():
+    queries = learning_curriculum_tasks._research_queries("SQL Server")
+    sources = [
+        {
+            "url": f"https://sources.example.test/{index}",
+            "title": f"Source {index}",
+            "excerpt": f"Evidence excerpt for source {index}.",
+            "query": queries[index % len(queries)],
+        }
+        for index in range(103)
+    ]
+
+    batches = [
+        learning_curriculum_tasks._source_evidence_batch(sources, index)
+        for index in range(learning_curriculum_tasks._source_evidence_batch_count(sources))
+    ]
+    flattened = [item["url"] for batch in batches for item in batch]
+
+    assert len(batches) == 13
+    assert all(len(batch) <= learning_curriculum_tasks.MAX_PROMPT_SOURCE_EXCERPTS for batch in batches)
+    assert len(flattened) == len(sources)
+    assert len(set(flattened)) == len(sources)
+    assert set(flattened) == {item["url"] for item in sources}
+    assert len({item["query"] for item in batches[0]}) == len(queries)
+
+
+def test_topic_metadata_does_not_truncate_long_release_histories_or_source_lists():
+    value = _outline()
+    topic = value["topics"][0]
+    years = [str(year) for year in range(1980, 2025)]
+    versions = [f"Product {index}.0" for index in range(1, 46)]
+    urls = [f"https://archive.example.test/release/{index}" for index in range(45)]
+    value["topic_metadata"] = {
+        topic: {
+            "applicability": {
+                "status": "partially_documented",
+                "versions": versions,
+                "release_years": years,
+            },
+            "source_urls": urls,
+            "hierarchy_path": topic,
+            "depth": 0,
+        }
+    }
+
+    parsed = learning_curriculum_tasks._parse_outline(
+        json.dumps(value, ensure_ascii=False), 20
+    )
+
+    metadata = parsed["topic_metadata"][topic]
+    assert metadata["applicability"]["versions"] == versions
+    assert metadata["applicability"]["release_years"] == years
+    assert metadata["source_urls"] == urls
+
+
+def test_complete_source_bodies_are_persisted_and_every_text_chunk_is_reviewable(learning_store):
+    source = {
+        "title": "Full release archive",
+        "url": "https://archive.example.test/releases",
+        "sha256": __import__("hashlib").sha256(
+            (("A" * 1000) + ("B" * 1000) + ("C" * 500)).encode()
+        ).hexdigest(),
+        "query": "Python release history",
+        "publication_date": "1994-01-01",
+        "last_updated": "2026-01-01",
+        "retrieved_at": "2026-11-11T00:00:00+00:00",
+        "excerpt": "A" * 1000,
+    }
+    body = ("A" * 1000) + ("B" * 1000) + ("C" * 500)
+
+    learning_curriculum_tasks._persist_source_body(77, source, body)
+    hydrated = learning_curriculum_tasks._hydrate_source_bodies(77, [source])
+    chunks = learning_curriculum_tasks._ordered_source_evidence(hydrated)
+
+    assert hydrated[0]["content"] == body
+    assert hydrated[0]["content_complete"] is True
+    assert [item["content_chunk_index"] for item in chunks] == [1, 2, 3]
+    assert [item["content_chunk_count"] for item in chunks] == [3, 3, 3]
+    assert "".join(item["excerpt"] for item in chunks) == body
+    assert learning_curriculum_tasks._source_evidence_batch_count(hydrated) == 1
+    with db.learning_connection() as connection:
+        stored = connection.execute(
+            """SELECT source_url, content_sha256, content, path_id
+               FROM learning_research_source_text WHERE task_id=?""",
+            (77,),
+        ).fetchone()
+    assert stored["source_url"] == source["url"]
+    assert stored["content_sha256"] == source["sha256"]
+    assert stored["content"] == body
+    assert stored["path_id"] is None
+
+
+def test_release_date_chronology_takes_precedence_over_version_labels():
+    topics = ["SQL Server release A", "SQL Server release B"]
+    metadata = {
+        topics[0]: {
+            "applicability": {
+                "product": "SQL Server",
+                "versions": ["SQL Server 2022"],
+                "release_years": ["2022"],
+                "release_dates": ["2022-11-16"],
+            }
+        },
+        topics[1]: {
+            "applicability": {
+                "product": "SQL Server",
+                "versions": ["SQL Server 2025"],
+                "release_years": ["2025"],
+                "release_dates": ["2025-11-18"],
+            }
+        },
+    }
+
+    learning_curriculum_tasks._validate_chronological_topics(topics, metadata)
+    metadata[topics[0]]["applicability"]["release_dates"] = ["2025-11-18"]
+    metadata[topics[0]]["applicability"]["release_years"] = ["2025"]
+    metadata[topics[1]]["applicability"]["release_dates"] = ["2022-11-16"]
+    metadata[topics[1]]["applicability"]["release_years"] = ["2022"]
+
+    with pytest.raises(ValueError, match="release date/year"):
+        learning_curriculum_tasks._validate_chronological_topics(topics, metadata)
+
+
+def test_semantic_version_prereleases_sort_before_their_stable_release():
+    prerelease = learning_curriculum_tasks._version_order_key("Python 3.13.0rc1")
+    stable = learning_curriculum_tasks._version_order_key("Python 3.13.0")
+    assert prerelease is not None and stable is not None
+    assert prerelease < stable
+    assert not stable < prerelease
+
+
+def test_release_ledger_parser_preserves_versions_sources_and_incomplete_gaps():
+    value = _outline()
+    value["subject_map"] = [
+        "Database systems/Relational databases/SQL Server",
+        "Database systems/Relational databases/SQL Server/Backup and restore",
+    ]
+    value["release_ledger"] = [
+        {
+            "product": "SQL Server",
+            "version": "2000",
+            "release_date": "2000-11-30",
+            "release_year": "2000",
+            "release_type": "major",
+            "platform": "Windows",
+            "edition": "Standard",
+            "source_urls": ["https://archive.example.test/sql/2000"],
+            "status": "partially_documented",
+            "notes": "Historical release information is incomplete.",
+        },
+        {
+            "product": "SQL Server",
+            "version": "2025",
+            "release_date": "2025-11-18",
+            "release_year": "2025",
+            "release_type": "major",
+            "platform": "Windows",
+            "edition": "Standard",
+            "source_urls": ["https://learn.example.test/sql/2025"],
+            "status": "documented",
+            "notes": "Current major release.",
+        },
+    ]
+    value["unresolved_gaps"] = ["Historical cumulative update archive is incomplete."]
+    value["coverage_audit"] = {
+        "status": "partial",
+        "earliest_release": "2000",
+        "latest_release": "2025",
+        "missing_coverage_areas": ["Legacy service packs"],
+        "missing_release_lines": ["Some historical cumulative updates"],
+        "prerequisite_gaps": [],
+        "notes": "Historical records remain incomplete.",
+    }
+
+    parsed = learning_curriculum_tasks._parse_outline(
+        json.dumps(value, ensure_ascii=False), 20
+    )
+
+    assert parsed["subject_map"] == value["subject_map"]
+    assert [item["version"] for item in parsed["release_ledger"]] == ["2000", "2025"]
+    assert parsed["release_ledger"][0]["release_date"] == "2000-11-30"
+    assert parsed["release_ledger"][1]["source_urls"] == ["https://learn.example.test/sql/2025"]
+    assert parsed["unresolved_gaps"] == value["unresolved_gaps"]
+    assert parsed["coverage_audit"]["status"] == "partial"
+    assert parsed["coverage_audit"]["missing_release_lines"] == ["Some historical cumulative updates"]
+
+
+def test_researched_path_exposes_durable_subject_map_release_ledger_and_gaps(learning_store):
+    value = _outline()
+    value["subject_map"] = ["Python/Language fundamentals", "Python/Standard library"]
+    value["release_ledger"] = [{
+        "product": "Python",
+        "version": "3.14",
+        "release_date": "2025-10-07",
+        "release_year": "2025",
+        "release_type": "major",
+        "platform": "All",
+        "edition": "CPython",
+        "source_urls": ["https://docs.python.org/3/whatsnew/3.14.html"],
+        "status": "documented",
+        "notes": "Python 3.14 release.",
+    }]
+    value["unresolved_gaps"] = ["Some third-party implementation differences remain."]
+    value["coverage_audit"] = {
+        "status": "partial",
+        "earliest_release": "1991",
+        "latest_release": "2025",
+        "missing_coverage_areas": [],
+        "missing_release_lines": [],
+        "prerequisite_gaps": ["Alternative Python implementations"],
+        "notes": "Coverage remains in progress.",
+    }
+    parsed = learning_curriculum_tasks._parse_outline(
+        json.dumps(value, ensure_ascii=False), 20
+    )
+    path_id, _ = learning_curriculum_tasks._persist_researched_path(
+        task_id=9901,
+        topic="Python",
+        outline=parsed,
+        sources=[{
+            "title": f"Python release notes {index}",
+            "url": f"https://docs.python.org/3/whatsnew/3.14/{index}.html",
+            "excerpt": "Python 3.14 release notes.",
+            "sha256": str(index) * 64,
+        } for index in range(1, 4)],
+        model="gpt-oss:20b",
+        model_selection={"status": "configured", "selected_model": "gpt-oss:20b"},
+    )
+
+    research = learning.get_learning_path(path_id)["research"]
+    assert research["coverage"]["subject_map"] == value["subject_map"]
+    assert research["coverage"]["release_ledger"][0]["version"] == "3.14"
+    assert research["coverage"]["unresolved_gaps"] == value["unresolved_gaps"]
+    assert research["coverage"]["coverage_audit"]["status"] == "partial"
+
+
+def test_short_incomplete_release_note_is_retained_as_research_evidence(learning_store, monkeypatch):
+    calls = {"count": 0}
+
+    def discover(_query, *, limit):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return [web_sources.SourceDocument(
+                url="https://community.example.test/errata/short",
+                title="Short community erratum",
+                text="Patch note: fixes a connection retry regression.",
+            )]
+        return []
+
+    monkeypatch.setattr(web_sources, "discover_sources", discover)
+    sources = learning_curriculum_tasks._collect_sources(
+        "Database connection retries",
+        topic_sha256="d" * 64,
+        checkpoint=None,
+        context=RecordingContext(),
+    )
+
+    assert len(sources) == 1
+    assert sources[0]["title"] == "Short community erratum"
+    assert sources[0]["excerpt"] == "Patch note: fixes a connection retry regression."

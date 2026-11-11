@@ -1412,6 +1412,39 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_learning_chat_candidates_topic ON learning_chat_candidates(topic_hint, created_at DESC)",
         ),
     ),
+    Migration(
+        46,
+        "complete-curriculum-source-body-retention",
+        (
+            """CREATE TABLE learning_research_source_text (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER NOT NULL CHECK(task_id > 0),
+                path_id INTEGER REFERENCES learning_paths(id) ON DELETE CASCADE,
+                source_url TEXT NOT NULL CHECK(length(trim(source_url)) BETWEEN 1 AND 2048),
+                content_sha256 TEXT NOT NULL CHECK(length(content_sha256) = 64),
+                content TEXT NOT NULL CHECK(length(trim(content)) > 0),
+                provenance_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(task_id, source_url, content_sha256)
+            )""",
+            "CREATE INDEX idx_learning_research_source_text_task ON learning_research_source_text(task_id, source_url)",
+            "CREATE INDEX idx_learning_research_source_text_path ON learning_research_source_text(path_id, source_url)",
+        ),
+    ),
+    Migration(
+        47,
+        "durable-subject-map-and-release-coverage-ledger",
+        (
+            """CREATE TABLE learning_path_coverage (
+                path_id INTEGER PRIMARY KEY REFERENCES learning_path_research(path_id) ON DELETE CASCADE,
+                subject_map_json TEXT NOT NULL DEFAULT '[]',
+                release_ledger_json TEXT NOT NULL DEFAULT '[]',
+                unresolved_gaps_json TEXT NOT NULL DEFAULT '[]',
+                coverage_audit_json TEXT NOT NULL DEFAULT '{}',
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+        ),
+    ),
 )
 
 

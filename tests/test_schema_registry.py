@@ -155,13 +155,15 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
 
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
-        assert LEARNING_MIGRATIONS[-1].version == 45
+        assert LEARNING_MIGRATIONS[-1].version == 47
         usage_columns = {row[1] for row in connection.execute("PRAGMA table_info(model_usage_events)")}
         graph_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_knowledge_graph_edges)")}
         browser_columns = {row[1] for row in connection.execute("PRAGMA table_info(browser_learning_courses)")}
         topic_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_path_topics)")}
         release_watch_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_release_watch)")}
         chat_candidate_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_chat_candidates)")}
+        research_source_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_research_source_text)")}
+        path_coverage_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_path_coverage)")}
         candidate_review_columns = {row[1] for row in connection.execute("PRAGMA table_info(knowledge_candidate_reviews)")}
         experience_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_experiences)")}
         assert {"task_id", "purpose", "model_name", "estimated_cost_microusd"} <= usage_columns
@@ -172,6 +174,36 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         assert {"applicability_json", "source_urls_json", "hierarchy_path", "depth"} <= topic_columns
         assert {"path_id", "status", "last_checked_at", "next_check_at", "last_source_fingerprint", "last_task_id"} <= release_watch_columns
         assert {"conversation_id", "message_id", "user_message_id", "source_kind", "topic_hint", "content", "content_sha256", "provenance_json", "status"} <= chat_candidate_columns
+        assert {"task_id", "path_id", "source_url", "content_sha256", "content", "provenance_json"} <= research_source_columns
+        assert {"path_id", "subject_map_json", "release_ledger_json", "unresolved_gaps_json", "coverage_audit_json"} <= path_coverage_columns
+        connection.execute(
+            """INSERT INTO learning_path_research(
+                   path_id, requested_topic, outline_json, outline_sha256, model_name,
+                   model_selection_json, source_count, sources_json
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (path_id, "retained path", "{}", "b" * 64, "gpt-oss:20b", "{}", 3, "[]"),
+        )
+        connection.execute(
+            """INSERT INTO learning_path_coverage(
+                   path_id, subject_map_json, release_ledger_json,
+                   unresolved_gaps_json, coverage_audit_json
+               ) VALUES (?, ?, ?, ?, ?)""",
+            (path_id, '["SQL Server"]', "[]", '["missing patch history"]', '{"status":"partial"}'),
+        )
+        connection.execute(
+            """INSERT INTO learning_research_source_text(
+                   task_id, path_id, source_url, content_sha256, content, provenance_json
+               ) VALUES (?, ?, ?, ?, ?, ?)""",
+            (task_id, path_id, "https://archive.example.test/source", "a" * 64, "full source body", "{}"),
+        )
+        assert connection.execute(
+            "SELECT content, path_id FROM learning_research_source_text WHERE task_id=?",
+            (task_id,),
+        ).fetchone() == ("full source body", path_id)
+        assert connection.execute(
+            "SELECT subject_map_json, unresolved_gaps_json FROM learning_path_coverage WHERE path_id=?",
+            (path_id,),
+        ).fetchone() == ('["SQL Server"]', '["missing patch history"]')
         assert connection.execute("SELECT applicability_json, source_urls_json, hierarchy_path, depth FROM learning_path_topics WHERE id=?", (path_topic_id,)).fetchone() == ("{}", "[]", "", 0)
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
@@ -441,7 +473,7 @@ def test_browser_learning_retry_migration_preserves_existing_courses():
         )
         connection.commit()
 
-        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 45
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 47
 
         row = connection.execute(
             """SELECT topic, status, retry_count, next_retry_at
@@ -785,7 +817,7 @@ def test_release_watch_migration_seeds_existing_researched_curricula_without_cha
         )
         connection.commit()
 
-        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 45
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 47
         watch = connection.execute(
             "SELECT status, last_source_fingerprint, last_task_id FROM learning_release_watch WHERE path_id=?",
             (path_id,),
