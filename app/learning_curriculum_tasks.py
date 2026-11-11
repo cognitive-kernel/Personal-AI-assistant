@@ -526,10 +526,6 @@ def maintain_release_watch(*, limit: int = 3) -> dict[str, int]:
                         "title": title,
                         "sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
                     }
-                    if len(discovered) >= MAX_SOURCE_DOCUMENTS:
-                        break
-                if len(discovered) >= MAX_SOURCE_DOCUMENTS:
-                    break
             current_sources = list(discovered.values())
             if not current_sources:
                 with learning_connection() as connection:
