@@ -626,6 +626,7 @@ def _select_learning_generation_model(
     """Apply configured cost/quality policy without silently bypassing hard constraints."""
     from .learning_cost_manager import select_learning_model
 
+    provider = settings.get("learning_llm_provider", "ollama")
     profiles = settings.get("learning_model_cost_profiles", {})
     minimum_quality = settings.get("learning_model_minimum_quality_score", 0.0)
     budget_microusd = settings.get("learning_task_budget_microusd")
@@ -680,6 +681,7 @@ def _select_learning_generation_model(
             "status": "configured_fallback",
             "reason": "No model cost profiles are configured; using the configured learning model.",
             "selected_model": fallback_model,
+            "selected_provider": provider,
             "estimated_cost_microusd": None,
             "estimated_prompt_tokens": estimated_prompt_tokens,
             "estimated_completion_tokens": estimated_completion_tokens,
@@ -689,7 +691,6 @@ def _select_learning_generation_model(
             "budget_scope": budget_scope,
         }
 
-    provider = settings.get("learning_llm_provider", "ollama")
     if provider == "openai_compatible":
         # The selected remote/local OpenAI-compatible endpoint owns model discovery.
         # Keep the configured model pinned; never query Ollama or substitute another.
@@ -742,6 +743,8 @@ def _select_learning_generation_model(
         selected_details = {}
     selection_record = {
         **selection,
+        "configured_provider": provider,
+        "selected_provider": selected_details.get("provider", provider),
         "estimated_cost_microusd": selected_details.get("estimated_cost_microusd"),
         "estimated_energy_wh": selected_details.get("estimated_energy_wh"),
         "selected_quality_score": selected_details.get("quality_score"),
