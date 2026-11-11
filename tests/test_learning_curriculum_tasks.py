@@ -595,12 +595,22 @@ def test_release_watch_detects_changed_release_sources_and_enqueues_once(learnin
         model="gpt-oss:20b",
         model_selection={"selected_model": "gpt-oss:20b"},
     )
+    baseline = [_source(1), _source(2), _source(3)]
+    current_docs = baseline
+    monkeypatch.setattr(
+        web_sources, "discover_sources",
+        lambda *_args, **_kwargs: current_docs,
+    )
+
+    first_poll = learning_curriculum_tasks.maintain_release_watch(limit=3)
+    assert first_poll == {"checked": 1, "queued": 0, "unchanged": 1, "errors": 0}
+
     with db.learning_connection() as connection:
         connection.execute(
             "UPDATE learning_release_watch SET next_check_at=datetime('now', '-1 day') WHERE path_id=?",
             (path_id,),
         )
-    changed = [
+    current_docs = [
         _source(1),
         _source(2),
         web_sources.SourceDocument(
@@ -609,7 +619,6 @@ def test_release_watch_detects_changed_release_sources_and_enqueues_once(learnin
             text="New release notes and compatibility changes. " * 30,
         ),
     ]
-    monkeypatch.setattr(web_sources, "discover_sources", lambda *_args, **_kwargs: changed)
     queued = []
     monkeypatch.setattr(
         learning_curriculum_tasks,
