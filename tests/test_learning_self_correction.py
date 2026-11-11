@@ -84,18 +84,18 @@ def test_malformed_initial_response_enters_bounded_repair_cycle(learning_store, 
     assert len(calls) == 2
     quality = finished["quality"]
     assert quality["generation_budget"]["calls_used"] == 2
-    assert quality["generation_budget"]["predict_tokens_reserved"] == 2600
+    assert quality["generation_budget"]["predict_tokens_reserved"] == 7800
     assert quality["generation_budget"]["budget_exhausted"] is True
     assert quality["pipeline_budget"]["calls_used"] == 2
-    assert quality["pipeline_budget"]["predict_tokens_reserved"] == 2600
+    assert quality["pipeline_budget"]["predict_tokens_reserved"] == 7800
     assert quality["pipeline_budget"]["scope"] == "durable_single_learning_job_across_generation_and_review_channels"
     assert quality["generation_provenance"]["initial_response_malformed"] is True
     assert quality["generation_provenance"]["repair_response_valid"] is True
     assert quality["generation_provenance"]["attempt_count"] == 2
     assert len(quality["generation_provenance"]["repair_prompt_sha256"]) == 64
     assert quality["generation_provenance"]["prompt_registry_version"] == 1
-    assert quality["generation_provenance"]["prompt_version"] == "learning-lesson-v2"
-    assert quality["generation_provenance"]["repair_prompt_version"] == "learning-lesson-repair-v2"
+    assert quality["generation_provenance"]["prompt_version"] == "learning-lesson-v3"
+    assert quality["generation_provenance"]["repair_prompt_version"] == "learning-lesson-repair-v3"
     assert quality["generation_provenance"]["provider_usage"] == {
         "initial_generation": {"prompt_eval_count": 800, "eval_count": 120, "total_duration": 900000},
         "quality_repair": {"prompt_eval_count": 1100, "eval_count": 900, "eval_duration": 500000},
@@ -162,7 +162,7 @@ def test_accepted_initial_lesson_has_no_repair_prompt_provenance(learning_store,
     assert "If sources disagree" in instruction
     assert "Never invent a version, date, source" in instruction
     provenance = finished["quality"]["generation_provenance"]
-    assert provenance["prompt_version"] == "learning-lesson-v2"
+    assert provenance["prompt_version"] == "learning-lesson-v3"
     assert provenance["repair_prompt_version"] is None
     assert provenance["repair_prompt_sha256"] is None
     assert provenance["attempt_count"] == 1
@@ -417,7 +417,7 @@ def test_web_claim_review_uses_selected_model_and_is_included_in_task_cost_estim
     assert review_calls[0]["model_override"] == "cheap:latest"
     assert selection["claim_review_included"] is True
     assert selection["claim_review_prompt_tokens"] > 0
-    assert selection["estimated_completion_tokens"] == 3600
+    assert selection["estimated_completion_tokens"] == 8800
     assert selection["budget_scope"] == "lesson_generation_single_repair_and_optional_claim_review"
     generation_provenance = finished["quality"]["generation_provenance"]
     assert generation_provenance["provider_usage"]["claim_review"] == {
@@ -427,7 +427,7 @@ def test_web_claim_review_uses_selected_model_and_is_included_in_task_cost_estim
     assert generation_provenance["claim_review"]["model_id"] == "cheap:latest"
     durable = learning_durable_budget.get_job_budget(job["id"])
     assert durable["calls_used"] == 2
-    assert durable["predict_tokens_reserved"] == 2200
+    assert durable["predict_tokens_reserved"] == 4900
 
 
 
@@ -516,13 +516,13 @@ def test_web_claim_review_budget_covers_generation_repair_and_review(
     ]
     assert review_calls == ["selected:latest"]
     provenance = finished["quality"]["generation_provenance"]
-    assert provenance["model_selection"]["estimated_completion_tokens"] == 3600
+    assert provenance["model_selection"]["estimated_completion_tokens"] == 8800
     assert provenance["provider_usage"]["claim_review"] == {
         "prompt_eval_count": 900, "eval_count": 150
     }
     durable = learning_durable_budget.get_job_budget(job["id"])
     assert durable["calls_used"] == 3
-    assert durable["predict_tokens_reserved"] == 3600
+    assert durable["predict_tokens_reserved"] == 8800
 
 
 
@@ -599,4 +599,4 @@ def test_web_claim_review_does_not_repeat_an_already_reserved_review_stage(
     )
     durable = learning_durable_budget.get_job_budget(job["id"])
     assert durable["calls_used"] == 2
-    assert durable["predict_tokens_reserved"] == 2200
+    assert durable["predict_tokens_reserved"] == 4900
