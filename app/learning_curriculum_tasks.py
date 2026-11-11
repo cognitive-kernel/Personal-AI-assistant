@@ -636,7 +636,9 @@ def _release_watch_queries(topic: str) -> tuple[str, ...]:
     return (
         f"{topic[:230]} official latest release notes version updates",
         f"{topic[:230]} release history archive versions release dates",
-        f"{topic[:230]} patch hotfix cumulative update security advisory changelog",
+        f"{topic[:230]} patch hotfix cumulative update security advisory CVE changelog",
+        f"{topic[:230]} documentation corrections errata known issues compatibility changes",
+        f"{topic[:230]} deprecation removed features end of life support lifecycle standards revisions",
     )
 
 
