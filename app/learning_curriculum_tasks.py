@@ -356,7 +356,6 @@ def _merge_release_ledger(
 ) -> list[dict[str, Any]]:
     """Merge duplicate release observations without discarding conflicts or provenance."""
     merged: dict[tuple[str, ...], dict[str, Any]] = {}
-    status_rank = {"unverified": 0, "partially_documented": 1, "documented": 2, "conflicting": 3}
     for raw in [*existing, *incoming]:
         if not isinstance(raw, dict):
             continue
@@ -399,7 +398,13 @@ def _merge_release_ledger(
         release_date = item.get("release_date")
         release_year = item.get("release_year")
         if isinstance(release_date, str) and release_date:
-            chronology = (0, release_date.ljust(10, "0"))
+            if len(release_date) == 4:
+                normalized_date = f"{release_date}-00-00"
+            elif len(release_date) == 7:
+                normalized_date = f"{release_date}-00"
+            else:
+                normalized_date = release_date
+            chronology = (0, normalized_date)
         elif isinstance(release_year, str) and release_year:
             chronology = (0, f"{release_year}-00-00")
         else:
