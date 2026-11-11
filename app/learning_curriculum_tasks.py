@@ -317,7 +317,7 @@ def _parse_outline(response: str, batch_size: int) -> dict[str, Any]:
             "depth": depth,
         }
     return {"title": title.strip(), "topics": topics, "notes": notes.strip()[:2000],
-            "coverage_areas": list(dict.fromkeys(item.strip() for item in coverage)),
+            "coverage_areas": list(dict.fromkeys(item.strip() for item in coverage))[:40],
             "topic_metadata": topic_metadata,
             "has_more": has_more, "next_focus": next_focus.strip()}
 
@@ -352,8 +352,8 @@ def _generate_outline(
         "requested_subject": topic,
         "batch_index": batch_index,
         "topics_to_generate_in_this_batch": batch_size,
-        "previous_topics_for_deduplication": (previous_topics or [])[-80:],
-        "already_covered_areas": (previous_coverage or [])[-30:],
+        "previous_topics_for_deduplication": [item[:120] for item in (previous_topics or [])[-24:]],
+        "already_covered_areas": [item[:80] for item in (previous_coverage or [])[-20:]],
         "continue_from": next_focus,
         "user_supplied_context": source_text,
         "research_sources": source_material,
