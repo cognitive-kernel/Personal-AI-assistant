@@ -612,6 +612,29 @@ def handle_curriculum_task(
         })
         if not page["has_more"]:
             break
+    known_source_urls = {item["url"] for item in sources}
+    for lesson_topic, metadata in outline.get("topic_metadata", {}).items():
+        if not isinstance(metadata, dict):
+            outline["topic_metadata"][lesson_topic] = {
+                "applicability": {"status": "unverified", "notes": "Invalid topic metadata was discarded."},
+                "source_urls": [], "hierarchy_path": lesson_topic, "depth": 0,
+            }
+            continue
+        urls = metadata.get("source_urls", [])
+        applicability = metadata.get("applicability", {})
+        if not isinstance(urls, list) or any(url not in known_source_urls for url in urls):
+            metadata["source_urls"] = []
+            metadata["applicability"] = dict(applicability) if isinstance(applicability, dict) else {}
+            metadata["applicability"]["status"] = "unverified"
+            metadata["applicability"]["notes"] = (
+                str(metadata["applicability"].get("notes", "")) + " Unsupported source references were discarded."
+            ).strip()
+        elif not urls and isinstance(applicability, dict) and applicability.get("status") in {"documented", "partially_documented"}:
+            metadata["applicability"] = dict(applicability)
+            metadata["applicability"]["status"] = "unverified"
+            metadata["applicability"]["notes"] = (
+                str(metadata["applicability"].get("notes", "")) + " No exact source URL was attached."
+            ).strip()
     if len(outline["topics"]) < MIN_TOPICS_PER_BATCH or not outline.get("title"):
         raise PermanentTaskError("The completed curriculum is too small or has no title.")
     outline_sha256 = hashlib.sha256(json.dumps(outline, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
