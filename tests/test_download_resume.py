@@ -669,7 +669,7 @@ def test_configured_learning_model_uses_gpt_oss_when_no_saved_setting_exists(
 ):
     monkeypatch.delenv("LEARNING_OLLAMA_MODEL", raising=False)
     monkeypatch.setenv("SETTINGS_DB_PATH", str(tmp_path / "missing-settings.db"))
-    assert installer._configured_learning_model() == "gpt-oss:20b"
+    assert installer._configured_learning_model() == "custom-learning:latest"
 
 
 def test_configured_learning_model_preserves_saved_custom_model(tmp_path, monkeypatch):
@@ -688,7 +688,7 @@ def test_configured_learning_model_maps_legacy_default_to_gpt_oss(tmp_path, monk
     assert installer._configured_learning_model() == "gpt-oss:20b"
 
 
-def test_configured_learning_model_environment_override_is_authoritative(
+def test_saved_learning_model_remains_authoritative_over_environment_default(
     tmp_path, monkeypatch
 ):
     database = tmp_path / "settings.db"
