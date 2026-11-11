@@ -399,13 +399,14 @@ def _generate_outline(
                 break
             prompt_excerpt_urls.add(item["url"])
     source_material = [{
-        "title": item["title"], "url": item["url"],
-        "excerpt": item["excerpt"] if item["url"] in prompt_excerpt_urls else "",
+        "title": item["title"],
+        "url": item["url"],
+        "excerpt": item["excerpt"],
         "publication_date": item.get("publication_date"),
         "last_updated": item.get("last_updated"),
         "retrieved_at": item.get("retrieved_at"),
         "research_query": item.get("query", ""),
-    } for item in sources]
+    } for item in sources if item["url"] in prompt_excerpt_urls]
     request = {
         "requested_subject": topic,
         "batch_index": batch_index,
