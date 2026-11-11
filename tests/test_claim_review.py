@@ -48,7 +48,7 @@ def test_claim_review_passes_only_when_all_claims_are_supported_and_cited(tmp_pa
     assert len(result["prompt_sha256"]) == 64
     assert result["model_id"]
     assert result["model_digest"] is None
-    assert result["model_digest_status"] == "unavailable_from_current_ollama_path"
+    assert result["model_digest_status"] == "unavailable_from_configured_provider"
 
 
 def test_claim_review_fails_closed_on_malformed_json(tmp_path, monkeypatch):
