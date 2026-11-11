@@ -74,7 +74,7 @@
 - طول درس بر اساس پیچیدگی واقعی موضوع، پیش‌نیازها و نیاز یادگیرنده تعیین می‌شود؛ فیلتر کیفیت هیچ حداقل یا حداکثر مصنوعی برای تعداد واژه اعمال نمی‌کند.
 - پرامپت درس باید مفهوم، سازوکار، مثال قابل‌بازتولید، پیامدها، خطاها، تشخیص، امنیت، کارایی و دامنهٔ نسخه‌ای مرتبط را به‌اندازهٔ لازم پوشش دهد؛ تکرار و حشو مجاز نیست. اگر موضوع از یک درس منسجم فراتر است، باید به سرفصل‌های کوچک‌تر و وابسته تقسیم شود، نه اینکه با حذف جزئیات فشرده شود.
 - هر فراخوانی تولید یا بازنویسی درس حداکثر ۳۹۰۰ توکن خروجی درخواست می‌کند و کل چرخهٔ دو فراخوانی ۷۸۰۰ توکن رزرو می‌کند. این سقفِ هر فراخوانی برای کنترل RAM، زمان و پایداری inference است؛ سقف تعداد سرفصل‌ها، درس‌ها یا batchهای دوره نیست. context و اجرای واقعی همچنان تابع محدودکنندهٔ سخت‌افزار است و در کمبود منابع باید fail-closed رفتار کند.
-- نسخه‌های prompt تولید و ترمیم به `learning-lesson-v5` و `learning-lesson-repair-v5` ارتقا یافته‌اند و hash دقیق هر فراخوانی ثبت می‌شود.
+- نسخه‌های prompt تولید و ترمیم به `learning-lesson-v6` و `learning-lesson-repair-v5` ارتقا یافته‌اند و hash دقیق هر فراخوانی ثبت می‌شود.
 
 ## 4. مسیرها و سطح‌بندی دوره‌ها
 
@@ -281,7 +281,7 @@ python scripts/evaluate_learning_acceptance.py path/to/reference-dataset.json pa
 - Each topic stores `applicability.release_years` and `applicability.release_dates` as ascending, validated arrays. Years use four digits; dates use `YYYY-MM-DD` or `YYYY` when only year-level precision is documented. Unknown dates remain absent rather than inferred.
 - Release chronology is distinct from page last-updated time and retrieval time. Historical versions, patch releases, service packs, cumulative updates, hotfixes, security advisories, deprecations, and end-of-support states are separate where applicable.
 - Newer releases are appended as new version-scoped learning paths; earlier paths, lessons, and source fingerprints remain unchanged. Migration 44 adds durable per-path watch state. The learning worker checks up to three active paths per maintenance cycle, querying release notes, release-history archives, and patch/security/changelog sources; checks are scheduled every six hours, with a one-hour retry after empty/error results. A changed source URL/content fingerprint queues a deduplicated curriculum refresh. Once the new path is persisted, the previous watch for the same subject is marked superseded; its historical path and lessons are not deleted. This is source-change detection, not a guarantee that every publisher exposes every release through the configured discovery provider.
-- Lesson generation/repair prompt versions: `learning-lesson-v5` and `learning-lesson-repair-v5`.
+- Lesson generation/repair prompt versions: `learning-lesson-v6` and `learning-lesson-repair-v5`.
 
 
 ## 14. انتخاب provider و مهاجرت مدل بدون تغییر کد
