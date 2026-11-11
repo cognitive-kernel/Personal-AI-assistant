@@ -1500,6 +1500,93 @@ def submit_assessment(
                    WHERE id=(SELECT path_id FROM learning_path_topics WHERE id=?)""",
                 (path_topic_id,),
             )
+    # The deterministic rubric remains the safe baseline. A separately configured
+    # semantic evaluator may promote a fully equivalent paraphrase to a pass, but
+    # it is called only after the scoring transaction has closed.
+    try:
+        from .assessment_review import review_assessment_attempt
+
+        semantic_result = review_assessment_attempt(job_id, attempt_id)
+        semantic_review = semantic_result.get("review", {})
+        semantic_items = semantic_review.get("items", []) if isinstance(semantic_review, dict) else []
+        if (
+            isinstance(semantic_items, list)
+            and len(semantic_items) == len(questions)
+            and all(
+                isinstance(item, dict) and item.get("judgment") == "matches"
+                for item in semantic_items
+            )
+        ):
+            deterministic_score = score
+            semantic_details = {
+                **result_details,
+                "deterministic_score": deterministic_score,
+                "semantic_review": {
+                    "status": "all_answers_semantically_match",
+                    "reviewer_digest": str(semantic_result.get("evaluator_digest", ""))[:128],
+                    "reviewer_model": str(semantic_result.get("model", ""))[:120],
+                    "judgments": ["matches"] * len(questions),
+                    "independent_verification": False,
+                },
+                "note": (
+                    "تمام پاسخ‌ها توسط ارزیاب معناییِ جداگانه از نظر هم‌ارزی مفهومی پذیرفته شدند؛ "
+                    "این نتیجه تأیید علمی مستقل محسوب نمی‌شود."
+                ),
+            }
+            with learning_connection() as conn:
+                updated = conn.execute(
+                    """UPDATE assessment_attempts
+                       SET score=100, correct_count=question_count,
+                           scoring_method='semantic_model_assisted_v1',
+                           result_details_json=?
+                       WHERE id=? AND score=? AND scoring_method=?""",
+                    (
+                        json.dumps(semantic_details, ensure_ascii=False, sort_keys=True),
+                        attempt_id, deterministic_score, scoring_method,
+                    ),
+                )
+                if updated.rowcount == 1 and path_topic_id is not None:
+                    latest_attempt = conn.execute(
+                        "SELECT MAX(id) AS id FROM assessment_attempts WHERE job_id=?",
+                        (job_id,),
+                    ).fetchone()
+                    if latest_attempt is not None and latest_attempt["id"] == attempt_id:
+                        conn.execute(
+                            """UPDATE learning_path_topics
+                               SET status='completed', latest_score=100,
+                                   latest_score_kind='semantic_model_assisted',
+                                   latest_score_source='semantic_model_assisted',
+                                   updated_at=CURRENT_TIMESTAMP
+                               WHERE id=?""",
+                            (path_topic_id,),
+                        )
+                        conn.execute(
+                            """UPDATE learning_paths SET updated_at=CURRENT_TIMESTAMP
+                               WHERE id=(SELECT path_id FROM learning_path_topics WHERE id=?)""",
+                            (path_topic_id,),
+                        )
+            if updated.rowcount == 1:
+                score = 100.0
+                correct_count = len(questions)
+                scoring_method = "semantic_model_assisted_v1"
+                result_details = semantic_details
+    except Exception:
+        # Evaluator unavailability, malformed output, or identity/configuration
+        # changes never block submission; retain the deterministic baseline.
+        result_details = {
+            **result_details,
+            "semantic_review_status": "unavailable_fallback_deterministic",
+            "deterministic_score": score,
+        }
+        with learning_connection() as conn:
+            conn.execute(
+                "UPDATE assessment_attempts SET result_details_json=? WHERE id=? AND scoring_method=?",
+                (
+                    json.dumps(result_details, ensure_ascii=False, sort_keys=True),
+                    attempt_id, scoring_method,
+                ),
+            )
+
     return {
         "attempt_id": attempt_id,
         "job_id": job_id,
