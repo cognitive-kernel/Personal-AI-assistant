@@ -766,11 +766,11 @@ def handle_curriculum_task(
     payload: dict[str, Any], checkpoint: dict[str, Any] | None, context: TaskContext,
 ) -> dict[str, Any]:
     try:
-        if set(payload) - {"topic", "batch_size", "source_text", "refresh_of_path_id"}:
+        if set(payload) - {"topic", "batch_size", "max_topics", "source_text", "refresh_of_path_id"}:
             raise ValueError("Curriculum task contains unsupported fields.")
         topic, batch_size, source_text = validate_curriculum_payload({
             "topic": payload.get("topic"),
-            "batch_size": payload.get("batch_size", DEFAULT_TOPICS_PER_BATCH),
+            "batch_size": payload.get("batch_size", payload.get("max_topics", DEFAULT_TOPICS_PER_BATCH)),
             "source_text": payload.get("source_text", ""),
         })
         refresh_of_path_id = payload.get("refresh_of_path_id")
