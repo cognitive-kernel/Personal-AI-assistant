@@ -376,7 +376,8 @@ function renderLessonResult(output, job, path, topic) {
       issues: issues.value
      })
     });
-    reviewResult.textContent = "بررسی ذخیره شد. ارزش درس: " + saved.value_rating + " از 5. " + saved.note;
+    reviewResult.textContent = "بررسی ذخیره شد. ارزش درس: " + saved.value_rating + " از 5. " + saved.note
+     + (saved.correction_job ? " شناسه job اصلاحی: " + saved.correction_job.id + "؛ نسخه قبلی حفظ شده است." : "");
     saveReview.textContent = "ذخیره بررسی جدید";
    } catch (error) {
     reviewResult.textContent = "خطا در ذخیره بررسی: " + error.message;
