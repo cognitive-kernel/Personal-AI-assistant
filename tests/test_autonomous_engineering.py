@@ -1112,6 +1112,10 @@ def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_c
     assert ".codex-sandbox-probe-$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT).tmp" in production
     assert ".codex-sandbox-probe.tmp" not in production
     assert '--require-command-fragment "$probeFileName"' in production
+    assert "Cancel superseded CI runs for this branch" in diagnostic
+    assert '("tests.yml", "browser-e2e.yml", "dependency-audit.yml")' in diagnostic
+    assert "if ($run.head_sha -eq $env:GITHUB_SHA) { continue }" in diagnostic
+    assert "/cancel" in diagnostic and "/force-cancel" in diagnostic
 
 
 def test_ollama_status_returns_every_installed_model_without_inserting_defaults(monkeypatch):
