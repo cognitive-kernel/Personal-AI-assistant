@@ -426,6 +426,10 @@ def normalize_openai_compatible_base_url(value: str) -> str:
             is_loopback = hostname.lower() == "localhost"
         if not is_loopback:
             raise OllamaError("Non-local OpenAI-compatible endpoints must use HTTPS.")
+    if hostname.lower() == "localhost":
+        netloc = "127.0.0.1" if port is None else f"127.0.0.1:{port}"
+        parsed = parsed._replace(netloc=netloc)
+        raw = urllib.parse.urlunparse(parsed)
     return raw
 
 
