@@ -683,9 +683,9 @@ def _persist_researched_path(
         )
         topic_metadata = outline.get("topic_metadata", {})
         # Per-batch validation is insufficient: a later batch can still introduce
-    # an older release after newer lessons have already been queued.
-    _validate_chronological_topics(outline["topics"], outline.get("topic_metadata", {}))
-    known_source_urls = {item["url"] for item in sources}
+        # an older release after newer lessons have already been queued.
+        _validate_chronological_topics(outline["topics"], topic_metadata)
+        known_source_urls = {item["url"] for item in sources}
         for position, lesson_topic in enumerate(outline["topics"], 1):
             metadata = topic_metadata.get(lesson_topic, {}) if isinstance(topic_metadata, dict) else {}
             applicability = metadata.get("applicability", {"status": "unverified"})
