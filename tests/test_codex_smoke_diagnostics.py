@@ -192,7 +192,7 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert '$comparison.behind_by -ne 0' in cleanup_job
     assert '$comparison.ahead_by -le 0' in cleanup_job
     assert 'leaving it untouched' in cleanup_job
-    assert all("-MaximumRedirection 0" in line for line in production.splitlines() if "http://127.0.0.1:11434" in line and "Invoke-RestMethod" in line)
+    assert all("-MaximumRedirection 0" in line for line in autonomous.splitlines() if "http://127.0.0.1:11434" in line and "Invoke-RestMethod" in line)
     assert all("-MaximumRedirection 0" in line for line in diagnostic.splitlines() if "http://127.0.0.1:11434" in line and "Invoke-RestMethod" in line)
     sandbox_job = diagnostic.split("  sandbox-diagnostic:", 1)[1]
     assert "timeout-minutes: 30" in sandbox_job
