@@ -121,7 +121,7 @@
         ? "؛ این نسخهٔ داخلی Context است؛ مدل اصلی را انتخاب و ذخیره کنید"
         : data.model && !checks.model_installed ? "؛ مدل ذخیره‌شده روی این سیستم نصب نیست" : "";
       $("model-detail").textContent = modelLabel + installationText + contextText + toolsText;
-      renderModels(data.models, data.model, checks.model_is_codex_context_variant);
+      renderModels(data.selectable_models || data.models, data.model, checks.model_is_codex_context_variant);
       const executionMode = data.execution_mode || "continuous";
       if (document.activeElement !== $("execution-mode")) {
         $("execution-mode").value = executionMode;
