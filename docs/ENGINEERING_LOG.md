@@ -32,6 +32,16 @@
 - Added a mandatory pre-implementation clause to docs/MASTER_ENGINEERING_PROMPT.md on branch docs/master-engineering-continuity-prompt, commit a33c0d0a423332b29d1be5c1a3fa67b7690adfbf. It makes prior findings, reported requirements, known defects, failing tests, warnings, limitations, and unresolved acceptance criteria binding obligations; work must stop when evidence/access is missing rather than guess or claim completion.
 - A prompt clause alone cannot guarantee error-free execution; the project must enforce it through regression tests, exact-head CI, target-host evidence, and explicit unresolved-gate tracking.
 
+### Follow-up hardening — explicit saved-model contract and transactional settings
+
+- Removed the remaining implicit `gpt-oss:20b` fallback from the application readiness path, autonomous workflow, app/runner check scripts, and Runner provisioning. The application now uses only the repository's saved `AUTONOMOUS_ENGINEERING_MODEL`; a missing selection is a readiness blocker, not a default.
+- The model dropdown now presents an explicit placeholder when there is no saved model. It does not preselect the first installed model; an operator must deliberately select and save one.
+- Runner provisioning reads the saved repository variable when `-Model` is omitted and independently verifies that exact model is installed, exposes its architecture-specific context limit, and advertises `tools`.
+- Repository model/interval/mode writes now snapshot existing values and roll back prior successful writes if a later variable update fails. Regression tests cover rollback and no-fallback behavior.
+- README's autonomous-engineering description and the operational guide were aligned with the implementation. The README target-hardware values were preserved unchanged.
+- Current exact-head CI runs are queued on `3e73d2b0aea840502be51db5c6d6b8b985245a91`; Windows diagnostic #104 is queued because the owner machine is powered off. Neither live host acceptance nor local/human acceptance is claimed.
+
+
 ---
 
 ## 2026-11-07 — Owner Windows development environment baseline
