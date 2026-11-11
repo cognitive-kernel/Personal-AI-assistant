@@ -19,17 +19,17 @@
     message.dataset.kind = kind || "";
   }
   function stateText(ok) { return ok ? "آماده" : "نیازمند راه‌اندازی"; }
-  function renderModels(models, selectedModel) {
+  function renderModels(models, selectedModel, selectedModelIsContextVariant) {
     const select = $("ollama-model");
     if (document.activeElement === select) return;
     const installed = [...new Set(
       Array.isArray(models) ? models.filter(name => typeof name === "string" && name.trim()) : []
     )];
-    const savedModelMissing = Boolean(selectedModel) && !installed.includes(selectedModel);
+    const savedModelUnavailable = Boolean(selectedModel) && (!installed.includes(selectedModel) || selectedModelIsContextVariant);
     const names = [...installed];
-    if (savedModelMissing) names.unshift(selectedModel);
+    if (savedModelUnavailable) names.unshift(selectedModel);
     select.replaceChildren();
-    if (!installed.length && !savedModelMissing) {
+    if (!installed.length && !savedModelUnavailable) {
       const option = document.createElement("option");
       option.value = "";
       option.disabled = true;
@@ -38,27 +38,30 @@
       select.value = "";
       return;
     }
-    if (!selectedModel || savedModelMissing) {
+    if (!selectedModel || savedModelUnavailable) {
       const placeholder = document.createElement("option");
       placeholder.value = "";
       placeholder.disabled = true;
       placeholder.selected = true;
-      placeholder.textContent = savedModelMissing
-        ? "مدل ذخیره‌شده نصب نیست؛ مدل دیگری انتخاب کنید"
-        : "ابتدا مدل نصب‌شده را انتخاب کنید";
+      placeholder.textContent = selectedModelIsContextVariant
+        ? "مدل ذخیره‌شده نسخهٔ داخلی Context است؛ مدل اصلی را انتخاب کنید"
+        : savedModelUnavailable
+          ? "مدل ذخیره‌شده نصب نیست؛ مدل دیگری انتخاب کنید"
+          : "ابتدا مدل نصب‌شده را انتخاب کنید";
       select.append(placeholder);
     }
     for (const name of names) {
       const option = document.createElement("option");
       option.value = name;
-      option.textContent = name + (savedModelMissing && name === selectedModel ? " (ذخیره‌شده؛ نصب نیست)" : "");
-      if (savedModelMissing && name === selectedModel) {
+      option.textContent = name + (savedModelUnavailable && name === selectedModel
+        ? (selectedModelIsContextVariant ? " (نسخهٔ داخلی؛ قابل انتخاب نیست)" : " (ذخیره‌شده؛ نصب نیست)") : "");
+      if (savedModelUnavailable && name === selectedModel) {
         option.dataset.installed = "false";
         option.disabled = true;
       }
       select.append(option);
     }
-    select.value = selectedModel && installed.includes(selectedModel) ? selectedModel : "";
+    select.value = selectedModel && installed.includes(selectedModel) && !selectedModelIsContextVariant ? selectedModel : "";
   }
   function renderRuns(runs) {
     const host = $("recent-runs");
@@ -106,7 +109,7 @@
       const checks = data.checks || {};
       labels.ollama.textContent = stateText(checks.ollama_online);
       $("ollama-detail").textContent = checks.ollama_online ? "پاسخ از 127.0.0.1:11434 دریافت شد." : "سرویس محلی در دسترس نیست.";
-      const modelReady = checks.model_installed && checks.model_context_metadata_available && checks.model_context_supported && checks.model_supports_tools;
+      const modelReady = checks.model_installed && checks.model_selectable && checks.model_context_metadata_available && checks.model_context_supported && checks.model_supports_tools;
       labels.model.textContent = stateText(modelReady);
       const contextLength = Number(data.model_context_length);
       const contextText = Number.isSafeInteger(contextLength) && contextLength >= 512
@@ -114,9 +117,11 @@
         : "؛ حداکثر Context از metadata مدل تأیید نشد";
       const toolsText = checks.model_supports_tools ? "؛ قابلیت tools تأیید شد" : "؛ قابلیت tools تأیید نشد";
       const modelLabel = data.model ? "مدل ذخیره‌شده: " + String(data.model) : "هنوز مدلی ذخیره نشده است";
-      const installationText = data.model && !checks.model_installed ? "؛ مدل ذخیره‌شده روی این سیستم نصب نیست" : "";
+      const installationText = data.model && checks.model_is_codex_context_variant
+        ? "؛ این نسخهٔ داخلی Context است؛ مدل اصلی را انتخاب و ذخیره کنید"
+        : data.model && !checks.model_installed ? "؛ مدل ذخیره‌شده روی این سیستم نصب نیست" : "";
       $("model-detail").textContent = modelLabel + installationText + contextText + toolsText;
-      renderModels(data.models, data.model);
+      renderModels(data.models, data.model, checks.model_is_codex_context_variant);
       const executionMode = data.execution_mode || "continuous";
       if (document.activeElement !== $("execution-mode")) {
         $("execution-mode").value = executionMode;
