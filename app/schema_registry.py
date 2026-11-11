@@ -1367,6 +1367,26 @@ LEARNING_MIGRATIONS = (
             "ALTER TABLE learning_path_topics ADD COLUMN depth INTEGER NOT NULL DEFAULT 0 CHECK(depth >= 0)",
         ),
     ),
+    Migration(
+        44,
+        "automatic-learning-release-watch",
+        (
+            """CREATE TABLE learning_release_watch (
+                path_id INTEGER PRIMARY KEY REFERENCES learning_path_research(path_id) ON DELETE CASCADE,
+                status TEXT NOT NULL DEFAULT 'active'
+                    CHECK(status IN ('active', 'superseded', 'paused')),
+                last_checked_at TEXT,
+                next_check_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_source_fingerprint TEXT NOT NULL DEFAULT '',
+                last_task_id INTEGER,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_learning_release_watch_due ON learning_release_watch(status, next_check_at, path_id)",
+            """INSERT INTO learning_release_watch(path_id, status, next_check_at)
+               SELECT path_id, 'active', CURRENT_TIMESTAMP FROM learning_path_research""",
+        ),
+    ),
 )
 
 
