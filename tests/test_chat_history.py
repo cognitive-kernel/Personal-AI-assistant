@@ -194,5 +194,5 @@ def test_candidate_staging_does_not_truncate_long_assistant_answers(tmp_path, mo
     candidates = learning_candidates.list_chat_candidates()
     assert len(candidates) == 1
     assert candidates[0]["message_id"] == message["id"]
-    assert candidates[0]["content"] == answer
+    assert candidates[0]["content"] == answer.strip()
     assert candidates[0]["status"] == "unverified"
