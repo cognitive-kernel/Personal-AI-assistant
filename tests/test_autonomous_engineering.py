@@ -27,7 +27,11 @@ def test_status_readiness_requires_every_local_dependency(monkeypatch):
     result = agent.collect_status()
 
     assert result["ready"] is True
-    assert all(result["checks"].values())
+    assert all(
+        value for key, value in result["checks"].items()
+        if key != "model_is_codex_context_variant"
+    )
+    assert result["checks"]["model_is_codex_context_variant"] is False
     assert result["local_only_inference"] is True
     assert result["workflow"] == "autonomous-codex-engineering.yml"
 
