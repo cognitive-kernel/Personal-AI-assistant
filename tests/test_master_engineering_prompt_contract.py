@@ -31,3 +31,6 @@ def test_master_prompt_defines_universal_version_aware_learning_contract():
     )
     for requirement in required_contract:
         assert requirement in prompt
+
+    assert "never merge to `main` before exact-head CI and required target-host tests actually pass" not in prompt
+    assert "Owner-local, target-host, physical-device, and human acceptance activities are not merge gates by default" in prompt
