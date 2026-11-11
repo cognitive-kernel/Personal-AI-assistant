@@ -366,7 +366,7 @@ def test_user_source_is_bounded_for_model_context_but_preserved_in_storage(
         "answer_key": ["Use a clear condition.", "It reduces unintended behavior.", "Test the condition with representative input."],
     }
 
-    def fake_request(_path, payload, timeout=None):
+    def fake_request(_path, payload, timeout=None, **_kwargs):
         captured["prompt"] = json.loads(payload["messages"][1]["content"])
         return {"message": {"content": json.dumps(generated)}}
 
