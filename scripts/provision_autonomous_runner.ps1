@@ -5,7 +5,7 @@ param(
     [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$AppAccount,
     [string]$RunnerName = "$env:COMPUTERNAME-ollama",
     [string]$RunnerRoot = "C:\actions-runner",
-    [string]$Model = "gpt-oss:20b"
+    [string]$Model = ""
 )
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
@@ -28,8 +28,6 @@ function Get-AccountSidValue([string]$AccountName) {
 $progressPath = Join-Path $env:ProgramData "PersonalAIAssistant\autonomous-engineering"
 try { $null = ([Security.Principal.NTAccount]$appIdentity).Translate([Security.Principal.SecurityIdentifier]) } catch { throw "Application account $appIdentity does not exist." }
 $null = Get-Command ollama -ErrorAction Stop
-$tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 8
-if (@($tags.models | ForEach-Object { $_.name }) -notcontains $Model) { throw "Model $Model is not installed. Run ollama pull $Model first." }
 $node = Get-Command node -ErrorAction Stop
 $npm = Get-Command npm -ErrorAction Stop
 $git = Get-Command git -ErrorAction Stop
@@ -45,6 +43,25 @@ if ($LASTEXITCODE -ne 0 -or [version]$pythonVersion -lt [version]"3.11") { throw
 $gh = Get-Command gh -ErrorAction Stop
 & $gh.Source auth status --hostname github.com
 if ($LASTEXITCODE -ne 0) { throw "Authenticate gh as an account with repository Administration: write permission." }
+if ([string]::IsNullOrWhiteSpace($Model)) {
+    $Model = (& $gh.Source variable get AUTONOMOUS_ENGINEERING_MODEL --repo $Repository 2>$null | Out-String).Trim()
+}
+if ([string]::IsNullOrWhiteSpace($Model)) {
+    throw "No saved AUTONOMOUS_ENGINEERING_MODEL repository variable exists. Save an installed model in the autonomous-engineering dashboard first."
+}
+$tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 8
+if (@($tags.models | ForEach-Object { $_.name }) -notcontains $Model) { throw "Saved model $Model is not installed. Install it with ollama pull $Model, then save it in the dashboard." }
+$modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -ContentType "application/json" -Body (@{ model = $Model; verbose = $true } | ConvertTo-Json -Compress) -TimeoutSec 15
+$architecture = [string]$modelInfo.details.family
+$contextKey = $architecture + ".context_length"
+$rawContext = $modelInfo.model_info.PSObject.Properties[$contextKey]
+$parsedContext = 0L
+if ([string]::IsNullOrWhiteSpace($architecture) -or -not $rawContext -or -not [int64]::TryParse([string]$rawContext.Value, [ref]$parsedContext) -or $parsedContext -lt 512) {
+    throw "Saved model $Model has no verifiable architecture-specific context limit."
+}
+if (@($modelInfo.capabilities | ForEach-Object { [string]$_ }) -notcontains "tools") {
+    throw "Saved model $Model does not advertise the required Ollama tools capability."
+}
 if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     $services = @(Get-CimInstance Win32_Service | Where-Object { $_.PathName -like "*$RunnerRoot*" })
     if ($services.Count -ne 1 -or (Get-AccountSidValue $services[0].StartName) -ne (Get-AccountSidValue $runnerIdentity)) { throw "Existing Runner configuration found; refusing to replace or reconfigure it." }
