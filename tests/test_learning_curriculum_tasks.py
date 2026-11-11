@@ -508,3 +508,15 @@ def test_topic_applicability_metadata_is_structured_and_not_overstated():
     value["topic_metadata"][topic]["applicability"]["status"] = "verified"
     with pytest.raises(ValueError, match="status"):
         learning_curriculum_tasks._parse_outline(json.dumps(value, ensure_ascii=False), 20)
+
+
+def test_curriculum_api_uses_batch_size_and_accepts_legacy_max_topics_alias():
+    from app.main import LearningCurriculumRequest
+
+    request = LearningCurriculumRequest(topic="SQL Server", batch_size=16)
+    assert request.batch_size == 16
+    assert request.max_topics is None
+
+    legacy = LearningCurriculumRequest(topic="SQL Server", max_topics=40)
+    assert legacy.batch_size == 24
+    assert legacy.max_topics == 40
