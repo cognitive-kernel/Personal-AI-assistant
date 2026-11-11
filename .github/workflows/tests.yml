@@ -47,6 +47,42 @@ jobs:
         run: python -m pip install -e ".[dev]"
       - name: Run real checkpoint watcher integration on Windows
         run: python -m pytest -q tests/test_autonomous_engineering_cycle.py -k real_process
+      - name: Verify PowerShell-to-Python Ollama context selection
+        shell: pwsh
+        run: |
+          $helper = Join-Path $env:GITHUB_WORKSPACE "app\ollama_context.py"
+          if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) {
+            throw "Shared Ollama context selector is missing: $helper"
+          }
+          $payload = @{
+            model_info = @{
+              "llama.context_length" = 131072
+              "llama.block_count" = 32
+              "llama.attention.head_count_kv" = 8
+              "llama.attention.key_length" = 128
+              "llama.attention.value_length" = 128
+            }
+            architecture = "llama"
+            model_weight_bytes = 5368709120
+            available_memory_bytes = 21474836480
+            requested_context_tokens = 100000
+          } | ConvertTo-Json -Depth 10 -Compress
+          $selectionOutput = $payload | & python $helper
+          if ($LASTEXITCODE -ne 0) {
+            throw "PowerShell-to-Python context selection failed: $($selectionOutput -join ' ')"
+          }
+          try {
+            $selection = ($selectionOutput -join [Environment]::NewLine) | ConvertFrom-Json -ErrorAction Stop
+          } catch {
+            throw "The shared context selector returned invalid JSON: $($_.Exception.Message)"
+          }
+          if ([int64]$selection.selected_context_tokens -ne 86016) {
+            throw "Expected exact safe context 86016, received '$($selection.selected_context_tokens)'."
+          }
+          if ([int64]$selection.selected_context_tokens -gt [int64]$selection.requested_context_tokens) {
+            throw "The selected context exceeded the explicitly requested context."
+          }
+          Write-Host "PowerShell-to-Python context bridge passed: $($selection.selected_context_tokens) tokens."
       - name: Parse all PowerShell scripts
         shell: pwsh
         run: |
