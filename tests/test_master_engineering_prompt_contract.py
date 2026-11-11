@@ -30,7 +30,7 @@ def test_master_prompt_defines_universal_version_aware_learning_contract():
         "A correction creates a new revision, links its predecessor, records the reason and evidence",
         "automated semantic adjudication by an independently configured reviewer model",
         "Human adjudication is not a routine learning or lesson-acceptance gate",
-        "No human approval is required for routine evidence gathering, draft correction, tests, or versioned lesson updates",
+        "Human approval is not required for routine evidence gathering, draft correction, tests, or versioned lesson updates.",
     )
     for requirement in required_contract:
         assert requirement in prompt
