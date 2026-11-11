@@ -290,35 +290,64 @@ def _collect_sources(
     return _hydrate_source_bodies(context.task_id, sources)
 
 
-def _version_order_key(value: str) -> tuple[int, ...] | None:
+def _version_order_key(value: str) -> tuple[Any, ...] | None:
     numbers = re.findall(r"\d+", value)
-    return tuple(int(item) for item in numbers) if numbers else None
+    if not numbers:
+        return None
+    prerelease = re.search(r"(alpha|beta|preview|pre|rc|dev)[.-]?(\d*)", value, re.IGNORECASE)
+    if prerelease:
+        stage = {
+            "dev": 0, "alpha": 1, "a": 1, "beta": 2, "b": 2,
+            "pre": 3, "preview": 3, "rc": 4,
+        }.get(prerelease.group(1).casefold(), 1)
+        return tuple(int(item) for item in numbers), 0, stage, int(prerelease.group(2) or 0)
+    return tuple(int(item) for item in numbers), 1, 0, 0
 
 
 def _validate_chronological_topics(
     topics: list[str], topic_metadata: dict[str, Any]
 ) -> None:
-    """Enforce release chronology across a complete syllabus, not only one batch."""
-    chronological_keys: list[tuple[int, tuple[int, ...]]] = []
+    """Validate release chronology using dates first and product-specific version order as fallback."""
+    dated_by_product: dict[str, list[tuple[str, tuple[Any, ...]]]] = {}
+    version_only_by_product: dict[str, list[tuple[Any, ...]]] = {}
     for topic_value in topics:
         metadata = topic_metadata.get(topic_value, {})
         applicability = metadata.get("applicability", {}) if isinstance(metadata, dict) else {}
         if not isinstance(applicability, dict):
             continue
+        product = str(applicability.get("product", "")).strip().casefold()
         versions = applicability.get("versions", [])
-        version_keys = [_version_order_key(value) for value in versions if isinstance(value, str)]
+        version_keys = [
+            _version_order_key(value)
+            for value in versions
+            if isinstance(value, str)
+        ]
         if version_keys and all(key is not None for key in version_keys):
-            normalized_keys = [key for key in version_keys if key is not None]
-            if normalized_keys != sorted(normalized_keys):
+            normalized_versions = [key for key in version_keys if key is not None]
+            if normalized_versions != sorted(normalized_versions):
                 raise ValueError("Topic versions must be ordered from earliest to latest.")
+        first_version = next((key for key in version_keys if key is not None), None)
+        release_dates = applicability.get("release_dates", [])
         release_years = applicability.get("release_years", [])
-        if release_years:
-            first_version_key = next((key for key in version_keys if key is not None), ())
-            chronological_keys.append((int(release_years[0]), first_version_key))
-    if chronological_keys != sorted(chronological_keys):
-        raise ValueError(
-            "Version-scoped curriculum topics must be ordered oldest-to-newest by release year and version."
-        )
+        release_date = release_dates[0] if release_dates else None
+        release_year = release_years[0] if release_years else None
+        if isinstance(release_date, str) and release_date:
+            dated_by_product.setdefault(product, []).append((release_date, first_version or ()))
+        elif isinstance(release_year, str) and release_year:
+            dated_by_product.setdefault(product, []).append((f"{release_year}-00-00", first_version or ()))
+        elif first_version is not None:
+            version_only_by_product.setdefault(product, []).append(first_version)
+
+    for entries in dated_by_product.values():
+        if entries != sorted(entries):
+            raise ValueError(
+                "Version-scoped curriculum topics must be ordered oldest-to-newest by release date/year and version."
+            )
+    for entries in version_only_by_product.values():
+        if entries != sorted(entries):
+            raise ValueError(
+                "Version-scoped curriculum topics without release dates must be ordered oldest-to-newest by version."
+            )
 
 
 def _parse_outline(response: str, batch_size: int) -> dict[str, Any]:
