@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -104,6 +105,9 @@ def _valid_checkpoint(
             "url": normalized_url,
             "excerpt": excerpt.strip(),
             "sha256": digest,
+            "publication_date": item.get("publication_date") if isinstance(item.get("publication_date"), str) else None,
+            "last_updated": item.get("last_updated") if isinstance(item.get("last_updated"), str) else None,
+            "retrieved_at": item.get("retrieved_at") if isinstance(item.get("retrieved_at"), str) else None,
         })
     return completed_queries, sources
 
@@ -180,6 +184,9 @@ def _collect_sources(
                 "url": url,
                 "excerpt": excerpt,
                 "sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+                "publication_date": None,
+                "last_updated": None,
+                "retrieved_at": datetime.now(timezone.utc).isoformat(),
             })
             seen.add(url)
         completed_queries.append(query)
