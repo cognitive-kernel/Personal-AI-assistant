@@ -29,7 +29,7 @@
     const names = [...installed];
     if (savedModelMissing) names.unshift(selectedModel);
     select.replaceChildren();
-    if (!names.length) {
+    if (!installed.length && !savedModelMissing) {
       const option = document.createElement("option");
       option.value = "";
       option.disabled = true;
@@ -38,14 +38,27 @@
       select.value = "";
       return;
     }
+    if (!selectedModel || savedModelMissing) {
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.disabled = true;
+      placeholder.selected = true;
+      placeholder.textContent = savedModelMissing
+        ? "مدل ذخیره‌شده نصب نیست؛ مدل دیگری انتخاب کنید"
+        : "ابتدا مدل نصب‌شده را انتخاب کنید";
+      select.append(placeholder);
+    }
     for (const name of names) {
       const option = document.createElement("option");
       option.value = name;
       option.textContent = name + (savedModelMissing && name === selectedModel ? " (ذخیره‌شده؛ نصب نیست)" : "");
-      if (savedModelMissing && name === selectedModel) option.dataset.installed = "false";
+      if (savedModelMissing && name === selectedModel) {
+        option.dataset.installed = "false";
+        option.disabled = true;
+      }
       select.append(option);
     }
-    select.value = selectedModel && names.includes(selectedModel) ? selectedModel : installed[0] || "";
+    select.value = selectedModel && installed.includes(selectedModel) ? selectedModel : "";
   }
   function renderRuns(runs) {
     const host = $("recent-runs");
