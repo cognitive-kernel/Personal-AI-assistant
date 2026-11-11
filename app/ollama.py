@@ -461,6 +461,7 @@ def _openai_compatible_chat(
     settings = get_settings()
     base_url = settings.get(f"{purpose}_llm_base_url", "")
     normalized_base = normalize_openai_compatible_base_url(base_url)
+    parsed = urllib.parse.urlparse(normalized_base)
     api_key_env = settings.get(f"{purpose}_llm_api_key_env", "")
     headers = {"Content-Type": "application/json"}
     if api_key_env:
