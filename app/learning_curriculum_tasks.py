@@ -780,7 +780,12 @@ def handle_curriculum_task(
             or refresh_of_path_id < 1
         ):
             raise ValueError("refresh_of_path_id must be a positive integer.")
-        if refresh_of_path_id is not None:
+        checkpoint_state = context.checkpoint_data or checkpoint or {}
+        already_persisted = (
+            isinstance(checkpoint_state, dict)
+            and checkpoint_state.get("phase") == "curriculum_persisted"
+        )
+        if refresh_of_path_id is not None and not already_persisted:
             with learning_connection() as connection:
                 parent = connection.execute(
                     """SELECT r.requested_topic, w.status
