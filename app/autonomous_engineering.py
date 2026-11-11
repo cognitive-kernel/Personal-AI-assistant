@@ -54,9 +54,8 @@ def _repository() -> str:
 
 
 def _model() -> str:
-    """Return only an explicitly configured model; never invent a default."""
-    value = os.getenv("AUTONOMOUS_ENGINEERING_MODEL", "").strip()
-    return value[:120] if _MODEL_PATTERN.fullmatch(value) else ""
+    """The dashboard model must come from the saved repository variable."""
+    return ""
 
 
 def _run(command: list[str], timeout: int = 8) -> subprocess.CompletedProcess[str] | None:
@@ -269,7 +268,7 @@ def _github_snapshot() -> dict[str, Any]:
 def collect_status() -> dict[str, Any]:
     github = _github_snapshot()
     settings = github.get("settings", {})
-    model = settings.get("model") or _model()
+    model = settings.get("model", "")
     interval_hours = settings.get("interval_hours", _DEFAULT_INTERVAL_HOURS)
     execution_mode = settings.get("execution_mode", "continuous")
     paused = bool(settings.get("paused", False))
@@ -414,6 +413,69 @@ def autonomous_engineering_progress(
     return result
 
 
+def _save_repository_variables(gh: str, updates: tuple[tuple[str, str], ...]) -> None:
+    """Apply repository-variable updates as a rollback-protected transaction."""
+    listing = _run(
+        [gh, "variable", "list", "--repo", _repository(), "--json", "name,value"],
+        timeout=12,
+    )
+    if not listing or listing.returncode != 0:
+        raise HTTPException(
+            status_code=502,
+            detail="Could not snapshot existing GitHub repository settings; no settings were changed.",
+        )
+    try:
+        current_values = json.loads(listing.stdout)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="GitHub returned invalid repository-variable state; no settings were changed.",
+        ) from exc
+    if not isinstance(current_values, list):
+        raise HTTPException(
+            status_code=502,
+            detail="GitHub returned an invalid repository-variable list; no settings were changed.",
+        )
+    previous = {
+        str(item.get("name")): str(item.get("value", ""))
+        for item in current_values
+        if isinstance(item, dict) and isinstance(item.get("name"), str)
+    }
+    applied: list[str] = []
+    for name, value in updates:
+        result = _run(
+            [gh, "variable", "set", name, "--body", value, "--repo", _repository()],
+            timeout=15,
+        )
+        if result and result.returncode == 0:
+            applied.append(name)
+            continue
+
+        rollback_errors: list[str] = []
+        for changed_name in reversed(applied):
+            if changed_name in previous:
+                rollback = _run(
+                    [gh, "variable", "set", changed_name, "--body", previous[changed_name], "--repo", _repository()],
+                    timeout=15,
+                )
+            else:
+                rollback = _run(
+                    [gh, "variable", "delete", changed_name, "--repo", _repository()],
+                    timeout=15,
+                )
+            if not rollback or rollback.returncode != 0:
+                rollback_errors.append(changed_name)
+        if rollback_errors:
+            detail = (
+                f"Saving {name} failed and rollback could not restore: "
+                + ", ".join(rollback_errors)
+                + ". Inspect the repository Actions variables before retrying."
+            )
+        else:
+            detail = f"Saving {name} failed; all earlier changes were rolled back."
+        raise HTTPException(status_code=502, detail=detail)
+
+
 @router.post("/settings", status_code=200)
 def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[str, Any]:
     model = payload.model.strip()
@@ -443,13 +505,7 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
         ("AUTONOMOUS_ENGINEERING_INTERVAL_HOURS", str(payload.interval_hours)),
         ("AUTONOMOUS_ENGINEERING_MODE", payload.execution_mode),
     )
-    for name, value in updates:
-        result = _run(
-            [gh, "variable", "set", name, "--body", value, "--repo", _repository()],
-            timeout=15,
-        )
-        if not result or result.returncode != 0:
-            raise HTTPException(status_code=502, detail=f"ذخیرهٔ تنظیم {name} در GitHub ناموفق بود.")
+    _save_repository_variables(gh, updates)
     return {
         "saved": True,
         "model": model,
