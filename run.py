@@ -714,6 +714,52 @@ def _download_ollama_asset_cli(arguments: list[str]) -> int:
     return 0
 
 
+def _read_saved_setting(key: str, default: Any) -> Any:
+    database = Path(os.environ.get("SETTINGS_DB_PATH", "data/settings.db"))
+    if not database.is_absolute():
+        database = ROOT / database
+    if not database.is_file():
+        return default
+    try:
+        connection = sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
+        try:
+            row = connection.execute(
+                "SELECT value_json FROM settings WHERE key=?", (key,)
+            ).fetchone()
+        finally:
+            connection.close()
+    except sqlite3.OperationalError as exc:
+        if "no such table: settings" in str(exc).lower():
+            return default
+        raise RuntimeError("The existing settings database could not be read safely; provider setup was stopped.") from exc
+    except sqlite3.Error as exc:
+        raise RuntimeError("The existing settings database could not be read safely; provider setup was stopped.") from exc
+    if row is None:
+        return default
+    try:
+        return json.loads(row[0])
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"The saved setting '{key}' is invalid; provider setup was stopped.") from exc
+
+
+def _configured_llm_provider(purpose: str) -> str:
+    raw = os.environ.get(f"{purpose.upper()}_LLM_PROVIDER")
+    if raw is None:
+        raw = _read_saved_setting(f"{purpose}_llm_provider", "ollama")
+    if not isinstance(raw, str) or raw not in {"ollama", "openai_compatible"}:
+        raise RuntimeError(f"The configured {purpose} LLM provider is invalid.")
+    return raw
+
+
+def _configured_model_setting(key: str, env_name: str, default: str) -> str:
+    raw = os.environ.get(env_name)
+    if raw is None:
+        raw = _read_saved_setting(key, default)
+    if not isinstance(raw, str) or not raw.strip() or len(raw.strip()) > 200:
+        raise RuntimeError(f"The saved model setting '{key}' is invalid.")
+    return raw.strip()
+
+
 def _configured_learning_model() -> str:
     """Resolve the model the app will actually use, without mutating saved settings."""
     override = os.environ.get("LEARNING_OLLAMA_MODEL")
@@ -774,6 +820,16 @@ def _find_ollama() -> str | None:
 
 
 def _ensure_ollama() -> None:
+    active_providers = [
+        _configured_llm_provider(name)
+        for name in ("chat", "learning", "programming", "embedding")
+    ]
+    factual_review_model = _read_saved_setting("factual_review_ollama_model", "")
+    if factual_review_model and _configured_llm_provider("factual_review") == "ollama":
+        active_providers.append("ollama")
+    if "ollama" not in active_providers:
+        print("همهٔ مسیرهای LLM و embedding روی provider جایگزین تنظیم شده‌اند؛ نصب و اجرای Ollama لازم نیست.", flush=True)
+        return
     system = platform.system()
     # Detect an existing installation before downloading anything. The installer
     # is only needed when Ollama cannot be found on this machine.
@@ -865,13 +921,29 @@ def _ensure_ollama() -> None:
         line.split()[0] for line in (listed.stdout or "").splitlines()
         if line.strip() and not line.lstrip().startswith("NAME ")
     }
-    required_models = (
-        ("مدل عمومی", os.environ.get("OLLAMA_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL),
-        (
-            "مدل یادگیری",
-            _configured_learning_model(),
-        ),
-    )
+    required_models: list[tuple[str, str]] = []
+    if _configured_llm_provider("chat") == "ollama":
+        required_models.append((
+            "مدل گفتگو",
+            _configured_model_setting(
+                "chat_ollama_model", "CHAT_OLLAMA_MODEL",
+                os.environ.get("OLLAMA_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL,
+            ),
+        ))
+    if _configured_llm_provider("learning") == "ollama":
+        required_models.append(("مدل یادگیری", _configured_learning_model()))
+    if _configured_llm_provider("programming") == "ollama":
+        required_models.append((
+            "مدل برنامه‌نویسی",
+            _configured_model_setting("programming_ollama_model", "PROGRAMMING_OLLAMA_MODEL", "qwen3:14b"),
+        ))
+    if _configured_llm_provider("embedding") == "ollama":
+        required_models.append((
+            "مدل embedding",
+            _configured_model_setting("ollama_embedding_model", "OLLAMA_EMBEDDING_MODEL", "nomic-embed-text"),
+        ))
+    if factual_review_model and _configured_llm_provider("factual_review") == "ollama":
+        required_models.append(("مدل بازبینی factual", factual_review_model))
     missing_models: list[str] = []
     for role, model in required_models:
         if model in installed_models or model in missing_models:
