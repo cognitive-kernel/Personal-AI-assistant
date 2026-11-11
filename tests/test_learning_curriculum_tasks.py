@@ -226,7 +226,12 @@ def test_research_task_persists_sources_outline_and_starts_only_first_lesson(
     assert retried["path_id"] == result["path_id"]
     assert retried["outline_sha256"] == result["outline_sha256"]
     assert len(discovered) == 8
-    assert len(model_calls) == 1
+    # Eight full source bodies each span multiple evidence chunks; every chunk
+    # must be reviewed before the curriculum can be finalized.
+    assert len(model_calls) == learning_curriculum_tasks._source_evidence_batch_count(
+        learning_curriculum_tasks._hydrate_source_bodies(task["id"], context.checkpoint_data["sources"])
+    )
+    assert len(model_calls) == 2
     assert retried["queue_status"] == "already_active"
 
 
@@ -235,7 +240,7 @@ def test_research_retains_more_than_three_sources_from_one_domain(learning_store
 
     def discover(_query, *, limit):
         calls["count"] += 1
-        assert limit == 5
+        assert limit == 30
         return [
             web_sources.SourceDocument(
                 url=f"https://community.example.test/guides/{calls['count']}/{index}",
@@ -978,6 +983,8 @@ def test_source_evidence_batches_are_round_robin_and_unbounded_by_total_source_c
     sources = [
         {
             "url": f"https://sources.example.test/{index}",
+            "title": f"Source {index}",
+            "excerpt": f"Evidence excerpt for source {index}.",
             "query": queries[index % len(queries)],
         }
         for index in range(103)
