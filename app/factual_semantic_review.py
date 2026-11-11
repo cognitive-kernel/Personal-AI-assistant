@@ -41,6 +41,7 @@ class ReviewDecision:
     reasons: tuple[str, ...]
     evaluator_model: str | None = None
     evaluator_digest: str | None = None
+    evaluator_identity_kind: str | None = None
     confidence: float | None = None
     rationale: str | None = None
     source_url: str | None = None
@@ -182,43 +183,34 @@ def review_claim_against_source(
 
     settings = get_settings()
     reviewer_model = str(settings.get("factual_review_ollama_model", "")).strip()
-    primary_models = {
-        str(settings.get(key, "")).strip()
-        for key in ("ollama_model", "chat_ollama_model", "learning_ollama_model", "programming_ollama_model")
-        if str(settings.get(key, "")).strip()
-    }
-    if not reviewer_model or reviewer_model in primary_models:
-        raise ValueError("A distinct factual_review_ollama_model must be configured.")
-    installed = ollama.list_models()
-    reviewer_entry = next(
-        (item for item in installed if str(item.get("name", "")).strip() == reviewer_model),
-        None,
-    )
-    if reviewer_entry is None:
-        raise ValueError("The configured factual review model is not installed in Ollama.")
-    reviewer_digest = reviewer_entry.get("digest")
-    if not isinstance(reviewer_digest, str) or not reviewer_digest.strip():
-        raise ValueError("The factual review model must expose a digest for independence checks.")
-    primary_digests = {
-        str(item.get("digest"))
-        for item in installed
-        if str(item.get("name", "")).strip() in primary_models
-        and isinstance(item.get("digest"), str)
-        and item.get("digest")
-    }
-    if reviewer_digest in primary_digests:
-        raise ValueError("The factual review model digest must differ from every configured generation model.")
+    if not reviewer_model:
+        raise ValueError("A distinct factual review model must be configured.")
+    reviewer_identity = ollama.model_identity("factual_review", reviewer_model)
+
+    def primary_identities(current: dict[str, Any]) -> set[str]:
+        identities: set[str] = set()
+        for purpose in ("chat", "research_plan", "learning", "programming"):
+            model = str(current.get(f"{purpose}_ollama_model", "")).strip()
+            if not model:
+                continue
+            try:
+                identities.add(ollama.model_identity(purpose, model)["identity"])
+            except ollama.OllamaError:
+                continue
+        return identities
+
+    if reviewer_identity["identity"] in primary_identities(settings):
+        raise ValueError("The factual review model must be distinct from all configured generation models.")
     latest_settings = get_settings()
-    latest_primary_models = {
-        str(latest_settings.get(key, "")).strip()
-        for key in ("ollama_model", "chat_ollama_model", "learning_ollama_model", "programming_ollama_model")
-        if str(latest_settings.get(key, "")).strip()
-    }
+    latest_identity = ollama.model_identity("factual_review", reviewer_model)
     if (
         str(latest_settings.get("factual_review_ollama_model", "")).strip() != reviewer_model
-        or reviewer_model in latest_primary_models
+        or latest_identity["identity"] != reviewer_identity["identity"]
+        or reviewer_identity["identity"] in primary_identities(latest_settings)
     ):
         raise ValueError("Factual review model settings changed during identity validation; retry the review.")
+    reviewer_digest = reviewer_identity["identity"]
+    reviewer_identity_kind = reviewer_identity["identity_kind"]
 
     prompt = {
         "task": "Assess whether the exact source excerpt supports the exact claim and whether the supplied test actually tests that claim.",
@@ -285,6 +277,7 @@ def review_claim_against_source(
             reasons=decision.reasons + ("test_does_not_directly_check_claim", "fail_closed_no_promotion"),
             evaluator_model=reviewer_model,
             evaluator_digest=reviewer_digest,
+            evaluator_identity_kind=reviewer_identity_kind,
             confidence=float(confidence),
             rationale=parsed["rationale"].strip(),
             source_url=source_url,
@@ -298,6 +291,7 @@ def review_claim_against_source(
         reasons=decision.reasons,
         evaluator_model=reviewer_model,
         evaluator_digest=reviewer_digest,
+        evaluator_identity_kind=reviewer_identity_kind,
         confidence=float(confidence),
         rationale=parsed["rationale"].strip(),
         source_url=source_url,
