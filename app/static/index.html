@@ -1571,18 +1571,21 @@ async function refreshHardwareDiagnostics(profile=modelContextProfiles[0]) {
    return item.name+": context "+(item.context_length??"نامشخص")+"؛ "+vram;
   });
   const selected=data.selected_model;
+  const externalProvider=data.provider==="openai_compatible";
   const estimate=selected?.memory_estimate?.total_ram_gib_float16;
   const settings=await api("/api/settings");
   const availableRam=h.available_ram_gb==null?NaN:Number(h.available_ram_gb);
   const budget=Number.isFinite(availableRam)
    ? Math.max(0,Math.min(availableRam,Number(settings.ram_budget_max_gb||25))-Number(settings.ram_safety_reserve_gb||4))
    : null;
-  const fit=estimate==null?"قابلیت تناسب RAM نامشخص است؛ metadata کافی برای KV cache وجود ندارد."
+  const fit=externalProvider?"مدیریت RAM و context مدل بر عهده endpoint انتخاب‌شده است؛ این داشبورد فقط سخت‌افزار میزبان برنامه را نمایش می‌دهد."
+   :estimate==null?"قابلیت تناسب RAM نامشخص است؛ metadata کافی برای KV cache وجود ندارد."
    :budget==null?"تناسب RAM نامشخص است؛ سنجش RAM آزاد در دسترس نیست."
    :(estimate<=budget?"برآورد RAM در بودجه امن فعلی جا می‌شود.":"برآورد RAM از بودجه امن فعلی بیشتر است.");
   const gpuEnabled=settings.gpu_enabled===true;
   const gpuRunning=(data.ollama_running_models||[]).find(item=>item.name===model);
-  const gpuStatus=gpuRunning?.processor==="GPU"?"Ollama برای این مدل VRAM تخصیص داده است."
+  const gpuStatus=externalProvider?"وضعیت GPU مدل توسط endpoint انتخاب‌شده مدیریت می‌شود و از Ollama قابل مشاهده نیست."
+   :gpuRunning?.processor==="GPU"?"Ollama برای این مدل VRAM تخصیص داده است."
    :gpuRunning?.processor==="CPU"?"این مدل اکنون روی CPU اجرا می‌شود."
    :(gpuEnabled && h.gpu_available?"GPU شناسایی شده و گزینه فعال است؛ استفاده واقعی تا بارگذاری مدل تأیید نمی‌شود."
     :gpuEnabled?"GPU فعال شده اما دستگاه/درایور قابل شناسایی نیست."
@@ -1598,8 +1601,8 @@ async function refreshHardwareDiagnostics(profile=modelContextProfiles[0]) {
     :"حافظه آزاد فقط به‌صورت جزئی اندازه‌گیری شده؛ تناسب full-offload نامشخص است.");
   const effectiveContext=data.runtime_limits?.num_ctx;
   const contextStatus=effectiveContext==null?"": "؛ context مؤثر پس از محدودیت سخت‌افزار: "+Number(effectiveContext).toLocaleString()+" توکن"+(effectiveContext<context?" (کمتر از مقدار انتخابی)": "");
-  output.textContent="CPU: "+h.logical_cpu_count+" thread منطقی؛ "+cpu+"؛ RAM: "+ram+"؛ GPU: "+(gpuLines.length?gpuLines.join(" | "):"هیچ GPU شناسایی نشد یا اطلاعات دستگاه در دسترس نیست.")+contextStatus
-   +(running.length?"؛ تخصیص واقعی Ollama: "+running.join(" | "):"؛ مدل فعالی در Ollama گزارش نشده است.")
+  output.textContent="Provider: "+(externalProvider?"OpenAI-compatible":"Ollama")+"؛ CPU: "+h.logical_cpu_count+" thread منطقی؛ "+cpu+"؛ RAM: "+ram+"؛ GPU: "+(gpuLines.length?gpuLines.join(" | "):"هیچ GPU شناسایی نشد یا اطلاعات دستگاه در دسترس نیست.")+contextStatus
+   +(externalProvider?"؛ "+fit:(running.length?"؛ تخصیص واقعی Ollama: "+running.join(" | "):"؛ مدل فعالی در Ollama گزارش نشده است."))
    +(estimate!=null?"؛ نیاز تخمینی RAM مدل در context انتخابی: "+estimate+" GiB. "+fit:"؛ "+fit)+"؛ وضعیت GPU: "+gpuStatus+(gpuEstimate!=null?"؛ VRAM لازم برای offload کامل (تخمینی): "+gpuEstimate+" GiB؛ "+gpuFit:"؛ "+gpuFit);
  } catch(error) { output.textContent="تحلیل سخت‌افزار در دسترس نیست: "+error.message; }
 }
