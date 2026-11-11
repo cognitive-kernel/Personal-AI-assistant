@@ -80,6 +80,7 @@ def _ollama_status(model: str) -> dict[str, Any]:
         "model_selectable": False,
         "model_is_codex_context_variant": _is_codex_context_variant(model),
         "models": [],
+        "selectable_models": [],
         "model_context_length": None,
         "model_capabilities": [],
         "model_supports_tools": False,
@@ -118,7 +119,8 @@ def _ollama_status(model: str) -> dict[str, Any]:
         "model_installed": installed,
         "model_selectable": installed and not is_context_variant,
         "model_is_codex_context_variant": is_context_variant,
-        "models": selectable_names,
+        "models": names,
+        "selectable_models": selectable_names,
         "model_metadata_error": (
             "The saved model is an internal Codex context variant; select its original Ollama model."
             if is_context_variant else
@@ -327,6 +329,7 @@ def collect_status() -> dict[str, Any]:
         "workflow": _WORKFLOW,
         "model": model,
         "models": ollama.get("models", []),
+        "selectable_models": ollama.get("selectable_models", ollama.get("models", [])),
         "model_is_codex_context_variant": ollama.get("model_is_codex_context_variant", False),
         "model_context_length": ollama.get("model_context_length"),
         "model_context_supported": ollama.get("model_context_supported", False),
