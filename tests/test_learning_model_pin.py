@@ -171,3 +171,49 @@ def test_startup_fails_when_learning_model_pull_fails(monkeypatch):
 
     with pytest.raises(RuntimeError, match="مدل یادگیری"):
         bootstrap._ensure_ollama()
+
+
+def test_learning_model_selection_uses_configured_compatible_provider_without_ollama(
+    monkeypatch,
+):
+    from app import learning_cost_manager
+
+    seen = {}
+    monkeypatch.setattr(
+        learning.ollama, "list_models",
+        lambda: (_ for _ in ()).throw(AssertionError("Ollama discovery must not run")),
+    )
+
+    def select(_settings, candidates, **_kwargs):
+        seen["candidates"] = candidates
+        return {
+            "selected_model": candidates[0],
+            "selection": {
+                "estimated_cost_microusd": None,
+                "estimated_energy_wh": None,
+                "quality_score": None,
+                "provider": "openai_compatible",
+            },
+            "status": "selected",
+        }
+
+    monkeypatch.setattr(learning_cost_manager, "select_learning_model", select)
+    selected, provenance = learning._select_learning_generation_model(
+        {
+            "learning_llm_provider": "openai_compatible",
+            "learning_model_cost_profiles": {
+                "remote-model": {
+                    "provider": "openai_compatible",
+                    "input_cost_microusd_per_1k_tokens": 0,
+                    "output_cost_microusd_per_1k_tokens": 0,
+                    "quality_score": 0.9,
+                }
+            },
+        },
+        "lesson prompt",
+        "remote-model",
+    )
+
+    assert selected == "remote-model"
+    assert seen["candidates"] == ["remote-model"]
+    assert provenance["selected_model"] == "remote-model"
