@@ -283,7 +283,7 @@ def test_semantically_equivalent_paraphrases_can_complete_path_topic(tmp_path, m
     assert json.loads(attempt["result_details_json"])["deterministic_score"] < 100
     assert topic["status"] == "completed"
     assert topic["latest_score"] == 100
-    assert topic["latest_score_kind"] == "semantic_model_assisted"
+    assert topic["latest_score_kind"] == "learner_rubric"
 
 
 def test_semantic_evaluator_failure_preserves_deterministic_score(tmp_path, monkeypatch):
