@@ -485,3 +485,12 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Second checkpoint audit found another stale source-cap reference in `_valid_checkpoint`, which would have failed when resuming any checkpoint containing source records. Removed the slice and added a regression that recovers 45 source records with query provenance intact. This preserves the entire accumulated source inventory across restart/resume.
 
 - Prompt audit also removed an authoritative-only condition from version-change coverage. Relevant unofficial reports are now collected and attributed alongside official material; unsupported or conflicting claims stay unverified rather than being omitted or promoted. Added a regression preventing the authoritative-only wording from returning.
+
+
+## 2026-11-11 — Universal learning contract and cross-batch chronology
+
+- Added the universal subject-agnostic learning contract to the linked master engineering prompt branch and copied it into this PR branch. It covers complete subject taxonomy, earliest-to-latest version/year sequencing, evidence provenance/retention, non-blocking assessment, additive automatic correction, release monitoring, and provider/model migration.
+- Code audit found a chronology gap: `_parse_outline` validated version order inside each model batch, but `handle_curriculum_task` appended batches without validating the merged course. A later batch could therefore introduce an older release after newer topics.
+- Added `_validate_chronological_topics` and invoke it after all batches have been merged and before persistence/lesson queueing. Added regression coverage for individually valid but globally out-of-order batches.
+- Commits: prompt `fcece2b2a7aa81a215d32e1b79ccdf7959605d2e`; implementation `28e1917e924962086dc143a4deb58b76312933b3`; regression `377fe87b76a31e61eee03ecb95453f65f3e2bab9`.
+- Validation: exact-head CI for the latest implementation commit has not yet returned; no local target-host or GPT-OSS 20B runtime validation is claimed.
