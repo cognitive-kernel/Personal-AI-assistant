@@ -1097,7 +1097,7 @@ def run_job(job_id: int) -> None:
         quality["source_characters_provided"] = len(source_text)
         quality["source_characters_sent_to_model"] = len(model_source_text)
         claim_review_result: dict[str, Any] | None = None
-        if quality["accepted"] and source_kind == "web_retrieved" and source_text:
+        if source_kind == "web_retrieved" and source_text:
             sources = claim_review_sources
             if sources:
                 try:
@@ -1175,11 +1175,12 @@ def run_job(job_id: int) -> None:
             # If the user stopped the path while Ollama was generating, discard this result.
             if current is None or current["status"] != "running":
                 return
-            conn.execute("UPDATE learning_jobs SET status=?, lesson=?, assessment_json=?, quality_json=?, error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                ("completed" if quality["accepted"] else "rejected", result["lesson"] if quality["accepted"] else None,
-                 json.dumps(assessment, ensure_ascii=False) if quality["accepted"] else None,
-                 json.dumps(quality, ensure_ascii=False),
-                 None if quality["accepted"] else "درس از فیلتر کیفیت عبور نکرد: " + " ".join(quality.get("reasons", [])) + " متن درس و متن منبع حذف شد.", job_id))
+            if not isinstance(result.get("lesson"), str) or not result["lesson"].strip():
+                raise LearningError("The model and bounded repair attempt returned no lesson text; source material was retained.")
+            quality["lesson_retained"] = True
+            quality["retention_policy"] = "all_nonempty_lessons_are_preserved; heuristic_quality_is_advisory_only"
+            conn.execute("UPDATE learning_jobs SET status='completed', lesson=?, assessment_json=?, quality_json=?, error=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (result["lesson"], json.dumps(assessment, ensure_ascii=False), json.dumps(quality, ensure_ascii=False), job_id))
             # Automatically persist the lesson-quality score on its curriculum topic.
             # This is a content-quality score, not a score for the learner's understanding.
             path_topic_id = conn.execute(
@@ -1203,7 +1204,7 @@ def run_job(job_id: int) -> None:
                        ) VALUES (?, 'claim_review', 'local_ollama_model_assisted', NULL, ?)""",
                     (job_id, claim_note),
                 )
-                if quality["accepted"] and source_kind == "web_retrieved":
+                if source_kind == "web_retrieved":
                     _persist_factual_review_claims(
                         conn,
                         job_id=job_id,
@@ -1211,7 +1212,7 @@ def run_job(job_id: int) -> None:
                         source_text=source_text,
                         review=claim_review_result,
                     )
-            if quality["accepted"]:
+            if True:
                 def normalize_lesson_content(value: str) -> str:
                     value = value.casefold().replace("ي", "ی").replace("ك", "ک")
                     return re.sub(r"[\W_]+", " ", value, flags=re.UNICODE).strip()
@@ -1225,18 +1226,9 @@ def run_job(job_id: int) -> None:
                     for item in existing_lessons
                 )
                 if duplicate_lesson:
-                    quality["accepted"] = False
-                    quality.setdefault("reasons", []).append(
-                        "محتوای این درس با نسخه ثبت‌شده یکسان است؛ نسخه تکراری ذخیره نشد."
-                    )
-                    conn.execute(
-                        "UPDATE learning_jobs SET status='rejected', lesson=NULL, assessment_json=NULL, "
-                        "quality_json=?, error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                        (
-                            json.dumps(quality, ensure_ascii=False),
-                            "محتوای تکراری؛ نسخه جدید ثبت نشد.",
-                            job_id,
-                        ),
+                    quality["duplicate_of_existing_knowledge"] = True
+                    quality.setdefault("notes", []).append(
+                        "محتوای یکسان از قبل در knowledge_items وجود داشت؛ رکورد job و شواهد جدید حفظ شدند و نسخه تکراری ساخته نشد."
                     )
                 else:
                     latest = conn.execute("SELECT COALESCE(MAX(version), 0) AS version FROM knowledge_items WHERE topic=?", (topic,)).fetchone()
@@ -1258,7 +1250,7 @@ def run_job(job_id: int) -> None:
                     if isinstance(item["source_ref"], str)
                     and item["source_ref"].startswith("https://")
                 ]
-                if quality["accepted"]:
+                if not duplicate_lesson:
                     conn.execute(
                         """INSERT INTO temporary_knowledge_candidates(
                                job_id, topic, content, source_kind, source_urls_json,
@@ -1275,10 +1267,8 @@ def run_job(job_id: int) -> None:
                             json.dumps(quality, ensure_ascii=False),
                         ),
                     )
-            else:
-                conn.execute("DELETE FROM learning_source_text WHERE job_id=?", (job_id,))
-                conn.execute("UPDATE learning_evidence SET note=? WHERE job_id=? AND evidence_type='user_text'",
-                    ("منشأ ورودی ثبت شد، اما متن منبع به دلیل رد کیفیت درس حذف شد.", job_id))
+            # Never delete user-provided or retrieved source material because a
+            # heuristic score is low. It remains provenance-labelled and untrusted.
     except Exception as exc:
         with learning_connection() as conn:
             conn.execute("UPDATE learning_jobs SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'",
