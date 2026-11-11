@@ -24,10 +24,10 @@
 ### ورود پاسخ‌های گفتگو به صف candidateهای یادگیری
 
 - پاسخ assistant که از مسیر `chat_history.append_assistant_message` به تاریخچهٔ محلی اضافه می‌شود، به‌صورت best-effort به `learning_chat_candidates` در پایگاه یادگیری کپی می‌شود؛ این کار خارج از transaction تاریخچه انجام می‌شود تا شکست candidate staging ذخیرهٔ گفتگو را مختل نکند.
-- پاسخ باید حداقل ۸۰ نویسه داشته باشد و الگوهای آشکار credential مانند password، API key، secret یا access token باعث skip شدن آن می‌شوند. این فیلتر محدود است و تضمین شناسایی همهٔ داده‌های حساس نیست.
-- هر candidate با `conversation_id`، `message_id`، `user_message_id`، `task_id`، نوع chat/research، hash متن و provenance ذخیره می‌شود. `topic_hint` متن پرسش کاربر است و باید در مرحلهٔ بعد به موضوع آموزشی canonical نگاشت شود.
-- وضعیت اولیه همیشه `unverified` است. ثبت candidate به معنی صحت محتوا، منبع معتبر، یا مجوز ارتقای آن به دانش factual نیست. این مسیر محلی است و candidate را به‌طور خودکار به provider بیرونی ارسال نمی‌کند.
-- برای بازیابی candidateها از `app.learning_candidates.list_chat_candidates(status="unverified")` استفاده می‌شود. تبدیل candidate به درس/مسیر و فرایند بازبینی/ارتقای اعتماد، گردش‌کار جداگانه‌ای است و نباید با ingestion خودکار اشتباه گرفته شود.
+- هر پاسخ غیرخالی assistant، حتی پاسخ کوتاه، ناقص یا کم‌کیفیت، candidate می‌شود؛ طول پاسخ به‌صورت مصنوعی محدود یا در تاریخچهٔ چت کوتاه نمی‌شود. تبادل‌هایی که الگوی آشکار credential مانند password، API key، secret یا access token دارند برای جلوگیری از ذخیرهٔ secret کنار گذاشته می‌شوند. این فیلتر تضمین شناسایی همهٔ داده‌های حساس نیست.
+- هر candidate با `conversation_id`، `message_id`، `user_message_id`، `task_id`، نوع chat/research، hash متن و provenance ذخیره می‌شود. شناسه‌های خصوصی گفتگو به prompt مدل ارسال نمی‌شوند.
+- وضعیت اولیه همیشه `unverified` است. candidateهای مرتبط به‌عنوان مشاهدهٔ غیرقابل‌اعتماد در prompt ساخت syllabus و تولید درس استفاده می‌شوند تا سرفصل جاافتاده، سؤال عملی یا خطای احتمالی را آشکار کنند؛ ادعاهای آن‌ها باید با نسخه/منبع/آزمون مقایسه شوند و نباید به‌عنوان منبع خارجی citation بگیرند.
+- این ingestion خودکار به معنی ارتقای candidate به دانش factual یا تبدیل مستقیم همهٔ candidateها به taxonomy canonical نیست. برای بازیابی و ممیزی مستقل از `app.learning_candidates.list_chat_candidates(status="unverified")` استفاده می‌شود. دادهٔ محلی بدون انتخاب provider بیرونی ارسال نمی‌شود.
 
 
 ### پوشش کامل منابع و نسخه‌ها در دوره‌های پژوهشی
@@ -41,10 +41,12 @@
 - آرایه‌های versions، release_years، release_dates، source_urls و coverage_areas دیگر سقف عددی مستقل ندارند؛ سقف کل JSON هر پاسخ و اندازهٔ هر batch همچنان برای حفاظت از حافظه و context اعمال می‌شود.
 - هر topic باید source URLهای مستقیم خود را داشته باشد. یک فهرست منبع عمومی برای کل دوره به‌تنهایی ثابت نمی‌کند که آن منبع ادعای هر درس را پشتیبانی می‌کند.
 - تکمیل دوره تنها زمانی معتبر است که همهٔ batchهای منابع ذخیره‌شده دیده شده باشند و مدل batch بعدی سرفصل تازه یا gap جدیدی اضافه نکند. نسخه‌ها باید با chronology واقعی release مرتب شوند؛ ترتیب رشته‌ای نام نسخه کافی نیست.
+- migration 47 جدول `learning_path_coverage` را اضافه می‌کند تا subject map، release ledger، unresolved gaps و coverage audit مستقل از prompt checkpoint ذخیره شوند؛ API مسیر آموزشی این ledger را همراه پژوهش برمی‌گرداند.
+- پایش دوره‌ای نسخه‌ها برای هر مسیر پژوهش‌شده، release notes، تاریخچهٔ نسخه، patch/hotfix، security advisory، errata، تغییر مستندات، deprecation و EOL را جست‌وجو می‌کند. تغییر fingerprint یک task پژوهشی افزایشی می‌سازد؛ مسیر و درس‌های تاریخی قبلی حفظ می‌شوند. حداکثر سه مسیر due در هر چرخهٔ ۳۰ثانیه‌ای پردازش می‌شوند و باقی‌مانده در چرخه‌های بعدی ادامه می‌یابد.
 
 ### وضعیت‌های پیاده‌سازی و موارد باقی‌مانده
 
-- ذخیرهٔ پاسخ‌های chat به‌عنوان candidate محلی و `unverified` پیاده‌سازی شده است؛ candidate هنوز به‌صورت خودکار به taxonomy canonical و درس تبدیل نمی‌شود.
+- پاسخ‌های chat به‌عنوان candidate محلی و `unverified` ذخیره و به‌عنوان context غیرقابل‌اعتماد در promptهای syllabus و درس استفاده می‌شوند؛ تبدیل مستقیم candidate به دانش trusted یا canonical همچنان ممنوع است.
 - ارزیابی معنایی هنگام submit به‌صورت model-assisted و با fallback به rubric قطعی اجرا می‌شود؛ در صورت نبود مدل reviewer مستقل یا خطای آن، نمرهٔ قطعی حفظ می‌شود. این ارزیابی گواهی صحت علمی نیست.
 - اصلاح خودکار lesson باید revision جدید، predecessor، دلیل اصلاح، منابع و آزمون رگرسیون را نگه دارد. هیچ اصلاحی نباید تاریخچهٔ درس یا تلاش کاربر را overwrite کند.
 - تغییر provider/model از تنظیمات باید persistent یا temporary باشد، در provenance هر task ثبت شود و بعد از restart (برای تنظیم پایدار) اعمال شود. lane یادگیری به‌طور پیش‌فرض `gpt-oss:20b` است؛ عدم دسترسی به آن نباید باعث جایگزینی خاموش مدل شود.
