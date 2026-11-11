@@ -177,7 +177,9 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert 'Verify persistent Ollama context after autonomous Codex task' in autonomous
     assert 'steps.context_preflight.outcome == \'success\'' in diagnostic
     assert 'steps.context_preflight.outcome == \'success\'' in autonomous
-    assert 'fix/automation-codex-context-smoke-20261107' in diagnostic
+    assert "fix/codex-builtin-ollama-config-20261110" in diagnostic
+    assert "fix/autonomous-task-preservation" not in diagnostic
+    assert "fix/automation-codex-context-smoke-20261107" not in diagnostic
     assert 'CODEX_WINDOWS_SANDBOX_BACKEND: mxc' in diagnostic
     assert 'CODEX_MODEL_REASONING_EFFORT: low' in diagnostic
     assert "vars.AUTONOMOUS_ENGINEERING_MODEL" in diagnostic
