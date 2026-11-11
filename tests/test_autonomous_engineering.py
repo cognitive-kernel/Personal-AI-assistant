@@ -52,7 +52,7 @@ def test_status_is_not_ready_when_local_model_is_missing(monkeypatch):
 
 def test_app_readiness_does_not_require_codex_in_the_app_account(monkeypatch):
     monkeypatch.setattr(agent, "_ollama_status", lambda model: {
-        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 32768, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True
+        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 65536, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": False, "version": None})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
@@ -69,7 +69,7 @@ def test_app_readiness_does_not_require_codex_in_the_app_account(monkeypatch):
 
 def test_status_is_not_ready_when_shared_progress_storage_is_unavailable(monkeypatch):
     monkeypatch.setattr(agent, "_ollama_status", lambda model: {
-        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 32768, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True
+        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 65536, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
@@ -383,7 +383,7 @@ def test_save_settings_rolls_back_previous_repository_values_after_partial_failu
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
     monkeypatch.setattr(agent, "_ollama_status", lambda model: {
         "online": True, "model": model, "model_installed": True,
-        "model_metadata_available": True, "model_supports_tools": True,
+        "model_metadata_available": True, "model_context_supported": True, "model_supports_tools": True,
     })
 
     def fake_run(command, timeout=8):
@@ -440,7 +440,7 @@ def test_save_settings_rolls_back_a_write_that_failed_after_remote_acceptance(mo
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
     monkeypatch.setattr(agent, "_ollama_status", lambda model: {
         "online": True, "model": model, "model_installed": True,
-        "model_metadata_available": True, "model_supports_tools": True,
+        "model_metadata_available": True, "model_context_supported": True, "model_supports_tools": True,
     })
 
     def fake_run(command, timeout=8):
@@ -963,7 +963,7 @@ def test_live_progress_does_not_freeze_legacy_awaiting_review_state(monkeypatch)
 
 def test_status_distinguishes_prerequisite_readiness_from_paused_dispatch(monkeypatch):
     monkeypatch.setattr(agent, "_ollama_status", lambda model: {
-        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 32768, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True
+        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 65536, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
@@ -1157,7 +1157,7 @@ def test_ollama_status_keeps_server_online_when_selected_model_metadata_fails(mo
 def test_save_settings_rejects_model_without_explicit_tool_calling_support(monkeypatch):
     monkeypatch.setattr(agent, "_ollama_status", lambda model: {
         "online": True, "model_installed": True,
-        "model_metadata_available": True, "model_supports_tools": False,
+        "model_metadata_available": True, "model_context_supported": True, "model_supports_tools": False,
     })
     monkeypatch.setattr(agent.shutil, "which", lambda _: pytest.fail("GitHub settings must not be changed."))
 
