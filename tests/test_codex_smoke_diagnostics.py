@@ -243,6 +243,13 @@ def test_settings_expose_visible_installed_model_selectors_and_manual_context_in
     assert 'installedSelect?.addEventListener("change"' in html
 )" in script
     assert "Select the original Ollama model to prevent nested variants" in script
+    root = Path(__file__).resolve().parents[1]
+    provision = (root / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
+    app_check = (root / "scripts" / "check_autonomous_agent.ps1").read_text(encoding="utf-8")
+    runner_check = (root / "scripts" / "check_autonomous_runner.ps1").read_text(encoding="utf-8")
+    assert "internal Codex context variant" in provision
+    assert "Base model selection" in app_check
+    assert "Base model selection" in runner_check
     assert 'from = $baseModel' in script
     assert '$existingContext.Success' in script
 
