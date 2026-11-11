@@ -1,6 +1,6 @@
 # Engineering Continuity Log
 
-## 2026-11-11 — PR #708: readiness regression, browser model-selection coverage, and exact-head CI
+## 2026-11-11 — PR #708: end-to-end model context, local-only HTTP, and CI race hardening
 
 ### Evidence-based diagnosis
 
@@ -8,6 +8,8 @@
 - The production defect was real: `collect_status()` included `model_is_codex_context_variant` as a positive readiness condition. A valid base model correctly reports this negative/informational flag as false, so generic `all(checks.values())` incorrectly made readiness false. The separate `model_selectable` check already rejects generated context variants.
 - The original failing fixtures also omitted the saved model from the GitHub settings snapshot. They were corrected to represent the actual persisted-model contract; process environment values are not used as a substitute for a saved selection.
 - A Browser E2E attempt on `aa7737b0f710ffe956527420ccc879f67b6307fd` was cancelled at the 10-minute job timeout while apt mirrors repeatedly ignored font package downloads during `playwright install --with-deps`. This was a CI environment/install issue, not an application failure.
+- The dashboard's Python Ollama status client bypassed environment proxies but still inherited urllib's default redirect behavior. The PowerShell preflight, readiness, provisioning, and workflow calls also followed HTTP redirects by default, leaving a gap in the loopback-only boundary.
+- The diagnostic cleanup job treated every different commit SHA as stale. An older workflow could finish its cleanup after a newer push and cancel the newer CI run; the cancellation logic needed commit-ancestry proof, not SHA inequality.
 
 ### Corrective changes
 
@@ -16,14 +18,19 @@
 - Added a Browser E2E test for the actual autonomous-engineering model picker: no implicit selection, only original installed models appear in the selectable list, the generated context variant is hidden, and the exact selected model is posted and shown as saved.
 - Changed Browser E2E installation to `playwright install chromium` without apt dependency downloads and increased the job timeout to 15 minutes. The Browser E2E job then passed on checkpoint `785d87b2df149e7be1b362023b4a0ac8114d5bd6`.
 - Added push triggers for this dedicated PR branch to the test, browser, and dependency-audit workflows so exact-head CI can be initiated by branch commits as well as PR synchronization. The Windows diagnostic path filter now also includes the browser test and current status/log documents.
+- Added a no-redirect handler to the dashboard's local Ollama metadata client. Every local Ollama `Invoke-RestMethod` call in PowerShell scripts and workflows now uses `-MaximumRedirection 0`; GitHub API calls are unaffected.
+- Changed CI cleanup to call GitHub's commit comparison API and cancel only runs whose SHA is a strict ancestor of the current diagnostic SHA. Diverged, newer, identical, or unverifiable commits are left untouched.
+- Added a Windows integration step that pipes real JSON from PowerShell into `app/ollama_context.py` and asserts the exact expected safe context of 86,016 tokens. Added regression assertions for all PowerShell loopback calls and the ancestry guard.
+- Added a test that protects the new mandatory pre-implementation defect-closure clause in `docs/MASTER_ENGINEERING_PROMPT.md` from accidental removal.
 - No sandbox boundary, approval gate, model capability requirement, or test assertion was weakened.
 
 ### Validation and remaining gates
 
 - On checkpoint `aa7737b0f710ffe956527420ccc879f67b6307fd`: 1,981 passed / 50 deselected; Windows storage regressions and dependency audit passed. Browser E2E timed out only during apt package installation.
 - On checkpoint `785d87b2df149e7be1b362023b4a0ac8114d5bd6`: 1,981 passed / 50 deselected; Windows storage regressions, Browser E2E, and dependency audit all passed. Claim-to-test benchmark passed 10/10 and Markdown link validation passed for 93 files.
-- The explicit model-picker Browser E2E was added after that checkpoint. Its exact-head run is required before claiming the model-selection UI gate complete.
-- Windows Codex diagnostic remains queued for the self-hosted `Windows`, `X64`, `ollama` runner. The owner's workstation is powered off; live Ollama inventory, selected-model context calculation, persistent `num_ctx`, actual `/api/ps` allocation, Codex JSONL tool execution, and sandbox acceptance remain unverified.
+- On exact code checkpoint `a749aed35c789e79b2802c9a7a6f077d0d0c6a93`: **1,981 passed / 51 deselected** in 215.03s; Windows storage regressions, Dashboard Smoke, Browser E2E, dependency audit, Markdown links (93 files), generated learning artifacts, import-cycle checks, lexical retrieval, and claim-to-test coverage all passed. The Windows PowerShell-to-Python bridge returned exactly 86,016 tokens, and all six PowerShell scripts parsed successfully.
+- The no-redirect and CI ancestry-guard changes passed the full test suite; the exact-head run that previously cancelled newer commits now completed without cancelling its current CI run.
+- Codex Windows Sandbox Diagnostic #159 is queued for the self-hosted `Windows`, `X64`, `ollama` runner. The owner's workstation is powered off; live Ollama inventory, selected-model context calculation, persistent `num_ctx`, actual `/api/ps` allocation, Codex JSONL tool execution, and sandbox acceptance remain unverified.
 - PR #708 remains Draft and unmerged. No merge or target-host acceptance is claimed.
 
 ---

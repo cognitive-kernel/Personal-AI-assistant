@@ -1307,3 +1307,15 @@ def test_app_and_runner_readiness_scripts_require_model_context_and_tool_capabil
     assert all("-MaximumRedirection 0" in line for line in provisioning.splitlines() if "http://127.0.0.1:11434" in line and "Invoke-RestMethod" in line)
     assert "-lt 64000" in provisioning
     assert '"tools"' in provisioning
+
+def test_master_engineering_prompt_requires_known_defect_closure_before_code_changes():
+    from pathlib import Path
+
+    prompt = (
+        Path(__file__).resolve().parents[1] / "docs" / "MASTER_ENGINEERING_PROMPT.md"
+    ).read_text(encoding="utf-8")
+
+    assert "Before writing or changing any code" in prompt
+    assert "every user-reported requirement, prior diagnosis, known defect, failed test, warning, limitation, and unresolved acceptance criterion" in prompt
+    assert "do not proceed until the implementation and regression/integration tests prove the complete end-to-end contract" in prompt
+    assert "stop and state exactly what prevents verification instead of guessing or claiming completion" in prompt
