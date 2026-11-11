@@ -1247,7 +1247,10 @@ def handle_curriculum_task(
         except learning.LearningError as exc:
             raise PermanentTaskError(str(exc)) from exc
         except (TypeError, ValueError) as exc:
-            raise PermanentTaskError("The curriculum batch failed strict validation.") from exc
+            detail = str(exc).strip().replace("\\n", " ")[:500]
+            raise PermanentTaskError(
+                f"The curriculum batch failed strict validation ({type(exc).__name__}): {detail}"
+            ) from exc
         if selection.get("selected_model") != model:
             raise PermanentTaskError("The curriculum model provenance does not match the model used.")
         if not state.get("model_selection") and batch_index == 0:
