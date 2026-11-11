@@ -785,6 +785,11 @@ def _generate_outline(
             "Return JSON only with title, topics, notes, coverage_areas, subject_map, release_ledger, unresolved_gaps, coverage_audit, topic_metadata, has_more, next_focus.",
         ],
     }
+    if not prior_observations.get("items"):
+        # Empty optional context should not consume prompt budget or change the
+        # established curriculum request contract.
+        request.pop("prior_assistant_observations", None)
+        request.pop("prior_assistant_observations_policy", None)
     prompt = json.dumps(request, ensure_ascii=False, separators=(",", ":"))
     if len(prompt) > MAX_PROMPT_CHARS:
         raise ValueError("Research material exceeds the safe curriculum prompt limit.")
