@@ -187,6 +187,11 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert 'run-name: "Codex Windows Sandbox Diagnostic #' in diagnostic
     cleanup_job = diagnostic.split("  sandbox-diagnostic:", 1)[0]
     assert '$branch = [uri]::EscapeDataString($env:GITHUB_REF_NAME)' in cleanup_job
+    assert '/compare/$($run.head_sha)...$env:GITHUB_SHA' in cleanup_job
+    assert '$comparison.status -ne "ahead"' in cleanup_job
+    assert '$comparison.behind_by -ne 0' in cleanup_job
+    assert '$comparison.ahead_by -le 0' in cleanup_job
+    assert 'leaving it untouched' in cleanup_job
     sandbox_job = diagnostic.split("  sandbox-diagnostic:", 1)[1]
     assert "timeout-minutes: 30" in sandbox_job
     assert "timeout-minutes: 25" in sandbox_job
