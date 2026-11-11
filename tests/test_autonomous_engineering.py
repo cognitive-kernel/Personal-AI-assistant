@@ -323,7 +323,8 @@ def test_ollama_status_hides_generated_codex_context_variants_and_rejects_saved_
     assert result["model_installed"] is True
     assert result["model_selectable"] is False
     assert result["model_is_codex_context_variant"] is True
-    assert result["models"] == ["base-model:14b"]
+    assert result["models"] == ["base-model:14b", "base-model:14b-codex-ctx65536"]
+    assert result["selectable_models"] == ["base-model:14b"]
     assert "original Ollama model" in result["model_metadata_error"]
 
 
