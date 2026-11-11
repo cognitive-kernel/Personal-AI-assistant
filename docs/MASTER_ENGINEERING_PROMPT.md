@@ -274,7 +274,7 @@ Never substitute documentation modification time for product release date. Never
 
 ### Engineering execution for learning
 - Add regression tests for subject-agnostic curricula, chronological version ordering, date provenance, complete evidence delivery across bounded batches, non-destructive correction, semantic assessment tolerance, release-watch deduplication, and provider migration.
-- Do not stop development merely because target-host or human acceptance tests are unavailable. Continue independent implementation, static analysis, CI, mocks, and reproducible tests. Keep explicit merge gates intact: never claim unavailable tests passed and never merge to `main` before exact-head CI and required target-host tests actually pass.
+- Do not stop development merely because target-host or human acceptance tests are unavailable. Continue independent implementation, static analysis, CI, mocks, and reproducible tests. Keep exact-head automated CI and repository-enforced approvals as merge gates. Do not wait for unavailable owner-local, target-host, physical-device, or human acceptance tests when they are not explicitly required by branch protection; record them as NOT RUN / PENDING and continue.
 - The prompt edit alone does not complete this requirement. Code, migrations, documentation, tests, and operational evidence must agree.
 
 ## 6. Testing and quality gates
