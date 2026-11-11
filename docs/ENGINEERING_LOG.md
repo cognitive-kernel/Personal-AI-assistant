@@ -483,3 +483,5 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Regression found during follow-up call-site audit: the release-watch collector still referenced the removed aggregate source-cap constant. Removed those stale cap checks too; otherwise the first valid release-watch result would raise NameError. Existing release-watch baseline/change/deduplication tests exercise this path. Exact-head CI is the next verification step.
 
 - Second checkpoint audit found another stale source-cap reference in `_valid_checkpoint`, which would have failed when resuming any checkpoint containing source records. Removed the slice and added a regression that recovers 45 source records with query provenance intact. This preserves the entire accumulated source inventory across restart/resume.
+
+- Prompt audit also removed an authoritative-only condition from version-change coverage. Relevant unofficial reports are now collected and attributed alongside official material; unsupported or conflicting claims stay unverified rather than being omitted or promoted. Added a regression preventing the authoritative-only wording from returning.
