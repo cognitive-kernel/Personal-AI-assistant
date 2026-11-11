@@ -80,7 +80,7 @@ def test_accepted_lesson_is_staged_as_unverified_candidate(learning_store, monke
     assert knowledge["status"] == "unverified"
 
 
-def test_rejected_lesson_is_not_staged_as_candidate(learning_store, monkeypatch):
+def test_low_quality_lesson_is_retained_but_not_staged_as_candidate(learning_store, monkeypatch):
     _configure_model(monkeypatch, accepted=False)
     job = learning.create_job("Rejected candidate staging", source_text="User-provided reference text.")
 
@@ -93,5 +93,20 @@ def test_rejected_lesson_is_not_staged_as_candidate(learning_store, monkeypatch)
             (job["id"],),
         ).fetchone()[0]
 
-    assert saved["status"] == "rejected"
+    assert saved["status"] == "completed"
+    assert saved["lesson"] is not None
+    assert saved["quality"]["accepted"] is False
+    assert saved["quality"]["lesson_retained"] is True
     assert candidates == 0
+    with db.learning_connection() as conn:
+        knowledge = conn.execute(
+            "SELECT status, content FROM knowledge_items WHERE job_id=?",
+            (job["id"],),
+        ).fetchone()
+        source = conn.execute(
+            "SELECT content FROM learning_source_text WHERE job_id=?",
+            (job["id"],),
+        ).fetchone()
+    assert knowledge is not None and knowledge["status"] == "unverified"
+    assert knowledge["content"] == saved["lesson"]
+    assert source is not None and source["content"] == "User-provided reference text."
