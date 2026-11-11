@@ -260,3 +260,24 @@ def test_runtime_diagnostics_does_not_contact_ollama_for_compatible_provider(mon
     assert result["runtime_limits"]["num_ctx"] == 32768
     assert result["selected_model"]["name"] == "remote-model"
     assert result["selected_model"]["memory_estimate"] is None
+
+
+def test_research_planning_uses_its_own_provider_and_model_profile(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        ollama, "get_settings",
+        lambda: {
+            "research_plan_llm_provider": "openai_compatible",
+            "research_plan_ollama_model": "research-local-model",
+            "research_plan_ollama_timeout_seconds": 60,
+        },
+    )
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {})
+    monkeypatch.setattr(
+        ollama, "_openai_compatible_chat",
+        lambda *args, **kwargs: captured.update(kwargs) or "plan",
+    )
+
+    assert ollama.chat("plan research", purpose="research_plan") == "plan"
+    assert captured["purpose"] == "research_plan"
+    assert captured["model"] == "research-local-model"
