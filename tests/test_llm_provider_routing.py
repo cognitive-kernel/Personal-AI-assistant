@@ -281,3 +281,29 @@ def test_research_planning_uses_its_own_provider_and_model_profile(monkeypatch):
     assert ollama.chat("plan research", purpose="research_plan") == "plan"
     assert captured["purpose"] == "research_plan"
     assert captured["model"] == "research-local-model"
+
+
+def test_compatible_learning_provider_does_not_truncate_long_source_context(monkeypatch):
+    captured = {}
+    long_prompt = "S" * 20000
+    monkeypatch.setattr(
+        ollama, "get_settings",
+        lambda: {
+            "learning_llm_base_url": "https://llm.example.test/v1",
+            "learning_llm_api_key_env": "",
+        },
+    )
+    monkeypatch.setattr(
+        ollama.urllib.request, "build_opener",
+        lambda *_args, **_kwargs: _FakeOpener(
+            {"choices": [{"message": {"content": "retained"}}]}, captured
+        ),
+    )
+
+    result = ollama._openai_compatible_chat(
+        long_prompt, None, None, purpose="learning", model="large-context-model",
+        timeout=90, num_predict=1000,
+    )
+
+    assert result == "retained"
+    assert captured["payload"]["messages"][-1]["content"] == long_prompt
