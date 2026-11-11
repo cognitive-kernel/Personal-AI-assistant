@@ -464,6 +464,10 @@ def _persist_researched_path(
                 applicability = dict(applicability)
                 applicability["status"] = "unverified"
                 applicability["notes"] = (str(applicability.get("notes", "")) + " Unsupported source references were discarded.").strip()
+            elif not source_urls and applicability.get("status") in {"documented", "partially_documented"}:
+                applicability = dict(applicability)
+                applicability["status"] = "unverified"
+                applicability["notes"] = (str(applicability.get("notes", "")) + " No exact source URL was attached.").strip()
             hierarchy_path = str(metadata.get("hierarchy_path") or lesson_topic)[:500]
             depth = metadata.get("depth", 0)
             if isinstance(depth, bool) or not isinstance(depth, int) or not 0 <= depth <= 32:
