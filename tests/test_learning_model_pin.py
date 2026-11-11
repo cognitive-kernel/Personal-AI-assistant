@@ -78,7 +78,7 @@ def test_learning_model_selection_fails_closed_instead_of_substituting_another_m
         },
     }
 
-    with pytest.raises(learning.LearningError, match="No installed learning model"):
+    with pytest.raises(learning.LearningError, match="not installed in Ollama"):
         learning._select_learning_generation_model(
             settings, "lesson prompt", "gpt-oss:20b"
         )
@@ -127,11 +127,15 @@ def test_startup_respects_explicit_learning_model_override(monkeypatch):
     monkeypatch.setattr(bootstrap, "_find_ollama", lambda: "ollama")
     monkeypatch.delenv("OLLAMA_MODEL", raising=False)
     monkeypatch.setenv("LEARNING_OLLAMA_MODEL", "custom-learning:latest")
+    list_outputs = iter([
+        "NAME ID SIZE\nqwen2.5:7b abc 4GB\n",
+        "NAME ID SIZE\nqwen2.5:7b abc 4GB\ncustom-learning:latest def 14GB\n",
+    ])
     monkeypatch.setattr(
         bootstrap.subprocess,
         "run",
         lambda command, **kwargs: subprocess.CompletedProcess(
-            command, 0, "NAME ID SIZE\nqwen2.5:7b abc 4GB\n", ""
+            command, 0, next(list_outputs), ""
         ),
     )
     pull_commands = []
