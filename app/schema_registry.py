@@ -1431,6 +1431,20 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_learning_research_source_text_path ON learning_research_source_text(path_id, source_url)",
         ),
     ),
+    Migration(
+        47,
+        "durable-subject-map-and-release-coverage-ledger",
+        (
+            """CREATE TABLE learning_path_coverage (
+                path_id INTEGER PRIMARY KEY REFERENCES learning_path_research(path_id) ON DELETE CASCADE,
+                subject_map_json TEXT NOT NULL DEFAULT '[]',
+                release_ledger_json TEXT NOT NULL DEFAULT '[]',
+                unresolved_gaps_json TEXT NOT NULL DEFAULT '[]',
+                coverage_audit_json TEXT NOT NULL DEFAULT '{}',
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+        ),
+    ),
 )
 
 
