@@ -408,7 +408,7 @@ def _openai_compatible_chat(
         api_key = os.environ.get(api_key_env)
         if not api_key:
             raise OllamaError(f"The configured API-key environment variable '{api_key_env}' is not set.")
-        if len(api_key) > 4096 or "\\r" in api_key or "\\n" in api_key:
+        if len(api_key) > 4096 or any(ord(character) < 32 for character in api_key):
             raise OllamaError("The configured API key contains invalid header characters or exceeds 4096 characters.")
         headers["Authorization"] = f"Bearer {api_key}"
     messages = []
@@ -588,7 +588,7 @@ def _openai_compatible_embeddings(
         api_key = os.environ.get(api_key_env)
         if not api_key:
             raise OllamaError(f"The configured embedding API-key environment variable '{api_key_env}' is not set.")
-        if len(api_key) > 4096 or "\\r" in api_key or "\\n" in api_key:
+        if len(api_key) > 4096 or any(ord(character) < 32 for character in api_key):
             raise OllamaError("The embedding API key contains invalid header characters or exceeds 4096 characters.")
         headers["Authorization"] = f"Bearer {api_key}"
     request = urllib.request.Request(
