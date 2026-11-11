@@ -767,7 +767,10 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         provider_key = f"{purpose}_llm_provider"
         base_url_key = f"{purpose}_llm_base_url"
         api_key_env_key = f"{purpose}_llm_api_key_env"
-        if provider_key in values and values[provider_key] not in {"ollama", "openai_compatible"}:
+        if provider_key in values and (
+            not isinstance(values[provider_key], str)
+            or values[provider_key] not in {"ollama", "openai_compatible"}
+        ):
             raise HTTPException(status_code=422, detail=f"{provider_key} must be ollama or openai_compatible.")
         effective_provider = values.get(provider_key, db.get_settings().get(provider_key, "ollama"))
         if base_url_key in values or (provider_key in values and effective_provider == "openai_compatible"):
