@@ -72,6 +72,14 @@ def _run(command: list[str], timeout: int = 8) -> subprocess.CompletedProcess[st
         return None
 
 
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Keep local Ollama status checks on the loopback endpoint."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def _ollama_status(model: str) -> dict[str, Any]:
     empty = {
         "online": False,
@@ -90,7 +98,10 @@ def _ollama_status(model: str) -> dict[str, Any]:
         "model_metadata_error": "Ollama metadata is unavailable.",
     }
     # Local Ollama metadata must never be sent through an environment proxy.
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        _NoRedirectHandler(),
+    )
     request = urllib.request.Request(
         "http://127.0.0.1:11434/api/tags",
         headers={"Accept": "application/json"},
