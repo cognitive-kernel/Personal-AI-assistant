@@ -23,14 +23,14 @@ The repository's target machine is documented as:
 - Intel Core i5-12400 (12th Gen)
 - Intel integrated graphics with 128 MB reported graphics memory
 
-The initial fallback model is `gpt-oss:20b`; the operator can select another installed model from the dashboard. The selected model must advertise the Ollama `tools` capability and expose an architecture-specific `context_length` in `/api/show`; otherwise readiness and saving the selection fail closed. This machine runs inference primarily on CPU, so coding sessions may be slow. Ollama's Codex integration recommends a context window of at least 64k tokens, but the workflow never invents or forces that value when the selected model or host cannot support it.
+There is no default or fallback model. The operator must explicitly select an installed model in the dashboard and save it before the autonomous workflow can run. The selected model must advertise the Ollama `tools` capability and expose an architecture-specific `context_length` in `/api/show`; otherwise readiness and saving the selection fail closed. This machine runs inference primarily on CPU, so coding sessions may be slow. Ollama's Codex integration recommends a context window of at least 64k tokens, but the workflow never invents or forces that value when the selected model or host cannot support it.
 
-The autonomous-engineering page discovers the complete installed-model list from the local Ollama `/api/tags` endpoint; it does not inject a fake default into that list. The selected model is stored as the repository Actions variable `AUTONOMOUS_ENGINEERING_MODEL`. Saving is allowed only when that exact model is installed, its `/api/show` metadata exposes a valid architecture-specific context limit, and its `capabilities` include `tools`. The runner repeats these checks before creating a Codex model variant. If another model is selected, pull it on the Windows host first (for example, `ollama pull qwen3:14b`). The initial fallback remains `gpt-oss:20b`, but it is never silently substituted for an unavailable or unsupported saved model. The page also accepts an optional direct engineering task (maximum 2,000 characters) and forwards it as a `workflow_dispatch` input. For a non-empty manual dispatch targeting `main`, a dedicated Windows job checks out trusted `main` without persisting Git credentials and writes the task to `%ProgramData%\PersonalAIAssistant\autonomous-engineering\pending-manual-task.txt` before the schedule gate runs. The job rejects a different already-pending task or an open controller-authored PR; the task remains durable through pause, skipped scheduling, and recovery, and is cleared only after the controller confirms the PR was merged. Codex receives it later as untrusted task data; it cannot override the governing engineering/security prompt. The task text is part of GitHub's workflow-dispatch event metadata, so never include passwords, API keys, tokens, private user data, or other secrets.
+The autonomous-engineering page discovers the complete installed-model list from the local Ollama `/api/tags` endpoint; it does not inject a fake default into that list. The selected model is stored as the repository Actions variable `AUTONOMOUS_ENGINEERING_MODEL`. Saving is allowed only when that exact model is installed, its `/api/show` metadata exposes a valid architecture-specific context limit, and its `capabilities` include `tools`. The runner repeats these checks before creating a Codex model variant. If another model is selected, pull it on the Windows host first (for example, `ollama pull qwen3:14b`). If no model has been explicitly saved, readiness remains blocked and the workflow refuses to start; no model is selected or substituted automatically. The page also accepts an optional direct engineering task (maximum 2,000 characters) and forwards it as a `workflow_dispatch` input. For a non-empty manual dispatch targeting `main`, a dedicated Windows job checks out trusted `main` without persisting Git credentials and writes the task to `%ProgramData%\PersonalAIAssistant\autonomous-engineering\pending-manual-task.txt` before the schedule gate runs. The job rejects a different already-pending task or an open controller-authored PR; the task remains durable through pause, skipped scheduling, and recovery, and is cleared only after the controller confirms the PR was merged. Codex receives it later as untrusted task data; it cannot override the governing engineering/security prompt. The task text is part of GitHub's workflow-dispatch event metadata, so never include passwords, API keys, tokens, private user data, or other secrets.
 
 ## One-time Windows setup
 
 1. Install Ollama for Windows and keep its server available at `http://127.0.0.1:11434`. If it normally runs only in an interactive tray session, configure a persistent service/startup method before relying on unattended runs.
-2. Download the model selected in the dashboard (or keep the initial fallback model):
+2. Install the model you intend to use before selecting it in the dashboard:
 
    ```powershell
    ollama pull <selected-model>
@@ -56,7 +56,7 @@ The autonomous-engineering page discovers the complete installed-model list from
      -AppAccount "app-user"
    ```
 
-   Replace the two local account names with the existing Windows account used by the app and the desired dedicated Runner account. The script creates the Runner account as a standard user, verifies the selected Ollama model, obtains a short-lived registration token through the authenticated GitHub CLI, downloads the official latest Windows x64 Runner, verifies GitHub’s published SHA-256 digest, configures the Runner service under the dedicated account, and applies least-privilege ACLs to the Runner and `%ProgramData%\\PersonalAIAssistant\\autonomous-engineering` directories. The official Runner configuration tool prompts for the service-account password; the password is not passed as a process argument. The registration token is not written to a file or printed.
+   Replace the two local account names with the existing Windows account used by the app and the desired dedicated Runner account. When `-Model` is omitted, the script reads the saved `AUTONOMOUS_ENGINEERING_MODEL` repository variable and verifies that exact model's installation, architecture-specific context metadata, and `tools` capability. The script creates the Runner account as a standard user, obtains a short-lived registration token through the authenticated GitHub CLI, downloads the official latest Windows x64 Runner, verifies GitHub’s published SHA-256 digest, configures the Runner service under the dedicated account, and applies least-privilege ACLs to the Runner and `%ProgramData%\\PersonalAIAssistant\\autonomous-engineering` directories. The official Runner configuration tool prompts for the service-account password; the password is not passed as a process argument. The registration token is not written to a file or printed.
 
    The script requires an elevated shell and repository **Administration: write** permission. It refuses to overwrite an existing configured Runner or a non-empty unconfigured Runner directory. If a Runner is already configured, it verifies the service identity and starts it without re-registering.
 
@@ -67,14 +67,14 @@ The autonomous-engineering page discovers the complete installed-model list from
    powershell -ExecutionPolicy Bypass -File .\\scripts\\check_autonomous_agent.ps1
    ```
 
-   This checks the local Ollama endpoint/model, application-account GitHub CLI authentication, Runner.Listener visibility, and read access to shared progress storage. Pass the exact model selected in the dashboard via `-SelectedModel` if it is not `gpt-oss:20b`. It intentionally does not require Codex CLI to be installed in the application account.
+   This checks the local Ollama endpoint/model, application-account GitHub CLI authentication, Runner.Listener visibility, and read access to shared progress storage. Pass the exact saved model via `-SelectedModel <saved-model>`. It intentionally does not require Codex CLI to be installed in the application account.
 8. From the Runner service account, run the Runner-side check from its checked-out workspace:
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\\scripts\\check_autonomous_runner.ps1
    ```
 
-   This checks that the Runner account is non-administrator, plus Codex CLI, Ollama CLI/server/model, Runner.Listener, and write access to shared progress storage. Pass the exact dashboard-selected model via `-SelectedModel` if it is not `gpt-oss:20b`. It does not require or use GitHub CLI authentication. The workflow repeats the critical Runner checks before every Codex session.
+   This checks that the Runner account is non-administrator, plus Codex CLI, Ollama CLI/server/model, Runner.Listener, and write access to shared progress storage. Pass the exact saved model via `-SelectedModel <saved-model>`. It does not require or use GitHub CLI authentication. The workflow repeats the critical Runner checks before every Codex session.
 9. Start the local app and open `http://127.0.0.1:8000/autonomous-engineering`. When application-side readiness passes, use **شروع صف پیوسته** or start the workflow from GitHub Actions. The workflow performs its own Runner-side checks and fails closed if the Runner account is not configured correctly.
 
 ## Workflow behavior
@@ -124,7 +124,7 @@ The AI-learning page and autonomous-engineering page both include the primary na
 ## Troubleshooting
 
 - **Ollama offline:** start Ollama and verify `Invoke-RestMethod http://127.0.0.1:11434/api/tags`.
-- **Model missing:** run `ollama pull gpt-oss:20b` (or the configured model).
+- **Model missing:** run `ollama pull <saved-model>`, then select and save that exact model in the dashboard.
 - **Codex missing:** install with `npm install -g @openai/codex`, then restart the runner service so its PATH is refreshed.
 - **Runner missing:** inspect the runner service in Windows Services and confirm the custom `ollama` label.
 - **Workflow queued:** confirm the runner is online and has all required labels.
