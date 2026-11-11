@@ -1,5 +1,33 @@
 # Engineering Continuity Log
 
+## 2026-11-11 — PR #708: readiness regression, browser model-selection coverage, and exact-head CI
+
+### Evidence-based diagnosis
+
+- Exact-head tests on `b4f878071ede4b52a53a0044cb6a19ceba781eec` reported 1,978 passed and 3 failed. The failures were readiness assertions, not model metadata or Codex execution.
+- The production defect was real: `collect_status()` included `model_is_codex_context_variant` as a positive readiness condition. A valid base model correctly reports this negative/informational flag as false, so generic `all(checks.values())` incorrectly made readiness false. The separate `model_selectable` check already rejects generated context variants.
+- The original failing fixtures also omitted the saved model from the GitHub settings snapshot. They were corrected to represent the actual persisted-model contract; process environment values are not used as a substitute for a saved selection.
+- A Browser E2E attempt on `aa7737b0f710ffe956527420ccc879f67b6307fd` was cancelled at the 10-minute job timeout while apt mirrors repeatedly ignored font package downloads during `playwright install --with-deps`. This was a CI environment/install issue, not an application failure.
+
+### Corrective changes
+
+- Fixed readiness aggregation so the informational negative flag no longer invalidates a valid base model, while the positive `model_selectable` gate continues to reject internal context variants.
+- Updated readiness fixtures to include the explicitly saved model from repository settings and added an assertion that the valid base model's context-variant flag remains false.
+- Added a Browser E2E test for the actual autonomous-engineering model picker: no implicit selection, only original installed models appear in the selectable list, the generated context variant is hidden, and the exact selected model is posted and shown as saved.
+- Changed Browser E2E installation to `playwright install chromium` without apt dependency downloads and increased the job timeout to 15 minutes. The Browser E2E job then passed on checkpoint `785d87b2df149e7be1b362023b4a0ac8114d5bd6`.
+- Added push triggers for this dedicated PR branch to the test, browser, and dependency-audit workflows so exact-head CI can be initiated by branch commits as well as PR synchronization. The Windows diagnostic path filter now also includes the browser test and current status/log documents.
+- No sandbox boundary, approval gate, model capability requirement, or test assertion was weakened.
+
+### Validation and remaining gates
+
+- On checkpoint `aa7737b0f710ffe956527420ccc879f67b6307fd`: 1,981 passed / 50 deselected; Windows storage regressions and dependency audit passed. Browser E2E timed out only during apt package installation.
+- On checkpoint `785d87b2df149e7be1b362023b4a0ac8114d5bd6`: 1,981 passed / 50 deselected; Windows storage regressions, Browser E2E, and dependency audit all passed. Claim-to-test benchmark passed 10/10 and Markdown link validation passed for 93 files.
+- The explicit model-picker Browser E2E was added after that checkpoint. Its exact-head run is required before claiming the model-selection UI gate complete.
+- Windows Codex diagnostic remains queued for the self-hosted `Windows`, `X64`, `ollama` runner. The owner's workstation is powered off; live Ollama inventory, selected-model context calculation, persistent `num_ctx`, actual `/api/ps` allocation, Codex JSONL tool execution, and sandbox acceptance remain unverified.
+- PR #708 remains Draft and unmerged. No merge or target-host acceptance is claimed.
+
+---
+
 ## 2026-11-10 — PR #708: Codex startup, installed-model discovery, and fail-closed context selection
 
 ### Evidence-based diagnosis
