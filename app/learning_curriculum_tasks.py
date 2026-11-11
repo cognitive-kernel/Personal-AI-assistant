@@ -1255,7 +1255,7 @@ def handle_curriculum_task(
         except learning.LearningError as exc:
             raise PermanentTaskError(str(exc)) from exc
         except (TypeError, ValueError) as exc:
-            detail = str(exc).strip().replace("\\n", " ")[:500]
+            detail = str(exc).strip().replace("\n", " ")[:500]
             raise PermanentTaskError(
                 f"The curriculum batch failed strict validation ({type(exc).__name__}): {detail}"
             ) from exc
