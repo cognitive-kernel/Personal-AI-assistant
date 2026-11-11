@@ -320,6 +320,8 @@ def _parse_outline(response: str, batch_size: int) -> dict[str, Any]:
             "coverage_areas": list(dict.fromkeys(item.strip() for item in coverage)),
             "topic_metadata": topic_metadata,
             "has_more": has_more, "next_focus": next_focus.strip()}
+
+
 def _generate_outline(
     topic: str, batch_size: int, source_text: str, sources: list[dict[str, str]], model: str,
     *, batch_index: int = 0, previous_topics: list[str] | None = None,
