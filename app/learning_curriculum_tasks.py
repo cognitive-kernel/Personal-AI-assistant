@@ -16,8 +16,9 @@ from .db import get_settings, learning_connection
 from .task_worker import PermanentTaskError, RetryableTaskError, TaskContext
 
 CURRICULUM_TASK_TYPE = "learning.plan_curriculum"
-MIN_TOPICS = 8
-MAX_TOPICS = 40
+MIN_TOPICS_PER_BATCH = 8
+DEFAULT_TOPICS_PER_BATCH = 24
+MAX_TOPICS_PER_BATCH = 40
 MAX_SOURCE_DOCUMENTS = 8
 MAX_PROMPT_SOURCE_EXCERPTS = 4
 MAX_SOURCES_PER_DOMAIN = 3
