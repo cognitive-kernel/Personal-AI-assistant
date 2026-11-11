@@ -494,3 +494,5 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Added `_validate_chronological_topics` and invoke it after all batches have been merged and before persistence/lesson queueing. Added regression coverage for individually valid but globally out-of-order batches.
 - Commits: prompt `fcece2b2a7aa81a215d32e1b79ccdf7959605d2e`; implementation `28e1917e924962086dc143a4deb58b76312933b3`; regression `377fe87b76a31e61eee03ecb95453f65f3e2bab9`.
 - Validation: exact-head CI for the latest implementation commit has not yet returned; no local target-host or GPT-OSS 20B runtime validation is claimed.
+
+- Added `tests/test_master_engineering_prompt_contract.py` to guard the new subject-agnostic learning contract against accidental removal. The assertion wording was checked against the actual prompt text after the first draft exposed a mismatch; the final test now checks the exact phrase used by the prompt.
