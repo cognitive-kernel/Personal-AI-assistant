@@ -37,7 +37,7 @@
 ## وضعیت فعلی یادگیری و ادامهٔ تکمیل — پس از PR #710
 
 - PR #710 در 2026-11-11 با squash در `main` ادغام شد؛ merge commit: `9e198a0640593bcc3892f3a97aa8956ba522653c`. CI دقیق head پیش از ادغام: tests **2028 passed / 50 deselected**، Windows storage **11 passed / 47 deselected**، browser E2E و dependency audit موفق. این نتیجه فقط همان commit و دامنهٔ همان workflowها را پوشش می‌دهد.
-- کار تکمیلی بعدی در شاخهٔ `feature/universal-learning-contract-v2` از همان merge commit آغاز شده و هنوز ادغام نشده است.
+- PR [#711](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/711) در 2026-11-11 با squash در `main` ادغام شد؛ merge commit: `02006e2b82f800c07b50ad5e849093ad07786f60`. شاخهٔ `feature/universal-learning-contract-v2` اکنون تکمیل و ادغام شده است.
 - پرامپت Master Engineering تکمیل شده است تا موضوع کاربر به‌تنهایی محدودهٔ syllabus باشد؛ مثال‌های کاربر حق محدودکردن سرفصل‌ها را ندارند. برای هر موضوع، نقشهٔ جامع، مدل chronology واقعی، release ledger، ثبت تاریخ انتشار/سال/نسخه، ردیابی منبع در سطح ادعا/درس، و پایش patch/hotfix/security/errata/deprecation/EOL الزام شده است.
 - سیاست ادغام prompt اصلاح شده: تست‌های خودکار قابل اجرا روی exact SHA gate هستند؛ تست‌های local/target-host/human که در دسترس نیستند باید PENDING/NOT RUN بمانند و مانع ادامهٔ کار یا ادغام خودکار نشوند، مگر آنکه branch protection یا بررسی امنیتی مستقل صراحتاً آن‌ها را gate کرده باشد. هیچ تست انجام‌نشده‌ای موفق گزارش نمی‌شود.
 - در `app/learning_curriculum_tasks.py` شواهد منابع به صورت round-robin در batchهای 8تایی به مدل ارائه می‌شوند. اگر مدل زودتر `has_more=false` بدهد، task تا بررسی تمام منابع ذخیره‌شده ادامه پیدا می‌کند؛ batch آخر می‌تواند بدون افزودن عنوان تکراری، پایان بررسی شواهد را ثبت کند.
@@ -50,7 +50,7 @@
 - اصلاح خودکار گزارش خرابی درس با ایجاد job و revision جدید انجام می‌شود؛ درس قبلی، گزارش کاربر و provenance حفظ می‌شوند. کیفیت پایین یا ارزیابی ناقص باعث حذف محتوا نمی‌شود و بازبینی معنایی مستقل از مدل تولید در صورت پیکربندی قابل اجراست.
 - پایش نسخه‌ها در runtime یادگیری هر ۳۰ ثانیه اجرا می‌شود؛ حداکثر سه مسیر due در هر چرخه پردازش می‌شوند و باقی‌مانده با زمان‌بندی پایدار در چرخه‌های بعدی ادامه می‌یابد. تغییر release fingerprint یک پژوهش افزایشی جدید ایجاد می‌کند و مسیر قدیمی حفظ می‌شود.
 - تنظیمات دائمی و موقت provider/model برای laneهای موجود از API و رابط تنظیمات پشتیبانی می‌شود؛ Ollama و endpointهای محلی/راه‌دور OpenAI-compatible قابل انتخاب‌اند. مدل پیش‌فرض learning برابر `gpt-oss:20b` است؛ اجرای واقعی آن روی محیط میزبان مقصد هنوز انجام‌شده ادعا نمی‌شود.
-- آخرین اعتبارسنجی کد روی SHA دقیق `bfed52da40df8c107edd0c7f9a6eaff9d8dacc89`: tests **2045 passed / 50 deselected**، Windows storage **11 passed / 47 deselected**، Browser E2E موفق، dependency audit موفق. این نتایج فقط همین SHA را پوشش می‌دهند؛ commit مستندات جاری پس از آن ایجاد شده و CI دقیق head جدید باید دوباره سبز شود.
+- آخرین اعتبارسنجی exact-head پیش از ادغام روی SHA `cd0f7242d44b51b2b5b76c29e4f1abd39409bee0`: tests **2045 passed / 50 deselected**، Windows storage **11 passed / 47 deselected**، Browser E2E موفق و dependency audit موفق. همین SHA با squash در merge commit بالا وارد `main` شد. وجود فایل‌های کلیدی و migration 47 روی `main` پس از ادغام نیز بررسی شد.
 - اجرای واقعی میزبان مقصد، تست انسانی و اجرای زندهٔ `gpt-oss:20b` هنوز انجام‌شده ادعا نمی‌شوند و طبق دستور کاربر merge gate نیستند؛ هر نتیجهٔ آن‌ها در گزارش به‌صورت جداگانه ثبت می‌شود.
 
 
