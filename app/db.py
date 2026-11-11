@@ -84,7 +84,11 @@ def init_databases() -> None:
             # Move only the former built-in learning default. Preserve any custom
             # model choice and honor an explicit environment override.
             learning_model_override = os.getenv("LEARNING_OLLAMA_MODEL")
-            if isinstance(learning_model_override, str) and learning_model_override.strip():
+            if (
+                "learning_ollama_model" not in existing_settings
+                and isinstance(learning_model_override, str)
+                and learning_model_override.strip()
+            ):
                 conn.execute(
                     "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
                     (json.dumps(learning_model_override.strip()), "learning_ollama_model"),
