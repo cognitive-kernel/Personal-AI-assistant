@@ -1518,8 +1518,25 @@ def submit_assessment(
             )
         ):
             deterministic_score = score
+            semantic_per_question = result_details.get("per_question")
+            if isinstance(semantic_per_question, list):
+                semantic_per_question = [
+                    {
+                        **item,
+                        "score": 100.0,
+                        "matched_criteria": item.get("criterion_count", item.get("matched_criteria", 0)),
+                        "criteria": [
+                            {**criterion, "matched": True}
+                            for criterion in item.get("criteria", [])
+                            if isinstance(criterion, dict)
+                        ],
+                    }
+                    for item in semantic_per_question
+                    if isinstance(item, dict)
+                ]
             semantic_details = {
                 **result_details,
+                **({"per_question": semantic_per_question} if isinstance(semantic_per_question, list) else {}),
                 "deterministic_score": deterministic_score,
                 "semantic_review": {
                     "status": "all_answers_semantically_match",
