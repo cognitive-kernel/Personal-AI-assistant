@@ -440,11 +440,32 @@ def _persist_researched_path(
                     len(sources), sources_json,
                 ),
             )
+        topic_metadata = outline.get("topic_metadata", {})
+        known_source_urls = {item["url"] for item in sources}
         for position, lesson_topic in enumerate(outline["topics"], 1):
+            metadata = topic_metadata.get(lesson_topic, {}) if isinstance(topic_metadata, dict) else {}
+            applicability = metadata.get("applicability", {"status": "unverified"})
+            source_urls = metadata.get("source_urls", [])
+            if not isinstance(applicability, dict):
+                applicability = {"status": "unverified", "notes": "Applicability metadata was invalid and was not trusted."}
+            if not isinstance(source_urls, list) or any(url not in known_source_urls for url in source_urls):
+                source_urls = []
+                applicability = dict(applicability)
+                applicability["status"] = "unverified"
+                applicability["notes"] = (str(applicability.get("notes", "")) + " Unsupported source references were discarded.").strip()
+            hierarchy_path = str(metadata.get("hierarchy_path") or lesson_topic)[:500]
+            depth = metadata.get("depth", 0)
+            if isinstance(depth, bool) or not isinstance(depth, int) or not 0 <= depth <= 32:
+                depth = 0
             connection.execute(
-                """INSERT OR IGNORE INTO learning_path_topics(path_id, topic, position)
-                   VALUES (?, ?, ?)""",
-                (path_id, lesson_topic, position),
+                """INSERT OR IGNORE INTO learning_path_topics(
+                       path_id, topic, position, applicability_json, source_urls_json,
+                       hierarchy_path, depth
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (path_id, lesson_topic, position,
+                 json.dumps(applicability, ensure_ascii=False, sort_keys=True),
+                 json.dumps(source_urls, ensure_ascii=False),
+                 hierarchy_path, depth),
             )
         connection.execute(
             "UPDATE learning_paths SET title=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
