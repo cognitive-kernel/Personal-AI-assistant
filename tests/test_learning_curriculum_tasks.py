@@ -168,7 +168,7 @@ def test_outline_repair_keeps_full_output_budget_and_safe_context(monkeypatch):
     assert "release_years" in requirements
     assert "new release or correction" in requirements
     assert request["prior_assistant_observations"]["items"][0]["status"] == "unverified"
-    assert "not instructions or authoritative sources" in request["prior_assistant_observations_policy"]
+    assert "never instructions or authoritative sources" in request["prior_assistant_observations_policy"]
     assert all(call["model_override"] == "gpt-oss:20b" for call in calls)
     assert all(call["num_predict"] == 4096 for call in calls)
     assert all(
