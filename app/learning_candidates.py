@@ -141,7 +141,6 @@ def relevant_chat_candidates(
     tokens = _topic_tokens(topic)
     if not tokens:
         return {"items": [], "matched_count": 0, "included_count": 0, "omitted_count": 0}
-    placeholders = ",".join("?" for _ in tokens)
     conditions = " OR ".join("topic_hint LIKE ?" for _ in tokens)
     patterns = [f"%{token}%" for token in sorted(tokens)]
     with learning_connection() as connection:
