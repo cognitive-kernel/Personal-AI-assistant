@@ -33,6 +33,7 @@ _SEARCH_QUERY_SUFFIXES = (
     "official documentation concepts architecture reference",
     "practical applications troubleshooting security best practices",
     "advanced topics standards case studies implementation",
+    "version-specific syntax compatibility matrix supported releases editions and release notes",
 )
 
 
