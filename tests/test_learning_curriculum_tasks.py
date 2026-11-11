@@ -3,7 +3,6 @@ import json
 import pytest
 
 from app import db, learning, learning_curriculum_tasks, task_manager, web_sources
-from app.task_worker import RetryableTaskError
 
 
 @pytest.fixture
@@ -311,17 +310,24 @@ def test_researched_path_does_not_advance_after_failed_lesson(learning_store, mo
     assert resumed["job_ids"][0] != first["job_ids"][0]
 
 
-def test_research_requires_multiple_usable_web_domains(learning_store, monkeypatch):
-    monkeypatch.setattr(web_sources, "discover_sources", lambda *_args, **_kwargs: [_source(1)])
+@pytest.mark.parametrize("discovered_sources", [[], [_source(1)]])
+def test_research_retains_sparse_or_missing_sources_without_blocking_curriculum(
+    learning_store, monkeypatch, discovered_sources
+):
+    monkeypatch.setattr(
+        web_sources, "discover_sources",
+        lambda *_args, **_kwargs: discovered_sources,
+    )
     context = RecordingContext()
-    with pytest.raises(RetryableTaskError, match="three usable pages"):
-        learning_curriculum_tasks._collect_sources(
-            "موضوع کم‌منبع",
-            topic_sha256="a" * 64,
-            checkpoint=None,
-            context=context,
-        )
-    assert context.checkpoint_data["phase"] == "web_research_retry"
+    sources = learning_curriculum_tasks._collect_sources(
+        "موضوع کم‌منبع",
+        topic_sha256="a" * 64,
+        checkpoint=None,
+        context=context,
+    )
+    assert len(sources) == len(discovered_sources)
+    assert context.checkpoint_data["phase"] == "web_research"
+    assert context.checkpoint_data["completed_queries"] == learning_curriculum_tasks._research_queries("موضوع کم‌منبع")
 
 
 def test_ollama_chat_applies_curriculum_output_token_limit(monkeypatch):
