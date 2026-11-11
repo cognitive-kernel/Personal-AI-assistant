@@ -33,6 +33,11 @@ _WORKFLOW = "autonomous-codex-engineering.yml"
 _DEFAULT_INTERVAL_HOURS = 24
 _ALLOWED_INTERVAL_HOURS = {1, 2, 4, 6, 12, 24}
 _MODEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$")
+_CODEX_CONTEXT_VARIANT_PATTERN = re.compile(r"-codex-ctx[0-9]+$", re.IGNORECASE)
+
+
+def _is_codex_context_variant(model: str) -> bool:
+    return bool(_CODEX_CONTEXT_VARIANT_PATTERN.search(model.strip()))
 
 
 class EngineeringSettings(BaseModel):
@@ -72,6 +77,8 @@ def _ollama_status(model: str) -> dict[str, Any]:
         "online": False,
         "model": model,
         "model_installed": False,
+        "model_selectable": False,
+        "model_is_codex_context_variant": _is_codex_context_variant(model),
         "models": [],
         "model_context_length": None,
         "model_capabilities": [],
@@ -103,18 +110,24 @@ def _ollama_status(model: str) -> dict[str, Any]:
         return empty
 
     installed = bool(model) and model in names
+    is_context_variant = _is_codex_context_variant(model)
+    selectable_names = [name for name in names if not _is_codex_context_variant(name)]
     result = {
         **empty,
         "online": True,
         "model_installed": installed,
-        "models": names,
+        "model_selectable": installed and not is_context_variant,
+        "model_is_codex_context_variant": is_context_variant,
+        "models": selectable_names,
         "model_metadata_error": (
+            "The saved model is an internal Codex context variant; select its original Ollama model."
+            if is_context_variant else
             None if installed else
             "No Ollama model is saved in repository settings." if not model else
             "The saved model is not installed locally."
         ),
     }
-    if not installed:
+    if not installed or is_context_variant:
         return result
 
     show_request = urllib.request.Request(
@@ -284,6 +297,7 @@ def collect_status() -> dict[str, Any]:
     checks = {
         "ollama_online": ollama["online"],
         "model_installed": ollama["model_installed"],
+        "model_selectable": ollama.get("model_selectable") is True,
         "model_context_metadata_available": ollama.get("model_metadata_available") is True,
         "model_context_supported": ollama.get("model_context_supported") is True,
         "model_supports_tools": ollama.get("model_supports_tools") is True,
@@ -313,6 +327,7 @@ def collect_status() -> dict[str, Any]:
         "workflow": _WORKFLOW,
         "model": model,
         "models": ollama.get("models", []),
+        "model_is_codex_context_variant": ollama.get("model_is_codex_context_variant", False),
         "model_context_length": ollama.get("model_context_length"),
         "model_context_supported": ollama.get("model_context_supported", False),
         "model_context_error": ollama.get("model_context_error"),
@@ -513,6 +528,8 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
     model = payload.model.strip()
     if not _MODEL_PATTERN.fullmatch(model):
         raise HTTPException(status_code=422, detail="شناسهٔ مدل Ollama معتبر نیست.")
+    if _is_codex_context_variant(model):
+        raise HTTPException(status_code=422, detail="این مدل نسخهٔ داخلی Context است؛ مدل اصلی Ollama را انتخاب کنید.")
     if payload.interval_hours not in _ALLOWED_INTERVAL_HOURS:
         raise HTTPException(status_code=422, detail="فاصلهٔ اجرا باید یکی از ۱، ۲، ۴، ۶، ۱۲ یا ۲۴ ساعت باشد.")
     if payload.execution_mode not in {"scheduled", "continuous"}:
