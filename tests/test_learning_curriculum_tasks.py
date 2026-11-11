@@ -610,6 +610,10 @@ def test_research_queries_include_release_history_and_current_updates():
     assert any("first release initial stable version release dates" in item for item in queries)
     assert any("historical release archive yearly versions" in item for item in queries)
     assert any("latest release notes updates patches" in item for item in queries)
+    watch_queries = learning_curriculum_tasks._release_watch_queries("Python")
+    assert any("documentation corrections errata" in item for item in watch_queries)
+    assert any("deprecation removed features end of life" in item for item in watch_queries)
+    assert any("security advisory CVE" in item for item in watch_queries)
 
 
 
