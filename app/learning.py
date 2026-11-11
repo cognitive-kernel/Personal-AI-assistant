@@ -1538,6 +1538,7 @@ def submit_assessment(
                 **result_details,
                 **({"per_question": semantic_per_question} if isinstance(semantic_per_question, list) else {}),
                 "deterministic_score": deterministic_score,
+                "path_topic_status": "completed" if path_topic_id is not None else None,
                 "semantic_review": {
                     "status": "all_answers_semantically_match",
                     "reviewer_digest": str(semantic_result.get("evaluator_digest", ""))[:128],
