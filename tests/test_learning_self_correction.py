@@ -95,8 +95,8 @@ def test_malformed_initial_response_enters_bounded_repair_cycle(learning_store, 
     assert [call["options"]["num_predict"] for call in calls] == [3900, 3900]
     assert len(quality["generation_provenance"]["repair_prompt_sha256"]) == 64
     assert quality["generation_provenance"]["prompt_registry_version"] == 1
-    assert quality["generation_provenance"]["prompt_version"] == "learning-lesson-v4"
-    assert quality["generation_provenance"]["repair_prompt_version"] == "learning-lesson-repair-v4"
+    assert quality["generation_provenance"]["prompt_version"] == "learning-lesson-v5"
+    assert quality["generation_provenance"]["repair_prompt_version"] == "learning-lesson-repair-v5"
     assert quality["generation_provenance"]["provider_usage"] == {
         "initial_generation": {"prompt_eval_count": 800, "eval_count": 120, "total_duration": 900000},
         "quality_repair": {"prompt_eval_count": 1100, "eval_count": 900, "eval_duration": 500000},
@@ -185,7 +185,7 @@ def test_accepted_initial_lesson_has_no_repair_prompt_provenance(learning_store,
     assert "200-260 instructional words" not in instruction
     assert calls[0]["options"]["num_predict"] == 3900
     provenance = finished["quality"]["generation_provenance"]
-    assert provenance["prompt_version"] == "learning-lesson-v4"
+    assert provenance["prompt_version"] == "learning-lesson-v5"
     assert provenance["repair_prompt_version"] is None
     assert provenance["repair_prompt_sha256"] is None
     assert provenance["attempt_count"] == 1
