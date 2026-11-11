@@ -162,6 +162,7 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         topic_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_path_topics)")}
         release_watch_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_release_watch)")}
         chat_candidate_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_chat_candidates)")}
+        research_source_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_research_source_text)")}
         candidate_review_columns = {row[1] for row in connection.execute("PRAGMA table_info(knowledge_candidate_reviews)")}
         experience_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_experiences)")}
         assert {"task_id", "purpose", "model_name", "estimated_cost_microusd"} <= usage_columns
@@ -172,6 +173,17 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         assert {"applicability_json", "source_urls_json", "hierarchy_path", "depth"} <= topic_columns
         assert {"path_id", "status", "last_checked_at", "next_check_at", "last_source_fingerprint", "last_task_id"} <= release_watch_columns
         assert {"conversation_id", "message_id", "user_message_id", "source_kind", "topic_hint", "content", "content_sha256", "provenance_json", "status"} <= chat_candidate_columns
+        assert {"task_id", "path_id", "source_url", "content_sha256", "content", "provenance_json"} <= research_source_columns
+        connection.execute(
+            """INSERT INTO learning_research_source_text(
+                   task_id, path_id, source_url, content_sha256, content, provenance_json
+               ) VALUES (?, ?, ?, ?, ?, ?)""",
+            (task_id, path_id, "https://archive.example.test/source", "a" * 64, "full source body", "{}"),
+        )
+        assert connection.execute(
+            "SELECT content, path_id FROM learning_research_source_text WHERE task_id=?",
+            (task_id,),
+        ).fetchone() == ("full source body", path_id)
         assert connection.execute("SELECT applicability_json, source_urls_json, hierarchy_path, depth FROM learning_path_topics WHERE id=?", (path_topic_id,)).fetchone() == ("{}", "[]", "", 0)
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
