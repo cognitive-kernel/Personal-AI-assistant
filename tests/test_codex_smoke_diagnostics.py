@@ -165,6 +165,11 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert 'parameters = @{ num_ctx = $selectedContext }' in context_script
     assert 'PARAMETER\\s+num_ctx' in context_script
     assert 'AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH=$selectedContext' in context_script
+    assert context_script.count('if ($VerifyOnly) {') == 1
+    assert context_script.count('OLLAMA_RUNTIME_CONTEXT_OK') == 1
+    assert 'if ($allocated -ne $selectedContext)' in context_script
+    assert 'if ($allocated -lt $selectedContext)' not in context_script
+    assert '-lt 64000' in context_script
     assert 'AUTONOMOUS_ENGINEERING_MODEL=$codexModel' in context_script
     assert '-VerifyOnly' in diagnostic
     assert '-VerifyOnly' in autonomous
@@ -208,6 +213,13 @@ def test_context_preflight_reuses_existing_codex_alias_without_duplicate_suffix(
     assert '$existingContext.Success' in script
 
 
+
+
+def test_codex_model_catalog_rejects_context_below_64k(monkeypatch):
+    import pytest
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "63999")
+    with pytest.raises(ValueError, match="64000"):
+        progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx63999")
 
 
 def test_codex_model_catalog_uses_selected_context_from_environment(monkeypatch):
