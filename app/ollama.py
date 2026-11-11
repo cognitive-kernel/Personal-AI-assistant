@@ -362,6 +362,7 @@ def chat(
     purpose: str = "chat",
     model_override: str | None = None,
     num_predict: int | None = None,
+    num_ctx_override: int | None = None,
 ) -> str:
     if purpose not in {"chat", "learning", "programming", "factual_review", "research_plan"}:
         raise ValueError("purpose must be chat, learning, programming, factual_review, or research_plan.")
@@ -379,8 +380,17 @@ def chat(
     model_details_meta = model_details_payload.get("details", {})
     architecture = model_details_meta.get("family") if isinstance(model_details_meta, dict) else None
     maximum_context = _model_context_metadata(model_info if isinstance(model_info, dict) else {}, architecture)
+    configured_context = settings.get(f"{prefix}_ollama_num_ctx", settings.get("ollama_num_ctx", 4096))
+    if num_ctx_override is not None:
+        if (
+            isinstance(num_ctx_override, bool)
+            or not isinstance(num_ctx_override, int)
+            or not 512 <= num_ctx_override <= maximum_context
+        ):
+            raise ValueError("num_ctx_override must be a supported context length for the selected model.")
+        configured_context = max(int(configured_context), num_ctx_override)
     runtime_settings = {
-        "ollama_num_ctx": settings.get(f"{prefix}_ollama_num_ctx", settings.get("ollama_num_ctx", 4096)),
+        "ollama_num_ctx": configured_context,
         "ollama_num_thread": settings.get(f"{prefix}_ollama_num_thread", settings.get("ollama_num_thread", 0)),
         "cpu_resource_limit_percent": settings.get("cpu_resource_limit_percent", 90),
         "ram_budget_max_gb": settings.get("ram_budget_max_gb", 25),
@@ -396,6 +406,11 @@ def chat(
         hardware,
         maximum_context_tokens=maximum_context,
     )
+    if num_ctx_override is not None and limits["num_ctx"] < num_ctx_override:
+        raise OllamaError(
+            "The current safe RAM budget cannot provide the context required for this learning generation; "
+            "the request was stopped rather than producing a truncated outline."
+        )
     keep_alive = model_keep_alive(purpose, hardware, settings)
     messages = []
     if isinstance(system_prompt, str) and system_prompt.strip():
