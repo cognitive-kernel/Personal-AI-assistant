@@ -1387,7 +1387,6 @@ LEARNING_MIGRATIONS = (
                SELECT path_id, 'active', CURRENT_TIMESTAMP FROM learning_path_research""",
         ),
     ),
-,
     Migration(
         45,
         "unverified-chat-learning-candidates",
