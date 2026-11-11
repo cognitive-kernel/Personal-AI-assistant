@@ -262,7 +262,7 @@ def _parse_outline(response: str, batch_size: int) -> dict[str, Any]:
 def _generate_outline(
     topic: str, batch_size: int, source_text: str, sources: list[dict[str, str]], model: str,
     *, batch_index: int = 0, previous_topics: list[str] | None = None,
-    previous_coverage: list[str] | None = None,
+    previous_coverage: list[str] | None = None, next_focus: str = "",
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     prompt_excerpt_urls: set[str] = set()
     prompt_domains: set[str] = set()
@@ -287,6 +287,7 @@ def _generate_outline(
         "topics_to_generate_in_this_batch": batch_size,
         "previous_topics_for_deduplication": (previous_topics or [])[-80:],
         "already_covered_areas": previous_coverage or [],
+        "continue_from": next_focus,
         "user_supplied_context": source_text,
         "research_sources": source_material,
         "requirements": [
