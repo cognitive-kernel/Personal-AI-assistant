@@ -145,7 +145,7 @@ def test_research_curriculum_schema_migration_is_registered_and_applied(tmp_path
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
-    assert LEARNING_MIGRATIONS[-1].version == 45
+    assert LEARNING_MIGRATIONS[-1].version == 46
     with db.learning_connection() as connection:
         tables = {
             row["name"] for row in connection.execute(
@@ -153,6 +153,7 @@ def test_research_curriculum_schema_migration_is_registered_and_applied(tmp_path
             )
         }
     assert "learning_path_research" in tables
+    assert "learning_research_source_text" in tables
     with db.learning_connection() as connection:
         columns = {
             row["name"] for row in connection.execute(
