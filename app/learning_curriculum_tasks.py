@@ -24,6 +24,7 @@ MAX_SOURCES_PER_DOMAIN = 3
 MIN_SOURCE_DOCUMENTS = 3
 MAX_SOURCE_EXCERPT_CHARS = 250
 MAX_PROMPT_CHARS = 6000
+CURRICULUM_CONTEXT_TOKENS = 8192
 
 _SEARCH_QUERY_SUFFIXES = (
     "complete syllabus curriculum fundamentals advanced topics",
@@ -331,6 +332,7 @@ def _generate_outline(
             purpose="learning",
             model_override=selected_model,
             num_predict=4096,
+            num_ctx_override=CURRICULUM_CONTEXT_TOKENS,
         )
         return _parse_outline(response, max_topics), model_selection
     except ValueError as first_error:
@@ -351,7 +353,8 @@ def _generate_outline(
             system_prompt=system_prompt,
             purpose="learning",
             model_override=selected_model,
-            num_predict=800,
+            num_predict=4096,
+            num_ctx_override=CURRICULUM_CONTEXT_TOKENS,
         )
         return _parse_outline(repaired, max_topics), model_selection
 
