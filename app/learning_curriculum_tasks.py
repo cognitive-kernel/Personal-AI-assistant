@@ -364,31 +364,44 @@ def _parse_outline(response: str, batch_size: int) -> dict[str, Any]:
             "has_more": has_more, "next_focus": next_focus.strip()}
 
 
+def _ordered_source_evidence(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Interleave query groups so each bounded prompt batch covers distinct research angles."""
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for item in sources:
+        if not isinstance(item, dict) or not isinstance(item.get("url"), str):
+            continue
+        query = str(item.get("query", "")).strip() or "__unclassified__"
+        grouped.setdefault(query, []).append(item)
+    ordered: list[dict[str, Any]] = []
+    groups = list(grouped.values())
+    while any(groups):
+        for group in groups:
+            if group:
+                ordered.append(group.pop(0))
+    return ordered
+
+
+def _source_evidence_batch_count(sources: list[dict[str, Any]]) -> int:
+    count = len(_ordered_source_evidence(sources))
+    return (count + MAX_PROMPT_SOURCE_EXCERPTS - 1) // MAX_PROMPT_SOURCE_EXCERPTS
+
+
+def _source_evidence_batch(
+    sources: list[dict[str, Any]], batch_index: int
+) -> list[dict[str, Any]]:
+    if isinstance(batch_index, bool) or not isinstance(batch_index, int) or batch_index < 0:
+        raise ValueError("Source evidence batch index must be a non-negative integer.")
+    ordered = _ordered_source_evidence(sources)
+    start = batch_index * MAX_PROMPT_SOURCE_EXCERPTS
+    return ordered[start:start + MAX_PROMPT_SOURCE_EXCERPTS]
+
+
 def _generate_outline(
     topic: str, batch_size: int, source_text: str, sources: list[dict[str, str]], model: str,
     *, batch_index: int = 0, previous_topics: list[str] | None = None,
     previous_coverage: list[str] | None = None, next_focus: str = "",
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    prompt_excerpt_urls: set[str] = set()
-    prompt_domains: set[str] = set()
-    covered_queries: set[str] = set()
-    # Reserve one distinct source for each research angle before filling any
-    # remaining context slots. This prevents early broad queries from crowding
-    # release history, patch notes, or current-version sources out of the prompt.
-    for item in sources:
-        query = item.get("query", "")
-        domain = urlsplit(item["url"]).hostname or ""
-        if query and query not in covered_queries:
-            prompt_excerpt_urls.add(item["url"])
-            covered_queries.add(query)
-            prompt_domains.add(domain)
-        if len(prompt_excerpt_urls) >= MAX_PROMPT_SOURCE_EXCERPTS:
-            break
-    if len(prompt_excerpt_urls) < MAX_PROMPT_SOURCE_EXCERPTS:
-        for item in sources:
-            if len(prompt_excerpt_urls) >= MAX_PROMPT_SOURCE_EXCERPTS:
-                break
-            prompt_excerpt_urls.add(item["url"])
+    source_batch = _source_evidence_batch(sources, batch_index)
     source_material = [{
         "title": item["title"],
         "url": item["url"],
@@ -397,7 +410,8 @@ def _generate_outline(
         "last_updated": item.get("last_updated"),
         "retrieved_at": item.get("retrieved_at"),
         "research_query": item.get("query", ""),
-    } for item in sources if item["url"] in prompt_excerpt_urls]
+        "content_sha256": item.get("sha256", ""),
+    } for item in source_batch]
     request = {
         "requested_subject": topic,
         "batch_index": batch_index,
