@@ -401,3 +401,72 @@ def test_dashboard_uses_researched_courses_and_hides_preset_catalog_controls():
     assert 'id="curriculum-select"' not in page
     assert 'id="enroll-curriculum"' not in page
     assert "loadLearningCurricula();" not in script
+
+
+def test_curriculum_generation_continues_beyond_forty_topics_without_truncating(learning_store, monkeypatch):
+    monkeypatch.setattr(
+        learning_curriculum_tasks, "get_settings",
+        lambda: {"learning_ollama_model": "gpt-oss:20b"},
+    )
+    sources = [
+        {"title": f"Official reference {i}", "url": f"https://docs{i}.example.test/ref",
+         "excerpt": "Reference excerpt", "sha256": "a" * 64,
+         "publication_date": None, "last_updated": None, "retrieved_at": "2026-11-11T00:00:00+00:00"}
+        for i in range(1, 4)
+    ]
+    monkeypatch.setattr(learning_curriculum_tasks, "_collect_sources", lambda *_args, **_kwargs: sources)
+    generated = []
+    pages = []
+    for batch in range(4):
+        names = [f"Topic {batch * 24 + index + 1}" for index in range(24)]
+        pages.append({
+            "title": "Large technical course", "topics": names, "notes": "",
+            "coverage_areas": [f"Area {batch}"], "has_more": True,
+            "next_focus": f"Continue at area {batch + 1}",
+            "topic_metadata": {
+                name: {
+                    "applicability": {"status": "unverified"},
+                    "source_urls": [], "hierarchy_path": name, "depth": 0,
+                } for name in names
+            },
+        })
+    final_names = [f"Topic {96 + index + 1}" for index in range(4)]
+    pages.append({
+        "title": "Large technical course", "topics": final_names, "notes": "",
+        "coverage_areas": ["Final area"], "has_more": False, "next_focus": "",
+        "topic_metadata": {
+            name: {
+                "applicability": {"status": "unverified"},
+                "source_urls": [], "hierarchy_path": name, "depth": 0,
+            } for name in final_names
+        },
+    })
+
+    def fake_generate(*_args, **_kwargs):
+        page = pages[len(generated)]
+        generated.append(page)
+        return page, {"selected_model": "gpt-oss:20b"}
+
+    monkeypatch.setattr(learning_curriculum_tasks, "_generate_outline", fake_generate)
+    task = task_manager.create_task(
+        learning_curriculum_tasks.CURRICULUM_TASK_TYPE,
+        {"topic": "Large technical subject", "batch_size": 24, "source_text": ""},
+        max_attempts=3,
+    )
+    result = learning_curriculum_tasks.handle_curriculum_task(
+        task["payload"], None, RecordingContext(task["id"])
+    )
+
+    assert len(generated) == 5
+    assert result["topic_count"] == 100
+    path = learning.get_learning_path(result["path_id"])
+    assert len(path["topics"]) == 100
+    assert path["topics"][0]["topic"] == "Topic 1"
+    assert path["topics"][-1]["topic"] == "Topic 100"
+    with db.learning_connection() as connection:
+        metadata = connection.execute(
+            "SELECT applicability_json, source_urls_json FROM learning_path_topics WHERE path_id=? ORDER BY position LIMIT 1",
+            (result["path_id"],),
+        ).fetchone()
+    assert json.loads(metadata["applicability_json"])["status"] == "unverified"
+    assert json.loads(metadata["source_urls_json"]) == []
