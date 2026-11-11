@@ -728,3 +728,48 @@ def test_lesson_review_issues_automatically_enqueue_correction_job(learning_stor
     assert review["issues"].startswith("The example fails")
 
 
+
+
+def test_non_json_chat_style_answer_is_retained_when_repair_is_also_unstructured(
+    learning_store, monkeypatch
+):
+    calls = []
+    raw_lesson = (
+        "A Python decorator is a callable that receives another callable and returns "
+        "a replacement callable. It is commonly used to add reusable behavior."
+    )
+    responses = iter([
+        {"message": {"content": raw_lesson}},
+        {"message": {"content": "A decorator wraps a function."}},
+    ])
+    monkeypatch.setattr(
+        learning, "_request",
+        lambda _path, payload, **_kwargs: calls.append(payload) or next(responses),
+    )
+    monkeypatch.setattr(
+        learning, "evaluate_learning_value",
+        lambda *_args, **_kwargs: {
+            "accepted": False, "score": 0,
+            "reasons": ["assessment schema missing; lesson retained as unverified"],
+        },
+    )
+
+    job = learning.create_job("Python decorators", source_text="User-provided reference.")
+    learning.run_job(job["id"])
+    finished = learning.get_job(job["id"])
+
+    assert finished["status"] == "completed"
+    assert len(calls) == 2
+    assert finished["lesson"] == raw_lesson
+    assert finished["quality"]["accepted"] is False
+    assert finished["quality"]["lesson_retained"] is True
+    assert finished["quality"]["generation_provenance"]["initial_response_malformed"] is True
+    assert finished["quality"]["generation_provenance"]["repair_response_valid"] is False
+    with db.learning_connection() as conn:
+        stored = conn.execute(
+            "SELECT content, status FROM knowledge_items WHERE job_id=?",
+            (job["id"],),
+        ).fetchone()
+    assert stored is not None
+    assert stored["content"] == raw_lesson
+    assert stored["status"] == "unverified"
