@@ -1057,3 +1057,42 @@ def test_complete_source_bodies_are_persisted_and_every_text_chunk_is_reviewable
     assert stored["content_sha256"] == source["sha256"]
     assert stored["content"] == body
     assert stored["path_id"] is None
+
+
+def test_release_date_chronology_takes_precedence_over_version_labels():
+    topics = ["SQL Server release A", "SQL Server release B"]
+    metadata = {
+        topics[0]: {
+            "applicability": {
+                "product": "SQL Server",
+                "versions": ["SQL Server 2022"],
+                "release_years": ["2022"],
+                "release_dates": ["2022-11-16"],
+            }
+        },
+        topics[1]: {
+            "applicability": {
+                "product": "SQL Server",
+                "versions": ["SQL Server 2025"],
+                "release_years": ["2025"],
+                "release_dates": ["2025-11-18"],
+            }
+        },
+    }
+
+    learning_curriculum_tasks._validate_chronological_topics(topics, metadata)
+    metadata[topics[0]]["applicability"]["release_dates"] = ["2025-11-18"]
+    metadata[topics[0]]["applicability"]["release_years"] = ["2025"]
+    metadata[topics[1]]["applicability"]["release_dates"] = ["2022-11-16"]
+    metadata[topics[1]]["applicability"]["release_years"] = ["2022"]
+
+    with pytest.raises(ValueError, match="release date/year"):
+        learning_curriculum_tasks._validate_chronological_topics(topics, metadata)
+
+
+def test_semantic_version_prereleases_sort_before_their_stable_release():
+    prerelease = learning_curriculum_tasks._version_order_key("Python 3.13.0rc1")
+    stable = learning_curriculum_tasks._version_order_key("Python 3.13.0")
+    assert prerelease is not None and stable is not None
+    assert prerelease < stable
+    assert not stable < prerelease
