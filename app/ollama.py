@@ -135,8 +135,9 @@ def _request(
                 timeout=int(timeout or settings.get(f"{profile}_ollama_timeout_seconds", 120)),
                 num_predict=options.get("num_predict"),
                 response_format=request_payload.get("format"),
+                usage_out=(usage := {}),
             )
-            return {"message": {"content": content}, "provider": "openai_compatible"}
+            return {"message": {"content": content}, "provider": "openai_compatible", **usage}
     if path in _INFERENCE_PATHS and settings.get("gpu_enabled", False) is not True:
         payload = dict(payload or {})
         options = payload.get("options")
@@ -456,6 +457,7 @@ def _openai_compatible_chat(
     timeout: int,
     num_predict: int | None,
     response_format: str | None = None,
+    usage_out: dict[str, int] | None = None,
 ) -> str:
     """Call an OpenAI-compatible endpoint, including local LM Studio/vLLM/llama.cpp servers."""
     settings = get_settings()
@@ -518,6 +520,16 @@ def _openai_compatible_chat(
         if len(body) > _MAX_RESPONSE_BYTES:
             raise OllamaError("LLM response exceeded the 8 MiB limit.")
         result = json.loads(body.decode("utf-8"))
+        usage = result.get("usage") if isinstance(result, dict) else None
+        if usage_out is not None and isinstance(usage, dict):
+            for source_key, target_key in (
+                ("prompt_tokens", "prompt_eval_count"),
+                ("completion_tokens", "eval_count"),
+                ("total_tokens", "total_tokens"),
+            ):
+                value = usage.get(source_key)
+                if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                    usage_out[target_key] = value
         choices = result.get("choices") if isinstance(result, dict) else None
         choice = choices[0] if isinstance(choices, list) and choices else None
         content = choice.get("message", {}).get("content") if isinstance(choice, dict) else None
