@@ -122,11 +122,12 @@ def test_startup_installs_and_verifies_learning_model_separately(monkeypatch):
     assert pull_commands == [["ollama", "pull", "gpt-oss:20b"]]
 
 
-def test_startup_respects_explicit_learning_model_override(monkeypatch):
+def test_startup_respects_explicit_learning_model_override(tmp_path, monkeypatch):
     bootstrap = _load_bootstrap()
     monkeypatch.setattr(bootstrap, "_find_ollama", lambda: "ollama")
     monkeypatch.delenv("OLLAMA_MODEL", raising=False)
     monkeypatch.setenv("LEARNING_OLLAMA_MODEL", "custom-learning:latest")
+    monkeypatch.setenv("SETTINGS_DB_PATH", str(tmp_path / "missing-settings.db"))
     list_outputs = iter([
         "NAME ID SIZE\nqwen2.5:7b abc 4GB\n",
         "NAME ID SIZE\nqwen2.5:7b abc 4GB\ncustom-learning:latest def 14GB\n",
