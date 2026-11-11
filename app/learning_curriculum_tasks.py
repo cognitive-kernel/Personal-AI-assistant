@@ -399,25 +399,22 @@ def _persist_researched_path(
 
 
 def enqueue_curriculum_task(
-    topic: str, *, max_topics: int = MAX_TOPICS, source_text: str | None = None
+    topic: str, *, batch_size: int = DEFAULT_TOPICS_PER_BATCH,
+    source_text: str | None = None, max_topics: int | None = None,
 ) -> dict[str, Any]:
-    normalized_topic, normalized_max, normalized_source = validate_curriculum_payload({
-        "topic": topic,
-        "max_topics": max_topics,
-        "source_text": source_text,
+    # max_topics is retained only as a legacy alias for one inference batch.
+    if max_topics is not None:
+        if batch_size != DEFAULT_TOPICS_PER_BATCH:
+            raise ValueError("Specify batch_size or legacy max_topics, not both.")
+        batch_size = max_topics
+    normalized_topic, normalized_batch, normalized_source = validate_curriculum_payload({
+        "topic": topic, "batch_size": batch_size, "source_text": source_text,
     })
     return task_manager.create_task(
         CURRICULUM_TASK_TYPE,
-        {
-            "topic": normalized_topic,
-            "max_topics": normalized_max,
-            "source_text": normalized_source,
-        },
-        priority=0,
-        max_attempts=3,
+        {"topic": normalized_topic, "batch_size": normalized_batch, "source_text": normalized_source},
+        priority=0, max_attempts=3,
     )
-
-
 def handle_curriculum_task(
     payload: dict[str, Any],
     checkpoint: dict[str, Any] | None,
