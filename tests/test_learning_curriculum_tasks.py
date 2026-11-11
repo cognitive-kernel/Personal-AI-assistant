@@ -197,12 +197,12 @@ def test_research_task_persists_sources_outline_and_starts_only_first_lesson(
         task["payload"], None, context
     )
 
-    assert len(discovered) == 5
+    assert len(discovered) == 8
     assert model_calls[0]["purpose"] == "learning"
     assert model_calls[0]["model_override"] == db.get_settings()["learning_ollama_model"]
     assert model_calls[0]["num_predict"] == 4096
     assert model_calls[0]["num_ctx_override"] == learning_curriculum_tasks.CURRICULUM_CONTEXT_TOKENS
-    assert result["source_count"] == 5
+    assert result["source_count"] == 8
     assert result["queued_count"] == 1
     assert len(result["queued_job_ids"]) == 1
     path = learning.get_learning_path(result["path_id"])
@@ -210,7 +210,7 @@ def test_research_task_persists_sources_outline_and_starts_only_first_lesson(
     assert path["research"]["model"] == db.get_settings()["learning_ollama_model"]
     assert path["research"]["model_selection"]["selected_model"] == db.get_settings()["learning_ollama_model"]
     assert path["research"]["outline_sha256"] == result["outline_sha256"]
-    assert len(path["research"]["sources"]) == 5
+    assert len(path["research"]["sources"]) == 8
     assert all(item["retrieved_at"] for item in path["research"]["sources"])
     assert all(item["publication_date"] is None and item["last_updated"] is None for item in path["research"]["sources"])
     assert len(path["topics"]) == len(_outline()["topics"])
