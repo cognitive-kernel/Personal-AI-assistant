@@ -811,11 +811,10 @@ def test_discover_sources_fetches_more_than_five_results_when_requested(monkeypa
 
 def test_discover_sources_keeps_provider_page_limit_bounded(monkeypatch):
     captured = {}
-    monkeypatch.setattr(
-        web_sources,
-        "_search_results",
-        lambda _query, limit: captured.setdefault("limit", limit) or [],
-    )
+    def search(_query, limit):
+        captured["limit"] = limit
+        return []
+    monkeypatch.setattr(web_sources, "_search_results", search)
     monkeypatch.setattr(
         web_sources,
         "_fetch_document",
