@@ -540,3 +540,14 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Added regression tests for 103-source round-robin pagination, complete review of 17 sources across three batches despite premature model completion, metadata arrays with 45 releases/source URLs, and web retrieval above five pages.
 - Exact-head CI has not yet run for this branch. The tests and implementation are pending automated verification; no local/target-host/human test is claimed. Remaining known gaps include robust extraction of publication/release/update dates from varied web pages, retaining/synthesizing full source bodies beyond excerpts, a durable canonical subject/release coverage ledger, automated candidate-to-course promotion, lesson correction/revision workflow, and verification of all provider-role settings/temporary overrides.
 
+
+
+### Full-source retention and publication-date provenance
+
+- Added learning schema migration 46, `complete-curriculum-source-body-retention`, with `learning_research_source_text`. Full fetched page text is stored once per task/source hash and linked to the resulting immutable research path; repeated task checkpoints and `learning_path_research.sources_json` retain only source metadata/excerpts.
+- Curriculum research now rehydrates complete bodies from the source-text table. Legacy checkpoints with excerpt-only evidence attempt to re-fetch their exact known HTTPS URLs; if unavailable, the excerpt remains explicitly incomplete and is never represented as a complete page.
+- Each full source body is split into ordered 1,000-character evidence chunks. Chunks are interleaved across research query angles and source records, and the existing source-batch continuation now covers every chunk before the model may finish the curriculum.
+- HTML metadata extraction records common publication and modification fields (`article:published_time`, `datePublished`, `DC.date.issued`, `article:modified_time`, `dateModified`, `last-modified`, and `time[itemprop]`). Unknown dates remain null; retrieval timestamps are stored separately.
+- Migration tests now assert schema version 46 and source-body table structure; curriculum tests cover full-body persistence/chunk order; web-source tests cover publication/update metadata. Exact-head CI is pending.
+- The web retrieval page remains capped at 30 results per query request by provider/request safety limits; the number of queries, source bodies, source chunks, and total course batches is not capped by that page size.
+
