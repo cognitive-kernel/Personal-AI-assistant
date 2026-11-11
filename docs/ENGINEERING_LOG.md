@@ -551,3 +551,11 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Migration tests now assert schema version 46 and source-body table structure; curriculum tests cover full-body persistence/chunk order; web-source tests cover publication/update metadata. Exact-head CI is pending.
 - The web retrieval page remains capped at 30 results per query request by provider/request safety limits; the number of queries, source bodies, source chunks, and total course batches is not capped by that page size.
 
+
+
+### Release chronology validator refinement
+
+- Curriculum chronology now uses the recorded release date first, then release year, and product-specific version order when dates are unavailable. This avoids relying only on lexical version labels and supports prerelease ordering before stable releases.
+- Added regressions for release dates that conflict with otherwise ascending version labels and for release-candidate versions sorting before the matching stable release.
+- These changes are awaiting exact-head CI.
+
