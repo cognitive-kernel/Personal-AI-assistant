@@ -1107,3 +1107,108 @@ def test_semantic_version_prereleases_sort_before_their_stable_release():
     assert prerelease is not None and stable is not None
     assert prerelease < stable
     assert not stable < prerelease
+
+
+def test_release_ledger_parser_preserves_versions_sources_and_incomplete_gaps():
+    value = _outline()
+    value["subject_map"] = [
+        "Database systems/Relational databases/SQL Server",
+        "Database systems/Relational databases/SQL Server/Backup and restore",
+    ]
+    value["release_ledger"] = [
+        {
+            "product": "SQL Server",
+            "version": "2000",
+            "release_date": "2000-11-30",
+            "release_year": "2000",
+            "release_type": "major",
+            "platform": "Windows",
+            "edition": "Standard",
+            "source_urls": ["https://archive.example.test/sql/2000"],
+            "status": "partially_documented",
+            "notes": "Historical release information is incomplete.",
+        },
+        {
+            "product": "SQL Server",
+            "version": "2025",
+            "release_date": "2025-11-18",
+            "release_year": "2025",
+            "release_type": "major",
+            "platform": "Windows",
+            "edition": "Standard",
+            "source_urls": ["https://learn.example.test/sql/2025"],
+            "status": "documented",
+            "notes": "Current major release.",
+        },
+    ]
+    value["unresolved_gaps"] = ["Historical cumulative update archive is incomplete."]
+    value["coverage_audit"] = {
+        "status": "partial",
+        "earliest_release": "2000",
+        "latest_release": "2025",
+        "missing_coverage_areas": ["Legacy service packs"],
+        "missing_release_lines": ["Some historical cumulative updates"],
+        "prerequisite_gaps": [],
+        "notes": "Historical records remain incomplete.",
+    }
+
+    parsed = learning_curriculum_tasks._parse_outline(
+        json.dumps(value, ensure_ascii=False), 20
+    )
+
+    assert parsed["subject_map"] == value["subject_map"]
+    assert [item["version"] for item in parsed["release_ledger"]] == ["2000", "2025"]
+    assert parsed["release_ledger"][0]["release_date"] == "2000-11-30"
+    assert parsed["release_ledger"][1]["source_urls"] == ["https://learn.example.test/sql/2025"]
+    assert parsed["unresolved_gaps"] == value["unresolved_gaps"]
+    assert parsed["coverage_audit"]["status"] == "partial"
+    assert parsed["coverage_audit"]["missing_release_lines"] == ["Some historical cumulative updates"]
+
+
+def test_researched_path_exposes_durable_subject_map_release_ledger_and_gaps(learning_store):
+    value = _outline()
+    value["subject_map"] = ["Python/Language fundamentals", "Python/Standard library"]
+    value["release_ledger"] = [{
+        "product": "Python",
+        "version": "3.14",
+        "release_date": "2025-10-07",
+        "release_year": "2025",
+        "release_type": "major",
+        "platform": "All",
+        "edition": "CPython",
+        "source_urls": ["https://docs.python.org/3/whatsnew/3.14.html"],
+        "status": "documented",
+        "notes": "Python 3.14 release.",
+    }]
+    value["unresolved_gaps"] = ["Some third-party implementation differences remain."]
+    value["coverage_audit"] = {
+        "status": "partial",
+        "earliest_release": "1991",
+        "latest_release": "2025",
+        "missing_coverage_areas": [],
+        "missing_release_lines": [],
+        "prerequisite_gaps": ["Alternative Python implementations"],
+        "notes": "Coverage remains in progress.",
+    }
+    parsed = learning_curriculum_tasks._parse_outline(
+        json.dumps(value, ensure_ascii=False), 20
+    )
+    path_id, _ = learning_curriculum_tasks._persist_researched_path(
+        task_id=9901,
+        topic="Python",
+        outline=parsed,
+        sources=[{
+            "title": "Python release notes",
+            "url": "https://docs.python.org/3/whatsnew/3.14.html",
+            "excerpt": "Python 3.14 release notes.",
+            "sha256": "a" * 64,
+        }],
+        model="gpt-oss:20b",
+        model_selection={"status": "configured", "selected_model": "gpt-oss:20b"},
+    )
+
+    research = learning.get_learning_path(path_id)["research"]
+    assert research["coverage"]["subject_map"] == value["subject_map"]
+    assert research["coverage"]["release_ledger"][0]["version"] == "3.14"
+    assert research["coverage"]["unresolved_gaps"] == value["unresolved_gaps"]
+    assert research["coverage"]["coverage_audit"]["status"] == "partial"
