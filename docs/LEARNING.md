@@ -74,7 +74,7 @@
 - طول درس بر اساس پیچیدگی واقعی موضوع، پیش‌نیازها و نیاز یادگیرنده تعیین می‌شود؛ فیلتر کیفیت هیچ حداقل یا حداکثر مصنوعی برای تعداد واژه اعمال نمی‌کند.
 - پرامپت درس باید مفهوم، سازوکار، مثال قابل‌بازتولید، پیامدها، خطاها، تشخیص، امنیت، کارایی و دامنهٔ نسخه‌ای مرتبط را به‌اندازهٔ لازم پوشش دهد؛ تکرار و حشو مجاز نیست. اگر موضوع از یک درس منسجم فراتر است، باید به سرفصل‌های کوچک‌تر و وابسته تقسیم شود، نه اینکه با حذف جزئیات فشرده شود.
 - هر فراخوانی تولید یا بازنویسی درس حداکثر ۳۹۰۰ توکن خروجی درخواست می‌کند و کل چرخهٔ دو فراخوانی ۷۸۰۰ توکن رزرو می‌کند. این سقفِ هر فراخوانی برای کنترل RAM، زمان و پایداری inference است؛ سقف تعداد سرفصل‌ها، درس‌ها یا batchهای دوره نیست. context و اجرای واقعی همچنان تابع محدودکنندهٔ سخت‌افزار است و در کمبود منابع باید fail-closed رفتار کند.
-- نسخه‌های prompt تولید و ترمیم به `learning-lesson-v4` و `learning-lesson-repair-v4` ارتقا یافته‌اند و hash دقیق هر فراخوانی ثبت می‌شود.
+- نسخه‌های prompt تولید و ترمیم به `learning-lesson-v5` و `learning-lesson-repair-v5` ارتقا یافته‌اند و hash دقیق هر فراخوانی ثبت می‌شود.
 
 ## 4. مسیرها و سطح‌بندی دوره‌ها
 
@@ -273,3 +273,12 @@ python scripts/evaluate_learning_acceptance.py path/to/reference-dataset.json pa
 - مدل انتخاب‌شده، وضعیت و دلیل انتخاب، تعداد نامزدها، هزینه و token تخمینی، روش برآورد و دامنهٔ بودجهٔ کل جریان یادگیری با claim review اختیاری در `quality.generation_provenance.model_selection` ثبت می‌شوند؛ شمارنده‌های واقعی Ollama جداگانه ثبت می‌شوند.
 
 امتیاز کیفیت داخل پروفایل، دادهٔ پیکربندی‌شدهٔ اپراتور است و **ارزیابی زنده یا داوری مستقل کیفیت مدل محسوب نمی‌شود**. برآورد هزینه نیز تخمین است، نه سقف قطعی صورتحساب. جزئیات fail-closed و محدودیت‌ها در [سند معماری انتخاب مدل یادگیری](architecture/LEARNING_MODEL_SELECTION.md) آمده است. ارزیابی زندهٔ مدل فارسی/انگلیسی، داوری انسانی، و پذیرش میزبان هدف همچنان دروازه‌های مستقل هستند.
+
+
+### Chronological release coverage
+
+- A versioned subject is mapped from its earliest documented public/initial/stable release to the latest release found at research time. The syllabus groups material by exact release/version and release year/date, then orders those groups oldest-to-newest. Within each group, prerequisites precede dependent lessons.
+- Each topic stores `applicability.release_years` and `applicability.release_dates` as ascending, validated arrays. Years use four digits; dates use `YYYY-MM-DD` or `YYYY` when only year-level precision is documented. Unknown dates remain absent rather than inferred.
+- Release chronology is distinct from page last-updated time and retrieval time. Historical versions, patch releases, service packs, cumulative updates, hotfixes, security advisories, deprecations, and end-of-support states are separate where applicable.
+- Newer releases are appended as new version-scoped learning records; earlier lessons and their source fingerprints are preserved. The curriculum prompt requires release-history research, but automatic periodic polling of vendor release feeds is a separate runtime capability and is not claimed by this chronology change.
+- Lesson generation/repair prompt versions: `learning-lesson-v5` and `learning-lesson-repair-v5`.
