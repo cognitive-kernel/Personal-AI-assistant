@@ -1198,11 +1198,11 @@ def test_researched_path_exposes_durable_subject_map_release_ledger_and_gaps(lea
         topic="Python",
         outline=parsed,
         sources=[{
-            "title": "Python release notes",
-            "url": "https://docs.python.org/3/whatsnew/3.14.html",
+            "title": f"Python release notes {index}",
+            "url": f"https://docs.python.org/3/whatsnew/3.14/{index}.html",
             "excerpt": "Python 3.14 release notes.",
-            "sha256": "a" * 64,
-        }],
+            "sha256": str(index) * 64,
+        } for index in range(1, 4)],
         model="gpt-oss:20b",
         model_selection={"status": "configured", "selected_model": "gpt-oss:20b"},
     )
