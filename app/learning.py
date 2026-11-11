@@ -823,9 +823,11 @@ def run_job(job_id: int) -> None:
         if row["path_topic_id"] is not None:
             provenance_row = conn.execute(
                 """SELECT t.applicability_json, t.source_urls_json, t.hierarchy_path, t.depth,
-                          r.sources_json
+                          r.sources_json, c.subject_map_json, c.release_ledger_json,
+                          c.unresolved_gaps_json, c.coverage_audit_json
                    FROM learning_path_topics t
                    LEFT JOIN learning_path_research r ON r.path_id=t.path_id
+                   LEFT JOIN learning_path_coverage c ON c.path_id=t.path_id
                    WHERE t.id=?""",
                 (row["path_topic_id"],),
             ).fetchone()
@@ -837,6 +839,10 @@ def run_job(job_id: int) -> None:
                         "hierarchy_path": provenance_row["hierarchy_path"] or topic,
                         "depth": int(provenance_row["depth"] or 0),
                         "course_sources": json.loads(provenance_row["sources_json"] or "[]"),
+                        "subject_map": json.loads(provenance_row["subject_map_json"] or "[]"),
+                        "release_ledger": json.loads(provenance_row["release_ledger_json"] or "[]"),
+                        "unresolved_gaps": json.loads(provenance_row["unresolved_gaps_json"] or "[]"),
+                        "coverage_audit": json.loads(provenance_row["coverage_audit_json"] or "{}"),
                     }
                 except (TypeError, ValueError, json.JSONDecodeError):
                     path_topic_context = {"applicability": {"status": "unverified"}, "source_urls": []}
@@ -880,7 +886,10 @@ def run_job(job_id: int) -> None:
         "topic": topic,
         "curriculum_provenance": path_topic_context,
         "curriculum_provenance_policy": (
-            "For researched-course lessons, explicitly state the product and exact versions/builds, editions, "
+            "For researched-course lessons, use the durable subject map and release ledger as the syllabus-wide chronology; "
+            "state the exact release date/year and version applicability for this topic, and disclose unresolved coverage gaps. "
+            "Never replace unknown dates with retrieval time or generalize a release across editions/platforms. "
+            "Explicitly state the product and exact versions/builds, editions, "
             "database compatibility levels, operating systems/platforms, execution modes, prerequisites, and "
             "permissions only when supported by the attached source records. Cite only the exact supplied URLs and include a Sources section with exact source URLs for supported claims. "
             "Distinguish engine version from database compatibility level. Do not generalize support across releases. "
