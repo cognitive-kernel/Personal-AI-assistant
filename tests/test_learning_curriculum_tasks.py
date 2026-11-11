@@ -189,7 +189,7 @@ def test_research_task_persists_sources_outline_and_starts_only_first_lesson(
     assert len(discovered) == 5
     assert model_calls[0]["purpose"] == "learning"
     assert model_calls[0]["model_override"] == db.get_settings()["learning_ollama_model"]
-    assert model_calls[0]["num_predict"] == 5096
+    assert model_calls[0]["num_predict"] == 4096
     assert model_calls[0]["num_ctx_override"] == learning_curriculum_tasks.CURRICULUM_CONTEXT_TOKENS
     assert result["source_count"] == 5
     assert result["queued_count"] == 1
