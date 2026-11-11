@@ -1357,6 +1357,16 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_learning_path_research_created ON learning_path_research(created_at DESC, path_id)",
         ),
     ),
+    Migration(
+        43,
+        "version-aware-learning-topic-provenance",
+        (
+            "ALTER TABLE learning_path_topics ADD COLUMN applicability_json TEXT NOT NULL DEFAULT '{}'",
+            "ALTER TABLE learning_path_topics ADD COLUMN source_urls_json TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE learning_path_topics ADD COLUMN hierarchy_path TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE learning_path_topics ADD COLUMN depth INTEGER NOT NULL DEFAULT 0 CHECK(depth >= 0)",
+        ),
+    ),
 )
 
 
