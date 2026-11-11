@@ -30,7 +30,6 @@ router = APIRouter(
 
 _DEFAULT_REPOSITORY = "cognitive-kernel/Personal-AI-assistant"
 _WORKFLOW = "autonomous-codex-engineering.yml"
-_DEFAULT_MODEL = "gpt-oss:20b"
 _DEFAULT_INTERVAL_HOURS = 24
 _ALLOWED_INTERVAL_HOURS = {1, 2, 4, 6, 12, 24}
 _MODEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$")
@@ -55,8 +54,9 @@ def _repository() -> str:
 
 
 def _model() -> str:
-    value = os.getenv("AUTONOMOUS_ENGINEERING_MODEL", _DEFAULT_MODEL).strip()
-    return value[:120] if value else _DEFAULT_MODEL
+    """Return only an explicitly configured model; never invent a default."""
+    value = os.getenv("AUTONOMOUS_ENGINEERING_MODEL", "").strip()
+    return value[:120] if _MODEL_PATTERN.fullmatch(value) else ""
 
 
 def _run(command: list[str], timeout: int = 8) -> subprocess.CompletedProcess[str] | None:
@@ -106,13 +106,17 @@ def _ollama_status(model: str) -> dict[str, Any]:
     except (OSError, ValueError, urllib.error.URLError, TimeoutError):
         return empty
 
-    installed = model in names
+    installed = bool(model) and model in names
     result = {
         **empty,
         "online": True,
         "model_installed": installed,
         "models": names,
-        "model_metadata_error": None if installed else "The saved model is not installed locally.",
+        "model_metadata_error": (
+            None if installed else
+            "No Ollama model is saved in repository settings." if not model else
+            "The saved model is not installed locally."
+        ),
     }
     if not installed:
         return result
@@ -194,7 +198,7 @@ def _github_snapshot() -> dict[str, Any]:
     authenticated = bool(auth and auth.returncode == 0)
     recent_runs: list[dict[str, Any]] = []
     runs_available = False
-    settings = {"model": _model(), "interval_hours": _DEFAULT_INTERVAL_HOURS, "execution_mode": "continuous", "paused": False}
+    settings = {"model": "", "interval_hours": _DEFAULT_INTERVAL_HOURS, "execution_mode": "continuous", "paused": False}
     if authenticated:
         result = _run(
             [
@@ -265,7 +269,7 @@ def _github_snapshot() -> dict[str, Any]:
 def collect_status() -> dict[str, Any]:
     github = _github_snapshot()
     settings = github.get("settings", {})
-    model = settings.get("model", _model())
+    model = settings.get("model") or _model()
     interval_hours = settings.get("interval_hours", _DEFAULT_INTERVAL_HOURS)
     execution_mode = settings.get("execution_mode", "continuous")
     paused = bool(settings.get("paused", False))
