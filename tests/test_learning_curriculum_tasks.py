@@ -152,7 +152,7 @@ def test_outline_repair_keeps_full_output_budget_and_safe_context(monkeypatch):
     request = json.loads(calls[0]["message"])
     requirements = " ".join(request["requirements"])
     assert "prerequisite-aware hierarchy" in requirements
-    assert "version/build" in requirements
+    assert "product release/build" in requirements
     assert "breaking changes" in requirements
     assert "source URL to only the topics" in requirements
     assert "do not claim completion" in requirements
