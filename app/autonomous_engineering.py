@@ -447,7 +447,9 @@ def _save_repository_variables(gh: str, updates: tuple[tuple[str, str], ...]) ->
             continue
 
         rollback_errors: list[str] = []
-        for changed_name in reversed(applied):
+        # Include the failed write itself: a client timeout/non-zero exit can
+        # occur after GitHub accepted the update, so its remote state is uncertain.
+        for changed_name in reversed([*applied, name]):
             if changed_name in previous:
                 rollback = _run(
                     [gh, "variable", "set", changed_name, "--body", previous[changed_name], "--repo", _repository()],
@@ -459,7 +461,29 @@ def _save_repository_variables(gh: str, updates: tuple[tuple[str, str], ...]) ->
                     timeout=15,
                 )
             if not rollback or rollback.returncode != 0:
-                rollback_errors.append(changed_name)
+                verification = _run(
+                    [gh, "variable", "list", "--repo", _repository(), "--json", "name,value"],
+                    timeout=12,
+                )
+                try:
+                    observed = json.loads(verification.stdout) if verification and verification.returncode == 0 else None
+                except (TypeError, ValueError):
+                    observed = None
+                observed_values = {
+                    str(item.get("name")): str(item.get("value", ""))
+                    for item in observed
+                    if isinstance(item, dict) and isinstance(item.get("name"), str)
+                } if isinstance(observed, list) else None
+                restored = (
+                    observed_values is not None
+                    and (
+                        observed_values.get(changed_name) == previous[changed_name]
+                        if changed_name in previous
+                        else changed_name not in observed_values
+                    )
+                )
+                if not restored:
+                    rollback_errors.append(changed_name)
         if rollback_errors:
             detail = (
                 f"Saving {name} failed and rollback could not restore: "
