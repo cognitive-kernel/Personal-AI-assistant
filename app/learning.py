@@ -986,13 +986,20 @@ def run_job(job_id: int) -> None:
             and isinstance(result.get("answer_key"), list)
         )
         if initial_response_malformed:
-            # Route malformed output through the existing single repair attempt
-            # instead of failing the whole learning job before self-correction.
+            # Keep any non-empty teaching content even when the model ignores the
+            # requested JSON assessment schema. Assessment defects trigger repair;
+            # they must not erase the lesson itself.
+            retained_lesson = (
+                result.get("lesson")
+                if isinstance(result, dict) and isinstance(result.get("lesson"), str)
+                else raw if isinstance(raw, str) else ""
+            )
             result = {
-                "lesson": "",
+                "lesson": retained_lesson.strip()[:100000],
                 "learning_outcomes": None,
-                "questions": [],
-                "answer_key": [],
+                "questions": result.get("questions", []) if isinstance(result, dict) and isinstance(result.get("questions"), list) else [],
+                "answer_key": result.get("answer_key", []) if isinstance(result, dict) and isinstance(result.get("answer_key"), list) else [],
+                "rubric": result.get("rubric") if isinstance(result, dict) else None,
             }
         raw_outcomes = result.get("learning_outcomes")
         outcomes = raw_outcomes[:3] if isinstance(raw_outcomes, list) else raw_outcomes
