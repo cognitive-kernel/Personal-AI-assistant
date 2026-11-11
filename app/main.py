@@ -763,6 +763,24 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         key = f"{purpose}_model_keep_alive"
         if key in values and (not isinstance(values[key], str) or values[key] not in keep_alive_values):
             raise HTTPException(status_code=422, detail=f"{key} must be one of: auto, 0, 1m, 5m, 10m, 30m.")
+    for purpose in ("chat", "learning", "programming", "factual_review"):
+        provider_key = f"{purpose}_llm_provider"
+        base_url_key = f"{purpose}_llm_base_url"
+        api_key_env_key = f"{purpose}_llm_api_key_env"
+        if provider_key in values and values[provider_key] not in {"ollama", "openai_compatible"}:
+            raise HTTPException(status_code=422, detail=f"{provider_key} must be ollama or openai_compatible.")
+        effective_provider = values.get(provider_key, db.get_settings().get(provider_key, "ollama"))
+        if base_url_key in values or (provider_key in values and effective_provider == "openai_compatible"):
+            try:
+                values[base_url_key] = ollama.normalize_openai_compatible_base_url(
+                    values.get(base_url_key, db.get_settings().get(base_url_key, "https://api.openai.com/v1"))
+                )
+            except ollama.OllamaError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if api_key_env_key in values:
+            env_name = values[api_key_env_key]
+            if not isinstance(env_name, str) or (env_name and not re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", env_name)):
+                raise HTTPException(status_code=422, detail=f"{api_key_env_key} must be an environment variable name, not an API key.")
     numeric_ranges = [
         ("ollama_timeout_seconds", 5, 600), ("ollama_num_ctx", 512, 1048576),
         ("ollama_num_thread", 0, 64),
@@ -804,6 +822,15 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         generic_chat_change = model_key == "chat_ollama_model" and (
             "ollama_model" in values or "ollama_num_ctx" in values
         )
+        purpose = model_key.removesuffix("_ollama_model")
+        selected_provider = values.get(
+            f"{purpose}_llm_provider",
+            current_settings.get(f"{purpose}_llm_provider", "ollama"),
+        )
+        if selected_provider == "openai_compatible":
+            # Context limits for compatible endpoints are user-configured; the
+            # remote server may not expose Ollama model metadata.
+            continue
         if context_key not in values and model_key not in values and not generic_chat_change:
             continue
         context_value = values.get(
