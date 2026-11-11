@@ -8,6 +8,7 @@ on:
     paths:
       - .github/workflows/codex-windows-sandbox-diagnostic.yml
       - .github/workflows/autonomous-codex-engineering.yml
+      - .github/workflows/browser-e2e.yml
       - docs/operations/CODEX_AUTONOMOUS_ENGINEERING.md
       - scripts/provision_autonomous_runner.ps1
       - scripts/check_autonomous_runner.ps1
