@@ -1252,6 +1252,20 @@ def handle_curriculum_task(
             # This evidence-only pass is still progress: the next source batch
             # must be examined even if it yields no additional syllabus titles.
             page["notes"] = page["notes"] or outline.get("notes", "")
+        outline["subject_map"] = list(dict.fromkeys(
+            outline.get("subject_map", []) + page.get("subject_map", [])
+        ))
+        outline["release_ledger"] = _merge_release_ledger(
+            outline.get("release_ledger", []), page.get("release_ledger", [])
+        )
+        outline["unresolved_gaps"] = list(dict.fromkeys(
+            outline.get("unresolved_gaps", []) + page.get("unresolved_gaps", [])
+        ))
+        outline["coverage_audit"] = page.get(
+            "coverage_audit", outline.get("coverage_audit", {"status": "unknown"})
+        )
+        if outline["unresolved_gaps"] and outline["coverage_audit"].get("status") == "complete":
+            outline["coverage_audit"]["status"] = "partial"
         batch_index += 1
         next_focus = page["next_focus"]
         context.checkpoint({
