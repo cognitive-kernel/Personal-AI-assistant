@@ -7,6 +7,7 @@ import os
 import platform
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -713,6 +714,50 @@ def _download_ollama_asset_cli(arguments: list[str]) -> int:
     return 0
 
 
+def _configured_learning_model() -> str:
+    """Resolve the model the app will actually use, without mutating saved settings."""
+    override = os.environ.get("LEARNING_OLLAMA_MODEL")
+    if override is not None:
+        model = override.strip()
+        if not model or len(model) > 200:
+            raise RuntimeError("LEARNING_OLLAMA_MODEL must be a non-empty model name of at most 200 characters.")
+        return model
+
+    database = Path(os.environ.get("SETTINGS_DB_PATH", "data/settings.db"))
+    if not database.is_absolute():
+        database = ROOT / database
+    if not database.is_file():
+        return DEFAULT_LEARNING_MODEL
+
+    try:
+        connection = sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
+        try:
+            row = connection.execute(
+                "SELECT value_json FROM settings WHERE key='learning_ollama_model'"
+            ).fetchone()
+        finally:
+            connection.close()
+    except sqlite3.OperationalError as exc:
+        if "no such table: settings" in str(exc).lower():
+            return DEFAULT_LEARNING_MODEL
+        raise RuntimeError("The existing settings database could not be read safely; Ollama setup was stopped.") from exc
+    except sqlite3.Error as exc:
+        raise RuntimeError("The existing settings database could not be read safely; Ollama setup was stopped.") from exc
+
+    if row is None:
+        return DEFAULT_LEARNING_MODEL
+    try:
+        configured = json.loads(row[0])
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("The saved learning model setting is invalid; Ollama setup was stopped.") from exc
+    if not isinstance(configured, str) or not configured.strip() or len(configured.strip()) > 200:
+        raise RuntimeError("The saved learning model setting is invalid; Ollama setup was stopped.")
+    # The versioned DB migration changes this former built-in default to gpt-oss.
+    if configured.strip() == "qwen3:8b":
+        return DEFAULT_LEARNING_MODEL
+    return configured.strip()
+
+
 def _find_ollama() -> str | None:
     found = shutil.which("ollama")
     if found:
@@ -824,8 +869,7 @@ def _ensure_ollama() -> None:
         ("مدل عمومی", os.environ.get("OLLAMA_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL),
         (
             "مدل یادگیری",
-            os.environ.get("LEARNING_OLLAMA_MODEL", DEFAULT_LEARNING_MODEL).strip()
-            or DEFAULT_LEARNING_MODEL,
+            _configured_learning_model(),
         ),
     )
     missing_models: list[str] = []
@@ -872,6 +916,10 @@ def main() -> int:
     check_only = "--check-only" in sys.argv[1:]
     try:
         _ensure_dependencies(dev)
+        # Load the same project environment file used by app.config before resolving
+        # purpose-specific model overrides for installation.
+        from dotenv import load_dotenv
+        load_dotenv(ROOT / ".env", override=False)
         _ensure_ollama()
     except (RuntimeError, OSError, urllib.error.URLError) as exc:
         print(f"پیش‌نیاز آماده نیست: {exc}", file=sys.stderr)
