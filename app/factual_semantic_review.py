@@ -283,12 +283,17 @@ def review_claim_against_source(
             source_url=source_url,
             source_excerpt_sha256=actual_excerpt_hash,
         )
+    remote_identity_unattested = reviewer_identity_kind != "ollama_model_digest"
+    final_reasons = decision.reasons + (
+        ("remote_reviewer_weights_not_attested", "fail_closed_no_promotion")
+        if remote_identity_unattested else ()
+    )
     return ReviewDecision(
         verdict=decision.verdict,
-        accepted=decision.accepted,
+        accepted=decision.accepted and not remote_identity_unattested,
         score=decision.score,
         rubric_version=decision.rubric_version,
-        reasons=decision.reasons,
+        reasons=final_reasons,
         evaluator_model=reviewer_model,
         evaluator_digest=reviewer_digest,
         evaluator_identity_kind=reviewer_identity_kind,
