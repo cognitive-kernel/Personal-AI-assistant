@@ -20,9 +20,7 @@ CURRICULUM_TASK_TYPE = "learning.plan_curriculum"
 MIN_TOPICS_PER_BATCH = 8
 DEFAULT_TOPICS_PER_BATCH = 24
 MAX_TOPICS_PER_BATCH = 40
-MAX_SOURCE_DOCUMENTS = 40
 MAX_PROMPT_SOURCE_EXCERPTS = 8
-MAX_SOURCES_PER_DOMAIN = 3
 MAX_SOURCE_EXCERPT_CHARS = 1000
 MAX_PROMPT_CHARS = 20000
 CURRICULUM_CONTEXT_TOKENS = 8192
@@ -177,19 +175,10 @@ def _collect_sources(
         except web_sources.SourceFetchError:
             documents = []
         for document in documents:
-            if len(sources) >= MAX_SOURCE_DOCUMENTS:
-                break
             url = _normalized_source_url(document.url)
             title = str(document.title).strip()[:150]
             body = str(document.text).strip()
             if not url or len(url) > 250 or not title or len(body) < 100 or url in seen:
-                continue
-            domain = urlsplit(url).hostname or ""
-            domain_count = sum(
-                1 for existing in sources
-                if (urlsplit(existing["url"]).hostname or "") == domain
-            )
-            if domain_count >= MAX_SOURCES_PER_DOMAIN:
                 continue
             excerpt = body[:MAX_SOURCE_EXCERPT_CHARS]
             sources.append({
