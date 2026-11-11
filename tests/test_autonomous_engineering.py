@@ -336,6 +336,40 @@ def test_save_settings_rejects_invalid_values(monkeypatch, model, interval_hours
     assert error.value.status_code == 422
 
 
+def test_model_selection_has_no_implicit_gpt_oss_fallback(monkeypatch):
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_MODEL", raising=False)
+    assert agent._model() == ""
+
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_MODEL", "not a valid model")
+    assert agent._model() == ""
+
+
+def test_github_snapshot_does_not_invent_a_model_when_no_repository_variable_is_saved(monkeypatch):
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_MODEL", raising=False)
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    def fake_run(command, timeout=8):
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "list"]:
+            return subprocess.CompletedProcess(command, 0, "[]", "")
+        if command[1:3] == ["variable", "list"]:
+            return subprocess.CompletedProcess(command, 0, "[]", "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    result = agent._github_snapshot()
+    assert result["settings"]["model"] == ""
+
+
+def test_autonomous_workflow_requires_saved_model_without_a_hardcoded_fallback():
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    assert "vars.AUTONOMOUS_ENGINEERING_MODEL || ''" in workflow
+    assert "No model is saved in repository variable AUTONOMOUS_ENGINEERING_MODEL" in workflow
+    assert "vars.AUTONOMOUS_ENGINEERING_MODEL || 'gpt-oss:20b'" not in workflow
+
+
 def test_github_snapshot_reads_saved_model_and_frequency(monkeypatch):
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
 
