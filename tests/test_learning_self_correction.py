@@ -623,3 +623,67 @@ def test_web_claim_review_does_not_repeat_an_already_reserved_review_stage(
     durable = learning_durable_budget.get_job_budget(job["id"])
     assert durable["calls_used"] == 2
     assert durable["predict_tokens_reserved"] == 4900
+
+
+def test_user_report_creates_automatic_correction_job_without_mutating_original(
+    learning_store, monkeypatch
+):
+    original = learning.create_job("Python decorators")
+    with db.learning_connection() as connection:
+        connection.execute(
+            """UPDATE learning_jobs SET status='completed', lesson=? WHERE id=?""",
+            ("Original lesson with a faulty decorator example.", original["id"]),
+        )
+        connection.execute(
+            """INSERT INTO learning_evidence(
+                   job_id, evidence_type, source_ref, content_hash, note
+               ) VALUES (?, 'web_page', 'https://docs.python.org/3/reference/compound_stmts.html', 'abc', 'captured')""",
+            (original["id"],),
+        )
+    monkeypatch.setattr(
+        learning, "_enqueue_learning_job",
+        lambda job_id: {"id": 991, "status": "queued", "payload": {"job_id": job_id}},
+    )
+
+    result = learning.submit_lesson_issue(
+        original["id"],
+        "The decorator example raises TypeError when called with two arguments.",
+    )
+
+    correction = result["correction_job"]
+    assert result["queued"] is True
+    assert correction["id"] != original["id"]
+    assert correction["task_id"] == 991
+    with db.learning_connection() as connection:
+        old = connection.execute(
+            "SELECT status, lesson FROM learning_jobs WHERE id=?",
+            (original["id"],),
+        ).fetchone()
+        new = connection.execute(
+            "SELECT topic, lesson_review_json, status FROM learning_jobs WHERE id=?",
+            (correction["id"],),
+        ).fetchone()
+    review = json.loads(new["lesson_review_json"])
+    assert old["status"] == "completed"
+    assert old["lesson"] == "Original lesson with a faulty decorator example."
+    assert new["topic"] == "Python decorators"
+    assert new["status"] == "queued"
+    assert review["correction_mode"] == "user_reported_runtime_failure"
+    assert review["prior_job_id"] == original["id"]
+    assert "TypeError" in review["reported_issue"]
+    assert review["previous_lesson_sha256"] == __import__("hashlib").sha256(
+        old["lesson"].encode("utf-8")
+    ).hexdigest()
+    assert review["prior_source_urls"] == [
+        "https://docs.python.org/3/reference/compound_stmts.html"
+    ]
+
+
+def test_user_report_rejects_empty_or_oversized_issue_without_creating_job(learning_store):
+    original = learning.create_job("Python decorators")
+    with pytest.raises(ValueError, match="issue_report"):
+        learning.submit_lesson_issue(original["id"], " ")
+    with pytest.raises(ValueError, match="issue_report"):
+        learning.submit_lesson_issue(original["id"], "x" * 5001)
+
+
