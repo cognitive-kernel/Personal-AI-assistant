@@ -337,3 +337,6 @@
 - The task-persistence step now runs only after a pinned checkout of trusted `main`, so its PowerShell script is present on a fresh/clean Runner workspace. The checkout does not persist Git credentials.
 - The persistence step remains before Python/Ollama/Codex preflight. A regression assertion protects this order.
 - Follow-up commits: implementation `e1d47d05bc30cf536e1f8a98bd8e272d4590b53a`; test `0745b50e30a38a08421d6083af8b16eaa750e0c0`. Exact-head CI and target-runner verification remain pending.
+
+
+- تنظیمات LLM: provider مستقل Ollama یا OpenAI-compatible برای چت، یادگیری، برنامه‌نویسی، بازبینی factual و embedding؛ انتخاب مدل/endpoint از داشبورد، API key فقط از environment و حالت موقت تا restart یا ذخیرهٔ دائمی. CI exact-head برای آخرین تغییرات هنوز باید اجرا و بررسی شود.
