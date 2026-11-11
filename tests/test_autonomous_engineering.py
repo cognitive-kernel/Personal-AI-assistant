@@ -15,13 +15,13 @@ def test_status_readiness_requires_every_local_dependency(monkeypatch):
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_MODEL", "gpt-oss:20b")
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_REPOSITORY", "cognitive-kernel/Personal-AI-assistant")
     monkeypatch.setattr(agent, "_ollama_status", lambda model: {
-        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 65536, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True, "model_context_supported": True
+        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 65536, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True, "model_context_supported": True, "model_selectable": True, "model_is_codex_context_variant": False
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
     monkeypatch.setattr(agent, "storage_accessible", lambda: True)
     monkeypatch.setattr(agent, "_github_snapshot", lambda: {
-        "cli_installed": True, "authenticated": True, "recent_runs": [], "runs_available": True
+        "cli_installed": True, "authenticated": True, "recent_runs": [], "runs_available": True, "settings": {"model": "gpt-oss:20b"}
     })
 
     result = agent.collect_status()
@@ -52,13 +52,13 @@ def test_status_is_not_ready_when_local_model_is_missing(monkeypatch):
 
 def test_app_readiness_does_not_require_codex_in_the_app_account(monkeypatch):
     monkeypatch.setattr(agent, "_ollama_status", lambda model: {
-        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 65536, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True, "model_context_supported": True
+        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 65536, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True, "model_context_supported": True, "model_selectable": True, "model_is_codex_context_variant": False
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": False, "version": None})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
     monkeypatch.setattr(agent, "storage_accessible", lambda: True)
     monkeypatch.setattr(agent, "_github_snapshot", lambda: {
-        "cli_installed": True, "authenticated": True, "recent_runs": [], "runs_available": True
+        "cli_installed": True, "authenticated": True, "recent_runs": [], "runs_available": True, "settings": {"model": "gpt-oss:20b"}
     })
 
     result = agent.collect_status()
@@ -1043,14 +1043,14 @@ def test_live_progress_does_not_freeze_legacy_awaiting_review_state(monkeypatch)
 
 def test_status_distinguishes_prerequisite_readiness_from_paused_dispatch(monkeypatch):
     monkeypatch.setattr(agent, "_ollama_status", lambda model: {
-        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 65536, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True, "model_context_supported": True
+        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 65536, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True, "model_context_supported": True, "model_selectable": True, "model_is_codex_context_variant": False
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
     monkeypatch.setattr(agent, "storage_accessible", lambda: True)
     monkeypatch.setattr(agent, "_github_snapshot", lambda: {
         "cli_installed": True, "authenticated": True, "runs_available": True,
-        "recent_runs": [], "settings": {"paused": True},
+        "recent_runs": [], "settings": {"model": "gpt-oss:20b", "paused": True},
     })
 
     result = agent.collect_status()
