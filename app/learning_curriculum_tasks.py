@@ -558,6 +558,7 @@ def handle_curriculum_task(
             outline["topics"].extend(additions)
             outline["notes"] = page["notes"] or outline.get("notes", "")
             outline["coverage_areas"] = list(dict.fromkeys(outline.get("coverage_areas", []) + page["coverage_areas"]))
+            outline.setdefault("topic_metadata", {}).update(page.get("topic_metadata", {}))
         batch_index += 1
         next_focus = page["next_focus"]
         context.checkpoint({
