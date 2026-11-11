@@ -569,3 +569,100 @@ def test_research_queries_include_release_history_and_current_updates():
     assert any("first release initial stable version release dates" in item for item in queries)
     assert any("historical release archive yearly versions" in item for item in queries)
     assert any("latest release notes updates patches" in item for item in queries)
+
+
+
+def test_release_watch_detects_changed_release_sources_and_enqueues_once(learning_store, monkeypatch):
+    sources = [
+        {
+            "title": f"Release history {index}",
+            "url": f"https://docs{index}.example.test/releases",
+            "excerpt": (f"Release history and version details {index}. " * 20),
+            "sha256": __import__("hashlib").sha256(
+                (f"Release history and version details {index}. " * 30).encode("utf-8")
+            ).hexdigest(),
+            "publication_date": None,
+            "last_updated": None,
+            "retrieved_at": "2026-11-11T00:00:00+00:00",
+        }
+        for index in range(1, 4)
+    ]
+    path_id, _ = learning_curriculum_tasks._persist_researched_path(
+        task_id=9001,
+        topic="Python",
+        outline=_outline(),
+        sources=sources,
+        model="gpt-oss:20b",
+        model_selection={"selected_model": "gpt-oss:20b"},
+    )
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE learning_release_watch SET next_check_at=datetime('now', '-1 day') WHERE path_id=?",
+            (path_id,),
+        )
+    changed = [
+        _source(1),
+        _source(2),
+        web_sources.SourceDocument(
+            url="https://python.example.test/releases/3",
+            title="Python 3 release notes",
+            text="New release notes and compatibility changes. " * 30,
+        ),
+    ]
+    monkeypatch.setattr(web_sources, "discover_sources", lambda *_args, **_kwargs: changed)
+    queued = []
+    monkeypatch.setattr(
+        learning_curriculum_tasks,
+        "enqueue_curriculum_task",
+        lambda topic, **kwargs: queued.append((topic, kwargs)) or {"id": 9002},
+    )
+
+    result = learning_curriculum_tasks.maintain_release_watch(limit=3)
+
+    assert result == {"checked": 1, "queued": 1, "unchanged": 0, "errors": 0}
+    assert queued and queued[0][0] == "Python"
+    assert queued[0][1]["dedupe_key"].startswith(f"learning-release-watch:{path_id}:")
+    with db.learning_connection() as connection:
+        watch = connection.execute(
+            "SELECT last_task_id, last_source_fingerprint, status FROM learning_release_watch WHERE path_id=?",
+            (path_id,),
+        ).fetchone()
+    assert watch["last_task_id"] == 9002
+    assert len(watch["last_source_fingerprint"]) == 64
+    assert watch["status"] == "active"
+
+
+def test_release_watch_supersedes_previous_watch_without_mutating_old_curriculum(learning_store):
+    sources = [
+        {
+            "title": f"Release history {index}",
+            "url": f"https://docs{index}.example.test/releases",
+            "excerpt": (f"Release history and version details {index}. " * 20),
+            "sha256": __import__("hashlib").sha256(
+                (f"Release history and version details {index}. " * 30).encode("utf-8")
+            ).hexdigest(),
+            "publication_date": None,
+            "last_updated": None,
+            "retrieved_at": "2026-11-11T00:00:00+00:00",
+        }
+        for index in range(1, 4)
+    ]
+    first, _ = learning_curriculum_tasks._persist_researched_path(
+        task_id=9101, topic="SQL Server", outline=_outline(), sources=sources,
+        model="gpt-oss:20b", model_selection={"selected_model": "gpt-oss:20b"},
+    )
+    second, _ = learning_curriculum_tasks._persist_researched_path(
+        task_id=9102, topic="SQL Server", outline=_outline(), sources=sources,
+        model="gpt-oss:20b", model_selection={"selected_model": "gpt-oss:20b"},
+    )
+    with db.learning_connection() as connection:
+        statuses = dict(connection.execute(
+            "SELECT path_id, status FROM learning_release_watch WHERE path_id IN (?, ?)",
+            (first, second),
+        ).fetchall())
+        old_path = connection.execute(
+            "SELECT title FROM learning_paths WHERE id=?",
+            (first,),
+        ).fetchone()
+    assert statuses == {first: "superseded", second: "active"}
+    assert old_path is not None
