@@ -177,6 +177,20 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         assert {"task_id", "path_id", "source_url", "content_sha256", "content", "provenance_json"} <= research_source_columns
         assert {"path_id", "subject_map_json", "release_ledger_json", "unresolved_gaps_json", "coverage_audit_json"} <= path_coverage_columns
         connection.execute(
+            """INSERT INTO learning_path_research(
+                   path_id, requested_topic, outline_json, outline_sha256, model_name,
+                   model_selection_json, source_count, sources_json
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (path_id, "retained path", "{}", "b" * 64, "gpt-oss:20b", "{}", 3, "[]"),
+        )
+        connection.execute(
+            """INSERT INTO learning_path_coverage(
+                   path_id, subject_map_json, release_ledger_json,
+                   unresolved_gaps_json, coverage_audit_json
+               ) VALUES (?, ?, ?, ?, ?)""",
+            (path_id, '["SQL Server"]', "[]", '["missing patch history"]', '{"status":"partial"}'),
+        )
+        connection.execute(
             """INSERT INTO learning_research_source_text(
                    task_id, path_id, source_url, content_sha256, content, provenance_json
                ) VALUES (?, ?, ?, ?, ?, ?)""",
@@ -186,6 +200,10 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
             "SELECT content, path_id FROM learning_research_source_text WHERE task_id=?",
             (task_id,),
         ).fetchone() == ("full source body", path_id)
+        assert connection.execute(
+            "SELECT subject_map_json, unresolved_gaps_json FROM learning_path_coverage WHERE path_id=?",
+            (path_id,),
+        ).fetchone() == ('["SQL Server"]', '["missing patch history"]')
         assert connection.execute("SELECT applicability_json, source_urls_json, hierarchy_path, depth FROM learning_path_topics WHERE id=?", (path_topic_id,)).fetchone() == ("{}", "[]", "", 0)
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
