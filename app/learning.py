@@ -1556,9 +1556,21 @@ def submit_lesson_review(job_id: int, outcomes: list[str], value_rating: int, ta
             (job_id, json.dumps(outcomes, ensure_ascii=False), value_rating, takeaway.strip(), issues.strip()),
         )
         review_id = int(cursor.lastrowid)
-    return {"review_id": review_id, "job_id": job_id, "outcomes": outcomes, "value_rating": value_rating,
-            "takeaway": takeaway.strip(), "issues": issues.strip(),
-            "note": "این بازخورد، خودارزیابی یادگیرنده است و به‌تنهایی صحت علمی درس را تأیید نمی‌کند."}
+    correction = submit_lesson_issue(job_id, issues) if issues.strip() else None
+    return {
+        "review_id": review_id,
+        "job_id": job_id,
+        "outcomes": outcomes,
+        "value_rating": value_rating,
+        "takeaway": takeaway.strip(),
+        "issues": issues.strip(),
+        "correction_job": correction["correction_job"] if correction else None,
+        "note": (
+            "بازخورد ذخیره شد؛ گزارش اشکال به‌عنوان مشاهدهٔ کاربر ثبت و برای بررسی و اصلاح خودکار در job جداگانه صف‌بندی شد."
+            if correction else
+            "این بازخورد، خودارزیابی یادگیرنده است و به‌تنهایی صحت علمی درس را تأیید نمی‌کند."
+        ),
+    }
 
 
 def list_jobs(limit: int = 50) -> list[dict[str, Any]]:
