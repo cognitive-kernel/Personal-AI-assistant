@@ -564,6 +564,66 @@ def chat(
 
 
 
+def _openai_compatible_embeddings(
+    texts: list[str], *, model: str, timeout: int
+) -> list[list[float]]:
+    settings = get_settings()
+    base_url = normalize_openai_compatible_base_url(
+        settings.get("embedding_llm_base_url", "")
+    )
+    api_key_env = settings.get("embedding_llm_api_key_env", "")
+    headers = {"Content-Type": "application/json"}
+    if api_key_env:
+        if not isinstance(api_key_env, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", api_key_env):
+            raise OllamaError("The embedding API-key environment variable name is invalid.")
+        api_key = os.environ.get(api_key_env)
+        if not api_key:
+            raise OllamaError(f"The configured embedding API-key environment variable '{api_key_env}' is not set.")
+        headers["Authorization"] = f"Bearer {api_key}"
+    request = urllib.request.Request(
+        base_url + "/embeddings",
+        data=json.dumps({"model": model, "input": texts}).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with _INFERENCE_LOCK:
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({}), _NoRedirectHandler()
+            )
+            with opener.open(request, timeout=max(1, min(int(timeout), 600))) as response:
+                body = response.read(_MAX_RESPONSE_BYTES + 1)
+        if len(body) > _MAX_RESPONSE_BYTES:
+            raise OllamaError("Embedding response exceeded the 8 MiB limit.")
+        payload = json.loads(body.decode("utf-8"))
+        rows = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(rows, list) or len(rows) != len(texts):
+            raise OllamaError("OpenAI-compatible provider returned an unexpected embedding count.")
+        ordered: list[list[float] | None] = [None] * len(texts)
+        for row in rows:
+            if not isinstance(row, dict):
+                raise OllamaError("OpenAI-compatible provider returned an invalid embedding item.")
+            index = row.get("index")
+            vector = row.get("embedding")
+            if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(texts):
+                raise OllamaError("OpenAI-compatible provider returned an invalid embedding index.")
+            if ordered[index] is not None or not isinstance(vector, list):
+                raise OllamaError("OpenAI-compatible provider returned duplicate or invalid embedding data.")
+            ordered[index] = vector
+        if any(vector is None for vector in ordered):
+            raise OllamaError("OpenAI-compatible provider omitted an embedding.")
+        return [vector for vector in ordered if vector is not None]
+    except urllib.error.HTTPError as exc:
+        raise OllamaError(
+            f"OpenAI-compatible embedding provider returned HTTP {exc.code}.",
+            retryable=exc.code in {408, 425, 429, 500, 502, 503, 504},
+        ) from exc
+    except (urllib.error.URLError, TimeoutError, socket.timeout, OSError, http.client.HTTPException, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise OllamaError(
+            f"OpenAI-compatible embedding request failed: {type(exc).__name__}", retryable=True
+        ) from exc
+
+
 def embed(texts: list[str], model: str | None = None) -> list[list[float]]:
     """Generate bounded local embeddings; reject malformed vectors rather than caching them."""
     if not isinstance(texts, list) or not texts or len(texts) > 32:
@@ -580,12 +640,19 @@ def embed(texts: list[str], model: str | None = None) -> list[list[float]]:
         raise OllamaError("Embedding model name is invalid.")
 
     configured_timeout = int(settings["ollama_timeout_seconds"])
-    response = _request(
-        "/api/embed",
-        {"model": selected_model, "input": normalized},
-        timeout=max(1, min(configured_timeout, 8)),
-    )
-    embeddings = response.get("embeddings")
+    if settings.get("embedding_llm_provider", "ollama") == "openai_compatible":
+        embeddings = _openai_compatible_embeddings(
+            normalized, model=selected_model, timeout=configured_timeout
+        )
+    elif settings.get("embedding_llm_provider", "ollama") == "ollama":
+        response = _request(
+            "/api/embed",
+            {"model": selected_model, "input": normalized},
+            timeout=max(1, min(configured_timeout, 8)),
+        )
+        embeddings = response.get("embeddings")
+    else:
+        raise OllamaError("Unsupported embedding provider.")
     if not isinstance(embeddings, list) or len(embeddings) != len(normalized):
         raise OllamaError("Ollama returned an unexpected embedding count.")
 
