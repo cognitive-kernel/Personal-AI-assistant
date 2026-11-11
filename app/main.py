@@ -294,6 +294,15 @@ def _maintain_learning_runtime() -> None:
     except Exception:
         logger.exception("Factual-learning maintenance failed.")
     try:
+        release_watch = learning_curriculum_tasks.maintain_release_watch(limit=3)
+        if release_watch["queued"]:
+            logger.info(
+                "Learning release monitor queued %s new curriculum version(s).",
+                release_watch["queued"],
+            )
+    except Exception:
+        logger.exception("Learning release monitoring failed; it will retry next interval.")
+    try:
         browser_learning.recover_interrupted_courses()
     except Exception:
         logger.exception("Stale browser-learning recovery failed; it will retry next interval.")
