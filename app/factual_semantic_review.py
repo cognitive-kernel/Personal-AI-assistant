@@ -185,7 +185,7 @@ def review_claim_against_source(
     reviewer_model = str(settings.get("factual_review_ollama_model", "")).strip()
     if not reviewer_model:
         raise ValueError("A distinct factual review model must be configured.")
-    reviewer_identity = ollama.model_identity("factual_review", reviewer_model)
+    reviewer_identity = ollama.model_identity("factual_review", reviewer_model, settings=settings)
 
     def primary_identities(current: dict[str, Any]) -> set[str]:
         identities: set[str] = set()
@@ -194,7 +194,7 @@ def review_claim_against_source(
             if not model:
                 continue
             try:
-                identities.add(ollama.model_identity(purpose, model)["identity"])
+                identities.add(ollama.model_identity(purpose, model, settings=current)["identity"])
             except ollama.OllamaError:
                 continue
         return identities
@@ -202,7 +202,7 @@ def review_claim_against_source(
     if reviewer_identity["identity"] in primary_identities(settings):
         raise ValueError("The factual review model must be distinct from all configured generation models.")
     latest_settings = get_settings()
-    latest_identity = ollama.model_identity("factual_review", reviewer_model)
+    latest_identity = ollama.model_identity("factual_review", reviewer_model, settings=latest_settings)
     if (
         str(latest_settings.get("factual_review_ollama_model", "")).strip() != reviewer_model
         or latest_identity["identity"] != reviewer_identity["identity"]
