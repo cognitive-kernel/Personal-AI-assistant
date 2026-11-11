@@ -1231,3 +1231,29 @@ def test_researched_path_exposes_durable_subject_map_release_ledger_and_gaps(lea
     assert research["coverage"]["release_ledger"][0]["version"] == "3.14"
     assert research["coverage"]["unresolved_gaps"] == value["unresolved_gaps"]
     assert research["coverage"]["coverage_audit"]["status"] == "partial"
+
+
+def test_short_incomplete_release_note_is_retained_as_research_evidence(learning_store, monkeypatch):
+    calls = {"count": 0}
+
+    def discover(_query, *, limit):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return [web_sources.SourceDocument(
+                url="https://community.example.test/errata/short",
+                title="Short community erratum",
+                text="Patch note: fixes a connection retry regression.",
+            )]
+        return []
+
+    monkeypatch.setattr(web_sources, "discover_sources", discover)
+    sources = learning_curriculum_tasks._collect_sources(
+        "Database connection retries",
+        topic_sha256="d" * 64,
+        checkpoint=None,
+        context=RecordingContext(),
+    )
+
+    assert len(sources) == 1
+    assert sources[0]["title"] == "Short community erratum"
+    assert sources[0]["excerpt"] == "Patch note: fixes a connection retry regression."
