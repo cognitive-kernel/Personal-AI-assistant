@@ -822,7 +822,7 @@ def _find_ollama() -> str | None:
 def _ensure_ollama() -> None:
     active_providers = [
         _configured_llm_provider(name)
-        for name in ("chat", "learning", "programming", "embedding")
+        for name in ("chat", "research_plan", "learning", "programming", "embedding")
     ]
     factual_review_model = _read_saved_setting("factual_review_ollama_model", "")
     if factual_review_model and _configured_llm_provider("factual_review") == "ollama":
@@ -929,6 +929,11 @@ def _ensure_ollama() -> None:
                 "chat_ollama_model", "CHAT_OLLAMA_MODEL",
                 os.environ.get("OLLAMA_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL,
             ),
+        ))
+    if _configured_llm_provider("research_plan") == "ollama":
+        required_models.append((
+            "مدل برنامه‌ریزی پژوهش",
+            _configured_model_setting("research_plan_ollama_model", "RESEARCH_PLAN_OLLAMA_MODEL", DEFAULT_MODEL),
         ))
     if _configured_llm_provider("learning") == "ollama":
         required_models.append(("مدل یادگیری", _configured_learning_model()))
