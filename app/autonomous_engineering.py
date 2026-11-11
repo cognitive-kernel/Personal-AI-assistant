@@ -53,11 +53,6 @@ def _repository() -> str:
     return value if owner and name and "/" not in name else _DEFAULT_REPOSITORY
 
 
-def _model() -> str:
-    """The dashboard model must come from the saved repository variable."""
-    return ""
-
-
 def _run(command: list[str], timeout: int = 8) -> subprocess.CompletedProcess[str] | None:
     try:
         return subprocess.run(
