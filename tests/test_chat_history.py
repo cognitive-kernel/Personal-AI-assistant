@@ -156,13 +156,15 @@ def test_research_answer_candidate_is_idempotent_and_keeps_task_provenance(tmp_p
     assert candidates[0]["task_id"] == 812
 
 
-def test_candidate_staging_skips_short_or_credential_bearing_answers(tmp_path, monkeypatch):
+def test_candidate_staging_keeps_short_answers_but_skips_credential_bearing_exchanges(tmp_path, monkeypatch):
     from app import learning_candidates
 
     _configure_databases(tmp_path, monkeypatch)
     conversation = chat_history.create_conversation()
     chat_history.append_user_message(conversation["id"], "Explain database transactions.")
-    chat_history.append_assistant_message(conversation["id"], "A transaction groups operations.")
+    short_message = chat_history.append_assistant_message(
+        conversation["id"], "A transaction groups operations."
+    )
 
     second = chat_history.create_conversation()
     chat_history.append_user_message(second["id"], "Store this API key: abcdefghijklmnop")
@@ -172,4 +174,8 @@ def test_candidate_staging_skips_short_or_credential_bearing_answers(tmp_path, m
         "Never put credentials directly in source code or public logs.",
     )
 
-    assert learning_candidates.list_chat_candidates() == []
+    candidates = learning_candidates.list_chat_candidates()
+    assert len(candidates) == 1
+    assert candidates[0]["message_id"] == short_message["id"]
+    assert candidates[0]["content"] == "A transaction groups operations."
+    assert candidates[0]["status"] == "unverified"
