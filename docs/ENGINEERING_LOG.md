@@ -477,3 +477,5 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Documentation: updated docs/LEARNING.md and docs/PROJECT_STATUS.md to describe the new contract.
 - Commits: 1dcdae6ffdab24d1bce47c413f282506b8f0fb94, 3c6eb85c29f84afcb319457ab98164cde162a924, b9b159a53893f0b7a0e0fd7a1f6210f231e6f258, e1d17548514d1d655c8ca5720c1e8c2d432bd2a9, 38fbbbf564be6948f8aa70b25710a696a9486d8e.
 - Validation: no exact-head CI result is available yet for the latest commit. Do not infer success from earlier PR runs. Local target-host validation remains a separate pre-merge gate.
+
+- Follow-up: removed the 40-document aggregate cap and three-documents-per-domain cap as well. Every usable result returned by each research query is now retained with provenance; the prompt still selects a bounded representative excerpt set per model call to respect context limits, without deleting the persisted source inventory. Added a regression with four sources from one domain per query.
