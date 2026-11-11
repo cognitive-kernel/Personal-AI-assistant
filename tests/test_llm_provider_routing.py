@@ -196,3 +196,43 @@ def test_embed_uses_selected_compatible_provider(monkeypatch):
     )
 
     assert ollama.embed(["alpha", "beta"]) == [[5.0, 1.0], [4.0, 1.0]]
+
+
+def test_direct_learning_chat_requests_route_through_selected_provider(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        ollama, "get_settings",
+        lambda: {
+            "learning_llm_provider": "openai_compatible",
+            "learning_ollama_model": "remote-learning-model",
+            "learning_ollama_timeout_seconds": 75,
+        },
+    )
+    monkeypatch.setattr(
+        ollama, "_openai_compatible_chat",
+        lambda message, history, system_prompt, **kwargs: captured.update({
+            "message": message, "history": history, "system_prompt": system_prompt, **kwargs
+        }) or '{"lesson":"ok"}',
+    )
+
+    result = ollama._request(
+        "/api/chat",
+        {
+            "model": "remote-learning-model",
+            "format": "json",
+            "messages": [
+                {"role": "system", "content": "system"},
+                {"role": "user", "content": "serialized lesson prompt"},
+            ],
+            "options": {"num_predict": 3900},
+        },
+        timeout=75,
+        purpose="learning",
+    )
+
+    assert result["message"]["content"] == '{"lesson":"ok"}'
+    assert captured["purpose"] == "learning"
+    assert captured["model"] == "remote-learning-model"
+    assert captured["num_predict"] == 3900
+    assert captured["response_format"] == "json"
+    assert captured["message"] == "serialized lesson prompt"
