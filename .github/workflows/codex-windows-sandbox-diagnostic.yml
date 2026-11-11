@@ -4,12 +4,15 @@ run-name: "Codex Windows Sandbox Diagnostic #${{ github.run_number }} - ${{ gith
 on:
   push:
     branches:
-      - fix/autonomous-task-preservation
-      - fix/automation-codex-context-smoke-20261107
       - fix/codex-builtin-ollama-config-20261110
     paths:
       - .github/workflows/codex-windows-sandbox-diagnostic.yml
       - .github/workflows/autonomous-codex-engineering.yml
+      - docs/operations/CODEX_AUTONOMOUS_ENGINEERING.md
+      - scripts/provision_autonomous_runner.ps1
+      - scripts/check_autonomous_runner.ps1
+      - scripts/check_autonomous_agent.ps1
+      - app/static/autonomous-engineering.js
       - app/autonomous_engineering.py
       - app/main.py
       - app/ollama.py
