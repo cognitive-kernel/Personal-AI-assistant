@@ -1016,3 +1016,40 @@ def test_topic_metadata_does_not_truncate_long_release_histories_or_source_lists
     assert metadata["applicability"]["versions"] == versions
     assert metadata["applicability"]["release_years"] == years
     assert metadata["source_urls"] == urls
+
+
+def test_complete_source_bodies_are_persisted_and_every_text_chunk_is_reviewable(learning_store):
+    source = {
+        "title": "Full release archive",
+        "url": "https://archive.example.test/releases",
+        "sha256": __import__("hashlib").sha256(
+            (("A" * 1000) + ("B" * 1000) + ("C" * 500)).encode()
+        ).hexdigest(),
+        "query": "Python release history",
+        "publication_date": "1994-01-01",
+        "last_updated": "2026-01-01",
+        "retrieved_at": "2026-11-11T00:00:00+00:00",
+        "excerpt": "A" * 1000,
+    }
+    body = ("A" * 1000) + ("B" * 1000) + ("C" * 500)
+
+    learning_curriculum_tasks._persist_source_body(77, source, body)
+    hydrated = learning_curriculum_tasks._hydrate_source_bodies(77, [source])
+    chunks = learning_curriculum_tasks._ordered_source_evidence(hydrated)
+
+    assert hydrated[0]["content"] == body
+    assert hydrated[0]["content_complete"] is True
+    assert [item["content_chunk_index"] for item in chunks] == [1, 2, 3]
+    assert [item["content_chunk_count"] for item in chunks] == [3, 3, 3]
+    assert "".join(item["excerpt"] for item in chunks) == body
+    assert learning_curriculum_tasks._source_evidence_batch_count(hydrated) == 1
+    with db.learning_connection() as connection:
+        stored = connection.execute(
+            """SELECT source_url, content_sha256, content, path_id
+               FROM learning_research_source_text WHERE task_id=?""",
+            (77,),
+        ).fetchone()
+    assert stored["source_url"] == source["url"]
+    assert stored["content_sha256"] == source["sha256"]
+    assert stored["content"] == body
+    assert stored["path_id"] is None
