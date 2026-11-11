@@ -154,6 +154,8 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'هیچ مدل نصب‌شده‌ای از Ollama شناسایی نشد' in agent_script
     assert "model_context_length" in agent_script
     assert "model_supports_tools" in agent_script
+    assert "model_selectable" in agent_script
+    assert "نسخهٔ داخلی Context" in agent_script
 
 
 def test_autonomous_engineering_routes_are_registered():
@@ -267,6 +269,50 @@ def test_ollama_status_lists_installed_models_without_selecting_one(monkeypatch)
     assert result["model"] == ""
     assert result["model_installed"] is False
     assert result["model_metadata_error"] == "No Ollama model is saved in repository settings."
+
+
+def test_ollama_status_hides_generated_codex_context_variants_and_rejects_saved_alias(monkeypatch):
+    calls = []
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            calls.append(request.full_url)
+            assert request.full_url == "http://127.0.0.1:11434/api/tags"
+            return io.BytesIO(
+                b'{"models":[{"name":"base-model:14b"},{"name":"base-model:14b-codex-ctx65536"}]}'
+            )
+
+    monkeypatch.setattr(agent.urllib.request, "build_opener", lambda *args: FakeOpener())
+
+    result = agent._ollama_status("base-model:14b-codex-ctx65536")
+
+    assert calls == ["http://127.0.0.1:11434/api/tags"]
+    assert result["online"] is True
+    assert result["model_installed"] is True
+    assert result["model_selectable"] is False
+    assert result["model_is_codex_context_variant"] is True
+    assert result["models"] == ["base-model:14b"]
+    assert "original Ollama model" in result["model_metadata_error"]
+
+
+def test_save_settings_rejects_generated_codex_context_variant_before_local_or_github_access(monkeypatch):
+    def unexpected_model_lookup(model):
+        raise AssertionError("Generated context variants must be rejected before Ollama access.")
+
+    monkeypatch.setattr(agent, "_ollama_status", unexpected_model_lookup)
+    monkeypatch.setattr(agent.shutil, "which", lambda _: None)
+
+    with pytest.raises(HTTPException) as error:
+        agent.save_autonomous_engineering_settings(
+            agent.EngineeringSettings(
+                model="base-model:14b-codex-ctx65536",
+                interval_hours=4,
+                execution_mode="continuous",
+            )
+        )
+
+    assert error.value.status_code == 422
+    assert "مدل اصلی Ollama" in error.value.detail
 
 
 def test_github_snapshot_fails_closed_when_run_list_is_unavailable(monkeypatch):
