@@ -722,3 +722,61 @@ def test_versioned_curriculum_topics_must_be_oldest_to_newest():
     value["topic_metadata"][second]["applicability"]["release_years"] = ["2021"]
     with pytest.raises(ValueError, match="oldest-to-newest"):
         learning_curriculum_tasks._parse_outline(json.dumps(value, ensure_ascii=False), 20)
+
+
+def test_legacy_research_checkpoint_without_query_provenance_is_researched_again():
+    queries = learning_curriculum_tasks._research_queries("Python")
+    checkpoint = {
+        "topic_sha256": "a" * 64,
+        "queries": queries,
+        "completed_queries": queries,
+        "sources": [{
+            "title": "Old source",
+            "url": "https://docs.example.test/old",
+            "excerpt": "Legacy excerpt",
+            "sha256": "b" * 64,
+        }],
+    }
+    completed, sources = learning_curriculum_tasks._valid_checkpoint(
+        checkpoint, topic_sha256="a" * 64, queries=queries
+    )
+    assert completed == []
+    assert sources == []
+
+
+def test_curriculum_prompt_includes_evidence_from_every_research_angle(monkeypatch):
+    queries = learning_curriculum_tasks._research_queries("Python")
+    sources = [
+        {
+            "title": f"Source {index}",
+            "url": f"https://docs{index}.example.test/releases",
+            "excerpt": f"Evidence for query {index}. " * 10,
+            "sha256": __import__("hashlib").sha256(str(index).encode()).hexdigest(),
+            "query": query,
+        }
+        for index, query in enumerate(queries, 1)
+    ]
+    captured = []
+    monkeypatch.setattr(
+        learning_curriculum_tasks, "get_settings",
+        lambda: {"learning_ollama_model": "gpt-oss:20b"},
+    )
+    monkeypatch.setattr(
+        learning, "_select_learning_generation_model",
+        lambda *_args, **_kwargs: ("gpt-oss:20b", {"selected_model": "gpt-oss:20b"}),
+    )
+    monkeypatch.setattr(
+        learning_curriculum_tasks.ollama, "chat",
+        lambda message, **_kwargs: captured.append(json.loads(message)) or json.dumps(_outline(), ensure_ascii=False),
+    )
+
+    learning_curriculum_tasks._generate_outline(
+        "Python", 20, "", sources, "gpt-oss:20b"
+    )
+
+    included = captured[0]["research_sources"]
+    assert len(included) == len(queries)
+    assert {item["research_query"] for item in included} == set(queries)
+    assert all(item["excerpt"] for item in included)
+
+
