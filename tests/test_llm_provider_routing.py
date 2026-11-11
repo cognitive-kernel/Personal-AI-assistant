@@ -32,17 +32,26 @@ def test_openai_compatible_chat_uses_selected_model_and_environment_api_key(monk
     monkeypatch.setattr(
         ollama.urllib.request, "build_opener",
         lambda *_args, **_kwargs: _FakeOpener(
-            {"choices": [{"message": {"content": "lesson response"}}]}, captured
+            {
+                "choices": [{"message": {"content": "lesson response"}}],
+                "usage": {"prompt_tokens": 1400, "completion_tokens": 900, "total_tokens": 2300},
+            }, captured
         ),
     )
+    usage = {}
 
     result = ollama._openai_compatible_chat(
         "Explain SQL Server", [{"role": "user", "content": "Earlier context"}],
         "You are a teacher.", purpose="learning", model="custom-model",
-        timeout=90, num_predict=1200,
+        timeout=90, num_predict=1200, usage_out=usage,
     )
 
     assert result == "lesson response"
+    assert usage == {
+        "prompt_eval_count": 1400,
+        "eval_count": 900,
+        "total_tokens": 2300,
+    }
     assert captured["url"] == "https://llm.example.test/v1/chat/completions"
     assert captured["authorization"] == "Bearer secret-value"
     assert captured["payload"]["model"] == "custom-model"
