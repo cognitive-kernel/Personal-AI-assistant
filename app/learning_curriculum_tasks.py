@@ -502,7 +502,8 @@ def maintain_release_watch(*, limit: int = 3) -> dict[str, int]:
         raise ValueError("limit must be between 1 and 20.")
     with learning_connection() as connection:
         rows = connection.execute(
-            """SELECT w.path_id, w.last_source_fingerprint, r.requested_topic, r.sources_json
+            """SELECT w.path_id, w.last_source_fingerprint, w.last_task_id,
+                      r.requested_topic, r.sources_json
                FROM learning_release_watch w
                JOIN learning_path_research r ON r.path_id=w.path_id
                WHERE w.status='active' AND w.next_check_at<=CURRENT_TIMESTAMP
@@ -514,6 +515,21 @@ def maintain_release_watch(*, limit: int = 3) -> dict[str, int]:
         path_id = int(row["path_id"])
         topic = str(row["requested_topic"])
         try:
+            last_task_id = row["last_task_id"]
+            if isinstance(last_task_id, int):
+                active_task = task_manager.get_task(last_task_id)
+                if active_task is not None and active_task.get("status") in {"queued", "running"}:
+                    with learning_connection() as connection:
+                        connection.execute(
+                            """UPDATE learning_release_watch
+                               SET last_checked_at=CURRENT_TIMESTAMP,
+                                   next_check_at=datetime('now', '+1 hour'),
+                                   updated_at=CURRENT_TIMESTAMP
+                               WHERE path_id=? AND status='active'""",
+                            (path_id,),
+                        )
+                    checked += 1
+                    continue
             discovered: dict[str, dict[str, str]] = {}
             for query in _release_watch_queries(topic):
                 try:
@@ -750,6 +766,8 @@ def handle_curriculum_task(
     payload: dict[str, Any], checkpoint: dict[str, Any] | None, context: TaskContext,
 ) -> dict[str, Any]:
     try:
+        if set(payload) - {"topic", "batch_size", "source_text", "refresh_of_path_id"}:
+            raise ValueError("Curriculum task contains unsupported fields.")
         topic, batch_size, source_text = validate_curriculum_payload({
             "topic": payload.get("topic"),
             "batch_size": payload.get("batch_size", DEFAULT_TOPICS_PER_BATCH),
@@ -762,6 +780,17 @@ def handle_curriculum_task(
             or refresh_of_path_id < 1
         ):
             raise ValueError("refresh_of_path_id must be a positive integer.")
+        if refresh_of_path_id is not None:
+            with learning_connection() as connection:
+                parent = connection.execute(
+                    """SELECT r.requested_topic, w.status
+                       FROM learning_path_research r
+                       JOIN learning_release_watch w ON w.path_id=r.path_id
+                       WHERE r.path_id=?""",
+                    (refresh_of_path_id,),
+                ).fetchone()
+            if parent is None or parent["status"] != "active" or parent["requested_topic"] != topic:
+                raise ValueError("Release refresh must reference the active parent curriculum for the same subject.")
     except (TypeError, ValueError) as exc:
         raise PermanentTaskError(str(exc)) from exc
     topic_sha256 = hashlib.sha256(topic.encode("utf-8")).hexdigest()
