@@ -849,7 +849,7 @@ def run_job(job_id: int) -> None:
         "curriculum_provenance_policy": (
             "For researched-course lessons, explicitly state the product and exact versions/builds, editions, "
             "database compatibility levels, operating systems/platforms, execution modes, prerequisites, and "
-            "permissions only when supported by the attached source records. Cite only the exact supplied URLs. "
+            "permissions only when supported by the attached source records. Cite only the exact supplied URLs and include a Sources section with exact source URLs for supported claims. "
             "Distinguish engine version from database compatibility level. Do not generalize support across releases. "
             "If a version, date, edition, or condition is not established by sources, label it unverified and say "
             "what must be checked; never fill gaps from memory as if sourced."
