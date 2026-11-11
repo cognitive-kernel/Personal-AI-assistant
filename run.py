@@ -743,18 +743,16 @@ def _read_saved_setting(key: str, default: Any) -> Any:
 
 
 def _configured_llm_provider(purpose: str) -> str:
-    raw = os.environ.get(f"{purpose.upper()}_LLM_PROVIDER")
-    if raw is None:
-        raw = _read_saved_setting(f"{purpose}_llm_provider", "ollama")
+    raw = _read_saved_setting(f"{purpose}_llm_provider", "ollama")
     if not isinstance(raw, str) or raw not in {"ollama", "openai_compatible"}:
         raise RuntimeError(f"The configured {purpose} LLM provider is invalid.")
     return raw
 
 
 def _configured_model_setting(key: str, env_name: str, default: str) -> str:
-    raw = os.environ.get(env_name)
+    raw = _read_saved_setting(key, None)
     if raw is None:
-        raw = _read_saved_setting(key, default)
+        raw = os.environ.get(env_name, default)
     if not isinstance(raw, str) or not raw.strip() or len(raw.strip()) > 200:
         raise RuntimeError(f"The saved model setting '{key}' is invalid.")
     return raw.strip()
