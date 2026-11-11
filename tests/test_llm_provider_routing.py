@@ -120,3 +120,79 @@ def test_openai_compatible_chat_rejects_missing_api_key_environment_variable(mon
             "hello", None, None, purpose="chat", model="model",
             timeout=20, num_predict=100,
         )
+
+
+def test_chat_routes_to_selected_openai_compatible_provider(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        ollama, "get_settings",
+        lambda: {
+            "chat_llm_provider": "openai_compatible",
+            "chat_ollama_model": "selected-chat-model",
+            "chat_ollama_timeout_seconds": 45,
+        },
+    )
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {})
+    monkeypatch.setattr(
+        ollama, "_openai_compatible_chat",
+        lambda *args, **kwargs: captured.update(kwargs) or "provider reply",
+    )
+
+    result = ollama.chat("hello", purpose="chat", num_predict=321)
+
+    assert result == "provider reply"
+    assert captured["purpose"] == "chat"
+    assert captured["model"] == "selected-chat-model"
+    assert captured["num_predict"] == 321
+
+
+def test_openai_compatible_embeddings_preserve_input_order(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        ollama, "get_settings",
+        lambda: {
+            "embedding_llm_base_url": "http://127.0.0.1:1234/v1",
+            "embedding_llm_api_key_env": "",
+        },
+    )
+    monkeypatch.setattr(
+        ollama.urllib.request, "build_opener",
+        lambda *_args, **_kwargs: _FakeOpener(
+            {
+                "data": [
+                    {"index": 1, "embedding": [0.3, 0.4]},
+                    {"index": 0, "embedding": [0.1, 0.2]},
+                ]
+            },
+            captured,
+        ),
+    )
+
+    vectors = ollama._openai_compatible_embeddings(
+        ["first", "second"], model="embed-model", timeout=20
+    )
+
+    assert vectors == [[0.1, 0.2], [0.3, 0.4]]
+    assert captured["url"] == "http://127.0.0.1:1234/v1/embeddings"
+    assert captured["payload"] == {"model": "embed-model", "input": ["first", "second"]}
+
+
+def test_embed_uses_selected_compatible_provider(monkeypatch):
+    monkeypatch.setattr(
+        ollama, "get_settings",
+        lambda: {
+            "embedding_llm_provider": "openai_compatible",
+            "ollama_embedding_model": "remote-embedding",
+            "ollama_timeout_seconds": 30,
+        },
+    )
+    monkeypatch.setattr(
+        ollama, "_openai_compatible_embeddings",
+        lambda texts, **kwargs: [[float(len(text)), 1.0] for text in texts],
+    )
+    monkeypatch.setattr(
+        ollama, "_request",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("Ollama must not be called")),
+    )
+
+    assert ollama.embed(["alpha", "beta"]) == [[5.0, 1.0], [4.0, 1.0]]
