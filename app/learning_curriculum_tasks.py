@@ -1153,14 +1153,25 @@ def handle_curriculum_task(
         raise PermanentTaskError("The curriculum model provenance does not match the model used.")
     outline = state.get("outline")
     if outline is None:
-        outline = {"title": "", "topics": [], "notes": "", "coverage_areas": [], "topic_metadata": {}}
+        outline = {
+            "title": "", "topics": [], "notes": "", "coverage_areas": [],
+            "topic_metadata": {}, "subject_map": [], "release_ledger": [],
+            "unresolved_gaps": [], "coverage_audit": {"status": "unknown"},
+        }
     if (not isinstance(outline, dict) or not isinstance(outline.get("topics"), list)
         or not all(isinstance(item, str) and item.strip() for item in outline["topics"])):
         raise PermanentTaskError("The checkpointed curriculum outline is invalid.")
     if len({item.casefold() for item in outline["topics"]}) != len(outline["topics"]):
         raise PermanentTaskError("The checkpointed curriculum contains duplicate topics.")
-    if not isinstance(outline.get("coverage_areas", []), list) or not isinstance(outline.get("topic_metadata", {}), dict):
-        raise PermanentTaskError("The checkpointed curriculum coverage or topic metadata is invalid.")
+    if (
+        not isinstance(outline.get("coverage_areas", []), list)
+        or not isinstance(outline.get("topic_metadata", {}), dict)
+        or not isinstance(outline.get("subject_map", []), list)
+        or not isinstance(outline.get("release_ledger", []), list)
+        or not isinstance(outline.get("unresolved_gaps", []), list)
+        or not isinstance(outline.get("coverage_audit", {}), dict)
+    ):
+        raise PermanentTaskError("The checkpointed curriculum coverage, ledger, or topic metadata is invalid.")
     if state.get("phase") == "curriculum_persisted":
         path_id = state.get("path_id")
         saved_hash = state.get("outline_sha256")
@@ -1191,6 +1202,9 @@ def handle_curriculum_task(
             page, selection = _generate_outline(
                 topic, batch_size, source_text, sources, model, batch_index=batch_index,
                 previous_topics=outline["topics"], previous_coverage=outline.get("coverage_areas", []),
+                previous_subject_map=outline.get("subject_map", []),
+                previous_release_ledger=outline.get("release_ledger", []),
+                previous_unresolved_gaps=outline.get("unresolved_gaps", []),
                 next_focus=next_focus,
             )
         except ollama.OllamaError as exc:
