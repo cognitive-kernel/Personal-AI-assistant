@@ -33,3 +33,12 @@ Version-sensitive technical material must keep separate dimensions instead of tr
 ## Validation and residual risk
 
 Automated tests must cover checkpoint recovery, multi-batch generation beyond 40 topics, source diversity, strict outline validation, per-topic version/source metadata, idempotent persistence, one-at-a-time queue advancement, failure blocking, model pinning, settings migration, and UI removal of preset enrollment. GitHub Actions must pass on the exact PR head. The user's Windows host (32 GB RAM, Core i5-12400, integrated graphics) still requires a real run to verify model loading, RAM use, inference latency, and Persian/English lesson quality. No merge is permitted until the repository's required host-validation gate is satisfied.
+
+
+## Lesson-depth and output-budget amendment (2026-11-11)
+
+The initial lesson prompt imposed a 200–260-word target, and the deterministic quality filter rejected content above 260 words. The generation and repair calls also reserved only 1,200 and 1,400 output tokens. These were arbitrary brevity constraints that could suppress necessary explanations even when the syllabus itself was unbounded.
+
+The lesson contract now has no minimum or maximum word-count gate. Prompt versions `learning-lesson-v3` and `learning-lesson-repair-v3` require depth to follow topic complexity and learner needs, prohibit padding, and direct an over-broad topic to be decomposed into coherent prerequisite-aware syllabus lessons. Each generation/repair request has a 3,900-token output allowance; the two-call in-memory budget is 7,800 tokens. The existing durable per-job budget remains 9,000 tokens, leaving room for the optional 1,000-token claim-review reservation. This is a per-inference resource bound, not a course-size limit. Runtime context/RAM enforcement and fail-closed behavior remain unchanged.
+
+Regression tests verify that lessons longer than 260 words are not rejected solely for length, short lessons are judged by content quality rather than word count, both generation attempts receive the expanded token allowance, and prompt provenance records the new versions. This amendment does not claim live-model factual quality or target-host performance.
