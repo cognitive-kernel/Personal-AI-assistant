@@ -763,7 +763,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         key = f"{purpose}_model_keep_alive"
         if key in values and (not isinstance(values[key], str) or values[key] not in keep_alive_values):
             raise HTTPException(status_code=422, detail=f"{key} must be one of: auto, 0, 1m, 5m, 10m, 30m.")
-    for purpose in ("chat", "learning", "programming", "factual_review"):
+    for purpose in ("chat", "learning", "programming", "factual_review", "embedding"):
         provider_key = f"{purpose}_llm_provider"
         base_url_key = f"{purpose}_llm_base_url"
         api_key_env_key = f"{purpose}_llm_api_key_env"
