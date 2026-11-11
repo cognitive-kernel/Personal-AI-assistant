@@ -92,8 +92,51 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def _request(path: str, payload: dict[str, Any] | None = None, timeout: float | None = None) -> dict[str, Any]:
+def _request(
+    path: str,
+    payload: dict[str, Any] | None = None,
+    timeout: float | None = None,
+    *,
+    purpose: str | None = None,
+) -> dict[str, Any]:
     settings = get_settings()
+    if path == "/api/chat" and purpose in {"chat", "learning", "programming", "factual_review", "research_plan"}:
+        profile = "chat" if purpose == "research_plan" else purpose
+        if settings.get(f"{profile}_llm_provider", "ollama") == "openai_compatible":
+            request_payload = payload if isinstance(payload, dict) else {}
+            messages = request_payload.get("messages", [])
+            if not isinstance(messages, list) or not messages:
+                raise OllamaError("OpenAI-compatible chat requires a non-empty messages list.")
+            system_prompt = None
+            history = []
+            user_message = None
+            for item in messages:
+                if not isinstance(item, dict) or item.get("role") not in {"system", "user", "assistant"}:
+                    continue
+                content = item.get("content")
+                if not isinstance(content, str):
+                    continue
+                if item["role"] == "system" and system_prompt is None:
+                    system_prompt = content
+                elif item["role"] == "user":
+                    if user_message is not None:
+                        history.append({"role": "user", "content": user_message})
+                    user_message = content
+                elif item["role"] == "assistant":
+                    history.append({"role": "assistant", "content": content})
+            if not isinstance(user_message, str):
+                raise OllamaError("OpenAI-compatible chat requires a user message.")
+            options = request_payload.get("options", {})
+            options = options if isinstance(options, dict) else {}
+            content = _openai_compatible_chat(
+                user_message, history, system_prompt,
+                purpose=profile,
+                model=str(request_payload.get("model") or settings.get(f"{profile}_ollama_model", "")).strip(),
+                timeout=int(timeout or settings.get(f"{profile}_ollama_timeout_seconds", 120)),
+                num_predict=options.get("num_predict"),
+                response_format=request_payload.get("format"),
+            )
+            return {"message": {"content": content}, "provider": "openai_compatible"}
     if path in _INFERENCE_PATHS and settings.get("gpu_enabled", False) is not True:
         payload = dict(payload or {})
         options = payload.get("options")
@@ -395,6 +438,7 @@ def _openai_compatible_chat(
     model: str,
     timeout: int,
     num_predict: int | None,
+    response_format: str | None = None,
 ) -> str:
     """Call an OpenAI-compatible endpoint, including local LM Studio/vLLM/llama.cpp servers."""
     settings = get_settings()
@@ -424,6 +468,8 @@ def _openai_compatible_chat(
         if isinstance(num_predict, bool) or not isinstance(num_predict, int) or not 1 <= num_predict <= 8192:
             raise ValueError("num_predict must be an integer between 1 and 8192.")
         payload["max_tokens"] = num_predict
+    if response_format == "json":
+        payload["response_format"] = {"type": "json_object"}
     if purpose == "factual_review":
         payload["max_tokens"] = 500
     elif purpose == "research_plan":
