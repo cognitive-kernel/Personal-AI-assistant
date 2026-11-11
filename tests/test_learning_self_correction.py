@@ -179,6 +179,9 @@ def test_accepted_initial_lesson_has_no_repair_prompt_provenance(learning_store,
     instruction = lesson_prompt["instruction"]
     assert "exact product/release/build" in instruction
     assert "compatibility/configuration level" in instruction
+    assert "earliest documented public/initial/stable release" in instruction
+    assert "ascending version order" in instruction
+    assert "release year/date" in instruction
     assert "If sources disagree" in instruction
     assert "Never invent a version, date, source" in instruction
     assert "There is no arbitrary maximum word count" in instruction
