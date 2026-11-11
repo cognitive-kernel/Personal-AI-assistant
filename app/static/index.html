@@ -1490,11 +1490,17 @@ const modelContextProfiles = [
  ["programming","programming-model","programming-ctx","programming-ctx-hint"]
 ];
 async function refreshModelContextHint(profile, applyRecommendation=false) {
- const [,modelId,contextId,hintId]=profile;
+ const [purpose,modelId,contextId,hintId]=profile;
  const model=el(modelId).value.trim();
  let context=Number(el(contextId).value);
  const input=el(contextId);
  const hint=el(hintId);
+ if(el(purpose+"-provider")?.value==="openai_compatible") {
+  input.max="1048576";
+  input.setCustomValidity("");
+  hint.textContent="OpenAI-compatible: سقف context از سمت endpoint/model تعیین می‌شود؛ این مقدار به‌صورت دستی اعمال می‌شود.";
+  return;
+ }
  if(!model) { hint.textContent="ابتدا مدل را انتخاب کنید."; input.setCustomValidity(""); return; }
  hint.textContent="در حال دریافت metadata مدل و برآورد حافظه…";
  try {
@@ -1601,6 +1607,7 @@ for(const profile of modelContextProfiles) {
   if(installedSelect && installedSelect.value!==el(modelId).value.trim()) installedSelect.value="";
  });
  el(modelId)?.addEventListener("change",async()=>{await refreshModelContextHint(profile,true);await refreshHardwareDiagnostics(profile);});
+ el(purpose+"-provider")?.addEventListener("change",refreshProfileDiagnostics);
  el(modelId)?.addEventListener("blur",refreshProfileDiagnostics);
  el(contextId)?.addEventListener("input",()=>{el(contextId).setCustomValidity("");});
  el(contextId)?.addEventListener("change",refreshProfileDiagnostics);
