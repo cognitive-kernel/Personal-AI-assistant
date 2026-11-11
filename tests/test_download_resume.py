@@ -669,7 +669,7 @@ def test_configured_learning_model_uses_gpt_oss_when_no_saved_setting_exists(
 ):
     monkeypatch.delenv("LEARNING_OLLAMA_MODEL", raising=False)
     monkeypatch.setenv("SETTINGS_DB_PATH", str(tmp_path / "missing-settings.db"))
-    assert installer._configured_learning_model() == "custom-learning:latest"
+    assert installer._configured_learning_model() == "gpt-oss:20b"
 
 
 def test_configured_learning_model_preserves_saved_custom_model(tmp_path, monkeypatch):
@@ -695,7 +695,7 @@ def test_saved_learning_model_remains_authoritative_over_environment_default(
     _write_learning_model_setting(database, json.dumps("custom-learning:latest"))
     monkeypatch.setenv("LEARNING_OLLAMA_MODEL", "gpt-oss:20b")
     monkeypatch.setenv("SETTINGS_DB_PATH", str(database))
-    assert installer._configured_learning_model() == "gpt-oss:20b"
+    assert installer._configured_learning_model() == "custom-learning:latest"
 
 
 def test_configured_learning_model_fails_closed_on_invalid_saved_setting(
