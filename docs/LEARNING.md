@@ -286,7 +286,7 @@ python scripts/evaluate_learning_acceptance.py path/to/reference-dataset.json pa
 
 ## 14. انتخاب provider و مهاجرت مدل بدون تغییر کد
 
-تنظیمات «گفتگو»، «یادگیری و آموزش»، «برنامه‌نویسی و تست»، «بازبینی factual» و «embedding» در داشبورد هرکدام provider مستقل دارند:
+تنظیمات «گفتگو»، «برنامه‌ریزی پژوهش»، «یادگیری و آموزش»، «برنامه‌نویسی و تست»، «بازبینی factual» و «embedding» در داشبورد هرکدام provider مستقل دارند:
 
 - `ollama`: اجرای محلی از مسیر Ollama؛ مدل از نام تنظیم‌شدهٔ همان lane خوانده می‌شود.
 - `openai_compatible`: هر endpoint سازگار با APIهای `/v1/chat/completions` و برای embedding با `/v1/embeddings`؛ قابل استفاده با OpenAI، LM Studio، vLLM، llama.cpp server، LocalAI و gatewayهایی مانند LiteLLM. برای endpoint محلی HTTP فقط loopback مجاز است؛ endpoint غیرمحلی باید HTTPS باشد.
