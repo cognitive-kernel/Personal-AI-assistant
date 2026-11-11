@@ -236,3 +236,27 @@ def test_direct_learning_chat_requests_route_through_selected_provider(monkeypat
     assert captured["num_predict"] == 3900
     assert captured["response_format"] == "json"
     assert captured["message"] == "serialized lesson prompt"
+
+
+def test_runtime_diagnostics_does_not_contact_ollama_for_compatible_provider(monkeypatch):
+    monkeypatch.setattr(
+        ollama, "get_settings",
+        lambda: {
+            "learning_llm_provider": "openai_compatible",
+            "learning_ollama_num_ctx": 32768,
+        },
+    )
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {
+        "logical_cpu_count": 8, "available_ram_gb": 16, "total_ram_gb": 32,
+    })
+    monkeypatch.setattr(
+        ollama, "_request",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("Ollama must not be contacted")),
+    )
+
+    result = ollama.runtime_diagnostics("remote-model", 32768, "learning")
+
+    assert result["provider"] == "openai_compatible"
+    assert result["runtime_limits"]["num_ctx"] == 32768
+    assert result["selected_model"]["name"] == "remote-model"
+    assert result["selected_model"]["memory_estimate"] is None
