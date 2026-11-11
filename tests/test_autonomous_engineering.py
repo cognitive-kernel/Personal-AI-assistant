@@ -271,6 +271,38 @@ def test_ollama_status_lists_installed_models_without_selecting_one(monkeypatch)
     assert result["model_metadata_error"] == "No Ollama model is saved in repository settings."
 
 
+def test_status_is_not_ready_when_saved_model_is_a_generated_context_variant(monkeypatch):
+    monkeypatch.setattr(agent, "_github_snapshot", lambda: {
+        "settings": {"model": "base-model:14b-codex-ctx65536"},
+        "authenticated": True,
+        "recent_runs": [],
+        "runs_available": True,
+    })
+    monkeypatch.setattr(agent, "_ollama_status", lambda model: {
+        "online": True,
+        "model": model,
+        "model_installed": True,
+        "model_selectable": False,
+        "model_is_codex_context_variant": True,
+        "models": ["base-model:14b"],
+        "model_context_length": None,
+        "model_capabilities": [],
+        "model_supports_tools": False,
+        "model_metadata_available": False,
+        "model_context_supported": False,
+    })
+    monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
+    monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
+    monkeypatch.setattr(agent, "storage_accessible", lambda: True)
+
+    result = agent.collect_status()
+
+    assert result["ready"] is False
+    assert result["checks"]["model_installed"] is True
+    assert result["checks"]["model_selectable"] is False
+    assert result["model_is_codex_context_variant"] is True
+
+
 def test_ollama_status_hides_generated_codex_context_variants_and_rejects_saved_alias(monkeypatch):
     calls = []
 
