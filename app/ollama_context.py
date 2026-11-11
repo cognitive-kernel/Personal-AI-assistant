@@ -6,6 +6,7 @@ from typing import Any
 
 MIN_CONTEXT_TOKENS = 512
 MIN_CODEX_CONTEXT_TOKENS = 64000
+MAX_CODEX_CONTEXT_TOKENS = 1048576
 GIB = 1024 ** 3
 DEFAULT_RAM_RESERVE_BYTES = 4 * GIB
 MIN_MODEL_OVERHEAD_BYTES = GIB // 2
@@ -114,7 +115,12 @@ def select_context_window(
         )
 
     requested = requested_context_tokens
-    selected = min(requested if requested is not None else maximum, maximum, hardware_maximum)
+    selected = min(
+        requested if requested is not None else maximum,
+        maximum,
+        hardware_maximum,
+        MAX_CODEX_CONTEXT_TOKENS,
+    )
     if selected < MIN_CODEX_CONTEXT_TOKENS:
         raise OllamaModelMetadataError(
             f"No safe Codex context window of at least {MIN_CODEX_CONTEXT_TOKENS} tokens could be selected."
@@ -123,6 +129,7 @@ def select_context_window(
     return {
         "maximum_context_tokens": maximum,
         "hardware_maximum_context_tokens": hardware_maximum,
+        "codex_maximum_context_tokens": MAX_CODEX_CONTEXT_TOKENS,
         "requested_context_tokens": requested,
         "selected_context_tokens": selected,
         "kv_cache_bytes_per_token": bytes_per_token,
