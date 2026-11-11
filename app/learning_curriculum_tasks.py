@@ -93,7 +93,7 @@ def _valid_checkpoint(
     ]
     sources: list[dict[str, str]] = []
     seen: set[str] = set()
-    for item in raw_sources[:MAX_SOURCE_DOCUMENTS]:
+    for item in raw_sources:
         if not isinstance(item, dict):
             continue
         title, url, excerpt, digest = (
