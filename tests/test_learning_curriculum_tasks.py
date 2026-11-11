@@ -320,9 +320,11 @@ def test_ollama_chat_applies_curriculum_output_token_limit(monkeypatch):
         "gpu_enabled": False,
     })
     monkeypatch.setattr(ollama, "detect_hardware", lambda: {"logical_cpu_count": 12})
-    monkeypatch.setattr(ollama, "runtime_limits", lambda *_args, **_kwargs: {
-        "num_ctx": 8192, "cpu_threads": 1,
-    })
+    runtime_settings_seen = {}
+    def fake_runtime_limits(settings, *_args, **_kwargs):
+        runtime_settings_seen.update(settings)
+        return {"num_ctx": 8192, "cpu_threads": 1}
+    monkeypatch.setattr(ollama, "runtime_limits", fake_runtime_limits)
     monkeypatch.setattr(ollama, "model_keep_alive", lambda *_args, **_kwargs: "5m")
 
     def fake_request(path, payload=None, **_kwargs):
@@ -346,6 +348,7 @@ def test_ollama_chat_applies_curriculum_output_token_limit(monkeypatch):
     assert result == "{}"
     assert captured["options"]["num_predict"] == 800
     assert captured["options"]["num_ctx"] == 8192
+    assert runtime_settings_seen["ollama_num_ctx"] == 8192
     assert captured["options"]["num_gpu"] == 0
     assert captured["model"] == "gpt-oss:20b"
 
