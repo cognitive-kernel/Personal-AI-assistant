@@ -368,6 +368,19 @@ def test_autonomous_workflow_requires_saved_model_without_a_hardcoded_fallback()
     assert "vars.AUTONOMOUS_ENGINEERING_MODEL || ''" in workflow
     assert "No model is saved in repository variable AUTONOMOUS_ENGINEERING_MODEL" in workflow
     assert "vars.AUTONOMOUS_ENGINEERING_MODEL || 'gpt-oss:20b'" not in workflow
+    for relative_path in (
+        "scripts/check_autonomous_agent.ps1",
+        "scripts/check_autonomous_runner.ps1",
+        "scripts/provision_autonomous_runner.ps1",
+    ):
+        script = (root / relative_path).read_text(encoding="utf-8")
+        assert "gpt-oss:20b" not in script
+    assert "variable get AUTONOMOUS_ENGINEERING_MODEL" in (
+        root / "scripts" / "provision_autonomous_runner.ps1"
+    ).read_text(encoding="utf-8")
+    dashboard = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
+    assert "ابتدا مدل نصب‌شده را انتخاب کنید" in dashboard
+    assert "installed.includes(selectedModel)" in dashboard
 
 
 def test_github_snapshot_reads_saved_model_and_frequency(monkeypatch):
