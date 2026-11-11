@@ -151,7 +151,7 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="storage-state"' in page
     assert "checks.progress_storage_accessible" in agent_script
     assert "gpt-oss:20b" not in page
-    assert 'هیچ مدل نصب‌شده‌ای از Ollama شناسایی نشد' in agent_script
+    assert 'هیچ مدل اصلی قابل انتخابی از Ollama شناسایی نشد' in agent_script
     assert "model_context_length" in agent_script
     assert "model_supports_tools" in agent_script
     assert "model_selectable" in agent_script
