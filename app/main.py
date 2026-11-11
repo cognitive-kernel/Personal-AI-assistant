@@ -519,6 +519,7 @@ class ChatMessageFeedbackRequest(BaseModel):
 
 class SettingsPatch(BaseModel):
     values: dict[str, Any]
+    temporary: StrictBool = False
 
 class LearningRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=300)
@@ -934,7 +935,11 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
                 detail="learning_task_budget_microusd must be null or a non-negative safe integer.",
             )
     try:
-        return db.update_settings(values)
+        return (
+            db.update_runtime_settings(values)
+            if request.temporary
+            else db.update_settings(values)
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
