@@ -186,8 +186,8 @@ def _collect_sources(
                 "url": url,
                 "excerpt": excerpt,
                 "sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
-                "publication_date": None,
-                "last_updated": None,
+                "publication_date": getattr(document, "publication_date", None),
+                "last_updated": getattr(document, "last_updated", None),
                 "retrieved_at": datetime.now(timezone.utc).isoformat(),
                 "query": query,
             })
