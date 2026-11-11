@@ -130,13 +130,19 @@ def review_answer_claims(
         }
 
     settings = get_settings()
-    limits = runtime_limits({
-        "ollama_num_ctx": settings.get("learning_ollama_num_ctx", settings["ollama_num_ctx"]),
-        "ollama_num_thread": settings.get("learning_ollama_num_thread", settings["ollama_num_thread"]),
-        "cpu_resource_limit_percent": settings.get("cpu_resource_limit_percent", 90),
-        "ram_budget_max_gb": settings.get("ram_budget_max_gb", 25),
-        "ram_safety_reserve_gb": settings.get("ram_safety_reserve_gb", 4),
-    }, detect_hardware())
+    if settings.get("learning_llm_provider", "ollama") == "openai_compatible":
+        limits = {
+            "num_ctx": int(settings.get("learning_ollama_num_ctx", settings["ollama_num_ctx"])),
+            "cpu_threads": 0,
+        }
+    else:
+        limits = runtime_limits({
+            "ollama_num_ctx": settings.get("learning_ollama_num_ctx", settings["ollama_num_ctx"]),
+            "ollama_num_thread": settings.get("learning_ollama_num_thread", settings["ollama_num_thread"]),
+            "cpu_resource_limit_percent": settings.get("cpu_resource_limit_percent", 90),
+            "ram_budget_max_gb": settings.get("ram_budget_max_gb", 25),
+            "ram_safety_reserve_gb": settings.get("ram_safety_reserve_gb", 4),
+        }, detect_hardware())
     configured_model = (
         model_override
         if model_override is not None
@@ -168,8 +174,9 @@ def review_answer_claims(
         "prompt_version": CLAIM_REVIEW_PROMPT_VERSION,
         "prompt_sha256": prompt_sha256,
         "model_id": model[:200],
+        "provider": settings.get("learning_llm_provider", "ollama"),
         "model_digest": None,
-        "model_digest_status": "unavailable_from_current_ollama_path",
+        "model_digest_status": "unavailable_from_configured_provider",
         "provider_usage": {},
     }
     try:
@@ -187,7 +194,7 @@ def review_answer_claims(
                 "num_thread": limits["cpu_threads"],
                 "num_predict": 1000,
             },
-        }, timeout=request_timeout)
+        }, timeout=request_timeout, purpose="learning")
         if not isinstance(response, dict):
             raise TypeError("Ollama review response must be an object.")
         provenance["provider_usage"] = {
