@@ -337,9 +337,13 @@ def _generate_outline(
             if len(prompt_excerpt_urls) >= MAX_PROMPT_SOURCE_EXCERPTS:
                 break
             prompt_excerpt_urls.add(item["url"])
-    source_material = [{"title": item["title"], "url": item["url"],
-                       "excerpt": item["excerpt"] if item["url"] in prompt_excerpt_urls else ""}
-                      for item in sources]
+    source_material = [{
+        "title": item["title"], "url": item["url"],
+        "excerpt": item["excerpt"] if item["url"] in prompt_excerpt_urls else "",
+        "publication_date": item.get("publication_date"),
+        "last_updated": item.get("last_updated"),
+        "retrieved_at": item.get("retrieved_at"),
+    } for item in sources]
     request = {
         "requested_subject": topic,
         "batch_index": batch_index,
@@ -570,20 +574,23 @@ def handle_curriculum_task(
             raise PermanentTaskError("The curriculum batch failed strict validation.") from exc
         if selection.get("selected_model") != model:
             raise PermanentTaskError("The curriculum model provenance does not match the model used.")
+        if not state.get("model_selection") and batch_index == 0:
+            model_selection = selection
         known = {item.casefold() for item in outline["topics"]}
         additions = [item for item in page["topics"] if item.casefold() not in known]
         if not additions:
-            no_progress_batches += 1
-            if page["has_more"] or no_progress_batches >= 2:
-                raise PermanentTaskError("Curriculum generation made no new progress; refusing an incomplete course.")
-        else:
-            no_progress_batches = 0
-            if not outline["title"]:
-                outline["title"] = page["title"]
-            outline["topics"].extend(additions)
-            outline["notes"] = page["notes"] or outline.get("notes", "")
-            outline["coverage_areas"] = list(dict.fromkeys(outline.get("coverage_areas", []) + page["coverage_areas"]))
-            outline.setdefault("topic_metadata", {}).update(page.get("topic_metadata", {}))
+            raise PermanentTaskError("Curriculum generation produced no new topics; refusing to mark an incomplete course complete.")
+        no_progress_batches = 0
+        if not outline["title"]:
+            outline["title"] = page["title"]
+        outline["topics"].extend(additions)
+        outline["notes"] = page["notes"] or outline.get("notes", "")
+        outline["coverage_areas"] = list(dict.fromkeys(outline.get("coverage_areas", []) + page["coverage_areas"]))
+        topic_metadata = outline.setdefault("topic_metadata", {})
+        page_metadata = page.get("topic_metadata", {})
+        for added_topic in additions:
+            if added_topic in page_metadata:
+                topic_metadata[added_topic] = page_metadata[added_topic]
         batch_index += 1
         next_focus = page["next_focus"]
         context.checkpoint({
