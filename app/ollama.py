@@ -3,6 +3,8 @@ import http.client
 import ipaddress
 import json
 import math
+import os
+import re
 import socket
 import threading
 import urllib.error
@@ -354,6 +356,101 @@ def runtime_diagnostics(
     return result
 
 
+def _openai_compatible_chat(
+    message: str,
+    history: list[dict[str, str]] | None,
+    system_prompt: str | None,
+    *,
+    purpose: str,
+    model: str,
+    timeout: int,
+    num_predict: int | None,
+) -> str:
+    """Call an OpenAI-compatible endpoint, including local LM Studio/vLLM/llama.cpp servers."""
+    settings = get_settings()
+    base_url = settings.get(f"{purpose}_llm_base_url", "")
+    if not isinstance(base_url, str) or not base_url.strip() or len(base_url) > 2048:
+        raise OllamaError(f"A valid {purpose} OpenAI-compatible base URL is required.")
+    parsed = urllib.parse.urlparse(base_url.strip().rstrip("/"))
+    if (
+        parsed.scheme not in {"https", "http"} or not parsed.hostname
+        or parsed.username is not None or parsed.password is not None
+        or parsed.query or parsed.fragment or "?" in base_url or "#" in base_url
+    ):
+        raise OllamaError("The OpenAI-compatible endpoint must be a valid base HTTP(S) URL without credentials, query, or fragment.")
+    if parsed.scheme != "https":
+        try:
+            host_ip = ipaddress.ip_address(parsed.hostname)
+            is_loopback = host_ip.is_loopback
+        except ValueError:
+            is_loopback = parsed.hostname.lower() == "localhost"
+        if not is_loopback:
+            raise OllamaError("Non-local OpenAI-compatible endpoints must use HTTPS.")
+    normalized_base = base_url.strip().rstrip("/")
+    if len(parsed.path) > 512 or any(part in {".", ".."} for part in parsed.path.split("/")):
+        raise OllamaError("The OpenAI-compatible endpoint path is invalid.")
+    api_key_env = settings.get(f"{purpose}_llm_api_key_env", "")
+    headers = {"Content-Type": "application/json"}
+    if api_key_env:
+        if not isinstance(api_key_env, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", api_key_env):
+            raise OllamaError("The API-key environment variable name is invalid.")
+        api_key = os.environ.get(api_key_env)
+        if not api_key:
+            raise OllamaError(f"The configured API-key environment variable '{api_key_env}' is not set.")
+        headers["Authorization"] = f"Bearer {api_key}"
+    messages = []
+    if isinstance(system_prompt, str) and system_prompt.strip():
+        messages.append({"role": "system", "content": system_prompt.strip()[:6000]})
+    for item in history or []:
+        if item.get("role") in {"user", "assistant"} and isinstance(item.get("content"), str):
+            messages.append({"role": item["role"], "content": item["content"][:12000]})
+    message_limit = 72000 if purpose == "programming" else 16000 if purpose == "factual_review" else 12000
+    messages.append({"role": "user", "content": message[:message_limit]})
+    payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False}
+    if num_predict is not None:
+        if isinstance(num_predict, bool) or not isinstance(num_predict, int) or not 1 <= num_predict <= 8192:
+            raise ValueError("num_predict must be an integer between 1 and 8192.")
+        payload["max_tokens"] = num_predict
+    if purpose == "factual_review":
+        payload["max_tokens"] = 500
+    elif purpose == "research_plan":
+        payload["max_tokens"] = 700
+    request = urllib.request.Request(
+        normalized_base + "/chat/completions",
+        data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST"
+    )
+    try:
+        with _INFERENCE_LOCK:
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({}), _NoRedirectHandler()
+            )
+            with opener.open(request, timeout=max(5, min(int(timeout), 600))) as response:
+                body = response.read(_MAX_RESPONSE_BYTES + 1)
+        if len(body) > _MAX_RESPONSE_BYTES:
+            raise OllamaError("LLM response exceeded the 8 MiB limit.")
+        result = json.loads(body.decode("utf-8"))
+        choices = result.get("choices") if isinstance(result, dict) else None
+        choice = choices[0] if isinstance(choices, list) and choices else None
+        content = choice.get("message", {}).get("content") if isinstance(choice, dict) else None
+        if isinstance(content, list):
+            content = "".join(
+                part.get("text", "") for part in content
+                if isinstance(part, dict) and isinstance(part.get("text"), str)
+            )
+        if not isinstance(content, str) or not content.strip():
+            raise OllamaError("The selected LLM returned no text content.")
+        return content.strip()
+    except urllib.error.HTTPError as exc:
+        raise OllamaError(
+            f"OpenAI-compatible provider returned HTTP {exc.code}.",
+            retryable=exc.code in {408, 425, 429, 500, 502, 503, 504},
+        ) from exc
+    except (urllib.error.URLError, TimeoutError, socket.timeout, OSError, http.client.HTTPException, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise OllamaError(
+            f"OpenAI-compatible request failed: {type(exc).__name__}", retryable=True
+        ) from exc
+
+
 def chat(
     message: str,
     history: list[dict[str, str]] | None = None,
@@ -375,6 +472,14 @@ def chat(
     model = str(model_override if model_override is not None else settings.get(f"{prefix}_ollama_model", settings.get("ollama_model", "qwen2.5:7b"))).strip()
     if not model or len(model) > 200:
         raise ValueError("model must be a non-empty name of at most 200 characters.")
+    provider = settings.get(f"{prefix}_llm_provider", "ollama")
+    if provider == "openai_compatible":
+        return _openai_compatible_chat(
+            message, history, system_prompt, purpose=prefix, model=model,
+            timeout=request_timeout, num_predict=num_predict,
+        )
+    if provider != "ollama":
+        raise OllamaError(f"Unsupported {purpose} LLM provider: {provider}.")
     model_details_payload = _request("/api/show", {"model": model}, timeout=8)
     model_info = model_details_payload.get("model_info", {})
     model_details_meta = model_details_payload.get("details", {})
