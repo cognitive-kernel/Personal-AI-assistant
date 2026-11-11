@@ -226,7 +226,7 @@ def test_research_task_persists_sources_outline_and_starts_only_first_lesson(
     )
     assert retried["path_id"] == result["path_id"]
     assert retried["outline_sha256"] == result["outline_sha256"]
-    assert len(discovered) == 5
+    assert len(discovered) == 8
     assert len(model_calls) == 1
     assert retried["queue_status"] == "already_active"
 
