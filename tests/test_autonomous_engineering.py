@@ -336,12 +336,23 @@ def test_save_settings_rejects_invalid_values(monkeypatch, model, interval_hours
     assert error.value.status_code == 422
 
 
-def test_model_selection_has_no_implicit_gpt_oss_fallback(monkeypatch):
-    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_MODEL", raising=False)
-    assert agent._model() == ""
+def test_collect_status_never_uses_process_environment_as_model_fallback(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_MODEL", "gpt-oss:20b")
+    observed = {}
+    monkeypatch.setattr(agent, "_github_snapshot", lambda: {"settings": {}, "authenticated": False, "recent_runs": [], "runs_available": False})
+    monkeypatch.setattr(agent, "_ollama_status", lambda model: observed.setdefault("model", model) or {
+        "online": False, "model": model, "model_installed": False, "models": [],
+        "model_context_length": None, "model_capabilities": [],
+        "model_supports_tools": False, "model_metadata_available": False,
+    })
+    monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": False, "version": None})
+    monkeypatch.setattr(agent, "_runner_status", lambda: {"running": False, "process_detected": False})
+    monkeypatch.setattr(agent, "storage_accessible", lambda: False)
 
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_MODEL", "not a valid model")
-    assert agent._model() == ""
+    result = agent.collect_status()
+
+    assert observed["model"] == ""
+    assert result["model"] == ""
 
 
 def test_github_snapshot_does_not_invent_a_model_when_no_repository_variable_is_saved(monkeypatch):
