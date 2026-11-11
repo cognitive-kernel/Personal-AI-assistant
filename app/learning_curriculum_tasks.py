@@ -803,6 +803,7 @@ def handle_curriculum_task(
         raise PermanentTaskError(str(exc)) from exc
     topic_sha256 = hashlib.sha256(topic.encode("utf-8")).hexdigest()
     sources = _collect_sources(topic, topic_sha256=topic_sha256, checkpoint=checkpoint, context=context)
+    source_batch_count = _source_evidence_batch_count(sources)
     state = context.checkpoint_data or checkpoint or {}
     if not isinstance(state, dict):
         state = {}
@@ -868,27 +869,47 @@ def handle_curriculum_task(
             raise PermanentTaskError("The curriculum model provenance does not match the model used.")
         if not state.get("model_selection") and batch_index == 0:
             model_selection = selection
+        # A model may declare the syllabus complete before it has seen every
+        # retained source. Force resumable continuation until every source batch
+        # has been presented; the per-request excerpt budget is never a course cap.
+        unreviewed_source_batches = batch_index + 1 < source_batch_count
+        if unreviewed_source_batches and not page["has_more"]:
+            page["has_more"] = True
+            page["next_focus"] = (
+                f"Review remaining retained source evidence batch {batch_index + 2} "
+                f"of {source_batch_count}; identify missing topics, release years, "
+                "patches, compatibility changes, and prerequisite gaps before completion."
+            )
         known = {item.casefold() for item in outline["topics"]}
         additions = [item for item in page["topics"] if item.casefold() not in known]
-        if not additions:
-            raise PermanentTaskError("Curriculum generation produced no new topics; refusing to mark an incomplete course complete.")
+        if not additions and not unreviewed_source_batches and page["has_more"]:
+            raise PermanentTaskError(
+                "Curriculum generation made no progress while still requesting more topics."
+            )
         no_progress_batches = 0
-        if not outline["title"]:
-            outline["title"] = page["title"]
-        outline["topics"].extend(additions)
-        outline["notes"] = page["notes"] or outline.get("notes", "")
-        outline["coverage_areas"] = list(dict.fromkeys(outline.get("coverage_areas", []) + page["coverage_areas"]))
-        topic_metadata = outline.setdefault("topic_metadata", {})
-        page_metadata = page.get("topic_metadata", {})
-        for added_topic in additions:
-            if added_topic in page_metadata:
-                topic_metadata[added_topic] = page_metadata[added_topic]
+        if additions:
+            if not outline["title"]:
+                outline["title"] = page["title"]
+            outline["topics"].extend(additions)
+            outline["notes"] = page["notes"] or outline.get("notes", "")
+            outline["coverage_areas"] = list(dict.fromkeys(outline.get("coverage_areas", []) + page["coverage_areas"]))
+            topic_metadata = outline.setdefault("topic_metadata", {})
+            page_metadata = page.get("topic_metadata", {})
+            for added_topic in additions:
+                if added_topic in page_metadata:
+                    topic_metadata[added_topic] = page_metadata[added_topic]
+        elif unreviewed_source_batches:
+            # This evidence-only pass is still progress: the next source batch
+            # must be examined even if it yields no additional syllabus titles.
+            page["notes"] = page["notes"] or outline.get("notes", "")
         batch_index += 1
         next_focus = page["next_focus"]
         context.checkpoint({
             "phase": "outline_batch_validated", "topic_sha256": topic_sha256,
             "queries": _research_queries(topic), "completed_queries": _research_queries(topic),
             "sources": sources, "outline": outline, "batch_index": batch_index,
+            "source_batches_total": source_batch_count,
+            "source_batches_reviewed": min(batch_index, source_batch_count),
             "no_progress_batches": no_progress_batches, "next_focus": next_focus,
             "has_more": page["has_more"], "model": model, "model_selection": model_selection,
         })
