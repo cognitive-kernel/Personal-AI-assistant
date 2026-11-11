@@ -212,8 +212,8 @@ def test_context_preflight_reuses_existing_codex_alias_without_duplicate_suffix(
 
 def test_codex_model_catalog_uses_selected_context_from_environment(monkeypatch):
     import json
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "32768")
-    path = progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx32768")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
+    path = progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx64000")
     catalog = json.loads(path.read_text(encoding="utf-8"))
     assert catalog["models"][0]["context_window"] == 64000
 
