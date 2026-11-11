@@ -132,7 +132,7 @@ def test_outline_repair_keeps_full_output_budget_and_safe_context(monkeypatch):
     )
 
     def fake_chat(_message, **kwargs):
-        calls.append(kwargs)
+        calls.append({"message": _message, **kwargs})
         return "not valid JSON" if len(calls) == 1 else json.dumps(_outline(), ensure_ascii=False)
 
     monkeypatch.setattr(learning_curriculum_tasks.ollama, "chat", fake_chat)
@@ -149,6 +149,13 @@ def test_outline_repair_keeps_full_output_budget_and_safe_context(monkeypatch):
 
     assert outline["topics"] == _outline()["topics"]
     assert len(calls) == 2
+    request = json.loads(calls[0]["message"])
+    requirements = " ".join(request["requirements"])
+    assert "prerequisite-aware hierarchy" in requirements
+    assert "version/build" in requirements
+    assert "breaking changes" in requirements
+    assert "source URL to only the topics" in requirements
+    assert "do not claim completion" in requirements
     assert all(call["model_override"] == "gpt-oss:20b" for call in calls)
     assert all(call["num_predict"] == 4096 for call in calls)
     assert all(
