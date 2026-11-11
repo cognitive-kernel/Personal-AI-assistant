@@ -782,6 +782,34 @@ def test_legacy_research_checkpoint_without_query_provenance_is_researched_again
     assert sources == []
 
 
+def test_checkpoint_recovery_preserves_more_than_forty_sources():
+    queries = learning_curriculum_tasks._research_queries("Python")
+    sources = [
+        {
+            "title": f"Archived source {index}",
+            "url": f"https://archive.example.test/releases/{index}",
+            "excerpt": f"Historical release evidence {index}",
+            "sha256": __import__("hashlib").sha256(str(index).encode()).hexdigest(),
+            "query": queries[index % len(queries)],
+        }
+        for index in range(45)
+    ]
+    checkpoint = {
+        "topic_sha256": "d" * 64,
+        "queries": queries,
+        "completed_queries": queries,
+        "sources": sources,
+    }
+
+    completed, recovered = learning_curriculum_tasks._valid_checkpoint(
+        checkpoint, topic_sha256="d" * 64, queries=queries
+    )
+
+    assert completed == queries
+    assert len(recovered) == 45
+    assert recovered[-1]["url"] == sources[-1]["url"]
+
+
 def test_curriculum_prompt_includes_evidence_from_every_research_angle(monkeypatch):
     queries = learning_curriculum_tasks._research_queries("Python")
     sources = [
