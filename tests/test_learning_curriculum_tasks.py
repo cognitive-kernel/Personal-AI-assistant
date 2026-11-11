@@ -636,6 +636,7 @@ def test_release_watch_detects_changed_release_sources_and_enqueues_once(learnin
     assert result == {"checked": 1, "queued": 1, "unchanged": 0, "errors": 0}
     assert queued and queued[0][0] == "Python"
     assert queued[0][1]["dedupe_key"].startswith(f"learning-release-watch:{path_id}:")
+    assert queued[0][1]["refresh_of_path_id"] == path_id
     with db.learning_connection() as connection:
         watch = connection.execute(
             "SELECT last_task_id, last_source_fingerprint, status FROM learning_release_watch WHERE path_id=?",
