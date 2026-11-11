@@ -155,10 +155,11 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
 
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
-        assert LEARNING_MIGRATIONS[-1].version == 42
+        assert LEARNING_MIGRATIONS[-1].version == 43
         usage_columns = {row[1] for row in connection.execute("PRAGMA table_info(model_usage_events)")}
         graph_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_knowledge_graph_edges)")}
         browser_columns = {row[1] for row in connection.execute("PRAGMA table_info(browser_learning_courses)")}
+        path_topic_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_path_topics)")}
         candidate_review_columns = {row[1] for row in connection.execute("PRAGMA table_info(knowledge_candidate_reviews)")}
         experience_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_experiences)")}
         assert {"task_id", "purpose", "model_name", "estimated_cost_microusd"} <= usage_columns
@@ -166,6 +167,7 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         assert "originating_knowledge_id" in experience_columns
         assert {"source_knowledge_id", "target_knowledge_id", "relation_type", "source_url", "source_sha256", "status"} <= graph_columns
         assert {"topic", "cdp_url", "max_lessons", "status"} <= browser_columns
+        assert {"applicability_json", "source_urls_json", "hierarchy_path", "depth"} <= path_topic_columns
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
         job_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_jobs)")}
@@ -434,7 +436,7 @@ def test_browser_learning_retry_migration_preserves_existing_courses():
         )
         connection.commit()
 
-        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 42
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 43
 
         row = connection.execute(
             """SELECT topic, status, retry_count, next_retry_at
