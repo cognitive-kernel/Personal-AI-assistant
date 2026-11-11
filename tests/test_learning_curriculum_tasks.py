@@ -143,6 +143,7 @@ def test_research_task_persists_sources_outline_and_starts_only_first_lesson(
     assert model_calls[0]["purpose"] == "learning"
     assert model_calls[0]["model_override"] == db.get_settings()["learning_ollama_model"]
     assert model_calls[0]["num_predict"] == 4096
+    assert model_calls[0]["num_ctx_override"] == learning_curriculum_tasks.CURRICULUM_CONTEXT_TOKENS
     assert result["source_count"] == 4
     assert result["queued_count"] == 1
     assert len(result["queued_job_ids"]) == 1
@@ -278,14 +279,14 @@ def test_ollama_chat_applies_curriculum_output_token_limit(monkeypatch):
     })
     monkeypatch.setattr(ollama, "detect_hardware", lambda: {"logical_cpu_count": 12})
     monkeypatch.setattr(ollama, "runtime_limits", lambda *_args, **_kwargs: {
-        "num_ctx": 2048, "cpu_threads": 1,
+        "num_ctx": 8192, "cpu_threads": 1,
     })
     monkeypatch.setattr(ollama, "model_keep_alive", lambda *_args, **_kwargs: "5m")
 
     def fake_request(path, payload=None, **_kwargs):
         if path == "/api/show":
             return {
-                "model_info": {"llama.context_length": 2048},
+                "model_info": {"llama.context_length": 8192},
                 "details": {"family": "llama"},
             }
         captured.update(payload)
@@ -298,11 +299,45 @@ def test_ollama_chat_applies_curriculum_output_token_limit(monkeypatch):
         purpose="learning",
         model_override="gpt-oss:20b",
         num_predict=800,
+        num_ctx_override=8192,
     )
     assert result == "{}"
     assert captured["options"]["num_predict"] == 800
+    assert captured["options"]["num_ctx"] == 8192
     assert captured["options"]["num_gpu"] == 0
     assert captured["model"] == "gpt-oss:20b"
+
+
+def test_ollama_chat_fails_closed_when_hardware_cannot_provide_required_context(monkeypatch):
+    from app import ollama
+
+    monkeypatch.setattr(ollama, "get_settings", lambda: {
+        "learning_ollama_timeout_seconds": 300,
+        "learning_ollama_num_ctx": 2048,
+        "learning_ollama_num_thread": 1,
+        "cpu_resource_limit_percent": 90,
+        "ram_budget_max_gb": 25,
+        "ram_safety_reserve_gb": 4,
+        "gpu_enabled": False,
+    })
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {"logical_cpu_count": 12})
+    monkeypatch.setattr(ollama, "runtime_limits", lambda *_args, **_kwargs: {
+        "num_ctx": 4096, "cpu_threads": 1,
+    })
+    monkeypatch.setattr(ollama, "model_keep_alive", lambda *_args, **_kwargs: "0")
+    monkeypatch.setattr(ollama, "_request", lambda path, *_args, **_kwargs: {
+        "model_info": {"llama.context_length": 8192},
+        "details": {"family": "llama"},
+    } if path == "/api/show" else pytest.fail("chat request must not run with a truncated context"))
+
+    with pytest.raises(ollama.OllamaError, match="safe RAM budget"):
+        ollama.chat(
+            "Build a comprehensive course outline",
+            purpose="learning",
+            model_override="gpt-oss:20b",
+            num_predict=4096,
+            num_ctx_override=8192,
+        )
 
 
 def test_dashboard_uses_researched_courses_and_hides_preset_catalog_controls():
