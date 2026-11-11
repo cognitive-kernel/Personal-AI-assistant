@@ -110,6 +110,48 @@ def test_outline_parser_requires_unique_ordered_topics_and_complete_minimum():
         learning_curriculum_tasks._parse_outline(json.dumps(invalid, ensure_ascii=False), 20)
 
 
+def test_outline_repair_keeps_full_output_budget_and_safe_context(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        learning_curriculum_tasks,
+        "get_settings",
+        lambda: {"learning_ollama_model": "gpt-oss:20b"},
+    )
+    monkeypatch.setattr(
+        learning,
+        "_select_learning_generation_model",
+        lambda *_args, **_kwargs: (
+            "gpt-oss:20b",
+            {"selected_model": "gpt-oss:20b"},
+        ),
+    )
+
+    def fake_chat(_message, **kwargs):
+        calls.append(kwargs)
+        return "not valid JSON" if len(calls) == 1 else json.dumps(_outline(), ensure_ascii=False)
+
+    monkeypatch.setattr(learning_curriculum_tasks.ollama, "chat", fake_chat)
+    outline, _selection = learning_curriculum_tasks._generate_outline(
+        "موضوع فنی",
+        20,
+        "",
+        [
+            {"title": "مرجع اول", "url": "https://docs1.example.test/guide", "excerpt": "متن مرجع"},
+            {"title": "مرجع دوم", "url": "https://docs2.example.test/guide", "excerpt": "متن مرجع"},
+        ],
+        "gpt-oss:20b",
+    )
+
+    assert outline["topics"] == _outline()["topics"]
+    assert len(calls) == 2
+    assert all(call["model_override"] == "gpt-oss:20b" for call in calls)
+    assert all(call["num_predict"] == 4096 for call in calls)
+    assert all(
+        call["num_ctx_override"] == learning_curriculum_tasks.CURRICULUM_CONTEXT_TOKENS
+        for call in calls
+    )
+
+
 def test_research_task_persists_sources_outline_and_starts_only_first_lesson(
     learning_store, monkeypatch
 ):
