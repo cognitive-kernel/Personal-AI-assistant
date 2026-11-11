@@ -26,7 +26,7 @@ def _independent_reviewer_identity() -> tuple[str, str, str]:
     if not reviewer_model:
         raise SemanticReviewError("A distinct factual review model must be configured.")
     try:
-        reviewer = ollama.model_identity("factual_review", reviewer_model)
+        reviewer = ollama.model_identity("factual_review", reviewer_model, settings=settings)
     except Exception as exc:
         raise SemanticReviewError("The independent semantic evaluator is unavailable.") from exc
 
@@ -37,7 +37,7 @@ def _independent_reviewer_identity() -> tuple[str, str, str]:
             if not model:
                 continue
             try:
-                identities.add(ollama.model_identity(purpose, model)["identity"])
+                identities.add(ollama.model_identity(purpose, model, settings=current)["identity"])
             except ollama.OllamaError:
                 continue
         return identities
@@ -47,7 +47,7 @@ def _independent_reviewer_identity() -> tuple[str, str, str]:
     latest = get_settings()
     if (
         str(latest.get("factual_review_ollama_model", "")).strip() != reviewer_model
-        or ollama.model_identity("factual_review", reviewer_model)["identity"] != reviewer["identity"]
+        or ollama.model_identity("factual_review", reviewer_model, settings=latest)["identity"] != reviewer["identity"]
         or reviewer["identity"] in primary_identities(latest)
     ):
         raise SemanticReviewError("Independent evaluator settings changed during identity validation.")
