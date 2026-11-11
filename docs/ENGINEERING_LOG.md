@@ -415,3 +415,11 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Kept the more complete consolidated implementations where both branches changed the same files; did not overwrite later implementations with earlier snapshots. No user learning records or existing schema data were deleted or rewritten.
 - A CI failure on the prior head exposed a stale exact-source-URL prompt contract assertion (2 failures; 1,972 passed). The prompt's provenance policy was made explicit about a Sources section and exact source URLs; the next CI run is required to confirm the fix.
 - PR #710 remains the single consolidation PR. PR #709 is superseded by #710 and must not be merged independently.
+
+
+## 2026-11-11 — Exact-head validation completed after model-pin regression fixes (PR #710)
+
+- Updated `tests/test_learning_model_pin.py` to assert the actual fail-closed error contract and to model Ollama's post-pull model list accurately. The test now verifies successful installation/verification of `gpt-oss:20b`, explicit custom-model override, and pull-failure handling without weakening runtime checks.
+- Exact tested commit: `5e58301417767124ee01b9f4e331a6fd74354525`.
+- GitHub Actions all passed on that exact commit: tests [#43001048500](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43001048500) — **1,980 passed, 50 deselected**; Windows storage regression job passed; generated learning artifacts, 94 Markdown links, import-cycle checks, deterministic retrieval benchmark, and claim-to-test coverage benchmark (**10/10**) passed. Browser E2E [#43001048937](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43001048937) passed. Dependency audit [#43001048856](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43001048856) passed.
+- The PR branch is 173 commits ahead of `main` and has not been merged. PR #709 is superseded; PR #710 is the single consolidation target. No local target-host or human test was run or represented as passed. Continue other repository engineering work while the mandatory target-host gate remains open; do not merge to `main` until that gate is satisfied.
