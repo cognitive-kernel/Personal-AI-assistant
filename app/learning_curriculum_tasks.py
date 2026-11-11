@@ -351,6 +351,72 @@ def _validate_chronological_topics(
             )
 
 
+def _merge_release_ledger(
+    existing: list[dict[str, Any]], incoming: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Merge duplicate release observations without discarding conflicts or provenance."""
+    merged: dict[tuple[str, ...], dict[str, Any]] = {}
+    status_rank = {"unverified": 0, "partially_documented": 1, "documented": 2, "conflicting": 3}
+    for raw in [*existing, *incoming]:
+        if not isinstance(raw, dict):
+            continue
+        item = dict(raw)
+        key = (
+            str(item.get("product", "")).casefold(),
+            str(item.get("version", "")).casefold(),
+            str(item.get("release_date") or ""),
+            str(item.get("release_year") or ""),
+            str(item.get("release_type") or "unknown"),
+            str(item.get("platform") or "").casefold(),
+            str(item.get("edition") or "").casefold(),
+        )
+        previous = merged.get(key)
+        if previous is None:
+            merged[key] = item
+            continue
+        previous_urls = previous.get("source_urls", [])
+        incoming_urls = item.get("source_urls", [])
+        previous["source_urls"] = list(dict.fromkeys(
+            [*previous_urls, *incoming_urls]
+        ))
+        previous_status = str(previous.get("status", "unverified"))
+        incoming_status = str(item.get("status", "unverified"))
+        if "conflicting" in {previous_status, incoming_status}:
+            previous["status"] = "conflicting"
+        elif previous_status == "documented" and incoming_status == "documented":
+            previous["status"] = "documented"
+        elif previous_status == "unverified" and incoming_status == "unverified":
+            previous["status"] = "unverified"
+        else:
+            previous["status"] = "partially_documented"
+        notes = list(dict.fromkeys(
+            value for value in (str(previous.get("notes", "")).strip(), str(item.get("notes", "")).strip())
+            if value
+        ))
+        previous["notes"] = " | ".join(notes)[:1000]
+
+    def sort_key(item: dict[str, Any]) -> tuple[Any, ...]:
+        release_date = item.get("release_date")
+        release_year = item.get("release_year")
+        if isinstance(release_date, str) and release_date:
+            chronology = (0, release_date.ljust(10, "0"))
+        elif isinstance(release_year, str) and release_year:
+            chronology = (0, f"{release_year}-00-00")
+        else:
+            chronology = (1, "")
+        version = _version_order_key(str(item.get("version", ""))) or ()
+        return (
+            str(item.get("product", "")).casefold(),
+            chronology,
+            version,
+            str(item.get("release_type", "")),
+            str(item.get("platform", "")).casefold(),
+            str(item.get("edition", "")).casefold(),
+        )
+
+    return sorted(merged.values(), key=sort_key)
+
+
 def _parse_outline(response: str, batch_size: int) -> dict[str, Any]:
     if not isinstance(response, str) or not response.strip() or len(response) > 48000:
         raise ValueError("Curriculum model response is empty or exceeds the output limit.")
