@@ -1,4 +1,5 @@
 from __future__ import annotations
+import hashlib
 import http.client
 import ipaddress
 import json
@@ -274,6 +275,36 @@ def _recommended_context_tokens(
         if value <= maximum_context and value <= fit:
             candidate = value
     return candidate
+
+
+def model_identity(purpose: str, model: str) -> dict[str, str]:
+    """Return a stable identity for a configured model without claiming remote weight attestation."""
+    settings = get_settings()
+    provider = settings.get(f"{purpose}_llm_provider", "ollama")
+    if provider == "ollama":
+        entry = next(
+            (item for item in list_models()
+             if isinstance(item, dict) and str(item.get("name", "")).strip() == model),
+            None,
+        )
+        digest = entry.get("digest") if entry else None
+        if not isinstance(digest, str) or not digest.strip():
+            raise OllamaError("The configured Ollama model is not installed or does not expose a digest.")
+        return {"provider": provider, "model": model, "identity": digest, "identity_kind": "ollama_model_digest"}
+    if provider == "openai_compatible":
+        base_url = normalize_openai_compatible_base_url(
+            settings.get(f"{purpose}_llm_base_url", "")
+        )
+        fingerprint = hashlib.sha256(
+            f"{provider}|{base_url}|{model}".encode("utf-8")
+        ).hexdigest()
+        return {
+            "provider": provider,
+            "model": model,
+            "identity": fingerprint,
+            "identity_kind": "endpoint_model_configuration_fingerprint",
+        }
+    raise OllamaError(f"Unsupported {purpose} model identity provider.")
 
 
 def model_details(model: str, context_tokens: int | None = None) -> dict[str, Any]:
