@@ -16,8 +16,8 @@ def test_registry_covers_generation_repair_peer_and_evaluation_roles():
     assert set(entries) == {
         "lesson_generation", "lesson_repair", "peer_review", "oracle_evaluation"
     }
-    assert entries["lesson_generation"]["version"] == "learning-lesson-v1"
-    assert entries["lesson_repair"]["version"] == "learning-lesson-repair-v1"
+    assert entries["lesson_generation"]["version"] == "learning-lesson-v2"
+    assert entries["lesson_repair"]["version"] == "learning-lesson-repair-v2"
     assert entries["peer_review"]["version"] == "learning-peer-review-v2"
     assert entries["oracle_evaluation"]["kind"] == "deterministic_evaluator"
 
