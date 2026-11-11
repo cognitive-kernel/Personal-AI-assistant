@@ -16,7 +16,7 @@ PROMPT_REGISTRY_VERSION = 1
 # identifier and a matching registry entry, rather than silently reusing a label.
 _PROMPTS: dict[str, dict[str, Any]] = {
     "lesson_generation": {
-        "version": "learning-lesson-v5",
+        "version": "learning-lesson-v6",
         "kind": "generation",
         "purpose": "Generate a temporary lesson candidate",
     },
