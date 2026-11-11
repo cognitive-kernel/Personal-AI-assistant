@@ -83,6 +83,13 @@ def _valid_checkpoint(
     raw_sources = checkpoint.get("sources")
     if not isinstance(completed, list) or not isinstance(raw_sources, list):
         return [], []
+    # Checkpoints created before query-to-source provenance was recorded cannot
+    # guarantee coverage of release-history and patch-update research angles.
+    if any(
+        not isinstance(item, dict) or item.get("query") not in queries
+        for item in raw_sources
+    ):
+        return [], []
     completed_queries = [
         item for item in completed
         if isinstance(item, str) and item in queries
