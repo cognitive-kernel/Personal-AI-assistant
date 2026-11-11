@@ -101,7 +101,7 @@ def test_openai_compatible_base_url_accepts_https_and_loopback_http():
     )
     assert (
         ollama.normalize_openai_compatible_base_url("http://localhost:1234/v1")
-        == "http://localhost:1234/v1"
+        == "http://127.0.0.1:1234/v1"
     )
 
 
