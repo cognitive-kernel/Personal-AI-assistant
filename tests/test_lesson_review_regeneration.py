@@ -107,7 +107,7 @@ def test_review_context_is_bounded_and_is_not_copied_into_source_text(tmp_path, 
 
 
 
-def test_regeneration_replaces_old_lesson_instead_of_keeping_duplicate_versions(
+def test_regeneration_preserves_old_lesson_and_knowledge_as_history(
     tmp_path, monkeypatch
 ):
     path_id, topic_id, _topic_b_id = _make_review_fixture(tmp_path, monkeypatch)
@@ -144,7 +144,7 @@ def test_regeneration_replaces_old_lesson_instead_of_keeping_duplicate_versions(
 
     assert replacement["id"] != previous_id
     assert old_job["status"] == "superseded"
-    assert old_job["lesson"] is None
-    assert old_job["assessment_json"] is None
-    assert old_knowledge_count == 0
-    assert new_knowledge_count == 0
+    assert old_job["lesson"] == "Old lesson content"
+    assert old_job["assessment_json"] is not None
+    assert old_knowledge_count == 1
+    assert new_knowledge_count == 1
