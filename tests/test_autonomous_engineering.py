@@ -238,6 +238,11 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
             for handler in handlers
             if isinstance(handler, agent.urllib.request.ProxyHandler)
         ]
+        captured["redirect_handlers"] = [
+            handler
+            for handler in handlers
+            if isinstance(handler, agent.urllib.request.HTTPRedirectHandler)
+        ]
         return FakeOpener()
 
     monkeypatch.setenv("HTTP_PROXY", "http://proxy.example:8080")
@@ -247,6 +252,10 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
     result = agent._ollama_status("gpt-oss:20b")
 
     assert captured["proxy_maps"] == [{}]
+    assert len(captured["redirect_handlers"]) == 1
+    assert captured["redirect_handlers"][0].redirect_request(
+        None, None, 302, "Found", {}, "https://redirect.example/api/tags"
+    ) is None
     assert captured["requests"] == [
         ("http://127.0.0.1:11434/api/tags", 3),
         ("http://127.0.0.1:11434/api/show", 5),
