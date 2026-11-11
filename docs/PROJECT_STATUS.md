@@ -390,4 +390,4 @@
 - خطای `IndentationError` در `app/learning_curriculum_tasks.py:689` که باعث شکست collection تست‌ها و Windows storage شده بود، در commit `ff84957543644d74a04169a1bf13b57f6f6c1b8b` اصلاح شد.
 - CI دقیق head جدید شامل workflowهای tests و browser-e2e است که در زمان ثبت این وضعیت queued هستند؛ تا دریافت نتیجهٔ دقیق همان SHA، هیچ pass ادعا نمی‌شود.
 - Browser E2E در head قبلی قبل از اجرای برنامه، به‌علت شکست DNS در دریافت بسته‌های Chromium از Ubuntu repositories متوقف شده بود.
-- PR #710 همچنان Draft و unmerged است؛ semantic grading خودکار و ورود عمومی پاسخ‌های چت به candidateهای یادگیری هنوز گیت‌های اجرایی باز هستند.
+- PR #710 در 2026-11-11 ادغام شده است؛ ادامهٔ تکمیل یادگیری در PR #711 انجام می‌شود. semantic grading خودکار model-assisted و ورود پاسخ‌های chat به candidateهای unverified در PR #710 پیاده‌سازی شده‌اند، اما تبدیل candidate به درس canonical و گردش‌کار اصلاح revisionدار هنوز تکمیل نشده‌اند.
