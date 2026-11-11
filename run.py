@@ -760,8 +760,10 @@ def _configured_model_setting(key: str, env_name: str, default: str) -> str:
 
 def _configured_learning_model() -> str:
     """Resolve the model the app will actually use, without mutating saved settings."""
-    override = os.environ.get("LEARNING_OLLAMA_MODEL")
-    if override is not None:
+    def environment_default() -> str:
+        override = os.environ.get("LEARNING_OLLAMA_MODEL")
+        if override is None:
+            return DEFAULT_LEARNING_MODEL
         model = override.strip()
         if not model or len(model) > 200:
             raise RuntimeError("LEARNING_OLLAMA_MODEL must be a non-empty model name of at most 200 characters.")
@@ -771,7 +773,7 @@ def _configured_learning_model() -> str:
     if not database.is_absolute():
         database = ROOT / database
     if not database.is_file():
-        return DEFAULT_LEARNING_MODEL
+        return environment_default()
 
     try:
         connection = sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
@@ -783,13 +785,13 @@ def _configured_learning_model() -> str:
             connection.close()
     except sqlite3.OperationalError as exc:
         if "no such table: settings" in str(exc).lower():
-            return DEFAULT_LEARNING_MODEL
+            return environment_default()
         raise RuntimeError("The existing settings database could not be read safely; Ollama setup was stopped.") from exc
     except sqlite3.Error as exc:
         raise RuntimeError("The existing settings database could not be read safely; Ollama setup was stopped.") from exc
 
     if row is None:
-        return DEFAULT_LEARNING_MODEL
+        return environment_default()
     try:
         configured = json.loads(row[0])
     except (TypeError, json.JSONDecodeError) as exc:
