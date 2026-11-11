@@ -563,6 +563,11 @@ def test_release_years_and_dates_are_retained_and_chronologically_validated():
     with pytest.raises(ValueError, match="invalid year/date"):
         learning_curriculum_tasks._parse_outline(json.dumps(value, ensure_ascii=False), 20)
 
+    value["topic_metadata"][topic]["applicability"]["release_years"] = ["2021"]
+    value["topic_metadata"][topic]["applicability"]["release_dates"] = ["2021-99-99"]
+    with pytest.raises(ValueError, match="invalid calendar date"):
+        learning_curriculum_tasks._parse_outline(json.dumps(value, ensure_ascii=False), 20)
+
 
 def test_research_queries_include_release_history_and_current_updates():
     queries = learning_curriculum_tasks._research_queries("Python")
