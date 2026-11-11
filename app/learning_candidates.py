@@ -179,13 +179,19 @@ def relevant_chat_candidates(
             provenance = json.loads(row["provenance_json"] or "{}")
         except (TypeError, json.JSONDecodeError):
             provenance = {"trust": "unverified", "storage": "local_only"}
+        safe_provenance = provenance if isinstance(provenance, dict) else {}
+        safe_provenance = {
+            key: safe_provenance[key]
+            for key in ("source", "answer_sha256", "created_at", "trust", "storage")
+            if key in safe_provenance
+        }
         items.append({
             "candidate_id": int(row["id"]),
             "source_kind": str(row["source_kind"]),
-            "topic_hint": hint if (hint := str(row["topic_hint"] or "")) else "",
+            "topic_hint": str(row["topic_hint"] or ""),
             "content": included_content,
             "content_sha256": str(row["content_sha256"]),
-            "provenance": provenance if isinstance(provenance, dict) else {},
+            "provenance": safe_provenance,
             "status": "unverified",
             "created_at": str(row["created_at"]),
             "relevance_score": score,
