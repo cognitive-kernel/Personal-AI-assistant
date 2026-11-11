@@ -1544,7 +1544,7 @@ def get_learning_path(path_id: int) -> dict[str, Any]:
         if path is None:
             raise KeyError(path_id)
         topics = [dict(row) for row in conn.execute(
-            "SELECT id, topic, position, status, latest_score, updated_at FROM learning_path_topics WHERE path_id=? ORDER BY position",
+            "SELECT id, topic, position, status, latest_score, updated_at, applicability_json, source_urls_json, hierarchy_path, depth FROM learning_path_topics WHERE path_id=? ORDER BY position",
             (path_id,),
         ).fetchall()]
         research_row = conn.execute(
@@ -1577,6 +1577,9 @@ def get_learning_path(path_id: int) -> dict[str, Any]:
                 "title": item["title"],
                 "url": item["url"],
                 "sha256": item["sha256"],
+                "publication_date": item.get("publication_date"),
+                "last_updated": item.get("last_updated"),
+                "retrieved_at": item.get("retrieved_at"),
             }
             for item in stored_sources
             if isinstance(item, dict)
