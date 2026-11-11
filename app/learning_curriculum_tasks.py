@@ -291,10 +291,11 @@ def _collect_sources(
 
 
 def _version_order_key(value: str) -> tuple[Any, ...] | None:
-    numbers = re.findall(r"\d+", value)
+    prerelease = re.search(r"(alpha|beta|preview|pre|rc|dev)[.-]?(\d*)", value, re.IGNORECASE)
+    numeric_part = value[:prerelease.start()] if prerelease else value
+    numbers = re.findall(r"\d+", numeric_part)
     if not numbers:
         return None
-    prerelease = re.search(r"(alpha|beta|preview|pre|rc|dev)[.-]?(\d*)", value, re.IGNORECASE)
     if prerelease:
         stage = {
             "dev": 0, "alpha": 1, "a": 1, "beta": 2, "b": 2,
