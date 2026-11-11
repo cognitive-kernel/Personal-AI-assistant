@@ -150,10 +150,6 @@ if ($VerifyOnly) {
     }
 
     $baseModel = $Model
-        throw "Model name contains unsupported characters; refusing to construct a persistent Codex model variant."
-    }
-
-    $baseModel = $Model
     $modelInfo = Get-ModelInfo -ModelName $baseModel
     Assert-ToolCallingCapability -Info $modelInfo
     $maximum = Get-MaximumContext -Info $modelInfo
