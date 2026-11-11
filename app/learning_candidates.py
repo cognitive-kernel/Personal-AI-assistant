@@ -13,7 +13,6 @@ from typing import Any
 from .db import learning_connection
 
 _MIN_CANDIDATE_CHARS = 1
-_MAX_CANDIDATE_CHARS = 50000
 _SENSITIVE_VALUE = re.compile(
     r"(?i)\b(?:password|passphrase|passcode|api[_ -]?key|secret|access[_ -]?token|"
     r"refresh[_ -]?token|private[_ -]?key)\b\s*[:=]\s*[^\s,;]{6,}"
@@ -40,7 +39,7 @@ def capture_chat_answer(
         raise ValueError("task_id must be a positive integer or null.")
     if not isinstance(user_query, str) or not user_query.strip() or len(user_query) > 12000:
         return None
-    if not isinstance(answer, str) or not answer.strip() or len(answer) > _MAX_CANDIDATE_CHARS:
+    if not isinstance(answer, str) or not answer.strip():
         return None
     query = " ".join(user_query.split())
     text = answer.strip()
