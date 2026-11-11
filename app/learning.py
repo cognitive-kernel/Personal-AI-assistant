@@ -689,40 +689,46 @@ def _select_learning_generation_model(
             "budget_scope": budget_scope,
         }
 
-    try:
-        installed = ollama.list_models()
-    except Exception as exc:
-        if constrained:
+    provider = settings.get("learning_llm_provider", "ollama")
+    if provider == "openai_compatible":
+        # The selected remote/local OpenAI-compatible endpoint owns model discovery.
+        # Keep the configured model pinned; never query Ollama or substitute another.
+        selection_candidates = [fallback_model]
+    elif provider == "ollama":
+        try:
+            installed = ollama.list_models()
+        except Exception as exc:
+            if constrained:
+                raise LearningError(
+                    "Cannot enforce learning model budget or quality threshold because installed models could not be enumerated."
+                ) from exc
+            return fallback_model, {
+                "status": "discovery_unavailable_fallback",
+                "reason": f"Installed-model discovery failed ({type(exc).__name__}); using configured model without a cost guarantee.",
+                "selected_model": fallback_model,
+                "estimated_cost_microusd": None,
+                "estimated_prompt_tokens": estimated_prompt_tokens,
+                "estimated_completion_tokens": estimated_completion_tokens,
+                "claim_review_included": claim_review_prompt_tokens > 0,
+                "claim_review_prompt_tokens": claim_review_prompt_tokens,
+                "estimate_method": "conservative_character_heuristic_for_generation_repair_and_optional_claim_review",
+                "budget_scope": budget_scope,
+            }
+        installed_names = sorted({
+            item["name"].strip()
+            for item in installed
+            if isinstance(item, dict)
+            and isinstance(item.get("name"), str)
+            and item["name"].strip()
+        })
+        if fallback_model not in installed_names:
             raise LearningError(
-                "Cannot enforce learning model budget or quality threshold because installed models could not be enumerated."
-            ) from exc
-        return fallback_model, {
-            "status": "discovery_unavailable_fallback",
-            "reason": f"Installed-model discovery failed ({type(exc).__name__}); using configured model without a cost guarantee.",
-            "selected_model": fallback_model,
-            "estimated_cost_microusd": None,
-            "estimated_prompt_tokens": estimated_prompt_tokens,
-            "estimated_completion_tokens": estimated_completion_tokens,
-            "claim_review_included": claim_review_prompt_tokens > 0,
-            "claim_review_prompt_tokens": claim_review_prompt_tokens,
-            "estimate_method": "conservative_character_heuristic_for_generation_repair_and_optional_claim_review",
-            "budget_scope": budget_scope,
-        }
-
-    installed_names = sorted({
-        item["name"].strip()
-        for item in installed
-        if isinstance(item, dict)
-        and isinstance(item.get("name"), str)
-        and item["name"].strip()
-    })
-    if fallback_model not in installed_names:
-        raise LearningError(
-            f"The configured learning model '{fallback_model}' is not installed in Ollama."
-        )
-    # The learning lane is pinned to its configured model. Cost/quality
-    # profiles may accept or reject it, but may never silently substitute another model.
-    selection_candidates = [fallback_model] if fallback_model in installed_names else []
+                f"The configured learning model '{fallback_model}' is not installed in Ollama."
+            )
+        # Cost/quality profiles may accept or reject the pinned model, never replace it.
+        selection_candidates = [fallback_model]
+    else:
+        raise LearningError(f"Unsupported learning LLM provider: {provider}.")
     selection = select_learning_model(
         settings,
         selection_candidates,
