@@ -106,11 +106,11 @@
       const checks = data.checks || {};
       labels.ollama.textContent = stateText(checks.ollama_online);
       $("ollama-detail").textContent = checks.ollama_online ? "پاسخ از 127.0.0.1:11434 دریافت شد." : "سرویس محلی در دسترس نیست.";
-      const modelReady = checks.model_installed && checks.model_context_metadata_available && checks.model_supports_tools;
+      const modelReady = checks.model_installed && checks.model_context_metadata_available && checks.model_context_supported && checks.model_supports_tools;
       labels.model.textContent = stateText(modelReady);
       const contextLength = Number(data.model_context_length);
       const contextText = Number.isSafeInteger(contextLength) && contextLength >= 512
-        ? "؛ حداکثر Context مدل: " + contextLength.toLocaleString() + " توکن"
+        ? "؛ حداکثر Context مدل: " + contextLength.toLocaleString() + " توکن" + (contextLength >= 64000 ? "؛ حداقل Codex تأمین است" : "؛ Codex حداقل ۶۴٬۰۰۰ توکن می‌خواهد")
         : "؛ حداکثر Context از metadata مدل تأیید نشد";
       const toolsText = checks.model_supports_tools ? "؛ قابلیت tools تأیید شد" : "؛ قابلیت tools تأیید نشد";
       const modelLabel = data.model ? "مدل ذخیره‌شده: " + String(data.model) : "هنوز مدلی ذخیره نشده است";
