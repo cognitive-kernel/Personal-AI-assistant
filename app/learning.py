@@ -1572,8 +1572,8 @@ def submit_assessment(
                         conn.execute(
                             """UPDATE learning_path_topics
                                SET status='completed', latest_score=100,
-                                   latest_score_kind='semantic_model_assisted',
-                                   latest_score_source='semantic_model_assisted',
+                                   latest_score_kind='learner_rubric',
+                                   latest_score_source='learner_rubric',
                                    updated_at=CURRENT_TIMESTAMP
                                WHERE id=?""",
                             (path_topic_id,),
