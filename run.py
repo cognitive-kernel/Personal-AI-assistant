@@ -932,16 +932,6 @@ def _ensure_ollama() -> None:
         ))
     if _configured_llm_provider("learning") == "ollama":
         required_models.append(("مدل یادگیری", _configured_learning_model()))
-    if _configured_llm_provider("programming") == "ollama":
-        required_models.append((
-            "مدل برنامه‌نویسی",
-            _configured_model_setting("programming_ollama_model", "PROGRAMMING_OLLAMA_MODEL", "qwen3:14b"),
-        ))
-    if _configured_llm_provider("embedding") == "ollama":
-        required_models.append((
-            "مدل embedding",
-            _configured_model_setting("ollama_embedding_model", "OLLAMA_EMBEDDING_MODEL", "nomic-embed-text"),
-        ))
     if factual_review_model and _configured_llm_provider("factual_review") == "ollama":
         required_models.append(("مدل بازبینی factual", factual_review_model))
     missing_models: list[str] = []
