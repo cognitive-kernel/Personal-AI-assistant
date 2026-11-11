@@ -311,7 +311,7 @@ def _generate_outline(
         model,
         topic=topic,
         generation_scope="curriculum_outline_generation_single_repair",
-        completion_token_budget=800,
+        completion_token_budget=4096,
     )
     if selected_model != model:
         raise learning.LearningError("Curriculum generation attempted to substitute the configured learning model.")
@@ -330,7 +330,7 @@ def _generate_outline(
             system_prompt=system_prompt,
             purpose="learning",
             model_override=selected_model,
-            num_predict=800,
+            num_predict=4096,
         )
         return _parse_outline(response, max_topics), model_selection
     except ValueError as first_error:
@@ -482,8 +482,8 @@ def handle_curriculum_task(
         context.checkpoint({
             "phase": "outline_validated",
             "topic_sha256": topic_sha256,
-            "queries": [f"{topic} {suffix}" for suffix in _SEARCH_QUERY_SUFFIXES],
-            "completed_queries": [f"{topic} {suffix}" for suffix in _SEARCH_QUERY_SUFFIXES],
+            "queries": _research_queries(topic),
+            "completed_queries": _research_queries(topic),
             "sources": sources,
             "outline": outline,
             "model": model,
