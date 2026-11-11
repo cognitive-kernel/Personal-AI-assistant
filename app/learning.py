@@ -787,6 +787,27 @@ def run_job(job_id: int) -> None:
             lesson_review = None
         source_row = conn.execute("SELECT content FROM learning_source_text WHERE job_id=?", (job_id,)).fetchone()
         source_text = source_row["content"] if source_row else ""
+        path_topic_context = {}
+        if row["path_topic_id"] is not None:
+            provenance_row = conn.execute(
+                """SELECT t.applicability_json, t.source_urls_json, t.hierarchy_path, t.depth,
+                          r.sources_json
+                   FROM learning_path_topics t
+                   LEFT JOIN learning_path_research r ON r.path_id=t.path_id
+                   WHERE t.id=?""",
+                (row["path_topic_id"],),
+            ).fetchone()
+            if provenance_row is not None:
+                try:
+                    path_topic_context = {
+                        "applicability": json.loads(provenance_row["applicability_json"] or "{}"),
+                        "source_urls": json.loads(provenance_row["source_urls_json"] or "[]"),
+                        "hierarchy_path": provenance_row["hierarchy_path"] or topic,
+                        "depth": int(provenance_row["depth"] or 0),
+                        "course_sources": json.loads(provenance_row["sources_json"] or "[]"),
+                    }
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    path_topic_context = {"applicability": {"status": "unverified"}, "source_urls": []}
     user_provided_source_available = bool(source_text) and source_kind == "user_provided_text"
     try:
         # These preparation steps run before model inference, but they can still fail
@@ -824,6 +845,15 @@ def run_job(job_id: int) -> None:
         raise LearningError(f"Learning job {job_id} preparation failed.") from exc
     prompt = {
         "topic": topic,
+        "curriculum_provenance": path_topic_context,
+        "curriculum_provenance_policy": (
+            "For researched-course lessons, explicitly state the product and exact versions/builds, editions, "
+            "database compatibility levels, operating systems/platforms, execution modes, prerequisites, and "
+            "permissions only when supported by the attached source records. Cite only the exact supplied URLs. "
+            "Distinguish engine version from database compatibility level. Do not generalize support across releases. "
+            "If a version, date, edition, or condition is not established by sources, label it unverified and say "
+            "what must be checked; never fill gaps from memory as if sourced."
+        ),
         "source_text": model_source_text,
         "verified_factual_context": verified_factual_context,
         "indexed_knowledge_context": indexed_knowledge_context,
