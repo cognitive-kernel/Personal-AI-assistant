@@ -824,3 +824,35 @@ def test_discover_sources_keeps_provider_page_limit_bounded(monkeypatch):
     web_sources.discover_sources("release history", limit=500)
 
     assert captured["limit"] == 30
+
+
+def test_page_text_parser_extracts_publication_and_last_updated_dates():
+    parser = web_sources._PageTextParser()
+    parser.feed(
+        '<html><head><meta property="article:published_time" content="2024-05-10T10:00:00Z">'
+        '<meta property="article:modified_time" content="2025-01-02T11:30:00Z">'
+        '<meta name="DC.date.issued" content="2023-04-01"></head>'
+        '<body><h1>Release notes</h1><p>' + ("Release details and fixes. " * 12) + "</p></body></html>"
+    )
+
+    assert parser.publication_date == "2024-05-10"
+    assert parser.last_updated == "2025-01-02"
+
+
+def test_fetch_document_persists_source_date_metadata(monkeypatch):
+    html = (
+        '<html><head><title>Release notes</title>'
+        '<meta name="datePublished" content="2022-11-16">'
+        '<meta name="last-modified" content="2024-02-20">'
+        '</head><body><h1>Release notes</h1><p>'
+        + ("Version release and maintenance details. " * 10)
+        + "</p></body></html>"
+    )
+    monkeypatch.setattr(web_sources, "_open", lambda _url, max_bytes: (html, "text/html"))
+
+    document = web_sources.fetch_public_document(
+        "https://docs.example.test/releases", "Release notes"
+    )
+
+    assert document.publication_date == "2022-11-16"
+    assert document.last_updated == "2024-02-20"
