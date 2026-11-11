@@ -466,3 +466,14 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Non-JSON/free-form model answers are retained as unverified lesson content even if the model also fails the structured assessment schema and the repair attempt is malformed. Quality scores trigger diagnosis/repair and remain attached to the candidate; they do not delete the lesson or source evidence. Low-quality lessons remain `unverified` and staged as `awaiting_test`, not promoted as trusted factual knowledge.
 - Added regression tests for compatible-provider routing, local endpoints, API-key environment lookup, embedding order, provider switching, temporary non-persistent settings, optional Ollama startup, and free-form lesson retention.
 - Versioned curriculum generation remains independent of learner examples: the prompt requires complete subject taxonomy, release history from earliest documented release to latest, and chronological teaching order; parser validation enforces the order and actual calendar dates.
+
+
+## 2026-11-11 — PR #710: remove source-count admission gate
+
+- Root cause: _collect_sources required at least three usable pages across two domains and retried indefinitely otherwise. This made source availability a prerequisite for learning, contrary to the requested policy to retain incomplete/unofficial evidence and continue with model knowledge when necessary.
+- Change: source count and publisher authority are now provenance/quality signals, not curriculum admission gates. All usable results are retained; zero-source and sparse-source research can proceed. Lesson provenance remains unverified when it is model-only or lacks adequate evidence.
+- Prompt: curriculum research now explicitly collects relevant official, unofficial, community, archived, partial, and conflicting material without authority-based exclusion; source type, freshness, corroboration, and uncertainty are classified separately.
+- Regression: replaced the old retry-on-one-source test with parameterized zero-source/one-source continuation coverage and added assertions for the prompt's non-exclusion policy.
+- Documentation: updated docs/LEARNING.md and docs/PROJECT_STATUS.md to describe the new contract.
+- Commits: 1dcdae6ffdab24d1bce47c413f282506b8f0fb94, 3c6eb85c29f84afcb319457ab98164cde162a924, b9b159a53893f0b7a0e0fd7a1f6210f231e6f258, e1d17548514d1d655c8ca5720c1e8c2d432bd2a9, 38fbbbf564be6948f8aa70b25710a696a9486d8e.
+- Validation: no exact-head CI result is available yet for the latest commit. Do not infer success from earlier PR runs. Local target-host validation remains a separate pre-merge gate.
