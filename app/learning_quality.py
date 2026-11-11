@@ -80,15 +80,10 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
 
     score = 100
     reasons: list[str] = []
-    minimum_words = 120 if is_english else 180
-    target_words = 140 if is_english else 200
-    maximum_words = None  # No artificial lesson-length ceiling; topic complexity determines depth.
-    if len(words) < minimum_words:
-        score -= 35
-        reasons.append(f"درس کوتاه‌تر از حداقل {minimum_words} واژه آموزشی است.")
-    elif len(words) < target_words:
-        score -= 10
-        reasons.append(f"درس از بازه هدف {target_words} تا {maximum_words} واژه کوتاه‌تر است.")
+    # Lesson length is selected by the topic and learner needs, not word-count gates.
+    minimum_words = None
+    target_words = None
+    maximum_words = None
     if unique_ratio < 0.48:
         score -= 20
         reasons.append("تکرار متن زیاد است و اطلاعات تازه کمی دارد.")
@@ -128,7 +123,7 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
 
     score = max(0, min(100, score))
     accepted = (
-        score >= 75 and len(words) >= target_words and unique_ratio >= 0.48
+        score >= 75 and unique_ratio >= 0.48
         and len(technical_terms) >= 3 and has_example and has_explanation
         and valid_questions and valid_answers and valid_learning_outcomes and not mixed_script_tokens
         and not malformed_phrases and len(matched) < 2 and bool(body_text)
