@@ -506,8 +506,25 @@ def maintain_release_watch(*, limit: int = 3) -> dict[str, int]:
                     )
                 checked += 1
                 continue
-            previous_fingerprint = str(row["last_source_fingerprint"] or "") or _source_fingerprint(previous_sources)
             current_fingerprint = _source_fingerprint(current_sources)
+            if not str(row["last_source_fingerprint"] or ""):
+                # The first poll establishes a baseline using the exact recurring
+                # query set. Initial curriculum research uses a broader query set,
+                # so comparing those fingerprints would cause a false refresh loop.
+                with learning_connection() as connection:
+                    connection.execute(
+                        """UPDATE learning_release_watch
+                           SET last_checked_at=CURRENT_TIMESTAMP,
+                               next_check_at=datetime('now', '+6 hours'),
+                               last_source_fingerprint=?,
+                               updated_at=CURRENT_TIMESTAMP
+                           WHERE path_id=? AND status='active'""",
+                        (current_fingerprint, path_id),
+                    )
+                unchanged += 1
+                checked += 1
+                continue
+            previous_fingerprint = str(row["last_source_fingerprint"])
             if current_fingerprint == previous_fingerprint:
                 with learning_connection() as connection:
                     connection.execute(
@@ -615,8 +632,8 @@ def _persist_researched_path(
         connection.execute(
             """INSERT OR IGNORE INTO learning_release_watch(
                    path_id, status, next_check_at, last_source_fingerprint
-               ) VALUES (?, 'active', datetime('now', '+6 hours'), ?)""",
-            (path_id, _source_fingerprint(sources)),
+               ) VALUES (?, 'active', CURRENT_TIMESTAMP, '')""",
+            (path_id,),
         )
         topic_metadata = outline.get("topic_metadata", {})
         known_source_urls = {item["url"] for item in sources}
