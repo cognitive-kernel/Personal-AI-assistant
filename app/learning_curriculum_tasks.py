@@ -585,7 +585,9 @@ def maintain_release_watch(*, limit: int = 3) -> dict[str, int]:
                 if existing is not None and existing.get("status") in task_manager.TERMINAL_STATUSES:
                     if existing.get("status") != "succeeded":
                         dedupe_key += ":" + datetime.now(timezone.utc).strftime("%Y%m%d%H")
-                task = enqueue_curriculum_task(topic, dedupe_key=dedupe_key)
+                task = enqueue_curriculum_task(
+                    topic, dedupe_key=dedupe_key, refresh_of_path_id=path_id
+                )
                 with learning_connection() as connection:
                     connection.execute(
                         """UPDATE learning_release_watch
@@ -620,6 +622,7 @@ def _persist_researched_path(
     sources: list[dict[str, str]],
     model: str,
     model_selection: dict[str, Any],
+    refresh_of_path_id: int | None = None,
 ) -> tuple[int, str]:
     topic_sha256 = hashlib.sha256(topic.encode("utf-8")).hexdigest()
     slug = f"researched-{task_id}-{topic_sha256[:12]}"
@@ -664,13 +667,12 @@ def _persist_researched_path(
                     len(sources), sources_json,
                 ),
             )
-        connection.execute(
-            """UPDATE learning_release_watch SET status='superseded', updated_at=CURRENT_TIMESTAMP
-               WHERE status='active' AND path_id IN (
-                   SELECT path_id FROM learning_path_research WHERE requested_topic=? AND path_id<>?
-               )""",
-            (topic, path_id),
-        )
+        if refresh_of_path_id is not None:
+            connection.execute(
+                """UPDATE learning_release_watch SET status='superseded', updated_at=CURRENT_TIMESTAMP
+                   WHERE path_id=? AND status='active'""",
+                (refresh_of_path_id,),
+            )
         connection.execute(
             """INSERT OR IGNORE INTO learning_release_watch(
                    path_id, status, next_check_at, last_source_fingerprint
@@ -718,7 +720,7 @@ def _persist_researched_path(
 def enqueue_curriculum_task(
     topic: str, *, batch_size: int = DEFAULT_TOPICS_PER_BATCH,
     source_text: str | None = None, max_topics: int | None = None,
-    dedupe_key: str | None = None,
+    dedupe_key: str | None = None, refresh_of_path_id: int | None = None,
 ) -> dict[str, Any]:
     # max_topics is retained only as a legacy alias for one inference batch.
     if max_topics is not None:
@@ -728,9 +730,18 @@ def enqueue_curriculum_task(
     normalized_topic, normalized_batch, normalized_source = validate_curriculum_payload({
         "topic": topic, "batch_size": batch_size, "source_text": source_text,
     })
+    payload = {
+        "topic": normalized_topic,
+        "batch_size": normalized_batch,
+        "source_text": normalized_source,
+    }
+    if refresh_of_path_id is not None:
+        if isinstance(refresh_of_path_id, bool) or not isinstance(refresh_of_path_id, int) or refresh_of_path_id < 1:
+            raise ValueError("refresh_of_path_id must be a positive integer.")
+        payload["refresh_of_path_id"] = refresh_of_path_id
     return task_manager.create_task(
         CURRICULUM_TASK_TYPE,
-        {"topic": normalized_topic, "batch_size": normalized_batch, "source_text": normalized_source},
+        payload,
         priority=0, max_attempts=3, dedupe_key=dedupe_key,
     )
 
@@ -739,7 +750,18 @@ def handle_curriculum_task(
     payload: dict[str, Any], checkpoint: dict[str, Any] | None, context: TaskContext,
 ) -> dict[str, Any]:
     try:
-        topic, batch_size, source_text = validate_curriculum_payload(payload)
+        topic, batch_size, source_text = validate_curriculum_payload({
+            "topic": payload.get("topic"),
+            "batch_size": payload.get("batch_size", DEFAULT_TOPICS_PER_BATCH),
+            "source_text": payload.get("source_text", ""),
+        })
+        refresh_of_path_id = payload.get("refresh_of_path_id")
+        if refresh_of_path_id is not None and (
+            isinstance(refresh_of_path_id, bool)
+            or not isinstance(refresh_of_path_id, int)
+            or refresh_of_path_id < 1
+        ):
+            raise ValueError("refresh_of_path_id must be a positive integer.")
     except (TypeError, ValueError) as exc:
         raise PermanentTaskError(str(exc)) from exc
     topic_sha256 = hashlib.sha256(topic.encode("utf-8")).hexdigest()
@@ -861,8 +883,11 @@ def handle_curriculum_task(
     if len(outline["topics"]) < MIN_TOPICS_PER_BATCH or not outline.get("title"):
         raise PermanentTaskError("The completed curriculum is too small or has no title.")
     outline_sha256 = hashlib.sha256(json.dumps(outline, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
-    path_id, outline_sha256 = _persist_researched_path(task_id=context.task_id, topic=topic, outline=outline,
-                                                       sources=sources, model=model, model_selection=model_selection)
+    path_id, outline_sha256 = _persist_researched_path(
+        task_id=context.task_id, topic=topic, outline=outline,
+        sources=sources, model=model, model_selection=model_selection,
+        refresh_of_path_id=refresh_of_path_id,
+    )
     context.checkpoint({
         "phase": "curriculum_persisted", "topic_sha256": topic_sha256,
         "queries": _research_queries(topic), "completed_queries": _research_queries(topic),
