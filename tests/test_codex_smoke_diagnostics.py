@@ -209,39 +209,9 @@ def test_context_preflight_uses_deterministic_variant_from_selected_base_model()
     ).read_text(encoding="utf-8")
 
     assert '$codexModel = "$baseModel-codex-ctx$selectedContext"' in script
-    assert "if ($Model -match '(?i)-codex-ctx[0-9]+
+    assert 'from = $baseModel' in script
     assert '$existingContext.Success' in script
-
-
-
-
-def test_codex_model_catalog_rejects_context_below_64k(monkeypatch):
-    import pytest
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "63999")
-    with pytest.raises(ValueError, match="64000"):
-        progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx63999")
-
-
-def test_codex_model_catalog_uses_selected_context_from_environment(monkeypatch):
-    import json
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
-    path = progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx64000")
-    catalog = json.loads(path.read_text(encoding="utf-8"))
-    assert catalog["models"][0]["context_window"] == 64000
-
-
-def test_settings_expose_visible_installed_model_selectors_and_manual_context_inputs():
-    from pathlib import Path
-
-    html = (Path(__file__).resolve().parents[1] / "app" / "static" / "index.html").read_text(encoding="utf-8")
-    for profile in ("chat", "learning", "programming"):
-        assert f'id="{profile}-model-installed"' in html
-        assert f'id="{profile}-model"' in html
-        assert f'id="{profile}-ctx" type="number"' in html
-        assert f'id="{profile}-model-installed"' in html
-    assert 'const result=await api("/api/models")' in html
-    assert 'installedSelect?.addEventListener("change"' in html
-)" in script
+    assert "if ($Model -match '(?i)-codex-ctx[0-9]+" in script
     assert "Select the original Ollama model to prevent nested variants" in script
     root = Path(__file__).resolve().parents[1]
     provision = (root / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
@@ -250,76 +220,6 @@ def test_settings_expose_visible_installed_model_selectors_and_manual_context_in
     assert "internal Codex context variant" in provision
     assert "Base model selection" in app_check
     assert "Base model selection" in runner_check
-    assert 'from = $baseModel' in script
-    assert '$existingContext.Success' in script
-
-
-
-
-def test_codex_model_catalog_rejects_context_below_64k(monkeypatch):
-    import pytest
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "63999")
-    with pytest.raises(ValueError, match="64000"):
-        progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx63999")
-
-
-def test_codex_model_catalog_uses_selected_context_from_environment(monkeypatch):
-    import json
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
-    path = progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx64000")
-    catalog = json.loads(path.read_text(encoding="utf-8"))
-    assert catalog["models"][0]["context_window"] == 64000
-
-
-def test_settings_expose_visible_installed_model_selectors_and_manual_context_inputs():
-    from pathlib import Path
-
-    html = (Path(__file__).resolve().parents[1] / "app" / "static" / "index.html").read_text(encoding="utf-8")
-    for profile in ("chat", "learning", "programming"):
-        assert f'id="{profile}-model-installed"' in html
-        assert f'id="{profile}-model"' in html
-        assert f'id="{profile}-ctx" type="number"' in html
-        assert f'id="{profile}-model-installed"' in html
-    assert 'const result=await api("/api/models")' in html
-    assert 'installedSelect?.addEventListener("change"' in html
-)" in script
-    assert 'from = $baseModel' in script
-    assert "Select the original Ollama model to prevent nested variants" in script
-    assert '$existingContext.Success' in script
-
-
-
-
-def test_codex_model_catalog_rejects_context_below_64k(monkeypatch):
-    import pytest
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "63999")
-    with pytest.raises(ValueError, match="64000"):
-        progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx63999")
-
-
-def test_codex_model_catalog_uses_selected_context_from_environment(monkeypatch):
-    import json
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
-    path = progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx64000")
-    catalog = json.loads(path.read_text(encoding="utf-8"))
-    assert catalog["models"][0]["context_window"] == 64000
-
-
-def test_settings_expose_visible_installed_model_selectors_and_manual_context_inputs():
-    from pathlib import Path
-
-    html = (Path(__file__).resolve().parents[1] / "app" / "static" / "index.html").read_text(encoding="utf-8")
-    for profile in ("chat", "learning", "programming"):
-        assert f'id="{profile}-model-installed"' in html
-        assert f'id="{profile}-model"' in html
-        assert f'id="{profile}-ctx" type="number"' in html
-        assert f'id="{profile}-model-installed"' in html
-    assert 'const result=await api("/api/models")' in html
-    assert 'installedSelect?.addEventListener("change"' in html
-)" in script
-    assert "Select the original Ollama model to prevent nested variants" in script
-    assert 'from = $baseModel' in script
-    assert '$existingContext.Success' in script
 
 
 
