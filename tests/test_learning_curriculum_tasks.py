@@ -668,6 +668,7 @@ def test_release_watch_supersedes_previous_watch_without_mutating_old_curriculum
     second, _ = learning_curriculum_tasks._persist_researched_path(
         task_id=9102, topic="SQL Server", outline=_outline(), sources=sources,
         model="gpt-oss:20b", model_selection={"selected_model": "gpt-oss:20b"},
+        refresh_of_path_id=first,
     )
     with db.learning_connection() as connection:
         statuses = dict(connection.execute(
