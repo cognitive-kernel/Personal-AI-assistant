@@ -517,7 +517,9 @@ class LearningRequest(BaseModel):
 
 class LearningCurriculumRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=300)
-    max_topics: StrictInt = Field(default=40, ge=8, le=40)
+    batch_size: StrictInt = Field(default=24, ge=8, le=40)
+    # Backward-compatible alias for older clients; this never caps total course size.
+    max_topics: StrictInt | None = Field(default=None, ge=8, le=40)
     source_text: str | None = Field(default=None, max_length=500)
 
     model_config = ConfigDict(extra="forbid")
@@ -904,7 +906,7 @@ def create_researched_learning_course(request: LearningCurriculumRequest) -> dic
     try:
         task = learning_curriculum_tasks.enqueue_curriculum_task(
             request.topic,
-            max_topics=request.max_topics,
+            batch_size=request.batch_size if request.max_topics is None else request.max_topics,
             source_text=request.source_text,
         )
     except ValueError as exc:
