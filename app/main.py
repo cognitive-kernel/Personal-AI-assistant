@@ -566,6 +566,11 @@ class LessonReviewSubmission(BaseModel):
     takeaway: str = Field(default="", max_length=3000)
     issues: str = Field(default="", max_length=3000)
 
+class LessonIssueReportRequest(BaseModel):
+    issue_report: str = Field(min_length=1, max_length=5000)
+
+    model_config = ConfigDict(extra="forbid")
+
 class PathTopicProgress(BaseModel):
     status: str = Field(min_length=1, max_length=30)
     latest_score: StrictInt | StrictFloat | None = Field(default=None, ge=0, le=100)
@@ -1255,6 +1260,18 @@ def get_learning_topic_review_history(
         return spaced_repetition.get_topic_review_history(path_id, topic_id, limit)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Learning path topic not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/learning/jobs/{job_id}/corrections", status_code=202)
+def submit_learning_issue_report(
+    job_id: int, request: LessonIssueReportRequest
+) -> dict[str, Any]:
+    try:
+        return learning.submit_lesson_issue(job_id, request.issue_report)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Learning job not found.") from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
