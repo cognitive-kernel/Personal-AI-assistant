@@ -867,7 +867,7 @@ def test_windows_codex_command_uses_call_without_nested_cmd_quoting(monkeypatch)
 def test_codex_arguments_pin_ollama_and_selected_windows_sandbox(monkeypatch):
     from scripts import autonomous_engineering_progress as progress
 
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "32768")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
     monkeypatch.setenv("CODEX_WINDOWS_SANDBOX_BACKEND", "elevated")
     arguments = progress.codex_arguments("gpt-oss:20b", "codex-report.md")
 
@@ -896,7 +896,7 @@ def test_codex_arguments_reject_unverified_windows_sandbox_backend(monkeypatch):
     import pytest
     from scripts import autonomous_engineering_progress as progress
 
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "32768")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
     monkeypatch.setenv("CODEX_WINDOWS_SANDBOX_BACKEND", "danger-full-access")
     with pytest.raises(ValueError, match="must be 'mxc' or 'elevated'"):
         progress.codex_arguments("gpt-oss:20b", "codex-report.md")
@@ -913,7 +913,7 @@ def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkey
     monkeypatch.setattr(progress, "persist", lambda record: True)
     monkeypatch.setattr(progress, "PLAN_FILE", tmp_path / ".agent-progress.json")
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "progress"))
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "32768")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
 
     class BrokenInput:
         def write(self, value):
