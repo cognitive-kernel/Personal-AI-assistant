@@ -2189,7 +2189,7 @@ def test_browser_settings_form_persists_values_and_surfaces_api_failure():
         page.locator("#settings-form button[type='submit']").click()
         page.wait_for_function(
             """() => document.querySelector('#settings-output')?.textContent
-                .includes('تنظیمات مدل‌ها و منابع ذخیره شد.')""",
+                .includes('تنظیمات به‌صورت دائمی ذخیره شد.')""",
             timeout=10000,
         )
         saved = page.request.get(base_url.rstrip("/") + "/api/settings")
