@@ -416,7 +416,7 @@ def _parse_outline(response: str, batch_size: int) -> dict[str, Any]:
         if isinstance(depth, bool) or not isinstance(depth, int) or not 0 <= depth <= 32:
             raise ValueError("Topic depth must be an integer between 0 and 32.")
         if any(not isinstance(url, str) or _normalized_source_url(url) is None for url in source_urls):
-            raise ValueError("Topic source_urls must contain at most 10 valid HTTPS URLs.")
+            raise ValueError("Topic source_urls must contain valid HTTPS URLs.")
         allowed_applicability = {
             "status", "product", "versions", "builds", "editions", "compatibility_levels",
             "platforms", "execution_modes", "prerequisites", "permissions", "limitations", "notes",
@@ -466,11 +466,118 @@ def _parse_outline(response: str, batch_size: int) -> dict[str, Any]:
             "hierarchy_path": hierarchy_path.strip() or topic_value,
             "depth": depth,
         }
+    subject_map = value.get("subject_map", [])
+    if not isinstance(subject_map, list) or any(
+        not isinstance(item, str) or not item.strip() or len(item) > 500
+        for item in subject_map
+    ):
+        raise ValueError("subject_map must contain non-empty taxonomy paths.")
+    subject_map = list(dict.fromkeys(item.strip() for item in subject_map))
+    unresolved_gaps = value.get("unresolved_gaps", [])
+    if not isinstance(unresolved_gaps, list) or any(
+        not isinstance(item, str) or not item.strip() or len(item) > 1000
+        for item in unresolved_gaps
+    ):
+        raise ValueError("unresolved_gaps must contain non-empty gap descriptions.")
+    unresolved_gaps = list(dict.fromkeys(item.strip() for item in unresolved_gaps))
+
+    raw_ledger = value.get("release_ledger", [])
+    if not isinstance(raw_ledger, list):
+        raise ValueError("release_ledger must be an array.")
+    release_ledger: list[dict[str, Any]] = []
+    allowed_release_types = {
+        "major", "minor", "patch", "security", "hotfix", "cumulative_update",
+        "service_pack", "errata", "documentation", "deprecation", "eol", "unknown",
+    }
+    for raw_release in raw_ledger:
+        if not isinstance(raw_release, dict):
+            raise ValueError("Every release ledger entry must be an object.")
+        product = raw_release.get("product", "")
+        version = raw_release.get("version", "")
+        release_date = raw_release.get("release_date")
+        release_year = raw_release.get("release_year")
+        release_type = raw_release.get("release_type", "unknown")
+        platform = raw_release.get("platform", "")
+        edition = raw_release.get("edition", "")
+        status = raw_release.get("status", "unverified")
+        notes_value = raw_release.get("notes", "")
+        urls = raw_release.get("source_urls", [])
+        if not isinstance(product, str) or not product.strip() or len(product) > 200:
+            raise ValueError("Release ledger product must contain 1–200 characters.")
+        if not isinstance(version, str) or len(version) > 120:
+            raise ValueError("Release ledger version must be a string of at most 120 characters.")
+        if release_date is not None:
+            if not isinstance(release_date, str) or not re.fullmatch(r"\d{4}(?:-\d{2}(?:-\d{2})?)?", release_date):
+                raise ValueError("Release ledger release_date must be an ISO date or year-month.")
+            try:
+                if len(release_date) == 7:
+                    datetime.strptime(release_date, "%Y-%m")
+                elif len(release_date) == 10:
+                    datetime.strptime(release_date, "%Y-%m-%d")
+            except ValueError as exc:
+                raise ValueError("Release ledger contains an invalid calendar date.") from exc
+        if release_year is not None and (
+            not isinstance(release_year, str) or not re.fullmatch(r"\d{4}", release_year)
+        ):
+            raise ValueError("Release ledger release_year must be a four-digit year or null.")
+        if release_type not in allowed_release_types:
+            raise ValueError("Release ledger release_type is unsupported.")
+        if status not in {"documented", "partially_documented", "unverified", "conflicting"}:
+            raise ValueError("Release ledger status is invalid.")
+        if not isinstance(platform, str) or len(platform) > 200 or not isinstance(edition, str) or len(edition) > 200:
+            raise ValueError("Release ledger platform and edition must be short strings.")
+        if not isinstance(notes_value, str) or len(notes_value) > 1000:
+            raise ValueError("Release ledger notes must be at most 1000 characters.")
+        if not isinstance(urls, list) or any(
+            not isinstance(url, str) or _normalized_source_url(url) is None for url in urls
+        ):
+            raise ValueError("Release ledger source_urls must contain valid HTTPS URLs.")
+        release_ledger.append({
+            "product": product.strip(),
+            "version": version.strip(),
+            "release_date": release_date,
+            "release_year": release_year,
+            "release_type": release_type,
+            "platform": platform.strip(),
+            "edition": edition.strip(),
+            "source_urls": list(dict.fromkeys(_normalized_source_url(url) for url in urls)),
+            "status": status,
+            "notes": notes_value.strip(),
+        })
+    release_ledger = _merge_release_ledger([], release_ledger)
+
+    raw_audit = value.get("coverage_audit", {})
+    if not isinstance(raw_audit, dict):
+        raise ValueError("coverage_audit must be an object.")
+    audit_status = raw_audit.get("status", "unknown")
+    if audit_status not in {"complete", "partial", "unknown"}:
+        raise ValueError("coverage_audit status must be complete, partial, or unknown.")
+    coverage_audit: dict[str, Any] = {"status": audit_status}
+    for key in ("earliest_release", "latest_release", "notes"):
+        item = raw_audit.get(key, "")
+        if not isinstance(item, str) or len(item) > 1000:
+            raise ValueError(f"coverage_audit {key} must be a short string.")
+        coverage_audit[key] = item.strip()
+    for key in ("missing_coverage_areas", "missing_release_lines", "prerequisite_gaps"):
+        items = raw_audit.get(key, [])
+        if not isinstance(items, list) or any(
+            not isinstance(item, str) or not item.strip() or len(item) > 500
+            for item in items
+        ):
+            raise ValueError(f"coverage_audit {key} must be a list of short strings.")
+        coverage_audit[key] = list(dict.fromkeys(item.strip() for item in items))
+    if any(coverage_audit[key] for key in ("missing_coverage_areas", "missing_release_lines", "prerequisite_gaps")):
+        coverage_audit["status"] = "partial"
+
     _validate_chronological_topics(topics, topic_metadata)
-    return {"title": title.strip(), "topics": topics, "notes": notes.strip()[:2000],
-            "coverage_areas": list(dict.fromkeys(item.strip() for item in coverage)),
-            "topic_metadata": topic_metadata,
-            "has_more": has_more, "next_focus": next_focus.strip()}
+    return {
+        "title": title.strip(), "topics": topics, "notes": notes.strip()[:2000],
+        "coverage_areas": list(dict.fromkeys(item.strip() for item in coverage)),
+        "topic_metadata": topic_metadata, "subject_map": subject_map,
+        "release_ledger": release_ledger, "unresolved_gaps": unresolved_gaps,
+        "coverage_audit": coverage_audit,
+        "has_more": has_more, "next_focus": next_focus.strip(),
+    }
 
 
 def _ordered_source_evidence(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
