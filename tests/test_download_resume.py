@@ -3,6 +3,7 @@ import importlib.util
 import json
 import subprocess
 import shutil
+import sqlite3
 import urllib.request
 from pathlib import Path
 
@@ -648,3 +649,61 @@ def test_linux_installer_patch_fails_closed_when_upstream_function_changes(tmp_p
     original.write_text("download_assets() { echo changed; }\n", encoding="utf-8")
     with pytest.raises(RuntimeError, match="unknown|ناشناخته"):
         installer._patch_linux_install_script(original)
+
+
+def _write_learning_model_setting(path: Path, value_json: str) -> None:
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value_json TEXT NOT NULL)")
+        connection.execute(
+            "INSERT INTO settings(key, value_json) VALUES ('learning_ollama_model', ?)",
+            (value_json,),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def test_configured_learning_model_uses_gpt_oss_when_no_saved_setting_exists(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv("LEARNING_OLLAMA_MODEL", raising=False)
+    monkeypatch.setenv("SETTINGS_DB_PATH", str(tmp_path / "missing-settings.db"))
+    assert installer._configured_learning_model() == "gpt-oss:20b"
+
+
+def test_configured_learning_model_preserves_saved_custom_model(tmp_path, monkeypatch):
+    database = tmp_path / "settings.db"
+    _write_learning_model_setting(database, json.dumps("custom-learning:latest"))
+    monkeypatch.delenv("LEARNING_OLLAMA_MODEL", raising=False)
+    monkeypatch.setenv("SETTINGS_DB_PATH", str(database))
+    assert installer._configured_learning_model() == "custom-learning:latest"
+
+
+def test_configured_learning_model_maps_legacy_default_to_gpt_oss(tmp_path, monkeypatch):
+    database = tmp_path / "settings.db"
+    _write_learning_model_setting(database, json.dumps("qwen3:8b"))
+    monkeypatch.delenv("LEARNING_OLLAMA_MODEL", raising=False)
+    monkeypatch.setenv("SETTINGS_DB_PATH", str(database))
+    assert installer._configured_learning_model() == "gpt-oss:20b"
+
+
+def test_configured_learning_model_environment_override_is_authoritative(
+    tmp_path, monkeypatch
+):
+    database = tmp_path / "settings.db"
+    _write_learning_model_setting(database, json.dumps("custom-learning:latest"))
+    monkeypatch.setenv("LEARNING_OLLAMA_MODEL", "gpt-oss:20b")
+    monkeypatch.setenv("SETTINGS_DB_PATH", str(database))
+    assert installer._configured_learning_model() == "gpt-oss:20b"
+
+
+def test_configured_learning_model_fails_closed_on_invalid_saved_setting(
+    tmp_path, monkeypatch
+):
+    database = tmp_path / "settings.db"
+    _write_learning_model_setting(database, json.dumps(42))
+    monkeypatch.delenv("LEARNING_OLLAMA_MODEL", raising=False)
+    monkeypatch.setenv("SETTINGS_DB_PATH", str(database))
+    with pytest.raises(RuntimeError, match="saved learning model setting is invalid"):
+        installer._configured_learning_model()
