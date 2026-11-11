@@ -28,6 +28,9 @@ def test_master_prompt_defines_universal_version_aware_learning_contract():
         "Owner-local, target-host, physical-device, and human acceptance activities are not merge gates by default",
         "Temporary overrides must be scoped to the requested operation/session",
         "A correction creates a new revision, links its predecessor, records the reason and evidence",
+        "automated semantic adjudication by an independently configured reviewer model",
+        "Human adjudication is not a routine learning or lesson-acceptance gate",
+        "No human approval is required for routine evidence gathering, draft correction, tests, or versioned lesson updates",
     )
     for requirement in required_contract:
         assert requirement in prompt
