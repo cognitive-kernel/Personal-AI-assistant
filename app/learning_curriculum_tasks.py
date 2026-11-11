@@ -524,7 +524,7 @@ def maintain_release_watch(*, limit: int = 3) -> dict[str, int]:
                 dedupe_key = f"learning-release-watch:{path_id}:{current_fingerprint}"
                 existing = task_manager.get_task_by_dedupe_key(dedupe_key)
                 if existing is not None and existing.get("status") in task_manager.TERMINAL_STATUSES:
-                    if existing.get("status") != "completed":
+                    if existing.get("status") != "succeeded":
                         dedupe_key += ":" + datetime.now(timezone.utc).strftime("%Y%m%d%H")
                 task = enqueue_curriculum_task(topic, dedupe_key=dedupe_key)
                 with learning_connection() as connection:
