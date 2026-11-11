@@ -987,3 +987,32 @@ def test_source_evidence_batches_are_round_robin_and_unbounded_by_total_source_c
     assert len(set(flattened)) == len(sources)
     assert set(flattened) == {item["url"] for item in sources}
     assert len({item["query"] for item in batches[0]}) == len(queries)
+
+
+def test_topic_metadata_does_not_truncate_long_release_histories_or_source_lists():
+    value = _outline()
+    topic = value["topics"][0]
+    years = [str(year) for year in range(1980, 2025)]
+    versions = [f"Product {index}.0" for index in range(1, 46)]
+    urls = [f"https://archive.example.test/release/{index}" for index in range(45)]
+    value["topic_metadata"] = {
+        topic: {
+            "applicability": {
+                "status": "partially_documented",
+                "versions": versions,
+                "release_years": years,
+            },
+            "source_urls": urls,
+            "hierarchy_path": topic,
+            "depth": 0,
+        }
+    }
+
+    parsed = learning_curriculum_tasks._parse_outline(
+        json.dumps(value, ensure_ascii=False), 20
+    )
+
+    metadata = parsed["topic_metadata"][topic]
+    assert metadata["applicability"]["versions"] == versions
+    assert metadata["applicability"]["release_years"] == years
+    assert metadata["source_urls"] == urls
