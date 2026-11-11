@@ -30,6 +30,7 @@
 ### Master engineering prompt enforcement amendment
 
 - Added a mandatory pre-implementation clause to docs/MASTER_ENGINEERING_PROMPT.md on branch docs/master-engineering-continuity-prompt, commit a33c0d0a423332b29d1be5c1a3fa67b7690adfbf. It makes prior findings, reported requirements, known defects, failing tests, warnings, limitations, and unresolved acceptance criteria binding obligations; work must stop when evidence/access is missing rather than guess or claim completion.
+- Copied the same binding-obligation clause into the `docs/MASTER_ENGINEERING_PROMPT.md` file consumed by the autonomous workflow on this PR branch, so the running automation does not continue to use the older prompt text while the source branch amendment is awaiting integration.
 - A prompt clause alone cannot guarantee error-free execution; the project must enforce it through regression tests, exact-head CI, target-host evidence, and explicit unresolved-gate tracking.
 
 ### Follow-up hardening — restore the Codex-specific 64k contract
