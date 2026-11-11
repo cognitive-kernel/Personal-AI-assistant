@@ -58,6 +58,7 @@ def validate_curriculum_payload(payload: Any) -> tuple[str, int, str]:
         raise ValueError("source_text must contain at most 500 characters.")
     return topic.strip(), batch_size, source_text.strip()
 
+
 def _normalized_source_url(value: str) -> str | None:
     try:
         parsed = urlsplit(value)
@@ -219,7 +220,7 @@ def _collect_sources(
 
 
 def _parse_outline(response: str, batch_size: int) -> dict[str, Any]:
-    if not isinstance(response, str) or not response.strip() or len(response) > 16000:
+    if not isinstance(response, str) or not response.strip() or len(response) > 48000:
         raise ValueError("Curriculum model response is empty or exceeds the output limit.")
     raw = response.strip()
     try:
@@ -311,7 +312,7 @@ def _parse_outline(response: str, batch_size: int) -> dict[str, Any]:
         normalized_applicability.setdefault("status", "unverified")
         topic_metadata[topic_value] = {
             "applicability": normalized_applicability,
-            "source_urls": list(dict.fromkeys(source_urls)),
+            "source_urls": list(dict.fromkeys(_normalized_source_url(url) for url in source_urls)),
             "hierarchy_path": hierarchy_path.strip() or topic_value,
             "depth": depth,
         }
@@ -400,6 +401,8 @@ def _generate_outline(
             "instruction": "Return JSON only; do not claim completion if more useful topics remain.",
         }, ensure_ascii=False, separators=(",", ":"))
         return generate(repair_prompt), model_selection
+
+
 def _persist_researched_path(
     *,
     task_id: int,
@@ -507,6 +510,8 @@ def enqueue_curriculum_task(
         {"topic": normalized_topic, "batch_size": normalized_batch, "source_text": normalized_source},
         priority=0, max_attempts=3,
     )
+
+
 def handle_curriculum_task(
     payload: dict[str, Any], checkpoint: dict[str, Any] | None, context: TaskContext,
 ) -> dict[str, Any]:
