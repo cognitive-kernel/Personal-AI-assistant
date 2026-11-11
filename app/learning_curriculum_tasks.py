@@ -255,7 +255,7 @@ def _collect_sources(
             url = _normalized_source_url(document.url)
             title = str(document.title).strip()[:150]
             body = str(document.text).strip()
-            if not url or len(url) > 250 or not title or len(body) < 100 or url in seen:
+            if not url or len(url) > 250 or not title or not body or url in seen:
                 continue
             excerpt = body[:MAX_SOURCE_EXCERPT_CHARS]
             source = {
@@ -882,7 +882,7 @@ def maintain_release_watch(*, limit: int = 3) -> dict[str, int]:
                     url = _normalized_source_url(document.url)
                     title = str(document.title).strip()[:150]
                     body = str(document.text).strip()
-                    if not url or not title or len(body) < 100:
+                    if not url or not title or not body:
                         continue
                     discovered[url] = {
                         "url": url,
