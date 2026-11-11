@@ -171,7 +171,7 @@ def _collect_sources(
             **({"model_selection": preserved_model_selection} if preserved_model_selection is not None else {}),
         })
         try:
-            documents = web_sources.discover_sources(query, limit=5)
+            documents = web_sources.discover_sources(query, limit=30)
         except web_sources.SourceFetchError:
             documents = []
         for document in documents:
@@ -306,7 +306,7 @@ def _parse_outline(response: str, batch_size: int) -> dict[str, Any]:
             raise ValueError("hierarchy_path must be a string of at most 500 characters.")
         if isinstance(depth, bool) or not isinstance(depth, int) or not 0 <= depth <= 32:
             raise ValueError("Topic depth must be an integer between 0 and 32.")
-        if len(source_urls) > 10 or any(_normalized_source_url(url) is None for url in source_urls):
+        if any(not isinstance(url, str) or _normalized_source_url(url) is None for url in source_urls):
             raise ValueError("Topic source_urls must contain at most 10 valid HTTPS URLs.")
         allowed_applicability = {
             "status", "product", "versions", "builds", "editions", "compatibility_levels",
@@ -330,7 +330,7 @@ def _parse_outline(response: str, batch_size: int) -> dict[str, Any]:
                     raise ValueError("Applicability notes must be a short string.")
                 normalized_applicability[key] = val.strip()
             elif key in {"release_years", "release_dates"}:
-                if not isinstance(val, list) or len(val) > 30 or any(not isinstance(x, str) for x in val):
+                if not isinstance(val, list) or any(not isinstance(x, str) for x in val):
                     raise ValueError(f"Applicability field {key} must be a bounded string array.")
                 values = [x.strip() for x in val if x.strip()]
                 pattern = r"^\d{4}$" if key == "release_years" else r"^\d{4}(?:-\d{2}-\d{2})?$"
@@ -347,7 +347,7 @@ def _parse_outline(response: str, batch_size: int) -> dict[str, Any]:
                     raise ValueError(f"Applicability field {key} must be in ascending chronological order.")
                 normalized_applicability[key] = list(dict.fromkeys(values))
             else:
-                if not isinstance(val, list) or len(val) > 30 or any(not isinstance(x, str) or len(x) > 200 for x in val):
+                if not isinstance(val, list) or any(not isinstance(x, str) or len(x) > 200 for x in val):
                     raise ValueError(f"Applicability field {key} must be a bounded string array.")
                 normalized_applicability[key] = [x.strip() for x in val if x.strip()]
         normalized_applicability.setdefault("status", "unverified")
@@ -359,7 +359,7 @@ def _parse_outline(response: str, batch_size: int) -> dict[str, Any]:
         }
     _validate_chronological_topics(topics, topic_metadata)
     return {"title": title.strip(), "topics": topics, "notes": notes.strip()[:2000],
-            "coverage_areas": list(dict.fromkeys(item.strip() for item in coverage))[:40],
+            "coverage_areas": list(dict.fromkeys(item.strip() for item in coverage)),
             "topic_metadata": topic_metadata,
             "has_more": has_more, "next_focus": next_focus.strip()}
 
@@ -538,7 +538,7 @@ def maintain_release_watch(*, limit: int = 3) -> dict[str, int]:
             discovered: dict[str, dict[str, str]] = {}
             for query in _release_watch_queries(topic):
                 try:
-                    documents = web_sources.discover_sources(query, limit=5)
+                    documents = web_sources.discover_sources(query, limit=30)
                 except web_sources.SourceFetchError:
                     continue
                 for document in documents:
