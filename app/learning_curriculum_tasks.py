@@ -309,6 +309,16 @@ def _parse_outline(response: str, batch_size: int) -> dict[str, Any]:
                 if not isinstance(val, str) or len(val) > 1000:
                     raise ValueError("Applicability notes must be a short string.")
                 normalized_applicability[key] = val.strip()
+            elif key in {"release_years", "release_dates"}:
+                if not isinstance(val, list) or len(val) > 30 or any(not isinstance(x, str) for x in val):
+                    raise ValueError(f"Applicability field {key} must be a bounded string array.")
+                values = [x.strip() for x in val if x.strip()]
+                pattern = r"^\\d{4}$" if key == "release_years" else r"^\\d{4}(?:-\\d{2}-\\d{2})?$"
+                if any(not re.fullmatch(pattern, item) for item in values):
+                    raise ValueError(f"Applicability field {key} contains an invalid year/date.")
+                if values != sorted(values):
+                    raise ValueError(f"Applicability field {key} must be in ascending chronological order.")
+                normalized_applicability[key] = list(dict.fromkeys(values))
             else:
                 if not isinstance(val, list) or len(val) > 30 or any(not isinstance(x, str) or len(x) > 200 for x in val):
                     raise ValueError(f"Applicability field {key} must be a bounded string array.")
