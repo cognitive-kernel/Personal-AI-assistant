@@ -156,6 +156,10 @@ def test_outline_repair_keeps_full_output_budget_and_safe_context(monkeypatch):
     assert "breaking changes" in requirements
     assert "source URL to only the topics" in requirements
     assert "do not claim completion" in requirements
+    assert "earliest documented public/initial/stable release" in requirements
+    assert "oldest-to-newest" in requirements
+    assert "release_years" in requirements
+    assert "new release or correction" in requirements
     assert all(call["model_override"] == "gpt-oss:20b" for call in calls)
     assert all(call["num_predict"] == 4096 for call in calls)
     assert all(
@@ -527,3 +531,41 @@ def test_curriculum_api_uses_batch_size_and_accepts_legacy_max_topics_alias():
     legacy = LearningCurriculumRequest(topic="SQL Server", max_topics=40)
     assert legacy.batch_size == 24
     assert legacy.max_topics == 40
+
+
+
+def test_release_years_and_dates_are_retained_and_chronologically_validated():
+    value = _outline()
+    topic = value["topics"][0]
+    value["topic_metadata"] = {
+        topic: {
+            "applicability": {
+                "status": "partially_documented",
+                "versions": ["Product 1.0", "Product 2.0"],
+                "release_years": ["2018", "2021", "2024"],
+                "release_dates": ["2018-02-10", "2021-06-15", "2024-09-01"],
+            },
+            "source_urls": [],
+            "hierarchy_path": topic,
+            "depth": 0,
+        }
+    }
+    parsed = learning_curriculum_tasks._parse_outline(json.dumps(value, ensure_ascii=False), 20)
+    metadata = parsed["topic_metadata"][topic]["applicability"]
+    assert metadata["release_years"] == ["2018", "2021", "2024"]
+    assert metadata["release_dates"] == ["2018-02-10", "2021-06-15", "2024-09-01"]
+
+    value["topic_metadata"][topic]["applicability"]["release_years"] = ["2021", "2018"]
+    with pytest.raises(ValueError, match="ascending chronological order"):
+        learning_curriculum_tasks._parse_outline(json.dumps(value, ensure_ascii=False), 20)
+
+    value["topic_metadata"][topic]["applicability"]["release_years"] = ["2021", "20XX"]
+    with pytest.raises(ValueError, match="invalid year/date"):
+        learning_curriculum_tasks._parse_outline(json.dumps(value, ensure_ascii=False), 20)
+
+
+def test_research_queries_include_release_history_and_current_updates():
+    queries = learning_curriculum_tasks._research_queries("Python")
+    assert any("first release initial stable version release dates" in item for item in queries)
+    assert any("historical release archive yearly versions" in item for item in queries)
+    assert any("latest release notes updates patches" in item for item in queries)
