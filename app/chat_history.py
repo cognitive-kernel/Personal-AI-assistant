@@ -138,7 +138,7 @@ def append_assistant_message(
             conn.execute(
                 """INSERT OR IGNORE INTO chat_messages(conversation_id, role, content, task_id)
                    VALUES (?, 'assistant', ?, ?)""",
-                (conversation_id, content[:50000], task_id),
+                (conversation_id, content, task_id),
             )
             row = conn.execute(
                 """SELECT id, conversation_id, role, content, task_id, created_at
@@ -149,7 +149,7 @@ def append_assistant_message(
             cursor = conn.execute(
                 """INSERT INTO chat_messages(conversation_id, role, content)
                    VALUES (?, 'assistant', ?)""",
-                (conversation_id, content[:50000]),
+                (conversation_id, content),
             )
             row = conn.execute(
                 """SELECT id, conversation_id, role, content, task_id, created_at
