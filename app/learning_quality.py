@@ -7,7 +7,7 @@ _OUTCOMES_NOT_PROVIDED = object()
 
 
 def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[Any], learning_outcomes: Any = _OUTCOMES_NOT_PROVIDED) -> dict[str, Any]:
-    """Deterministic content-shape filter; never an independent factual review."""
+    """Deterministic diagnostic heuristic; never a retention gate or independent factual review."""
     text = lesson.strip()
     # Source citations are provenance, not instructional word count.
     body_match = re.search(r"(?im)^\s*(?:#{1,6}\s*)?(?:sources|منابع)\s*:?\s*$", text)
