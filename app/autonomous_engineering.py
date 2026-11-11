@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
 from .autonomous_engineering_progress import get_progress, storage_accessible
-from .ollama_context import OllamaModelMetadataError, maximum_context_tokens, supports_tool_calling
+from .ollama_context import MIN_CODEX_CONTEXT_TOKENS, OllamaModelMetadataError, maximum_context_tokens, supports_tool_calling
 
 _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
 
@@ -77,6 +77,8 @@ def _ollama_status(model: str) -> dict[str, Any]:
         "model_capabilities": [],
         "model_supports_tools": False,
         "model_metadata_available": False,
+        "model_context_supported": False,
+        "model_context_error": f"Codex requires at least {MIN_CODEX_CONTEXT_TOKENS} context tokens.",
         "model_metadata_error": "Ollama metadata is unavailable.",
     }
     # Local Ollama metadata must never be sent through an environment proxy.
@@ -142,11 +144,19 @@ def _ollama_status(model: str) -> dict[str, Any]:
             if isinstance(value, str) and value
         }) if isinstance(raw_capabilities, list) else []
         metadata_available = context_length is not None
+        context_supported = metadata_available and context_length >= MIN_CODEX_CONTEXT_TOKENS
         result.update({
             "model_context_length": context_length,
             "model_capabilities": capabilities,
             "model_supports_tools": supports_tool_calling(capabilities),
             "model_metadata_available": metadata_available,
+            "model_context_supported": context_supported,
+            "model_context_error": (
+                None if context_supported else
+                f"Selected model context is below the Codex minimum of {MIN_CODEX_CONTEXT_TOKENS} tokens."
+                if metadata_available else
+                "Selected model context metadata is unavailable."
+            ),
             "model_metadata_error": (
                 None if metadata_available else
                 "Ollama did not publish a valid architecture-specific context_length."
@@ -275,6 +285,7 @@ def collect_status() -> dict[str, Any]:
         "ollama_online": ollama["online"],
         "model_installed": ollama["model_installed"],
         "model_context_metadata_available": ollama.get("model_metadata_available") is True,
+        "model_context_supported": ollama.get("model_context_supported") is True,
         "model_supports_tools": ollama.get("model_supports_tools") is True,
         "codex_installed": codex["installed"],
         "runner_running": runner["running"],
@@ -303,6 +314,8 @@ def collect_status() -> dict[str, Any]:
         "model": model,
         "models": ollama.get("models", []),
         "model_context_length": ollama.get("model_context_length"),
+        "model_context_supported": ollama.get("model_context_supported", False),
+        "model_context_error": ollama.get("model_context_error"),
         "model_capabilities": ollama.get("model_capabilities", []),
         "model_supports_tools": ollama.get("model_supports_tools", False),
         "model_metadata_error": ollama.get("model_metadata_error"),
@@ -511,6 +524,12 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
         raise HTTPException(status_code=422, detail="مدل انتخاب‌شده در فهرست مدل‌های نصب‌شدهٔ Ollama وجود ندارد.")
     if not local_model.get("model_metadata_available"):
         raise HTTPException(status_code=422, detail="حداکثر Context مدل از metadata معتبر Ollama قابل تأیید نیست؛ مدل ذخیره نشد.")
+    if not local_model.get("model_context_supported"):
+        maximum = local_model.get("model_context_length")
+        raise HTTPException(
+            status_code=422,
+            detail=f"Codex به حداقل {MIN_CODEX_CONTEXT_TOKENS} توکن Context نیاز دارد؛ سقف مدل انتخاب‌شده {maximum} است و ذخیره نشد.",
+        )
     if not local_model.get("model_supports_tools"):
         raise HTTPException(status_code=422, detail="مدل انتخاب‌شده قابلیت tools را اعلام نکرده و برای Codex قابل استفاده نیست.")
     gh = shutil.which("gh")
