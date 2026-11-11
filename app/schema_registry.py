@@ -1387,6 +1387,32 @@ LEARNING_MIGRATIONS = (
                SELECT path_id, 'active', CURRENT_TIMESTAMP FROM learning_path_research""",
         ),
     ),
+,
+    Migration(
+        45,
+        "unverified-chat-learning-candidates",
+        (
+            """CREATE TABLE learning_chat_candidates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id INTEGER NOT NULL CHECK(conversation_id > 0),
+                message_id INTEGER NOT NULL CHECK(message_id > 0),
+                user_message_id INTEGER NOT NULL CHECK(user_message_id > 0),
+                task_id INTEGER,
+                source_kind TEXT NOT NULL CHECK(source_kind IN ('chat_answer','research_answer')),
+                topic_hint TEXT NOT NULL CHECK(length(trim(topic_hint)) BETWEEN 1 AND 300),
+                content TEXT NOT NULL CHECK(length(trim(content)) > 0),
+                content_sha256 TEXT NOT NULL CHECK(length(content_sha256) = 64),
+                provenance_json TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'unverified'
+                    CHECK(status IN ('unverified','reviewed','promoted','dismissed')),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(conversation_id, message_id)
+            )""",
+            "CREATE INDEX idx_learning_chat_candidates_status ON learning_chat_candidates(status, created_at DESC, id DESC)",
+            "CREATE INDEX idx_learning_chat_candidates_topic ON learning_chat_candidates(topic_hint, created_at DESC)",
+        ),
+    ),
 )
 
 
