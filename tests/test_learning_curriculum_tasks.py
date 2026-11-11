@@ -675,3 +675,45 @@ def test_release_watch_supersedes_previous_watch_without_mutating_old_curriculum
         ).fetchone()
     assert statuses == {first: "superseded", second: "active"}
     assert old_path is not None
+
+
+
+def test_versioned_curriculum_topics_must_be_oldest_to_newest():
+    value = _outline()
+    first, second = value["topics"][:2]
+    value["topic_metadata"] = {
+        first: {
+            "applicability": {
+                "status": "unverified",
+                "versions": ["Python 3.8", "Python 3.9"],
+                "release_years": ["2019", "2020"],
+            },
+            "source_urls": [],
+            "hierarchy_path": first,
+            "depth": 0,
+        },
+        second: {
+            "applicability": {
+                "status": "unverified",
+                "versions": ["Python 3.10"],
+                "release_years": ["2021"],
+            },
+            "source_urls": [],
+            "hierarchy_path": second,
+            "depth": 0,
+        },
+    }
+    parsed = learning_curriculum_tasks._parse_outline(json.dumps(value, ensure_ascii=False), 20)
+    assert parsed["topics"][:2] == [first, second]
+
+    value["topic_metadata"][first]["applicability"]["versions"] = [
+        "Python 3.9", "Python 3.8"
+    ]
+    with pytest.raises(ValueError, match="versions must be ordered"):
+        learning_curriculum_tasks._parse_outline(json.dumps(value, ensure_ascii=False), 20)
+
+    value["topic_metadata"][first]["applicability"]["versions"] = ["Python 3.8"]
+    value["topic_metadata"][first]["applicability"]["release_years"] = ["2022"]
+    value["topic_metadata"][second]["applicability"]["release_years"] = ["2021"]
+    with pytest.raises(ValueError, match="oldest-to-newest"):
+        learning_curriculum_tasks._parse_outline(json.dumps(value, ensure_ascii=False), 20)
