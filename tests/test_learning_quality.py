@@ -110,7 +110,7 @@ def test_rejects_missing_or_malformed_learning_outcomes():
 
 
 
-def test_lesson_below_target_length_is_not_accepted_even_if_other_signals_exist():
+def test_lesson_length_is_not_a_quality_gate_but_repetition_still_is():
     lesson = (
         "SQL Server و Database Engine درخواست T-SQL را پردازش می‌کنند. "
         "برای مثال، execution plan می‌تواند نشان دهد که query از index یا table scan استفاده می‌کند. "
@@ -122,9 +122,12 @@ def test_lesson_below_target_length_is_not_accepted_even_if_other_signals_exist(
         ["عملگرهای اجرای query را نشان می‌دهد.", "هزینه نگهداری و توزیع داده مؤثر است.", "logical reads و زمان را مقایسه می‌کنیم."],
         ["هدف اول قابل سنجش", "هدف دوم قابل سنجش", "هدف سوم قابل سنجش"],
     )
-    assert result["target_words"] == 200
+    assert result["word_count"] < 200
+    assert result["minimum_words"] is None
+    assert result["target_words"] is None
+    assert result["maximum_words"] is None
     assert result["accepted"] is False
-    assert any("بازه هدف 200" in reason for reason in result["reasons"])
+    assert "تکرار متن زیاد است و اطلاعات تازه کمی دارد." in result["reasons"]
 
 
 def test_sources_section_does_not_count_as_instructional_lesson_words():
@@ -137,6 +140,7 @@ def test_sources_section_does_not_count_as_instructional_lesson_words():
         ["Explain the engine", "Inspect a query plan", "Compare measured results"],
     )
     assert result["word_count"] < 200
+    assert result["maximum_words"] is None
     assert result["accepted"] is False
 
 
@@ -153,7 +157,7 @@ def test_persian_lesson_with_many_latin_technical_terms_uses_persian_length_targ
         ["توضیح نقش موتور", "تحلیل مسیر اجرا", "مقایسه نتیجه آزمون"],
     )
     assert result["detected_language"] == "fa"
-    assert result["target_words"] == 200
+    assert result["target_words"] is None
 
 
 
