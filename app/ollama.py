@@ -431,12 +431,19 @@ def _openai_compatible_chat(
         data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST"
     )
     try:
-        with _INFERENCE_LOCK:
+        acquired = _INFERENCE_LOCK.acquire(timeout=max(1.0, min(float(timeout), 600.0)))
+        if not acquired:
+            raise OllamaError("Timed out waiting for the shared LLM inference slot.", retryable=True)
+        try:
+            if parsed.scheme == "http":
+                _ensure_resource_headroom()
             opener = urllib.request.build_opener(
                 urllib.request.ProxyHandler({}), _NoRedirectHandler()
             )
             with opener.open(request, timeout=max(5, min(int(timeout), 600))) as response:
                 body = response.read(_MAX_RESPONSE_BYTES + 1)
+        finally:
+            _INFERENCE_LOCK.release()
         if len(body) > _MAX_RESPONSE_BYTES:
             raise OllamaError("LLM response exceeded the 8 MiB limit.")
         result = json.loads(body.decode("utf-8"))
@@ -587,12 +594,19 @@ def _openai_compatible_embeddings(
         method="POST",
     )
     try:
-        with _INFERENCE_LOCK:
+        acquired = _INFERENCE_LOCK.acquire(timeout=max(1.0, min(float(timeout), 600.0)))
+        if not acquired:
+            raise OllamaError("Timed out waiting for the shared embedding inference slot.", retryable=True)
+        try:
+            if urllib.parse.urlparse(base_url).scheme == "http":
+                _ensure_resource_headroom()
             opener = urllib.request.build_opener(
                 urllib.request.ProxyHandler({}), _NoRedirectHandler()
             )
             with opener.open(request, timeout=max(1, min(int(timeout), 600))) as response:
                 body = response.read(_MAX_RESPONSE_BYTES + 1)
+        finally:
+            _INFERENCE_LOCK.release()
         if len(body) > _MAX_RESPONSE_BYTES:
             raise OllamaError("Embedding response exceeded the 8 MiB limit.")
         payload = json.loads(body.decode("utf-8"))
