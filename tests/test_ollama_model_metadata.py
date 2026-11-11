@@ -211,6 +211,26 @@ def test_codex_context_selection_uses_minimum_of_request_model_and_safe_memory()
     assert result["selected_context_tokens"] >= 64000
 
 
+def test_codex_context_selection_caps_at_catalog_supported_maximum():
+    from app.ollama_context import select_context_window
+
+    result = select_context_window(
+        model_info={
+            "llama.context_length": 2097152,
+            "llama.block_count": 1,
+            "llama.attention.head_count_kv": 1,
+            "llama.attention.key_length": 64,
+            "llama.attention.value_length": 64,
+        },
+        architecture="llama",
+        model_weight_bytes=1024**3,
+        available_memory_bytes=100 * 1024**3,
+    )
+
+    assert result["selected_context_tokens"] == 1048576
+    assert result["codex_maximum_context_tokens"] == 1048576
+
+
 def test_codex_context_selection_rejects_models_below_the_64k_minimum():
     import pytest
     from app.ollama_context import OllamaModelMetadataError, select_context_window
