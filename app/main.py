@@ -773,7 +773,9 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         ):
             raise HTTPException(status_code=422, detail=f"{provider_key} must be ollama or openai_compatible.")
         effective_provider = values.get(provider_key, db.get_settings().get(provider_key, "ollama"))
-        if base_url_key in values or (provider_key in values and effective_provider == "openai_compatible"):
+        if effective_provider == "openai_compatible" and (
+            base_url_key in values or provider_key in values
+        ):
             try:
                 values[base_url_key] = ollama.normalize_openai_compatible_base_url(
                     values.get(base_url_key, db.get_settings().get(base_url_key, "https://api.openai.com/v1"))
@@ -834,7 +836,11 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
             # Context limits for compatible endpoints are user-configured; the
             # remote server may not expose Ollama model metadata.
             continue
-        if context_key not in values and model_key not in values and not generic_chat_change:
+        provider_changed = (
+            f"{purpose}_llm_provider" in values
+            and values[f"{purpose}_llm_provider"] != current_settings.get(f"{purpose}_llm_provider", "ollama")
+        )
+        if context_key not in values and model_key not in values and not generic_chat_change and not provider_changed:
             continue
         context_value = values.get(
             context_key,
@@ -854,7 +860,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         # Unchanged profiles do not need an Ollama round-trip. Manual model names
         # remain saveable when context is unchanged; a context edit requires verifiable
         # model metadata, and a known model limit is enforced even on model-only edits.
-        if not context_changed and not model_changed:
+        if not context_changed and not model_changed and not provider_changed:
             continue
         if not isinstance(model_name, str) or not model_name.strip():
             if context_changed:
@@ -894,7 +900,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
                 status_code=422,
                 detail=f"{context_key} cannot exceed {maximum} tokens supported by {model_name}.",
             )
-    for key in ("ollama_model", "chat_ollama_model", "learning_ollama_model", "programming_ollama_model"):
+    for key in ("ollama_model", "ollama_embedding_model", "chat_ollama_model", "learning_ollama_model", "programming_ollama_model"):
         if key in values and (
             not isinstance(values[key], str) or not values[key].strip() or len(values[key]) > 200
         ):
