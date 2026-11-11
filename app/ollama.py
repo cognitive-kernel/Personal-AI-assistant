@@ -101,7 +101,7 @@ def _request(
 ) -> dict[str, Any]:
     settings = get_settings()
     if path == "/api/chat" and purpose in {"chat", "learning", "programming", "factual_review", "research_plan"}:
-        profile = "chat" if purpose == "research_plan" else purpose
+        profile = purpose
         if settings.get(f"{profile}_llm_provider", "ollama") == "openai_compatible":
             request_payload = payload if isinstance(payload, dict) else {}
             messages = request_payload.get("messages", [])
@@ -549,7 +549,7 @@ def chat(
         raise ValueError("purpose must be chat, learning, programming, factual_review, or research_plan.")
     settings = get_settings()
     prefix = purpose
-    provider_profile = "chat" if purpose == "research_plan" else purpose
+    provider_profile = purpose
     hardware = detect_hardware()
     request_timeout = int(settings.get(f"{prefix}_ollama_timeout_seconds", settings.get("ollama_timeout_seconds", 120)))
     if purpose in {"factual_review", "research_plan"}:
