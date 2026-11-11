@@ -513,14 +513,14 @@ def handle_curriculum_task(
         raise PermanentTaskError("The curriculum model provenance does not match the model used.")
     outline = state.get("outline")
     if outline is None:
-        outline = {"title": "", "topics": [], "notes": "", "coverage_areas": []}
+        outline = {"title": "", "topics": [], "notes": "", "coverage_areas": [], "topic_metadata": {}}
     if (not isinstance(outline, dict) or not isinstance(outline.get("topics"), list)
         or not all(isinstance(item, str) and item.strip() for item in outline["topics"])):
         raise PermanentTaskError("The checkpointed curriculum outline is invalid.")
     if len({item.casefold() for item in outline["topics"]}) != len(outline["topics"]):
         raise PermanentTaskError("The checkpointed curriculum contains duplicate topics.")
-    if not isinstance(outline.get("coverage_areas", []), list):
-        raise PermanentTaskError("The checkpointed curriculum coverage is invalid.")
+    if not isinstance(outline.get("coverage_areas", []), list) or not isinstance(outline.get("topic_metadata", {}), dict):
+        raise PermanentTaskError("The checkpointed curriculum coverage or topic metadata is invalid.")
     batch_index = state.get("batch_index", 0)
     if isinstance(batch_index, bool) or not isinstance(batch_index, int) or batch_index < 0:
         raise PermanentTaskError("The checkpointed curriculum batch index is invalid.")
