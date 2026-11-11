@@ -400,7 +400,7 @@ class _PageTextParser(HTMLParser):
         normalized = self._normalized_date(value)
         if not normalized:
             return
-        normalized_key = key.casefold().replace("_", "").replace("-", "").replace(":", "")
+        normalized_key = key.casefold().replace("_", "").replace("-", "").replace(":", "").replace(".", "")
         if normalized_key in {
             "articlepublishedtime", "datepublished", "published", "publishdate",
             "publicationdate", "citationpublicationdate", "dcdateissued",
