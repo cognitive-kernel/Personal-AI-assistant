@@ -17,8 +17,8 @@
 
 ### Validation
 
-- Exact-head commit: `09b3f5416ed0c839fcacb05b66dd728352340f53`.
-- GitHub Actions: **1,969 passed, 50 deselected**; Windows storage regressions, dashboard smoke/browser E2E, dependency audit, generated-artifact verification, 94 Markdown links, import-cycle checks, deterministic retrieval benchmark, and claim-to-test coverage benchmark (10/10) passed.
+- Exact-head code commit: `bc5de1b891526930f1b4b766505843e03c499410`.
+- GitHub Actions: **1,971 passed, 50 deselected**; Windows storage regressions, dashboard smoke/browser E2E, dependency audit, generated-artifact verification, 94 Markdown links, import-cycle checks, deterministic retrieval benchmark, and claim-to-test coverage benchmark (10/10) passed.
 - These are repository/CI results, not a live `gpt-oss:20b` inference run on the owner's Windows host. RAM use, latency, restart recovery under real model load, and Persian/English lesson quality remain unverified. PR #709 remains Draft and unmerged in accordance with the mandatory target-host gate in MASTER_ENGINEERING_PROMPT.
 
 ---
