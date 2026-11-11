@@ -511,3 +511,10 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 
 - The lesson prompt now asks for semantic assessment, but `submit_assessment` still uses deterministic `accepted_phrases` rubric scoring as its progress source. The separate semantic reviewer is opt-in/advisory and does not change score or progress. This does not yet fully satisfy automatic acceptance of semantically correct paraphrases; a safe, auditable integration remains open.
 - General research/chat answers are persisted in conversation history, and the separate browser-learning workflow stores ChatGPT lesson outputs as unverified lessons. General chat/research responses are not yet automatically ingested as subject-scoped learning candidates for later curriculum correction. This remains open; do not claim the prompt change alone implemented it.
+
+
+### 2026-11-11 — اصلاح خطای indentation در اعتبارسنجی ترتیب سرفصل‌ها
+
+- CI دقیق SHA قبلی `9b5b1731e39fbc8d1500f7b0b83ad72f1cf14841` شکست را نشان داد: `app/learning_curriculum_tasks.py:689` به‌دلیل خروج ناخواستهٔ validator ترتیب نسخه‌ها از بلوک `with` دارای `IndentationError` بود. همین خطا باعث شکست collection در ۲۹ ماژول تست و شکست تست Windows storage شد.
+- فراخوانی `_validate_chronological_topics` و ساخت مجموعهٔ URL منابع دوباره داخل همان بلوک تراکنش قرار گرفتند؛ metadata همان متغیر `topic_metadata` را استفاده می‌کند. تغییر کد در commit `ff84957543644d74a04169a1bf13b57f6f6c1b8b` ثبت شد.
+- روی SHA جدید، workflowهای tests و browser-e2e در حال اجرا هستند؛ تا پایان آن‌ها نتیجهٔ موفق اعلام نمی‌شود. شکست browser-e2e در SHA قبلی در مرحلهٔ نصب Chromium و به‌علت DNS ناموفق مخازن Ubuntu بود، پیش از اجرای smoke test؛ این شکست به‌عنوان خطای برنامه طبقه‌بندی نمی‌شود.
