@@ -300,6 +300,7 @@ def test_status_is_not_ready_when_saved_model_is_a_generated_context_variant(mon
     assert result["ready"] is False
     assert result["checks"]["model_installed"] is True
     assert result["checks"]["model_selectable"] is False
+    assert result["checks"]["model_is_codex_context_variant"] is True
     assert result["model_is_codex_context_variant"] is True
 
 
