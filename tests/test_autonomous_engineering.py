@@ -294,6 +294,8 @@ def test_save_settings_updates_model_and_hourly_interval(monkeypatch):
 
     def fake_run(command, timeout=8):
         calls.append(command)
+        if command[1:3] == ["variable", "list"]:
+            return subprocess.CompletedProcess(command, 0, "[]", "")
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(agent, "_run", fake_run)
@@ -308,16 +310,56 @@ def test_save_settings_updates_model_and_hourly_interval(monkeypatch):
     assert result["execution_mode"] == "continuous"
     assert calls[0][1:4] == ["auth", "status", "--hostname"]
     assert calls[1][1:] == [
+        "variable", "list", "--repo", "cognitive-kernel/Personal-AI-assistant",
+        "--json", "name,value",
+    ]
+    assert calls[2][1:] == [
         "variable", "set", "AUTONOMOUS_ENGINEERING_MODEL",
         "--body", "qwen3:14b", "--repo", "cognitive-kernel/Personal-AI-assistant",
     ]
-    assert calls[2][1:] == [
+    assert calls[3][1:] == [
         "variable", "set", "AUTONOMOUS_ENGINEERING_INTERVAL_HOURS",
         "--body", "4", "--repo", "cognitive-kernel/Personal-AI-assistant",
     ]
-    assert calls[3][1:] == [
+    assert calls[4][1:] == [
         "variable", "set", "AUTONOMOUS_ENGINEERING_MODE",
         "--body", "continuous", "--repo", "cognitive-kernel/Personal-AI-assistant",
+    ]
+
+
+def test_save_settings_rolls_back_previous_repository_values_after_partial_failure(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "_ollama_status", lambda model: {
+        "online": True, "model": model, "model_installed": True,
+        "model_metadata_available": True, "model_supports_tools": True,
+    })
+
+    def fake_run(command, timeout=8):
+        calls.append(command)
+        if command[1:3] == ["variable", "list"]:
+            state = [
+                {"name": "AUTONOMOUS_ENGINEERING_MODEL", "value": "old-model:7b"},
+                {"name": "AUTONOMOUS_ENGINEERING_INTERVAL_HOURS", "value": "24"},
+                {"name": "AUTONOMOUS_ENGINEERING_MODE", "value": "scheduled"},
+            ]
+            return subprocess.CompletedProcess(command, 0, json.dumps(state), "")
+        if command[1:3] == ["variable", "set"] and command[3] == "AUTONOMOUS_ENGINEERING_INTERVAL_HOURS":
+            return subprocess.CompletedProcess(command, 1, "", "permission denied")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    with pytest.raises(HTTPException) as error:
+        agent.save_autonomous_engineering_settings(
+            agent.EngineeringSettings(model="qwen3:14b", interval_hours=4, execution_mode="continuous")
+        )
+
+    assert error.value.status_code == 502
+    assert "all earlier changes were rolled back" in error.value.detail
+    assert calls[-1][1:] == [
+        "variable", "set", "AUTONOMOUS_ENGINEERING_MODEL",
+        "--body", "old-model:7b", "--repo", "cognitive-kernel/Personal-AI-assistant",
     ]
 
 
