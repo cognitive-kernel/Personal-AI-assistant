@@ -1,5 +1,28 @@
 # Engineering Continuity Log
 
+## 2026-11-11 — PR #709: research-first learning with gpt-oss:20b
+
+### Root-cause analysis
+
+- The primary local `learning-form` previously created one lesson job directly. It did not research the subject first, construct a complete ordered syllabus, or coordinate lessons as a serialized course. The fixed curriculum catalog was also presented as an enrollment path.
+- The new curriculum task now discovers complementary web sources, validates and persists the outline/provenance, then creates only the first lesson execution job. The ordered syllabus itself is durable in `learning_path_topics`; subsequent execution jobs are created only after successful completion of the preceding lesson.
+- A follow-up review found two completeness risks: an 800-token outline budget could truncate a 40-topic JSON syllabus, and the installer selected the learning model from environment/default values without reading the model the application would actually load from its existing SQLite settings. The latter could install a different model from the persisted setting or install legacy `qwen3:8b` immediately before migration changed it to `gpt-oss:20b`.
+
+### Corrective changes
+
+- Increased outline generation and its single repair attempt to a bounded 4,096 output tokens and recorded the allowance in ADR-019 and learning documentation.
+- Normalized research query strings in every checkpoint, including the validated-outline checkpoint, so a resumed task does not discard its completed query ledger and repeat web research.
+- The bootstrap now loads the project's `.env` before model resolution, reads the existing settings database read-only, installs the persisted learning model, maps only the former built-in `qwen3:8b` default to `gpt-oss:20b`, and preserves explicit custom model settings. Invalid saved model settings fail closed.
+- Added regression coverage for model resolution (fresh install, persisted custom model, legacy default, environment override, malformed setting), full outline output allowance, and normalized checkpoint recovery.
+
+### Validation
+
+- Exact-head commit: `09b3f5416ed0c839fcacb05b66dd728352340f53`.
+- GitHub Actions: **1,969 passed, 50 deselected**; Windows storage regressions, dashboard smoke/browser E2E, dependency audit, generated-artifact verification, 94 Markdown links, import-cycle checks, deterministic retrieval benchmark, and claim-to-test coverage benchmark (10/10) passed.
+- These are repository/CI results, not a live `gpt-oss:20b` inference run on the owner's Windows host. RAM use, latency, restart recovery under real model load, and Persian/English lesson quality remain unverified. PR #709 remains Draft and unmerged in accordance with the mandatory target-host gate in MASTER_ENGINEERING_PROMPT.
+
+---
+
 ## 2026-11-07 — Owner Windows development environment baseline
 
 Captured from the owner's PowerShell output on 2026-11-07. This is a user-reported workstation snapshot, not a CI-runner inventory.
