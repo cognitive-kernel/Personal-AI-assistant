@@ -277,9 +277,11 @@ def _recommended_context_tokens(
     return candidate
 
 
-def model_identity(purpose: str, model: str) -> dict[str, str]:
+def model_identity(
+    purpose: str, model: str, *, settings: dict[str, Any] | None = None
+) -> dict[str, str]:
     """Return a stable identity for a configured model without claiming remote weight attestation."""
-    settings = get_settings()
+    settings = settings if isinstance(settings, dict) else get_settings()
     provider = settings.get(f"{purpose}_llm_provider", "ollama")
     if provider == "ollama":
         entry = next(
