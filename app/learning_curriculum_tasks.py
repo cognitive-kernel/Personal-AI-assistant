@@ -321,6 +321,13 @@ def _parse_outline(response: str, batch_size: int) -> dict[str, Any]:
                 pattern = r"^\d{4}$" if key == "release_years" else r"^\d{4}(?:-\d{2}-\d{2})?$"
                 if any(not re.fullmatch(pattern, item) for item in values):
                     raise ValueError(f"Applicability field {key} contains an invalid year/date.")
+                if key == "release_dates":
+                    for item in values:
+                        if len(item) > 4:
+                            try:
+                                datetime.strptime(item, "%Y-%m-%d")
+                            except ValueError as exc:
+                                raise ValueError("Applicability release_dates contains an invalid calendar date.") from exc
                 if values != sorted(values):
                     raise ValueError(f"Applicability field {key} must be in ascending chronological order.")
                 normalized_applicability[key] = list(dict.fromkeys(values))
