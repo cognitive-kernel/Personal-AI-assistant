@@ -88,7 +88,7 @@ function Get-AutomaticContext {
         throw "Fail-closed Ollama context selection failed; see the metadata/host diagnostic above."
     }
     try {
-        $selection = ($selectionOutput -join "`n") | ConvertFrom-Json -ErrorAction Stop
+        $selection = ($selectionOutput -join [Environment]::NewLine) | ConvertFrom-Json -ErrorAction Stop
     } catch {
         throw "The Ollama context-selection module returned invalid JSON."
     }
@@ -136,7 +136,11 @@ if ($VerifyOnly) {
     }
     $savedContext = [regex]::Match(
         [string]$modelInfo.modelfile,
-        '(?im)^\s*PARAMETER\s+num_ctx\s+(\d+)\s*
+        '(?im)^\s*PARAMETER\s+num_ctx\s+(\d+)\s*$'
+    )
+    if (-not $savedContext.Success -or [int64]$savedContext.Groups[1].Value -ne $selectedContext) {
+        throw "Persistent model '$codexModel' does not retain the selected num_ctx $selectedContext."
+    }
 } else {
     if ($Model -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]*(?::[A-Za-z0-9._-]+)?$') {
         throw "Model name contains unsupported characters; refusing to construct a persistent Codex model variant."
@@ -162,17 +166,24 @@ if ($VerifyOnly) {
     } else {
         $selectionMode = "automatic"
     }
+
     $contextSelection = Get-AutomaticContext -Info $modelInfo -ModelName $baseModel -RequestedContext $requestedContext
     $selectedContext = [int64]$contextSelection.selected_context_tokens
-    if ($selectedContext -gt $maximum) {
-        throw "Selected context $selectedContext exceeds the model maximum $maximum."
+    if ($selectedContext -lt 64000 -or $selectedContext -gt $maximum) {
+        throw "Selected context $selectedContext is outside the supported Codex range for model maximum $maximum."
     }
+
     Write-Host "Model maximum context: $($contextSelection.maximum_context_tokens) tokens"
     Write-Host "Hardware-safe context ceiling: $($contextSelection.hardware_maximum_context_tokens) tokens"
+    Write-Host "Available physical RAM: $($contextSelection.available_memory_bytes) bytes"
+    Write-Host "Installed model weight size: $($contextSelection.model_weight_bytes) bytes"
+    Write-Host "Estimated KV cache: $($contextSelection.kv_cache_bytes_per_token) bytes/token"
+    Write-Host "Reserved system RAM: $($contextSelection.reserve_bytes) bytes"
+    Write-Host "Model/runtime overhead budget: $($contextSelection.overhead_bytes) bytes"
     if ($null -ne $requestedContext) {
         Write-Host "Requested context: $requestedContext tokens"
     }
-    Write-Host "Final context: min(requested, model maximum, safe hardware capacity) = $selectedContext tokens"
+    Write-Host "Final context: min(requested, model maximum, safe hardware capacity, Codex catalog maximum) = $selectedContext tokens"
 
     $codexModel = "$baseModel-codex-ctx$selectedContext"
     $existingInfo = $null
@@ -213,6 +224,7 @@ if ($VerifyOnly) {
         Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_MODEL=$codexModel" -Encoding utf8
         Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH=$selectedContext" -Encoding utf8
     } else {
+        $env:AUTONOMOUS_ENGINEERING_MODEL = $codexModel
         $env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH = [string]$selectedContext
     }
     Write-Host "Context selection mode: $selectionMode"
@@ -231,7 +243,7 @@ try {
 }
 
 $allocated = Get-AllocatedContext -ModelName $codexModel
-Write-Host "Ollama base model: $Model"
+Write-Host "Ollama model passed to Codex: $Model"
 Write-Host "Persistent Codex model: $codexModel"
 Write-Host "Model maximum context: $maximum tokens"
 Write-Host "Selected Codex context: $selectedContext tokens"
