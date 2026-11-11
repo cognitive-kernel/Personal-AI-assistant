@@ -301,6 +301,37 @@ def test_dispatch_fails_closed_when_run_list_is_unavailable(monkeypatch):
 
 
 
+@pytest.mark.parametrize(
+    ("local_model", "expected_status"),
+    [
+        ({"online": True, "model_installed": False}, 422),
+        ({"online": True, "model_installed": True, "model_metadata_available": False}, 422),
+        ({"online": True, "model_installed": True, "model_metadata_available": True, "model_supports_tools": False}, 422),
+    ],
+)
+def test_save_settings_rejects_uninstalled_or_unsupported_models_before_github_writes(
+    monkeypatch, local_model, expected_status
+):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "_ollama_status", lambda model: {
+        "model": model,
+        "online": local_model.get("online", False),
+        "model_installed": local_model.get("model_installed", False),
+        "model_metadata_available": local_model.get("model_metadata_available", False),
+        "model_supports_tools": local_model.get("model_supports_tools", False),
+    })
+    calls = []
+    monkeypatch.setattr(agent, "_run", lambda command, timeout=8: calls.append(command) or subprocess.CompletedProcess(command, 0, "", ""))
+
+    with pytest.raises(HTTPException) as error:
+        agent.save_autonomous_engineering_settings(
+            agent.EngineeringSettings(model="qwen3:14b", interval_hours=4, execution_mode="continuous")
+        )
+
+    assert error.value.status_code == expected_status
+    assert calls == []
+
+
 def test_save_settings_updates_model_and_hourly_interval(monkeypatch):
     calls = []
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
@@ -455,6 +486,8 @@ def test_autonomous_workflow_requires_saved_model_without_a_hardcoded_fallback()
     dashboard = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
     assert "ابتدا مدل نصب‌شده را انتخاب کنید" in dashboard
     assert "installed.includes(selectedModel)" in dashboard
+    assert "هنوز مدلی ذخیره نشده است" in dashboard
+    assert "مدل ذخیره‌شده روی این سیستم نصب نیست" in dashboard
 
 
 def test_github_snapshot_reads_saved_model_and_frequency(monkeypatch):
