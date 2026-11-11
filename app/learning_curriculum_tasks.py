@@ -313,7 +313,7 @@ def _parse_outline(response: str, batch_size: int) -> dict[str, Any]:
                 if not isinstance(val, list) or len(val) > 30 or any(not isinstance(x, str) for x in val):
                     raise ValueError(f"Applicability field {key} must be a bounded string array.")
                 values = [x.strip() for x in val if x.strip()]
-                pattern = r"^\\d{4}$" if key == "release_years" else r"^\\d{4}(?:-\\d{2}-\\d{2})?$"
+                pattern = r"^\d{4}$" if key == "release_years" else r"^\d{4}(?:-\d{2}-\d{2})?$"
                 if any(not re.fullmatch(pattern, item) for item in values):
                     raise ValueError(f"Applicability field {key} contains an invalid year/date.")
                 if values != sorted(values):
@@ -379,7 +379,7 @@ def _generate_outline(
             "For each release group, capture the exact version identifier, release date (or year when only year is documented), edition/build where applicable, lifecycle status, source URLs, and the features, behavior changes, fixes, security updates, deprecations, removals, and migration notes introduced by that release. Separate major/minor/patch releases, service packs, cumulative updates, hotfixes, and security advisories when the product uses them.",
             "Do not fabricate missing historical releases or dates. If release order is known but exact date is not, preserve the version order and mark the date unknown; if chronology conflicts across sources, retain the conflict and flag it rather than silently choosing.",
             "A new release or correction must be appended as a new version-scoped learning segment; never overwrite or delete lessons for earlier versions. Detect whether a release/update is already recorded by its exact version/date/source fingerprint to avoid duplicate lessons.",
-            "The curriculum must distinguish evergreen concepts from release-specific behavior. Teach evergreen foundations once where appropriate, then teach version-specific additions, changes, removals, and compatibility boundaries in chronological order."
+            "The curriculum must distinguish evergreen concepts from release-specific behavior. Teach evergreen foundations once where appropriate, then teach version-specific additions, changes, removals, and compatibility boundaries in chronological order.",
             "Do not stop because this batch is full. Set has_more=true and next_focus when further lessons remain.",
             "Set has_more=false only when the requested subject is comprehensively covered.",
             "Do not repeat previous topics. Include foundations, advanced topics, operations, security, troubleshooting, and practical work when relevant.",
