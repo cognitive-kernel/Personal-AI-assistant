@@ -423,3 +423,24 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Exact tested commit: `5e58301417767124ee01b9f4e331a6fd74354525`.
 - GitHub Actions all passed on that exact commit: tests [#43001048500](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43001048500) — **1,980 passed, 50 deselected**; Windows storage regression job passed; generated learning artifacts, 94 Markdown links, import-cycle checks, deterministic retrieval benchmark, and claim-to-test coverage benchmark (**10/10**) passed. Browser E2E [#43001048937](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43001048937) passed. Dependency audit [#43001048856](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43001048856) passed.
 - The PR branch is 173 commits ahead of `main` and has not been merged. PR #709 is superseded; PR #710 is the single consolidation target. No local target-host or human test was run or represented as passed. Continue other repository engineering work while the mandatory target-host gate remains open; do not merge to `main` until that gate is satisfied.
+
+
+## 2026-11-11 — Remove arbitrary lesson-length constraints (PR #710)
+
+### Root-cause analysis
+
+- The curriculum had no total topic/lesson/batch ceiling, but the lesson-generation prompt still required 200–260 Persian words and 5–7 paragraphs. Its repair prompt repeated the same cap.
+- app/learning_quality.py enforced a 180-word minimum, a 200-word target, and a 260-word maximum. It could reject a detailed lesson for being too long, independent of instructional quality.
+- The model was allocated only 1,200 output tokens for initial generation and 1,400 for repair, with a 2,600-token in-memory pipeline ceiling. This was too restrictive for complex but coherent technical lessons.
+
+### Corrective changes
+
+- Prompt versions are now learning-lesson-v3 and learning-lesson-repair-v3; both require topic-appropriate depth, no arbitrary word/paragraph cap, no padding, and explicit decomposition when a topic is too broad for one coherent lesson.
+- Removed all word-count minimum/maximum gates from the deterministic quality filter. It continues to evaluate repetition, technical specificity, examples, causal explanation, questions, answers, outcomes, and malformed language.
+- Increased each generation/repair output allowance to 3,900 tokens and the two-call in-memory budget to 7,800. The existing durable 9,000-token per-job ceiling remains compatible and leaves 1,000 tokens for optional claim review. Hardware/context limits and fail-closed resource checks are preserved; this does not create an unbounded single inference.
+- Added regression coverage for lessons longer than 260 words, length-independent quality decisions, prompt version changes, and the expanded generation/repair token allowances.
+
+### Validation boundary
+
+- Automated CI for the new code and documentation is pending. No live gpt-oss:20b inference, target-host resource measurement, or human quality adjudication is claimed.
+- The total course remains unlimited through checkpointed batches; per-call token limits are resource-safety controls, not curriculum-size limits.
