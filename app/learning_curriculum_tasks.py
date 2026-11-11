@@ -23,7 +23,6 @@ MAX_TOPICS_PER_BATCH = 40
 MAX_SOURCE_DOCUMENTS = 40
 MAX_PROMPT_SOURCE_EXCERPTS = 8
 MAX_SOURCES_PER_DOMAIN = 3
-MIN_SOURCE_DOCUMENTS = 3
 MAX_SOURCE_EXCERPT_CHARS = 1000
 MAX_PROMPT_CHARS = 20000
 CURRICULUM_CONTEXT_TOKENS = 8192
@@ -216,19 +215,10 @@ def _collect_sources(
             **({"model_selection": preserved_model_selection} if preserved_model_selection is not None else {}),
         })
 
-    domains = {urlsplit(item["url"]).hostname for item in sources}
-    if len(sources) < MIN_SOURCE_DOCUMENTS or len(domains) < 2:
-        # Retry the public search later instead of silently substituting model-only knowledge.
-        context.checkpoint({
-            "phase": "web_research_retry",
-            "topic_sha256": topic_sha256,
-            "queries": queries,
-            "completed_queries": [],
-            "sources": [],
-        })
-        raise RetryableTaskError(
-            "Research did not obtain at least three usable pages across two distinct domains."
-        )
+    # Source count and publisher authority are provenance/quality signals, not
+    # curriculum admission gates. Continue with every usable result (including
+    # zero results); downstream lesson generation labels model-only or sparse
+    # evidence as unverified instead of losing the user's learning request.
     return sources
 
 
