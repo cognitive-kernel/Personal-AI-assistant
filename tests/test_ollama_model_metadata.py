@@ -191,7 +191,7 @@ def test_codex_context_selection_uses_minimum_of_request_model_and_safe_memory()
     model_info = {
         "llama.context_length": 131072,
         "llama.block_count": 32,
-        "llama.attention.head_count_kv": 64,
+        "llama.attention.head_count_kv": 8,
         "llama.attention.key_length": 128,
         "llama.attention.value_length": 128,
     }
@@ -199,35 +199,36 @@ def test_codex_context_selection_uses_minimum_of_request_model_and_safe_memory()
         model_info=model_info,
         architecture="llama",
         model_weight_bytes=5 * 1024**3,
-        available_memory_bytes=32 * 1024**3,
-        requested_context_tokens=65536,
+        available_memory_bytes=20 * 1024**3,
+        requested_context_tokens=100000,
     )
 
     assert result["maximum_context_tokens"] == 131072
-    assert result["hardware_maximum_context_tokens"] == 23040
-    assert result["selected_context_tokens"] == 23040
+    assert result["hardware_maximum_context_tokens"] == 86016
+    assert result["selected_context_tokens"] == 86016
     assert result["selected_context_tokens"] <= result["requested_context_tokens"]
     assert result["selected_context_tokens"] <= result["maximum_context_tokens"]
+    assert result["selected_context_tokens"] >= 64000
 
 
-def test_codex_context_selection_caps_requested_value_at_model_maximum():
-    from app.ollama_context import select_context_window
+def test_codex_context_selection_rejects_models_below_the_64k_minimum():
+    import pytest
+    from app.ollama_context import OllamaModelMetadataError, select_context_window
 
-    result = select_context_window(
-        model_info={
-            "llama.context_length": 8192,
-            "llama.block_count": 1,
-            "llama.attention.head_count_kv": 1,
-            "llama.attention.key_length": 64,
-            "llama.attention.value_length": 64,
-        },
-        architecture="llama",
-        model_weight_bytes=1024**3,
-        available_memory_bytes=16 * 1024**3,
-        requested_context_tokens=65536,
-    )
-
-    assert result["selected_context_tokens"] == 8192
+    with pytest.raises(OllamaModelMetadataError, match="below the Codex minimum 64000"):
+        select_context_window(
+            model_info={
+                "llama.context_length": 8192,
+                "llama.block_count": 1,
+                "llama.attention.head_count_kv": 1,
+                "llama.attention.key_length": 64,
+                "llama.attention.value_length": 64,
+            },
+            architecture="llama",
+            model_weight_bytes=1024**3,
+            available_memory_bytes=16 * 1024**3,
+            requested_context_tokens=65536,
+        )
 
 
 def test_codex_context_selection_fails_closed_when_model_or_hardware_metadata_is_missing():
@@ -245,7 +246,7 @@ def test_codex_context_selection_fails_closed_when_model_or_hardware_metadata_is
     with pytest.raises(OllamaModelMetadataError, match="attention.head_count_kv"):
         select_context_window(
             model_info={
-                "llama.context_length": 32768,
+                "llama.context_length": 131072,
                 "llama.block_count": 32,
             },
             architecture="llama",
@@ -256,7 +257,7 @@ def test_codex_context_selection_fails_closed_when_model_or_hardware_metadata_is
     with pytest.raises(OllamaModelMetadataError, match="safety reserve"):
         select_context_window(
             model_info={
-                "llama.context_length": 32768,
+                "llama.context_length": 131072,
                 "llama.block_count": 32,
                 "llama.attention.head_count_kv": 8,
                 "llama.attention.key_length": 128,
@@ -281,7 +282,7 @@ def test_codex_context_selection_preserves_exact_minimum_without_rounding():
 
     result = select_context_window(
         model_info={
-            "llama.context_length": 16384,
+            "llama.context_length": 131072,
             "llama.block_count": 1,
             "llama.attention.head_count_kv": 1,
             "llama.attention.key_length": 64,
@@ -290,7 +291,7 @@ def test_codex_context_selection_preserves_exact_minimum_without_rounding():
         architecture="llama",
         model_weight_bytes=1024**3,
         available_memory_bytes=16 * 1024**3,
-        requested_context_tokens=10001,
+        requested_context_tokens=64001,
     )
 
     assert result["selected_context_tokens"] == min(
@@ -298,4 +299,4 @@ def test_codex_context_selection_preserves_exact_minimum_without_rounding():
         result["maximum_context_tokens"],
         result["hardware_maximum_context_tokens"],
     )
-    assert result["selected_context_tokens"] == 10001
+    assert result["selected_context_tokens"] == 64001
