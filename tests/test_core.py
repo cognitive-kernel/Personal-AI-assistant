@@ -107,6 +107,7 @@ def _load_startup_bootstrap():
 
 def test_startup_bootstrap_reads_project_dependencies():
     bootstrap = _load_startup_bootstrap()
+    assert bootstrap.DEFAULT_LEARNING_MODEL == "gpt-oss:20b"
 
     requirements = bootstrap._requirements(dev=False)
     assert any(item.startswith("fastapi") for item in requirements)
@@ -118,6 +119,47 @@ def test_startup_bootstrap_detects_missing_distribution():
     bootstrap = _load_startup_bootstrap()
 
     assert not bootstrap._installed("a-package-that-does-not-exist-anywhere-987654")
+
+
+def test_learning_model_setting_migrates_only_the_previous_builtin_default(tmp_path, monkeypatch):
+    monkeypatch.delenv("LEARNING_OLLAMA_MODEL", raising=False)
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    db.update_settings({"learning_ollama_model": "qwen3:8b"})
+    db.init_databases()
+    assert db.get_settings()["learning_ollama_model"] == "gpt-oss:20b"
+
+    db.update_settings({"learning_ollama_model": "custom-learning:latest"})
+    db.init_databases()
+    assert db.get_settings()["learning_ollama_model"] == "custom-learning:latest"
+
+    monkeypatch.setenv("LEARNING_OLLAMA_MODEL", "env-learning:latest")
+    db.init_databases()
+    assert db.get_settings()["learning_ollama_model"] == "custom-learning:latest"
+
+
+def test_research_curriculum_schema_migration_is_registered_and_applied(tmp_path, monkeypatch):
+    from app.schema_registry import LEARNING_MIGRATIONS
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    assert LEARNING_MIGRATIONS[-1].version == 45
+    with db.learning_connection() as connection:
+        tables = {
+            row["name"] for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+    assert "learning_path_research" in tables
+    with db.learning_connection() as connection:
+        columns = {
+            row["name"] for row in connection.execute(
+                "PRAGMA table_info(learning_path_research)"
+            )
+        }
+    assert "model_selection_json" in columns
 
 
 def test_learning_curriculum_catalog_includes_requested_system_tracks():
@@ -413,7 +455,7 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
 
 
 
-def test_learning_job_rejects_missing_outcomes_instead_of_copying_questions(tmp_path, monkeypatch):
+def test_learning_job_retains_lesson_when_learning_outcomes_are_missing(tmp_path, monkeypatch):
     import json
 
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
@@ -457,10 +499,13 @@ def test_learning_job_rejects_missing_outcomes_instead_of_copying_questions(tmp_
     finished = learning.get_job(job["id"])
 
     assert len(calls) == 2, "missing outcomes must trigger the repair attempt"
-    assert finished["status"] == "rejected"
+    assert finished["status"] == "completed"
     assert finished["quality"]["accepted"] is False
     assert any("هدف یادگیری" in reason for reason in finished["quality"]["reasons"])
-    assert finished["lesson"] is None
+    assert finished["quality"]["lesson_retained"] is True
+    assert finished["lesson"] == lesson
+    assert finished["assessment"]["questions"] == response_without_outcomes["questions"]
+    assert finished["assessment"]["learning_outcomes"] is None
 
 
 def test_concurrent_run_job_calls_only_claim_queued_job_once(tmp_path, monkeypatch):
@@ -719,14 +764,14 @@ def test_settings_accept_independent_model_profiles(tmp_path, monkeypatch):
     db.init_databases()
     saved = db.update_settings({
         "chat_ollama_model": "qwen2.5:7b",
-        "learning_ollama_model": "qwen3:8b",
+        "learning_ollama_model": "gpt-oss:20b",
         "programming_ollama_model": "qwen3:14b",
         "chat_max_concurrent_jobs": 2,
         "learning_max_concurrent_jobs": 3,
         "programming_max_concurrent_jobs": 1,
     })
     assert saved["chat_ollama_model"] == "qwen2.5:7b"
-    assert saved["learning_ollama_model"] == "qwen3:8b"
+    assert saved["learning_ollama_model"] == "gpt-oss:20b"
     assert saved["programming_ollama_model"] == "qwen3:14b"
     assert saved["chat_max_concurrent_jobs"] == 2
     assert saved["learning_max_concurrent_jobs"] == 3

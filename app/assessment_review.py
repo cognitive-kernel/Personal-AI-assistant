@@ -19,47 +19,39 @@ _MAX_REVIEW_INPUT = 9000
 LEARNING_ASSESSMENT_RUBRIC_VERSION = "learning-assessment-semantic-v1"
 
 
-def _independent_reviewer_identity() -> tuple[str, str]:
-    """Require a distinct installed model digest for the advisory semantic evaluator."""
+def _independent_reviewer_identity() -> tuple[str, str, str]:
+    """Require a distinct model identity; remote identity is a config fingerprint, not weight attestation."""
     settings = get_settings()
     reviewer_model = str(settings.get("factual_review_ollama_model", "")).strip()
-    primary_models = {
-        str(settings.get(key, "")).strip()
-        for key in ("ollama_model", "chat_ollama_model", "learning_ollama_model", "programming_ollama_model")
-        if str(settings.get(key, "")).strip()
-    }
-    if not reviewer_model or reviewer_model in primary_models:
-        raise SemanticReviewError("A distinct factual review model must be configured for semantic assessment.")
+    if not reviewer_model:
+        raise SemanticReviewError("A distinct factual review model must be configured.")
     try:
-        installed = ollama.list_models()
+        reviewer = ollama.model_identity("factual_review", reviewer_model, settings=settings)
     except Exception as exc:
         raise SemanticReviewError("The independent semantic evaluator is unavailable.") from exc
-    reviewer_entry = next(
-        (item for item in installed if str(item.get("name", "")).strip() == reviewer_model),
-        None,
-    )
-    digest = reviewer_entry.get("digest") if reviewer_entry else None
-    if not isinstance(digest, str) or not digest.strip():
-        raise SemanticReviewError("The independent semantic evaluator must be installed and expose a model digest.")
-    primary_digests = {
-        str(item.get("digest"))
-        for item in installed
-        if str(item.get("name", "")).strip() in primary_models
-        and isinstance(item.get("digest"), str)
-        and item.get("digest")
-    }
-    if digest in primary_digests:
-        raise SemanticReviewError("The semantic evaluator digest must differ from all configured generation models.")
-    latest = get_settings()
-    latest_primary = {
-        str(latest.get(key, "")).strip()
-        for key in ("ollama_model", "chat_ollama_model", "learning_ollama_model", "programming_ollama_model")
-        if str(latest.get(key, "")).strip()
-    }
-    if str(latest.get("factual_review_ollama_model", "")).strip() != reviewer_model or reviewer_model in latest_primary:
-        raise SemanticReviewError("Independent evaluator settings changed during identity validation.")
-    return reviewer_model, digest
 
+    def primary_identities(current: dict[str, Any]) -> set[str]:
+        identities: set[str] = set()
+        for purpose in ("chat", "research_plan", "learning", "programming"):
+            model = str(current.get(f"{purpose}_ollama_model", "")).strip()
+            if not model:
+                continue
+            try:
+                identities.add(ollama.model_identity(purpose, model, settings=current)["identity"])
+            except ollama.OllamaError:
+                continue
+        return identities
+
+    if reviewer["identity"] in primary_identities(settings):
+        raise SemanticReviewError("The semantic evaluator digest must differ from every configured generation model identity.")
+    latest = get_settings()
+    if (
+        str(latest.get("factual_review_ollama_model", "")).strip() != reviewer_model
+        or ollama.model_identity("factual_review", reviewer_model, settings=latest)["identity"] != reviewer["identity"]
+        or reviewer["identity"] in primary_identities(latest)
+    ):
+        raise SemanticReviewError("Independent evaluator settings changed during identity validation.")
+    return reviewer_model, reviewer["identity"], reviewer["identity_kind"]
 
 class SemanticReviewError(RuntimeError):
     """The local model failed to produce a schema-valid advisory review."""
@@ -174,7 +166,7 @@ def review_assessment_attempt(job_id: int, attempt_id: int) -> dict[str, Any]:
     if len(message) > _MAX_REVIEW_INPUT:
         raise ValueError("Assessment content is too large for semantic review.")
 
-    reviewer_model, reviewer_digest = _independent_reviewer_identity()
+    reviewer_model, reviewer_digest, reviewer_identity_kind = _independent_reviewer_identity()
     raw = ollama.chat(
         message,
         system_prompt=(
@@ -191,8 +183,8 @@ def review_assessment_attempt(job_id: int, attempt_id: int) -> dict[str, Any]:
         purpose="factual_review",
         model_override=reviewer_model,
     )
-    latest_model, latest_digest = _independent_reviewer_identity()
-    if latest_model != reviewer_model or latest_digest != reviewer_digest:
+    latest_model, latest_digest, latest_identity_kind = _independent_reviewer_identity()
+    if latest_model != reviewer_model or latest_digest != reviewer_digest or latest_identity_kind != reviewer_identity_kind:
         raise SemanticReviewError("Independent evaluator identity changed during review; result discarded.")
     try:
         review = _parse_review(raw, len(questions))
@@ -204,6 +196,7 @@ def review_assessment_attempt(job_id: int, attempt_id: int) -> dict[str, Any]:
         "kind": "model_assisted_advisory",
         "model": model,
         "evaluator_digest": reviewer_digest,
+        "evaluator_identity_kind": reviewer_identity_kind,
         "rubric_version": LEARNING_ASSESSMENT_RUBRIC_VERSION,
         "review": review,
         "deterministic_score": float(row["score"]),

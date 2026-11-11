@@ -155,10 +155,13 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
 
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
-        assert LEARNING_MIGRATIONS[-1].version == 41
+        assert LEARNING_MIGRATIONS[-1].version == 45
         usage_columns = {row[1] for row in connection.execute("PRAGMA table_info(model_usage_events)")}
         graph_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_knowledge_graph_edges)")}
         browser_columns = {row[1] for row in connection.execute("PRAGMA table_info(browser_learning_courses)")}
+        topic_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_path_topics)")}
+        release_watch_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_release_watch)")}
+        chat_candidate_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_chat_candidates)")}
         candidate_review_columns = {row[1] for row in connection.execute("PRAGMA table_info(knowledge_candidate_reviews)")}
         experience_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_experiences)")}
         assert {"task_id", "purpose", "model_name", "estimated_cost_microusd"} <= usage_columns
@@ -166,6 +169,10 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         assert "originating_knowledge_id" in experience_columns
         assert {"source_knowledge_id", "target_knowledge_id", "relation_type", "source_url", "source_sha256", "status"} <= graph_columns
         assert {"topic", "cdp_url", "max_lessons", "status"} <= browser_columns
+        assert {"applicability_json", "source_urls_json", "hierarchy_path", "depth"} <= topic_columns
+        assert {"path_id", "status", "last_checked_at", "next_check_at", "last_source_fingerprint", "last_task_id"} <= release_watch_columns
+        assert {"conversation_id", "message_id", "user_message_id", "source_kind", "topic_hint", "content", "content_sha256", "provenance_json", "status"} <= chat_candidate_columns
+        assert connection.execute("SELECT applicability_json, source_urls_json, hierarchy_path, depth FROM learning_path_topics WHERE id=?", (path_topic_id,)).fetchone() == ("{}", "[]", "", 0)
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
         job_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_jobs)")}
@@ -434,7 +441,7 @@ def test_browser_learning_retry_migration_preserves_existing_courses():
         )
         connection.commit()
 
-        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 41
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 45
 
         row = connection.execute(
             """SELECT topic, status, retry_count, next_retry_at
@@ -756,3 +763,40 @@ def test_application_database_initializer_migrates_observed_legacy_learning_stor
 
     assert list(tmp_path.glob("learning.db.pre-migration-*.bak"))
     assert db.get_settings()
+
+
+
+def test_release_watch_migration_seeds_existing_researched_curricula_without_changing_them():
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+    try:
+        assert MigrationRunner(LEARNING_MIGRATIONS[:43]).apply(connection) == 43
+        path_id = connection.execute(
+            "INSERT INTO learning_paths(curriculum_slug, title) VALUES ('legacy-course', 'Legacy course')"
+        ).lastrowid
+        outline = json.dumps({"title": "Legacy course", "topics": ["Old lesson"]})
+        connection.execute(
+            """INSERT INTO learning_path_research(
+                   path_id, requested_topic, outline_json, outline_sha256,
+                   model_name, model_selection_json, source_count, sources_json
+               ) VALUES (?, 'Python', ?, ?, 'gpt-oss:20b', '{}', 3, '[]')""",
+            (path_id, outline, "a" * 64),
+        )
+        connection.commit()
+
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 45
+        watch = connection.execute(
+            "SELECT status, last_source_fingerprint, last_task_id FROM learning_release_watch WHERE path_id=?",
+            (path_id,),
+        ).fetchone()
+        saved = connection.execute(
+            "SELECT requested_topic, outline_json, outline_sha256 FROM learning_path_research WHERE path_id=?",
+            (path_id,),
+        ).fetchone()
+        assert tuple(watch) == ("active", "", None)
+        assert saved["requested_topic"] == "Python"
+        assert saved["outline_json"] == outline
+        assert saved["outline_sha256"] == "a" * 64
+    finally:
+        connection.close()

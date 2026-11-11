@@ -7,6 +7,7 @@ import os
 import platform
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -24,6 +25,7 @@ INSTALLERS = PREREQUISITES / "installers"
 CACHE_MANIFEST = PREREQUISITES / "manifest.json"
 MIN_PYTHON = (3, 11)
 DEFAULT_MODEL = "qwen2.5:7b"
+DEFAULT_LEARNING_MODEL = "gpt-oss:20b"
 _OLLAMA_RELEASE_API = "https://api.github.com/repos/ollama/ollama/releases/latest"
 _OLLAMA_RELEASE_TAG = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$")
 _OLLAMA_LINUX_ASSET = re.compile(r"^ollama-linux-(?:amd64|arm64)(?:-rocm|-jetpack[56])?\.tar\.zst$")
@@ -712,6 +714,96 @@ def _download_ollama_asset_cli(arguments: list[str]) -> int:
     return 0
 
 
+def _read_saved_setting(key: str, default: Any) -> Any:
+    database = Path(os.environ.get("SETTINGS_DB_PATH", "data/settings.db"))
+    if not database.is_absolute():
+        database = ROOT / database
+    if not database.is_file():
+        return default
+    try:
+        connection = sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
+        try:
+            row = connection.execute(
+                "SELECT value_json FROM settings WHERE key=?", (key,)
+            ).fetchone()
+        finally:
+            connection.close()
+    except sqlite3.OperationalError as exc:
+        if "no such table: settings" in str(exc).lower():
+            return default
+        raise RuntimeError("The existing settings database could not be read safely; provider setup was stopped.") from exc
+    except sqlite3.Error as exc:
+        raise RuntimeError("The existing settings database could not be read safely; provider setup was stopped.") from exc
+    if row is None:
+        return default
+    try:
+        return json.loads(row[0])
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"The saved setting '{key}' is invalid; provider setup was stopped.") from exc
+
+
+def _configured_llm_provider(purpose: str) -> str:
+    raw = _read_saved_setting(f"{purpose}_llm_provider", "ollama")
+    if not isinstance(raw, str) or raw not in {"ollama", "openai_compatible"}:
+        raise RuntimeError(f"The configured {purpose} LLM provider is invalid.")
+    return raw
+
+
+def _configured_model_setting(key: str, env_name: str, default: str) -> str:
+    raw = _read_saved_setting(key, None)
+    if raw is None:
+        raw = os.environ.get(env_name, default)
+    if not isinstance(raw, str) or not raw.strip() or len(raw.strip()) > 200:
+        raise RuntimeError(f"The saved model setting '{key}' is invalid.")
+    return raw.strip()
+
+
+def _configured_learning_model() -> str:
+    """Resolve the model the app will actually use, without mutating saved settings."""
+    def environment_default() -> str:
+        override = os.environ.get("LEARNING_OLLAMA_MODEL")
+        if override is None:
+            return DEFAULT_LEARNING_MODEL
+        model = override.strip()
+        if not model or len(model) > 200:
+            raise RuntimeError("LEARNING_OLLAMA_MODEL must be a non-empty model name of at most 200 characters.")
+        return model
+
+    database = Path(os.environ.get("SETTINGS_DB_PATH", "data/settings.db"))
+    if not database.is_absolute():
+        database = ROOT / database
+    if not database.is_file():
+        return environment_default()
+
+    try:
+        connection = sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
+        try:
+            row = connection.execute(
+                "SELECT value_json FROM settings WHERE key='learning_ollama_model'"
+            ).fetchone()
+        finally:
+            connection.close()
+    except sqlite3.OperationalError as exc:
+        if "no such table: settings" in str(exc).lower():
+            return environment_default()
+        raise RuntimeError("The existing settings database could not be read safely; Ollama setup was stopped.") from exc
+    except sqlite3.Error as exc:
+        raise RuntimeError("The existing settings database could not be read safely; Ollama setup was stopped.") from exc
+
+    if row is None:
+        return environment_default()
+    try:
+        configured = json.loads(row[0])
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("The saved learning model setting is invalid; Ollama setup was stopped.") from exc
+    if not isinstance(configured, str) or not configured.strip() or len(configured.strip()) > 200:
+        raise RuntimeError("The saved learning model setting is invalid; Ollama setup was stopped.")
+    # The versioned DB migration changes this former built-in default to gpt-oss.
+    if configured.strip() == "qwen3:8b":
+        return DEFAULT_LEARNING_MODEL
+    return configured.strip()
+
+
 def _find_ollama() -> str | None:
     found = shutil.which("ollama")
     if found:
@@ -728,6 +820,16 @@ def _find_ollama() -> str | None:
 
 
 def _ensure_ollama() -> None:
+    active_providers = [
+        _configured_llm_provider(name)
+        for name in ("chat", "research_plan", "learning", "programming", "embedding")
+    ]
+    factual_review_model = _read_saved_setting("factual_review_ollama_model", "")
+    if factual_review_model and _configured_llm_provider("factual_review") == "ollama":
+        active_providers.append("ollama")
+    if "ollama" not in active_providers:
+        print("همهٔ مسیرهای LLM و embedding روی provider جایگزین تنظیم شده‌اند؛ نصب و اجرای Ollama لازم نیست.", flush=True)
+        return
     system = platform.system()
     # Detect an existing installation before downloading anything. The installer
     # is only needed when Ollama cannot be found on this machine.
@@ -815,16 +917,51 @@ def _ensure_ollama() -> None:
         print(listed.stderr, file=sys.stderr, flush=True)
     if listed.returncode != 0:
         raise RuntimeError("Ollama نصب است اما سرویس آن در دسترس نیست. سرویس Ollama را اجرا کنید و دوباره تلاش کنید.")
-    model = os.environ.get("OLLAMA_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
     installed_models = {
         line.split()[0] for line in (listed.stdout or "").splitlines()
         if line.strip() and not line.lstrip().startswith("NAME ")
     }
-    if model not in installed_models:
-        print(f"مدل {model} نصب نیست؛ دریافت مدل شروع می‌شود ...", flush=True)
+    required_models: list[tuple[str, str]] = []
+    if _configured_llm_provider("chat") == "ollama":
+        required_models.append((
+            "مدل گفتگو",
+            _configured_model_setting(
+                "chat_ollama_model", "CHAT_OLLAMA_MODEL",
+                os.environ.get("OLLAMA_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL,
+            ),
+        ))
+    if _configured_llm_provider("research_plan") == "ollama":
+        required_models.append((
+            "مدل برنامه‌ریزی پژوهش",
+            _configured_model_setting("research_plan_ollama_model", "RESEARCH_PLAN_OLLAMA_MODEL", DEFAULT_MODEL),
+        ))
+    if _configured_llm_provider("learning") == "ollama":
+        required_models.append(("مدل یادگیری", _configured_learning_model()))
+    if factual_review_model and _configured_llm_provider("factual_review") == "ollama":
+        required_models.append(("مدل بازبینی factual", factual_review_model))
+    missing_models: list[str] = []
+    for role, model in required_models:
+        if model in installed_models or model in missing_models:
+            continue
+        print(f"{role} {model} نصب نیست؛ دریافت مدل شروع می‌شود ...", flush=True)
         pulled = _run([executable, "pull", model])
         if pulled.returncode != 0:
-            raise RuntimeError(f"دریافت مدل {model} ناموفق بود؛ برنامه اجرا نشد.")
+            raise RuntimeError(f"دریافت {role} {model} ناموفق بود؛ برنامه اجرا نشد.")
+        missing_models.append(model)
+
+    if missing_models:
+        verified = subprocess.run(
+            [executable, "list"], cwd=ROOT, text=True, capture_output=True, check=False
+        )
+        if verified.returncode != 0:
+            raise RuntimeError("تأیید مدل‌های دریافت‌شده از Ollama ناموفق بود.")
+        verified_models = {
+            line.split()[0] for line in (verified.stdout or "").splitlines()
+            if line.strip() and not line.lstrip().startswith("NAME ")
+        }
+        absent = [model for model in missing_models if model not in verified_models]
+        if absent:
+            raise RuntimeError("مدل‌های موردنیاز پس از دریافت در Ollama دیده نشدند: " + ", ".join(absent))
 
 
 def main() -> int:
@@ -846,6 +983,10 @@ def main() -> int:
     check_only = "--check-only" in sys.argv[1:]
     try:
         _ensure_dependencies(dev)
+        # Load the same project environment file used by app.config before resolving
+        # purpose-specific model overrides for installation.
+        from dotenv import load_dotenv
+        load_dotenv(ROOT / ".env", override=False)
         _ensure_ollama()
     except (RuntimeError, OSError, urllib.error.URLError) as exc:
         print(f"پیش‌نیاز آماده نیست: {exc}", file=sys.stderr)

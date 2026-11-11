@@ -239,3 +239,35 @@ def test_semantic_review_rejects_reviewer_with_generation_model_digest(tmp_path,
     )
     with pytest.raises(assessment_review.SemanticReviewError, match="digest must differ"):
         assessment_review._independent_reviewer_identity()
+
+
+def test_external_factual_reviewer_uses_configuration_fingerprint_without_ollama(tmp_path, monkeypatch):
+    settings = {
+        "factual_review_llm_provider": "openai_compatible",
+        "factual_review_llm_base_url": "https://review.example.test/v1",
+        "factual_review_ollama_model": "review-model",
+        "chat_llm_provider": "openai_compatible",
+        "chat_llm_base_url": "https://generation.example.test/v1",
+        "chat_ollama_model": "chat-model",
+        "research_plan_llm_provider": "openai_compatible",
+        "research_plan_llm_base_url": "https://generation.example.test/v1",
+        "research_plan_ollama_model": "plan-model",
+        "learning_llm_provider": "openai_compatible",
+        "learning_llm_base_url": "https://generation.example.test/v1",
+        "learning_ollama_model": "lesson-model",
+        "programming_llm_provider": "openai_compatible",
+        "programming_llm_base_url": "https://generation.example.test/v1",
+        "programming_ollama_model": "code-model",
+    }
+    monkeypatch.setattr(assessment_review, "get_settings", lambda: dict(settings))
+    monkeypatch.setattr(ollama, "get_settings", lambda: dict(settings))
+    monkeypatch.setattr(
+        ollama, "list_models",
+        lambda: (_ for _ in ()).throw(AssertionError("Ollama must not be queried")),
+    )
+
+    model, identity, identity_kind = assessment_review._independent_reviewer_identity()
+
+    assert model == "review-model"
+    assert len(identity) == 64
+    assert identity_kind == "endpoint_model_configuration_fingerprint"

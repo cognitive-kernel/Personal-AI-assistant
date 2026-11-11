@@ -1,6 +1,7 @@
 """Durable local chat conversations stored in the versioned settings database."""
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from . import db
@@ -159,4 +160,31 @@ def append_assistant_message(
             "UPDATE chat_conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (conversation_id,),
         )
-    return dict(row) if row is not None else None
+    result = dict(row) if row is not None else None
+    if result is not None:
+        try:
+            with db.settings_connection() as conn:
+                user_row = conn.execute(
+                    """SELECT id, content FROM chat_messages
+                       WHERE conversation_id=? AND role='user' AND id<?
+                       ORDER BY id DESC LIMIT 1""",
+                    (conversation_id, result["id"]),
+                ).fetchone()
+            if user_row is not None:
+                from .learning_candidates import capture_chat_answer
+
+                capture_chat_answer(
+                    conversation_id=conversation_id,
+                    message_id=int(result["id"]),
+                    user_message_id=int(user_row["id"]),
+                    task_id=task_id,
+                    user_query=str(user_row["content"]),
+                    answer=str(result["content"]),
+                    created_at=str(result["created_at"]),
+                )
+        except Exception as exc:
+            # Chat persistence is primary; candidate staging is a recoverable side path.
+            logging.getLogger(__name__).warning(
+                "Unverified learning candidate staging failed (%s).", type(exc).__name__
+            )
+    return result

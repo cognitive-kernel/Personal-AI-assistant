@@ -1,6 +1,7 @@
 from __future__ import annotations
 import ipaddress
 import math
+import re
 import sqlite3
 from contextlib import asynccontextmanager
 import logging
@@ -14,7 +15,7 @@ from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, StrictBool, StrictFloat, StrictInt, ConfigDict
 from . import backup_scheduler, assessment_review, browser_learning, knowledge_lifecycle_tasks, learning_knowledge_graph_tasks, learning_capabilities_routes, learning_recommendations, spaced_repetition, chat_feedback, chat_history, chat_research, cloud_resources, curricula, db, experience_tasks, factual_verification_tasks, learning, ollama, programming_tasks, research_planner, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, list_learning_escalations, reconcile_queued_learning_tasks, resolve_learning_escalation
-from . import learning_review_tasks
+from . import learning_review_tasks, learning_curriculum_tasks
 from .learning_observability import collect_learning_operational_metrics
 from .task_runtime import TaskRuntime
 from .config import defaults
@@ -294,6 +295,15 @@ def _maintain_learning_runtime() -> None:
     except Exception:
         logger.exception("Factual-learning maintenance failed.")
     try:
+        release_watch = learning_curriculum_tasks.maintain_release_watch(limit=3)
+        if release_watch["queued"]:
+            logger.info(
+                "Learning release monitor queued %s new curriculum version(s).",
+                release_watch["queued"],
+            )
+    except Exception:
+        logger.exception("Learning release monitoring failed; it will retry next interval.")
+    try:
         browser_learning.recover_interrupted_courses()
     except Exception:
         logger.exception("Stale browser-learning recovery failed; it will retry next interval.")
@@ -375,6 +385,7 @@ def startup() -> None:
     }
     learning_handlers = {
         LEARNING_TASK_TYPE: handle_learning_job,
+        learning_curriculum_tasks.CURRICULUM_TASK_TYPE: learning_curriculum_tasks.handle_curriculum_task,
         learning_review_tasks.LEARNING_REVIEW_TASK_TYPE: learning_review_tasks.handle_candidate_review,
         learning_review_tasks.LEARNING_SANDBOX_REVIEW_TASK_TYPE: learning_review_tasks.handle_candidate_sandbox_review,
         knowledge_lifecycle_tasks.KNOWLEDGE_VALIDATE_TASK_TYPE: knowledge_lifecycle_tasks.handle_validate_candidate,
@@ -509,10 +520,21 @@ class ChatMessageFeedbackRequest(BaseModel):
 
 class SettingsPatch(BaseModel):
     values: dict[str, Any]
+    temporary: StrictBool = False
 
 class LearningRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=300)
     source_text: str | None = Field(default=None, max_length=100000)
+
+class LearningCurriculumRequest(BaseModel):
+    topic: str = Field(min_length=1, max_length=300)
+    batch_size: StrictInt = Field(default=24, ge=8, le=40)
+    # Backward-compatible alias for older clients; this never caps total course size.
+    max_topics: StrictInt | None = Field(default=None, ge=8, le=40)
+    source_text: str | None = Field(default=None, max_length=500)
+
+    model_config = ConfigDict(extra="forbid")
+
 
 class BrowserLearningRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=300)
@@ -554,6 +576,11 @@ class LessonReviewSubmission(BaseModel):
     value_rating: StrictInt = Field(ge=1, le=5)
     takeaway: str = Field(default="", max_length=3000)
     issues: str = Field(default="", max_length=3000)
+
+class LessonIssueReportRequest(BaseModel):
+    issue_report: str = Field(min_length=1, max_length=5000)
+
+    model_config = ConfigDict(extra="forbid")
 
 class PathTopicProgress(BaseModel):
     status: str = Field(min_length=1, max_length=30)
@@ -738,6 +765,29 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         key = f"{purpose}_model_keep_alive"
         if key in values and (not isinstance(values[key], str) or values[key] not in keep_alive_values):
             raise HTTPException(status_code=422, detail=f"{key} must be one of: auto, 0, 1m, 5m, 10m, 30m.")
+    for purpose in ("chat", "research_plan", "learning", "programming", "factual_review", "embedding"):
+        provider_key = f"{purpose}_llm_provider"
+        base_url_key = f"{purpose}_llm_base_url"
+        api_key_env_key = f"{purpose}_llm_api_key_env"
+        if provider_key in values and (
+            not isinstance(values[provider_key], str)
+            or values[provider_key] not in {"ollama", "openai_compatible"}
+        ):
+            raise HTTPException(status_code=422, detail=f"{provider_key} must be ollama or openai_compatible.")
+        effective_provider = values.get(provider_key, db.get_settings().get(provider_key, "ollama"))
+        if effective_provider == "openai_compatible" and (
+            base_url_key in values or provider_key in values
+        ):
+            try:
+                values[base_url_key] = ollama.normalize_openai_compatible_base_url(
+                    values.get(base_url_key, db.get_settings().get(base_url_key, "https://api.openai.com/v1"))
+                )
+            except ollama.OllamaError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if api_key_env_key in values:
+            env_name = values[api_key_env_key]
+            if not isinstance(env_name, str) or (env_name and not re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", env_name)):
+                raise HTTPException(status_code=422, detail=f"{api_key_env_key} must be an environment variable name, not an API key.")
     numeric_ranges = [
         ("ollama_timeout_seconds", 5, 600), ("ollama_num_ctx", 512, 1048576),
         ("ollama_num_thread", 0, 64),
@@ -779,7 +829,20 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         generic_chat_change = model_key == "chat_ollama_model" and (
             "ollama_model" in values or "ollama_num_ctx" in values
         )
-        if context_key not in values and model_key not in values and not generic_chat_change:
+        purpose = model_key.removesuffix("_ollama_model")
+        selected_provider = values.get(
+            f"{purpose}_llm_provider",
+            current_settings.get(f"{purpose}_llm_provider", "ollama"),
+        )
+        if selected_provider == "openai_compatible":
+            # Context limits for compatible endpoints are user-configured; the
+            # remote server may not expose Ollama model metadata.
+            continue
+        provider_changed = (
+            f"{purpose}_llm_provider" in values
+            and values[f"{purpose}_llm_provider"] != current_settings.get(f"{purpose}_llm_provider", "ollama")
+        )
+        if context_key not in values and model_key not in values and not generic_chat_change and not provider_changed:
             continue
         context_value = values.get(
             context_key,
@@ -799,7 +862,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         # Unchanged profiles do not need an Ollama round-trip. Manual model names
         # remain saveable when context is unchanged; a context edit requires verifiable
         # model metadata, and a known model limit is enforced even on model-only edits.
-        if not context_changed and not model_changed:
+        if not context_changed and not model_changed and not provider_changed:
             continue
         if not isinstance(model_name, str) or not model_name.strip():
             if context_changed:
@@ -839,7 +902,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
                 status_code=422,
                 detail=f"{context_key} cannot exceed {maximum} tokens supported by {model_name}.",
             )
-    for key in ("ollama_model", "chat_ollama_model", "learning_ollama_model", "programming_ollama_model"):
+    for key in ("ollama_model", "ollama_embedding_model", "chat_ollama_model", "research_plan_ollama_model", "learning_ollama_model", "programming_ollama_model"):
         if key in values and (
             not isinstance(values[key], str) or not values[key].strip() or len(values[key]) > 200
         ):
@@ -873,7 +936,11 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
                 detail="learning_task_budget_microusd must be null or a non-negative safe integer.",
             )
     try:
-        return db.update_settings(values)
+        return (
+            db.update_runtime_settings(values)
+            if request.temporary
+            else db.update_settings(values)
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -890,6 +957,24 @@ def learning_curriculum(slug: str) -> dict[str, Any]:
     return result
 
 
+@app.post("/api/learning/courses", status_code=202)
+def create_researched_learning_course(request: LearningCurriculumRequest) -> dict[str, Any]:
+    try:
+        task = learning_curriculum_tasks.enqueue_curriculum_task(
+            request.topic,
+            batch_size=request.batch_size if request.max_topics is None else request.max_topics,
+            source_text=request.source_text,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "task_id": task["id"],
+        "status": task["status"],
+        "task_type": task["task_type"],
+        "message": "پژوهش وب و ساخت فهرست سرفصل‌ها در صف پایدار ثبت شد.",
+    }
+
+
 @app.post("/api/learning/jobs", status_code=202)
 def create_learning_job(request: LearningRequest) -> dict[str, Any]:
     try:
@@ -900,6 +985,28 @@ def create_learning_job(request: LearningRequest) -> dict[str, Any]:
 @app.get("/api/learning/jobs")
 def learning_jobs(limit: int = 50) -> dict[str, Any]:
     return {"jobs": learning.list_jobs(limit)}
+
+
+@app.get("/api/learning/courses/tasks/{task_id}")
+def researched_learning_course_task(task_id: int) -> dict[str, Any]:
+    task = task_manager.get_task(task_id)
+    if task is None or task.get("task_type") != learning_curriculum_tasks.CURRICULUM_TASK_TYPE:
+        raise HTTPException(status_code=404, detail="Researched learning course task not found.")
+    checkpoint = task.get("checkpoint") if isinstance(task.get("checkpoint"), dict) else {}
+    sources = checkpoint.get("sources") if isinstance(checkpoint.get("sources"), list) else []
+    return {
+        "id": task["id"],
+        "status": task["status"],
+        "result": task.get("result"),
+        "error": task.get("error"),
+        "attempts": task.get("attempts"),
+        "progress": {
+            "phase": checkpoint.get("phase", "queued"),
+            "source_count": len(sources),
+        },
+        "created_at": task.get("created_at"),
+        "updated_at": task.get("updated_at"),
+    }
 
 
 @app.post("/api/learning/browser/courses", status_code=202)
@@ -1204,6 +1311,18 @@ def get_learning_topic_review_history(
         return spaced_repetition.get_topic_review_history(path_id, topic_id, limit)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Learning path topic not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/learning/jobs/{job_id}/corrections", status_code=202)
+def submit_learning_issue_report(
+    job_id: int, request: LessonIssueReportRequest
+) -> dict[str, Any]:
+    try:
+        return learning.submit_lesson_issue(job_id, request.issue_report)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Learning job not found.") from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

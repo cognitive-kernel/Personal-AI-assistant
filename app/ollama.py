@@ -1,8 +1,11 @@
 from __future__ import annotations
+import hashlib
 import http.client
 import ipaddress
 import json
 import math
+import os
+import re
 import socket
 import threading
 import urllib.error
@@ -90,8 +93,52 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def _request(path: str, payload: dict[str, Any] | None = None, timeout: float | None = None) -> dict[str, Any]:
+def _request(
+    path: str,
+    payload: dict[str, Any] | None = None,
+    timeout: float | None = None,
+    *,
+    purpose: str | None = None,
+) -> dict[str, Any]:
     settings = get_settings()
+    if path == "/api/chat" and purpose in {"chat", "learning", "programming", "factual_review", "research_plan"}:
+        profile = purpose
+        if settings.get(f"{profile}_llm_provider", "ollama") == "openai_compatible":
+            request_payload = payload if isinstance(payload, dict) else {}
+            messages = request_payload.get("messages", [])
+            if not isinstance(messages, list) or not messages:
+                raise OllamaError("OpenAI-compatible chat requires a non-empty messages list.")
+            system_prompt = None
+            history = []
+            user_message = None
+            for item in messages:
+                if not isinstance(item, dict) or item.get("role") not in {"system", "user", "assistant"}:
+                    continue
+                content = item.get("content")
+                if not isinstance(content, str):
+                    continue
+                if item["role"] == "system" and system_prompt is None:
+                    system_prompt = content
+                elif item["role"] == "user":
+                    if user_message is not None:
+                        history.append({"role": "user", "content": user_message})
+                    user_message = content
+                elif item["role"] == "assistant":
+                    history.append({"role": "assistant", "content": content})
+            if not isinstance(user_message, str):
+                raise OllamaError("OpenAI-compatible chat requires a user message.")
+            options = request_payload.get("options", {})
+            options = options if isinstance(options, dict) else {}
+            content = _openai_compatible_chat(
+                user_message, history, system_prompt,
+                purpose=profile,
+                model=str(request_payload.get("model") or settings.get(f"{profile}_ollama_model", "")).strip(),
+                timeout=int(timeout or settings.get(f"{profile}_ollama_timeout_seconds", 120)),
+                num_predict=options.get("num_predict"),
+                response_format=request_payload.get("format"),
+                usage_out=(usage := {}),
+            )
+            return {"message": {"content": content}, "provider": "openai_compatible", **usage}
     if path in _INFERENCE_PATHS and settings.get("gpu_enabled", False) is not True:
         payload = dict(payload or {})
         options = payload.get("options")
@@ -230,6 +277,38 @@ def _recommended_context_tokens(
     return candidate
 
 
+def model_identity(
+    purpose: str, model: str, *, settings: dict[str, Any] | None = None
+) -> dict[str, str]:
+    """Return a stable identity for a configured model without claiming remote weight attestation."""
+    settings = settings if isinstance(settings, dict) else get_settings()
+    provider = settings.get(f"{purpose}_llm_provider", "ollama")
+    if provider == "ollama":
+        entry = next(
+            (item for item in list_models()
+             if isinstance(item, dict) and str(item.get("name", "")).strip() == model),
+            None,
+        )
+        digest = entry.get("digest") if entry else None
+        if not isinstance(digest, str) or not digest.strip():
+            raise OllamaError("The configured Ollama model is not installed or does not expose a digest.")
+        return {"provider": provider, "model": model, "identity": digest, "identity_kind": "ollama_model_digest"}
+    if provider == "openai_compatible":
+        base_url = normalize_openai_compatible_base_url(
+            settings.get(f"{purpose}_llm_base_url", "")
+        )
+        fingerprint = hashlib.sha256(
+            f"{provider}|{base_url}|{model}".encode("utf-8")
+        ).hexdigest()
+        return {
+            "provider": provider,
+            "model": model,
+            "identity": fingerprint,
+            "identity_kind": "endpoint_model_configuration_fingerprint",
+        }
+    raise OllamaError(f"Unsupported {purpose} model identity provider.")
+
+
 def model_details(model: str, context_tokens: int | None = None) -> dict[str, Any]:
     """Return local Ollama model metadata and a clearly-labelled context/memory estimate."""
     name = str(model or "").strip()
@@ -323,6 +402,19 @@ def runtime_diagnostics(
             "ram_safety_reserve_gb": settings.get("ram_safety_reserve_gb", 4),
         }, hardware),
     }
+    if settings.get(f"{profile}_llm_provider", "ollama") == "openai_compatible":
+        result["provider"] = "openai_compatible"
+        result["runtime_limits"] = {"num_ctx": requested_context, "cpu_threads": 0}
+        if model:
+            result["selected_model"] = {
+                "name": model,
+                "maximum_context_tokens": None,
+                "recommended_context_tokens": None,
+                "memory_estimate": None,
+                "provider_metadata_available": False,
+            }
+        return result
+    result["provider"] = "ollama"
     try:
         running = _request("/api/ps", timeout=4).get("models", [])
         if isinstance(running, list):
@@ -354,6 +446,145 @@ def runtime_diagnostics(
     return result
 
 
+def normalize_openai_compatible_base_url(value: str) -> str:
+    """Validate an OpenAI-compatible base URL; plaintext HTTP is restricted to loopback."""
+    if not isinstance(value, str) or not value.strip() or len(value) > 2048:
+        raise OllamaError("OpenAI-compatible base URL must be a non-empty URL of at most 2048 characters.")
+    raw = value.strip().rstrip("/")
+    try:
+        parsed = urllib.parse.urlparse(raw)
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError as exc:
+        raise OllamaError("OpenAI-compatible base URL is malformed.") from exc
+    if (
+        parsed.scheme not in {"https", "http"} or not hostname
+        or parsed.username is not None or parsed.password is not None
+        or parsed.query or parsed.fragment or "?" in raw or "#" in raw
+        or parsed.netloc.endswith(":") or (port is not None and not 1 <= port <= 65535)
+        or len(parsed.path) > 512
+        or any(part in {".", ".."} for part in parsed.path.split("/"))
+    ):
+        raise OllamaError("OpenAI-compatible base URL is invalid.")
+    if parsed.scheme != "https":
+        try:
+            is_loopback = ipaddress.ip_address(hostname).is_loopback
+        except ValueError:
+            is_loopback = hostname.lower() == "localhost"
+        if not is_loopback:
+            raise OllamaError("Non-local OpenAI-compatible endpoints must use HTTPS.")
+    if hostname.lower() == "localhost":
+        netloc = "127.0.0.1" if port is None else f"127.0.0.1:{port}"
+        parsed = parsed._replace(netloc=netloc)
+        raw = urllib.parse.urlunparse(parsed)
+    return raw
+
+
+def _openai_compatible_chat(
+    message: str,
+    history: list[dict[str, str]] | None,
+    system_prompt: str | None,
+    *,
+    purpose: str,
+    model: str,
+    timeout: int,
+    num_predict: int | None,
+    response_format: str | None = None,
+    usage_out: dict[str, int] | None = None,
+) -> str:
+    """Call an OpenAI-compatible endpoint, including local LM Studio/vLLM/llama.cpp servers."""
+    settings = get_settings()
+    base_url = settings.get(f"{purpose}_llm_base_url", "")
+    normalized_base = normalize_openai_compatible_base_url(base_url)
+    parsed = urllib.parse.urlparse(normalized_base)
+    api_key_env = settings.get(f"{purpose}_llm_api_key_env", "")
+    headers = {"Content-Type": "application/json"}
+    if api_key_env:
+        if not isinstance(api_key_env, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", api_key_env):
+            raise OllamaError("The API-key environment variable name is invalid.")
+        api_key = os.environ.get(api_key_env)
+        if not api_key:
+            raise OllamaError(f"The configured API-key environment variable '{api_key_env}' is not set.")
+        if len(api_key) > 4096 or any(ord(character) < 32 for character in api_key):
+            raise OllamaError("The configured API key contains invalid header characters or exceeds 4096 characters.")
+        headers["Authorization"] = f"Bearer {api_key}"
+    messages = []
+    if isinstance(system_prompt, str) and system_prompt.strip():
+        messages.append({"role": "system", "content": system_prompt.strip()[:6000]})
+    for item in history or []:
+        if item.get("role") in {"user", "assistant"} and isinstance(item.get("content"), str):
+            messages.append({"role": item["role"], "content": item["content"][:12000]})
+    message_limit = (
+        256000 if purpose == "learning"
+        else 72000 if purpose == "programming"
+        else 16000 if purpose == "factual_review"
+        else 12000
+    )
+    messages.append({"role": "user", "content": message[:message_limit]})
+    payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False}
+    if num_predict is not None:
+        if isinstance(num_predict, bool) or not isinstance(num_predict, int) or not 1 <= num_predict <= 8192:
+            raise ValueError("num_predict must be an integer between 1 and 8192.")
+        payload["max_tokens"] = num_predict
+    if response_format == "json":
+        payload["response_format"] = {"type": "json_object"}
+    if purpose == "factual_review":
+        payload["max_tokens"] = 500
+    elif purpose == "research_plan":
+        payload["max_tokens"] = 700
+    request = urllib.request.Request(
+        normalized_base + "/chat/completions",
+        data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST"
+    )
+    try:
+        acquired = _INFERENCE_LOCK.acquire(timeout=max(1.0, min(float(timeout), 600.0)))
+        if not acquired:
+            raise OllamaError("Timed out waiting for the shared LLM inference slot.", retryable=True)
+        try:
+            if parsed.scheme == "http":
+                _ensure_resource_headroom()
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({}), _NoRedirectHandler()
+            )
+            with opener.open(request, timeout=max(5, min(int(timeout), 600))) as response:
+                body = response.read(_MAX_RESPONSE_BYTES + 1)
+        finally:
+            _INFERENCE_LOCK.release()
+        if len(body) > _MAX_RESPONSE_BYTES:
+            raise OllamaError("LLM response exceeded the 8 MiB limit.")
+        result = json.loads(body.decode("utf-8"))
+        usage = result.get("usage") if isinstance(result, dict) else None
+        if usage_out is not None and isinstance(usage, dict):
+            for source_key, target_key in (
+                ("prompt_tokens", "prompt_eval_count"),
+                ("completion_tokens", "eval_count"),
+                ("total_tokens", "total_tokens"),
+            ):
+                value = usage.get(source_key)
+                if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                    usage_out[target_key] = value
+        choices = result.get("choices") if isinstance(result, dict) else None
+        choice = choices[0] if isinstance(choices, list) and choices else None
+        content = choice.get("message", {}).get("content") if isinstance(choice, dict) else None
+        if isinstance(content, list):
+            content = "".join(
+                part.get("text", "") for part in content
+                if isinstance(part, dict) and isinstance(part.get("text"), str)
+            )
+        if not isinstance(content, str) or not content.strip():
+            raise OllamaError("The selected LLM returned no text content.")
+        return content.strip()
+    except urllib.error.HTTPError as exc:
+        raise OllamaError(
+            f"OpenAI-compatible provider returned HTTP {exc.code}.",
+            retryable=exc.code in {408, 425, 429, 500, 502, 503, 504},
+        ) from exc
+    except (urllib.error.URLError, TimeoutError, socket.timeout, OSError, http.client.HTTPException, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise OllamaError(
+            f"OpenAI-compatible request failed: {type(exc).__name__}", retryable=True
+        ) from exc
+
+
 def chat(
     message: str,
     history: list[dict[str, str]] | None = None,
@@ -361,11 +592,14 @@ def chat(
     *,
     purpose: str = "chat",
     model_override: str | None = None,
+    num_predict: int | None = None,
+    num_ctx_override: int | None = None,
 ) -> str:
     if purpose not in {"chat", "learning", "programming", "factual_review", "research_plan"}:
         raise ValueError("purpose must be chat, learning, programming, factual_review, or research_plan.")
     settings = get_settings()
     prefix = purpose
+    provider_profile = purpose
     hardware = detect_hardware()
     request_timeout = int(settings.get(f"{prefix}_ollama_timeout_seconds", settings.get("ollama_timeout_seconds", 120)))
     if purpose in {"factual_review", "research_plan"}:
@@ -373,13 +607,30 @@ def chat(
     model = str(model_override if model_override is not None else settings.get(f"{prefix}_ollama_model", settings.get("ollama_model", "qwen2.5:7b"))).strip()
     if not model or len(model) > 200:
         raise ValueError("model must be a non-empty name of at most 200 characters.")
+    provider = settings.get(f"{provider_profile}_llm_provider", "ollama")
+    if provider == "openai_compatible":
+        return _openai_compatible_chat(
+            message, history, system_prompt, purpose=provider_profile, model=model,
+            timeout=request_timeout, num_predict=num_predict,
+        )
+    if provider != "ollama":
+        raise OllamaError(f"Unsupported {purpose} LLM provider: {provider}.")
     model_details_payload = _request("/api/show", {"model": model}, timeout=8)
     model_info = model_details_payload.get("model_info", {})
     model_details_meta = model_details_payload.get("details", {})
     architecture = model_details_meta.get("family") if isinstance(model_details_meta, dict) else None
     maximum_context = _model_context_metadata(model_info if isinstance(model_info, dict) else {}, architecture)
+    configured_context = settings.get(f"{prefix}_ollama_num_ctx", settings.get("ollama_num_ctx", 4096))
+    if num_ctx_override is not None:
+        if (
+            isinstance(num_ctx_override, bool)
+            or not isinstance(num_ctx_override, int)
+            or not 512 <= num_ctx_override <= maximum_context
+        ):
+            raise OllamaError("The selected model cannot provide the required learning context length.")
+        configured_context = max(int(configured_context), num_ctx_override)
     runtime_settings = {
-        "ollama_num_ctx": settings.get(f"{prefix}_ollama_num_ctx", settings.get("ollama_num_ctx", 4096)),
+        "ollama_num_ctx": configured_context,
         "ollama_num_thread": settings.get(f"{prefix}_ollama_num_thread", settings.get("ollama_num_thread", 0)),
         "cpu_resource_limit_percent": settings.get("cpu_resource_limit_percent", 90),
         "ram_budget_max_gb": settings.get("ram_budget_max_gb", 25),
@@ -395,6 +646,11 @@ def chat(
         hardware,
         maximum_context_tokens=maximum_context,
     )
+    if num_ctx_override is not None and limits["num_ctx"] < num_ctx_override:
+        raise OllamaError(
+            "The current safe RAM budget cannot provide the context required for this learning generation; "
+            "the request was stopped rather than producing a truncated outline."
+        )
     keep_alive = model_keep_alive(purpose, hardware, settings)
     messages = []
     if isinstance(system_prompt, str) and system_prompt.strip():
@@ -407,6 +663,12 @@ def chat(
         message_limit = min(72000, max(12000, int(settings.get("programming_source_max_chars", 12000)) + 6500))
     messages.append({"role": "user", "content": message[:message_limit]})
     options = {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"]}
+    if not bool(settings.get("gpu_enabled", False)):
+        options["num_gpu"] = 0
+    if num_predict is not None:
+        if isinstance(num_predict, bool) or not isinstance(num_predict, int) or not 1 <= num_predict <= 8192:
+            raise ValueError("num_predict must be an integer between 1 and 8192.")
+        options["num_predict"] = num_predict
     if purpose == "factual_review":
         options["num_ctx"] = min(int(options["num_ctx"]), 4096)
         options["num_predict"] = 500
@@ -426,6 +688,75 @@ def chat(
 
 
 
+def _openai_compatible_embeddings(
+    texts: list[str], *, model: str, timeout: int
+) -> list[list[float]]:
+    settings = get_settings()
+    base_url = normalize_openai_compatible_base_url(
+        settings.get("embedding_llm_base_url", "")
+    )
+    api_key_env = settings.get("embedding_llm_api_key_env", "")
+    headers = {"Content-Type": "application/json"}
+    if api_key_env:
+        if not isinstance(api_key_env, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", api_key_env):
+            raise OllamaError("The embedding API-key environment variable name is invalid.")
+        api_key = os.environ.get(api_key_env)
+        if not api_key:
+            raise OllamaError(f"The configured embedding API-key environment variable '{api_key_env}' is not set.")
+        if len(api_key) > 4096 or any(ord(character) < 32 for character in api_key):
+            raise OllamaError("The embedding API key contains invalid header characters or exceeds 4096 characters.")
+        headers["Authorization"] = f"Bearer {api_key}"
+    request = urllib.request.Request(
+        base_url + "/embeddings",
+        data=json.dumps({"model": model, "input": texts}).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        acquired = _INFERENCE_LOCK.acquire(timeout=max(1.0, min(float(timeout), 600.0)))
+        if not acquired:
+            raise OllamaError("Timed out waiting for the shared embedding inference slot.", retryable=True)
+        try:
+            if urllib.parse.urlparse(base_url).scheme == "http":
+                _ensure_resource_headroom()
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({}), _NoRedirectHandler()
+            )
+            with opener.open(request, timeout=max(1, min(int(timeout), 600))) as response:
+                body = response.read(_MAX_RESPONSE_BYTES + 1)
+        finally:
+            _INFERENCE_LOCK.release()
+        if len(body) > _MAX_RESPONSE_BYTES:
+            raise OllamaError("Embedding response exceeded the 8 MiB limit.")
+        payload = json.loads(body.decode("utf-8"))
+        rows = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(rows, list) or len(rows) != len(texts):
+            raise OllamaError("OpenAI-compatible provider returned an unexpected embedding count.")
+        ordered: list[list[float] | None] = [None] * len(texts)
+        for row in rows:
+            if not isinstance(row, dict):
+                raise OllamaError("OpenAI-compatible provider returned an invalid embedding item.")
+            index = row.get("index")
+            vector = row.get("embedding")
+            if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(texts):
+                raise OllamaError("OpenAI-compatible provider returned an invalid embedding index.")
+            if ordered[index] is not None or not isinstance(vector, list):
+                raise OllamaError("OpenAI-compatible provider returned duplicate or invalid embedding data.")
+            ordered[index] = vector
+        if any(vector is None for vector in ordered):
+            raise OllamaError("OpenAI-compatible provider omitted an embedding.")
+        return [vector for vector in ordered if vector is not None]
+    except urllib.error.HTTPError as exc:
+        raise OllamaError(
+            f"OpenAI-compatible embedding provider returned HTTP {exc.code}.",
+            retryable=exc.code in {408, 425, 429, 500, 502, 503, 504},
+        ) from exc
+    except (urllib.error.URLError, TimeoutError, socket.timeout, OSError, http.client.HTTPException, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise OllamaError(
+            f"OpenAI-compatible embedding request failed: {type(exc).__name__}", retryable=True
+        ) from exc
+
+
 def embed(texts: list[str], model: str | None = None) -> list[list[float]]:
     """Generate bounded local embeddings; reject malformed vectors rather than caching them."""
     if not isinstance(texts, list) or not texts or len(texts) > 32:
@@ -442,12 +773,19 @@ def embed(texts: list[str], model: str | None = None) -> list[list[float]]:
         raise OllamaError("Embedding model name is invalid.")
 
     configured_timeout = int(settings["ollama_timeout_seconds"])
-    response = _request(
-        "/api/embed",
-        {"model": selected_model, "input": normalized},
-        timeout=max(1, min(configured_timeout, 8)),
-    )
-    embeddings = response.get("embeddings")
+    if settings.get("embedding_llm_provider", "ollama") == "openai_compatible":
+        embeddings = _openai_compatible_embeddings(
+            normalized, model=selected_model, timeout=configured_timeout
+        )
+    elif settings.get("embedding_llm_provider", "ollama") == "ollama":
+        response = _request(
+            "/api/embed",
+            {"model": selected_model, "input": normalized},
+            timeout=max(1, min(configured_timeout, 8)),
+        )
+        embeddings = response.get("embeddings")
+    else:
+        raise OllamaError("Unsupported embedding provider.")
     if not isinstance(embeddings, list) or len(embeddings) != len(normalized):
         raise OllamaError("Ollama returned an unexpected embedding count.")
 

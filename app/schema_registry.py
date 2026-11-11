@@ -1339,6 +1339,79 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_browser_learning_retry_schedule ON browser_learning_courses(status, next_retry_at, id)",
         ),
     ),
+    Migration(
+        42,
+        "research-first-learning-curriculum-provenance",
+        (
+            """CREATE TABLE learning_path_research (
+                path_id INTEGER PRIMARY KEY REFERENCES learning_paths(id) ON DELETE CASCADE,
+                requested_topic TEXT NOT NULL CHECK(length(trim(requested_topic)) BETWEEN 1 AND 300),
+                outline_json TEXT NOT NULL,
+                outline_sha256 TEXT NOT NULL CHECK(length(outline_sha256) = 64),
+                model_name TEXT NOT NULL CHECK(length(trim(model_name)) BETWEEN 1 AND 200),
+                model_selection_json TEXT NOT NULL DEFAULT '{}',
+                source_count INTEGER NOT NULL CHECK(source_count >= 3),
+                sources_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_learning_path_research_created ON learning_path_research(created_at DESC, path_id)",
+        ),
+    ),
+    Migration(
+        43,
+        "version-aware-learning-topic-provenance",
+        (
+            "ALTER TABLE learning_path_topics ADD COLUMN applicability_json TEXT NOT NULL DEFAULT '{}'",
+            "ALTER TABLE learning_path_topics ADD COLUMN source_urls_json TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE learning_path_topics ADD COLUMN hierarchy_path TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE learning_path_topics ADD COLUMN depth INTEGER NOT NULL DEFAULT 0 CHECK(depth >= 0)",
+        ),
+    ),
+    Migration(
+        44,
+        "automatic-learning-release-watch",
+        (
+            """CREATE TABLE learning_release_watch (
+                path_id INTEGER PRIMARY KEY REFERENCES learning_path_research(path_id) ON DELETE CASCADE,
+                status TEXT NOT NULL DEFAULT 'active'
+                    CHECK(status IN ('active', 'superseded', 'paused')),
+                last_checked_at TEXT,
+                next_check_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_source_fingerprint TEXT NOT NULL DEFAULT '',
+                last_task_id INTEGER,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_learning_release_watch_due ON learning_release_watch(status, next_check_at, path_id)",
+            """INSERT INTO learning_release_watch(path_id, status, next_check_at)
+               SELECT path_id, 'active', CURRENT_TIMESTAMP FROM learning_path_research""",
+        ),
+    ),
+    Migration(
+        45,
+        "unverified-chat-learning-candidates",
+        (
+            """CREATE TABLE learning_chat_candidates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id INTEGER NOT NULL CHECK(conversation_id > 0),
+                message_id INTEGER NOT NULL CHECK(message_id > 0),
+                user_message_id INTEGER NOT NULL CHECK(user_message_id > 0),
+                task_id INTEGER,
+                source_kind TEXT NOT NULL CHECK(source_kind IN ('chat_answer','research_answer')),
+                topic_hint TEXT NOT NULL CHECK(length(trim(topic_hint)) BETWEEN 1 AND 300),
+                content TEXT NOT NULL CHECK(length(trim(content)) > 0),
+                content_sha256 TEXT NOT NULL CHECK(length(content_sha256) = 64),
+                provenance_json TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'unverified'
+                    CHECK(status IN ('unverified','reviewed','promoted','dismissed')),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(conversation_id, message_id)
+            )""",
+            "CREATE INDEX idx_learning_chat_candidates_status ON learning_chat_candidates(status, created_at DESC, id DESC)",
+            "CREATE INDEX idx_learning_chat_candidates_topic ON learning_chat_candidates(topic_hint, created_at DESC)",
+        ),
+    ),
 )
 
 
@@ -1811,6 +1884,7 @@ CLOUD_RESOURCE_MIGRATIONS = (
             "CREATE INDEX idx_cloud_selection_decisions_candidate ON cloud_resource_selection_decisions(candidate_id, evaluated_at DESC)",
         ),
     ),
+
 )
 
 

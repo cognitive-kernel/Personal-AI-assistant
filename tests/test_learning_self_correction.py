@@ -84,25 +84,26 @@ def test_malformed_initial_response_enters_bounded_repair_cycle(learning_store, 
     assert len(calls) == 2
     quality = finished["quality"]
     assert quality["generation_budget"]["calls_used"] == 2
-    assert quality["generation_budget"]["predict_tokens_reserved"] == 2600
+    assert quality["generation_budget"]["predict_tokens_reserved"] == 7800
     assert quality["generation_budget"]["budget_exhausted"] is True
     assert quality["pipeline_budget"]["calls_used"] == 2
-    assert quality["pipeline_budget"]["predict_tokens_reserved"] == 2600
+    assert quality["pipeline_budget"]["predict_tokens_reserved"] == 7800
     assert quality["pipeline_budget"]["scope"] == "durable_single_learning_job_across_generation_and_review_channels"
     assert quality["generation_provenance"]["initial_response_malformed"] is True
     assert quality["generation_provenance"]["repair_response_valid"] is True
     assert quality["generation_provenance"]["attempt_count"] == 2
+    assert [call["options"]["num_predict"] for call in calls] == [3900, 3900]
     assert len(quality["generation_provenance"]["repair_prompt_sha256"]) == 64
     assert quality["generation_provenance"]["prompt_registry_version"] == 1
-    assert quality["generation_provenance"]["prompt_version"] == "learning-lesson-v1"
-    assert quality["generation_provenance"]["repair_prompt_version"] == "learning-lesson-repair-v1"
+    assert quality["generation_provenance"]["prompt_version"] == "learning-lesson-v6"
+    assert quality["generation_provenance"]["repair_prompt_version"] == "learning-lesson-repair-v5"
     assert quality["generation_provenance"]["provider_usage"] == {
         "initial_generation": {"prompt_eval_count": 800, "eval_count": 120, "total_duration": 900000},
         "quality_repair": {"prompt_eval_count": 1100, "eval_count": 900, "eval_duration": 500000},
     }
 
 
-def test_lower_scoring_repair_does_not_replace_best_initial_quality(learning_store, monkeypatch):
+def test_low_quality_lesson_and_source_are_retained_after_worse_repair(learning_store, monkeypatch):
     calls = []
     initial = _valid_payload("A decorator wraps a callable and can add reusable behavior.")
     repair = _valid_payload("Short repair.")
@@ -127,13 +128,32 @@ def test_lower_scoring_repair_does_not_replace_best_initial_quality(learning_sto
     learning.run_job(job["id"])
     finished = learning.get_job(job["id"])
 
-    assert finished["status"] == "rejected"
+    assert finished["status"] == "completed"
     assert len(calls) == 2
     assert finished["quality"]["score"] == 55
-    assert finished["quality"]["reasons"] == ["needs a concrete example"]
+    assert finished["quality"]["accepted"] is False
+    assert finished["quality"]["lesson_retained"] is True
     assert finished["quality"]["generation_budget"]["calls_used"] == 2
     assert finished["quality"]["generation_provenance"]["attempt_count"] == 2
-    assert finished["lesson"] is None
+    assert finished["lesson"] == initial["lesson"]
+    with db.learning_connection() as connection:
+        stored = connection.execute(
+            "SELECT content, status FROM knowledge_items WHERE job_id=?",
+            (job["id"],),
+        ).fetchone()
+        source = connection.execute(
+            "SELECT content FROM learning_source_text WHERE job_id=?",
+            (job["id"],),
+        ).fetchone()
+        candidate = connection.execute(
+            "SELECT content FROM temporary_knowledge_candidates WHERE job_id=?",
+            (job["id"],),
+        ).fetchone()
+    assert stored is not None and stored["content"] == initial["lesson"]
+    assert stored["status"] == "unverified"
+    assert source is not None and source["content"] == "Reference text for the lesson."
+    assert candidate is not None and candidate["content"] == initial["lesson"]
+
 
 def test_accepted_initial_lesson_has_no_repair_prompt_provenance(learning_store, monkeypatch):
     payload = _valid_payload()
@@ -155,8 +175,23 @@ def test_accepted_initial_lesson_has_no_repair_prompt_provenance(learning_store,
 
     assert finished["status"] == "completed"
     assert len(calls) == 1
+    lesson_prompt = json.loads(calls[0]["messages"][1]["content"])
+    instruction = lesson_prompt["instruction"]
+    assert "exact product/release/build" in instruction
+    assert "compatibility/configuration level" in instruction
+    assert "earliest documented public/initial/stable release" in instruction
+    assert "ascending version order" in instruction
+    assert "release year/date" in instruction
+    assert "If sources disagree" in instruction
+    assert "Never invent a version, date, source" in instruction
+    assert "internal consistency audit" in instruction
+    assert "not exact-string matching" in instruction
+    assert "non-destructive, versioned correction workflow" in instruction
+    assert "There is no arbitrary maximum word count" in instruction
+    assert "200-260 instructional words" not in instruction
+    assert calls[0]["options"]["num_predict"] == 3900
     provenance = finished["quality"]["generation_provenance"]
-    assert provenance["prompt_version"] == "learning-lesson-v1"
+    assert provenance["prompt_version"] == "learning-lesson-v6"
     assert provenance["repair_prompt_version"] is None
     assert provenance["repair_prompt_sha256"] is None
     assert provenance["attempt_count"] == 1
@@ -164,19 +199,25 @@ def test_accepted_initial_lesson_has_no_repair_prompt_provenance(learning_store,
 
 
 
-def test_learning_generation_uses_cheapest_installed_model_meeting_quality_and_budget(
+def test_learning_generation_pins_configured_model_even_when_another_is_cheaper(
     learning_store, monkeypatch
 ):
     db.update_settings({
+        "learning_ollama_model": "pinned:latest",
         "learning_model_cost_profiles": {
             "cheap:latest": {
                 "input_cost_microusd_per_1k_tokens": 100,
                 "output_cost_microusd_per_1k_tokens": 100,
                 "quality_score": 0.85,
             },
-            "premium:latest": {
+            "pinned:latest": {
                 "input_cost_microusd_per_1k_tokens": 500,
                 "output_cost_microusd_per_1k_tokens": 500,
+                "quality_score": 0.99,
+            },
+            "premium:latest": {
+                "input_cost_microusd_per_1k_tokens": 700,
+                "output_cost_microusd_per_1k_tokens": 700,
                 "quality_score": 0.99,
             },
         },
@@ -185,7 +226,7 @@ def test_learning_generation_uses_cheapest_installed_model_meeting_quality_and_b
     })
     monkeypatch.setattr(
         ollama, "list_models",
-        lambda: [{"name": "cheap:latest"}, {"name": "premium:latest"}],
+        lambda: [{"name": "cheap:latest"}, {"name": "premium:latest"}, {"name": "pinned:latest"}],
     )
     calls = []
     monkeypatch.setattr(
@@ -206,8 +247,8 @@ def test_learning_generation_uses_cheapest_installed_model_meeting_quality_and_b
     provenance = finished["quality"]["generation_provenance"]
     assert finished["status"] == "completed"
     assert len(calls) == 1
-    assert calls[0]["model"] == "cheap:latest"
-    assert provenance["model_id"] == "cheap:latest"
+    assert calls[0]["model"] == "pinned:latest"
+    assert provenance["model_id"] == "pinned:latest"
     assert provenance["model_selection"]["status"] == "selected"
     assert provenance["model_selection"]["estimated_cost_microusd"] <= 100000
     assert provenance["model_selection"]["budget_scope"] == "lesson_generation_single_repair_and_optional_claim_review"
@@ -217,6 +258,7 @@ def test_learning_generation_fails_closed_when_no_model_meets_explicit_budget(
     learning_store, monkeypatch
 ):
     db.update_settings({
+        "learning_ollama_model": "over-budget:latest",
         "learning_model_cost_profiles": {
             "over-budget:latest": {
                 "input_cost_microusd_per_1k_tokens": 100000,
@@ -322,6 +364,7 @@ def test_web_claim_review_uses_selected_model_and_is_included_in_task_cost_estim
         "The parser reports the location of the invalid input so callers can correct the source data."
     )
     db.update_settings({
+        "learning_ollama_model": "cheap:latest",
         "learning_model_cost_profiles": {
             "cheap:latest": {
                 "input_cost_microusd_per_1k_tokens": 100,
@@ -403,7 +446,7 @@ def test_web_claim_review_uses_selected_model_and_is_included_in_task_cost_estim
     assert review_calls[0]["model_override"] == "cheap:latest"
     assert selection["claim_review_included"] is True
     assert selection["claim_review_prompt_tokens"] > 0
-    assert selection["estimated_completion_tokens"] == 3600
+    assert selection["estimated_completion_tokens"] == 8800
     assert selection["budget_scope"] == "lesson_generation_single_repair_and_optional_claim_review"
     generation_provenance = finished["quality"]["generation_provenance"]
     assert generation_provenance["provider_usage"]["claim_review"] == {
@@ -413,7 +456,7 @@ def test_web_claim_review_uses_selected_model_and_is_included_in_task_cost_estim
     assert generation_provenance["claim_review"]["model_id"] == "cheap:latest"
     durable = learning_durable_budget.get_job_budget(job["id"])
     assert durable["calls_used"] == 2
-    assert durable["predict_tokens_reserved"] == 2200
+    assert durable["predict_tokens_reserved"] == 4900
 
 
 
@@ -430,6 +473,7 @@ def test_web_claim_review_budget_covers_generation_repair_and_review(
         "The parser reports the location of the invalid input so callers can correct the source data."
     )
     db.update_settings({
+        "learning_ollama_model": "selected:latest",
         "learning_model_cost_profiles": {
             "selected:latest": {
                 "input_cost_microusd_per_1k_tokens": 100,
@@ -501,13 +545,13 @@ def test_web_claim_review_budget_covers_generation_repair_and_review(
     ]
     assert review_calls == ["selected:latest"]
     provenance = finished["quality"]["generation_provenance"]
-    assert provenance["model_selection"]["estimated_completion_tokens"] == 3600
+    assert provenance["model_selection"]["estimated_completion_tokens"] == 8800
     assert provenance["provider_usage"]["claim_review"] == {
         "prompt_eval_count": 900, "eval_count": 150
     }
     durable = learning_durable_budget.get_job_budget(job["id"])
     assert durable["calls_used"] == 3
-    assert durable["predict_tokens_reserved"] == 3600
+    assert durable["predict_tokens_reserved"] == 8800
 
 
 
@@ -523,6 +567,7 @@ def test_web_claim_review_does_not_repeat_an_already_reserved_review_stage(
         "The parser reports the location of the invalid input so callers can correct the source data."
     )
     db.update_settings({
+        "learning_ollama_model": "cheap:latest",
         "learning_model_cost_profiles": {
             "cheap:latest": {
                 "input_cost_microusd_per_1k_tokens": 100,
@@ -583,4 +628,151 @@ def test_web_claim_review_does_not_repeat_an_already_reserved_review_stage(
     )
     durable = learning_durable_budget.get_job_budget(job["id"])
     assert durable["calls_used"] == 2
-    assert durable["predict_tokens_reserved"] == 2200
+    assert durable["predict_tokens_reserved"] == 4900
+
+
+def test_user_report_creates_automatic_correction_job_without_mutating_original(
+    learning_store, monkeypatch
+):
+    original = learning.create_job("Python decorators")
+    with db.learning_connection() as connection:
+        connection.execute(
+            """UPDATE learning_jobs SET status='completed', lesson=? WHERE id=?""",
+            ("Original lesson with a faulty decorator example.", original["id"]),
+        )
+        connection.execute(
+            """INSERT INTO learning_evidence(
+                   job_id, evidence_type, source_ref, content_hash, note
+               ) VALUES (?, 'web_page', 'https://docs.python.org/3/reference/compound_stmts.html', 'abc', 'captured')""",
+            (original["id"],),
+        )
+    monkeypatch.setattr(
+        learning, "_enqueue_learning_job",
+        lambda job_id: {"id": 991, "status": "queued", "payload": {"job_id": job_id}},
+    )
+
+    result = learning.submit_lesson_issue(
+        original["id"],
+        "The decorator example raises TypeError when called with two arguments.",
+    )
+
+    correction = result["correction_job"]
+    assert result["queued"] is True
+    assert correction["id"] != original["id"]
+    assert correction["task_id"] == 991
+    with db.learning_connection() as connection:
+        old = connection.execute(
+            "SELECT status, lesson FROM learning_jobs WHERE id=?",
+            (original["id"],),
+        ).fetchone()
+        new = connection.execute(
+            "SELECT topic, lesson_review_json, status FROM learning_jobs WHERE id=?",
+            (correction["id"],),
+        ).fetchone()
+    review = json.loads(new["lesson_review_json"])
+    assert old["status"] == "completed"
+    assert old["lesson"] == "Original lesson with a faulty decorator example."
+    assert new["topic"] == "Python decorators"
+    assert new["status"] == "queued"
+    assert review["correction_mode"] == "user_reported_runtime_failure"
+    assert review["prior_job_id"] == original["id"]
+    assert "TypeError" in review["reported_issue"]
+    assert review["previous_lesson_sha256"] == __import__("hashlib").sha256(
+        old["lesson"].encode("utf-8")
+    ).hexdigest()
+    assert review["prior_source_urls"] == [
+        "https://docs.python.org/3/reference/compound_stmts.html"
+    ]
+
+
+def test_user_report_rejects_empty_or_oversized_issue_without_creating_job(learning_store):
+    original = learning.create_job("Python decorators")
+    with pytest.raises(ValueError, match="issue_report"):
+        learning.submit_lesson_issue(original["id"], " ")
+    with pytest.raises(ValueError, match="issue_report"):
+        learning.submit_lesson_issue(original["id"], "x" * 5001)
+
+
+
+
+def test_lesson_review_issues_automatically_enqueue_correction_job(learning_store, monkeypatch):
+    original = learning.create_job("Python decorators")
+    assessment = {
+        "learning_outcomes": ["Understand decorators", "Use wrappers", "Preserve metadata"],
+        "questions": ["What is a decorator?", "What is a wrapper?", "Why use wraps?"],
+        "answer_key": ["A callable wrapper.", "A function around a callable.", "To preserve metadata."],
+    }
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE learning_jobs SET status='completed', lesson=?, assessment_json=? WHERE id=?",
+            ("Original lesson.", json.dumps(assessment, ensure_ascii=False), original["id"]),
+        )
+    monkeypatch.setattr(
+        learning, "_enqueue_learning_job",
+        lambda job_id: {"id": 992, "status": "queued", "payload": {"job_id": job_id}},
+    )
+
+    saved = learning.submit_lesson_review(
+        original["id"],
+        ["mastered", "partial", "review"],
+        3,
+        takeaway="I learned the decorator basics.",
+        issues="The example fails when the wrapped function receives keyword arguments.",
+    )
+
+    assert saved["correction_job"]["id"] != original["id"]
+    assert saved["correction_job"]["task_id"] == 992
+    assert "اصلاح خودکار" in saved["note"]
+    with db.learning_connection() as connection:
+        review = connection.execute(
+            "SELECT issues FROM lesson_reviews WHERE id=?",
+            (saved["review_id"],),
+        ).fetchone()
+    assert review["issues"].startswith("The example fails")
+
+
+
+
+def test_non_json_chat_style_answer_is_retained_when_repair_is_also_unstructured(
+    learning_store, monkeypatch
+):
+    calls = []
+    raw_lesson = (
+        "A Python decorator is a callable that receives another callable and returns "
+        "a replacement callable. It is commonly used to add reusable behavior."
+    )
+    responses = iter([
+        {"message": {"content": raw_lesson}},
+        {"message": {"content": "A decorator wraps a function."}},
+    ])
+    monkeypatch.setattr(
+        learning, "_request",
+        lambda _path, payload, **_kwargs: calls.append(payload) or next(responses),
+    )
+    monkeypatch.setattr(
+        learning, "evaluate_learning_value",
+        lambda *_args, **_kwargs: {
+            "accepted": False, "score": 0,
+            "reasons": ["assessment schema missing; lesson retained as unverified"],
+        },
+    )
+
+    job = learning.create_job("Python decorators", source_text="User-provided reference.")
+    learning.run_job(job["id"])
+    finished = learning.get_job(job["id"])
+
+    assert finished["status"] == "completed"
+    assert len(calls) == 2
+    assert finished["lesson"] == raw_lesson
+    assert finished["quality"]["accepted"] is False
+    assert finished["quality"]["lesson_retained"] is True
+    assert finished["quality"]["generation_provenance"]["initial_response_malformed"] is True
+    assert finished["quality"]["generation_provenance"]["repair_response_valid"] is False
+    with db.learning_connection() as conn:
+        stored = conn.execute(
+            "SELECT content, status FROM knowledge_items WHERE job_id=?",
+            (job["id"],),
+        ).fetchone()
+    assert stored is not None
+    assert stored["content"] == raw_lesson
+    assert stored["status"] == "unverified"

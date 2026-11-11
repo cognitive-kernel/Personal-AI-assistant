@@ -110,7 +110,7 @@ def test_rejects_missing_or_malformed_learning_outcomes():
 
 
 
-def test_lesson_below_target_length_is_not_accepted_even_if_other_signals_exist():
+def test_lesson_length_is_not_a_quality_gate_but_repetition_still_is():
     lesson = (
         "SQL Server و Database Engine درخواست T-SQL را پردازش می‌کنند. "
         "برای مثال، execution plan می‌تواند نشان دهد که query از index یا table scan استفاده می‌کند. "
@@ -122,9 +122,12 @@ def test_lesson_below_target_length_is_not_accepted_even_if_other_signals_exist(
         ["عملگرهای اجرای query را نشان می‌دهد.", "هزینه نگهداری و توزیع داده مؤثر است.", "logical reads و زمان را مقایسه می‌کنیم."],
         ["هدف اول قابل سنجش", "هدف دوم قابل سنجش", "هدف سوم قابل سنجش"],
     )
-    assert result["target_words"] == 200
+    assert result["word_count"] < 200
+    assert result["minimum_words"] is None
+    assert result["target_words"] is None
+    assert result["maximum_words"] is None
     assert result["accepted"] is False
-    assert any("بازه هدف 200" in reason for reason in result["reasons"])
+    assert "تکرار متن زیاد است و اطلاعات تازه کمی دارد." in result["reasons"]
 
 
 def test_sources_section_does_not_count_as_instructional_lesson_words():
@@ -137,6 +140,7 @@ def test_sources_section_does_not_count_as_instructional_lesson_words():
         ["Explain the engine", "Inspect a query plan", "Compare measured results"],
     )
     assert result["word_count"] < 200
+    assert result["maximum_words"] is None
     assert result["accepted"] is False
 
 
@@ -153,4 +157,56 @@ def test_persian_lesson_with_many_latin_technical_terms_uses_persian_length_targ
         ["توضیح نقش موتور", "تحلیل مسیر اجرا", "مقایسه نتیجه آزمون"],
     )
     assert result["detected_language"] == "fa"
-    assert result["target_words"] == 200
+    assert result["target_words"] is None
+
+
+
+def test_comprehensive_lesson_can_exceed_260_words_without_length_penalty():
+    lesson = (
+        "در SQL Server، Database Engine درخواست T-SQL را تجزیه و برای اجرا آماده می‌کند. "
+        "execution plan مسیر دسترسی به داده، عملگرها و ترتیب اجرای بخش‌های مهم را نشان می‌دهد. "
+        "برای مثال، یک query با شرط CustomerId ممکن است از index seek یا table scan استفاده کند. "
+        "زیرا optimizer برآورد cardinality و هزینهٔ I/O و CPU را مقایسه می‌کند، وجود index به‌تنهایی "
+        "تضمین‌کنندهٔ اجرای سریع‌تر نیست. در عمل، ابتدا baseline شامل logical reads، زمان اجرا، "
+        "تعداد ردیف‌ها و وضعیت cache را ثبت کنید. سپس query یکسان را با پارامترها و دادهٔ ثابت اجرا "
+        "کنید و actual execution plan را با estimated plan مقایسه کنید. اختلاف تخمین و واقعیت می‌تواند "
+        "به آمار قدیمی، skew داده یا پارامترهای نامناسب مربوط باشد. "
+        "در بررسی index، ترتیب ستون‌های کلید، ستون‌های INCLUDE، selectivity و هزینهٔ نگهداری را "
+        "در نظر بگیرید. ایندکس اضافی فضای ذخیره‌سازی مصرف می‌کند و عملیات INSERT، UPDATE و DELETE "
+        "را سنگین‌تر می‌سازد. همچنین parameter sniffing ممکن است باعث شود یک plan برای یک مقدار "
+        "مناسب و برای مقدار دیگر نامناسب باشد. برای تشخیص، چند مقدار نماینده را با یک روش کنترل‌شده "
+        "آزمایش کنید و plan، duration و logical reads را کنار هم قرار دهید. "
+        "در محیط عملیاتی، تغییرات را ابتدا روی نسخهٔ پشتیبان یا محیط staging بسنجید و پیش از انتشار "
+        "روش rollback و معیار توقف را مشخص کنید. مجوزهای لازم را حداقلی نگه دارید و از اجرای دستور "
+        "تغییردهنده روی دادهٔ واقعی بدون backup معتبر خودداری کنید. "
+        "برای تحلیل عمیق‌تر، wait statistics، Query Store، statistics histogram و fragmentation "
+        "را با توجه به نسخهٔ موتور و تنظیمات پایگاه داده بررسی کنید. هر کدام نشانه‌ای متفاوت ارائه "
+        "می‌کنند و نباید یک metric را به‌تنهایی علت قطعی بدانید. "
+        "نتیجه باید همراه با نسخهٔ SQL Server، compatibility level، حجم و توزیع داده، تنظیمات، "
+        "زمان آزمایش و منبع مستندات ثبت شود تا شخص دیگری بتواند آن را بازتولید کند. "
+        "اگر دو منبع دربارهٔ رفتار نسخه‌ای اختلاف دارند، هر دو را ثبت کنید و ادعا را conflicting "
+        "علامت بزنید؛ نبود مدرک را با حدس یا تجربهٔ نسخهٔ دیگر پر نکنید. "
+        "این روش کمک می‌کند تصمیم بهینه‌سازی بر پایهٔ شواهد قابل تکرار باشد، نه یک عدد منفرد یا "
+        "برداشت از نام یک گزینه. "
+    )
+    result = evaluate_learning_value(
+        lesson,
+        [
+            "execution plan چه اطلاعاتی ارائه می‌کند؟",
+            "چرا index همیشه سرعت را افزایش نمی‌دهد؟",
+            "چگونه تغییر performance را معتبر می‌سنجیم؟",
+        ],
+        [
+            "عملگرها و مسیر دسترسی به داده را نشان می‌دهد.",
+            "هزینهٔ نگهداری و توزیع داده بر انتخاب optimizer اثر دارد.",
+            "با ثبت baseline و مقایسهٔ plan و logical reads روی دادهٔ نماینده.",
+        ],
+        [
+            "تحلیل مسیر اجرای query",
+            "ارزیابی هزینه و trade-off ایندکس",
+            "اندازه‌گیری و مستندسازی نتیجهٔ آزمایش",
+        ],
+    )
+    assert result["word_count"] > 260
+    assert result["maximum_words"] is None
+    assert result["accepted"] is True

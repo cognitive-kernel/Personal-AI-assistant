@@ -98,3 +98,78 @@ def test_research_worker_persists_assistant_reply(tmp_path, monkeypatch):
         ("assistant", "پاسخ پایدار"),
     ]
     assert messages[1]["task_id"] == 202
+
+
+
+def test_assistant_answer_is_staged_as_local_unverified_learning_candidate(tmp_path, monkeypatch):
+    from app import learning_candidates
+
+    _configure_databases(tmp_path, monkeypatch)
+    conversation = chat_history.create_conversation()
+    query = "Explain how SQL Server query plan operators affect execution performance."
+    answer = (
+        "A query plan is a tree of physical operators selected by the optimizer. "
+        "Each operator consumes rows from its children and produces rows for its parent. "
+        "The estimated and actual row counts help identify cardinality errors, while "
+        "operator costs are estimates rather than measured elapsed time."
+    )
+    chat_history.append_user_message(conversation["id"], query)
+    message = chat_history.append_assistant_message(conversation["id"], answer)
+
+    candidates = learning_candidates.list_chat_candidates()
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate["conversation_id"] == conversation["id"]
+    assert candidate["message_id"] == message["id"]
+    assert candidate["source_kind"] == "chat_answer"
+    assert candidate["topic_hint"] == query
+    assert candidate["content"] == answer
+    assert candidate["status"] == "unverified"
+    provenance = __import__("json").loads(candidate["provenance_json"])
+    assert provenance["storage"] == "local_only"
+    assert provenance["trust"] == "unverified"
+    assert provenance["answer_sha256"] == candidate["content_sha256"]
+
+
+def test_research_answer_candidate_is_idempotent_and_keeps_task_provenance(tmp_path, monkeypatch):
+    from app import learning_candidates
+
+    _configure_databases(tmp_path, monkeypatch)
+    conversation = chat_history.create_conversation()
+    chat_history.append_user_message(
+        conversation["id"], "How do database indexes improve lookup performance?"
+    )
+    answer = (
+        "A database index stores an ordered or otherwise searchable representation "
+        "of selected columns. It can reduce the rows examined for a lookup, but adds "
+        "storage and write-maintenance cost. The optimizer chooses whether the index "
+        "is useful for a particular query and data distribution."
+    )
+
+    first = chat_history.append_assistant_message(conversation["id"], answer, task_id=812)
+    second = chat_history.append_assistant_message(conversation["id"], "duplicate ignored", task_id=812)
+
+    assert first["id"] == second["id"]
+    candidates = learning_candidates.list_chat_candidates()
+    assert len(candidates) == 1
+    assert candidates[0]["source_kind"] == "research_answer"
+    assert candidates[0]["task_id"] == 812
+
+
+def test_candidate_staging_skips_short_or_credential_bearing_answers(tmp_path, monkeypatch):
+    from app import learning_candidates
+
+    _configure_databases(tmp_path, monkeypatch)
+    conversation = chat_history.create_conversation()
+    chat_history.append_user_message(conversation["id"], "Explain database transactions.")
+    chat_history.append_assistant_message(conversation["id"], "A transaction groups operations.")
+
+    second = chat_history.create_conversation()
+    chat_history.append_user_message(second["id"], "Store this API key: abcdefghijklmnop")
+    chat_history.append_assistant_message(
+        second["id"],
+        "The API key: abcdefghijklmnop should be stored in a protected environment variable. "
+        "Never put credentials directly in source code or public logs.",
+    )
+
+    assert learning_candidates.list_chat_candidates() == []

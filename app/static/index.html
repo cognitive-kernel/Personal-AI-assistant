@@ -51,7 +51,7 @@
 <section id="chat-section"><h2>گفتگو و پژوهش</h2><p class="muted">گفتگوها در پایگاه دادهٔ محلی ذخیره می‌شوند و با رفتن به صفحه‌های دیگر یا تازه‌سازی حذف نمی‌شوند. ایجاد گفتگوی جدید، گفتگوهای قبلی را نگه می‌دارد.</p><div class="cloud-actions"><label for="chat-conversation-select">تاریخچهٔ گفتگو<select id="chat-conversation-select"><option value="">در حال بارگذاری…</option></select></label><button id="chat-new-conversation" type="button">گفتگوی جدید</button><button id="chat-delete-conversation" type="button" class="danger" disabled>حذف گفتگوی انتخاب‌شده</button><button id="chat-refresh-conversations" type="button">به‌روزرسانی تاریخچه</button></div><div id="chat-messages" aria-live="polite" aria-label="پیام‌های گفتگو"></div><form id="chat-form"><textarea id="message" dir="auto" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید" aria-label="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output" role="status" aria-live="polite"></pre></section>
 <section id="learning-section"><h2>یادگیری</h2>
 <div id="browser-learning-panel" class="panel">
-<h3>مسیر اول: یادگیری هوش‌به‌هوش با ChatGPT در Chrome</h3>
+<h3>مسیر جداگانه و اختیاری: یادگیری با ChatGPT در Chrome</h3>
 <p class="muted">این مسیر از نشست واردشدهٔ ChatGPT در Chrome استفاده می‌کند: ابتدا سرفصل‌ها را می‌گیرد، سپس هر درس را جداگانه درخواست می‌کند و هر پاسخ را همراه با hash و وضعیت در پایگاه داده ذخیره می‌کند. محتوای دریافت‌شده تا زمان ارزیابی، تأییدشده محسوب نمی‌شود.</p>
 <p class="muted">پیش‌نیاز: Playwright را با <code>python -m pip install -e ".[browser]"</code> نصب کنید. سپس Chrome را با یک پروفایل جداگانه و پورت DevTools محلی اجرا کنید؛ وارد ChatGPT شوید و صفحهٔ ChatGPT را باز نگه دارید. پورت DevTools را روی شبکه منتشر نکنید.</p>
 <form id="browser-learning-form">
@@ -68,9 +68,21 @@
 </form>
 <pre id="browser-learning-output" role="status" aria-live="polite">هنوز دوره‌ای در این مسیر ایجاد نشده است.</pre>
 <div id="browser-learning-courses" aria-live="polite">فهرست دوره‌های هوش‌به‌هوش هنوز بارگذاری نشده است.</div>
-</div><form id="learning-form"><input id="topic" required maxlength="300" placeholder="موضوع یادگیری" aria-label="موضوع یادگیری">
-<textarea id="source-text" rows="4" maxlength="100000" placeholder="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد" aria-label="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد"></textarea><button type="submit">ایجاد کار یادگیری</button></form>
-<p class="muted">درس می‌تواند از منابع وب استفاده کند، اما بررسی مدل به‌تنهایی تأیید علمی مستقل نیست. نتیجهٔ آزمون فعلاً تطبیق متنی دقیق است.</p><pre id="learning-output"></pre><h3>نامزدهای موقت درس</h3><p class="muted">درس‌های پذیرفته‌شده تا پیش از اجرای آزمون مستقل در وضعیت موقت می‌مانند. ثبت طرح آزمون به‌معنی اجرای آزمون یا ارتقای دانش نیست.</p><button id="refresh-learning-candidates" type="button">بارگذاری نامزدهای موقت</button><div id="learning-candidates" aria-live="polite">نامزدها هنوز بارگذاری نشده‌اند.</div><div id="assessment-form-container"></div><h3>صف بازبینی انسانی</h3><p class="muted">کارهای یادگیری با خطای نهایی یا رد کیفیت در این صف ثبت می‌شوند. بازبینی، حذف یا ارتقای خودکار دانش انجام نمی‌دهد.</p><button id="refresh-learning-escalations" type="button">به‌روزرسانی صف بازبینی</button><div id="learning-escalations" aria-live="polite">صف بازبینی هنوز بارگذاری نشده است.</div><h3>بازبینی منبع دانش factual</h3><p class="muted">فقط ادعاهای خام دارای منبع در این صف هستند. تأیید شما ادعا را حداکثر به سطح L1 می‌رساند؛ برای L2 همچنان آزمون مستقل لازم است. ادعاهای پرخطر برای بررسی بیشتر فعال نمی‌شوند.</p><button id="refresh-factual-review-queue" type="button">بارگذاری ادعاهای نیازمند بازبینی منبع</button><div id="factual-review-queue" aria-live="polite">صف منبع هنوز بارگذاری نشده است.</div><h3>آزمون کنترل‌شدهٔ ادعاهای Python</h3><p class="muted">فقط ادعاهای Python در سطح L1 با منبع قابل‌ردیابی نمایش داده می‌شوند. اجرای آزمون به رضایت جاری sandbox، test harness بررسی‌شده توسط انسان، oracle مستقل و تطبیق دقیق نسخه نیاز دارد؛ شکست یا نتیجهٔ نامشخص ادعا را به L2 ارتقا نمی‌دهد.</p><button id="refresh-factual-test-queue" type="button">بارگذاری ادعاهای آمادهٔ آزمون</button><div id="factual-test-queue" aria-live="polite">صف آزمون هنوز بارگذاری نشده است.</div><h3>تاریخچهٔ نتایج آزمون factual</h3><p class="muted">نتیجه، نسخهٔ محیط، hash کد/گزارش و سطح اعتماد فعلی ادعا را نشان می‌دهد. ثبت یا اجرای وظیفه به‌تنهایی به معنی موفقیت یا ارتقای دانش نیست.</p><button id="refresh-factual-test-history" type="button">به‌روزرسانی تاریخچهٔ آزمون‌ها</button><div id="factual-test-history" aria-live="polite">تاریخچهٔ آزمون هنوز بارگذاری نشده است.</div></section></div>
+</div>
+<h3>مسیر اصلی: پژوهش اینترنتی و آموزش با مدل محلی</h3>
+<form id="learning-form">
+<label for="topic">موضوع یا نام درس برای پژوهش و آموزش
+<input id="topic" required maxlength="300" placeholder="مثلاً معماری و برنامه‌نویسی سیستم‌عامل Linux" aria-label="موضوع یا نام درس برای پژوهش و آموزش"></label>
+<div class="cloud-form-grid">
+<label for="max-topics">حداکثر تعداد سرفصل‌ها
+<input id="max-topics" type="number" min="8" max="40" value="40" required aria-label="حداکثر تعداد سرفصل‌ها"></label>
+</div>
+<textarea id="source-text" rows="3" maxlength="500" placeholder="متن تکمیلی اختیاری برای دقیق‌ترشدن محدودهٔ پژوهش (حداکثر ۵۰۰ نویسه)" aria-label="متن یا منبع تکمیلی اختیاری"></textarea>
+<button type="submit">پژوهش اینترنتی، ساخت سرفصل‌ها و شروع یادگیری</button>
+</form>
+<p class="muted">ابتدا منابع وب بررسی و سرفصل‌های جامع و مرتب‌شده استخراج می‌شوند؛ سپس هر درس با مدل محلی gpt-oss:20b تولید می‌شود و درس بعدی فقط پس از پایان موفق درس قبلی وارد صف خواهد شد. محتوای تولیدشده تا زمان ارزیابی مستقل، تأیید علمی محسوب نمی‌شود.</p>
+<pre id="learning-output" role="status" aria-live="polite"></pre>
+<div id="learning-outline-output" aria-live="polite"></div><h3>نامزدهای موقت درس</h3><p class="muted">همهٔ درس‌های غیرخالی، حتی اگر ناقص یا کم‌امتیاز باشند، با وضعیت تأییدنشده حفظ می‌شوند؛ نامزدهای موقت برای بررسی factual جدا هستند. ثبت طرح آزمون به‌معنی اجرای آزمون یا ارتقای دانش نیست.</p><button id="refresh-learning-candidates" type="button">بارگذاری نامزدهای موقت</button><div id="learning-candidates" aria-live="polite">نامزدها هنوز بارگذاری نشده‌اند.</div><div id="assessment-form-container"></div><h3>صف بازبینی انسانی</h3><p class="muted">خطاهای اجرایی غیرقابل‌تکرار و jobهای قدیمی ردشده در این صف ثبت می‌شوند؛ امتیاز کیفیت جدید درس را رد نمی‌کند. بازبینی، حذف یا ارتقای خودکار دانش انجام نمی‌دهد.</p><button id="refresh-learning-escalations" type="button">به‌روزرسانی صف بازبینی</button><div id="learning-escalations" aria-live="polite">صف بازبینی هنوز بارگذاری نشده است.</div><h3>بازبینی منبع دانش factual</h3><p class="muted">فقط ادعاهای خام دارای منبع در این صف هستند. تأیید شما ادعا را حداکثر به سطح L1 می‌رساند؛ برای L2 همچنان آزمون مستقل لازم است. ادعاهای پرخطر برای بررسی بیشتر فعال نمی‌شوند.</p><button id="refresh-factual-review-queue" type="button">بارگذاری ادعاهای نیازمند بازبینی منبع</button><div id="factual-review-queue" aria-live="polite">صف منبع هنوز بارگذاری نشده است.</div><h3>آزمون کنترل‌شدهٔ ادعاهای Python</h3><p class="muted">فقط ادعاهای Python در سطح L1 با منبع قابل‌ردیابی نمایش داده می‌شوند. اجرای آزمون به رضایت جاری sandbox، test harness بررسی‌شده توسط انسان، oracle مستقل و تطبیق دقیق نسخه نیاز دارد؛ شکست یا نتیجهٔ نامشخص ادعا را به L2 ارتقا نمی‌دهد.</p><button id="refresh-factual-test-queue" type="button">بارگذاری ادعاهای آمادهٔ آزمون</button><div id="factual-test-queue" aria-live="polite">صف آزمون هنوز بارگذاری نشده است.</div><h3>تاریخچهٔ نتایج آزمون factual</h3><p class="muted">نتیجه، نسخهٔ محیط، hash کد/گزارش و سطح اعتماد فعلی ادعا را نشان می‌دهد. ثبت یا اجرای وظیفه به‌تنهایی به معنی موفقیت یا ارتقای دانش نیست.</p><button id="refresh-factual-test-history" type="button">به‌روزرسانی تاریخچهٔ آزمون‌ها</button><div id="factual-test-history" aria-live="polite">تاریخچهٔ آزمون هنوز بارگذاری نشده است.</div></section></div>
 <section id="task-manager-section"><h2>مدیریت وظایف</h2>
 <p class="muted">وظایف صف‌شده در این بخش باقی می‌مانند و پس از بارگذاری مجدد قابل مشاهده‌اند. متن payload نمایش داده نمی‌شود. می‌توانید وظایف در حال اجرا را متوقف یا لغو کنید و وظایف متوقف‌شده را ادامه دهید.</p>
 <div class="cloud-actions">
@@ -101,10 +113,8 @@
 </div>
 <pre id="tasks-output" role="status" aria-live="polite">فهرست وظایف هنوز بارگذاری نشده است.</pre>
 <div id="tasks-container"></div></section>
-<section id="learning-paths-section"><h2>مسیرهای آموزشی</h2>
-<p class="muted">یک دوره را ثبت‌نام کنید و وضعیت سرفصل‌ها و پیشرفت آن را پیگیری کنید.</p>
-<label>انتخاب دوره<select id="curriculum-select"><option value="">در حال بارگذاری دوره‌ها…</option></select></label>
-<button id="enroll-curriculum" type="button">ثبت‌نام در دوره</button>
+<section id="learning-paths-section"><h2>مسیرهای آموزشی پژوهش‌محور</h2>
+<p class="muted">مسیرها از موضوعی که وارد کرده‌اید و پس از پژوهش اینترنتی ساخته می‌شوند؛ دورهٔ پیش‌فرضی برای ثبت‌نام یا تحمیل سرفصل ثابت وجود ندارد. مسیرهای ذخیره‌شده و سوابق قبلی حفظ می‌شوند.</p>
 <button id="refresh-paths" type="button">بارگذاری مسیرهای من</button>
 <button id="refresh-due-reviews" type="button">نمایش مرورهای سررسیدشده</button>
 <button id="refresh-learning-recommendations" type="button">پیشنهاد گام بعدی یادگیری</button>
@@ -232,14 +242,16 @@
 <button id="self-improvement-refresh" type="button">بارگذاری پیشنهادها</button>
 <div id="self-improvement-list"></div>
 </section>
-<section id="settings-section"><h2>تنظیمات محلی</h2><p class="muted">فهرست مدل‌ها از Ollama محلی خوانده می‌شود. نام مدل قابل تایپ دستی است، اما برای اعتبارسنجی سقف context باید metadata همان مدل از Ollama قابل دریافت باشد؛ مدل نصب‌نشده یا فاقد metadata برای ذخیره context تأیید نمی‌شود. تنظیم هر بخش مستقل ذخیره می‌شود. مدل، context، thread و timeout در درخواست بعدی استفاده می‌شوند؛ تغییر تعداد کارهای هم‌زمان پس از راه‌اندازی مجدد برنامه اعمال می‌شود.</p><datalist id="ollama-model-options"></datalist><button id="refresh-ollama-models" type="button">به‌روزرسانی فهرست مدل‌های نصب‌شده</button><form id="settings-form">
-<fieldset><legend>گفتگو</legend><label>مدل‌های نصب‌شده برای چت<select id="chat-model-installed"><option value="">انتخاب مدل نصب‌شده</option></select></label><label>نام مدل Ollama برای چت (یا ورود دستی)<input id="chat-model" list="ollama-model-options" required autocomplete="off"></label><label>تعداد توکن زمینه<input id="chat-ctx" type="number" min="512" max="1048576" step="1" required></label><p id="chat-ctx-hint" class="muted" aria-live="polite">در حال بررسی سقف مدل…</p><label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="chat-threads" type="number" min="0" max="64" required></label><label>مهلت درخواست (ثانیه)<input id="chat-timeout" type="number" min="5" max="600" required></label><label>حداکثر کار هم‌زمان گفتگو<input id="chat-concurrency" type="number" min="1" max="8" required></label><label>حداکثر طول پیام گفتگو (کاراکتر)<input id="chat-source-limit" type="number" min="1000" max="12000" step="1000" required></label><label>مدت نگه‌داشتن مدل در RAM<select id="chat-keep-alive"><option value="auto">خودکار بر اساس RAM آزاد</option><option value="0">تخلیه پس از پاسخ</option><option value="1m">۱ دقیقه</option><option value="5m">۵ دقیقه</option><option value="10m">۱۰ دقیقه</option><option value="30m">۳۰ دقیقه</option></select></label></fieldset>
-<fieldset><legend>یادگیری و آموزش</legend><label>مدل‌های نصب‌شده برای یادگیری<select id="learning-model-installed"><option value="">انتخاب مدل نصب‌شده</option></select></label><label>نام مدل Ollama برای یادگیری (یا ورود دستی)<input id="learning-model" list="ollama-model-options" required autocomplete="off"></label><label>تعداد توکن زمینه<input id="learning-ctx" type="number" min="512" max="1048576" step="1" required></label><p id="learning-ctx-hint" class="muted" aria-live="polite">در حال بررسی سقف مدل…</p><label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="learning-threads" type="number" min="0" max="64" required></label><label>مهلت درخواست (ثانیه)<input id="learning-timeout" type="number" min="5" max="600" required></label><label>حداکثر یادگیری هم‌زمان<input id="learning-concurrency" type="number" min="1" max="8" required></label><label>حداکثر طول متن منبع یادگیری (کاراکتر)<input id="learning-source-limit" type="number" min="1000" max="100000" step="1000" required></label><label>مدت نگه‌داشتن مدل در RAM<select id="learning-keep-alive"><option value="0">تخلیه پس از پاسخ (پیش‌فرض)</option><option value="auto">خودکار بر اساس RAM آزاد</option><option value="1m">۱ دقیقه</option><option value="5m">۵ دقیقه</option><option value="10m">۱۰ دقیقه</option><option value="30m">۳۰ دقیقه</option></select></label></fieldset>
+<section id="settings-section"><h2>تنظیمات محلی</h2><p class="muted">برای هر بخش می‌توانید Ollama یا هر سرویس سازگار با OpenAI Chat Completions را انتخاب کنید؛ از جمله LM Studio، vLLM، llama.cpp server و سرویس‌های ابری. با انتخاب endpoint غیرمحلی، متن درخواست، تاریخچه و زمینهٔ لازم برای استنتاج به همان سرویس ارسال می‌شود؛ فقط در صورت پذیرش این انتقال provider خارجی را فعال کنید. برای مدل‌های OpenAI-compatible نام مدل و نشانی Base URL را وارد کنید؛ کلید API فقط از متغیر محیطی خوانده می‌شود و در پایگاه داده ذخیره نمی‌شود. تغییر تنظیمات در درخواست بعدی اعمال می‌شود.</p><datalist id="ollama-model-options"></datalist><button id="refresh-ollama-models" type="button">به‌روزرسانی فهرست مدل‌های نصب‌شده</button><form id="settings-form">
+<fieldset><legend>گفتگو</legend><label>موتور LLM گفتگو<select id="chat-provider"><option value="ollama">Ollama</option><option value="openai_compatible">OpenAI-compatible API</option></select></label><label>Base URL گفتگو<input id="chat-base-url" type="url" maxlength="2048" placeholder="https://api.openai.com/v1" aria-label="Base URL گفتگو"></label><label>نام متغیر محیطی کلید API گفتگو<input id="chat-api-key-env" maxlength="128" placeholder="OPENAI_API_KEY" aria-label="نام متغیر محیطی کلید API گفتگو"></label><label>مدل‌های نصب‌شده برای چت<select id="chat-model-installed"><option value="">انتخاب مدل نصب‌شده</option></select></label><label>نام مدل چت<input id="chat-model" list="ollama-model-options" required autocomplete="off"></label><label>تعداد توکن زمینه<input id="chat-ctx" type="number" min="512" max="1048576" step="1" required></label><p id="chat-ctx-hint" class="muted" aria-live="polite">در حال بررسی سقف مدل…</p><label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="chat-threads" type="number" min="0" max="64" required></label><label>مهلت درخواست (ثانیه)<input id="chat-timeout" type="number" min="5" max="600" required></label><label>حداکثر کار هم‌زمان گفتگو<input id="chat-concurrency" type="number" min="1" max="8" required></label><label>حداکثر طول پیام گفتگو (کاراکتر)<input id="chat-source-limit" type="number" min="1000" max="12000" step="1000" required></label><label>مدت نگه‌داشتن مدل در RAM<select id="chat-keep-alive"><option value="auto">خودکار بر اساس RAM آزاد</option><option value="0">تخلیه پس از پاسخ</option><option value="1m">۱ دقیقه</option><option value="5m">۵ دقیقه</option><option value="10m">۱۰ دقیقه</option><option value="30m">۳۰ دقیقه</option></select></label></fieldset>
+<fieldset><legend>برنامه‌ریزی پژوهش</legend><label>موتور برنامه‌ریزی<select id="research-plan-provider"><option value="ollama">Ollama</option><option value="openai_compatible">OpenAI-compatible API</option></select></label><label>Base URL برنامه‌ریزی پژوهش<input id="research-plan-base-url" type="url" maxlength="2048" aria-label="Base URL برنامه‌ریزی پژوهش" placeholder="https://api.openai.com/v1"></label><label>نام متغیر محیطی کلید API برنامه‌ریزی پژوهش<input id="research-plan-api-key-env" maxlength="128" aria-label="نام متغیر محیطی کلید API برنامه‌ریزی پژوهش" placeholder="OPENAI_API_KEY"></label><label>نام مدل برنامه‌ریزی پژوهش<input id="research-plan-model" list="ollama-model-options" maxlength="200" aria-label="نام مدل برنامه‌ریزی پژوهش"></label></fieldset>
+<fieldset><legend>یادگیری و آموزش</legend><label>موتور LLM یادگیری<select id="learning-provider"><option value="ollama">Ollama</option><option value="openai_compatible">OpenAI-compatible API</option></select></label><label>Base URL یادگیری<input id="learning-base-url" type="url" maxlength="2048" placeholder="https://api.openai.com/v1" aria-label="Base URL یادگیری"></label><label>نام متغیر محیطی کلید API یادگیری<input id="learning-api-key-env" maxlength="128" placeholder="OPENAI_API_KEY" aria-label="نام متغیر محیطی کلید API یادگیری"></label><label>مدل‌های نصب‌شده برای یادگیری<select id="learning-model-installed"><option value="">انتخاب مدل نصب‌شده</option></select></label><label>نام مدل یادگیری<input id="learning-model" list="ollama-model-options" required autocomplete="off"></label><label>تعداد توکن زمینه<input id="learning-ctx" type="number" min="512" max="1048576" step="1" required></label><p id="learning-ctx-hint" class="muted" aria-live="polite">در حال بررسی سقف مدل…</p><label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="learning-threads" type="number" min="0" max="64" required></label><label>مهلت درخواست (ثانیه)<input id="learning-timeout" type="number" min="5" max="600" required></label><label>حداکثر یادگیری هم‌زمان<input id="learning-concurrency" type="number" min="1" max="8" required></label><label>حداکثر طول متن منبع یادگیری (کاراکتر)<input id="learning-source-limit" type="number" min="1000" max="100000" step="1000" required></label><label>مدت نگه‌داشتن مدل در RAM<select id="learning-keep-alive"><option value="0">تخلیه پس از پاسخ (پیش‌فرض)</option><option value="auto">خودکار بر اساس RAM آزاد</option><option value="1m">۱ دقیقه</option><option value="5m">۵ دقیقه</option><option value="10m">۱۰ دقیقه</option><option value="30m">۳۰ دقیقه</option></select></label></fieldset>
 <fieldset><legend>ارزش و هزینهٔ یادگیری</legend><label>پروفایل هزینه/کیفیت مدل‌ها (JSON)<textarea id="learning-cost-profiles" aria-label="پروفایل هزینه و کیفیت مدل‌ها به قالب JSON" rows="6" maxlength="12000" spellcheck="false" placeholder='{"model-name":{"provider":"local","input_cost_microusd_per_1k_tokens":0,"output_cost_microusd_per_1k_tokens":0,"quality_score":0.8,"energy_wh_per_1k_tokens":null}}'></textarea></label><label>حداقل کیفیت مدل (۰ تا ۱)<input id="learning-min-quality" type="number" min="0" max="1" step="0.05" required></label><label>سقف هزینهٔ تخمینی هر وظیفه (میکرودلار؛ خالی = بدون سقف)<input id="learning-task-budget" type="number" min="0" step="1"></label><p class="muted">هزینه و انرژی فقط با نرخ‌های صریح شما برآورد می‌شوند؛ نرخ نامشخص هرگز صفر فرض نمی‌شود. این سقف برآورد هزینه است و تضمین سقف سخت هزینهٔ واقعی نیست. quality_score یک تنظیم مدیر است و تضمین کیفیت مدل نیست. برای مدل محلی، هزینهٔ پولی و انرژی را فقط در صورت داشتن برآورد واقعی وارد کنید.</p></fieldset>
 <fieldset><legend>بازبین‌های هوش مصنوعی بیرونی</legend><label>پیکربندی providerها (JSON؛ کلید API در تنظیمات ذخیره نشود)<textarea id="learning-external-review-providers" aria-label="پیکربندی providerهای بازبینی هوش مصنوعی بیرونی" rows="6" maxlength="12000" spellcheck="false" placeholder='[{"provider_id":"provider_a","enabled":true,"data_sharing_approved":true,"base_url":"https://api.example.com/v1","host_allowlist":["api.example.com"],"model":"model-name","model_revision":"pinned-model-version","api_key_env":"LEARNING_REVIEW_API_KEY_PROVIDER_A"}]'></textarea></label><p class="muted">فعال‌سازی این بخش یعنی ارسال متن نامزد دانش و گزیده‌های منبع به provider انتخاب‌شده. هر provider باید enabled و data_sharing_approved داشته باشد، میزبان HTTPS در allowlist باشد و پاسخ system_fingerprint بدهد؛ کلید فقط از متغیر محیطی با پیشوند LEARNING_REVIEW_API_KEY_ خوانده می‌شود. بدون اثر انگشت مدل، خروجی inconclusive است.</p></fieldset>
-<fieldset><legend>برنامه‌نویسی و تست</legend><label>مدل‌های نصب‌شده برای برنامه‌نویسی<select id="programming-model-installed"><option value="">انتخاب مدل نصب‌شده</option></select></label><label>نام مدل Ollama برای برنامه‌نویسی (یا ورود دستی)<input id="programming-model" list="ollama-model-options" required autocomplete="off"></label><label>تعداد توکن زمینه<input id="programming-ctx" type="number" min="512" max="1048576" step="1" required></label><p id="programming-ctx-hint" class="muted" aria-live="polite">در حال بررسی سقف مدل…</p><label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="programming-threads" type="number" min="0" max="64" required></label><label>مهلت درخواست (ثانیه)<input id="programming-timeout" type="number" min="5" max="600" required></label><label>حداکثر کار هم‌زمان برنامه‌نویسی<input id="programming-concurrency" type="number" min="1" max="8" required></label><label>حداکثر طول متن منبع برنامه‌نویسی (کاراکتر)<input id="programming-source-limit" type="number" min="1000" max="65536" step="1000" required></label><label>مدت نگه‌داشتن مدل در RAM<select id="programming-keep-alive"><option value="0">تخلیه پس از پاسخ (پیش‌فرض)</option><option value="auto">خودکار بر اساس RAM آزاد</option><option value="1m">۱ دقیقه</option><option value="5m">۵ دقیقه</option><option value="10m">۱۰ دقیقه</option><option value="30m">۳۰ دقیقه</option></select></label></fieldset>
-<fieldset><legend>بازبینی مستقل دانش factual</legend><label>نام مدل مستقل Ollama (خالی = غیرفعال)<input id="factual-review-model" list="ollama-model-options" autocomplete="off"></label><p>این مدل باید نصب شده و digest آن با همهٔ مدل‌های تولید متفاوت باشد. بازبینی با سقف ۴۵ ثانیه و حداکثر ۵۰۰ توکن خروجی اجرا می‌شود.</p></fieldset>
-<fieldset><legend>سقف مستقل استفاده از منابع سخت‌افزاری</legend><label><input id="gpu-enabled" type="checkbox"> فعال‌سازی استفاده از GPU</label><p class="muted">GPU به‌صورت پیش‌فرض غیرفعال است. در حالت غیرفعال، به Ollama درخواست استفاده از CPU به‌جای GPU داده می‌شود. این گزینه به‌تنهایی سخت‌افزار را خاموش نمی‌کند.</p><p class="muted">هر سقف مستقل است و از ۱۰ تا ۹۵ درصد قابل تنظیم است. CPU علاوه بر پایش، تعداد thread را هم محدود می‌کند. RAM و GPU هنگام شروع درخواست پایش می‌شوند؛ این برنامه نمی‌تواند مصرف پردازش خارجی Ollama را به‌صورت سخت در سطح سیستم‌عامل محدود کند. تشخیص GPU چندسازنده‌ای است و از ابزارهای درایور و شمارنده‌های عمومی سیستم‌عامل استفاده می‌کند؛ اگر فقط نام کارت شناسایی شود اما معیار مصرف/حافظه در دسترس نباشد، آن معیار «نامشخص» نمایش داده می‌شود. وضعیت واقعی استفادهٔ Ollama از GPU از اندازهٔ حافظهٔ VRAM تخصیص‌یافته در /api/ps گزارش می‌شود.</p><label>حداکثر استفاده از CPU (%)<input id="cpu-resource-limit" type="number" min="10" max="95" step="1" required></label><label>حداکثر استفاده از RAM (%)<input id="ram-resource-limit" type="number" min="10" max="95" step="1" required></label><label>حداکثر استفاده از GPU و حافظهٔ گرافیکی (%)<input id="gpu-resource-limit" type="number" min="10" max="95" step="1" required></label><label>حداکثر سقف RAM برای مدل و حاشیهٔ امن (گیگابایت، حداکثر ۲۵)<input id="ram-budget-max" type="number" min="1" max="25" step="1" required></label><label>حاشیهٔ امن RAM برای سیستم‌عامل (گیگابایت)<input id="ram-safety-reserve" type="number" min="1" max="8" step="1" required></label><p class="muted">بودجهٔ مؤثر از RAM واقعاً در دسترس پس از کسر حاشیهٔ امن محاسبه می‌شود و از سقف بالا بیشتر نمی‌شود؛ این مقدار رزرو اجباری RAM یا محدودیت سخت سیستم‌عامل نیست.</p></fieldset><section class="panel"><h3>تحلیل زندهٔ سخت‌افزار و مدل انتخابی</h3><p id="hardware-diagnostics" class="muted" aria-live="polite">در حال جمع‌آوری اطلاعات سخت‌افزار…</p><p class="muted">حافظه اشتراکی GPU بخشی از RAM سیستم است و ظرفیت مستقل از RAM محسوب نمی‌شود؛ مقادیر اختصاصی و اشتراکی جداگانه نمایش داده می‌شوند.</p></section><button type="submit">ذخیره تنظیمات</button></form><pre id="settings-output" role="status" aria-live="polite"></pre></section>
+<fieldset><legend>برنامه‌نویسی و تست</legend><label>موتور LLM برنامه‌نویسی<select id="programming-provider"><option value="ollama">Ollama</option><option value="openai_compatible">OpenAI-compatible API</option></select></label><label>Base URL برنامه‌نویسی<input id="programming-base-url" type="url" maxlength="2048" placeholder="https://api.openai.com/v1" aria-label="Base URL برنامه‌نویسی"></label><label>نام متغیر محیطی کلید API برنامه‌نویسی<input id="programming-api-key-env" maxlength="128" placeholder="OPENAI_API_KEY" aria-label="نام متغیر محیطی کلید API برنامه‌نویسی"></label><label>مدل‌های نصب‌شده برای برنامه‌نویسی<select id="programming-model-installed"><option value="">انتخاب مدل نصب‌شده</option></select></label><label>نام مدل برنامه‌نویسی<input id="programming-model" list="ollama-model-options" required autocomplete="off"></label><label>تعداد توکن زمینه<input id="programming-ctx" type="number" min="512" max="1048576" step="1" required></label><p id="programming-ctx-hint" class="muted" aria-live="polite">در حال بررسی سقف مدل…</p><label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="programming-threads" type="number" min="0" max="64" required></label><label>مهلت درخواست (ثانیه)<input id="programming-timeout" type="number" min="5" max="600" required></label><label>حداکثر کار هم‌زمان برنامه‌نویسی<input id="programming-concurrency" type="number" min="1" max="8" required></label><label>حداکثر طول متن منبع برنامه‌نویسی (کاراکتر)<input id="programming-source-limit" type="number" min="1000" max="65536" step="1000" required></label><label>مدت نگه‌داشتن مدل در RAM<select id="programming-keep-alive"><option value="0">تخلیه پس از پاسخ (پیش‌فرض)</option><option value="auto">خودکار بر اساس RAM آزاد</option><option value="1m">۱ دقیقه</option><option value="5m">۵ دقیقه</option><option value="10m">۱۰ دقیقه</option><option value="30m">۳۰ دقیقه</option></select></label></fieldset>
+<fieldset><legend>بازبینی مستقل دانش factual</legend><label>موتور بازبینی<select id="factual-review-provider"><option value="ollama">Ollama</option><option value="openai_compatible">OpenAI-compatible API</option></select></label><label>Base URL بازبینی<input id="factual-review-base-url" type="url" maxlength="2048" placeholder="https://api.openai.com/v1" aria-label="Base URL بازبینی factual"></label><label>نام متغیر محیطی کلید API بازبینی<input id="factual-review-api-key-env" maxlength="128" placeholder="OPENAI_API_KEY" aria-label="نام متغیر محیطی کلید API بازبینی factual"></label><label>نام مدل مستقل<input id="factual-review-model" list="ollama-model-options" autocomplete="off"></label><p>مدل بازبینی باید از مدل تولید مستقل باشد. بازبینی با سقف ۴۵ ثانیه و حداکثر ۵۰۰ توکن خروجی اجرا می‌شود.</p></fieldset>
+<fieldset><legend>مدل embedding و جست‌وجوی معنایی</legend><label>موتور embedding<select id="embedding-provider"><option value="ollama">Ollama</option><option value="openai_compatible">OpenAI-compatible API</option></select></label><label>Base URL embedding<input id="embedding-base-url" type="url" maxlength="2048" placeholder="https://api.openai.com/v1" aria-label="Base URL embedding"></label><label>نام متغیر محیطی کلید API embedding<input id="embedding-api-key-env" maxlength="128" placeholder="OPENAI_API_KEY" aria-label="نام متغیر محیطی کلید API embedding"></label><label>نام مدل embedding<input id="embedding-model" maxlength="200" required value="nomic-embed-text"></label><p>برای خاموش‌کردن کامل وابستگی به Ollama، موتور embedding را نیز به provider سازگار تغییر دهید. تغییر مدل embedding بین نسخه‌های داده‌شده ممکن است بُعد بردار را عوض کند؛ داده‌های برداری قبلی حذف نمی‌شوند و باید ایندکس جداگانه بازسازی شود.</p></fieldset>
+<fieldset><legend>سقف مستقل استفاده از منابع سخت‌افزاری</legend><label><input id="gpu-enabled" type="checkbox"> فعال‌سازی استفاده از GPU</label><p class="muted">GPU به‌صورت پیش‌فرض غیرفعال است. در حالت غیرفعال، به Ollama درخواست استفاده از CPU به‌جای GPU داده می‌شود. این گزینه به‌تنهایی سخت‌افزار را خاموش نمی‌کند.</p><p class="muted">هر سقف مستقل است و از ۱۰ تا ۹۵ درصد قابل تنظیم است. CPU علاوه بر پایش، تعداد thread را هم محدود می‌کند. RAM و GPU هنگام شروع درخواست پایش می‌شوند؛ این برنامه نمی‌تواند مصرف پردازش خارجی Ollama را به‌صورت سخت در سطح سیستم‌عامل محدود کند. تشخیص GPU چندسازنده‌ای است و از ابزارهای درایور و شمارنده‌های عمومی سیستم‌عامل استفاده می‌کند؛ اگر فقط نام کارت شناسایی شود اما معیار مصرف/حافظه در دسترس نباشد، آن معیار «نامشخص» نمایش داده می‌شود. وضعیت واقعی استفادهٔ Ollama از GPU از اندازهٔ حافظهٔ VRAM تخصیص‌یافته در /api/ps گزارش می‌شود.</p><label>حداکثر استفاده از CPU (%)<input id="cpu-resource-limit" type="number" min="10" max="95" step="1" required></label><label>حداکثر استفاده از RAM (%)<input id="ram-resource-limit" type="number" min="10" max="95" step="1" required></label><label>حداکثر استفاده از GPU و حافظهٔ گرافیکی (%)<input id="gpu-resource-limit" type="number" min="10" max="95" step="1" required></label><label>حداکثر سقف RAM برای مدل و حاشیهٔ امن (گیگابایت، حداکثر ۲۵)<input id="ram-budget-max" type="number" min="1" max="25" step="1" required></label><label>حاشیهٔ امن RAM برای سیستم‌عامل (گیگابایت)<input id="ram-safety-reserve" type="number" min="1" max="8" step="1" required></label><p class="muted">بودجهٔ مؤثر از RAM واقعاً در دسترس پس از کسر حاشیهٔ امن محاسبه می‌شود و از سقف بالا بیشتر نمی‌شود؛ این مقدار رزرو اجباری RAM یا محدودیت سخت سیستم‌عامل نیست.</p></fieldset><section class="panel"><h3>تحلیل زندهٔ سخت‌افزار و مدل انتخابی</h3><p id="hardware-diagnostics" class="muted" aria-live="polite">در حال جمع‌آوری اطلاعات سخت‌افزار…</p><p class="muted">حافظه اشتراکی GPU بخشی از RAM سیستم است و ظرفیت مستقل از RAM محسوب نمی‌شود؛ مقادیر اختصاصی و اشتراکی جداگانه نمایش داده می‌شوند.</p></section><label><input id="settings-temporary" type="checkbox"> اعمال موقت تا زمان بسته‌شدن برنامه (بدون ذخیره در پایگاه تنظیمات)</label><p class="muted">در حالت موقت، تغییرات فوراً برای درخواست‌های بعدی فعال می‌شوند و پس از راه‌اندازی مجدد به تنظیمات دائمی برمی‌گردند. با برداشتن تیک و ذخیره، مقادیر به‌صورت دائمی ثبت می‌شوند.</p><button type="submit">اعمال / ذخیره تنظیمات</button></form><pre id="settings-output" role="status" aria-live="polite"></pre></section>
 <script>
 const el = id => document.getElementById(id);
 async function api(path, options = {}) {
@@ -428,7 +440,7 @@ async function refresh() {
   const banner = el("storage-degraded-banner");
   if (banner) banner.hidden = true;
  }
- try { const s = await api("/api/settings"); el("cpu-resource-limit").value=s.cpu_resource_limit_percent ?? 90; el("ram-resource-limit").value=s.ram_resource_limit_percent ?? 90; el("gpu-resource-limit").value=s.gpu_resource_limit_percent ?? 90; el("gpu-enabled").checked=s.gpu_enabled === true; el("ram-budget-max").value=s.ram_budget_max_gb ?? 25; el("ram-safety-reserve").value=s.ram_safety_reserve_gb ?? 4; const fields={"chat-keep-alive":"chat_model_keep_alive","learning-keep-alive":"learning_model_keep_alive","programming-keep-alive":"programming_model_keep_alive","chat-model":"chat_ollama_model","chat-ctx":"chat_ollama_num_ctx","chat-threads":"chat_ollama_num_thread","chat-timeout":"chat_ollama_timeout_seconds","chat-concurrency":"chat_max_concurrent_jobs","chat-source-limit":"chat_source_max_chars","learning-model":"learning_ollama_model","learning-ctx":"learning_ollama_num_ctx","learning-threads":"learning_ollama_num_thread","learning-timeout":"learning_ollama_timeout_seconds","learning-concurrency":"learning_max_concurrent_jobs","learning-source-limit":"learning_source_max_chars","programming-model":"programming_ollama_model","programming-ctx":"programming_ollama_num_ctx","programming-threads":"programming_ollama_num_thread","programming-timeout":"programming_ollama_timeout_seconds","programming-concurrency":"programming_max_concurrent_jobs","programming-source-limit":"programming_source_max_chars","factual-review-model":"factual_review_ollama_model","learning-min-quality":"learning_model_minimum_quality_score"}; for(const [id,key] of Object.entries(fields)) el(id).value=s[key] ?? s.ollama_model ?? ""; el("programming-context").maxLength=Number(s.programming_source_max_chars ?? 12000); el("learning-cost-profiles").value=JSON.stringify(s.learning_model_cost_profiles || {},null,2); el("learning-external-review-providers").value=JSON.stringify(s.learning_external_review_providers || [],null,2); el("learning-task-budget").value=s.learning_task_budget_microusd == null ? "" : s.learning_task_budget_microusd; refreshOllamaModels(); } catch(error) { el("settings-output").textContent=error.message; }
+ try { const s = await api("/api/settings"); el("cpu-resource-limit").value=s.cpu_resource_limit_percent ?? 90; el("ram-resource-limit").value=s.ram_resource_limit_percent ?? 90; el("gpu-resource-limit").value=s.gpu_resource_limit_percent ?? 90; el("gpu-enabled").checked=s.gpu_enabled === true; el("ram-budget-max").value=s.ram_budget_max_gb ?? 25; el("ram-safety-reserve").value=s.ram_safety_reserve_gb ?? 4; const fields={"chat-provider":"chat_llm_provider","chat-base-url":"chat_llm_base_url","chat-api-key-env":"chat_llm_api_key_env","research-plan-provider":"research_plan_llm_provider","research-plan-base-url":"research_plan_llm_base_url","research-plan-api-key-env":"research_plan_llm_api_key_env","research-plan-model":"research_plan_ollama_model","learning-provider":"learning_llm_provider","learning-base-url":"learning_llm_base_url","learning-api-key-env":"learning_llm_api_key_env","programming-provider":"programming_llm_provider","programming-base-url":"programming_llm_base_url","programming-api-key-env":"programming_llm_api_key_env","factual-review-provider":"factual_review_llm_provider","factual-review-base-url":"factual_review_llm_base_url","factual-review-api-key-env":"factual_review_llm_api_key_env","embedding-provider":"embedding_llm_provider","embedding-base-url":"embedding_llm_base_url","embedding-api-key-env":"embedding_llm_api_key_env","embedding-model":"ollama_embedding_model","chat-keep-alive":"chat_model_keep_alive","learning-keep-alive":"learning_model_keep_alive","programming-keep-alive":"programming_model_keep_alive","chat-model":"chat_ollama_model","chat-ctx":"chat_ollama_num_ctx","chat-threads":"chat_ollama_num_thread","chat-timeout":"chat_ollama_timeout_seconds","chat-concurrency":"chat_max_concurrent_jobs","chat-source-limit":"chat_source_max_chars","learning-model":"learning_ollama_model","learning-ctx":"learning_ollama_num_ctx","learning-threads":"learning_ollama_num_thread","learning-timeout":"learning_ollama_timeout_seconds","learning-concurrency":"learning_max_concurrent_jobs","learning-source-limit":"learning_source_max_chars","programming-model":"programming_ollama_model","programming-ctx":"programming_ollama_num_ctx","programming-threads":"programming_ollama_num_thread","programming-timeout":"programming_ollama_timeout_seconds","programming-concurrency":"programming_max_concurrent_jobs","programming-source-limit":"programming_source_max_chars","factual-review-model":"factual_review_ollama_model","learning-min-quality":"learning_model_minimum_quality_score"}; for(const [id,key] of Object.entries(fields)) el(id).value=s[key] ?? s.ollama_model ?? ""; el("programming-context").maxLength=Number(s.programming_source_max_chars ?? 12000); el("learning-cost-profiles").value=JSON.stringify(s.learning_model_cost_profiles || {},null,2); el("learning-external-review-providers").value=JSON.stringify(s.learning_external_review_providers || [],null,2); el("learning-task-budget").value=s.learning_task_budget_microusd == null ? "" : s.learning_task_budget_microusd; refreshOllamaModels(); } catch(error) { el("settings-output").textContent=error.message; }
 }
 async function refreshStorageHealth() {
  const output=el("storage-health-output");
@@ -1052,13 +1064,80 @@ function showLearningJob(result) {
  container.append(form);
 }
 el("learning-form").addEventListener("submit", async event => {
- event.preventDefault(); el("learning-output").textContent="کار یادگیری ثبت شد؛ وضعیت در حال بررسی است…";
+ event.preventDefault();
+ const output=el("learning-output");
+ const outline=el("learning-outline-output");
+ const submit=el("learning-form").querySelector('button[type="submit"]');
+ output.textContent="درخواست پژوهش اینترنتی و ساخت سرفصل‌ها در صف ثبت می‌شود…";
+ outline.replaceChildren();
  el("assessment-form-container").replaceChildren();
+ submit.disabled=true;
  try {
-  const job=await api("/api/learning/jobs",{method:"POST",body:JSON.stringify({topic:el("topic").value,source_text:el("source-text").value||null})});
-  const poll=async()=>{const result=await api("/api/learning/jobs/"+job.id);showLearningJob(result);if(["queued","running"].includes(result.status))setTimeout(poll,1500);else refreshLearningEscalations();};
-  showLearningJob(job);setTimeout(poll,1000);
- } catch(error) { el("learning-output").textContent=error.message; }
+  const task=await api("/api/learning/courses",{method:"POST",body:JSON.stringify({
+   topic:el("topic").value,
+   max_topics:Number(el("max-topics").value),
+   source_text:el("source-text").value||null
+  })});
+  const taskId=task.task_id;
+  output.textContent="وظیفهٔ پژوهش ثبت شد؛ شناسه: "+taskId+"؛ در حال جست‌وجوی منابع و ساخت سرفصل‌ها…";
+  const poll=async()=>{
+   try {
+    const state=await api("/api/learning/courses/tasks/"+taskId);
+    if(state.status==="succeeded"){
+     const result=state.result||{};
+     const activeLessonCount=result.queued_count||(result.active_job_id?1:0);
+     output.textContent="پژوهش کامل شد. مدل: "+(result.model||"نامشخص")+
+      "؛ منابع استفاده‌شده: "+(result.source_count||0)+
+      "؛ سرفصل‌ها: "+((result.topics||[]).length)+
+      "؛ همهٔ سرفصل‌ها در صف ترتیبی ثبت شدند و تولید درس‌ها یکی‌یکی انجام می‌شود؛ اکنون "+
+      activeLessonCount+" درس فعال/در صف اجراست."+
+      "\nمسیر آموزشی شمارهٔ "+result.path_id+" ایجاد شد.";
+     const heading=document.createElement("h3");
+     heading.textContent=result.title||"سرفصل‌های استخراج‌شده";
+     outline.append(heading);
+     if(result.notes){
+      const note=document.createElement("p"); note.textContent=result.notes; outline.append(note);
+     }
+     const list=document.createElement("ol");
+     (result.topics||[]).forEach(item=>{
+      const li=document.createElement("li"); li.textContent=item; list.append(li);
+     });
+     outline.append(list);
+     if(Array.isArray(result.sources)&&result.sources.length){
+      const sourceHeading=document.createElement("h4"); sourceHeading.textContent="منابع پژوهش";
+      const sourceList=document.createElement("ul");
+      result.sources.forEach(source=>{
+       const li=document.createElement("li");
+       const link=document.createElement("a"); link.href=source.url; link.target="_blank";
+       link.rel="noopener noreferrer"; link.textContent=source.title||source.url;
+       li.append(link); sourceList.append(li);
+      });
+      outline.append(sourceHeading,sourceList);
+     }
+     const refresh=el("refresh-paths"); if(refresh)refresh.click();
+     submit.disabled=false;
+     return;
+    }
+    if(["failed","cancelled"].includes(state.status)){
+     output.textContent="ساخت مسیر آموزشی ناموفق شد: "+(state.error||state.status);
+     submit.disabled=false;
+     return;
+    }
+    const phase=state.progress?.phase||state.status;
+    const count=state.progress?.source_count||0;
+    output.textContent="وضعیت پژوهش: "+phase+"؛ منابع دریافت‌شده: "+count+
+     "؛ شناسهٔ وظیفه: "+taskId;
+    setTimeout(poll,2000);
+   } catch(error){
+    output.textContent="دریافت وضعیت وظیفه با خطا مواجه شد: "+error.message+"؛ تلاش مجدد…";
+    setTimeout(poll,5000);
+   }
+  };
+  setTimeout(poll,1000);
+ } catch(error) {
+  output.textContent=error.message;
+  submit.disabled=false;
+ }
 });
 async function refreshLearningCandidates() {
  const container=el("learning-candidates");
@@ -1371,6 +1450,16 @@ async function refreshOllamaModels() {
  const list=el("ollama-model-options");
  if(!list) return;
  list.replaceChildren();
+ const providers=["chat","research-plan","learning","programming","factual-review","embedding"];
+ if(providers.every(name=>el(name+"-provider")?.value==="openai_compatible")) {
+  for(const id of ["chat-model-installed","learning-model-installed","programming-model-installed"]) {
+   const select=el(id);
+   if(select) select.replaceChildren(new Option("مدل‌ها از endpoint انتخاب‌شده دریافت می‌شوند",""));
+  }
+  for(const profile of modelContextProfiles) await refreshModelContextHint(profile);
+  el("settings-output").textContent="تمام مسیرها از provider سازگار استفاده می‌کنند؛ فهرست مدل Ollama لازم نیست.";
+  return;
+ }
  const installedSelects = [
   ["chat-model-installed","chat-model"],
   ["learning-model-installed","learning-model"],
@@ -1413,11 +1502,17 @@ const modelContextProfiles = [
  ["programming","programming-model","programming-ctx","programming-ctx-hint"]
 ];
 async function refreshModelContextHint(profile, applyRecommendation=false) {
- const [,modelId,contextId,hintId]=profile;
+ const [purpose,modelId,contextId,hintId]=profile;
  const model=el(modelId).value.trim();
  let context=Number(el(contextId).value);
  const input=el(contextId);
  const hint=el(hintId);
+ if(el(purpose+"-provider")?.value==="openai_compatible") {
+  input.max="1048576";
+  input.setCustomValidity("");
+  hint.textContent="OpenAI-compatible: سقف context از سمت endpoint/model تعیین می‌شود؛ این مقدار به‌صورت دستی اعمال می‌شود.";
+  return;
+ }
  if(!model) { hint.textContent="ابتدا مدل را انتخاب کنید."; input.setCustomValidity(""); return; }
  hint.textContent="در حال دریافت metadata مدل و برآورد حافظه…";
  try {
@@ -1477,18 +1572,21 @@ async function refreshHardwareDiagnostics(profile=modelContextProfiles[0]) {
    return item.name+": context "+(item.context_length??"نامشخص")+"؛ "+vram;
   });
   const selected=data.selected_model;
+  const externalProvider=data.provider==="openai_compatible";
   const estimate=selected?.memory_estimate?.total_ram_gib_float16;
   const settings=await api("/api/settings");
   const availableRam=h.available_ram_gb==null?NaN:Number(h.available_ram_gb);
   const budget=Number.isFinite(availableRam)
    ? Math.max(0,Math.min(availableRam,Number(settings.ram_budget_max_gb||25))-Number(settings.ram_safety_reserve_gb||4))
    : null;
-  const fit=estimate==null?"قابلیت تناسب RAM نامشخص است؛ metadata کافی برای KV cache وجود ندارد."
+  const fit=externalProvider?"مدیریت RAM و context مدل بر عهده endpoint انتخاب‌شده است؛ این داشبورد فقط سخت‌افزار میزبان برنامه را نمایش می‌دهد."
+   :estimate==null?"قابلیت تناسب RAM نامشخص است؛ metadata کافی برای KV cache وجود ندارد."
    :budget==null?"تناسب RAM نامشخص است؛ سنجش RAM آزاد در دسترس نیست."
    :(estimate<=budget?"برآورد RAM در بودجه امن فعلی جا می‌شود.":"برآورد RAM از بودجه امن فعلی بیشتر است.");
   const gpuEnabled=settings.gpu_enabled===true;
   const gpuRunning=(data.ollama_running_models||[]).find(item=>item.name===model);
-  const gpuStatus=gpuRunning?.processor==="GPU"?"Ollama برای این مدل VRAM تخصیص داده است."
+  const gpuStatus=externalProvider?"وضعیت GPU مدل توسط endpoint انتخاب‌شده مدیریت می‌شود و از Ollama قابل مشاهده نیست."
+   :gpuRunning?.processor==="GPU"?"Ollama برای این مدل VRAM تخصیص داده است."
    :gpuRunning?.processor==="CPU"?"این مدل اکنون روی CPU اجرا می‌شود."
    :(gpuEnabled && h.gpu_available?"GPU شناسایی شده و گزینه فعال است؛ استفاده واقعی تا بارگذاری مدل تأیید نمی‌شود."
     :gpuEnabled?"GPU فعال شده اما دستگاه/درایور قابل شناسایی نیست."
@@ -1504,8 +1602,8 @@ async function refreshHardwareDiagnostics(profile=modelContextProfiles[0]) {
     :"حافظه آزاد فقط به‌صورت جزئی اندازه‌گیری شده؛ تناسب full-offload نامشخص است.");
   const effectiveContext=data.runtime_limits?.num_ctx;
   const contextStatus=effectiveContext==null?"": "؛ context مؤثر پس از محدودیت سخت‌افزار: "+Number(effectiveContext).toLocaleString()+" توکن"+(effectiveContext<context?" (کمتر از مقدار انتخابی)": "");
-  output.textContent="CPU: "+h.logical_cpu_count+" thread منطقی؛ "+cpu+"؛ RAM: "+ram+"؛ GPU: "+(gpuLines.length?gpuLines.join(" | "):"هیچ GPU شناسایی نشد یا اطلاعات دستگاه در دسترس نیست.")+contextStatus
-   +(running.length?"؛ تخصیص واقعی Ollama: "+running.join(" | "):"؛ مدل فعالی در Ollama گزارش نشده است.")
+  output.textContent="Provider: "+(externalProvider?"OpenAI-compatible":"Ollama")+"؛ CPU: "+h.logical_cpu_count+" thread منطقی؛ "+cpu+"؛ RAM: "+ram+"؛ GPU: "+(gpuLines.length?gpuLines.join(" | "):"هیچ GPU شناسایی نشد یا اطلاعات دستگاه در دسترس نیست.")+contextStatus
+   +(externalProvider?"؛ "+fit:(running.length?"؛ تخصیص واقعی Ollama: "+running.join(" | "):"؛ مدل فعالی در Ollama گزارش نشده است."))
    +(estimate!=null?"؛ نیاز تخمینی RAM مدل در context انتخابی: "+estimate+" GiB. "+fit:"؛ "+fit)+"؛ وضعیت GPU: "+gpuStatus+(gpuEstimate!=null?"؛ VRAM لازم برای offload کامل (تخمینی): "+gpuEstimate+" GiB؛ "+gpuFit:"؛ "+gpuFit);
  } catch(error) { output.textContent="تحلیل سخت‌افزار در دسترس نیست: "+error.message; }
 }
@@ -1524,6 +1622,7 @@ for(const profile of modelContextProfiles) {
   if(installedSelect && installedSelect.value!==el(modelId).value.trim()) installedSelect.value="";
  });
  el(modelId)?.addEventListener("change",async()=>{await refreshModelContextHint(profile,true);await refreshHardwareDiagnostics(profile);});
+ el(purpose+"-provider")?.addEventListener("change",refreshProfileDiagnostics);
  el(modelId)?.addEventListener("blur",refreshProfileDiagnostics);
  el(contextId)?.addEventListener("input",()=>{el(contextId).setCustomValidity("");});
  el(contextId)?.addEventListener("change",refreshProfileDiagnostics);
@@ -1551,17 +1650,24 @@ el("settings-form").addEventListener("submit", async event => {
  }
  const values={
   cpu_resource_limit_percent:Number(el("cpu-resource-limit").value),ram_resource_limit_percent:Number(el("ram-resource-limit").value),gpu_resource_limit_percent:Number(el("gpu-resource-limit").value),gpu_enabled:el("gpu-enabled").checked,ram_budget_max_gb:Number(el("ram-budget-max").value),ram_safety_reserve_gb:Number(el("ram-safety-reserve").value),
+  chat_llm_provider:el("chat-provider").value,chat_llm_base_url:el("chat-base-url").value.trim(),chat_llm_api_key_env:el("chat-api-key-env").value.trim(),
+  research_plan_llm_provider:el("research-plan-provider").value,research_plan_llm_base_url:el("research-plan-base-url").value.trim(),research_plan_llm_api_key_env:el("research-plan-api-key-env").value.trim(),research_plan_ollama_model:el("research-plan-model").value.trim(),
+  learning_llm_provider:el("learning-provider").value,learning_llm_base_url:el("learning-base-url").value.trim(),learning_llm_api_key_env:el("learning-api-key-env").value.trim(),
+  programming_llm_provider:el("programming-provider").value,programming_llm_base_url:el("programming-base-url").value.trim(),programming_llm_api_key_env:el("programming-api-key-env").value.trim(),
   chat_ollama_model:el("chat-model").value.trim(),chat_ollama_num_ctx:Number(el("chat-ctx").value),chat_ollama_num_thread:Number(el("chat-threads").value),chat_ollama_timeout_seconds:Number(el("chat-timeout").value),chat_max_concurrent_jobs:Number(el("chat-concurrency").value),chat_source_max_chars:Number(el("chat-source-limit").value),chat_model_keep_alive:el("chat-keep-alive").value,
   learning_model_cost_profiles:learningCostProfiles,learning_external_review_providers:externalReviewProviders,learning_model_minimum_quality_score:Number(el("learning-min-quality").value),learning_task_budget_microusd:learningBudget,
   learning_ollama_model:el("learning-model").value.trim(),learning_ollama_num_ctx:Number(el("learning-ctx").value),learning_ollama_num_thread:Number(el("learning-threads").value),learning_ollama_timeout_seconds:Number(el("learning-timeout").value),learning_max_concurrent_jobs:Number(el("learning-concurrency").value),learning_source_max_chars:Number(el("learning-source-limit").value),learning_model_keep_alive:el("learning-keep-alive").value,
   programming_ollama_model:el("programming-model").value.trim(),programming_ollama_num_ctx:Number(el("programming-ctx").value),programming_ollama_num_thread:Number(el("programming-threads").value),programming_ollama_timeout_seconds:Number(el("programming-timeout").value),programming_max_concurrent_jobs:Number(el("programming-concurrency").value),programming_source_max_chars:Number(el("programming-source-limit").value),programming_model_keep_alive:el("programming-keep-alive").value,
+  factual_review_llm_provider:el("factual-review-provider").value,factual_review_llm_base_url:el("factual-review-base-url").value.trim(),factual_review_llm_api_key_env:el("factual-review-api-key-env").value.trim(),
+  embedding_llm_provider:el("embedding-provider").value,embedding_llm_base_url:el("embedding-base-url").value.trim(),embedding_llm_api_key_env:el("embedding-api-key-env").value.trim(),ollama_embedding_model:el("embedding-model").value.trim(),
   factual_review_ollama_model:el("factual-review-model").value.trim()
  };
  // Preserve the old generic keys for compatibility with older internal callers.
  values.ollama_model=values.chat_ollama_model; values.ollama_num_ctx=values.chat_ollama_num_ctx; values.ollama_num_thread=values.chat_ollama_num_thread; values.ollama_timeout_seconds=values.chat_ollama_timeout_seconds;
  try {
-  const saved=await api("/api/settings",{method:"PATCH",body:JSON.stringify({values})});
-  el("programming-context").maxLength=values.programming_source_max_chars; el("settings-output").textContent="تنظیمات مدل‌ها و منابع ذخیره شد.\n"+JSON.stringify(saved,null,2);
+  const temporary=el("settings-temporary").checked;
+  const saved=await api("/api/settings",{method:"PATCH",body:JSON.stringify({values,temporary})});
+  el("programming-context").maxLength=values.programming_source_max_chars; el("settings-output").textContent=(temporary?"تنظیمات موقت تا راه‌اندازی مجدد اعمال شد.\n":"تنظیمات به‌صورت دائمی ذخیره شد.\n")+JSON.stringify(saved,null,2);
  } catch(error) { el("settings-output").textContent="ذخیره تنظیمات ناموفق بود: "+error.message; }
 });
 

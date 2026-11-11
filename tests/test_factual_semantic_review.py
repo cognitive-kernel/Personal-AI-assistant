@@ -129,7 +129,7 @@ def test_same_model_digest_cannot_be_used_as_independent_reviewer(monkeypatch):
             {"name": "reviewer:7b", "digest": "a" * 64},
         ],
     )
-    with pytest.raises(ValueError, match="digest must differ"):
+    with pytest.raises(ValueError, match="must be distinct"):
         factual_semantic_review.review_claim_against_source(
             claim="A claim",
             claim_hash="c" * 64,
@@ -166,3 +166,51 @@ def test_version_parser_handles_explicit_versioned_documentation_urls(url, expec
     from app.factual_semantic_review import extract_url_version
 
     assert extract_url_version(url) == expected
+
+
+def test_compatible_remote_reviewer_runs_but_cannot_promote_unattested_claims(monkeypatch):
+    settings = {
+        "chat_llm_provider": "openai_compatible",
+        "chat_llm_base_url": "https://generation.example.test/v1",
+        "chat_ollama_model": "generator-model",
+        "research_plan_llm_provider": "openai_compatible",
+        "research_plan_llm_base_url": "https://generation.example.test/v1",
+        "research_plan_ollama_model": "planner-model",
+        "learning_llm_provider": "openai_compatible",
+        "learning_llm_base_url": "https://generation.example.test/v1",
+        "learning_ollama_model": "lesson-model",
+        "programming_llm_provider": "openai_compatible",
+        "programming_llm_base_url": "https://generation.example.test/v1",
+        "programming_ollama_model": "code-model",
+        "factual_review_llm_provider": "openai_compatible",
+        "factual_review_llm_base_url": "https://review.example.test/v1",
+        "factual_review_ollama_model": "reviewer-model",
+    }
+    monkeypatch.setattr(factual_semantic_review, "get_settings", lambda: dict(settings))
+    monkeypatch.setattr(
+        factual_semantic_review.ollama, "list_models",
+        lambda: (_ for _ in ()).throw(AssertionError("Ollama must not be queried")),
+    )
+    monkeypatch.setattr(
+        factual_semantic_review.ollama, "chat",
+        lambda *_args, **_kwargs: _reviewer_response(),
+    )
+
+    excerpt = "The assert statement raises AssertionError when the expression is false."
+    decision = factual_semantic_review.review_claim_against_source(
+        claim="An assertion raises AssertionError when false.",
+        claim_hash="c" * 64,
+        source_excerpt=excerpt,
+        source_url="https://docs.python.org/3.12/reference/simple_stmts.html#the-assert-statement",
+        source_hash=hashlib.sha256(excerpt.encode()).hexdigest(),
+        source_version="3.12",
+        claim_version="3.12.3",
+        environment_name="python",
+        environment_version="3.12.3",
+        test_source="try:\n    assert False\nexcept AssertionError:\n    pass",
+    )
+
+    assert decision.accepted is False
+    assert decision.evaluator_model == "reviewer-model"
+    assert decision.evaluator_identity_kind == "endpoint_model_configuration_fingerprint"
+    assert "remote_reviewer_weights_not_attested" in decision.reasons

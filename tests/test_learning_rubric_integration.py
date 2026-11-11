@@ -209,7 +209,7 @@ def test_non_finite_progress_scores_are_rejected(tmp_path, monkeypatch):
 
 def test_assessment_source_migration_backfills_existing_provenance(tmp_path):
     database = tmp_path / "learning.db"
-    initialize_database_file(database, LEARNING_MIGRATIONS[:-3])
+    initialize_database_file(database, tuple(m for m in LEARNING_MIGRATIONS if m.version < 39))
 
     with sqlite3.connect(str(database)) as connection:
         path_id = connection.execute(
@@ -230,3 +230,82 @@ def test_assessment_source_migration_backfills_existing_provenance(tmp_path):
             (topic_id,),
         ).fetchone()
     assert row == (75.0, "legacy_exact_match", "legacy_exact_match")
+
+
+
+def test_semantically_equivalent_paraphrases_can_complete_path_topic(tmp_path, monkeypatch):
+    from app import assessment_review
+
+    job_id, _path_id, topic_id = _ready_job(
+        tmp_path, monkeypatch, with_path=True, rubric=_rubric()
+    )
+    monkeypatch.setattr(
+        assessment_review,
+        "review_assessment_attempt",
+        lambda job_id, attempt_id: {
+            "model": "separate-reviewer",
+            "evaluator_digest": "a" * 64,
+            "review": {
+                "items": [
+                    {"index": index, "judgment": "matches", "rationale": "Equivalent meaning.", "missing_concepts": []}
+                    for index in range(1, 4)
+                ]
+            },
+        },
+    )
+    answers = [
+        "A list can be changed in place after it has been made.",
+        "The index tells you which position to access.",
+        "You replace an element by assigning a different value to that slot.",
+    ]
+    key = "semantic-paraphrase-assessment-001"
+    result = learning.submit_assessment(job_id, answers, key)
+    replay = learning.submit_assessment(job_id, answers, key)
+
+    assert replay["idempotent_replay"] is True
+    assert replay["score"] == 100
+    assert replay["scoring_method"] == "semantic_model_assisted_v1"
+    assert result["score"] == 100
+    assert result["correct_count"] == 3
+    assert result["scoring_method"] == "semantic_model_assisted_v1"
+    assert result["deterministic_score"] < 100
+    with db.learning_connection() as conn:
+        attempt = conn.execute(
+            "SELECT score, scoring_method, result_details_json FROM assessment_attempts WHERE id=?",
+            (result["attempt_id"],),
+        ).fetchone()
+        topic = conn.execute(
+            "SELECT status, latest_score, latest_score_kind FROM learning_path_topics WHERE id=?",
+            (topic_id,),
+        ).fetchone()
+    assert attempt["score"] == 100
+    assert attempt["scoring_method"] == "semantic_model_assisted_v1"
+    assert json.loads(attempt["result_details_json"])["deterministic_score"] < 100
+    assert topic["status"] == "completed"
+    assert topic["latest_score"] == 100
+    assert topic["latest_score_kind"] == "learner_rubric"
+
+
+def test_semantic_evaluator_failure_preserves_deterministic_score(tmp_path, monkeypatch):
+    from app import assessment_review
+
+    job_id, _path_id, _topic_id = _ready_job(
+        tmp_path, monkeypatch, with_path=True, rubric=_rubric()
+    )
+
+    def unavailable(*_args, **_kwargs):
+        raise assessment_review.SemanticReviewError("reviewer unavailable")
+
+    monkeypatch.setattr(assessment_review, "review_assessment_attempt", unavailable)
+    answers = [
+        "Items can be changed after creation.",
+        "An index selects a position.",
+        "Assign a new value to the item.",
+    ]
+    result = learning.submit_assessment(
+        job_id, answers, "semantic-fallback-assessment-001"
+    )
+
+    assert result["score"] == 100
+    assert result["scoring_method"] == "rubric_concept_coverage_v1"
+    assert result["semantic_review_status"] == "unavailable_fallback_deterministic"

@@ -192,6 +192,50 @@ Measure bottlenecks before optimizing. Correctness and data safety take priority
 
 Identify unused/duplicate dependencies, version constraints, known vulnerabilities, transitive risk, reproducible installation, lockfile consistency, and supported Python/OS versions. Do not upgrade dependencies indiscriminately.
 
+
+## Universal, Version-Aware Learning Contract (Mandatory for Every Subject)
+
+This contract applies to every user-named subject: programming languages, databases, operating systems, networking, virtualization, standards, protocols, sciences, humanities, and any other domain. SQL Server and Python are examples only; never constrain a syllabus to learner examples, current skill level, or a preset catalog.
+
+### Subject discovery and chronological syllabus
+- Independently infer and research the complete subject taxonomy: prerequisites, fundamentals, terminology, history, architecture, internals, methods, tools, practical workflows, advanced/specialist topics, operations, security, diagnostics, failure recovery, performance, integrations, alternatives, and projects where relevant.
+- Determine whether the subject is versioned, editioned, standards-based, continuously released, or evergreen. Do not force artificial versioning onto subjects without releases; record their actual chronology model.
+- For every versioned subject, discover the earliest documented public/initial/stable release through the latest release known at research time. Include major/minor/patch releases, service packs, cumulative updates, maintenance releases, hotfixes, security advisories, previews, deprecations, and end-of-life events when applicable.
+- Group version-specific lessons by exact release/version and release year/date. Teach strictly oldest-to-newest, prerequisites before dependent topics within each release. Do not begin with the latest version while earlier release groups remain.
+- Separate evergreen foundations from release-specific behavior. Attach exact version/build, edition, compatibility level, platform, execution mode, prerequisites, permissions, limitations, lifecycle state, release date/year, and source references per topic where applicable. Unknown dates remain unknown; never confuse release date, documentation update date, and retrieval timestamp.
+
+### Evidence collection and retention
+- Search across official documentation, release notes, archives, standards, books, tutorials, community discussions, forums, issue trackers, code examples, and other relevant material. Publisher authority is a confidence attribute, never an admission rule.
+- Preserve every relevant usable observation, including incomplete, unofficial, outdated, conflicting, low-confidence, and model-derived material. Do not delete it merely because a source is weak, missing, or a lesson scores poorly.
+- Store provenance per source/claim: exact URL or explicit no-URL origin, title, source class, content hash, retrieval timestamp, available publication/update/release dates, applicable version, originating query/research angle, and confidence/uncertainty labels.
+- If external research returns no or sparse results, continue with model knowledge and label it `unverified` / `model_knowledge_no_external_source`; never pretend it is sourced or verified. Preserve conflicting claims with attribution until resolved.
+- Context-window and per-request token budgets may require resumable evidence batches, but must never become total course, lesson, version, or source-retention caps. Persist all collected evidence and ensure every research angle is eventually delivered to synthesis/lesson generation through checkpointed batches. Do not store sources that are permanently excluded from model consideration.
+
+### Learning, assessment, and automatic correction
+- A non-empty generated answer, chat response, free-form explanation, incomplete lesson, malformed assessment, or low-scoring draft is learning data. Persist it with provenance and diagnostic status; quality checks guide improvement, not deletion.
+- Assess proportionately. Accept semantically correct explanations and meaningful paraphrases; distinguish factual errors from wording differences, ambiguous questions, missing context, unavailable runtimes, and environment failures. Never reject valid learning solely because an exact-string rubric is rigid.
+- Preserve original lessons, attempts, source records, and model outputs. Corrections create linked, versioned records; never destructively overwrite history.
+- When the system detects an inconsistency, broken example/code/command, unsupported claim, or contradiction, automatically investigate: reproduce/isolate, compare versions and evidence, gather more sources, revise affected material, add regression checks when execution is available, and retain prior and corrected versions with rationale.
+- A learner report that code or instructions failed is a valid trigger; the learner need not diagnose the defect. Human approval is not required for routine evidence gathering, draft correction, tests, or versioned lesson updates. Keep uncertain corrections unverified; never promote unsupported claims.
+- A chat answer is not proof that a lesson was learned or validated. Store it as a candidate with origin/status, then enrich, test, compare, and correct it when used.
+
+### Autonomous release monitoring
+- Maintain durable release watches for versioned subjects. Periodically check new releases, patches, hotfixes, security advisories, standards revisions, documentation corrections, deprecations, and end-of-life changes.
+- Deduplicate by exact version/date/source fingerprint. New findings create additive version-scoped segments and trigger impact analysis for examples, compatibility claims, and dependent topics.
+- Preserve old course versions and history; never rewrite historical lessons as if they were originally taught against a newer release.
+- Monitoring must be observable, resumable, and honest about discovery outages or inaccessible publishers. Do not claim universal detection when providers cannot guarantee it.
+
+### Model/provider portability
+- Default the learning lane to `gpt-oss:20b` when available and configured. Never silently substitute another model on failure.
+- Provider, model/LLM, endpoint, and role-specific routing must be changeable in application settings, including local or remote OpenAI-compatible services and local Ollama-compatible runtimes. Persistent choices survive restart; temporary choices are explicit and scoped.
+- Provider adapters must let settings changes route learning, chat, research, coding, review, and embeddings without code edits or application reinstallation.
+- Keep credentials out of the settings database and logs; validate endpoint security, disclose remote data transfer, and preserve existing network boundaries.
+
+### Engineering execution for learning
+- Add regression tests for subject-agnostic curricula, chronological version ordering, date provenance, complete evidence delivery across bounded batches, non-destructive correction, semantic assessment tolerance, release-watch deduplication, and provider migration.
+- Do not stop development merely because target-host or human acceptance tests are unavailable. Continue independent implementation, static analysis, CI, mocks, and reproducible tests. Keep explicit merge gates intact: never claim unavailable tests passed and never merge to `main` before exact-head CI and required target-host tests actually pass.
+- The prompt edit alone does not complete this requirement. Code, migrations, documentation, tests, and operational evidence must agree.
+
 ## 6. Testing and quality gates
 
 Assess all applicable checks:
