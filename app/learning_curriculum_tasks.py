@@ -248,7 +248,7 @@ def _parse_outline(response: str, batch_size: int) -> dict[str, Any]:
     for item in raw_topics:
         if not isinstance(item, str) or not item.strip() or len(item.strip()) > 300:
             raise ValueError("Every curriculum topic must contain 1–300 characters.")
-        topic_value = re.sub(r"\\s+", " ", item).strip()
+        topic_value = re.sub(r"\s+", " ", item).strip()
         identity = topic_value.casefold()
         if identity in seen:
             raise ValueError("Curriculum contains duplicate topics.")
