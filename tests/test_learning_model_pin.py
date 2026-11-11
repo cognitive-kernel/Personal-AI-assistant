@@ -217,3 +217,20 @@ def test_learning_model_selection_uses_configured_compatible_provider_without_ol
     assert selected == "remote-model"
     assert seen["candidates"] == ["remote-model"]
     assert provenance["selected_model"] == "remote-model"
+
+
+def test_startup_skips_ollama_when_all_llm_and_embedding_profiles_are_external(monkeypatch, capsys):
+    bootstrap = _load_bootstrap()
+    monkeypatch.setattr(
+        bootstrap, "_configured_llm_provider",
+        lambda _purpose: "openai_compatible",
+    )
+    monkeypatch.setattr(bootstrap, "_read_saved_setting", lambda _key, default: default)
+    monkeypatch.setattr(
+        bootstrap, "_find_ollama",
+        lambda: (_ for _ in ()).throw(AssertionError("Ollama must not be installed or started")),
+    )
+
+    bootstrap._ensure_ollama()
+
+    assert "Ollama" in capsys.readouterr().out
