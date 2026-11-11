@@ -426,6 +426,52 @@ def test_save_settings_rejects_invalid_values(monkeypatch, model, interval_hours
     assert error.value.status_code == 422
 
 
+def test_save_settings_rolls_back_a_write_that_failed_after_remote_acceptance(monkeypatch):
+    calls = []
+    state = {
+        "AUTONOMOUS_ENGINEERING_MODEL": "old-model:7b",
+        "AUTONOMOUS_ENGINEERING_INTERVAL_HOURS": "24",
+        "AUTONOMOUS_ENGINEERING_MODE": "scheduled",
+    }
+    interval_update_attempted = False
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "_ollama_status", lambda model: {
+        "online": True, "model": model, "model_installed": True,
+        "model_metadata_available": True, "model_supports_tools": True,
+    })
+
+    def fake_run(command, timeout=8):
+        nonlocal interval_update_attempted
+        calls.append(command)
+        if command[1:3] == ["variable", "list"]:
+            payload = [{"name": name, "value": value} for name, value in state.items()]
+            return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+        if command[1:3] == ["variable", "set"]:
+            name, value = command[3], command[5]
+            if name == "AUTONOMOUS_ENGINEERING_INTERVAL_HOURS" and value == "4" and not interval_update_attempted:
+                interval_update_attempted = True
+                state[name] = value
+                return subprocess.CompletedProcess(command, 1, "", "connection lost after server accepted update")
+            state[name] = value
+            return subprocess.CompletedProcess(command, 0, "", "")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    with pytest.raises(HTTPException) as error:
+        agent.save_autonomous_engineering_settings(
+            agent.EngineeringSettings(model="qwen3:14b", interval_hours=4, execution_mode="continuous")
+        )
+
+    assert error.value.status_code == 502
+    assert "all earlier changes were rolled back" in error.value.detail
+    assert state == {
+        "AUTONOMOUS_ENGINEERING_MODEL": "old-model:7b",
+        "AUTONOMOUS_ENGINEERING_INTERVAL_HOURS": "24",
+        "AUTONOMOUS_ENGINEERING_MODE": "scheduled",
+    }
+
+
 def test_collect_status_never_uses_process_environment_as_model_fallback(monkeypatch):
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_MODEL", "gpt-oss:20b")
     observed = {}
