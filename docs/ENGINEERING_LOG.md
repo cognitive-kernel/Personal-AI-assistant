@@ -10,7 +10,7 @@
 
 ### Corrective changes
 
-- Increased outline generation and its single repair attempt to a bounded 4,096 output tokens and recorded the allowance in ADR-019 and learning documentation.
+- Increased outline generation and its single repair attempt to a bounded 4,096 output tokens and recorded the allowance in ADR-019 and learning documentation. Both requests now require an 8,192-token context, subject to model maximum and the runtime's safe RAM budget; if the host cannot provide it, inference fails before a partial syllabus can be persisted. The JSON repair receives the same output/context budget as the first attempt.
 - Normalized research query strings in every checkpoint, including the validated-outline checkpoint, so a resumed task does not discard its completed query ledger and repeat web research.
 - The bootstrap now loads the project's `.env` before model resolution, reads the existing settings database read-only, installs the persisted learning model, maps only the former built-in `qwen3:8b` default to `gpt-oss:20b`, and preserves explicit custom model settings. Invalid saved model settings fail closed.
 - Added regression coverage for model resolution (fresh install, persisted custom model, legacy default, environment override, malformed setting), full outline output allowance, and normalized checkpoint recovery.
