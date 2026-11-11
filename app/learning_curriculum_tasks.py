@@ -222,6 +222,11 @@ def _collect_sources(
     return sources
 
 
+def _version_order_key(value: str) -> tuple[int, ...] | None:
+    numbers = re.findall(r"\d+", value)
+    return tuple(int(item) for item in numbers) if numbers else None
+
+
 def _parse_outline(response: str, batch_size: int) -> dict[str, Any]:
     if not isinstance(response, str) or not response.strip() or len(response) > 48000:
         raise ValueError("Curriculum model response is empty or exceeds the output limit.")
@@ -330,6 +335,21 @@ def _parse_outline(response: str, batch_size: int) -> dict[str, Any]:
             "hierarchy_path": hierarchy_path.strip() or topic_value,
             "depth": depth,
         }
+    chronological_keys = []
+    for topic_value in topics:
+        applicability = topic_metadata.get(topic_value, {}).get("applicability", {})
+        versions = applicability.get("versions", [])
+        version_keys = [_version_order_key(value) for value in versions]
+        if version_keys and all(key is not None for key in version_keys):
+            normalized_keys = [key for key in version_keys if key is not None]
+            if normalized_keys != sorted(normalized_keys):
+                raise ValueError("Topic versions must be ordered from earliest to latest.")
+        release_years = applicability.get("release_years", [])
+        if release_years:
+            first_version_key = next((key for key in version_keys if key is not None), ())
+            chronological_keys.append((int(release_years[0]), first_version_key))
+    if chronological_keys != sorted(chronological_keys):
+        raise ValueError("Version-scoped curriculum topics must be ordered oldest-to-newest by release year and version.")
     return {"title": title.strip(), "topics": topics, "notes": notes.strip()[:2000],
             "coverage_areas": list(dict.fromkeys(item.strip() for item in coverage))[:40],
             "topic_metadata": topic_metadata,
