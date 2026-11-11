@@ -33,7 +33,7 @@
       const option = document.createElement("option");
       option.value = "";
       option.disabled = true;
-      option.textContent = "هیچ مدل نصب‌شده‌ای از Ollama شناسایی نشد";
+      option.textContent = "هیچ مدل اصلی قابل انتخابی از Ollama شناسایی نشد";
       select.append(option);
       select.value = "";
       return;
