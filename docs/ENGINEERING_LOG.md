@@ -505,3 +505,9 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Preserved additive correction/history behavior. Bumped the lesson-generation prompt registry to `learning-lesson-v6`; lesson-repair remains `learning-lesson-repair-v5` because its prompt text did not change. Updated registry/self-correction tests and learning documentation.
 - Commits: `aae86acb589e159235519821505c805fc8551c5d`, `f94ffc4403b4a39ba8c79dfd6f34efb9117c0bef`, `97d6d11050ef2576c0d0f2c5457ecae943e9e959`, `6fb7808786655024f4242df63fe1ae19ff0f7c21`, `144b7eb6d3d3e54e4f52b22de63f9a3eb45c4e5a`.
 - Validation: prompt/registry/test/documentation references were cross-checked. Exact-head CI and target-host execution remain unverified.
+
+
+## 2026-11-11 — Remaining acceptance gaps identified (not closed)
+
+- The lesson prompt now asks for semantic assessment, but `submit_assessment` still uses deterministic `accepted_phrases` rubric scoring as its progress source. The separate semantic reviewer is opt-in/advisory and does not change score or progress. This does not yet fully satisfy automatic acceptance of semantically correct paraphrases; a safe, auditable integration remains open.
+- General research/chat answers are persisted in conversation history, and the separate browser-learning workflow stores ChatGPT lesson outputs as unverified lessons. General chat/research responses are not yet automatically ingested as subject-scoped learning candidates for later curriculum correction. This remains open; do not claim the prompt change alone implemented it.
