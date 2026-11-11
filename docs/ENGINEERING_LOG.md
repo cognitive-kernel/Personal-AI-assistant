@@ -496,3 +496,12 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Validation: exact-head CI for the latest implementation commit has not yet returned; no local target-host or GPT-OSS 20B runtime validation is claimed.
 
 - Added `tests/test_master_engineering_prompt_contract.py` to guard the new subject-agnostic learning contract against accidental removal. The assertion wording was checked against the actual prompt text after the first draft exposed a mismatch; the final test now checks the exact phrase used by the prompt.
+
+
+## 2026-11-11 — Lesson self-audit and semantic assessment prompt v6
+
+- Added a pre-delivery self-audit instruction covering version/date chronology, commands/APIs/code against the stated release, prerequisites, missing steps, contradictions, unsafe side effects, and expected outputs. Detected defects must be corrected before returning; execution must never be claimed without actual execution evidence.
+- Added explicit semantic assessment guidance: accept valid paraphrases and alternative correct approaches; distinguish partial correctness from factual error and explain missing concepts rather than relying on exact-string matching.
+- Preserved additive correction/history behavior. Bumped the lesson-generation prompt registry to `learning-lesson-v6`; lesson-repair remains `learning-lesson-repair-v5` because its prompt text did not change. Updated registry/self-correction tests and learning documentation.
+- Commits: `aae86acb589e159235519821505c805fc8551c5d`, `f94ffc4403b4a39ba8c79dfd6f34efb9117c0bef`, `97d6d11050ef2576c0d0f2c5457ecae943e9e959`, `6fb7808786655024f4242df63fe1ae19ff0f7c21`, `144b7eb6d3d3e54e4f52b22de63f9a3eb45c4e5a`.
+- Validation: prompt/registry/test/documentation references were cross-checked. Exact-head CI and target-host execution remain unverified.
