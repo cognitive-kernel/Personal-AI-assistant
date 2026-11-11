@@ -15,7 +15,7 @@ def test_status_readiness_requires_every_local_dependency(monkeypatch):
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_MODEL", "gpt-oss:20b")
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_REPOSITORY", "cognitive-kernel/Personal-AI-assistant")
     monkeypatch.setattr(agent, "_ollama_status", lambda model: {
-        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 32768, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True
+        "online": True, "model": model, "model_installed": True, "models": [model], "model_context_length": 65536, "model_capabilities": ["completion", "tools"], "model_supports_tools": True, "model_metadata_available": True
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
@@ -222,7 +222,7 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
             if request.full_url.endswith("/api/tags"):
                 return io.BytesIO(b'{"models":[{"name":"gpt-oss:20b"}]}')
             return io.BytesIO(
-                b'{"details":{"family":"llama"},"model_info":{"llama.context_length":32768},'
+                b'{"details":{"family":"llama"},"model_info":{"llama.context_length":65536},'
                 b'"capabilities":["completion","tools"]}'
             )
 
@@ -247,8 +247,9 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
     ]
     assert result["online"] is True
     assert result["model_installed"] is True
-    assert result["model_context_length"] == 32768
+    assert result["model_context_length"] == 65536
     assert result["model_supports_tools"] is True
+    assert result["model_context_supported"] is True
 
 
 def test_ollama_status_lists_installed_models_without_selecting_one(monkeypatch):
@@ -306,7 +307,8 @@ def test_dispatch_fails_closed_when_run_list_is_unavailable(monkeypatch):
     [
         ({"online": True, "model_installed": False}, 422),
         ({"online": True, "model_installed": True, "model_metadata_available": False}, 422),
-        ({"online": True, "model_installed": True, "model_metadata_available": True, "model_supports_tools": False}, 422),
+        ({"online": True, "model_installed": True, "model_metadata_available": True, "model_context_supported": True, "model_supports_tools": False}, 422),
+        ({"online": True, "model_installed": True, "model_metadata_available": True, "model_context_supported": False, "model_supports_tools": True}, 422),
     ],
 )
 def test_save_settings_rejects_uninstalled_or_unsupported_models_before_github_writes(
@@ -318,6 +320,7 @@ def test_save_settings_rejects_uninstalled_or_unsupported_models_before_github_w
         "online": local_model.get("online", False),
         "model_installed": local_model.get("model_installed", False),
         "model_metadata_available": local_model.get("model_metadata_available", False),
+        "model_context_supported": local_model.get("model_context_supported", False),
         "model_supports_tools": local_model.get("model_supports_tools", False),
     })
     calls = []
@@ -337,7 +340,7 @@ def test_save_settings_updates_model_and_hourly_interval(monkeypatch):
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
     monkeypatch.setattr(agent, "_ollama_status", lambda model: {
         "online": True, "model": model, "model_installed": True,
-        "model_metadata_available": True, "model_supports_tools": True,
+        "model_metadata_available": True, "model_context_supported": True, "model_supports_tools": True,
     })
 
     def fake_run(command, timeout=8):
@@ -1146,6 +1149,7 @@ def test_ollama_status_keeps_server_online_when_selected_model_metadata_fails(mo
     assert result["online"] is True
     assert result["model_installed"] is True
     assert result["model_metadata_available"] is False
+    assert result["model_context_supported"] is False
     assert result["model_supports_tools"] is False
     assert "OSError" in result["model_metadata_error"]
 
@@ -1188,4 +1192,5 @@ def test_app_and_runner_readiness_scripts_require_model_context_and_tool_capabil
         assert ".context_length" in script
         assert '"tools"' in script
         assert "Model context metadata" in script
+        assert "-ge 64000" in script
         assert "Model tool calling" in script
