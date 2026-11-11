@@ -36,21 +36,25 @@ _SEARCH_QUERY_SUFFIXES = (
 
 
 def validate_curriculum_payload(payload: Any) -> tuple[str, int, str]:
-    if not isinstance(payload, dict) or set(payload) != {"topic", "max_topics", "source_text"}:
-        raise ValueError("Curriculum task payload must contain topic, max_topics, and source_text only.")
+    if not isinstance(payload, dict):
+        raise ValueError("Curriculum task payload must be an object.")
+    allowed = {"topic", "source_text", "batch_size", "max_topics"}
+    if set(payload) - allowed or not {"topic", "source_text"}.issubset(payload):
+        raise ValueError("Curriculum task payload contains unsupported or missing fields.")
+    if "batch_size" in payload and "max_topics" in payload:
+        raise ValueError("Specify batch_size only; max_topics is a legacy alias.")
     topic = payload.get("topic")
-    max_topics = payload.get("max_topics")
+    batch_size = payload.get("batch_size", payload.get("max_topics", DEFAULT_TOPICS_PER_BATCH))
     source_text = payload.get("source_text")
     if not isinstance(topic, str) or not topic.strip() or len(topic.strip()) > 300:
         raise ValueError("topic must contain 1–300 characters.")
-    if isinstance(max_topics, bool) or not isinstance(max_topics, int) or not MIN_TOPICS <= max_topics <= MAX_TOPICS:
-        raise ValueError(f"max_topics must be an integer from {MIN_TOPICS} to {MAX_TOPICS}.")
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int) or not MIN_TOPICS_PER_BATCH <= batch_size <= MAX_TOPICS_PER_BATCH:
+        raise ValueError(f"batch_size must be between {MIN_TOPICS_PER_BATCH} and {MAX_TOPICS_PER_BATCH}; this is per-request only, not a total curriculum limit.")
     if source_text is None:
         source_text = ""
     if not isinstance(source_text, str) or len(source_text) > 500:
         raise ValueError("source_text must contain at most 500 characters.")
-    return topic.strip(), max_topics, source_text.strip()
-
+    return topic.strip(), batch_size, source_text.strip()
 
 def _normalized_source_url(value: str) -> str | None:
     try:
