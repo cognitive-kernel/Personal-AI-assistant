@@ -1268,7 +1268,7 @@ def run_job(job_id: int) -> None:
                     if isinstance(item["source_ref"], str)
                     and item["source_ref"].startswith("https://")
                 ]
-                if not duplicate_lesson:
+                if quality["accepted"] and not duplicate_lesson:
                     conn.execute(
                         """INSERT INTO temporary_knowledge_candidates(
                                job_id, topic, content, source_kind, source_urls_json,
@@ -1549,7 +1549,7 @@ def submit_lesson_review(job_id: int, outcomes: list[str], value_rating: int, ta
     if not isinstance(issues, str) or len(issues) > 3000:
         raise ValueError("Issues must be at most 3000 characters.")
     with learning_connection() as conn:
-        row = conn.execute("SELECT status, assessment_json FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
+        row = conn.execute("SELECT status, assessment_json, lesson FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
         if row is None:
             raise KeyError(job_id)
         if row["status"] != "completed" or not row["assessment_json"]:
@@ -1563,7 +1563,11 @@ def submit_lesson_review(job_id: int, outcomes: list[str], value_rating: int, ta
             (job_id, json.dumps(outcomes, ensure_ascii=False), value_rating, takeaway.strip(), issues.strip()),
         )
         review_id = int(cursor.lastrowid)
-    correction = submit_lesson_issue(job_id, issues) if issues.strip() else None
+    correction = (
+        submit_lesson_issue(job_id, issues)
+        if issues.strip() and isinstance(row["lesson"], str) and row["lesson"].strip()
+        else None
+    )
     return {
         "review_id": review_id,
         "job_id": job_id,
@@ -1926,7 +1930,7 @@ def start_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
 
 
 def regenerate_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
-    """Replace the previous lesson for a topic; never keep two active lesson versions."""
+    """Create a new lesson version while preserving every prior lesson and its evidence."""
     lesson_review = _latest_completed_topic_review(topic_id)
     with learning_connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
@@ -1959,17 +1963,9 @@ def regenerate_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
         if old_job_ids:
             placeholders = ",".join("?" for _ in old_job_ids)
             conn.execute(
-                f"DELETE FROM temporary_knowledge_candidates WHERE job_id IN ({placeholders})",
-                old_job_ids,
-            )
-            conn.execute(
-                f"DELETE FROM knowledge_items WHERE job_id IN ({placeholders})",
-                old_job_ids,
-            )
-            conn.execute(
-                f"UPDATE learning_jobs SET status='superseded', lesson=NULL, assessment_json=NULL, "
-                f"error='این درس با درخواست تولید مجدد جایگزین شد.', updated_at=CURRENT_TIMESTAMP "
-                f"WHERE id IN ({placeholders})",
+                f"UPDATE learning_jobs SET status='superseded', "
+                f"error='نسخهٔ تازه‌ای از این درس درخواست شد؛ محتوای این نسخه برای تاریخچه حفظ شده است.', "
+                f"updated_at=CURRENT_TIMESTAMP WHERE id IN ({placeholders})",
                 old_job_ids,
             )
         conn.execute(
