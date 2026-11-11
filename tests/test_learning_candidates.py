@@ -42,7 +42,7 @@ def test_relevant_chat_candidates_are_retrieved_as_unverified_local_observations
     assert result["included_count"] == 1
     assert result["omitted_count"] == 0
     item = result["items"][0]
-    assert item["content"] == sql_answer
+    assert item["content"] == sql_answer.strip()
     assert item["status"] == "unverified"
     assert item["provenance"]["storage"] == "local_only"
     assert item["source_kind"] == "chat_answer"
