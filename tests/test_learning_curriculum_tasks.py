@@ -156,6 +156,8 @@ def test_research_task_persists_sources_outline_and_starts_only_first_lesson(
     assert path["topics"][0]["status"] == "in_progress"
     assert all(item["status"] == "pending" for item in path["topics"][1:])
     assert context.checkpoint_data["phase"] == "curriculum_persisted"
+    assert context.checkpoint_data["queries"] == learning_curriculum_tasks._research_queries("موضوع فنی")
+    assert context.checkpoint_data["completed_queries"] == learning_curriculum_tasks._research_queries("موضوع فنی")
 
     retry_context = RecordingContext(task["id"], context.checkpoint_data)
     retried = learning_curriculum_tasks.handle_curriculum_task(
