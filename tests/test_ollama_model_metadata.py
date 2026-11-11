@@ -231,6 +231,25 @@ def test_codex_context_selection_rejects_models_below_the_64k_minimum():
         )
 
 
+def test_codex_context_selection_fails_closed_when_hardware_cannot_supply_64k():
+    import pytest
+    from app.ollama_context import OllamaModelMetadataError, select_context_window
+
+    with pytest.raises(OllamaModelMetadataError, match="minimum 64000-token context"):
+        select_context_window(
+            model_info={
+                "llama.context_length": 131072,
+                "llama.block_count": 32,
+                "llama.attention.head_count_kv": 8,
+                "llama.attention.key_length": 128,
+                "llama.attention.value_length": 128,
+            },
+            architecture="llama",
+            model_weight_bytes=1024**3,
+            available_memory_bytes=6 * 1024**3,
+        )
+
+
 def test_codex_context_selection_fails_closed_when_model_or_hardware_metadata_is_missing():
     import pytest
     from app.ollama_context import OllamaModelMetadataError, select_context_window
