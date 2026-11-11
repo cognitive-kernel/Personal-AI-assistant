@@ -1092,7 +1092,7 @@ def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_c
     verify_only = context_gate.split("if ($VerifyOnly) {", 1)[1].split("} else {", 1)[0]
     assert "$modelInfo.modelfile" in verify_only
     assert "PARAMETER\\s+num_ctx" in verify_only
-    assert "-ne $selectedContext" in verify_only
+    assert "[int64]$savedContext.Groups[1].Value -ne $selectedContext" in verify_only
     assert "if ($allocated -ne $selectedContext)" in context_gate
     assert "if ($allocated -lt $selectedContext)" not in context_gate
     assert "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH" in context_gate
