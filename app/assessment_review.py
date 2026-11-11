@@ -43,7 +43,7 @@ def _independent_reviewer_identity() -> tuple[str, str, str]:
         return identities
 
     if reviewer["identity"] in primary_identities(settings):
-        raise SemanticReviewError("The semantic evaluator model digest/identity must differ from every configured generation model.")
+        raise SemanticReviewError("The semantic evaluator digest must differ from every configured generation model identity.")
     latest = get_settings()
     if (
         str(latest.get("factual_review_ollama_model", "")).strip() != reviewer_model
