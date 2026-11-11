@@ -687,3 +687,41 @@ def test_user_report_rejects_empty_or_oversized_issue_without_creating_job(learn
         learning.submit_lesson_issue(original["id"], "x" * 5001)
 
 
+
+
+def test_lesson_review_issues_automatically_enqueue_correction_job(learning_store, monkeypatch):
+    original = learning.create_job("Python decorators")
+    assessment = {
+        "learning_outcomes": ["Understand decorators", "Use wrappers", "Preserve metadata"],
+        "questions": ["What is a decorator?", "What is a wrapper?", "Why use wraps?"],
+        "answer_key": ["A callable wrapper.", "A function around a callable.", "To preserve metadata."],
+    }
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE learning_jobs SET status='completed', lesson=?, assessment_json=? WHERE id=?",
+            ("Original lesson.", json.dumps(assessment, ensure_ascii=False), original["id"]),
+        )
+    monkeypatch.setattr(
+        learning, "_enqueue_learning_job",
+        lambda job_id: {"id": 992, "status": "queued", "payload": {"job_id": job_id}},
+    )
+
+    saved = learning.submit_lesson_review(
+        original["id"],
+        ["mastered", "partial", "review"],
+        3,
+        takeaway="I learned the decorator basics.",
+        issues="The example fails when the wrapped function receives keyword arguments.",
+    )
+
+    assert saved["correction_job"]["id"] != original["id"]
+    assert saved["correction_job"]["task_id"] == 992
+    assert "اصلاح خودکار" in saved["note"]
+    with db.learning_connection() as connection:
+        review = connection.execute(
+            "SELECT issues FROM lesson_reviews WHERE id=?",
+            (saved["review_id"],),
+        ).fetchone()
+    assert review["issues"].startswith("The example fails")
+
+
