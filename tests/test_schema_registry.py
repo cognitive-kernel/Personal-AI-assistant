@@ -169,6 +169,7 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         assert {"source_knowledge_id", "target_knowledge_id", "relation_type", "source_url", "source_sha256", "status"} <= graph_columns
         assert {"topic", "cdp_url", "max_lessons", "status"} <= browser_columns
         assert {"applicability_json", "source_urls_json", "hierarchy_path", "depth"} <= topic_columns
+        assert connection.execute("SELECT applicability_json, source_urls_json, hierarchy_path, depth FROM learning_path_topics WHERE id=?", (topic_id,)).fetchone() == ("{}", "[]", "", 0)
         assert {"applicability_json", "source_urls_json", "hierarchy_path", "depth"} <= path_topic_columns
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
