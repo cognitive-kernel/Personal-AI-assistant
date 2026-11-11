@@ -847,5 +847,7 @@ def test_curriculum_prompt_includes_evidence_from_every_research_angle(monkeypat
     requirements = captured[0]["requirements"]
     assert any("regardless of publisher authority" in item for item in requirements)
     assert any("Do not discard unofficial" in item for item in requirements)
+    assert any("every relevant source class" in item for item in requirements)
+    assert not any("only when authoritative sources establish them" in item for item in requirements)
 
 
