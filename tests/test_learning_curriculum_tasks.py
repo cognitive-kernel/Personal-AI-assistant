@@ -200,6 +200,8 @@ def test_research_task_persists_sources_outline_and_starts_only_first_lesson(
     assert path["research"]["model_selection"]["selected_model"] == db.get_settings()["learning_ollama_model"]
     assert path["research"]["outline_sha256"] == result["outline_sha256"]
     assert len(path["research"]["sources"]) == 5
+    assert all(item["retrieved_at"] for item in path["research"]["sources"])
+    assert all(item["publication_date"] is None and item["last_updated"] is None for item in path["research"]["sources"])
     assert len(path["topics"]) == len(_outline()["topics"])
     assert path["topics"][0]["status"] == "in_progress"
     assert all(item["status"] == "pending" for item in path["topics"][1:])
