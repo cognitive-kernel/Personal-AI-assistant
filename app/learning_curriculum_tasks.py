@@ -444,19 +444,44 @@ def _parse_outline(response: str, batch_size: int) -> dict[str, Any]:
 
 
 def _ordered_source_evidence(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Interleave query groups so each bounded prompt batch covers distinct research angles."""
-    grouped: dict[str, list[dict[str, Any]]] = {}
+    """Interleave every chunk of every full source body across research angles."""
+    grouped: dict[str, list[list[dict[str, Any]]]] = {}
     for item in sources:
         if not isinstance(item, dict) or not isinstance(item.get("url"), str):
             continue
         query = str(item.get("query", "")).strip() or "__unclassified__"
-        grouped.setdefault(query, []).append(item)
+        body = item.get("content")
+        if not isinstance(body, str) or not body.strip():
+            body = str(item.get("excerpt", ""))
+        if not body.strip():
+            continue
+        chunks = [
+            body[offset:offset + MAX_SOURCE_EXCERPT_CHARS]
+            for offset in range(0, len(body), MAX_SOURCE_EXCERPT_CHARS)
+        ]
+        if not chunks:
+            continue
+        grouped.setdefault(query, []).append([
+            {
+                **item,
+                "excerpt": chunk,
+                "content_chunk_index": index + 1,
+                "content_chunk_count": len(chunks),
+            }
+            for index, chunk in enumerate(chunks)
+        ])
     ordered: list[dict[str, Any]] = []
     groups = list(grouped.values())
-    while any(groups):
-        for group in groups:
-            if group:
-                ordered.append(group.pop(0))
+    max_source_index = max((len(group) for group in groups), default=0)
+    max_chunk_index = max(
+        (len(chunks) for group in groups for chunks in group),
+        default=0,
+    )
+    for chunk_index in range(max_chunk_index):
+        for source_index in range(max_source_index):
+            for group in groups:
+                if source_index < len(group) and chunk_index < len(group[source_index]):
+                    ordered.append(group[source_index][chunk_index])
     return ordered
 
 
@@ -490,6 +515,9 @@ def _generate_outline(
         "retrieved_at": item.get("retrieved_at"),
         "research_query": item.get("query", ""),
         "content_sha256": item.get("sha256", ""),
+        "content_chunk_index": item.get("content_chunk_index", 1),
+        "content_chunk_count": item.get("content_chunk_count", 1),
+        "content_complete": bool(item.get("content_complete", False)),
     } for item in source_batch]
     request = {
         "requested_subject": topic,
