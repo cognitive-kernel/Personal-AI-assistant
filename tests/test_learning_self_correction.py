@@ -103,7 +103,7 @@ def test_malformed_initial_response_enters_bounded_repair_cycle(learning_store, 
     }
 
 
-def test_lower_scoring_repair_does_not_replace_best_initial_quality(learning_store, monkeypatch):
+def test_low_quality_lesson_and_source_are_retained_after_worse_repair(learning_store, monkeypatch):
     calls = []
     initial = _valid_payload("A decorator wraps a callable and can add reusable behavior.")
     repair = _valid_payload("Short repair.")
@@ -128,13 +128,32 @@ def test_lower_scoring_repair_does_not_replace_best_initial_quality(learning_sto
     learning.run_job(job["id"])
     finished = learning.get_job(job["id"])
 
-    assert finished["status"] == "rejected"
+    assert finished["status"] == "completed"
     assert len(calls) == 2
     assert finished["quality"]["score"] == 55
-    assert finished["quality"]["reasons"] == ["needs a concrete example"]
+    assert finished["quality"]["accepted"] is False
+    assert finished["quality"]["lesson_retained"] is True
     assert finished["quality"]["generation_budget"]["calls_used"] == 2
     assert finished["quality"]["generation_provenance"]["attempt_count"] == 2
-    assert finished["lesson"] is None
+    assert finished["lesson"] == initial["lesson"]
+    with db.learning_connection() as connection:
+        stored = connection.execute(
+            "SELECT content, status FROM knowledge_items WHERE job_id=?",
+            (job["id"],),
+        ).fetchone()
+        source = connection.execute(
+            "SELECT content FROM learning_source_text WHERE job_id=?",
+            (job["id"],),
+        ).fetchone()
+        candidate = connection.execute(
+            "SELECT content FROM temporary_knowledge_candidates WHERE job_id=?",
+            (job["id"],),
+        ).fetchone()
+    assert stored is not None and stored["content"] == initial["lesson"]
+    assert stored["status"] == "unverified"
+    assert source is not None and source["content"] == "Reference text for the lesson."
+    assert candidate is not None and candidate["content"] == initial["lesson"]
+
 
 def test_accepted_initial_lesson_has_no_repair_prompt_provenance(learning_store, monkeypatch):
     payload = _valid_payload()
