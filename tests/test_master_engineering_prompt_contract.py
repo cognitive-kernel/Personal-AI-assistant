@@ -10,7 +10,7 @@ def test_master_prompt_defines_universal_version_aware_learning_contract():
 
     required_contract = (
         "Universal, Version-Aware Learning Contract (Mandatory for Every Subject)",
-        "never constrain the syllabus to the learner's examples",
+        "never constrain a syllabus to learner examples",
         "earliest documented public/initial/stable release",
         "strictly oldest-to-newest",
         "Publisher authority is a confidence attribute, never an admission rule",
