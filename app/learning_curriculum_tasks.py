@@ -469,9 +469,6 @@ def maintain_release_watch(*, limit: int = 3) -> dict[str, int]:
         path_id = int(row["path_id"])
         topic = str(row["requested_topic"])
         try:
-            previous_sources = json.loads(row["sources_json"])
-            if not isinstance(previous_sources, list):
-                previous_sources = []
             discovered: dict[str, dict[str, str]] = {}
             for query in _release_watch_queries(topic):
                 try:
