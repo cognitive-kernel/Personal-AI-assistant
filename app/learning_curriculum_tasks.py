@@ -416,34 +416,48 @@ def enqueue_curriculum_task(
         priority=0, max_attempts=3,
     )
 def handle_curriculum_task(
-    payload: dict[str, Any],
-    checkpoint: dict[str, Any] | None,
-    context: TaskContext,
+    payload: dict[str, Any], checkpoint: dict[str, Any] | None, context: TaskContext,
 ) -> dict[str, Any]:
     try:
-        topic, max_topics, source_text = validate_curriculum_payload(payload)
+        topic, batch_size, source_text = validate_curriculum_payload(payload)
     except (TypeError, ValueError) as exc:
         raise PermanentTaskError(str(exc)) from exc
-
     topic_sha256 = hashlib.sha256(topic.encode("utf-8")).hexdigest()
-    sources = _collect_sources(
-        topic,
-        topic_sha256=topic_sha256,
-        checkpoint=checkpoint,
-        context=context,
-    )
-    current_checkpoint = context.checkpoint_data or checkpoint or {}
-    if not isinstance(current_checkpoint, dict):
-        current_checkpoint = {}
-    outline = current_checkpoint.get("outline")
-    configured_model = str(get_settings().get("learning_ollama_model", "")).strip()
-    if not configured_model:
-        raise PermanentTaskError("The learning Ollama model is not configured.")
-    if not isinstance(outline, dict):
-        model = configured_model
+    sources = _collect_sources(topic, topic_sha256=topic_sha256, checkpoint=checkpoint, context=context)
+    state = context.checkpoint_data or checkpoint or {}
+    if not isinstance(state, dict):
+        state = {}
+    model = state.get("model") or str(get_settings().get("learning_ollama_model", "")).strip()
+    if not isinstance(model, str) or not model.strip() or len(model) > 200:
+        raise PermanentTaskError("The learning Ollama model is not configured or checkpoint identity is invalid.")
+    model_selection = state.get("model_selection")
+    if not isinstance(model_selection, dict):
+        model_selection = {"status": "checkpointed_configured_model", "selected_model": model}
+    if model_selection.get("selected_model") != model:
+        raise PermanentTaskError("The curriculum model provenance does not match the model used.")
+    outline = state.get("outline")
+    if outline is None:
+        outline = {"title": "", "topics": [], "notes": "", "coverage_areas": []}
+    if (not isinstance(outline, dict) or not isinstance(outline.get("topics"), list)
+        or not all(isinstance(item, str) and item.strip() for item in outline["topics"])):
+        raise PermanentTaskError("The checkpointed curriculum outline is invalid.")
+    if len({item.casefold() for item in outline["topics"]}) != len(outline["topics"]):
+        raise PermanentTaskError("The checkpointed curriculum contains duplicate topics.")
+    if not isinstance(outline.get("coverage_areas", []), list):
+        raise PermanentTaskError("The checkpointed curriculum coverage is invalid.")
+    batch_index = state.get("batch_index", 0)
+    if isinstance(batch_index, bool) or not isinstance(batch_index, int) or batch_index < 0:
+        raise PermanentTaskError("The checkpointed curriculum batch index is invalid.")
+    next_focus = state.get("next_focus", "")
+    no_progress_batches = state.get("no_progress_batches", 0)
+    if isinstance(no_progress_batches, bool) or not isinstance(no_progress_batches, int) or no_progress_batches < 0:
+        raise PermanentTaskError("The checkpointed no-progress counter is invalid.")
+    while True:
         try:
-            outline, model_selection = _generate_outline(
-                topic, max_topics, source_text, sources, model
+            page, selection = _generate_outline(
+                topic, batch_size, source_text, sources, model, batch_index=batch_index,
+                previous_topics=outline["topics"], previous_coverage=outline.get("coverage_areas", []),
+                next_focus=next_focus,
             )
         except ollama.OllamaError as exc:
             if exc.retryable:
@@ -452,64 +466,51 @@ def handle_curriculum_task(
         except learning.LearningError as exc:
             raise PermanentTaskError(str(exc)) from exc
         except (TypeError, ValueError) as exc:
-            raise PermanentTaskError("The curriculum outline failed strict validation.") from exc
+            raise PermanentTaskError("The curriculum batch failed strict validation.") from exc
+        if selection.get("selected_model") != model:
+            raise PermanentTaskError("The curriculum model provenance does not match the model used.")
+        known = {item.casefold() for item in outline["topics"]}
+        additions = [item for item in page["topics"] if item.casefold() not in known]
+        if not additions:
+            no_progress_batches += 1
+            if page["has_more"] or no_progress_batches >= 2:
+                raise PermanentTaskError("Curriculum generation made no new progress; refusing an incomplete course.")
+        else:
+            no_progress_batches = 0
+            if not outline["title"]:
+                outline["title"] = page["title"]
+            outline["topics"].extend(additions)
+            outline["notes"] = page["notes"] or outline.get("notes", "")
+            outline["coverage_areas"] = list(dict.fromkeys(outline.get("coverage_areas", []) + page["coverage_areas"]))
+        batch_index += 1
+        next_focus = page["next_focus"]
         context.checkpoint({
-            "phase": "outline_validated",
-            "topic_sha256": topic_sha256,
-            "queries": _research_queries(topic),
-            "completed_queries": _research_queries(topic),
-            "sources": sources,
-            "outline": outline,
-            "model": model,
-            "model_selection": model_selection,
+            "phase": "outline_batch_validated", "topic_sha256": topic_sha256,
+            "queries": _research_queries(topic), "completed_queries": _research_queries(topic),
+            "sources": sources, "outline": outline, "batch_index": batch_index,
+            "no_progress_batches": no_progress_batches, "next_focus": next_focus,
+            "has_more": page["has_more"], "model": model, "model_selection": model_selection,
         })
-    else:
-        # Never trust a checkpointed model response without validating its full contract again.
-        outline = _parse_outline(json.dumps(outline, ensure_ascii=False), max_topics)
-        model = current_checkpoint.get("model", configured_model)
-        if not isinstance(model, str) or not model.strip() or len(model) > 200:
-            raise PermanentTaskError("The checkpointed curriculum model identity is invalid.")
-        model_selection = (
-            current_checkpoint.get("model_selection")
-            if isinstance(current_checkpoint.get("model_selection"), dict)
-            else {"status": "checkpointed_configured_model", "selected_model": model}
-        )
-    if model_selection.get("selected_model") != model:
-        raise PermanentTaskError("The curriculum model provenance does not match the model used.")
-    path_id, outline_sha256 = _persist_researched_path(
-        task_id=context.task_id,
-        topic=topic,
-        outline=outline,
-        sources=sources,
-        model=model,
-        model_selection=model_selection,
-    )
+        if not page["has_more"]:
+            break
+    if len(outline["topics"]) < MIN_TOPICS_PER_BATCH or not outline.get("title"):
+        raise PermanentTaskError("The completed curriculum is too small or has no title.")
+    outline_sha256 = hashlib.sha256(json.dumps(outline, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+    path_id, outline_sha256 = _persist_researched_path(task_id=context.task_id, topic=topic, outline=outline,
+                                                       sources=sources, model=model, model_selection=model_selection)
     context.checkpoint({
-        "phase": "curriculum_persisted",
-        "topic_sha256": topic_sha256,
-        "queries": _research_queries(topic),
-        "completed_queries": _research_queries(topic),
-        "path_id": path_id,
-        "outline_sha256": outline_sha256,
-        "outline": outline,
-        "sources": sources,
-        "model": model,
-        "model_selection": model_selection,
+        "phase": "curriculum_persisted", "topic_sha256": topic_sha256,
+        "queries": _research_queries(topic), "completed_queries": _research_queries(topic),
+        "path_id": path_id, "outline_sha256": outline_sha256, "outline": outline,
+        "sources": sources, "model": model, "model_selection": model_selection,
     })
     queue_result = learning.start_researched_path_learning(path_id, allow_retry=False)
     return {
-        "path_id": path_id,
-        "title": outline["title"],
-        "topics": outline["topics"],
-        "notes": outline["notes"],
-        "coverage_areas": outline["coverage_areas"],
-        "source_count": len(sources),
+        "path_id": path_id, "title": outline["title"], "topics": outline["topics"],
+        "topic_count": len(outline["topics"]), "notes": outline["notes"],
+        "coverage_areas": outline["coverage_areas"], "source_count": len(sources),
         "sources": [{"title": item["title"], "url": item["url"], "sha256": item["sha256"]} for item in sources],
-        "outline_sha256": outline_sha256,
-        "model": model,
-        "model_selection": model_selection,
-        "queued_count": queue_result.get("queued_count", 0),
-        "queued_job_ids": queue_result.get("job_ids", []),
-        "active_job_id": queue_result.get("active_job_id"),
-        "queue_status": queue_result.get("status", "queued"),
+        "outline_sha256": outline_sha256, "model": model, "model_selection": model_selection,
+        "queued_count": queue_result.get("queued_count", 0), "queued_job_ids": queue_result.get("job_ids", []),
+        "active_job_id": queue_result.get("active_job_id"), "queue_status": queue_result.get("status", "queued"),
     }
