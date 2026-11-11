@@ -470,3 +470,39 @@ def test_curriculum_generation_continues_beyond_forty_topics_without_truncating(
         ).fetchone()
     assert json.loads(metadata["applicability_json"])["status"] == "unverified"
     assert json.loads(metadata["source_urls_json"]) == []
+
+
+def test_topic_applicability_metadata_is_structured_and_not_overstated():
+    value = _outline()
+    topic = value["topics"][0]
+    value["topic_metadata"] = {
+        topic: {
+            "hierarchy_path": "SQL Server / Query language / SELECT",
+            "depth": 2,
+            "source_urls": ["https://learn.microsoft.com/sql/t-sql/queries/select-transact-sql"],
+            "applicability": {
+                "status": "documented",
+                "product": "SQL Server Database Engine",
+                "versions": ["SQL Server 2022 (16.x)", "SQL Server 2025 (17.x)"],
+                "builds": [],
+                "editions": ["Standard", "Enterprise"],
+                "compatibility_levels": ["160", "170"],
+                "platforms": ["Windows"],
+                "execution_modes": ["T-SQL batch"],
+                "prerequisites": ["Database access"],
+                "permissions": ["SELECT permission"],
+                "limitations": ["Object-level permissions may further restrict access"],
+                "notes": "Applies only to documented engine and database compatibility conditions.",
+            },
+        }
+    }
+    parsed = learning_curriculum_tasks._parse_outline(json.dumps(value, ensure_ascii=False), 20)
+    metadata = parsed["topic_metadata"][topic]
+    assert metadata["applicability"]["status"] == "documented"
+    assert metadata["applicability"]["versions"] == ["SQL Server 2022 (16.x)", "SQL Server 2025 (17.x)"]
+    assert metadata["hierarchy_path"] == "SQL Server / Query language / SELECT"
+    assert metadata["depth"] == 2
+
+    value["topic_metadata"][topic]["applicability"]["status"] = "verified"
+    with pytest.raises(ValueError, match="status"):
+        learning_curriculum_tasks._parse_outline(json.dumps(value, ensure_ascii=False), 20)
