@@ -1793,6 +1793,11 @@ def get_learning_path(path_id: int) -> dict[str, Any]:
             "FROM learning_path_research WHERE path_id=?",
             (path_id,),
         ).fetchone()
+        coverage_row = conn.execute(
+            """SELECT subject_map_json, release_ledger_json, unresolved_gaps_json, coverage_audit_json
+               FROM learning_path_coverage WHERE path_id=?""",
+            (path_id,),
+        ).fetchone()
     total = len(topics)
     completed = sum(1 for item in topics if item["status"] == "completed")
     in_progress = sum(1 for item in topics if item["status"] == "in_progress")
@@ -1836,6 +1841,15 @@ def get_learning_path(path_id: int) -> dict[str, Any]:
             }
             for item in sources
         ]
+        try:
+            coverage = {
+                "subject_map": json.loads(coverage_row["subject_map_json"] or "[]") if coverage_row else outline.get("subject_map", []),
+                "release_ledger": json.loads(coverage_row["release_ledger_json"] or "[]") if coverage_row else outline.get("release_ledger", []),
+                "unresolved_gaps": json.loads(coverage_row["unresolved_gaps_json"] or "[]") if coverage_row else outline.get("unresolved_gaps", []),
+                "coverage_audit": json.loads(coverage_row["coverage_audit_json"] or "{}") if coverage_row else outline.get("coverage_audit", {"status": "unknown"}),
+            }
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise LearningError("Persisted curriculum coverage ledger is invalid.") from exc
         research = {
             "requested_topic": research_row["requested_topic"],
             "outline": outline,
@@ -1844,6 +1858,7 @@ def get_learning_path(path_id: int) -> dict[str, Any]:
             "model_selection": model_selection,
             "source_count": research_row["source_count"],
             "sources": sources,
+            "coverage": coverage,
             "created_at": research_row["created_at"],
         }
     result.update({
