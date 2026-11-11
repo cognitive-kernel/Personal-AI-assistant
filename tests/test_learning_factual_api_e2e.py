@@ -239,7 +239,7 @@ def test_learning_api_to_worker_persists_factual_claim_with_provenance(tmp_path,
         from app.learning_durable_budget import get_job_budget
         generation_budget = get_job_budget(created["id"])
         assert generation_budget["calls_used"] == 2
-        assert generation_budget["predict_tokens_reserved"] == 2200
+        assert generation_budget["predict_tokens_reserved"] == 4900
 
         with db.learning_connection() as conn:
             candidate = conn.execute(
