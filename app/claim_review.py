@@ -1,6 +1,6 @@
 """Model-assisted claim review against retrieved source excerpts.
 
-This is a second-pass review by the configured local Ollama model, not independent
+This is a second-pass review by the configured learning provider, not independent
 proof of truth. Malformed, incomplete, or unsupported reviews fail closed.
 """
 from __future__ import annotations
