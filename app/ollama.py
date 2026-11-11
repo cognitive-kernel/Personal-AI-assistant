@@ -479,7 +479,12 @@ def _openai_compatible_chat(
     for item in history or []:
         if item.get("role") in {"user", "assistant"} and isinstance(item.get("content"), str):
             messages.append({"role": item["role"], "content": item["content"][:12000]})
-    message_limit = 72000 if purpose == "programming" else 16000 if purpose == "factual_review" else 12000
+    message_limit = (
+        256000 if purpose == "learning"
+        else 72000 if purpose == "programming"
+        else 16000 if purpose == "factual_review"
+        else 12000
+    )
     messages.append({"role": "user", "content": message[:message_limit]})
     payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False}
     if num_predict is not None:
