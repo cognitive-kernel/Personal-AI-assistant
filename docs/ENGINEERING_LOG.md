@@ -479,3 +479,5 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Validation: no exact-head CI result is available yet for the latest commit. Do not infer success from earlier PR runs. Local target-host validation remains a separate pre-merge gate.
 
 - Follow-up: removed the 40-document aggregate cap and three-documents-per-domain cap as well. Every usable result returned by each research query is now retained with provenance; the prompt still selects a bounded representative excerpt set per model call to respect context limits, without deleting the persisted source inventory. Added a regression with four sources from one domain per query.
+
+- Regression found during follow-up call-site audit: the release-watch collector still referenced the removed aggregate source-cap constant. Removed those stale cap checks too; otherwise the first valid release-watch result would raise NameError. Existing release-watch baseline/change/deduplication tests exercise this path. Exact-head CI is the next verification step.
