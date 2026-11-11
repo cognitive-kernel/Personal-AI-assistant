@@ -1,6 +1,6 @@
 # وضعیت یکپارچهٔ پروژه
 
-> تاریخ بازبینی: 2026-11-10. این بخش وضعیت جاری را مشخص می‌کند؛ یادداشت‌های قدیمی‌تر پایین سند، snapshotهای تاریخی هستند.
+> تاریخ بازبینی: 2026-11-11. این بخش وضعیت جاری را مشخص می‌کند؛ یادداشت‌های قدیمی‌تر پایین سند، snapshotهای تاریخی هستند.
 
 ## وضعیت فعلی اتوماسیون — PR #702
 
@@ -35,6 +35,9 @@
 **مبنای وضعیت:** PR #664، #667، #668 و #669 قبلاً مستندات، صف پایدار یادگیری، لاگ مهندسی، scorecard و کنترل تشخیص زبان را به main افزودند. PR #671 نیز ذخیرهٔ exception خام و diagnostics کنترل‌نشده در کشف منابع ابری را حذف کرد و با squash commit `2a5c83bf0ba924f4a2c8f206338a04872562d72d` ادغام شد. Exact-head CI برای PR #671 موفق است؛ post-merge tests، dashboard smoke، dependency audit و Windows storage روی SHA فعلی همگی موفق شده‌اند. Issue #52، پذیرش میزبان هدف، staging restore/rollback و ارزیابی زنده همچنان دروازه‌های باز هستند.
 
 ## 1.1 تغییرات جدید پس از snapshot قبلی
+
+- **آخرین اعتبارسنجی PR #710:** روی commit دقیق `5e58301417767124ee01b9f4e331a6fd74354525` همهٔ workflowهای GitHub موفق شدند: tests [#43001048500](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43001048500) با **1,980 passed / 50 deselected**، تست‌های Windows storage، بررسی artifactهای یادگیری، 94 لینک Markdown، import-cycle checks، benchmark بازیابی و claim-to-test برابر **10/10**؛ browser E2E [#43001048937](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43001048937)؛ dependency audit [#43001048856](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43001048856). این نتایج CI هستند؛ اجرای واقعی مدل، RAM/latency، بازیابی پس از restart زیر بار مدل و کیفیت درس فارسی/انگلیسی روی میزبان مقصد هنوز تأیید نشده‌اند. شاخهٔ یکپارچه 173 commit جلوتر از main است؛ PR #710 باز و ادغام‌نشده می‌ماند تا تست محلی الزامی انجام شود.
+
 
 - PR [#710](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/710) (اصلاح PR #709): سقف کلی سرفصل/درس/batch حذف شده است؛ دوره با batchهای checkpointشدهٔ ۸ تا ۴۰تایی و بدون سقف کل تولید می‌شود. API از `batch_size` استفاده می‌کند و `max_topics` فقط alias سازگاری قدیمی است. برای هر مبحث metadata سلسله‌مراتب، محصول، نسخه/Build، Edition، Compatibility Level، پلتفرم، حالت اجرا، پیش‌نیاز، مجوز، محدودیت و URL دقیق منبع نگهداری می‌شود؛ زمان دریافت از تاریخ انتشار/به‌روزرسانی جداست و تاریخ نامعلوم حدس زده نمی‌شود. migration 43 با defaultهای سازگار داده‌های قبلی را حفظ می‌کند. مدل پیش‌فرض مسیر یادگیری `gpt-oss:20b` است و مدل انتخاب‌شده بدون جایگزینی خاموش pin می‌شود. **Exact-head CI روی `d18fceea301c51ef56e3731b03055af446c2be04` موفق شد:** tests [#42992647418](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/42992647418)، Windows storage همان run، browser E2E [#42992648348](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/42992648348) و dependency audit [#42992647476](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/42992647476). تست میزبان Windows و کیفیت/کارایی اجرای واقعی `gpt-oss:20b` اجرا نشده‌اند و موفقیت آن‌ها ادعا نمی‌شود؛ PR همچنان ادغام‌نشده است.
 
