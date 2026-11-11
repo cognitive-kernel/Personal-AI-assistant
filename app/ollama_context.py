@@ -5,6 +5,7 @@ import sys
 from typing import Any
 
 MIN_CONTEXT_TOKENS = 512
+MIN_CODEX_CONTEXT_TOKENS = 64000
 GIB = 1024 ** 3
 DEFAULT_RAM_RESERVE_BYTES = 4 * GIB
 MIN_MODEL_OVERHEAD_BYTES = GIB // 2
@@ -46,6 +47,10 @@ def select_context_window(
     Missing telemetry or architecture dimensions are errors, never fallback values.
     """
     maximum = maximum_context_tokens(model_info, architecture)
+    if maximum < MIN_CODEX_CONTEXT_TOKENS:
+        raise OllamaModelMetadataError(
+            f"Selected model maximum context {maximum} is below the Codex minimum {MIN_CODEX_CONTEXT_TOKENS} tokens."
+        )
     numeric_inputs = {
         "model_weight_bytes": model_weight_bytes,
         "available_memory_bytes": available_memory_bytes,
@@ -58,10 +63,10 @@ def select_context_window(
     if requested_context_tokens is not None and (
         isinstance(requested_context_tokens, bool)
         or not isinstance(requested_context_tokens, int)
-        or requested_context_tokens < MIN_CONTEXT_TOKENS
+        or requested_context_tokens < MIN_CODEX_CONTEXT_TOKENS
     ):
         raise OllamaModelMetadataError(
-            f"Requested context must be an integer of at least {MIN_CONTEXT_TOKENS} tokens."
+            f"Requested Codex context must be an integer of at least {MIN_CODEX_CONTEXT_TOKENS} tokens."
         )
 
     prefix = f"{architecture}."
@@ -103,15 +108,17 @@ def select_context_window(
         )
 
     hardware_maximum = min(maximum, cache_budget_bytes // bytes_per_token)
-    if hardware_maximum < MIN_CONTEXT_TOKENS:
+    if hardware_maximum < MIN_CODEX_CONTEXT_TOKENS:
         raise OllamaModelMetadataError(
-            "Available RAM cannot safely support the minimum 512-token context."
+            f"Available RAM cannot safely support the Codex minimum {MIN_CODEX_CONTEXT_TOKENS}-token context."
         )
 
     requested = requested_context_tokens
     selected = min(requested if requested is not None else maximum, maximum, hardware_maximum)
-    if selected < MIN_CONTEXT_TOKENS:
-        raise OllamaModelMetadataError("No safe Codex context window could be selected.")
+    if selected < MIN_CODEX_CONTEXT_TOKENS:
+        raise OllamaModelMetadataError(
+            f"No safe Codex context window of at least {MIN_CODEX_CONTEXT_TOKENS} tokens could be selected."
+        )
 
     return {
         "maximum_context_tokens": maximum,
