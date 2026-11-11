@@ -52,9 +52,9 @@ if ([string]::IsNullOrWhiteSpace($Model)) {
 if ($Model -match '(?i)-codex-ctx[0-9]+$') {
     throw "The saved model is an internal Codex context variant. Save the original Ollama model in the dashboard."
 }
-$tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 8
+$tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 8 -MaximumRedirection 0
 if (@($tags.models | ForEach-Object { $_.name }) -notcontains $Model) { throw "Saved model $Model is not installed. Install it with ollama pull $Model, then save it in the dashboard." }
-$modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -ContentType "application/json" -Body (@{ model = $Model; verbose = $true } | ConvertTo-Json -Compress) -TimeoutSec 15
+$modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -ContentType "application/json" -Body (@{ model = $Model; verbose = $true } | ConvertTo-Json -Compress) -TimeoutSec 15 -MaximumRedirection 0
 $architecture = [string]$modelInfo.details.family
 $contextKey = $architecture + ".context_length"
 $rawContext = $modelInfo.model_info.PSObject.Properties[$contextKey]

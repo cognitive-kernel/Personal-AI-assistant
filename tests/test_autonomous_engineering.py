@@ -1162,6 +1162,7 @@ def test_cancel_finds_active_run_after_ten_newer_completed_runs(monkeypatch):
 def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_codex_requirement():
     root = Path(__file__).resolve().parents[1]
     context_gate = (root / "scripts" / "verify_ollama_context.ps1").read_text(encoding="utf-8")
+    assert all("-MaximumRedirection 0" in line for line in context_gate.splitlines() if "$baseUrl/api/" in line and "Invoke-RestMethod" in line)
     production = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
     diagnostic = (root / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml").read_text(encoding="utf-8")
     # PowerShell accepts both Windows separators and forward slashes; compare
@@ -1294,6 +1295,7 @@ def test_app_and_runner_readiness_scripts_require_model_context_and_tool_capabil
     for name in ("check_autonomous_agent.ps1", "check_autonomous_runner.ps1"):
         script = (root / "scripts" / name).read_text(encoding="utf-8")
         assert "/api/show" in script
+        assert all("-MaximumRedirection 0" in line for line in script.splitlines() if "http://127.0.0.1:11434" in line and "Invoke-RestMethod" in line)
         assert ".context_length" in script
         assert '"tools"' in script
         assert "Model context metadata" in script
@@ -1302,5 +1304,6 @@ def test_app_and_runner_readiness_scripts_require_model_context_and_tool_capabil
 
     provisioning = (root / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
     assert ".context_length" in provisioning
+    assert all("-MaximumRedirection 0" in line for line in provisioning.splitlines() if "http://127.0.0.1:11434" in line and "Invoke-RestMethod" in line)
     assert "-lt 64000" in provisioning
     assert '"tools"' in provisioning

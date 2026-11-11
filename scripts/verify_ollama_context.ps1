@@ -15,7 +15,7 @@ function Get-ModelInfo {
     param([Parameter(Mandatory = $true)][string]$ModelName)
     $body = @{ model = $ModelName; verbose = $true } | ConvertTo-Json -Compress
     try {
-        Invoke-RestMethod -Uri "$baseUrl/api/show" -Method Post -Body $body -ContentType "application/json" -TimeoutSec 20
+        Invoke-RestMethod -Uri "$baseUrl/api/show" -Method Post -Body $body -ContentType "application/json" -TimeoutSec 20 -MaximumRedirection 0
     } catch {
         throw "Could not inspect Ollama model '$ModelName'. $($_.Exception.Message)"
     }
@@ -62,7 +62,7 @@ function Get-AutomaticContext {
     $availableMemoryBytes = [int64]$os.FreePhysicalMemory * 1KB
 
     try {
-        $tags = Invoke-RestMethod -Uri "$baseUrl/api/tags" -Method Get -TimeoutSec 10
+        $tags = Invoke-RestMethod -Uri "$baseUrl/api/tags" -Method Get -TimeoutSec 10 -MaximumRedirection 0
     } catch {
         throw "Could not inspect installed Ollama model sizes for context planning. $($_.Exception.Message)"
     }
@@ -101,7 +101,7 @@ function Get-AutomaticContext {
 function Get-AllocatedContext {
     param([Parameter(Mandatory = $true)][string]$ModelName)
     try {
-        $runtime = Invoke-RestMethod -Uri "$baseUrl/api/ps" -Method Get -TimeoutSec 10
+        $runtime = Invoke-RestMethod -Uri "$baseUrl/api/ps" -Method Get -TimeoutSec 10 -MaximumRedirection 0
     } catch {
         throw "Could not read Ollama's loaded-model context from /api/ps. $($_.Exception.Message)"
     }
@@ -207,7 +207,7 @@ if ($VerifyOnly) {
             stream = $false
         } | ConvertTo-Json -Depth 5 -Compress
         try {
-            $null = Invoke-RestMethod -Uri "$baseUrl/api/create" -Method Post -ContentType "application/json" -Body $createBody -TimeoutSec $TimeoutSeconds
+            $null = Invoke-RestMethod -Uri "$baseUrl/api/create" -Method Post -ContentType "application/json" -Body $createBody -TimeoutSec $TimeoutSeconds -MaximumRedirection 0
         } catch {
             throw "Ollama could not create persistent Codex model '$codexModel' at context $selectedContext. $($_.Exception.Message)"
         }
@@ -240,7 +240,7 @@ $warmupBody = @{
     keep_alive = "10m"
 } | ConvertTo-Json -Depth 4 -Compress
 try {
-    $null = Invoke-RestMethod -Uri "$baseUrl/api/generate" -Method Post -ContentType "application/json" -Body $warmupBody -TimeoutSec $TimeoutSeconds
+    $null = Invoke-RestMethod -Uri "$baseUrl/api/generate" -Method Post -ContentType "application/json" -Body $warmupBody -TimeoutSec $TimeoutSeconds -MaximumRedirection 0
 } catch {
     throw "Ollama could not load persistent Codex model '$codexModel' at context $selectedContext. $($_.Exception.Message)"
 }

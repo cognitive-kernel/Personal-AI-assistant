@@ -198,7 +198,7 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or $version -notmatch [regex]::Escape($requiredVersion)) { throw "Unexpected Codex CLI version: $version" }
           python --version
           ollama --version
-          $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 5
+          $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 5 -MaximumRedirection 0
           if (@($tags.models | ForEach-Object { $_.name }) -notcontains $env:AUTONOMOUS_ENGINEERING_MODEL) {
             throw "Ollama model '$env:AUTONOMOUS_ENGINEERING_MODEL' is not installed."
           }

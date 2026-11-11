@@ -398,7 +398,7 @@ jobs:
           }
           $ollama = Get-Command ollama -ErrorAction Stop
           $codex = Get-Command codex -ErrorAction Stop
-          $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 5
+          $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 5 -MaximumRedirection 0
           $model = [string]$env:AUTONOMOUS_ENGINEERING_MODEL
           if ([string]::IsNullOrWhiteSpace($model)) {
             throw "No model is saved in repository variable AUTONOMOUS_ENGINEERING_MODEL. Select and save an installed model in /autonomous-engineering first."
