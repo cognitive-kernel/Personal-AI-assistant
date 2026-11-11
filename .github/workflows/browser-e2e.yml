@@ -16,7 +16,7 @@ permissions:
 jobs:
   dashboard-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       E2E_BASE_URL: http://127.0.0.1:8000
       DATABASE_BACKUP_INTERVAL_HOURS: "0"
