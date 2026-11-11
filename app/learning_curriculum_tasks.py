@@ -1163,6 +1163,10 @@ def handle_curriculum_task(
         raise PermanentTaskError("The checkpointed curriculum outline is invalid.")
     if len({item.casefold() for item in outline["topics"]}) != len(outline["topics"]):
         raise PermanentTaskError("The checkpointed curriculum contains duplicate topics.")
+    outline.setdefault("subject_map", [])
+    outline.setdefault("release_ledger", [])
+    outline.setdefault("unresolved_gaps", [])
+    outline.setdefault("coverage_audit", {"status": "unknown"})
     if (
         not isinstance(outline.get("coverage_areas", []), list)
         or not isinstance(outline.get("topic_metadata", {}), dict)
