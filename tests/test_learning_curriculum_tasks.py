@@ -230,6 +230,36 @@ def test_research_task_persists_sources_outline_and_starts_only_first_lesson(
     assert retried["queue_status"] == "already_active"
 
 
+def test_research_retains_more_than_three_sources_from_one_domain(learning_store, monkeypatch):
+    calls = {"count": 0}
+
+    def discover(_query, *, limit):
+        calls["count"] += 1
+        assert limit == 5
+        return [
+            web_sources.SourceDocument(
+                url=f"https://community.example.test/guides/{calls['count']}/{index}",
+                title=f"Community guide {calls['count']}-{index}",
+                text=("Detailed community material with implementation notes. " * 8),
+            )
+            for index in range(4)
+        ]
+
+    monkeypatch.setattr(web_sources, "discover_sources", discover)
+    context = RecordingContext()
+    sources = learning_curriculum_tasks._collect_sources(
+        "موضوع با منابع متعدد",
+        topic_sha256="c" * 64,
+        checkpoint=None,
+        context=context,
+    )
+
+    assert calls["count"] == len(learning_curriculum_tasks._research_queries("موضوع با منابع متعدد"))
+    assert len(sources) == calls["count"] * 4
+    assert len({item["url"] for item in sources}) == len(sources)
+    assert {item["url"].split("/")[2] for item in sources} == {"community.example.test"}
+
+
 def test_researched_path_queues_next_lesson_only_after_previous_job_succeeds(
     learning_store, monkeypatch
 ):
