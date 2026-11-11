@@ -751,7 +751,10 @@ def _persist_researched_path(
     slug = f"researched-{task_id}-{topic_sha256[:12]}"
     outline_json = json.dumps(outline, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     outline_sha256 = hashlib.sha256(outline_json.encode("utf-8")).hexdigest()
-    sources_json = json.dumps(sources, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    sources_json = json.dumps(
+        _source_metadata_for_checkpoint(sources),
+        ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    )
     model_selection_json = json.dumps(
         model_selection, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     )
@@ -801,6 +804,10 @@ def _persist_researched_path(
                    path_id, status, next_check_at, last_source_fingerprint
                ) VALUES (?, 'active', CURRENT_TIMESTAMP, '')""",
             (path_id,),
+        )
+        connection.execute(
+            "UPDATE learning_research_source_text SET path_id=? WHERE task_id=? AND path_id IS NULL",
+            (path_id, task_id),
         )
         topic_metadata = outline.get("topic_metadata", {})
         # Per-batch validation is insufficient: a later batch can still introduce
@@ -1014,7 +1021,7 @@ def handle_curriculum_task(
         context.checkpoint({
             "phase": "outline_batch_validated", "topic_sha256": topic_sha256,
             "queries": _research_queries(topic), "completed_queries": _research_queries(topic),
-            "sources": sources, "outline": outline, "batch_index": batch_index,
+            "sources": _source_metadata_for_checkpoint(sources), "outline": outline, "batch_index": batch_index,
             "source_batches_total": source_batch_count,
             "source_batches_reviewed": min(batch_index, source_batch_count),
             "no_progress_batches": no_progress_batches, "next_focus": next_focus,
@@ -1057,7 +1064,7 @@ def handle_curriculum_task(
         "phase": "curriculum_persisted", "topic_sha256": topic_sha256,
         "queries": _research_queries(topic), "completed_queries": _research_queries(topic),
         "path_id": path_id, "outline_sha256": outline_sha256, "outline": outline,
-        "sources": sources, "model": model, "model_selection": model_selection,
+        "sources": _source_metadata_for_checkpoint(sources), "model": model, "model_selection": model_selection,
     })
     queue_result = learning.start_researched_path_learning(path_id, allow_retry=False)
     return {
