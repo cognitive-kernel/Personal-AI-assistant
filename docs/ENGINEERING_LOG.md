@@ -37,9 +37,9 @@
 - Removed the remaining implicit `gpt-oss:20b` fallback from the application readiness path, autonomous workflow, app/runner check scripts, and Runner provisioning. The application now uses only the repository's saved `AUTONOMOUS_ENGINEERING_MODEL`; a missing selection is a readiness blocker, not a default.
 - The model dropdown now presents an explicit placeholder when there is no saved model. It does not preselect the first installed model; an operator must deliberately select and save one.
 - Runner provisioning reads the saved repository variable when `-Model` is omitted and independently verifies that exact model is installed, exposes its architecture-specific context limit, and advertises `tools`.
-- Repository model/interval/mode writes now snapshot existing values and roll back prior successful writes if a later variable update fails. Regression tests cover rollback and no-fallback behavior.
+- Repository model/interval/mode writes snapshot existing values and roll back prior successful writes if a later variable update fails. The rollback also includes the failed write itself, because GitHub may accept an update even when the CLI response is lost; if rollback commands fail, the code re-reads repository variables and verifies the restored state before reporting success. Regression tests cover both partial failure and remote-accepted/client-failed writes.
 - README's autonomous-engineering description and the operational guide were aligned with the implementation. The README target-hardware values were preserved unchanged.
-- Current exact-head CI runs are queued on `619b27bc0c22ccae4e3603642b8c7756ca6ff01d` (tests #43029186593, browser E2E #43029186567, dependency audit #43029186631); Windows diagnostic #106 is queued because the owner machine is powered off. Neither live host acceptance nor local/human acceptance is claimed.
+- Exact-head CI on implementation/test head `80efb0f78ac73979effb0749bc22113591c91bee` passed: 1,974 passed / 50 deselected; Windows storage, Browser E2E, dependency audit, generated artifacts, 93 Markdown links, import-cycle checks, and both structural benchmarks passed. Runs: tests #43029955356, browser #43029955388, dependency audit #43029955566. Windows diagnostic #108 is queued because the owner machine is powered off. Neither live host acceptance nor local/human acceptance is claimed.
 
 
 ---
