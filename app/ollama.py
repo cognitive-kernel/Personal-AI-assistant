@@ -356,6 +356,36 @@ def runtime_diagnostics(
     return result
 
 
+def normalize_openai_compatible_base_url(value: str) -> str:
+    """Validate an OpenAI-compatible base URL; plaintext HTTP is restricted to loopback."""
+    if not isinstance(value, str) or not value.strip() or len(value) > 2048:
+        raise OllamaError("OpenAI-compatible base URL must be a non-empty URL of at most 2048 characters.")
+    raw = value.strip().rstrip("/")
+    try:
+        parsed = urllib.parse.urlparse(raw)
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError as exc:
+        raise OllamaError("OpenAI-compatible base URL is malformed.") from exc
+    if (
+        parsed.scheme not in {"https", "http"} or not hostname
+        or parsed.username is not None or parsed.password is not None
+        or parsed.query or parsed.fragment or "?" in raw or "#" in raw
+        or parsed.netloc.endswith(":") or (port is not None and not 1 <= port <= 65535)
+        or len(parsed.path) > 512
+        or any(part in {".", ".."} for part in parsed.path.split("/"))
+    ):
+        raise OllamaError("OpenAI-compatible base URL is invalid.")
+    if parsed.scheme != "https":
+        try:
+            is_loopback = ipaddress.ip_address(hostname).is_loopback
+        except ValueError:
+            is_loopback = hostname.lower() == "localhost"
+        if not is_loopback:
+            raise OllamaError("Non-local OpenAI-compatible endpoints must use HTTPS.")
+    return raw
+
+
 def _openai_compatible_chat(
     message: str,
     history: list[dict[str, str]] | None,
@@ -369,26 +399,7 @@ def _openai_compatible_chat(
     """Call an OpenAI-compatible endpoint, including local LM Studio/vLLM/llama.cpp servers."""
     settings = get_settings()
     base_url = settings.get(f"{purpose}_llm_base_url", "")
-    if not isinstance(base_url, str) or not base_url.strip() or len(base_url) > 2048:
-        raise OllamaError(f"A valid {purpose} OpenAI-compatible base URL is required.")
-    parsed = urllib.parse.urlparse(base_url.strip().rstrip("/"))
-    if (
-        parsed.scheme not in {"https", "http"} or not parsed.hostname
-        or parsed.username is not None or parsed.password is not None
-        or parsed.query or parsed.fragment or "?" in base_url or "#" in base_url
-    ):
-        raise OllamaError("The OpenAI-compatible endpoint must be a valid base HTTP(S) URL without credentials, query, or fragment.")
-    if parsed.scheme != "https":
-        try:
-            host_ip = ipaddress.ip_address(parsed.hostname)
-            is_loopback = host_ip.is_loopback
-        except ValueError:
-            is_loopback = parsed.hostname.lower() == "localhost"
-        if not is_loopback:
-            raise OllamaError("Non-local OpenAI-compatible endpoints must use HTTPS.")
-    normalized_base = base_url.strip().rstrip("/")
-    if len(parsed.path) > 512 or any(part in {".", ".."} for part in parsed.path.split("/")):
-        raise OllamaError("The OpenAI-compatible endpoint path is invalid.")
+    normalized_base = normalize_openai_compatible_base_url(base_url)
     api_key_env = settings.get(f"{purpose}_llm_api_key_env", "")
     headers = {"Content-Type": "application/json"}
     if api_key_env:
@@ -464,7 +475,7 @@ def chat(
     if purpose not in {"chat", "learning", "programming", "factual_review", "research_plan"}:
         raise ValueError("purpose must be chat, learning, programming, factual_review, or research_plan.")
     settings = get_settings()
-    prefix = purpose
+    prefix = "chat" if purpose == "research_plan" else purpose
     hardware = detect_hardware()
     request_timeout = int(settings.get(f"{prefix}_ollama_timeout_seconds", settings.get("ollama_timeout_seconds", 120)))
     if purpose in {"factual_review", "research_plan"}:
