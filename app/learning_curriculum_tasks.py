@@ -431,6 +431,128 @@ def _generate_outline(
         return generate(repair_prompt), model_selection
 
 
+def _source_fingerprint(sources: list[dict[str, Any]]) -> str:
+    """Hash stable URL/content identities, excluding mutable search ranking and timestamps."""
+    identities = sorted({
+        (str(item.get("url", "")), str(item.get("sha256", "")))
+        for item in sources
+        if isinstance(item, dict) and item.get("url") and item.get("sha256")
+    })
+    encoded = json.dumps(identities, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _release_watch_queries(topic: str) -> tuple[str, ...]:
+    """Narrow recurring searches to release history, current updates, and fixes."""
+    return (
+        f"{topic[:230]} official latest release notes version updates",
+        f"{topic[:230]} release history archive versions release dates",
+        f"{topic[:230]} patch hotfix cumulative update security advisory changelog",
+    )
+
+
+def maintain_release_watch(*, limit: int = 3) -> dict[str, int]:
+    """Periodically discover new release material and enqueue immutable curriculum versions."""
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 20:
+        raise ValueError("limit must be between 1 and 20.")
+    with learning_connection() as connection:
+        rows = connection.execute(
+            """SELECT w.path_id, w.last_source_fingerprint, r.requested_topic, r.sources_json
+               FROM learning_release_watch w
+               JOIN learning_path_research r ON r.path_id=w.path_id
+               WHERE w.status='active' AND w.next_check_at<=CURRENT_TIMESTAMP
+               ORDER BY w.next_check_at, w.path_id LIMIT ?""",
+            (limit,),
+        ).fetchall()
+    checked = queued = unchanged = errors = 0
+    for row in rows:
+        path_id = int(row["path_id"])
+        topic = str(row["requested_topic"])
+        try:
+            previous_sources = json.loads(row["sources_json"])
+            if not isinstance(previous_sources, list):
+                previous_sources = []
+            discovered: dict[str, dict[str, str]] = {}
+            for query in _release_watch_queries(topic):
+                try:
+                    documents = web_sources.discover_sources(query, limit=5)
+                except web_sources.SourceFetchError:
+                    continue
+                for document in documents:
+                    url = _normalized_source_url(document.url)
+                    title = str(document.title).strip()[:150]
+                    body = str(document.text).strip()
+                    if not url or not title or len(body) < 100:
+                        continue
+                    discovered[url] = {
+                        "url": url,
+                        "title": title,
+                        "sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+                    }
+                    if len(discovered) >= MAX_SOURCE_DOCUMENTS:
+                        break
+                if len(discovered) >= MAX_SOURCE_DOCUMENTS:
+                    break
+            current_sources = list(discovered.values())
+            if not current_sources:
+                with learning_connection() as connection:
+                    connection.execute(
+                        """UPDATE learning_release_watch
+                           SET last_checked_at=CURRENT_TIMESTAMP,
+                               next_check_at=datetime('now', '+1 hour'),
+                               updated_at=CURRENT_TIMESTAMP
+                           WHERE path_id=? AND status='active'""",
+                        (path_id,),
+                    )
+                checked += 1
+                continue
+            previous_fingerprint = str(row["last_source_fingerprint"] or "") or _source_fingerprint(previous_sources)
+            current_fingerprint = _source_fingerprint(current_sources)
+            if current_fingerprint == previous_fingerprint:
+                with learning_connection() as connection:
+                    connection.execute(
+                        """UPDATE learning_release_watch
+                           SET last_checked_at=CURRENT_TIMESTAMP,
+                               next_check_at=datetime('now', '+6 hours'),
+                               last_source_fingerprint=?,
+                               updated_at=CURRENT_TIMESTAMP
+                           WHERE path_id=? AND status='active'""",
+                        (current_fingerprint, path_id),
+                    )
+                unchanged += 1
+            else:
+                dedupe_key = f"learning-release-watch:{path_id}:{current_fingerprint}"
+                existing = task_manager.get_task_by_dedupe_key(dedupe_key)
+                if existing is not None and existing.get("status") in task_manager.TERMINAL_STATUSES:
+                    if existing.get("status") != "completed":
+                        dedupe_key += ":" + datetime.now(timezone.utc).strftime("%Y%m%d%H")
+                task = enqueue_curriculum_task(topic, dedupe_key=dedupe_key)
+                with learning_connection() as connection:
+                    connection.execute(
+                        """UPDATE learning_release_watch
+                           SET last_checked_at=CURRENT_TIMESTAMP,
+                               next_check_at=datetime('now', '+6 hours'),
+                               last_source_fingerprint=?, last_task_id=?,
+                               updated_at=CURRENT_TIMESTAMP
+                           WHERE path_id=? AND status='active'""",
+                        (current_fingerprint, int(task["id"]), path_id),
+                    )
+                queued += 1
+            checked += 1
+        except Exception:
+            errors += 1
+            with learning_connection() as connection:
+                connection.execute(
+                    """UPDATE learning_release_watch
+                       SET last_checked_at=CURRENT_TIMESTAMP,
+                           next_check_at=datetime('now', '+1 hour'),
+                           updated_at=CURRENT_TIMESTAMP
+                       WHERE path_id=? AND status='active'""",
+                    (path_id,),
+                )
+    return {"checked": checked, "queued": queued, "unchanged": unchanged, "errors": errors}
+
+
 def _persist_researched_path(
     *,
     task_id: int,
@@ -483,6 +605,19 @@ def _persist_researched_path(
                     len(sources), sources_json,
                 ),
             )
+        connection.execute(
+            """UPDATE learning_release_watch SET status='superseded', updated_at=CURRENT_TIMESTAMP
+               WHERE status='active' AND path_id IN (
+                   SELECT path_id FROM learning_path_research WHERE requested_topic=? AND path_id<>?
+               )""",
+            (topic, path_id),
+        )
+        connection.execute(
+            """INSERT OR IGNORE INTO learning_release_watch(
+                   path_id, status, next_check_at, last_source_fingerprint
+               ) VALUES (?, 'active', datetime('now', '+6 hours'), ?)""",
+            (path_id, _source_fingerprint(sources)),
+        )
         topic_metadata = outline.get("topic_metadata", {})
         known_source_urls = {item["url"] for item in sources}
         for position, lesson_topic in enumerate(outline["topics"], 1):
@@ -524,6 +659,7 @@ def _persist_researched_path(
 def enqueue_curriculum_task(
     topic: str, *, batch_size: int = DEFAULT_TOPICS_PER_BATCH,
     source_text: str | None = None, max_topics: int | None = None,
+    dedupe_key: str | None = None,
 ) -> dict[str, Any]:
     # max_topics is retained only as a legacy alias for one inference batch.
     if max_topics is not None:
@@ -536,7 +672,7 @@ def enqueue_curriculum_task(
     return task_manager.create_task(
         CURRICULUM_TASK_TYPE,
         {"topic": normalized_topic, "batch_size": normalized_batch, "source_text": normalized_source},
-        priority=0, max_attempts=3,
+        priority=0, max_attempts=3, dedupe_key=dedupe_key,
     )
 
 
