@@ -316,3 +316,22 @@ def test_compatible_learning_provider_does_not_truncate_long_source_context(monk
 
     assert result == "retained"
     assert captured["payload"]["messages"][-1]["content"] == long_prompt
+
+
+def test_compatible_provider_model_identity_is_endpoint_and_model_scoped(monkeypatch):
+    settings = {
+        "factual_review_llm_provider": "openai_compatible",
+        "factual_review_llm_base_url": "https://review.example.test/v1",
+    }
+    monkeypatch.setattr(ollama, "get_settings", lambda: settings)
+
+    first = ollama.model_identity("factual_review", "review-model")
+    same = ollama.model_identity("factual_review", "review-model")
+    other_model = ollama.model_identity("factual_review", "other-model")
+    settings["factual_review_llm_base_url"] = "https://another.example.test/v1"
+    other_endpoint = ollama.model_identity("factual_review", "review-model")
+
+    assert first["identity_kind"] == "endpoint_model_configuration_fingerprint"
+    assert first["identity"] == same["identity"]
+    assert first["identity"] != other_model["identity"]
+    assert first["identity"] != other_endpoint["identity"]
