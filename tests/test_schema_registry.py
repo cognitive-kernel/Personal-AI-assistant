@@ -159,6 +159,7 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         usage_columns = {row[1] for row in connection.execute("PRAGMA table_info(model_usage_events)")}
         graph_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_knowledge_graph_edges)")}
         browser_columns = {row[1] for row in connection.execute("PRAGMA table_info(browser_learning_courses)")}
+        topic_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_path_topics)")}
         path_topic_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_path_topics)")}
         candidate_review_columns = {row[1] for row in connection.execute("PRAGMA table_info(knowledge_candidate_reviews)")}
         experience_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_experiences)")}
@@ -167,6 +168,7 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         assert "originating_knowledge_id" in experience_columns
         assert {"source_knowledge_id", "target_knowledge_id", "relation_type", "source_url", "source_sha256", "status"} <= graph_columns
         assert {"topic", "cdp_url", "max_lessons", "status"} <= browser_columns
+        assert {"applicability_json", "source_urls_json", "hierarchy_path", "depth"} <= topic_columns
         assert {"applicability_json", "source_urls_json", "hierarchy_path", "depth"} <= path_topic_columns
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
