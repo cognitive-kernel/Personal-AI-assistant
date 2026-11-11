@@ -762,6 +762,26 @@ def test_versioned_curriculum_topics_must_be_oldest_to_newest():
         learning_curriculum_tasks._parse_outline(json.dumps(value, ensure_ascii=False), 20)
 
 
+def test_complete_curriculum_rejects_out_of_order_versions_across_batches():
+    topics = ["Python 3.8 fundamentals", "Python 3.12 fundamentals"]
+    metadata = {
+        topics[0]: {
+            "applicability": {"versions": ["Python 3.8"], "release_years": ["2019"]}
+        },
+        topics[1]: {
+            "applicability": {"versions": ["Python 3.12"], "release_years": ["2023"]}
+        },
+    }
+
+    # Each batch can be individually valid, but the merged curriculum must
+    # preserve global oldest-to-newest ordering.
+    learning_curriculum_tasks._validate_chronological_topics(topics, metadata)
+    with pytest.raises(ValueError, match="oldest-to-newest"):
+        learning_curriculum_tasks._validate_chronological_topics(
+            list(reversed(topics)), metadata
+        )
+
+
 def test_legacy_research_checkpoint_without_query_provenance_is_researched_again():
     queries = learning_curriculum_tasks._research_queries("Python")
     checkpoint = {
