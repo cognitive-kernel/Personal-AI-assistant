@@ -368,6 +368,19 @@ def runtime_diagnostics(
             "ram_safety_reserve_gb": settings.get("ram_safety_reserve_gb", 4),
         }, hardware),
     }
+    if settings.get(f"{profile}_llm_provider", "ollama") == "openai_compatible":
+        result["provider"] = "openai_compatible"
+        result["runtime_limits"] = {"num_ctx": requested_context, "cpu_threads": 0}
+        if model:
+            result["selected_model"] = {
+                "name": model,
+                "maximum_context_tokens": None,
+                "recommended_context_tokens": None,
+                "memory_estimate": None,
+                "provider_metadata_available": False,
+            }
+        return result
+    result["provider"] = "ollama"
     try:
         running = _request("/api/ps", timeout=4).get("models", [])
         if isinstance(running, list):
