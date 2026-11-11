@@ -253,16 +253,18 @@ def test_semantically_equivalent_paraphrases_can_complete_path_topic(tmp_path, m
             },
         },
     )
-    result = learning.submit_assessment(
-        job_id,
-        [
-            "A list can be changed in place after it has been made.",
-            "The index tells you which position to access.",
-            "You replace an element by assigning a different value to that slot.",
-        ],
-        "semantic-paraphrase-assessment-001",
-    )
+    answers = [
+        "A list can be changed in place after it has been made.",
+        "The index tells you which position to access.",
+        "You replace an element by assigning a different value to that slot.",
+    ]
+    key = "semantic-paraphrase-assessment-001"
+    result = learning.submit_assessment(job_id, answers, key)
+    replay = learning.submit_assessment(job_id, answers, key)
 
+    assert replay["idempotent_replay"] is True
+    assert replay["score"] == 100
+    assert replay["scoring_method"] == "semantic_model_assisted_v1"
     assert result["score"] == 100
     assert result["correct_count"] == 3
     assert result["scoring_method"] == "semantic_model_assisted_v1"
