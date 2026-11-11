@@ -18,6 +18,10 @@ The primary `learning-form` accepted a topic and created one lesson job. It did 
 6. Remove preset curriculum enrollment controls from the primary UI. Keep legacy curriculum APIs and existing paths/data for backward compatibility; do not delete prior user data.
 7. The Chrome/ChatGPT browser-learning feature remains separate and unchanged.
 
+## Version-applicability contract
+
+Version-sensitive technical material must keep separate dimensions instead of treating a product version as one universal compatibility switch. For SQL Server, for example, SQL Server 2025 is Database Engine 17.x with default database compatibility level 170, while SQL Server 2022 is Engine 16.x with default level 160. Database compatibility level controls selected T-SQL behavior and query-optimization behavior; it does not gate every new T-SQL syntax feature. The lesson must therefore record both engine version and database compatibility level, plus edition, platform, build/update, execution mode, and relevant prerequisites when the command depends on them. See the [Microsoft compatibility-level reference](https://learn.microsoft.com/en-us/sql/t-sql/statements/alter-database-transact-sql-compatibility-level) and [compatibility certification guidance](https://learn.microsoft.com/en-us/sql/database-engine/install-windows/compatibility-certification).
+
 ## Consequences
 
 - Curriculum generation is checkpointed after every batch and recoverable through the existing durable task queue. Each lesson stores product/version/build, edition, compatibility level, platform, execution mode, prerequisites, permissions, limitations, and exact source references where applicable; unsupported or undocumented scope remains explicitly `unverified`. Source publication/update dates are recorded only when available, while retrieval timestamps are recorded independently.
