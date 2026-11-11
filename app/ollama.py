@@ -534,7 +534,8 @@ def chat(
     if purpose not in {"chat", "learning", "programming", "factual_review", "research_plan"}:
         raise ValueError("purpose must be chat, learning, programming, factual_review, or research_plan.")
     settings = get_settings()
-    prefix = "chat" if purpose == "research_plan" else purpose
+    prefix = purpose
+    provider_profile = "chat" if purpose == "research_plan" else purpose
     hardware = detect_hardware()
     request_timeout = int(settings.get(f"{prefix}_ollama_timeout_seconds", settings.get("ollama_timeout_seconds", 120)))
     if purpose in {"factual_review", "research_plan"}:
@@ -542,10 +543,10 @@ def chat(
     model = str(model_override if model_override is not None else settings.get(f"{prefix}_ollama_model", settings.get("ollama_model", "qwen2.5:7b"))).strip()
     if not model or len(model) > 200:
         raise ValueError("model must be a non-empty name of at most 200 characters.")
-    provider = settings.get(f"{prefix}_llm_provider", "ollama")
+    provider = settings.get(f"{provider_profile}_llm_provider", "ollama")
     if provider == "openai_compatible":
         return _openai_compatible_chat(
-            message, history, system_prompt, purpose=prefix, model=model,
+            message, history, system_prompt, purpose=provider_profile, model=model,
             timeout=request_timeout, num_predict=num_predict,
         )
     if provider != "ollama":
