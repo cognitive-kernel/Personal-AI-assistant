@@ -337,3 +337,41 @@ def test_settings_api_rejects_api_key_values_and_invalid_provider(settings_clien
     ):
         response = settings_client.patch("/api/settings", json={"values": values})
         assert response.status_code == 422
+
+
+def test_temporary_settings_apply_immediately_without_persisting(settings_client):
+    before = db.get_settings()
+    response = settings_client.patch(
+        "/api/settings",
+        json={
+            "temporary": True,
+            "values": {
+                "learning_llm_provider": "openai_compatible",
+                "learning_llm_base_url": "http://127.0.0.1:1234/v1",
+                "learning_ollama_model": "temporary-model",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert db.get_settings()["learning_llm_provider"] == "openai_compatible"
+    assert db.get_settings()["learning_ollama_model"] == "temporary-model"
+    with db.settings_connection() as conn:
+        persisted_provider = json.loads(
+            conn.execute(
+                "SELECT value_json FROM settings WHERE key='learning_llm_provider'"
+            ).fetchone()[0]
+        )
+        persisted_model = json.loads(
+            conn.execute(
+                "SELECT value_json FROM settings WHERE key='learning_ollama_model'"
+            ).fetchone()[0]
+        )
+    assert persisted_provider == before["learning_llm_provider"]
+    assert persisted_model == before["learning_ollama_model"]
+
+    db.update_settings({
+        "learning_llm_provider": before["learning_llm_provider"],
+        "learning_llm_base_url": before["learning_llm_base_url"],
+        "learning_ollama_model": before["learning_ollama_model"],
+    })
