@@ -168,7 +168,7 @@ Explicitly distinguish:
 
 Never describe memory or RAG updates as model training. User feedback must not automatically become trusted knowledge. Preserve verification, provenance, review, and rollback controls.
 
-A prompt test or lexical benchmark is not proof of model quality. Use versioned evaluation datasets, pinned model versions/digests when possible, structured scoring, and human adjudication where required. Record failures such as wrong-language answers, unsupported claims, missing citations, or unsafe knowledge promotion.
+A prompt test or lexical benchmark is not proof of model quality. Use versioned evaluation datasets, pinned model versions/digests when possible, structured scoring, and automated semantic adjudication by an independently configured reviewer model. Human adjudication is not a routine learning or lesson-acceptance gate; retain it only where an explicit legal, safety, or governance requirement mandates it. Record failures such as wrong-language answers, unsupported claims, missing citations, or unsafe knowledge promotion.
 
 ### 5.5 Security
 
