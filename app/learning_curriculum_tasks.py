@@ -380,7 +380,7 @@ def _generate_outline(
     for item in sources:
         query = item.get("query", "")
         domain = urlsplit(item["url"]).hostname or ""
-        if query and query not in covered_queries and domain not in prompt_domains:
+        if query and query not in covered_queries:
             prompt_excerpt_urls.add(item["url"])
             covered_queries.add(query)
             prompt_domains.add(domain)
