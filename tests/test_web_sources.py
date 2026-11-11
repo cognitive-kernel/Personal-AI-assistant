@@ -781,3 +781,47 @@ def test_discovery_skips_http_candidates_and_keeps_https_source(monkeypatch):
     assert documents.fetch_diagnostics["attempted_count"] == 2
     assert documents.fetch_diagnostics["fetched_count"] == 1
     assert documents.fetch_diagnostics["failure_counts"] == {"SourceFetchError": 1}
+
+
+def test_discover_sources_fetches_more_than_five_results_when_requested(monkeypatch):
+    candidates = web_sources.SearchResultList([
+        (f"Source {index}", f"https://example.org/source/{index}")
+        for index in range(1, 13)
+    ])
+    captured = {}
+    def search(_query, limit):
+        captured["limit"] = limit
+        return candidates
+    monkeypatch.setattr(web_sources, "_search_results", search)
+    monkeypatch.setattr(
+        web_sources,
+        "_fetch_document",
+        lambda url, title: web_sources.SourceDocument(
+            url=url, title=title, text=("Complete source body for learning. " * 5)
+        ),
+    )
+
+    documents = web_sources.discover_sources("release history", limit=12)
+
+    assert captured["limit"] == 12
+    assert len(documents) == 12
+    assert documents.fetch_diagnostics["attempted_count"] == 12
+    assert documents.fetch_diagnostics["fetched_count"] == 12
+
+
+def test_discover_sources_keeps_provider_page_limit_bounded(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        web_sources,
+        "_search_results",
+        lambda _query, limit: captured.setdefault("limit", limit) or [],
+    )
+    monkeypatch.setattr(
+        web_sources,
+        "_fetch_document",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("no candidates expected")),
+    )
+
+    web_sources.discover_sources("release history", limit=500)
+
+    assert captured["limit"] == 30
