@@ -103,3 +103,100 @@ def list_chat_candidates(*, status: str = "unverified", limit: int = 100) -> lis
             (status, limit),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+_TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
+_CANDIDATE_STOPWORDS = frozenset({
+    "the", "and", "for", "with", "from", "into", "how", "what", "when", "where",
+    "why", "can", "could", "should", "would", "please", "show", "explain", "help",
+    "use", "using", "about", "this", "that", "are", "was", "were", "is", "be",
+    "در", "برای", "با", "از", "به", "را", "که", "چطور", "چگونه", "چیست", "است",
+    "میخواهم", "میخوام", "لطفا", "لطفاً", "آموزش", "مثال", "توضیح",
+})
+
+
+def _topic_tokens(value: str) -> set[str]:
+    return {
+        token.casefold()
+        for token in _TOKEN_RE.findall(value)
+        if len(token) >= 2 and token.casefold() not in _CANDIDATE_STOPWORDS
+    }
+
+
+def relevant_chat_candidates(
+    topic: str, *, max_candidates: int = 12, max_chars: int = 24000
+) -> dict[str, Any]:
+    """Retrieve matching assistant answers as unverified, local learning observations.
+
+    Retrieval never changes candidate trust status. Per-prompt bounds protect the
+    model context; matched candidates beyond those bounds remain stored and visible
+    through list_chat_candidates for later topic-specific retrieval.
+    """
+    if not isinstance(topic, str) or not topic.strip() or len(topic) > 300:
+        raise ValueError("topic must contain 1–300 characters.")
+    if isinstance(max_candidates, bool) or not isinstance(max_candidates, int) or max_candidates < 1:
+        raise ValueError("max_candidates must be a positive integer.")
+    if isinstance(max_chars, bool) or not isinstance(max_chars, int) or max_chars < 1000:
+        raise ValueError("max_chars must be at least 1000.")
+    tokens = _topic_tokens(topic)
+    if not tokens:
+        return {"items": [], "matched_count": 0, "included_count": 0, "omitted_count": 0}
+    placeholders = ",".join("?" for _ in tokens)
+    conditions = " OR ".join("topic_hint LIKE ?" for _ in tokens)
+    patterns = [f"%{token}%" for token in sorted(tokens)]
+    with learning_connection() as connection:
+        rows = connection.execute(
+            f"""SELECT id, conversation_id, message_id, user_message_id, task_id,
+                       source_kind, topic_hint, content, content_sha256,
+                       provenance_json, status, created_at
+                FROM learning_chat_candidates
+                WHERE status='unverified' AND ({conditions})
+                ORDER BY created_at DESC, id DESC""",
+            patterns,
+        ).fetchall()
+    normalized_topic = " ".join(topic.casefold().split())
+    ranked: list[tuple[int, Any]] = []
+    for row in rows:
+        hint = str(row["topic_hint"] or "")
+        overlap = len(tokens & _topic_tokens(hint))
+        if overlap == 0:
+            continue
+        exact_phrase = normalized_topic in " ".join(hint.casefold().split())
+        ranked.append((overlap * 10 + (100 if exact_phrase else 0), row))
+    ranked.sort(key=lambda item: (item[0], str(item[1]["created_at"]), int(item[1]["id"])), reverse=True)
+    items: list[dict[str, Any]] = []
+    used_chars = 0
+    for score, row in ranked:
+        if len(items) >= max_candidates:
+            break
+        content = str(row["content"])
+        remaining = max_chars - used_chars
+        if remaining <= 0:
+            break
+        included_content = content[:remaining]
+        if not included_content:
+            continue
+        try:
+            provenance = json.loads(row["provenance_json"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            provenance = {"trust": "unverified", "storage": "local_only"}
+        items.append({
+            "candidate_id": int(row["id"]),
+            "source_kind": str(row["source_kind"]),
+            "topic_hint": hint if (hint := str(row["topic_hint"] or "")) else "",
+            "content": included_content,
+            "content_sha256": str(row["content_sha256"]),
+            "provenance": provenance if isinstance(provenance, dict) else {},
+            "status": "unverified",
+            "created_at": str(row["created_at"]),
+            "relevance_score": score,
+            "content_truncated": len(included_content) < len(content),
+        })
+        used_chars += len(included_content)
+    return {
+        "items": items,
+        "matched_count": len(ranked),
+        "included_count": len(items),
+        "omitted_count": max(0, len(ranked) - len(items)),
+        "context_truncated": used_chars >= max_chars and len(ranked) > len(items),
+    }
