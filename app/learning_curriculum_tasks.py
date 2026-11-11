@@ -1015,6 +1015,27 @@ def _persist_researched_path(
                     len(sources), sources_json,
                 ),
             )
+        coverage_values = (
+            json.dumps(outline.get("subject_map", []), ensure_ascii=False, sort_keys=True),
+            json.dumps(outline.get("release_ledger", []), ensure_ascii=False, sort_keys=True),
+            json.dumps(outline.get("unresolved_gaps", []), ensure_ascii=False, sort_keys=True),
+            json.dumps(outline.get("coverage_audit", {"status": "unknown"}), ensure_ascii=False, sort_keys=True),
+        )
+        existing_coverage = connection.execute(
+            """SELECT subject_map_json, release_ledger_json, unresolved_gaps_json, coverage_audit_json
+               FROM learning_path_coverage WHERE path_id=?""",
+            (path_id,),
+        ).fetchone()
+        if existing_coverage is not None and tuple(existing_coverage) != coverage_values:
+            raise RuntimeError("Persisted curriculum coverage ledger differs from the task checkpoint; refusing to overwrite it.")
+        if existing_coverage is None:
+            connection.execute(
+                """INSERT INTO learning_path_coverage(
+                       path_id, subject_map_json, release_ledger_json,
+                       unresolved_gaps_json, coverage_audit_json
+                   ) VALUES (?, ?, ?, ?, ?)""",
+                (path_id, *coverage_values),
+            )
         if refresh_of_path_id is not None:
             connection.execute(
                 """UPDATE learning_release_watch SET status='superseded', updated_at=CURRENT_TIMESTAMP
