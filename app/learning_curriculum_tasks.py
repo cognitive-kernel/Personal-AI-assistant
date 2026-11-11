@@ -338,7 +338,7 @@ def _generate_outline(
         "batch_index": batch_index,
         "topics_to_generate_in_this_batch": batch_size,
         "previous_topics_for_deduplication": (previous_topics or [])[-80:],
-        "already_covered_areas": previous_coverage or [],
+        "already_covered_areas": (previous_coverage or [])[-30:],
         "continue_from": next_focus,
         "user_supplied_context": source_text,
         "research_sources": source_material,
@@ -383,7 +383,7 @@ def _generate_outline(
             "task": "Repair the previous batch into valid JSON without changing its scope.",
             "schema": {"title": "string", "topics": f"1 to {batch_size} unique ordered strings",
                        "notes": "string", "coverage_areas": "array", "has_more": "boolean",
-                       "next_focus": "string required when has_more is true"},
+                       "next_focus": "string required when has_more is true", "topic_metadata": "per-topic source and version applicability"},
             "validation_error": str(first_error),
             "instruction": "Return JSON only; do not claim completion if more useful topics remain.",
         }, ensure_ascii=False, separators=(",", ":"))
@@ -521,6 +521,24 @@ def handle_curriculum_task(
         raise PermanentTaskError("The checkpointed curriculum contains duplicate topics.")
     if not isinstance(outline.get("coverage_areas", []), list) or not isinstance(outline.get("topic_metadata", {}), dict):
         raise PermanentTaskError("The checkpointed curriculum coverage or topic metadata is invalid.")
+    if state.get("phase") == "curriculum_persisted":
+        path_id = state.get("path_id")
+        saved_hash = state.get("outline_sha256")
+        if isinstance(path_id, bool) or not isinstance(path_id, int) or path_id < 1:
+            raise PermanentTaskError("The persisted curriculum checkpoint has an invalid path ID.")
+        persisted_path = learning.get_learning_path(path_id)
+        if not persisted_path.get("research") or persisted_path["research"].get("outline_sha256") != saved_hash:
+            raise PermanentTaskError("The persisted curriculum does not match its recovery checkpoint.")
+        queue_result = learning.start_researched_path_learning(path_id, allow_retry=False)
+        return {
+            "path_id": path_id, "title": outline["title"], "topics": outline["topics"],
+            "topic_count": len(outline["topics"]), "notes": outline["notes"],
+            "coverage_areas": outline["coverage_areas"], "source_count": len(sources),
+            "sources": [{"title": item["title"], "url": item["url"], "sha256": item["sha256"]} for item in sources],
+            "outline_sha256": saved_hash, "model": model, "model_selection": model_selection,
+            "queued_count": queue_result.get("queued_count", 0), "queued_job_ids": queue_result.get("job_ids", []),
+            "active_job_id": queue_result.get("active_job_id"), "queue_status": queue_result.get("status", "queued"),
+        }
     batch_index = state.get("batch_index", 0)
     if isinstance(batch_index, bool) or not isinstance(batch_index, int) or batch_index < 0:
         raise PermanentTaskError("The checkpointed curriculum batch index is invalid.")
