@@ -92,8 +92,8 @@ function Get-AutomaticContext {
     } catch {
         throw "The Ollama context-selection module returned invalid JSON."
     }
-    if ($null -eq $selection.selected_context_tokens -or [int64]$selection.selected_context_tokens -lt 512) {
-        throw "The Ollama context-selection module did not return a valid selected context."
+    if ($null -eq $selection.selected_context_tokens -or [int64]$selection.selected_context_tokens -lt 64000) {
+        throw "The Ollama context-selection module did not return the required minimum 64000-token Codex context."
     }
     return $selection
 }
@@ -122,12 +122,15 @@ function Get-AllocatedContext {
 if ($VerifyOnly) {
     $codexModel = $Model
     $selectedContext = 0L
-    if (-not [int64]::TryParse([string]$env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH, [ref]$selectedContext) -or $selectedContext -lt 512) {
-        throw "The selected Codex context was not persisted for runtime verification."
+    if (-not [int64]::TryParse([string]$env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH, [ref]$selectedContext) -or $selectedContext -lt 64000) {
+        throw "The selected Codex context was not persisted at the required minimum of 64000 tokens for runtime verification."
     }
     $modelInfo = Get-ModelInfo -ModelName $codexModel
     Assert-ToolCallingCapability -Info $modelInfo
     $maximum = Get-MaximumContext -Info $modelInfo
+    if ($maximum -lt 64000) {
+        throw "Selected model maximum context $maximum is below the Codex minimum of 64000 tokens."
+    }
     if ($selectedContext -gt $maximum) {
         throw "The persisted Codex context $selectedContext exceeds the model maximum $maximum."
     }
@@ -143,13 +146,16 @@ if ($VerifyOnly) {
     $modelInfo = Get-ModelInfo -ModelName $baseModel
     Assert-ToolCallingCapability -Info $modelInfo
     $maximum = Get-MaximumContext -Info $modelInfo
+    if ($maximum -lt 64000) {
+        throw "Selected model maximum context $maximum is below the Codex minimum of 64000 tokens."
+    }
 
     $requestedContext = $null
     $manualContext = [string]$env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH
     if (-not [string]::IsNullOrWhiteSpace($manualContext)) {
         $parsedContext = 0L
-        if (-not [int64]::TryParse($manualContext, [ref]$parsedContext) -or $parsedContext -lt 512) {
-            throw "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH must be an integer of at least 512."
+        if (-not [int64]::TryParse($manualContext, [ref]$parsedContext) -or $parsedContext -lt 64000) {
+            throw "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH must be an integer of at least 64000 for Codex."
         }
         $requestedContext = [Nullable[long]]$parsedContext
         $selectionMode = "requested-and-safely-clamped"
