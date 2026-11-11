@@ -45,6 +45,9 @@ def _outline():
         ],
         "notes": "ترتیب از مبانی به مباحث پیشرفته است.",
         "coverage_areas": ["مبانی", "معماری", "عملی"],
+        "has_more": False,
+        "next_focus": "",
+        "topic_metadata": {},
     }
 
 
@@ -56,29 +59,29 @@ def _source(index):
     )
 
 
-def test_curriculum_payload_is_bounded_and_rejects_unknown_fields():
+def test_curriculum_batch_size_is_bounded_but_total_course_size_is_not():
     assert learning_curriculum_tasks.validate_curriculum_payload({
         "topic": "Linux kernel",
-        "max_topics": 40,
+        "batch_size": 40,
         "source_text": None,
     }) == ("Linux kernel", 40, "")
     with pytest.raises(ValueError):
         learning_curriculum_tasks.validate_curriculum_payload({
             "topic": "Linux",
-            "max_topics": 41,
+            "batch_size": 41,
             "source_text": None,
         })
     with pytest.raises(ValueError):
         learning_curriculum_tasks.validate_curriculum_payload({
             "topic": "Linux",
-            "max_topics": 40,
+            "batch_size": 40,
             "source_text": None,
             "unexpected": True,
         })
     with pytest.raises(ValueError, match="500"):
         learning_curriculum_tasks.validate_curriculum_payload({
             "topic": "Linux",
-            "max_topics": 40,
+            "batch_size": 40,
             "source_text": "x" * 501,
         })
 
@@ -106,7 +109,9 @@ def test_outline_parser_requires_unique_ordered_topics_and_complete_minimum():
         learning_curriculum_tasks._parse_outline(json.dumps(invalid, ensure_ascii=False), 20)
     invalid = _outline()
     invalid["topics"] = invalid["topics"][:7]
-    with pytest.raises(ValueError, match="between"):
+    invalid["has_more"] = True
+    invalid["next_focus"] = "ادامه مباحث"
+    with pytest.raises(ValueError, match="batch"):
         learning_curriculum_tasks._parse_outline(json.dumps(invalid, ensure_ascii=False), 20)
 
 
