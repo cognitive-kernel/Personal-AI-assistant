@@ -297,7 +297,7 @@ def collect_status() -> dict[str, Any]:
     checks = {
         "ollama_online": ollama["online"],
         "model_installed": ollama["model_installed"],
-        "model_selectable": ollama.get("model_selectable") is True,
+        "model_selectable": ollama.get("model_selectable", ollama["model_installed"] and not _is_codex_context_variant(model)) is True,
         "model_context_metadata_available": ollama.get("model_metadata_available") is True,
         "model_context_supported": ollama.get("model_context_supported") is True,
         "model_supports_tools": ollama.get("model_supports_tools") is True,
