@@ -20,7 +20,7 @@ CURRICULUM_TASK_TYPE = "learning.plan_curriculum"
 MIN_TOPICS_PER_BATCH = 8
 DEFAULT_TOPICS_PER_BATCH = 24
 MAX_TOPICS_PER_BATCH = 40
-MAX_SOURCE_DOCUMENTS = 8
+MAX_SOURCE_DOCUMENTS = 40
 MAX_PROMPT_SOURCE_EXCERPTS = 8
 MAX_SOURCES_PER_DOMAIN = 3
 MIN_SOURCE_DOCUMENTS = 3
@@ -95,6 +95,7 @@ def _valid_checkpoint(
         title, url, excerpt, digest = (
             item.get("title"), item.get("url"), item.get("excerpt"), item.get("sha256")
         )
+        query = item.get("query")
         normalized_url = _normalized_source_url(url) if isinstance(url, str) else None
         if (
             not isinstance(title, str) or not title.strip() or len(title) > 150
@@ -113,6 +114,7 @@ def _valid_checkpoint(
             "publication_date": item.get("publication_date") if isinstance(item.get("publication_date"), str) else None,
             "last_updated": item.get("last_updated") if isinstance(item.get("last_updated"), str) else None,
             "retrieved_at": item.get("retrieved_at") if isinstance(item.get("retrieved_at"), str) else None,
+            "query": query if isinstance(query, str) and query in queries else "",
         })
     return completed_queries, sources
 
@@ -192,6 +194,7 @@ def _collect_sources(
                 "publication_date": None,
                 "last_updated": None,
                 "retrieved_at": datetime.now(timezone.utc).isoformat(),
+                "query": query,
             })
             seen.add(url)
         completed_queries.append(query)
@@ -370,10 +373,16 @@ def _generate_outline(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     prompt_excerpt_urls: set[str] = set()
     prompt_domains: set[str] = set()
+    covered_queries: set[str] = set()
+    # Reserve one distinct source for each research angle before filling any
+    # remaining context slots. This prevents early broad queries from crowding
+    # release history, patch notes, or current-version sources out of the prompt.
     for item in sources:
+        query = item.get("query", "")
         domain = urlsplit(item["url"]).hostname or ""
-        if domain not in prompt_domains:
+        if query and query not in covered_queries and domain not in prompt_domains:
             prompt_excerpt_urls.add(item["url"])
+            covered_queries.add(query)
             prompt_domains.add(domain)
         if len(prompt_excerpt_urls) >= MAX_PROMPT_SOURCE_EXCERPTS:
             break
@@ -388,6 +397,7 @@ def _generate_outline(
         "publication_date": item.get("publication_date"),
         "last_updated": item.get("last_updated"),
         "retrieved_at": item.get("retrieved_at"),
+        "research_query": item.get("query", ""),
     } for item in sources]
     request = {
         "requested_subject": topic,
