@@ -613,6 +613,29 @@ def _failure_warnings_for_topic(topic: str, *, limit: int = 3) -> list[dict[str,
     return warnings
 
 
+def _prior_assistant_observations(topic: str, settings: dict[str, Any]) -> dict[str, Any]:
+    """Retrieve local assistant answers as unverified context without blocking lesson generation."""
+    try:
+        from . import learning_candidates
+        try:
+            configured_limit = int(settings.get("learning_source_max_chars", 12000))
+        except (TypeError, ValueError):
+            configured_limit = 12000
+        observations = learning_candidates.relevant_chat_candidates(
+            topic, max_chars=max(24000, min(100000, configured_limit))
+        )
+        observations["status"] = "available"
+        return observations
+    except Exception as exc:
+        # Candidate retrieval is additive and must never break an otherwise
+        # working lesson-generation path.
+        return {
+            "items": [], "matched_count": 0, "included_count": 0,
+            "omitted_count": 0, "status": "unavailable",
+            "error_type": type(exc).__name__,
+        }
+
+
 def _select_learning_generation_model(
     settings: dict[str, Any],
     serialized_prompt: str,
@@ -827,21 +850,7 @@ def run_job(job_id: int) -> None:
         verified_factual_context = _verified_factual_context_for_topic(topic)
         failure_warnings = _failure_warnings_for_topic(topic, limit=3)
         settings = get_settings()
-        try:
-            from . import learning_candidates
-            candidate_observations = learning_candidates.relevant_chat_candidates(
-                topic,
-                max_chars=max(24000, min(100000, int(settings.get("learning_source_max_chars", 12000)))),
-            )
-            candidate_observations["status"] = "available"
-        except Exception as exc:
-            # Candidate retrieval is additive and must never break an otherwise
-            # working lesson-generation path.
-            candidate_observations = {
-                "items": [], "matched_count": 0, "included_count": 0,
-                "omitted_count": 0, "status": "unavailable",
-                "error_type": type(exc).__name__,
-            }
+        candidate_observations = _prior_assistant_observations(topic, settings)
         raw_source_limit = settings.get("learning_source_max_chars", 12000)
         if (
             isinstance(raw_source_limit, bool)
