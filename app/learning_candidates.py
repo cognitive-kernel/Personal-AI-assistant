@@ -15,8 +15,8 @@ from .db import learning_connection
 _MIN_CANDIDATE_CHARS = 80
 _MAX_CANDIDATE_CHARS = 50000
 _SENSITIVE_VALUE = re.compile(
-    r"(?i)\\b(?:password|passphrase|passcode|api[_ -]?key|secret|access[_ -]?token|"
-    r"refresh[_ -]?token|private[_ -]?key)\\b\\s*[:=]\\s*[^\\s,;]{6,}"
+    r"(?i)\b(?:password|passphrase|passcode|api[_ -]?key|secret|access[_ -]?token|"
+    r"refresh[_ -]?token|private[_ -]?key)\b\s*[:=]\s*[^\s,;]{6,}"
 )
 
 
