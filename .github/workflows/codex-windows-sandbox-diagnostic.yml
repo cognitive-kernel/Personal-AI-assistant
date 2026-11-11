@@ -21,6 +21,9 @@ on:
       - scripts/autonomous_engineering_progress.py
       - scripts/verify_ollama_context.ps1
       - tests/test_autonomous_engineering.py
+      - tests/test_browser_e2e.py
+      - docs/PROJECT_STATUS.md
+      - docs/ENGINEERING_LOG.md
       - tests/test_autonomous_engineering_cycle.py
       - tests/test_codex_smoke_diagnostics.py
   workflow_dispatch:
