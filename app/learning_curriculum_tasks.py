@@ -210,7 +210,7 @@ def _collect_sources(
     return sources
 
 
-def _parse_outline(response: str, max_topics: int) -> dict[str, Any]:
+def _parse_outline(response: str, batch_size: int) -> dict[str, Any]:
     if not isinstance(response, str) or not response.strip() or len(response) > 16000:
         raise ValueError("Curriculum model response is empty or exceeds the output limit.")
     raw = response.strip()
@@ -226,43 +226,39 @@ def _parse_outline(response: str, max_topics: int) -> dict[str, Any]:
             raise ValueError("Curriculum model did not return valid JSON.") from exc
     if not isinstance(value, dict):
         raise ValueError("Curriculum response must be a JSON object.")
-    title = value.get("title")
-    raw_topics = value.get("topics")
+    title, raw_topics = value.get("title"), value.get("topics")
     if not isinstance(title, str) or not title.strip() or len(title.strip()) > 300:
         raise ValueError("Curriculum title must contain 1–300 characters.")
     if not isinstance(raw_topics, list):
         raise ValueError("Curriculum topics must be an array.")
-    topics: list[str] = []
-    seen: set[str] = set()
+    has_more = value.get("has_more")
+    next_focus = value.get("next_focus", "")
+    if not isinstance(has_more, bool):
+        raise ValueError("has_more must be a boolean.")
+    if not isinstance(next_focus, str) or len(next_focus) > 1000 or (has_more and not next_focus.strip()):
+        raise ValueError("next_focus is required and bounded when more batches remain.")
+    topics, seen = [], set()
     for item in raw_topics:
         if not isinstance(item, str) or not item.strip() or len(item.strip()) > 300:
             raise ValueError("Every curriculum topic must contain 1–300 characters.")
-        topic = re.sub(r"\s+", " ", item).strip()
-        identity = topic.casefold()
+        topic_value = re.sub(r"\\s+", " ", item).strip()
+        identity = topic_value.casefold()
         if identity in seen:
             raise ValueError("Curriculum contains duplicate topics.")
         seen.add(identity)
-        topics.append(topic)
-    if not MIN_TOPICS <= len(topics) <= max_topics:
-        raise ValueError(
-            f"Curriculum must contain between {MIN_TOPICS} and {max_topics} ordered topics."
-        )
+        topics.append(topic_value)
+    minimum = MIN_TOPICS_PER_BATCH if has_more else 1
+    if not minimum <= len(topics) <= batch_size:
+        raise ValueError(f"A curriculum batch must contain {minimum} to {batch_size} topics.")
     notes = value.get("notes", "")
     if not isinstance(notes, str):
         raise ValueError("Curriculum notes must be a string.")
     coverage = value.get("coverage_areas", [])
-    if not isinstance(coverage, list) or any(
-        not isinstance(item, str) or not item.strip() or len(item) > 160 for item in coverage
-    ):
+    if not isinstance(coverage, list) or any(not isinstance(item, str) or not item.strip() or len(item) > 160 for item in coverage):
         raise ValueError("coverage_areas must be a list of short strings.")
-    return {
-        "title": title.strip(),
-        "topics": topics,
-        "notes": notes.strip()[:2000],
-        "coverage_areas": list(dict.fromkeys(item.strip() for item in coverage))[:20],
-    }
-
-
+    return {"title": title.strip(), "topics": topics, "notes": notes.strip()[:2000],
+            "coverage_areas": list(dict.fromkeys(item.strip() for item in coverage)),
+            "has_more": has_more, "next_focus": next_focus.strip()}
 def _generate_outline(
     topic: str,
     max_topics: int,
