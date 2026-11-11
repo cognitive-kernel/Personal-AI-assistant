@@ -13,7 +13,7 @@ from typing import Any
 @dataclass
 class LearningPipelineBudget:
     max_calls: int = 2
-    max_predict_tokens: int = 2600
+    max_predict_tokens: int = 7800
     calls_used: int = 0
     predict_tokens_reserved: int = 0
     reservations: list[dict[str, Any]] = field(default_factory=list)
