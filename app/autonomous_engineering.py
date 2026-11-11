@@ -310,7 +310,11 @@ def collect_status() -> dict[str, Any]:
         "github_runs_available": github.get("runs_available", False),
         "progress_storage_accessible": progress_storage,
     }
-    ready = all(value for key, value in checks.items() if key != "codex_installed")
+    ready = all(
+        value
+        for key, value in checks.items()
+        if key not in {"codex_installed", "model_is_codex_context_variant"}
+    )
     active_runs = github.get("recent_runs", [])
     active = any(
         isinstance(item, dict)
