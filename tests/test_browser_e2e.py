@@ -3449,3 +3449,112 @@ def test_chat_message_timestamps_are_rendered_in_browser_local_timezone():
         assert timestamp.inner_text() == "2026-11-06 12:16:28"
         context.close()
         browser.close()
+
+
+def test_autonomous_engineering_model_picker_requires_explicit_selection_and_saves_exact_model():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    state = {"model": "", "posted": None}
+    installed_models = [
+        "gpt-oss:20b",
+        "qwen3:14b",
+        "gpt-oss:20b-codex-ctx65536",
+    ]
+    selectable_models = ["gpt-oss:20b", "qwen3:14b"]
+
+    def status_payload():
+        selected = state["model"]
+        selected_ready = bool(selected)
+        return {
+            "ready": False,
+            "can_dispatch": False,
+            "checks": {
+                "ollama_online": True,
+                "model_installed": selected_ready,
+                "model_selectable": selected_ready,
+                "model_is_codex_context_variant": False,
+                "model_context_metadata_available": selected_ready,
+                "model_context_supported": selected_ready,
+                "model_supports_tools": selected_ready,
+                "codex_installed": False,
+                "runner_running": False,
+                "github_cli_authenticated": True,
+                "github_runs_available": True,
+                "progress_storage_accessible": True,
+            },
+            "model": selected,
+            "models": installed_models,
+            "selectable_models": selectable_models,
+            "model_context_length": 131072 if selected_ready else None,
+            "model_context_supported": selected_ready,
+            "model_context_error": None if selected_ready else "No model is saved.",
+            "model_capabilities": ["completion", "tools"] if selected_ready else [],
+            "model_supports_tools": selected_ready,
+            "model_metadata_error": None if selected_ready else "No Ollama model is saved in repository settings.",
+            "interval_hours": 24,
+            "execution_mode": "continuous",
+            "paused": False,
+            "github": {"recent_runs": [], "settings": {"model": selected}},
+            "codex": {"installed": False, "version": None},
+            "local_only_inference": True,
+        }
+
+    def save_settings(route):
+        payload = route.request.post_data_json
+        state["posted"] = payload
+        state["model"] = payload["model"]
+        route.fulfill(status=200, json={"message": "تنظیمات ذخیره شد."})
+
+    browser_errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route(
+            "**/api/autonomous-engineering/status",
+            lambda route: route.fulfill(status=200, json=status_payload()),
+        )
+        page.route(
+            "**/api/autonomous-engineering/progress**",
+            lambda route: route.fulfill(status=200, json={
+                "current": None,
+                "history": [],
+                "latest_snapshot": None,
+                "events": [],
+                "storage_configured": True,
+            }),
+        )
+        page.route("**/api/autonomous-engineering/settings", save_settings)
+
+        response = page.goto(
+            base_url.rstrip("/") + "/autonomous-engineering",
+            wait_until="domcontentloaded",
+        )
+        assert response is not None and response.status == 200
+        page.wait_for_function(
+            "() => document.querySelector('#ollama-model')?.options.length === 3",
+            timeout=10000,
+        )
+        model_picker = page.locator("#ollama-model")
+        assert model_picker.input_value() == ""
+        assert model_picker.locator("option[value='gpt-oss:20b']").count() == 1
+        assert model_picker.locator("option[value='qwen3:14b']").count() == 1
+        assert model_picker.locator("option[value='gpt-oss:20b-codex-ctx65536']").count() == 0
+
+        model_picker.select_option("gpt-oss:20b")
+        page.locator("#save-agent-settings").click()
+        page.wait_for_function(
+            "() => document.querySelector('#model-detail')?.textContent.includes('مدل ذخیره‌شده: gpt-oss:20b')",
+            timeout=10000,
+        )
+
+        assert state["posted"] == {
+            "model": "gpt-oss:20b",
+            "interval_hours": 24,
+            "execution_mode": "continuous",
+        }
+        assert model_picker.input_value() == "gpt-oss:20b"
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
