@@ -68,13 +68,13 @@ def test_codex_smoke_evidence_reports_each_command_without_logging_raw_commands(
 
 
 def test_codex_model_catalog_registers_the_selected_ollama_context():
-    model = "gpt-oss:20b-codex-ctx32768"
-    path = progress.write_codex_model_catalog(model, context_window=4096)
+    model = "gpt-oss:20b-codex-ctx64000"
+    path = progress.write_codex_model_catalog(model, context_window=64000)
     catalog = __import__("json").loads(path.read_text(encoding="utf-8"))
     assert len(catalog["models"]) == 1
     entry = catalog["models"][0]
     assert entry["slug"] == model
-    assert entry["context_window"] == 4096
+    assert entry["context_window"] == 64000
     assert entry["shell_type"] == "default"
     assert entry["input_modalities"] == ["text"]
     assert [level["effort"] for level in entry["supported_reasoning_levels"]] == [
@@ -124,9 +124,9 @@ def test_codex_diagnostic_uses_bounded_reasoning_effort_without_changing_default
     import pytest
     from scripts import autonomous_engineering_progress as progress
 
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "32768")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
     monkeypatch.setenv("CODEX_MODEL_REASONING_EFFORT", "low")
-    arguments = progress.codex_arguments("gpt-oss:20b-codex-ctx32768", "report.md")
+    arguments = progress.codex_arguments("gpt-oss:20b-codex-ctx64000", "report.md")
     overrides = [
         arguments[i + 1] for i, value in enumerate(arguments[:-1]) if value == "-c"
     ]
@@ -215,7 +215,7 @@ def test_codex_model_catalog_uses_selected_context_from_environment(monkeypatch)
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "32768")
     path = progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx32768")
     catalog = json.loads(path.read_text(encoding="utf-8"))
-    assert catalog["models"][0]["context_window"] == 32768
+    assert catalog["models"][0]["context_window"] == 64000
 
 
 def test_settings_expose_visible_installed_model_selectors_and_manual_context_inputs():
