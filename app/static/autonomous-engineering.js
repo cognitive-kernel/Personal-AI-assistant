@@ -113,8 +113,9 @@
         ? "؛ حداکثر Context مدل: " + contextLength.toLocaleString() + " توکن"
         : "؛ حداکثر Context از metadata مدل تأیید نشد";
       const toolsText = checks.model_supports_tools ? "؛ قابلیت tools تأیید شد" : "؛ قابلیت tools تأیید نشد";
-      $("model-detail").textContent = "مدل انتخاب‌شده: " + String(data.model || "انتخاب نشده") +
-        (checks.model_installed ? "" : "؛ نصب نیست") + contextText + toolsText;
+      const modelLabel = data.model ? "مدل ذخیره‌شده: " + String(data.model) : "هنوز مدلی ذخیره نشده است";
+      const installationText = data.model && !checks.model_installed ? "؛ مدل ذخیره‌شده روی این سیستم نصب نیست" : "";
+      $("model-detail").textContent = modelLabel + installationText + contextText + toolsText;
       renderModels(data.models, data.model);
       const executionMode = data.execution_mode || "continuous";
       if (document.activeElement !== $("execution-mode")) {
