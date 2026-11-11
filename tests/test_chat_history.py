@@ -179,3 +179,20 @@ def test_candidate_staging_keeps_short_answers_but_skips_credential_bearing_exch
     assert candidates[0]["message_id"] == short_message["id"]
     assert candidates[0]["content"] == "A transaction groups operations."
     assert candidates[0]["status"] == "unverified"
+
+
+def test_candidate_staging_does_not_truncate_long_assistant_answers(tmp_path, monkeypatch):
+    from app import learning_candidates
+
+    _configure_databases(tmp_path, monkeypatch)
+    conversation = chat_history.create_conversation()
+    query = "Explain SQL Server transaction log architecture."
+    answer = "Transaction log detail. " * 3000
+    chat_history.append_user_message(conversation["id"], query)
+    message = chat_history.append_assistant_message(conversation["id"], answer)
+
+    candidates = learning_candidates.list_chat_candidates()
+    assert len(candidates) == 1
+    assert candidates[0]["message_id"] == message["id"]
+    assert candidates[0]["content"] == answer
+    assert candidates[0]["status"] == "unverified"
