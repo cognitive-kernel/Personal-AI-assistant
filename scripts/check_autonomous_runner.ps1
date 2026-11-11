@@ -5,7 +5,7 @@ $model = if (-not [string]::IsNullOrWhiteSpace($SelectedModel)) {
 } elseif ($env:AUTONOMOUS_ENGINEERING_MODEL) {
     $env:AUTONOMOUS_ENGINEERING_MODEL
 } else {
-    "gpt-oss:20b"
+    ""
 }
 $checks = @()
 
@@ -84,7 +84,8 @@ try {
 } catch {}
 $checks += [pscustomobject]@{ Component = "Ollama CLI"; Ready = $ollamaCliReady; Detail = if ($ollamaCliReady) { $ollamaVersion } else { "Install Ollama CLI or add it to the Runner service PATH" } }
 $checks += [pscustomobject]@{ Component = "Ollama server"; Ready = $ollamaOnline; Detail = if ($ollamaOnline) { "127.0.0.1:11434" } else { "Local Ollama endpoint is unavailable" } }
-$checks += [pscustomobject]@{ Component = "Configured model"; Ready = $modelInstalled; Detail = if ($modelInstalled) { $model } else { "Install the configured model in Ollama: $model" } }
+$checks += [pscustomobject]@{ Component = "Saved model selection"; Ready = (-not [string]::IsNullOrWhiteSpace($model)); Detail = if ($model) { $model } else { "Select and save an installed Ollama model in /autonomous-engineering" } }
+$checks += [pscustomobject]@{ Component = "Configured model"; Ready = $modelInstalled; Detail = if ($modelInstalled) { $model } elseif (-not $model) { "No model has been selected and saved" } else { "Saved model is not installed in Ollama" } }
 $checks += [pscustomobject]@{ Component = "Model context metadata"; Ready = ($null -ne $modelContextLength); Detail = if ($null -ne $modelContextLength) { "$modelContextLength tokens maximum" } else { "Ollama /api/show did not report a valid architecture context_length" } }
 $checks += [pscustomobject]@{ Component = "Model tool calling"; Ready = $modelSupportsTools; Detail = if ($modelSupportsTools) { "Ollama advertises tools capability" } else { "Selected model does not advertise tools capability required by Codex" } }
 
