@@ -95,21 +95,38 @@ def test_context_selection_clamps_requested_value_to_both_hard_limits():
     )
 
 
-def test_context_selection_fails_when_hardware_cannot_supply_minimum_runtime_window():
+def test_context_selection_fails_when_hardware_cannot_supply_any_context_token():
     data = payload()
     data["available_memory_bytes"] = (
         4 * 1024**3 + data["model_weight_bytes"] + 512 * 1024**2
-        + (32 * 8 * (128 + 128) * 2) * 511
     )
-    with pytest.raises(OllamaModelMetadataError, match="minimum runtime context"):
+    with pytest.raises(OllamaModelMetadataError, match="cannot hold the model weights"):
         select_context_window(**data)
 
 
 def test_context_selection_rejects_invalid_requested_context():
     data = payload()
-    data["requested_context_tokens"] = 511
-    with pytest.raises(OllamaModelMetadataError, match="at least 512"):
+    data["requested_context_tokens"] = 0
+    with pytest.raises(OllamaModelMetadataError, match="positive integer"):
         select_context_window(**data)
+
+
+
+def test_context_selection_uses_a_single_token_when_that_is_the_verified_capacity():
+    data = payload()
+    bytes_per_token = 32 * 8 * (128 + 128) * 2
+    data["model_info"]["llama.context_length"] = 1
+    data["available_memory_bytes"] = (
+        4 * 1024**3 + data["model_weight_bytes"] + 512 * 1024**2 + bytes_per_token
+    )
+    data["requested_context_tokens"] = 64000
+
+    result = select_context_window(**data)
+
+    assert result["hardware_maximum_context_tokens"] == 1
+    assert result["maximum_context_tokens"] == 1
+    assert result["effective_maximum_context_tokens"] == 1
+    assert result["selected_context_tokens"] == 1
 
 
 def test_context_selection_requires_architecture_specific_kv_metadata():
