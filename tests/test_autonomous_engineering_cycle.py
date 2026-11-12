@@ -523,10 +523,15 @@ def test_checkpoint_watcher_real_process_publishes_run_scoped_readiness(
     from scripts import autonomous_engineering_checkpoint as checkpoint
 
     root = Path(__file__).resolve().parents[1]
-    base_sha = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=root, check=True,
-        capture_output=True, text=True,
-    ).stdout.strip()
+    base_sha = os.environ.get("AUTONOMOUS_ENGINEERING_TEST_BASE_SHA", "").strip().lower()
+    if base_sha:
+        if len(base_sha) != 40 or any(char not in "0123456789abcdef" for char in base_sha):
+            raise AssertionError("Injected isolated-test checkout SHA is invalid.")
+    else:
+        base_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=root, check=True,
+            capture_output=True, text=True,
+        ).stdout.strip()
     state = tmp_path / "checkpoint-state"
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(state))
     env = os.environ.copy()
