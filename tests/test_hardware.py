@@ -235,6 +235,16 @@ def test_dynamic_ram_budget_rejects_non_finite_telemetry():
     assert hardware.dynamic_ram_budget_gb({}, {"available_ram_gb": float("nan")}) is None
 
 
+def test_native_cpu_ram_telemetry_works_without_psutil(monkeypatch):
+    monkeypatch.setattr(hardware, "psutil", None)
+    metrics = hardware.get_system_metrics(cpu_interval=0.05)
+    assert metrics is not None
+    assert metrics["total_bytes"] > 0
+    assert metrics["available_bytes"] > 0
+    assert 0 <= metrics["cpu_percent"] <= 100
+    assert 0 <= metrics["memory_percent"] <= 100
+
+
 def test_resource_headroom_fails_closed_when_all_native_telemetry_is_unavailable(monkeypatch):
     monkeypatch.setattr(hardware, "psutil", None)
     monkeypatch.setattr(hardware, "_native_system_metrics", lambda interval=0.1: None)
