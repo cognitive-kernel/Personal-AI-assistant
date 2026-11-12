@@ -6,15 +6,11 @@ on:
     branches:
       - fix/autonomous-task-preservation
       - fix/automation-codex-context-smoke-20261107
-      - feat/autonomous-engineering-architecture-final-20261112
     paths:
       - .github/workflows/codex-windows-sandbox-diagnostic.yml
       - .github/workflows/autonomous-codex-engineering.yml
       - scripts/autonomous_engineering_progress.py
       - scripts/verify_ollama_context.ps1
-      - scripts/validate_autonomous_engineering_target_host.py
-      - scripts/autonomous_engineering_*.py
-      - scripts/AutonomousEngineeringTaskState.psm1
       - tests/test_autonomous_engineering.py
       - tests/test_autonomous_engineering_cycle.py
       - tests/test_codex_smoke_diagnostics.py
@@ -142,23 +138,7 @@ jobs:
             throw "Ollama model '$env:AUTONOMOUS_ENGINEERING_MODEL' is not installed."
           }
 
-      - name: Run target-host ownership, concurrency, and recovery acceptance
-        if: github.ref_name == 'feat/autonomous-engineering-architecture-final-20261112'
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-          $systemPython = "C:\Program Files\Python311\python.exe"
-          if (-not (Test-Path -LiteralPath $systemPython -PathType Leaf)) {
-            throw "System-wide Python was not found: $systemPython"
-          }
-          & $systemPython scripts/validate_autonomous_engineering_target_host.py
-          if ($LASTEXITCODE -ne 0) {
-            throw "Target-host architecture acceptance failed."
-          }
-          Write-Host "TARGET_RUNNER_ARCHITECTURE_ACCEPTANCE_OK"
-
       - name: Verify the selected model's allocated Ollama context
-        if: github.ref_name != 'feat/autonomous-engineering-architecture-final-20261112'
         id: context_preflight
         # Select, persist, and verify a context bounded by model metadata and available memory.
         timeout-minutes: 12
@@ -167,7 +147,6 @@ jobs:
           & "$env:GITHUB_WORKSPACE\scripts\verify_ollama_context.ps1" -Model "$env:AUTONOMOUS_ENGINEERING_MODEL"
 
       - name: Probe MXC and Codex exec_command under the Runner identity
-        if: github.ref_name != 'feat/autonomous-engineering-architecture-final-20261112'
         timeout-minutes: 25
         shell: powershell
         run: |
@@ -244,7 +223,6 @@ jobs:
           Write-Host "CODEX_WINDOWS_MXC_SERVICE_SMOKE_OK"
 
       - name: Verify persistent Ollama context after Codex smoke
-        if: github.ref_name != 'feat/autonomous-engineering-architecture-final-20261112'
         if: always() && steps.context_preflight.outcome == 'success'
         timeout-minutes: 2
         shell: powershell
