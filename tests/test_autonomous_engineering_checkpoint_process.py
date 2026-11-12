@@ -284,6 +284,7 @@ def test_unresponsive_watcher_is_killed_and_reaped_with_pidfd(tmp_path: Path):
         "--base-sha", "a" * 40,
         "--run-id", "run-42",
         "--task", "3",
+        "--interval", "20",
     ]
     child = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
