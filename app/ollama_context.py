@@ -61,8 +61,6 @@ def select_context_window(
 
     numeric_inputs = {
         "model_weight_bytes": model_weight_bytes,
-        "model_weights_already_loaded": model_weights_already_loaded,
-        "model_weight_reserve_bytes": model_weight_reserve_bytes,
         "available_memory_bytes": available_memory_bytes,
         "reserve_bytes": reserve_bytes,
     }
@@ -143,6 +141,8 @@ def select_context_window(
         "selected_context_tokens": selected,
         "kv_cache_bytes_per_token": bytes_per_token,
         "model_weight_bytes": model_weight_bytes,
+        "model_weights_already_loaded": model_weights_already_loaded,
+        "model_weight_reserve_bytes": model_weight_reserve_bytes,
         "available_memory_bytes": available_memory_bytes,
         "reserve_bytes": reserve_bytes,
         "overhead_bytes": overhead_bytes,
