@@ -5,7 +5,7 @@
 - مبنای زندهٔ `main`: `461c0a2b1deaf5f8af8486846f167da8185c580a`؛ تغییرات release-watch و یادگیری جدید main حفظ شده‌اند.
 - کار فعال: PR [#719](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/719)، شاخهٔ `feat/autonomous-engineering-complete-final-20261112`؛ SHA دقیق و وضعیت Checkها از وضعیت زندهٔ PR خوانده می‌شوند. PR باز است و به main هدف‌گذاری شده است.
 - معماری جدید، مالکیت worktree و checkpoint watcher، هویت process، قفل durable state، GitHub transport و چرخهٔ PR را در ماژول‌های مستقل نگه می‌دارد؛ بازیابی مبهم fail-closed است و دادهٔ task/checkpoint حفظ می‌شود.
-- CI دقیق head `858edf16583d4702502d0efeca7eb6e86e77d159` باید دوباره تأیید شود؛ head قبلی یک NameError در تزریق وابستگی watcher نشان داد که اصلاح شده و اجرای جدید pending است. هیچ pass از SHA قبلی به head جدید تعمیم داده نمی‌شود.
+- CI snapshot روی SHA `92db74af655253f90caf7747c9ec2b87ed76ef9e`: تست‌های focused، Windows Storage، Browser E2E و dependency audit موفق شدند؛ تست کامل Python هنگام ثبت snapshot هنوز در حال اجرا بود. اصلاح بعدی Master Engineering Prompt برای تطبیق با Issue #290 در head جدید نیازمند CI دقیق تازه است.
 - مسیریابی Ollama و OpenAI-compatible، هویت مدل، سقف خروجی و provider سفارشی Codex `ollama-local` در follow-upهای PR حفظ/بازیابی شده‌اند؛ diagnostic واقعی Codex/Ollama روی Windows Runner هنوز باید تأیید شود.
 
 
