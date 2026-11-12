@@ -93,6 +93,7 @@ def test_codex_model_catalog_registers_the_selected_ollama_context():
     entry = catalog["models"][0]
     assert entry["slug"] == model
     assert entry["context_window"] == 64000
+    assert entry["max_context_window"] == 64000
     assert entry["shell_type"] == "default"
     assert entry["input_modalities"] == ["text"]
     assert [level["effort"] for level in entry["supported_reasoning_levels"]] == [
@@ -151,6 +152,7 @@ def test_codex_diagnostic_uses_bounded_reasoning_effort_without_changing_default
     assert 'model_reasoning_effort="low"' in overrides
     assert "sandbox_workspace_write.exclude_slash_tmp=true" in overrides
     assert any(value.startswith("model_catalog_json=") for value in overrides)
+    assert "model_context_window=64000" in overrides
     assert not any(value.startswith("model_providers.ollama.") for value in overrides)
 
     monkeypatch.delenv("CODEX_MODEL_REASONING_EFFORT")
@@ -490,3 +492,22 @@ def test_windows_storage_workflow_exercises_adaptive_context_bridge_in_powershel
     assert "model_weights_already_loaded" in bridge
     assert "Available RAM cannot hold the model weights" in bridge
     assert "64000" not in bridge
+
+
+def test_codex_config_pins_sub_64k_context_to_the_verified_ollama_allocation(monkeypatch):
+    import json
+
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "1000")
+    arguments = progress.codex_arguments("qwen2.5:7b-codex-ctx1000", "report.md")
+    overrides = [
+        arguments[index + 1]
+        for index, value in enumerate(arguments[:-1])
+        if value == "-c"
+    ]
+
+    assert "model_context_window=1000" in overrides
+    catalog_override = next(value for value in overrides if value.startswith("model_catalog_json="))
+    catalog_path = json.loads(catalog_override.split("=", 1)[1])
+    entry = json.loads(Path(catalog_path).read_text(encoding="utf-8"))["models"][0]
+    assert entry["context_window"] == 1000
+    assert entry["max_context_window"] == 1000
