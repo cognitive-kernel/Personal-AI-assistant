@@ -1,3 +1,22 @@
+## 2026-11-12 — Autonomous Engineering model-selector consistency
+
+### Root-cause analysis
+- The status API intentionally exposes `models` (all installed Ollama models, including generated internal Codex context variants) and `selectable_models` (only original base models). The dashboard preferred `data.models` whenever present, so the filtered list was bypassed. The UI disabled current `-codex-ctx<tokens>` variants, but did not recognize legacy `-codex-64k` variants.
+- The app-account and Runner-account PowerShell readiness scripts also recognized only the current suffix. They could report a legacy generated context variant as a valid base model even though the Python settings API correctly rejects it.
+
+### Corrective changes
+- Prefer the API's `selectable_models` list and defensively filter both current and legacy internal context variants in the browser.
+- Treat a previously saved current/legacy context variant as unavailable and require selection of its original base model.
+- Align both Windows readiness scripts with the backend's current-and-legacy variant contract.
+- Add regression assertions for selector precedence, client-side fallback filtering, and both PowerShell readiness guards. Existing backend validation remains fail-closed.
+
+### Validation
+- Changes are on PR #722 branch `fix/autonomous-engineering-show-all-ollama-models-20261112`.
+- Code/test SHA `6246b9aa6f1a3728a1d32e6f98499dedd3153412` triggered exact-head Python tests, Windows storage regressions, Browser E2E, isolated Docker sandbox, dependency audit, and the self-hosted Windows diagnostic. Dependency audit passed; the other runs were still active/pending when this entry was written.
+- This log-only follow-up changes the PR head; all exact-head checks must be read again on the final documentation-inclusive SHA. No local target-host or human test is claimed.
+
+---
+
 ## 2026-11-12 — Per-user Ollama path and target readiness coverage
 
 - Root cause: a non-admin Windows Runner may not receive Ollama's per-user install directory in PATH, and WMI can omit ExecutablePath for a process owned by another account. The old fixed Administrator path was not portable.
