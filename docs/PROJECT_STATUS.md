@@ -1,5 +1,18 @@
 # وضعیت یکپارچهٔ پروژه
 
+## بازبینی سخت‌افزار، پایداری فرایند و محیط آزمون — 2026-11-12
+
+- مشخصات ثبت‌شده میزبان هدف: Intel Core i5-12400، شش هسته/۱۲ رشته، حدود 31.78 GiB حافظه فیزیکی و Intel UHD Graphics 730. اجرای diagnostic جدید این مشخصات را مستقیماً از CIM بررسی می‌کند؛ عدم تطابق، job را fail می‌کند و به‌عنوان موفق گزارش نمی‌شود.
+- حافظهٔ ۲ GiB گزارش‌شده توسط WMI برای UHD 730 دیگر به‌عنوان VRAM اختصاصی تفسیر نمی‌شود. فیلد جداگانهٔ reported adapter RAM حفظ می‌شود؛ ظرفیت اختصاصی فقط از WDDM DedicatedLimit معتبر می‌آید و حافظهٔ اشتراکی با سقف RAM آزاد میزبان محدود می‌شود.
+- وابستگی psutil از هستهٔ runtime به optional extra با نام hardware منتقل شده است. تشخیص Runner در نبود psutil از CIM ویندوز یا /proc لینوکس استفاده می‌کند؛ telemetry سخت‌افزار نیز fallback بومی دارد.
+- مالکیت watcher به PID، command line، run/task/base SHA و زمان ایجاد فرایند وابسته است. ویندوز زمان ایجاد را روی handle بازشده دوباره کنترل می‌کند؛ لینوکس از pidfd برای جلوگیری از PID-reuse استفاده می‌کند و در نبود pidfd fail-closed است. SIGTERM به SIGKILL escalation دارد.
+- شکست Docker job در PR #720 ریشه‌یابی شد: checkout در کانتینر read-only فاقد Git worktree metadata بود و تست‌های real-process درون کانتینر git rev-parse HEAD را اجرا می‌کردند. sandbox اکنون SHA واقعی checkout را روی میزبان resolve/validate می‌کند و فقط همان مقدار را به کانتینر می‌فرستد؛ هیچ mount اضافه‌ای از .git انجام نمی‌شود.
+- diagnostic ویندوز دیگر 10,000 توکن را به‌عنوان درخواست پیش‌فرض تحمیل نمی‌کند؛ در نبود ورودی صریح، مسیر انتخاب خودکار Context را اجرا می‌کند و /api/ps شامل context، اندازه مدل و اندازه VRAM را ثبت می‌کند. اجرای قبلی 10,000 توکن فقط شاهد مسیر درخواست صریح است، نه شاهد مسیر خودکار.
+- CLIهای ویندوز با npm.cmd و codex.cmd اجرا می‌شوند؛ Ollama از PATH یا مسیر process فعال پیدا می‌شود و مسیر ثابت کاربر Admin حذف شده است.
+- PR #720 و PR #721 به‌دلیل ادغام اصلاحاتشان در PR #722 بسته شدند تا شاخه‌های موازی و قراردادهای متناقض باقی نمانند.
+- آخرین head در حال اعتبارسنجی: 1bb8a4f802d2496e355dd4d86a0595d275512cad. تست کامل، Sandbox integration، Browser E2E، Dependency Audit و diagnostic خودمیزبان برای همین SHA در حال اجرا هستند. تا پایان هر job هیچ‌کدام pass اعلام نمی‌شوند.
+- مطابق Master Engineering Prompt، توسعهٔ مستقل و GitHub-side بدون انتظار برای تست دستی/محلی ادامه دارد؛ بااین‌حال merge به main تا تکمیل گیت‌های لازم exact-head CI و target-host مجاز نیست.
+
 ## وضعیت جاری — سازگاری پویا و ایمن Context در Codex (PR #722)
 
 - کار فعال: [PR #722](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/722)، شاخهٔ `fix/autonomous-engineering-show-all-ollama-models-20261112`؛ Draft و باز، بدون ادغام.
