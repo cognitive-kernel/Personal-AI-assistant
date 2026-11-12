@@ -128,3 +128,50 @@ def test_early_manual_task_persistence_script_is_protected_and_validated_in_ci()
     assert "pending-autonomous-pr.json" in script
     assert "AUTONOMOUS_ENGINEERING_PROGRESS_DIR" in script
     assert "awaiting owner merge or post-merge validation" in script
+
+
+def test_manual_task_state_uses_one_cross_process_lock_and_capture_is_read_only():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    script = (root / "scripts" / "persist_autonomous_manual_task.ps1").read_text(encoding="utf-8")
+    task_state_module = (root / "scripts" / "AutonomousEngineeringTaskState.psm1").read_text(encoding="utf-8")
+    capture_start = workflow.index("from scripts.autonomous_engineering_state_paths import execution_state_directory")
+    capture_end = workflow.index("Ensure Codex CLI is installed", capture_start)
+    capture = workflow[capture_start:capture_end]
+
+    assert 'Local\\PersonalAIAssistant.AutonomousEngineering.State.v1' in script
+    assert "$stateMutex.WaitOne" in script
+    assert "$stateMutex.ReleaseMutex()" in script
+    assert "Another autonomous run is active or queued" in script
+    assert "AutonomousEngineeringTaskState.psm1" in script
+    assert "pending-manual-task-owner.json" in script
+    assert "Get-AutonomousTaskDigest" in task_state_module
+    assert "schema_version = 1" in task_state_module
+    assert "claim_count" in task_state_module
+    assert "Recover-AutonomousPendingStateCleanup" in task_state_module
+    assert "pending-state-cleanup.json" in task_state_module
+    assert "with durable_state_lock(state_dir)" in capture
+    assert "The manual task input was not durably persisted" in capture
+    assert "temporary.replace(pending_path)" not in capture
+    assert "execution_state_directory()" in capture
+    assert "claim_pending_task_owner_unlocked" in capture
+    assert "validate_pending_task_owner_unlocked" in capture
+    assert "recover_pending_state_cleanup_unlocked" in capture
+    assert "owner_path = pending_task_owner_path(state_dir)" in capture
+
+
+def test_workflow_pins_local_durable_state_to_one_runner_and_rejects_dropped_manual_tasks():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    provision = (root / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
+
+    assert "runs-on: [self-hosted, Windows, X64, ollama, autonomous-state-owner]" in workflow
+    assert '"--labels", "ollama,autonomous-state-owner"' in provision
+    assert "Ensure-AutonomousStateOwnerLabel" in provision
+    assert "Another Runner already owns the autonomous-state-owner label" in provision
+    assert "A manual task was not accepted because autonomous engineering is paused" in workflow
+    assert "A manual task was not accepted because another run is active or queued" in workflow

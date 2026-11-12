@@ -29,31 +29,7 @@ permissions:
   contents: read
 
 jobs:
-  persist-manual-task:
-    if: github.event_name == 'workflow_dispatch' && inputs.manual_task != '' && github.ref == 'refs/heads/main'
-    runs-on: [self-hosted, Windows, X64, ollama]
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - name: Check out trusted main branch for task persistence
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: main
-          persist-credentials: false
-
-      - name: Persist manual task before the schedule gate
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          MANUAL_TASK: ${{ inputs.manual_task || '' }}
-        shell: powershell
-        run: |
-          & "$env:GITHUB_WORKSPACE\scripts\persist_autonomous_manual_task.ps1"
-
   schedule-gate:
-    needs: persist-manual-task
-    if: always() && needs.persist-manual-task.result != 'failure' && needs.persist-manual-task.result != 'cancelled'
     runs-on: ubuntu-latest
     permissions:
       actions: write
@@ -70,10 +46,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           CURRENT_RUN_ID: ${{ github.run_id }}
+          MANUAL_TASK: ${{ inputs.manual_task || '' }}
         shell: bash
         run: |
           set -euo pipefail
           if [[ "$PAUSED" == "true" ]]; then
+            if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$MANUAL_TASK" ]]; then
+              echo "A manual task was not accepted because autonomous engineering is paused; no durable state was changed." >&2
+              exit 1
+            fi
             echo "run_now=false" >> "$GITHUB_OUTPUT"
             echo "Autonomous engineering is safely paused; no new task will start."
             exit 0
@@ -99,6 +80,10 @@ jobs:
           PY
           )
           if [[ "$active_state" == "active" ]]; then
+            if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$MANUAL_TASK" ]]; then
+              echo "A manual task was not accepted because another run is active or queued; no durable state was changed. Retry after that run finishes." >&2
+              exit 1
+            fi
             echo "run_now=false" >> "$GITHUB_OUTPUT"
             echo "Another autonomous run is already active or queued; suppressing this duplicate trigger."
             exit 0
@@ -138,12 +123,12 @@ jobs:
           fi
 
   codex:
-    needs: [persist-manual-task, schedule-gate]
-    if: always() && needs.schedule-gate.outputs.run_now == 'true' && github.ref == 'refs/heads/main' && needs.persist-manual-task.result != 'failure' && needs.persist-manual-task.result != 'cancelled'
+    needs: schedule-gate
+    if: needs.schedule-gate.outputs.run_now == 'true' && github.ref == 'refs/heads/main'
     concurrency:
       group: autonomous-local-engineering-${{ github.repository }}
       cancel-in-progress: false
-    runs-on: [self-hosted, Windows, X64, ollama]
+    runs-on: [self-hosted, Windows, X64, ollama, autonomous-state-owner]
     timeout-minutes: 360
     permissions:
       contents: write
@@ -160,6 +145,16 @@ jobs:
         with:
           ref: main
           persist-credentials: false
+
+      - name: Persist manual task under the controller's runner and concurrency ownership
+        if: github.event_name == 'workflow_dispatch' && inputs.manual_task != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          MANUAL_TASK: ${{ inputs.manual_task || '' }}
+        shell: powershell
+        run: |
+          & "$env:GITHUB_WORKSPACE\scripts\persist_autonomous_manual_task.ps1"
 
       - name: Use preinstalled system Python under the Runner service identity
         shell: powershell
@@ -319,26 +314,94 @@ jobs:
           manual_task = os.getenv("MANUAL_TASK", "")
           if len(manual_task) > 2000 or "\x00" in manual_task:
               raise SystemExit("Manual engineering task must be at most 2000 characters and contain no NUL bytes.")
-          state_dir = Path(os.environ["PROGRAMDATA"]) / "PersonalAIAssistant" / "autonomous-engineering"
+          from scripts.autonomous_engineering_state_paths import execution_state_directory
+          from scripts.autonomous_engineering_state_lock import durable_state_lock
+          from scripts.autonomous_engineering_pending_task import validate_manual_task_submission
+          from scripts.autonomous_engineering_pending_task_state import (
+              claim_pending_task_owner_unlocked,
+              pending_task_owner_path,
+              validate_pending_task_owner_unlocked,
+          )
+          from scripts.autonomous_engineering_pending_pr_state import recover_pending_state_cleanup_unlocked
+
+          state_dir = execution_state_directory()
           state_dir.mkdir(parents=True, exist_ok=True)
           pending_path = state_dir / "pending-manual-task.txt"
-          pending_task = pending_path.read_text(encoding="utf-8") if pending_path.is_file() else ""
-          from scripts.autonomous_engineering_pending_task import validate_manual_task_submission
-          try:
-              validate_manual_task_submission(
-                  manual_task=manual_task,
-                  pending_task=pending_task,
-                  open_pull_requests=pulls,
-                  repository=repo,
-              )
-          except ValueError as exc:
-              raise SystemExit(str(exc)) from exc
-          if manual_task:
-              temporary = pending_path.with_suffix(".txt.tmp")
-              temporary.write_text(manual_task, encoding="utf-8")
-              temporary.replace(pending_path)
-          elif pending_task:
-              manual_task = pending_task
+          pending_pr_path = state_dir / "pending-autonomous-pr.json"
+          manual_task_supplied = bool(manual_task)
+          with durable_state_lock(state_dir):
+              try:
+                  recover_pending_state_cleanup_unlocked(state_dir)
+              except RuntimeError as exc:
+                  raise SystemExit(f"Pending-state cleanup recovery failed: {exc}") from exc
+              if manual_task:
+                  pending_pr_found = True
+                  try:
+                      pending_pr_raw = pending_pr_path.read_text(encoding="utf-8")
+                  except FileNotFoundError:
+                      pending_pr_found = False
+                      pending_pr_raw = ""
+                  except OSError as exc:
+                      raise SystemExit("Pending autonomous PR state cannot be read; refusing a new manual task.") from exc
+                  if pending_pr_found:
+                      if not pending_pr_raw.strip():
+                          raise SystemExit("Pending autonomous PR state is empty; refusing a new manual task.")
+                      try:
+                          pending_pr_state = json.loads(pending_pr_raw)
+                      except ValueError as exc:
+                          raise SystemExit("Pending autonomous PR state is malformed; refusing a new manual task.") from exc
+                      if not isinstance(pending_pr_state, dict) or not pending_pr_state.get("number"):
+                          raise SystemExit("Pending autonomous PR state is invalid; refusing a new manual task.")
+                      raise SystemExit(
+                          f"Autonomous PR #{pending_pr_state['number']} is awaiting owner merge or post-merge validation."
+                      )
+              pending_task_found = True
+              try:
+                  pending_task = pending_path.read_text(encoding="utf-8")
+              except FileNotFoundError:
+                  pending_task_found = False
+                  pending_task = ""
+              except OSError as exc:
+                  raise SystemExit("Pending manual task cannot be read safely.") from exc
+              if pending_task_found and not pending_task.strip():
+                  raise SystemExit("Pending manual task state is empty; refusing to continue.")
+              try:
+                  validate_manual_task_submission(
+                      manual_task=manual_task,
+                      pending_task=pending_task,
+                      open_pull_requests=pulls,
+                      repository=repo,
+                  )
+              except ValueError as exc:
+                  raise SystemExit(str(exc)) from exc
+              if manual_task and pending_task != manual_task:
+                  raise SystemExit(
+                      "The manual task input was not durably persisted before schedule gating; refusing to continue."
+                  )
+              elif pending_task:
+                  manual_task = pending_task
+              owner_path = pending_task_owner_path(state_dir)
+              if pending_task:
+                  run_id = os.environ.get("GITHUB_RUN_ID", "")
+                  try:
+                      run_attempt = int(os.environ.get("GITHUB_RUN_ATTEMPT", "1"))
+                  except ValueError as exc:
+                      raise SystemExit("Workflow run attempt is invalid; refusing to claim pending task.") from exc
+                  owner_source = (
+                      "legacy_migration" if not owner_path.exists()
+                      else ("manual_dispatch" if manual_task_supplied else "recovery")
+                  )
+                  try:
+                      claim_pending_task_owner_unlocked(
+                          state_dir, pending_task, run_id, run_attempt, source=owner_source,
+                      )
+                      validate_pending_task_owner_unlocked(
+                          state_dir, pending_task, run_id, run_attempt,
+                      )
+                  except (RuntimeError, ValueError) as exc:
+                      raise SystemExit(f"Pending task ownership validation failed: {exc}") from exc
+              elif owner_path.exists():
+                  raise SystemExit("Pending task owner metadata exists without its task; preserving unknown state.")
           if len(manual_task) > 2000 or "\x00" in manual_task:
               raise SystemExit("Persisted manual engineering task is invalid.")
           request = {

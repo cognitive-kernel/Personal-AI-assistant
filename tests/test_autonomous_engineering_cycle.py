@@ -103,7 +103,7 @@ def test_failed_local_and_github_checks_retry_same_task_then_wait_for_owner_merg
 
     monkeypatch.setattr(cycle, "publish_pr_subprocess", fake_publish)
     monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: (_ for _ in ()).throw(AssertionError("checkpoint cleared before owner merge")))
-    monkeypatch.setattr(cycle, "clear_pending_task", lambda: (_ for _ in ()).throw(AssertionError("manual task cleared before owner merge")))
+    monkeypatch.setattr(cycle, "clear_pending_state", lambda: (_ for _ in ()).throw(AssertionError("pending state cleared before owner merge")))
     calls = {"codex": 0, "pytest": 0}
 
     def fake_run(command, *, env=None, capture=False):
@@ -222,7 +222,7 @@ def test_run_cycle_recovers_open_task_pr_and_waits_for_owner_merge(
         "validated": True, "merged": False, "awaiting_review": True,
     })
     monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: (_ for _ in ()).throw(AssertionError("checkpoint cleared before owner merge")))
-    monkeypatch.setattr(cycle, "clear_pending_task", lambda: (_ for _ in ()).throw(AssertionError("manual task cleared before owner merge")))
+    monkeypatch.setattr(cycle, "clear_pending_state", lambda: (_ for _ in ()).throw(AssertionError("pending state cleared before owner merge")))
     monkeypatch.setattr(cycle, "api", lambda *args, **kwargs: {})
     monkeypatch.setattr(cycle, "snapshot", lambda *args: None)
     monkeypatch.setattr(cycle, "record", lambda *args, **kwargs: records.append((args, kwargs)))
@@ -248,11 +248,12 @@ def test_publish_pull_request_leaves_exact_sha_validated_pr_open_for_owner_merge
         "state": "open",
         "merged": False,
         "draft": False,
+        "html_url": "https://github.com/owner/repository/pull/12",
         "user": {"login": "github-actions[bot]"},
         "head": {"sha": head_sha, "repo": {"full_name": "owner/repository"}},
         "base": {"ref": "main", "sha": base_sha},
     }
-    refreshed = {**created, "html_url": "https://github.com/owner/repository/pull/12"}
+    refreshed = {**created}
 
     monkeypatch.setattr(cycle, "git_auth_env", lambda token: {})
     monkeypatch.setattr(cycle, "checked", lambda command, **kwargs: calls.append(("git", command)) or "")
@@ -272,7 +273,12 @@ def test_publish_pull_request_leaves_exact_sha_validated_pr_open_for_owner_merge
 
     monkeypatch.setattr(cycle, "api", fake_api)
     validations = []
-    monkeypatch.setattr(cycle, "dispatch_and_wait_all", lambda *args: validations.append(args))
+
+    def dispatch_after_owner_record(*args):
+        validations.append(args)
+        assert cycle.load_pending_pr()["number"] == 12
+
+    monkeypatch.setattr(cycle, "dispatch_and_wait_all", dispatch_after_owner_record)
 
     result = cycle.publish_pull_request(
         "token", "owner/repository", "codex/local-engineering-1-1-task-1",
@@ -493,7 +499,7 @@ def test_checkpoint_watcher_persists_initial_snapshot_error(monkeypatch: pytest.
     def fail_snapshot(*args, **kwargs):
         raise RuntimeError("simulated snapshot failure")
 
-    monkeypatch.setattr(checkpoint, "write_snapshot", fail_snapshot)
+    monkeypatch.setattr(checkpoint, "_write_snapshot_unlocked", fail_snapshot)
 
     with pytest.raises(RuntimeError, match="simulated snapshot failure"):
         checkpoint.watch("a" * 40, "104", 1, 5)
@@ -566,11 +572,13 @@ def test_checkpoint_watcher_real_process_publishes_run_scoped_readiness(
         assert metadata is not None, (
             process.stdout.read() if process.poll() is not None else "watcher readiness timed out"
         )
-        assert metadata["schema_version"] == 3
+        assert metadata["schema_version"] == 4
         assert metadata["base_sha"] == base_sha
         assert metadata["run_id"] == run_id
         assert metadata["task"] == task
         assert metadata["watcher_pid"] == process.pid
+        assert isinstance(metadata["watcher_started_at"], (int, float))
+        assert metadata["watcher_started_at"] > 0
         assert not ready_path.exists(), "Readiness must not depend on a secondary marker file"
     finally:
         checkpoint.paths(run_id, task)["stop"].write_text("stop\\n", encoding="utf-8")
@@ -591,7 +599,7 @@ def test_checkpoint_readiness_is_committed_without_a_secondary_marker(
     state = tmp_path / "ProgramData"
     monkeypatch.setattr(checkpoint, "store_dir", lambda: state)
 
-    def prepare_snapshot(base_sha, run_id, task, watcher_pid):
+    def prepare_snapshot(base_sha, run_id, task, watcher_pid, watcher_started_at):
         paths = checkpoint.paths(run_id, task)
         state.mkdir(parents=True, exist_ok=True)
         metadata = build_checkpoint_metadata(
@@ -599,6 +607,7 @@ def test_checkpoint_readiness_is_committed_without_a_secondary_marker(
             run_id=run_id,
             task=task,
             watcher_pid=watcher_pid,
+            watcher_started_at=watcher_started_at,
             updated_at=1.0,
             patch_bytes=0,
         )
@@ -607,7 +616,7 @@ def test_checkpoint_readiness_is_committed_without_a_secondary_marker(
         )
         paths["stop"].write_text("stop\n", encoding="utf-8")
 
-    monkeypatch.setattr(checkpoint, "write_snapshot", prepare_snapshot)
+    monkeypatch.setattr(checkpoint, "_write_snapshot_unlocked", prepare_snapshot)
     assert checkpoint.watch("a" * 40, "106", 1, 5) == 0
 
     metadata = json.loads(
@@ -643,12 +652,13 @@ def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pyt
         def __init__(self, *args, **kwargs):
             checkpoint.paths("105", 1)["metadata"].write_text(
                 json.dumps({
-                    "schema_version": 3,
+                    "schema_version": 4,
                     "watcher_ready": True,
                     "run_id": "105",
                     "task": 1,
                     "base_sha": "a" * 40,
                     "watcher_pid": 4321,
+                    "watcher_started_at": 1234.5,
                 }),
                 encoding="utf-8",
             )
@@ -663,6 +673,7 @@ def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pyt
             return 0
 
     monkeypatch.setattr(cycle.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(cycle, "process_start_time", lambda pid: 1234.5)
 
     assert cycle.start_checkpoint_watcher("a" * 40, "105", 1) is not None
 
@@ -733,6 +744,7 @@ def test_checkpoint_readiness_contract_rejects_wrong_owner_or_base():
         run_id="run-1",
         task=2,
         watcher_pid=4321,
+        watcher_started_at=1234.5,
         updated_at=1.0,
         patch_bytes=0,
     )
@@ -747,6 +759,10 @@ def test_checkpoint_readiness_contract_rejects_wrong_owner_or_base():
     )
     assert not metadata_confirms_watcher_ready(
         metadata, base_sha="a" * 40, run_id="run-1", task=2, watcher_pid=4322
+    )
+    assert not metadata_confirms_watcher_ready(
+        metadata, base_sha="a" * 40, run_id="run-1", task=2,
+        watcher_pid=4321, watcher_started_at=9999.0,
     )
 
 def test_checkpoint_paths_are_isolated_for_each_run_and_task(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
@@ -823,9 +839,10 @@ def test_checkpoint_watcher_uses_base_interpreter_with_venv_dependencies(
             captured["env"] = kwargs["env"]
             checkpoint.paths("107", 1)["metadata"].write_text(
                 json.dumps({
-                    "schema_version": 3, "watcher_ready": True,
+                    "schema_version": 4, "watcher_ready": True,
                     "run_id": "107", "task": 1, "base_sha": "a" * 40,
                     "watcher_pid": self.pid,
+                    "watcher_started_at": 1234.5,
                 }),
                 encoding="utf-8",
             )
@@ -840,6 +857,7 @@ def test_checkpoint_watcher_uses_base_interpreter_with_venv_dependencies(
             return 0
 
     monkeypatch.setattr(cycle.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(cycle, "process_start_time", lambda pid: 1234.5)
     monkeypatch.setattr(cycle.time, "monotonic", lambda: 0.0)
 
     assert cycle.start_checkpoint_watcher("a" * 40, "107", 1) is not None
@@ -1252,8 +1270,7 @@ def test_complete_merged_pr_requires_owner_merge_and_post_merge_exact_sha_checks
     cleared = []
     monkeypatch.setattr(cycle, "dispatch_and_wait_all", lambda *args: validations.append(args))
     monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: cleared.append("checkpoint"))
-    monkeypatch.setattr(cycle, "clear_pending_task", lambda: cleared.append("task"))
-    monkeypatch.setattr(cycle, "clear_pending_pr", lambda: cleared.append("pending-pr"))
+    monkeypatch.setattr(cycle, "clear_pending_state", lambda: cleared.append("pending-state"))
 
     result = cycle.complete_merged_pr("token", "owner/repository", pending)
 
@@ -1261,7 +1278,7 @@ def test_complete_merged_pr_requires_owner_merge_and_post_merge_exact_sha_checks
     assert result["post_merge_validated"] is True
     assert result["merge_sha"] == merge_sha
     assert validations == [("token", "owner/repository", ("tests.yml", "browser-e2e.yml", "dependency-audit.yml"), "main", merge_sha)]
-    assert cleared == ["checkpoint", "task", "pending-pr"]
+    assert cleared == ["checkpoint", "pending-state"]
     assert not any(method == "PUT" and str(path).endswith("/merge") for method, path, _ in calls)
 
 
@@ -1284,3 +1301,74 @@ def test_pending_pr_state_round_trips_atomically_and_rejects_corruption(tmp_path
     cycle._pending_pr_path().write_text("{broken", encoding="utf-8")
     with pytest.raises(RuntimeError, match="unreadable"):
         cycle.load_pending_pr()
+
+
+def test_clear_pending_state_removes_task_and_pr_in_one_transaction(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    state_dir = tmp_path / "durable-state"
+    state_dir.mkdir()
+    (state_dir / "pending-manual-task.txt").write_text("task", encoding="utf-8")
+    (state_dir / "pending-autonomous-pr.json").write_text("{}", encoding="utf-8")
+    (state_dir / "pending-manual-task-owner.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(state_dir))
+
+    cycle.clear_pending_state()
+
+    assert not (state_dir / "pending-manual-task.txt").exists()
+    assert not (state_dir / "pending-autonomous-pr.json").exists()
+    assert not (state_dir / "pending-manual-task-owner.json").exists()
+
+
+def test_recovered_open_pr_is_persisted_before_exact_sha_ci(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    head_sha = "a" * 40
+    base_sha = "b" * 40
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "state"))
+    current = {
+        "number": 79,
+        "state": "open",
+        "merged": False,
+        "draft": False,
+        "html_url": "https://github.com/owner/repository/pull/79",
+        "user": {"login": "github-actions[bot]"},
+        "head": {
+            "ref": "codex/local-engineering-79-1-task-1",
+            "sha": head_sha,
+            "repo": {"full_name": "owner/repository"},
+        },
+        "base": {"ref": "main", "sha": base_sha},
+    }
+
+    def fake_api(token, repo, method, path, payload=None):
+        if method == "GET" and path == "pulls/79":
+            return current
+        if method == "GET" and path == "branches/main":
+            return {"commit": {"sha": base_sha}}
+        raise AssertionError((method, path, payload))
+
+    monkeypatch.setattr(cycle, "api", fake_api)
+
+    def dispatch_after_owner_record(*args):
+        pending = cycle.load_pending_pr()
+        assert pending["number"] == 79
+        assert pending["head_sha"] == head_sha
+
+    monkeypatch.setattr(cycle, "dispatch_and_wait_all", dispatch_after_owner_record)
+
+    result = cycle.complete_pending_pr(
+        "token",
+        "owner/repository",
+        {
+            "number": 79,
+            "head_sha": head_sha,
+            "base_sha": base_sha,
+            "branch": "codex/local-engineering-79-1-task-1",
+        },
+        "79",
+        1,
+    )
+
+    assert result["validated"] is True
+    assert result["awaiting_review"] is True

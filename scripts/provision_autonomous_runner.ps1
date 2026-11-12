@@ -45,11 +45,49 @@ if ($LASTEXITCODE -ne 0 -or [version]$pythonVersion -lt [version]"3.11") { throw
 $gh = Get-Command gh -ErrorAction Stop
 & $gh.Source auth status --hostname github.com
 if ($LASTEXITCODE -ne 0) { throw "Authenticate gh as an account with repository Administration: write permission." }
+function Ensure-AutonomousStateOwnerLabel {
+    $inventoryJson = & $gh.Source api "repos/$Repository/actions/runners?per_page=100"
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($inventoryJson)) {
+        throw "Could not inspect repository Runner inventory; refusing to assume local durable-state affinity."
+    }
+    $inventory = $inventoryJson | ConvertFrom-Json
+    if ($null -eq $inventory.runners -or [int]$inventory.total_count -gt @($inventory.runners).Count) {
+        throw "Runner inventory is incomplete; cannot prove that autonomous-state-owner is unique."
+    }
+    $matching = @($inventory.runners | Where-Object { $_.name -eq $RunnerName })
+    if ($matching.Count -ne 1) {
+        throw "Expected exactly one registered Runner named '$RunnerName'; found $($matching.Count)."
+    }
+    $runner = $matching[0]
+    $owners = @($inventory.runners | Where-Object {
+        @($_.labels | ForEach-Object { $_.name }) -contains "autonomous-state-owner"
+    })
+    if (@($owners | Where-Object { $_.id -ne $runner.id }).Count -gt 0) {
+        throw "Another Runner already owns the autonomous-state-owner label; refusing ambiguous state affinity."
+    }
+    if (@($runner.labels | ForEach-Object { $_.name }) -notcontains "autonomous-state-owner") {
+        $null = & $gh.Source api --method POST "repos/$Repository/actions/runners/$($runner.id)/labels" -f "labels[]=autonomous-state-owner"
+        if ($LASTEXITCODE -ne 0) { throw "Could not assign the unique autonomous-state-owner Runner label." }
+    }
+    $verifiedJson = & $gh.Source api "repos/$Repository/actions/runners?per_page=100"
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($verifiedJson)) {
+        throw "Could not verify autonomous-state-owner Runner label assignment."
+    }
+    $verified = $verifiedJson | ConvertFrom-Json
+    $owners = @($verified.runners | Where-Object {
+        @($_.labels | ForEach-Object { $_.name }) -contains "autonomous-state-owner"
+    })
+    if ($owners.Count -ne 1 -or $owners[0].id -ne $runner.id) {
+        throw "autonomous-state-owner must identify exactly the configured Runner and no other host."
+    }
+}
+
 if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     $services = @(Get-CimInstance Win32_Service | Where-Object { $_.PathName -like "*$RunnerRoot*" })
     if ($services.Count -ne 1 -or (Get-AccountSidValue $services[0].StartName) -ne (Get-AccountSidValue $runnerIdentity)) { throw "Existing Runner configuration found; refusing to replace or reconfigure it." }
+    Ensure-AutonomousStateOwnerLabel
     if ($services[0].State -ne "Running") { Start-Service -Name $services[0].Name }
-    Write-Host "Existing Runner configuration preserved and service verified."
+    Write-Host "Existing Runner configuration preserved, uniquely labelled, and service verified."
     exit 0
 }
 if ((Test-Path -LiteralPath $RunnerRoot) -and @(Get-ChildItem -LiteralPath $RunnerRoot -Force).Count -gt 0) { throw "RunnerRoot is non-empty but unconfigured; refusing to overwrite." }
@@ -87,7 +125,7 @@ try {
     Remove-Item -LiteralPath $archive -Force
     $config = Join-Path $RunnerRoot "config.cmd"
     if (-not (Test-Path -LiteralPath $config)) { throw "config.cmd missing from official Runner archive." }
-    $configArgs = @("--url", "https://github.com/$Repository", "--token", $token, "--name", $RunnerName, "--labels", "ollama", "--work", "_work", "--runasservice", "--windowslogonaccount", $runnerIdentity)
+    $configArgs = @("--url", "https://github.com/$Repository", "--token", $token, "--name", $RunnerName, "--labels", "ollama,autonomous-state-owner", "--work", "_work", "--runasservice", "--windowslogonaccount", $runnerIdentity)
     Write-Host "Runner configuration will prompt for the service-account password; it is not passed as a process argument."
     & $config @configArgs
     if ($LASTEXITCODE -ne 0) { throw "Runner registration failed with exit code $LASTEXITCODE." }
