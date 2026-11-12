@@ -372,7 +372,11 @@ def test_target_diagnostic_matches_recorded_hardware_and_uses_automatic_context(
     diagnostic = (root / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml").read_text(encoding="utf-8")
     autonomous = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
     runner_check = (root / "scripts" / "check_autonomous_runner.ps1").read_text(encoding="utf-8")
+    readme = (root / "README.md").read_text(encoding="utf-8")
 
+    assert "2 GiB برای AdapterRAM" in readme
+    assert "32.0.101.6129" in readme
+    assert "حافظه گزارش‌شده 128 MB" not in readme
     assert "i5-12400" in diagnostic
     assert "physicalCores -ne 6" in diagnostic
     assert "logicalProcessors -ne 12" in diagnostic
