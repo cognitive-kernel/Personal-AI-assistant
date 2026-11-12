@@ -5,6 +5,8 @@
 - PR #707's branch was based on the pre-#719 main snapshot, was non-mergeable, and its remaining failures came from stale URL validation and workflow test assumptions. The current main implementations supersede those changes.
 - Closed PR #707 with an explanatory audit comment; no stale code was merged. Updated PR #722 and the current status/acceptance ledgers so it no longer appears as an unresolved rebase dependency.
 
+- Latest documentation-inclusive PR #722 head before this final status synchronization: `234643106cfe675bacc18290a926987131f34aee`. Dependency audit passed; Python suite, Windows Storage, Browser E2E, and Docker sandbox were still running; the self-hosted Windows diagnostic remained pending without a runner assignment.
+
 ---
 
 ## 2026-11-12 — Autonomous Engineering model-selector consistency
