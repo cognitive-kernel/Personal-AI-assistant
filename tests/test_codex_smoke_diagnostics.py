@@ -267,7 +267,14 @@ def test_context_preflight_uses_deterministic_variant_from_selected_base_model()
     assert '$codexModel = "$baseModel-codex-ctx$selectedContext"' in script
     assert 'from = $baseModel' in script
     assert '$existingContext.Success' in script
-    assert "if ($Model -match '(?i)-codex-(?:ctx[0-9]+|[0-9]+k)
+    assert "if ($Model -match '(?i)-codex-(?:ctx[0-9]+|[0-9]+k)$')" in script
+    assert '$legacyPattern = ' in script
+    assert '$isLegacyVariant = [regex]::IsMatch(' in script
+    assert "Select the original Ollama model to prevent nested variants" in script
+    assert "Start-Process -FilePath $pythonPath -ArgumentList $argumentList" in script
+    assert "-RedirectStandardOutput $selectionOutputPath -RedirectStandardError $selectionErrorPath" in script
+    assert "& python $helperPath" not in script
+
     root = Path(__file__).resolve().parents[1]
     provision = (root / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
     app_check = (root / "scripts" / "check_autonomous_agent.ps1").read_text(encoding="utf-8")
@@ -275,8 +282,6 @@ def test_context_preflight_uses_deterministic_variant_from_selected_base_model()
     assert "internal Codex context variant" in provision
     assert "Base model selection" in app_check
     assert "Base model selection" in runner_check
-
-
 
 
 def test_codex_model_catalog_rejects_non_positive_context(monkeypatch):
