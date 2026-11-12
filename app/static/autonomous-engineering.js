@@ -116,7 +116,7 @@
       labels.model.textContent = stateText(modelReady);
       const contextLength = Number(data.model_context_length);
       const contextText = Number.isSafeInteger(contextLength) && contextLength >= 512
-        ? "؛ حداکثر Context مدل: " + contextLength.toLocaleString() + " توکن" + (contextLength >= 64000 ? "؛ حداقل Codex تأمین است" : "؛ Codex حداقل ۶۴٬۰۰۰ توکن می‌خواهد")
+        ? "؛ حداکثر Context مدل: " + contextLength.toLocaleString() + " توکن؛ Codex با ظرفیت واقعی مدل و سخت‌افزار تطبیق داده می‌شود"
         : "؛ حداکثر Context از metadata مدل تأیید نشد";
       const toolsText = checks.model_supports_tools ? "؛ قابلیت tools تأیید شد" : "؛ قابلیت tools تأیید نشد";
       const modelLabel = data.model ? "مدل ذخیره‌شده: " + String(data.model) : "هنوز مدلی ذخیره نشده است";
