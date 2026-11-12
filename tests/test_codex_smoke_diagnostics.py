@@ -413,3 +413,27 @@ def test_active_codex_documentation_matches_adaptive_context_contract():
     assert "حداقل Codex یک توکن مثبت" in status
     assert "There is no Codex-specific 64,000-token minimum" in operations
     assert "There is no fixed minimum context window" in adr
+
+def test_windows_provisioning_and_app_readiness_use_consistent_cli_resolution():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    provision = (root / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
+    app_check = (root / "scripts" / "check_autonomous_agent.ps1").read_text(encoding="utf-8")
+
+    assert "Get-Command ollama.exe" in provision
+    assert "Get-CimInstance Win32_Process -Filter \"Name='ollama.exe'\"" in provision
+    assert "Get-Command node.exe" in provision
+    assert "Get-Command npm.cmd" in provision
+    assert "Get-Command git.exe" in provision
+    assert "Get-Command python.exe" in provision
+    assert "Get-Command gh.exe" in provision
+    assert "Node.js 26.13.0 is required" in provision
+    assert "npm 11.20.0 is required" in provision
+    assert "Ollama 0.40.16 is required" in provision
+    assert "Get-Command ollama -ErrorAction" not in provision
+    assert "Get-Command npm -ErrorAction" not in provision
+
+    assert "Get-Command gh.exe" in app_check
+    assert "Get-CimInstance Win32_Process -Filter" in app_check
+    assert "Get-Process -Name \"Runner.Listener\"" not in app_check
