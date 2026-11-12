@@ -23,32 +23,41 @@ $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
 $nodeReady = [bool]$nodeCommand
 $nodeVersion = "Node.js not found in Runner account PATH"
 if ($nodeReady) {
-    $nodeVersion = (& node --version 2>$null | Select-Object -First 1)
-    $nodeReady = ($LASTEXITCODE -eq 0 -and [bool]$nodeVersion)
+    $nodeVersionOutput = & node --version 2>$null
+    $nodeExitCode = $LASTEXITCODE
+    $nodeVersion = [string](@($nodeVersionOutput)[0])
+    $nodeReady = ($nodeExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($nodeVersion))
 }
 $checks += [pscustomobject]@{ Component = "Node.js"; Ready = $nodeReady; Detail = $nodeVersion }
 
-$npmCommand = Get-Command npm -ErrorAction SilentlyContinue
+$npmCommand = Get-Command npm.cmd -ErrorAction SilentlyContinue
 $npmReady = [bool]$npmCommand
 $npmPrefix = ""
-$npmVersion = "npm not found in Runner account PATH"
+$npmVersion = "npm.cmd not found in Runner account PATH"
 if ($npmReady) {
-    $npmVersion = (& npm --version 2>$null | Select-Object -First 1)
-    $npmReady = ($LASTEXITCODE -eq 0 -and [bool]$npmVersion)
+    $npmVersionOutput = & $npmCommand.Source --version 2>$null
+    $npmVersionExitCode = $LASTEXITCODE
+    $npmVersion = [string](@($npmVersionOutput)[0])
+    $npmReady = ($npmVersionExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($npmVersion))
     if ($npmReady) {
-        $npmPrefix = (& npm config get prefix 2>$null | Select-Object -First 1).Trim()
-        $npmReady = ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($npmPrefix))
+        $npmPrefixOutput = & $npmCommand.Source config get prefix 2>$null
+        $npmPrefixExitCode = $LASTEXITCODE
+        $npmPrefix = [string](@($npmPrefixOutput)[0])
+        $npmPrefix = $npmPrefix.Trim()
+        $npmReady = ($npmPrefixExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($npmPrefix))
     }
 }
 $checks += [pscustomobject]@{ Component = "npm"; Ready = $npmReady; Detail = if ($npmReady) { "$npmVersion; global prefix: $npmPrefix" } else { $npmVersion } }
 
 $env:PATH = "$npmPrefix;$env:PATH"
-$codexCommand = Get-Command codex -ErrorAction SilentlyContinue
+$codexCommand = Get-Command codex.cmd -ErrorAction SilentlyContinue
 $codexReady = [bool]$codexCommand
 $codexVersion = "Codex CLI will be installed automatically by the first autonomous workflow run."
 if ($codexReady) {
-    $codexVersion = (& codex --version 2>$null | Select-Object -First 1)
-    $codexReady = ($LASTEXITCODE -eq 0 -and [bool]$codexVersion)
+    $codexVersionOutput = & $codexCommand.Source --version 2>$null
+    $codexExitCode = $LASTEXITCODE
+    $codexVersion = [string](@($codexVersionOutput)[0])
+    $codexReady = ($codexExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($codexVersion))
 }
 $checks += [pscustomobject]@{
     Component = "Codex CLI"
@@ -56,12 +65,25 @@ $checks += [pscustomobject]@{
     Detail = if ($codexReady) { $codexVersion } elseif ($npmReady) { $codexVersion } else { "Install Node.js/npm; the workflow installs Codex under this service account." }
 }
 
-$ollamaCommand = Get-Command ollama -ErrorAction SilentlyContinue
-$ollamaCliReady = [bool]$ollamaCommand
-$ollamaVersion = "Ollama CLI not found in Runner account PATH"
+$ollamaCommand = Get-Command ollama.exe -ErrorAction SilentlyContinue
+$ollamaExecutable = if ($ollamaCommand) { $ollamaCommand.Source } else { $null }
+if (-not $ollamaExecutable) {
+    try {
+        $ollamaProcess = Get-CimInstance Win32_Process -Filter "Name='ollama.exe'" -ErrorAction Stop |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) } |
+            Select-Object -First 1
+        if ($ollamaProcess -and (Test-Path -LiteralPath $ollamaProcess.ExecutablePath -PathType Leaf)) {
+            $ollamaExecutable = [string]$ollamaProcess.ExecutablePath
+        }
+    } catch {}
+}
+$ollamaCliReady = -not [string]::IsNullOrWhiteSpace($ollamaExecutable)
+$ollamaVersion = "Ollama CLI not found in PATH or active ollama.exe process"
 if ($ollamaCliReady) {
-    $ollamaVersion = (& ollama --version 2>$null | Select-Object -First 1)
-    $ollamaCliReady = ($LASTEXITCODE -eq 0 -and [bool]$ollamaVersion)
+    $ollamaVersionOutput = & $ollamaExecutable --version 2>$null
+    $ollamaExitCode = $LASTEXITCODE
+    $ollamaVersion = [string](@($ollamaVersionOutput)[0])
+    $ollamaCliReady = ($ollamaExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($ollamaVersion))
 }
 $ollamaOnline = $false
 $modelInstalled = $false
