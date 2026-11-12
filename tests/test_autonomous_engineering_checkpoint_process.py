@@ -265,7 +265,7 @@ def test_windows_termination_refuses_pid_reuse_after_open(monkeypatch: pytest.Mo
     or not callable(getattr(signal, "pidfd_send_signal", None)),
     reason="Linux pidfd process identity support is required.",
 )
-def test_unresponsive_watcher_is_killed_and_reaped_with_pidfd(tmp_path: Path):
+def test_unresponsive_watcher_is_killed_and_reaped(tmp_path: Path):
     import os
     import signal
     import subprocess
@@ -300,3 +300,15 @@ def test_unresponsive_watcher_is_killed_and_reaped_with_pidfd(tmp_path: Path):
         if child.poll() is None:
             child.kill()
             child.wait(timeout=5)
+
+def test_access_denied_while_reading_command_line_blocks_recovery(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    script = tmp_path / "autonomous_engineering_checkpoint.py"
+
+    def denied_command_line(pid: int):
+        raise PermissionError("command-line access denied")
+
+    monkeypatch.setattr(process_control, "_read_process_snapshot", denied_command_line)
+    with pytest.raises(RuntimeError, match="Cannot inspect checkpoint watcher PID"):
+        process_control.stop_owned_watcher(_metadata(), script_path=script)
