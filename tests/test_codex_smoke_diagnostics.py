@@ -1,6 +1,24 @@
 from scripts import autonomous_engineering_progress as progress
 
 
+def test_progress_cli_imports_codex_config_when_run_as_a_standalone_script(tmp_path):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    script = root / "scripts" / "autonomous_engineering_progress.py"
+    result = subprocess.run(
+        [sys.executable, str(script), "--help"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "codex" in result.stdout
+
+
 def test_codex_smoke_evidence_reports_each_command_without_logging_raw_commands():
     events = [
         {"type": "item.started", "item": {
