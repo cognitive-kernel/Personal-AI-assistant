@@ -278,11 +278,20 @@ def test_context_preflight_uses_deterministic_variant_from_selected_base_model()
 
 
 
-def test_codex_model_catalog_rejects_context_below_runtime_minimum(monkeypatch):
+def test_codex_model_catalog_rejects_non_positive_context(monkeypatch):
     import pytest
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "511")
-    with pytest.raises(ValueError, match="512"):
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "0")
+    with pytest.raises(ValueError, match="positive integer"): 
         progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx511")
+
+
+
+def test_codex_model_catalog_accepts_a_single_token_context(monkeypatch):
+    import json
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "1")
+    path = progress.write_codex_model_catalog("tiny:latest-codex-ctx1")
+    catalog = json.loads(path.read_text(encoding="utf-8"))
+    assert catalog["models"][0]["context_window"] == 1
 
 
 def test_codex_model_catalog_uses_selected_context_from_environment(monkeypatch):
