@@ -19,11 +19,11 @@ $checks += [pscustomobject]@{
     Detail = if ($runnerIsAdmin) { "Do not run the autonomous Runner as a local administrator" } else { "Non-administrator service account" }
 }
 
-$nodeCommand = Get-Command node -ErrorAction SilentlyContinue
+$nodeCommand = Get-Command node.exe -ErrorAction SilentlyContinue
 $nodeReady = [bool]$nodeCommand
-$nodeVersion = "Node.js not found in Runner account PATH"
+$nodeVersion = "node.exe not found in Runner account PATH"
 if ($nodeReady) {
-    $nodeVersionOutput = & node --version 2>$null
+    $nodeVersionOutput = & $nodeCommand.Source --version 2>$null
     $nodeExitCode = $LASTEXITCODE
     $nodeVersion = [string](@($nodeVersionOutput)[0])
     $nodeReady = ($nodeExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($nodeVersion))
