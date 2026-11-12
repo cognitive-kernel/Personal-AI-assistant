@@ -39,15 +39,16 @@ The autonomous-engineering status API preserves the installed-model inventory fr
    The workflow reads the selected model's architecture-specific maximum context, installed weight size, KV-cache dimensions, and currently available physical RAM. `app/ollama_context.py` calculates hardware capacity independently from model capacity: (available physical RAM - 4 GiB system reserve - model-weight charge - runtime overhead) divided by estimated FP16 KV-cache bytes per token; the weight charge is zero when the base model is already resident because free physical RAM already excludes it, otherwise it is the installed weight size. Runtime overhead is at least 0.5 GiB or 10% of model weights. The effective ceiling is `min(hardware capacity, model maximum, Codex catalog maximum)`; the selected value is `min(requested context, effective ceiling)`, or the effective ceiling when no value was requested. A request above the ceiling is clamped, not rejected. There is no fixed minimum context window. Zero/negative context is invalid; if the host cannot provide even one token after safety reserves, missing/invalid architecture metadata, or missing RAM telemetry, execution reports the precise failure rather than guessing. The selected value is persisted in `AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH`. The workflow creates a persistent model variant named `<selected-model>-codex-ctx<selected-context>` through Ollama `/api/create` with `num_ctx`, verifies the saved value through `/api/show`, loads it without a request-level `options.num_ctx` override, and verifies actual allocation through `/api/ps`. Codex receives that exact variant and context value in its model catalog. The catalog pins both `context_window` and `max_context_window`, and the CLI explicitly sets `model_context_window` to the same verified allocation so an inherited Codex config cannot increase it. The original selected model is not modified, no Ollama server restart or administrator credential is required, and the workflow repeats runtime allocation verification after Codex execution. The variant shares the base model weights; it is a separate model configuration, not a second model download. The RAM estimate is a preflight estimate; successful load, `/api/ps`, and a real tool-call smoke test are runtime acceptance evidence. See the [official context-length guide](https://docs.ollama.com/context-length), [Modelfile reference](https://docs.ollama.com/modelfile), and [API reference](https://github.com/ollama/ollama/blob/main/docs/api.md). A larger context increases memory use; measure stability on the target host.
 
 
-3. Install Node.js LTS system-wide so the executable is available to the Windows Runner service.
-4. Install GitHub CLI and authorize it once with the **same GitHub account already signed in to Chrome**. Use `gh auth login --web`; GitHub opens its browser authorization flow and the existing Chrome session can be used. This does not create another GitHub account or require a paid service. The authorization is stored locally for the application account and is reused by the dashboard; do not authenticate GitHub CLI as the Runner service account:
+3. Install Python 3.11 or newer system-wide and make `python.exe` available in the Windows Runner service PATH. The production workflow and target diagnostic resolve the same executable from that account's PATH; the diagnostic records and reuses its exact path instead of assuming `C:\Program Files\Python311`. GitHub CI covers Python 3.11.9 and 3.14.6.
+4. Install Node.js LTS system-wide so the executable is available to the Windows Runner service.
+5. Install GitHub CLI and authorize it once with the **same GitHub account already signed in to Chrome**. Use `gh auth login --web`; GitHub opens its browser authorization flow and the existing Chrome session can be used. This does not create another GitHub account or require a paid service. The authorization is stored locally for the application account and is reused by the dashboard; do not authenticate GitHub CLI as the Runner service account:
 
    ```powershell
    gh auth login --web
    gh auth status
    ```
 
-5. From an elevated PowerShell window in the repository checkout, provision the Runner and shared progress ACLs in one operation:
+6. From an elevated PowerShell window in the repository checkout, provision the Runner and shared progress ACLs in one operation:
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\\scripts\\provision_autonomous_runner.ps1 `
@@ -60,22 +61,22 @@ The autonomous-engineering status API preserves the installed-model inventory fr
 
    The script requires an elevated shell and repository **Administration: write** permission. It refuses to overwrite an existing configured Runner or a non-empty unconfigured Runner directory. If a Runner is already configured, it verifies the service identity and starts it without re-registering.
 
-6. In **Settings → Actions → General → Workflow permissions**, allow GitHub Actions to create and approve pull requests if the repository requires it. The autonomous job requests only `contents: write`, `pull-requests: write`, and `actions: write` for the trusted controller. The controller never calls GitHub's PR merge API. It leaves the validated PR open for owner review; the owner performs the merge manually. Do not disable branch protection or grant a bypass.
-7. From the application account and the application checkout, run the app-side readiness check:
+7. In **Settings → Actions → General → Workflow permissions**, allow GitHub Actions to create and approve pull requests if the repository requires it. The autonomous job requests only `contents: write`, `pull-requests: write`, and `actions: write` for the trusted controller. The controller never calls GitHub's PR merge API. It leaves the validated PR open for owner review; the owner performs the merge manually. Do not disable branch protection or grant a bypass.
+8. From the application account and the application checkout, run the app-side readiness check:
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\\scripts\\check_autonomous_agent.ps1
    ```
 
    This checks the local Ollama endpoint/model, application-account GitHub CLI authentication, Runner.Listener visibility, and read access to shared progress storage. Pass the exact saved model via `-SelectedModel <saved-model>`. It intentionally does not require Codex CLI to be installed in the application account.
-8. From the Runner service account, run the Runner-side check from its checked-out workspace:
+9. From the Runner service account, run the Runner-side check from its checked-out workspace:
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\\scripts\\check_autonomous_runner.ps1
    ```
 
    This checks that the Runner account is non-administrator, plus Codex CLI, Ollama CLI/server/model, Runner.Listener, and write access to shared progress storage. Pass the exact saved model via `-SelectedModel <saved-model>`. It does not require or use GitHub CLI authentication. The workflow repeats the critical Runner checks before every Codex session.
-9. Start the local app and open `http://127.0.0.1:8000/autonomous-engineering`. When application-side readiness passes, use **شروع صف پیوسته** or start the workflow from GitHub Actions. The workflow performs its own Runner-side checks and fails closed if the Runner account is not configured correctly.
+10. Start the local app and open `http://127.0.0.1:8000/autonomous-engineering`. When application-side readiness passes, use **شروع صف پیوسته** or start the workflow from GitHub Actions. The workflow performs its own Runner-side checks and fails closed if the Runner account is not configured correctly.
 
 ## Workflow behavior
 
