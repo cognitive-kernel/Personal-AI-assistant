@@ -1,3 +1,9 @@
+## 2026-11-12 — PR #707 ownership/checkpoint reconciliation
+
+PR #707 was closed as superseded. Merged PR #719 (merge commit `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`) already incorporated its checkpoint/process ownership, durable task-state locking, serialized manual-task persistence, unique Runner ownership, ADR-014/015, and regression coverage. Current `main` has newer implementations than the stale PR #707 branch; its old workflow assertions and pending-PR URL validation are not to be merged separately. PR #722 no longer depends on rebasing PR #707. Historical references below describe the state at the time they were recorded.
+
+---
+
 ## 2026-11-12 — GitHub-hosted validation completed for adaptive Codex/Ollama
 
 Code/test SHA `65b07b3a6dee54b6a1e27356f5f7a7df8ad87c3` passed the GitHub-hosted matrix:
