@@ -4,7 +4,7 @@
 
 - مبنای `main`: `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`؛ PR #719 در این commit ادغام شده است.
 - شاخهٔ فعال تکمیل ماژول: `fix/autonomous-engineering-show-all-ollama-models-20261112`؛ PR [#722](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/722) باز و Draft است.
-- اصلاح جدید UI و readiness: فهرست `selectable_models` به‌جای فهرست همهٔ مدل‌ها مبنا قرار می‌گیرد؛ نسخه‌های داخلی `-codex-ctx<tokens>` و legacy `-codex-64k` در UI و هر دو بررسی PowerShell مدل پایه محسوب نمی‌شوند.
+- اصلاح جدید UI و readiness: تمام مدل‌های نصب‌شده نمایش داده می‌شوند؛ `selectable_models` فقط allow-list گزینه‌های فعال است. نسخه‌های داخلی `-codex-ctx<tokens>` و legacy `-codex-64k` در فهرست قابل مشاهده اما غیرفعال هستند و در هر دو بررسی PowerShell نیز مدل پایه محسوب نمی‌شوند.
 - Regressionهای انتخاب مدل و readiness در `tests/test_autonomous_engineering.py` و `tests/test_codex_smoke_diagnostics.py` افزوده/به‌روزرسانی شدند.
 - Python compatibility: GitHub CI now includes exact Python 3.11.9 and 3.14.6 matrix coverage for the Autonomous Engineering, hardware, Ollama, and Codex regression suites; Windows-specific checks remain separate.
 - آخرین SHA کد/تست/مستندات/CI در PR #722 پیش از اجرای ماتریس جدید Python: `0212df48f97833d73dcd84576a16752db714ec54`. این commit ماتریس Python 3.11.9 و 3.14.6 را اضافه می‌کند؛ تمام checkها باید روی SHA نهایی پس از این تغییر دوباره اجرا شوند. Diagnostic خودمیزبان Windows نیز یک گیت جداگانه است و تا تخصیص موفق Runner نتیجهٔ آن تأییدشده نیست.
