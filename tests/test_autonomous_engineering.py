@@ -522,6 +522,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert workflow.count("snapshot --run-id") == 1
     progress_writer = (root / "scripts" / "autonomous_engineering_progress.py").read_text(encoding="utf-8")
     cycle_controller = (root / "scripts" / "autonomous_engineering_cycle.py").read_text(encoding="utf-8")
+    pr_lifecycle = (root / "scripts" / "autonomous_engineering_pull_requests.py").read_text(encoding="utf-8")
     tests_workflow = (root / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
     browser_workflow = (root / ".github" / "workflows" / "browser-e2e.yml").read_text(encoding="utf-8")
     assert '"--local-provider", "ollama"' in progress_writer
@@ -531,9 +532,9 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "save_pending_pr" in cycle_controller
     assert "complete_merged_pr" in cycle_controller
     assert "clear_pending_pr" in cycle_controller
-    assert 'api(token, repo, "PUT", f"pulls/{number}/merge"' not in cycle_controller
+    assert 'api(token, repo, "PUT", f"pulls/{number}/merge"' not in pr_lifecycle
     assert "awaiting owner review" in cycle_controller
-    assert '"draft": False' in cycle_controller
+    assert '"draft": False' in pr_lifecycle
     assert "complete_pending_pr" in cycle_controller
     assert "AUTONOMOUS_ENGINEERING_PAUSED" in workflow
     assert "AUTONOMOUS_ENGINEERING_INTERVAL_HOURS" in workflow
