@@ -1,5 +1,35 @@
 # Engineering Continuity Log
 
+## 2026-11-12 — PR #722: adaptive Codex context bounded by model and host capacity
+
+### Root-cause analysis
+
+- A fixed 64,000-token threshold existed across model selection, settings readiness, PowerShell preflight, Runner checks, and the Codex model catalog. A separate 512-token floor remained in the follow-up implementation, which still contradicted the requirement that Codex adapt to any positive capacity.
+- The earlier capacity calculation conflated the hardware-derived token ceiling with the model's advertised context ceiling. It also needed to avoid charging model weights twice when the selected base model was already resident.
+- Ollama's verbose model-show response can be unnecessarily large; metadata required by this path is available through verbose=false.
+
+### Corrective changes
+
+- The selected context is clamped to the minimum of the independently reported hardware ceiling, model context limit, and Codex catalog ceiling. A user/workflow request above that ceiling cannot be persisted or passed to Codex.
+- Removed both the 64k Codex minimum and the arbitrary 512-token runtime floor. Context validation now accepts any positive integer; zero/negative values and a host budget unable to provide even one token remain invalid.
+- Kept the original Ollama model immutable. The workflow creates/reuses a separate -codex-ctx<tokens> variant, verifies its saved num_ctx, confirms the exact allocated context with /api/ps, and repeats the check after Codex.
+- Model-weight memory is subtracted only when the base model is not already resident. Hardware capacity is still architecture-aware because KV-cache bytes/token depend on the selected model's architecture.
+- Updated readiness/provisioning scripts, Codex catalog validation, dashboard context display, ADR-020, operations guidance, and regression tests. /api/show uses verbose=false; loopback/proxy/redirect and response-size guards remain intact.
+
+### Validation status
+
+- Current branch: fix/autonomous-engineering-show-all-ollama-models-20261112; PR #722 remains Draft and unmerged.
+- Target-host diagnostic is configured to test a 10,000-token request on the Windows Runner, including the real Codex tool-call smoke and exact runtime allocation checks.
+- Exact-head CI and target-host execution results are pending after the latest commits. No local/target-host success is claimed without captured output.
+
+### Residual risk
+
+- The KV-cache estimate uses the current FP16 assumption and is only a preflight estimate; Ollama's actual loaded allocation and remaining physical-memory check are authoritative.
+- Very small positive contexts may be rejected by a particular Ollama/model runtime or Codex build. Such runtime rejection must be reported with evidence; the application must not reintroduce an arbitrary policy floor.
+- Smaller contexts reduce the amount of repository and conversation evidence available in one turn. Existing durable checkpoints and bounded-task execution remain necessary.
+
+---
+
 ## 2026-11-11 — PR #709: research-first learning with gpt-oss:20b
 
 ### Root-cause analysis
