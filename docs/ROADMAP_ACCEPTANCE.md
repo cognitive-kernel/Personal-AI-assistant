@@ -1,15 +1,15 @@
 ## 2026-11-12 — Exact-head revalidation after Windows Runner readiness correction
 
-PR #722 current head: `4c39205b105a497af9e10780faa7356feecaffa4`.
+PR #722 current head: `ae5f0fb26c26ac02e4a9bd04fd1f8362c9796d6a`.
 
 A second Windows-service review found that `scripts/check_autonomous_runner.ps1` still used `Get-Process Runner.Listener`, despite the service-account readiness contract. It now queries running `actions.runner*` services through CIM, resolves their PID through `Win32_Process`, and requires a `Runner.Listener.exe` child process whose `ParentProcessId` matches the Windows service PID. A regression assertion protects this contract.
 
 Exact-head validation is pending at the time of this update:
-- Tests: [#43210293958](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43209894282)
-- Sandbox integration: [#43210293805](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43209894191)
-- Browser E2E: [#43210293787](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43209894267)
-- Dependency audit: [#43210293781](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43209894156)
-- Windows target diagnostic: [#43210286527](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43209886926)
+- Tests: [#43211124252](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43209894282)
+- Sandbox integration: [#43211124343](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43209894191)
+- Browser E2E: [#43211124438](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43209894267)
+- Dependency audit: [#43211124379](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43209894156)
+- Windows target diagnostic: [#43211116634](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43209886926)
 
 Do not infer exact-head success from older commits. The earlier code/test head and the explicit 10k-token smoke remain historical evidence only. No local/manual test is claimed; no merge to main is permitted while required checks are pending.
 
