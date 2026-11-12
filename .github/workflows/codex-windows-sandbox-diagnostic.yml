@@ -203,6 +203,45 @@ jobs:
             throw "Ollama model '$env:AUTONOMOUS_ENGINEERING_MODEL' is not installed."
           }
 
+      - name: Inventory installed Ollama models and capabilities
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 10 -MaximumRedirection 0
+          $inventory = foreach ($model in @($tags.models)) {
+            if (-not $model.name) { continue }
+            $details = $null
+            $metadataError = $null
+            try {
+              $body = @{ model = [string]$model.name; verbose = $true } | ConvertTo-Json -Compress
+              $details = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -Body $body -ContentType "application/json" -TimeoutSec 20 -MaximumRedirection 0
+            } catch {
+              $metadataError = $_.Exception.Message
+            }
+            $family = if ($details -and $details.details) { [string]$details.details.family } else { "" }
+            $contextKey = if ($family) { "$family.context_length" } else { "" }
+            $maximum = $null
+            if ($contextKey -and $details.model_info) {
+              $property = $details.model_info.PSObject.Properties[$contextKey]
+              if ($property) { $maximum = $property.Value }
+            }
+            [pscustomobject]@{
+              name = [string]$model.name
+              size_bytes = $model.size
+              family = $family
+              maximum_context_tokens = $maximum
+              capabilities = @($details.capabilities)
+              supports_tools = (@($details.capabilities) -contains "tools")
+              metadata_error = $metadataError
+              is_current_selection = ([string]$model.name -eq $env:AUTONOMOUS_ENGINEERING_MODEL)
+            }
+          }
+          Write-Host "Saved workflow model selection: $env:AUTONOMOUS_ENGINEERING_MODEL"
+          Write-Host "Saved workflow context override: $env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH"
+          Write-Host "Installed Ollama model inventory:"
+          $inventory | ConvertTo-Json -Depth 8 | Write-Host
+          if (-not @($inventory).Count) { throw "Ollama reported no installed models." }
+
       - name: Verify the selected model's allocated Ollama context
         id: context_preflight
         # Select, persist, and verify a context bounded by model metadata and available memory.
