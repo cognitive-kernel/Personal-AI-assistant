@@ -1,3 +1,21 @@
+## 2026-11-12 — GitHub-hosted validation completed for adaptive Codex/Ollama
+
+Code/test SHA `65b07b3a6dee54b6a1e27356f5f7a7df8ad87c3` passed the GitHub-hosted matrix:
+
+- Python: **2,171 passed, 2 skipped, 51 deselected**.
+- Windows Storage regressions: passed.
+- Browser/dashboard E2E: passed.
+- Dependency audit: passed.
+- Isolated Docker full-suite: passed within the corrected 600-second execution budget.
+- Real Docker sandbox integration: passed (5 tests).
+- Markdown validation: 96 files; import-cycle check passed.
+- Deterministic claim-to-test coverage benchmark: 10/10, zero false accepts and zero false rejects. It explicitly reports no human scoring or independent semantic test review.
+- Lexical retrieval benchmark ran on the synthetic bilingual fixture in lexical fallback mode because no embedding vectors were cached; these metrics do not establish general retrieval quality or live-model performance.
+
+**Still blocked / unverified:** self-hosted Windows/Ollama diagnostic is pending with no runner assigned; therefore no live model load, `/api/ps` allocation, or actual Codex tool-call smoke is claimed. PR #707 remains open, non-mergeable and overlaps 11 files with PR #722. Issue #52 remains open for independent security review. No human evaluation, target-host soak, restore/rollback rehearsal, or independent security sign-off is claimed.
+
+This validation applies to the code/test snapshot SHA above. The following documentation synchronization commits change the PR head; all exact-head checks must rerun on that new SHA. Keep PR #722 Draft and do not merge/deploy until required target-host and independent review gates are satisfied.
+
 ## 2026-11-12 — Exact-head Docker sandbox timeout remediation
 
 On PR #722 head `6f8239db9497a046b69a0d637fb38a1e78988b6d`, the full suite inside the isolated 2 GiB / 2 CPU container reached 100% progress but exceeded the 240-second limit before process exit. The logs do not prove whether pytest teardown, process shutdown, or resource pressure caused the delay. This was a failure, not a pass.
