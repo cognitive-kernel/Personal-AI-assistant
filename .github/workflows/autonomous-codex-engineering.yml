@@ -190,7 +190,7 @@ jobs:
           @($pythonDirectory, $scriptsPath, $ollamaDirectory) |
             Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
           $env:PATH = "$pythonDirectory;$scriptsPath;$ollamaDirectory;$env:PATH"
-          python --version
+          python.exe --version
           if ($LASTEXITCODE -ne 0) {
             throw "Python is not resolvable through PATH under the Runner service identity."
           }
@@ -224,12 +224,12 @@ jobs:
             "--label", "Engineering cycle started",
             "--activity", "Workflow started and environment prerequisites are being checked"
           )
-          & python scripts/autonomous_engineering_progress.py @progressArgs
+          & python.exe scripts/autonomous_engineering_progress.py @progressArgs
           if ($LASTEXITCODE -ne 0) { throw "Could not initialize engineering progress" }
       - name: Snapshot accepted scorecard from trusted main
         shell: powershell
         run: |
-          python scripts/autonomous_engineering_progress.py snapshot --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT"
+          python.exe scripts/autonomous_engineering_progress.py snapshot --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT"
           if ($LASTEXITCODE -ne 0) { throw "Could not snapshot the accepted main-branch scorecard" }
 
       - name: Capture live GitHub state with the read-only workflow token
@@ -528,7 +528,7 @@ jobs:
             $smokeReport = Join-Path $env:RUNNER_TEMP "codex-sandbox-$backend-report.md"
             $evidenceReport = Join-Path $env:RUNNER_TEMP "codex-sandbox-$backend-evidence.json"
             Write-Host "Testing Codex exec_command with the Windows '$backend' sandbox backend."
-            python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-$backend" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$smokePrompt" --report "$smokeReport" --require-command-output "CODEX_WORKSPACE_SANDBOX_OK" --expected-agent-message "OLLAMA_PROVIDER_AND_SANDBOX_OK" --events-report "$evidenceReport" --require-command-fragment "$probeFileName" --require-command-fragment "write_text" --require-command-fragment "read_text" --require-command-fragment "unlink"
+            python.exe scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-$backend" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$smokePrompt" --report "$smokeReport" --require-command-output "CODEX_WORKSPACE_SANDBOX_OK" --expected-agent-message "OLLAMA_PROVIDER_AND_SANDBOX_OK" --events-report "$evidenceReport" --require-command-fragment "$probeFileName" --require-command-fragment "write_text" --require-command-fragment "read_text" --require-command-fragment "unlink"
             $smokeExitCode = $LASTEXITCODE
             Write-Host "Codex smoke exit code for '$backend': $smokeExitCode"
             if (Test-Path -LiteralPath $smokeReport -PathType Leaf) {
@@ -567,7 +567,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          python --version
+          python.exe --version
           python -c "import sys; assert sys.version_info >= (3, 11)"
           python -m venv .venv
           .\\.venv\\Scripts\\python.exe -m pip install --disable-pip-version-check --retries 10 --timeout 120 -e ".[dev]"
@@ -656,7 +656,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $env:PATH = "$env:GITHUB_WORKSPACE\.venv\Scripts;$env:PATH"
-          python scripts/autonomous_engineering_cycle.py run --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$env:RUNNER_TEMP\codex-prompt.md" --mode "$env:AUTONOMOUS_ENGINEERING_MODE"
+          python.exe scripts/autonomous_engineering_cycle.py run --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$env:RUNNER_TEMP\codex-prompt.md" --mode "$env:AUTONOMOUS_ENGINEERING_MODE"
           if ($LASTEXITCODE -ne 0) { throw "Autonomous task, tests, exact-SHA validation, or PR publication failed" }
 
       - name: Verify persistent Ollama context after autonomous Codex task
