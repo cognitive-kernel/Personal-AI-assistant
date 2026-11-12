@@ -1,8 +1,17 @@
 # وضعیت یکپارچهٔ پروژه
 
-> تاریخ بازبینی: 2026-11-11. این بخش وضعیت جاری را مشخص می‌کند؛ یادداشت‌های قدیمی‌تر پایین سند، snapshotهای تاریخی هستند.
+## وضعیت جاری — تکمیل Autonomous Engineering
 
-## وضعیت فعلی اتوماسیون — PR #702
+- مبنای زندهٔ `main`: `461c0a2b1deaf5f8af8486846f167da8185c580a`؛ تغییرات release-watch و یادگیری جدید main حفظ شده‌اند.
+- کار فعال: PR [#719](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/719)، شاخهٔ `feat/autonomous-engineering-complete-final-20261112`؛ SHA دقیق و وضعیت Checkها از وضعیت زندهٔ PR خوانده می‌شوند. PR باز است و به main هدف‌گذاری شده است.
+- معماری جدید، مالکیت worktree و checkpoint watcher، هویت process، قفل durable state، GitHub transport و چرخهٔ PR را در ماژول‌های مستقل نگه می‌دارد؛ بازیابی مبهم fail-closed است و دادهٔ task/checkpoint حفظ می‌شود.
+- CI دقیق SHA `1528b86cdc0c0f70a17be2434e374ec7ede2c61c` موفق شد: ۱۱ تست focused، ۲۱۳۵ تست کامل passed، ۲ skipped، ۵۱ deselected؛ Windows Storage، Browser E2E، dependency audit، lexical retrieval benchmark و fail-closed claim-to-test coverage benchmark همگی موفق شدند. اجرای واقعی Codex/Ollama روی Runner مقصد و پذیرش عملیاتی بلندمدت هنوز pending است.
+- مسیریابی Ollama و OpenAI-compatible، هویت مدل، سقف خروجی و provider سفارشی Codex `ollama-local` در follow-upهای PR حفظ/بازیابی شده‌اند؛ diagnostic واقعی Codex/Ollama روی Windows Runner هنوز باید تأیید شود.
+
+
+> تاریخ بازبینی: 2026-11-12. وضعیت جاری در ابتدای سند ثبت شده است؛ یادداشت‌های پایین‌تر snapshotهای تاریخی هستند.
+
+## وضعیت تاریخی اتوماسیون — PR #702 (snapshot قدیمی)
 
 - مبنای فعلی `main`: `a01e414ea3124213bc4d06496f55c74ad6ef9ef4`. PR [#701](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/701) در همین SHA ادغام شده است؛ اصلاحات حفظ وظیفهٔ دستی، checkpoint، recovery، هم‌ترازی داشبورد و ترتیب persistence پیش از schedule gate اکنون بخشی از main هستند.
 - PR [#702](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/702) روی شاخهٔ `fix/automation-codex-context-smoke-20261107` باز و هنوز ادغام‌نشده است. این PR برای رفع دو گیت باقیماندهٔ Codex/Ollama روی Windows Runner است.
@@ -24,7 +33,7 @@
 ## وضعیت کنسول مهندسی خودکار — جزئیات عملکرد
 
 - رابط عملیات محلی، readiness diagnostics، تنظیم مدل و interval، اجرای وظیفهٔ دستی، pause/resume/cancel، نمایش زندهٔ plan و phase، و نمودار پیشرفت مبتنی بر scorecard در PR #680 پیاده‌سازی شده‌اند.
-- حالت پیوسته پس از تغییر main یا heartbeat ساعتی خودکار شروع می‌شود؛ پس از ادغام هر وظیفه، ادامه از main بدون تأیید انسانی انجام می‌شود. حالت زمان‌بندی‌شده از intervalهای پشتیبانی‌شده استفاده می‌کند.
+- حالت پیوسته پس از تغییر main یا heartbeat ساعتی خودکار شروع می‌شود؛ هر وظیفه پس از تست به PR باز برای بازبینی مالک تبدیل می‌شود. ادغام فقط دستی است و ادامهٔ صف پس از تأیید SHA دقیق و CI پس از ادغام انجام می‌شود.
 - PR #680 و PR #689 اکنون در main ادغام شده‌اند. PR #701 اصلاحات durability و Sandbox را ادامه می‌دهد؛ وضعیت جاری و گیت‌های باز در ابتدای همین سند ثبت شده‌اند.
 
 

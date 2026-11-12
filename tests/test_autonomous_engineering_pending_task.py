@@ -86,33 +86,33 @@ def test_manual_task_is_persisted_before_codex_and_ollama_preflight():
     assert capture < codex_install < ollama_check < sandbox_smoke
 
 
-def test_manual_task_persistence_precedes_schedule_gate_and_runner_prerequisites():
+def test_manual_task_persistence_is_inside_the_single_owned_runner_job():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
     workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
-    persist_start = workflow.index("  persist-manual-task:")
+    assert "  persist-manual-task:" not in workflow
+
     gate_start = workflow.index("  schedule-gate:")
     codex_start = workflow.index("  codex:")
-    persist_job = workflow[persist_start:gate_start]
     gate_job = workflow[gate_start:codex_start]
     codex_job = workflow[codex_start:]
 
-    assert persist_start < gate_start < codex_start
-    assert "if: github.event_name == 'workflow_dispatch' && inputs.manual_task != '' && github.ref == 'refs/heads/main'" in persist_job
-    assert "runs-on: [self-hosted, Windows, X64, ollama]" in persist_job
-    assert "ref: main" in persist_job
-    assert "persist-credentials: false" in persist_job
-    assert "persist_autonomous_manual_task.ps1" in persist_job
-    assert "needs: persist-manual-task" in gate_job
-    assert "if: always()" in gate_job
-    assert "needs: [persist-manual-task, schedule-gate]" in codex_job
-    assert "if: always()" in codex_job
+    assert "needs: schedule-gate" in codex_job
     assert "concurrency:" in codex_job
     assert "group: autonomous-local-engineering-${{ github.repository }}" in codex_job
-    assert "Persist manual task before any runner prerequisite checks" not in codex_job
-    workflow_header = workflow.split("jobs:", 1)[0]
-    assert "concurrency:" not in workflow_header
+    assert "runs-on: [self-hosted, Windows, X64, ollama, autonomous-state-owner]" in codex_job
+
+    persist_step = codex_job.index("Persist manual task under the controller's runner and concurrency ownership")
+    python_setup = codex_job.index("Use preinstalled system Python under the Runner service identity")
+    ollama_preflight = codex_job.index("Verify local Ollama and Codex prerequisites")
+    assert persist_step < python_setup < ollama_preflight
+
+    assert "A manual task was not accepted because autonomous engineering is paused" in gate_job
+    assert "A manual task was not accepted because another run is active or queued" in gate_job
+    assert "needs: persist-manual-task" not in workflow
+
+
 def test_early_manual_task_persistence_script_is_protected_and_validated_in_ci():
     from pathlib import Path
 
@@ -128,3 +128,50 @@ def test_early_manual_task_persistence_script_is_protected_and_validated_in_ci()
     assert "pending-autonomous-pr.json" in script
     assert "AUTONOMOUS_ENGINEERING_PROGRESS_DIR" in script
     assert "awaiting owner merge or post-merge validation" in script
+
+
+def test_manual_task_state_uses_one_cross_process_lock_and_capture_is_read_only():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    script = (root / "scripts" / "persist_autonomous_manual_task.ps1").read_text(encoding="utf-8")
+    task_state_module = (root / "scripts" / "AutonomousEngineeringTaskState.psm1").read_text(encoding="utf-8")
+    capture_start = workflow.index("from scripts.autonomous_engineering_state_paths import execution_state_directory")
+    capture_end = workflow.index("Ensure Codex CLI is installed", capture_start)
+    capture = workflow[capture_start:capture_end]
+
+    assert 'Local\\PersonalAIAssistant.AutonomousEngineering.State.v1' in script
+    assert "$stateMutex.WaitOne" in script
+    assert "$stateMutex.ReleaseMutex()" in script
+    assert "Another autonomous run is active or queued" in script
+    assert "AutonomousEngineeringTaskState.psm1" in script
+    assert "pending-manual-task-owner.json" in script
+    assert "Get-AutonomousTaskDigest" in task_state_module
+    assert "schema_version = 1" in task_state_module
+    assert "claim_count" in task_state_module
+    assert "Repair-AutonomousPendingStateCleanup" in task_state_module
+    assert "pending-state-cleanup.json" in task_state_module
+    assert "with durable_state_lock(state_dir)" in capture
+    assert "The manual task input was not durably persisted" in capture
+    assert "temporary.replace(pending_path)" not in capture
+    assert "execution_state_directory()" in capture
+    assert "claim_pending_task_owner_unlocked" in capture
+    assert "validate_pending_task_owner_unlocked" in capture
+    assert "recover_pending_state_cleanup_unlocked" in capture
+    assert "owner_path = pending_task_owner_path(state_dir)" in capture
+
+
+def test_workflow_pins_local_durable_state_to_one_runner_and_rejects_dropped_manual_tasks():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    provision = (root / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
+
+    assert "runs-on: [self-hosted, Windows, X64, ollama, autonomous-state-owner]" in workflow
+    assert '"--labels", "ollama,autonomous-state-owner"' in provision
+    assert "Ensure-AutonomousStateOwnerLabel" in provision
+    assert "Another Runner already owns the autonomous-state-owner label" in provision
+    assert "A manual task was not accepted because autonomous engineering is paused" in workflow
+    assert "A manual task was not accepted because another run is active or queued" in workflow

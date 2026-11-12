@@ -32,7 +32,7 @@
 <header class="hero">
 <p class="eyebrow">LOCAL-FIRST · OLLAMA · GITHUB ACTIONS</p>
 <h1>عامل مهندسی خودکار</h1>
-<p>عامل کدنویسی محلی که با روشن‌بودن رایانه، اینترنت و سرویس Runner به‌صورت پیوسته یا زمان‌بندی‌شده روی مخزن GitHub کار می‌کند؛ هر وظیفه را آزمایش می‌کند و فقط پس از موفقیت کنترل‌ها در main ادغام می‌کند.</p>
+<p>عامل کدنویسی محلی که با روشن‌بودن رایانه، اینترنت و سرویس Runner به‌صورت پیوسته یا زمان‌بندی‌شده روی مخزن GitHub کار می‌کند؛ هر وظیفه را آزمایش می‌کند، برای بازبینی مالک Pull Request می‌سازد و پس از ادغام دستی، کنترل‌های پس از ادغام را اجرا می‌کند.</p>
 <div class="hero-actions">
 <button id="refresh-agent" type="button">بازخوانی وضعیت</button>
 <a class="button-link" href="https://github.com/cognitive-kernel/Personal-AI-assistant/actions/workflows/autonomous-codex-engineering.yml" target="_blank" rel="noopener noreferrer">مشاهده اجراها در GitHub Actions</a>
@@ -47,7 +47,7 @@
 </div>
 <div class="status-grid">
 <article class="status-card"><span class="status-label">سرویس Ollama</span><strong id="ollama-state">—</strong><p id="ollama-detail">اتصال محلی بررسی نشده است.</p></article>
-<article class="status-card"><span class="status-label">مدل کدنویسی</span><strong id="model-state">—</strong><p id="model-detail">مدل موردنیاز: gpt-oss:20b</p></article>
+<article class="status-card"><span class="status-label">مدل کدنویسی</span><strong id="model-state">—</strong><p id="model-detail">مدل ذخیره‌شده، سقف Context و قابلیت tools هنوز بررسی نشده‌اند.</p></article>
 <article class="status-card"><span class="status-label">Codex CLI در حساب برنامه</span><strong id="codex-state">—</strong><p id="codex-detail">نصب و نسخه بررسی نشده است.</p></article>
 <article class="status-card"><span class="status-label">GitHub Runner</span><strong id="runner-state">—</strong><p id="runner-detail">فرایند Runner.Listener بررسی نشده است.</p></article>
 <article class="status-card"><span class="status-label">GitHub CLI</span><strong id="github-state">—</strong><p id="github-detail">احراز هویت محلی بررسی نشده است.</p></article>
@@ -63,9 +63,9 @@
       <span>حالت اجرای عامل</span>
       <select id="execution-mode" name="execution_mode">
         <option value="scheduled">زمان‌بندی‌شده (طبق فاصلهٔ اجرای زمان‌بندی‌شده)</option>
-        <option value="continuous" selected>پیوسته (ادغام خودکار پس از موفقیت کنترل‌ها)</option>
+        <option value="continuous" selected>پیوسته (ادامهٔ خودکار پس از ادغام دستی و کنترل‌های موفق)</option>
       </select>
-      <small>در حالت پیوسته، صف با ضربان زمان‌بندی‌شدهٔ ساعتی خودکار شروع می‌شود و پس از ادغام موفق هر وظیفه، چرخهٔ بعدی بی‌درنگ از main آغاز می‌شود.</small>
+      <small>در حالت پیوسته، صف با ضربان زمان‌بندی‌شدهٔ ساعتی خودکار شروع می‌شود و پس از ادغام دستی هر PR و موفقیت کنترل‌های پس از ادغام، چرخهٔ بعدی بی‌درنگ از main آغاز می‌شود.</small>
     </label>
     <label class="field">
       <span>فاصلهٔ اجرای زمان‌بندی‌شده</span>
@@ -81,7 +81,7 @@
     <label class="field">
       <span>مدل نصب‌شدهٔ Ollama</span>
       <select id="ollama-model" name="model">
-        <option value="gpt-oss:20b">gpt-oss:20b (پیش‌فرض)</option>
+        <option value="" disabled selected>در حال دریافت فهرست مدل‌های نصب‌شده…</option>
       </select>
     </label>
     <label class="field field-wide">
@@ -112,7 +112,7 @@
 <button id="resume-agent" type="button" class="secondary" disabled>ادامه از آخرین وضعیت</button>
 <button id="cancel-agent" type="button" class="secondary" disabled>لغو اضطراری اجرای فعال</button>
 </div>
-<p class="hint">در حالت زمان‌بندی‌شده، عامل طبق فاصلهٔ انتخابی اجرا می‌شود. در حالت پیوسته، پس از شروع اولیه، هر وظیفه پس از موفقیت آزمون‌های محلی و سه گردش‌کار مستقل GitHub با تطبیق SHA دقیق در main ادغام می‌شود و چرخهٔ بعدی از main تازه آغاز می‌شود. تعداد کل وظایف محدود نیست. اجرای دستی وقتی فعال می‌شود که Ollama، مدل، Runner، احراز هویت GitHub و فضای ثبت پیشرفت آماده باشند. شروع واقعی را در فهرست اجراها مشاهده کنید.</p>
+<p class="hint">در حالت زمان‌بندی‌شده، عامل طبق فاصلهٔ انتخابی اجرا می‌شود. در حالت پیوسته، پس از شروع اولیه، هر وظیفه پس از موفقیت آزمون‌های محلی و سه گردش‌کار مستقل GitHub با تطبیق SHA دقیق، به‌صورت PR برای بازبینی مالک منتشر می‌شود. کنترلر آن را ادغام نمی‌کند؛ پس از ادغام دستی و موفقیت کنترل‌های پس از ادغام، چرخهٔ بعدی از main تازه آغاز می‌شود. تعداد کل وظایف محدود نیست. اجرای دستی وقتی فعال می‌شود که Ollama، مدل، Runner، احراز هویت GitHub و فضای ثبت پیشرفت آماده باشند. شروع واقعی را در فهرست اجراها مشاهده کنید.</p>
 <div id="recent-runs" class="run-list" aria-live="polite"><p class="muted">سوابق اجرا هنوز دریافت نشده‌اند.</p></div>
 </section>
 
@@ -167,9 +167,9 @@
 <p class="eyebrow">ONE-TIME SETUP</p>
 <h2 id="setup-title">راه‌اندازی روی ویندوز</h2>
 <ol class="setup-list">
-<li><strong>Ollama را نصب و مدل را دریافت کنید.</strong><p>در ترمینال اجرا کنید:</p><code>ollama pull gpt-oss:20b</code></li>
+<li><strong>Ollama را نصب و مدل را دریافت کنید.</strong><p>در ترمینال اجرا کنید:</p><code>ollama pull نام-مدل-انتخابی</code></li>
 <li><strong>Node.js LTS و GitHub CLI را آماده کنید.</strong><p>Node.js باید system-wide در PATH ویندوز باشد. با حسابی که برنامهٔ محلی را اجرا می‌کند، نشست موجود Chrome را برای احراز هویت GitHub به‌کار بگیرید:</p><code>gh auth login --web</code></li>
-<li><strong>Runner را در صورت نیاز provision کنید.</strong><p>اسکریپت موجود، حساب Windows اختصاصی و غیرمدیر (حساب سرویس) و Runner ویندوز با برچسب ollama را ایجاد و ACL فضای پیشرفت را تنظیم می‌کند. به PowerShell مدیر و مجوز Administration: write در مخزن نیاز دارد. اگر Runner از قبل به‌درستی نصب شده، آن را دوباره provision نکنید.</p><code>powershell -ExecutionPolicy Bypass -File .\scripts\provision_autonomous_runner.ps1 -Repository "cognitive-kernel/Personal-AI-assistant" -RunnerAccount "runner-svc" -AppAccount "app-user"</code></li>
+<li><strong>Runner را در صورت نیاز provision کنید.</strong><p>اسکریپت موجود، حساب Windows اختصاصی و غیرمدیر (حساب سرویس) و Runner ویندوز با برچسب‌های ollama و autonomous-state-owner را ایجاد می‌کند و ACL فضای پیشرفت را تنظیم می‌کند. برچسب autonomous-state-owner باید فقط روی یک Runner باشد تا وضعیت محلی بین اجراها جابه‌جا نشود. به PowerShell مدیر و مجوز Administration: write در مخزن نیاز دارد. اگر Runner از قبل نصب است، اسکریپت را دوباره اجرا کنید؛ ثبت و سرویس موجود را حفظ می‌کند و فقط برچسب یکتا را اضافه و تأیید می‌کند.</p><code>powershell -ExecutionPolicy Bypass -File .\scripts\provision_autonomous_runner.ps1 -Repository "cognitive-kernel/Personal-AI-assistant" -RunnerAccount "runner-svc" -AppAccount "app-user"</code></li>
 <li><strong>آمادگی هر دو حساب را بررسی کنید.</strong><p>ابتدا از حساب برنامه و سپس از حساب سرویس Runner بررسی کنید:</p><code>powershell -ExecutionPolicy Bypass -File .\scripts\check_autonomous_agent.ps1</code><code>powershell -ExecutionPolicy Bypass -File .\scripts\check_autonomous_runner.ps1</code></li>
 </ol>
 </section>
@@ -178,11 +178,11 @@
 <p class="eyebrow">OPERATING MODEL</p>
 <h2 id="operation-title">عامل چگونه کار می‌کند؟</h2>
 <ul>
-<li>GitHub هر ساعت زمان‌بندی را بررسی می‌کند. در حالت زمان‌بندی‌شده، فاصله‌های ۱، ۲، ۴، ۶، ۱۲ یا ۲۴ ساعت اعمال می‌شوند؛ در حالت پیوسته، پس از هر ادغام موفق اجرای بعدی آغاز می‌شود و heartbeat ساعتی بازیابی را پوشش می‌دهد.</li>
+<li>GitHub هر ساعت زمان‌بندی را بررسی می‌کند. در حالت زمان‌بندی‌شده، فاصله‌های ۱، ۲، ۴، ۶، ۱۲ یا ۲۴ ساعت اعمال می‌شوند؛ در حالت پیوسته، پس از ادغام دستی و موفقیت بررسی‌های پس از ادغام، اجرای بعدی آغاز می‌شود و heartbeat ساعتی بازیابی را پوشش می‌دهد.</li>
 <li>Codex با حالت OSS و مدل انتخاب‌شدهٔ Ollama روی رایانهٔ شما اجرا می‌شود؛ درخواست استنتاج به endpoint محلی ارسال می‌شود.</li>
 <li>عامل یک کار مستقل را انتخاب می‌کند، تغییرات و آزمون‌های مرتبط را آماده می‌کند و patch را تحویل می‌دهد.</li>
 <li>اعتبارسنجی روی Runner میزبانی‌شدهٔ GitHub و بدون دسترسی به مدل یا اطلاعات محرمانه انجام می‌شود.</li>
-<li>کنترلر پس از موفقیت آزمون‌های محلی، سه گردش‌کار مستقل، و بررسی تغییرنکردن head و base، PR را در main ادغام می‌کند. استقرار خودکار انجام نمی‌شود.</li>
+<li>کنترلر پس از موفقیت آزمون‌های محلی، سه گردش‌کار مستقل و بررسی تغییرنکردن head و base، PR را برای بازبینی مالک باز می‌گذارد و هرگز آن را خودکار ادغام نمی‌کند. پس از ادغام دستی، کنترلر SHA دقیق merge و آزمون‌های پس از ادغام را بررسی می‌کند. استقرار خودکار انجام نمی‌شود.</li>
 </ul>
 <p class="notice"><strong>تفاوت ۲۴ ساعته:</strong> Runner می‌تواند شبانه‌روزی روشن و آمادهٔ دریافت کار باشد؛ اما مدل به‌طور پیوسته کد تولید نمی‌کند. Workflowها نوبتی و محدود اجرا می‌شوند و زمان‌بندی GitHub تضمین لحظه‌ای ندارد. خاموش‌شدن رایانه، قطع اینترنت یا توقف سرویس Runner اجرای کار را متوقف می‌کند.</p>
 </section>
@@ -192,8 +192,8 @@
 <h2 id="safety-title">مرزهای امنیتی و محدودیت‌ها</h2>
 <ul>
 <li>عامل فقط از شاخهٔ اصلی اجرا می‌شود؛ کد Pull Requestهای ناشناس روی Runner شخصی اجرا نمی‌شود.</li>
-<li>Codex توکن GitHub را دریافت نمی‌کند. کنترلر مورداعتماد با مجوز محدود Workflow، branch و PR می‌سازد و فقط پس از موفقیت آزمون‌ها و تطبیق SHA دقیق merge می‌کند.</li>
-<li>قوانین حفاظت شاخه و بررسی‌های اجباری دور زده نمی‌شوند؛ اگر سیاست مخزن ادغام خودکار را ممنوع کند، کنترلر fail-closed می‌شود.</li>
+<li>Codex توکن GitHub را دریافت نمی‌کند. کنترلر مورداعتماد با مجوز محدود Workflow، branch و PR می‌سازد و پس از موفقیت آزمون‌ها و تطبیق SHA دقیق، PR را برای بازبینی مالک آماده می‌کند؛ کنترلر هرگز ادغام خودکار انجام نمی‌دهد.</li>
+<li>قوانین حفاظت شاخه و بررسی‌های اجباری دور زده نمی‌شوند؛ ادغام فقط با اقدام دستی مالک و مطابق سیاست‌های مخزن انجام می‌شود.</li>
 <li>هیچ استقرار یا تغییر دیتابیس واقعی انجام نمی‌شود. آزمون پذیرش نهایی روی رایانهٔ هدف انسانی است؛ تأیید انسانی بین وظایف لازم نیست.</li>
 <li>مدل محلی ممکن است در کارهای پیچیده کندتر یا کم‌دقت‌تر باشد؛ موفقیت CI جایگزین آزمون پذیرش نهایی نیست.</li>
 </ul>

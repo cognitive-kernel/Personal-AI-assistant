@@ -5,7 +5,7 @@ param(
     [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$AppAccount,
     [string]$RunnerName = "$env:COMPUTERNAME-ollama",
     [string]$RunnerRoot = "C:\actions-runner",
-    [string]$Model = "gpt-oss:20b"
+    [string]$Model = ""
 )
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
@@ -28,8 +28,6 @@ function Get-AccountSidValue([string]$AccountName) {
 $progressPath = Join-Path $env:ProgramData "PersonalAIAssistant\autonomous-engineering"
 try { $null = ([Security.Principal.NTAccount]$appIdentity).Translate([Security.Principal.SecurityIdentifier]) } catch { throw "Application account $appIdentity does not exist." }
 $null = Get-Command ollama -ErrorAction Stop
-$tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 8
-if (@($tags.models | ForEach-Object { $_.name }) -notcontains $Model) { throw "Model $Model is not installed. Run ollama pull $Model first." }
 $node = Get-Command node -ErrorAction Stop
 $npm = Get-Command npm -ErrorAction Stop
 $git = Get-Command git -ErrorAction Stop
@@ -45,11 +43,73 @@ if ($LASTEXITCODE -ne 0 -or [version]$pythonVersion -lt [version]"3.11") { throw
 $gh = Get-Command gh -ErrorAction Stop
 & $gh.Source auth status --hostname github.com
 if ($LASTEXITCODE -ne 0) { throw "Authenticate gh as an account with repository Administration: write permission." }
+if ([string]::IsNullOrWhiteSpace($Model)) {
+    $Model = (& $gh.Source variable get AUTONOMOUS_ENGINEERING_MODEL --repo $Repository 2>$null | Out-String).Trim()
+}
+if ([string]::IsNullOrWhiteSpace($Model)) {
+    throw "No saved AUTONOMOUS_ENGINEERING_MODEL repository variable exists. Save an installed model in the autonomous-engineering dashboard first."
+}
+if ($Model -match "(?i)-codex-ctx[0-9]+$") {
+    throw "The saved model is an internal Codex context variant. Save the original Ollama model in the dashboard."
+}
+$tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 8 -MaximumRedirection 0
+if (@($tags.models | ForEach-Object { $_.name }) -notcontains $Model) {
+    throw "Saved model $Model is not installed. Install it with ollama pull $Model, then save it in the dashboard."
+}
+$modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -ContentType "application/json" -Body (@{ model = $Model; verbose = $true } | ConvertTo-Json -Compress) -TimeoutSec 15 -MaximumRedirection 0
+$architecture = [string]$modelInfo.details.family
+$contextKey = $architecture + ".context_length"
+$rawContext = $modelInfo.model_info.PSObject.Properties[$contextKey]
+$parsedContext = 0L
+if ([string]::IsNullOrWhiteSpace($architecture) -or -not $rawContext -or -not [int64]::TryParse([string]$rawContext.Value, [ref]$parsedContext) -or $parsedContext -lt 64000) {
+    throw "Saved model $Model must expose at least 64000 context tokens for Codex."
+}
+if (@($modelInfo.capabilities | ForEach-Object { [string]$_ }) -notcontains "tools") {
+    throw "Saved model $Model does not advertise the required Ollama tools capability."
+}
+function Ensure-AutonomousStateOwnerLabel {
+    $inventoryJson = & $gh.Source api "repos/$Repository/actions/runners?per_page=100"
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($inventoryJson)) {
+        throw "Could not inspect repository Runner inventory; refusing to assume local durable-state affinity."
+    }
+    $inventory = $inventoryJson | ConvertFrom-Json
+    if ($null -eq $inventory.runners -or [int]$inventory.total_count -gt @($inventory.runners).Count) {
+        throw "Runner inventory is incomplete; cannot prove that autonomous-state-owner is unique."
+    }
+    $matching = @($inventory.runners | Where-Object { $_.name -eq $RunnerName })
+    if ($matching.Count -ne 1) {
+        throw "Expected exactly one registered Runner named '$RunnerName'; found $($matching.Count)."
+    }
+    $runner = $matching[0]
+    $owners = @($inventory.runners | Where-Object {
+        @($_.labels | ForEach-Object { $_.name }) -contains "autonomous-state-owner"
+    })
+    if (@($owners | Where-Object { $_.id -ne $runner.id }).Count -gt 0) {
+        throw "Another Runner already owns the autonomous-state-owner label; refusing ambiguous state affinity."
+    }
+    if (@($runner.labels | ForEach-Object { $_.name }) -notcontains "autonomous-state-owner") {
+        $null = & $gh.Source api --method POST "repos/$Repository/actions/runners/$($runner.id)/labels" -f "labels[]=autonomous-state-owner"
+        if ($LASTEXITCODE -ne 0) { throw "Could not assign the unique autonomous-state-owner Runner label." }
+    }
+    $verifiedJson = & $gh.Source api "repos/$Repository/actions/runners?per_page=100"
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($verifiedJson)) {
+        throw "Could not verify autonomous-state-owner Runner label assignment."
+    }
+    $verified = $verifiedJson | ConvertFrom-Json
+    $owners = @($verified.runners | Where-Object {
+        @($_.labels | ForEach-Object { $_.name }) -contains "autonomous-state-owner"
+    })
+    if ($owners.Count -ne 1 -or $owners[0].id -ne $runner.id) {
+        throw "autonomous-state-owner must identify exactly the configured Runner and no other host."
+    }
+}
+
 if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     $services = @(Get-CimInstance Win32_Service | Where-Object { $_.PathName -like "*$RunnerRoot*" })
     if ($services.Count -ne 1 -or (Get-AccountSidValue $services[0].StartName) -ne (Get-AccountSidValue $runnerIdentity)) { throw "Existing Runner configuration found; refusing to replace or reconfigure it." }
+    Ensure-AutonomousStateOwnerLabel
     if ($services[0].State -ne "Running") { Start-Service -Name $services[0].Name }
-    Write-Host "Existing Runner configuration preserved and service verified."
+    Write-Host "Existing Runner configuration preserved, uniquely labelled, and service verified."
     exit 0
 }
 if ((Test-Path -LiteralPath $RunnerRoot) -and @(Get-ChildItem -LiteralPath $RunnerRoot -Force).Count -gt 0) { throw "RunnerRoot is non-empty but unconfigured; refusing to overwrite." }
@@ -87,7 +147,7 @@ try {
     Remove-Item -LiteralPath $archive -Force
     $config = Join-Path $RunnerRoot "config.cmd"
     if (-not (Test-Path -LiteralPath $config)) { throw "config.cmd missing from official Runner archive." }
-    $configArgs = @("--url", "https://github.com/$Repository", "--token", $token, "--name", $RunnerName, "--labels", "ollama", "--work", "_work", "--runasservice", "--windowslogonaccount", $runnerIdentity)
+    $configArgs = @("--url", "https://github.com/$Repository", "--token", $token, "--name", $RunnerName, "--labels", "ollama,autonomous-state-owner", "--work", "_work", "--runasservice", "--windowslogonaccount", $runnerIdentity)
     Write-Host "Runner configuration will prompt for the service-account password; it is not passed as a process argument."
     & $config @configArgs
     if ($LASTEXITCODE -ne 0) { throw "Runner registration failed with exit code $LASTEXITCODE." }

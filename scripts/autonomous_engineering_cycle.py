@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
-import base64
 import json
 import os
 import re
@@ -10,16 +8,79 @@ import subprocess
 import sys
 import sysconfig
 import time
-import urllib.error
-import urllib.request
-from urllib.parse import quote
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
+
+try:
+    from .autonomous_engineering_github import (
+        api as _github_api,
+        dispatch_and_wait_all as _github_dispatch_and_wait_all,
+        git_auth_env as _github_git_auth_env,
+        graphql as _github_graphql,
+    )
+    from .autonomous_engineering_pull_requests import (
+        find_open_autonomous_pr as _find_open_autonomous_pr,
+        complete_pending_pr as _complete_pending_pr,
+        complete_merged_pr as _complete_merged_pr,
+        publish_pull_request as _publish_pull_request,
+    )
+except ImportError:  # Direct script execution from the scripts directory.
+    from autonomous_engineering_github import (
+        api as _github_api,
+        dispatch_and_wait_all as _github_dispatch_and_wait_all,
+        git_auth_env as _github_git_auth_env,
+        graphql as _github_graphql,
+    )
+    from autonomous_engineering_pull_requests import (
+        find_open_autonomous_pr as _find_open_autonomous_pr,
+        complete_pending_pr as _complete_pending_pr,
+        complete_merged_pr as _complete_merged_pr,
+        publish_pull_request as _publish_pull_request,
+    )
+
 
 try:
     from .autonomous_engineering_checkpoint_contract import metadata_confirms_watcher_ready
+    from .autonomous_engineering_checkpoint_process import process_start_time
+    from .autonomous_engineering_execution_lock import repository_execution_lock
+    from .autonomous_engineering_state_lock import durable_state_lock
+    from .autonomous_engineering_state_paths import execution_state_directory
+    from .autonomous_engineering_pending_pr_state import (
+        autonomous_state_directory as _autonomous_state_dir,
+        pending_pr_path as _pending_pr_path,
+        save_pending_pr_unlocked as _save_pending_pr_unlocked,
+        load_pending_pr_unlocked as _load_pending_pr_unlocked,
+        save_pending_pr,
+        load_pending_pr,
+        clear_pending_pr,
+        clear_pending_task,
+        clear_pending_state,
+    )
 except ImportError:  # Direct script execution from the scripts directory.
     from autonomous_engineering_checkpoint_contract import metadata_confirms_watcher_ready
+    from autonomous_engineering_checkpoint_process import process_start_time
+    from autonomous_engineering_execution_lock import repository_execution_lock
+    from autonomous_engineering_state_lock import durable_state_lock
+    from autonomous_engineering_state_paths import execution_state_directory
+    from autonomous_engineering_pending_pr_state import (
+        autonomous_state_directory as _autonomous_state_dir,
+        pending_pr_path as _pending_pr_path,
+        save_pending_pr_unlocked as _save_pending_pr_unlocked,
+        load_pending_pr_unlocked as _load_pending_pr_unlocked,
+        save_pending_pr,
+        load_pending_pr,
+        clear_pending_pr,
+        clear_pending_task,
+        clear_pending_state,
+    )
+
+try:
+    from . import autonomous_engineering_cycle_checkpoints as _cycle_checkpoints
+    from . import autonomous_engineering_cycle_workspace as _cycle_workspace
+except ImportError:  # Direct script execution from the scripts directory.
+    import autonomous_engineering_cycle_checkpoints as _cycle_checkpoints
+    import autonomous_engineering_cycle_workspace as _cycle_workspace
+
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKPOINT_SCRIPT = Path(__file__).resolve().with_name("autonomous_engineering_checkpoint.py")
@@ -35,69 +96,6 @@ PROTECTED = {
 }
 MARKERS = re.compile(r"(?m)^(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)\s*$")
 CYCLE_LIMIT = 6 * 60 * 60
-
-
-@contextlib.contextmanager
-def repository_execution_lock(run_id: str, run_attempt: str) -> Iterator[None]:
-    """Serialize all worktree-mutating autonomous cycles across processes and workflow entry points."""
-    configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
-    if configured:
-        state_dir = Path(configured).expanduser()
-    elif os.getenv("PROGRAMDATA"):
-        state_dir = Path(os.environ["PROGRAMDATA"]) / "PersonalAIAssistant" / "autonomous-engineering"
-    else:
-        state_dir = Path.home() / ".personal-ai-assistant" / "autonomous-engineering"
-    state_dir.mkdir(parents=True, exist_ok=True)
-    lock_path = state_dir / "repository-execution.lock"
-    handle = lock_path.open("a+b")
-    try:
-        if os.name == "nt":
-            import msvcrt
-            handle.seek(0, os.SEEK_END)
-            if handle.tell() == 0:
-                handle.write(b"0")
-                handle.flush()
-            handle.seek(0)
-            try:
-                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-            except OSError as exc:
-                raise RuntimeError(
-                    "Another autonomous execution owns this repository worktree. "
-                    "This run exited without touching its checkpoint or working tree."
-                ) from exc
-        else:
-            import fcntl
-            try:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except OSError as exc:
-                raise RuntimeError(
-                    "Another autonomous execution owns this repository worktree. "
-                    "This run exited without touching its checkpoint or working tree."
-                ) from exc
-        handle.seek(0)
-        handle.truncate()
-        handle.write(json.dumps({
-            "pid": os.getpid(),
-            "run_id": run_id,
-            "run_attempt": run_attempt,
-            "host": __import__("socket").gethostname(),
-            "acquired_at": time.time(),
-        }).encode("utf-8"))
-        handle.flush()
-        yield
-    finally:
-        try:
-            if os.name == "nt":
-                import msvcrt
-                handle.seek(0)
-                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-            else:
-                import fcntl
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-        except OSError:
-            pass
-        handle.close()
-
 
 
 def run(command: list[str], *, env: dict[str, str] | None = None, capture: bool = False) -> subprocess.CompletedProcess[str]:
@@ -130,641 +128,114 @@ def record(
     ])
 
 def checkpoint_command(*args: str, capture: bool = True) -> subprocess.CompletedProcess[str]:
-    return run([sys.executable, str(CHECKPOINT_SCRIPT), *args], capture=capture)
+    return _cycle_checkpoints.checkpoint_command(
+        *args, capture=capture, run_command=run, python_executable=sys.executable,
+        checkpoint_script=CHECKPOINT_SCRIPT,
+    )
 
 
 def restore_checkpoint(base_sha: str) -> bool:
-    if os.name != "nt" or not os.getenv("PROGRAMDATA"):
-        return False
-    result = checkpoint_command("restore", "--base-sha", base_sha)
-    if result.returncode:
-        raise RuntimeError("Could not restore durable engineering checkpoint: " + (result.stderr or result.stdout or "")[-3000:])
-    return (result.stdout or "").strip() == "restored"
+    return _cycle_checkpoints.restore_checkpoint(
+        base_sha, os_name=os.name, programdata=os.getenv("PROGRAMDATA"),
+        checkpoint_command=checkpoint_command,
+    )
 
 
 def start_checkpoint_watcher(base_sha: str, run_id: str, task: int) -> subprocess.Popen[Any] | None:
-    if os.name != "nt" or not os.getenv("PROGRAMDATA"):
-        return None
-    # The venv's Windows python.exe may report a launcher PID instead of the
-    # child interpreter PID. Launch with the base interpreter so Popen.pid and
-    # the watcher's os.getpid() agree, while exposing this venv's dependencies.
-    watcher_executable = getattr(sys, "_base_executable", sys.executable)
-    watcher_env = os.environ.copy()
-    venv_site_packages = sysconfig.get_paths().get("purelib")
-    if venv_site_packages:
-        existing_pythonpath = watcher_env.get("PYTHONPATH", "")
-        watcher_env["PYTHONPATH"] = os.pathsep.join(
-            item for item in (venv_site_packages, existing_pythonpath) if item
-        )
-    command = [
-        watcher_executable, str(CHECKPOINT_SCRIPT), "watch",
-        "--base-sha", base_sha, "--run-id", run_id, "--task", str(task),
-    ]
-    configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
-    state_dir = Path(configured).expanduser() if configured else Path(os.environ["PROGRAMDATA"]) / "PersonalAIAssistant" / "autonomous-engineering"
-    metadata_path = state_dir / f"worktree-checkpoint-{run_id}-{task}.json"
-    marker_id = f"{run_id}-{task}"
-    ready_path = state_dir / f"worktree-checkpoint-{marker_id}.ready"
-    error_path = state_dir / f"worktree-checkpoint-{marker_id}.error"
-    log_path = state_dir / f"worktree-checkpoint-{marker_id}.log"
-    state_dir.mkdir(parents=True, exist_ok=True)
-    ready_path.unlink(missing_ok=True)
-    error_path.unlink(missing_ok=True)
-    flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-    with log_path.open("w", encoding="utf-8") as watcher_log:
-        process = subprocess.Popen(
-            command, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=watcher_log,
-            stderr=subprocess.STDOUT, close_fds=True, creationflags=flags,
-            env=watcher_env,
-        )
-    deadline = time.monotonic() + 30
-    while time.monotonic() < deadline:
-        if error_path.is_file():
-            detail = error_path.read_text(encoding="utf-8", errors="replace").strip()
-            if process.poll() is None:
-                process.terminate()
-            try:
-                log_detail = log_path.read_text(encoding="utf-8", errors="replace")[-3000:]
-            except OSError:
-                log_detail = ""
-            raise RuntimeError(
-                "The durable checkpoint watcher failed during startup: "
-                + detail[-2000:] + (f" Watcher log: {log_detail}" if log_detail else "")
-            )
-        if process.poll() is not None:
-            detail = error_path.read_text(encoding="utf-8", errors="replace").strip() if error_path.is_file() else ""
-            try:
-                log_detail = log_path.read_text(encoding="utf-8", errors="replace")[-3000:]
-            except OSError:
-                log_detail = ""
-            raise RuntimeError(
-                "The durable checkpoint watcher exited before becoming ready."
-                + (f" Startup error: {detail[-2000:]}" if detail else "")
-                + (f" Watcher log: {log_detail}" if log_detail else "")
-            )
-        try:
-            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-            if metadata_confirms_watcher_ready(
-                metadata,
-                base_sha=base_sha,
-                run_id=run_id,
-                task=task,
-                watcher_pid=process.pid,
-            ):
-                return process
-        except (OSError, ValueError, AttributeError):
-            pass
-        time.sleep(0.2)
-    metadata_detail = ""
-    try:
-        metadata_detail = metadata_path.read_text(encoding="utf-8")[:1000]
-    except OSError:
-        pass
-    if process.poll() is None:
-        process.terminate()
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=5)
-    log_detail = ""
-    try:
-        log_detail = log_path.read_text(encoding="utf-8", errors="replace")[-4000:]
-    except OSError:
-        pass
-    raise RuntimeError(
-        "The durable checkpoint watcher did not become ready within thirty seconds. "
-        f"Metadata: {metadata_detail or 'unavailable'}. "
-        f"Watcher log: {log_detail or 'unavailable'}"
+    return _cycle_checkpoints.start_checkpoint_watcher(
+        base_sha, run_id, task, os_module=os, subprocess_module=subprocess,
+        sys_module=sys, sysconfig_module=sysconfig, time_module=time, root=ROOT,
+        checkpoint_script=CHECKPOINT_SCRIPT, execution_state_directory_fn=execution_state_directory,
+        process_start_time_fn=process_start_time,
+        metadata_confirms_watcher_ready_fn=metadata_confirms_watcher_ready,
+        programdata=os.getenv("PROGRAMDATA"),
     )
 
 
 def stop_checkpoint_watcher(
     watcher: subprocess.Popen[Any] | None, base_sha: str, run_id: str, task: int,
 ) -> None:
-    if watcher is not None and watcher.poll() is None:
-        watcher.terminate()
-        try:
-            watcher.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            watcher.kill()
-            watcher.wait(timeout=5)
-    if os.name == "nt" and os.getenv("PROGRAMDATA"):
-        stopped = checkpoint_command("stop", "--run-id", run_id, "--task", str(task))
-        if stopped.returncode:
-            raise RuntimeError("Could not stop the durable checkpoint watcher.")
-        saved = checkpoint_command(
-            "snapshot", "--base-sha", base_sha, "--run-id", run_id, "--task", str(task),
-        )
-        if saved.returncode:
-            raise RuntimeError("Could not save the final durable worktree checkpoint.")
+    return _cycle_checkpoints.stop_checkpoint_watcher(
+        watcher, base_sha, run_id, task, subprocess_module=subprocess, os_name=os.name,
+        programdata=os.getenv("PROGRAMDATA"), checkpoint_command=checkpoint_command,
+    )
 
 
 def clear_checkpoint(run_id: str | None = None, task: int | None = None) -> None:
-    if os.name == "nt" and os.getenv("PROGRAMDATA"):
-        if run_id is None and task is None:
-            result = checkpoint_command("clear-latest")
-        elif run_id is not None and task is not None:
-            result = checkpoint_command("clear", "--run-id", run_id, "--task", str(task))
-        else:
-            raise ValueError("Checkpoint cleanup requires both run_id and task, or neither for latest-owner cleanup.")
-        if result.returncode:
-            raise RuntimeError("Could not clear the completed durable worktree checkpoint.")
+    return _cycle_checkpoints.clear_checkpoint(
+        run_id, task, os_name=os.name, programdata=os.getenv("PROGRAMDATA"),
+        checkpoint_command=checkpoint_command,
+    )
 
 
 def snapshot(run_id: str, attempt: str) -> None:
-    checked([
-        sys.executable, "scripts/autonomous_engineering_progress.py", "snapshot",
-        "--run-id", run_id, "--run-attempt", attempt,
-    ])
+    return _cycle_workspace.snapshot(
+        run_id, attempt, checked=checked, python_executable=sys.executable,
+    )
 
 
 def task_marker(report: Path) -> str:
-    try:
-        matches = MARKERS.findall(report.read_text(encoding="utf-8-sig"))
-    except OSError as exc:
-        raise RuntimeError("Codex did not produce its final task report.") from exc
-    if len(matches) != 1:
-        raise RuntimeError("Codex report must contain exactly one valid completion marker.")
-    return matches[0]
+    return _cycle_workspace.task_marker(report, MARKERS)
 
 
 def changed_paths() -> list[str]:
-    unstaged = checked(["git", "diff", "--name-only", "-z"]).split("\0")
-    staged = checked(["git", "diff", "--cached", "--name-only", "-z"]).split("\0")
-    untracked = checked(["git", "ls-files", "--others", "--exclude-standard", "-z"]).split("\0")
-    all_paths = unstaged + staged + untracked
-    return sorted({p.replace("\\", "/") for p in all_paths if p and p.replace("\\", "/") not in RUNTIME_FILES})
+    return _cycle_workspace.changed_paths(checked=checked, runtime_files=RUNTIME_FILES)
 
 
 def validate_paths(paths: list[str]) -> None:
-    invalid = []
-    for value in paths:
-        path = Path(value)
-        if (
-            value.startswith("/") or "\\" in value
-            or any(part in {"", ".", "..", ".git"} for part in value.split("/"))
-            or not value.startswith(ALLOWED) or value in PROTECTED
-            or path.is_symlink()
-            or not (ROOT / path).resolve().is_relative_to(ROOT.resolve())
-        ):
-            invalid.append(value)
-    if invalid:
-        raise RuntimeError("Task changed protected or non-allowlisted paths: " + repr(invalid))
+    return _cycle_workspace.validate_paths(paths, root=ROOT, allowed=ALLOWED, protected=PROTECTED)
 
 
 def prepare_commit(task_index: int) -> str:
-    validate_paths(changed_paths())
-    checked(["git", "add", "-A", "--", "app", "tests", "docs", "scripts"])
-    staged = checked(["git", "diff", "--cached", "--no-renames", "--name-only", "-z"]).split("\0")
-    staged = [p.replace("\\", "/") for p in staged if p]
-    validate_paths(staged)
-    if not staged:
-        raise RuntimeError("Task reported completion but produced no reviewable changes.")
-    checked(["git", "diff", "--cached", "--check"])
-    records = checked(["git", "diff", "--cached", "--no-renames", "--numstat", "-z"]).split("\0")
-    for item in records:
-        if item:
-            fields = item.split("\t", 2)
-            if len(fields) != 3 or fields[0] == "-" or fields[1] == "-":
-                raise RuntimeError("Binary changes are not allowed in autonomous task commits.")
-    checked(["git", "config", "user.name", "github-actions[bot]"])
-    checked(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"])
-    checked(["git", "commit", "-m", f"chore: complete autonomous engineering task {task_index}"])
-    return checked(["git", "rev-parse", "HEAD"])
-
-
-def api(
-    token: str, repo: str, method: str, path: str,
-    payload: dict[str, Any] | None = None,
-) -> Any:
-    body = json.dumps(payload).encode("utf-8") if payload is not None else None
-    request = urllib.request.Request(
-        f"https://api.github.com/repos/{repo}/{path.lstrip('/')}",
-        data=body, method=method,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "Personal-AI-assistant-autonomous-engineering",
-            **({"Content-Type": "application/json"} if body is not None else {}),
-        },
+    return _cycle_workspace.prepare_commit(
+        task_index, checked=checked, changed_paths=changed_paths, validate_paths=validate_paths,
     )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            raw = response.read(1_000_000).decode("utf-8")
-            return json.loads(raw) if raw else {}
-    except urllib.error.HTTPError as exc:
-        detail = exc.read(4000).decode("utf-8", errors="replace")
-        raise RuntimeError(f"GitHub API {method} {path} failed ({exc.code}): {detail}") from exc
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"GitHub API {method} {path} failed: {type(exc).__name__}") from exc
+
+
+def api(token: str, repo: str, method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
+    return _github_api(token, repo, method, path, payload)
+
 
 def dispatch_and_wait_all(token: str, repo: str, workflows: tuple[str, ...], branch: str, expected_sha: str) -> None:
-    dispatched_at = time.time()
-    for workflow in workflows:
-        api(token, repo, "POST", f"actions/workflows/{workflow}/dispatches", {"ref": branch})
-    deadline = time.monotonic() + 20 * 60
-    query_branch = quote(branch, safe="")
-    pending = set(workflows)
-    while pending and time.monotonic() < deadline:
-        for workflow in tuple(pending):
-            response = api(
-                token, repo, "GET",
-                f"actions/workflows/{workflow}/runs?branch={query_branch}&event=workflow_dispatch&per_page=20",
-            )
-            matches = [
-                item for item in response.get("workflow_runs", [])
-                if item.get("head_branch") == branch
-                and item.get("head_sha") == expected_sha
-                and item.get("event") == "workflow_dispatch"
-                and item.get("created_at")
-                and __import__("datetime").datetime.fromisoformat(
-                    item["created_at"].replace("Z", "+00:00")
-                ).timestamp() >= dispatched_at - 10
-            ]
-            if not matches:
-                continue
-            latest = max(matches, key=lambda item: item.get("run_number", 0))
-            if latest.get("status") == "completed":
-                if latest.get("conclusion") != "success":
-                    raise RuntimeError(
-                        f"Required workflow {workflow} failed for task commit {expected_sha}: "
-                        f"{latest.get('html_url', '')} ({latest.get('conclusion')})"
-                    )
-                pending.remove(workflow)
-        if pending:
-            time.sleep(5)
-    if pending:
-        raise RuntimeError("Timed out waiting for required workflows: " + ", ".join(sorted(pending)))
-
+    return _github_dispatch_and_wait_all(token, repo, workflows, branch, expected_sha, request=api)
 
 
 def git_auth_env(token: str) -> dict[str, str]:
-    env = os.environ.copy()
-    encoded = base64.b64encode(f"x-access-token:{token}".encode()).decode("ascii")
-    env.update({
-        "GIT_CONFIG_COUNT": "1",
-        "GIT_CONFIG_KEY_0": "http.extraheader",
-        "GIT_CONFIG_VALUE_0": f"AUTHORIZATION: basic {encoded}",
-    })
-    env.pop("GH_TOKEN", None)
-    env.pop("GITHUB_TOKEN", None)
-    return env
+    return _github_git_auth_env(token)
 
 
 def graphql(token: str, query: str, variables: dict[str, Any]) -> dict[str, Any]:
-    body = json.dumps({"query": query, "variables": variables}).encode("utf-8")
-    request = urllib.request.Request(
-        "https://api.github.com/graphql",
-        data=body,
-        method="POST",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-            "User-Agent": "Personal-AI-assistant-autonomous-engineering",
-        },
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            payload = json.loads(response.read(1_000_000).decode("utf-8"))
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"GitHub GraphQL request failed: {type(exc).__name__}") from exc
-    if payload.get("errors"):
-        raise RuntimeError("GitHub rejected the pull request readiness transition.")
-    data = payload.get("data")
-    return data if isinstance(data, dict) else {}
-
-
-def _autonomous_state_dir() -> Path:
-    configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
-    if configured:
-        return Path(os.path.expandvars(configured)).expanduser()
-    if os.getenv("PROGRAMDATA"):
-        return Path(os.environ["PROGRAMDATA"]) / "PersonalAIAssistant" / "autonomous-engineering"
-    return Path.home() / ".personal-ai-assistant" / "autonomous-engineering"
-
-
-def _pending_pr_path() -> Path:
-    return _autonomous_state_dir() / "pending-autonomous-pr.json"
-
-
-def save_pending_pr(value: dict[str, Any], repo: str) -> None:
-    string_fields = ("url", "head_sha", "base_sha", "branch", "run_id")
-    if (
-        not isinstance(value, dict)
-        or isinstance(value.get("number"), bool)
-        or not isinstance(value.get("number"), int)
-        or value["number"] < 1
-        or any(not isinstance(value.get(key), str) or not value[key] for key in string_fields)
-        or isinstance(value.get("task"), bool)
-        or not isinstance(value.get("task"), int)
-        or value["task"] < 1
-        or not re.fullmatch(r"[0-9a-f]{40}", value["head_sha"])
-        or not re.fullmatch(r"[0-9a-f]{40}", value["base_sha"])
-        or not value["branch"].startswith("codex/local-engineering-")
-        or value["url"] != f"https://github.com/{repo}/pull/{value['number']}"
-    ):
-        raise RuntimeError("Refusing to persist invalid pending PR metadata.")
-    path = _pending_pr_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + f".{os.getpid()}.tmp")
-    try:
-        temporary.write_text(json.dumps(value, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
-        temporary.replace(path)
-    finally:
-        temporary.unlink(missing_ok=True)
-
-
-def load_pending_pr() -> dict[str, Any] | None:
-    path = _pending_pr_path()
-    if not path.exists():
-        return None
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise RuntimeError("Pending PR state is unreadable; preserving it and refusing a new task.") from exc
-    required = ("number", "url", "head_sha", "base_sha", "branch", "run_id", "task")
-    if (
-        not isinstance(value, dict)
-        or isinstance(value.get("number"), bool)
-        or not isinstance(value.get("number"), int)
-        or value["number"] < 1
-        or any(not isinstance(value.get(key), str) or not value[key] for key in required if key not in {"number", "task"})
-        or isinstance(value.get("task"), bool)
-        or not isinstance(value.get("task"), int)
-        or value["task"] < 1
-        or not re.fullmatch(r"[0-9a-f]{40}", str(value.get("head_sha", "")))
-        or not re.fullmatch(r"[0-9a-f]{40}", str(value.get("base_sha", "")))
-    ):
-        raise RuntimeError("Pending PR state violates its durable contract; preserving it and refusing a new task.")
-    return value
-
-
-def clear_pending_pr() -> None:
-    _pending_pr_path().unlink(missing_ok=True)
-
-
-def clear_pending_task() -> None:
-    if os.name == "nt":
-        (_autonomous_state_dir() / "pending-manual-task.txt").unlink(missing_ok=True)
+    return _github_graphql(token, query, variables)
 
 
 def find_open_autonomous_pr(token: str, repo: str) -> dict[str, Any] | None:
-    pulls = api(token, repo, "GET", "pulls?state=open&per_page=100")
-    if not isinstance(pulls, list):
-        raise RuntimeError("GitHub returned an invalid open pull request listing.")
-    for item in pulls:
-        if not isinstance(item, dict):
-            continue
-        head = item.get("head") or {}
-        base = item.get("base") or {}
-        author = (item.get("user") or {}).get("login")
-        head_repository = (head.get("repo") or {}).get("full_name")
-        branch = head.get("ref")
-        if (
-            author == "github-actions[bot]"
-            and head_repository == repo
-            and isinstance(branch, str)
-            and branch.startswith("codex/local-engineering-")
-            and base.get("ref") == "main"
-        ):
-            return {
-                "number": item.get("number"),
-                "url": item.get("html_url"),
-                "head_sha": head.get("sha"),
-                "base_sha": base.get("sha"),
-                "branch": branch,
-                "draft": bool(item.get("draft", False)),
-                "node_id": item.get("node_id"),
-            }
-    return None
+    return _find_open_autonomous_pr(token, repo, api=api)
 
 
 def complete_pending_pr(token: str, repo: str, pending: dict[str, Any], run_id: str, task: int) -> dict[str, Any]:
-    number = pending.get("number")
-    if not isinstance(number, int) or isinstance(number, bool):
-        raise RuntimeError("The pending autonomous PR has no valid number.")
-    current = api(token, repo, "GET", f"pulls/{number}")
-    head = current.get("head") or {}
-    base = current.get("base") or {}
-    branch = head.get("ref")
-    head_sha = head.get("sha")
-    base_sha = base.get("sha")
-    author = (current.get("user") or {}).get("login")
-    head_repository = (head.get("repo") or {}).get("full_name")
-    if (
-        author != "github-actions[bot]"
-        or head_repository != repo
-        or current.get("state") != "open"
-        or current.get("merged") is True
-        or base.get("ref") != "main"
-        or not isinstance(branch, str)
-        or not branch.startswith("codex/local-engineering-")
-        or head_sha != pending.get("head_sha")
-        or base_sha != pending.get("base_sha")
-    ):
-        raise RuntimeError("Pending PR identity or base changed; refusing automatic recovery.")
-    if current.get("draft") is True:
-        node_id = current.get("node_id")
-        if not isinstance(node_id, str):
-            raise RuntimeError("Cannot safely convert the pending draft PR to ready-for-review.")
-        transition = graphql(token, """
-          mutation($pullRequestId: ID!) {
-            convertPullRequestToReadyForReview(input: {pullRequestId: $pullRequestId}) {
-              pullRequest { isDraft }
-            }
-          }
-        """, {"pullRequestId": node_id})
-        ready = (transition.get("convertPullRequestToReadyForReview") or {}).get("pullRequest") or {}
-        if ready.get("isDraft") is not False:
-            raise RuntimeError("GitHub did not confirm that the pending PR is ready for owner review.")
-    dispatch_and_wait_all(
-        token, repo, ("tests.yml", "browser-e2e.yml", "dependency-audit.yml"), branch, head_sha
+    return _complete_pending_pr(
+        token, repo, pending, run_id, task,
+        api=api, graphql=graphql, save_pending_pr=save_pending_pr,
+        dispatch_and_wait_all=dispatch_and_wait_all,
     )
-    refreshed = api(token, repo, "GET", f"pulls/{number}")
-    main = api(token, repo, "GET", "branches/main")
-    if (
-        (refreshed.get("head") or {}).get("sha") != head_sha
-        or (refreshed.get("base") or {}).get("sha") != base_sha
-        or refreshed.get("draft") is not False
-        or refreshed.get("state") != "open"
-        or refreshed.get("merged") is True
-        or (main.get("commit") or {}).get("sha") != base_sha
-    ):
-        raise RuntimeError("Pending PR changed during revalidation; it remains unaccepted.")
-    url = refreshed.get("html_url")
-    if not isinstance(url, str) or url != f"https://github.com/{repo}/pull/{number}":
-        raise RuntimeError("GitHub returned an unexpected pull request URL.")
-    save_pending_pr({
-        "number": number,
-        "url": url,
-        "head_sha": head_sha,
-        "base_sha": base_sha,
-        "branch": branch,
-        "run_id": str(pending.get("run_id") or run_id),
-        "task": int(pending.get("task") or task),
-    }, repo)
-    return {
-        "number": number,
-        "url": url,
-        "head_sha": head_sha,
-        "base_sha": base_sha,
-        "validated": True,
-        "merged": False,
-        "awaiting_review": True,
-        "draft": False,
-    }
 
 
 def complete_merged_pr(token: str, repo: str, pending: dict[str, Any]) -> dict[str, Any]:
-    number = pending.get("number")
-    if not isinstance(number, int) or isinstance(number, bool):
-        raise RuntimeError("The pending autonomous PR has no valid number.")
-    current = api(token, repo, "GET", f"pulls/{number}")
-    head = current.get("head") or {}
-    base = current.get("base") or {}
-    merge_sha = current.get("merge_commit_sha")
-    if (
-        current.get("state") != "closed"
-        or current.get("merged") is not True
-        or (current.get("user") or {}).get("login") != "github-actions[bot]"
-        or (head.get("repo") or {}).get("full_name") != repo
-        or base.get("ref") != "main"
-        or base.get("sha") != merge_sha
-        or head.get("ref") != pending.get("branch")
-        or head.get("sha") != pending.get("head_sha")
-        or current.get("html_url") != pending.get("url")
-        or not isinstance(merge_sha, str)
-        or not re.fullmatch(r"[0-9a-f]{40}", merge_sha)
-    ):
-        raise RuntimeError("The saved PR was not merged as the exact reviewed candidate; task state is preserved.")
-    main = api(token, repo, "GET", "branches/main")
-    if (main.get("commit") or {}).get("sha") != merge_sha:
-        raise RuntimeError("main moved after the reviewed PR merge; refusing to advance the engineering queue.")
-    dispatch_and_wait_all(
-        token, repo, ("tests.yml", "browser-e2e.yml", "dependency-audit.yml"), "main", merge_sha
+    return _complete_merged_pr(
+        token, repo, pending, api=api,
+        dispatch_and_wait_all=dispatch_and_wait_all,
+        clear_checkpoint=clear_checkpoint, clear_pending_state=clear_pending_state,
     )
-    confirmed = api(token, repo, "GET", f"pulls/{number}")
-    main_after_merge = api(token, repo, "GET", "branches/main")
-    if (
-        confirmed.get("merged") is not True
-        or confirmed.get("merge_commit_sha") != merge_sha
-        or (confirmed.get("head") or {}).get("sha") != pending.get("head_sha")
-        or (main_after_merge.get("commit") or {}).get("sha") != merge_sha
-    ):
-        raise RuntimeError("Post-merge validation changed or main no longer points to the reviewed merge.")
-    clear_checkpoint()
-    clear_pending_task()
-    clear_pending_pr()
-    return {
-        "number": number,
-        "url": pending.get("url"),
-        "head_sha": pending.get("head_sha"),
-        "merge_sha": merge_sha,
-        "merged": True,
-        "post_merge_validated": True,
-    }
 
 
-def publish_pull_request(
-    token: str, repo: str, branch: str, task_index: int, run_id: str,
-    head_sha: str, base_sha: str,
-) -> dict[str, Any]:
-    env = git_auth_env(token)
-    checked(["git", "push", "origin", f"HEAD:refs/heads/{branch}"], env=env)
-    owner = repo.split("/", 1)[0]
-    existing = api(
-        token, repo, "GET",
-        f"pulls?state=open&head={quote(owner + ':' + branch, safe='')}&base=main&per_page=5",
+def publish_pull_request(token: str, repo: str, branch: str, task_index: int, run_id: str, head_sha: str, base_sha: str) -> dict[str, Any]:
+    return _publish_pull_request(
+        token, repo, branch, task_index, run_id, head_sha, base_sha,
+        api=api, checked=checked, git_auth_env=git_auth_env,
+        durable_state_lock=durable_state_lock, state_directory=_autonomous_state_dir,
+        save_pending_pr_unlocked=_save_pending_pr_unlocked,
+        dispatch_and_wait_all=dispatch_and_wait_all,
     )
-    if not isinstance(existing, list):
-        raise RuntimeError("GitHub returned an invalid pull request lookup.")
-    pr = existing[0] if existing else api(token, repo, "POST", "pulls", {
-        "title": f"Autonomous engineering task {task_index} (run {run_id})",
-        "head": branch,
-        "base": "main",
-        "draft": False,
-        "body": (
-            f"## Autonomous engineering task {task_index}\n\n"
-            f"- Workflow run: https://github.com/{repo}/actions/runs/{run_id}\n"
-            f"- Candidate commit: {head_sha}\n"
-            "- Windows full test suite and repository quality gates passed before publication.\n"
-            "- GitHub tests, browser E2E, and dependency audit are dispatched against this exact PR head.\n"
-            "- The PR remains open for owner review; the controller never merges PRs automatically.\n"
-            "- After the owner merges it, the controller verifies the exact merge SHA and post-merge CI before accepting the task or advancing the queue.\n"
-            "- No deployment is performed.\n"
-        ),
-    })
-    number = pr.get("number")
-    pr_head = (pr.get("head") or {}).get("sha")
-    pr_head_repository = ((pr.get("head") or {}).get("repo") or {}).get("full_name")
-    pr_base = (pr.get("base") or {}).get("ref")
-    pr_base_sha = (pr.get("base") or {}).get("sha")
-    pr_author = (pr.get("user") or {}).get("login")
-    if (
-        not isinstance(number, int)
-        or pr_author != "github-actions[bot]"
-        or pr_head_repository != repo
-    ):
-        raise RuntimeError("Refusing publication: PR was not created by the trusted controller in this repository.")
-    if (
-        not isinstance(pr_head, str)
-        or pr_head != head_sha
-        or pr_base != "main"
-        or pr_base_sha != base_sha
-        or pr.get("draft") is not False
-    ):
-        raise RuntimeError("The PR head or main base changed before publication could be validated.")
-
-    dispatch_and_wait_all(
-        token, repo, ("tests.yml", "browser-e2e.yml", "dependency-audit.yml"), branch, pr_head
-    )
-    refreshed_pr = api(token, repo, "GET", f"pulls/{number}")
-    refreshed_head = (refreshed_pr.get("head") or {}).get("sha")
-    url = refreshed_pr.get("html_url")
-    if refreshed_head != head_sha:
-        raise RuntimeError("The PR head changed during exact-SHA validation; preserving the task for revalidation.")
-    if not isinstance(url, str) or url != f"https://github.com/{repo}/pull/{number}":
-        raise RuntimeError("GitHub returned an unexpected pull request URL.")
-    pending_state = {
-        "number": number,
-        "url": url,
-        "head_sha": head_sha,
-        "base_sha": base_sha,
-        "branch": branch,
-        "run_id": run_id,
-        "task": task_index,
-    }
-    if refreshed_pr.get("merged") is True:
-        save_pending_pr(pending_state, repo)
-        return {**pending_state, "validated": True, "merged": True, "owner_merged": True}
-    if refreshed_pr.get("state") != "open" or refreshed_pr.get("draft") is not False:
-        raise RuntimeError("The PR was closed or changed before owner-review handoff; preserving the task.")
-    current_main = api(token, repo, "GET", "branches/main")
-    refreshed_base = (refreshed_pr.get("base") or {}).get("sha")
-    current_main_sha = (current_main.get("commit") or {}).get("sha")
-    if refreshed_base != base_sha or current_main_sha != base_sha:
-        latest_pr = api(token, repo, "GET", f"pulls/{number}")
-        if latest_pr.get("merged") is True and (latest_pr.get("head") or {}).get("sha") == head_sha:
-            save_pending_pr(pending_state, repo)
-            return {**pending_state, "validated": True, "merged": True, "owner_merged": True}
-        raise RuntimeError(
-            "The PR head or main base changed during validation; the PR remains open and must be revalidated."
-        )
-
-    save_pending_pr(pending_state, repo)
-    return {
-        "number": number,
-        "url": url,
-        "head_sha": head_sha,
-        "base_sha": base_sha,
-        "validated": True,
-        "merged": False,
-        "awaiting_review": True,
-        "draft": False,
-    }
 
 
 def publish_pr_subprocess(

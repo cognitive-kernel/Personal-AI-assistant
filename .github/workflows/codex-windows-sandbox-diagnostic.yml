@@ -4,23 +4,35 @@ run-name: "Codex Windows Sandbox Diagnostic #${{ github.run_number }} - ${{ gith
 on:
   push:
     branches:
-      - fix/autonomous-task-preservation
-      - fix/automation-codex-context-smoke-20261107
+      - feat/autonomous-engineering-complete-20261112
     paths:
       - .github/workflows/codex-windows-sandbox-diagnostic.yml
       - .github/workflows/autonomous-codex-engineering.yml
+      - .github/workflows/browser-e2e.yml
+      - docs/operations/CODEX_AUTONOMOUS_ENGINEERING.md
+      - scripts/provision_autonomous_runner.ps1
+      - scripts/check_autonomous_runner.ps1
+      - scripts/check_autonomous_agent.ps1
+      - app/static/autonomous-engineering.js
+      - app/autonomous_engineering.py
+      - app/main.py
+      - app/ollama.py
+      - app/ollama_context.py
       - scripts/autonomous_engineering_progress.py
       - scripts/verify_ollama_context.ps1
       - tests/test_autonomous_engineering.py
+      - tests/test_browser_e2e.py
+      - docs/PROJECT_STATUS.md
+      - docs/ENGINEERING_LOG.md
       - tests/test_autonomous_engineering_cycle.py
       - tests/test_codex_smoke_diagnostics.py
   workflow_dispatch:
     inputs:
       model:
         description: "Installed local Ollama model"
-        required: true
+        required: false
         type: string
-        default: "gpt-oss:20b"
+        default: ""
       context_length:
         description: "Optional manual context token count; blank selects a safe value automatically"
         required: false
@@ -90,12 +102,65 @@ jobs:
             Write-Warning "Could not list diagnostic runs; continuing without cleanup: $($_.Exception.Message)"
           }
 
+      - name: Cancel superseded CI runs for this branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+        shell: pwsh
+        run: |
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+          }
+          $branch = [uri]::EscapeDataString($env:GITHUB_REF_NAME)
+          $workflowFiles = @("tests.yml", "browser-e2e.yml", "dependency-audit.yml")
+          foreach ($workflowFile in $workflowFiles) {
+            $workflow = [uri]::EscapeDataString($workflowFile)
+            $uri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/workflows/$workflow/runs?branch=$branch&per_page=100"
+            try {
+              $response = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get -TimeoutSec 15
+              foreach ($run in @($response.workflow_runs)) {
+                if ($run.head_sha -eq $env:GITHUB_SHA) { continue }
+                if ($run.status -notin @("queued", "in_progress")) { continue }
+                # A stale diagnostic may finish after a newer push. Cancel only
+                # runs whose commit is a strict ancestor of this diagnostic SHA.
+                $compareUri = "https://api.github.com/repos/$env:GH_REPOSITORY/compare/$($run.head_sha)...$env:GITHUB_SHA"
+                try {
+                  $comparison = Invoke-RestMethod -Uri $compareUri -Headers $headers -Method Get -TimeoutSec 15
+                } catch {
+                  Write-Warning "Could not establish commit ancestry for $workflowFile run $($run.id); leaving it untouched: $($_.Exception.Message)"
+                  continue
+                }
+                if ($comparison.status -ne "ahead" -or [int]$comparison.behind_by -ne 0 -or [int]$comparison.ahead_by -le 0) {
+                  Write-Host "Keeping $workflowFile run $($run.id): its commit is not a strict ancestor of $env:GITHUB_SHA."
+                  continue
+                }
+                $cancelUri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)/cancel"
+                try {
+                  Invoke-RestMethod -Uri $cancelUri -Headers $headers -Method Post -TimeoutSec 15 | Out-Null
+                  Start-Sleep -Seconds 1
+                  $afterCancel = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)" -Headers $headers -Method Get -TimeoutSec 15
+                  if ($afterCancel.status -ne "completed") {
+                    $forceCancelUri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)/force-cancel"
+                    Invoke-RestMethod -Uri $forceCancelUri -Headers $headers -Method Post -TimeoutSec 15 | Out-Null
+                  }
+                  Write-Host "Cancelled superseded $workflowFile run $($run.id) at $($run.head_sha)."
+                } catch {
+                  Write-Warning "Could not cancel superseded $workflowFile run $($run.id): $($_.Exception.Message)"
+                }
+              }
+            } catch {
+              Write-Warning "Could not list $workflowFile runs for this branch: $($_.Exception.Message)"
+            }
+          }
+
   sandbox-diagnostic:
     needs: cancel-stale-diagnostics
     runs-on: [self-hosted, Windows, X64, ollama]
     timeout-minutes: 30
     env:
-      AUTONOMOUS_ENGINEERING_MODEL: ${{ inputs.model || 'gpt-oss:20b' }}
+      AUTONOMOUS_ENGINEERING_MODEL: ${{ inputs.model || vars.AUTONOMOUS_ENGINEERING_MODEL || '' }}
       AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH: ${{ inputs.context_length || vars.AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH || '' }}
       CODEX_WINDOWS_SANDBOX_BACKEND: mxc
       CODEX_MODEL_REASONING_EFFORT: low
@@ -133,10 +198,49 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or $version -notmatch [regex]::Escape($requiredVersion)) { throw "Unexpected Codex CLI version: $version" }
           python --version
           ollama --version
-          $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 5
+          $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 5 -MaximumRedirection 0
           if (@($tags.models | ForEach-Object { $_.name }) -notcontains $env:AUTONOMOUS_ENGINEERING_MODEL) {
             throw "Ollama model '$env:AUTONOMOUS_ENGINEERING_MODEL' is not installed."
           }
+
+      - name: Inventory installed Ollama models and capabilities
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 10 -MaximumRedirection 0
+          $inventory = foreach ($model in @($tags.models)) {
+            if (-not $model.name) { continue }
+            $details = $null
+            $metadataError = $null
+            try {
+              $body = @{ model = [string]$model.name; verbose = $true } | ConvertTo-Json -Compress
+              $details = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -Body $body -ContentType "application/json" -TimeoutSec 20 -MaximumRedirection 0
+            } catch {
+              $metadataError = $_.Exception.Message
+            }
+            $family = if ($details -and $details.details) { [string]$details.details.family } else { "" }
+            $contextKey = if ($family) { "$family.context_length" } else { "" }
+            $maximum = $null
+            if ($contextKey -and $details.model_info) {
+              $property = $details.model_info.PSObject.Properties[$contextKey]
+              if ($property) { $maximum = $property.Value }
+            }
+            [pscustomobject]@{
+              name = [string]$model.name
+              size_bytes = $model.size
+              family = $family
+              maximum_context_tokens = $maximum
+              capabilities = @($details.capabilities)
+              supports_tools = (@($details.capabilities) -contains "tools")
+              metadata_error = $metadataError
+              is_current_selection = ([string]$model.name -eq $env:AUTONOMOUS_ENGINEERING_MODEL)
+            }
+          }
+          Write-Host "Saved workflow model selection: $env:AUTONOMOUS_ENGINEERING_MODEL"
+          Write-Host "Saved workflow context override: $env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH"
+          Write-Host "Installed Ollama model inventory:"
+          $inventory | ConvertTo-Json -Depth 8 | Write-Host
+          if (-not @($inventory).Count) { throw "Ollama reported no installed models." }
 
       - name: Verify the selected model's allocated Ollama context
         id: context_preflight

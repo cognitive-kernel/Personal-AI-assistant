@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
 from .autonomous_engineering_progress import get_progress, storage_accessible
+from .ollama_context import MIN_CODEX_CONTEXT_TOKENS, maximum_context_tokens, supports_tool_calling
 
 _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
 
@@ -29,10 +30,14 @@ router = APIRouter(
 
 _DEFAULT_REPOSITORY = "cognitive-kernel/Personal-AI-assistant"
 _WORKFLOW = "autonomous-codex-engineering.yml"
-_DEFAULT_MODEL = "gpt-oss:20b"
 _DEFAULT_INTERVAL_HOURS = 24
 _ALLOWED_INTERVAL_HOURS = {1, 2, 4, 6, 12, 24}
 _MODEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$")
+_CODEX_CONTEXT_VARIANT_PATTERN = re.compile(r"-codex-ctx[0-9]+$", re.IGNORECASE)
+
+
+def _is_codex_context_variant(model: str) -> bool:
+    return bool(_CODEX_CONTEXT_VARIANT_PATTERN.search(model.strip()))
 
 
 class EngineeringSettings(BaseModel):
@@ -53,11 +58,6 @@ def _repository() -> str:
     return value if owner and name and "/" not in name else _DEFAULT_REPOSITORY
 
 
-def _model() -> str:
-    value = os.getenv("AUTONOMOUS_ENGINEERING_MODEL", _DEFAULT_MODEL).strip()
-    return value[:120] if value else _DEFAULT_MODEL
-
-
 def _run(command: list[str], timeout: int = 8) -> subprocess.CompletedProcess[str] | None:
     try:
         return subprocess.run(
@@ -72,141 +72,49 @@ def _run(command: list[str], timeout: int = 8) -> subprocess.CompletedProcess[st
         return None
 
 
+
+# Service implementations live in a separate module; wrappers preserve the public API and test seams.
+from . import autonomous_engineering_services as _services
+
+
+_NoRedirectHandler = _services.NoRedirectHandler
+
+
 def _ollama_status(model: str) -> dict[str, Any]:
-    try:
-        request = urllib.request.Request(
-            "http://127.0.0.1:11434/api/tags",
-            headers={"Accept": "application/json"},
-        )
-        # Local Ollama metadata must never be sent through an environment proxy.
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        with opener.open(request, timeout=2) as response:
-            payload = json.loads(response.read(2_000_000).decode("utf-8"))
-        models = payload.get("models", []) if isinstance(payload, dict) else []
-        names = sorted(
-            str(item.get("name", ""))
-            for item in models
-            if isinstance(item, dict) and item.get("name")
-        )
-        installed = model in names
-        return {
-            "online": True,
-            "model": model,
-            "model_installed": installed,
-            "models": names[:40],
-        }
-    except (OSError, ValueError, urllib.error.URLError, TimeoutError):
-        return {"online": False, "model": model, "model_installed": False, "models": []}
+    return _services.ollama_status(
+        model,
+        build_opener=urllib.request.build_opener,
+        min_context_tokens=MIN_CODEX_CONTEXT_TOKENS,
+        maximum_context_fn=maximum_context_tokens,
+        supports_tool_calling_fn=supports_tool_calling,
+        is_context_variant=_is_codex_context_variant,
+    )
 
 
 def _codex_status() -> dict[str, Any]:
-    executable = shutil.which("codex")
-    if not executable:
-        return {"installed": False, "version": None}
-    result = _run([executable, "--version"], timeout=5)
-    version = (result.stdout or "").strip()[:120] if result and result.returncode == 0 else None
-    return {"installed": bool(version), "version": version}
+    return _services.codex_status(shutil.which, _run)
 
 
 def _runner_status() -> dict[str, Any]:
-    found = False
-    for process in psutil.process_iter(["name", "cmdline"]):
-        try:
-            name = (process.info.get("name") or "").casefold()
-            command = " ".join(process.info.get("cmdline") or []).casefold()
-            if "runner.listener" in name or "runner.listener" in command:
-                found = True
-                break
-        except (psutil.Error, OSError):
-            continue
-    return {"running": found, "process_detected": found}
+    return _services.runner_status(psutil.process_iter)
 
 
 def _github_snapshot() -> dict[str, Any]:
-    gh = shutil.which("gh")
-    if not gh:
-        return {
-            "cli_installed": False,
-            "authenticated": False,
-            "recent_runs": [],
-            "runs_available": False,
-        }
-    auth = _run([gh, "auth", "status", "--hostname", "github.com"], timeout=8)
-    authenticated = bool(auth and auth.returncode == 0)
-    recent_runs: list[dict[str, Any]] = []
-    runs_available = False
-    settings = {"model": _model(), "interval_hours": _DEFAULT_INTERVAL_HOURS, "execution_mode": "continuous", "paused": False}
-    if authenticated:
-        result = _run(
-            [
-                gh, "run", "list", "--repo", _repository(), "--workflow", _WORKFLOW,
-                "--limit", "30", "--json",
-                "databaseId,status,conclusion,createdAt,url,headBranch",
-            ],
-            timeout=12,
-        )
-        if result and result.returncode == 0:
-            try:
-                parsed = json.loads(result.stdout)
-                if isinstance(parsed, list):
-                    mapped_runs = [
-                        {
-                            "id": item.get("databaseId"),
-                            "status": item.get("status"),
-                            "conclusion": item.get("conclusion"),
-                            "created_at": item.get("createdAt"),
-                            "url": item.get("url"),
-                            "branch": item.get("headBranch"),
-                        }
-                        for item in parsed
-                        if isinstance(item, dict)
-                    ]
-                    recent_runs = mapped_runs[:5]
-                    visible_ids = {item["id"] for item in recent_runs}
-                    active_states = {"queued", "in_progress", "waiting", "requested", "pending"}
-                    recent_runs.extend(
-                        item for item in mapped_runs[5:]
-                        if item.get("status") in active_states and item.get("id") not in visible_ids
-                    )
-                    runs_available = True
-            except ValueError:
-                recent_runs = []
-        variables = _run(
-            [gh, "variable", "list", "--repo", _repository(), "--json", "name,value"],
-            timeout=12,
-        )
-        if variables and variables.returncode == 0:
-            try:
-                values = json.loads(variables.stdout)
-                if isinstance(values, list):
-                    configured = {
-                        str(item.get("name")): str(item.get("value", ""))
-                        for item in values if isinstance(item, dict)
-                    }
-                    candidate_model = configured.get("AUTONOMOUS_ENGINEERING_MODEL", "")
-                    candidate_interval = configured.get("AUTONOMOUS_ENGINEERING_INTERVAL_HOURS", "")
-                    candidate_mode = configured.get("AUTONOMOUS_ENGINEERING_MODE", "continuous")
-                    settings["paused"] = configured.get("AUTONOMOUS_ENGINEERING_PAUSED", "false").lower() == "true"
-                    if _MODEL_PATTERN.fullmatch(candidate_model):
-                        settings["model"] = candidate_model
-                    if candidate_interval.isdigit() and int(candidate_interval) in _ALLOWED_INTERVAL_HOURS:
-                        settings["interval_hours"] = int(candidate_interval)
-                    if candidate_mode in {"scheduled", "continuous"}:
-                        settings["execution_mode"] = candidate_mode
-            except (ValueError, TypeError):
-                pass
-    return {
-        "cli_installed": True,
-        "authenticated": authenticated,
-        "recent_runs": recent_runs,
-        "runs_available": runs_available,
-        "settings": settings,
-    }
+    return _services.github_snapshot(
+        run_command=_run,
+        which=shutil.which,
+        repository=_repository(),
+        workflow=_WORKFLOW,
+        default_interval_hours=_DEFAULT_INTERVAL_HOURS,
+        allowed_interval_hours=_ALLOWED_INTERVAL_HOURS,
+        model_pattern=_MODEL_PATTERN,
+    )
+
 
 def collect_status() -> dict[str, Any]:
     github = _github_snapshot()
     settings = github.get("settings", {})
-    model = settings.get("model", _model())
+    model = settings.get("model", "")
     interval_hours = settings.get("interval_hours", _DEFAULT_INTERVAL_HOURS)
     execution_mode = settings.get("execution_mode", "continuous")
     paused = bool(settings.get("paused", False))
@@ -217,13 +125,22 @@ def collect_status() -> dict[str, Any]:
     checks = {
         "ollama_online": ollama["online"],
         "model_installed": ollama["model_installed"],
+        "model_selectable": ollama.get("model_selectable", ollama["model_installed"] and not _is_codex_context_variant(model)) is True,
+        "model_is_codex_context_variant": ollama.get("model_is_codex_context_variant") is True,
+        "model_context_metadata_available": ollama.get("model_metadata_available") is True,
+        "model_context_supported": ollama.get("model_context_supported") is True,
+        "model_supports_tools": ollama.get("model_supports_tools") is True,
         "codex_installed": codex["installed"],
         "runner_running": runner["running"],
         "github_cli_authenticated": github["authenticated"],
         "github_runs_available": github.get("runs_available", False),
         "progress_storage_accessible": progress_storage,
     }
-    ready = all(value for key, value in checks.items() if key != "codex_installed")
+    ready = all(
+        value
+        for key, value in checks.items()
+        if key not in {"codex_installed", "model_is_codex_context_variant"}
+    )
     active_runs = github.get("recent_runs", [])
     active = any(
         isinstance(item, dict)
@@ -243,6 +160,14 @@ def collect_status() -> dict[str, Any]:
         "workflow": _WORKFLOW,
         "model": model,
         "models": ollama.get("models", []),
+        "selectable_models": ollama.get("selectable_models", ollama.get("models", [])),
+        "model_is_codex_context_variant": ollama.get("model_is_codex_context_variant", False),
+        "model_context_length": ollama.get("model_context_length"),
+        "model_context_supported": ollama.get("model_context_supported", False),
+        "model_context_error": ollama.get("model_context_error"),
+        "model_capabilities": ollama.get("model_capabilities", []),
+        "model_supports_tools": ollama.get("model_supports_tools", False),
+        "model_metadata_error": ollama.get("model_metadata_error"),
         "interval_hours": interval_hours,
         "execution_mode": execution_mode,
         "paused": paused,
@@ -345,15 +270,38 @@ def autonomous_engineering_progress(
     return result
 
 
+def _save_repository_variables(gh: str, updates: tuple[tuple[str, str], ...]) -> None:
+    return _services.save_repository_variables(
+        gh, updates, run_command=_run, repository=_repository()
+    )
+
+
 @router.post("/settings", status_code=200)
 def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[str, Any]:
     model = payload.model.strip()
     if not _MODEL_PATTERN.fullmatch(model):
         raise HTTPException(status_code=422, detail="شناسهٔ مدل Ollama معتبر نیست.")
+    if _is_codex_context_variant(model):
+        raise HTTPException(status_code=422, detail="این مدل نسخهٔ داخلی Context است؛ مدل اصلی Ollama را انتخاب کنید.")
     if payload.interval_hours not in _ALLOWED_INTERVAL_HOURS:
         raise HTTPException(status_code=422, detail="فاصلهٔ اجرا باید یکی از ۱، ۲، ۴، ۶، ۱۲ یا ۲۴ ساعت باشد.")
     if payload.execution_mode not in {"scheduled", "continuous"}:
         raise HTTPException(status_code=422, detail="حالت اجرا معتبر نیست.")
+    local_model = _ollama_status(model)
+    if not local_model.get("online"):
+        raise HTTPException(status_code=503, detail="سرویس Ollama محلی در دسترس نیست؛ مدل ذخیره نشد.")
+    if not local_model.get("model_installed"):
+        raise HTTPException(status_code=422, detail="مدل انتخاب‌شده در فهرست مدل‌های نصب‌شدهٔ Ollama وجود ندارد.")
+    if not local_model.get("model_metadata_available"):
+        raise HTTPException(status_code=422, detail="حداکثر Context مدل از metadata معتبر Ollama قابل تأیید نیست؛ مدل ذخیره نشد.")
+    if not local_model.get("model_context_supported"):
+        maximum = local_model.get("model_context_length")
+        raise HTTPException(
+            status_code=422,
+            detail=f"Codex به حداقل {MIN_CODEX_CONTEXT_TOKENS} توکن Context نیاز دارد؛ سقف مدل انتخاب‌شده {maximum} است و ذخیره نشد.",
+        )
+    if not local_model.get("model_supports_tools"):
+        raise HTTPException(status_code=422, detail="مدل انتخاب‌شده قابلیت tools را اعلام نکرده و برای Codex قابل استفاده نیست.")
     gh = shutil.which("gh")
     if not gh:
         raise HTTPException(status_code=503, detail="GitHub CLI نصب نشده است.")
@@ -365,13 +313,7 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
         ("AUTONOMOUS_ENGINEERING_INTERVAL_HOURS", str(payload.interval_hours)),
         ("AUTONOMOUS_ENGINEERING_MODE", payload.execution_mode),
     )
-    for name, value in updates:
-        result = _run(
-            [gh, "variable", "set", name, "--body", value, "--repo", _repository()],
-            timeout=15,
-        )
-        if not result or result.returncode != 0:
-            raise HTTPException(status_code=502, detail=f"ذخیرهٔ تنظیم {name} در GitHub ناموفق بود.")
+    _save_repository_variables(gh, updates)
     return {
         "saved": True,
         "model": model,

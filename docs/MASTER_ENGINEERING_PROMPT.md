@@ -105,6 +105,8 @@ For each defect:
 
 Do not modify code based only on assumptions or superficial search results.
 
+- Before writing or changing any code, treat every user-reported requirement, prior diagnosis, known defect, failed test, warning, limitation, and unresolved acceptance criterion as a binding obligation: trace it through all affected call sites and data flows, fix or explicitly block on it rather than defer or ignore it, and do not proceed until the implementation and regression/integration tests prove the complete end-to-end contract without weakening existing behavior; if evidence or access is missing, stop and state exactly what prevents verification instead of guessing or claiming completion.
+
 ### 4.3 Prevent circular and repetitive work
 
 Maintain a persistent engineering log in the repository. Before starting a task, check whether it has already been attempted, fixed, tested, rejected, or documented.
@@ -376,7 +378,7 @@ Every completion statement must cite evidence or be labeled unverified. Never co
 - Use the repository-permitted merge strategy.
 - After merge, verify PR state, merge commit, `main` SHA, and post-merge CI.
 - Do not close issues until their acceptance criteria and evidence are complete.
-- Do not bypass required independent approval or external security review. Routine changes are pre-authorized by the repository owner for autonomous merge after exact-SHA automated tests and required GitHub checks pass; no per-task human confirmation or owner-local test is required unless repository branch protection explicitly requires it.
+- Do not bypass required independent approval or external security review. Issue #290 explicitly prohibits automatic PR merge, deployment, cloud provisioning, and remote execution. The autonomous controller must never call the PR merge API: after exact-SHA automated checks pass, it leaves the PR open for owner review. The repository owner performs the merge manually; only then may the controller verify the exact merge SHA and post-merge CI before advancing. This explicit repository constraint overrides any general statement elsewhere in this prompt that could be read as pre-authorizing autonomous merge.
 
 A successful merge-tool response alone is not sufficient proof; verify the repository state afterward.
 
