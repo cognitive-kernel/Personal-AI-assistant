@@ -1198,7 +1198,8 @@ def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_c
     assert context_gate.count("if ($VerifyOnly) {") == 1
     assert context_gate.count("OLLAMA_RUNTIME_CONTEXT_OK") == 1
     assert "if ($allocated -lt $selectedContext)" not in context_gate
-    assert "-lt 64000" in context_gate
+    assert "-lt $minimumContextTokens" in context_gate
+    assert "64000" not in context_gate
     verify_only = context_gate.split("if ($VerifyOnly) {", 1)[1].split("} else {", 1)[0]
     assert "$modelInfo.modelfile" in verify_only
     assert "PARAMETER\\s+num_ctx" in verify_only
@@ -1253,8 +1254,8 @@ def test_ollama_status_returns_every_installed_model_without_inserting_defaults(
     assert "gpt-oss:20b" not in result["models"]
     assert result["model_installed"] is True
     assert result["model_metadata_available"] is True
-    assert result["model_context_supported"] is False
-    assert "64000" in result["model_context_error"]
+    assert result["model_context_supported"] is True
+    assert result["model_context_error"] is None
 
 
 def test_ollama_status_keeps_server_online_when_selected_model_metadata_fails(monkeypatch):
@@ -1315,13 +1316,13 @@ def test_app_and_runner_readiness_scripts_require_model_context_and_tool_capabil
         assert ".context_length" in script
         assert '"tools"' in script
         assert "Model context metadata" in script
-        assert "-ge 64000" in script
+        assert "-ge 512" in script
         assert "Model tool calling" in script
 
     provisioning = (root / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
     assert ".context_length" in provisioning
     assert all("-MaximumRedirection 0" in line for line in provisioning.splitlines() if "http://127.0.0.1:11434" in line and "Invoke-RestMethod" in line)
-    assert "-lt 64000" in provisioning
+    assert "-lt 512" in provisioning
     assert '"tools"' in provisioning
 
 def test_master_engineering_prompt_requires_known_defect_closure_before_code_changes():
