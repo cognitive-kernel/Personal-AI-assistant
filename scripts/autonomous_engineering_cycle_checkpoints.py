@@ -17,7 +17,7 @@ def checkpoint_command(*args: str, capture: bool = True, run_command, python_exe
 
 
 def restore_checkpoint(base_sha: str, *, os_name: str, programdata: str | None, checkpoint_command) -> bool:
-    if os_module.name != "nt" or not programdata:
+    if os_name != "nt" or not programdata:
         return False
     result = checkpoint_command("restore", "--base-sha", base_sha)
     if result.returncode:
@@ -26,7 +26,7 @@ def restore_checkpoint(base_sha: str, *, os_name: str, programdata: str | None, 
 
 
 def start_checkpoint_watcher(base_sha: str, run_id: str, task: int, *, os_module, subprocess_module, sys_module, sysconfig_module, time_module, root: Path, checkpoint_script: Path, execution_state_directory_fn, process_start_time_fn, metadata_confirms_watcher_ready_fn, programdata: str | None) -> subprocess_module.Popen[Any] | None:
-    if os_name != "nt" or not programdata:
+    if os_module.name != "nt" or not programdata:
         return None
     # The venv's Windows python.exe may report a launcher PID instead of the
     # child interpreter PID. Launch with the base interpreter so Popen.pid and
