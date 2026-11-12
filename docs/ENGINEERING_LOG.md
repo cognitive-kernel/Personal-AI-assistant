@@ -755,3 +755,12 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - **Regression protection:** the target-host diagnostic contract test now requires version-aware Python discovery and rejects reintroduction of the Python311 hard-coded path.
 - **Scope/safety:** this changes only runtime discovery; it does not install software, alter the user's machine, weaken service identity checks, or change Ollama/Codex context selection.
 - **Validation:** exact-head GitHub Actions are required for the new commit; results are pending and will be recorded against the exact SHA. The PR remains Draft and is not merged.
+
+
+## 2026-11-12 — Clarify upstream Codex context recommendation
+
+- **Evidence:** the official Ollama Codex integration guide recommends a context window of at least 64k tokens. The adaptive-context implementation intentionally removes an application-enforced 64k floor so constrained hosts can attempt smaller verified contexts; those are not equivalent to the upstream-recommended configuration.
+- **Correction:** ADR-020, the operations guide, and README now distinguish the application's no-fixed-floor policy from Ollama's >=64k recommendation. Sub-64k operation is explicitly labelled best-effort and requires a successful real Codex tool-call smoke test; /api/ps allocation alone is not presented as proof that arbitrary prompts fit.
+- **Regression protection:** documentation-contract tests assert that the upstream recommendation and best-effort qualification remain visible.
+- **Source:** https://docs.ollama.com/integrations/codex
+- **Validation:** exact-head GitHub Actions are running for the resulting commit; no result is claimed until all required checks complete.
