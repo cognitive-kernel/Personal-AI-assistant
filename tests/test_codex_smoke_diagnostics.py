@@ -209,6 +209,12 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert "tests/test_ollama_model_metadata.py" in target_host_tests
     assert "tests/test_codex_smoke_diagnostics.py" in target_host_tests
     assert "tests/test_autonomous_engineering.py" in target_host_tests
+    ci_gate = diagnostic.split(
+        "      - name: Wait for the complete exact-head GitHub CI matrix", 1
+    )[1].split("      - name: Prepare the same service-account runtime", 1)[0]
+    assert 'required = @("tests", "browser-e2e", "dependency-audit")' in ci_gate
+    assert "EXPECTED_HEAD_SHA" in ci_gate
+    assert "latest.conclusion -ne \"success\"" in ci_gate
     assert 'Verify persistent Ollama context after Codex smoke' in diagnostic
     assert 'Verify persistent Ollama context after autonomous Codex task' in autonomous
     assert 'steps.context_preflight.outcome == \'success\'' in diagnostic
