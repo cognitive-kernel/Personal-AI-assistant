@@ -402,3 +402,17 @@ def test_read_metadata_rejects_unsupported_schema_before_mutation(
         checkpoint.read_metadata("run-9", 2)
 
     assert paths["patch"].read_bytes() == b"preserve this patch"
+
+def test_isolated_checkpoint_sha_requires_explicit_pytest_test_mode(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_TEST_BASE_SHA", "a" * 40)
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_TEST_MODE", "1")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    assert checkpoint._isolated_test_base_sha() is None
+
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "tests/test_checkpoint.py::test_case (call)")
+    assert checkpoint._isolated_test_base_sha() == "a" * 40
+
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_TEST_BASE_SHA", "invalid")
+    with pytest.raises(RuntimeError, match="host-verified checkout SHA"):
+        checkpoint._isolated_test_base_sha()
