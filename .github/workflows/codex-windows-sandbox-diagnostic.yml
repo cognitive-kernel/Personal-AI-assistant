@@ -277,12 +277,18 @@ jobs:
           if ($nodeVersionExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($nodeVersion)) {
             throw "Node.js cannot execute under the Runner service identity."
           }
+          if ($nodeVersion -ne "v26.13.0") {
+            throw "Node.js version mismatch: expected v26.13.0, found '$nodeVersion'."
+          }
           $npm = Get-Command npm.cmd -ErrorAction Stop
           $npmVersionOutput = & $npm.Source --version 2>&1
           $npmVersionExitCode = $LASTEXITCODE
           $npmVersion = (@($npmVersionOutput) -join " ").Trim()
           if ($npmVersionExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($npmVersion)) {
             throw "npm.cmd cannot execute under the Runner service identity."
+          }
+          if ($npmVersion -ne "11.20.0") {
+            throw "npm version mismatch: expected 11.20.0, found '$npmVersion'."
           }
           $npmPrefixOutput = & $npm.Source config get prefix 2>&1
           $npmPrefixExitCode = $LASTEXITCODE
@@ -319,8 +325,12 @@ jobs:
           }
           & $pythonPath --version
           if ($LASTEXITCODE -ne 0) { throw "Python cannot execute under the Runner service identity." }
-          & $ollamaPath --version
-          if ($LASTEXITCODE -ne 0) { throw "Ollama CLI cannot execute under the Runner service identity." }
+          $ollamaVersionOutput = & $ollamaPath --version 2>&1
+          $ollamaVersionExitCode = $LASTEXITCODE
+          $ollamaVersion = (@($ollamaVersionOutput) -join " ").Trim()
+          if ($ollamaVersionExitCode -ne 0 -or $ollamaVersion -notmatch '(?i)0\\.40\\.16') {
+            throw "Ollama version mismatch: expected 0.40.16, found '$ollamaVersion'."
+          }
           Write-Host "PowerShell version: $($PSVersionTable.PSVersion.ToString())"
           Write-Host "Node executable: $($node.Source)"
           Write-Host "Node version: $nodeVersion"
@@ -330,8 +340,7 @@ jobs:
           Write-Host "Codex executable: $($codexCommand.Source)"
           Write-Host "Codex version: $codexVersion"
           Write-Host "Ollama executable: $ollamaPath"
-          Write-Host "Ollama version:"
-          & $ollamaPath --version
+          Write-Host "Ollama version: $ollamaVersion"
 
           $computer = Get-CimInstance Win32_ComputerSystem -ErrorAction Stop
           $processors = @(Get-CimInstance Win32_Processor -ErrorAction Stop)
