@@ -884,7 +884,9 @@ def test_ollama_context_preflight_uses_file_based_fail_closed_selector():
     script = (root / "scripts" / "verify_ollama_context.ps1").read_text(encoding="utf-8")
     helper = (root / "app" / "ollama_context.py").read_text(encoding="utf-8")
 
-    assert "--input-file $inputPath" in script
+    assert "$argumentList = " in script and " --input-file " in script
+    assert "Start-Process -FilePath $pythonPath -ArgumentList $argumentList" in script
+    assert "-RedirectStandardOutput $outputPath -RedirectStandardError $errorPath" in script
     assert "$selectionInput | & python" not in script
     assert "Get-LoadedCodexContextState" in script
     assert "reused-verified-loaded-variant" in script
