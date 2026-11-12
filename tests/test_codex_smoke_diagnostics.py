@@ -374,6 +374,8 @@ def test_target_diagnostic_matches_recorded_hardware_and_uses_automatic_context(
     assert "wmi_adapter_ram_bytes" in diagnostic
     assert "OLLAMA_RUNTIME_DEVICE_ALLOCATION" in diagnostic
     assert "size_vram" in diagnostic
+    assert "check_autonomous_runner.ps1" in diagnostic
+    assert "WINDOWS_RUNNER_READINESS_CONTRACT_OK" in diagnostic
     assert "github.ref_name != 'fix/autonomous-engineering-show-all-ollama-models-20261112'" in diagnostic
     assert "github.ref_name == 'fix/autonomous-engineering-show-all-ollama-models-20261112' && '10000'" not in diagnostic
     assert "Get-Command node.exe" in diagnostic
