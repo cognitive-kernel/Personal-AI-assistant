@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import json
-import psutil
+import os
+import subprocess
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any
+
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 from fastapi import HTTPException
 
@@ -141,17 +148,50 @@ def codex_status(which, run_command) -> dict[str, Any]:
     return {"installed": bool(version), "version": version}
 
 
-def runner_status(process_iter) -> dict[str, Any]:
+def runner_status(process_iter=None) -> dict[str, Any]:
+    """Detect the GitHub Runner with psutil when present, otherwise native OS APIs."""
+    if process_iter is None and psutil is not None:
+        process_iter = psutil.process_iter
     found = False
-    for process in process_iter(["name", "cmdline"]):
+    if process_iter is not None:
+        errors = (OSError,) + ((psutil.Error,) if psutil is not None else ())
         try:
-            name = (process.info.get("name") or "").casefold()
-            command = " ".join(process.info.get("cmdline") or []).casefold()
-            if "runner.listener" in name or "runner.listener" in command:
-                found = True
-                break
-        except (psutil.Error, OSError):
-            continue
+            for process in process_iter(["name", "cmdline"]):
+                try:
+                    name = (process.info.get("name") or "").casefold()
+                    command = " ".join(process.info.get("cmdline") or []).casefold()
+                    if "runner.listener" in name or "runner.listener" in command:
+                        found = True
+                        break
+                except errors:
+                    continue
+        except errors:
+            found = False
+    elif os.name == "nt":
+        script = r"""
+$ErrorActionPreference = 'Stop'
+$found = Get-CimInstance -ClassName Win32_Process | Where-Object {
+    $_.Name -match 'Runner\\.Listener' -or $_.CommandLine -match 'Runner\\.Listener'
+} | Select-Object -First 1
+if ($null -ne $found) { 'true' } else { 'false' }
+"""
+        try:
+            result = subprocess.run(
+                ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+                capture_output=True, text=True, timeout=5, check=False, shell=False,
+            )
+            found = bool(result.returncode == 0 and result.stdout.strip().casefold() == "true")
+        except (OSError, subprocess.TimeoutExpired):
+            found = False
+    elif Path("/proc").is_dir():
+        for command_path in Path("/proc").glob("[0-9]*/cmdline"):
+            try:
+                command = command_path.read_bytes().replace(b"\\0", b" ").decode("utf-8", errors="replace").casefold()
+                if "runner.listener" in command:
+                    found = True
+                    break
+            except OSError:
+                continue
     return {"running": found, "process_detected": found}
 
 
