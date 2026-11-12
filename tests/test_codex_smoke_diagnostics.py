@@ -277,3 +277,25 @@ def test_codex_uses_unique_custom_ollama_provider_without_redefining_reserved_pr
     assert not any(value.startswith("model_providers.ollama.") for value in overrides)
     assert "--oss" not in arguments
     assert "--local-provider" not in arguments
+
+
+def test_windows_runner_cli_checks_use_cmd_shims_and_discover_active_ollama():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    runner_check = (root / "scripts" / "check_autonomous_runner.ps1").read_text(encoding="utf-8")
+    workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+
+    assert "Get-Command npm.cmd" in runner_check
+    assert "$npmCommand.Source --version" in runner_check
+    assert "Get-Command codex.cmd" in runner_check
+    assert "$codexCommand.Source --version" in runner_check
+    assert "Get-Command ollama.exe" in runner_check
+    assert 'Get-CimInstance Win32_Process -Filter "Name=\'ollama.exe\'"' in runner_check
+    assert "$ollamaExecutable --version" in runner_check
+
+    assert "Get-Command npm.cmd" in workflow
+    assert "& $npm.Source install --global" in workflow
+    assert "Get-Command codex.cmd" in workflow
+    assert 'Get-CimInstance Win32_Process -Filter "Name=\'ollama.exe\'"' in workflow
+    assert "C:\\Users\\Admin\\AppData\\Local\\Programs\\Ollama\\ollama.exe" not in workflow
