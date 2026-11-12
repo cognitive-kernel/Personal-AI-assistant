@@ -1,5 +1,16 @@
 # وضعیت یکپارچهٔ پروژه
 
+## آخرین بازبینی exact-head — 2026-11-12
+
+- PR فعال: [#722](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/722)، Draft و باز؛ SHA فعلی: `bdb3921ad905a77bb4b29ff50a18b204b2595fde`.
+- بررسی‌های دقیق همین SHA: tests [#43251042284](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43251042284)، Sandbox [#43251042595](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43251042595)، Browser E2E [#43251042720](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43251042720)، Dependency Audit [#43251042801](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43251042801)، و diagnostic خودمیزبان Windows [#43251028710](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43251028710)؛ همگی در زمان ثبت queued هستند و هیچ‌کدام برای این SHA موفق اعلام نمی‌شوند.
+- Windows Storage regressions پس از اصلاح CIM روی SHA میانی `4643710b92ba782eeaf7213039640c99bf2cc71a` موفق شدند؛ این نتیجه برای SHA جدید جایگزین CI نیست.
+- تست واقعی Windows PowerShell 5.1 برای پل UTF-8 به Python به Workflow اضافه شد؛ ۱۰۰۰ توکن زیر توصیهٔ ۶۴k، حالت RAM ناکافی و عدم دوباره‌شماری وزن مدل resident را بررسی می‌کند.
+- Codex اکنون `context_window`، `max_context_window` و override صریح `model_context_window` را روی تخصیص تأییدشدهٔ Ollama قفل می‌کند؛ تنظیم قدیمی حساب Runner نمی‌تواند Context بزرگ‌تری تحمیل کند.
+- PR #717 به‌دلیل قرارداد قدیمی حداقل ثابت ۶۴k بسته و به PR #722 واگذار شد؛ تست PowerShell 5.1 آن پس از بازنویسی متناسب با قرارداد جدید منتقل شد. PR #706 باز می‌ماند چون به Context مسیر عمومی چت Ollama مربوط است، نه مسیر Codex.
+- مشخصات میزبان هدف همچنان Intel Core i5-12400، ۶ هسته/۱۲ رشته، حدود 31.78 GiB RAM و Intel UHD Graphics 730 است. نتیجهٔ diagnostic خودمیزبان روی SHA فعلی هنوز pending است.
+- طبق Master Engineering Prompt، توسعه و CI بدون انتظار برای اجرای محلی/تست انسانی ادامه دارد؛ اما هیچ check قدیمی جایگزین exact-head نمی‌شود و merge تا تکمیل گیت‌های الزامی مجاز نیست.
+
 ## بازبینی سخت‌افزار، پایداری فرایند و محیط آزمون — 2026-11-12
 
 ## بازبینی تکمیلی Windows Runner و وضعیت exact-head — 2026-11-12
@@ -42,7 +53,7 @@
 - PR [#719](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/719) در `2026-11-12` با merge commit `f87e15b9eb76f7395ea4380382d95f1bc64e21ed` در main ادغام شد؛ معماری مالکیت و بازیابی مهندسی خودکار اکنون در baseline قرار دارد.
 - معماری جدید، مالکیت worktree و checkpoint watcher، هویت process، قفل durable state، GitHub transport و چرخهٔ PR را در ماژول‌های مستقل نگه می‌دارد؛ بازیابی مبهم fail-closed است و دادهٔ task/checkpoint حفظ می‌شود.
 - این snapshot مربوط به پیش از ادغام PR #719 است و شواهد قدیمی آن فقط برای همان SHA معتبر است؛ وضعیت جدید و شواهد اجرای واقعی Codex/Ollama در بخش جاری بالا و در PR #722 ثبت شده‌اند.
-- مسیریابی Ollama و OpenAI-compatible، هویت مدل، سقف خروجی و provider سفارشی Codex `ollama-local` در PR #719 ادغام شده‌اند؛ اجرای واقعی و تخصیص تطبیقی Codex/Ollama در PR #722 روی Windows Runner نیز تأیید شده است.
+- مسیریابی Ollama و OpenAI-compatible، هویت مدل، سقف خروجی و provider سفارشی Codex `ollama-local` در PR #719 ادغام شده‌اند. diagnostic موفق قبلی PR #722 فقط مسیر درخواست صریح ۱۰٬۰۰۰ توکن را ثابت می‌کند؛ انتخاب خودکار Context و اجرای diagnostic روی آخرین SHA در بخش exact-head بالا جداگانه pending هستند.
 
 
 > تاریخ بازبینی: 2026-11-12. وضعیت جاری در ابتدای سند ثبت شده است؛ یادداشت‌های پایین‌تر snapshotهای تاریخی هستند.
