@@ -5,7 +5,7 @@ The consolidated PR #722 readiness script still used `Get-Process Runner.Listene
 
 ### Correction
 - Query `Win32_Service` for a running `actions.runner*` service with a nonzero PID.
-- Resolve that PID through `Win32_Process` and require the image name `Runner.Listener.exe`.
+- Resolve that PID through `Win32_Process` and require a `Runner.Listener.exe` child whose `ParentProcessId` matches the service PID.
 - Report the service name, configured service account, and PID only after both checks succeed.
 - Treat CIM inspection failure or an unverifiable listener as not-ready (fail-closed).
 - Add a regression test forbidding the old `Get-Process Runner.Listener` path.
