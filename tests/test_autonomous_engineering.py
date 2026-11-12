@@ -879,15 +879,15 @@ def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_c
     assert ".codex-sandbox-probe.tmp" not in production
     assert '--require-command-fragment "$probeFileName"' in production
 
-def test_ollama_context_preflight_uses_double_safe_budget_module():
+def test_ollama_context_preflight_uses_file_based_fail_closed_selector():
     root = Path(__file__).resolve().parents[1]
     script = (root / "scripts" / "verify_ollama_context.ps1").read_text(encoding="utf-8")
-    module = (root / "scripts" / "OllamaContextMemory.psm1").read_text(encoding="utf-8")
+    helper = (root / "app" / "ollama_context.py").read_text(encoding="utf-8")
 
-    assert 'Import-Module (Join-Path $PSScriptRoot "OllamaContextMemory.psm1")' in script
-    assert "Get-OllamaCacheBudgetBytes -FreeRamGiB $freeRamGiB -WeightsGiB $weightsGiB" in script
-    assert "[Math]::Max(0," not in script
-    assert "[double]$FreeRamGiB" in module
-    assert "[double]$WeightsGiB" in module
-    assert "[Math]::Max([double]0," in module
-
+    assert "--input-file $inputPath" in script
+    assert "$selectionInput | & python" not in script
+    assert "Get-LoadedCodexContextVariant" in script
+    assert "reused-verified-loaded-variant" in script
+    assert "selectedContext -lt 64000" in script
+    assert "MIN_CODEX_CONTEXT_TOKENS = 64000" in helper
+    assert "Available RAM cannot safely support the Codex minimum" in helper
