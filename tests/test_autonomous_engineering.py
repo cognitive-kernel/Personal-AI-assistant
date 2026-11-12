@@ -612,8 +612,6 @@ def test_github_snapshot_does_not_invent_a_model_when_no_repository_variable_is_
 def test_autonomous_workflow_requires_saved_model_without_a_hardcoded_fallback():
     root = Path(__file__).resolve().parents[1]
     workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
-    operations = (root / "docs" / "operations" / "CODEX_AUTONOMOUS_ENGINEERING.md").read_text(encoding="utf-8")
-    master_prompt = (root / "docs" / "MASTER_ENGINEERING_PROMPT.md").read_text(encoding="utf-8")
     assert "vars.AUTONOMOUS_ENGINEERING_MODEL || ''" in workflow
     assert "No model is saved in repository variable AUTONOMOUS_ENGINEERING_MODEL" in workflow
     assert "vars.AUTONOMOUS_ENGINEERING_MODEL || 'gpt-oss:20b'" not in workflow
@@ -811,6 +809,8 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     page = (root / "app" / "static" / "autonomous-engineering.html").read_text(encoding="utf-8")
     script = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
     workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    operations = (root / "docs" / "operations" / "CODEX_AUTONOMOUS_ENGINEERING.md").read_text(encoding="utf-8")
+    master_prompt = (root / "docs" / "MASTER_ENGINEERING_PROMPT.md").read_text(encoding="utf-8")
     runner_check = (root / "scripts" / "check_autonomous_runner.ps1").read_text(encoding="utf-8")
     acl_script = (root / "scripts" / "configure_autonomous_engineering_progress.ps1").read_text(encoding="utf-8")
     api_paths = {route.path for route in agent.router.routes}
