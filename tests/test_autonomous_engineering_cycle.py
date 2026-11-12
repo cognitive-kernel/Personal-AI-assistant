@@ -536,6 +536,8 @@ def test_checkpoint_watcher_real_process_publishes_run_scoped_readiness(
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(state))
     env = os.environ.copy()
     env["AUTONOMOUS_ENGINEERING_PROGRESS_DIR"] = str(state)
+    if os.environ.get("AUTONOMOUS_ENGINEERING_TEST_BASE_SHA"):
+        env["AUTONOMOUS_ENGINEERING_TEST_MODE"] = "1"
     run_id = f"integration-{os.getpid()}"
     task = 91
     # Match the production launch path: on Windows, bypass the venv launcher
