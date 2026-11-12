@@ -12,7 +12,7 @@ function Get-AutonomousTaskDigest {
     }
 }
 
-function Read-AutonomousTaskOwnerRecord {
+function Get-AutonomousTaskOwnerRecord {
     param(
         [Parameter(Mandatory=$true)][string]$Path,
         [Parameter(Mandatory=$true)][string]$Task
@@ -74,7 +74,7 @@ function Read-AutonomousTaskOwnerRecord {
     return $record
 }
 
-function Recover-AutonomousPendingStateCleanup {
+function Repair-AutonomousPendingStateCleanup {
     param([Parameter(Mandatory=$true)][string]$StateDirectory)
     $markerPath = Join-Path $StateDirectory "pending-state-cleanup.json"
     try {
@@ -185,4 +185,4 @@ function Write-AutonomousTaskOwnerRecord {
     return $record
 }
 
-Export-ModuleMember -Function Get-AutonomousTaskDigest, Read-AutonomousTaskOwnerRecord, Write-AutonomousTaskOwnerRecord, Recover-AutonomousPendingStateCleanup
+Export-ModuleMember -Function Get-AutonomousTaskDigest, Get-AutonomousTaskOwnerRecord, Write-AutonomousTaskOwnerRecord, Repair-AutonomousPendingStateCleanup
