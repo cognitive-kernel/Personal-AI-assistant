@@ -450,6 +450,8 @@ def test_active_codex_documentation_matches_adaptive_context_contract():
     assert "model_context_window={context_window}" in (root / "scripts" / "autonomous_engineering_codex_config.py").read_text(encoding="utf-8")
     assert "inherited Codex configuration from raising" in adr
     assert "inherited Codex config cannot increase it" in operations
+    assert "signed 64-bit maximum accepted by Codex" in adr
+    assert "currently 1,048,576 tokens" not in adr
     assert "تنظیمات قدیمی Codex نتوانند Context بزرگ‌تری تحمیل کنند" in readme
 
 def test_windows_provisioning_and_app_readiness_use_consistent_cli_resolution():
