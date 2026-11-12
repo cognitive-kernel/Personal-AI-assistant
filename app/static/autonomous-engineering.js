@@ -22,12 +22,21 @@
   function renderModels(models, selectedModel, selectedModelIsContextVariant) {
     const select = $("ollama-model");
     if (document.activeElement === select) return;
+    const isInternalContextVariant = (name) =>
+      /-codex-(?:ctx[0-9]+|[0-9]+k)$/i.test(name);
     const installed = [...new Set(
-      Array.isArray(models) ? models.filter(name => typeof name === "string" && name.trim()) : []
+      Array.isArray(models) ? models.filter(name =>
+        typeof name === "string" && name.trim() && !isInternalContextVariant(name)
+      ) : []
     )];
-    const savedModelUnavailable = Boolean(selectedModel) && (!installed.includes(selectedModel) || selectedModelIsContextVariant);
+    const selectedIsInternalContextVariant =
+      selectedModelIsContextVariant || isInternalContextVariant(selectedModel || "");
+    const savedModelUnavailable = Boolean(selectedModel) &&
+      (!installed.includes(selectedModel) || selectedIsInternalContextVariant);
     const names = [...installed];
-    if (savedModelUnavailable && !installed.includes(selectedModel)) names.unshift(selectedModel);
+    if (savedModelUnavailable && !installed.includes(selectedModel) && !selectedIsInternalContextVariant) {
+      names.unshift(selectedModel);
+    }
     select.replaceChildren();
     if (!installed.length && !savedModelUnavailable) {
       const option = document.createElement("option");
@@ -43,7 +52,7 @@
       placeholder.value = "";
       placeholder.disabled = true;
       placeholder.selected = true;
-      placeholder.textContent = selectedModelIsContextVariant
+      placeholder.textContent = selectedIsInternalContextVariant
         ? "مدل ذخیره‌شده نسخهٔ داخلی Context است؛ مدل اصلی را انتخاب کنید"
         : savedModelUnavailable
           ? "مدل ذخیره‌شده نصب نیست؛ مدل دیگری انتخاب کنید"
@@ -53,7 +62,7 @@
     for (const name of names) {
       const option = document.createElement("option");
       option.value = name;
-      const contextVariant = /-codex-ctx[0-9]+$/i.test(name);
+      const contextVariant = isInternalContextVariant(name);
       const unavailableSavedModel = savedModelUnavailable && name === selectedModel;
       option.textContent = name + (contextVariant
         ? " (نسخهٔ داخلی Context؛ قابل انتخاب نیست)"
@@ -64,7 +73,7 @@
       }
       select.append(option);
     }
-    select.value = selectedModel && installed.includes(selectedModel) && !selectedModelIsContextVariant ? selectedModel : "";
+    select.value = selectedModel && installed.includes(selectedModel) && !selectedIsInternalContextVariant ? selectedModel : "";
   }
   function renderRuns(runs) {
     const host = $("recent-runs");
@@ -124,7 +133,7 @@
         ? "؛ این نسخهٔ داخلی Context است؛ مدل اصلی را انتخاب و ذخیره کنید"
         : data.model && !checks.model_installed ? "؛ مدل ذخیره‌شده روی این سیستم نصب نیست" : "";
       $("model-detail").textContent = modelLabel + installationText + contextText + toolsText;
-      renderModels(data.models || data.selectable_models, data.model, checks.model_is_codex_context_variant);
+      renderModels(data.selectable_models || data.models, data.model, checks.model_is_codex_context_variant);
       const executionMode = data.execution_mode || "continuous";
       if (document.activeElement !== $("execution-mode")) {
         $("execution-mode").value = executionMode;
