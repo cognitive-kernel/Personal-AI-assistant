@@ -201,6 +201,14 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert '-VerifyOnly' in diagnostic
     assert '-VerifyOnly' in autonomous
     assert 'group: autonomous-local-engineering-${{ github.repository }}' in diagnostic
+    target_host_tests = diagnostic.split(
+        "      - name: Run adaptive-context regression suite on the target Windows host", 1
+    )[1].split("      - name: Inventory installed Ollama models and capabilities", 1)[0]
+    assert "python -m venv" in target_host_tests
+    assert "tests/test_ollama_context.py" in target_host_tests
+    assert "tests/test_ollama_model_metadata.py" in target_host_tests
+    assert "tests/test_codex_smoke_diagnostics.py" in target_host_tests
+    assert "tests/test_autonomous_engineering.py" in target_host_tests
     assert 'Verify persistent Ollama context after Codex smoke' in diagnostic
     assert 'Verify persistent Ollama context after autonomous Codex task' in autonomous
     assert 'steps.context_preflight.outcome == \'success\'' in diagnostic
