@@ -413,7 +413,8 @@ def test_active_codex_documentation_matches_adaptive_context_contract():
     assert "اگر ظرفیت امن به ۶۴٬۰۰۰ توکن نرسد" not in readme
     assert "هیچ حداقل ثابت ۶۴٬۰۰۰ یا ۵۱۲ توکنی وجود ندارد" in readme
     assert "PR [#702](" in status
-    assert "یک شاخهٔ تاریخی و superseded بود" in status
+    assert "با قرارداد ثابت ۶۴k در main ادغام شد" in status
+    assert "الزام ثابت ۶۴k آن توسط PR #722 superseded می‌شود" in status
     assert "حداقل Codex یک توکن مثبت" in status
     assert "There is no Codex-specific 64,000-token minimum" in operations
     assert "There is no fixed minimum context window" in adr
