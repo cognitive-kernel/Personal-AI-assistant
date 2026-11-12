@@ -1,6 +1,6 @@
 ## 2026-11-12 — PR #707 ownership/checkpoint reconciliation
 
-PR #707 was closed as superseded. Merged PR #719 (merge commit `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`) already incorporated its checkpoint/process ownership, durable task-state locking, serialized manual-task persistence, unique Runner ownership, ADR-014/015, and regression coverage. Current `main` has newer implementations than the stale PR #707 branch; its old workflow assertions and pending-PR URL validation are not to be merged separately. PR #722 no longer depends on rebasing PR #707. Historical references below describe the state at the time they were recorded.
+PR #707 was closed as superseded. Merged PR #719 (merge commit `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`) already incorporated its checkpoint/process ownership, durable task-state locking, serialized manual-task persistence, unique Runner ownership, ADR-014/015, and regression coverage. Current `main` has newer implementations than the stale PR #707 branch; its old workflow assertions and pending-PR URL validation are not to be merged separately. PR #722 no longer depends on rebasing PR #707. Historical references below describe the state at the time they were recorded. The latest documentation-inclusive PR #722 head before this status update was `234643106cfe675bacc18290a926987131f34aee`: dependency audit passed; tests, Windows Storage, Browser E2E, and Docker sandbox were in progress; the self-hosted Windows diagnostic remained pending without a runner assignment.
 
 ---
 
