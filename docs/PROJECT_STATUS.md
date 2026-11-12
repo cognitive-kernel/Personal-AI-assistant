@@ -1,21 +1,19 @@
 # وضعیت یکپارچهٔ پروژه
 
-> آخرین به‌روزرسانی مهندسی: 2026-11-10
+## وضعیت جاری — تکمیل معماری Autonomous Engineering (PR #714)
 
-## مالکیت اجرای خودکار و بازیابی checkpoint — PR #707
+- مبنای زندهٔ `main`: `215f4928400282cdcabdd0e979910624094523f0`. PR #711 در زنجیرهٔ فعلی main ادغام شده است.
+- شاخهٔ کار: `feat/autonomous-engineering-architecture-completion-20261112`؛ PR [#714](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/714) به‌صورت Draft باز است.
+- مرزبندی مالکیت worktree، checkpoint watcher، هویت فرایند watcher و state پایدار task/PR به ماژول‌های کوچک و قراردادهای مجزا منتقل شده است. قفل task/PR بین Python و PowerShell مشترک است و runner محلی با برچسب یکتای `autonomous-state-owner` انتخاب می‌شود.
+- اعتبارسنجی pending PR و قرارداد تست workflow اصلاح شده‌اند. نتایج exact-head CI در انتظار هستند؛ هیچ‌یک از تست‌های target-host یا اجرای زندهٔ مدل هنوز پذیرفته‌شده نیست.
+- گیت‌های باقی‌مانده: تکمیل تست‌های Linux و Windows، browser E2E و dependency audit روی SHA نهایی؛ سپس اجرای واقعی با مدل ذخیره‌شده، Codex sandbox/MXC، crash/restart و restore روی Runner مالک.
 
-- PR [#707](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/707) به‌صورت Draft و بر مبنای `main` باز است؛ ادغام نشده است.
-- ریشهٔ نقص: `stop_existing_watcher()` خطای `AccessDenied` و خطاهای دیگر بررسی/توقف فرایند را نادیده می‌گرفت و بازیابی/پاک‌سازی را ادامه می‌داد. مالکیت فرایند نیز فقط با PID و تطبیق سست command line تشخیص داده می‌شد؛ PID reuse و هویت واقعی فرایند تازه ایجادشده کنترل نمی‌شد.
-- اصلاح معماری: قفل انحصاری worktree از orchestrator به `scripts/autonomous_engineering_execution_lock.py` منتقل شده و API سازگار قبلی در `cycle.py` حفظ شده است. چرخهٔ عمر watcher در `scripts/autonomous_engineering_checkpoint_process.py` مستقل شده است. مالکیت فایل‌های وظیفه و PR نیز با mutex مشترک Python/PowerShell در `scripts/autonomous_engineering_state_lock.py` هماهنگ شده و مسیر state در `scripts/autonomous_engineering_state_paths.py` یکپارچه شده است.
-- قرارداد checkpoint به schema 4 ارتقا یافته و readiness به run/task/base SHA/PID/process creation time متصل شده است. ماژول `autonomous_engineering_checkpoint_lock.py` مالکیت انحصاری OS-released را برای کل عمر watcher برقرار می‌کند؛ snapshot، restore، migration، stop و cleanup از همان قفل استفاده می‌کنند و watcher تکراری رد می‌شود. metadata خراب/ناقص یا patch-size mismatch دیگر باعث fallback به checkpoint قدیمی نمی‌شود؛ schemaهای v2/v3/v4 با قواعد سازگار خوانده می‌شوند. AccessDenied، هویت مبهم، فرایند legacy فعال بدون هویت شروع، timeout و عدم reap باعث توقف fail-closed می‌شوند؛ checkpoint پاک یا overwrite نمی‌شود. ثبت وظیفهٔ دستی، ذخیره/بازیابی PR و پاک‌سازی task+PR اکنون زیر یک قفل وضعیت مشترک انجام می‌شوند. فایل task با sidecar نسخه‌دار مالکیت شامل SHA-256، شناسه/تلاش ثبت اولیه، مالک جاری، شمار دفعات claim و زمان‌ها همراه است؛ PowerShell و Python قرارداد یکسان را اعتبارسنجی می‌کنند و capture مالک اجرای جاری را ثبت می‌کند. پاک‌سازی چندفایلی پس از merge ابتدا intent پایدار می‌نویسد و در صورت crash اجرای بعدی آن را idempotent ادامه می‌دهد. PR پیش از انتظار CI به‌صورت پایدار ثبت می‌شود.
-- Regressionهای fault-injection، تطبیق هویت فرایند، crash-release قفل، حفظ checkpoint در restore/clear ناموفق، startup مالک قبلی، قفل مشترک Python/PowerShell، sidecar مالکیت task و تست تطبیق SHA-256 بین Python/.NET، claim مجدد پس از crash، cleanup intent قابل‌بازیابی، جلوگیری از ثبت وظیفه هنگام اجرای دیگر، ثبت مالک PR پیش از CI، سازگاری schemaهای v2/v3/v4 و جلوگیری از fallback به snapshot قدیمی اضافه شده‌اند. Runner محلی نیز با برچسب یکتای `autonomous-state-owner` pin شده است؛ provisioning یکتایی برچسب را از GitHub API کنترل می‌کند و workflow فقط روی همان Runner اجرا می‌شود. dispatch دستی در زمان pause یا اجرای دیگر به‌صورت خطای آشکار رد می‌شود، نه اینکه بی‌صدا گم شود.
-- **اعتبارسنجی:** اجرای exact-head CI برای SHA نهایی PR #707 در انتظار است. اجرای واقعی روی Runner ویندوزی مالک، crash/restart و restore/cleanup نیز هنوز انجام/تأیید نشده‌اند. تا تکمیل این شواهد، این اصلاحات پذیرفته‌شده یا آمادهٔ ادغام محسوب نمی‌شوند.
 
-> تاریخ بازبینی: 2026-11-07. این بخش وضعیت جاری را مشخص می‌کند؛ یادداشت‌های قدیمی‌تر پایین سند، snapshotهای تاریخی هستند.
+> تاریخ بازبینی: 2026-11-12. وضعیت جاری در ابتدای سند ثبت شده است؛ یادداشت‌های پایین‌تر snapshotهای تاریخی هستند.
 
-## وضعیت فعلی اتوماسیون — PR #702
+## وضعیت تاریخی اتوماسیون — PR #702 (snapshot قدیمی)
 
-- مبنای فعلی `main`: `a9c4522e94cf1558b616ca98510d1b8654e8e53e`. PR [#701](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/701) در همین SHA ادغام شده است؛ اصلاحات حفظ وظیفهٔ دستی، checkpoint، recovery، هم‌ترازی داشبورد و ترتیب persistence پیش از schedule gate اکنون بخشی از main هستند.
+- مبنای فعلی `main`: `a01e414ea3124213bc4d06496f55c74ad6ef9ef4`. PR [#701](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/701) در همین SHA ادغام شده است؛ اصلاحات حفظ وظیفهٔ دستی، checkpoint، recovery، هم‌ترازی داشبورد و ترتیب persistence پیش از schedule gate اکنون بخشی از main هستند.
 - PR [#702](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/702) روی شاخهٔ `fix/automation-codex-context-smoke-20261107` باز و هنوز ادغام‌نشده است. این PR برای رفع دو گیت باقیماندهٔ Codex/Ollama روی Windows Runner است.
 - شواهد آخرین اجرای ناموفق پیش از اصلاحات: [run 42355938096](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/42355938096). حساب غیرمدیر Runner توانست MXC، اجرای مستقیم `cmd.exe` و Python را با markerهای `MXC_SERVICE_OK` و `MXC_CMD_PYTHON_OK` اجرا کند؛ اما اجرای واقعی Codex پنج command event داشت، هیچ agent message نساخت و smoke gate شکست خورد. این اجرا موفق محسوب نمی‌شود.
 - ریشهٔ Context: preflight قبلی فقط در درخواست warm-up مقدار `options.num_ctx=64000` را می‌فرستاد. درخواست‌های مستقل Codex از مدل پایه دوباره با مقدار پیش‌فرض ۸۱۹۲ بارگذاری می‌شدند. سقف Context مدل در metadata، Context تخصیص‌یافتهٔ runtime را اثبات نمی‌کند.
@@ -45,7 +43,32 @@
 
 **مبنای وضعیت:** PR #664، #667، #668 و #669 قبلاً مستندات، صف پایدار یادگیری، لاگ مهندسی، scorecard و کنترل تشخیص زبان را به main افزودند. PR #671 نیز ذخیرهٔ exception خام و diagnostics کنترل‌نشده در کشف منابع ابری را حذف کرد و با squash commit `2a5c83bf0ba924f4a2c8f206338a04872562d72d` ادغام شد. Exact-head CI برای PR #671 موفق است؛ post-merge tests، dashboard smoke، dependency audit و Windows storage روی SHA فعلی همگی موفق شده‌اند. Issue #52، پذیرش میزبان هدف، staging restore/rollback و ارزیابی زنده همچنان دروازه‌های باز هستند.
 
+## وضعیت فعلی یادگیری و ادامهٔ تکمیل — پس از PR #710
+
+- PR #710 در 2026-11-11 با squash در `main` ادغام شد؛ merge commit: `9e198a0640593bcc3892f3a97aa8956ba522653c`. CI دقیق head پیش از ادغام: tests **2028 passed / 50 deselected**، Windows storage **11 passed / 47 deselected**، browser E2E و dependency audit موفق. این نتیجه فقط همان commit و دامنهٔ همان workflowها را پوشش می‌دهد.
+- PR [#711](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/711) در 2026-11-11 با squash در `main` ادغام شد؛ merge commit: `02006e2b82f800c07b50ad5e849093ad07786f60`. شاخهٔ `feature/universal-learning-contract-v2` اکنون تکمیل و ادغام شده است.
+- پرامپت Master Engineering تکمیل شده است تا موضوع کاربر به‌تنهایی محدودهٔ syllabus باشد؛ مثال‌های کاربر حق محدودکردن سرفصل‌ها را ندارند. برای هر موضوع، نقشهٔ جامع، مدل chronology واقعی، release ledger، ثبت تاریخ انتشار/سال/نسخه، ردیابی منبع در سطح ادعا/درس، و پایش patch/hotfix/security/errata/deprecation/EOL الزام شده است.
+- سیاست ادغام prompt اصلاح شده: تست‌های خودکار قابل اجرا روی exact SHA gate هستند؛ تست‌های local/target-host/human که در دسترس نیستند باید PENDING/NOT RUN بمانند و مانع ادامهٔ کار یا ادغام خودکار نشوند، مگر آنکه branch protection یا بررسی امنیتی مستقل صراحتاً آن‌ها را gate کرده باشد. هیچ تست انجام‌نشده‌ای موفق گزارش نمی‌شود.
+- در `app/learning_curriculum_tasks.py` شواهد منابع به صورت round-robin در batchهای 8تایی به مدل ارائه می‌شوند. اگر مدل زودتر `has_more=false` بدهد، task تا بررسی تمام منابع ذخیره‌شده ادامه پیدا می‌کند؛ batch آخر می‌تواند بدون افزودن عنوان تکراری، پایان بررسی شواهد را ثبت کند.
+- سقف ثابت 10 URL برای هر موضوع، 30 نسخه/سال در metadata و 40 حوزهٔ پوشش حذف شده است؛ اندازهٔ پاسخ JSON و batch فقط محدودیت هر درخواست هستند. تعداد کل سرفصل‌ها و منابع با checkpoint ادامه‌پذیر است.
+- `web_sources.discover_sources` اکنون تا 30 نتیجه در هر درخواست fetch می‌کند (حد provider per-request)، و مسیر curriculum برای هر query این ظرفیت را درخواست می‌کند. تعداد کل منابع/بچ‌ها به این مقدار محدود نمی‌شود.
+- متن کامل صفحات قابل‌استخراج در migration 46 در جدول `learning_research_source_text` نگهداری می‌شود؛ فقط metadata و excerpt کوتاه در checkpointهای تکراری می‌ماند. هر منبع به قطعات ۱۰۰۰ نویسه‌ای تقسیم می‌شود و همهٔ قطعات در batchهای ترتیبی به مدل ارائه می‌شوند. هنگام پایان task، source text به path تحقیق متصل می‌شود و متن کامل در `sources_json` تکرار نمی‌شود.
+- استخراج تاریخ انتشار/به‌روزرسانی از metadataهای رایج HTML اضافه شده است؛ نبود metadata همچنان unknown می‌ماند. آزمون‌های رگرسیون برای حفظ متن کامل، chunking، استخراج تاریخ، پوشش تمام منابع در چند batch، 103 منبع در 13 batch، release history بیش از 30 مورد، و retrieval بیش از 5 منبع اضافه شده‌اند؛ CI شاخهٔ تکمیلی هنوز باید اجرا و بررسی شود.
+- subject map، release ledger، فهرست شکاف‌ها و coverage audit در migration 47 به‌صورت پایدار ذخیره و از API مسیر یادگیری قابل بازیابی هستند؛ تاریخچهٔ نسخه‌ها با تاریخ واقعی انتشار و نسخه مرتب می‌شود و داده‌های متعارض/ناقص حذف نمی‌شوند.
+- پاسخ‌های دستیار از تاریخچهٔ محلی چت و تحقیق، حتی اگر کوتاه یا کم‌کیفیت باشند، به‌عنوان candidate با وضعیت unverified ثبت می‌شوند؛ پاسخ‌های دارای credential آشکار برای جلوگیری از ذخیرهٔ secret حذف می‌شوند. این مشاهده‌ها در ساخت syllabus و تولید درس مرتبط به‌عنوان دادهٔ کمکیِ غیرقابل‌اعتماد وارد prompt می‌شوند، نه دانش تأییدشده.
+- اصلاح خودکار گزارش خرابی درس با ایجاد job و revision جدید انجام می‌شود؛ درس قبلی، گزارش کاربر و provenance حفظ می‌شوند. کیفیت پایین یا ارزیابی ناقص باعث حذف محتوا نمی‌شود و بازبینی معنایی مستقل از مدل تولید در صورت پیکربندی قابل اجراست.
+- پایش نسخه‌ها در runtime یادگیری هر ۳۰ ثانیه اجرا می‌شود؛ حداکثر سه مسیر due در هر چرخه پردازش می‌شوند و باقی‌مانده با زمان‌بندی پایدار در چرخه‌های بعدی ادامه می‌یابد. تغییر release fingerprint یک پژوهش افزایشی جدید ایجاد می‌کند و مسیر قدیمی حفظ می‌شود.
+- تنظیمات دائمی و موقت provider/model برای laneهای موجود از API و رابط تنظیمات پشتیبانی می‌شود؛ Ollama و endpointهای محلی/راه‌دور OpenAI-compatible قابل انتخاب‌اند. مدل پیش‌فرض learning برابر `gpt-oss:20b` است؛ اجرای واقعی آن روی محیط میزبان مقصد هنوز انجام‌شده ادعا نمی‌شود.
+- آخرین اعتبارسنجی exact-head پیش از ادغام روی SHA `cd0f7242d44b51b2b5b76c29e4f1abd39409bee0`: tests **2045 passed / 50 deselected**، Windows storage **11 passed / 47 deselected**، Browser E2E موفق و dependency audit موفق. همین SHA با squash در merge commit بالا وارد `main` شد. وجود فایل‌های کلیدی و migration 47 روی `main` پس از ادغام نیز بررسی شد.
+- اجرای واقعی میزبان مقصد، تست انسانی و اجرای زندهٔ `gpt-oss:20b` هنوز انجام‌شده ادعا نمی‌شوند و طبق دستور کاربر merge gate نیستند؛ هر نتیجهٔ آن‌ها در گزارش به‌صورت جداگانه ثبت می‌شود.
+
+
 ## 1.1 تغییرات جدید پس از snapshot قبلی
+
+- **آخرین اعتبارسنجی PR #710:** روی commit دقیق `5e58301417767124ee01b9f4e331a6fd74354525` همهٔ workflowهای GitHub موفق شدند: tests [#43001048500](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43001048500) با **1,980 passed / 50 deselected**، تست‌های Windows storage، بررسی artifactهای یادگیری، 94 لینک Markdown، import-cycle checks، benchmark بازیابی و claim-to-test برابر **10/10**؛ browser E2E [#43001048937](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43001048937)؛ dependency audit [#43001048856](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43001048856). این نتایج CI هستند؛ اجرای واقعی مدل، RAM/latency، بازیابی پس از restart زیر بار مدل و کیفیت درس فارسی/انگلیسی روی میزبان مقصد هنوز تأیید نشده‌اند. PR #710 در 2026-11-11 با commit `9e198a0640593bcc3892f3a97aa8956ba522653c` ادغام شد؛ این CI تاریخی مربوط به SHA قدیمی‌تر است و نباید به‌عنوان اعتبارسنجی PRهای بعدی استفاده شود.
+
+
+- PR [#710](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/710) (جایگزین PR #709): سقف کلی سرفصل/درس/batch حذف شده است؛ batchهای checkpointشدهٔ ۸ تا ۴۰تایی صرفاً اندازهٔ هر درخواست هستند. مدل پیش‌فرض `gpt-oss:20b` است و جایگزینی خاموش مدل مجاز نیست. سرفصل هر موضوع مستقل از مثال کاربر و از نخستین نسخهٔ مستند تا جدیدترین نسخه به ترتیب سال و نسخه ساخته می‌شود؛ تاریخ انتشار از تاریخ به‌روزرسانی منبع و زمان بازیابی جدا ذخیره می‌شود. Migration 43 provenance نسخه و migration 44 پایش دوره‌ای انتشار را اضافه می‌کنند. امتیاز کیفیت مانع نگهداری درس غیرخالی نیست؛ گزارش خطای کاربر job اصلاحی جدید می‌سازد و درس قبلی را تغییر نمی‌دهد. پایش هر شش ساعت تغییر fingerprint منابع را به صف یادگیری می‌فرستد. **CI موفق قبلی فقط روی SHA قدیمی `d18fceea301c51ef56e3731b03055af446c2be04` معتبر است** و تغییرات جدید را پوشش نمی‌دهد. PR همچنان Draft و ادغام‌نشده است؛ تست محلی میزبان مقصد برای ادغام لازم است.
 
 - PR [#641](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/641): تابع maintenance دوره‌ای AI-learning اکنون reconciliation idempotent وظایف `learning.run_job` را اجرا می‌کند تا شکست موقت enqueue در زمان اجرای برنامه بدون restart ترمیم شود. خطای reconciliation مستقل ثبت می‌شود و مانع اجرای factual/browser maintenance نمی‌شود. دو regression برای ایجاد دقیقاً یک task و ادامهٔ maintenance پس از خطای تزریق‌شده اضافه شده‌اند؛ ADR-017 قرارداد را ثبت می‌کند. commit موجود در `main`: `8d7674cde9ebb5684ab6102eecf4e0ca8a0a824d`. CI پس از ادغام این SHA هنوز مستقلاً تأیید نشده است.
 - PR [#642](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/642): آزمون Chromium برای فعال‌سازی Skip Link، انتقال focus به main landmark، پیمایش صفحه‌کلید به تمام ۱۵ مقصد ناوبری و فعال‌سازی مسیر مدیریت وظایف با Enter اضافه شد. تغییر runtime ندارد. CI روی head دقیق `87d888490499c7f405f4a8798a17767837ded4df`: 1752 passed و 5 skipped؛ Windows storage، browser E2E و dependency audit موفق. ادغام در `main`: `c6a28ce21cfaa6130bed36e7fbb173e4cf39a9be`. آزمون دستی screen-reader همچنان دروازهٔ انسانی است.
@@ -118,6 +141,9 @@
 
 ### 2.1 یادگیری و دانش
 
+- [x] مسیر پژوهش‌محور موضوع‌به‌سرفصل‌به‌درس با `gpt-oss:20b` در PR [#709](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/709) پیاده‌سازی شده است؛ آخرین exact-head CI روی `bc5de1b891526930f1b4b766505843e03c499410` سبز شد (۱۹۷۱ تست موفق، ۵۰ مورد deselected؛ Windows storage، browser E2E و dependency audit موفق).
+- [ ] آزمون واقعی بارگذاری/استنتاج و سنجش RAM/latency/کیفیت روی میزبان هدف؛ تا تکمیل این گیت قابلیت merge نمی‌شود.
+
 شرح جامع رفتار فعلی، محدودیت‌ها، سطوح شواهد، ارزیابی و نقشهٔ راه یادگیری در [راهنمای جامع زیرسامانه یادگیری](LEARNING.md) نگهداری می‌شود تا این سند به مرجع تکراری تبدیل نشود.
 
 ### 2.2 اجرای وظایف، رابط و کنترل تغییرات
@@ -142,6 +168,7 @@
 - [ ] تکمیل ممیزی کل مخزن، مرزهای مالکیت داده و وابستگی‌های زمان اجرا؛ بررسی فایل‌های GitHub به‌تنهایی ممیزی کامل checkout نیست.
 - [ ] اجرای ابزار baseline روی میزبان هدف و نگهداری گزارش redacted شامل commit/runtime و سلامت ذخیره‌سازی.
 - [ ] اجرای benchmark صف و آزمون‌های بار/بازیابی روی سخت‌افزار هدف و آرشیو نتایج.
+- [ ] اعتبارسنجی مدل `gpt-oss:20b` و صف درس‌های پژوهش‌محور روی Windows با RAM 32GB و Core i5-12400؛ ثبت زمان بارگذاری، peak RAM، زمان هر درس و کیفیت فارسی/انگلیسی.
 - [ ] تکمیل fault injection و سناریوهای توقف/لغو/بازیابی برای همهٔ انواع وظیفه.
 - [ ] تمرین عملی backup، restore روی staging و update/rollback طبق runbook.
 - [ ] تکمیل بازبینی امنیتی مستقل برای [Issue #52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) و ثبت نتیجهٔ اصلاحات.
@@ -328,3 +355,54 @@
 - The task-persistence step now runs only after a pinned checkout of trusted `main`, so its PowerShell script is present on a fresh/clean Runner workspace. The checkout does not persist Git credentials.
 - The persistence step remains before Python/Ollama/Codex preflight. A regression assertion protects this order.
 - Follow-up commits: implementation `e1d47d05bc30cf536e1f8a98bd8e272d4590b53a`; test `0745b50e30a38a08421d6083af8b16eaa750e0c0`. Exact-head CI and target-runner verification remain pending.
+
+
+- تنظیمات LLM: provider مستقل Ollama یا OpenAI-compatible برای چت، برنامه‌ریزی پژوهش، یادگیری، برنامه‌نویسی، بازبینی factual و embedding؛ انتخاب مدل/endpoint از داشبورد، API key فقط از environment و حالت موقت تا restart یا ذخیرهٔ دائمی. اگر همهٔ laneها جایگزین شوند Ollama از bootstrap حذف می‌شود. انتقال prompt/context به endpoint غیرمحلی فقط پس از انتخاب صریح provider انجام می‌شود. CI exact-head فعلی در حال اجراست و تا پایان آن موفق اعلام نمی‌شود.
+
+
+### اصلاح تکمیلی منابع یادگیری — 2026-11-11
+
+- بازبینی خواستهٔ مالک نشان داد حداقل سه صفحه از دو دامنه، مانع شروع یادگیری در موضوعات کم‌منبع یا منابع غیرقابل‌دسترسی می‌شد. این شرط سخت حذف شد؛ صفر، یک یا چند منبع قابل‌استفاده دیگر مانع ساخت دوره نیستند.
+- همهٔ منابع مرتبطِ قابل‌استفاده، فارغ از رسمی‌بودن یا اعتبار ناشر، با provenance نگهداری می‌شوند. سطح اعتبار، تازگی، تعارض و کمبود شواهد باید جداگانه برچسب بخورند و دلیل حذف داده نباشند.
+- وقتی منبعی موجود نیست، دوره با دانش مدل ادامه می‌یابد و وضعیت آن unverified می‌ماند؛ نبود منبع به‌عنوان صحت تأییدشده تفسیر نمی‌شود.
+- تغییرات در app/learning_curriculum_tasks.py، آزمون‌های tests/test_learning_curriculum_tasks.py و راهنمای docs/LEARNING.md ثبت شده‌اند. آزمون‌های خودکار exact-head و تست میزبان هنوز اجرا/تأیید نشده‌اند.
+
+- اصلاح تکمیلی: سقف نگهداری ۴۰ منبع و سقف سه منبع برای هر دامنه نیز حذف شد؛ تمام نتایج قابل‌استفادهٔ برگشتی از هر query با URL/hash/provenance حفظ می‌شوند. محدودیت excerptهای ارسالی به هر فراخوانی مدل صرفاً بودجهٔ context همان درخواست است و به معنی حذف منبع از سابقهٔ دوره نیست. آزمون چهار منبع از یک دامنه در هر query اضافه شد.
+
+- بازبینی تمام call-siteهای سقف منبع، یک reference قدیمی در پایش انتشار را آشکار کرد که پس از حذف constant می‌توانست در اولین نتیجهٔ معتبر خطای NameError ایجاد کند. شرط‌های باقی‌مانده حذف شدند؛ تست‌های موجود baseline/change/deduplication پایش انتشار این مسیر را پوشش می‌دهند و باید روی exact-head اجرا شوند.
+
+- بازبینی دوم checkpointها نشان داد یک برش قدیمی با سقف ۴۰ منبع در مسیر بازیابی باقی مانده بود و هنگام resume خطا ایجاد می‌کرد. آن هم حذف شد و آزمون بازیابی ۴۵ منبع با provenance query اضافه شد تا کل فهرست منابع پس از restart حفظ شود.
+
+- شرط باقی‌ماندهٔ «فقط در صورت تأیید منبع رسمی» از prompt تغییرات نسخه‌ای حذف شد؛ گزارش‌های غیررسمی نیز جمع‌آوری و به منبع خود منتسب می‌شوند و در صورت نبود corroboration به‌صورت unverified باقی می‌مانند. آزمون جلوگیری از بازگشت این فیلتر اضافه شد.
+
+
+### 2026-11-11 — قرارداد یادگیری عمومی و ترتیب نسخه‌ها
+
+- قرارداد جامع یادگیری مستقل از موضوع به master prompt و شاخهٔ PR افزوده شد: سرفصل‌بندی کامل، تاریخچهٔ نسخه‌ها از قدیمی‌ترین تا جدیدترین، حفظ منشأ داده‌ها، ارزیابی غیرحذفی، اصلاح خودکار نسخه‌دار، پایش انتشار و قابلیت جابه‌جایی LLM از تنظیمات.
+- یک نقص واقعی در ترتیب نسخه‌ها بین batchها پیدا و اصلاح شد. اعتبارسنجی قبلی فقط هر batch را جداگانه بررسی می‌کرد و ترتیب کل دوره پس از ادغام batchها تضمین نمی‌شد. اکنون کل سرفصل‌ها پیش از ذخیره و صف‌بندی درس‌ها از نظر ترتیب انتشار بررسی می‌شوند.
+- آزمون رگرسیون برای حالت batchهای جداگانه معتبر ولی ترتیب کلی نامعتبر اضافه شد. نتیجهٔ CI exact-head و اجرای محلی هنوز در انتظار است.
+
+- آزمون نگهبان برای جلوگیری از حذف ناخواستهٔ قرارداد یادگیری عمومی از master prompt اضافه شد. متن assertion با عبارت واقعی سند تطبیق داده و دوباره بررسی شد.
+
+
+### 2026-11-11 — خودبازبینی درس و ارزیابی معنایی
+
+- پرامپت تولید درس به v6 ارتقا یافت و پیش از تحویل، بازبینی سازگاری نسخه و تاریخ، دستورها/API/کد، پیش‌نیازها، مراحل جاافتاده، تناقض‌ها، عوارض جانبی و خروجی مورد انتظار را الزامی می‌کند. خطای تشخیص‌داده‌شده باید پیش از ارائه اصلاح شود؛ اجرای تست بدون نتیجهٔ واقعی ادعا نمی‌شود.
+- ارزیابی پاسخ بر صحت معنایی و استدلال تکیه می‌کند؛ بازنویسی معتبر و راه‌حل جایگزین درست پذیرفته می‌شود و پاسخ ناقص از پاسخ غلط تفکیک می‌شود.
+- registry، آزمون‌ها و مستندات برای `learning-lesson-v6` به‌روزرسانی شدند؛ نسخهٔ repair به‌دلیل عدم تغییر متن همان v5 باقی ماند.
+- تطبیق ارجاع‌های نسخه‌ای انجام شد؛ CI دقیق آخرین commit و اجرای مدل روی میزبان هدف هنوز تأیید نشده است.
+
+
+### وضعیت به‌روزشدهٔ موارد باز یادگیری
+
+- **ارزیابی معنایی:** rubric مفهومی مبنای امتیاز قطعی است؛ semantic reviewer مستقل در صورت پیکربندی می‌تواند پاسخ‌های معنایی/بازنویسی‌شده را ارزیابی کند. عدم دسترسی، خروجی نامعتبر یا ابهام reviewer نباید baseline را حذف کند یا پیشرفت را به‌اشتباه کامل کند. اجرای زندهٔ reviewer model روی میزبان مقصد هنوز انجام نشده است.
+- **پاسخ‌های چت به‌عنوان دادهٔ آموزشی:** پاسخ‌های assistant در تاریخچهٔ محلی، حتی کوتاه و کم‌کیفیت، با provenance و وضعیت unverified ذخیره می‌شوند؛ پاسخ‌های مرتبط در ساخت syllabus و تولید درس به‌عنوان مشاهدهٔ کمکی وارد می‌شوند. این candidateها خودکار به دانش trusted ارتقا نمی‌یابند و تبدیل مستقیم همهٔ candidateها به سرفصل canonical هنوز گردش‌کار جداگانه‌ای است.
+- **اصلاح درس:** گزارش کاربر برای خطای کد/دستور یک job اصلاحی مستقل می‌سازد؛ نسخهٔ قبلی و گزارش حفظ می‌شوند و نسخهٔ اصلاح‌شده افزایشی است. تست اجرایی فقط در صورت وجود محیط امن و ثبت نتیجه قابل ادعاست.
+
+
+### 2026-11-11 — وضعیت اصلاح خطای CI در PR #710
+
+- خطای `IndentationError` در `app/learning_curriculum_tasks.py:689` که باعث شکست collection تست‌ها و Windows storage شده بود، در commit `ff84957543644d74a04169a1bf13b57f6f6c1b8b` اصلاح شد.
+- CI دقیق head جدید شامل workflowهای tests و browser-e2e است که در زمان ثبت این وضعیت queued هستند؛ تا دریافت نتیجهٔ دقیق همان SHA، هیچ pass ادعا نمی‌شود.
+- Browser E2E در head قبلی قبل از اجرای برنامه، به‌علت شکست DNS در دریافت بسته‌های Chromium از Ubuntu repositories متوقف شده بود.
+- این snapshot تاریخی با PR #711 تکمیل شده است: پاسخ‌های چت اکنون در curriculum و تولید درس به‌عنوان observations غیرقابل‌اعتماد استفاده می‌شوند؛ اصلاح گزارش‌شدهٔ درس به‌صورت job/revision مستقل انجام می‌شود. هیچ candidate به‌طور خودکار trusted نمی‌شود.

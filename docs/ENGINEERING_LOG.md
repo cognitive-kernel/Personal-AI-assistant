@@ -1,5 +1,28 @@
 # Engineering Continuity Log
 
+## 2026-11-11 — PR #709: research-first learning with gpt-oss:20b
+
+### Root-cause analysis
+
+- The primary local `learning-form` previously created one lesson job directly. It did not research the subject first, construct a complete ordered syllabus, or coordinate lessons as a serialized course. The fixed curriculum catalog was also presented as an enrollment path.
+- The new curriculum task now discovers complementary web sources, validates and persists the outline/provenance, then creates only the first lesson execution job. The ordered syllabus itself is durable in `learning_path_topics`; subsequent execution jobs are created only after successful completion of the preceding lesson.
+- A follow-up review found two completeness risks: an 800-token outline budget could truncate a 40-topic JSON syllabus, and the installer selected the learning model from environment/default values without reading the model the application would actually load from its existing SQLite settings. The latter could install a different model from the persisted setting or install legacy `qwen3:8b` immediately before migration changed it to `gpt-oss:20b`.
+
+### Corrective changes
+
+- Increased outline generation and its single repair attempt to a bounded 4,096 output tokens and recorded the allowance in ADR-019 and learning documentation. Both requests now require an 8,192-token context, subject to model maximum and the runtime's safe RAM budget; if the host cannot provide it, inference fails before a partial syllabus can be persisted. The JSON repair receives the same output/context budget as the first attempt.
+- Normalized research query strings in every checkpoint, including the validated-outline checkpoint, so a resumed task does not discard its completed query ledger and repeat web research.
+- The bootstrap now loads the project's `.env` before model resolution, reads the existing settings database read-only, installs the persisted learning model, maps only the former built-in `qwen3:8b` default to `gpt-oss:20b`, and preserves explicit custom model settings. Invalid saved model settings fail closed.
+- Added regression coverage for model resolution (fresh install, persisted custom model, legacy default, environment override, malformed setting), full outline output allowance, and normalized checkpoint recovery.
+
+### Validation
+
+- Exact-head code commit: `bc5de1b891526930f1b4b766505843e03c499410`.
+- GitHub Actions: **1,971 passed, 50 deselected**; Windows storage regressions, dashboard smoke/browser E2E, dependency audit, generated-artifact verification, 94 Markdown links, import-cycle checks, deterministic retrieval benchmark, and claim-to-test coverage benchmark (10/10) passed.
+- These are repository/CI results, not a live `gpt-oss:20b` inference run on the owner's Windows host. RAM use, latency, restart recovery under real model load, and Persian/English lesson quality remain unverified. PR #709 remains Draft and unmerged in accordance with the mandatory target-host gate in MASTER_ENGINEERING_PROMPT.
+
+---
+
 ## 2026-11-07 — Owner Windows development environment baseline
 
 Captured from the owner's PowerShell output on 2026-11-07. This is a user-reported workstation snapshot, not a CI-runner inventory.
@@ -363,36 +386,197 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Updated the early manual-task persistence script to reject new task replacement while pending PR/post-merge state exists. Updated workflow prompt and operations guide to reflect owner review and post-merge validation.
 - Exact-head CI for the current PR head is recorded in the PR body. Strict real-runner Codex execution and owner-side Windows acceptance remain blocked until the 64k runtime context is configured. PR #701 remains open; no merge or acceptance-score increase is claimed.
 
+## 2026-11-10 — Research-first local learning curriculum (feature branch)
 
-## 2026-11-10 — Checkpoint ownership and recovery hardening (PR #707)
-
-- Root cause confirmed in `scripts/autonomous_engineering_checkpoint.py`: process inspection/termination errors, including `psutil.AccessDenied`, were swallowed. Restore and cleanup then proceeded without proof that the watcher had stopped. PID reuse was not distinguished from the recorded watcher.
-- Extracted repository worktree lock ownership into `scripts/autonomous_engineering_execution_lock.py`, preserving the existing import surface from the cycle orchestrator. OS-level locks remain authoritative and are released by the operating system after process death; lock metadata is diagnostic only.
-- Extracted watcher process identity and shutdown into `scripts/autonomous_engineering_checkpoint_process.py`. New checkpoint schema 4 records process creation time; controller readiness is checked against the actual spawned PID and creation time.
-- Access denied, ambiguous process identity, legacy active watchers without creation-time identity, failed termination/reaping, and mismatched live command lines now block recovery/cleanup. Checkpoint state is preserved.
-- Added fault-injection tests for access denied, PID reuse, command-line mismatch, legacy live process, process kill/reap, restore/clear preservation, and watcher-start preservation. Added execution-lock crash-release tests.
-- ADR-014 and the operations guide now document the ownership contract and compatibility behavior.
-- PR [#707](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/707) is Draft. Exact-head CI and owner-side Windows Runner validation are pending. No merge or target-host success is claimed.
+- **Root cause:** the primary `learning-form` submitted a single lesson job. It could discover web sources for lesson generation, but it had no durable outline-first curriculum stage. Preset topics were exposed separately through the built-in curriculum selector. The Chrome/ChatGPT browser-learning implementation was a separate subsystem and was not the correct target.
+- **Decision:** keep the browser-learning subsystem unchanged; make the primary local learning form research the requested topic, derive and validate a comprehensive ordered outline, persist source provenance, and generate lessons sequentially.
+- **Implementation:** added durable task type `learning.plan_curriculum`, multi-query web research with a minimum of three usable pages across two domains, strict 8–40 topic validation, schema migration 42 for the outline/model/source provenance, and a per-course queue that advances only after the previous lesson succeeds. Failed/rejected/cancelled lessons block automatic advancement; explicit resume retries without deleting old lesson records.
+- **Model policy:** default the dedicated learning model to `gpt-oss:20b`, install and verify it during bootstrap, and prevent cost-profile selection from silently switching to another model. Chat and programming model settings remain separate.
+- **Data safety:** preset enrollment controls are removed from the primary UI, while legacy curriculum APIs, existing paths, lesson records, assessments, and history remain intact.
+- **Validation status:** implementation and regression tests are being prepared on `feature/researched-learning-curriculum-gpt-oss-20b-20261110`. GitHub Actions and target-host validation have not yet completed. Do not merge until exact-head CI and the required host gate pass.
 
 
-## 2026-11-10 — Durable task/PR state transaction ownership (PR #707)
+## 2026-11-11 — Unlimited, version-aware learning curricula (PR #710)
 
-- Root cause: manual-task persistence ran in a prerequisite job outside the codex job's concurrency group. Python and PowerShell independently read/wrote the single pending-task slot and pending-PR record; atomic file replacement alone did not serialize the read/validate/write transaction.
-- Added `scripts/autonomous_engineering_state_lock.py`. Windows uses the same named kernel mutex from Python and PowerShell; POSIX uses a bounded `flock`. An abandoned mutex is reacquired, then durable state is validated before mutation.
-- Unified state-root resolution in `scripts/autonomous_engineering_state_paths.py`.
-- PowerShell manual-task persistence now holds the mutex while checking active/queued workflow runs, validating pending task/PR records, checking open autonomous PRs, and atomically writing the single task slot. It rejects a new task during another active run rather than accepting work that could be erased by the current run's completion.
-- The workflow capture step now reads the durable task under the same mutex and does not write it a second time.
-- Pending PR read/save/clear operations use the same mutex. PR publication persists its owner record before dispatching CI; recovery persists a discovered PR before CI revalidation. Post-merge cleanup removes the pending task and pending PR in one locked transaction.
-- Added Python cross-process exclusion/crash-release tests and a Windows-only PowerShell/Python mutex interoperability test. Added publication-order and atomic-clear regressions.
-- Added ADR-015 and updated the operations guide. Exact-head CI and the real self-hosted Runner workflow remain the acceptance gates; no merge is claimed.
+- Root cause: the previous curriculum workflow treated a single model response as the complete course and imposed a total 8–40 topic limit. This confused a safe per-request batch size with a syllabus-wide ceiling.
+- Replaced the total ceiling with resumable, checkpointed batches. The course continues until the model explicitly reports comprehensive coverage; duplicate-only/no-progress batches fail closed instead of falsely completing. Batch size remains bounded per model request for predictable memory and output use, not as a limit on course size.
+- Added structured per-topic applicability and provenance: product/version/build, edition, compatibility level, platform, execution mode, prerequisites, permissions, limitations, hierarchy, exact source URLs, retrieval timestamp, and publication/update dates when actually known. Unsupported source references downgrade applicability to unverified. Migration 43 adds backward-compatible fields and preserves existing learning data.
+- Set the default learning model to `gpt-oss:20b`, while preserving explicit user model choices and environment overrides; model selection is pinned so the learning lane cannot silently substitute a different installed model.
+- Lesson generation receives the course's exact source/version scope and is instructed to distinguish engine release from compatibility level, cite only supplied URLs, and mark unsupported conditions unverified. The prompt fingerprint and model/usage provenance remain recorded.
+- Exact-head SHA `d18fceea301c51ef56e3731b03055af446c2be04` passed all required GitHub workflows: tests + Windows storage [#42992647418](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/42992647418), browser E2E [#42992648348](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/42992648348), and dependency audit [#42992647476](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/42992647476). The test workflow also completed generated-learning-artifact, Markdown-link, import-cycle, retrieval benchmark, and fail-closed claim-to-test coverage steps successfully.
+- PR #710 remains open and unmerged. Per the repository's engineering contract, this CI evidence does not substitute for target-host validation. As requested, no local/human test was awaited or claimed; actual `gpt-oss:20b` loading, resource use, restart recovery, and live lesson quality remain explicitly unverified. Project-wide acceptance remains tracked by Issue #290; independent security review remains open under Issue #52.
 
 
-## 2026-11-10 — Checkpoint lifetime ownership and single-host state affinity (PR #707)
+## 2026-11-11 — Consolidation of learning implementation branches
 
-- Added scripts/autonomous_engineering_checkpoint_lock.py. The checkpoint watcher holds the OS lock for its entire lifetime; a duplicate watcher fails before touching state. Snapshot, restore, stop, cleanup, and legacy migration serialize on the same checkpoint-store lock. Process termination/crash releases the OS lock.
-- Recovery now acquires checkpoint-store ownership after stopping/reaping the recorded watcher, revalidates metadata, and verifies the patch byte count before applying. Corrupt, incomplete, or mismatched checkpoint records block fallback to older snapshots. The reader preserves v2/v3/v4 metadata compatibility.
-- The first exact-head focused CI run 42835796058 exposed two stale test seams that monkeypatched the public snapshot wrapper while the watcher correctly calls its lock-held internal operation. Windows storage regressions passed in that run; the test seams were corrected in commit 982c720588101210c2c23721a59cdbef1a79a72b. This is a test failure, not evidence that the earlier CI run passed.
-- The durable-state mutex is host-local. To prevent sequential GitHub jobs from landing on different self-hosted hosts with separate ProgramData state, the workflow now requires the unique autonomous-state-owner runner label. provision_autonomous_runner.ps1 adds/verifies that label and refuses an incomplete inventory or a second owner. The workflow schedule gate explicitly fails a manual task dispatch while paused or another run is active, rather than silently dropping it.
-- Added a versioned task-owner sidecar with a SHA-256 digest and submitted/current run-attempt identities. PowerShell and Python validate the same schema; a later run can claim an interrupted task only after the schedule gate excludes another active owner. The PowerShell owner logic is isolated in AutonomousEngineeringTaskState.psm1.
-- Post-merge cleanup now writes a durable intent before deleting task, owner, and PR records. PowerShell persistence and Python capture both resume a valid interrupted cleanup idempotently; malformed intent preserves all state.
-- ADR-014 and ADR-015, the operations guide, setup UI, project status, and regression tests were updated to match these contracts. Exact-head Linux/Windows CI, browser E2E, dependency audit, and target Windows Runner acceptance remain required. No merge is performed.
+- Consolidation target: `feature/unbounded-version-aware-learning-curricula` / PR #710.
+- PR #710's branch is a direct descendant of the PR #709 branch: the merge-base equals PR #709 head `e7e2232a7c4e72de7706fc464129e7971793bc6d`; PR #710 contains the full #709 history plus 59 subsequent commits. Thus the research-first curriculum implementation from #709 is included rather than independently reimplemented.
+- Audited `feature/learning-gpt-oss-20b-20261110` against the consolidated branch. The consolidated branch already contains the later/evolved model configuration, DB/bootstrap implementation, installer behavior, documentation, and download-resume regression changes. The one missing independent regression artifact, `tests/test_learning_model_pin.py`, was copied into the consolidated branch and is now included in CI.
+- Kept the more complete consolidated implementations where both branches changed the same files; did not overwrite later implementations with earlier snapshots. No user learning records or existing schema data were deleted or rewritten.
+- A CI failure on the prior head exposed a stale exact-source-URL prompt contract assertion (2 failures; 1,972 passed). The prompt's provenance policy was made explicit about a Sources section and exact source URLs; the next CI run is required to confirm the fix.
+- PR #710 remains the single consolidation PR. PR #709 is superseded by #710 and must not be merged independently.
+
+
+## 2026-11-11 — Exact-head validation completed after model-pin regression fixes (PR #710)
+
+- Updated `tests/test_learning_model_pin.py` to assert the actual fail-closed error contract and to model Ollama's post-pull model list accurately. The test now verifies successful installation/verification of `gpt-oss:20b`, explicit custom-model override, and pull-failure handling without weakening runtime checks.
+- Exact tested commit: `5e58301417767124ee01b9f4e331a6fd74354525`.
+- GitHub Actions all passed on that exact commit: tests [#43001048500](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43001048500) — **1,980 passed, 50 deselected**; Windows storage regression job passed; generated learning artifacts, 94 Markdown links, import-cycle checks, deterministic retrieval benchmark, and claim-to-test coverage benchmark (**10/10**) passed. Browser E2E [#43001048937](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43001048937) passed. Dependency audit [#43001048856](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43001048856) passed.
+- The consolidated PR branch has not been merged. PR #709 is superseded; PR #710 is the single consolidation target. No local target-host or human test was run or represented as passed. Continue other repository engineering work while the mandatory target-host gate remains open; do not merge to `main` until that gate is satisfied.
+
+
+## 2026-11-11 — Remove arbitrary lesson-length constraints (PR #710)
+
+### Root-cause analysis
+
+- The curriculum had no total topic/lesson/batch ceiling, but the lesson-generation prompt still required 200–260 Persian words and 5–7 paragraphs. Its repair prompt repeated the same cap.
+- app/learning_quality.py enforced a 180-word minimum, a 200-word target, and a 260-word maximum. It could reject a detailed lesson for being too long, independent of instructional quality.
+- The model was allocated only 1,200 output tokens for initial generation and 1,400 for repair, with a 2,600-token in-memory pipeline ceiling. This was too restrictive for complex but coherent technical lessons.
+
+### Corrective changes
+
+- Prompt versions are now learning-lesson-v3 and learning-lesson-repair-v3; both require topic-appropriate depth, no arbitrary word/paragraph cap, no padding, and explicit decomposition when a topic is too broad for one coherent lesson.
+- Removed all word-count minimum/maximum gates from the deterministic quality filter. It continues to evaluate repetition, technical specificity, examples, causal explanation, questions, answers, outcomes, and malformed language.
+- Increased each generation/repair output allowance to 3,900 tokens and the two-call in-memory budget to 7,800. The existing durable 9,000-token per-job ceiling remains compatible and leaves 1,000 tokens for optional claim review. Hardware/context limits and fail-closed resource checks are preserved; this does not create an unbounded single inference.
+- Added regression coverage for lessons longer than 260 words, length-independent quality decisions, prompt version changes, and the expanded generation/repair token allowances.
+
+### Validation boundary
+
+- Automated CI for the new code and documentation is pending. No live gpt-oss:20b inference, target-host resource measurement, or human quality adjudication is claimed.
+- The total course remains unlimited through checkpointed batches; per-call token limits are resource-safety controls, not curriculum-size limits.
+
+
+## 2026-11-11 — Chronological version learning and automatic release watch
+
+- Extended curriculum and lesson prompts to require independent syllabus decomposition for any requested subject, release-history discovery from the earliest documented release through the latest, and oldest-to-newest teaching order. Version groups include year/date, exact version, and applicable build/edition/compatibility context.
+- Added parser validation for ascending release-year/date arrays, real calendar dates, numeric version order, and chronological ordering across version-scoped topics. Prompt registry is now `learning-lesson-v5` / `learning-lesson-repair-v5`.
+- Added migration 44 for durable `learning_release_watch` state. Existing researched curricula are seeded for monitoring without rewriting their saved lessons or provenance.
+- The learning worker's existing 30-second maintenance cycle processes up to three due watches, queries release notes/history/patch/security/changelog sources, establishes a recurring-query baseline, and checks every six hours. Changed URL/content fingerprints enqueue a deduplicated refresh job; old course paths remain intact and their watches are superseded only after a replacement path is persisted.
+- Added regression coverage for release metadata validation, chronology ordering, source-change detection, baseline behavior, migration seeding, and historical path preservation.
+- Latest exact-head CI is running on the branch head recorded by PR #710; earlier successful CI does not validate these new changes. No local target-host test is claimed. PR #710 remains unmerged pending the requested local test.
+
+
+## 2026-11-11 — Configurable LLM providers, temporary switching, and lesson retention
+
+- Added independent provider profiles for chat, research planning, learning, programming, factual review, and embeddings. Supported inference providers are Ollama and OpenAI-compatible Chat Completions; embeddings use the matching OpenAI-compatible `/embeddings` endpoint. This covers local compatible servers (LM Studio, vLLM, llama.cpp server, LocalAI) and hosted endpoints/gateways without hard-coding a vendor SDK.
+- Added endpoint validation: HTTPS is required for non-loopback hosts; HTTP is restricted to loopback; URL credentials/query/fragment and redirects are rejected; `localhost` is pinned to `127.0.0.1`. API-key values are never stored in settings; only an environment-variable name is stored, and key header control characters are rejected.
+- The dashboard can switch provider, endpoint, model, and key-env name per lane; non-local endpoint selection explicitly discloses that prompt/history/context are sent to that service. Settings can be persisted or applied in-memory until process restart. Existing per-lane model fields remain the storage-compatible model identifiers.
+- Routed `ollama.chat`, curriculum generation, lesson generation and repair, claim review, programming, chat/research planning, and semantic embeddings through the selected provider. Remote-provider lesson generation does not fail because the host cannot reserve local RAM for remote model weights. Ollama startup/model pulls are skipped when all active LLM and embedding lanes have migrated away from Ollama.
+- Saved settings now remain authoritative over environment defaults after first initialization; environment model values seed a new profile but no longer overwrite an operator's saved UI selection on every restart.
+- Non-JSON/free-form model answers are retained as unverified lesson content even if the model also fails the structured assessment schema and the repair attempt is malformed. Quality scores trigger diagnosis/repair and remain attached to the candidate; they do not delete the lesson or source evidence. Low-quality lessons remain `unverified` and staged as `awaiting_test`, not promoted as trusted factual knowledge.
+- Added regression tests for compatible-provider routing, local endpoints, API-key environment lookup, embedding order, provider switching, temporary non-persistent settings, optional Ollama startup, and free-form lesson retention.
+- Versioned curriculum generation remains independent of learner examples: the prompt requires complete subject taxonomy, release history from earliest documented release to latest, and chronological teaching order; parser validation enforces the order and actual calendar dates.
+
+
+## 2026-11-11 — PR #710: remove source-count admission gate
+
+- Root cause: _collect_sources required at least three usable pages across two domains and retried indefinitely otherwise. This made source availability a prerequisite for learning, contrary to the requested policy to retain incomplete/unofficial evidence and continue with model knowledge when necessary.
+- Change: source count and publisher authority are now provenance/quality signals, not curriculum admission gates. All usable results are retained; zero-source and sparse-source research can proceed. Lesson provenance remains unverified when it is model-only or lacks adequate evidence.
+- Prompt: curriculum research now explicitly collects relevant official, unofficial, community, archived, partial, and conflicting material without authority-based exclusion; source type, freshness, corroboration, and uncertainty are classified separately.
+- Regression: replaced the old retry-on-one-source test with parameterized zero-source/one-source continuation coverage and added assertions for the prompt's non-exclusion policy.
+- Documentation: updated docs/LEARNING.md and docs/PROJECT_STATUS.md to describe the new contract.
+- Commits: 1dcdae6ffdab24d1bce47c413f282506b8f0fb94, 3c6eb85c29f84afcb319457ab98164cde162a924, b9b159a53893f0b7a0e0fd7a1f6210f231e6f258, e1d17548514d1d655c8ca5720c1e8c2d432bd2a9, 38fbbbf564be6948f8aa70b25710a696a9486d8e.
+- Validation: no exact-head CI result is available yet for the latest commit. Do not infer success from earlier PR runs. Local target-host validation remains a separate pre-merge gate.
+
+- Follow-up: removed the 40-document aggregate cap and three-documents-per-domain cap as well. Every usable result returned by each research query is now retained with provenance; the prompt still selects a bounded representative excerpt set per model call to respect context limits, without deleting the persisted source inventory. Added a regression with four sources from one domain per query.
+
+- Regression found during follow-up call-site audit: the release-watch collector still referenced the removed aggregate source-cap constant. Removed those stale cap checks too; otherwise the first valid release-watch result would raise NameError. Existing release-watch baseline/change/deduplication tests exercise this path. Exact-head CI is the next verification step.
+
+- Second checkpoint audit found another stale source-cap reference in `_valid_checkpoint`, which would have failed when resuming any checkpoint containing source records. Removed the slice and added a regression that recovers 45 source records with query provenance intact. This preserves the entire accumulated source inventory across restart/resume.
+
+- Prompt audit also removed an authoritative-only condition from version-change coverage. Relevant unofficial reports are now collected and attributed alongside official material; unsupported or conflicting claims stay unverified rather than being omitted or promoted. Added a regression preventing the authoritative-only wording from returning.
+
+
+## 2026-11-11 — Universal learning contract and cross-batch chronology
+
+- Added the universal subject-agnostic learning contract to the linked master engineering prompt branch and copied it into this PR branch. It covers complete subject taxonomy, earliest-to-latest version/year sequencing, evidence provenance/retention, non-blocking assessment, additive automatic correction, release monitoring, and provider/model migration.
+- Code audit found a chronology gap: `_parse_outline` validated version order inside each model batch, but `handle_curriculum_task` appended batches without validating the merged course. A later batch could therefore introduce an older release after newer topics.
+- Added `_validate_chronological_topics` and invoke it after all batches have been merged and before persistence/lesson queueing. Added regression coverage for individually valid but globally out-of-order batches.
+- Commits: prompt `fcece2b2a7aa81a215d32e1b79ccdf7959605d2e`; implementation `28e1917e924962086dc143a4deb58b76312933b3`; regression `377fe87b76a31e61eee03ecb95453f65f3e2bab9`.
+- Validation: exact-head CI for the latest implementation commit has not yet returned; no local target-host or GPT-OSS 20B runtime validation is claimed.
+
+- Added `tests/test_master_engineering_prompt_contract.py` to guard the new subject-agnostic learning contract against accidental removal. The assertion wording was checked against the actual prompt text after the first draft exposed a mismatch; the final test now checks the exact phrase used by the prompt.
+
+
+## 2026-11-11 — Lesson self-audit and semantic assessment prompt v6
+
+- Added a pre-delivery self-audit instruction covering version/date chronology, commands/APIs/code against the stated release, prerequisites, missing steps, contradictions, unsafe side effects, and expected outputs. Detected defects must be corrected before returning; execution must never be claimed without actual execution evidence.
+- Added explicit semantic assessment guidance: accept valid paraphrases and alternative correct approaches; distinguish partial correctness from factual error and explain missing concepts rather than relying on exact-string matching.
+- Preserved additive correction/history behavior. Bumped the lesson-generation prompt registry to `learning-lesson-v6`; lesson-repair remains `learning-lesson-repair-v5` because its prompt text did not change. Updated registry/self-correction tests and learning documentation.
+- Commits: `aae86acb589e159235519821505c805fc8551c5d`, `f94ffc4403b4a39ba8c79dfd6f34efb9117c0bef`, `97d6d11050ef2576c0d0f2c5457ecae943e9e959`, `6fb7808786655024f4242df63fe1ae19ff0f7c21`, `144b7eb6d3d3e54e4f52b22de63f9a3eb45c4e5a`.
+- Validation: prompt/registry/test/documentation references were cross-checked. Exact-head CI and target-host execution remain unverified.
+
+
+## 2026-11-11 — Remaining acceptance gaps identified (not closed)
+
+- The lesson prompt now asks for semantic assessment, but `submit_assessment` still uses deterministic `accepted_phrases` rubric scoring as its progress source. The separate semantic reviewer is opt-in/advisory and does not change score or progress. This does not yet fully satisfy automatic acceptance of semantically correct paraphrases; a safe, auditable integration remains open.
+- General research/chat answers are persisted in conversation history, and the separate browser-learning workflow stores ChatGPT lesson outputs as unverified lessons. General chat/research responses are not yet automatically ingested as subject-scoped learning candidates for later curriculum correction. This remains open; do not claim the prompt change alone implemented it.
+
+
+### 2026-11-11 — اصلاح خطای indentation در اعتبارسنجی ترتیب سرفصل‌ها
+
+- CI دقیق SHA قبلی `9b5b1731e39fbc8d1500f7b0b83ad72f1cf14841` شکست را نشان داد: `app/learning_curriculum_tasks.py:689` به‌دلیل خروج ناخواستهٔ validator ترتیب نسخه‌ها از بلوک `with` دارای `IndentationError` بود. همین خطا باعث شکست collection در ۲۹ ماژول تست و شکست تست Windows storage شد.
+- فراخوانی `_validate_chronological_topics` و ساخت مجموعهٔ URL منابع دوباره داخل همان بلوک تراکنش قرار گرفتند؛ metadata همان متغیر `topic_metadata` را استفاده می‌کند. تغییر کد در commit `ff84957543644d74a04169a1bf13b57f6f6c1b8b` ثبت شد.
+- روی SHA جدید، workflowهای tests و browser-e2e در حال اجرا هستند؛ تا پایان آن‌ها نتیجهٔ موفق اعلام نمی‌شود. شکست browser-e2e در SHA قبلی در مرحلهٔ نصب Chromium و به‌علت DNS ناموفق مخازن Ubuntu بود، پیش از اجرای smoke test؛ این شکست به‌عنوان خطای برنامه طبقه‌بندی نمی‌شود.
+
+
+## PR #710 — semantic assessment execution and chat-to-learning ingestion
+
+- Exact-head CI audit found that lesson prompt v6 requested semantic equivalence but `submit_assessment` still persisted only deterministic phrase/rubric scoring. The assessment path now saves the deterministic attempt first, closes the database transaction, then invokes the configured independent semantic reviewer. Only an all-`matches` result can promote that attempt to 100/completed; partial, incorrect, uncertain, unavailable, malformed, or identity-invalid reviews retain the deterministic baseline. The final score, score provenance details, path progress and idempotent replay are regression-tested. This is model-assisted grading, not factual certification.
+- General assistant answers persisted through `append_assistant_message` are now staged locally as `learning_chat_candidates` under migration 45. Candidates retain the query hint, conversation/message/task identifiers, SHA-256 hashes and provenance, begin as `unverified`, and are never automatically promoted to trusted factual knowledge or sent to an external provider. Very short answers and obvious credential-bearing exchanges are skipped. The candidate capture is best-effort after chat persistence, so staging failure does not discard a saved conversation.
+- The subject hint is the originating user query, not yet a canonical taxonomy label; candidate-to-course promotion remains a separate workflow. The ingestion path covers assistant messages persisted in local chat history, not transient responses that are never stored.
+- Exact-head CI on `e62342e79d882c44e07340e28a728bcbf03846ab`: main suite **2028 passed / 50 deselected**; Windows storage **11 passed / 47 deselected**; browser E2E and dependency audit succeeded; generated learning artifacts, Markdown links, import-cycle guard, retrieval benchmark and claim-to-test coverage benchmark all succeeded. The claim-to-test benchmark passed 10/10 with zero false accepts and zero false rejects.
+- Target-host execution and a live `gpt-oss:20b` benchmark were intentionally excluded from the merge gate at the user's direction and are not claimed as completed.
+
+
+## Universal learning contract v2 — source coverage and delivery policy
+
+- Branch: `feature/universal-learning-contract-v2`, based on post-PR-710 main commit `9e198a0640593bcc3892f3a97aa8956ba522653c`.
+- Master prompt strengthened with subject-map and release-ledger requirements, exact per-lesson/per-claim source and applicability provenance, true release-date ordering (not lexical version ordering), resumable evidence processing with no total source/version/year/lesson caps, release monitoring and additive correction revisions, and persistent/temporary provider/model selection acceptance.
+- Prompt merge policy now distinguishes reproducible exact-SHA automated gates from owner-local, target-host, physical-device, and human acceptance. Unavailable tests remain NOT RUN/PENDING and are not silently passed; they do not block routine code delivery by default. Repository-enforced checks and independent security approval are not bypassed.
+- Curriculum source delivery changed from repeatedly sending the same first eight sources to round-robin source batches. The task forces continuation until all retained source records have been presented to the learning model, even if the model prematurely returns `has_more=false`. Evidence-only continuation batches can complete without inventing duplicate topic titles.
+- Removed fixed caps on topic source URL count, version/year/date array count, and coverage-area count. The JSON response and prompt budgets remain per-request safety bounds; the full curriculum remains checkpointed and resumable.
+- Initial curriculum research now requests up to 30 fetched pages per query request. Release-watch polling retains its previous five-result page to preserve existing source-fingerprint semantics; its query set now also covers documentation errata, compatibility changes, security CVEs, deprecations, removals, and EOL. Neither per-query page size caps the total course.
+- Added regression tests for 103-source round-robin pagination, complete review of 17 sources across three batches despite premature model completion, metadata arrays with 45 releases/source URLs, and web retrieval above five pages.
+- Exact-head CI has not yet run for this branch. The tests and implementation are pending automated verification; no local/target-host/human test is claimed. Remaining known gaps include a durable canonical subject/release coverage ledger, automated candidate-to-course promotion, lesson correction/revision workflow, and verification of all provider-role settings/temporary overrides.
+
+
+
+### Full-source retention and publication-date provenance
+
+- Added learning schema migration 46, `complete-curriculum-source-body-retention`, with `learning_research_source_text`. Full fetched page text is stored once per task/source hash and linked to the resulting immutable research path; repeated task checkpoints and `learning_path_research.sources_json` retain only source metadata/excerpts.
+- Curriculum research now rehydrates complete bodies from the source-text table. Legacy checkpoints with excerpt-only evidence attempt to re-fetch their exact known HTTPS URLs; if unavailable, the excerpt remains explicitly incomplete and is never represented as a complete page.
+- Each full source body is split into ordered 1,000-character evidence chunks. Chunks are interleaved across research query angles and source records, and the existing source-batch continuation now covers every chunk before the model may finish the curriculum.
+- HTML metadata extraction records common publication and modification fields (`article:published_time`, `datePublished`, `DC.date.issued`, `article:modified_time`, `dateModified`, `last-modified`, and `time[itemprop]`). Unknown dates remain null; retrieval timestamps are stored separately.
+- Migration tests now assert schema version 46 and source-body table structure; curriculum tests cover full-body persistence/chunk order; web-source tests cover publication/update metadata. Exact-head CI is pending.
+- The web retrieval page remains capped at 30 results per query request by provider/request safety limits; the number of queries, source bodies, source chunks, and total course batches is not capped by that page size.
+
+
+
+### Release chronology validator refinement
+
+- Curriculum chronology now uses the recorded release date first, then release year, and product-specific version order when dates are unavailable. This avoids relying only on lexical version labels and supports prerelease ordering before stable releases.
+- Added regressions for release dates that conflict with otherwise ascending version labels and for release-candidate versions sorting before the matching stable release.
+- These changes are awaiting exact-head CI.
+
+
+
+## Current-state correction — PR #710 merged; PR #711 is the active learning continuation
+
+- Any earlier dated entry in this log stating that PR #710 was open, Draft, or waiting for local/target-host testing describes a historical snapshot and is superseded. PR #710 merged into `main` on 2026-11-11 as `9e198a0640593bcc3892f3a97aa8956ba522653c`.
+- The current follow-up is PR #711, branch `feature/universal-learning-contract-v2`. Its exact head and CI status must be read from live GitHub; no earlier SHA or test result applies to it.
+- The source-body retention and common HTML publication/modified-date extraction work is implemented in this follow-up with migration 46. It must not continue to be listed as an outstanding gap once its exact-head CI passes.
+- Release-watch polling intentionally remains at five results per query to avoid changing existing fingerprints solely because the initial curriculum discovery page was expanded. The watch query set itself is broader; any changed fingerprint after this query-set expansion is an intentional additive refresh, not an assertion that every update was already detected.
+
+## 2026-11-12 — Autonomous Engineering ownership and recovery completion work (PR #714)
+
+- Reused the existing ownership/recovery implementation from the earlier unmerged PR #707 and ported it onto the live `main` baseline `215f4928400282cdcabdd0e979910624094523f0`; no parallel lock or checkpoint system was introduced.
+- Kept ownership boundaries explicit: repository worktree execution lock, checkpoint-watcher lifetime lock, watcher process identity, and durable task/PR state mutex are separate modules with separate responsibilities.
+- Durable manual-task and PR state transitions are serialized across Python and PowerShell. The local state directory uses one shared path contract, and sequential work is pinned to the unique `autonomous-state-owner` Windows Runner label.
+- Checkpoint metadata binds readiness to run/task/base SHA and process identity. Ambiguous process identity, access-denied inspection, failed termination/reaping, malformed metadata, and patch-size mismatch fail closed and preserve existing state.
+- Fixed pending PR URL validation: the previous raw regular expression escaped the dot twice, rejecting valid GitHub URLs. Validation now parses the URL, enforces HTTPS and the GitHub host, rejects credentials/query/fragment, validates path segments, and requires the path PR number to match the durable record.
+- Updated workflow contract tests to reflect the concurrency-safe design: manual task persistence executes inside the serialized controller job on the single state-owning Runner, rather than in an independent pre-gate job.
+- Renamed exported PowerShell functions to approved verbs. The previous module import warning polluted stdout and caused the cross-language SHA-256 equality test to fail despite the digest being correct.
+- Exact-head CI on PR #714 is the acceptance gate. No test result is inferred from prior PR #707 runs. Live Ollama/Codex execution, MXC, target-host crash/restart recovery, soak, staging restore/rollback, and owner acceptance remain unverified until separately demonstrated.
+- No automatic merge, destructive state cleanup, or user-data migration is introduced. The PR remains Draft until exact-SHA CI and target-runner evidence are complete.
+

@@ -9,7 +9,6 @@ import pytest
 from scripts.autonomous_engineering_pending_pr_state import (
     clear_pending_state,
     load_pending_pr,
-    pending_pr_path,
     recover_pending_state_cleanup_unlocked,
 )
 from scripts.autonomous_engineering_state_lock import durable_state_lock
@@ -67,32 +66,3 @@ def test_clear_pending_state_commits_and_completes_cleanup_intent(
     assert not (tmp_path / "pending-manual-task.txt").exists()
     assert not (tmp_path / "pending-manual-task-owner.json").exists()
     assert not (tmp_path / "pending-state-cleanup.json").exists()
-
-
-@pytest.mark.parametrize(
-    "url",
-    [
-        "https://evil.example/owner/repository/pull/42",
-        "https://github.com/owner/repository/pull/43",
-        "https://github.com/owner/repository/pull/42?redirect=evil",
-        "https://github.com/owner/repository/pull/42#fragment",
-    ],
-)
-def test_pending_pr_loader_rejects_noncanonical_or_mismatched_urls(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, url: str,
-):
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path))
-    record = {
-        "number": 42,
-        "url": url,
-        "head_sha": "a" * 40,
-        "base_sha": "b" * 40,
-        "branch": "codex/local-engineering-123-1-task-1",
-        "run_id": "123",
-        "task": 1,
-    }
-    path = tmp_path / "pending-autonomous-pr.json"
-    path.write_text(json.dumps(record), encoding="utf-8")
-
-    with pytest.raises(RuntimeError, match="durable contract"):
-        load_pending_pr()

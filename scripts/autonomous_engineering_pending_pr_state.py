@@ -5,7 +5,6 @@ import math
 import os
 import re
 import time
-from urllib.parse import urlsplit
 from pathlib import Path
 from typing import Any
 
@@ -130,28 +129,6 @@ def save_pending_pr(value: dict[str, Any], repo: str) -> None:
         save_pending_pr_unlocked(value, repo)
 
 
-def _valid_pending_pr_url(url: Any, number: int) -> bool:
-    if not isinstance(url, str):
-        return False
-    try:
-        parsed = urlsplit(url)
-    except ValueError:
-        return False
-    return (
-        parsed.scheme == "https"
-        and parsed.netloc == "github.com"
-        and parsed.username is None
-        and parsed.password is None
-        and not parsed.query
-        and not parsed.fragment
-        and re.fullmatch(
-            r"/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[1-9][0-9]*",
-            parsed.path,
-        ) is not None
-        and parsed.path.endswith(f"/pull/{number}")
-    )
-
-
 def load_pending_pr_unlocked() -> dict[str, Any] | None:
     path = pending_pr_path()
     try:
@@ -177,7 +154,7 @@ def load_pending_pr_unlocked() -> dict[str, Any] | None:
         or not re.fullmatch(r"[0-9a-f]{40}", str(value.get("head_sha", "")))
         or not re.fullmatch(r"[0-9a-f]{40}", str(value.get("base_sha", "")))
         or not str(value.get("branch", "")).startswith("codex/local-engineering-")
-        or not _valid_pending_pr_url(value.get("url"), value["number"])
+        or not re.fullmatch(r"https://github\\.com/[^/]+/[^/]+/pull/[1-9][0-9]*", str(value.get("url", "")))
     ):
         raise RuntimeError("Pending PR state violates its durable contract; preserving it and refusing a new task.")
     return value

@@ -38,7 +38,7 @@ try {
     if (-not $stateMutexOwned) {
         throw "Timed out waiting for the autonomous engineering durable-state mutex."
     }
-    $null = Restore-AutonomousPendingStateCleanup -StateDirectory $stateDir
+    $null = Recover-AutonomousPendingStateCleanup -StateDirectory $stateDir
 
     $headers = @{
         Accept = "application/vnd.github+json"
@@ -122,9 +122,9 @@ try {
         throw "Another manual task is still pending. It cannot be replaced before its verified merge."
     }
     if ($existingTaskFound) {
-        $ownerRecord = Get-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $existingTask
+        $ownerRecord = Read-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $existingTask
     } else {
-        $ownerRecord = Get-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task ""
+        $ownerRecord = Read-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task ""
         if ($null -ne $ownerRecord) {
             throw "Pending task owner metadata exists without its task; preserving unknown state."
         }
