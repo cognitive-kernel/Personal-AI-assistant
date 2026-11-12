@@ -89,6 +89,9 @@ def _linux_process_snapshot(pid: int) -> dict[str, Any] | None:
     if closing < 0:
         raise RuntimeError(f"Linux returned malformed process metadata for PID {pid}.")
     fields = stat_text[closing + 2 :].split()
+    if fields and fields[0] in {"Z", "X"}:
+        # A zombie has exited and cannot write; its parent may not have reaped it yet.
+        return None
     try:
         start_ticks = int(fields[19])  # proc stat field 22 (starttime)
         boot_line = next(line for line in Path("/proc/stat").read_text(encoding="ascii").splitlines()
