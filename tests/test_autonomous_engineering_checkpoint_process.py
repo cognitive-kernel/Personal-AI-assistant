@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import signal
 from pathlib import Path
 
 import pytest
@@ -271,10 +273,10 @@ def test_unresponsive_watcher_is_killed_and_reaped_with_pidfd(tmp_path: Path):
 
     script = tmp_path / "unresponsive_watcher.py"
     script.write_text(
-        "import signal, time\\n"
-        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\\n"
-        "print('READY', flush=True)\\n"
-        "time.sleep(120)\\n",
+        "import signal, time\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        "print('READY', flush=True)\n"
+        "time.sleep(120)\n",
         encoding="utf-8",
     )
     command = [
