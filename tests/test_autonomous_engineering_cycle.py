@@ -250,6 +250,7 @@ def test_publish_pull_request_leaves_exact_sha_validated_pr_open_for_owner_merge
         "draft": False,
         "html_url": "https://github.com/owner/repository/pull/12",
         "user": {"login": "github-actions[bot]"},
+        "merged_by": {"login": "repository-owner", "type": "User"},
         "head": {"sha": head_sha, "repo": {"full_name": "owner/repository"}},
         "base": {"ref": "main", "sha": base_sha},
     }
@@ -1286,6 +1287,43 @@ def test_complete_merged_pr_requires_owner_merge_and_post_merge_exact_sha_checks
     assert result["merge_sha"] == merge_sha
     assert validations == [("token", "owner/repository", ("tests.yml", "browser-e2e.yml", "dependency-audit.yml"), "main", merge_sha)]
     assert cleared == ["checkpoint", "pending-state"]
+    assert not any(method == "PUT" and str(path).endswith("/merge") for method, path, _ in calls)
+
+
+def test_complete_merged_pr_rejects_bot_merge_actor(monkeypatch: pytest.MonkeyPatch):
+    merge_sha = "f" * 40
+    pending = {
+        "number": 89,
+        "url": "https://github.com/owner/repository/pull/89",
+        "head_sha": "d" * 40,
+        "base_sha": "b" * 40,
+        "branch": "codex/local-engineering-89-1-task-1",
+        "run_id": "89",
+        "task": 1,
+    }
+    current = {
+        "number": 89,
+        "state": "closed",
+        "merged": True,
+        "merge_commit_sha": merge_sha,
+        "html_url": pending["url"],
+        "user": {"login": "github-actions[bot]"},
+        "merged_by": {"login": "github-actions[bot]", "type": "Bot"},
+        "head": {"ref": pending["branch"], "sha": pending["head_sha"], "repo": {"full_name": "owner/repository"}},
+        "base": {"ref": "main", "sha": merge_sha},
+    }
+    calls = []
+    monkeypatch.setattr(cycle, "api", lambda token, repo, method, path, payload=None: (
+        calls.append((method, path, payload)) or current
+    ))
+    cleared = []
+    monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: cleared.append("checkpoint"))
+    monkeypatch.setattr(cycle, "clear_pending_state", lambda: cleared.append("pending-state"))
+    monkeypatch.setattr(cycle, "dispatch_and_wait_all", lambda *args: pytest.fail("bot merge must not advance the queue"))
+
+    with pytest.raises(RuntimeError, match="exact reviewed candidate"):
+        cycle.complete_merged_pr("token", "owner/repository", pending)
+    assert cleared == []
     assert not any(method == "PUT" and str(path).endswith("/merge") for method, path, _ in calls)
 
 
