@@ -27,20 +27,32 @@ function Get-AccountSidValue([string]$AccountName) {
 }
 $progressPath = Join-Path $env:ProgramData "PersonalAIAssistant\autonomous-engineering"
 try { $null = ([Security.Principal.NTAccount]$appIdentity).Translate([Security.Principal.SecurityIdentifier]) } catch { throw "Application account $appIdentity does not exist." }
-$null = Get-Command ollama -ErrorAction Stop
-$node = Get-Command node -ErrorAction Stop
-$npm = Get-Command npm -ErrorAction Stop
-$git = Get-Command git -ErrorAction Stop
-$python = Get-Command python -ErrorAction Stop
-& $node.Source --version
-if ($LASTEXITCODE -ne 0) { throw "Node.js is not executable." }
-& $npm.Source --version
-if ($LASTEXITCODE -ne 0) { throw "npm is not executable." }
+$ollamaCommand = Get-Command ollama.exe -ErrorAction SilentlyContinue
+$ollamaPath = if ($ollamaCommand) { $ollamaCommand.Source } else { $null }
+if (-not $ollamaPath) {
+    $ollamaProcess = Get-CimInstance Win32_Process -Filter "Name='ollama.exe'" -ErrorAction Stop |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) } |
+        Select-Object -First 1
+    $ollamaPath = if ($ollamaProcess) { [string]$ollamaProcess.ExecutablePath } else { $null }
+}
+if ([string]::IsNullOrWhiteSpace($ollamaPath) -or -not (Test-Path -LiteralPath $ollamaPath -PathType Leaf)) {
+    throw "Ollama executable was not found in PATH or among active ollama.exe processes."
+}
+$node = Get-Command node.exe -ErrorAction Stop
+$npm = Get-Command npm.cmd -ErrorAction Stop
+$git = Get-Command git.exe -ErrorAction Stop
+$python = Get-Command python.exe -ErrorAction Stop
+$gh = Get-Command gh.exe -ErrorAction Stop
+$nodeVersion = (@(& $node.Source --version 2>&1) -join " ").Trim()
+if ($LASTEXITCODE -ne 0 -or $nodeVersion -ne "v26.13.0") { throw "Node.js 26.13.0 is required; found '$nodeVersion'." }
+$npmVersion = (@(& $npm.Source --version 2>&1) -join " ").Trim()
+if ($LASTEXITCODE -ne 0 -or $npmVersion -ne "11.20.0") { throw "npm 11.20.0 is required; found '$npmVersion'." }
+$ollamaVersion = (@(& $ollamaPath --version 2>&1) -join " ").Trim()
+if ($LASTEXITCODE -ne 0 -or $ollamaVersion -notmatch '(?i)0\.40\.16') { throw "Ollama 0.40.16 is required; found '$ollamaVersion'." }
 & $git.Source --version
 if ($LASTEXITCODE -ne 0) { throw "Git is not executable." }
 $pythonVersion = (& $python.Source -c "import sys; print(sys.version_info.major, sys.version_info.minor, sep=chr(46))")
 if ($LASTEXITCODE -ne 0 -or [version]$pythonVersion -lt [version]"3.11") { throw "Python 3.11 or newer is required on the Runner host." }
-$gh = Get-Command gh -ErrorAction Stop
 & $gh.Source auth status --hostname github.com
 if ($LASTEXITCODE -ne 0) { throw "Authenticate gh as an account with repository Administration: write permission." }
 if ([string]::IsNullOrWhiteSpace($Model)) {
