@@ -449,6 +449,7 @@ def test_github_asset_redirect_handler_allows_github_release_asset_host():
 
 def test_linux_installer_is_pinned_to_the_verified_release_tag(tmp_path, monkeypatch):
     installer_path = tmp_path / "ollama-install.sh"
+    monkeypatch.setenv("SETTINGS_DB_PATH", str(tmp_path / "missing-settings.db"))
     release = {
         "tag": "v0.40.13",
         "assets": {
