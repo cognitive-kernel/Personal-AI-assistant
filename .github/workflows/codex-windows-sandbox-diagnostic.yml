@@ -243,8 +243,7 @@ jobs:
           Write-Host "CODEX_WINDOWS_MXC_SERVICE_SMOKE_OK"
 
       - name: Verify persistent Ollama context after Codex smoke
-        if: ${{ github.ref_name != 'feat/autonomous-engineering-architecture-final-20261112' }}
-        if: always() && steps.context_preflight.outcome == 'success'
+        if: ${{ always() && steps.context_preflight.outcome == 'success' && github.ref_name != 'feat/autonomous-engineering-architecture-final-20261112' }}
         timeout-minutes: 2
         shell: powershell
         run: |
