@@ -327,7 +327,7 @@ def test_ollama_status_hides_generated_codex_context_variants_and_rejects_saved_
             calls.append(request.full_url)
             assert request.full_url == "http://127.0.0.1:11434/api/tags"
             return io.BytesIO(
-                b'{"models":[{"name":"base-model:14b"},{"name":"base-model:14b-codex-ctx65536"}]}'
+                b'{"models":[{"name":"base-model:14b"},{"name":"base-model:14b-codex-ctx65536"},{"name":"base-model:14b-codex-64k"}]}'
             )
 
     monkeypatch.setattr(agent.urllib.request, "build_opener", lambda *args: FakeOpener())
@@ -339,7 +339,11 @@ def test_ollama_status_hides_generated_codex_context_variants_and_rejects_saved_
     assert result["model_installed"] is True
     assert result["model_selectable"] is False
     assert result["model_is_codex_context_variant"] is True
-    assert result["models"] == ["base-model:14b", "base-model:14b-codex-ctx65536"]
+    assert result["models"] == [
+        "base-model:14b",
+        "base-model:14b-codex-ctx65536",
+        "base-model:14b-codex-64k",
+    ]
     assert result["selectable_models"] == ["base-model:14b"]
     assert "original Ollama model" in result["model_metadata_error"]
 
@@ -355,6 +359,26 @@ def test_save_settings_rejects_generated_codex_context_variant_before_local_or_g
         agent.save_autonomous_engineering_settings(
             agent.EngineeringSettings(
                 model="base-model:14b-codex-ctx65536",
+                interval_hours=4,
+                execution_mode="continuous",
+            )
+        )
+
+    assert error.value.status_code == 422
+    assert "مدل اصلی Ollama" in error.value.detail
+
+
+def test_save_settings_rejects_legacy_generated_codex_context_variant_before_local_or_github_access(monkeypatch):
+    def unexpected_model_lookup(model):
+        raise AssertionError("Legacy generated context variants must be rejected before Ollama access.")
+
+    monkeypatch.setattr(agent, "_ollama_status", unexpected_model_lookup)
+    monkeypatch.setattr(agent.shutil, "which", lambda _: None)
+
+    with pytest.raises(HTTPException) as error:
+        agent.save_autonomous_engineering_settings(
+            agent.EngineeringSettings(
+                model="base-model:14b-codex-64k",
                 interval_hours=4,
                 execution_mode="continuous",
             )
