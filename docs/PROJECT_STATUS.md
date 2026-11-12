@@ -18,12 +18,12 @@
 ## وضعیت جاری — سازگاری پویا و ایمن Context در Codex (PR #722)
 
 - کار فعال: [PR #722](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/722)، شاخهٔ `fix/autonomous-engineering-show-all-ollama-models-20261112`؛ Draft و باز، بدون ادغام.
-- قرارداد اجرایی: هیچ حداقل ثابت ۶۴۰۰۰ یا ۵۱۲ توکنی وجود ندارد. Context باید یک عدد صحیح مثبت باشد و Codex باید با کمترین ظرفیت معتبر از سخت‌افزار، مدل و سقف کاتالوگ خودش تطبیق داده شود.
+- قرارداد اجرایی Codex: هیچ حداقل ثابت ۶۴۰۰۰ یا ۵۱۲ توکنی وجود ندارد؛ هر عدد صحیح مثبت با metadata معتبر مجاز است و مقدار انتخابی از کمینهٔ ظرفیت سخت‌افزار، سقف مدل و سقف کاتالوگ Codex به دست می‌آید. حداقل ۵۱۲ توکن فقط متعلق به مسیر عمومی inference چت Ollama است.
 - ظرفیت سخت‌افزار جدا از سقف Context مدل محاسبه می‌شود. بودجهٔ RAM شامل حافظهٔ آزاد فعلی، رزرو سیستم، هزینهٔ وزن مدل (فقط اگر هنوز resident نیست)، سربار runtime و KV-cache bytes/token مختص معماری مدل است.
 - هر Context درخواستی بزرگ‌تر از سقف مؤثر قبل از ذخیره، ساخت مدل Ollama یا ارسال به Codex clamp می‌شود. مدل اصلی تغییر نمی‌کند؛ variant اختصاصی ساخته و مقدار ذخیره‌شده و تخصیص واقعی با `/api/show` و `/api/ps` کنترل می‌شود.
 - metadata از `/api/show` با `verbose=false` خوانده می‌شود و محدودیت اندازهٔ پاسخ، loopback، proxy و redirect حفظ شده‌اند.
 - Regressionها شامل Context سخت‌افزاری ۱۰٬۰۰۰، سقف مدل ۸٬۱۹۲، سقف یک توکن، Context درخواستی بزرگ‌تر از ظرفیت، و رد Context صفر/منفی هستند.
-- اعتبارسنجی دقیق head نهایی `326b41a862661f032143fb0b8d26f80d8174ffc5` کامل و سبز است: ۲٬۱۴۶ passed، ۲ skipped، ۵۱ deselected؛ Windows Storage، Browser E2E و Dependency Audit موفق‌اند. Diagnostic واقعی self-hosted Windows نیز موفق شد: ۱۳ مدل Ollama بدون خطای metadata شناسایی شدند؛ variant مدل `gpt-oss:20b-codex-ctx10000` سقف معماری ۱۳۱٬۰۷۲ و تخصیص واقعی ۱۰٬۰۰۰ توکن داشت؛ پس از بارگذاری ۱۰٬۶۶۶٬۰۶۵٬۹۲۰ بایت RAM آزاد بود؛ اجرای واقعی Codex `exec_command` با exit code صفر و turn موفق انجام شد؛ تخصیص پس از اجرا دوباره تأیید و مدل از RAM آزاد شد.
+- شواهد تاریخی code/test head `326b41a862661f032143fb0b8d26f80d8174ffc5`: ۲٬۱۴۶ passed، ۲ skipped، ۵۱ deselected؛ Windows Storage، Browser E2E و Dependency Audit موفق‌اند. Diagnostic آن head مسیر درخواست صریح ۱۰٬۰۰۰ توکن را با Codex `exec_command` موفق تأیید کرد؛ این شاهد، مسیر انتخاب خودکار Context را ثابت نمی‌کند. اعتبارسنجی فعلی روی head جدید شامل Context خودکار، مشخصات واقعی میزبان، مسیرهای CLI ویندوز، process ownership و sandbox Docker است و وضعیت آن در بخش بازبینی سخت‌افزار بالا ثبت می‌شود.
 
 ## snapshot قبلی — تکمیل Autonomous Engineering
 
@@ -39,7 +39,7 @@
 ## وضعیت تاریخی اتوماسیون — PR #702 (snapshot قدیمی)
 
 - مبنای فعلی `main`: `a01e414ea3124213bc4d06496f55c74ad6ef9ef4`. PR [#701](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/701) در همین SHA ادغام شده است؛ اصلاحات حفظ وظیفهٔ دستی، checkpoint، recovery، هم‌ترازی داشبورد و ترتیب persistence پیش از schedule gate اکنون بخشی از main هستند.
-- PR [#702](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/702) روی شاخهٔ `fix/automation-codex-context-smoke-20261107` باز و هنوز ادغام‌نشده است. این PR برای رفع دو گیت باقیماندهٔ Codex/Ollama روی Windows Runner است.
+- PR [#702](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/702) یک شاخهٔ تاریخی و superseded بود؛ مسیر اصلاح Codex/Ollama آن در PR #722 یکپارچه شد و نباید به‌عنوان PR فعال یا مرجع قرارداد Context استفاده شود.
 - شواهد آخرین اجرای ناموفق پیش از اصلاحات: [run 42355938096](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/42355938096). حساب غیرمدیر Runner توانست MXC، اجرای مستقیم `cmd.exe` و Python را با markerهای `MXC_SERVICE_OK` و `MXC_CMD_PYTHON_OK` اجرا کند؛ اما اجرای واقعی Codex پنج command event داشت، هیچ agent message نساخت و smoke gate شکست خورد. این اجرا موفق محسوب نمی‌شود.
 - ریشهٔ Context: preflight قبلی فقط در درخواست warm-up مقدار `options.num_ctx=64000` را می‌فرستاد. درخواست‌های مستقل Codex از مدل پایه دوباره با مقدار پیش‌فرض ۸۱۹۲ بارگذاری می‌شدند. سقف Context مدل در metadata، Context تخصیص‌یافتهٔ runtime را اثبات نمی‌کند.
 - ریشهٔ آزمون JSONL: parser قبلی به دقیقاً یک فرمان مدل‌تولیدشده وابسته بود و فرمان را فقط از completion event می‌خواند. این قرارداد نسبت به تعداد tool callهای مدل و تفاوت فیلدهای start/completion شکننده بود.
@@ -52,8 +52,8 @@
   - حذف متن خام فرمان، خروجی و پیام عامل از evidence JSON؛ ثبت فقط شواهد محدود و غیرمحتوایی.
   - افزودن regression برای چند فرمان، completion فاقد متن فرمان، تطبیق ID، شکست اجرا، redaction و تثبیت Context.
 - **اعتبارسنجی PR #702:** اجرای exact-head CI برای آخرین SHA و diagnostic واقعی self-hosted Windows باید پس از آخرین تغییرات تکمیل شوند. نتایج چهار Check روی SHA قدیمی‌تر `42fdec3909ba37b68a3e3a1ed47bf9776421ff9c` به‌عنوان تأیید این اصلاحات محسوب نمی‌شوند.
-- **گیت‌های باز:** موفقیت Codex/MXC روی حساب غیرمدیر و Context واقعی ۶۴k روی Runner؛ soak و مصرف حافظه روی میزبان مقصد؛ اجرای کامل autonomous cycle؛ crash/restart recovery؛ staging restore/rollback؛ تأیید مالک. Issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290) همچنان tracker پذیرش کل پروژه است و Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) به بازبینی امنیتی مستقل نیاز دارد.
-- سیاست ادغام: PR #702 تا سبزشدن تمام Workflowهای لازم روی SHA نهایی، موفقیت diagnostic واقعی Windows و تأیید محلی مالک ادغام نمی‌شود. هیچ merge خودکار، bypass، اجرای unsandboxed یا تغییر سطح دسترسی Runner مجاز نیست.
+- **گیت‌های باز:** آزمون Context خودکار و fingerprint سخت‌افزار روی head فعلی؛ soak و مصرف حافظه روی میزبان مقصد؛ اجرای کامل autonomous cycle؛ crash/restart recovery؛ staging restore/rollback؛ تأیید مالک. Issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290) همچنان tracker پذیرش کل پروژه است و Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) به بازبینی امنیتی مستقل نیاز دارد.
+- سیاست ادغام: PR #702 بسته و با PR #722 جایگزین شده است. PR #722 تا سبزشدن Workflowهای لازم روی SHA نهایی، موفقیت diagnostic واقعی Windows و تأیید مالک ادغام نمی‌شود. توسعهٔ GitHub-side بدون انتظار برای تست محلی ادامه دارد؛ هیچ merge خودکار، bypass، اجرای unsandboxed یا تغییر سطح دسترسی Runner مجاز نیست.
 
 ## وضعیت کنسول مهندسی خودکار — جزئیات عملکرد
 
@@ -453,7 +453,7 @@
 - الزام ثابت ۶۴٬۰۰۰ توکن حذف می‌شود؛ Codex باید با Context پایین‌ترِ قابل پشتیبانی توسط مدل یا سخت‌افزار اجرا شود.
 - ظرفیت سخت‌افزار مستقل از سقف مدل برآورد می‌شود: حافظهٔ آزاد فیزیکی منهای reserve چهار GiB، وزن مدل و سربار runtime، تقسیم بر بایت KV Cache به‌ازای هر توکن.
 - سقف مؤثر برابر کمینهٔ ظرفیت سخت‌افزار، سقف معماری مدل و سقف کاتالوگ Codex است. درخواست بزرگ‌تر به‌صورت خودکار clamp می‌شود و هیچ لایه‌ای نباید مقدار بالاتر را ثبت یا به Codex تحویل دهد.
-- حداقل ۵۱۲ توکن فقط مرز اعتبار metadata/runtime در پیاده‌سازی است، نه حداقل مخصوص Codex. اگر سخت‌افزار حتی این پنجرهٔ پایه را تأمین نکند، اجرا با خطای دقیق منابع متوقف می‌شود.
+- حداقل Codex یک توکن مثبت با metadata/runtime معتبر است؛ ۵۱۲ توکن فقط حداقل مستقل مسیر عمومی inference چت Ollama است. اگر سخت‌افزار Context مثبت درخواستی را تأمین نکند، مقدار بزرگ‌تر clamp می‌شود یا در نبود ظرفیت حتی یک توکن، اجرا fail-closed می‌شود.
 - Python selector، API تنظیمات، readiness scripts، provisioning، PowerShell preflight، Codex model catalog، رابط کاربری و راهنمای عملیات هم‌راستا شده‌اند. درخواست‌های /api/show برای metadata با verbose=false انجام می‌شوند تا پاسخ‌های حجیم غیرضروری دریافت نشوند.
 - ADR-020 قرارداد و فرمول را ثبت می‌کند. تست‌های رگرسیون برای ظرفیت سخت‌افزاری ۱۰٬۰۰۰، سقف مدل ۸٬۱۹۲، clamp درخواست بزرگ‌تر و پذیرش مدل زیر ۶۴k اضافه/به‌روزرسانی شده‌اند.
 - وضعیت فعلی: **پیاده‌سازی، مستندات، exact-head CI و diagnostic واقعی Codex/Ollama روی Windows Runner موفق‌اند**؛ PR #722 همچنان Draft/open و ادغام‌نشده است. soak بلندمدت، crash/restart عملیاتی و staging restore/rollback همچنان گیت‌های مستقل پروژه‌اند.
