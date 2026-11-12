@@ -1,3 +1,12 @@
+## 2026-11-12 — Exact Python runtime compatibility for Autonomous Engineering
+
+- The owner environment includes Python 3.11.9 and 3.14.6, while the project declares `requires-python >=3.11`; the previous GitHub test job exercised only the moving Python 3.11 line.
+- Added a GitHub-hosted matrix for the automation-specific regression suite on exact Python 3.11.9 and 3.14.6. It covers the dashboard/API, cycle/checkpoint ownership and recovery, durable task/PR state, hardware telemetry, Ollama metadata/context, and Codex configuration contracts.
+- This validates both installed Python runtimes without relying on the owner's local test run. The full project suite remains on Python 3.11, and Windows-specific PowerShell/SQLite checks remain on Windows runners.
+- The workflow change requires fresh exact-head checks; earlier green runs do not validate the new matrix.
+
+---
+
 ## 2026-11-12 — PR #707 superseded by merged PR #719
 
 - Compared all 30 paths in PR #707 against the merged PR #719 and current `main`.
