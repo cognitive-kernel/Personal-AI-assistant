@@ -1,19 +1,19 @@
 ## 2026-11-12 — Exact-head revalidation after Windows and Codex context audit
 
-PR #722 latest implementation/test SHA: `b91a1a2b752a5432b5151f4b3f2e3987189eb1b3`. The status and acceptance ledgers are being synchronized in a documentation-only commit after that code/test SHA.
+PR #722 latest implementation/test SHA: `1e836ab2163c76f633aa314e6847dd52d5293d32`. The status and acceptance ledgers are being synchronized in a documentation-only commit after that code/test SHA.
 
 The Windows checkpoint watcher resolves PowerShell from SystemRoot/WINDIR before PATH fallback, uses a bounded 20-second CIM query, and preserves the underlying exception on failure. GPU telemetry and psutil-free Runner readiness use the same system PowerShell resolver and bounded timeout. The Windows Storage regression passed on intermediate SHA `4643710b92ba782eeaf7213039640c99bf2cc71a`; that result is not reused for the current head.
 
-The production PowerShell preflight runs under Windows PowerShell 5.1 and now uses an explicit python.exe plus Start-Process with UTF-8 file-based stdout/stderr. The Windows Storage workflow runs the matching PS 5.1 integration test, including a valid 1,000-token sub-64k selection, insufficient-RAM fail-closed behavior, and already-resident weight accounting. Codex catalog context_window/max_context_window and the explicit model_context_window override are pinned to the verified Ollama allocation. The arbitrary 1,048,576-token Codex cap was removed in favor of the signed 64-bit ModelInfo schema ceiling; actual model and host limits remain authoritative. Legacy -codex-64k variants are hidden/rejected and unloaded before fresh capacity calculation.
+The production PowerShell preflight runs under Windows PowerShell 5.1 and now uses an explicit python.exe plus Start-Process with UTF-8 file-based stdout/stderr. The Windows Storage workflow runs the matching PS 5.1 integration test, including a valid 1,000-token sub-64k selection, insufficient-RAM fail-closed behavior, and already-resident weight accounting. Codex catalog context_window/max_context_window and the explicit model_context_window override are pinned to the verified Ollama allocation. The arbitrary 1,048,576-token Codex cap was removed. The safe Codex ceiling is floor((2^63 - 1) / 9) to avoid overflow in the default 90% auto-compaction calculation; actual model and host limits remain authoritative. Legacy -codex-64k variants are hidden/rejected and unloaded before fresh capacity calculation.
 
-Validation for implementation/test SHA `b91a1a2b752a5432b5151f4b3f2e3987189eb1b3` is queued/in progress at the time of this update:
-- Tests (includes Windows Storage regressions): [#43252095821](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43252095821)
-- Sandbox integration: [#43252095946](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43252095946)
-- Browser E2E: [#43252096069](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43252096069)
-- Dependency audit: [#43252095880](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43252095880)
-- Windows target diagnostic: [#43252080758](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43252080758)
+Validation for implementation/test SHA `1e836ab2163c76f633aa314e6847dd52d5293d32` is in progress at the time of this update:
+- Tests (includes Windows Storage regressions): [#43252783756](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43252783756)
+- Sandbox integration: [#43252783923](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43252783923)
+- Browser E2E: [#43252783912](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43252783912)
+- Dependency audit: [#43252783810](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43252783810)
+- Windows target diagnostic: [current self-hosted diagnostic is pending on the final PR head](https://github.com/cognitive-kernel/Personal-AI-assistant/actions)
 
-PR #717 is closed as superseded; its PowerShell 5.1 bridge test was ported with the adaptive contract. PR #706 remains a separate open change for the general Ollama chat path and is not silently merged into this Codex-only context scope. Do not infer exact-head success from older commits. Because the ledger update itself advances the PR head, the required CI matrix must also pass on the final documentation-inclusive head. No local/manual test is claimed; no merge to main is permitted while required checks are pending.
+PR #717 is closed as superseded; its PowerShell 5.1 bridge test was ported with the adaptive contract. PR #706 remains a separate open change for the general Ollama chat path and is not silently merged into this Codex-only context scope. Do not infer exact-head success from older commits. A previous run on SHA `b91a1a2b752a5432b5151f4b3f2e3987189eb1b3` failed during pytest collection because a source-contract assertion string was truncated; the full test function was restored in a later commit. The current test/sandbox runs include that repair. Because this ledger update itself advances the PR head, the required CI matrix must also pass on the final documentation-inclusive head. No local/manual test is claimed; no merge to main is permitted while required checks are pending.
 
 # Project acceptance gates
 
