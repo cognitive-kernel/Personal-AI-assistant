@@ -831,3 +831,11 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 
 
 - **Second CI finding:** after restoring the truncated test function, the next pytest collection still found an unmatched closing parenthesis at the end of tests/test_codex_smoke_diagnostics.py. The earlier edit had left a duplicate trailing copy of the pre-existing diagnostics tests after the newly added bridge/config tests. Removed that duplicate tail while preserving the original tests and both new tests; the file now contains a single definition of each test. The failed 1e836 run is not counted; a fresh exact-head run is required.
+
+
+## 2026-11-12 — Restore single-copy Windows preflight after regression review
+
+- **Observed defect:** the latest Windows-preflight edits left duplicated sections in scripts/verify_ollama_context.ps1. The resulting script had six VerifyOnly branches instead of the original two, and CI correctly caught the drift through the existing source-contract test.
+- **Correction:** restored the file from the last verified 375-line revision, then reapplied only the required changes: legacy/current variant rejection and cleanup plus the Windows PowerShell 5.1 Start-Process UTF-8 file bridge. The resulting script is 393 lines and has exactly two VerifyOnly branches, one verification result marker, and one release marker.
+- **Regression protection:** the test now checks the internal-variant pattern variable, legacy cleanup, production Start-Process bridge, and the existing exact branch-count contract. The Windows workflow path assertion matches the actual PowerShell command form.
+- **Validation:** the failing CI assertions on the earlier script revision are not reused; the new exact-head test and Windows Storage jobs must pass.
