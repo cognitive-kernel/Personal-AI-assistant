@@ -86,31 +86,29 @@ function Get-AutomaticContext {
         throw "The shared Ollama context-selection module is missing: $helperPath"
     }
     $inputPath = Join-Path ([IO.Path]::GetTempPath()) ("ollama-context-selection-" + [guid]::NewGuid().ToString("N") + ".json")
+    $outputPath = "$inputPath.stdout"
+    $errorPath = "$inputPath.stderr"
     try {
         # Windows PowerShell 5.1 pipes native-process stdin as UTF-16LE. Use an
-        # explicit UTF-8 file contract so Python receives identical JSON on all shells.
+        # explicit UTF-8 file contract and redirected output files for stable process I/O.
         $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
         [IO.File]::WriteAllText($inputPath, $selectionInput, $utf8NoBom)
-        $errorPath = "$inputPath.stderr"
-        $previousErrorActionPreference = $ErrorActionPreference
-        try {
-            $ErrorActionPreference = "Continue"
-            $selectionOutput = & python $helperPath --input-file $inputPath 2> $errorPath
-            $helperExitCode = $LASTEXITCODE
-        } finally {
-            $ErrorActionPreference = $previousErrorActionPreference
-        }
+        $pythonPath = (Get-Command python -ErrorAction Stop).Source
+        $argumentList = '"' + $helperPath + '" --input-file "' + $inputPath + '"'
+        $helperProcess = Start-Process -FilePath $pythonPath -ArgumentList $argumentList -NoNewWindow -PassThru -Wait -RedirectStandardOutput $outputPath -RedirectStandardError $errorPath
+        $helperExitCode = [int]$helperProcess.ExitCode
         if ($helperExitCode -ne 0) {
-            $helperError = if (Test-Path -LiteralPath $errorPath) { Get-Content -LiteralPath $errorPath -Raw } else { "" }
+            $helperError = if (Test-Path -LiteralPath $errorPath) { [IO.File]::ReadAllText($errorPath, [Text.Encoding]::UTF8) } else { "" }
             throw "Fail-closed Ollama context selection failed with exit code $helperExitCode. $helperError"
         }
         try {
-            $selection = ($selectionOutput -join [Environment]::NewLine) | ConvertFrom-Json -ErrorAction Stop
+            $selectionText = [IO.File]::ReadAllText($outputPath, [Text.Encoding]::UTF8)
+            $selection = $selectionText | ConvertFrom-Json -ErrorAction Stop
         } catch {
             throw "The Ollama context-selection module returned invalid JSON."
         }
     } finally {
-        foreach ($temporaryPath in @($inputPath, "$inputPath.stderr")) {
+        foreach ($temporaryPath in @($inputPath, $outputPath, $errorPath)) {
             if (Test-Path -LiteralPath $temporaryPath) {
                 Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
             }
