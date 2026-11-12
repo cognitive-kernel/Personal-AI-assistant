@@ -283,6 +283,9 @@ def test_context_preflight_uses_deterministic_variant_from_selected_base_model()
     assert "internal Codex context variant" in provision
     assert "Base model selection" in app_check
     assert "Base model selection" in runner_check
+    legacy_and_current_variant_guard = "$modelIsContextVariant = $model -match '(?i)-codex-(?:ctx[0-9]+|[0-9]+k)$'"
+    assert legacy_and_current_variant_guard in app_check
+    assert legacy_and_current_variant_guard in runner_check
 
 
 def test_codex_model_catalog_rejects_non_positive_context(monkeypatch):
