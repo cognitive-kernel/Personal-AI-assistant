@@ -37,15 +37,19 @@ $checks += [pscustomobject]@{ Component = "Local model"; Ready = $modelInstalled
 $checks += [pscustomobject]@{ Component = "Model context metadata"; Ready = ($null -ne $modelContextLength -and $modelContextLength -ge 1); Detail = if ($null -eq $modelContextLength) { "Ollama /api/show did not report a valid architecture context_length" } elseif ($modelContextLength -lt 1) { "$modelContextLength tokens maximum; Codex can adapt to this context" } else { "$modelContextLength tokens maximum; runtime context metadata is valid" } }
 $checks += [pscustomobject]@{ Component = "Model tool calling"; Ready = $modelSupportsTools; Detail = if ($modelSupportsTools) { "Ollama advertises tools capability" } else { "Selected model does not advertise tools capability required by Codex" } }
 
-$ghCommand = Get-Command gh -ErrorAction SilentlyContinue
+$ghCommand = Get-Command gh.exe -ErrorAction SilentlyContinue
 $ghReady = $false
 if ($ghCommand) {
-    gh auth status --hostname github.com *> $null
+    & $ghCommand.Source auth status --hostname github.com *> $null
     $ghReady = ($LASTEXITCODE -eq 0)
 }
 $checks += [pscustomobject]@{ Component = "GitHub CLI"; Ready = $ghReady; Detail = if ($ghReady) { "Authenticated" } else { "Install gh and run gh auth login" } }
 
-$runner = Get-Process -Name "Runner.Listener" -ErrorAction SilentlyContinue | Select-Object -First 1
+$runner = $null
+try {
+    $runner = Get-CimInstance Win32_Process -Filter "Name='Runner.Listener.exe' OR Name='Runner.Listener'" -ErrorAction Stop |
+        Select-Object -First 1
+} catch {}
 $runnerReady = [bool]$runner
 $checks += [pscustomobject]@{ Component = "GitHub Runner"; Ready = $runnerReady; Detail = if ($runnerReady) { "Listener process active" } else { "Register and start the self-hosted runner with label ollama" } }
 
