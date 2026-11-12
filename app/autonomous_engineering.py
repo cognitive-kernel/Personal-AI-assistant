@@ -12,7 +12,10 @@ import urllib.request
 import re
 from typing import Any
 
-import psutil
+try:
+    import psutil
+except ImportError:
+    psutil = None
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, StrictInt, StrictStr
 
@@ -96,7 +99,7 @@ def _codex_status() -> dict[str, Any]:
 
 
 def _runner_status() -> dict[str, Any]:
-    return _services.runner_status(psutil.process_iter)
+    return _services.runner_status(psutil.process_iter if psutil is not None else None)
 
 
 def _github_snapshot() -> dict[str, Any]:
