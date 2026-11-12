@@ -292,6 +292,7 @@ def test_unresponsive_watcher_is_killed_and_reaped(tmp_path: Path):
         assert child.stdout.readline().strip() == "READY"
         started_at = process_control.process_start_time(child.pid)
         metadata = _metadata(started_at=started_at)
+        metadata["watcher_pid"] = child.pid
         process_control.stop_owned_watcher(metadata, script_path=script, timeout_seconds=0.1)
         child.wait(timeout=5)
         assert child.returncode is not None
