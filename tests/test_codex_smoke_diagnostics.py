@@ -396,3 +396,20 @@ def test_target_diagnostic_matches_recorded_hardware_and_uses_automatic_context(
     assert "Get-Command ollama.exe" in runner_check
     assert "verbose = $false" in runner_check
     assert "$parsedContext -ge 1" in runner_check
+
+def test_active_codex_documentation_matches_adaptive_context_contract():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    status = (root / "docs" / "PROJECT_STATUS.md").read_text(encoding="utf-8")
+    operations = (root / "docs" / "operations" / "CODEX_AUTONOMOUS_ENGINEERING.md").read_text(encoding="utf-8")
+    adr = (root / "docs" / "architecture" / "ADR-020-codex-adaptive-context.md").read_text(encoding="utf-8")
+
+    assert "حداقل سقف Context برابر ۶۴٬۰۰۰ توکن" not in readme
+    assert "اگر ظرفیت امن به ۶۴٬۰۰۰ توکن نرسد" not in readme
+    assert "هیچ حداقل ثابت ۶۴٬۰۰۰ یا ۵۱۲ توکنی وجود ندارد" in readme
+    assert "PR #702 یک شاخهٔ تاریخی و superseded بود" in status
+    assert "حداقل Codex یک توکن مثبت" in status
+    assert "There is no Codex-specific 64,000-token minimum" in operations
+    assert "There is no fixed minimum context window" in adr
