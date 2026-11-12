@@ -36,7 +36,7 @@ _WORKFLOW = "autonomous-codex-engineering.yml"
 _DEFAULT_INTERVAL_HOURS = 24
 _ALLOWED_INTERVAL_HOURS = {1, 2, 4, 6, 12, 24}
 _MODEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$")
-_CODEX_CONTEXT_VARIANT_PATTERN = re.compile(r"-codex-ctx[0-9]+$", re.IGNORECASE)
+_CODEX_CONTEXT_VARIANT_PATTERN = re.compile(r"-codex-(?:ctx[0-9]+|[0-9]+k)$", re.IGNORECASE)
 
 
 def _is_codex_context_variant(model: str) -> bool:
