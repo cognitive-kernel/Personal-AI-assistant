@@ -706,3 +706,17 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Self-hosted Windows diagnostic [#43197193053](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43197193053) passed. It enumerated 13 installed Ollama models with no metadata errors; verified `gpt-oss:20b-codex-ctx10000` with architecture maximum 131,072 and actual runtime allocation 10,000; measured 10,666,065,920 bytes of remaining physical RAM after allocation; executed a real Codex `exec_command` JSONL smoke with exit code 0 and verified the workspace probe, paired command events, expected agent message, and completed non-failed turn; re-verified the allocation after Codex and released the internal model from RAM.
 - Updated the PR description and acceptance records to distinguish exact-head CI and target-runner evidence from the still-open project-wide soak, crash/restart, staging restore/rollback, independent security review, and human evaluation gates.
 - No direct `main` write, force-push, automatic merge, deployment, or destructive state reset was performed. PR #722 remains Draft/open for owner review.
+
+
+## 2026-11-12 — Target-host compatibility and Docker failure correction (PR #722)
+
+- Re-audited the module against the target profile: Intel Core i5-12400 (6C/12T), 31.78 GiB-class physical RAM, Intel UHD Graphics 730, Windows service-account runner, Ollama 0.40.16, and pinned Codex CLI 0.167.0.
+- Removed the diagnostic's branch-specific 10,000-token default so an empty request exercises automatic model/hardware/Codex capacity selection. The previous 10k smoke remains a manual-request test only.
+- Removed hard-coded Admin-user Ollama paths and PowerShell npm/Codex wrappers; use npm.cmd/codex.cmd and locate ollama.exe from PATH or its active process.
+- Added target hardware fingerprint and /api/ps device-allocation evidence. WMI AdapterRAM for Intel UHD is explicitly not treated as dedicated VRAM.
+- Integrated native process identity/termination and optional psutil telemetry. Windows process creation time is rechecked on the opened handle; Linux pidfd pins the process object and prevents PID-reuse signaling. Unsupported safe termination fails closed.
+- Repaired isolated Docker behavior tests: resolve/validate the Git HEAD on the host and pass only the SHA into the no-network, read-only test container. The container does not receive a .git mount.
+- Added native target-host architecture acceptance for telemetry, locks, watcher identity, task-owner preservation, and pending-PR cleanup.
+- PR #720 and PR #721 were closed as superseded; their relevant changes were reconciled into PR #722 without importing the old 64k context floor or verbose metadata behavior.
+- Exact current head 1bb8a4f802d2496e355dd4d86a0595d275512cad has five workflows queued/running (tests, sandbox integration, browser E2E, dependency audit, Windows diagnostic). No pass is claimed before completion.
+- No merge, deployment, direct main write, force-push, or destructive user-state operation was performed.
