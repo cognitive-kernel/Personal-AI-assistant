@@ -402,7 +402,8 @@ def test_target_diagnostic_matches_recorded_hardware_and_uses_automatic_context(
     assert "verbose = $false" in runner_check
     assert "$parsedContext -ge 1" in runner_check
     assert "Get-CimInstance Win32_Service" in runner_check
-    assert "Get-CimInstance Win32_Process -Filter" in runner_check
+    assert 'Get-CimInstance Win32_Process -Filter "Name=\'Runner.Listener.exe\'"' in runner_check
+    assert "[uint32]$_.ParentProcessId -eq [uint32]$service.ProcessId" in runner_check
     assert "Runner.Listener.exe" in runner_check
     assert '$_.Name -like "actions.runner*"' in runner_check
     assert '$_.State -eq "Running"' in runner_check
