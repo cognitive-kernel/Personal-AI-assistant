@@ -77,7 +77,7 @@ def select_context_window(
         or requested_context_tokens < MIN_CONTEXT_TOKENS
     ):
         raise OllamaModelMetadataError(
-            f"Requested context must be an integer of at least {MIN_CONTEXT_TOKENS} tokens."
+            f"Requested context must be a positive integer."
         )
 
     prefix = f"{architecture}."
@@ -140,7 +140,7 @@ def select_context_window(
     )
     if selected < MIN_CONTEXT_TOKENS:
         raise OllamaModelMetadataError(
-            f"No safe runtime context of at least {MIN_CONTEXT_TOKENS} tokens could be selected."
+            f"No positive safe runtime context could be selected."
         )
 
     return {
