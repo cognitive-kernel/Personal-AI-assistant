@@ -1,3 +1,9 @@
+## 2026-11-12 — Exact-head Docker sandbox timeout remediation
+
+On PR #722 head `6f8239db9497a046b69a0d637fb38a1e78988b6d`, the full suite inside the isolated 2 GiB / 2 CPU container reached 100% progress but exceeded the 240-second limit before process exit. The logs do not prove whether pytest teardown, process shutdown, or resource pressure caused the delay. This was a failure, not a pass.
+
+The helper's bounded timeout maximum is now 600 seconds (default 300), the CI invocation uses 600 seconds, and the workflow job remains capped at 15 minutes. The missing closing `PY` heredoc marker was restored. A regression test accepts 600 and rejects 601 seconds. Container isolation/resource restrictions were not relaxed. Current exact head is `0398f2a8ab0fdc72a1aed253cdce4fb43cda24d3`; tests #43262594755, Docker #43262595072, Browser E2E #43262594986, dependency audit #43262594968, and self-hosted Windows diagnostic #43262580900 must complete on this exact SHA before this gate is marked passed.
+
 ## 2026-11-12 — Exact-head acceptance update after target-hardware review
 
 Latest code/test commit before documentation synchronization: `36eccfe9bf0fbdff9fde0642cd460e2b677cc757`. README, regression test, and engineering log were then updated to correct the Intel UHD 730 AdapterRAM description and add a target-profile capacity calculation; the resulting final PR head must run the full exact-head CI matrix.
