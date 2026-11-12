@@ -256,7 +256,7 @@ def test_ram_ceiling_subtracts_safety_reserve_before_context_selection():
 
 def test_detect_gpu_uses_generic_windows_telemetry_for_single_adapter(monkeypatch):
     import json
-    monkeypatch.setattr(hardware.os, "name", "nt")
+    monkeypatch.setattr(hardware, "IS_WINDOWS", True)
     payload = {
         "Adapters": [{"Name": "Intel(R) UHD Graphics 730", "PNPDeviceID": "PCI\\VEN_8086&DEV_4692", "AdapterRAM": 2147483648}],
         "Counters": [
@@ -279,7 +279,7 @@ def test_detect_gpu_uses_generic_windows_telemetry_for_single_adapter(monkeypatc
 
 
 def test_detect_gpu_keeps_discovered_device_when_metrics_are_unknown(monkeypatch):
-    monkeypatch.setattr(hardware.os, "name", "nt")
+    monkeypatch.setattr(hardware, "IS_WINDOWS", True)
     monkeypatch.setattr(hardware, "_detect_nvidia_gpus", lambda: [])
     monkeypatch.setattr(hardware, "_detect_rocm_gpus", lambda: [])
     monkeypatch.setattr(hardware, "_detect_windows_gpus", lambda: [{
@@ -377,7 +377,7 @@ def test_runtime_limits_allow_large_model_context_when_ram_budget_is_ample():
     assert limits["num_ctx"] == 65536
 
 def test_detect_gpu_combines_devices_from_multiple_vendors(monkeypatch):
-    monkeypatch.setattr(hardware.os, "name", "nt")
+    monkeypatch.setattr(hardware, "IS_WINDOWS", True)
     monkeypatch.setattr(hardware, "_detect_nvidia_gpus", lambda: [{
         "index": 0, "name": "NVIDIA RTX", "vendor": "NVIDIA",
         "utilization_percent": 30, "memory_used_mb": 1024,
@@ -406,7 +406,7 @@ def test_detect_gpu_combines_devices_from_multiple_vendors(monkeypatch):
 
 
 def test_detect_gpu_merges_duplicate_provider_records_without_losing_metrics(monkeypatch):
-    monkeypatch.setattr(hardware.os, "name", "nt")
+    monkeypatch.setattr(hardware, "IS_WINDOWS", True)
     monkeypatch.setattr(hardware, "_detect_nvidia_gpus", lambda: [{
         "index": 0, "name": "NVIDIA GeForce RTX 4060", "vendor": "NVIDIA",
         "utilization_percent": 40, "memory_used_mb": 2048,
@@ -443,7 +443,7 @@ def test_windows_gpu_shared_memory_is_capped_by_host_ram_available(monkeypatch):
             {"Path": "GPU Adapter Memory Shared Limit", "InstanceName": "luid_0_phys_0", "CookedValue": 8589934592},
         ],
     }
-    monkeypatch.setattr(hardware.os, "name", "nt")
+    monkeypatch.setattr(hardware, "IS_WINDOWS", True)
     monkeypatch.setattr(hardware, "_run_gpu_command", lambda *args, **kwargs: json.dumps(payload))
     monkeypatch.setattr(hardware, "psutil", SimpleNamespace(
         virtual_memory=lambda: SimpleNamespace(available=1024 * 1024**2),
