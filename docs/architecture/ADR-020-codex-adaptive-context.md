@@ -54,7 +54,7 @@ There is no fixed minimum context window. The only numeric validity rule is that
 1. Read architecture-specific model metadata and tool-calling capability from Ollama using bounded /api/show requests (verbose=false).
 2. Estimate host capacity from current free physical memory, model weight size, KV-cache dimensions, reserve, and overhead.
 3. Select the minimum of requested, hardware, model, and catalog ceilings.
-4. Create or reuse a separate context-specific Ollama model variant with exactly the selected num_ctx; never mutate the original model.
+4. Remove stale current-format and legacy `-codex-64k` variants for the selected base model before measuring current free RAM, then create a separate context-specific variant with exactly the selected num_ctx; never mutate the original model.
 5. Verify the saved variant setting through /api/show.
 6. Load the variant and verify the actual allocated context_length through /api/ps before dispatching Codex.
 7. Supply the exact selected value in Codex's model catalog and repeat runtime verification after execution.
