@@ -20,7 +20,7 @@ def _linux_cpu_times() -> tuple[int, int]:
     values = [int(value) for value in fields]
     if len(values) < 5:
         raise RuntimeError("Linux CPU counters are incomplete.")
-    return sum(values), values[3] + values[4]
+    return sum(values[:8]), values[3] + values[4]
 
 
 def _linux_memory_info() -> tuple[int, int]:
