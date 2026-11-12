@@ -172,14 +172,14 @@ def relevant_chat_candidates(
                 FROM learning_chat_candidates
                 WHERE status='unverified' AND id>=?
                   AND (({hint_conditions}) OR ({content_conditions}))
-                ORDER BY id ASC""",
-            (candidate_id, *patterns, *patterns),
+                ORDER BY id ASC LIMIT ?""",
+            (candidate_id, *patterns, *patterns, max_candidates + 1),
         ).fetchall()
 
     items: list[dict[str, Any]] = []
     used_chars = 0
     next_cursor: dict[str, int] | None = None
-    for index, row in enumerate(rows):
+    for row in rows:
         row_id = int(row["id"])
         text = str(row["content"])
         start_offset = content_offset if row_id == candidate_id else 0
@@ -235,6 +235,7 @@ def relevant_chat_candidates(
     return {
         "items": items,
         "matched_count": len(rows),
+        "matched_count_is_page_window": True,
         "included_count": len(items),
         "omitted_count": max(0, len(rows) - len(items)),
         "has_more": has_more,
