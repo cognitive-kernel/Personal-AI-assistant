@@ -536,6 +536,35 @@ def test_workspace_tests_run_only_in_pinned_no_network_container(tmp_path, monke
     assert kwargs["stdin"] == subprocess.DEVNULL
 
 
+def test_workspace_tests_supports_extended_bounded_suite_timeout(tmp_path, monkeypatch):
+    executable = _configured_docker(tmp_path)
+    monkeypatch.setattr(sandbox, "_workspace_head_sha", lambda workspace: "c" * 40)
+    workspace = tmp_path / "candidate"
+    (workspace / "app").mkdir(parents=True)
+    (workspace / "tests").mkdir()
+    monkeypatch.setattr(
+        sandbox.subprocess,
+        "Popen",
+        lambda *args, **kwargs: FakeProcess(args, stdout=b"2169 passed\\n"),
+    )
+
+    result = sandbox.run_workspace_tests(
+        workspace,
+        docker_executable=executable,
+        image="sha256:" + "a" * 64,
+        timeout_seconds=600,
+    )
+
+    assert result.status == "succeeded"
+    with pytest.raises(ValueError, match="timeout_seconds"):
+        sandbox.run_workspace_tests(
+            workspace,
+            docker_executable=executable,
+            image="sha256:" + "a" * 64,
+            timeout_seconds=601,
+        )
+
+
 def test_workspace_tests_reject_mutable_or_unavailable_test_images(tmp_path, monkeypatch):
     workspace = tmp_path / "candidate"
     (workspace / "app").mkdir(parents=True)
