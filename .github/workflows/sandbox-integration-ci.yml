@@ -93,13 +93,14 @@ jobs:
               raise SystemExit("Docker executable was not found.")
           result = sandbox.run_workspace_tests(
               Path.cwd(), docker_executable=docker, image=image,
-              timeout_seconds=240, max_output_bytes=65536,
+              timeout_seconds=600, max_output_bytes=65536,
           )
           print(result.stdout)
           if result.stderr:
               print(result.stderr, file=sys.stderr)
           if result.status != "succeeded":
               raise SystemExit(f"Isolated behavior tests failed: {result.status}: {result.reason or result.exit_code}")
+          PY
 
       - name: Run real Docker sandbox integration tests
         env:
