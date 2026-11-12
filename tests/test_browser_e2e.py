@@ -3565,7 +3565,7 @@ def test_autonomous_engineering_model_picker_requires_explicit_selection_and_sav
         assert model_picker.locator("option[value='qwen3:14b']").count() == 1
         context_variant = model_picker.locator("option[value='gpt-oss:20b-codex-ctx65536']")
         assert context_variant.count() == 1
-        assert context_variant.is_disabled()
+        assert context_variant.is_disabled(), f"Context option was not disabled: {context_variant.evaluate("option => option.outerHTML")}"
         assert "نسخهٔ داخلی Context" in context_variant.inner_text()
 
         model_picker.select_option("gpt-oss:20b")
