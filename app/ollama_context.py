@@ -8,7 +8,9 @@ from typing import Any
 
 # Context is a positive token count; Codex has no fixed minimum window.
 MIN_CONTEXT_TOKENS = 1
-MAX_CODEX_CONTEXT_TOKENS = 1048576
+# Codex ModelInfo context_window/max_context_window fields are signed 64-bit integers.
+# Use the schema's representable ceiling; do not impose an arbitrary 1M-token cap.
+MAX_CODEX_CONTEXT_TOKENS = (1 << 63) - 1
 GIB = 1024 ** 3
 DEFAULT_RAM_RESERVE_BYTES = 4 * GIB
 MIN_MODEL_OVERHEAD_BYTES = GIB // 2
