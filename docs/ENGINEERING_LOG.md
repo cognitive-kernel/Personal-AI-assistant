@@ -601,3 +601,5 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 
 - The full Linux suite reached 99% and exposed one remaining static assertion that still expected the GitHub workflow-dispatch list (`tests.yml`) to live inside the cycle controller. That responsibility is now in the PR lifecycle module. Updated the assertion to check the correct module; the controller's local pytest invocation remains separately asserted.
 - Windows storage/recovery, Browser E2E, and dependency audit were green on the preceding exact head. A fresh full CI run is required for this correction.
+
+- CI rerun after the static contract correction is required on the next contents-API commit because the preceding Git-data ref update did not create a new Actions check run for the latest head. The latest code/test head before this evidence note is `5754cb83d74b95000504e501b1c0834d6b9be6d2`.
