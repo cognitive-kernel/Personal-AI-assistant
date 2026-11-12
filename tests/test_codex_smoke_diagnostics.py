@@ -219,6 +219,12 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     )[1].split("      - name: Prepare the same service-account runtime", 1)[0]
     assert 'required = @("tests", "browser-e2e", "dependency-audit")' in ci_gate
     assert "EXPECTED_HEAD_SHA" in ci_gate
+    assert '$pythonCommand = Get-Command python.exe -ErrorAction Stop' in diagnostic
+    assert '$env:AUTONOMOUS_ENGINEERING_PYTHON = $pythonPath' in diagnostic
+    assert '"autonomous_engineering_python=$pythonPath" | Out-File -FilePath $env:GITHUB_ENV' in diagnostic
+    assert '$systemPython = [string]$env:AUTONOMOUS_ENGINEERING_PYTHON' in diagnostic
+    assert 'Python 3.11 or newer is required under the Runner service identity' in diagnostic
+    assert 'C:\\Program Files\\Python311\\python.exe' not in diagnostic
     assert "latest.conclusion -ne \"success\"" in ci_gate
     assert 'Verify persistent Ollama context after Codex smoke' in diagnostic
     assert 'Verify persistent Ollama context after autonomous Codex task' in autonomous
