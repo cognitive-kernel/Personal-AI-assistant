@@ -205,7 +205,7 @@ function Stop-LoadedCodexVariants {
         throw "Could not inspect loaded Ollama models before context selection. $($_.Exception.Message)"
     }
     $prefix = "$BaseModel-codex-ctx"
-    $legacyPattern = '^' + [regex]::Escape("$BaseModel-codex-") + '[0-9]+k
+    $legacyPattern = '^' + [regex]::Escape("$BaseModel-codex-") + '[0-9]+k' + '
     foreach ($name in $names) {
         Stop-LoadedModel -ModelName $name
     }
@@ -237,7 +237,7 @@ if ($VerifyOnly) {
     if ($Model -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]*(?::[A-Za-z0-9._-]+)?$') {
         throw "Model name contains unsupported characters; refusing to construct a persistent Codex model variant."
     }
-    if ($Model -match '(?i)-codex-(?:ctx[0-9]+|[0-9]+k)
+    $internalVariantPattern = '(?i)-codex-(?:ctx[0-9]+|[0-9]+k)' + '
 
     $baseModel = $Model
     Stop-LoadedCodexVariants -BaseModel $baseModel
@@ -368,7 +368,8 @@ if ($VerifyOnly) {
     Stop-LoadedModel -ModelName $codexModel
     Write-Host "OLLAMA_RUNTIME_CONTEXT_RELEASED"
 }
-) {
+
+    if ($Model -match $internalVariantPattern) {
         throw "The selected model is an internal Codex context variant (current or legacy). Select the original Ollama model to prevent nested variants."
     }
 
@@ -552,7 +553,7 @@ if ($VerifyOnly) {
     if ($Model -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]*(?::[A-Za-z0-9._-]+)?$') {
         throw "Model name contains unsupported characters; refusing to construct a persistent Codex model variant."
     }
-    if ($Model -match '(?i)-codex-(?:ctx[0-9]+|[0-9]+k)
+    $internalVariantPattern = '(?i)-codex-(?:ctx[0-9]+|[0-9]+k)' + '
 
     $baseModel = $Model
     Stop-LoadedCodexVariants -BaseModel $baseModel
@@ -683,7 +684,8 @@ if ($VerifyOnly) {
     Stop-LoadedModel -ModelName $codexModel
     Write-Host "OLLAMA_RUNTIME_CONTEXT_RELEASED"
 }
-) {
+
+    if ($Model -match $internalVariantPattern) {
         throw "The selected model is an internal Codex context variant (current or legacy). Select the original Ollama model to prevent nested variants."
     }
 
