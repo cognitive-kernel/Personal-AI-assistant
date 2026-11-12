@@ -1,0 +1,48 @@
+name: Autonomous Engineering Target Host Acceptance
+run-name: "Target Host Architecture Acceptance #${{ github.run_number }} - ${{ github.ref_name }} @ ${{ github.sha }}"
+
+on:
+  push:
+    branches:
+      - feat/autonomous-engineering-architecture-final-20261112
+    paths:
+      - .github/workflows/autonomous-engineering-target-host-acceptance.yml
+      - scripts/validate_autonomous_engineering_target_host.py
+      - scripts/autonomous_engineering_*.py
+      - scripts/AutonomousEngineeringTaskState.psm1
+
+permissions:
+  contents: read
+
+jobs:
+  target-host:
+    runs-on: [self-hosted, Windows, X64, ollama]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Verify the installed target-runner Python dependencies
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $systemPython = "C:\Program Files\Python311\python.exe"
+          if (-not (Test-Path -LiteralPath $systemPython -PathType Leaf)) {
+            throw "System-wide Python was not found: $systemPython"
+          }
+          & $systemPython --version
+          & $systemPython -c "import psutil; print('psutil', psutil.__version__)"
+          if ($LASTEXITCODE -ne 0) {
+            throw "The target runtime is missing psutil, which is required for process-identity recovery."
+          }
+
+      - name: Run target-host ownership, concurrency, and recovery acceptance
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $systemPython = "C:\Program Files\Python311\python.exe"
+          & $systemPython scripts/validate_autonomous_engineering_target_host.py
+          if ($LASTEXITCODE -ne 0) {
+            throw "Target-host architecture acceptance failed."
+          }
+          Write-Host "TARGET_RUNNER_ARCHITECTURE_ACCEPTANCE_OK"
