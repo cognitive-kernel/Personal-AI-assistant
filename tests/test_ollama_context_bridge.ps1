@@ -7,7 +7,7 @@ if (-not (Test-Path -LiteralPath $helperPath -PathType Leaf)) {
 }
 
 $inputPath = Join-Path $env:TEMP ("ollama-context-bridge-" + [guid]::NewGuid().ToString("N") + ".json")
-$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 try {
     $payload = @{
         architecture = "llama"
