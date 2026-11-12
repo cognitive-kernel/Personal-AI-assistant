@@ -9,7 +9,7 @@
 - Pinned the Windows Codex/Ollama diagnostic to the same unique `autonomous-state-owner` Runner used by the production workflow.
 - Added regression coverage for the provisioning guard and the diagnostic Runner label.
 - Rechecked target hardware assumptions: Intel Core i5-12400 (6C/12T), approximately 31.78 GiB RAM, Intel UHD Graphics 730. WMI AdapterRAM is not treated as dedicated VRAM; runtime Ollama allocation remains authoritative.
-- Verified the target toolchain contract in CI: Python 3.11.9/3.14.6, Node.js 26.13.0/npm 11.20.0, Codex CLI 0.167.0/0.167.2, and Ollama minimum 0.40.16.
+- CI executed Python 3.11.9/3.14.6 and Node.js 26.13.0/npm 11.20.0 with Codex CLI 0.167.0/0.167.2. The code enforces Ollama >=0.40.16; the installed target-host Ollama version and live model allocation remain unverified until the self-hosted diagnostic runs.
 
 ### Exact-head GitHub validation
 - Code/test SHA: `ce94934a48c00e95f6f50fab809e7fb9188b9943`.
@@ -20,7 +20,7 @@
 - Documentation synchronization changes the PR head; exact-head CI must run again on the documentation-inclusive SHA.
 
 ### Residual gates
-- The target-host diagnostic `#43281178718` is pending with no Runner assigned. The production main-branch run `#43220800164` has its `codex` job queued with no Runner name and requires `self-hosted, Windows, X64, ollama, autonomous-state-owner`. A powered-on PC does not prove that its GitHub Runner service is connected and matching those labels.
+- Target-host diagnostics `#43281178718` (code/test SHA) and `#43282258559` (documentation-inclusive SHA) are pending with no Runner assigned. The production main-branch run `#43220800164` has its `codex` job queued with no Runner name and requires `self-hosted, Windows, X64, ollama, autonomous-state-owner`. A powered-on PC does not prove that its GitHub Runner service is connected and matching those labels.
 - No live Ollama allocation, target-host Codex tool-call smoke, local soak/crash-restart, staging restore/rollback, human evaluation, or independent security review is claimed. Issue #52 remains open.
 - PR #722 remains Draft and unmerged. Continue GitHub-side work; do not bypass target-host or independent-review gates.
 
