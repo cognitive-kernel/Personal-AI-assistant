@@ -474,6 +474,8 @@ def test_windows_provisioning_and_app_readiness_use_consistent_cli_resolution():
 
 
 def test_windows_storage_workflow_exercises_adaptive_context_bridge_in_powershell_51():
+    from pathlib import Path
+
     root = Path(__file__).resolve().parents[1]
     workflow = (root / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
     bridge = (root / "tests" / "test_ollama_context_bridge.ps1").read_text(encoding="utf-8")
