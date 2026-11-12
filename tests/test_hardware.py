@@ -265,6 +265,17 @@ def test_ram_ceiling_subtracts_safety_reserve_before_context_selection():
 
 
 
+def test_windows_powershell_resolution_prefers_system_install(monkeypatch, tmp_path):
+    system_root = tmp_path / "Windows"
+    executable = system_root / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"test executable placeholder")
+    monkeypatch.setenv("SystemRoot", str(system_root))
+    monkeypatch.delenv("WINDIR", raising=False)
+
+    assert hardware.windows_powershell_executable() == str(executable)
+
+
 def test_detect_gpu_uses_generic_windows_telemetry_for_single_adapter(monkeypatch):
     import json
     monkeypatch.setattr(hardware, "IS_WINDOWS", True)
@@ -281,8 +292,16 @@ def test_detect_gpu_uses_generic_windows_telemetry_for_single_adapter(monkeypatc
             {"Path": r"\\GPU Adapter Memory(*)\\Shared Limit", "InstanceName": "luid_0x00000000_0x0000_phys_0", "CookedValue": 4294967296},
         ],
     }
-    monkeypatch.setattr(hardware, "_run_gpu_command", lambda *args, **kwargs: json.dumps(payload))
+    calls = []
+    monkeypatch.setattr(hardware, "windows_powershell_executable", lambda: r"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+    monkeypatch.setattr(
+        hardware,
+        "_run_gpu_command",
+        lambda command, timeout: calls.append((command, timeout)) or json.dumps(payload),
+    )
     result = hardware._detect_windows_gpus()
+    assert calls[0][0][0].endswith("powershell.exe")
+    assert calls[0][1] == 20.0
     assert len(result) == 1
     assert result[0]["vendor"] == "Intel"
     assert result[0]["utilization_percent"] == 18.5
