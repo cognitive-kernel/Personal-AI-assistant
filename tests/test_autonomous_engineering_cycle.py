@@ -1261,6 +1261,7 @@ def test_complete_merged_pr_requires_owner_merge_and_post_merge_exact_sha_checks
         "merge_commit_sha": merge_sha,
         "html_url": "https://github.com/owner/repository/pull/88",
         "user": {"login": "github-actions[bot]"},
+        "merged_by": {"login": "repository-owner", "type": "User"},
         "head": {
             "ref": pending["branch"],
             "sha": head_sha,
