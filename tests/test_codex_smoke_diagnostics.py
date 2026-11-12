@@ -132,9 +132,10 @@ def test_codex_diagnostic_uses_bounded_reasoning_effort_without_changing_default
     assert 'model_reasoning_effort="low"' in overrides
     assert "sandbox_workspace_write.exclude_slash_tmp=true" in overrides
     assert any(value.startswith("model_catalog_json=") for value in overrides)
-    assert "model_providers.ollama.stream_idle_timeout_ms=900000" in overrides
-    assert "model_providers.ollama.stream_max_retries=10" in overrides
-    assert "model_providers.ollama.request_max_retries=4" in overrides
+    assert 'model_provider="ollama"' in overrides
+    assert not any(value.startswith("model_providers.ollama.") for value in overrides)
+    assert "--oss" in arguments
+    assert arguments[arguments.index("--local-provider") + 1] == "ollama"
 
     monkeypatch.delenv("CODEX_MODEL_REASONING_EFFORT")
     default_arguments = progress.codex_arguments("gpt-oss:20b-codex-64k", "report.md")
@@ -146,9 +147,10 @@ def test_codex_diagnostic_uses_bounded_reasoning_effort_without_changing_default
     assert not any(value.startswith("model_reasoning_effort=") for value in default_overrides)
     assert "sandbox_workspace_write.exclude_slash_tmp=true" in default_overrides
     assert any(value.startswith("model_catalog_json=") for value in default_overrides)
-    assert "model_providers.ollama.stream_idle_timeout_ms=900000" in default_overrides
-    assert "model_providers.ollama.stream_max_retries=10" in default_overrides
-    assert "model_providers.ollama.request_max_retries=4" in default_overrides
+    assert 'model_provider="ollama"' in default_overrides
+    assert not any(value.startswith("model_providers.ollama.") for value in default_overrides)
+    assert "--oss" in default_arguments
+    assert default_arguments[default_arguments.index("--local-provider") + 1] == "ollama"
 
     monkeypatch.setenv("CODEX_MODEL_REASONING_EFFORT", "unbounded")
     with pytest.raises(ValueError, match="CODEX_MODEL_REASONING_EFFORT"):
