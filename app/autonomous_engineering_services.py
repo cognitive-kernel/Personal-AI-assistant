@@ -17,6 +17,7 @@ except ImportError:
 
 from fastapi import HTTPException
 
+from .hardware import windows_powershell_executable
 from .ollama_context import OllamaModelMetadataError
 
 
@@ -177,8 +178,8 @@ if ($null -ne $found) { 'true' } else { 'false' }
 """
         try:
             result = subprocess.run(
-                ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
-                capture_output=True, text=True, timeout=5, check=False, shell=False,
+                [windows_powershell_executable(), "-NoProfile", "-NonInteractive", "-Command", script],
+                capture_output=True, text=True, timeout=20, check=False, shell=False,
             )
             found = bool(result.returncode == 0 and result.stdout.strip().casefold() == "true")
         except (OSError, subprocess.TimeoutExpired):
