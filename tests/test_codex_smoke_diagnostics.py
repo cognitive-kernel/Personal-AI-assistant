@@ -404,6 +404,11 @@ def test_target_diagnostic_matches_recorded_hardware_and_uses_automatic_context(
     assert "Get-CimInstance Win32_Service" in runner_check
     assert "Get-CimInstance Win32_Process -Filter" in runner_check
     assert "Runner.Listener.exe" in runner_check
+    assert '$_.Name -like "actions.runner*"' in runner_check
+    assert '$_.State -eq "Running"' in runner_check
+    assert '[uint32]$_.ProcessId -gt 0' in runner_check
+    assert 'Service "$($runnerService.Name)" is running as' in runner_check
+    assert 'Could not inspect Windows runner services/processes:' in runner_check
     assert 'Get-Process -Name "Runner.Listener"' not in runner_check
 
 def test_active_codex_documentation_matches_adaptive_context_contract():
