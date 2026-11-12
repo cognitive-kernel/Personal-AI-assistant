@@ -28,8 +28,6 @@ function Get-AccountSidValue([string]$AccountName) {
 $progressPath = Join-Path $env:ProgramData "PersonalAIAssistant\autonomous-engineering"
 try { $null = ([Security.Principal.NTAccount]$appIdentity).Translate([Security.Principal.SecurityIdentifier]) } catch { throw "Application account $appIdentity does not exist." }
 $null = Get-Command ollama -ErrorAction Stop
-$tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 8
-if (@($tags.models | ForEach-Object { $_.name }) -notcontains $Model) { throw "Model $Model is not installed. Run ollama pull $Model first." }
 $node = Get-Command node -ErrorAction Stop
 $npm = Get-Command npm -ErrorAction Stop
 $git = Get-Command git -ErrorAction Stop
