@@ -113,9 +113,31 @@ $checks += [pscustomobject]@{ Component = "Configured model"; Ready = $modelInst
 $checks += [pscustomobject]@{ Component = "Model context metadata"; Ready = ($null -ne $modelContextLength -and $modelContextLength -ge 1); Detail = if ($null -eq $modelContextLength) { "Ollama /api/show did not report a valid architecture context_length" } elseif ($modelContextLength -lt 1) { "$modelContextLength tokens maximum; Codex can adapt to this context" } else { "$modelContextLength tokens maximum; runtime context metadata is valid" } }
 $checks += [pscustomobject]@{ Component = "Model tool calling"; Ready = $modelSupportsTools; Detail = if ($modelSupportsTools) { "Ollama advertises tools capability" } else { "Selected model does not advertise tools capability required by Codex" } }
 
-$runner = Get-Process -Name "Runner.Listener" -ErrorAction SilentlyContinue | Select-Object -First 1
-$runnerReady = [bool]$runner
-$checks += [pscustomobject]@{ Component = "GitHub Runner"; Ready = $runnerReady; Detail = if ($runnerReady) { "Listener process active" } else { "Runner.Listener is not running in this account" } }
+$runnerService = $null
+$runnerProcess = $null
+$runnerDetail = "No running GitHub Actions Runner service was found."
+try {
+    $runnerServices = @(Get-CimInstance Win32_Service -ErrorAction Stop | Where-Object {
+        $_.Name -like "actions.runner*" -and $_.State -eq "Running" -and [uint32]$_.ProcessId -gt 0
+    })
+    foreach ($service in $runnerServices) {
+        $candidate = Get-CimInstance Win32_Process -Filter "ProcessId=$([uint32]$service.ProcessId)" -ErrorAction SilentlyContinue
+        if ($candidate -and $candidate.Name -ieq "Runner.Listener.exe") {
+            $runnerService = $service
+            $runnerProcess = $candidate
+            break
+        }
+    }
+    if ($runnerService) {
+        $runnerDetail = "Service '$($runnerService.Name)' is running as '$($runnerService.StartName)' (PID $($runnerService.ProcessId))."
+    } elseif ($runnerServices.Count -gt 0) {
+        $runnerDetail = "A runner service is running, but its listener process could not be verified."
+    }
+} catch {
+    $runnerDetail = "Could not inspect Windows runner services/processes: $($_.Exception.Message)"
+}
+$runnerReady = [bool]$runnerService -and [bool]$runnerProcess
+$checks += [pscustomobject]@{ Component = "GitHub Runner"; Ready = $runnerReady; Detail = $runnerDetail }
 
 $progressPath = Join-Path $env:ProgramData "PersonalAIAssistant\autonomous-engineering"
 $progressReady = $false
