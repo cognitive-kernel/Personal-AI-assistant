@@ -7,7 +7,7 @@
 - Windows Storage regressions پس از اصلاح CIM روی SHA میانی `4643710b92ba782eeaf7213039640c99bf2cc71a` موفق شدند؛ این نتیجه برای SHA جدید جایگزین CI نیست.
 - تست واقعی Windows PowerShell 5.1 برای پل UTF-8 به Python به Workflow اضافه شد؛ ۱۰۰۰ توکن زیر توصیهٔ ۶۴k، حالت RAM ناکافی و عدم دوباره‌شماری وزن مدل resident را بررسی می‌کند.
 - Codex اکنون `context_window`، `max_context_window` و override صریح `model_context_window` را روی تخصیص تأییدشدهٔ Ollama قفل می‌کند؛ تنظیم قدیمی حساب Runner نمی‌تواند Context بزرگ‌تری تحمیل کند.
-- PR #717 به‌دلیل قرارداد قدیمی حداقل ثابت ۶۴k بسته و به PR #722 واگذار شد؛ تست PowerShell 5.1 آن پس از بازنویسی متناسب با قرارداد جدید منتقل شد. PR #706 باز می‌ماند چون به Context مسیر عمومی چت Ollama مربوط است، نه مسیر Codex.
+- PR #717 به‌دلیل قرارداد قدیمی حداقل ثابت ۶۴k بسته و به PR #722 واگذار شد؛ تست PowerShell 5.1 آن پس از بازنویسی متناسب با قرارداد جدید منتقل شد. variantهای قدیمی `-codex-64k` نیز مانند `-codex-ctx<tokens>` از انتخاب کاربر حذف و پیش از محاسبهٔ ظرفیت جدید unload می‌شوند. PR #706 باز می‌ماند چون به Context مسیر عمومی چت Ollama مربوط است، نه مسیر Codex.
 - مشخصات میزبان هدف همچنان Intel Core i5-12400، ۶ هسته/۱۲ رشته، حدود 31.78 GiB RAM و Intel UHD Graphics 730 است. نتیجهٔ diagnostic خودمیزبان روی SHA فعلی هنوز pending است.
 - طبق Master Engineering Prompt، توسعه و CI بدون انتظار برای اجرای محلی/تست انسانی ادامه دارد؛ اما هیچ check قدیمی جایگزین exact-head نمی‌شود و merge تا تکمیل گیت‌های الزامی مجاز نیست.
 
