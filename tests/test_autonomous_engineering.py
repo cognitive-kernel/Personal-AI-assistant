@@ -1304,6 +1304,28 @@ def test_save_settings_accepts_installed_model_with_context_below_64k(monkeypatc
     assert ("AUTONOMOUS_ENGINEERING_MODEL", "small:latest") in saved
 
 
+
+def test_ollama_status_accepts_one_token_model_context(monkeypatch):
+    class FakeOpener:
+        def open(self, request, timeout):
+            if request.full_url.endswith("/api/tags"):
+                return io.BytesIO(b'{"models":[{"name":"tiny:latest"}]}')
+            return io.BytesIO(json.dumps({
+                "details": {"family": "tiny"},
+                "model_info": {"tiny.context_length": 1},
+                "capabilities": ["completion", "tools"],
+            }).encode("utf-8"))
+
+    monkeypatch.setattr(agent.urllib.request, "build_opener", lambda *handlers: FakeOpener())
+
+    result = agent._ollama_status("tiny:latest")
+
+    assert result["model_metadata_available"] is True
+    assert result["model_context_length"] == 1
+    assert result["model_context_supported"] is True
+    assert result["model_supports_tools"] is True
+
+
 def test_save_settings_rejects_model_without_explicit_tool_calling_support(monkeypatch):
     monkeypatch.setattr(agent, "_ollama_status", lambda model: {
         "online": True, "model_installed": True,
