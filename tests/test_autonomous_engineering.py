@@ -1175,7 +1175,7 @@ def test_cancel_finds_active_run_after_ten_newer_completed_runs(monkeypatch):
     assert calls[-1][3] == "999"
 
 
-def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_codex_requirement():
+def test_autonomous_workflows_enforce_positive_and_exact_ollama_runtime_context():
     root = Path(__file__).resolve().parents[1]
     context_gate = (root / "scripts" / "verify_ollama_context.ps1").read_text(encoding="utf-8")
     assert all("-MaximumRedirection 0" in line for line in context_gate.splitlines() if "$baseUrl/api/" in line and "Invoke-RestMethod" in line)
@@ -1210,8 +1210,8 @@ def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_c
     assert "Get-AutomaticContext" in context_gate
     assert "Assert-ToolCallingCapability" in context_gate
     assert "ollama_context.py" in context_gate
-    assert "return [int64][Math]::Min($Maximum, 512)" not in context_gate
-    assert "return [int64][Math]::Min($Maximum, 2048)" not in context_gate
+    assert "$minimumContextTokens = 1" in context_gate
+    assert "64000" not in context_gate
     assert "AUTONOMOUS_ENGINEERING_MODEL=$codexModel" in context_gate
     assert production_paths.count("scripts/verify_ollama_context.ps1") == 2
     diagnostic_job = diagnostic_paths.split("  sandbox-diagnostic:", 1)[1]
@@ -1343,13 +1343,13 @@ def test_app_and_runner_readiness_scripts_require_model_context_and_tool_capabil
         assert ".context_length" in script
         assert '"tools"' in script
         assert "Model context metadata" in script
-        assert "-ge 512" in script
+        assert "-ge 1" in script
         assert "Model tool calling" in script
 
     provisioning = (root / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
     assert ".context_length" in provisioning
     assert all("-MaximumRedirection 0" in line for line in provisioning.splitlines() if "http://127.0.0.1:11434" in line and "Invoke-RestMethod" in line)
-    assert "-lt 512" in provisioning
+    assert "-lt 1" in provisioning
     assert '"tools"' in provisioning
 
 def test_master_engineering_prompt_requires_known_defect_closure_before_code_changes():
