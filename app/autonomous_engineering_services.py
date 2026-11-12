@@ -171,7 +171,7 @@ def runner_status(process_iter=None) -> dict[str, Any]:
         script = r"""
 $ErrorActionPreference = 'Stop'
 $found = Get-CimInstance -ClassName Win32_Process | Where-Object {
-    $_.Name -match 'Runner\\.Listener' -or $_.CommandLine -match 'Runner\\.Listener'
+    $_.Name -match 'Runner\.Listener' -or $_.CommandLine -match 'Runner\.Listener'
 } | Select-Object -First 1
 if ($null -ne $found) { 'true' } else { 'false' }
 """
@@ -186,7 +186,7 @@ if ($null -ne $found) { 'true' } else { 'false' }
     elif Path("/proc").is_dir():
         for command_path in Path("/proc").glob("[0-9]*/cmdline"):
             try:
-                command = command_path.read_bytes().replace(b"\\0", b" ").decode("utf-8", errors="replace").casefold()
+                command = command_path.read_bytes().replace(b"\0", b" ").decode("utf-8", errors="replace").casefold()
                 if "runner.listener" in command:
                     found = True
                     break
