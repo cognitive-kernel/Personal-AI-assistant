@@ -17,19 +17,21 @@ Codex must adapt its configured context to the actual safe capacity. There is no
 Let:
 
 - C_model be the selected model's architecture-specific context_length.
-- M_available be currently available physical memory before loading the derived Codex model.
+- M_available be currently available physical memory at preflight time.
 - M_reserve be the configured system safety reserve.
 - M_weights be the installed model's reported weight size.
+- M_weight_charge be zero when the selected base model is already resident (because free physical memory already excludes its weights), otherwise M_weights.
 - M_overhead be the conservative model/runtime overhead allowance.
 - B_KV be the estimated KV-cache bytes per token from the model's architecture metadata.
 - C_catalog be the Codex catalog ceiling (currently 1,048,576 tokens).
 
-The host capacity is estimated independently:
+The host capacity is estimated independently from the model's advertised context ceiling. KV-cache bytes/token necessarily depend on the selected model architecture, but the hardware memory budget is reported separately. If the base model is already loaded, its weight size is not charged twice because the available-memory measurement already reflects resident weights:
+
 
 \[
 C_{hardware} =
 \left\lfloor
-\frac{M_{available}-M_{reserve}-M_{weights}-M_{overhead}}{B_{KV}}
+\frac{M_{available}-M_{reserve}-M_{weight\_charge}-M_{overhead}}{B_{KV}}
 \right\rfloor
 \]
 
