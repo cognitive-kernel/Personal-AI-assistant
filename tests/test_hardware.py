@@ -287,6 +287,7 @@ def test_detect_gpu_uses_generic_windows_telemetry_for_single_adapter(monkeypatc
     assert result[0]["vendor"] == "Intel"
     assert result[0]["utilization_percent"] == 18.5
     assert result[0]["memory_used_mb"] == 256
+    assert result[0]["reported_adapter_ram_mb"] == 2048
     assert result[0]["shared_memory_used_mb"] == 512
     assert result[0]["shared_memory_total_mb"] == 4096
     assert result[0]["usable_memory_free_mb"] == 5376
@@ -469,3 +470,32 @@ def test_windows_gpu_shared_memory_is_capped_by_host_ram_available(monkeypatch):
     assert device["usable_shared_memory_free_mb"] == 1024
     assert device["usable_memory_free_mb"] == 1792
     assert device["usable_memory_scope"] == "dedicated+shared"
+
+def test_integrated_intel_adapter_ram_is_not_misreported_as_dedicated_vram(monkeypatch):
+    import json
+
+    monkeypatch.setattr(hardware, "IS_WINDOWS", True)
+    monkeypatch.setattr(hardware, "psutil", None)
+    monkeypatch.setattr(hardware, "_windows_memory_info", lambda: (16 * 1024**3, 4 * 1024**3))
+    payload = {
+        "Adapters": [{
+            "Name": "Intel(R) UHD Graphics 730",
+            "PNPDeviceID": "PCI\\\\VEN_8086&DEV_4692",
+            "AdapterRAM": 2147483648,
+        }],
+        "Counters": [
+            {"Path": "GPU Engine Utilization Percentage", "InstanceName": "luid_0_phys_0", "CookedValue": 10},
+            {"Path": "GPU Adapter Memory Shared Usage", "InstanceName": "luid_0_phys_0", "CookedValue": 1073741824},
+            {"Path": "GPU Adapter Memory Shared Limit", "InstanceName": "luid_0_phys_0", "CookedValue": 8589934592},
+        ],
+    }
+    monkeypatch.setattr(hardware, "_run_gpu_command", lambda *args, **kwargs: json.dumps(payload))
+
+    device = hardware._detect_windows_gpus()[0]
+
+    assert device["reported_adapter_ram_mb"] == 2048
+    assert device["memory_total_mb"] is None
+    assert device["memory_percent"] is None
+    assert device["shared_memory_total_mb"] == 8192
+    assert device["usable_shared_memory_free_mb"] == 4096
+    assert device["usable_memory_scope"] == "shared-only"
