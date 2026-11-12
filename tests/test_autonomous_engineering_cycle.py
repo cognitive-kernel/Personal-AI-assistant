@@ -1303,6 +1303,33 @@ def test_pending_pr_state_round_trips_atomically_and_rejects_corruption(tmp_path
         cycle.load_pending_pr()
 
 
+def test_pending_pr_state_rejects_lookalike_github_hosts_without_deleting_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    import json
+
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "state"))
+    pending = {
+        "number": 91,
+        "url": "https://github.com/owner/repository/pull/91",
+        "head_sha": "c" * 40,
+        "base_sha": "b" * 40,
+        "branch": "codex/local-engineering-91-1-task-1",
+        "run_id": "91",
+        "task": 1,
+    }
+    cycle.save_pending_pr(pending, "owner/repository")
+    path = cycle._pending_pr_path()
+    corrupted = json.loads(path.read_text(encoding="utf-8"))
+    corrupted["url"] = "https://github.com.evil/owner/repository/pull/91"
+    path.write_text(json.dumps(corrupted), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="durable contract"):
+        cycle.load_pending_pr()
+
+    assert path.is_file()
+
+
 def test_clear_pending_state_removes_task_and_pr_in_one_transaction(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ):
