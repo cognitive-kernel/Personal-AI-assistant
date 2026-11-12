@@ -447,6 +447,11 @@ def test_active_codex_documentation_matches_adaptive_context_contract():
     assert "docs.ollama.com/integrations/codex" in readme
     assert "آزمون واقعی فراخوانی ابزار Codex" in readme
     assert "There is no fixed minimum context window" in adr
+    assert '"max_context_window": context_window' in (root / "scripts" / "autonomous_engineering_codex_config.py").read_text(encoding="utf-8")
+    assert "model_context_window={context_window}" in (root / "scripts" / "autonomous_engineering_codex_config.py").read_text(encoding="utf-8")
+    assert "inherited Codex configuration from raising" in adr
+    assert "inherited Codex config cannot increase it" in operations
+    assert "تنظیمات قدیمی Codex نتوانند Context بزرگ‌تری تحمیل کنند" in readme
 
 def test_windows_provisioning_and_app_readiness_use_consistent_cli_resolution():
     from pathlib import Path
