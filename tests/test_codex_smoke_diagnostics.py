@@ -438,6 +438,12 @@ def test_active_codex_documentation_matches_adaptive_context_contract():
     assert "PR #722 پیشنهاد حذف الزام ثابت ۶۴k را می‌دهد" in status
     assert "حداقل Codex یک توکن مثبت" in status
     assert "There is no Codex-specific 64,000-token minimum" in operations
+    assert "docs.ollama.com/integrations/codex" in operations
+    assert "at least 64k tokens" in operations
+    assert "docs.ollama.com/integrations/codex" in adr
+    assert "below the upstream-documented recommendation" in adr
+    assert "docs.ollama.com/integrations/codex" in readme
+    assert "آزمون واقعی فراخوانی ابزار Codex" in readme
     assert "There is no fixed minimum context window" in adr
 
 def test_windows_provisioning_and_app_readiness_use_consistent_cli_resolution():
