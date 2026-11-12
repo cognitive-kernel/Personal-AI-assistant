@@ -1,17 +1,17 @@
-## 2026-11-12 — Exact-head revalidation after CIM, PowerShell 5.1, and Codex context-pin fixes
+## 2026-11-12 — Exact-head revalidation after Windows and Codex context audit
 
-PR #722 current head: `bdb3921ad905a77bb4b29ff50a18b204b2595fde`.
+PR #722 current code/documentation head: `b91a1a2b752a5432b5151f4b3f2e3987189eb1b3`.
 
-The Windows checkpoint watcher now resolves PowerShell from SystemRoot/WINDIR before PATH fallback, uses a bounded 20-second CIM query, and exposes the underlying exception when metadata lookup fails. The Windows Storage job passed on intermediate SHA `4643710b92ba782eeaf7213039640c99bf2cc71a`; that result is not reused for the current head.
+The Windows checkpoint watcher resolves PowerShell from SystemRoot/WINDIR before PATH fallback, uses a bounded 20-second CIM query, and preserves the underlying exception on failure. GPU telemetry and psutil-free Runner readiness use the same system PowerShell resolver and bounded timeout. The Windows Storage regression passed on intermediate SHA `4643710b92ba782eeaf7213039640c99bf2cc71a`; that result is not reused for the current head.
 
-The production PowerShell preflight runs under Windows PowerShell 5.1. A dedicated integration test now executes the UTF-8 file/process bridge in that exact shell and covers adaptive selection, a valid 1,000-token sub-64k request, fail-closed insufficient RAM, and already-resident model weights. The generated Codex catalog now pins both `context_window` and `max_context_window`, and the CLI explicitly sets `model_context_window` to the exact verified Ollama allocation.
+The production PowerShell preflight runs under Windows PowerShell 5.1 and now uses an explicit python.exe plus Start-Process with UTF-8 file-based stdout/stderr. The Windows Storage workflow runs the matching PS 5.1 integration test, including a valid 1,000-token sub-64k selection, insufficient-RAM fail-closed behavior, and already-resident weight accounting. Codex catalog context_window/max_context_window and the explicit model_context_window override are pinned to the verified Ollama allocation. The arbitrary 1,048,576-token Codex cap was removed in favor of the signed 64-bit ModelInfo schema ceiling; actual model and host limits remain authoritative. Legacy -codex-64k variants are hidden/rejected and unloaded before fresh capacity calculation.
 
-Exact-head validation for `bdb3921ad905a77bb4b29ff50a18b204b2595fde` is queued at the time of this update:
-- Tests (includes Windows Storage regressions): [#43251042284](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43251042284)
-- Sandbox integration: [#43251042595](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43251042595)
-- Browser E2E: [#43251042720](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43251042720)
-- Dependency audit: [#43251042801](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43251042801)
-- Windows target diagnostic: [#43251028710](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43251028710)
+Exact-head validation for `b91a1a2b752a5432b5151f4b3f2e3987189eb1b3` is queued/in progress at the time of this update:
+- Tests (includes Windows Storage regressions): [#43252095821](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43252095821)
+- Sandbox integration: [#43252095946](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43252095946)
+- Browser E2E: [#43252096069](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43252096069)
+- Dependency audit: [#43252095880](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43252095880)
+- Windows target diagnostic: [#43252080758](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43252080758)
 
 PR #717 is closed as superseded; its PowerShell 5.1 bridge test was ported with the adaptive contract. PR #706 remains a separate open change for the general Ollama chat path and is not silently merged into this Codex-only context scope. Do not infer exact-head success from older commits. No local/manual test is claimed; no merge to main is permitted while required checks are pending.
 
