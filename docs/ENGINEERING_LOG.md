@@ -635,3 +635,27 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Issue #290 remains authoritative: no automatic PR merge, deployment, cloud provisioning, or remote execution. The controller never calls the merge API and accepts only a human merge actor; owner review and manual merge remain required.
 - This CI proves repository tests and the configured Windows storage regression job only. A real target-host Codex/Ollama tool-call smoke, long-duration soak, crash/restart acceptance, staging restore/rollback, and independent security review (Issue #52) remain pending and are not claimed.
 - No direct write to `main`, force-push, deployment, destructive state reset, or user-data deletion occurred. This verification snapshot is for the exact SHA above; any subsequent commit requires its own exact-head CI.
+
+## 2026-11-12 — Adaptive Codex context bounded by model and hardware capacity (PR #722)
+
+### Root cause
+
+- A fixed 64,000-token floor was duplicated across the context selector, Autonomous Engineering settings/readiness, Windows preflight and provisioning scripts, Codex catalog validation, dashboard copy, and operations documentation.
+- The prior selector also folded the model maximum into the reported hardware maximum, obscuring the two independent constraints.
+- The service and PowerShell metadata paths used verbose Ollama /api/show responses even though the concise response exposes the architecture metadata needed for context planning.
+
+### Decision and implementation
+
+- Recorded ADR-020. Hardware capacity is computed independently from model capacity using available physical RAM, the 4 GiB reserve, installed model weights, runtime overhead, and architecture-specific KV-cache bytes/token.
+- The effective context ceiling is min(hardware capacity, model maximum, Codex catalog maximum). The selected context is the requested value clamped to that ceiling, or the effective ceiling when no request is supplied.
+- Removed the Codex-specific 64k minimum. The 512-token floor remains only as the minimum valid model/runtime metadata window; below that, safe initialization cannot be established.
+- Updated the Python selector, Autonomous Engineering status/settings, PowerShell preflight, Codex catalog, readiness/provisioning checks, dashboard wording, and operations guide. User/workflow requests above the verified ceiling are clamped before model-variant creation and Codex dispatch.
+- Switched relevant Ollama /api/show metadata requests to verbose=false while preserving response-size guards and runtime verification through /api/ps.
+- Added regressions for 10,000-token hardware capacity, an 8,192-token model cap, request clamping, and saving an installed model below 64k.
+
+### Validation boundary
+
+- Active branch: fix/autonomous-engineering-show-all-ollama-models-20261112; existing PR: #722.
+- Exact-head CI for the new commits has not yet completed. No local test output, target-host Codex run, or real tool-call smoke is claimed.
+- Runtime acceptance must prove the Codex model catalog carries the selected value and Ollama /api/ps reports exactly that allocation before and after Codex.
+- No direct main write, force-push, automatic PR merge, deployment, or destructive state change was performed.
