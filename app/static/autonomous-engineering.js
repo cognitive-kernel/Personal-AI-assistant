@@ -53,10 +53,13 @@
     for (const name of names) {
       const option = document.createElement("option");
       option.value = name;
-      option.textContent = name + (savedModelUnavailable && name === selectedModel
-        ? (selectedModelIsContextVariant ? " (نسخهٔ داخلی؛ قابل انتخاب نیست)" : " (ذخیره‌شده؛ نصب نیست)") : "");
-      if (savedModelUnavailable && name === selectedModel) {
-        option.dataset.installed = "false";
+      const contextVariant = /-codex-ctx[0-9]+$/i.test(name);
+      const unavailableSavedModel = savedModelUnavailable && name === selectedModel;
+      option.textContent = name + (contextVariant
+        ? " (نسخهٔ داخلی Context؛ قابل انتخاب نیست)"
+        : unavailableSavedModel ? " (ذخیره‌شده؛ نصب نیست)" : "");
+      if (contextVariant || unavailableSavedModel) {
+        option.dataset.installed = contextVariant ? "true" : "false";
         option.disabled = true;
       }
       select.append(option);
@@ -121,7 +124,7 @@
         ? "؛ این نسخهٔ داخلی Context است؛ مدل اصلی را انتخاب و ذخیره کنید"
         : data.model && !checks.model_installed ? "؛ مدل ذخیره‌شده روی این سیستم نصب نیست" : "";
       $("model-detail").textContent = modelLabel + installationText + contextText + toolsText;
-      renderModels(data.selectable_models || data.models, data.model, checks.model_is_codex_context_variant);
+      renderModels(data.models || data.selectable_models, data.model, checks.model_is_codex_context_variant);
       const executionMode = data.execution_mode || "continuous";
       if (document.activeElement !== $("execution-mode")) {
         $("execution-mode").value = executionMode;
