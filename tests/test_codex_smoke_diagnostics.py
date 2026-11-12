@@ -288,6 +288,11 @@ def test_windows_runner_cli_checks_use_cmd_shims_and_discover_active_ollama():
 
     assert "Get-Command npm.cmd" in runner_check
     assert "$npmCommand.Source --version" in runner_check
+    assert "$npmVersionExitCode = $LASTEXITCODE" in runner_check
+    assert "$npmPrefixExitCode = $LASTEXITCODE" in runner_check
+    assert "$codexExitCode = $LASTEXITCODE" in runner_check
+    assert "$ollamaExitCode = $LASTEXITCODE" in runner_check
+    assert "| Select-Object -First 1)" not in runner_check
     assert "Get-Command codex.cmd" in runner_check
     assert "$codexCommand.Source --version" in runner_check
     assert "Get-Command ollama.exe" in runner_check
