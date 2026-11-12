@@ -226,15 +226,12 @@ def codex_arguments(model: str, report: str) -> list[str]:
     # /tmp special root onto a drive-root path and create an unsupported split
     # writable-root set for exec_command. Exclude that unintended root while
     # preserving the workspace and the normal per-user temp directory.
+    # Ollama is a built-in Codex provider. Select it with --oss/--local-provider,
+    # but never synthesize model_providers.ollama.* overrides: Codex reserves
+    # that provider ID and rejects attempts to redefine it.
     config_overrides = [
         "sandbox_workspace_write.exclude_slash_tmp=true",
         f"model_catalog_json={json.dumps(str(catalog_path))}",
-        # Codex defaults to a 5-minute SSE idle timeout. Local Ollama can spend
-        # several minutes pre-filling a large Codex prompt without emitting a
-        # token; keep the stream alive long enough for that legitimate work.
-        "model_providers.ollama.stream_idle_timeout_ms=900000",
-        "model_providers.ollama.stream_max_retries=10",
-        "model_providers.ollama.request_max_retries=4",
     ]
     if reasoning_effort:
         config_overrides.insert(0, f'model_reasoning_effort="{reasoning_effort}"')
