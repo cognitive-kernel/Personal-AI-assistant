@@ -1,3 +1,11 @@
+## 2026-11-12 — Per-user Ollama path and target readiness coverage
+
+- Root cause: a non-admin Windows Runner may not receive Ollama's per-user install directory in PATH, and WMI can omit ExecutablePath for a process owned by another account. The old fixed Administrator path was not portable.
+- Fix: runner readiness, provisioning, autonomous workflow bootstrap, and target diagnostic now fall back to enumerating non-special Win32_UserProfile paths and probing the standard AppData\\Local\\Programs\\Ollama\\ollama.exe location. The executable is still invoked and version-checked; no username or admin elevation is assumed.
+- The target Windows diagnostic now executes the production check_autonomous_runner.ps1 under the actual service identity and requires WINDOWS_RUNNER_READINESS_CONTRACT_OK.
+- Regression tests assert the profile-discovery fallback in all four entry points.
+- Code/test head: ae5f0fb26c26ac02e4a9bd04fd1f8362c9796d6a. Exact-head tests #43211124252, sandbox #43211124343, browser #43211124438, dependency audit #43211124379, and Windows diagnostic #43211116634 were queued/in progress when recorded; focused Codex/context tests have passed, while the full suite and integration gates remain pending.
+
 ## 2026-11-12 — Windows Runner service-identity readiness correction
 
 ### Root cause
@@ -11,7 +19,7 @@ The consolidated PR #722 readiness script still used `Get-Process Runner.Listene
 - Add a regression test forbidding the old `Get-Process Runner.Listener` path.
 
 ### Validation
-Current PR head: `4c39205b105a497af9e10780faa7356feecaffa4`. Exact-head tests, sandbox integration, Browser E2E, dependency audit, and self-hosted Windows diagnostic are queued/in progress under runs #43210293958, #43210293805, #43210293787, #43210293781, and #43210286527. None is recorded as passed until its exact-head conclusion is success.
+Current PR head: `ae5f0fb26c26ac02e4a9bd04fd1f8362c9796d6a`. Exact-head tests, sandbox integration, Browser E2E, dependency audit, and self-hosted Windows diagnostic are queued/in progress under runs #43211124252, #43211124343, #43211124438, #43211124379, and #43211116634. None is recorded as passed until its exact-head conclusion is success.
 
 # Engineering Continuity Log
 
