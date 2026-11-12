@@ -1,9 +1,9 @@
 # وضعیت یکپارچهٔ پروژه
 
-## وضعیت جاری — تکمیل Autonomous Engineering (PR #717)
+## وضعیت جاری — تکمیل Autonomous Engineering
 
 - مبنای زندهٔ `main`: `461c0a2b1deaf5f8af8486846f167da8185c580a`. تغییرات release-watch جدید main حفظ شده‌اند.
-- شاخهٔ معماری: `feat/autonomous-engineering-complete-20261112`؛ PR [#717](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/717) باز است.
+- شاخهٔ معماری: `feat/autonomous-engineering-complete-20261112`؛ شاخهٔ تکمیل: `feat/autonomous-engineering-complete-20261112` باز است.
 - مالکیت worktree، checkpoint watcher، هویت فرایند watcher، state پایدار task/PR، GitHub transport و PR lifecycle در ماژول‌های مستقل قرار دارند.
 - تست‌های اختصاصی Windows، Browser E2E و dependency audit روی headهای قبلی موفق بوده‌اند؛ Linux دو static assertion قدیمی را آشکار کرد که اصلاح شدند. برای head نهایی PR #717 شواهد exact-SHA تازه لازم است.
 - اصلاح provider و Context سخت‌افزارمحور در PR #717 اضافه شده است؛ اجرای زنده روی Runner و تأیید مدل ذخیره‌شده هنوز pending است. Crash/restart، soak و restore میزبان مقصد نیز جداگانه باز هستند.

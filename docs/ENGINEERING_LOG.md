@@ -586,7 +586,7 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Existing watch fingerprints may trigger a one-time additive refresh after this coverage expansion. Historical curricula and lessons remain unchanged.
 - The 30-result limit is the search adapter's per-query page bound, not a total curriculum/source-retention cap; exhaustive detection across all public websites is not guaranteed by search alone.
 
-## 2026-11-12 — Autonomous Engineering ownership, recovery, and modularization (PR #716)
+## 2026-11-12 — Autonomous Engineering ownership, recovery, and modularization
 
 - Reused the existing ownership/recovery implementation from the earlier unmerged PR #707 and ported it onto the current main baseline `461c0a2b1deaf5f8af8486846f167da8185c580a`, preserving the concurrently merged release-watch improvements.
 - Kept ownership boundaries explicit: repository worktree execution lock, checkpoint-watcher lifetime lock, watcher process identity, and durable task/PR state mutex are separate modules with separate responsibilities.
@@ -601,10 +601,12 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - The live Codex/Ollama run remains a separate runtime blocker: the previous target-host run failed because Codex CLI rejected a reserved built-in `model_providers.ollama` override. It must be fixed and tested before claiming live Autonomous Engineering operation.
 - Target-host crash/restart, soak, staging restore/rollback, and owner acceptance remain external acceptance gates. No automatic deployment, destructive state cleanup, or user-data migration is introduced.
 
-## 2026-11-12 — Codex/Ollama runtime and context validation (PR #717)
+## 2026-11-12 — Codex/Ollama runtime and context validation
 
 - Removed the implicit `gpt-oss:20b` fallback. The dashboard lists installed original Ollama models, excludes generated context variants, and saves only a model that exposes an architecture-specific context limit of at least 64k tokens and the `tools` capability.
 - Added hardware-aware context selection from model KV-cache metadata, installed model size, and measured free physical RAM. The selector fails closed on missing metadata or insufficient headroom and persists a context-specific model variant without mutating the original model.
 - Replaced the rejected reserved built-in provider override with the documented custom provider ID `ollama-local`, configured for the local Ollama Responses endpoint and no authentication. Timeout and retry settings now belong to this unique custom provider ID.
 - Fixed the PowerShell-to-Python context bridge by writing JSON to an explicit temporary file and invoking `app/ollama_context.py --input-file`; the previous native stdin pipeline could reach Python as empty input and raise `Expecting value: line 1 column 1`. The temporary file is removed in a `finally` block.
 - Added model metadata, context selection, explicit-file bridge, Codex provider, settings API, and browser UI regressions. Exact-head CI and the real Windows Codex/Ollama diagnostic remain pending.
+
+- The first exact-head Linux focused run exposed two test-fixture issues: the low-memory case failed earlier than the intended 64k-capacity gate, and one metadata test accessed persistent settings without isolating its database dependencies. The test now uses a 10 GiB boundary case and mocks settings/hardware explicitly. A fresh exact-head CI run is still required.
