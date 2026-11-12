@@ -1,3 +1,20 @@
+## 2026-11-12 — Latest Autonomous Engineering module audit
+
+Code/test SHA `ce94934a48c00e95f6f50fab809e7fb9188b9943` passed all GitHub-hosted checks:
+- Full suite: **2,171 passed, 2 skipped, 51 deselected**.
+- Python 3.11.9 and 3.14.6 compatibility matrices: passed.
+- Windows Storage/checkpoint regressions: passed.
+- Node.js 26.13.0/npm 11.20.0 with Codex CLI 0.167.0 and 0.167.2: passed.
+- Browser E2E, Docker full-suite/sandbox integration, and dependency audit: passed.
+
+The final audit unified current and legacy generated Codex-context alias rejection across the browser, API, PowerShell readiness, provisioning, and runtime verification paths. The full installed model inventory remains visible; generated aliases are disabled, not selectable. The Windows target diagnostic now requires the same unique `autonomous-state-owner` Runner label as the production workflow.
+
+**Target-host gate remains blocked:** diagnostic run [#43281178718](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43281178718) is pending without a Runner assignment. Production main workflow [#43220800164](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43220800164) has its Codex job queued without a runner name and requires `self-hosted, Windows, X64, ollama, autonomous-state-owner`. No live Ollama allocation, Codex tool-call smoke, or target-host soak is claimed. Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) remains open for independent security review. PR #722 stays Draft and unmerged.
+
+The documentation-only commits below change the PR head; exact-head GitHub checks must be rerun on the new SHA. Historical entries retain the evidence and status that applied when they were written.
+
+---
+
 ## 2026-11-12 — PR #707 ownership/checkpoint reconciliation
 
 PR #707 was closed as superseded. Merged PR #719 (merge commit `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`) already incorporated its checkpoint/process ownership, durable task-state locking, serialized manual-task persistence, unique Runner ownership, ADR-014/015, and regression coverage. Current `main` has newer implementations than the stale PR #707 branch; its old workflow assertions and pending-PR URL validation are not to be merged separately. PR #722 no longer depends on rebasing PR #707. Historical references below describe the state at the time they were recorded. The latest documentation-inclusive PR #722 head before this status update was `234643106cfe675bacc18290a926987131f34aee`: dependency audit passed; tests, Windows Storage, Browser E2E, and Docker sandbox were in progress; the self-hosted Windows diagnostic remained pending without a runner assignment.
