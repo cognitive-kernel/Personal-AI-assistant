@@ -115,7 +115,7 @@
       const modelReady = checks.model_installed && checks.model_selectable && checks.model_context_metadata_available && checks.model_context_supported && checks.model_supports_tools;
       labels.model.textContent = stateText(modelReady);
       const contextLength = Number(data.model_context_length);
-      const contextText = Number.isSafeInteger(contextLength) && contextLength >= 512
+      const contextText = Number.isSafeInteger(contextLength) && contextLength >= 1
         ? "؛ حداکثر Context مدل: " + contextLength.toLocaleString() + " توکن؛ Codex با ظرفیت واقعی مدل و سخت‌افزار تطبیق داده می‌شود"
         : "؛ حداکثر Context از metadata مدل تأیید نشد";
       const toolsText = checks.model_supports_tools ? "؛ قابلیت tools تأیید شد" : "؛ قابلیت tools تأیید نشد";
