@@ -160,6 +160,8 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert "model_supports_tools" in agent_script
     assert "model_selectable" in agent_script
     assert "نسخهٔ داخلی Context" in agent_script
+    assert "renderModels(data.models || data.selectable_models" in agent_script
+    assert "/-codex-ctx[0-9]+$/i.test(name)" in agent_script
 
 
 def test_autonomous_engineering_routes_are_registered():
