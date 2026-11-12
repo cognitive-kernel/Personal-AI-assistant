@@ -8,6 +8,8 @@ import re
 import tempfile
 from pathlib import Path
 
+from app.ollama_context import MAX_CODEX_CONTEXT_TOKENS, MIN_CONTEXT_TOKENS
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -31,8 +33,10 @@ def _verified_codex_context_window() -> int:
         context_window = int(raw_context)
     except ValueError:
         raise ValueError("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH must be an integer.") from None
-    if not 64000 <= context_window <= 1048576:
-        raise ValueError("Codex context window must be between 64000 and 1048576 tokens.")
+    if not MIN_CONTEXT_TOKENS <= context_window <= MAX_CODEX_CONTEXT_TOKENS:
+        raise ValueError(
+            f"Codex context window must be between {MIN_CONTEXT_TOKENS} and {MAX_CODEX_CONTEXT_TOKENS} tokens."
+        )
     return context_window
 
 
@@ -40,8 +44,14 @@ def write_codex_model_catalog(model: str, context_window: int | None = None) -> 
     """Provide Codex metadata using the exact context selected and verified by Ollama."""
     if context_window is None:
         context_window = _verified_codex_context_window()
-    if isinstance(context_window, bool) or not isinstance(context_window, int) or not 64000 <= context_window <= 1048576:
-        raise ValueError("Codex context window must be between 64000 and 1048576 tokens.")
+    if (
+        isinstance(context_window, bool)
+        or not isinstance(context_window, int)
+        or not MIN_CONTEXT_TOKENS <= context_window <= MAX_CODEX_CONTEXT_TOKENS
+    ):
+        raise ValueError(
+            f"Codex context window must be between {MIN_CONTEXT_TOKENS} and {MAX_CODEX_CONTEXT_TOKENS} tokens."
+        )
     safe_model = re.sub(r"[^A-Za-z0-9_.-]", "_", model)
     catalog_path = Path(tempfile.gettempdir()) / f"codex-model-catalog-{os.getpid()}-{safe_model}.json"
     catalog = {
