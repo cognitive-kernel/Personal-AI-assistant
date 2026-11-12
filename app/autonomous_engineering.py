@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
 from .autonomous_engineering_progress import get_progress, storage_accessible
-from .ollama_context import MIN_CODEX_CONTEXT_TOKENS, maximum_context_tokens, supports_tool_calling
+from .ollama_context import MIN_CONTEXT_TOKENS, maximum_context_tokens, supports_tool_calling
 
 _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
 
@@ -84,7 +84,7 @@ def _ollama_status(model: str) -> dict[str, Any]:
     return _services.ollama_status(
         model,
         build_opener=urllib.request.build_opener,
-        min_context_tokens=MIN_CODEX_CONTEXT_TOKENS,
+        min_context_tokens=MIN_CONTEXT_TOKENS,
         maximum_context_fn=maximum_context_tokens,
         supports_tool_calling_fn=supports_tool_calling,
         is_context_variant=_is_codex_context_variant,
