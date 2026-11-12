@@ -162,9 +162,19 @@ jobs:
           $ErrorActionPreference = "Stop"
           Write-Host "Runner identity:"
           whoami
-          $pythonPath = "C:\Program Files\Python311\python.exe"
+          $pythonCommand = Get-Command python.exe -ErrorAction Stop
+          $pythonPath = [string]$pythonCommand.Source
+          if ([string]::IsNullOrWhiteSpace($pythonPath) -or -not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) {
+            throw "Python executable resolution returned an invalid path."
+          }
           $pythonDirectory = Split-Path -Parent $pythonPath
           $scriptsPath = Join-Path $pythonDirectory "Scripts"
+          $pythonVersionOutput = & $pythonPath -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')"
+          $pythonVersionNumber = $null
+          try { $pythonVersionNumber = [version](([string]$pythonVersionOutput).Trim()) } catch {}
+          if ($LASTEXITCODE -ne 0 -or $null -eq $pythonVersionNumber -or $pythonVersionNumber -lt [version]"3.11") {
+            throw "Python 3.11 or newer is required; found '$pythonVersionOutput'."
+          }
           $ollamaCommand = Get-Command ollama.exe -ErrorAction SilentlyContinue
           $ollamaPath = if ($ollamaCommand) { $ollamaCommand.Source } else { $null }
           if (-not $ollamaPath) {
