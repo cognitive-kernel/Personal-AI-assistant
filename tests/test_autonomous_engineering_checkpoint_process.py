@@ -186,3 +186,114 @@ def test_process_start_time_uses_os_snapshot_and_rejects_missing_pid(monkeypatch
     monkeypatch.setattr(process_control, "_read_process_snapshot", lambda pid: None)
     with pytest.raises(RuntimeError, match="process is not running"):
         process_control.process_start_time(4321)
+
+def test_windows_termination_rechecks_creation_time_on_open_handle(monkeypatch: pytest.MonkeyPatch):
+    import ctypes
+    from ctypes import wintypes
+    from types import SimpleNamespace
+
+    expected_start = 1234.5
+    terminated = []
+    wait_calls = []
+
+    def open_process(access, inherit, pid):
+        return 123
+
+    def get_process_times(handle, creation_ptr, exit_ptr, kernel_ptr, user_ptr):
+        ticks = int((expected_start + 11_644_473_600) * 10_000_000)
+        creation = ctypes.cast(creation_ptr, ctypes.POINTER(wintypes.FILETIME)).contents
+        creation.dwLowDateTime = ticks & 0xFFFFFFFF
+        creation.dwHighDateTime = (ticks >> 32) & 0xFFFFFFFF
+        return 1
+
+    def wait_for_single_object(handle, timeout):
+        wait_calls.append(timeout)
+        return 0x00000102 if len(wait_calls) == 1 else 0
+
+    kernel32 = SimpleNamespace(
+        OpenProcess=open_process,
+        GetProcessTimes=get_process_times,
+        TerminateProcess=lambda handle, code: terminated.append((handle, code)) or 1,
+        WaitForSingleObject=wait_for_single_object,
+        CloseHandle=lambda handle: 1,
+    )
+    monkeypatch.setattr(process_control.ctypes, "WinDLL", lambda *args, **kwargs: kernel32, raising=False)
+
+    process_control._terminate_windows_process(4321, 1.0, expected_start)
+
+    assert terminated == [(123, 1)]
+
+
+def test_windows_termination_refuses_pid_reuse_after_open(monkeypatch: pytest.MonkeyPatch):
+    import ctypes
+    from ctypes import wintypes
+    from types import SimpleNamespace
+
+    expected_start = 1234.5
+    terminated = []
+
+    def open_process(access, inherit, pid):
+        return 123
+
+    def get_process_times(handle, creation_ptr, exit_ptr, kernel_ptr, user_ptr):
+        ticks = int((expected_start + 10.0 + 11_644_473_600) * 10_000_000)
+        creation = ctypes.cast(creation_ptr, ctypes.POINTER(wintypes.FILETIME)).contents
+        creation.dwLowDateTime = ticks & 0xFFFFFFFF
+        creation.dwHighDateTime = (ticks >> 32) & 0xFFFFFFFF
+        return 1
+
+    kernel32 = SimpleNamespace(
+        OpenProcess=open_process,
+        GetProcessTimes=get_process_times,
+        TerminateProcess=lambda handle, code: terminated.append((handle, code)) or 1,
+        WaitForSingleObject=lambda handle, timeout: 0x00000102,
+        CloseHandle=lambda handle: 1,
+    )
+    monkeypatch.setattr(process_control.ctypes, "WinDLL", lambda *args, **kwargs: kernel32, raising=False)
+
+    with pytest.raises(RuntimeError, match="reused before termination"):
+        process_control._terminate_windows_process(4321, 1.0, expected_start)
+
+    assert terminated == []
+
+
+@pytest.mark.skipif(
+    os.name != "posix"
+    or not callable(getattr(os, "pidfd_open", None))
+    or not callable(getattr(signal, "pidfd_send_signal", None)),
+    reason="Linux pidfd process identity support is required.",
+)
+def test_unresponsive_watcher_is_killed_and_reaped_with_pidfd(tmp_path: Path):
+    import os
+    import signal
+    import subprocess
+    import sys
+
+    script = tmp_path / "unresponsive_watcher.py"
+    script.write_text(
+        "import signal, time\\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\\n"
+        "print('READY', flush=True)\\n"
+        "time.sleep(120)\\n",
+        encoding="utf-8",
+    )
+    command = [
+        sys.executable, str(script), "watch",
+        "--base-sha", "a" * 40,
+        "--run-id", "run-42",
+        "--task", "3",
+    ]
+    child = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        assert child.stdout is not None
+        assert child.stdout.readline().strip() == "READY"
+        started_at = process_control.process_start_time(child.pid)
+        metadata = _metadata(started_at=started_at)
+        process_control.stop_owned_watcher(metadata, script_path=script, timeout_seconds=0.1)
+        child.wait(timeout=5)
+        assert child.returncode is not None
+        assert child.returncode != 0
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait(timeout=5)
