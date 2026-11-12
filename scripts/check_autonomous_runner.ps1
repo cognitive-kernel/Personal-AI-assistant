@@ -120,16 +120,19 @@ try {
     $runnerServices = @(Get-CimInstance Win32_Service -ErrorAction Stop | Where-Object {
         $_.Name -like "actions.runner*" -and $_.State -eq "Running" -and [uint32]$_.ProcessId -gt 0
     })
+    $listeners = @(Get-CimInstance Win32_Process -Filter "Name='Runner.Listener.exe'" -ErrorAction Stop)
     foreach ($service in $runnerServices) {
-        $candidate = Get-CimInstance Win32_Process -Filter "ProcessId=$([uint32]$service.ProcessId)" -ErrorAction SilentlyContinue
-        if ($candidate -and $candidate.Name -ieq "Runner.Listener.exe") {
+        $candidate = $listeners | Where-Object {
+            [uint32]$_.ParentProcessId -eq [uint32]$service.ProcessId
+        } | Select-Object -First 1
+        if ($candidate) {
             $runnerService = $service
             $runnerProcess = $candidate
             break
         }
     }
     if ($runnerService) {
-        $runnerDetail = "Service '$($runnerService.Name)' is running as '$($runnerService.StartName)' (PID $($runnerService.ProcessId))."
+        $runnerDetail = "Service '$($runnerService.Name)' is running as '$($runnerService.StartName)' (service PID $($runnerService.ProcessId)); Runner.Listener.exe PID $($runnerProcess.ProcessId)."
     } elseif ($runnerServices.Count -gt 0) {
         $runnerDetail = "A runner service is running, but its listener process could not be verified."
     }
