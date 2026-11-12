@@ -3556,14 +3556,17 @@ def test_autonomous_engineering_model_picker_requires_explicit_selection_and_sav
         )
         assert response is not None and response.status == 200
         page.wait_for_function(
-            "() => document.querySelector('#ollama-model')?.options.length === 3",
+            "() => document.querySelector('#ollama-model')?.options.length === 4",
             timeout=10000,
         )
         model_picker = page.locator("#ollama-model")
         assert model_picker.input_value() == ""
         assert model_picker.locator("option[value='gpt-oss:20b']").count() == 1
         assert model_picker.locator("option[value='qwen3:14b']").count() == 1
-        assert model_picker.locator("option[value='gpt-oss:20b-codex-ctx65536']").count() == 0
+        context_variant = model_picker.locator("option[value='gpt-oss:20b-codex-ctx65536']")
+        assert context_variant.count() == 1
+        assert context_variant.is_disabled()
+        assert "نسخهٔ داخلی Context" in context_variant.inner_text()
 
         model_picker.select_option("gpt-oss:20b")
         page.locator("#save-agent-settings").click()
