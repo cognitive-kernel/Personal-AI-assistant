@@ -496,6 +496,7 @@ def test_windows_storage_workflow_exercises_adaptive_context_bridge_in_powershel
 
 def test_codex_config_pins_sub_64k_context_to_the_verified_ollama_allocation(monkeypatch):
     import json
+    from pathlib import Path
 
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "1000")
     arguments = progress.codex_arguments("qwen2.5:7b-codex-ctx1000", "report.md")
