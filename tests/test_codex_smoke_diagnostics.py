@@ -68,13 +68,13 @@ def test_codex_smoke_evidence_reports_each_command_without_logging_raw_commands(
 
 
 def test_codex_model_catalog_registers_the_selected_ollama_context():
-    model = "gpt-oss:20b-codex-ctx32768"
-    path = progress.write_codex_model_catalog(model, context_window=4096)
+    model = "gpt-oss:20b-codex-ctx64000"
+    path = progress.write_codex_model_catalog(model, context_window=64000)
     catalog = __import__("json").loads(path.read_text(encoding="utf-8"))
     assert len(catalog["models"]) == 1
     entry = catalog["models"][0]
     assert entry["slug"] == model
-    assert entry["context_window"] == 4096
+    assert entry["context_window"] == 64000
     assert entry["shell_type"] == "default"
     assert entry["input_modalities"] == ["text"]
     assert [level["effort"] for level in entry["supported_reasoning_levels"]] == [
@@ -124,17 +124,16 @@ def test_codex_diagnostic_uses_bounded_reasoning_effort_without_changing_default
     import pytest
     from scripts import autonomous_engineering_progress as progress
 
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
     monkeypatch.setenv("CODEX_MODEL_REASONING_EFFORT", "low")
-    arguments = progress.codex_arguments("gpt-oss:20b-codex-ctx32768", "report.md")
+    arguments = progress.codex_arguments("gpt-oss:20b-codex-ctx64000", "report.md")
     overrides = [
         arguments[i + 1] for i, value in enumerate(arguments[:-1]) if value == "-c"
     ]
     assert 'model_reasoning_effort="low"' in overrides
     assert "sandbox_workspace_write.exclude_slash_tmp=true" in overrides
     assert any(value.startswith("model_catalog_json=") for value in overrides)
-    assert "model_providers.ollama.stream_idle_timeout_ms=900000" in overrides
-    assert "model_providers.ollama.stream_max_retries=10" in overrides
-    assert "model_providers.ollama.request_max_retries=4" in overrides
+    assert not any(value.startswith("model_providers.ollama.") for value in overrides)
 
     monkeypatch.delenv("CODEX_MODEL_REASONING_EFFORT")
     default_arguments = progress.codex_arguments("gpt-oss:20b-codex-64k", "report.md")
@@ -146,9 +145,7 @@ def test_codex_diagnostic_uses_bounded_reasoning_effort_without_changing_default
     assert not any(value.startswith("model_reasoning_effort=") for value in default_overrides)
     assert "sandbox_workspace_write.exclude_slash_tmp=true" in default_overrides
     assert any(value.startswith("model_catalog_json=") for value in default_overrides)
-    assert "model_providers.ollama.stream_idle_timeout_ms=900000" in default_overrides
-    assert "model_providers.ollama.stream_max_retries=10" in default_overrides
-    assert "model_providers.ollama.request_max_retries=4" in default_overrides
+    assert not any(value.startswith("model_providers.ollama.") for value in default_overrides)
 
     monkeypatch.setenv("CODEX_MODEL_REASONING_EFFORT", "unbounded")
     with pytest.raises(ValueError, match="CODEX_MODEL_REASONING_EFFORT"):
@@ -168,6 +165,11 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert 'parameters = @{ num_ctx = $selectedContext }' in context_script
     assert 'PARAMETER\\s+num_ctx' in context_script
     assert 'AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH=$selectedContext' in context_script
+    assert context_script.count('if ($VerifyOnly) {') == 1
+    assert context_script.count('OLLAMA_RUNTIME_CONTEXT_OK') == 1
+    assert 'if ($allocated -ne $selectedContext)' in context_script
+    assert 'if ($allocated -lt $selectedContext)' not in context_script
+    assert '-lt 64000' in context_script
     assert 'AUTONOMOUS_ENGINEERING_MODEL=$codexModel' in context_script
     assert '-VerifyOnly' in diagnostic
     assert '-VerifyOnly' in autonomous
@@ -175,12 +177,23 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert 'Verify persistent Ollama context after autonomous Codex task' in autonomous
     assert 'steps.context_preflight.outcome == \'success\'' in diagnostic
     assert 'steps.context_preflight.outcome == \'success\'' in autonomous
-    assert 'fix/automation-codex-context-smoke-20261107' in diagnostic
+    assert "feat/autonomous-engineering-complete-20261112" in diagnostic
+    assert "fix/autonomous-task-preservation" not in diagnostic
+    assert "fix/automation-codex-context-smoke-20261107" not in diagnostic
     assert 'CODEX_WINDOWS_SANDBOX_BACKEND: mxc' in diagnostic
     assert 'CODEX_MODEL_REASONING_EFFORT: low' in diagnostic
+    assert "vars.AUTONOMOUS_ENGINEERING_MODEL" in diagnostic
+    assert "inputs.model || 'gpt-oss:20b'" not in diagnostic
     assert 'run-name: "Codex Windows Sandbox Diagnostic #' in diagnostic
     cleanup_job = diagnostic.split("  sandbox-diagnostic:", 1)[0]
     assert '$branch = [uri]::EscapeDataString($env:GITHUB_REF_NAME)' in cleanup_job
+    assert '/compare/$($run.head_sha)...$env:GITHUB_SHA' in cleanup_job
+    assert '$comparison.status -ne "ahead"' in cleanup_job
+    assert '$comparison.behind_by -ne 0' in cleanup_job
+    assert '$comparison.ahead_by -le 0' in cleanup_job
+    assert 'leaving it untouched' in cleanup_job
+    assert all("-MaximumRedirection 0" in line for line in autonomous.splitlines() if "http://127.0.0.1:11434" in line and "Invoke-RestMethod" in line)
+    assert all("-MaximumRedirection 0" in line for line in diagnostic.splitlines() if "http://127.0.0.1:11434" in line and "Invoke-RestMethod" in line)
     sandbox_job = diagnostic.split("  sandbox-diagnostic:", 1)[1]
     assert "timeout-minutes: 30" in sandbox_job
     assert "timeout-minutes: 25" in sandbox_job
@@ -197,7 +210,7 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert "--require-command-fragment \"echo\" --require-command-fragment \"type\" --require-command-fragment \"del\"" in diagnostic
     assert "python -c \"from pathlib import Path" not in diagnostic
 
-def test_context_preflight_reuses_existing_codex_alias_without_duplicate_suffix():
+def test_context_preflight_uses_deterministic_variant_from_selected_base_model():
     from pathlib import Path
 
     script = (
@@ -207,16 +220,32 @@ def test_context_preflight_reuses_existing_codex_alias_without_duplicate_suffix(
     assert '$codexModel = "$baseModel-codex-ctx$selectedContext"' in script
     assert 'from = $baseModel' in script
     assert '$existingContext.Success' in script
+    assert "if ($Model -match '(?i)-codex-ctx[0-9]+" in script
+    assert "Select the original Ollama model to prevent nested variants" in script
+    root = Path(__file__).resolve().parents[1]
+    provision = (root / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
+    app_check = (root / "scripts" / "check_autonomous_agent.ps1").read_text(encoding="utf-8")
+    runner_check = (root / "scripts" / "check_autonomous_runner.ps1").read_text(encoding="utf-8")
+    assert "internal Codex context variant" in provision
+    assert "Base model selection" in app_check
+    assert "Base model selection" in runner_check
 
 
+
+
+def test_codex_model_catalog_rejects_context_below_64k(monkeypatch):
+    import pytest
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "63999")
+    with pytest.raises(ValueError, match="64000"):
+        progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx63999")
 
 
 def test_codex_model_catalog_uses_selected_context_from_environment(monkeypatch):
     import json
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "32768")
-    path = progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx32768")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
+    path = progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx64000")
     catalog = json.loads(path.read_text(encoding="utf-8"))
-    assert catalog["models"][0]["context_window"] == 32768
+    assert catalog["models"][0]["context_window"] == 64000
 
 
 def test_settings_expose_visible_installed_model_selectors_and_manual_context_inputs():
@@ -230,3 +259,21 @@ def test_settings_expose_visible_installed_model_selectors_and_manual_context_in
         assert f'id="{profile}-model-installed"' in html
     assert 'const result=await api("/api/models")' in html
     assert 'installedSelect?.addEventListener("change"' in html
+
+
+def test_codex_uses_unique_custom_ollama_provider_without_redefining_reserved_provider(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
+    arguments = progress.codex_arguments("gpt-oss:20b-codex-ctx64000", "report.md")
+    overrides = [
+        arguments[index + 1]
+        for index, value in enumerate(arguments[:-1])
+        if value == "-c"
+    ]
+    assert 'model_provider="ollama-local"' in overrides
+    assert 'model_providers.ollama-local.base_url="http://127.0.0.1:11434/v1/"' in overrides
+    assert 'model_providers.ollama-local.wire_api="responses"' in overrides
+    assert "model_providers.ollama-local.requires_openai_auth=false" in overrides
+    assert "model_providers.ollama-local.stream_idle_timeout_ms=900000" in overrides
+    assert not any(value.startswith("model_providers.ollama.") for value in overrides)
+    assert "--oss" not in arguments
+    assert "--local-provider" not in arguments

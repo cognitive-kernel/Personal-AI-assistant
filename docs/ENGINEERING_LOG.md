@@ -600,3 +600,11 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Exact-head CI on the corrected architecture head has not yet been rerun. Prior heads demonstrated passing Windows storage/recovery, Browser E2E and dependency audit, but Linux failed on stale static assertions that have been corrected. No green result is inferred from a prior SHA.
 - The live Codex/Ollama run remains a separate runtime blocker: the previous target-host run failed because Codex CLI rejected a reserved built-in `model_providers.ollama` override. It must be fixed and tested before claiming live Autonomous Engineering operation.
 - Target-host crash/restart, soak, staging restore/rollback, and owner acceptance remain external acceptance gates. No automatic deployment, destructive state cleanup, or user-data migration is introduced.
+
+## 2026-11-12 — Codex/Ollama runtime and context validation (PR #717)
+
+- Removed the implicit `gpt-oss:20b` fallback. The dashboard lists installed original Ollama models, excludes generated context variants, and saves only a model that exposes an architecture-specific context limit of at least 64k tokens and the `tools` capability.
+- Added hardware-aware context selection from model KV-cache metadata, installed model size, and measured free physical RAM. The selector fails closed on missing metadata or insufficient headroom and persists a context-specific model variant without mutating the original model.
+- Replaced the rejected reserved built-in provider override with the documented custom provider ID `ollama-local`, configured for the local Ollama Responses endpoint and no authentication. Timeout and retry settings now belong to this unique custom provider ID.
+- Fixed the PowerShell-to-Python context bridge by writing JSON to an explicit temporary file and invoking `app/ollama_context.py --input-file`; the previous native stdin pipeline could reach Python as empty input and raise `Expecting value: line 1 column 1`. The temporary file is removed in a `finally` block.
+- Added model metadata, context selection, explicit-file bridge, Codex provider, settings API, and browser UI regressions. Exact-head CI and the real Windows Codex/Ollama diagnostic remain pending.

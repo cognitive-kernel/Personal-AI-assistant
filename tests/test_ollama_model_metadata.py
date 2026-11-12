@@ -47,7 +47,7 @@ def test_model_details_does_not_invent_context_or_kv_estimate(monkeypatch):
     result = ollama.model_details("model:7b", context_tokens=4096)
 
     assert result["maximum_context_tokens"] is None
-    assert result["recommended_context_tokens"] == 512
+    assert result["recommended_context_tokens"] is None
     assert result["context_metadata_available"] is False
     assert result["memory_estimate"] is None
     assert result["running"] is None
@@ -83,7 +83,13 @@ def test_model_details_uses_conservative_context_when_ram_is_low(monkeypatch):
     monkeypatch.setattr(ollama, "_request", lambda path, payload=None, timeout=None: (
         {
             "details": {"family": "llama"},
-            "model_info": {"llama.context_length": 32768},
+            "model_info": {
+                "llama.context_length": 32768,
+                "llama.block_count": 32,
+                "llama.attention.head_count_kv": 8,
+                "llama.attention.key_length": 128,
+                "llama.attention.value_length": 128,
+            },
         } if path == "/api/show" else {"models": []}
     ))
     monkeypatch.setattr(ollama, "list_models", lambda: [{"name": "llama:8b", "size": 5_000_000_000}])
@@ -93,7 +99,7 @@ def test_model_details_uses_conservative_context_when_ram_is_low(monkeypatch):
         "gpu_devices": [], "gpu_available": False,
     })
     result = ollama.model_details("llama:8b")
-    assert result["recommended_context_tokens"] == 512
+    assert result["recommended_context_tokens"] is None
 
 
 def test_chat_clamps_requested_context_to_verified_model_maximum(monkeypatch):
@@ -170,10 +176,166 @@ def test_chat_refuses_to_send_when_model_context_metadata_is_unavailable(monkeyp
     assert calls == ["/api/show"]
 
 
-def test_model_context_metadata_prefers_architecture_and_uses_conservative_fallback():
+def test_model_context_metadata_requires_exact_architecture_metadata():
     model_info = {
         "llama.context_length": 32768,
         "vision.context_length": 4096,
     }
     assert ollama._model_context_metadata(model_info, "llama") == 32768
-    assert ollama._model_context_metadata(model_info, "unknown") == 4096
+    assert ollama._model_context_metadata(model_info, "unknown") is None
+
+
+def test_codex_context_selection_uses_minimum_of_request_model_and_safe_memory():
+    from app.ollama_context import select_context_window
+
+    model_info = {
+        "llama.context_length": 131072,
+        "llama.block_count": 32,
+        "llama.attention.head_count_kv": 8,
+        "llama.attention.key_length": 128,
+        "llama.attention.value_length": 128,
+    }
+    result = select_context_window(
+        model_info=model_info,
+        architecture="llama",
+        model_weight_bytes=5 * 1024**3,
+        available_memory_bytes=20 * 1024**3,
+        requested_context_tokens=100000,
+    )
+
+    assert result["maximum_context_tokens"] == 131072
+    assert result["hardware_maximum_context_tokens"] == 86016
+    assert result["selected_context_tokens"] == 86016
+    assert result["selected_context_tokens"] <= result["requested_context_tokens"]
+    assert result["selected_context_tokens"] <= result["maximum_context_tokens"]
+    assert result["selected_context_tokens"] >= 64000
+
+
+def test_codex_context_selection_caps_at_catalog_supported_maximum():
+    from app.ollama_context import select_context_window
+
+    result = select_context_window(
+        model_info={
+            "llama.context_length": 2097152,
+            "llama.block_count": 1,
+            "llama.attention.head_count_kv": 1,
+            "llama.attention.key_length": 64,
+            "llama.attention.value_length": 64,
+        },
+        architecture="llama",
+        model_weight_bytes=1024**3,
+        available_memory_bytes=100 * 1024**3,
+    )
+
+    assert result["selected_context_tokens"] == 1048576
+    assert result["codex_maximum_context_tokens"] == 1048576
+
+
+def test_codex_context_selection_rejects_models_below_the_64k_minimum():
+    import pytest
+    from app.ollama_context import OllamaModelMetadataError, select_context_window
+
+    with pytest.raises(OllamaModelMetadataError, match="below the Codex minimum 64000"):
+        select_context_window(
+            model_info={
+                "llama.context_length": 8192,
+                "llama.block_count": 1,
+                "llama.attention.head_count_kv": 1,
+                "llama.attention.key_length": 64,
+                "llama.attention.value_length": 64,
+            },
+            architecture="llama",
+            model_weight_bytes=1024**3,
+            available_memory_bytes=16 * 1024**3,
+            requested_context_tokens=65536,
+        )
+
+
+def test_codex_context_selection_fails_closed_when_hardware_cannot_supply_64k():
+    import pytest
+    from app.ollama_context import OllamaModelMetadataError, select_context_window
+
+    with pytest.raises(OllamaModelMetadataError, match="minimum 64000-token context"):
+        select_context_window(
+            model_info={
+                "llama.context_length": 131072,
+                "llama.block_count": 32,
+                "llama.attention.head_count_kv": 8,
+                "llama.attention.key_length": 128,
+                "llama.attention.value_length": 128,
+            },
+            architecture="llama",
+            model_weight_bytes=1024**3,
+            available_memory_bytes=6 * 1024**3,
+        )
+
+
+def test_codex_context_selection_fails_closed_when_model_or_hardware_metadata_is_missing():
+    import pytest
+    from app.ollama_context import OllamaModelMetadataError, select_context_window
+
+    with pytest.raises(OllamaModelMetadataError, match="context_length"):
+        select_context_window(
+            model_info={},
+            architecture="unknown",
+            model_weight_bytes=1024**3,
+            available_memory_bytes=16 * 1024**3,
+        )
+
+    with pytest.raises(OllamaModelMetadataError, match="attention.head_count_kv"):
+        select_context_window(
+            model_info={
+                "llama.context_length": 131072,
+                "llama.block_count": 32,
+            },
+            architecture="llama",
+            model_weight_bytes=1024**3,
+            available_memory_bytes=16 * 1024**3,
+        )
+
+    with pytest.raises(OllamaModelMetadataError, match="safety reserve"):
+        select_context_window(
+            model_info={
+                "llama.context_length": 131072,
+                "llama.block_count": 32,
+                "llama.attention.head_count_kv": 8,
+                "llama.attention.key_length": 128,
+                "llama.attention.value_length": 128,
+            },
+            architecture="llama",
+            model_weight_bytes=12 * 1024**3,
+            available_memory_bytes=8 * 1024**3,
+        )
+
+
+def test_codex_tool_calling_requires_explicit_ollama_tools_capability():
+    from app.ollama_context import supports_tool_calling
+
+    assert supports_tool_calling(["completion", "tools", "thinking"]) is True
+    assert supports_tool_calling(["completion", "thinking"]) is False
+    assert supports_tool_calling(None) is False
+
+
+def test_codex_context_selection_preserves_exact_minimum_without_rounding():
+    from app.ollama_context import select_context_window
+
+    result = select_context_window(
+        model_info={
+            "llama.context_length": 131072,
+            "llama.block_count": 1,
+            "llama.attention.head_count_kv": 1,
+            "llama.attention.key_length": 64,
+            "llama.attention.value_length": 64,
+        },
+        architecture="llama",
+        model_weight_bytes=1024**3,
+        available_memory_bytes=16 * 1024**3,
+        requested_context_tokens=64001,
+    )
+
+    assert result["selected_context_tokens"] == min(
+        result["requested_context_tokens"],
+        result["maximum_context_tokens"],
+        result["hardware_maximum_context_tokens"],
+    )
+    assert result["selected_context_tokens"] == 64001

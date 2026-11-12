@@ -2184,43 +2184,21 @@ def test_browser_settings_form_persists_values_and_surfaces_api_failure():
         # Manual model names must remain valid even when they are not in the
         # local Ollama model list. The real API persists into CI's disposable DB.
         page.locator("#chat-model").fill("browser-e2e-manual-model")
-        page.locator("#learning-provider").select_option("openai_compatible")
-        page.locator("#learning-base-url").fill("http://127.0.0.1:1234/v1")
-        page.locator("#learning-api-key-env").fill("")
-        page.locator("#learning-model").fill("local-learning-model")
         page.locator("#learning-task-budget").fill("123")
         page.locator("#programming-source-limit").fill("20000")
         page.locator("#settings-form button[type='submit']").click()
         page.wait_for_function(
             """() => document.querySelector('#settings-output')?.textContent
-                .includes('تنظیمات به‌صورت دائمی ذخیره شد.')""",
+                .includes('تنظیمات مدل‌ها و منابع ذخیره شد.')""",
             timeout=10000,
         )
         saved = page.request.get(base_url.rstrip("/") + "/api/settings")
         assert saved.status == 200
         saved_settings = saved.json()
         assert saved_settings["chat_ollama_model"] == "browser-e2e-manual-model"
-        assert saved_settings["learning_llm_provider"] == "openai_compatible"
-        assert saved_settings["learning_llm_base_url"] == "http://127.0.0.1:1234/v1"
-        assert saved_settings["learning_ollama_model"] == "local-learning-model"
         assert saved_settings["learning_task_budget_microusd"] == 123
         assert saved_settings["programming_source_max_chars"] == 20000
         assert page.locator("#programming-context").evaluate("node => node.maxLength") == 20000
-
-        # Temporary provider/model changes take effect immediately without
-        # overwriting the permanent model choice in the settings database.
-        page.locator("#settings-temporary").check()
-        page.locator("#learning-model").fill("temporary-learning-model")
-        page.locator("#settings-form button[type='submit']").click()
-        page.wait_for_function(
-            """() => document.querySelector('#settings-output')?.textContent
-                .includes('تنظیمات موقت تا راه‌اندازی مجدد اعمال شد.')""",
-            timeout=10000,
-        )
-        temporary = page.request.get(base_url.rstrip("/") + "/api/settings")
-        assert temporary.status == 200
-        assert temporary.json()["learning_ollama_model"] == "temporary-learning-model"
-        assert temporary.json()["learning_llm_provider"] == "openai_compatible"
 
         def fail_settings_patch(route):
             if route.request.method == "PATCH":
@@ -3470,4 +3448,113 @@ def test_chat_message_timestamps_are_rendered_in_browser_local_timezone():
         timestamp.wait_for(timeout=5000)
         assert timestamp.inner_text() == "2026-11-06 12:16:28"
         context.close()
+        browser.close()
+
+
+def test_autonomous_engineering_model_picker_requires_explicit_selection_and_saves_exact_model():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    state = {"model": "", "posted": None}
+    installed_models = [
+        "gpt-oss:20b",
+        "qwen3:14b",
+        "gpt-oss:20b-codex-ctx65536",
+    ]
+    selectable_models = ["gpt-oss:20b", "qwen3:14b"]
+
+    def status_payload():
+        selected = state["model"]
+        selected_ready = bool(selected)
+        return {
+            "ready": False,
+            "can_dispatch": False,
+            "checks": {
+                "ollama_online": True,
+                "model_installed": selected_ready,
+                "model_selectable": selected_ready,
+                "model_is_codex_context_variant": False,
+                "model_context_metadata_available": selected_ready,
+                "model_context_supported": selected_ready,
+                "model_supports_tools": selected_ready,
+                "codex_installed": False,
+                "runner_running": False,
+                "github_cli_authenticated": True,
+                "github_runs_available": True,
+                "progress_storage_accessible": True,
+            },
+            "model": selected,
+            "models": installed_models,
+            "selectable_models": selectable_models,
+            "model_context_length": 131072 if selected_ready else None,
+            "model_context_supported": selected_ready,
+            "model_context_error": None if selected_ready else "No model is saved.",
+            "model_capabilities": ["completion", "tools"] if selected_ready else [],
+            "model_supports_tools": selected_ready,
+            "model_metadata_error": None if selected_ready else "No Ollama model is saved in repository settings.",
+            "interval_hours": 24,
+            "execution_mode": "continuous",
+            "paused": False,
+            "github": {"recent_runs": [], "settings": {"model": selected}},
+            "codex": {"installed": False, "version": None},
+            "local_only_inference": True,
+        }
+
+    def save_settings(route):
+        payload = route.request.post_data_json
+        state["posted"] = payload
+        state["model"] = payload["model"]
+        route.fulfill(status=200, json={"message": "تنظیمات ذخیره شد."})
+
+    browser_errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route(
+            "**/api/autonomous-engineering/status",
+            lambda route: route.fulfill(status=200, json=status_payload()),
+        )
+        page.route(
+            "**/api/autonomous-engineering/progress**",
+            lambda route: route.fulfill(status=200, json={
+                "current": None,
+                "history": [],
+                "latest_snapshot": None,
+                "events": [],
+                "storage_configured": True,
+            }),
+        )
+        page.route("**/api/autonomous-engineering/settings", save_settings)
+
+        response = page.goto(
+            base_url.rstrip("/") + "/autonomous-engineering",
+            wait_until="domcontentloaded",
+        )
+        assert response is not None and response.status == 200
+        page.wait_for_function(
+            "() => document.querySelector('#ollama-model')?.options.length === 3",
+            timeout=10000,
+        )
+        model_picker = page.locator("#ollama-model")
+        assert model_picker.input_value() == ""
+        assert model_picker.locator("option[value='gpt-oss:20b']").count() == 1
+        assert model_picker.locator("option[value='qwen3:14b']").count() == 1
+        assert model_picker.locator("option[value='gpt-oss:20b-codex-ctx65536']").count() == 0
+
+        model_picker.select_option("gpt-oss:20b")
+        page.locator("#save-agent-settings").click()
+        page.wait_for_function(
+            "() => document.querySelector('#model-detail')?.textContent.includes('مدل ذخیره‌شده: gpt-oss:20b')",
+            timeout=10000,
+        )
+
+        assert state["posted"] == {
+            "model": "gpt-oss:20b",
+            "interval_hours": 24,
+            "execution_mode": "continuous",
+        }
+        assert model_picker.input_value() == "gpt-oss:20b"
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()

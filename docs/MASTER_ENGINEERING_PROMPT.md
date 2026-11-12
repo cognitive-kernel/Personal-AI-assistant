@@ -105,6 +105,8 @@ For each defect:
 
 Do not modify code based only on assumptions or superficial search results.
 
+- Before writing or changing any code, treat every user-reported requirement, prior diagnosis, known defect, failed test, warning, limitation, and unresolved acceptance criterion as a binding obligation: trace it through all affected call sites and data flows, fix or explicitly block on it rather than defer or ignore it, and do not proceed until the implementation and regression/integration tests prove the complete end-to-end contract without weakening existing behavior; if evidence or access is missing, stop and state exactly what prevents verification instead of guessing or claiming completion.
+
 ### 4.3 Prevent circular and repetitive work
 
 Maintain a persistent engineering log in the repository. Before starting a task, check whether it has already been attempted, fixed, tested, rejected, or documented.

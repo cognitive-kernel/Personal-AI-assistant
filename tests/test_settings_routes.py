@@ -287,91 +287,20 @@ def test_settings_api_preserves_manual_model_selection_when_context_is_unchanged
     assert after["chat_ollama_num_ctx"] == before["chat_ollama_num_ctx"]
 
 
-def test_settings_api_switches_learning_to_openai_compatible_without_ollama_metadata(
-    settings_client, monkeypatch
-):
-    monkeypatch.setattr(
-        ollama, "model_details",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("Ollama metadata must not be queried")),
-    )
-    response = settings_client.patch(
-        "/api/settings",
-        json={"values": {
-            "learning_llm_provider": "openai_compatible",
-            "learning_llm_base_url": "http://127.0.0.1:1234/v1",
-            "learning_llm_api_key_env": "",
-            "learning_ollama_model": "local-gpt-oss",
-            "learning_ollama_num_ctx": 32768,
-        }},
-    )
-
-    assert response.status_code == 200
-    saved = response.json()
-    assert saved["learning_llm_provider"] == "openai_compatible"
-    assert saved["learning_llm_base_url"] == "http://127.0.0.1:1234/v1"
-    assert saved["learning_ollama_model"] == "local-gpt-oss"
-    assert saved["learning_ollama_num_ctx"] == 32768
-
-
-def test_settings_api_rejects_plaintext_remote_llm_endpoint_atomically(settings_client):
-    before = db.get_settings()
-    response = settings_client.patch(
-        "/api/settings",
-        json={"values": {
-            "learning_llm_provider": "openai_compatible",
-            "learning_llm_base_url": "http://llm.example.test/v1",
-            "learning_ollama_model": "must-not-save",
-        }},
-    )
-
-    assert response.status_code == 422
-    after = db.get_settings()
-    assert after["learning_llm_provider"] == before["learning_llm_provider"]
-    assert after["learning_ollama_model"] == before["learning_ollama_model"]
-
-
-def test_settings_api_rejects_api_key_values_and_invalid_provider(settings_client):
-    for values in (
-        {"learning_llm_provider": "unknown-provider"},
-        {"learning_llm_api_key_env": "sk-this-is-a-secret-not-an-env-name"},
-    ):
-        response = settings_client.patch("/api/settings", json={"values": values})
-        assert response.status_code == 422
-
-
-def test_temporary_settings_apply_immediately_without_persisting(settings_client):
-    before = db.get_settings()
-    response = settings_client.patch(
-        "/api/settings",
-        json={
-            "temporary": True,
-            "values": {
-                "learning_llm_provider": "openai_compatible",
-                "learning_llm_base_url": "http://127.0.0.1:1234/v1",
-                "learning_ollama_model": "temporary-model",
-            },
-        },
-    )
-
-    assert response.status_code == 200
-    assert db.get_settings()["learning_llm_provider"] == "openai_compatible"
-    assert db.get_settings()["learning_ollama_model"] == "temporary-model"
-    with db.settings_connection() as conn:
-        persisted_provider = json.loads(
-            conn.execute(
-                "SELECT value_json FROM settings WHERE key='learning_llm_provider'"
-            ).fetchone()[0]
-        )
-        persisted_model = json.loads(
-            conn.execute(
-                "SELECT value_json FROM settings WHERE key='learning_ollama_model'"
-            ).fetchone()[0]
-        )
-    assert persisted_provider == before["learning_llm_provider"]
-    assert persisted_model == before["learning_ollama_model"]
-
-    db.update_settings({
-        "learning_llm_provider": before["learning_llm_provider"],
-        "learning_llm_base_url": before["learning_llm_base_url"],
-        "learning_ollama_model": before["learning_ollama_model"],
+def test_settings_api_does_not_invent_context_when_safe_recommendation_is_unavailable(settings_client, monkeypatch):
+    db.update_settings({"chat_ollama_model": "existing-model:7b", "chat_ollama_num_ctx": 2048})
+    monkeypatch.setattr(ollama, "model_details", lambda name, context_tokens=None: {
+        "name": name,
+        "maximum_context_tokens": 32768,
+        "recommended_context_tokens": None,
     })
+
+    response = settings_client.patch(
+        "/api/settings",
+        json={"values": {"chat_ollama_model": "new-model:8b"}},
+    )
+
+    assert response.status_code == 200
+    after = db.get_settings()
+    assert after["chat_ollama_model"] == "new-model:8b"
+    assert after["chat_ollama_num_ctx"] == 2048

@@ -1,12 +1,12 @@
 # وضعیت یکپارچهٔ پروژه
 
-## وضعیت جاری — معماری Autonomous Engineering (PR #716)
+## وضعیت جاری — تکمیل Autonomous Engineering (PR #717)
 
 - مبنای زندهٔ `main`: `461c0a2b1deaf5f8af8486846f167da8185c580a`. تغییرات release-watch جدید main حفظ شده‌اند.
-- شاخهٔ معماری: `feat/autonomous-engineering-architecture-final-20261112`؛ PR [#716](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/716) باز است.
+- شاخهٔ معماری: `feat/autonomous-engineering-complete-20261112`؛ PR [#717](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/717) باز است.
 - مالکیت worktree، checkpoint watcher، هویت فرایند watcher، state پایدار task/PR، GitHub transport و PR lifecycle در ماژول‌های مستقل قرار دارند.
-- تست‌های اختصاصی Windows، Browser E2E و dependency audit روی head قبلی موفق بوده‌اند؛ Linux دو static assertion قدیمی را آشکار کرد که به مرز ماژول جدید اصلاح شده‌اند. برای head نهایی شواهد exact-SHA تازه لازم است.
-- اجرای زندهٔ Codex/Ollama هنوز به اصلاح provider/context و تأیید مدل نصب‌شده نیاز دارد؛ crash/restart، soak و restore میزبان مقصد نیز جداگانه باز هستند.
+- تست‌های اختصاصی Windows، Browser E2E و dependency audit روی headهای قبلی موفق بوده‌اند؛ Linux دو static assertion قدیمی را آشکار کرد که اصلاح شدند. برای head نهایی PR #717 شواهد exact-SHA تازه لازم است.
+- اصلاح provider و Context سخت‌افزارمحور در PR #717 اضافه شده است؛ اجرای زنده روی Runner و تأیید مدل ذخیره‌شده هنوز pending است. Crash/restart، soak و restore میزبان مقصد نیز جداگانه باز هستند.
 
 
 > تاریخ بازبینی: 2026-11-12. وضعیت جاری در ابتدای سند ثبت شده است؛ یادداشت‌های پایین‌تر snapshotهای تاریخی هستند.

@@ -136,7 +136,7 @@ jobs:
       issues: read
       actions: write
     env:
-      AUTONOMOUS_ENGINEERING_MODEL: ${{ vars.AUTONOMOUS_ENGINEERING_MODEL || 'gpt-oss:20b' }}
+      AUTONOMOUS_ENGINEERING_MODEL: ${{ vars.AUTONOMOUS_ENGINEERING_MODEL || '' }}
       AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH: ${{ inputs.context_length || vars.AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH || '' }}
       AUTONOMOUS_ENGINEERING_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE || 'continuous' }}
     steps:
@@ -461,8 +461,11 @@ jobs:
           }
           $ollama = Get-Command ollama -ErrorAction Stop
           $codex = Get-Command codex -ErrorAction Stop
-          $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 5
-          $model = $env:AUTONOMOUS_ENGINEERING_MODEL
+          $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 5 -MaximumRedirection 0
+          $model = [string]$env:AUTONOMOUS_ENGINEERING_MODEL
+          if ([string]::IsNullOrWhiteSpace($model)) {
+            throw "No model is saved in repository variable AUTONOMOUS_ENGINEERING_MODEL. Select and save an installed model in /autonomous-engineering first."
+          }
           $installed = @($tags.models | ForEach-Object { $_.name }) -contains $model
           if (-not $installed) {
             throw "Required local model '$model' is not installed. Run: ollama pull $model"

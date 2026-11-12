@@ -6,7 +6,7 @@ env:
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/autonomous-engineering-complete-20261112]
   pull_request:
   workflow_dispatch:
 
@@ -20,6 +20,8 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m pip install -e ".[dev]"
+      - name: Test Ollama context selection, model metadata, and Codex provider config
+        run: python -m pytest -q tests/test_ollama_context.py tests/test_ollama_model_metadata.py tests/test_codex_smoke_diagnostics.py
       - name: Run focused checkpoint ownership and concurrency regressions
         run: python -m pytest -vv tests/test_autonomous_engineering_cycle.py -k "checkpoint or repository_execution_lock"
       - name: Run test suite
@@ -45,6 +47,40 @@ jobs:
           python-version: "3.11"
       - name: Install project and test dependencies
         run: python -m pip install -e ".[dev]"
+      - name: Verify PowerShell-to-Python Ollama context selection through an explicit file
+        shell: pwsh
+        run: |
+          $helper = Join-Path $env:GITHUB_WORKSPACE "app\ollama_context.py"
+          if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) { throw "Shared Ollama context selector is missing: $helper" }
+          $payload = @{
+            model_info = @{
+              "llama.context_length" = 131072
+              "llama.block_count" = 32
+              "llama.attention.head_count_kv" = 8
+              "llama.attention.key_length" = 128
+              "llama.attention.value_length" = 128
+            }
+            architecture = "llama"
+            model_weight_bytes = 5368709120
+            available_memory_bytes = 21474836480
+            requested_context_tokens = 100000
+          } | ConvertTo-Json -Depth 10 -Compress
+          $inputFile = Join-Path $env:TEMP ("ollama-context-" + [guid]::NewGuid().ToString("N") + ".json")
+          try {
+            [System.IO.File]::WriteAllText($inputFile, $payload, [System.Text.UTF8Encoding]::new($false))
+            $selectionOutput = & python $helper --input-file $inputFile
+            if ($LASTEXITCODE -ne 0) { throw "Explicit-file context selection failed: $($selectionOutput -join ' ')" }
+            $selection = ($selectionOutput -join [Environment]::NewLine) | ConvertFrom-Json -ErrorAction Stop
+            if ([int64]$selection.selected_context_tokens -ne 86016) {
+              throw "Expected exact safe context 86016, received '$($selection.selected_context_tokens)'."
+            }
+            if ([int64]$selection.selected_context_tokens -gt [int64]$selection.requested_context_tokens) {
+              throw "Selected context exceeded the requested context."
+            }
+          } finally {
+            if (Test-Path -LiteralPath $inputFile) { Remove-Item -LiteralPath $inputFile -Force }
+          }
+          Write-Host "PowerShell-to-Python explicit-file context bridge passed."
       - name: Run real checkpoint watcher startup, stop, and recovery on Windows
         run: >-
           python -m pytest -q

@@ -888,6 +888,7 @@ def test_windows_codex_command_uses_call_without_nested_cmd_quoting(monkeypatch)
 def test_codex_arguments_pin_ollama_and_selected_windows_sandbox(monkeypatch):
     from scripts import autonomous_engineering_progress as progress
 
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
     monkeypatch.setenv("CODEX_WINDOWS_SANDBOX_BACKEND", "elevated")
     arguments = progress.codex_arguments("gpt-oss:20b", "codex-report.md")
 
@@ -906,9 +907,9 @@ def test_codex_arguments_pin_ollama_and_selected_windows_sandbox(monkeypatch):
     assert arguments[arguments.index("--sandbox"):arguments.index("--sandbox") + 2] == [
         "--sandbox", "workspace-write",
     ]
-    assert "model_providers.ollama.stream_idle_timeout_ms=900000" in overrides
-    assert "model_providers.ollama.stream_max_retries=10" in overrides
-    assert "model_providers.ollama.request_max_retries=4" in overrides
+    # Ollama is a built-in Codex provider; redefining its reserved
+    # model_providers.ollama namespace prevents Codex from starting.
+    assert not any(value.startswith("model_providers.ollama.") for value in overrides)
     assert arguments[arguments.index("--model") + 1] == "gpt-oss:20b"
 
 
@@ -916,6 +917,7 @@ def test_codex_arguments_reject_unverified_windows_sandbox_backend(monkeypatch):
     import pytest
     from scripts import autonomous_engineering_progress as progress
 
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
     monkeypatch.setenv("CODEX_WINDOWS_SANDBOX_BACKEND", "danger-full-access")
     with pytest.raises(ValueError, match="must be 'mxc' or 'elevated'"):
         progress.codex_arguments("gpt-oss:20b", "codex-report.md")
@@ -932,6 +934,7 @@ def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkey
     monkeypatch.setattr(progress, "persist", lambda record: True)
     monkeypatch.setattr(progress, "PLAN_FILE", tmp_path / ".agent-progress.json")
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "progress"))
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
 
     class BrokenInput:
         def write(self, value):
@@ -1304,6 +1307,15 @@ def test_pending_pr_state_round_trips_atomically_and_rejects_corruption(tmp_path
     cycle._pending_pr_path().write_text("{broken", encoding="utf-8")
     with pytest.raises(RuntimeError, match="unreadable"):
         cycle.load_pending_pr()
+
+
+def test_codex_arguments_refuse_to_invent_context_without_ollama_preflight(monkeypatch):
+    import pytest
+    from scripts import autonomous_engineering_progress as progress
+
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", raising=False)
+    with pytest.raises(ValueError, match="verified Ollama context preflight"):
+        progress.codex_arguments("qwen3:14b-codex-ctx32768", "codex-report.md")
 
 
 def test_clear_pending_state_removes_task_and_pr_in_one_transaction(

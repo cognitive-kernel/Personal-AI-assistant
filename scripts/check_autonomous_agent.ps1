@@ -5,19 +5,37 @@ $model = if (-not [string]::IsNullOrWhiteSpace($SelectedModel)) {
 } elseif ($env:AUTONOMOUS_ENGINEERING_MODEL) {
     $env:AUTONOMOUS_ENGINEERING_MODEL
 } else {
-    "gpt-oss:20b"
+    ""
 }
 $checks = @()
+$modelIsContextVariant = $model -match '(?i)-codex-ctx[0-9]+$'
 
 $ollamaOnline = $false
 $modelInstalled = $false
+$modelContextLength = $null
+$modelSupportsTools = $false
 try {
-    $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 4
+    $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 4 -MaximumRedirection 0
     $ollamaOnline = $true
     $modelInstalled = @($tags.models | ForEach-Object { $_.name }) -contains $model
+    if ($modelInstalled) {
+        $modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -ContentType "application/json" -Body (@{ model = $model; verbose = $true } | ConvertTo-Json -Compress) -TimeoutSec 8 -MaximumRedirection 0
+        $architecture = [string]$modelInfo.details.family
+        $contextKey = $architecture + ".context_length"
+        $rawContext = $modelInfo.model_info.PSObject.Properties[$contextKey]
+        $parsedContext = 0L
+        if ($rawContext -and [int64]::TryParse([string]$rawContext.Value, [ref]$parsedContext) -and $parsedContext -ge 512) {
+            $modelContextLength = $parsedContext
+        }
+        $modelSupportsTools = @($modelInfo.capabilities | ForEach-Object { [string]$_ }) -contains "tools"
+    }
 } catch {}
 $checks += [pscustomobject]@{ Component = "Ollama server"; Ready = $ollamaOnline; Detail = if ($ollamaOnline) { "127.0.0.1:11434" } else { "Start the local Ollama service" } }
-$checks += [pscustomobject]@{ Component = "Local model"; Ready = $modelInstalled; Detail = if ($modelInstalled) { $model } else { "Install the configured model in Ollama" } }
+$checks += [pscustomobject]@{ Component = "Saved model selection"; Ready = (-not [string]::IsNullOrWhiteSpace($model)); Detail = if ($model) { $model } else { "Select and save an installed Ollama model in /autonomous-engineering" } }
+$checks += [pscustomobject]@{ Component = "Base model selection"; Ready = -not $modelIsContextVariant; Detail = if ($modelIsContextVariant) { "Generated Codex context variants cannot be selected as base models" } else { "Original Ollama model selected" } }
+$checks += [pscustomobject]@{ Component = "Local model"; Ready = $modelInstalled; Detail = if ($modelInstalled) { $model } elseif (-not $model) { "No model has been selected and saved" } else { "Saved model is not installed in Ollama" } }
+$checks += [pscustomobject]@{ Component = "Model context metadata"; Ready = ($null -ne $modelContextLength -and $modelContextLength -ge 64000); Detail = if ($null -eq $modelContextLength) { "Ollama /api/show did not report a valid architecture context_length" } elseif ($modelContextLength -lt 64000) { "$modelContextLength tokens maximum; Codex requires at least 64000" } else { "$modelContextLength tokens maximum; Codex minimum satisfied" } }
+$checks += [pscustomobject]@{ Component = "Model tool calling"; Ready = $modelSupportsTools; Detail = if ($modelSupportsTools) { "Ollama advertises tools capability" } else { "Selected model does not advertise tools capability required by Codex" } }
 
 $ghCommand = Get-Command gh -ErrorAction SilentlyContinue
 $ghReady = $false

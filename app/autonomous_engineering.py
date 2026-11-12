@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
 from .autonomous_engineering_progress import get_progress, storage_accessible
+from .ollama_context import MIN_CODEX_CONTEXT_TOKENS, OllamaModelMetadataError, maximum_context_tokens, supports_tool_calling
 
 _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
 
@@ -29,10 +30,14 @@ router = APIRouter(
 
 _DEFAULT_REPOSITORY = "cognitive-kernel/Personal-AI-assistant"
 _WORKFLOW = "autonomous-codex-engineering.yml"
-_DEFAULT_MODEL = "gpt-oss:20b"
 _DEFAULT_INTERVAL_HOURS = 24
 _ALLOWED_INTERVAL_HOURS = {1, 2, 4, 6, 12, 24}
 _MODEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$")
+_CODEX_CONTEXT_VARIANT_PATTERN = re.compile(r"-codex-ctx[0-9]+$", re.IGNORECASE)
+
+
+def _is_codex_context_variant(model: str) -> bool:
+    return bool(_CODEX_CONTEXT_VARIANT_PATTERN.search(model.strip()))
 
 
 class EngineeringSettings(BaseModel):
@@ -53,11 +58,6 @@ def _repository() -> str:
     return value if owner and name and "/" not in name else _DEFAULT_REPOSITORY
 
 
-def _model() -> str:
-    value = os.getenv("AUTONOMOUS_ENGINEERING_MODEL", _DEFAULT_MODEL).strip()
-    return value[:120] if value else _DEFAULT_MODEL
-
-
 def _run(command: list[str], timeout: int = 8) -> subprocess.CompletedProcess[str] | None:
     try:
         return subprocess.run(
@@ -72,32 +72,125 @@ def _run(command: list[str], timeout: int = 8) -> subprocess.CompletedProcess[st
         return None
 
 
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Keep local Ollama status checks on the loopback endpoint."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def _ollama_status(model: str) -> dict[str, Any]:
+    empty = {
+        "online": False,
+        "model": model,
+        "model_installed": False,
+        "model_selectable": False,
+        "model_is_codex_context_variant": _is_codex_context_variant(model),
+        "models": [],
+        "selectable_models": [],
+        "model_context_length": None,
+        "model_capabilities": [],
+        "model_supports_tools": False,
+        "model_metadata_available": False,
+        "model_context_supported": False,
+        "model_context_error": f"Codex requires at least {MIN_CODEX_CONTEXT_TOKENS} context tokens.",
+        "model_metadata_error": "Ollama metadata is unavailable.",
+    }
+    # Local Ollama metadata must never be sent through an environment proxy.
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        _NoRedirectHandler(),
+    )
+    request = urllib.request.Request(
+        "http://127.0.0.1:11434/api/tags",
+        headers={"Accept": "application/json"},
+    )
     try:
-        request = urllib.request.Request(
-            "http://127.0.0.1:11434/api/tags",
-            headers={"Accept": "application/json"},
-        )
-        # Local Ollama metadata must never be sent through an environment proxy.
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        with opener.open(request, timeout=2) as response:
-            payload = json.loads(response.read(2_000_000).decode("utf-8"))
+        with opener.open(request, timeout=3) as response:
+            body = response.read(8_000_001)
+        if len(body) > 8_000_000:
+            raise ValueError("Ollama /api/tags response exceeded the safety limit.")
+        payload = json.loads(body.decode("utf-8"))
         models = payload.get("models", []) if isinstance(payload, dict) else []
-        names = sorted(
+        names = sorted({
             str(item.get("name", ""))
             for item in models
             if isinstance(item, dict) and item.get("name")
-        )
-        installed = model in names
-        return {
-            "online": True,
-            "model": model,
-            "model_installed": installed,
-            "models": names[:40],
-        }
+        })
     except (OSError, ValueError, urllib.error.URLError, TimeoutError):
-        return {"online": False, "model": model, "model_installed": False, "models": []}
+        return empty
 
+    installed = bool(model) and model in names
+    is_context_variant = _is_codex_context_variant(model)
+    selectable_names = [name for name in names if not _is_codex_context_variant(name)]
+    result = {
+        **empty,
+        "online": True,
+        "model_installed": installed,
+        "model_selectable": installed and not is_context_variant,
+        "model_is_codex_context_variant": is_context_variant,
+        "models": names,
+        "selectable_models": selectable_names,
+        "model_metadata_error": (
+            "The saved model is an internal Codex context variant; select its original Ollama model."
+            if is_context_variant else
+            None if installed else
+            "No Ollama model is saved in repository settings." if not model else
+            "The saved model is not installed locally."
+        ),
+    }
+    if not installed or is_context_variant:
+        return result
+
+    show_request = urllib.request.Request(
+        "http://127.0.0.1:11434/api/show",
+        data=json.dumps({"model": model, "verbose": True}).encode("utf-8"),
+        headers={"Accept": "application/json", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with opener.open(show_request, timeout=5) as response:
+            body = response.read(8_000_001)
+        if len(body) > 8_000_000:
+            raise ValueError("Ollama /api/show response exceeded the safety limit.")
+        details_payload = json.loads(body.decode("utf-8"))
+        if not isinstance(details_payload, dict):
+            raise ValueError("Ollama /api/show returned an invalid response.")
+        details = details_payload.get("details") if isinstance(details_payload.get("details"), dict) else {}
+        model_info = details_payload.get("model_info") if isinstance(details_payload.get("model_info"), dict) else {}
+        architecture = details.get("family")
+        try:
+            context_length = maximum_context_tokens(model_info, architecture)
+        except OllamaModelMetadataError:
+            context_length = None
+        raw_capabilities = details_payload.get("capabilities")
+        capabilities = sorted({
+            value for value in raw_capabilities
+            if isinstance(value, str) and value
+        }) if isinstance(raw_capabilities, list) else []
+        metadata_available = context_length is not None
+        context_supported = metadata_available and context_length >= MIN_CODEX_CONTEXT_TOKENS
+        result.update({
+            "model_context_length": context_length,
+            "model_capabilities": capabilities,
+            "model_supports_tools": supports_tool_calling(capabilities),
+            "model_metadata_available": metadata_available,
+            "model_context_supported": context_supported,
+            "model_context_error": (
+                None if context_supported else
+                f"Selected model context is below the Codex minimum of {MIN_CODEX_CONTEXT_TOKENS} tokens."
+                if metadata_available else
+                "Selected model context metadata is unavailable."
+            ),
+            "model_metadata_error": (
+                None if metadata_available else
+                "Ollama did not publish a valid architecture-specific context_length."
+            ),
+        })
+    except (OSError, ValueError, urllib.error.URLError, TimeoutError) as exc:
+        result["model_metadata_error"] = f"Could not verify selected-model metadata: {type(exc).__name__}"
+    return result
 
 def _codex_status() -> dict[str, Any]:
     executable = shutil.which("codex")
@@ -135,7 +228,7 @@ def _github_snapshot() -> dict[str, Any]:
     authenticated = bool(auth and auth.returncode == 0)
     recent_runs: list[dict[str, Any]] = []
     runs_available = False
-    settings = {"model": _model(), "interval_hours": _DEFAULT_INTERVAL_HOURS, "execution_mode": "continuous", "paused": False}
+    settings = {"model": "", "interval_hours": _DEFAULT_INTERVAL_HOURS, "execution_mode": "continuous", "paused": False}
     if authenticated:
         result = _run(
             [
@@ -206,7 +299,7 @@ def _github_snapshot() -> dict[str, Any]:
 def collect_status() -> dict[str, Any]:
     github = _github_snapshot()
     settings = github.get("settings", {})
-    model = settings.get("model", _model())
+    model = settings.get("model", "")
     interval_hours = settings.get("interval_hours", _DEFAULT_INTERVAL_HOURS)
     execution_mode = settings.get("execution_mode", "continuous")
     paused = bool(settings.get("paused", False))
@@ -217,13 +310,22 @@ def collect_status() -> dict[str, Any]:
     checks = {
         "ollama_online": ollama["online"],
         "model_installed": ollama["model_installed"],
+        "model_selectable": ollama.get("model_selectable", ollama["model_installed"] and not _is_codex_context_variant(model)) is True,
+        "model_is_codex_context_variant": ollama.get("model_is_codex_context_variant") is True,
+        "model_context_metadata_available": ollama.get("model_metadata_available") is True,
+        "model_context_supported": ollama.get("model_context_supported") is True,
+        "model_supports_tools": ollama.get("model_supports_tools") is True,
         "codex_installed": codex["installed"],
         "runner_running": runner["running"],
         "github_cli_authenticated": github["authenticated"],
         "github_runs_available": github.get("runs_available", False),
         "progress_storage_accessible": progress_storage,
     }
-    ready = all(value for key, value in checks.items() if key != "codex_installed")
+    ready = all(
+        value
+        for key, value in checks.items()
+        if key not in {"codex_installed", "model_is_codex_context_variant"}
+    )
     active_runs = github.get("recent_runs", [])
     active = any(
         isinstance(item, dict)
@@ -243,6 +345,14 @@ def collect_status() -> dict[str, Any]:
         "workflow": _WORKFLOW,
         "model": model,
         "models": ollama.get("models", []),
+        "selectable_models": ollama.get("selectable_models", ollama.get("models", [])),
+        "model_is_codex_context_variant": ollama.get("model_is_codex_context_variant", False),
+        "model_context_length": ollama.get("model_context_length"),
+        "model_context_supported": ollama.get("model_context_supported", False),
+        "model_context_error": ollama.get("model_context_error"),
+        "model_capabilities": ollama.get("model_capabilities", []),
+        "model_supports_tools": ollama.get("model_supports_tools", False),
+        "model_metadata_error": ollama.get("model_metadata_error"),
         "interval_hours": interval_hours,
         "execution_mode": execution_mode,
         "paused": paused,
@@ -345,15 +455,119 @@ def autonomous_engineering_progress(
     return result
 
 
+def _save_repository_variables(gh: str, updates: tuple[tuple[str, str], ...]) -> None:
+    """Apply repository-variable updates as a rollback-protected transaction."""
+    listing = _run(
+        [gh, "variable", "list", "--repo", _repository(), "--json", "name,value"],
+        timeout=12,
+    )
+    if not listing or listing.returncode != 0:
+        raise HTTPException(
+            status_code=502,
+            detail="Could not snapshot existing GitHub repository settings; no settings were changed.",
+        )
+    try:
+        current_values = json.loads(listing.stdout)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="GitHub returned invalid repository-variable state; no settings were changed.",
+        ) from exc
+    if not isinstance(current_values, list):
+        raise HTTPException(
+            status_code=502,
+            detail="GitHub returned an invalid repository-variable list; no settings were changed.",
+        )
+    previous = {
+        str(item.get("name")): str(item.get("value", ""))
+        for item in current_values
+        if isinstance(item, dict) and isinstance(item.get("name"), str)
+    }
+    applied: list[str] = []
+    for name, value in updates:
+        result = _run(
+            [gh, "variable", "set", name, "--body", value, "--repo", _repository()],
+            timeout=15,
+        )
+        if result and result.returncode == 0:
+            applied.append(name)
+            continue
+
+        rollback_errors: list[str] = []
+        # Include the failed write itself: a client timeout/non-zero exit can
+        # occur after GitHub accepted the update, so its remote state is uncertain.
+        for changed_name in reversed([*applied, name]):
+            if changed_name in previous:
+                rollback = _run(
+                    [gh, "variable", "set", changed_name, "--body", previous[changed_name], "--repo", _repository()],
+                    timeout=15,
+                )
+            else:
+                rollback = _run(
+                    [gh, "variable", "delete", changed_name, "--repo", _repository()],
+                    timeout=15,
+                )
+            if not rollback or rollback.returncode != 0:
+                verification = _run(
+                    [gh, "variable", "list", "--repo", _repository(), "--json", "name,value"],
+                    timeout=12,
+                )
+                try:
+                    observed = json.loads(verification.stdout) if verification and verification.returncode == 0 else None
+                except (TypeError, ValueError):
+                    observed = None
+                observed_values = {
+                    str(item.get("name")): str(item.get("value", ""))
+                    for item in observed
+                    if isinstance(item, dict) and isinstance(item.get("name"), str)
+                } if isinstance(observed, list) else None
+                restored = (
+                    observed_values is not None
+                    and (
+                        observed_values.get(changed_name) == previous[changed_name]
+                        if changed_name in previous
+                        else changed_name not in observed_values
+                    )
+                )
+                if not restored:
+                    rollback_errors.append(changed_name)
+        if rollback_errors:
+            detail = (
+                f"Saving {name} failed and rollback could not restore: "
+                + ", ".join(rollback_errors)
+                + ". Inspect the repository Actions variables before retrying."
+            )
+        else:
+            detail = f"Saving {name} failed; all earlier changes were rolled back."
+        raise HTTPException(status_code=502, detail=detail)
+
+
 @router.post("/settings", status_code=200)
 def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[str, Any]:
     model = payload.model.strip()
     if not _MODEL_PATTERN.fullmatch(model):
         raise HTTPException(status_code=422, detail="شناسهٔ مدل Ollama معتبر نیست.")
+    if _is_codex_context_variant(model):
+        raise HTTPException(status_code=422, detail="این مدل نسخهٔ داخلی Context است؛ مدل اصلی Ollama را انتخاب کنید.")
     if payload.interval_hours not in _ALLOWED_INTERVAL_HOURS:
         raise HTTPException(status_code=422, detail="فاصلهٔ اجرا باید یکی از ۱، ۲، ۴، ۶، ۱۲ یا ۲۴ ساعت باشد.")
     if payload.execution_mode not in {"scheduled", "continuous"}:
         raise HTTPException(status_code=422, detail="حالت اجرا معتبر نیست.")
+    local_model = _ollama_status(model)
+    if not local_model.get("online"):
+        raise HTTPException(status_code=503, detail="سرویس Ollama محلی در دسترس نیست؛ مدل ذخیره نشد.")
+    if not local_model.get("model_installed"):
+        raise HTTPException(status_code=422, detail="مدل انتخاب‌شده در فهرست مدل‌های نصب‌شدهٔ Ollama وجود ندارد.")
+    if not local_model.get("model_metadata_available"):
+        raise HTTPException(status_code=422, detail="حداکثر Context مدل از metadata معتبر Ollama قابل تأیید نیست؛ مدل ذخیره نشد.")
+    if not local_model.get("model_context_supported"):
+        maximum = local_model.get("model_context_length")
+        raise HTTPException(
+            status_code=422,
+            detail=f"Codex به حداقل {MIN_CODEX_CONTEXT_TOKENS} توکن Context نیاز دارد؛ سقف مدل انتخاب‌شده {maximum} است و ذخیره نشد.",
+        )
+    if not local_model.get("model_supports_tools"):
+        raise HTTPException(status_code=422, detail="مدل انتخاب‌شده قابلیت tools را اعلام نکرده و برای Codex قابل استفاده نیست.")
     gh = shutil.which("gh")
     if not gh:
         raise HTTPException(status_code=503, detail="GitHub CLI نصب نشده است.")
@@ -365,13 +579,7 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
         ("AUTONOMOUS_ENGINEERING_INTERVAL_HOURS", str(payload.interval_hours)),
         ("AUTONOMOUS_ENGINEERING_MODE", payload.execution_mode),
     )
-    for name, value in updates:
-        result = _run(
-            [gh, "variable", "set", name, "--body", value, "--repo", _repository()],
-            timeout=15,
-        )
-        if not result or result.returncode != 0:
-            raise HTTPException(status_code=502, detail=f"ذخیرهٔ تنظیم {name} در GitHub ناموفق بود.")
+    _save_repository_variables(gh, updates)
     return {
         "saved": True,
         "model": model,
