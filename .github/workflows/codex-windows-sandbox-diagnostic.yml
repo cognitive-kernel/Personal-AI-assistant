@@ -270,7 +270,20 @@ jobs:
           }
           $ollamaDirectory = Split-Path -Parent $ollamaPath
 
+          $node = Get-Command node.exe -ErrorAction Stop
+          $nodeVersionOutput = & $node.Source --version 2>&1
+          $nodeVersionExitCode = $LASTEXITCODE
+          $nodeVersion = (@($nodeVersionOutput) -join " ").Trim()
+          if ($nodeVersionExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($nodeVersion)) {
+            throw "Node.js cannot execute under the Runner service identity."
+          }
           $npm = Get-Command npm.cmd -ErrorAction Stop
+          $npmVersionOutput = & $npm.Source --version 2>&1
+          $npmVersionExitCode = $LASTEXITCODE
+          $npmVersion = (@($npmVersionOutput) -join " ").Trim()
+          if ($npmVersionExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($npmVersion)) {
+            throw "npm.cmd cannot execute under the Runner service identity."
+          }
           $npmPrefixOutput = & $npm.Source config get prefix 2>&1
           $npmPrefixExitCode = $LASTEXITCODE
           $npmPrefix = [string](@($npmPrefixOutput)[0])
@@ -308,7 +321,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Python cannot execute under the Runner service identity." }
           & $ollamaPath --version
           if ($LASTEXITCODE -ne 0) { throw "Ollama CLI cannot execute under the Runner service identity." }
+          Write-Host "PowerShell version: $($PSVersionTable.PSVersion.ToString())"
+          Write-Host "Node executable: $($node.Source)"
+          Write-Host "Node version: $nodeVersion"
           Write-Host "npm executable: $($npm.Source)"
+          Write-Host "npm version: $npmVersion"
+          Write-Host "Python executable: $pythonPath"
           Write-Host "Codex executable: $($codexCommand.Source)"
           Write-Host "Codex version: $codexVersion"
           Write-Host "Ollama executable: $ollamaPath"
