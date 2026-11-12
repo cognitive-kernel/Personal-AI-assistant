@@ -38,6 +38,30 @@ def test_context_selection_uses_safe_minimum_of_request_model_and_hardware():
     assert result["selected_context_tokens"] <= result["requested_context_tokens"]
 
 
+def test_recorded_i5_12400_gpt_oss_host_profile_supports_upstream_64k_context():
+    gib = 1024**3
+    result = select_context_window(
+        model_info={
+            "gptoss.context_length": 131072,
+            "gptoss.block_count": 24,
+            "gptoss.attention.head_count_kv": 8,
+            "gptoss.attention.key_length": 64,
+            "gptoss.attention.value_length": 64,
+        },
+        architecture="gptoss",
+        model_weight_bytes=13_793_441_566,
+        available_memory_bytes=int(22.42 * gib),
+        requested_context_tokens=131072,
+        model_weights_already_loaded=False,
+    )
+
+    assert result["kv_cache_bytes_per_token"] == 49_152
+    assert result["selected_context_tokens"] == 93_699
+    assert result["selected_context_tokens"] >= 64_000
+    assert result["selected_context_tokens"] <= 131_072
+    assert result["model_weight_charge_bytes"] == 13_793_441_566
+
+
 def test_context_selection_does_not_double_charge_already_loaded_model_weights():
     unloaded = payload()
     unloaded_result = select_context_window(**unloaded)
