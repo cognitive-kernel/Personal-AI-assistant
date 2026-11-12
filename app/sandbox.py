@@ -198,7 +198,7 @@ def run_workspace_tests(
     *,
     docker_executable: str | Path,
     image: str,
-    timeout_seconds: int = 120,
+    timeout_seconds: int = 300,
     max_output_bytes: int = 65536,
 ) -> SandboxResult:
     """Execute the project's tests only inside a preloaded, digest-pinned test image.
@@ -221,8 +221,8 @@ def run_workspace_tests(
         raise ValueError("Workspace path cannot contain commas.")
     if not isinstance(image, str) or not _TEST_IMAGE_REF.fullmatch(image):
         raise ValueError("test image must be a local image ID or repository reference pinned by sha256 digest.")
-    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= 300:
-        raise ValueError("timeout_seconds must be an integer from 1 to 300.")
+    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= 600:
+        raise ValueError("timeout_seconds must be an integer from 1 to 600.")
     if isinstance(max_output_bytes, bool) or not isinstance(max_output_bytes, int) or not 1 <= max_output_bytes <= 131072:
         raise ValueError("max_output_bytes must be an integer from 1 to 131072.")
 
