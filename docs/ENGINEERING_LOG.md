@@ -862,3 +862,12 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Under the selector's documented 4 GiB system reserve and 10%-of-weights runtime overhead, the conservative FP16 KV estimate is 49,152 bytes/token and the selected ceiling is 93,699 tokens when weights are not already resident. This leaves the upstream Ollama 64k recommendation feasible for this recorded snapshot while correctly refusing to assume the full 131,072-token model maximum fits.
 - This is a deterministic capacity calculation, not a live model-load or performance claim. Runtime allocation and real Codex tool-call behavior still require the self-hosted diagnostic.
 - The target profile test is additive; no prior assertions or safety gates were removed.
+
+
+## 2026-11-12 — Isolated full-suite Docker timeout and workflow heredoc repair
+
+- **Observed failure:** on PR head `6f8239db9497a046b69a0d637fb38a1e78988b6d`, the full test suite inside the 2 GiB / 2 CPU no-network Docker sandbox emitted progress through 100% but the process did not exit within the workflow's 240-second budget. The job correctly failed as `timed_out`; this is not counted as a pass. The separate GitHub-hosted test job and Windows/browser/audit jobs passed on that SHA.
+- **Root-cause boundary:** available logs establish the strict 240-second cutoff and full progress output, but do not yet establish whether final pytest teardown, process shutdown, or resource pressure caused the delay. Do not label this as a proven test hang or change the sandbox resource/security limits based on speculation.
+- **Correction:** increase the explicit isolated full-suite budget to 600 seconds, still below the job's 15-minute timeout; raise the helper's validated maximum to 600 seconds and its default to 300 seconds. The no-network, read-only mount, dropped capabilities, non-root UID, 2 GiB memory, 2 CPU, PID cap, pinned image, and no-host-fallback constraints remain unchanged. Added regression coverage for the 600-second bound and rejection of 601 seconds.
+- **Workflow defect:** the inline Python heredoc in `.github/workflows/sandbox-integration-ci.yml` lacked its terminating `PY` marker. Added the missing marker to remove the Bash EOF warning and make the script boundary explicit.
+- **Validation:** the Docker sandbox integration workflow and all exact-head checks must rerun after these changes. The timeout extension is a diagnostic opportunity, not a claim that the full isolated suite now passes.
