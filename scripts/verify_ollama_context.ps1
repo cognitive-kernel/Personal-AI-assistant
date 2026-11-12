@@ -133,7 +133,7 @@ function Get-AllocatedContext {
     return $allocated
 }
 
-function Get-LoadedCodexContextVariant {
+function Get-LoadedCodexContextState {
     param(
         [Parameter(Mandatory = $true)][string]$BaseModel,
         [Parameter(Mandatory = $true)][long]$MaximumContext,
@@ -146,13 +146,20 @@ function Get-LoadedCodexContextVariant {
         throw "Could not inspect existing Ollama allocations before context planning. $($_.Exception.Message)"
     }
 
-    $pattern = '^' + [regex]::Escape("$BaseModel-codex-ctx") + '(?<context>[0-9]+)$'
+    $variantPrefix = "$BaseModel-codex-ctx"
+    $pattern = '^' + [regex]::Escape($variantPrefix) + '(?<context>[0-9]+)$'
+    $modelWeightsLoaded = $false
     $verified = @()
     foreach ($entry in @($runtime.models)) {
         if ($null -eq $entry -or [string]::IsNullOrWhiteSpace([string]$entry.name)) {
             continue
         }
         $name = [string]$entry.name
+        if ($name.Equals($BaseModel, [System.StringComparison]::OrdinalIgnoreCase) -or
+            $name.StartsWith($variantPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $modelWeightsLoaded = $true
+        }
+
         $match = [regex]::Match($name, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
         if (-not $match.Success) {
             continue
@@ -185,32 +192,15 @@ function Get-LoadedCodexContextVariant {
         }
     }
 
-    if ($verified.Count -eq 0) {
-        return $null
+    $best = $null
+    if ($verified.Count -gt 0) {
+        $best = $verified | Sort-Object -Property Context -Descending | Select-Object -First 1
     }
-    return $verified | Sort-Object -Property Context -Descending | Select-Object -First 1
-}
-
-function Test-OllamaModelWeightsLoaded {
-    param([Parameter(Mandatory = $true)][string]$BaseModel)
-
-    try {
-        $runtime = Invoke-RestMethod -Uri "$baseUrl/api/ps" -Method Get -TimeoutSec 10 -MaximumRedirection 0
-    } catch {
-        throw "Could not inspect Ollama's loaded models before RAM budgeting. $($_.Exception.Message)"
+    return [PSCustomObject]@{
+        ModelWeightsAlreadyLoaded = [bool]$modelWeightsLoaded
+        VerifiedVariant = $best
     }
-    $variantPrefix = "$BaseModel-codex-ctx"
-    $loaded = @($runtime.models | Where-Object {
-        if ($null -eq $_ -or [string]::IsNullOrWhiteSpace([string]$_.name)) {
-            return $false
-        }
-        $name = [string]$_.name
-        $name.Equals($BaseModel, [System.StringComparison]::OrdinalIgnoreCase) -or
-            $name.StartsWith($variantPrefix, [System.StringComparison]::OrdinalIgnoreCase)
-    })
-    return $loaded.Count -gt 0
 }
-
 if ($VerifyOnly) {
     $codexModel = $Model
     $selectedContext = 0L
@@ -262,7 +252,8 @@ if ($VerifyOnly) {
         $selectionMode = "automatic"
     }
 
-    $loadedVariant = Get-LoadedCodexContextVariant -BaseModel $baseModel -MaximumContext $maximum -RequestedContext $requestedContext
+    $loadedState = Get-LoadedCodexContextState -BaseModel $baseModel -MaximumContext $maximum -RequestedContext $requestedContext
+    $loadedVariant = $loadedState.VerifiedVariant
     if ($loadedVariant) {
         $codexModel = [string]$loadedVariant.ModelName
         $selectedContext = [int64]$loadedVariant.Context
@@ -270,8 +261,7 @@ if ($VerifyOnly) {
         Write-Host "Reusing already-loaded, verified Codex model variant: $codexModel"
         Write-Host "Verified allocated context: $selectedContext tokens"
     } else {
-        $modelWeightsAlreadyLoaded = Test-OllamaModelWeightsLoaded -BaseModel $baseModel
-        $contextSelection = Get-AutomaticContext -Info $modelInfo -ModelName $baseModel -RequestedContext $requestedContext -ModelWeightsAlreadyLoaded $modelWeightsAlreadyLoaded
+        $contextSelection = Get-AutomaticContext -Info $modelInfo -ModelName $baseModel -RequestedContext $requestedContext -ModelWeightsAlreadyLoaded ([bool]$loadedState.ModelWeightsAlreadyLoaded)
         $selectedContext = [int64]$contextSelection.selected_context_tokens
     if ($selectedContext -lt 64000 -or $selectedContext -gt $maximum) {
         throw "Selected context $selectedContext is outside the supported Codex range for model maximum $maximum."
