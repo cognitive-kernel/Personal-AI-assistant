@@ -833,13 +833,14 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert workflow.index("Snapshot accepted scorecard from trusted main") < workflow.index("Execute one isolated task, validate, and publish for owner review")
     assert workflow.count("snapshot --run-id") == 1
     progress_writer = (root / "scripts" / "autonomous_engineering_progress.py").read_text(encoding="utf-8")
+    codex_config = (root / "scripts" / "autonomous_engineering_codex_config.py").read_text(encoding="utf-8")
     cycle_controller = (root / "scripts" / "autonomous_engineering_cycle.py").read_text(encoding="utf-8")
     pr_lifecycle = (root / "scripts" / "autonomous_engineering_pull_requests.py").read_text(encoding="utf-8")
     tests_workflow = (root / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
     browser_workflow = (root / ".github" / "workflows" / "browser-e2e.yml").read_text(encoding="utf-8")
-    assert 'model_provider="ollama-local"' in progress_writer
-    assert "model_providers.ollama-local.base_url" in progress_writer
-    assert "model_providers.ollama." not in progress_writer
+    assert 'model_provider="ollama-local"' in codex_config
+    assert "model_providers.ollama-local.base_url" in codex_config
+    assert "model_providers.ollama." not in codex_config
     assert "scripts/autonomous_engineering_cycle.py run" in workflow
     assert "contents: write" in workflow and "pull-requests: write" in workflow and "actions: write" in workflow
     assert "publish_pull_request" in cycle_controller and "dispatch_and_wait_all" in cycle_controller

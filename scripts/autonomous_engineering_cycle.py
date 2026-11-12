@@ -74,6 +74,14 @@ except ImportError:  # Direct script execution from the scripts directory.
         clear_pending_state,
     )
 
+try:
+    from . import autonomous_engineering_cycle_checkpoints as _cycle_checkpoints
+    from . import autonomous_engineering_cycle_workspace as _cycle_workspace
+except ImportError:  # Direct script execution from the scripts directory.
+    import autonomous_engineering_cycle_checkpoints as _cycle_checkpoints
+    import autonomous_engineering_cycle_workspace as _cycle_workspace
+
+
 ROOT = Path(__file__).resolve().parents[1]
 CHECKPOINT_SCRIPT = Path(__file__).resolve().with_name("autonomous_engineering_checkpoint.py")
 ALLOWED = ("app/", "tests/", "docs/", "scripts/")
@@ -120,221 +128,68 @@ def record(
     ])
 
 def checkpoint_command(*args: str, capture: bool = True) -> subprocess.CompletedProcess[str]:
-    return run([sys.executable, str(CHECKPOINT_SCRIPT), *args], capture=capture)
+    return _cycle_checkpoints.checkpoint_command(
+        *args, capture=capture, run_command=run, python_executable=sys.executable,
+        checkpoint_script=CHECKPOINT_SCRIPT,
+    )
 
 
 def restore_checkpoint(base_sha: str) -> bool:
-    if os.name != "nt" or not os.getenv("PROGRAMDATA"):
-        return False
-    result = checkpoint_command("restore", "--base-sha", base_sha)
-    if result.returncode:
-        raise RuntimeError("Could not restore durable engineering checkpoint: " + (result.stderr or result.stdout or "")[-3000:])
-    return (result.stdout or "").strip() == "restored"
+    return _cycle_checkpoints.restore_checkpoint(
+        base_sha, os_name=os.name, programdata=os.getenv("PROGRAMDATA"),
+        checkpoint_command=checkpoint_command,
+    )
 
 
 def start_checkpoint_watcher(base_sha: str, run_id: str, task: int) -> subprocess.Popen[Any] | None:
-    if os.name != "nt" or not os.getenv("PROGRAMDATA"):
-        return None
-    # The venv's Windows python.exe may report a launcher PID instead of the
-    # child interpreter PID. Launch with the base interpreter so Popen.pid and
-    # the watcher's os.getpid() agree, while exposing this venv's dependencies.
-    watcher_executable = getattr(sys, "_base_executable", sys.executable)
-    watcher_env = os.environ.copy()
-    venv_site_packages = sysconfig.get_paths().get("purelib")
-    if venv_site_packages:
-        existing_pythonpath = watcher_env.get("PYTHONPATH", "")
-        watcher_env["PYTHONPATH"] = os.pathsep.join(
-            item for item in (venv_site_packages, existing_pythonpath) if item
-        )
-    command = [
-        watcher_executable, str(CHECKPOINT_SCRIPT), "watch",
-        "--base-sha", base_sha, "--run-id", run_id, "--task", str(task),
-    ]
-    state_dir = execution_state_directory()
-    metadata_path = state_dir / f"worktree-checkpoint-{run_id}-{task}.json"
-    marker_id = f"{run_id}-{task}"
-    ready_path = state_dir / f"worktree-checkpoint-{marker_id}.ready"
-    error_path = state_dir / f"worktree-checkpoint-{marker_id}.error"
-    log_path = state_dir / f"worktree-checkpoint-{marker_id}.log"
-    state_dir.mkdir(parents=True, exist_ok=True)
-    ready_path.unlink(missing_ok=True)
-    error_path.unlink(missing_ok=True)
-    flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-    with log_path.open("w", encoding="utf-8") as watcher_log:
-        process = subprocess.Popen(
-            command, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=watcher_log,
-            stderr=subprocess.STDOUT, close_fds=True, creationflags=flags,
-            env=watcher_env,
-        )
-    try:
-        expected_watcher_started_at = process_start_time(process.pid)
-    except RuntimeError as exc:
-        if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
-        raise RuntimeError(
-            "The checkpoint watcher process identity could not be verified; startup was aborted."
-        ) from exc
-    deadline = time.monotonic() + 30
-    while time.monotonic() < deadline:
-        if error_path.is_file():
-            detail = error_path.read_text(encoding="utf-8", errors="replace").strip()
-            if process.poll() is None:
-                process.terminate()
-            try:
-                log_detail = log_path.read_text(encoding="utf-8", errors="replace")[-3000:]
-            except OSError:
-                log_detail = ""
-            raise RuntimeError(
-                "The durable checkpoint watcher failed during startup: "
-                + detail[-2000:] + (f" Watcher log: {log_detail}" if log_detail else "")
-            )
-        if process.poll() is not None:
-            detail = error_path.read_text(encoding="utf-8", errors="replace").strip() if error_path.is_file() else ""
-            try:
-                log_detail = log_path.read_text(encoding="utf-8", errors="replace")[-3000:]
-            except OSError:
-                log_detail = ""
-            raise RuntimeError(
-                "The durable checkpoint watcher exited before becoming ready."
-                + (f" Startup error: {detail[-2000:]}" if detail else "")
-                + (f" Watcher log: {log_detail}" if log_detail else "")
-            )
-        try:
-            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-            if metadata_confirms_watcher_ready(
-                metadata,
-                base_sha=base_sha,
-                run_id=run_id,
-                task=task,
-                watcher_pid=process.pid,
-                watcher_started_at=expected_watcher_started_at,
-            ):
-                return process
-        except (OSError, ValueError, AttributeError):
-            pass
-        time.sleep(0.2)
-    metadata_detail = ""
-    try:
-        metadata_detail = metadata_path.read_text(encoding="utf-8")[:1000]
-    except OSError:
-        pass
-    if process.poll() is None:
-        process.terminate()
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=5)
-    log_detail = ""
-    try:
-        log_detail = log_path.read_text(encoding="utf-8", errors="replace")[-4000:]
-    except OSError:
-        pass
-    raise RuntimeError(
-        "The durable checkpoint watcher did not become ready within thirty seconds. "
-        f"Metadata: {metadata_detail or 'unavailable'}. "
-        f"Watcher log: {log_detail or 'unavailable'}"
+    return _cycle_checkpoints.start_checkpoint_watcher(
+        base_sha, run_id, task, os_module=os, subprocess_module=subprocess,
+        sys_module=sys, sysconfig_module=sysconfig, time_module=time, root=ROOT,
+        checkpoint_script=CHECKPOINT_SCRIPT, execution_state_directory_fn=execution_state_directory,
+        process_start_time_fn=process_start_time,
+        metadata_confirms_watcher_ready_fn=metadata_confirms_watcher_ready,
+        programdata=os.getenv("PROGRAMDATA"),
     )
 
 
 def stop_checkpoint_watcher(
     watcher: subprocess.Popen[Any] | None, base_sha: str, run_id: str, task: int,
 ) -> None:
-    if watcher is not None and watcher.poll() is None:
-        watcher.terminate()
-        try:
-            watcher.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            watcher.kill()
-            watcher.wait(timeout=5)
-    if os.name == "nt" and os.getenv("PROGRAMDATA"):
-        stopped = checkpoint_command("stop", "--run-id", run_id, "--task", str(task))
-        if stopped.returncode:
-            raise RuntimeError("Could not stop the durable checkpoint watcher.")
-        saved = checkpoint_command(
-            "snapshot", "--base-sha", base_sha, "--run-id", run_id, "--task", str(task),
-        )
-        if saved.returncode:
-            raise RuntimeError("Could not save the final durable worktree checkpoint.")
+    return _cycle_checkpoints.stop_checkpoint_watcher(
+        watcher, base_sha, run_id, task, subprocess_module=subprocess, os_name=os.name,
+        programdata=os.getenv("PROGRAMDATA"), checkpoint_command=checkpoint_command,
+    )
 
 
 def clear_checkpoint(run_id: str | None = None, task: int | None = None) -> None:
-    if os.name == "nt" and os.getenv("PROGRAMDATA"):
-        if run_id is None and task is None:
-            result = checkpoint_command("clear-latest")
-        elif run_id is not None and task is not None:
-            result = checkpoint_command("clear", "--run-id", run_id, "--task", str(task))
-        else:
-            raise ValueError("Checkpoint cleanup requires both run_id and task, or neither for latest-owner cleanup.")
-        if result.returncode:
-            raise RuntimeError("Could not clear the completed durable worktree checkpoint.")
+    return _cycle_checkpoints.clear_checkpoint(
+        run_id, task, os_name=os.name, programdata=os.getenv("PROGRAMDATA"),
+        checkpoint_command=checkpoint_command,
+    )
 
 
 def snapshot(run_id: str, attempt: str) -> None:
-    checked([
-        sys.executable, "scripts/autonomous_engineering_progress.py", "snapshot",
-        "--run-id", run_id, "--run-attempt", attempt,
-    ])
+    return _cycle_workspace.snapshot(
+        run_id, attempt, checked=checked, python_executable=sys.executable,
+    )
 
 
 def task_marker(report: Path) -> str:
-    try:
-        matches = MARKERS.findall(report.read_text(encoding="utf-8-sig"))
-    except OSError as exc:
-        raise RuntimeError("Codex did not produce its final task report.") from exc
-    if len(matches) != 1:
-        raise RuntimeError("Codex report must contain exactly one valid completion marker.")
-    return matches[0]
+    return _cycle_workspace.task_marker(report, MARKERS)
 
 
 def changed_paths() -> list[str]:
-    unstaged = checked(["git", "diff", "--name-only", "-z"]).split("\0")
-    staged = checked(["git", "diff", "--cached", "--name-only", "-z"]).split("\0")
-    untracked = checked(["git", "ls-files", "--others", "--exclude-standard", "-z"]).split("\0")
-    all_paths = unstaged + staged + untracked
-    return sorted({p.replace("\\", "/") for p in all_paths if p and p.replace("\\", "/") not in RUNTIME_FILES})
+    return _cycle_workspace.changed_paths(checked=checked, runtime_files=RUNTIME_FILES)
 
 
 def validate_paths(paths: list[str]) -> None:
-    invalid = []
-    for value in paths:
-        path = Path(value)
-        if (
-            value.startswith("/") or "\\" in value
-            or any(part in {"", ".", "..", ".git"} for part in value.split("/"))
-            or not value.startswith(ALLOWED) or value in PROTECTED
-            or path.is_symlink()
-            or not (ROOT / path).resolve().is_relative_to(ROOT.resolve())
-        ):
-            invalid.append(value)
-    if invalid:
-        raise RuntimeError("Task changed protected or non-allowlisted paths: " + repr(invalid))
+    return _cycle_workspace.validate_paths(paths, root=ROOT, allowed=ALLOWED, protected=PROTECTED)
 
 
 def prepare_commit(task_index: int) -> str:
-    validate_paths(changed_paths())
-    checked(["git", "add", "-A", "--", "app", "tests", "docs", "scripts"])
-    staged = checked(["git", "diff", "--cached", "--no-renames", "--name-only", "-z"]).split("\0")
-    staged = [p.replace("\\", "/") for p in staged if p]
-    validate_paths(staged)
-    if not staged:
-        raise RuntimeError("Task reported completion but produced no reviewable changes.")
-    checked(["git", "diff", "--cached", "--check"])
-    records = checked(["git", "diff", "--cached", "--no-renames", "--numstat", "-z"]).split("\0")
-    for item in records:
-        if item:
-            fields = item.split("\t", 2)
-            if len(fields) != 3 or fields[0] == "-" or fields[1] == "-":
-                raise RuntimeError("Binary changes are not allowed in autonomous task commits.")
-    checked(["git", "config", "user.name", "github-actions[bot]"])
-    checked(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"])
-    checked(["git", "commit", "-m", f"chore: complete autonomous engineering task {task_index}"])
-    return checked(["git", "rev-parse", "HEAD"])
+    return _cycle_workspace.prepare_commit(
+        task_index, checked=checked, changed_paths=changed_paths, validate_paths=validate_paths,
+    )
 
 
 def api(token: str, repo: str, method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
