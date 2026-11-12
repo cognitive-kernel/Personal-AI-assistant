@@ -393,3 +393,32 @@ def test_context_preflight_uses_file_bridge_and_reuses_verified_loaded_variant()
     assert "reused-verified-loaded-variant" in script
     assert "selectedContext -lt 64000" in script
 
+
+def test_context_selector_does_not_double_count_weights_already_loaded():
+    from app.ollama_context import OllamaModelMetadataError, select_context_window
+
+    info = {
+        "llama.context_length": 131072,
+        "llama.block_count": 32,
+        "llama.attention.head_count_kv": 8,
+        "llama.attention.key_length": 128,
+        "llama.attention.value_length": 128,
+    }
+    with pytest.raises(OllamaModelMetadataError, match="minimum 64000-token"):
+        select_context_window(
+            model_info=info,
+            architecture="llama",
+            model_weight_bytes=5 * 1024**3,
+            available_memory_bytes=16 * 1024**3,
+        )
+
+    selection = select_context_window(
+        model_info=info,
+        architecture="llama",
+        model_weight_bytes=5 * 1024**3,
+        available_memory_bytes=16 * 1024**3,
+        model_weights_already_loaded=True,
+    )
+    assert selection["model_weight_reserve_bytes"] == 0
+    assert selection["selected_context_tokens"] == 94208
+
