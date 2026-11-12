@@ -1418,7 +1418,10 @@ def test_ollama_context_powershell_bridge_uses_explicit_file_not_native_stdin():
     script = (root / "scripts" / "verify_ollama_context.ps1").read_text(encoding="utf-8")
     helper = (root / "app" / "ollama_context.py").read_text(encoding="utf-8")
     assert "--input-file" in script
-    assert "$selectionInput | & python" not in script
+    assert "Get-Command python.exe -ErrorAction Stop" in script
+    assert "Start-Process -FilePath $pythonPath -ArgumentList $argumentList" in script
+    assert "-RedirectStandardOutput $selectionOutputPath -RedirectStandardError $selectionErrorPath" in script
+    assert "& python $helperPath" not in script
     assert 'parser.add_argument("--input-file"' in helper
 
 def test_runner_status_uses_native_windows_process_api_without_psutil(monkeypatch):
