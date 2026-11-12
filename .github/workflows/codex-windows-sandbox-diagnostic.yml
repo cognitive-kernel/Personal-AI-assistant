@@ -166,6 +166,9 @@ jobs:
 
   sandbox-diagnostic:
     needs: cancel-stale-diagnostics
+    concurrency:
+      group: autonomous-local-engineering-${{ github.repository }}
+      cancel-in-progress: false
     runs-on: [self-hosted, Windows, X64, ollama]
     timeout-minutes: 30
     env:
