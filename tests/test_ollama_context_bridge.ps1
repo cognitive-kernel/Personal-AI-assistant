@@ -7,6 +7,7 @@ if (-not (Test-Path -LiteralPath $helperPath -PathType Leaf)) {
 }
 
 $inputPath = Join-Path $env:TEMP ("ollama-context-bridge-" + [guid]::NewGuid().ToString("N") + ".json")
+$errorPath = "$inputPath.stderr"
 $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 try {
     $payload = @{
@@ -36,9 +37,11 @@ try {
     $payloadObject = $payload | ConvertFrom-Json
     $payloadObject.available_memory_bytes = [long](10 * 1GB)
     [IO.File]::WriteAllText($inputPath, ($payloadObject | ConvertTo-Json -Depth 20 -Compress), $utf8NoBom)
-    $output = & python $helperPath --input-file $inputPath 2>&1
-    if ($LASTEXITCODE -eq 0 -or (($output -join ' ') -notmatch "minimum 64000-token")) {
-        throw "Insufficient RAM must fail closed instead of returning a low-context fallback."
+    $output = & python $helperPath --input-file $inputPath 2> $errorPath
+    $helperExitCode = $LASTEXITCODE
+    $helperError = if (Test-Path -LiteralPath $errorPath) { Get-Content -LiteralPath $errorPath -Raw } else { "" }
+    if ($helperExitCode -eq 0 -or $helperError -notmatch "minimum 64000-token") {
+        throw "Insufficient RAM must fail closed instead of returning a low-context fallback. $helperError"
     }
 
     $payloadObject.available_memory_bytes = [long](16 * 1GB)
@@ -53,8 +56,10 @@ try {
         throw "Expected 94208 tokens when model weights are already resident; received $($selection.selected_context_tokens)."
     }
 } finally {
-    if (Test-Path -LiteralPath $inputPath) {
-        Remove-Item -LiteralPath $inputPath -Force -ErrorAction SilentlyContinue
+    foreach ($temporaryPath in @($inputPath, $errorPath)) {
+        if (Test-Path -LiteralPath $temporaryPath) {
+            Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
+        }
     }
 }
 
