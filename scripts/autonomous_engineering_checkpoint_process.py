@@ -20,7 +20,12 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $target = Get-CimInstance -ClassName Win32_Process -Filter "ProcessId = __PID__"
 if ($null -eq $target) { exit 3 }
-$created = [System.Management.ManagementDateTimeConverter]::ToDateTime([string]$target.CreationDate).ToUniversalTime().ToString('o')
+$createdValue = $target.CreationDate
+if ($createdValue -is [DateTime]) {
+    $created = $createdValue.ToUniversalTime().ToString('o')
+} else {
+    $created = [System.Management.ManagementDateTimeConverter]::ToDateTime([string]$createdValue).ToUniversalTime().ToString('o')
+}
 [pscustomobject]@{
     pid = [int]$target.ProcessId
     created_at = $created
