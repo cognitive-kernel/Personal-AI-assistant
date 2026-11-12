@@ -1,9 +1,12 @@
 from __future__ import annotations
+import ctypes
 import json
 import math
 import os
 import re
 import subprocess
+import time
+from pathlib import Path
 from typing import Any
 try:
     import psutil
@@ -12,25 +15,152 @@ except ImportError:
 
 IS_WINDOWS = os.name == "nt"
 
+def _linux_cpu_times() -> tuple[int, int]:
+    fields = Path("/proc/stat").read_text(encoding="ascii").splitlines()[0].split()[1:]
+    values = [int(value) for value in fields]
+    if len(values) < 5:
+        raise RuntimeError("Linux CPU counters are incomplete.")
+    return sum(values), values[3] + values[4]
+
+
+def _linux_memory_info() -> tuple[int, int]:
+    values: dict[str, int] = {}
+    for line in Path("/proc/meminfo").read_text(encoding="ascii").splitlines():
+        key, separator, raw_value = line.partition(":")
+        if not separator:
+            continue
+        parts = raw_value.strip().split()
+        if parts and parts[0].isdigit():
+            values[key] = int(parts[0]) * 1024
+    total = values.get("MemTotal")
+    available = values.get("MemAvailable")
+    if available is None:
+        available = sum(values.get(key, 0) for key in ("MemFree", "Buffers", "Cached"))
+    if not total or available <= 0:
+        raise RuntimeError("Linux memory counters are incomplete.")
+    return total, min(total, available)
+
+
+def _windows_cpu_times() -> tuple[int, int]:
+    from ctypes import wintypes
+
+    class FILETIME(ctypes.Structure):
+        _fields_ = [("dwLowDateTime", wintypes.DWORD), ("dwHighDateTime", wintypes.DWORD)]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.GetSystemTimes.argtypes = [
+        ctypes.POINTER(FILETIME), ctypes.POINTER(FILETIME), ctypes.POINTER(FILETIME)
+    ]
+    kernel32.GetSystemTimes.restype = wintypes.BOOL
+    idle, kernel, user = FILETIME(), FILETIME(), FILETIME()
+    if not kernel32.GetSystemTimes(ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user)):
+        raise OSError(ctypes.get_last_error(), "GetSystemTimes failed.")
+
+    def as_int(value: FILETIME) -> int:
+        return (int(value.dwHighDateTime) << 32) | int(value.dwLowDateTime)
+
+    idle_ticks = as_int(idle)
+    return as_int(kernel) + as_int(user), idle_ticks
+
+
+def _windows_memory_info() -> tuple[int, int]:
+    from ctypes import wintypes
+
+    class MEMORYSTATUSEX(ctypes.Structure):
+        _fields_ = [
+            ("dwLength", wintypes.DWORD),
+            ("dwMemoryLoad", wintypes.DWORD),
+            ("ullTotalPhys", ctypes.c_ulonglong),
+            ("ullAvailPhys", ctypes.c_ulonglong),
+            ("ullTotalPageFile", ctypes.c_ulonglong),
+            ("ullAvailPageFile", ctypes.c_ulonglong),
+            ("ullTotalVirtual", ctypes.c_ulonglong),
+            ("ullAvailVirtual", ctypes.c_ulonglong),
+            ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+        ]
+
+    status = MEMORYSTATUSEX()
+    status.dwLength = ctypes.sizeof(status)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.GlobalMemoryStatusEx.argtypes = [ctypes.POINTER(MEMORYSTATUSEX)]
+    kernel32.GlobalMemoryStatusEx.restype = wintypes.BOOL
+    if not kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+        raise OSError(ctypes.get_last_error(), "GlobalMemoryStatusEx failed.")
+    return int(status.ullTotalPhys), int(status.ullAvailPhys)
+
+
+def _cpu_percent_from_counters(
+    before: tuple[int, int], after: tuple[int, int]
+) -> float | None:
+    total_delta = after[0] - before[0]
+    idle_delta = after[1] - before[1]
+    if total_delta <= 0 or idle_delta < 0:
+        return None
+    return round(min(100.0, max(0.0, (total_delta - idle_delta) * 100.0 / total_delta)), 1)
+
+
+def _native_system_metrics(cpu_interval: float = 0.1) -> dict[str, float | int] | None:
+    """Read CPU and RAM telemetry using Windows APIs or Linux procfs."""
+    try:
+        interval = max(0.05, min(1.0, float(cpu_interval)))
+        if os.name == "nt":
+            before = _windows_cpu_times()
+            time.sleep(interval)
+            after = _windows_cpu_times()
+            total_bytes, available_bytes = _windows_memory_info()
+        elif Path("/proc").is_dir():
+            before = _linux_cpu_times()
+            time.sleep(interval)
+            after = _linux_cpu_times()
+            total_bytes, available_bytes = _linux_memory_info()
+        else:
+            return None
+        cpu_percent = _cpu_percent_from_counters(before, after)
+        if cpu_percent is None or total_bytes <= 0 or available_bytes <= 0:
+            return None
+        memory_percent = round(
+            min(100.0, max(0.0, (total_bytes - available_bytes) * 100.0 / total_bytes)), 1
+        )
+        return {
+            "cpu_percent": cpu_percent,
+            "memory_percent": memory_percent,
+            "total_bytes": total_bytes,
+            "available_bytes": available_bytes,
+        }
+    except (OSError, RuntimeError, TypeError, ValueError, OverflowError):
+        return None
+
+
+def get_system_metrics(cpu_interval: float = 0.1) -> dict[str, float | int] | None:
+    """Prefer psutil when installed; otherwise use the standard-library OS backend."""
+    if psutil is not None:
+        try:
+            cpu_percent = float(psutil.cpu_percent(interval=cpu_interval))
+            memory = psutil.virtual_memory()
+            return {
+                "cpu_percent": cpu_percent,
+                "memory_percent": float(memory.percent),
+                "total_bytes": int(memory.total) if getattr(memory, "total", None) is not None else 0,
+                "available_bytes": int(memory.available) if getattr(memory, "available", None) is not None else 0,
+            }
+        except (AttributeError, OSError, TypeError, ValueError, OverflowError):
+            pass
+    return _native_system_metrics(cpu_interval)
+
+
 def detect_hardware() -> dict[str, Any]:
     logical_cpus = os.cpu_count() or 1
-    if psutil:
-        memory = psutil.virtual_memory()
-        total_ram_gb = round(memory.total / (1024**3), 2)
-        available_ram_gb = round(memory.available / (1024**3), 2)
-    else:
-        total_ram_gb = available_ram_gb = None
-    cpu_utilization_percent = None
-    if psutil:
-        try:
-            cpu_utilization_percent = round(float(psutil.cpu_percent(interval=0.1)), 1)
-        except Exception:
-            cpu_utilization_percent = None
+    metrics = get_system_metrics()
+    total_bytes = metrics.get("total_bytes") if metrics else None
+    available_bytes = metrics.get("available_bytes") if metrics else None
+    cpu_percent = metrics.get("cpu_percent") if metrics else None
+    total_ram_gb = round(total_bytes / (1024**3), 2) if isinstance(total_bytes, (int, float)) and total_bytes > 0 else None
+    available_ram_gb = round(available_bytes / (1024**3), 2) if isinstance(available_bytes, (int, float)) and available_bytes > 0 else None
     gpu = detect_gpu()
     return {
         "logical_cpu_count": logical_cpus,
-        "cpu_utilization_percent": cpu_utilization_percent,
-        "cpu_available_percent": round(max(0.0, 100.0 - cpu_utilization_percent), 1) if cpu_utilization_percent is not None else None,
+        "cpu_utilization_percent": cpu_percent,
+        "cpu_available_percent": round(max(0.0, 100.0 - cpu_percent), 1) if isinstance(cpu_percent, (int, float)) else None,
         "total_ram_gb": total_ram_gb,
         "available_ram_gb": available_ram_gb,
         **gpu,
@@ -38,6 +168,7 @@ def detect_hardware() -> dict[str, Any]:
             "CPU thread count is capped by the configurable CPU resource percentage.",
             "RAM budget is computed from currently available memory minus a safety reserve and capped by a configurable maximum; it is not a hard OS quota.",
             "RAM and GPU thresholds are monitored independently; external Ollama memory/compute cannot be hard-capped by this application.",
+            "CPU/RAM telemetry uses psutil when installed and native Windows/Linux APIs otherwise; unavailable metrics remain unknown.",
             "GPU discovery tries vendor tools, Windows generic performance counters, and Vulkan enumeration; unavailable metrics remain unknown.",
         ],
     }
@@ -351,20 +482,22 @@ def _resource_limit(settings: dict[str, Any] | None, key: str) -> float:
 
 
 def ensure_resource_headroom(settings: dict[str, Any] | None = None) -> None:
-    """Refuse to start inference if any monitored resource reaches its own configured limit."""
+    """Refuse inference when CPU/RAM telemetry is unavailable or a configured limit is reached."""
     cpu_limit = _resource_limit(settings, "cpu_resource_limit_percent")
     ram_limit = _resource_limit(settings, "ram_resource_limit_percent")
     gpu_limit = _resource_limit(settings, "gpu_resource_limit_percent")
     gpu_enabled = (settings or {}).get("gpu_enabled", False) is True
-    if psutil is None:
+    metrics = get_system_metrics()
+    if metrics is None:
         raise RuntimeError("CPU/RAM telemetry is unavailable; refusing to start model inference safely.")
-    cpu_percent = psutil.cpu_percent(interval=0.1)
-    memory = psutil.virtual_memory()
-    available_bytes = getattr(memory, "available", None)
-    memory_percent = getattr(memory, "percent", None)
+    cpu_percent = metrics.get("cpu_percent")
+    available_bytes = metrics.get("available_bytes")
+    memory_percent = metrics.get("memory_percent")
     if isinstance(available_bytes, bool) or not isinstance(available_bytes, (int, float)) or not math.isfinite(available_bytes) or available_bytes <= 0:
         raise RuntimeError("RAM availability telemetry is unavailable; refusing to start model inference safely.")
-    if isinstance(memory_percent, bool) or not isinstance(memory_percent, (int, float)) or not 0 <= memory_percent <= 100:
+    if isinstance(cpu_percent, bool) or not isinstance(cpu_percent, (int, float)) or not math.isfinite(cpu_percent) or not 0 <= cpu_percent <= 100:
+        raise RuntimeError("CPU utilization telemetry is invalid; refusing to start model inference safely.")
+    if isinstance(memory_percent, bool) or not isinstance(memory_percent, (int, float)) or not math.isfinite(memory_percent) or not 0 <= memory_percent <= 100:
         raise RuntimeError("RAM utilization telemetry is invalid; refusing to start model inference safely.")
     violations = []
     if cpu_percent >= cpu_limit:
