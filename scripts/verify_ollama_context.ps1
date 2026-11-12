@@ -162,8 +162,8 @@ if ($VerifyOnly) {
     $modelInfo = Get-ModelInfo -ModelName $baseModel
     Assert-ToolCallingCapability -Info $modelInfo
     $maximum = Get-MaximumContext -Info $modelInfo
-    if ($maximum -lt 64000) {
-        throw "Selected model maximum context $maximum is below the Codex minimum of 64000 tokens."
+    if ($maximum -lt $minimumContextTokens) {
+        throw "Selected model maximum context $maximum is below the minimum supported runtime window of $minimumContextTokens tokens."
     }
 
     $requestedContext = $null
