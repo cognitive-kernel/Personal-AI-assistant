@@ -260,3 +260,13 @@ Append evidence only after it has actually been produced.
 ## 2026-11-01 — Post-merge CI confirmation for PR #671
 
 The current `main` SHA `2a5c83bf0ba924f4a2c8f206338a04872562d72d` has completed all three post-merge workflows successfully: tests [#41239355370](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355370), dashboard/browser smoke [#41239355374](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355374), and dependency audit [#41239355466](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355466). Windows storage regressions passed within the tests workflow. This verifies CI for this SHA; it does not satisfy target-host operations, live-model/human evaluation, manual accessibility, staging/rollback, or independent security review.
+
+## 2026-11-12 — Adaptive Codex context contract (PR #722; implementation in progress)
+
+- **Requirement:** Codex must adapt to any valid context capacity that the selected model and host can safely provide; 64,000 tokens is not a startup or execution minimum.
+- **Hard ceiling:** C_effective = min(C_hardware, C_model, C_catalog). A requested value above this ceiling is clamped before persistence, Ollama model-variant creation, and Codex catalog generation.
+- **Independent capacities:** C_hardware is estimated from current free physical RAM and the model-specific KV-cache cost; C_model comes from architecture-specific Ollama metadata. The status/selection logic must not conflate these two values.
+- **Runtime enforcement:** The persistent Ollama variant and Codex catalog receive the same selected context; /api/ps must report that exact context before and after Codex execution.
+- **Validity floor:** 512 tokens is retained as the minimum supported model/runtime metadata window, not as a Codex-specific 64k requirement. Missing metadata or insufficient headroom below that floor remains a safe, explicit blocker.
+- **Evidence:** ADR-020 and the operations guide document the decision. Regression coverage is being added for 10,000-token hardware capacity, an 8,192-token model ceiling, clamping, and settings acceptance below 64k.
+- **State:** IMPLEMENTED IN BRANCH / AUTOMATED TESTS PENDING / EXACT-HEAD CI PENDING / TARGET-HOST SMOKE PENDING. Do not mark this acceptance item complete until exact-head CI and the real Windows Codex/Ollama runtime smoke are recorded.
