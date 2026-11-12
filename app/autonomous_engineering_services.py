@@ -60,19 +60,19 @@ def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_conte
         return empty
 
     installed = bool(model) and model in names
-    is_context_variant = is_context_variant(model)
+    selected_is_context_variant = is_context_variant(model)
     selectable_names = [name for name in names if not is_context_variant(name)]
     result = {
         **empty,
         "online": True,
         "model_installed": installed,
-        "model_selectable": installed and not is_context_variant,
-        "model_is_codex_context_variant": is_context_variant,
+        "model_selectable": installed and not selected_is_context_variant,
+        "model_is_codex_context_variant": selected_is_context_variant,
         "models": names,
         "selectable_models": selectable_names,
         "model_metadata_error": (
             "The saved model is an internal Codex context variant; select its original Ollama model."
-            if is_context_variant else
+            if selected_is_context_variant else
             None if installed else
             "No Ollama model is saved in repository settings." if not model else
             "The saved model is not installed locally."
