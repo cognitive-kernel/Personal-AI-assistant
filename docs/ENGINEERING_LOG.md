@@ -566,7 +566,7 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Any earlier dated entry in this log stating that PR #710 was open, Draft, or waiting for local/target-host testing describes a historical snapshot and is superseded. PR #710 merged into `main` on 2026-11-11 as `9e198a0640593bcc3892f3a97aa8956ba522653c`.
 - The current follow-up is PR #711, branch `feature/universal-learning-contract-v2`. Its exact head and CI status must be read from live GitHub; no earlier SHA or test result applies to it.
 - The source-body retention and common HTML publication/modified-date extraction work is implemented in this follow-up with migration 46. It must not continue to be listed as an outstanding gap once its exact-head CI passes.
-- Release-watch polling intentionally remains at five results per query to avoid changing existing fingerprints solely because the initial curriculum discovery page was expanded. The watch query set itself is broader; any changed fingerprint after this query-set expansion is an intentional additive refresh, not an assertion that every update was already detected.
+- Historical note: the release watch previously polled five results per query to preserve the initial fingerprint baseline. PR #714 expands each recurring query to the maximum supported search page (30 results); existing watches may therefore enqueue one intentional additive refresh as their baseline expands. This increases coverage but does not claim exhaustive internet-wide detection.
 
 
 
@@ -577,3 +577,11 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Curriculum synthesis checkpoints the cursor and continues across additional batches until all matching prior assistant observations have been delivered. This is separate from external source pagination and does not promote observations to trusted facts.
 - Added regression coverage for content-only topic matches and reconstructing all chat observations from bounded pages.
 - Local test execution is unavailable in this editing session; exact-head GitHub CI is required before merge. No local/target-host/model runtime pass is claimed.
+
+
+## 2026-11-12 — Wider automatic release-watch discovery
+
+- Increased each recurring release-watch query from five results to the full 30-result page supported by the public-source discovery adapter.
+- Added a regression where the changed release note appears after the first five results; the watch must detect it and enqueue a versioned curriculum refresh.
+- Existing watch fingerprints may trigger a one-time additive refresh after this coverage expansion. Historical curricula and lessons remain unchanged.
+- The 30-result limit is the search adapter's per-query page bound, not a total curriculum/source-retention cap; exhaustive detection across all public websites is not guaranteed by search alone.
