@@ -63,8 +63,6 @@ def select_context_window(
     maximum = maximum_context_tokens(model_info, architecture)
     numeric_inputs = {
         "model_weight_bytes": model_weight_bytes,
-        "model_weight_charge_bytes": model_weight_charge_bytes,
-        "model_weights_already_loaded": model_weights_already_loaded,
         "available_memory_bytes": available_memory_bytes,
         "reserve_bytes": reserve_bytes,
     }
