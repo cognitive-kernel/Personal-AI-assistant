@@ -217,7 +217,7 @@ if ($VerifyOnly) {
     $codexModel = $Model
     $selectedContext = 0L
     if (-not [int64]::TryParse([string]$env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH, [ref]$selectedContext) -or $selectedContext -lt $minimumContextTokens) {
-        throw "The selected Codex context was not persisted at the required minimum of 64000 tokens for runtime verification."
+        throw "The selected Codex context was not persisted at the minimum supported runtime window of $minimumContextTokens tokens."
     }
     $modelInfo = Get-ModelInfo -ModelName $codexModel
     Assert-ToolCallingCapability -Info $modelInfo
