@@ -818,3 +818,10 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - **Correction:** the selector now uses the signed 64-bit schema ceiling; the selected context is still bounded by model architecture and measured host memory. The generated model catalog separately pins context_window and max_context_window to the exact selected runtime allocation, so this representational ceiling cannot authorize an oversized Codex context.
 - **Regression protection:** tests now prove a model context of 2,097,152 is not clipped to 1,048,576 and verify the i64 catalog ceiling. General Ollama chat context caps in app/main.py, app/ollama.py, and its UI remain unchanged and separate.
 - **Source:** Codex ModelInfo defines context_window and max_context_window as optional i64 fields: https://github.com/openai/codex/blob/main/codex-rs/protocol/src/openai_models.rs
+
+
+## 2026-11-12 — Repair malformed regression-test assertion found by CI
+
+- **Observed failure:** the exact-head tests and Docker sandbox jobs both stopped during pytest collection with a SyntaxError in tests/test_codex_smoke_diagnostics.py. The error was introduced while updating a PowerShell regex source-contract assertion; the assertion string was truncated and the remainder of its test function was displaced. This was a test-source defect, not a runtime failure in Ollama or Codex.
+- **Correction:** restored the entire context-preflight contract test, retained its runner-provisioning assertions, and added the current/legacy variant, Start-Process, explicit python.exe, and UTF-8 stdout/stderr bridge assertions as complete Python statements.
+- **Validation:** exact-head tests, Windows Storage, Docker sandbox, browser E2E, and audit must rerun on the new commit; the failed pre-fix runs are not counted as evidence.
