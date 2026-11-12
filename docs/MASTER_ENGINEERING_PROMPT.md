@@ -378,7 +378,7 @@ Every completion statement must cite evidence or be labeled unverified. Never co
 - Use the repository-permitted merge strategy.
 - After merge, verify PR state, merge commit, `main` SHA, and post-merge CI.
 - Do not close issues until their acceptance criteria and evidence are complete.
-- Do not bypass required independent approval or external security review. Routine changes are pre-authorized by the repository owner for autonomous merge after exact-SHA automated tests and required GitHub checks pass; no per-task human confirmation or owner-local test is required unless repository branch protection explicitly requires it.
+- Do not bypass required independent approval or external security review. Issue #290 explicitly prohibits automatic PR merge, deployment, cloud provisioning, and remote execution. The autonomous controller must never call the PR merge API: after exact-SHA automated checks pass, it leaves the PR open for owner review. The repository owner performs the merge manually; only then may the controller verify the exact merge SHA and post-merge CI before advancing. This explicit repository constraint overrides any general statement elsewhere in this prompt that could be read as pre-authorizing autonomous merge.
 
 A successful merge-tool response alone is not sufficient proof; verify the repository state afterward.
 
