@@ -44,11 +44,18 @@ $git = Get-Command git.exe -ErrorAction Stop
 $python = Get-Command python.exe -ErrorAction Stop
 $gh = Get-Command gh.exe -ErrorAction Stop
 $nodeVersion = (@(& $node.Source --version 2>&1) -join " ").Trim()
-if ($LASTEXITCODE -ne 0 -or $nodeVersion -ne "v26.13.0") { throw "Node.js 26.13.0 is required; found '$nodeVersion'." }
+$nodeVersionNumber = $null
+try { $nodeVersionNumber = [version]($nodeVersion.TrimStart("v")) } catch {}
+if ($LASTEXITCODE -ne 0 -or $null -eq $nodeVersionNumber -or $nodeVersionNumber -lt [version]"26.13.0") { throw "Node.js 26.13.0 or newer is required; found '$nodeVersion'." }
 $npmVersion = (@(& $npm.Source --version 2>&1) -join " ").Trim()
-if ($LASTEXITCODE -ne 0 -or $npmVersion -ne "11.20.0") { throw "npm 11.20.0 is required; found '$npmVersion'." }
+$npmVersionNumber = $null
+try { $npmVersionNumber = [version]$npmVersion } catch {}
+if ($LASTEXITCODE -ne 0 -or $null -eq $npmVersionNumber -or $npmVersionNumber -lt [version]"11.20.0") { throw "npm 11.20.0 or newer is required; found '$npmVersion'." }
 $ollamaVersion = (@(& $ollamaPath --version 2>&1) -join " ").Trim()
-if ($LASTEXITCODE -ne 0 -or $ollamaVersion -notmatch '(?i)0\.40\.16') { throw "Ollama 0.40.16 is required; found '$ollamaVersion'." }
+$ollamaVersionMatch = [regex]::Match($ollamaVersion, '(?i)([0-9]+\.[0-9]+\.[0-9]+)')
+$ollamaVersionNumber = $null
+if ($ollamaVersionMatch.Success) { try { $ollamaVersionNumber = [version]$ollamaVersionMatch.Groups[1].Value } catch {} }
+if ($LASTEXITCODE -ne 0 -or $null -eq $ollamaVersionNumber -or $ollamaVersionNumber -lt [version]"0.40.16") { throw "Ollama 0.40.16 or newer is required; found '$ollamaVersion'." }
 & $git.Source --version
 if ($LASTEXITCODE -ne 0) { throw "Git is not executable." }
 $pythonVersion = (& $python.Source -c "import sys; print(sys.version_info.major, sys.version_info.minor, sep=chr(46))")
