@@ -25,8 +25,8 @@
 - The app-account and Runner-account PowerShell readiness scripts also recognized only the current suffix. They could report a legacy generated context variant as a valid base model even though the Python settings API correctly rejects it.
 
 ### Corrective changes
-- Prefer the API's `selectable_models` list and defensively filter both current and legacy internal context variants in the browser.
-- Treat a previously saved current/legacy context variant as unavailable and require selection of its original base model.
+- Preserve the complete installed `models` list for visibility and use `selectable_models` as the authoritative allow-list for enabled choices.
+- Keep current `-codex-ctx<tokens>` and legacy `-codex-64k` variants visible but natively disabled; treat a saved generated variant as unavailable and require selection of its original base model.
 - Align both Windows readiness scripts with the backend's current-and-legacy variant contract.
 - Add regression assertions for selector precedence, client-side fallback filtering, and both PowerShell readiness guards. Existing backend validation remains fail-closed.
 
