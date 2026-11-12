@@ -21,10 +21,18 @@ $ProgressPreference = 'SilentlyContinue'
 $target = Get-CimInstance -ClassName Win32_Process -Filter "ProcessId = __PID__"
 if ($null -eq $target) { exit 3 }
 $createdValue = $target.CreationDate
-if ($createdValue -is [DateTime]) {
+if ($createdValue -is [DateTimeOffset]) {
+    $created = $createdValue.ToUniversalTime().ToString('o')
+} elseif ($createdValue -is [DateTime]) {
     $created = $createdValue.ToUniversalTime().ToString('o')
 } else {
-    $created = [System.Management.ManagementDateTimeConverter]::ToDateTime([string]$createdValue).ToUniversalTime().ToString('o')
+    $createdText = [string]$createdValue
+    $parsed = [DateTimeOffset]::MinValue
+    if ([DateTimeOffset]::TryParse($createdText, [ref]$parsed)) {
+        $created = $parsed.ToUniversalTime().ToString('o')
+    } else {
+        $created = [System.Management.ManagementDateTimeConverter]::ToDateTime($createdText).ToUniversalTime().ToString('o')
+    }
 }
 [pscustomobject]@{
     pid = [int]$target.ProcessId
