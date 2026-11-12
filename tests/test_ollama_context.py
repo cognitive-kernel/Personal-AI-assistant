@@ -38,6 +38,20 @@ def test_context_selection_uses_safe_minimum_of_request_model_and_hardware():
     assert result["selected_context_tokens"] <= result["requested_context_tokens"]
 
 
+def test_context_selection_does_not_double_charge_already_loaded_model_weights():
+    unloaded = payload()
+    unloaded_result = select_context_window(**unloaded)
+
+    loaded = payload()
+    loaded["available_memory_bytes"] -= loaded["model_weight_bytes"]
+    loaded["model_weights_already_loaded"] = True
+    loaded_result = select_context_window(**loaded)
+
+    assert loaded_result["hardware_maximum_context_tokens"] == unloaded_result["hardware_maximum_context_tokens"]
+    assert loaded_result["model_weight_charge_bytes"] == 0
+    assert unloaded_result["model_weight_charge_bytes"] == unloaded["model_weight_bytes"]
+
+
 def test_context_selection_adapts_to_hardware_capacity_below_64k():
     data = payload()
     bytes_per_token = 32 * 8 * (128 + 128) * 2
