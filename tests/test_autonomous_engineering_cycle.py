@@ -893,7 +893,7 @@ def test_codex_arguments_pin_ollama_and_selected_windows_sandbox(monkeypatch):
     arguments = progress.codex_arguments("gpt-oss:20b", "codex-report.md")
 
     assert arguments[:5] == [
-        "exec", "-c", 'model_provider="ollama"',
+        "exec", "-c", 'model_provider="ollama-local"',
         "-c", 'windows.sandbox="elevated"',
     ]
     overrides = [
@@ -901,16 +901,16 @@ def test_codex_arguments_pin_ollama_and_selected_windows_sandbox(monkeypatch):
     ]
     assert "sandbox_workspace_write.exclude_slash_tmp=true" in overrides
     assert any(value.startswith("model_catalog_json=") for value in overrides)
-    assert arguments[arguments.index("--oss"):arguments.index("--oss") + 3] == [
-        "--oss", "--local-provider", "ollama",
-    ]
+    assert 'model_providers.ollama-local.name="Ollama local"' in overrides
+    assert 'model_providers.ollama-local.base_url="http://127.0.0.1:11434/v1/"' in overrides
+    assert 'model_providers.ollama-local.wire_api="responses"' in overrides
+    assert "model_providers.ollama-local.requires_openai_auth=false" in overrides
+    # Use a unique custom provider ID; never redefine the reserved built-in provider.
+    assert not any(value.startswith("model_providers.ollama.") for value in overrides)
+    assert arguments[arguments.index("--model") + 1] == "gpt-oss:20b"
     assert arguments[arguments.index("--sandbox"):arguments.index("--sandbox") + 2] == [
         "--sandbox", "workspace-write",
     ]
-    # Ollama is a built-in Codex provider; redefining its reserved
-    # model_providers.ollama namespace prevents Codex from starting.
-    assert not any(value.startswith("model_providers.ollama.") for value in overrides)
-    assert arguments[arguments.index("--model") + 1] == "gpt-oss:20b"
 
 
 def test_codex_arguments_reject_unverified_windows_sandbox_backend(monkeypatch):
