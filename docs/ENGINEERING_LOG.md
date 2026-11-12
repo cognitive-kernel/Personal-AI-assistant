@@ -810,3 +810,11 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 
 
 - The production PowerShell preflight was aligned with the tested bridge: it now resolves python.exe explicitly, starts the helper with Start-Process, redirects stdout/stderr to bounded temporary files, parses UTF-8 JSON, and removes all temporary artifacts in finally. The PowerShell 5.1 integration test exercises the same Start-Process/file contract rather than a separate native-stdin path.
+
+
+## 2026-11-12 — Remove the arbitrary 1,048,576-token Codex catalog ceiling
+
+- **Finding:** the adaptive selector's catalog cap was hard-coded to 1,048,576 even though Codex's model metadata schema represents both context_window and max_context_window as signed 64-bit integers. This silently imposed an application limit unrelated to the selected Ollama model or actual host capacity.
+- **Correction:** the selector now uses the signed 64-bit schema ceiling; the selected context is still bounded by model architecture and measured host memory. The generated model catalog separately pins context_window and max_context_window to the exact selected runtime allocation, so this representational ceiling cannot authorize an oversized Codex context.
+- **Regression protection:** tests now prove a model context of 2,097,152 is not clipped to 1,048,576 and verify the i64 catalog ceiling. General Ollama chat context caps in app/main.py, app/ollama.py, and its UI remain unchanged and separate.
+- **Source:** Codex ModelInfo defines context_window and max_context_window as optional i64 fields: https://github.com/openai/codex/blob/main/codex-rs/protocol/src/openai_models.rs
