@@ -603,3 +603,9 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Windows storage/recovery, Browser E2E, and dependency audit were green on the preceding exact head. A fresh full CI run is required for this correction.
 
 - The exact-head run on `012875e51b827f0e56b6328edf73ea627c34fb59` exposed one stale static assertion about the location of the workflow-dispatch list. The assertion is corrected in the latest code/test head; no green result is claimed until the corrected head has fresh CI evidence.
+
+### 2026-11-12 — همگام‌سازی معماری با آخرین main
+
+- تغییر release-watch جدید از main (`461c0a2b1deaf5f8af8486846f167da8185c580a`) با merge commit واقعی و حفظ تاریخچهٔ PR وارد شاخه شد؛ فایل‌های برنامه و regression مربوط به یادگیری نیز دقیقاً از main همگام شدند.
+- head همگام‌شده: `40efd47ad22e1373cf6af36fc1fddafc933227cb`؛ والد دوم merge همان SHA فعلی main است. هیچ تغییری در main ایجاد نشده است.
+- Git-data ref update به‌تنهایی اجرای Actions جدیدی ایجاد نمی‌کند؛ بنابراین یک commit محتوایی برای اجرای کامل CI روی head نهایی شاخه ثبت می‌شود. تا پایان این اجرا هیچ pass جدیدی ادعا نمی‌شود.
