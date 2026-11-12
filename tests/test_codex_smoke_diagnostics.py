@@ -267,7 +267,8 @@ def test_context_preflight_uses_deterministic_variant_from_selected_base_model()
     assert '$codexModel = "$baseModel-codex-ctx$selectedContext"' in script
     assert 'from = $baseModel' in script
     assert '$existingContext.Success' in script
-    assert "if ($Model -match '(?i)-codex-(?:ctx[0-9]+|[0-9]+k)$')" in script
+    assert "$internalVariantPattern =" in script
+    assert "if ($Model -match $internalVariantPattern)" in script
     assert '$legacyPattern = ' in script
     assert '$isLegacyVariant = [regex]::IsMatch(' in script
     assert "Select the original Ollama model to prevent nested variants" in script
@@ -496,7 +497,7 @@ def test_windows_storage_workflow_exercises_adaptive_context_bridge_in_powershel
 
     assert "Verify the adaptive context bridge in Windows PowerShell 5.1" in workflow
     assert "shell: powershell" in workflow
-    assert "tests/test_ollama_context_bridge.ps1" in workflow
+    assert "test_ollama_context_bridge.ps1" in workflow
     assert "Start-Process -FilePath $pythonPath -ArgumentList $argumentList" in bridge
     assert "-RedirectStandardOutput $outputPath -RedirectStandardError $errorPath" in bridge
     assert "selected_context_tokens" in bridge
