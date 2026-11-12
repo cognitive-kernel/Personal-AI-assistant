@@ -74,6 +74,36 @@ jobs:
           tests/test_ollama_model_metadata.py
           tests/test_codex_smoke_diagnostics.py
 
+  windows-codex-cli-runtime-compatibility:
+    name: Windows Node 26 / Codex ${{ matrix.codex-version }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        codex-version: ["0.167.0", "0.167.2"]
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "26.13.0"
+      - name: Install the target Codex CLI release
+        env:
+          CODEX_VERSION: ${{ matrix.codex-version }}
+        run: npm install --global "@openai/codex@${env:CODEX_VERSION}"
+      - name: Verify the target Node, npm, and Codex runtime
+        env:
+          CODEX_VERSION: ${{ matrix.codex-version }}
+        shell: pwsh
+        run: |
+          $node = (node --version).Trim()
+          $npm = (npm --version).Trim()
+          $codex = (codex --version | Out-String).Trim()
+          if ($node -ne "v26.13.0") { throw "Expected Node v26.13.0, got $node" }
+          if ($npm -ne "11.20.0") { throw "Expected npm 11.20.0, got $npm" }
+          if ($codex -notmatch [regex]::Escape($env:CODEX_VERSION)) { throw "Expected Codex $env:CODEX_VERSION, got $codex" }
+          codex --help | Out-Null
+          Write-Host "Verified Node=$node npm=$npm Codex=$codex"
+
   windows-storage-regressions:
     runs-on: windows-latest
     timeout-minutes: 10
