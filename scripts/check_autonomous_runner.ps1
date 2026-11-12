@@ -8,7 +8,7 @@ $model = if (-not [string]::IsNullOrWhiteSpace($SelectedModel)) {
     ""
 }
 $checks = @()
-$modelIsContextVariant = $model -match '(?i)-codex-ctx[0-9]+$'
+$modelIsContextVariant = $model -match '(?i)-codex-(?:ctx[0-9]+|[0-9]+k)$'
 
 $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
