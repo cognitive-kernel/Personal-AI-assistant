@@ -1396,3 +1396,24 @@ def test_ollama_context_powershell_bridge_uses_explicit_file_not_native_stdin():
     assert "--input-file" in script
     assert "$selectionInput | & python" not in script
     assert 'parser.add_argument("--input-file"' in helper
+
+def test_runner_status_uses_native_windows_process_api_without_psutil(monkeypatch):
+    import subprocess
+    from app import autonomous_engineering_services as services
+
+    observed = {}
+    monkeypatch.setattr(services, "psutil", None)
+    monkeypatch.setattr(services.os, "name", "nt")
+
+    def fake_run(command, **kwargs):
+        observed["command"] = command
+        observed["kwargs"] = kwargs
+        return subprocess.CompletedProcess(command, 0, stdout="true\\n", stderr="")
+
+    monkeypatch.setattr(services.subprocess, "run", fake_run)
+    result = services.runner_status(None)
+
+    assert result == {"running": True, "process_detected": True}
+    assert observed["command"][:3] == ["powershell.exe", "-NoProfile", "-NonInteractive"]
+    assert observed["kwargs"]["shell"] is False
+    assert observed["kwargs"]["timeout"] == 5
