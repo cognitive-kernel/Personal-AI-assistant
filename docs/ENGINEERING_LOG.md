@@ -591,3 +591,8 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Extracted PR discovery, validation, owner-review handoff, post-merge verification, and durable pending-PR publication into `autonomous_engineering_pull_requests.py`. The cycle controller retains its public CLI and compatibility functions and injects dependencies; the new modules do not import the controller.
 - Exact-head CI is the acceptance gate. The previous exact-head Windows storage, Browser E2E, and dependency-audit checks passed before the final module extraction; the Linux suite was still running. The new merged-baseline head must receive fresh CI. Live Ollama/Codex execution, MXC, target-host crash/restart recovery, soak, staging restore/rollback, and owner acceptance remain unverified until separately demonstrated.
 - No automatic merge, destructive state cleanup, or user-data migration is introduced. The PR remains Draft until exact-SHA CI and target-runner evidence are complete.
+
+### 2026-11-12 — Regression correction after exact-head CI
+
+- Exact-head Linux CI exposed one stale assertion in `test_publish_pull_request_leaves_exact_sha_validated_pr_open_for_owner_merge`: the durable handoff now correctly returns `branch`, `run_id`, and `task` along with PR identity. Updated the expected contract rather than removing those ownership fields.
+- Added an architecture regression that forbids the extracted GitHub and PR lifecycle modules from importing the cycle orchestrator and verifies that the controller retains its compatibility facade.
