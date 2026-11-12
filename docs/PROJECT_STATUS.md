@@ -7,8 +7,8 @@
 - ریشهٔ نقص readiness: `Get-Process Runner.Listener` به visibility فرایند در حساب جاری وابسته بود و با اجرای Runner به‌صورت Windows Service زیر حساب جداگانه، نتیجهٔ قابل اتکایی نمی‌داد. اکنون سرویس‌های `actions.runner*` از `Win32_Service` و PID آن‌ها از `Win32_Process` بررسی می‌شود؛ فقط وقتی سرویس Running و executable دقیق `Runner.Listener.exe` تأیید شود readiness سبز است؛ خطای دسترسی fail-closed می‌ماند.
 - تست رگرسیون اضافه شد تا روش CIM/service و حذف وابستگی به `Get-Process` را الزام کند.
 - PRهای #720 و #721 بسته و تغییرات منتخبشان فقط در PR #722 نگهداری می‌شوند؛ شاخه‌های بسته‌شده نباید جداگانه ادغام شوند.
-- آخرین head پس از اصلاح readiness: `1dd198c8e39e49923fd1ee5cdc813f9f908c4bbb`.
-- اعتبارسنجی همین SHA: tests #43210135405، Sandbox integration #43210135295، Browser E2E #43210135539، Dependency Audit #43210135297 و Windows target diagnostic #43210128732 در زمان ثبت این یادداشت queued/in progress هستند؛ هیچ‌کدام هنوز برای این SHA pass اعلام نمی‌شوند.
+- آخرین head پس از اصلاح readiness: `4c39205b105a497af9e10780faa7356feecaffa4`.
+- اعتبارسنجی همین SHA: tests #43210293958، Sandbox integration #43210293805، Browser E2E #43210293787، Dependency Audit #43210293781 و Windows target diagnostic #43210286527 در زمان ثبت این یادداشت queued/in progress هستند؛ هیچ‌کدام هنوز برای این SHA pass اعلام نمی‌شوند.
 - روی head قبلی `43ce01c01e644ac91b1e6b15ec83f25bc6375de2`، Browser E2E و Dependency Audit موفق شده بودند؛ tests و sandbox/diagnostic هنوز در حال اجرا بودند. این نتایج جایگزین exact-head check برای SHA جدید نیستند.
 - هیچ‌یک از تست‌های محلی/انسانی به‌عنوان انجام‌شده ادعا نشده؛ توسعهٔ مستقل GitHub ادامه دارد. طبق Master Engineering Prompt، این وضعیت مانع ادامهٔ کدنویسی نیست اما merge به main همچنان تا تکمیل گیت‌های لازم ممنوع است.
 
@@ -23,7 +23,7 @@
 - diagnostic ویندوز دیگر 10,000 توکن را به‌عنوان درخواست پیش‌فرض تحمیل نمی‌کند؛ در نبود ورودی صریح، مسیر انتخاب خودکار Context را اجرا می‌کند و /api/ps شامل context، اندازه مدل و اندازه VRAM را ثبت می‌کند. اجرای قبلی 10,000 توکن فقط شاهد مسیر درخواست صریح است، نه شاهد مسیر خودکار.
 - CLIهای ویندوز با npm.cmd و codex.cmd اجرا می‌شوند؛ Ollama از PATH یا مسیر process فعال پیدا می‌شود و مسیر ثابت کاربر Admin حذف شده است.
 - PR #720 و PR #721 به‌دلیل ادغام اصلاحاتشان در PR #722 بسته شدند تا شاخه‌های موازی و قراردادهای متناقض باقی نمانند.
-- آخرین head در حال اعتبارسنجی: 1dd198c8e39e49923fd1ee5cdc813f9f908c4bbb. تست کامل، Sandbox integration، Browser E2E، Dependency Audit و diagnostic خودمیزبان برای همین SHA در runهای ثبت‌شده در بخش بازبینی تکمیلی قرار دارند. تا پایان هر job هیچ‌کدام pass اعلام نمی‌شوند.
+- آخرین head در حال اعتبارسنجی: 4c39205b105a497af9e10780faa7356feecaffa4. تست کامل، Sandbox integration، Browser E2E، Dependency Audit و diagnostic خودمیزبان برای همین SHA در runهای ثبت‌شده در بخش بازبینی تکمیلی قرار دارند. تا پایان هر job هیچ‌کدام pass اعلام نمی‌شوند.
 - مطابق Master Engineering Prompt، توسعهٔ مستقل و GitHub-side بدون انتظار برای تست دستی/محلی ادامه دارد؛ بااین‌حال merge به main تا تکمیل گیت‌های لازم exact-head CI و target-host مجاز نیست.
 
 ## وضعیت جاری — سازگاری پویا و ایمن Context در Codex (PR #722)
