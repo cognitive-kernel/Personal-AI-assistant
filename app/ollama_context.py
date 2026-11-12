@@ -43,6 +43,7 @@ def select_context_window(
     available_memory_bytes: int,
     requested_context_tokens: int | None = None,
     reserve_bytes: int = DEFAULT_RAM_RESERVE_BYTES,
+    model_weights_already_loaded: bool = False,
 ) -> dict[str, int | None]:
     """Choose a safe context by adapting to the model and host capacity.
 
@@ -60,12 +61,16 @@ def select_context_window(
     maximum = maximum_context_tokens(model_info, architecture)
     numeric_inputs = {
         "model_weight_bytes": model_weight_bytes,
+        "model_weight_charge_bytes": model_weight_charge_bytes,
+        "model_weights_already_loaded": int(model_weights_already_loaded),
         "available_memory_bytes": available_memory_bytes,
         "reserve_bytes": reserve_bytes,
     }
     for name, value in numeric_inputs.items():
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise OllamaModelMetadataError(f"{name} must be a positive integer.")
+    if not isinstance(model_weights_already_loaded, bool):
+        raise OllamaModelMetadataError("model_weights_already_loaded must be a boolean.")
 
     if requested_context_tokens is not None and (
         isinstance(requested_context_tokens, bool)
@@ -103,10 +108,13 @@ def select_context_window(
         MIN_MODEL_OVERHEAD_BYTES,
         int(model_weight_bytes * MODEL_OVERHEAD_RATIO),
     )
+    # Free physical memory already excludes resident weights. Do not charge the
+    # same weights a second time when Ollama reports the base model is loaded.
+    model_weight_charge_bytes = 0 if model_weights_already_loaded else model_weight_bytes
     cache_budget_bytes = (
         available_memory_bytes
         - reserve_bytes
-        - model_weight_bytes
+        - model_weight_charge_bytes
         - overhead_bytes
     )
     if cache_budget_bytes <= 0:
@@ -168,6 +176,7 @@ def _main(argv: list[str] | None = None) -> int:
             model_weight_bytes=payload.get("model_weight_bytes"),
             available_memory_bytes=payload.get("available_memory_bytes"),
             requested_context_tokens=payload.get("requested_context_tokens"),
+            model_weights_already_loaded=payload.get("model_weights_already_loaded", False),
         )
         json.dump(result, sys.stdout, separators=(",", ":"))
         sys.stdout.write("\n")
