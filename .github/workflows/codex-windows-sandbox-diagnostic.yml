@@ -6,11 +6,14 @@ on:
     branches:
       - fix/autonomous-task-preservation
       - fix/automation-codex-context-smoke-20261107
+      - fix/ollama-context-memory-overflow-20261112
     paths:
       - .github/workflows/codex-windows-sandbox-diagnostic.yml
       - .github/workflows/autonomous-codex-engineering.yml
       - scripts/autonomous_engineering_progress.py
       - scripts/verify_ollama_context.ps1
+      - scripts/OllamaContextMemory.psm1
+      - tests/test_ollama_context_memory.ps1
       - tests/test_autonomous_engineering.py
       - tests/test_autonomous_engineering_cycle.py
       - tests/test_codex_smoke_diagnostics.py
