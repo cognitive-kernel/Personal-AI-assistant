@@ -150,13 +150,11 @@ jobs:
           if (-not (Test-Path -LiteralPath $systemPython -PathType Leaf)) {
             throw "System-wide Python was not found: $systemPython"
           }
-          $venv = Join-Path $env:RUNNER_TEMP ("autonomous-architecture-acceptance-" + $env:GITHUB_RUN_ID + "-" + $env:GITHUB_RUN_ATTEMPT)
-          & $systemPython -m venv $venv
-          if ($LASTEXITCODE -ne 0) { throw "Could not create the isolated target-runner test environment." }
-          $venvPython = Join-Path $venv "Scripts\python.exe"
-          & $venvPython -m pip install --disable-pip-version-check -e "${env:GITHUB_WORKSPACE}[dev]"
-          if ($LASTEXITCODE -ne 0) { throw "Could not install isolated architecture test dependencies." }
-          & $venvPython -m pytest -q `
+          & $systemPython -c "import pytest, psutil; print('Target test dependencies:', pytest.__version__, psutil.__version__)"
+          if ($LASTEXITCODE -ne 0) {
+            throw "The Runner's preinstalled Python must provide pytest and psutil; refusing an unreliable network install."
+          }
+          & $systemPython -m pytest -q `
             tests/test_autonomous_engineering_cycle.py `
             tests/test_autonomous_engineering_checkpoint_process.py `
             tests/test_autonomous_engineering_checkpoint_recovery.py `
@@ -168,7 +166,7 @@ jobs:
             tests/test_autonomous_engineering_state_lock.py
           if ($LASTEXITCODE -ne 0) { throw "Target-runner ownership/recovery acceptance tests failed." }
           Write-Host "TARGET_RUNNER_ARCHITECTURE_ACCEPTANCE_OK"
-          
+
       - name: Verify the selected model's allocated Ollama context
         id: context_preflight
         # Select, persist, and verify a context bounded by model metadata and available memory.
