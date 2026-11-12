@@ -39,7 +39,7 @@ def test_context_selection_uses_exact_safe_minimum():
 
 def test_context_selection_fails_closed_when_memory_is_insufficient():
     data = payload()
-    data["available_memory_bytes"] = 8 * 1024**3
+    data["available_memory_bytes"] = 10 * 1024**3
     with pytest.raises(OllamaModelMetadataError, match="safely support"):
         select_context_window(**data)
 
