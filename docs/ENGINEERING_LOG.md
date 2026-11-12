@@ -773,3 +773,12 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 
 
 - The next exact-head run found a second stable-wording assertion in the operations guide. The guide now preserves the existing contract phrase while keeping the new upstream >=64k recommendation caveat. No assertion was removed or weakened; another exact-head run is required.
+
+
+## 2026-11-12 — Windows checkpoint watcher CIM startup hardening
+
+- **Observed failure:** exact-head Windows Storage regression failed in `test_checkpoint_watcher_real_process_publishes_run_scoped_readiness`. The watcher reported that its Windows process metadata query could not complete. The failure occurred in the subprocess invocation boundary before process identity could be published; the prior wrapper discarded the underlying `OSError` / subprocess exception, so the precise host-side cause (executable resolution versus startup timeout) was not observable from CI evidence.
+- **Correction:** resolve Windows PowerShell from the OS `SystemRoot` / `WINDIR` installation path first, retaining PATH fallback; increase the bounded CIM subprocess timeout from 8 to 20 seconds; include the exception type and message in fail-closed diagnostics. The test's outer readiness window is 45 seconds so it can accommodate the bounded query.
+- **Regression protection:** added a Windows process-snapshot test proving system PowerShell resolution, bounded timeout, returned PID/creation-time/command parsing, and no relaxation of ownership validation.
+- **Safety:** CIM failure still fails closed. PID, creation-time, command-line, run/task/base-SHA checks and the native Windows handle/GetProcessTimes recheck are unchanged. No process is terminated based on a failed metadata query.
+- **Validation:** new exact-head GitHub Actions are required; previous green jobs on earlier SHAs are not reused as evidence for this change.
