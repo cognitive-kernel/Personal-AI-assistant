@@ -764,3 +764,9 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - **Regression protection:** documentation-contract tests assert that the upstream recommendation and best-effort qualification remain visible.
 - **Source:** https://docs.ollama.com/integrations/codex
 - **Validation:** exact-head GitHub Actions are running for the resulting commit; no result is claimed until all required checks complete.
+
+
+## 2026-11-12 — Documentation regression assertion repair
+
+- The first exact-head run after the upstream recommendation clarification exposed a documentation-only assertion mismatch: the README sentence was rephrased so the existing contract test no longer found its required stable phrase. The implementation and behavior were unaffected.
+- Restored the established wording while retaining the new Ollama >=64k best-effort compatibility qualification. The assertion was not removed or weakened; the full exact-head workflow matrix is rerunning.
