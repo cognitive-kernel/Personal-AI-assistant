@@ -1195,7 +1195,9 @@ def test_autonomous_workflows_enforce_positive_and_exact_ollama_runtime_context(
     assert "/api/ps" in context_gate
     assert "context_length" in context_gate
     assert "if ($VerifyOnly) {" in context_gate
-    assert context_gate.count("if ($VerifyOnly) {") == 1
+    # VerifyOnly has two intentional branches: persisted-model verification before
+    # runtime inspection, and model release after the verification-only probe.
+    assert context_gate.count("if ($VerifyOnly) {") == 2
     assert context_gate.count("OLLAMA_RUNTIME_CONTEXT_OK") == 1
     assert "if ($allocated -lt $selectedContext)" not in context_gate
     assert "-lt $minimumContextTokens" in context_gate
