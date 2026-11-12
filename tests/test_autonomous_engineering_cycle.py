@@ -909,8 +909,7 @@ def test_codex_arguments_pin_ollama_and_selected_windows_sandbox(monkeypatch):
     assert arguments[arguments.index("--sandbox"):arguments.index("--sandbox") + 2] == [
         "--sandbox", "workspace-write",
     ]
-    # Ollama is a built-in Codex provider; redefining its reserved
-    # model_providers.ollama namespace prevents Codex from starting.
+    # Keep the custom provider separate from Codex's reserved built-in namespace.
     assert not any(value.startswith("model_providers.ollama.") for value in overrides)
     assert arguments[arguments.index("--model") + 1] == "gpt-oss:20b"
 
