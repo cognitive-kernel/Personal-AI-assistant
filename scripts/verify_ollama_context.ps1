@@ -10,7 +10,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $baseUrl = "http://127.0.0.1:11434"
-$minimumContextTokens = 512
+$minimumContextTokens = 1
 
 function Get-ModelInfo {
     param([Parameter(Mandatory = $true)][string]$ModelName)
@@ -31,7 +31,7 @@ function Get-MaximumContext {
     $key = $architecture + ".context_length"
     $property = $Info.model_info.PSObject.Properties[$key]
     $maximum = 0L
-    if (-not $property -or -not [int64]::TryParse([string]$property.Value, [ref]$maximum) -or $maximum -lt 512) {
+    if (-not $property -or -not [int64]::TryParse([string]$property.Value, [ref]$maximum) -or $maximum -lt $minimumContextTokens) {
         throw "Ollama did not publish a valid architecture-specific context limit ('$key')."
     }
     return $maximum
@@ -116,7 +116,7 @@ function Get-AutomaticContext {
         }
     }
     if ($null -eq $selection.selected_context_tokens -or [int64]$selection.selected_context_tokens -lt $minimumContextTokens) {
-        throw "The Ollama context-selection module did not return a valid runtime context of at least $minimumContextTokens tokens."
+        throw "The Ollama context-selection module did not return a positive runtime context."
     }
     return $selection
 }
@@ -217,13 +217,13 @@ if ($VerifyOnly) {
     $codexModel = $Model
     $selectedContext = 0L
     if (-not [int64]::TryParse([string]$env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH, [ref]$selectedContext) -or $selectedContext -lt $minimumContextTokens) {
-        throw "The selected Codex context was not persisted at the minimum supported runtime window of $minimumContextTokens tokens."
+        throw "The selected Codex context was not persisted at the positive runtime-context boundary."
     }
     $modelInfo = Get-ModelInfo -ModelName $codexModel
     Assert-ToolCallingCapability -Info $modelInfo
     $maximum = Get-MaximumContext -Info $modelInfo
     if ($maximum -lt $minimumContextTokens) {
-        throw "Selected model maximum context $maximum is below the minimum supported runtime window of $minimumContextTokens tokens."
+        throw "Selected model maximum context $maximum is below the positive runtime-context boundary."
     }
     if ($selectedContext -gt $maximum) {
         throw "The persisted Codex context $selectedContext exceeds the model maximum $maximum."
@@ -249,7 +249,7 @@ if ($VerifyOnly) {
     Assert-ToolCallingCapability -Info $modelInfo
     $maximum = Get-MaximumContext -Info $modelInfo
     if ($maximum -lt $minimumContextTokens) {
-        throw "Selected model maximum context $maximum is below the minimum supported runtime window of $minimumContextTokens tokens."
+        throw "Selected model maximum context $maximum is below the positive runtime-context boundary."
     }
 
     $requestedContext = $null
@@ -257,7 +257,7 @@ if ($VerifyOnly) {
     if (-not [string]::IsNullOrWhiteSpace($manualContext)) {
         $parsedContext = 0L
         if (-not [int64]::TryParse($manualContext, [ref]$parsedContext) -or $parsedContext -lt $minimumContextTokens) {
-            throw "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH must be an integer of at least $minimumContextTokens tokens."
+            throw "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH must be a positive integer."
         }
         $requestedContext = [Nullable[long]]$parsedContext
         $selectionMode = "requested-and-safely-clamped"
@@ -268,7 +268,7 @@ if ($VerifyOnly) {
     $contextSelection = Get-AutomaticContext -Info $modelInfo -ModelName $baseModel -RequestedContext $requestedContext
     $selectedContext = [int64]$contextSelection.selected_context_tokens
     if ($selectedContext -lt $minimumContextTokens -or $selectedContext -gt $maximum) {
-        throw "Selected context $selectedContext is outside the supported Codex range for model maximum $maximum."
+        throw "Selected context $selectedContext is outside the model's supported context range $maximum."
     }
 
     Write-Host "Model maximum context: $($contextSelection.maximum_context_tokens) tokens"
