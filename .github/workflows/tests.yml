@@ -39,12 +39,16 @@ jobs:
 
   automation-python-runtime-compatibility:
     name: automation Python ${{ matrix.python-version }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11.9", "3.14.6"]
+        include:
+          - python-version: "3.11.9"
+            runner: ubuntu-24.04
+          - python-version: "3.14.6"
+            runner: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
