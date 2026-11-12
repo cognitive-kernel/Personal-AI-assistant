@@ -189,6 +189,9 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert 'if ($allocated -lt $selectedContext)' not in context_script
     assert '-lt $minimumContextTokens' in context_script
     assert '64000' not in context_script
+    assert 'Stop-LoadedCodexVariants -BaseModel $baseModel' in context_script
+    assert 'keep_alive = 0' in context_script
+    assert 'OLLAMA_RUNTIME_CONTEXT_RELEASED' in context_script
     inventory_step = diagnostic.split("      - name: Inventory installed Ollama models and capabilities", 1)[1].split(
         "      - name: Verify the selected model's allocated Ollama context", 1
     )[0]
@@ -197,6 +200,7 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert 'AUTONOMOUS_ENGINEERING_MODEL=$codexModel' in context_script
     assert '-VerifyOnly' in diagnostic
     assert '-VerifyOnly' in autonomous
+    assert 'group: autonomous-local-engineering-${{ github.repository }}' in diagnostic
     assert 'Verify persistent Ollama context after Codex smoke' in diagnostic
     assert 'Verify persistent Ollama context after autonomous Codex task' in autonomous
     assert 'steps.context_preflight.outcome == \'success\'' in diagnostic
