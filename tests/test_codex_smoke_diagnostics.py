@@ -376,6 +376,10 @@ def test_target_diagnostic_matches_recorded_hardware_and_uses_automatic_context(
     assert "size_vram" in diagnostic
     assert "github.ref_name != 'fix/autonomous-engineering-show-all-ollama-models-20261112'" in diagnostic
     assert "github.ref_name == 'fix/autonomous-engineering-show-all-ollama-models-20261112' && '10000'" not in diagnostic
+    assert "Get-Command node.exe" in diagnostic
+    assert "Node version: $nodeVersion" in diagnostic
+    assert "npm version: $npmVersion" in diagnostic
+    assert "PowerShell version:" in diagnostic
     assert "Get-Command npm.cmd" in diagnostic
     assert "Get-Command codex.cmd" in diagnostic
     assert "Name='ollama.exe'" in diagnostic
