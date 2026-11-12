@@ -1293,6 +1293,28 @@ def handle_curriculum_task(
         unreviewed_source_batches = batch_index + 1 < source_batch_count
         unreviewed_candidate_batches = bool(page.pop("_chat_observations_has_more", False))
         next_candidate_cursor = page.pop("_chat_observations_next_cursor", None)
+        if unreviewed_candidate_batches:
+            if (
+                not isinstance(next_candidate_cursor, dict)
+                or set(next_candidate_cursor) != {"candidate_id", "content_offset"}
+                or any(
+                    isinstance(next_candidate_cursor.get(key), bool)
+                    or not isinstance(next_candidate_cursor.get(key), int)
+                    or next_candidate_cursor[key] < (1 if key == "candidate_id" else 0)
+                    for key in ("candidate_id", "content_offset")
+                )
+            ):
+                raise PermanentTaskError("Chat-observation pagination did not return a valid next cursor.")
+            current_position = (
+                candidate_cursor.get("candidate_id", 0),
+                candidate_cursor.get("content_offset", 0),
+            ) if isinstance(candidate_cursor, dict) else (0, 0)
+            next_position = (
+                next_candidate_cursor["candidate_id"],
+                next_candidate_cursor["content_offset"],
+            )
+            if next_position <= current_position:
+                raise PermanentTaskError("Chat-observation pagination cursor did not advance.")
         if unreviewed_source_batches and not page["has_more"]:
             page["has_more"] = True
             page["next_focus"] = (
