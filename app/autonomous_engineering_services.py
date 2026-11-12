@@ -78,7 +78,7 @@ def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_conte
             "The saved model is not installed locally."
         ),
     }
-    if not installed or is_context_variant:
+    if not installed or selected_is_context_variant:
         return result
 
     show_request = urllib.request.Request(
