@@ -1,17 +1,19 @@
-## 2026-11-12 — Exact-head revalidation after Windows Runner readiness correction
+## 2026-11-12 — Exact-head revalidation after CIM, PowerShell 5.1, and Codex context-pin fixes
 
-PR #722 current head: `ae5f0fb26c26ac02e4a9bd04fd1f8362c9796d6a`.
+PR #722 current head: `bdb3921ad905a77bb4b29ff50a18b204b2595fde`.
 
-A second Windows-service review found that `scripts/check_autonomous_runner.ps1` still used `Get-Process Runner.Listener`, despite the service-account readiness contract. It now queries running `actions.runner*` services through CIM, resolves their PID through `Win32_Process`, and requires a `Runner.Listener.exe` child process whose `ParentProcessId` matches the Windows service PID. A regression assertion protects this contract.
+The Windows checkpoint watcher now resolves PowerShell from SystemRoot/WINDIR before PATH fallback, uses a bounded 20-second CIM query, and exposes the underlying exception when metadata lookup fails. The Windows Storage job passed on intermediate SHA `4643710b92ba782eeaf7213039640c99bf2cc71a`; that result is not reused for the current head.
 
-Exact-head validation is pending at the time of this update:
-- Tests: [#43211124252](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43209894282)
-- Sandbox integration: [#43211124343](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43209894191)
-- Browser E2E: [#43211124438](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43209894267)
-- Dependency audit: [#43211124379](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43209894156)
-- Windows target diagnostic: [#43211116634](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43209886926)
+The production PowerShell preflight runs under Windows PowerShell 5.1. A dedicated integration test now executes the UTF-8 file/process bridge in that exact shell and covers adaptive selection, a valid 1,000-token sub-64k request, fail-closed insufficient RAM, and already-resident model weights. The generated Codex catalog now pins both `context_window` and `max_context_window`, and the CLI explicitly sets `model_context_window` to the exact verified Ollama allocation.
 
-Do not infer exact-head success from older commits. The earlier code/test head and the explicit 10k-token smoke remain historical evidence only. No local/manual test is claimed; no merge to main is permitted while required checks are pending.
+Exact-head validation for `bdb3921ad905a77bb4b29ff50a18b204b2595fde` is queued at the time of this update:
+- Tests (includes Windows Storage regressions): [#43251042284](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43251042284)
+- Sandbox integration: [#43251042595](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43251042595)
+- Browser E2E: [#43251042720](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43251042720)
+- Dependency audit: [#43251042801](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43251042801)
+- Windows target diagnostic: [#43251028710](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43251028710)
+
+PR #717 is closed as superseded; its PowerShell 5.1 bridge test was ported with the adaptive contract. PR #706 remains a separate open change for the general Ollama chat path and is not silently merged into this Codex-only context scope. Do not infer exact-head success from older commits. No local/manual test is claimed; no merge to main is permitted while required checks are pending.
 
 # Project acceptance gates
 
@@ -291,7 +293,7 @@ The current `main` SHA `2a5c83bf0ba924f4a2c8f206338a04872562d72d` has completed 
 - **Exact-head CI:** SHA `326b41a862661f032143fb0b8d26f80d8174ffc5`; full suite **2,146 passed, 2 skipped, 51 deselected**; Windows Storage regressions passed; Browser E2E passed; dependency audit passed. The implementation code had already passed the claim-to-test benchmark 10/10 on code/test SHA `ff74389cfe033afc9ccf1c9d377930a1cf634a3e`.
 - **Completed operational evidence:** Self-hosted Windows diagnostic [#43197193053](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43197193053) passed model inventory, metadata, real `/api/ps` allocation, Codex `exec_command`, post-smoke allocation, and model-release checks.
 - **Remaining operational evidence:** long-duration target-host soak, crash/restart acceptance, staging restore/rollback, independent security review (Issue #52), and live-model/human evaluation remain separate project gates.
-- **State:** IMPLEMENTED / EXACT-HEAD GITHUB CI GREEN / SELF-HOSTED RUNTIME DIAGNOSTIC GREEN. PR #722 remains Draft/open for owner review; no merge or deployment was performed.
+- **State:** IMPLEMENTED; earlier exact-head GitHub CI and an explicit 10k-token self-hosted Codex smoke passed on their recorded SHAs. The current head is under a new CI/target-host validation cycle as recorded at the top of this file; those older results do not make the current head green. PR #722 remains Draft/open; no merge or deployment was performed.
 
 
 ## 2026-11-12 — Consolidated Windows/Linux process and sandbox acceptance
