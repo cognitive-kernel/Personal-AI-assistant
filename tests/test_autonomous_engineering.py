@@ -1429,6 +1429,8 @@ def test_runner_status_uses_native_windows_process_api_without_psutil(monkeypatc
     observed = {}
     monkeypatch.setattr(services, "psutil", None)
     monkeypatch.setattr(services, "os", SimpleNamespace(name="nt"))
+    powershell_path = r"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    monkeypatch.setattr(services, "windows_powershell_executable", lambda: powershell_path)
 
     def fake_run(command, **kwargs):
         observed["command"] = command
@@ -1439,6 +1441,6 @@ def test_runner_status_uses_native_windows_process_api_without_psutil(monkeypatc
     result = services.runner_status(None)
 
     assert result == {"running": True, "process_detected": True}
-    assert observed["command"][:3] == ["powershell.exe", "-NoProfile", "-NonInteractive"]
+    assert observed["command"][:3] == [powershell_path, "-NoProfile", "-NonInteractive"]
     assert observed["kwargs"]["shell"] is False
-    assert observed["kwargs"]["timeout"] == 5
+    assert observed["kwargs"]["timeout"] == 20
