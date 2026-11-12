@@ -2,6 +2,8 @@
 
 ## بازبینی سخت‌افزار، پایداری فرایند و محیط آزمون — 2026-11-12
 
+- Scope clarification: the removal of the fixed 64k/512-token floors applies to the Codex adaptive-context path. The separate general Ollama chat runtime retains its existing 512-token minimum; it is not used to clamp or reject Codex context selection.
+
 - مشخصات ثبت‌شده میزبان هدف: Intel Core i5-12400، شش هسته/۱۲ رشته، حدود 31.78 GiB حافظه فیزیکی و Intel UHD Graphics 730. اجرای diagnostic جدید این مشخصات را مستقیماً از CIM بررسی می‌کند؛ عدم تطابق، job را fail می‌کند و به‌عنوان موفق گزارش نمی‌شود.
 - حافظهٔ ۲ GiB گزارش‌شده توسط WMI برای UHD 730 دیگر به‌عنوان VRAM اختصاصی تفسیر نمی‌شود. فیلد جداگانهٔ reported adapter RAM حفظ می‌شود؛ ظرفیت اختصاصی فقط از WDDM DedicatedLimit معتبر می‌آید و حافظهٔ اشتراکی با سقف RAM آزاد میزبان محدود می‌شود.
 - وابستگی psutil از هستهٔ runtime به optional extra با نام hardware منتقل شده است. تشخیص Runner در نبود psutil از CIM ویندوز یا /proc لینوکس استفاده می‌کند؛ telemetry سخت‌افزار نیز fallback بومی دارد.
