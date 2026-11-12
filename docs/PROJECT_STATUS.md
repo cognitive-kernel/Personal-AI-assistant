@@ -1,3 +1,13 @@
+## آخرین اصلاح sandbox و وضعیت CI — 2026-11-12
+
+- PR #722 آخرین SHA فعلی: `0398f2a8ab0fdc72a1aed253cdce4fb43cda24d3`؛ Draft و باز، بدون ادغام.
+- در SHA قبلی `6f8239db9497a046b69a0d637fb38a1e78988b6d` تست کامل در Docker به‌دلیل پایان بودجهٔ 240 ثانیه با وضعیت `timed_out` شکست خورد؛ خروجی پیشرفت تا 100٪ رسیده بود، اما علت دقیق تأخیر در teardown/shutdown یا فشار منابع از لاگ موجود اثبات نشد.
+- اصلاح انجام‌شده: سقف مجاز زمان اجرای suite در helper از 300 به 600 ثانیه، مقدار پیش‌فرض از 120 به 300 ثانیه، و بودجهٔ workflow از 240 به 600 ثانیه افزایش یافت. job همچنان 15 دقیقه سقف دارد و محدودیت‌های Docker (بدون شبکه، mount فقط‌خواندنی، non-root، 2 GiB RAM، 2 CPU، PID limit و image digest-pinned) تغییر نکرده‌اند. تست جدید 600 را می‌پذیرد و 601 را رد می‌کند.
+- marker پایانی heredoc در workflow نیز اضافه شد تا warning انتهای فایل حذف و مرز کد Python صریح شود.
+- اجرای exact-head جدید: tests #43262594755، Docker sandbox #43262595072، Browser E2E #43262594986، Dependency Audit #43262594968، Windows Storage و diagnostic target-host #43262580900. در آخرین بررسی فقط Dependency Audit موفق شده و سایر اجراها هنوز در حال اجرا بودند؛ نتیجهٔ نهایی را باید از همان SHA دوباره خواند.
+- PR #707 با PR #722 در 11 فایل هم‌پوشانی دارد و mergeable=false/CI ناموفق است؛ هیچ‌یک ادغام نمی‌شود تا تغییرات ownership/checkpoint به‌صورت هماهنگ rebase و دوباره آزمایش شوند.
+- diagnostic خودمیزبان روی Windows با labelهای `self-hosted, Windows, X64, ollama` اجرا می‌شود؛ صرف روشن بودن PC یا شروع workflow اثبات نمی‌کند runner به GitHub متصل و job به آن تخصیص یافته است. تا ثبت نتیجهٔ موفق، آزمون زندهٔ Ollama/Codex تأیید نشده محسوب می‌شود.
+
 ## آخرین بازبینی exact-head — 2026-11-12
 
 - PR فعال: [#722](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/722)، Draft و باز؛ شاخه `fix/autonomous-engineering-show-all-ollama-models-20261112`. آخرین کد و تست اضافه‌شده پیش از این همگام‌سازی مستندات: `36eccfe9bf0fbdff9fde0642cd460e2b677cc757`.
