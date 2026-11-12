@@ -125,7 +125,7 @@ def select_context_window(
     hardware_maximum = cache_budget_bytes // bytes_per_token
     if hardware_maximum < MIN_CONTEXT_TOKENS:
         raise OllamaModelMetadataError(
-            f"Available RAM cannot safely support the minimum runtime context of {MIN_CONTEXT_TOKENS} tokens."
+            f"Available RAM cannot safely support even one context token."
         )
 
     effective_maximum = min(
