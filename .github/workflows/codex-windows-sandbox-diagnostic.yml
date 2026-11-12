@@ -247,15 +247,25 @@ jobs:
           $ErrorActionPreference = "Stop"
           Write-Host "Runner identity:"
           whoami
-          $pythonPath = "C:\Program Files\Python311\python.exe"
+          $pythonCommand = Get-Command python.exe -ErrorAction Stop
+          $pythonPath = [string]$pythonCommand.Source
+          if ([string]::IsNullOrWhiteSpace($pythonPath) -or -not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) {
+            throw "Python executable resolution returned an invalid path."
+          }
+          $pythonVersionOutput = & $pythonPath -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')"
+          $pythonVersionExitCode = $LASTEXITCODE
+          $pythonVersionNumber = $null
+          try { $pythonVersionNumber = [version](([string]$pythonVersionOutput).Trim()) } catch {}
+          if ($pythonVersionExitCode -ne 0 -or $null -eq $pythonVersionNumber -or $pythonVersionNumber -lt [version]"3.11") {
+            throw "Python 3.11 or newer is required under the Runner service identity; found '$pythonVersionOutput'."
+          }
           $pythonDirectory = Split-Path -Parent $pythonPath
           $scriptsPath = Join-Path $pythonDirectory "Scripts"
-          if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) {
-            throw "System-wide Python was not found: $pythonPath"
-          }
           if (-not (Test-Path -LiteralPath $scriptsPath -PathType Container)) {
             throw "Python Scripts directory was not found: $scriptsPath"
           }
+          $env:AUTONOMOUS_ENGINEERING_PYTHON = $pythonPath
+          "autonomous_engineering_python=$pythonPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
           $ollamaCommand = Get-Command ollama.exe -ErrorAction SilentlyContinue
           $ollamaPath = if ($ollamaCommand) { $ollamaCommand.Source } else { $null }
@@ -408,9 +418,9 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          $systemPython = "C:\Program Files\Python311\python.exe"
-          if (-not (Test-Path -LiteralPath $systemPython -PathType Leaf)) {
-            throw "System-wide Python was not found: $systemPython"
+          $systemPython = [string]$env:AUTONOMOUS_ENGINEERING_PYTHON
+          if ([string]::IsNullOrWhiteSpace($systemPython) -or -not (Test-Path -LiteralPath $systemPython -PathType Leaf)) {
+            throw "The Python executable resolved during Runner preflight is unavailable."
           }
           & $systemPython scripts/validate_autonomous_engineering_target_host.py
           if ($LASTEXITCODE -ne 0) {
