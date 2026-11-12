@@ -792,3 +792,11 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - **Correction:** generated catalog entries now set both `context_window` and `max_context_window` to the verified allocation, and the CLI passes `model_context_window` explicitly with that same value. Added regression tests for a 1,000-token allocation and documentation coverage. This preserves the upstream >=64k recommendation as a best-effort qualification, not a hard floor.
 - **Sources:** [Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference) and [Codex model metadata schema](https://github.com/openai/codex/blob/main/codex-rs/protocol/src/openai_models.rs).
 - **Validation:** the Windows Storage regression passed on intermediate code SHA `4643710b92ba782eeaf7213039640c99bf2cc71a` after the CIM hardening. The newly added PowerShell 5.1 bridge and Codex override changes require a fresh exact-head CI matrix; no previous SHA is substituted for that validation.
+
+
+## 2026-11-12 — Legacy Codex context-variant migration safety
+
+- **Compatibility gap:** the previous fixed-context integration created installed Ollama models named `<base>-codex-64k`; the adaptive integration now uses `<base>-codex-ctx<tokens>`. The model selector and preflight recognized only the new suffix, so a leftover legacy model could appear as a user-selectable base model or remain resident while the next hardware budget was calculated.
+- **Correction:** both current and legacy generated suffixes are now classified as internal, excluded from selectable models, and rejected if passed as the saved base model. Preflight unloads both suffix formats for the selected base before recalculating current free RAM and creating the new exact-context variant.
+- **Regression protection:** inventory tests include both current and legacy variants; settings reject a legacy variant before Ollama/GitHub access; PowerShell contract tests assert legacy cleanup and rejection.
+- **Scope:** the separate general Ollama chat context path is unchanged; PR #706 remains separate.
