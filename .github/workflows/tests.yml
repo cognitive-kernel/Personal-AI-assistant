@@ -37,6 +37,39 @@ jobs:
       - name: Run fail-closed claim-to-test coverage benchmark
         run: python scripts/run_knowledge_acceptance_eval.py
 
+  automation-python-runtime-compatibility:
+    name: automation Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11.9", "3.14.6"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install project and test dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Test Autonomous Engineering, hardware, and Ollama compatibility
+        run: >-
+          python -m pytest -q
+          tests/test_autonomous_engineering.py
+          tests/test_autonomous_engineering_cycle.py
+          tests/test_autonomous_engineering_checkpoint_process.py
+          tests/test_autonomous_engineering_checkpoint_recovery.py
+          tests/test_autonomous_engineering_execution_lock.py
+          tests/test_autonomous_engineering_pending_pr_state.py
+          tests/test_autonomous_engineering_pending_task.py
+          tests/test_autonomous_engineering_pending_task_state.py
+          tests/test_autonomous_engineering_state_lock.py
+          tests/test_autonomous_engineering_module_boundaries.py
+          tests/test_hardware.py
+          tests/test_ollama_context.py
+          tests/test_ollama_model_metadata.py
+          tests/test_codex_smoke_diagnostics.py
+
   windows-storage-regressions:
     runs-on: windows-latest
     timeout-minutes: 10
