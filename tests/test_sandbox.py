@@ -493,6 +493,7 @@ def test_workspace_syntax_check_fails_closed_without_project_workspace(tmp_path)
 
 def test_workspace_tests_run_only_in_pinned_no_network_container(tmp_path, monkeypatch):
     executable = _configured_docker(tmp_path)
+    monkeypatch.setattr(sandbox, "_workspace_head_sha", lambda workspace: "a" * 40)
     workspace = tmp_path / "candidate"
     (workspace / "app").mkdir(parents=True)
     (workspace / "tests").mkdir()
@@ -525,6 +526,7 @@ def test_workspace_tests_run_only_in_pinned_no_network_container(tmp_path, monke
     assert "--cpus=2" in args
     assert "--pids-limit=128" in args
     assert "--user=65534:65534" in args
+    assert "--env=AUTONOMOUS_ENGINEERING_TEST_BASE_SHA=" + "a" * 40 in args
     assert "type=bind,source=" + str(workspace.resolve()) + ",target=/workspace,readonly" in args
     assert args[-5] == image
     assert args[-4:-1] == ["python", "-I", "-c"]
@@ -554,6 +556,7 @@ def test_workspace_tests_reject_mutable_or_unavailable_test_images(tmp_path, mon
 
 def test_workspace_tests_report_failure_without_host_fallback(tmp_path, monkeypatch):
     executable = _configured_docker(tmp_path)
+    monkeypatch.setattr(sandbox, "_workspace_head_sha", lambda workspace: "b" * 40)
     workspace = tmp_path / "candidate"
     (workspace / "app").mkdir(parents=True)
     (workspace / "tests").mkdir()
@@ -672,3 +675,22 @@ def test_practical_submit_requires_explicit_sandbox_consent(tmp_path, monkeypatc
             learning_capabilities_routes.PracticalSubmission(job_id=job["id"], source_code="print(1)"),
         )
     assert getattr(exc.value, "status_code", None) == 409
+
+def test_workspace_tests_do_not_start_without_verified_host_git_head(tmp_path, monkeypatch):
+    executable = _configured_docker(tmp_path)
+    workspace = tmp_path / "candidate"
+    (workspace / "app").mkdir(parents=True)
+    (workspace / "tests").mkdir()
+    called = []
+    monkeypatch.setattr(sandbox, "_workspace_head_sha", lambda workspace: None)
+    monkeypatch.setattr(sandbox.subprocess, "Popen", lambda *args, **kwargs: called.append(args))
+
+    result = sandbox.run_workspace_tests(
+        workspace,
+        docker_executable=executable,
+        image="sha256:" + "f" * 64,
+    )
+
+    assert result.status == "unavailable"
+    assert "checkout HEAD could not be verified" in (result.reason or "")
+    assert called == []
