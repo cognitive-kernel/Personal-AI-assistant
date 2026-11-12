@@ -174,6 +174,25 @@ def is_valid_test_image_reference(image: str) -> bool:
 
 
 
+def _workspace_head_sha(workspace: Path) -> str | None:
+    """Resolve the host checkout SHA for isolated tests without exposing .git to Docker."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            cwd=workspace,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+            shell=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    value = result.stdout.strip().lower()
+    return value if result.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}", value) else None
+
+
 def run_workspace_tests(
     workspace_path: str | Path,
     *,
@@ -214,6 +233,13 @@ def run_workspace_tests(
             reason="Docker executable is not available at the configured absolute path.",
         )
 
+    base_sha = _workspace_head_sha(workspace)
+    if base_sha is None:
+        return SandboxResult(
+            status="unavailable", exit_code=None, stdout="", stderr="", duration_ms=0,
+            reason="The host checkout HEAD could not be verified; isolated tests were not started.",
+        )
+
     runner = (
         "import sys; "
         "sys.path.insert(0, '/workspace'); "
@@ -234,6 +260,7 @@ def run_workspace_tests(
         "--env=PYTHONDONTWRITEBYTECODE=1",
         "--env=PYTEST_DISABLE_PLUGIN_AUTOLOAD=1",
         "--env=PYTEST_ADDOPTS=",
+        f"--env=AUTONOMOUS_ENGINEERING_TEST_BASE_SHA={base_sha}",
         "--mount", f"type=bind,source={str(workspace)},target=/workspace,readonly",
         image, "python", "-I", "-c", runner,
     ]
