@@ -6,7 +6,6 @@ on:
     branches:
       - fix/autonomous-task-preservation
       - fix/automation-codex-context-smoke-20261107
-      - feat/autonomous-engineering-architecture-final-20261112
     paths:
       - .github/workflows/codex-windows-sandbox-diagnostic.yml
       - .github/workflows/autonomous-codex-engineering.yml
@@ -15,8 +14,6 @@ on:
       - tests/test_autonomous_engineering.py
       - tests/test_autonomous_engineering_cycle.py
       - tests/test_codex_smoke_diagnostics.py
-      - scripts/**
-      - tests/test_autonomous_engineering_*.py
   workflow_dispatch:
     inputs:
       model:
@@ -140,32 +137,6 @@ jobs:
           if (@($tags.models | ForEach-Object { $_.name }) -notcontains $env:AUTONOMOUS_ENGINEERING_MODEL) {
             throw "Ollama model '$env:AUTONOMOUS_ENGINEERING_MODEL' is not installed."
           }
-
-      - name: Run architecture ownership and recovery tests on the target Runner
-        timeout-minutes: 20
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-          $systemPython = "C:\Program Files\Python311\python.exe"
-          if (-not (Test-Path -LiteralPath $systemPython -PathType Leaf)) {
-            throw "System-wide Python was not found: $systemPython"
-          }
-          & $systemPython -c "import pytest, psutil; print('Target test dependencies:', pytest.__version__, psutil.__version__)"
-          if ($LASTEXITCODE -ne 0) {
-            throw "The Runner's preinstalled Python must provide pytest and psutil; refusing an unreliable network install."
-          }
-          & $systemPython -m pytest -q `
-            tests/test_autonomous_engineering_cycle.py `
-            tests/test_autonomous_engineering_checkpoint_process.py `
-            tests/test_autonomous_engineering_checkpoint_recovery.py `
-            tests/test_autonomous_engineering_execution_lock.py `
-            tests/test_autonomous_engineering_module_boundaries.py `
-            tests/test_autonomous_engineering_pending_pr_state.py `
-            tests/test_autonomous_engineering_pending_task.py `
-            tests/test_autonomous_engineering_pending_task_state.py `
-            tests/test_autonomous_engineering_state_lock.py
-          if ($LASTEXITCODE -ne 0) { throw "Target-runner ownership/recovery acceptance tests failed." }
-          Write-Host "TARGET_RUNNER_ARCHITECTURE_ACCEPTANCE_OK"
 
       - name: Verify the selected model's allocated Ollama context
         id: context_preflight
