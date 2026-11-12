@@ -40,6 +40,18 @@ try {
     if ($LASTEXITCODE -eq 0 -or (($output -join ' ') -notmatch "minimum 64000-token")) {
         throw "Insufficient RAM must fail closed instead of returning a low-context fallback."
     }
+
+    $payloadObject.available_memory_bytes = [long](16 * 1GB)
+    $payloadObject.model_weights_already_loaded = $true
+    [IO.File]::WriteAllText($inputPath, ($payloadObject | ConvertTo-Json -Depth 20 -Compress), $utf8NoBom)
+    $output = & python $helperPath --input-file $inputPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "Loaded model weights should not be double-counted: $($output -join ' ')"
+    }
+    $selection = ($output -join [Environment]::NewLine) | ConvertFrom-Json -ErrorAction Stop
+    if ([int64]$selection.selected_context_tokens -ne 94208) {
+        throw "Expected 94208 tokens when model weights are already resident; received $($selection.selected_context_tokens)."
+    }
 } finally {
     if (Test-Path -LiteralPath $inputPath) {
         Remove-Item -LiteralPath $inputPath -Force -ErrorAction SilentlyContinue
