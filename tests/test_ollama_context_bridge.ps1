@@ -34,7 +34,7 @@ try {
     }
 
     $payloadObject = $payload | ConvertFrom-Json
-    $payloadObject.available_memory_bytes = [long](6 * 1GB)
+    $payloadObject.available_memory_bytes = [long](10 * 1GB)
     [IO.File]::WriteAllText($inputPath, ($payloadObject | ConvertTo-Json -Depth 20 -Compress), $utf8NoBom)
     $output = & python $helperPath --input-file $inputPath 2>&1
     if ($LASTEXITCODE -eq 0 -or (($output -join ' ') -notmatch "minimum 64000-token")) {
