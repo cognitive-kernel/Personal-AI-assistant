@@ -352,7 +352,22 @@ Write-Host "Model maximum context: $maximum tokens"
 Write-Host "Selected Codex context: $selectedContext tokens"
 Write-Host "Ollama allocated runtime context: $allocated tokens"
 if ($allocated -ne $selectedContext) {
+    Stop-LoadedModel -ModelName $codexModel
     throw "Ollama allocated $allocated tokens for '$codexModel', but the verified selection is exactly $selectedContext. No Codex task may proceed."
+}
+if (-not $VerifyOnly) {
+    try {
+        $osAfterLoad = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+        $remainingPhysicalMemoryBytes = [int64]$osAfterLoad.FreePhysicalMemory * 1KB
+    } catch {
+        Stop-LoadedModel -ModelName $codexModel
+        throw "Could not verify remaining physical RAM after Ollama context allocation. $($_.Exception.Message)"
+    }
+    if ($remainingPhysicalMemoryBytes -lt [int64]$contextSelection.reserve_bytes) {
+        Stop-LoadedModel -ModelName $codexModel
+        throw "Ollama context allocation left $remainingPhysicalMemoryBytes bytes of free physical RAM, below the required reserve of $($contextSelection.reserve_bytes). No Codex task may proceed."
+    }
+    Write-Host "Remaining physical RAM after Ollama allocation: $remainingPhysicalMemoryBytes bytes"
 }
 Write-Host "OLLAMA_RUNTIME_CONTEXT_OK"
 
