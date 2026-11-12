@@ -80,7 +80,7 @@ if ([string]::IsNullOrWhiteSpace($Model)) {
 if ([string]::IsNullOrWhiteSpace($Model)) {
     throw "No saved AUTONOMOUS_ENGINEERING_MODEL repository variable exists. Save an installed model in the autonomous-engineering dashboard first."
 }
-if ($Model -match "(?i)-codex-ctx[0-9]+$") {
+if ($Model -match "(?i)-codex-(?:ctx[0-9]+|[0-9]+k)$") {
     throw "The saved model is an internal Codex context variant. Save the original Ollama model in the dashboard."
 }
 $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 8 -MaximumRedirection 0
