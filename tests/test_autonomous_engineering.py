@@ -886,7 +886,7 @@ def test_ollama_context_preflight_uses_file_based_fail_closed_selector():
 
     assert "--input-file $inputPath" in script
     assert "$selectionInput | & python" not in script
-    assert "Get-LoadedCodexContextVariant" in script
+    assert "Get-LoadedCodexContextState" in script
     assert "reused-verified-loaded-variant" in script
     assert "selectedContext -lt 64000" in script
     assert "MIN_CODEX_CONTEXT_TOKENS = 64000" in helper
