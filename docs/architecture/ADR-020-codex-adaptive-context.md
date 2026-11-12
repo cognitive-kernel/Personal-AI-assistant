@@ -45,7 +45,7 @@ C_{effective}=\min(C_{hardware},C_{model},C_{catalog})
 C_{selected}=\min(C_{requested},C_{effective})
 \]
 
-When no explicit context is requested, select C_effective. Any requested value above the effective ceiling is clamped; it is never persisted or passed to Codex. The dashboard, API, workflow, PowerShell bridge, derived Ollama model, and Codex model catalog must all use the same verified selected value.
+When no explicit context is requested, select C_effective. Any requested value above the effective ceiling is clamped; it is never persisted or passed to Codex. The dashboard, API, workflow, PowerShell bridge, derived Ollama model, and Codex model catalog must all use the same verified selected value. The generated catalog sets both `context_window` and `max_context_window` to that value, and the CLI passes an explicit `model_context_window` override. This prevents inherited Codex configuration from raising the active window above Ollama's verified allocation.
 
 There is no fixed minimum context window. The only numeric validity rule is that a context length must be a positive integer; a zero-token or negative context is not executable. If the host cannot provide even one token after safety reserves, or the model metadata exposes no positive context limit, report the exact resource/metadata failure rather than inventing a fallback.
 
