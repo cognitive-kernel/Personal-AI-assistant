@@ -10,6 +10,8 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from .ollama_context import OllamaModelMetadataError
+
 
 class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Keep local Ollama status checks on the loopback endpoint."""
