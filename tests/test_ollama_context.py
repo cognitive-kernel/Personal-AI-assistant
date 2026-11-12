@@ -154,3 +154,14 @@ def test_context_helper_reads_json_from_explicit_file(tmp_path: Path):
     )
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)["selected_context_tokens"] == 86016
+
+def test_codex_context_minimum_is_separate_from_general_chat_minimum():
+    from app.hardware import runtime_limits
+    from app.ollama_context import MIN_CONTEXT_TOKENS
+
+    assert MIN_CONTEXT_TOKENS == 1
+    limits = runtime_limits(
+        {"ollama_num_thread": 0, "ollama_num_ctx": 1},
+        {"logical_cpu_count": 4, "total_ram_gb": 16, "available_ram_gb": 8},
+    )
+    assert limits["num_ctx"] == 512
