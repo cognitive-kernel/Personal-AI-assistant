@@ -6,6 +6,7 @@ import math
 import os
 import shlex
 import signal
+import select
 import subprocess
 import time
 from datetime import datetime
@@ -172,12 +173,31 @@ def _owns_watcher_command(
     return True
 
 
-def _terminate_windows_process(pid: int, timeout_seconds: float) -> None:
+def _filetime_to_unix_seconds(value: Any) -> float:
+    low = int(value.dwLowDateTime)
+    high = int(value.dwHighDateTime)
+    ticks = (high << 32) | low
+    return ticks / 10_000_000 - 11_644_473_600
+
+
+def _terminate_windows_process(
+    pid: int,
+    timeout_seconds: float,
+    expected_started_at: float,
+) -> None:
     from ctypes import wintypes
 
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
     kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.GetProcessTimes.argtypes = [
+        wintypes.HANDLE,
+        ctypes.POINTER(wintypes.FILETIME),
+        ctypes.POINTER(wintypes.FILETIME),
+        ctypes.POINTER(wintypes.FILETIME),
+        ctypes.POINTER(wintypes.FILETIME),
+    ]
+    kernel32.GetProcessTimes.restype = wintypes.BOOL
     kernel32.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
     kernel32.TerminateProcess.restype = wintypes.BOOL
     kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
@@ -186,10 +206,15 @@ def _terminate_windows_process(pid: int, timeout_seconds: float) -> None:
     kernel32.CloseHandle.restype = wintypes.BOOL
 
     process_terminate = 0x0001
+    process_query_limited_information = 0x1000
     synchronize = 0x00100000
     wait_object_0 = 0x00000000
     wait_timeout = 0x00000102
-    handle = kernel32.OpenProcess(process_terminate | synchronize, False, pid)
+    handle = kernel32.OpenProcess(
+        process_terminate | process_query_limited_information | synchronize,
+        False,
+        pid,
+    )
     if not handle:
         error = ctypes.get_last_error()
         if error in {87, 1168}:  # invalid parameter / not found: already exited
@@ -198,6 +223,24 @@ def _terminate_windows_process(pid: int, timeout_seconds: float) -> None:
     try:
         if kernel32.WaitForSingleObject(handle, 0) == wait_object_0:
             return
+        creation = wintypes.FILETIME()
+        exit_time = wintypes.FILETIME()
+        kernel_time = wintypes.FILETIME()
+        user_time = wintypes.FILETIME()
+        if not kernel32.GetProcessTimes(
+            handle,
+            ctypes.byref(creation),
+            ctypes.byref(exit_time),
+            ctypes.byref(kernel_time),
+            ctypes.byref(user_time),
+        ):
+            error = ctypes.get_last_error()
+            raise OSError(error, f"GetProcessTimes failed for watcher PID {pid}.")
+        actual_started_at = _filetime_to_unix_seconds(creation)
+        if abs(actual_started_at - expected_started_at) > 0.02:
+            raise RuntimeError(
+                f"Watcher PID {pid} was reused before termination; refusing to terminate a different process."
+            )
         if not kernel32.TerminateProcess(handle, 1):
             error = ctypes.get_last_error()
             if kernel32.WaitForSingleObject(handle, 0) == wait_object_0:
@@ -215,35 +258,67 @@ def _terminate_windows_process(pid: int, timeout_seconds: float) -> None:
         kernel32.CloseHandle(handle)
 
 
-def _terminate_linux_process(pid: int, timeout_seconds: float) -> None:
+def _terminate_linux_process(
+    pid: int,
+    timeout_seconds: float,
+    expected_started_at: float,
+) -> None:
+    """Terminate through a pidfd so a reused PID can never receive the signal."""
+    pidfd_open = getattr(os, "pidfd_open", None)
+    pidfd_send_signal = getattr(signal, "pidfd_send_signal", None)
+    if not callable(pidfd_open) or not callable(pidfd_send_signal):
+        raise RuntimeError("Safe Linux watcher termination requires pidfd support; refusing PID-based kill.")
     try:
-        os.kill(pid, signal.SIGTERM)
+        pidfd = pidfd_open(pid, 0)
     except ProcessLookupError:
         return
-    deadline = time.monotonic() + max(0.1, timeout_seconds)
-    while time.monotonic() < deadline:
-        if _read_process_snapshot(pid) is None:
-            return
-        time.sleep(0.05)
     try:
-        os.kill(pid, signal.SIGKILL)
-    except ProcessLookupError:
-        return
-    deadline = time.monotonic() + max(0.1, timeout_seconds)
-    while time.monotonic() < deadline:
-        if _read_process_snapshot(pid) is None:
+        snapshot = _linux_process_snapshot(pid)
+        if snapshot is None:
             return
-        time.sleep(0.05)
-    raise TimeoutError(f"Watcher PID {pid} could not be reaped after SIGKILL.")
+        actual_started_at = float(snapshot.get("created_at", 0))
+        if not math.isfinite(actual_started_at) or abs(actual_started_at - expected_started_at) > 0.02:
+            raise RuntimeError(
+                f"Watcher PID {pid} was reused before termination; refusing to signal a different process."
+            )
+        poller = select.poll()
+        poller.register(pidfd, select.POLLIN)
+        try:
+            pidfd_send_signal(pidfd, signal.SIGTERM, None, 0)
+        except ProcessLookupError:
+            return
+        wait_ms = max(100, int(timeout_seconds * 1000))
+        if poller.poll(wait_ms):
+            return
+        try:
+            pidfd_send_signal(pidfd, signal.SIGKILL, None, 0)
+        except ProcessLookupError:
+            return
+        if poller.poll(wait_ms):
+            return
+        raise TimeoutError(f"Watcher PID {pid} could not be reaped after SIGKILL.")
+    finally:
+        os.close(pidfd)
 
 
-def _terminate_process(pid: int, timeout_seconds: float) -> None:
+def _terminate_process(
+    pid: int,
+    timeout_seconds: float,
+    expected_started_at: float,
+) -> None:
     if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
         raise ValueError("Process termination timeout must be a positive finite number.")
+    if (
+        isinstance(expected_started_at, bool)
+        or not isinstance(expected_started_at, (int, float))
+        or not math.isfinite(expected_started_at)
+        or expected_started_at <= 0
+    ):
+        raise ValueError("Expected watcher process start time must be a positive finite number.")
     if os.name == "nt":
-        _terminate_windows_process(pid, timeout_seconds)
+        _terminate_windows_process(pid, timeout_seconds, float(expected_started_at))
     elif Path("/proc").is_dir():
-        _terminate_linux_process(pid, timeout_seconds)
+        _terminate_linux_process(pid, timeout_seconds, float(expected_started_at))
     else:
         raise RuntimeError("Process termination is supported only on Windows and Linux.")
 
@@ -338,7 +413,7 @@ def stop_owned_watcher(
         )
 
     try:
-        _terminate_process(pid, timeout_seconds)
+        _terminate_process(pid, timeout_seconds, actual_start)
     except (PermissionError, TimeoutError, OSError, RuntimeError, ValueError) as exc:
         raise RuntimeError(
             f"Checkpoint watcher PID {pid} could not be stopped and reaped; "
