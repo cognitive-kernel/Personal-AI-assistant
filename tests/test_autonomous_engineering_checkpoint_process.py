@@ -44,12 +44,12 @@ def test_stops_only_exact_run_task_base_and_process_identity(monkeypatch: pytest
     )
     monkeypatch.setattr(
         process_control, "_terminate_process",
-        lambda pid, timeout: terminated.append((pid, timeout)),
+        lambda pid, timeout, expected_started_at: terminated.append((pid, timeout, expected_started_at)),
     )
 
     process_control.stop_owned_watcher(_metadata(), script_path=script)
 
-    assert terminated == [(4321, 5.0)]
+    assert terminated == [(4321, 5.0, 1234.5)]
 
 
 def test_access_denied_blocks_recovery_instead_of_being_ignored(
@@ -84,7 +84,7 @@ def test_access_denied_while_terminating_watcher_blocks_recovery(
         lambda pid: _snapshot(command=_command(script)),
     )
 
-    def denied(pid: int, timeout: float):
+    def denied(pid: int, timeout: float, expected_started_at: float):
         raise PermissionError("terminate denied")
 
     monkeypatch.setattr(process_control, "_terminate_process", denied)
@@ -99,7 +99,7 @@ def test_reused_pid_is_not_terminated(monkeypatch: pytest.MonkeyPatch, tmp_path:
         process_control, "_read_process_snapshot",
         lambda pid: _snapshot(created=9999.0, command=["unrelated.exe"]),
     )
-    monkeypatch.setattr(process_control, "_terminate_process", lambda pid, timeout: terminated.append(pid))
+    monkeypatch.setattr(process_control, "_terminate_process", lambda pid, timeout, expected_started_at: terminated.append(pid))
 
     process_control.stop_owned_watcher(_metadata(), script_path=script)
 
@@ -171,7 +171,7 @@ def test_unresponsive_watcher_blocks_recovery_and_preserves_checkpoint(
         lambda pid: _snapshot(command=_command(script)),
     )
 
-    def timeout(pid: int, timeout: float):
+    def timeout(pid: int, timeout: float, expected_started_at: float):
         raise TimeoutError("process did not exit")
 
     monkeypatch.setattr(process_control, "_terminate_process", timeout)
