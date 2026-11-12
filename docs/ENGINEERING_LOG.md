@@ -839,3 +839,10 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - **Correction:** restored the file from the last verified 375-line revision, then reapplied only the required changes: legacy/current variant rejection and cleanup plus the Windows PowerShell 5.1 Start-Process UTF-8 file bridge. The resulting script is 393 lines and has exactly two VerifyOnly branches, one verification result marker, and one release marker.
 - **Regression protection:** the test now checks the internal-variant pattern variable, legacy cleanup, production Start-Process bridge, and the existing exact branch-count contract. The Windows workflow path assertion matches the actual PowerShell command form.
 - **Validation:** the failing CI assertions on the earlier script revision are not reused; the new exact-head test and Windows Storage jobs must pass.
+
+
+## 2026-11-12 — Correct sorted model-inventory regression expectation
+
+- **Observed failure:** the isolated Docker suite found one assertion mismatch in the legacy-variant inventory test. The API intentionally sorts the complete installed-model inventory; the fixture listed the new adaptive suffix before the legacy suffix, while the actual sorted result places `-codex-64k` first.
+- **Correction:** reordered only the expected test list to match the API's stable sorted contract. The implementation continues to preserve both installed models in inventory while excluding both from selectable base models.
+- **Validation:** fresh exact-head tests and Docker sandbox runs are required; the failed c02c run is not counted as green.
