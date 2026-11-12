@@ -184,9 +184,24 @@ function Stop-LoadedCodexVariants {
     $names = @(
         $runtime.models |
             Where-Object {
-                $_ -and $_.name -and
-                ([string]$_.name).StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase) -and
-                ([string]$_.name).Substring($prefix.Length) -match '^[0-9]+    $selectedContext = 0L
+                if (-not $_ -or -not $_.name) { return $false }
+                $candidate = [string]$_.name
+                if (-not $candidate.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    return $false
+                }
+                $suffix = $candidate.Substring($prefix.Length)
+                ($suffix.Length -gt 0) -and ($suffix -notmatch '[^0-9]')
+            } |
+            ForEach-Object { [string]$_.name }
+    )
+    foreach ($name in $names) {
+        Stop-LoadedModel -ModelName $name
+    }
+}
+
+if ($VerifyOnly) {
+    $codexModel = $Model
+    $selectedContext = 0L
     if (-not [int64]::TryParse([string]$env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH, [ref]$selectedContext) -or $selectedContext -lt $minimumContextTokens) {
         throw "The selected Codex context was not persisted at the minimum supported runtime window of $minimumContextTokens tokens."
     }
