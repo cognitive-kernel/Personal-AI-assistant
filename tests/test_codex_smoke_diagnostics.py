@@ -183,7 +183,7 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert 'parameters = @{ num_ctx = $selectedContext }' in context_script
     assert 'PARAMETER\\s+num_ctx' in context_script
     assert 'AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH=$selectedContext' in context_script
-    assert context_script.count('if ($VerifyOnly) {') == 1
+    assert context_script.count('if ($VerifyOnly) {') == 2
     assert context_script.count('OLLAMA_RUNTIME_CONTEXT_OK') == 1
     assert 'if ($allocated -ne $selectedContext)' in context_script
     assert 'if ($allocated -lt $selectedContext)' not in context_script
