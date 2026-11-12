@@ -287,3 +287,6 @@ The current `main` SHA `2a5c83bf0ba924f4a2c8f206338a04872562d72d` has completed 
 - Fixed the Docker real-process test failure by passing a validated host checkout SHA into the isolated container rather than relying on an unavailable .git worktree pointer.
 - The target Windows diagnostic now checks the recorded i5-12400 / 6-core-12-thread / 30–33 GiB / UHD 730 host profile and executes process/lock/recovery acceptance.
 - Automatic-context target-runner validation no longer forces 10,000 tokens; it records the actual /api/ps context, model bytes, and VRAM bytes. Current head 1bb8a4f802d2496e355dd4d86a0595d275512cad has exact-head tests, sandbox integration, Browser E2E, dependency audit, and self-hosted diagnostic queued/running. Results remain pending until each workflow completes.
+
+
+- Scope clarification: the removal of the fixed 64k/512-token floors applies to the Codex adaptive-context path. The separate general Ollama chat runtime retains its existing 512-token minimum; it is not used to clamp or reject Codex context selection.
