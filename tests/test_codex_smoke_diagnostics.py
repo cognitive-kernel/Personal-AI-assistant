@@ -401,6 +401,10 @@ def test_target_diagnostic_matches_recorded_hardware_and_uses_automatic_context(
     assert "Get-Command ollama.exe" in runner_check
     assert "verbose = $false" in runner_check
     assert "$parsedContext -ge 1" in runner_check
+    assert "Get-CimInstance Win32_Service" in runner_check
+    assert "Get-CimInstance Win32_Process -Filter" in runner_check
+    assert "Runner.Listener.exe" in runner_check
+    assert 'Get-Process -Name "Runner.Listener"' not in runner_check
 
 def test_active_codex_documentation_matches_adaptive_context_contract():
     from pathlib import Path
