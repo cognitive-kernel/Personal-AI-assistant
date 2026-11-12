@@ -1,6 +1,16 @@
 # وضعیت یکپارچهٔ پروژه
 
-## وضعیت جاری — تکمیل Autonomous Engineering
+## وضعیت جاری — سازگاری پویا و ایمن Context در Codex (PR #722)
+
+- کار فعال: [PR #722](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/722)، شاخهٔ `fix/autonomous-engineering-show-all-ollama-models-20261112`؛ Draft و باز، بدون ادغام.
+- قرارداد اجرایی: هیچ حداقل ثابت ۶۴۰۰۰ یا ۵۱۲ توکنی وجود ندارد. Context باید یک عدد صحیح مثبت باشد و Codex باید با کمترین ظرفیت معتبر از سخت‌افزار، مدل و سقف کاتالوگ خودش تطبیق داده شود.
+- ظرفیت سخت‌افزار جدا از سقف Context مدل محاسبه می‌شود. بودجهٔ RAM شامل حافظهٔ آزاد فعلی، رزرو سیستم، هزینهٔ وزن مدل (فقط اگر هنوز resident نیست)، سربار runtime و KV-cache bytes/token مختص معماری مدل است.
+- هر Context درخواستی بزرگ‌تر از سقف مؤثر قبل از ذخیره، ساخت مدل Ollama یا ارسال به Codex clamp می‌شود. مدل اصلی تغییر نمی‌کند؛ variant اختصاصی ساخته و مقدار ذخیره‌شده و تخصیص واقعی با `/api/show` و `/api/ps` کنترل می‌شود.
+- metadata از `/api/show` با `verbose=false` خوانده می‌شود و محدودیت اندازهٔ پاسخ، loopback، proxy و redirect حفظ شده‌اند.
+- Regressionها شامل Context سخت‌افزاری ۱۰٬۰۰۰، سقف مدل ۸٬۱۹۲، سقف یک توکن، Context درخواستی بزرگ‌تر از ظرفیت، و رد Context صفر/منفی هستند.
+- اعتبارسنجی exact-head CI و اجرای واقعی Codex با ابزار در Runner ویندوز پس از آخرین تغییرات هنوز در انتظار نتیجه است؛ تا دریافت شواهد هیچ تستی موفق اعلام نمی‌شود.
+
+## snapshot قبلی — تکمیل Autonomous Engineering
 
 - مبنای زندهٔ `main`: `461c0a2b1deaf5f8af8486846f167da8185c580a`؛ تغییرات release-watch و یادگیری جدید main حفظ شده‌اند.
 - کار فعال: PR [#719](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/719)، شاخهٔ `feat/autonomous-engineering-complete-final-20261112`؛ SHA دقیق و وضعیت Checkها از وضعیت زندهٔ PR خوانده می‌شوند. PR باز است و به main هدف‌گذاری شده است.
