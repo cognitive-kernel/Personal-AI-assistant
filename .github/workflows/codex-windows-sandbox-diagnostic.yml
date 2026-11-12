@@ -541,7 +541,7 @@ jobs:
           "@
           Set-Content -LiteralPath $prompt -Value $promptText -Encoding utf8
           Write-Host "Codex diagnostic reasoning effort: $env:CODEX_MODEL_REASONING_EFFORT"
-          python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-mxc" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$prompt" --report "$report" --require-command-output "CODEX_WORKSPACE_SANDBOX_OK" --events-report "$evidence" --require-command-fragment "$probeFileName" --require-command-fragment "echo" --require-command-fragment "type" --require-command-fragment "del"
+          python.exe scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-mxc" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$prompt" --report "$report" --require-command-output "CODEX_WORKSPACE_SANDBOX_OK" --events-report "$evidence" --require-command-fragment "$probeFileName" --require-command-fragment "echo" --require-command-fragment "type" --require-command-fragment "del"
           $smokeExitCode = $LASTEXITCODE
           Write-Host "Codex smoke exit code: $smokeExitCode"
           if (Test-Path -LiteralPath $report -PathType Leaf) {
