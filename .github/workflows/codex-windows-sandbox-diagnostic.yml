@@ -5,22 +5,31 @@ on:
   push:
     branches:
       - feat/autonomous-engineering-complete-20261112
+      - fix/autonomous-engineering-show-all-ollama-models-20261112
     paths:
       - .github/workflows/codex-windows-sandbox-diagnostic.yml
       - .github/workflows/autonomous-codex-engineering.yml
       - .github/workflows/browser-e2e.yml
       - docs/operations/CODEX_AUTONOMOUS_ENGINEERING.md
+      - docs/architecture/ADR-020-codex-adaptive-context.md
+      - docs/ROADMAP_ACCEPTANCE.md
+      - scripts/autonomous_engineering_codex_config.py
+      - scripts/check_autonomous_agent.ps1
       - scripts/provision_autonomous_runner.ps1
       - scripts/check_autonomous_runner.ps1
       - scripts/check_autonomous_agent.ps1
       - app/static/autonomous-engineering.js
       - app/autonomous_engineering.py
+      - app/autonomous_engineering_services.py
       - app/main.py
       - app/ollama.py
       - app/ollama_context.py
       - scripts/autonomous_engineering_progress.py
       - scripts/verify_ollama_context.ps1
       - tests/test_autonomous_engineering.py
+      - tests/test_ollama_context.py
+      - tests/test_ollama_model_metadata.py
+      - tests/test_codex_smoke_diagnostics.py
       - tests/test_browser_e2e.py
       - docs/PROJECT_STATUS.md
       - docs/ENGINEERING_LOG.md
@@ -161,7 +170,7 @@ jobs:
     timeout-minutes: 30
     env:
       AUTONOMOUS_ENGINEERING_MODEL: ${{ inputs.model || vars.AUTONOMOUS_ENGINEERING_MODEL || '' }}
-      AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH: ${{ inputs.context_length || vars.AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH || '' }}
+      AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH: ${{ inputs.context_length || (github.ref_name == 'fix/autonomous-engineering-show-all-ollama-models-20261112' && '10000') || vars.AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH || '' }}
       CODEX_WINDOWS_SANDBOX_BACKEND: mxc
       CODEX_MODEL_REASONING_EFFORT: low
     steps:
