@@ -8,15 +8,15 @@
 - هر Context درخواستی بزرگ‌تر از سقف مؤثر قبل از ذخیره، ساخت مدل Ollama یا ارسال به Codex clamp می‌شود. مدل اصلی تغییر نمی‌کند؛ variant اختصاصی ساخته و مقدار ذخیره‌شده و تخصیص واقعی با `/api/show` و `/api/ps` کنترل می‌شود.
 - metadata از `/api/show` با `verbose=false` خوانده می‌شود و محدودیت اندازهٔ پاسخ، loopback، proxy و redirect حفظ شده‌اند.
 - Regressionها شامل Context سخت‌افزاری ۱۰٬۰۰۰، سقف مدل ۸٬۱۹۲، سقف یک توکن، Context درخواستی بزرگ‌تر از ظرفیت، و رد Context صفر/منفی هستند.
-- CI کامل روی head کد `ff74389cfe033afc9ccf1c9d377930a1cf634a3e` موفق است: ۲٬۱۴۶ passed، ۲ skipped، ۵۱ deselected؛ Windows Storage، Browser E2E، Dependency Audit و benchmark پوشش ۱۰/۱۰ موفق شدند. پس از هم‌راستاسازی مستندات، head نهایی `87ba210f617bd3be672e9537ef4c4de6322ddebf` دوباره در CI قرار دارد؛ Runner ویندوز نیز مستقل از CI در حال اجرای diagnostic است. نتیجهٔ تخصیص واقعی Ollama و smoke ابزار Codex هنوز ادعا نمی‌شود.
+- اعتبارسنجی دقیق head نهایی `326b41a862661f032143fb0b8d26f80d8174ffc5` کامل و سبز است: ۲٬۱۴۶ passed، ۲ skipped، ۵۱ deselected؛ Windows Storage، Browser E2E و Dependency Audit موفق‌اند. Diagnostic واقعی self-hosted Windows نیز موفق شد: ۱۳ مدل Ollama بدون خطای metadata شناسایی شدند؛ variant مدل `gpt-oss:20b-codex-ctx10000` سقف معماری ۱۳۱٬۰۷۲ و تخصیص واقعی ۱۰٬۰۰۰ توکن داشت؛ پس از بارگذاری ۱۰٬۶۶۶٬۰۶۵٬۹۲۰ بایت RAM آزاد بود؛ اجرای واقعی Codex `exec_command` با exit code صفر و turn موفق انجام شد؛ تخصیص پس از اجرا دوباره تأیید و مدل از RAM آزاد شد.
 
 ## snapshot قبلی — تکمیل Autonomous Engineering
 
 - مبنای زندهٔ `main`: `461c0a2b1deaf5f8af8486846f167da8185c580a`؛ تغییرات release-watch و یادگیری جدید main حفظ شده‌اند.
-- کار فعال: PR [#719](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/719)، شاخهٔ `feat/autonomous-engineering-complete-final-20261112`؛ SHA دقیق و وضعیت Checkها از وضعیت زندهٔ PR خوانده می‌شوند. PR باز است و به main هدف‌گذاری شده است.
+- PR [#719](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/719) در `2026-11-12` با merge commit `f87e15b9eb76f7395ea4380382d95f1bc64e21ed` در main ادغام شد؛ معماری مالکیت و بازیابی مهندسی خودکار اکنون در baseline قرار دارد.
 - معماری جدید، مالکیت worktree و checkpoint watcher، هویت process، قفل durable state، GitHub transport و چرخهٔ PR را در ماژول‌های مستقل نگه می‌دارد؛ بازیابی مبهم fail-closed است و دادهٔ task/checkpoint حفظ می‌شود.
-- CI دقیق SHA `1528b86cdc0c0f70a17be2434e374ec7ede2c61c` موفق شد: ۱۱ تست focused، ۲۱۳۵ تست کامل passed، ۲ skipped، ۵۱ deselected؛ Windows Storage، Browser E2E، dependency audit، lexical retrieval benchmark و fail-closed claim-to-test coverage benchmark همگی موفق شدند. اجرای واقعی Codex/Ollama روی Runner مقصد و پذیرش عملیاتی بلندمدت هنوز pending است.
-- مسیریابی Ollama و OpenAI-compatible، هویت مدل، سقف خروجی و provider سفارشی Codex `ollama-local` در follow-upهای PR حفظ/بازیابی شده‌اند؛ diagnostic واقعی Codex/Ollama روی Windows Runner هنوز باید تأیید شود.
+- این snapshot مربوط به پیش از ادغام PR #719 است و شواهد قدیمی آن فقط برای همان SHA معتبر است؛ وضعیت جدید و شواهد اجرای واقعی Codex/Ollama در بخش جاری بالا و در PR #722 ثبت شده‌اند.
+- مسیریابی Ollama و OpenAI-compatible، هویت مدل، سقف خروجی و provider سفارشی Codex `ollama-local` در PR #719 ادغام شده‌اند؛ اجرای واقعی و تخصیص تطبیقی Codex/Ollama در PR #722 روی Windows Runner نیز تأیید شده است.
 
 
 > تاریخ بازبینی: 2026-11-12. وضعیت جاری در ابتدای سند ثبت شده است؛ یادداشت‌های پایین‌تر snapshotهای تاریخی هستند.
@@ -441,7 +441,7 @@
 - حداقل ۵۱۲ توکن فقط مرز اعتبار metadata/runtime در پیاده‌سازی است، نه حداقل مخصوص Codex. اگر سخت‌افزار حتی این پنجرهٔ پایه را تأمین نکند، اجرا با خطای دقیق منابع متوقف می‌شود.
 - Python selector، API تنظیمات، readiness scripts، provisioning، PowerShell preflight، Codex model catalog، رابط کاربری و راهنمای عملیات هم‌راستا شده‌اند. درخواست‌های /api/show برای metadata با verbose=false انجام می‌شوند تا پاسخ‌های حجیم غیرضروری دریافت نشوند.
 - ADR-020 قرارداد و فرمول را ثبت می‌کند. تست‌های رگرسیون برای ظرفیت سخت‌افزاری ۱۰٬۰۰۰، سقف مدل ۸٬۱۹۲، clamp درخواست بزرگ‌تر و پذیرش مدل زیر ۶۴k اضافه/به‌روزرسانی شده‌اند.
-- وضعیت فعلی: **پیاده‌سازی و مستندسازی در شاخهٔ PR #722؛ CI دقیق head جدید هنوز در انتظار است.** اجرای زندهٔ Codex روی Runner ویندوز، smoke ابزار واقعی و بررسی پایداری میزبان هدف هنوز انجام/تأیید نشده‌اند. PR ادغام نشده و هیچ ادغام خودکاری انجام نمی‌شود.
+- وضعیت فعلی: **پیاده‌سازی، مستندات، exact-head CI و diagnostic واقعی Codex/Ollama روی Windows Runner موفق‌اند**؛ PR #722 همچنان Draft/open و ادغام‌نشده است. soak بلندمدت، crash/restart عملیاتی و staging restore/rollback همچنان گیت‌های مستقل پروژه‌اند.
 
 ### 2026-11-12 — اصلاح وضعیت قرارداد Context تطبیقی Codex و نتیجهٔ CI
 
