@@ -99,20 +99,30 @@ function Get-AutomaticContext {
         throw "The shared Ollama context-selection module is missing: $helperPath"
     }
     $selectionPath = Join-Path $env:TEMP ("ollama-context-selection-" + [guid]::NewGuid().ToString("N") + ".json")
+    $selectionOutputPath = "$selectionPath.stdout"
+    $selectionErrorPath = "$selectionPath.stderr"
     try {
         [System.IO.File]::WriteAllText($selectionPath, $selectionInput, [System.Text.UTF8Encoding]::new($false))
-        $selectionOutput = & python $helperPath --input-file $selectionPath
-        if ($LASTEXITCODE -ne 0) {
-            throw "Fail-closed Ollama context selection failed; see the metadata/host diagnostic above."
+        $pythonPath = (Get-Command python.exe -ErrorAction Stop).Source
+        $argumentList = '"' + $helperPath + '" --input-file "' + $selectionPath + '"'
+        $selectionProcess = Start-Process -FilePath $pythonPath -ArgumentList $argumentList -NoNewWindow -PassThru -Wait -RedirectStandardOutput $selectionOutputPath -RedirectStandardError $selectionErrorPath
+        if ($selectionProcess.ExitCode -ne 0) {
+            $selectionError = if (Test-Path -LiteralPath $selectionErrorPath) {
+                [System.IO.File]::ReadAllText($selectionErrorPath, [System.Text.Encoding]::UTF8)
+            } else { "" }
+            throw "Fail-closed Ollama context selection failed: $selectionError"
         }
         try {
-            $selection = ($selectionOutput -join [Environment]::NewLine) | ConvertFrom-Json -ErrorAction Stop
+            $selectionJson = [System.IO.File]::ReadAllText($selectionOutputPath, [System.Text.Encoding]::UTF8)
+            $selection = $selectionJson | ConvertFrom-Json -ErrorAction Stop
         } catch {
-            throw "The Ollama context-selection module returned invalid JSON."
+            throw "The Ollama context-selection module returned invalid JSON. $($_.Exception.Message)"
         }
     } finally {
-        if (Test-Path -LiteralPath $selectionPath) {
-            Remove-Item -LiteralPath $selectionPath -Force -ErrorAction SilentlyContinue
+        foreach ($temporaryPath in @($selectionPath, $selectionOutputPath, $selectionErrorPath)) {
+            if (Test-Path -LiteralPath $temporaryPath) {
+                Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
+            }
         }
     }
     if ($null -eq $selection.selected_context_tokens -or [int64]$selection.selected_context_tokens -lt $minimumContextTokens) {
