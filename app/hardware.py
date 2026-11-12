@@ -10,6 +10,8 @@ try:
 except ImportError:
     psutil = None
 
+IS_WINDOWS = os.name == "nt"
+
 def detect_hardware() -> dict[str, Any]:
     logical_cpus = os.cpu_count() or 1
     if psutil:
@@ -139,7 +141,7 @@ def _detect_rocm_gpus() -> list[dict[str, Any]]:
 
 def _detect_windows_gpus() -> list[dict[str, Any]]:
     """Use Windows WMI plus generic GPU performance counters (works across vendors)."""
-    if os.name != "nt":
+    if not IS_WINDOWS:
         return []
     script = r"""
 $ErrorActionPreference = 'SilentlyContinue'
@@ -292,7 +294,7 @@ def detect_gpu() -> dict[str, Any]:
     """Discover all GPUs across vendors; missing telemetry remains unknown, never zero."""
     detectors = (
         [_detect_nvidia_gpus, _detect_rocm_gpus, _detect_windows_gpus, _detect_vulkan_gpus]
-        if os.name == "nt"
+        if IS_WINDOWS
         else [_detect_nvidia_gpus, _detect_rocm_gpus, _detect_vulkan_gpus]
     )
     devices: list[dict[str, Any]] = []
