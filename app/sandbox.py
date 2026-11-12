@@ -261,7 +261,6 @@ def run_workspace_tests(
         "--env=PYTEST_DISABLE_PLUGIN_AUTOLOAD=1",
         "--env=PYTEST_ADDOPTS=",
         f"--env=AUTONOMOUS_ENGINEERING_TEST_BASE_SHA={base_sha}",
-        "--env=AUTONOMOUS_ENGINEERING_TEST_MODE=1",
         "--mount", f"type=bind,source={str(workspace)},target=/workspace,readonly",
         image, "python", "-I", "-c", runner,
     ]
