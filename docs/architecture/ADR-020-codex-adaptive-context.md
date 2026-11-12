@@ -12,7 +12,7 @@ The model's advertised context limit and the host's memory-derived context capac
 
 ## Decision
 
-Codex must adapt its configured context to the actual safe capacity. There is no Codex-specific 64k minimum.
+Codex must adapt its configured context to the actual safe capacity. The application does not enforce a fixed 64k floor. **Compatibility qualification:** the official [Ollama Codex integration guide](https://docs.ollama.com/integrations/codex) recommends a context window of at least 64k tokens. Values below 64k are therefore below the upstream-documented recommendation and are best-effort compatibility, not an equivalent recommended configuration. They remain selectable only when the selected model and host support the value and the real Codex tool-call smoke test succeeds.
 
 Let:
 
