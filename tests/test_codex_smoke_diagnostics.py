@@ -388,6 +388,8 @@ def test_target_diagnostic_matches_recorded_hardware_and_uses_automatic_context(
     assert "Get-Command npm.cmd" in diagnostic
     assert "Get-Command codex.cmd" in diagnostic
     assert "Name='ollama.exe'" in diagnostic
+    assert "Get-CimInstance Win32_UserProfile" in diagnostic
+    assert "AppData\\Local\\Programs\\Ollama\\ollama.exe" in diagnostic
     assert "C:\\Users\\Admin\\AppData\\Local\\Programs\\Ollama\\ollama.exe" not in diagnostic
 
     assert "Get-Command node.exe" in autonomous
@@ -397,6 +399,8 @@ def test_target_diagnostic_matches_recorded_hardware_and_uses_automatic_context(
     assert "Get-Command node -ErrorAction" not in autonomous
     assert "Get-Command npm.cmd" in autonomous
     assert "Get-Command codex.cmd" in autonomous
+    assert "Get-CimInstance Win32_UserProfile" in autonomous
+    assert "AppData\\Local\\Programs\\Ollama\\ollama.exe" in autonomous
     assert "C:\\Users\\Admin\\AppData\\Local\\Programs\\Ollama\\ollama.exe" not in autonomous
     assert "Get-Command npm.cmd" in runner_check
     assert "Get-Command codex.cmd" in runner_check
@@ -442,6 +446,8 @@ def test_windows_provisioning_and_app_readiness_use_consistent_cli_resolution():
 
     assert "Get-Command ollama.exe" in provision
     assert "Get-CimInstance Win32_Process -Filter \"Name='ollama.exe'\"" in provision
+    assert "Get-CimInstance Win32_UserProfile" in provision
+    assert "AppData\\Local\\Programs\\Ollama\\ollama.exe" in provision
     assert "Get-Command node.exe" in provision
     assert "Get-Command npm.cmd" in provision
     assert "Get-Command git.exe" in provision
