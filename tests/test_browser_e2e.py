@@ -3479,24 +3479,30 @@ def test_autonomous_engineering_model_picker_requires_explicit_selection_and_sav
         pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     state = {"model": "", "posted": None}
+    context_variants = {
+        "gpt-oss:20b-codex-ctx65536",
+        "gpt-oss:20b-codex-64k",
+    }
     installed_models = [
         "gpt-oss:20b",
         "qwen3:14b",
         "gpt-oss:20b-codex-ctx65536",
+        "gpt-oss:20b-codex-64k",
     ]
     selectable_models = ["gpt-oss:20b", "qwen3:14b"]
 
     def status_payload():
         selected = state["model"]
         selected_ready = bool(selected)
+        selected_is_context_variant = selected in context_variants
         return {
             "ready": False,
             "can_dispatch": False,
             "checks": {
                 "ollama_online": True,
                 "model_installed": selected_ready,
-                "model_selectable": selected_ready and not selected.endswith("-codex-ctx65536"),
-                "model_is_codex_context_variant": selected.endswith("-codex-ctx65536"),
+                "model_selectable": selected_ready and selected in selectable_models,
+                "model_is_codex_context_variant": selected_is_context_variant,
                 "model_context_metadata_available": selected_ready,
                 "model_context_supported": selected_ready,
                 "model_supports_tools": selected_ready,
@@ -3556,22 +3562,24 @@ def test_autonomous_engineering_model_picker_requires_explicit_selection_and_sav
         )
         assert response is not None and response.status == 200
         page.wait_for_function(
-            "() => document.querySelector('#ollama-model')?.options.length === 4",
+            "() => document.querySelector('#ollama-model')?.options.length === 5",
             timeout=10000,
         )
         model_picker = page.locator("#ollama-model")
         assert model_picker.input_value() == ""
         assert model_picker.locator("option[value='gpt-oss:20b']").count() == 1
         assert model_picker.locator("option[value='qwen3:14b']").count() == 1
-        context_variant = model_picker.locator("option[value='gpt-oss:20b-codex-ctx65536']")
-        assert context_variant.count() == 1
-        context_state = context_variant.evaluate(
-            "option => ({disabled: option.disabled, matchesDisabled: option.matches(':disabled'), html: option.outerHTML})"
-        )
-        assert context_state["disabled"] and context_state["matchesDisabled"], (
-            "Context option was not natively disabled: " + context_state["html"]
-        )
-        assert "نسخهٔ داخلی Context" in context_variant.inner_text()
+
+        for variant in sorted(context_variants):
+            option = model_picker.locator(f"option[value='{variant}']")
+            assert option.count() == 1
+            state_details = option.evaluate(
+                "option => ({disabled: option.disabled, matchesDisabled: option.matches(':disabled'), html: option.outerHTML})"
+            )
+            assert state_details["disabled"] and state_details["matchesDisabled"], (
+                "Internal context option was not natively disabled: " + state_details["html"]
+            )
+            assert "نسخهٔ داخلی Context" in option.inner_text()
 
         model_picker.select_option("gpt-oss:20b")
         page.locator("#save-agent-settings").click()
@@ -3587,18 +3595,19 @@ def test_autonomous_engineering_model_picker_requires_explicit_selection_and_sav
         }
         assert model_picker.input_value() == "gpt-oss:20b"
 
-        # A previously saved internal context variant must not be duplicated or selected.
-        state["model"] = "gpt-oss:20b-codex-ctx65536"
-        page.reload(wait_until="domcontentloaded")
-        page.wait_for_function(
-            "() => document.querySelector('#ollama-model')?.options.length === 4",
-            timeout=10000,
-        )
-        assert model_picker.input_value() == ""
-        assert model_picker.locator("option[value='gpt-oss:20b-codex-ctx65536']").count() == 1
-        saved_context_variant = model_picker.locator("option[value='gpt-oss:20b-codex-ctx65536']")
-        assert saved_context_variant.evaluate("option => option.disabled && option.matches(':disabled')")
-        assert "مدل ذخیره‌شده نسخهٔ داخلی Context" in model_picker.locator("option").first.inner_text()
+        # Both current and legacy saved variants remain visible but disabled; neither can be selected.
+        for saved_variant in sorted(context_variants):
+            state["model"] = saved_variant
+            page.reload(wait_until="domcontentloaded")
+            page.wait_for_function(
+                "() => document.querySelector('#ollama-model')?.options.length === 5",
+                timeout=10000,
+            )
+            assert model_picker.input_value() == ""
+            saved_option = model_picker.locator(f"option[value='{saved_variant}']")
+            assert saved_option.count() == 1
+            assert saved_option.evaluate("option => option.disabled && option.matches(':disabled')")
+            assert "مدل ذخیره‌شده نسخهٔ داخلی Context" in model_picker.locator("option").first.inner_text()
 
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
