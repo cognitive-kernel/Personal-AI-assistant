@@ -893,7 +893,7 @@ def test_codex_arguments_pin_ollama_and_selected_windows_sandbox(monkeypatch):
     arguments = progress.codex_arguments("gpt-oss:20b", "codex-report.md")
 
     assert arguments[:5] == [
-        "exec", "-c", 'model_provider="ollama"',
+        "exec", "-c", 'model_provider="ollama-local"',
         "-c", 'windows.sandbox="elevated"',
     ]
     overrides = [
@@ -902,7 +902,7 @@ def test_codex_arguments_pin_ollama_and_selected_windows_sandbox(monkeypatch):
     assert "sandbox_workspace_write.exclude_slash_tmp=true" in overrides
     assert any(value.startswith("model_catalog_json=") for value in overrides)
     assert arguments[arguments.index("--oss"):arguments.index("--oss") + 3] == [
-        "--oss", "--local-provider", "ollama",
+        "--oss", "model_provider=ollama-local",
     ]
     assert arguments[arguments.index("--sandbox"):arguments.index("--sandbox") + 2] == [
         "--sandbox", "workspace-write",

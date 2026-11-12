@@ -2184,21 +2184,43 @@ def test_browser_settings_form_persists_values_and_surfaces_api_failure():
         # Manual model names must remain valid even when they are not in the
         # local Ollama model list. The real API persists into CI's disposable DB.
         page.locator("#chat-model").fill("browser-e2e-manual-model")
+        page.locator("#learning-provider").select_option("openai_compatible")
+        page.locator("#learning-base-url").fill("http://127.0.0.1:1234/v1")
+        page.locator("#learning-api-key-env").fill("")
+        page.locator("#learning-model").fill("local-learning-model")
         page.locator("#learning-task-budget").fill("123")
         page.locator("#programming-source-limit").fill("20000")
         page.locator("#settings-form button[type='submit']").click()
         page.wait_for_function(
             """() => document.querySelector('#settings-output')?.textContent
-                .includes('تنظیمات مدل‌ها و منابع ذخیره شد.')""",
+                .includes('تنظیمات به‌صورت دائمی ذخیره شد.')""",
             timeout=10000,
         )
         saved = page.request.get(base_url.rstrip("/") + "/api/settings")
         assert saved.status == 200
         saved_settings = saved.json()
         assert saved_settings["chat_ollama_model"] == "browser-e2e-manual-model"
+        assert saved_settings["learning_llm_provider"] == "openai_compatible"
+        assert saved_settings["learning_llm_base_url"] == "http://127.0.0.1:1234/v1"
+        assert saved_settings["learning_ollama_model"] == "local-learning-model"
         assert saved_settings["learning_task_budget_microusd"] == 123
         assert saved_settings["programming_source_max_chars"] == 20000
         assert page.locator("#programming-context").evaluate("node => node.maxLength") == 20000
+
+        # Temporary provider/model changes take effect immediately without
+        # overwriting the permanent model choice in the settings database.
+        page.locator("#settings-temporary").check()
+        page.locator("#learning-model").fill("temporary-learning-model")
+        page.locator("#settings-form button[type='submit']").click()
+        page.wait_for_function(
+            """() => document.querySelector('#settings-output')?.textContent
+                .includes('تنظیمات موقت تا راه‌اندازی مجدد اعمال شد.')""",
+            timeout=10000,
+        )
+        temporary = page.request.get(base_url.rstrip("/") + "/api/settings")
+        assert temporary.status == 200
+        assert temporary.json()["learning_ollama_model"] == "temporary-learning-model"
+        assert temporary.json()["learning_llm_provider"] == "openai_compatible"
 
         def fail_settings_patch(route):
             if route.request.method == "PATCH":
