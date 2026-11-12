@@ -428,9 +428,9 @@ def test_windows_provisioning_and_app_readiness_use_consistent_cli_resolution():
     assert "Get-Command git.exe" in provision
     assert "Get-Command python.exe" in provision
     assert "Get-Command gh.exe" in provision
-    assert "Node.js 26.13.0 is required" in provision
-    assert "npm 11.20.0 is required" in provision
-    assert "Ollama 0.40.16 is required" in provision
+    assert "Node.js 26.13.0 or newer is required" in provision
+    assert "npm 11.20.0 or newer is required" in provision
+    assert "Ollama 0.40.16 or newer is required" in provision
     assert "Get-Command ollama -ErrorAction" not in provision
     assert "Get-Command npm -ErrorAction" not in provision
 
