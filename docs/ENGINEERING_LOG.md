@@ -1,3 +1,11 @@
+## 2026-11-12 — Windows Codex CLI toolchain compatibility
+
+- The target environment uses Node.js 26.13.0 with npm 11.20.0 and Codex CLI 0.167.0. Official Node release metadata confirms Node 26.13.0 is LTS and bundles npm 11.20.0.
+- Added a Windows GitHub Actions matrix that verifies Node/npm exactly and installs/runs both the target Codex CLI 0.167.0 and current 0.167.2 patch line without credentials. This validates the command/runtime boundary separately from the target-host Ollama service.
+- The local Windows/Ollama runner diagnostic remains a separate mandatory target-host merge gate under the master engineering prompt.
+
+---
+
 ## 2026-11-12 — Exact Python runtime compatibility for Autonomous Engineering
 
 - The owner environment includes Python 3.11.9 and 3.14.6, while the project declares `requires-python >=3.11`; the previous GitHub test job exercised only the moving Python 3.11 line.
