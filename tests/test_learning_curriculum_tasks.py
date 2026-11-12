@@ -663,12 +663,15 @@ def test_release_watch_detects_changed_release_sources_and_enqueues_once(learnin
         model="gpt-oss:20b",
         model_selection={"selected_model": "gpt-oss:20b"},
     )
-    baseline = [_source(1), _source(2), _source(3)]
+    baseline = [_source(index) for index in range(1, 8)]
     current_docs = baseline
-    monkeypatch.setattr(
-        web_sources, "discover_sources",
-        lambda *_args, **_kwargs: current_docs,
-    )
+    requested_limits = []
+
+    def discover(_query, *, limit):
+        requested_limits.append(limit)
+        return current_docs[:limit]
+
+    monkeypatch.setattr(web_sources, "discover_sources", discover)
 
     first_poll = learning_curriculum_tasks.maintain_release_watch(limit=3)
     assert first_poll == {"checked": 1, "queued": 0, "unchanged": 1, "errors": 0}
@@ -679,12 +682,11 @@ def test_release_watch_detects_changed_release_sources_and_enqueues_once(learnin
             (path_id,),
         )
     current_docs = [
-        _source(1),
-        _source(2),
+        *[_source(index) for index in range(1, 7)],
         web_sources.SourceDocument(
-            url="https://python.example.test/releases/3",
-            title="Python 3 release notes",
-            text="New release notes and compatibility changes. " * 30,
+            url="https://python.example.test/releases/7",
+            title="Python 3.15 release notes",
+            text="New release notes and compatibility changes beyond the first five results. " * 30,
         ),
     ]
     queued = []
@@ -697,6 +699,7 @@ def test_release_watch_detects_changed_release_sources_and_enqueues_once(learnin
     result = learning_curriculum_tasks.maintain_release_watch(limit=3)
 
     assert result == {"checked": 1, "queued": 1, "unchanged": 0, "errors": 0}
+    assert requested_limits and set(requested_limits) == {30}
     assert queued and queued[0][0] == "Python"
     assert queued[0][1]["dedupe_key"].startswith(f"learning-release-watch:{path_id}:")
     assert queued[0][1]["refresh_of_path_id"] == path_id

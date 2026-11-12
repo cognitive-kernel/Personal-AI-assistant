@@ -894,7 +894,7 @@ def maintain_release_watch(*, limit: int = 3) -> dict[str, int]:
             discovered: dict[str, dict[str, str]] = {}
             for query in _release_watch_queries(topic):
                 try:
-                    documents = web_sources.discover_sources(query, limit=5)
+                    documents = web_sources.discover_sources(query, limit=30)
                 except web_sources.SourceFetchError:
                     continue
                 for document in documents:
