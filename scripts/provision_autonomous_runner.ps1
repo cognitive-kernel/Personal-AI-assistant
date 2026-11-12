@@ -56,13 +56,13 @@ $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 8 -
 if (@($tags.models | ForEach-Object { $_.name }) -notcontains $Model) {
     throw "Saved model $Model is not installed. Install it with ollama pull $Model, then save it in the dashboard."
 }
-$modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -ContentType "application/json" -Body (@{ model = $Model; verbose = $true } | ConvertTo-Json -Compress) -TimeoutSec 15 -MaximumRedirection 0
+$modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -ContentType "application/json" -Body (@{ model = $Model; verbose = $false } | ConvertTo-Json -Compress) -TimeoutSec 15 -MaximumRedirection 0
 $architecture = [string]$modelInfo.details.family
 $contextKey = $architecture + ".context_length"
 $rawContext = $modelInfo.model_info.PSObject.Properties[$contextKey]
 $parsedContext = 0L
-if ([string]::IsNullOrWhiteSpace($architecture) -or -not $rawContext -or -not [int64]::TryParse([string]$rawContext.Value, [ref]$parsedContext) -or $parsedContext -lt 64000) {
-    throw "Saved model $Model must expose at least 64000 context tokens for Codex."
+if ([string]::IsNullOrWhiteSpace($architecture) -or -not $rawContext -or -not [int64]::TryParse([string]$rawContext.Value, [ref]$parsedContext) -or $parsedContext -lt 512) {
+    throw "Saved model $Model must expose at least 512 valid context tokens for Codex."
 }
 if (@($modelInfo.capabilities | ForEach-Object { [string]$_ }) -notcontains "tools") {
     throw "Saved model $Model does not advertise the required Ollama tools capability."
