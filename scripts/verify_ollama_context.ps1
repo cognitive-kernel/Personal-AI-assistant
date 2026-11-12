@@ -92,8 +92,14 @@ function Get-AutomaticContext {
         $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
         [IO.File]::WriteAllText($inputPath, $selectionInput, $utf8NoBom)
         $errorPath = "$inputPath.stderr"
-        $selectionOutput = & python $helperPath --input-file $inputPath 2> $errorPath
-        $helperExitCode = $LASTEXITCODE
+        $previousErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = "Continue"
+            $selectionOutput = & python $helperPath --input-file $inputPath 2> $errorPath
+            $helperExitCode = $LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
         if ($helperExitCode -ne 0) {
             $helperError = if (Test-Path -LiteralPath $errorPath) { Get-Content -LiteralPath $errorPath -Raw } else { "" }
             throw "Fail-closed Ollama context selection failed with exit code $helperExitCode. $helperError"
