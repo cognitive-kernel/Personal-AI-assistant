@@ -527,6 +527,7 @@ def test_workspace_tests_run_only_in_pinned_no_network_container(tmp_path, monke
     assert "--pids-limit=128" in args
     assert "--user=65534:65534" in args
     assert "--env=AUTONOMOUS_ENGINEERING_TEST_BASE_SHA=" + "a" * 40 in args
+    assert not any(arg.startswith("--env=AUTONOMOUS_ENGINEERING_TEST_MODE=") for arg in args)
     assert "type=bind,source=" + str(workspace.resolve()) + ",target=/workspace,readonly" in args
     assert args[-5] == image
     assert args[-4:-1] == ["python", "-I", "-c"]
