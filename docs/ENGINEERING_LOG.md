@@ -600,3 +600,11 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Exact-head CI on the corrected architecture head has not yet been rerun. Prior heads demonstrated passing Windows storage/recovery, Browser E2E and dependency audit, but Linux failed on stale static assertions that have been corrected. No green result is inferred from a prior SHA.
 - The live Codex/Ollama run remains a separate runtime blocker: the previous target-host run failed because Codex CLI rejected a reserved built-in `model_providers.ollama` override. It must be fixed and tested before claiming live Autonomous Engineering operation.
 - Target-host crash/restart, soak, staging restore/rollback, and owner acceptance remain external acceptance gates. No automatic deployment, destructive state cleanup, or user-data migration is introduced.
+
+
+## 2026-11-12 — Remove the target-runner process-management dependency
+
+- **Observed environment constraint:** the Windows self-hosted Runner's system Python does not contain `psutil`, and outbound package installation is not reliable. Process ownership/recovery must not depend on installing a third-party package at runtime.
+- **Implementation:** checkpoint watcher identity now uses Windows CIM process metadata and native `TerminateProcess`/wait APIs; Linux uses `/proc` and standard signals. Runner process discovery has a PowerShell/`/proc` fallback. `psutil` is now an optional `hardware` extra for telemetry only.
+- **Target-host evidence:** [run #43161121276](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43161121276) passed all six architecture acceptance tests: cross-process execution lock, checkpoint-store lock, Python/PowerShell mutex interoperability and abandoned-owner recovery, exact watcher identity/PID-reuse protection, pending-task owner reclaim without task-byte mutation, and interrupted pending-state cleanup recovery. The later runtime-only context step was expected to be unrelated to this architecture branch and is now gated off for this branch.
+- **Acceptance:** retain the Windows target-host acceptance harness and hosted Windows/Linux test suites; do not add a runtime package-install step.
