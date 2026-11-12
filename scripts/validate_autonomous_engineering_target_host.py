@@ -161,6 +161,8 @@ class TargetRunnerArchitectureAcceptance(unittest.TestCase):
                 run_id,
                 "--task",
                 "1",
+                "--interval",
+                "20",
                 "--base-sha",
                 base_sha,
             ]
