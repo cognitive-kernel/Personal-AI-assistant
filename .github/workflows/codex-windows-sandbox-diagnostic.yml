@@ -328,7 +328,7 @@ jobs:
           $ollamaVersionOutput = & $ollamaPath --version 2>&1
           $ollamaVersionExitCode = $LASTEXITCODE
           $ollamaVersion = (@($ollamaVersionOutput) -join " ").Trim()
-          if ($ollamaVersionExitCode -ne 0 -or $ollamaVersion -notmatch '(?i)0\\.40\\.16') {
+          if ($ollamaVersionExitCode -ne 0 -or $ollamaVersion -notmatch '(?i)0\.40\.16') {
             throw "Ollama version mismatch: expected 0.40.16, found '$ollamaVersion'."
           }
           Write-Host "PowerShell version: $($PSVersionTable.PSVersion.ToString())"
