@@ -51,7 +51,7 @@
 - پیام متنی نهایی مدل شرط قبولی smoke تشخیصی نیست؛ turn باید کامل و بدون خطا باشد و شواهد واقعی اجرای فرمان معتبر باشند. الزام marker نهایی task در چرخهٔ مهندسی خودکار و کنترل PR/merge مالک دست‌نخورده باقی می‌ماند.
   - حذف متن خام فرمان، خروجی و پیام عامل از evidence JSON؛ ثبت فقط شواهد محدود و غیرمحتوایی.
   - افزودن regression برای چند فرمان، completion فاقد متن فرمان، تطبیق ID، شکست اجرا، redaction و تثبیت Context.
-- **اعتبارسنجی PR #702:** اجرای exact-head CI برای آخرین SHA و diagnostic واقعی self-hosted Windows باید پس از آخرین تغییرات تکمیل شوند. نتایج چهار Check روی SHA قدیمی‌تر `42fdec3909ba37b68a3e3a1ed47bf9776421ff9c` به‌عنوان تأیید این اصلاحات محسوب نمی‌شوند.
+- **اعتبارسنجی تاریخی PR #702:** این شاخهٔ ۶۴k به PR #722 منتقل/جایگزین شد و هرگز به‌عنوان قرارداد نهایی ادغام نشد. نتایج Checkهای SHA قدیمی آن مرجع پذیرش نیستند؛ اعتبارسنجی نهایی روی head جاری PR #722 در بخش وضعیت جاری ثبت می‌شود.
 - **گیت‌های باز:** آزمون Context خودکار و fingerprint سخت‌افزار روی head فعلی؛ soak و مصرف حافظه روی میزبان مقصد؛ اجرای کامل autonomous cycle؛ crash/restart recovery؛ staging restore/rollback؛ تأیید مالک. Issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290) همچنان tracker پذیرش کل پروژه است و Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) به بازبینی امنیتی مستقل نیاز دارد.
 - سیاست ادغام: PR #702 بسته و با PR #722 جایگزین شده است. PR #722 تا سبزشدن Workflowهای لازم روی SHA نهایی، موفقیت diagnostic واقعی Windows و تأیید مالک ادغام نمی‌شود. توسعهٔ GitHub-side بدون انتظار برای تست محلی ادامه دارد؛ هیچ merge خودکار، bypass، اجرای unsandboxed یا تغییر سطح دسترسی Runner مجاز نیست.
 
