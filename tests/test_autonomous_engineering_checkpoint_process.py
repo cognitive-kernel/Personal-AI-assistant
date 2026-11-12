@@ -115,7 +115,7 @@ def test_matching_command_with_mismatched_creation_time_is_ambiguous(
         process_control, "_read_process_snapshot",
         lambda pid: _snapshot(created=9999.0, command=_command(script)),
     )
-    monkeypatch.setattr(process_control, "_terminate_process", lambda pid, timeout: terminated.append(pid))
+    monkeypatch.setattr(process_control, "_terminate_process", lambda pid, timeout, expected_started_at: terminated.append(pid))
 
     with pytest.raises(RuntimeError, match="ownership is ambiguous"):
         process_control.stop_owned_watcher(_metadata(), script_path=script)
@@ -130,7 +130,7 @@ def test_live_pid_with_mismatched_command_blocks_recovery(monkeypatch: pytest.Mo
         process_control, "_read_process_snapshot",
         lambda pid: _snapshot(command=["python.exe", "different.py", "watch"]),
     )
-    monkeypatch.setattr(process_control, "_terminate_process", lambda pid, timeout: terminated.append(pid))
+    monkeypatch.setattr(process_control, "_terminate_process", lambda pid, timeout, expected_started_at: terminated.append(pid))
 
     with pytest.raises(RuntimeError, match="command line does not match"):
         process_control.stop_owned_watcher(_metadata(), script_path=script)
@@ -155,7 +155,7 @@ def test_missing_watcher_process_is_already_stopped(monkeypatch: pytest.MonkeyPa
     script = tmp_path / "autonomous_engineering_checkpoint.py"
     terminated: list[int] = []
     monkeypatch.setattr(process_control, "_read_process_snapshot", lambda pid: None)
-    monkeypatch.setattr(process_control, "_terminate_process", lambda pid, timeout: terminated.append(pid))
+    monkeypatch.setattr(process_control, "_terminate_process", lambda pid, timeout, expected_started_at: terminated.append(pid))
 
     process_control.stop_owned_watcher(_metadata(), script_path=script)
 
