@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from app.ollama_context import OllamaModelMetadataError, select_context_window, supports_tool_calling
+from app.ollama_context import MAX_CODEX_CONTEXT_TOKENS, OllamaModelMetadataError, select_context_window, supports_tool_calling
 
 ROOT = Path(__file__).resolve().parents[1]
 HELPER = ROOT / "app" / "ollama_context.py"
@@ -80,6 +80,13 @@ def test_context_selection_adapts_to_model_limit_below_64k():
     assert result["maximum_context_tokens"] == 8192
     assert result["effective_maximum_context_tokens"] == 8192
     assert result["selected_context_tokens"] == 8192
+
+
+def test_codex_catalog_ceiling_matches_signed_64_bit_model_metadata_schema():
+    result = select_context_window(**payload())
+
+    assert MAX_CODEX_CONTEXT_TOKENS == (1 << 63) - 1
+    assert result["codex_maximum_context_tokens"] == (1 << 63) - 1
 
 
 def test_context_selection_clamps_requested_value_to_both_hard_limits():
