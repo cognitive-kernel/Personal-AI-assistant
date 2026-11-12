@@ -868,6 +868,7 @@ def test_codex_arguments_pin_ollama_and_selected_windows_sandbox(monkeypatch):
     from scripts import autonomous_engineering_progress as progress
 
     monkeypatch.setenv("CODEX_WINDOWS_SANDBOX_BACKEND", "elevated")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "65536")
     arguments = progress.codex_arguments("gpt-oss:20b", "codex-report.md")
 
     assert arguments[:5] == [
@@ -885,9 +886,9 @@ def test_codex_arguments_pin_ollama_and_selected_windows_sandbox(monkeypatch):
     assert arguments[arguments.index("--sandbox"):arguments.index("--sandbox") + 2] == [
         "--sandbox", "workspace-write",
     ]
-    assert "model_providers.ollama.stream_idle_timeout_ms=900000" in overrides
-    assert "model_providers.ollama.stream_max_retries=10" in overrides
-    assert "model_providers.ollama.request_max_retries=4" in overrides
+    # Ollama is a built-in provider; redefining its reserved namespace makes
+    # Codex reject config.toml before it can emit a JSONL event.
+    assert not any(value.startswith("model_providers.ollama.") for value in overrides)
     assert arguments[arguments.index("--model") + 1] == "gpt-oss:20b"
 
 
