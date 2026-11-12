@@ -1,22 +1,21 @@
-## 2026-11-12 — Exact-head acceptance update after Windows and Codex context audit
+## 2026-11-12 — Exact-head acceptance update after target-hardware review
 
-Latest implementation/test SHA: `33d0974d3ddf1de8737890bdb75a0f43a71765ba`. This ledger update is a documentation-only follow-up; the new documentation-inclusive PR head must rerun the required CI matrix.
+Latest code/test commit before documentation synchronization: `36eccfe9bf0fbdff9fde0642cd460e2b677cc757`. README, regression test, and engineering log were then updated to correct the Intel UHD 730 AdapterRAM description and add a target-profile capacity calculation; the resulting final PR head must run the full exact-head CI matrix.
 
-GitHub-hosted checks passed on the implementation/test SHA:
-- Tests [#43254413031](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43254413031): 2,169 passed, 2 skipped, 51 deselected; focused Codex/Ollama tests, checkpoint ownership/concurrency, generated artifacts, Markdown links, import-cycle check, and both benchmarks passed.
-- Windows Storage regressions in the same tests run: PowerShell 5.1 bridge, checkpoint watcher start/stop/recovery, ownership fault injection, repository lock, PowerShell parsing, SQLite migration/restore/staging cleanup — passed.
-- Browser/dashboard E2E [#43254412736](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43254412736) — passed.
-- Dependency audit [#43254413035](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43254413035) — passed.
-- Isolated Docker full suite and real sandbox integration [#43254412846](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43254412846) — passed.
-- Deterministic retrieval benchmark: Recall@5 1.00 and MRR 1.00 over 16 synthetic queries; claim-to-test benchmark 10/10, zero false accepts/rejects. These do not substitute for semantic or human evaluation.
+Previously verified GitHub-hosted checks on `57a5e70f19cf3328eb6fc075e3525e65c0cae18a`:
+- Tests: **2,169 passed, 2 skipped, 51 deselected**.
+- Windows Storage regressions: passed.
+- Browser/dashboard E2E: passed.
+- Dependency audit: passed.
+- Isolated Docker full suite and real sandbox integration: passed.
 
-The only outstanding check on this SHA is the self-hosted Windows/Ollama target diagnostic [#43254400105](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43254400105), job #131308953477. It remains pending and has not reported runner assignment or a result. No actual target-hardware Ollama/Codex smoke success is claimed.
+The subsequent target-profile regression models the recorded gpt-oss:20b architecture (24 blocks, 8 KV heads, K/V dimensions 64), 13,793,441,566-byte weights, and 22.42 GiB available physical memory. With a 4 GiB system reserve and conservative FP16 KV accounting, the calculated maximum is 93,699 tokens; this shows that the upstream-recommended 64k context is feasible for that recorded memory snapshot, but does not claim that 131,072 tokens or a live Codex session will fit.
 
-The production PowerShell preflight uses Windows PowerShell 5.1, explicit python.exe, Start-Process, and UTF-8 files. Codex context_window/max_context_window/model_context_window are pinned to the verified Ollama allocation. The arbitrary 1,048,576-token cap was removed; the safe arithmetic ceiling is floor((2^63 - 1) / 9) to prevent overflow in Codex's default 90% auto-compaction. Current and legacy internal model variants are hidden/rejected and unloaded before fresh RAM measurement.
+The self-hosted Windows/Ollama diagnostic on the preceding head [#43258285063](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43258285063) was still pending without a runner assignment when inspected. It is not a pass and must be checked again on the final PR head. No live Ollama load, actual Codex tool-call smoke, local target-host run, or human adjudication is claimed.
 
-PR #717 is closed as superseded; PR #706 remains separate for general Ollama chat context. PR #707 remains open as a separate durability/ownership gate and its current CI is not green; coordinate/rebase its overlapping workflow/checkpoint changes before any merge. Issue #52 remains open for independent security review. The repository Codex review bot reported its own usage limit reached, so no independent Codex review/security sign-off is claimed.
+PR #707 remains open with overlapping ownership/checkpoint files and failing CI; coordinate/rebase it before merging either branch. Issue #52 remains open for independent security review. The repository Codex review bot reported its usage limit reached, so no independent Codex review or security sign-off is claimed.
 
-Do not infer exact-head success from earlier SHAs. The documentation-only ledger update advances the PR head; the full CI matrix and self-hosted diagnostic must complete on that final head before PR #722 can leave Draft or merge. No local/manual test is claimed.
+Do not infer exact-head success from earlier SHAs. Keep PR #722 Draft until its final-head checks and target-host gates required by the Master Engineering Prompt are satisfied. Continue independent GitHub-side implementation and tests; do not bypass, skip, or weaken gates.
 
 # Project acceptance gates
 
