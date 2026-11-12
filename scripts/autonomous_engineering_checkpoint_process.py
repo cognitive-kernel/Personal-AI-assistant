@@ -41,18 +41,32 @@ if ($createdValue -is [DateTimeOffset]) {
     command_line = [string]$target.CommandLine
 } | ConvertTo-Json -Compress
 """.replace("__PID__", str(pid))
+    system_root = os.environ.get("SystemRoot") or os.environ.get("WINDIR")
+    powershell_path = (
+        Path(system_root) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        if system_root
+        else None
+    )
+    powershell_executable = (
+        str(powershell_path)
+        if powershell_path is not None and powershell_path.is_file()
+        else "powershell.exe"
+    )
     try:
         result = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+            [powershell_executable, "-NoProfile", "-NonInteractive", "-Command", script],
             capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=8,
+            timeout=20,
             check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        raise RuntimeError("Windows process metadata could not be queried with the built-in CIM provider.") from exc
+        raise RuntimeError(
+            "Windows process metadata could not be queried with the built-in CIM provider "
+            f"({type(exc).__name__}: {exc})."
+        ) from exc
     if result.returncode == 3:
         return None
     if result.returncode != 0:
