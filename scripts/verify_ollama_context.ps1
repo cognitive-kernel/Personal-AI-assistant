@@ -91,10 +91,12 @@ function Get-AutomaticContext {
         # explicit UTF-8 file contract so Python receives identical JSON on all shells.
         $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
         [IO.File]::WriteAllText($inputPath, $selectionInput, $utf8NoBom)
-        $selectionOutput = & python $helperPath --input-file $inputPath
+        $errorPath = "$inputPath.stderr"
+        $selectionOutput = & python $helperPath --input-file $inputPath 2> $errorPath
         $helperExitCode = $LASTEXITCODE
         if ($helperExitCode -ne 0) {
-            throw "Fail-closed Ollama context selection failed with exit code $helperExitCode."
+            $helperError = if (Test-Path -LiteralPath $errorPath) { Get-Content -LiteralPath $errorPath -Raw } else { "" }
+            throw "Fail-closed Ollama context selection failed with exit code $helperExitCode. $helperError"
         }
         try {
             $selection = ($selectionOutput -join [Environment]::NewLine) | ConvertFrom-Json -ErrorAction Stop
@@ -102,8 +104,10 @@ function Get-AutomaticContext {
             throw "The Ollama context-selection module returned invalid JSON."
         }
     } finally {
-        if (Test-Path -LiteralPath $inputPath) {
-            Remove-Item -LiteralPath $inputPath -Force -ErrorAction SilentlyContinue
+        foreach ($temporaryPath in @($inputPath, "$inputPath.stderr")) {
+            if (Test-Path -LiteralPath $temporaryPath) {
+                Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
+            }
         }
     }
     if ($null -eq $selection.selected_context_tokens -or [int64]$selection.selected_context_tokens -lt 64000) {
