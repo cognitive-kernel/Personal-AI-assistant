@@ -234,7 +234,7 @@ def test_codex_context_selection_caps_at_catalog_supported_maximum():
     )
 
     assert result["selected_context_tokens"] == 2097152
-    assert result["codex_maximum_context_tokens"] == (1 << 63) - 1
+    assert result["codex_maximum_context_tokens"] == ((1 << 63) - 1) // 9
 
 
 def test_codex_context_selection_uses_model_capacity_below_64k():
