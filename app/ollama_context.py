@@ -48,7 +48,8 @@ def select_context_window(
 
     Missing telemetry or KV-cache dimensions are errors, never low-context fallbacks.
     The estimate reserves 4 GiB for Windows/other processes and at least 0.5 GiB
-    or 10% of model weights for runtime overhead.
+    or 10% of model weights for runtime overhead. If /api/ps confirms that the
+    base weights are already resident, do not subtract their size a second time.
     """
     maximum = maximum_context_tokens(model_info, architecture)
     if maximum < MIN_CODEX_CONTEXT_TOKENS:
