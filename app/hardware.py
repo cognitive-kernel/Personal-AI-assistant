@@ -15,6 +15,26 @@ except ImportError:
 
 IS_WINDOWS = os.name == "nt"
 
+
+def windows_powershell_executable() -> str:
+    """Resolve inbox Windows PowerShell independently of a service account's PATH."""
+    system_root = os.environ.get("SystemRoot") or os.environ.get("WINDIR")
+    if system_root:
+        candidate = (
+            Path(system_root)
+            / "System32"
+            / "WindowsPowerShell"
+            / "v1.0"
+            / "powershell.exe"
+        )
+        try:
+            if candidate.is_file():
+                return str(candidate)
+        except OSError:
+            pass
+    return "powershell.exe"
+
+
 def _linux_cpu_times() -> tuple[int, int]:
     fields = Path("/proc/stat").read_text(encoding="ascii").splitlines()[0].split()[1:]
     values = [int(value) for value in fields]
@@ -302,7 +322,10 @@ try {
 } catch {}
 [pscustomobject]@{Adapters=$adapters; Counters=$counters} | ConvertTo-Json -Depth 5 -Compress
 """
-    output = _run_gpu_command(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script], timeout=4.0)
+    output = _run_gpu_command(
+        [windows_powershell_executable(), "-NoProfile", "-NonInteractive", "-Command", script],
+        timeout=20.0,
+    )
     if not output:
         return []
     try:
