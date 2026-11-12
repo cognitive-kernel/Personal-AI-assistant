@@ -5,13 +5,16 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import tempfile
 from pathlib import Path
 
-from app.ollama_context import MAX_CODEX_CONTEXT_TOKENS, MIN_CONTEXT_TOKENS
-
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from app.ollama_context import MAX_CODEX_CONTEXT_TOKENS, MIN_CONTEXT_TOKENS
 
 
 def codex_command(executable: str, arguments: list[str]) -> list[str]:
