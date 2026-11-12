@@ -45,7 +45,7 @@ C_{selected}=\min(C_{requested},C_{effective})
 
 When no explicit context is requested, select C_effective. Any requested value above the effective ceiling is clamped; it is never persisted or passed to Codex. The dashboard, API, workflow, PowerShell bridge, derived Ollama model, and Codex model catalog must all use the same verified selected value.
 
-The implementation's minimum valid model/runtime context remains 512 tokens. This is a metadata/runtime validity boundary, not a Codex 64k policy. If the model metadata or safe hardware estimate cannot support 512 tokens, execution cannot be safely initialized and must report the exact resource/metadata failure rather than inventing a fallback.
+There is no fixed minimum context window. The only numeric validity rule is that a context length must be a positive integer; a zero-token or negative context is not executable. If the host cannot provide even one token after safety reserves, or the model metadata exposes no positive context limit, report the exact resource/metadata failure rather than inventing a fallback.
 
 ## Runtime enforcement
 
@@ -70,10 +70,10 @@ Any mismatch, missing telemetry, invalid architecture dimensions, missing tools 
 ## Regression requirements
 
 Tests must prove:
-- A 10,000-token hardware ceiling produces a 10,000-token Codex catalog even when the request is 64,000 or higher.
+- A 10,000-token hardware ceiling produces a 10,000-token Codex catalog even when the request is 64,000 or higher; a one-token ceiling remains a valid positive context if the runtime accepts it.
 - A model ceiling of 8,192 tokens produces an 8,192-token Codex catalog when hardware can support more.
 - A request above either ceiling is clamped and never persisted above it.
 - The hardware-derived ceiling is reported independently from the model ceiling.
-- Context below the 512-token validity boundary, missing KV metadata, missing memory telemetry, or insufficient memory fails safely.
+- Zero/negative context, missing KV metadata, missing memory telemetry, or insufficient memory to provide even one token fails safely.
 - Settings/readiness accept valid models below 64,000 tokens.
 - The actual /api/ps allocation must exactly match the selected context before and after Codex execution.
