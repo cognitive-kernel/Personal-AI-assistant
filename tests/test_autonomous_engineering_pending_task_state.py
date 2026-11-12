@@ -97,7 +97,7 @@ def test_powershell_and_python_compute_identical_task_digest():
     task = "Repair checkpoint ownership — خطای بازیابی"
     module_path = Path(__file__).resolve().parents[1] / "scripts" / "AutonomousEngineeringTaskState.psm1"
     script = (
-        f"Import-Module '{module_path}'; "
+        f"Import-Module -Name '{module_path}' -DisableNameChecking; "
         f"Get-AutonomousTaskDigest -Task '{task}'"
     )
     result = subprocess.run(
