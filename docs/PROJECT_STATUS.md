@@ -1,3 +1,19 @@
+## تکمیل GitHub CI برای ماژول Codex/Ollama — 2026-11-12
+
+اعتبارسنجی کد و تست‌ها روی SHA `65b07b3a6dee54b6a1e27356f5f7a7df8ad87c3` تکمیل شد:
+
+- Python suite: **2,171 passed، 2 skipped، 51 deselected**.
+- Windows Storage regressions: موفق؛ شامل PowerShell 5.1 bridge، checkpoint watcher lifecycle/recovery، ownership/concurrency، PowerShell parsing و SQLite restore/migration.
+- Browser/dashboard E2E: موفق.
+- Dependency audit: موفق.
+- Full test suite در Docker ایزوله: موفق؛ محدودیت‌های no-network، read-only، non-root، 2 GiB RAM، 2 CPU، PID cap و image digest-pinned حفظ شدند.
+- Docker sandbox integration: موفق؛ 5 آزمون integration به پایان رسیدند.
+- Markdown validation: 96 فایل موفق؛ import-cycle check موفق؛ benchmark ساختاری claim-to-test برابر 10/10 با صفر false accept و صفر false reject.
+- Benchmark retrieval فقط fixture دوزبانهٔ synthetic را سنجیده است؛ خروجی آن اثبات کیفیت عمومی retrieval یا ارزیابی انسانی نیست.
+- Windows/Ollama self-hosted diagnostic همچنان **pending بدون runner assignment** است؛ labelهای موردنیاز `self-hosted, Windows, X64, ollama` هستند. روشن بودن رایانه به‌تنهایی اثبات نمی‌کند Runner service آنلاین و به GitHub متصل باشد؛ live Ollama allocation و Codex tool-call smoke تأیید نشده‌اند.
+- PR #707 هنوز با این PR در 11 فایل هم‌پوشانی دارد، non-mergeable و دارای CI ناموفق است. Issue #52 نیز به independent security review نیاز دارد.
+- این ثبت، نتیجهٔ کد/تست روی SHA بالا است. commitهای بعدی صرفاً همگام‌سازی مستندات هستند و exact-head CI باید روی SHA جدید دوباره اجرا شود. PR #722 همچنان Draft می‌ماند؛ هیچ merge یا deploy انجام نمی‌شود.
+
 ## آخرین اصلاح sandbox و وضعیت CI — 2026-11-12
 
 - PR #722 آخرین SHA فعلی: `0398f2a8ab0fdc72a1aed253cdce4fb43cda24d3`؛ Draft و باز، بدون ادغام.
