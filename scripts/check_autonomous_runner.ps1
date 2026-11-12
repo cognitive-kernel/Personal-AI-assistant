@@ -28,39 +28,50 @@ if ($nodeReady) {
 }
 $checks += [pscustomobject]@{ Component = "Node.js"; Ready = $nodeReady; Detail = $nodeVersion }
 
-$npmCommand = Get-Command npm -ErrorAction SilentlyContinue
+$npmCommand = Get-Command npm.cmd -ErrorAction SilentlyContinue
 $npmReady = [bool]$npmCommand
 $npmPrefix = ""
-$npmVersion = "npm not found in Runner account PATH"
+$npmVersion = "npm.cmd not found in Runner account PATH"
 if ($npmReady) {
-    $npmVersion = (& npm --version 2>$null | Select-Object -First 1)
+    $npmVersion = (& $npmCommand.Source --version 2>$null | Select-Object -First 1)
     $npmReady = ($LASTEXITCODE -eq 0 -and [bool]$npmVersion)
     if ($npmReady) {
-        $npmPrefix = (& npm config get prefix 2>$null | Select-Object -First 1).Trim()
+        $npmPrefix = (& $npmCommand.Source config get prefix 2>$null | Select-Object -First 1).Trim()
         $npmReady = ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($npmPrefix))
     }
 }
 $checks += [pscustomobject]@{ Component = "npm"; Ready = $npmReady; Detail = if ($npmReady) { "$npmVersion; global prefix: $npmPrefix" } else { $npmVersion } }
 
 $env:PATH = "$npmPrefix;$env:PATH"
-$codexCommand = Get-Command codex -ErrorAction SilentlyContinue
+$codexCommand = Get-Command codex.cmd -ErrorAction SilentlyContinue
 $codexReady = [bool]$codexCommand
 $codexVersion = "Codex CLI will be installed automatically by the first autonomous workflow run."
 if ($codexReady) {
-    $codexVersion = (& codex --version 2>$null | Select-Object -First 1)
+    $codexVersion = (& $codexCommand.Source --version 2>$null | Select-Object -First 1)
     $codexReady = ($LASTEXITCODE -eq 0 -and [bool]$codexVersion)
 }
 $checks += [pscustomobject]@{
     Component = "Codex CLI"
     Ready = $codexReady -or $npmReady
-    Detail = if ($codexReady) { $codexVersion } elseif ($npmReady) { $codexVersion } else { "Install Node.js/npm; the workflow installs Codex under this service account." }
+    Detail = if ($codexReady) { $codexVersion } elseif ($npmReady) { "Codex CLI will be installed by the first autonomous workflow run." } else { "Install Node.js/npm; the workflow installs Codex under this service account." }
 }
 
-$ollamaCommand = Get-Command ollama -ErrorAction SilentlyContinue
-$ollamaCliReady = [bool]$ollamaCommand
-$ollamaVersion = "Ollama CLI not found in Runner account PATH"
+$ollamaCommand = Get-Command ollama.exe -ErrorAction SilentlyContinue
+$ollamaExecutable = if ($ollamaCommand) { $ollamaCommand.Source } else { $null }
+if (-not $ollamaExecutable) {
+    try {
+        $ollamaProcess = Get-CimInstance Win32_Process -Filter "Name='ollama.exe'" -ErrorAction Stop |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) } |
+            Select-Object -First 1
+        if ($ollamaProcess -and (Test-Path -LiteralPath $ollamaProcess.ExecutablePath -PathType Leaf)) {
+            $ollamaExecutable = [string]$ollamaProcess.ExecutablePath
+        }
+    } catch {}
+}
+$ollamaCliReady = -not [string]::IsNullOrWhiteSpace($ollamaExecutable)
+$ollamaVersion = "Ollama CLI not found in PATH or active ollama.exe process"
 if ($ollamaCliReady) {
-    $ollamaVersion = (& ollama --version 2>$null | Select-Object -First 1)
+    $ollamaVersion = (& $ollamaExecutable --version 2>$null | Select-Object -First 1)
     $ollamaCliReady = ($LASTEXITCODE -eq 0 -and [bool]$ollamaVersion)
 }
 $ollamaOnline = $false
