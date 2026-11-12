@@ -137,11 +137,18 @@ def get_system_metrics(cpu_interval: float = 0.1) -> dict[str, float | int] | No
         try:
             cpu_percent = float(psutil.cpu_percent(interval=cpu_interval))
             memory = psutil.virtual_memory()
+            total_bytes = int(memory.total) if getattr(memory, "total", None) is not None else 0
+            available_bytes = int(memory.available) if getattr(memory, "available", None) is not None else 0
+            memory_percent_value = getattr(memory, "percent", None)
+            if memory_percent_value is None and total_bytes > 0 and available_bytes >= 0:
+                memory_percent_value = (total_bytes - available_bytes) * 100.0 / total_bytes
+            if memory_percent_value is None:
+                raise AttributeError("psutil memory percentage and derivation inputs are unavailable")
             return {
                 "cpu_percent": cpu_percent,
-                "memory_percent": float(memory.percent),
-                "total_bytes": int(memory.total) if getattr(memory, "total", None) is not None else 0,
-                "available_bytes": int(memory.available) if getattr(memory, "available", None) is not None else 0,
+                "memory_percent": float(memory_percent_value),
+                "total_bytes": total_bytes,
+                "available_bytes": available_bytes,
             }
         except (AttributeError, OSError, TypeError, ValueError, OverflowError):
             pass
