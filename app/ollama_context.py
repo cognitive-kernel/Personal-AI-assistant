@@ -6,9 +6,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-# 512 tokens is the smallest model/runtime context accepted by this module.
-# It is not a Codex-specific minimum: Codex must adapt to smaller valid contexts.
-MIN_CONTEXT_TOKENS = 512
+# Context is a positive token count; Codex has no fixed minimum window.
+MIN_CONTEXT_TOKENS = 1
 MAX_CODEX_CONTEXT_TOKENS = 1048576
 GIB = 1024 ** 3
 DEFAULT_RAM_RESERVE_BYTES = 4 * GIB
