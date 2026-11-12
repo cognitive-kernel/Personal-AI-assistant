@@ -800,3 +800,10 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - **Correction:** both current and legacy generated suffixes are now classified as internal, excluded from selectable models, and rejected if passed as the saved base model. Preflight unloads both suffix formats for the selected base before recalculating current free RAM and creating the new exact-context variant.
 - **Regression protection:** inventory tests include both current and legacy variants; settings reject a legacy variant before Ollama/GitHub access; PowerShell contract tests assert legacy cleanup and rejection.
 - **Scope:** the separate general Ollama chat context path is unchanged; PR #706 remains separate.
+
+
+## 2026-11-12 — Windows PowerShell resolution for hardware and readiness telemetry
+
+- **Compatibility gap:** the GPU telemetry fallback used a PATH-only `powershell.exe` lookup with a 4-second timeout; the psutil-free Runner status fallback used the same PATH-only lookup with a 5-second timeout. On a Windows service account or cold hosted runner, either could report missing GPU/Runner telemetry despite inbox Windows PowerShell being installed.
+- **Correction:** added a shared SystemRoot/WINDIR-based Windows PowerShell resolver with PATH fallback. GPU telemetry and the psutil-free Runner status probe now use the resolved executable with a bounded 20-second timeout. Missing/failed telemetry remains unknown/not-ready; it is never fabricated as zero or success.
+- **Regression protection:** tests verify SystemRoot resolution, the 20-second GPU probe bound, and service-account Runner detection through the resolved PowerShell path.
