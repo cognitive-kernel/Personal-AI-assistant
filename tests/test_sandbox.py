@@ -694,3 +694,21 @@ def test_workspace_tests_do_not_start_without_verified_host_git_head(tmp_path, m
     assert result.status == "unavailable"
     assert "checkout HEAD could not be verified" in (result.reason or "")
     assert called == []
+
+def test_workspace_head_sha_resolves_the_host_checkout_commit(tmp_path):
+    import subprocess
+
+    (tmp_path / "app").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "app" / "module.py").write_text("VALUE = 1\\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-b", "main"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Sandbox Test"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.email", "sandbox@example.invalid"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "test base"], cwd=tmp_path, check=True, capture_output=True)
+
+    sha = sandbox._workspace_head_sha(tmp_path)
+
+    assert sha is not None
+    assert len(sha) == 40
+    assert all(character in "0123456789abcdef" for character in sha)
