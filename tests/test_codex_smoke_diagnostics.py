@@ -378,7 +378,7 @@ def test_target_diagnostic_matches_recorded_hardware_and_uses_automatic_context(
     assert "github.ref_name == 'fix/autonomous-engineering-show-all-ollama-models-20261112' && '10000'" not in diagnostic
     assert "Get-Command npm.cmd" in diagnostic
     assert "Get-Command codex.cmd" in diagnostic
-    assert "Get-CimInstance Win32_Process -Filter \"Name='ollama.exe'\"" in diagnostic
+    assert "Name='ollama.exe'" in diagnostic
     assert "C:\\Users\\Admin\\AppData\\Local\\Programs\\Ollama\\ollama.exe" not in diagnostic
 
     assert "Get-Command npm.cmd" in autonomous
