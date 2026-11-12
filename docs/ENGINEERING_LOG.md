@@ -1,3 +1,12 @@
+## 2026-11-12 — PR #707 superseded by merged PR #719
+
+- Compared all 30 paths in PR #707 against the merged PR #719 and current `main`.
+- PR #719 already includes the checkpoint/process identity and lifetime locks, worktree execution lock, durable task-state mutex/path helpers, PowerShell owner-record module, serialized manual-task workflow, unique Runner label, ADR-014/015, and corresponding regression coverage.
+- PR #707's branch was based on the pre-#719 main snapshot, was non-mergeable, and its remaining failures came from stale URL validation and workflow test assumptions. The current main implementations supersede those changes.
+- Closed PR #707 with an explanatory audit comment; no stale code was merged. Updated PR #722 and the current status/acceptance ledgers so it no longer appears as an unresolved rebase dependency.
+
+---
+
 ## 2026-11-12 — Autonomous Engineering model-selector consistency
 
 ### Root-cause analysis
