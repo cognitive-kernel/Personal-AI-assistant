@@ -408,7 +408,7 @@ def test_target_diagnostic_matches_recorded_hardware_and_uses_automatic_context(
     assert '$_.Name -like "actions.runner*"' in runner_check
     assert '$_.State -eq "Running"' in runner_check
     assert '[uint32]$_.ProcessId -gt 0' in runner_check
-    assert 'Service "$($runnerService.Name)" is running as' in runner_check
+    assert "Service '$($runnerService.Name)' is running as" in runner_check
     assert 'Could not inspect Windows runner services/processes:' in runner_check
     assert 'Get-Process -Name "Runner.Listener"' not in runner_check
 
