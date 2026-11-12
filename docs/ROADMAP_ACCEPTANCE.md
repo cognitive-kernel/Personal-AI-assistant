@@ -1,3 +1,18 @@
+## 2026-11-12 — Exact-head revalidation after Windows Runner readiness correction
+
+PR #722 current head: `f0b41f0c6021e36db3cea67a86a7d4dc36181717`.
+
+A second Windows-service review found that `scripts/check_autonomous_runner.ps1` still used `Get-Process Runner.Listener`, despite the service-account readiness contract. It now queries running `actions.runner*` services through CIM, resolves their PID through `Win32_Process`, and requires the exact `Runner.Listener.exe` image. A regression assertion protects this contract.
+
+Exact-head validation is pending at the time of this update:
+- Tests: [#43209894282](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43209894282)
+- Sandbox integration: [#43209894191](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43209894191)
+- Browser E2E: [#43209894267](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43209894267)
+- Dependency audit: [#43209894156](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43209894156)
+- Windows target diagnostic: [#43209886926](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43209886926)
+
+Do not infer exact-head success from older commits. The earlier code/test head and the explicit 10k-token smoke remain historical evidence only. No local/manual test is claimed; no merge to main is permitted while required checks are pending.
+
 # Project acceptance gates
 
 ## 2026-11-12 — Adaptive Codex context (PR #722)
