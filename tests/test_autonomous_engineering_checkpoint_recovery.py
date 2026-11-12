@@ -122,6 +122,9 @@ def test_checkpoint_watcher_real_process_stops_before_restore(
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(state))
     env = os.environ.copy()
     env["AUTONOMOUS_ENGINEERING_PROGRESS_DIR"] = str(state)
+    if os.environ.get("AUTONOMOUS_ENGINEERING_TEST_BASE_SHA"):
+        env["AUTONOMOUS_ENGINEERING_TEST_MODE"] = "1"
+        monkeypatch.setenv("AUTONOMOUS_ENGINEERING_TEST_MODE", "1")
     executable = getattr(sys, "_base_executable", sys.executable)
     process = subprocess.Popen(
         [
