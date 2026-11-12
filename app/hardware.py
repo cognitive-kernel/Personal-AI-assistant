@@ -338,10 +338,20 @@ try {
         dedicated_limits = [float(row["CookedValue"]) for row in matching if "dedicated limit" in str(row.get("Path", "")).casefold() and isinstance(row.get("CookedValue"), (int, float)) and row["CookedValue"] > 0]
         shared_limits = [float(row["CookedValue"]) for row in matching if "shared limit" in str(row.get("Path", "")).casefold() and isinstance(row.get("CookedValue"), (int, float)) and row["CookedValue"] > 0]
         total_mb = None
+        reported_adapter_ram_mb = None
         try:
             raw_ram = int(adapter.get("AdapterRAM") or 0)
             if raw_ram > 0:
-                total_mb = round(raw_ram / (1024 ** 2), 1)
+                reported_adapter_ram_mb = round(raw_ram / (1024 ** 2), 1)
+                # Win32_VideoController.AdapterRAM is frequently capped or
+                # repurposed for integrated Intel GPUs. Do not present that
+                # value as dedicated VRAM; use WDDM's dedicated-limit counter
+                # when it is available, otherwise report dedicated capacity as unknown.
+                integrated_intel = vendor == "Intel" and re.search(
+                    r"(?i)\\b(?:UHD|Iris|HD Graphics)\\b", name
+                )
+                if not integrated_intel:
+                    total_mb = reported_adapter_ram_mb
         except (TypeError, ValueError):
             pass
         used_mb = round(sum(dedicated) / (1024 ** 2), 1) if dedicated else None
@@ -360,6 +370,12 @@ try {
                 if isinstance(host_available, (int, float)) and not isinstance(host_available, bool) and math.isfinite(host_available) and host_available >= 0:
                     host_available_mb = round(host_available / (1024 ** 2), 1)
             except Exception:
+                host_available_mb = None
+        elif IS_WINDOWS:
+            try:
+                _, host_available = _windows_memory_info()
+                host_available_mb = round(host_available / (1024 ** 2), 1)
+            except (OSError, RuntimeError, ValueError):
                 host_available_mb = None
         usable_shared_free_mb = (
             min(shared_free_mb, host_available_mb)
@@ -380,6 +396,7 @@ try {
             "index": index, "name": name, "vendor": vendor,
             "utilization_percent": round(min(100.0, max(engine)), 1) if engine else None,
             "memory_used_mb": used_mb, "memory_total_mb": total_mb,
+            "reported_adapter_ram_mb": reported_adapter_ram_mb,
             "memory_free_mb": dedicated_free_mb,
             "shared_memory_used_mb": shared_used_mb,
             "shared_memory_total_mb": shared_total_mb,
