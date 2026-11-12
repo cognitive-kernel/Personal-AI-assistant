@@ -6,8 +6,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# 512 tokens is the smallest model/runtime context accepted by this module.
+# It is not a Codex-specific minimum: Codex must adapt to smaller valid contexts.
 MIN_CONTEXT_TOKENS = 512
-MIN_CODEX_CONTEXT_TOKENS = 64000
 MAX_CODEX_CONTEXT_TOKENS = 1048576
 GIB = 1024 ** 3
 DEFAULT_RAM_RESERVE_BYTES = 4 * GIB
@@ -43,17 +44,20 @@ def select_context_window(
     requested_context_tokens: int | None = None,
     reserve_bytes: int = DEFAULT_RAM_RESERVE_BYTES,
 ) -> dict[str, int | None]:
-    """Select min(requested, model maximum, measured safe RAM capacity).
+    """Choose a safe context by adapting to the model and host capacity.
 
-    The RAM estimate assumes float16 KV cache, reserves 4 GiB for Windows and
-    other processes, and adds at least 0.5 GiB or 10% of model weights as overhead.
-    Missing telemetry or architecture dimensions are errors, never fallback values.
+    Hardware capacity is estimated independently from the model's advertised
+    context limit. The effective ceiling is the minimum of hardware capacity,
+    model capacity, and the Codex catalog limit. A requested value above that
+    ceiling is clamped; it never causes an over-allocation.
+
+    The RAM estimate assumes a float16 KV cache, reserves 4 GiB for Windows and
+    other processes, and adds at least 0.5 GiB or 10% of model weights as
+    runtime overhead. Missing telemetry or architecture dimensions are errors,
+    never guessed fallback values. A successful estimate is still verified
+    against Ollama's actual loaded context before Codex is dispatched.
     """
     maximum = maximum_context_tokens(model_info, architecture)
-    if maximum < MIN_CODEX_CONTEXT_TOKENS:
-        raise OllamaModelMetadataError(
-            f"Selected model maximum context {maximum} is below the Codex minimum {MIN_CODEX_CONTEXT_TOKENS} tokens."
-        )
     numeric_inputs = {
         "model_weight_bytes": model_weight_bytes,
         "available_memory_bytes": available_memory_bytes,
@@ -66,10 +70,10 @@ def select_context_window(
     if requested_context_tokens is not None and (
         isinstance(requested_context_tokens, bool)
         or not isinstance(requested_context_tokens, int)
-        or requested_context_tokens < MIN_CODEX_CONTEXT_TOKENS
+        or requested_context_tokens < MIN_CONTEXT_TOKENS
     ):
         raise OllamaModelMetadataError(
-            f"Requested Codex context must be an integer of at least {MIN_CODEX_CONTEXT_TOKENS} tokens."
+            f"Requested context must be an integer of at least {MIN_CONTEXT_TOKENS} tokens."
         )
 
     prefix = f"{architecture}."
@@ -110,27 +114,32 @@ def select_context_window(
             "Available RAM cannot hold the model weights and required safety reserve."
         )
 
-    hardware_maximum = min(maximum, cache_budget_bytes // bytes_per_token)
-    if hardware_maximum < MIN_CODEX_CONTEXT_TOKENS:
+    # Keep the host-derived capacity independent of the model's own context cap.
+    hardware_maximum = cache_budget_bytes // bytes_per_token
+    if hardware_maximum < MIN_CONTEXT_TOKENS:
         raise OllamaModelMetadataError(
-            f"Available RAM cannot safely support the Codex minimum {MIN_CODEX_CONTEXT_TOKENS}-token context."
+            f"Available RAM cannot safely support the minimum runtime context of {MIN_CONTEXT_TOKENS} tokens."
         )
 
-    requested = requested_context_tokens
-    selected = min(
-        requested if requested is not None else maximum,
+    effective_maximum = min(
         maximum,
         hardware_maximum,
         MAX_CODEX_CONTEXT_TOKENS,
     )
-    if selected < MIN_CODEX_CONTEXT_TOKENS:
+    requested = requested_context_tokens
+    selected = min(
+        requested if requested is not None else effective_maximum,
+        effective_maximum,
+    )
+    if selected < MIN_CONTEXT_TOKENS:
         raise OllamaModelMetadataError(
-            f"No safe Codex context window of at least {MIN_CODEX_CONTEXT_TOKENS} tokens could be selected."
+            f"No safe runtime context of at least {MIN_CONTEXT_TOKENS} tokens could be selected."
         )
 
     return {
         "maximum_context_tokens": maximum,
         "hardware_maximum_context_tokens": hardware_maximum,
+        "effective_maximum_context_tokens": effective_maximum,
         "codex_maximum_context_tokens": MAX_CODEX_CONTEXT_TOKENS,
         "requested_context_tokens": requested,
         "selected_context_tokens": selected,
