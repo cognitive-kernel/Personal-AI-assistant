@@ -1265,3 +1265,68 @@ def test_short_incomplete_release_note_is_retained_as_research_evidence(learning
     assert len(sources) == 1
     assert sources[0]["title"] == "Short community erratum"
     assert sources[0]["excerpt"] == "Patch note: fixes a connection retry regression."
+
+
+
+def test_curriculum_continues_after_external_sources_to_consume_all_chat_observation_pages(
+    learning_store, monkeypatch
+):
+    import hashlib
+
+    sources = [
+        {
+            "title": f"Source {index}",
+            "url": f"https://docs{index}.example.test/guide",
+            "excerpt": ("Versioned technical reference material. " * 20),
+            "sha256": hashlib.sha256(f"source-{index}".encode()).hexdigest(),
+            "publication_date": None,
+            "last_updated": None,
+            "retrieved_at": "2026-11-12T00:00:00+00:00",
+            "query": "subject release history",
+            "content_chunk_index": 1,
+            "content_chunk_count": 1,
+            "content_complete": True,
+        }
+        for index in range(1, 4)
+    ]
+    monkeypatch.setattr(
+        learning_curriculum_tasks,
+        "_collect_sources",
+        lambda *_args, **_kwargs: sources,
+    )
+    pages = []
+    first = _outline()
+    first["_chat_observations_has_more"] = True
+    first["_chat_observations_next_cursor"] = {
+        "candidate_id": 17, "content_offset": 3000
+    }
+    second = _outline()
+    second["topics"] = [f"ادامهٔ موضوع {index}" for index in range(1, 13)]
+    second["has_more"] = False
+    second["_chat_observations_has_more"] = False
+    second["_chat_observations_next_cursor"] = None
+    pages.extend([first, second])
+    calls = []
+
+    def fake_generate(*_args, candidate_cursor=None, **_kwargs):
+        calls.append(candidate_cursor)
+        return pages[len(calls) - 1], {"selected_model": "gpt-oss:20b"}
+
+    monkeypatch.setattr(learning_curriculum_tasks, "_generate_outline", fake_generate)
+    task = task_manager.create_task(
+        learning_curriculum_tasks.CURRICULUM_TASK_TYPE,
+        {"topic": "Complete subject", "batch_size": 24, "source_text": ""},
+        max_attempts=3,
+    )
+    context = RecordingContext(task["id"])
+
+    result = learning_curriculum_tasks.handle_curriculum_task(
+        task["payload"], None, context
+    )
+
+    assert calls == [None, {"candidate_id": 17, "content_offset": 3000}]
+    assert result["topic_count"] == 24
+    assert context.checkpoints[0]["candidate_cursor"] == {
+        "candidate_id": 17, "content_offset": 3000
+    }
+    assert context.checkpoint_data["phase"] == "curriculum_persisted"
