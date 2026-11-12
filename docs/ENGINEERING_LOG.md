@@ -1,3 +1,18 @@
+## 2026-11-12 — Windows Runner service-identity readiness correction
+
+### Root cause
+The consolidated PR #722 readiness script still used `Get-Process Runner.Listener`. That check depends on process visibility from the current account and does not prove that the registered GitHub Actions Windows service is running under its configured service identity.
+
+### Correction
+- Query `Win32_Service` for a running `actions.runner*` service with a nonzero PID.
+- Resolve that PID through `Win32_Process` and require the image name `Runner.Listener.exe`.
+- Report the service name, configured service account, and PID only after both checks succeed.
+- Treat CIM inspection failure or an unverifiable listener as not-ready (fail-closed).
+- Add a regression test forbidding the old `Get-Process Runner.Listener` path.
+
+### Validation
+Current PR head: `f0b41f0c6021e36db3cea67a86a7d4dc36181717`. Exact-head tests, sandbox integration, Browser E2E, dependency audit, and self-hosted Windows diagnostic are queued/in progress under runs #43209894282, #43209894191, #43209894267, #43209894156, and #43209886926. None is recorded as passed until its exact-head conclusion is success.
+
 # Engineering Continuity Log
 
 ## 2026-11-12 — PR #722: adaptive Codex context bounded by model and host capacity
