@@ -828,3 +828,6 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 
 
 - **Arithmetic refinement:** Codex's source uses i64 for context metadata but calculates the default compaction threshold with `(context_window * 9) / 10` (non-saturating multiplication). The safe selector ceiling is therefore `floor((2^63 - 1) / 9)`, not i64::MAX. The model/hardware ceilings bind far below this on supported PCs, but the selector now respects the downstream arithmetic contract instead of merely the field type.
+
+
+- **Second CI finding:** after restoring the truncated test function, the next pytest collection still found an unmatched closing parenthesis at the end of tests/test_codex_smoke_diagnostics.py. The earlier edit had left a duplicate trailing copy of the pre-existing diagnostics tests after the newly added bridge/config tests. Removed that duplicate tail while preserving the original tests and both new tests; the file now contains a single definition of each test. The failed 1e836 run is not counted; a fresh exact-head run is required.
