@@ -580,3 +580,9 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Exact-head CI on PR #714 is the acceptance gate. No test result is inferred from prior PR #707 runs. Live Ollama/Codex execution, MXC, target-host crash/restart recovery, soak, staging restore/rollback, and owner acceptance remain unverified until separately demonstrated.
 - No automatic merge, destructive state cleanup, or user-data migration is introduced. The PR remains Draft until exact-SHA CI and target-runner evidence are complete.
 
+### 2026-11-12 — Split Autonomous Engineering GitHub transport and PR lifecycle
+
+- Extracted GitHub REST/GraphQL transport and exact-SHA workflow polling into `autonomous_engineering_github.py`.
+- Extracted PR discovery, validation, owner-review handoff, post-merge verification, and durable pending-PR publication into `autonomous_engineering_pull_requests.py`.
+- The cycle controller retains its public CLI and compatibility functions; it injects API, locking, persistence, checkpoint, and workflow-dispatch dependencies. The extracted modules do not import the controller, avoiding reverse dependencies and keeping failure domains testable.
+- This refactor requires a fresh exact-head Linux suite, Windows storage/recovery suite, Browser E2E, dependency audit, and import-cycle gate before acceptance.

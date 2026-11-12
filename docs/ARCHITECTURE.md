@@ -48,3 +48,10 @@
 - تطبیق snapshot نهایی بازیابی با manifest و رد تغییر هم‌زمان فایل پشتیبان: [ADR-015](architecture/ADR-015-verify-staged-restore.md)
 - جلوگیری از idempotent no-op شدن start هنگام shutdown در حال اجرا: [ADR-016](architecture/ADR-016-runtime-restart-after-stop.md)
 - ترمیم دوره‌ای فاصلهٔ بین ایجاد learning job و enqueue صف پایدار: [ADR-017](architecture/ADR-017-periodic-learning-task-reconciliation.md)
+
+## Autonomous Engineering module boundaries
+
+- `scripts/autonomous_engineering_cycle.py` is the controller/orchestrator and retains the stable CLI and compatibility wrappers.
+- `scripts/autonomous_engineering_github.py` owns GitHub REST/GraphQL transport, workflow dispatch, exact-SHA check polling, and credential-safe Git environment construction.
+- `scripts/autonomous_engineering_pull_requests.py` owns PR discovery, validation, owner-review handoff, post-merge verification, and durable pending-PR publication. It receives external effects through explicit dependencies and does not import the controller.
+- Checkpoint process identity, checkpoint-store locking, repository execution locking, durable state locking, and task/PR record validation remain in their dedicated modules.
