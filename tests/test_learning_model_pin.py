@@ -99,18 +99,15 @@ def test_startup_installs_and_verifies_learning_model_separately(tmp_path, monke
     monkeypatch.setattr(bootstrap, "_find_ollama", lambda: "ollama")
     monkeypatch.delenv("OLLAMA_MODEL", raising=False)
     monkeypatch.delenv("LEARNING_OLLAMA_MODEL", raising=False)
-    list_outputs = iter([
-        "NAME ID SIZE\nqwen2.5:7b abc 4GB\n",
-        "NAME ID SIZE\nqwen2.5:7b abc 4GB\ngpt-oss:20b def 14GB\n",
-    ])
-    monkeypatch.setattr(
-        bootstrap.subprocess,
-        "run",
-        lambda command, **kwargs: subprocess.CompletedProcess(
-            command, 0, next(list_outputs), ""
-        ),
-    )
     pull_commands = []
+
+    def fake_list(command, **kwargs):
+        models = "NAME ID SIZE\nqwen2.5:7b abc 4GB\n"
+        if ["ollama", "pull", "gpt-oss:20b"] in pull_commands:
+            models += "gpt-oss:20b def 14GB\n"
+        return subprocess.CompletedProcess(command, 0, models, "")
+
+    monkeypatch.setattr(bootstrap.subprocess, "run", fake_list)
 
     def fake_run(command, **kwargs):
         pull_commands.append(command)
