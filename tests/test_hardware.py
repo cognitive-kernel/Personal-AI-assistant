@@ -499,3 +499,9 @@ def test_integrated_intel_adapter_ram_is_not_misreported_as_dedicated_vram(monke
     assert device["shared_memory_total_mb"] == 8192
     assert device["usable_shared_memory_free_mb"] == 4096
     assert device["usable_memory_scope"] == "shared-only"
+
+def test_resource_headroom_fails_closed_when_all_native_and_optional_telemetry_is_unavailable(monkeypatch):
+    monkeypatch.setattr(hardware, "psutil", None)
+    monkeypatch.setattr(hardware, "_native_system_metrics", lambda cpu_interval=0.1: None)
+    with pytest.raises(RuntimeError, match="CPU/RAM telemetry is unavailable"):
+        hardware.ensure_resource_headroom()
