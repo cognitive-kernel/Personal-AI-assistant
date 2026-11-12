@@ -1,19 +1,19 @@
 # وضعیت یکپارچهٔ پروژه
 
-## وضعیت جاری — تکمیل معماری Autonomous Engineering (PR #714)
+## وضعیت جاری — معماری Autonomous Engineering (PR #716)
 
-- مبنای زندهٔ `main`: `a9ae456d56648992dec71226daa443faa50d60c6`. PR #713 در main ادغام شده است و تغییرات یادگیری آن حفظ شده‌اند.
-- شاخهٔ کار: `feat/autonomous-engineering-architecture-completion-20261112`؛ PR [#714](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/714) به‌صورت Draft باز است.
-- مرزبندی مالکیت worktree، checkpoint watcher، هویت فرایند watcher و state پایدار task/PR به ماژول‌های کوچک و قراردادهای مجزا منتقل شده است. GitHub transport و PR lifecycle نیز از orchestrator جدا شده‌اند.
-- اعتبارسنجی pending PR و قرارداد تست workflow اصلاح شده‌اند. نتایج exact-head CI برای head جدید پس از همگام‌سازی با main در انتظار هستند.
-- گیت‌های باقی‌مانده: تکمیل تست‌های Linux و Windows، browser E2E و dependency audit روی SHA نهایی؛ سپس اجرای واقعی با مدل ذخیره‌شده، Codex sandbox/MXC، crash/restart و restore روی Runner مالک.
+- مبنای زندهٔ `main`: `461c0a2b1deaf5f8af8486846f167da8185c580a`. تغییرات release-watch جدید main حفظ شده‌اند.
+- شاخهٔ معماری: `feat/autonomous-engineering-architecture-final-20261112`؛ PR [#716](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/716) باز است.
+- مالکیت worktree، checkpoint watcher، هویت فرایند watcher، state پایدار task/PR، GitHub transport و PR lifecycle در ماژول‌های مستقل قرار دارند.
+- تست‌های اختصاصی Windows، Browser E2E و dependency audit روی head قبلی موفق بوده‌اند؛ Linux دو static assertion قدیمی را آشکار کرد که به مرز ماژول جدید اصلاح شده‌اند. برای head نهایی شواهد exact-SHA تازه لازم است.
+- اجرای زندهٔ Codex/Ollama هنوز به اصلاح provider/context و تأیید مدل نصب‌شده نیاز دارد؛ crash/restart، soak و restore میزبان مقصد نیز جداگانه باز هستند.
 
 
 > تاریخ بازبینی: 2026-11-12. وضعیت جاری در ابتدای سند ثبت شده است؛ یادداشت‌های پایین‌تر snapshotهای تاریخی هستند.
 
 ## وضعیت تاریخی اتوماسیون — PR #702 (snapshot قدیمی)
 
-- این بخش snapshot تاریخی است و وضعیت زندهٔ شاخهٔ اصلی را نشان نمی‌دهد.
+- مبنای فعلی `main`: `a01e414ea3124213bc4d06496f55c74ad6ef9ef4`. PR [#701](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/701) در همین SHA ادغام شده است؛ اصلاحات حفظ وظیفهٔ دستی، checkpoint، recovery، هم‌ترازی داشبورد و ترتیب persistence پیش از schedule gate اکنون بخشی از main هستند.
 - PR [#702](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/702) روی شاخهٔ `fix/automation-codex-context-smoke-20261107` باز و هنوز ادغام‌نشده است. این PR برای رفع دو گیت باقیماندهٔ Codex/Ollama روی Windows Runner است.
 - شواهد آخرین اجرای ناموفق پیش از اصلاحات: [run 42355938096](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/42355938096). حساب غیرمدیر Runner توانست MXC، اجرای مستقیم `cmd.exe` و Python را با markerهای `MXC_SERVICE_OK` و `MXC_CMD_PYTHON_OK` اجرا کند؛ اما اجرای واقعی Codex پنج command event داشت، هیچ agent message نساخت و smoke gate شکست خورد. این اجرا موفق محسوب نمی‌شود.
 - ریشهٔ Context: preflight قبلی فقط در درخواست warm-up مقدار `options.num_ctx=64000` را می‌فرستاد. درخواست‌های مستقل Codex از مدل پایه دوباره با مقدار پیش‌فرض ۸۱۹۲ بارگذاری می‌شدند. سقف Context مدل در metadata، Context تخصیص‌یافتهٔ runtime را اثبات نمی‌کند.
@@ -414,3 +414,11 @@
 - قرارداد اصلی اکنون admission دادهٔ آموزشی را از صحت factual، کیفیت درس و mastery یادگیرنده جدا می‌کند: پاسخ غیرخالی، حتی ناقص یا بدون منبع، حذف نمی‌شود؛ وضعیت unverified حفظ می‌شود.
 - بازیابی پاسخ‌های قبلی گفتگو اکنون cursor-based است: تطبیق هم در پرسش و هم در محتوای پاسخ انجام می‌شود، پاسخ‌های بلند به قطعه‌های محدود تقسیم می‌شوند و curriculum تا مصرف همهٔ صفحات مرتبط ادامه می‌یابد.
 - تست محلی در این محیط اجرا نشده است. تأیید این شاخه منوط به اجرای CI روی head دقیق و بررسی نتیجهٔ تست‌های regression است؛ اجرای زندهٔ مدل روی میزبان کاربر نیز هنوز ادعا نمی‌شود.
+
+
+### 2026-11-12 — افزایش پوشش پایش انتشار
+
+- پایش دوره‌ای هر یک از پنج query تخصصی انتشار اکنون از حداکثر ۳۰ نتیجهٔ قابل‌دریافت استفاده می‌کند، نه ۵ نتیجه.
+- regression جدید تغییر release note در نتیجهٔ هفتم را شبیه‌سازی می‌کند؛ پایش باید آن را کشف و یک curriculum refresh نسخه‌دار صف‌بندی کند.
+- fingerprint دوره‌های قبلی ممکن است یک‌بار به‌دلیل گسترش نتایج تغییر کند؛ refresh افزایشی است و درس‌های تاریخی را بازنویسی نمی‌کند.
+- سقف ۳۰، اندازهٔ صفحهٔ هر query در adapter جست‌وجو است؛ این تغییر ادعای کشف تضمینی همهٔ منابع اینترنتی نیست.

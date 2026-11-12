@@ -566,7 +566,7 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Any earlier dated entry in this log stating that PR #710 was open, Draft, or waiting for local/target-host testing describes a historical snapshot and is superseded. PR #710 merged into `main` on 2026-11-11 as `9e198a0640593bcc3892f3a97aa8956ba522653c`.
 - The current follow-up is PR #711, branch `feature/universal-learning-contract-v2`. Its exact head and CI status must be read from live GitHub; no earlier SHA or test result applies to it.
 - The source-body retention and common HTML publication/modified-date extraction work is implemented in this follow-up with migration 46. It must not continue to be listed as an outstanding gap once its exact-head CI passes.
-- Release-watch polling intentionally remains at five results per query to avoid changing existing fingerprints solely because the initial curriculum discovery page was expanded. The watch query set itself is broader; any changed fingerprint after this query-set expansion is an intentional additive refresh, not an assertion that every update was already detected.
+- Historical note: the release watch previously polled five results per query to preserve the initial fingerprint baseline. PR #714 expands each recurring query to the maximum supported search page (30 results); existing watches may therefore enqueue one intentional additive refresh as their baseline expands. This increases coverage but does not claim exhaustive internet-wide detection.
 
 
 
@@ -578,28 +578,25 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Added regression coverage for content-only topic matches and reconstructing all chat observations from bounded pages.
 - Local test execution is unavailable in this editing session; exact-head GitHub CI is required before merge. No local/target-host/model runtime pass is claimed.
 
-## 2026-11-12 — Autonomous Engineering ownership, recovery, and modularization (PR #714)
 
-- Reused the existing ownership/recovery implementation from the earlier unmerged PR #707 and ported it onto the latest `main` baseline `a9ae456d56648992dec71226daa443faa50d60c6`. The branch was synchronized with the concurrently merged PR #713 without discarding its learning changes.
+## 2026-11-12 — Wider automatic release-watch discovery
+
+- Increased each recurring release-watch query from five results to the full 30-result page supported by the public-source discovery adapter.
+- Added a regression where the changed release note appears after the first five results; the watch must detect it and enqueue a versioned curriculum refresh.
+- Existing watch fingerprints may trigger a one-time additive refresh after this coverage expansion. Historical curricula and lessons remain unchanged.
+- The 30-result limit is the search adapter's per-query page bound, not a total curriculum/source-retention cap; exhaustive detection across all public websites is not guaranteed by search alone.
+
+## 2026-11-12 — Autonomous Engineering ownership, recovery, and modularization (PR #716)
+
+- Reused the existing ownership/recovery implementation from the earlier unmerged PR #707 and ported it onto the current main baseline `461c0a2b1deaf5f8af8486846f167da8185c580a`, preserving the concurrently merged release-watch improvements.
 - Kept ownership boundaries explicit: repository worktree execution lock, checkpoint-watcher lifetime lock, watcher process identity, and durable task/PR state mutex are separate modules with separate responsibilities.
-- Durable manual-task and PR state transitions are serialized across Python and PowerShell. The local state directory uses one shared path contract, and sequential work is pinned to the unique `autonomous-state-owner` Windows Runner label.
+- Durable manual-task and PR state transitions are serialized across Python and PowerShell. The local state directory uses one shared path contract, and sequential local-state operations are pinned to the unique `autonomous-state-owner` Windows Runner label.
 - Checkpoint metadata binds readiness to run/task/base SHA and process identity. Ambiguous process identity, access-denied inspection, failed termination/reaping, malformed metadata, and patch-size mismatch fail closed and preserve existing state.
 - Fixed pending PR URL validation: the prior raw regular expression escaped the dot twice, rejecting valid GitHub URLs. Validation now parses the URL, enforces HTTPS and the GitHub host, rejects credentials/query/fragment, validates path segments, and requires the path PR number to match the durable record.
 - Updated workflow contract tests to reflect the concurrency-safe design: manual task persistence executes inside the serialized controller job on the single state-owning Runner, rather than in an independent pre-gate job.
 - Renamed exported PowerShell functions to approved verbs. The previous module import warning polluted stdout and caused the cross-language SHA-256 equality test to fail despite the digest being correct.
 - Extracted GitHub REST/GraphQL transport and exact-SHA workflow polling into `autonomous_engineering_github.py`.
 - Extracted PR discovery, validation, owner-review handoff, post-merge verification, and durable pending-PR publication into `autonomous_engineering_pull_requests.py`. The cycle controller retains its public CLI and compatibility functions and injects dependencies; the new modules do not import the controller.
-- Exact-head CI is the acceptance gate. The previous exact-head Windows storage, Browser E2E, and dependency-audit checks passed before the final module extraction; the Linux suite was still running. The new merged-baseline head must receive fresh CI. Live Ollama/Codex execution, MXC, target-host crash/restart recovery, soak, staging restore/rollback, and owner acceptance remain unverified until separately demonstrated.
-- No automatic merge, destructive state cleanup, or user-data migration is introduced. The PR remains Draft until exact-SHA CI and target-runner evidence are complete.
-
-### 2026-11-12 — Regression correction after exact-head CI
-
-- Exact-head Linux CI exposed one stale assertion in `test_publish_pull_request_leaves_exact_sha_validated_pr_open_for_owner_merge`: the durable handoff now correctly returns `branch`, `run_id`, and `task` along with PR identity. Updated the expected contract rather than removing those ownership fields.
-- Added an architecture regression that forbids the extracted GitHub and PR lifecycle modules from importing the cycle orchestrator and verifies that the controller retains its compatibility facade.
-
-### 2026-11-12 — Exact-head static contract follow-up
-
-- The full Linux suite reached 99% and exposed one remaining static assertion that still expected the GitHub workflow-dispatch list (`tests.yml`) to live inside the cycle controller. That responsibility is now in the PR lifecycle module. Updated the assertion to check the correct module; the controller's local pytest invocation remains separately asserted.
-- Windows storage/recovery, Browser E2E, and dependency audit were green on the preceding exact head. A fresh full CI run is required for this correction.
-
-- The exact-head run on `012875e51b827f0e56b6328edf73ea627c34fb59` exposed one stale static assertion about the location of the workflow-dispatch list. The assertion is corrected in the latest code/test head; no green result is claimed until the corrected head has fresh CI evidence.
+- Exact-head CI on the corrected architecture head has not yet been rerun. Prior heads demonstrated passing Windows storage/recovery, Browser E2E and dependency audit, but Linux failed on stale static assertions that have been corrected. No green result is inferred from a prior SHA.
+- The live Codex/Ollama run remains a separate runtime blocker: the previous target-host run failed because Codex CLI rejected a reserved built-in `model_providers.ollama` override. It must be fixed and tested before claiming live Autonomous Engineering operation.
+- Target-host crash/restart, soak, staging restore/rollback, and owner acceptance remain external acceptance gates. No automatic deployment, destructive state cleanup, or user-data migration is introduced.
