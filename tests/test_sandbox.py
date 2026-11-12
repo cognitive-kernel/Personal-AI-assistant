@@ -700,7 +700,7 @@ def test_workspace_head_sha_resolves_the_host_checkout_commit(tmp_path):
 
     (tmp_path / "app").mkdir()
     (tmp_path / "tests").mkdir()
-    (tmp_path / "app" / "module.py").write_text("VALUE = 1\\n", encoding="utf-8")
+    (tmp_path / "app" / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
     subprocess.run(["git", "init", "-b", "main"], cwd=tmp_path, check=True, capture_output=True)
     subprocess.run(["git", "config", "user.name", "Sandbox Test"], cwd=tmp_path, check=True)
     subprocess.run(["git", "config", "user.email", "sandbox@example.invalid"], cwd=tmp_path, check=True)
