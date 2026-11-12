@@ -878,3 +878,16 @@ def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_c
     assert ".codex-sandbox-probe-$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT).tmp" in production
     assert ".codex-sandbox-probe.tmp" not in production
     assert '--require-command-fragment "$probeFileName"' in production
+
+def test_ollama_context_preflight_uses_double_safe_budget_module():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "scripts" / "verify_ollama_context.ps1").read_text(encoding="utf-8")
+    module = (root / "scripts" / "OllamaContextMemory.psm1").read_text(encoding="utf-8")
+
+    assert 'Import-Module (Join-Path $PSScriptRoot "OllamaContextMemory.psm1")' in script
+    assert "Get-OllamaCacheBudgetBytes -FreeRamGiB $freeRamGiB -WeightsGiB $weightsGiB" in script
+    assert "[Math]::Max(0," not in script
+    assert "[double]$FreeRamGiB" in module
+    assert "[double]$WeightsGiB" in module
+    assert "[Math]::Max([double]0," in module
+
