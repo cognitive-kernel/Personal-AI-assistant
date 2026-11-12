@@ -44,7 +44,7 @@ def select_context_window(
     requested_context_tokens: int | None = None,
     reserve_bytes: int = DEFAULT_RAM_RESERVE_BYTES,
     model_weights_already_loaded: bool = False,
-) -> dict[str, int | None]:
+) -> dict[str, int | bool | None]:
     """Choose a safe context by adapting to the model and host capacity.
 
     Hardware capacity is estimated independently from the model's advertised
@@ -153,6 +153,8 @@ def select_context_window(
         "selected_context_tokens": selected,
         "kv_cache_bytes_per_token": bytes_per_token,
         "model_weight_bytes": model_weight_bytes,
+        "model_weight_charge_bytes": model_weight_charge_bytes,
+        "model_weights_already_loaded": model_weights_already_loaded,
         "available_memory_bytes": available_memory_bytes,
         "reserve_bytes": reserve_bytes,
         "overhead_bytes": overhead_bytes,
