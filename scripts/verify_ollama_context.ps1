@@ -73,10 +73,24 @@ function Get-AutomaticContext {
         throw "Ollama did not report a valid installed-model size for '$ModelName'."
     }
 
+    try {
+        $runtime = Invoke-RestMethod -Uri "$baseUrl/api/ps" -Method Get -TimeoutSec 10 -MaximumRedirection 0
+    } catch {
+        throw "Could not determine whether the selected Ollama model is already resident in memory. $($_.Exception.Message)"
+    }
+    $loadedBase = @($runtime.models | Where-Object {
+        $_ -and $_.name -and ([string]$_.name).Equals($ModelName, [System.StringComparison]::OrdinalIgnoreCase)
+    })
+    if ($loadedBase.Count -gt 1) {
+        throw "Ollama reported multiple loaded instances of selected model '$ModelName'; refusing ambiguous memory accounting."
+    }
+    $modelWeightsAlreadyLoaded = $loadedBase.Count -eq 1
+
     $selectionInput = @{
         model_info = $Info.model_info
         architecture = [string]$Info.details.family
         model_weight_bytes = $weightBytes
+        model_weights_already_loaded = $modelWeightsAlreadyLoaded
         available_memory_bytes = $availableMemoryBytes
         requested_context_tokens = $RequestedContext
     } | ConvertTo-Json -Depth 30 -Compress
@@ -264,6 +278,8 @@ if ($VerifyOnly) {
     Write-Host "Hardware-safe context ceiling: $($contextSelection.hardware_maximum_context_tokens) tokens"
     Write-Host "Available physical RAM: $($contextSelection.available_memory_bytes) bytes"
     Write-Host "Installed model weight size: $($contextSelection.model_weight_bytes) bytes"
+    Write-Host "Model weights already resident: $([bool]$contextSelection.model_weights_already_loaded)"
+    Write-Host "Model weight charge in this selection: $($contextSelection.model_weight_charge_bytes) bytes"
     Write-Host "Estimated KV cache: $($contextSelection.kv_cache_bytes_per_token) bytes/token"
     Write-Host "Reserved system RAM: $($contextSelection.reserve_bytes) bytes"
     Write-Host "Model/runtime overhead budget: $($contextSelection.overhead_bytes) bytes"
