@@ -720,3 +720,6 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - PR #720 and PR #721 were closed as superseded; their relevant changes were reconciled into PR #722 without importing the old 64k context floor or verbose metadata behavior.
 - Exact current head 1bb8a4f802d2496e355dd4d86a0595d275512cad has five workflows queued/running (tests, sandbox integration, browser E2E, dependency audit, Windows diagnostic). No pass is claimed before completion.
 - No merge, deployment, direct main write, force-push, or destructive user-state operation was performed.
+
+
+- Scope clarification: the removal of the fixed 64k/512-token floors applies to the Codex adaptive-context path. The separate general Ollama chat runtime retains its existing 512-token minimum; it is not used to clamp or reject Codex context selection.
