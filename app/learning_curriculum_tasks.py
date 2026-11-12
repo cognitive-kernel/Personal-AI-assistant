@@ -1244,6 +1244,18 @@ def handle_curriculum_task(
     if isinstance(batch_index, bool) or not isinstance(batch_index, int) or batch_index < 0:
         raise PermanentTaskError("The checkpointed curriculum batch index is invalid.")
     next_focus = state.get("next_focus", "")
+    candidate_cursor = state.get("candidate_cursor")
+    if candidate_cursor is not None and (
+        not isinstance(candidate_cursor, dict)
+        or set(candidate_cursor) != {"candidate_id", "content_offset"}
+        or any(
+            isinstance(candidate_cursor.get(key), bool)
+            or not isinstance(candidate_cursor.get(key), int)
+            or candidate_cursor[key] < (1 if key == "candidate_id" else 0)
+            for key in ("candidate_id", "content_offset")
+        )
+    ):
+        raise PermanentTaskError("The checkpointed chat-observation cursor is invalid.")
     no_progress_batches = state.get("no_progress_batches", 0)
     if isinstance(no_progress_batches, bool) or not isinstance(no_progress_batches, int) or no_progress_batches < 0:
         raise PermanentTaskError("The checkpointed no-progress counter is invalid.")
@@ -1255,6 +1267,7 @@ def handle_curriculum_task(
                 previous_subject_map=outline.get("subject_map", []),
                 previous_release_ledger=outline.get("release_ledger", []),
                 previous_unresolved_gaps=outline.get("unresolved_gaps", []),
+                candidate_cursor=candidate_cursor,
                 next_focus=next_focus,
             )
         except ollama.OllamaError as exc:
@@ -1276,6 +1289,8 @@ def handle_curriculum_task(
         # retained source. Force resumable continuation until every source batch
         # has been presented; the per-request excerpt budget is never a course cap.
         unreviewed_source_batches = batch_index + 1 < source_batch_count
+        unreviewed_candidate_batches = bool(page.pop("_chat_observations_has_more", False))
+        next_candidate_cursor = page.pop("_chat_observations_next_cursor", None)
         if unreviewed_source_batches and not page["has_more"]:
             page["has_more"] = True
             page["next_focus"] = (
@@ -1283,9 +1298,21 @@ def handle_curriculum_task(
                 f"of {source_batch_count}; identify missing topics, release years, "
                 "patches, compatibility changes, and prerequisite gaps before completion."
             )
+        if unreviewed_candidate_batches and not page["has_more"]:
+            page["has_more"] = True
+            page["next_focus"] = (
+                "Review the next page of retained unverified assistant observations; "
+                "compare it with existing topics, preserve contradictions, and identify "
+                "missing syllabus coverage before declaring the curriculum complete."
+            )
         known = {item.casefold() for item in outline["topics"]}
         additions = [item for item in page["topics"] if item.casefold() not in known]
-        if not additions and not unreviewed_source_batches and page["has_more"]:
+        if (
+            not additions
+            and not unreviewed_source_batches
+            and not unreviewed_candidate_batches
+            and page["has_more"]
+        ):
             raise PermanentTaskError(
                 "Curriculum generation made no progress while still requesting more topics."
             )
@@ -1321,12 +1348,14 @@ def handle_curriculum_task(
             outline["coverage_audit"]["status"] = "partial"
         batch_index += 1
         next_focus = page["next_focus"]
+        candidate_cursor = next_candidate_cursor if unreviewed_candidate_batches else None
         context.checkpoint({
             "phase": "outline_batch_validated", "topic_sha256": topic_sha256,
             "queries": _research_queries(topic), "completed_queries": _research_queries(topic),
             "sources": _source_metadata_for_checkpoint(sources), "outline": outline, "batch_index": batch_index,
             "source_batches_total": source_batch_count,
             "source_batches_reviewed": min(batch_index, source_batch_count),
+            "candidate_cursor": candidate_cursor,
             "no_progress_batches": no_progress_batches, "next_focus": next_focus,
             "has_more": page["has_more"], "model": model, "model_selection": model_selection,
         })
