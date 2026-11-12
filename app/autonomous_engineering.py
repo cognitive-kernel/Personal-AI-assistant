@@ -10,9 +10,13 @@ import time
 import urllib.error
 import urllib.request
 import re
+from pathlib import Path
 from typing import Any
 
-import psutil
+try:
+    import psutil
+except ImportError:
+    psutil = None
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, StrictInt, StrictStr
 
@@ -110,15 +114,35 @@ def _codex_status() -> dict[str, Any]:
 
 def _runner_status() -> dict[str, Any]:
     found = False
-    for process in psutil.process_iter(["name", "cmdline"]):
-        try:
-            name = (process.info.get("name") or "").casefold()
-            command = " ".join(process.info.get("cmdline") or []).casefold()
-            if "runner.listener" in name or "runner.listener" in command:
-                found = True
-                break
-        except (psutil.Error, OSError):
-            continue
+    if psutil is not None:
+        for process in psutil.process_iter(["name", "cmdline"]):
+            try:
+                name = (process.info.get("name") or "").casefold()
+                command = " ".join(process.info.get("cmdline") or []).casefold()
+                if "runner.listener" in name or "runner.listener" in command:
+                    found = True
+                    break
+            except (psutil.Error, OSError):
+                continue
+    elif os.name == "nt":
+        script = r"""
+$ErrorActionPreference = 'SilentlyContinue'
+$found = Get-CimInstance -ClassName Win32_Process | Where-Object {
+    $_.Name -match 'Runner\.Listener' -or $_.CommandLine -match 'Runner\.Listener'
+} | Select-Object -First 1
+if ($null -ne $found) { 'true' } else { 'false' }
+"""
+        result = _run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script], timeout=5)
+        found = bool(result and result.returncode == 0 and result.stdout.strip().casefold() == "true")
+    elif Path("/proc").is_dir():
+        for command_path in Path("/proc").glob("[0-9]*/cmdline"):
+            try:
+                command = command_path.read_bytes().replace(b"\0", b" ").decode("utf-8", errors="replace").casefold()
+                if "runner.listener" in command:
+                    found = True
+                    break
+            except OSError:
+                continue
     return {"running": found, "process_detected": found}
 
 
