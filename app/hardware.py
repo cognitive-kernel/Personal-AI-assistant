@@ -348,7 +348,7 @@ try {
                 # value as dedicated VRAM; use WDDM's dedicated-limit counter
                 # when it is available, otherwise report dedicated capacity as unknown.
                 integrated_intel = vendor == "Intel" and re.search(
-                    r"(?i)\\b(?:UHD|Iris|HD Graphics)\\b", name
+                    r"(?i)\b(?:UHD|Iris|HD Graphics)\b", name
                 )
                 if not integrated_intel:
                     total_mb = reported_adapter_ram_mb
