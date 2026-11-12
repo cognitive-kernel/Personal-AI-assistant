@@ -298,7 +298,7 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
         maximum = local_model.get("model_context_length")
         raise HTTPException(
             status_code=422,
-            detail=f"Codex به حداقل {MIN_CODEX_CONTEXT_TOKENS} توکن Context نیاز دارد؛ سقف مدل انتخاب‌شده {maximum} است و ذخیره نشد.",
+            detail=f"حداکثر Context مدل انتخاب‌شده ({maximum}) از حداقل پنجرهٔ اجرایی معتبر کمتر است؛ تنظیمات ذخیره نشد.",
         )
     if not local_model.get("model_supports_tools"):
         raise HTTPException(status_code=422, detail="مدل انتخاب‌شده قابلیت tools را اعلام نکرده و برای Codex قابل استفاده نیست.")
