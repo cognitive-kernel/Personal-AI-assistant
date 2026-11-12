@@ -487,6 +487,7 @@ def test_windows_provisioning_and_app_readiness_use_consistent_cli_resolution():
     assert "Node.js 26.13.0 or newer is required" in provision
     assert "npm 11.20.0 or newer is required" in provision
     assert "Ollama 0.40.16 or newer is required" in provision
+    assert 'if ($Model -match "(?i)-codex-(?:ctx[0-9]+|[0-9]+k)$")' in provision
     assert "Get-Command ollama -ErrorAction" not in provision
     assert "Get-Command npm -ErrorAction" not in provision
 
