@@ -235,8 +235,9 @@ def test_dynamic_ram_budget_rejects_non_finite_telemetry():
     assert hardware.dynamic_ram_budget_gb({}, {"available_ram_gb": float("nan")}) is None
 
 
-def test_resource_headroom_fails_closed_when_psutil_is_unavailable(monkeypatch):
+def test_resource_headroom_fails_closed_when_all_native_telemetry_is_unavailable(monkeypatch):
     monkeypatch.setattr(hardware, "psutil", None)
+    monkeypatch.setattr(hardware, "_native_system_metrics", lambda interval=0.1: None)
     with pytest.raises(RuntimeError, match="CPU/RAM telemetry is unavailable"):
         hardware.ensure_resource_headroom()
 
@@ -257,6 +258,9 @@ def test_ram_ceiling_subtracts_safety_reserve_before_context_selection():
 def test_detect_gpu_uses_generic_windows_telemetry_for_single_adapter(monkeypatch):
     import json
     monkeypatch.setattr(hardware, "IS_WINDOWS", True)
+    monkeypatch.setattr(hardware, "psutil", SimpleNamespace(
+        virtual_memory=lambda: SimpleNamespace(available=16 * 1024**3)
+    ))
     payload = {
         "Adapters": [{"Name": "Intel(R) UHD Graphics 730", "PNPDeviceID": "PCI\\VEN_8086&DEV_4692", "AdapterRAM": 2147483648}],
         "Counters": [
