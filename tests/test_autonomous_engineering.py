@@ -1233,11 +1233,14 @@ def test_ollama_status_returns_every_installed_model_without_inserting_defaults(
     names = [f"model-{index}:latest" for index in range(55)]
     selected = names[-1]
 
+    show_requests = []
+
     class FakeOpener:
         def open(self, request, timeout):
             if request.full_url.endswith("/api/tags"):
                 payload = {"models": [{"name": name} for name in names]}
             else:
+                show_requests.append(json.loads(request.data.decode("utf-8")))
                 payload = {
                     "details": {"family": "llama"},
                     "model_info": {"llama.context_length": 32768},
@@ -1256,6 +1259,7 @@ def test_ollama_status_returns_every_installed_model_without_inserting_defaults(
     assert result["model_metadata_available"] is True
     assert result["model_context_supported"] is True
     assert result["model_context_error"] is None
+    assert show_requests == [{"model": selected, "verbose": False}]
 
 
 def test_ollama_status_keeps_server_online_when_selected_model_metadata_fails(monkeypatch):
@@ -1275,6 +1279,29 @@ def test_ollama_status_keeps_server_online_when_selected_model_metadata_fails(mo
     assert result["model_context_supported"] is False
     assert result["model_supports_tools"] is False
     assert "OSError" in result["model_metadata_error"]
+
+
+def test_save_settings_accepts_installed_model_with_context_below_64k(monkeypatch):
+    saved = []
+    monkeypatch.setattr(agent, "_ollama_status", lambda model: {
+        "online": True,
+        "model_installed": True,
+        "model_metadata_available": True,
+        "model_context_supported": True,
+        "model_context_length": 10000,
+        "model_supports_tools": True,
+    })
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "_run", lambda *args, **kwargs: subprocess.CompletedProcess([], 0, "", ""))
+    monkeypatch.setattr(agent, "_save_repository_variables", lambda gh, updates: saved.extend(updates))
+
+    result = agent.save_autonomous_engineering_settings(
+        agent.EngineeringSettings(model="small:latest", interval_hours=4, execution_mode="continuous")
+    )
+
+    assert result["saved"] is True
+    assert result["model"] == "small:latest"
+    assert ("AUTONOMOUS_ENGINEERING_MODEL", "small:latest") in saved
 
 
 def test_save_settings_rejects_model_without_explicit_tool_calling_support(monkeypatch):
