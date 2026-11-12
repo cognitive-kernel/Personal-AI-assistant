@@ -77,6 +77,20 @@ if (-not $ollamaExecutable) {
         }
     } catch {}
 }
+if (-not $ollamaExecutable) {
+    try {
+        $profiles = @(Get-CimInstance Win32_UserProfile -ErrorAction Stop | Where-Object {
+            -not $_.Special -and -not [string]::IsNullOrWhiteSpace($_.LocalPath)
+        })
+        foreach ($profile in $profiles) {
+            $candidate = Join-Path ([string]$profile.LocalPath) "AppData\Local\Programs\Ollama\ollama.exe"
+            if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+                $ollamaExecutable = $candidate
+                break
+            }
+        }
+    } catch {}
+}
 $ollamaCliReady = -not [string]::IsNullOrWhiteSpace($ollamaExecutable)
 $ollamaVersion = "Ollama CLI not found in PATH or active ollama.exe process"
 if ($ollamaCliReady) {
