@@ -1,3 +1,19 @@
+# وضعیت جاری پروژه — 2026-11-12
+
+## وضعیت فعلی ماژول مهندسی خودکار
+
+- مبنای `main`: `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`؛ PR #719 در این commit ادغام شده است.
+- شاخهٔ فعال تکمیل ماژول: `fix/autonomous-engineering-show-all-ollama-models-20261112`؛ PR [#722](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/722) باز و Draft است.
+- اصلاح جدید UI و readiness: فهرست `selectable_models` به‌جای فهرست همهٔ مدل‌ها مبنا قرار می‌گیرد؛ نسخه‌های داخلی `-codex-ctx<tokens>` و legacy `-codex-64k` در UI و هر دو بررسی PowerShell مدل پایه محسوب نمی‌شوند.
+- Regressionهای انتخاب مدل و readiness در `tests/test_autonomous_engineering.py` و `tests/test_codex_smoke_diagnostics.py` افزوده/به‌روزرسانی شدند.
+- Code/test SHA پیش از این همگام‌سازی مستندات: `6246b9aa6f1a3728a1d32e6f98499dedd3153412`. در زمان ثبت، Dependency Audit موفق بود؛ Python suite، Windows Storage، Browser E2E و Docker sandbox در حال اجرا بودند؛ diagnostic خودمیزبان Windows در صف و بدون نتیجه بود.
+- PR #707 تغییرات هم‌پوشان مالکیت/checkpoint دارد و CI آن روی SHA ثبت‌شده شکست داشته است؛ تغییرات آن با PR #722 باید پیش از هر ادغام نهایی reconcile شوند. هیچ merge مستقیم یا خودکاری انجام نمی‌شود.
+- گیت‌های بیرونیِ باز: diagnostic واقعی Codex/Ollama روی Runner مقصد، soak و crash/restart روی میزبان، staging restore/rollback و بازبینی امنیتی مستقل Issue #52. توسعه و تست‌های مستقل GitHub ادامه دارد؛ تست انجام‌نشده موفق اعلام نمی‌شود.
+
+> بخش‌های بعدی این سند snapshotهای تاریخی‌اند؛ وضعیت جاری و SHA معتبر در همین بخش ثبت می‌شود.
+
+---
+
 ## تکمیل GitHub CI برای ماژول Codex/Ollama — 2026-11-12
 
 اعتبارسنجی کد و تست‌ها روی SHA `65b07b3a6dee54b6a1e27356f5f7a7df8ad87c3` تکمیل شد:
