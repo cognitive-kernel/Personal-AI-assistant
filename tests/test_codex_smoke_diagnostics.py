@@ -190,6 +190,7 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert '-lt $minimumContextTokens' in context_script
     assert '64000' not in context_script
     assert 'Stop-LoadedCodexVariants -BaseModel $baseModel' in context_script
+    assert 'model_weights_already_loaded = $modelWeightsAlreadyLoaded' in context_script
     assert 'keep_alive = 0' in context_script
     assert 'OLLAMA_RUNTIME_CONTEXT_RELEASED' in context_script
     inventory_step = diagnostic.split("      - name: Inventory installed Ollama models and capabilities", 1)[1].split(
