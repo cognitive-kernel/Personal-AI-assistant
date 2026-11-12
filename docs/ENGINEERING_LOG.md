@@ -846,3 +846,11 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - **Observed failure:** the isolated Docker suite found one assertion mismatch in the legacy-variant inventory test. The API intentionally sorts the complete installed-model inventory; the fixture listed the new adaptive suffix before the legacy suffix, while the actual sorted result places `-codex-64k` first.
 - **Correction:** reordered only the expected test list to match the API's stable sorted contract. The implementation continues to preserve both installed models in inventory while excluding both from selectable base models.
 - **Validation:** fresh exact-head tests and Docker sandbox runs are required; the failed c02c run is not counted as green.
+
+
+## 2026-11-12 — Correct target-host integrated GPU memory documentation
+
+- **Observed mismatch:** the README still described the Intel integrated GPU as having 128 MB reported memory, while the current target-host record reports Intel UHD Graphics 730, WMI AdapterRAM 2 GiB, and Intel driver 32.0.101.6129. Neither WMI AdapterRAM nor a shared-memory limit is proof of dedicated VRAM.
+- **Correction:** README now records the actual 2 GiB WMI AdapterRAM report and driver version while explicitly distinguishing it from dedicated VRAM. Dedicated and shared memory remain separate WDDM measurements; actual model offload remains based on Ollama `/api/ps` `size_vram`, not the WMI field.
+- **Regression protection:** target-diagnostic contract test now rejects the stale 128 MB statement and requires the recorded AdapterRAM and driver details.
+- **Scope:** no GPU offload is assumed or forced. The Intel UHD 730 remains an integrated adapter; CPU fallback on the i5-12400 remains valid and observable.
