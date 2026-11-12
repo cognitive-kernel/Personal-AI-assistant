@@ -23,7 +23,7 @@ Let:
 - M_weight_charge be zero when the selected base model is already resident (because free physical memory already excludes its weights), otherwise M_weights.
 - M_overhead be the conservative model/runtime overhead allowance.
 - B_KV be the estimated KV-cache bytes per token from the model's architecture metadata.
-- C_catalog be the Codex catalog ceiling (currently 1,048,576 tokens).
+- C_catalog be the Codex catalog's representable ceiling: the signed 64-bit maximum accepted by Codex `ModelInfo.context_window` / `max_context_window`. The application does not add an arbitrary 1,048,576-token cap; actual model and host limits normally bind first.
 
 The host capacity is estimated independently from the model's advertised context ceiling. KV-cache bytes/token necessarily depend on the selected model architecture, but the hardware memory budget is reported separately. If the base model is already loaded, its weight size is not charged twice because the available-memory measurement already reflects resident weights:
 
