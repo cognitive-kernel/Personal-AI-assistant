@@ -134,9 +134,16 @@ def complete_merged_pr(token: str, repo: str, pending: dict[str, Any], *, api: C
     head = current.get("head") or {}
     base = current.get("base") or {}
     merge_sha = current.get("merge_commit_sha")
+    merged_by = current.get("merged_by") if isinstance(current.get("merged_by"), dict) else {}
+    merged_by_login = merged_by.get("login")
+    merged_by_type = merged_by.get("type")
     if (
         current.get("state") != "closed"
         or current.get("merged") is not True
+        or not isinstance(merged_by_login, str)
+        or not merged_by_login.strip()
+        or merged_by_type != "User"
+        or merged_by_login.endswith("[bot]")
         or (current.get("user") or {}).get("login") != "github-actions[bot]"
         or (head.get("repo") or {}).get("full_name") != repo
         or base.get("ref") != "main"
