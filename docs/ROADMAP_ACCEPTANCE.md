@@ -29,6 +29,7 @@ Code/test SHA `65b07b3a6dee54b6a1e27356f5f7a7df8ad87c3` passed the GitHub-hosted
 - Windows Storage regressions: passed.
 - Browser/dashboard E2E: passed.
 - Dependency audit: passed.
+- Exact-head evidence: [tests/Python/Windows Storage](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43281188427), [Browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43281188426), [Docker full-suite and sandbox integration](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43281188706), [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43281188494).
 - Isolated Docker full-suite: passed within the corrected 600-second execution budget.
 - Real Docker sandbox integration: passed (5 tests).
 - Markdown validation: 96 files; import-cycle check passed.
