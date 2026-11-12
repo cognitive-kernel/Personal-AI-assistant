@@ -59,7 +59,7 @@ try {
     }
 
     $payloadObject.available_memory_bytes = [long](16 * 1GB)
-    $payloadObject.model_weights_already_loaded = $true
+    $payloadObject | Add-Member -NotePropertyName model_weights_already_loaded -NotePropertyValue $true -Force
     [IO.File]::WriteAllText($inputPath, ($payloadObject | ConvertTo-Json -Depth 20 -Compress), $utf8NoBom)
     $helperExitCode = Invoke-ContextSelector
     if ($helperExitCode -ne 0) {
