@@ -1399,11 +1399,12 @@ def test_ollama_context_powershell_bridge_uses_explicit_file_not_native_stdin():
 
 def test_runner_status_uses_native_windows_process_api_without_psutil(monkeypatch):
     import subprocess
+    from types import SimpleNamespace
     from app import autonomous_engineering_services as services
 
     observed = {}
     monkeypatch.setattr(services, "psutil", None)
-    monkeypatch.setattr(services.os, "name", "nt")
+    monkeypatch.setattr(services, "os", SimpleNamespace(name="nt"))
 
     def fake_run(command, **kwargs):
         observed["command"] = command
