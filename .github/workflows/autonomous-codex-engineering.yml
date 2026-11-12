@@ -165,11 +165,18 @@ jobs:
           $pythonPath = "C:\Program Files\Python311\python.exe"
           $pythonDirectory = Split-Path -Parent $pythonPath
           $scriptsPath = Join-Path $pythonDirectory "Scripts"
-          $ollamaPath = "C:\Users\Admin\AppData\Local\Programs\Ollama\ollama.exe"
-          $ollamaDirectory = Split-Path -Parent $ollamaPath
-          if (-not (Test-Path -LiteralPath $ollamaPath -PathType Leaf)) {
-            throw "Ollama executable was not found at: $ollamaPath"
+          $ollamaCommand = Get-Command ollama.exe -ErrorAction SilentlyContinue
+          $ollamaPath = if ($ollamaCommand) { $ollamaCommand.Source } else { $null }
+          if (-not $ollamaPath) {
+            $ollamaProcess = Get-CimInstance Win32_Process -Filter "Name='ollama.exe'" -ErrorAction Stop |
+              Where-Object { -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) } |
+              Select-Object -First 1
+            $ollamaPath = if ($ollamaProcess) { [string]$ollamaProcess.ExecutablePath } else { $null }
           }
+          if ([string]::IsNullOrWhiteSpace($ollamaPath) -or -not (Test-Path -LiteralPath $ollamaPath -PathType Leaf)) {
+            throw "Ollama executable was not found in PATH or among active ollama.exe processes."
+          }
+          $ollamaDirectory = Split-Path -Parent $ollamaPath
           if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) {
             throw "System-wide Python was not found at: $pythonPath"
           }
@@ -422,27 +429,25 @@ jobs:
           if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
             throw "Node.js must be installed system-wide and available in the Runner service PATH."
           }
-          $npm = Get-Command npm -ErrorAction SilentlyContinue
-          if (-not $npm) {
-            throw "npm was not found in the Runner service PATH. Install Node.js LTS system-wide and restart the Runner service."
-          }
-          $npmPrefix = (npm config get prefix).Trim()
+          $npm = Get-Command npm.cmd -ErrorAction Stop
+          $npmPrefix = (& $npm.Source config get prefix 2>&1 | Out-String).Trim()
           if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($npmPrefix)) {
             throw "Could not determine the Runner account's npm global prefix."
           }
           $env:PATH = "$npmPrefix;$env:PATH"
           $requiredCodexVersion = "0.167.0"
           $installedVersion = ""
-          if (Get-Command codex -ErrorAction SilentlyContinue) {
-            $installedVersion = (& codex --version 2>$null | Out-String).Trim()
+          $codexCommand = Get-Command codex.cmd -ErrorAction SilentlyContinue
+          if ($codexCommand) {
+            $installedVersion = (& $codexCommand.Source --version 2>$null | Out-String).Trim()
           }
           if ($installedVersion -notmatch [regex]::Escape($requiredCodexVersion)) {
-            npm install --global "@openai/codex@$requiredCodexVersion"
+            & $npm.Source install --global "@openai/codex@$requiredCodexVersion"
             if ($LASTEXITCODE -ne 0) { throw "Could not install the pinned Codex CLI $requiredCodexVersion for the Runner service account." }
           }
           $npmPrefix | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
           $env:PATH = "$npmPrefix;$env:PATH"
-          $codexCommand = Get-Command codex -ErrorAction Stop
+          $codexCommand = Get-Command codex.cmd -ErrorAction Stop
           $verifiedVersion = (& $codexCommand.Source --version 2>&1 | Out-String).Trim()
           Write-Host "Codex executable: $($codexCommand.Source)"
           Write-Host "Codex version: $verifiedVersion"
@@ -459,8 +464,8 @@ jobs:
           if ($principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {
             throw "The autonomous Runner must use a non-administrator service account"
           }
-          $ollama = Get-Command ollama -ErrorAction Stop
-          $codex = Get-Command codex -ErrorAction Stop
+          $ollama = Get-Command ollama.exe -ErrorAction Stop
+          $codex = Get-Command codex.cmd -ErrorAction Stop
           $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 5 -MaximumRedirection 0
           $model = [string]$env:AUTONOMOUS_ENGINEERING_MODEL
           if ([string]::IsNullOrWhiteSpace($model)) {
@@ -470,9 +475,9 @@ jobs:
           if (-not $installed) {
             throw "Required local model '$model' is not installed. Run: ollama pull $model"
           }
-          codex --version
+          & $codex.Source --version
           if ($LASTEXITCODE -ne 0) { throw "Codex CLI is not executable in the Runner service account" }
-          ollama --version
+          & $ollama.Source --version
           if ($LASTEXITCODE -ne 0) { throw "Ollama CLI is not executable in the Runner service account" }
 
       - name: Verify the selected model's allocated Ollama context
