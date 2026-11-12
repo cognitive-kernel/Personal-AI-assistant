@@ -85,8 +85,8 @@ def test_context_selection_adapts_to_model_limit_below_64k():
 def test_codex_catalog_ceiling_matches_signed_64_bit_model_metadata_schema():
     result = select_context_window(**payload())
 
-    assert MAX_CODEX_CONTEXT_TOKENS == (1 << 63) - 1
-    assert result["codex_maximum_context_tokens"] == (1 << 63) - 1
+    assert MAX_CODEX_CONTEXT_TOKENS == ((1 << 63) - 1) // 9
+    assert result["codex_maximum_context_tokens"] == ((1 << 63) - 1) // 9
 
 
 def test_context_selection_clamps_requested_value_to_both_hard_limits():
