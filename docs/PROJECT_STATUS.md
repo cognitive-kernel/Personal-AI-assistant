@@ -8,7 +8,7 @@
 - هر Context درخواستی بزرگ‌تر از سقف مؤثر قبل از ذخیره، ساخت مدل Ollama یا ارسال به Codex clamp می‌شود. مدل اصلی تغییر نمی‌کند؛ variant اختصاصی ساخته و مقدار ذخیره‌شده و تخصیص واقعی با `/api/show` و `/api/ps` کنترل می‌شود.
 - metadata از `/api/show` با `verbose=false` خوانده می‌شود و محدودیت اندازهٔ پاسخ، loopback، proxy و redirect حفظ شده‌اند.
 - Regressionها شامل Context سخت‌افزاری ۱۰٬۰۰۰، سقف مدل ۸٬۱۹۲، سقف یک توکن، Context درخواستی بزرگ‌تر از ظرفیت، و رد Context صفر/منفی هستند.
-- اعتبارسنجی exact-head CI و اجرای واقعی Codex با ابزار در Runner ویندوز پس از آخرین تغییرات هنوز در انتظار نتیجه است؛ تا دریافت شواهد هیچ تستی موفق اعلام نمی‌شود.
+- CI کامل روی head کد `ff74389cfe033afc9ccf1c9d377930a1cf634a3e` موفق است: ۲٬۱۴۶ passed، ۲ skipped، ۵۱ deselected؛ Windows Storage، Browser E2E، Dependency Audit و benchmark پوشش ۱۰/۱۰ موفق شدند. پس از هم‌راستاسازی مستندات، head نهایی `87ba210f617bd3be672e9537ef4c4de6322ddebf` دوباره در CI قرار دارد؛ Runner ویندوز نیز مستقل از CI در حال اجرای diagnostic است. نتیجهٔ تخصیص واقعی Ollama و smoke ابزار Codex هنوز ادعا نمی‌شود.
 
 ## snapshot قبلی — تکمیل Autonomous Engineering
 
