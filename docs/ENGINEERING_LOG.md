@@ -568,3 +568,12 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - The source-body retention and common HTML publication/modified-date extraction work is implemented in this follow-up with migration 46. It must not continue to be listed as an outstanding gap once its exact-head CI passes.
 - Release-watch polling intentionally remains at five results per query to avoid changing existing fingerprints solely because the initial curriculum discovery page was expanded. The watch query set itself is broader; any changed fingerprint after this query-set expansion is an intentional additive refresh, not an assertion that every update was already detected.
 
+
+
+## 2026-11-12 — Non-destructive learning admission and cursor-based chat evidence
+
+- Clarified the master engineering contract: data retention/admission is independent from source authority, lesson completeness, test pass, semantic-review verdict, and learner mastery. Low-confidence or malformed material remains preserved with provenance/status; assessment is not a deletion gate.
+- Extended chat-observation retrieval with a stable candidate-ID/content-offset cursor. Search now matches both the original user query and answer content, and long answers are delivered in bounded chunks without losing their remaining text.
+- Curriculum synthesis checkpoints the cursor and continues across additional batches until all matching prior assistant observations have been delivered. This is separate from external source pagination and does not promote observations to trusted facts.
+- Added regression coverage for content-only topic matches and reconstructing all chat observations from bounded pages.
+- Local test execution is unavailable in this editing session; exact-head GitHub CI is required before merge. No local/target-host/model runtime pass is claimed.

@@ -31,6 +31,11 @@ def test_master_prompt_defines_universal_version_aware_learning_contract():
         "automated semantic adjudication by an independently configured reviewer model",
         "Human adjudication is not a routine learning or lesson-acceptance gate",
         "Human approval is not required for routine evidence gathering, draft correction, tests, or versioned lesson updates.",
+        "Separate data admission from truth, lesson quality, and learner mastery.",
+        "Retention and initial learning-corpus admission must never depend on a source-authority threshold",
+        "Every non-empty assistant answer saved from chat, research, or another supported conversation path must be captured",
+        "A learner assessment measures the learner's demonstrated mastery; it must not decide whether the underlying answer or observation is retained",
+        "Do not require every rubric item to match before storing or continuing to learn from an answer.",
     )
     for requirement in required_contract:
         assert requirement in prompt

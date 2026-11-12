@@ -614,7 +614,8 @@ def _failure_warnings_for_topic(topic: str, *, limit: int = 3) -> list[dict[str,
 
 
 def _prior_assistant_observations(
-    topic: str, settings: dict[str, Any], *, max_chars: int | None = None
+    topic: str, settings: dict[str, Any], *, max_chars: int | None = None,
+    cursor: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     """Retrieve local assistant answers as unverified context without blocking lesson generation."""
     try:
@@ -628,9 +629,10 @@ def _prior_assistant_observations(
             if isinstance(max_chars, int) and not isinstance(max_chars, bool)
             else max(24000, min(100000, configured_limit))
         )
-        observations = learning_candidates.relevant_chat_candidates(
-            topic, max_chars=effective_limit
-        )
+        retrieval_args: dict[str, Any] = {"max_chars": effective_limit}
+        if cursor is not None:
+            retrieval_args["cursor"] = cursor
+        observations = learning_candidates.relevant_chat_candidates(topic, **retrieval_args)
         observations["status"] = "available"
         return observations
     except Exception as exc:
