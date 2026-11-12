@@ -277,3 +277,13 @@ The current `main` SHA `2a5c83bf0ba924f4a2c8f206338a04872562d72d` has completed 
 - **Completed operational evidence:** Self-hosted Windows diagnostic [#43197193053](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43197193053) passed model inventory, metadata, real `/api/ps` allocation, Codex `exec_command`, post-smoke allocation, and model-release checks.
 - **Remaining operational evidence:** long-duration target-host soak, crash/restart acceptance, staging restore/rollback, independent security review (Issue #52), and live-model/human evaluation remain separate project gates.
 - **State:** IMPLEMENTED / EXACT-HEAD GITHUB CI GREEN / SELF-HOSTED RUNTIME DIAGNOSTIC GREEN. PR #722 remains Draft/open for owner review; no merge or deployment was performed.
+
+
+## 2026-11-12 — Consolidated Windows/Linux process and sandbox acceptance
+
+- Integrated native process snapshots and PID-safe termination. Windows revalidates process creation time after opening the process handle. Linux uses pidfd signaling, preserves SIGTERM-to-SIGKILL escalation, and fails closed if safe pidfd support is unavailable.
+- Integrated native CPU/RAM telemetry with psutil as an optional hardware extra; Runner detection has native Windows CIM and Linux /proc fallbacks.
+- Corrected integrated Intel GPU reporting: WMI AdapterRAM is retained as reported metadata, not assumed to be dedicated VRAM. WDDM dedicated/shared counters and host-available RAM govern usable memory.
+- Fixed the Docker real-process test failure by passing a validated host checkout SHA into the isolated container rather than relying on an unavailable .git worktree pointer.
+- The target Windows diagnostic now checks the recorded i5-12400 / 6-core-12-thread / 30–33 GiB / UHD 730 host profile and executes process/lock/recovery acceptance.
+- Automatic-context target-runner validation no longer forces 10,000 tokens; it records the actual /api/ps context, model bytes, and VRAM bytes. Current head 1bb8a4f802d2496e355dd4d86a0595d275512cad has exact-head tests, sandbox integration, Browser E2E, dependency audit, and self-hosted diagnostic queued/running. Results remain pending until each workflow completes.
