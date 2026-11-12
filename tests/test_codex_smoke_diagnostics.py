@@ -357,3 +357,35 @@ def test_windows_runner_cli_checks_use_cmd_shims_and_discover_active_ollama():
     assert "Get-Command codex.cmd" in workflow
     assert 'Get-CimInstance Win32_Process -Filter "Name=\'ollama.exe\'"' in workflow
     assert "C:\\Users\\Admin\\AppData\\Local\\Programs\\Ollama\\ollama.exe" not in workflow
+
+def test_target_diagnostic_matches_recorded_hardware_and_uses_automatic_context():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    diagnostic = (root / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml").read_text(encoding="utf-8")
+    autonomous = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    runner_check = (root / "scripts" / "check_autonomous_runner.ps1").read_text(encoding="utf-8")
+
+    assert "i5-12400" in diagnostic
+    assert "physicalCores -ne 6" in diagnostic
+    assert "logicalProcessors -ne 12" in diagnostic
+    assert "totalRamGiB -lt 30" in diagnostic
+    assert "Intel.*UHD.*730" in diagnostic
+    assert "wmi_adapter_ram_bytes" in diagnostic
+    assert "OLLAMA_RUNTIME_DEVICE_ALLOCATION" in diagnostic
+    assert "size_vram" in diagnostic
+    assert "github.ref_name != 'fix/autonomous-engineering-show-all-ollama-models-20261112'" in diagnostic
+    assert "github.ref_name == 'fix/autonomous-engineering-show-all-ollama-models-20261112' && '10000'" not in diagnostic
+    assert "Get-Command npm.cmd" in diagnostic
+    assert "Get-Command codex.cmd" in diagnostic
+    assert "Get-CimInstance Win32_Process -Filter \"Name='ollama.exe'\"" in diagnostic
+    assert "C:\\Users\\Admin\\AppData\\Local\\Programs\\Ollama\\ollama.exe" not in diagnostic
+
+    assert "Get-Command npm.cmd" in autonomous
+    assert "Get-Command codex.cmd" in autonomous
+    assert "C:\\Users\\Admin\\AppData\\Local\\Programs\\Ollama\\ollama.exe" not in autonomous
+    assert "Get-Command npm.cmd" in runner_check
+    assert "Get-Command codex.cmd" in runner_check
+    assert "Get-Command ollama.exe" in runner_check
+    assert "verbose = $false" in runner_check
+    assert "$parsedContext -ge 1" in runner_check
