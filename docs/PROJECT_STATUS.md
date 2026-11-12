@@ -6,7 +6,7 @@
 - شاخهٔ فعال تکمیل ماژول: `fix/autonomous-engineering-show-all-ollama-models-20261112`؛ PR [#722](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/722) باز و Draft است.
 - اصلاح جدید UI و readiness: فهرست `selectable_models` به‌جای فهرست همهٔ مدل‌ها مبنا قرار می‌گیرد؛ نسخه‌های داخلی `-codex-ctx<tokens>` و legacy `-codex-64k` در UI و هر دو بررسی PowerShell مدل پایه محسوب نمی‌شوند.
 - Regressionهای انتخاب مدل و readiness در `tests/test_autonomous_engineering.py` و `tests/test_codex_smoke_diagnostics.py` افزوده/به‌روزرسانی شدند.
-- Code/test SHA پیش از این همگام‌سازی مستندات: `6246b9aa6f1a3728a1d32e6f98499dedd3153412`. در زمان ثبت، Dependency Audit موفق بود؛ Python suite، Windows Storage، Browser E2E و Docker sandbox در حال اجرا بودند؛ diagnostic خودمیزبان Windows در صف و بدون نتیجه بود.
+- Code/test SHA پیش از همگام‌سازی مستندات: `6246b9aa6f1a3728a1d32e6f98499dedd3153412`؛ آخرین SHA مستندات PR #722: `234643106cfe675bacc18290a926987131f34aee`. روی SHA مستندات، Dependency Audit موفق است؛ Python suite، Windows Storage، Browser E2E و Docker sandbox در حال اجرا هستند؛ diagnostic خودمیزبان Windows هنوز runner دریافت نکرده و موفق محسوب نمی‌شود.
 - PR #707 در 2026-11-12 به‌عنوان تغییر تکراری بسته شد؛ PR #719 در commit `f87e15b9eb76f7395ea4380382d95f1bc64e21ed` معماری checkpoint/process ownership، قفل‌های پایدار، مالکیت وظایف، workflow سریال‌شده، ADR-014/015 و regressionهای آن را در `main` ادغام کرده است. PR #707 جداگانه ادغام نمی‌شود و دیگر وابستگی rebase برای PR #722 نیست.
 - گیت‌های بیرونیِ باز: diagnostic واقعی Codex/Ollama روی Runner مقصد، soak و crash/restart روی میزبان، staging restore/rollback و بازبینی امنیتی مستقل Issue #52. توسعه و تست‌های مستقل GitHub ادامه دارد؛ تست انجام‌نشده موفق اعلام نمی‌شود.
 
