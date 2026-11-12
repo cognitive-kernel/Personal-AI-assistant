@@ -176,7 +176,7 @@ jobs:
       contents: read
     env:
       AUTONOMOUS_ENGINEERING_MODEL: ${{ inputs.model || vars.AUTONOMOUS_ENGINEERING_MODEL || '' }}
-      AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH: ${{ inputs.context_length || (github.ref_name == 'fix/autonomous-engineering-show-all-ollama-models-20261112' && '10000') || vars.AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH || '' }}
+      AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH: ${{ inputs.context_length || (github.ref_name != 'fix/autonomous-engineering-show-all-ollama-models-20261112' && vars.AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH) || '' }}
       CODEX_WINDOWS_SANDBOX_BACKEND: mxc
       CODEX_MODEL_REASONING_EFFORT: low
     steps:
@@ -229,7 +229,7 @@ jobs:
           }
           Write-Host "All required GitHub workflows are green on exact head $env:EXPECTED_HEAD_SHA."
 
-      - name: Prepare the same service-account runtime
+      - name: Prepare the same service-account runtime and verify target hardware
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
@@ -238,30 +238,114 @@ jobs:
           $pythonPath = "C:\Program Files\Python311\python.exe"
           $pythonDirectory = Split-Path -Parent $pythonPath
           $scriptsPath = Join-Path $pythonDirectory "Scripts"
-          $ollamaPath = "C:\Users\Admin\AppData\Local\Programs\Ollama\ollama.exe"
-          if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) { throw "System-wide Python was not found: $pythonPath" }
-          if (-not (Test-Path -LiteralPath $ollamaPath -PathType Leaf)) { throw "Ollama executable was not found: $ollamaPath" }
-          $npm = Get-Command npm -ErrorAction Stop
-          $npmPrefix = (npm config get prefix).Trim()
-          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($npmPrefix)) { throw "Could not determine npm global prefix." }
-          $env:PATH = "$pythonDirectory;$scriptsPath;$npmPrefix;$(Split-Path -Parent $ollamaPath);$env:PATH"
-          @($pythonDirectory, $scriptsPath, $npmPrefix, (Split-Path -Parent $ollamaPath)) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          $requiredVersion = "0.167.0"
-          $version = (& codex --version 2>$null | Out-String).Trim()
-          if ($version -notmatch [regex]::Escape($requiredVersion)) {
-            npm install --global "@openai/codex@$requiredVersion"
-            if ($LASTEXITCODE -ne 0) { throw "Could not install Codex CLI $requiredVersion." }
+          if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) {
+            throw "System-wide Python was not found: $pythonPath"
           }
-          $version = (& codex --version 2>&1 | Out-String).Trim()
-          Write-Host "Codex version: $version"
-          if ($LASTEXITCODE -ne 0 -or $version -notmatch [regex]::Escape($requiredVersion)) { throw "Unexpected Codex CLI version: $version" }
-          python --version
-          ollama --version
+          if (-not (Test-Path -LiteralPath $scriptsPath -PathType Container)) {
+            throw "Python Scripts directory was not found: $scriptsPath"
+          }
+
+          $ollamaCommand = Get-Command ollama.exe -ErrorAction SilentlyContinue
+          $ollamaPath = if ($ollamaCommand) { $ollamaCommand.Source } else { $null }
+          if (-not $ollamaPath) {
+            $ollamaProcess = Get-CimInstance Win32_Process -Filter "Name='ollama.exe'" -ErrorAction Stop |
+              Where-Object { -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) } |
+              Select-Object -First 1
+            $ollamaPath = if ($ollamaProcess) { [string]$ollamaProcess.ExecutablePath } else { $null }
+          }
+          if ([string]::IsNullOrWhiteSpace($ollamaPath) -or -not (Test-Path -LiteralPath $ollamaPath -PathType Leaf)) {
+            throw "Ollama executable was not found in PATH or among active ollama.exe processes."
+          }
+          $ollamaDirectory = Split-Path -Parent $ollamaPath
+
+          $npm = Get-Command npm.cmd -ErrorAction Stop
+          $npmPrefixOutput = & $npm.Source config get prefix 2>&1
+          $npmPrefixExitCode = $LASTEXITCODE
+          $npmPrefix = [string](@($npmPrefixOutput)[0])
+          $npmPrefix = $npmPrefix.Trim()
+          if ($npmPrefixExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($npmPrefix)) {
+            throw "Could not determine the Runner service account's npm global prefix."
+          }
+          $env:PATH = "$pythonDirectory;$scriptsPath;$npmPrefix;$ollamaDirectory;$env:PATH"
+          @($pythonDirectory, $scriptsPath, $npmPrefix, $ollamaDirectory) |
+            Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+          $requiredCodexVersion = "0.167.0"
+          $codexCommand = Get-Command codex.cmd -ErrorAction SilentlyContinue
+          $installedVersion = ""
+          if ($codexCommand) {
+            $versionOutput = & $codexCommand.Source --version 2>&1
+            $versionExitCode = $LASTEXITCODE
+            $installedVersion = (@($versionOutput) -join " ").Trim()
+            if ($versionExitCode -ne 0) { $installedVersion = "" }
+          }
+          if ($installedVersion -notmatch [regex]::Escape($requiredCodexVersion)) {
+            & $npm.Source install --global "@openai/codex@$requiredCodexVersion"
+            if ($LASTEXITCODE -ne 0) {
+              throw "Could not install the pinned Codex CLI $requiredCodexVersion for the Runner service account."
+            }
+          }
+          $codexCommand = Get-Command codex.cmd -ErrorAction Stop
+          $codexVersionOutput = & $codexCommand.Source --version 2>&1
+          $codexVersionExitCode = $LASTEXITCODE
+          $codexVersion = (@($codexVersionOutput) -join " ").Trim()
+          if ($codexVersionExitCode -ne 0 -or $codexVersion -notmatch [regex]::Escape($requiredCodexVersion)) {
+            throw "Unexpected Codex CLI version under the Runner identity: '$codexVersion'."
+          }
+          & $pythonPath --version
+          if ($LASTEXITCODE -ne 0) { throw "Python cannot execute under the Runner service identity." }
+          & $ollamaPath --version
+          if ($LASTEXITCODE -ne 0) { throw "Ollama CLI cannot execute under the Runner service identity." }
+          Write-Host "npm executable: $($npm.Source)"
+          Write-Host "Codex executable: $($codexCommand.Source)"
+          Write-Host "Codex version: $codexVersion"
+          Write-Host "Ollama executable: $ollamaPath"
+          Write-Host "Ollama version:"
+          & $ollamaPath --version
+
+          $computer = Get-CimInstance Win32_ComputerSystem -ErrorAction Stop
+          $processors = @(Get-CimInstance Win32_Processor -ErrorAction Stop)
+          $operatingSystem = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+          $videoControllers = @(Get-CimInstance Win32_VideoController -ErrorAction Stop)
+          $cpuName = [string]$processors[0].Name
+          $physicalCores = [int](($processors | Measure-Object -Property NumberOfCores -Sum).Sum)
+          $logicalProcessors = [int](($processors | Measure-Object -Property NumberOfLogicalProcessors -Sum).Sum)
+          $totalRamGiB = [math]::Round([double]$computer.TotalPhysicalMemory / [math]::Pow(1024, 3), 2)
+          $gpuInventory = @($videoControllers | ForEach-Object {
+            [pscustomobject]@{
+              name = [string]$_.Name
+              wmi_adapter_ram_bytes = if ($null -ne $_.AdapterRAM) { [int64]$_.AdapterRAM } else { $null }
+              driver_version = [string]$_.DriverVersion
+            }
+          })
+          $hardware = [pscustomobject]@{
+            os_caption = [string]$operatingSystem.Caption
+            os_version = [string]$operatingSystem.Version
+            os_build = [string]$operatingSystem.BuildNumber
+            cpu_name = $cpuName
+            physical_cores = $physicalCores
+            logical_processors = $logicalProcessors
+            total_physical_ram_gib = $totalRamGiB
+            gpu_inventory = $gpuInventory
+            note = "WMI AdapterRAM on an integrated Intel GPU is not proof of dedicated VRAM; shared memory is reported separately by Windows GPU counters."
+          }
+          Write-Host "TARGET_HOST_HARDWARE_PROFILE:"
+          $hardware | ConvertTo-Json -Depth 6 | Write-Host
+
+          if ($cpuName -notmatch '(?i)i5-12400' -or $physicalCores -ne 6 -or $logicalProcessors -ne 12) {
+            throw "Target CPU does not match the recorded Intel Core i5-12400 6-core/12-thread profile."
+          }
+          if ($totalRamGiB -lt 30 -or $totalRamGiB -gt 33) {
+            throw "Target physical RAM $totalRamGiB GiB does not match the recorded 31.78 GiB / 32 GB class."
+          }
+          if (-not ($gpuInventory.name -match '(?i)Intel.*UHD.*730')) {
+            throw "Target GPU does not match the recorded Intel UHD Graphics 730 profile."
+          }
           $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 5 -MaximumRedirection 0
           if (@($tags.models | ForEach-Object { $_.name }) -notcontains $env:AUTONOMOUS_ENGINEERING_MODEL) {
             throw "Ollama model '$env:AUTONOMOUS_ENGINEERING_MODEL' is not installed."
           }
-
+          Write-Host "Target hardware matches the recorded user system profile."
       - name: Run adaptive-context regression suite on the target Windows host
         shell: powershell
         run: |
@@ -321,6 +405,33 @@ jobs:
         shell: powershell
         run: |
           & "$env:GITHUB_WORKSPACE\scripts\verify_ollama_context.ps1" -Model "$env:AUTONOMOUS_ENGINEERING_MODEL"
+
+      - name: Record actual Ollama CPU/GPU memory allocation
+        if: steps.context_preflight.outcome == 'success'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $runtime = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/ps" -TimeoutSec 10 -MaximumRedirection 0
+          $matches = @($runtime.models | Where-Object {
+            $_ -and $_.name -and ([string]$_.name).Equals($env:AUTONOMOUS_ENGINEERING_MODEL, [System.StringComparison]::OrdinalIgnoreCase)
+          })
+          if ($matches.Count -ne 1) {
+            throw "Expected exactly one loaded selected Ollama model when recording device allocation."
+          }
+          $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+          $allocation = [pscustomobject]@{
+            model = [string]$matches[0].name
+            context_length = [int64]$matches[0].context_length
+            model_size_bytes = if ($null -ne $matches[0].size) { [int64]$matches[0].size } else { $null }
+            vram_size_bytes = if ($null -ne $matches[0].size_vram) { [int64]$matches[0].size_vram } else { $null }
+            remaining_physical_ram_bytes = [int64]$os.FreePhysicalMemory * 1KB
+          }
+          Write-Host "OLLAMA_RUNTIME_DEVICE_ALLOCATION:"
+          $allocation | ConvertTo-Json -Depth 4 | Write-Host
+          if ($allocation.context_length -ne [int64]$env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH -and
+              -not [string]::IsNullOrWhiteSpace($env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH)) {
+            throw "Ollama runtime context does not match the explicitly requested context."
+          }
 
       - name: Probe MXC and Codex exec_command under the Runner identity
         timeout-minutes: 25
