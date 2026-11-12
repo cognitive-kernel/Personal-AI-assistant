@@ -54,7 +54,9 @@ def select_context_window(
 
     The RAM estimate assumes a float16 KV cache, reserves 4 GiB for Windows and
     other processes, and adds at least 0.5 GiB or 10% of model weights as
-    runtime overhead. Missing telemetry or architecture dimensions are errors,
+    runtime overhead. If the base model is already resident, its weights are
+    not charged twice because free physical memory already excludes them.
+    Missing telemetry or architecture dimensions are errors,
     never guessed fallback values. A successful estimate is still verified
     against Ollama's actual loaded context before Codex is dispatched.
     """
@@ -62,7 +64,7 @@ def select_context_window(
     numeric_inputs = {
         "model_weight_bytes": model_weight_bytes,
         "model_weight_charge_bytes": model_weight_charge_bytes,
-        "model_weights_already_loaded": int(model_weights_already_loaded),
+        "model_weights_already_loaded": model_weights_already_loaded,
         "available_memory_bytes": available_memory_bytes,
         "reserve_bytes": reserve_bytes,
     }
