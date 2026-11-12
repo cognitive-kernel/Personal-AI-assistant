@@ -10,6 +10,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $baseUrl = "http://127.0.0.1:11434"
+Import-Module (Join-Path $PSScriptRoot "OllamaContextMemory.psm1") -Force
 
 function Get-ModelInfo {
     param([Parameter(Mandatory = $true)][string]$ModelName)
@@ -84,8 +85,7 @@ function Get-AutomaticContext {
     # Conservative CPU/RAM estimate: model weights + FP16 KV cache + 10% overhead,
     # while preserving 4 GiB for Windows and other applications.
     $bytesPerToken = $layers * $heads * ($keyLength + $valueLength) * 2
-    $budgetGiB = [Math]::Max(0, $freeRamGiB - 4)
-    $cacheBudgetBytes = [Math]::Max(0, ($budgetGiB - $weightsGiB - [Math]::Max(0.5, $weightsGiB * 0.10)) * 1GB)
+    $cacheBudgetBytes = Get-OllamaCacheBudgetBytes -FreeRamGiB $freeRamGiB -WeightsGiB $weightsGiB
     if ($bytesPerToken -le 0 -or $cacheBudgetBytes -le 0) {
         return [int64][Math]::Min($Maximum, 512)
     }
