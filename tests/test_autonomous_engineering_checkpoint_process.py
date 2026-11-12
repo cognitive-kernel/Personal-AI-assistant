@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import psutil
 import pytest
 
 from scripts import autonomous_engineering_checkpoint_process as process_control
 
 
-def _metadata(script_path: Path, *, started_at: float = 1234.5) -> dict[str, object]:
+def _metadata(*, started_at: float | None = 1234.5) -> dict[str, object]:
     return {
         "schema_version": 4,
         "base_sha": "a" * 40,
@@ -32,170 +31,158 @@ def _command(script_path: Path) -> list[str]:
     ]
 
 
-class FakeProcess:
-    def __init__(self, *, created: float = 1234.5, command: list[str] | None = None):
-        self.created = created
-        self.command = command or []
-        self.terminated = False
-        self.killed = False
-        self.wait_calls = 0
-
-    def create_time(self) -> float:
-        return self.created
-
-    def cmdline(self) -> list[str]:
-        return self.command
-
-    def terminate(self) -> None:
-        self.terminated = True
-
-    def kill(self) -> None:
-        self.killed = True
-
-    def wait(self, timeout: float | None = None) -> int:
-        self.wait_calls += 1
-        return 0
+def _snapshot(*, created: float = 1234.5, command: list[str] | None = None) -> dict[str, object]:
+    return {"created_at": created, "command": command or []}
 
 
 def test_stops_only_exact_run_task_base_and_process_identity(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     script = tmp_path / "autonomous_engineering_checkpoint.py"
-    process = FakeProcess(command=_command(script))
-    monkeypatch.setattr(process_control.psutil, "Process", lambda pid: process)
-
-    process_control.stop_owned_watcher(
-        _metadata(script),
-        script_path=script,
+    terminated: list[tuple[int, float]] = []
+    monkeypatch.setattr(
+        process_control, "_read_process_snapshot",
+        lambda pid: _snapshot(command=_command(script)),
+    )
+    monkeypatch.setattr(
+        process_control, "_terminate_process",
+        lambda pid, timeout: terminated.append((pid, timeout)),
     )
 
-    assert process.terminated is True
-    assert process.killed is False
-    assert process.wait_calls == 1
+    process_control.stop_owned_watcher(_metadata(), script_path=script)
+
+    assert terminated == [(4321, 5.0)]
 
 
-def test_access_denied_blocks_recovery_instead_of_being_ignored(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    script = tmp_path / "autonomous_engineering_checkpoint.py"
-
-    def denied(pid: int):
-        raise psutil.AccessDenied(pid=pid)
-
-    monkeypatch.setattr(process_control.psutil, "Process", denied)
-
-    with pytest.raises(RuntimeError, match="Cannot inspect checkpoint watcher PID"):
-        process_control.stop_owned_watcher(_metadata(script), script_path=script)
-
-
-def test_access_denied_while_reading_command_line_blocks_recovery(
+def test_access_denied_blocks_recovery_instead_of_being_ignored(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ):
     script = tmp_path / "autonomous_engineering_checkpoint.py"
 
-    class DeniedCommandProcess(FakeProcess):
-        def cmdline(self) -> list[str]:
-            raise psutil.AccessDenied(pid=4321)
+    def denied(pid: int):
+        raise PermissionError("access denied")
 
+    monkeypatch.setattr(process_control, "_read_process_snapshot", denied)
+    with pytest.raises(RuntimeError, match="Cannot inspect checkpoint watcher PID"):
+        process_control.stop_owned_watcher(_metadata(), script_path=script)
+
+
+def test_incomplete_process_snapshot_blocks_recovery(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    script = tmp_path / "autonomous_engineering_checkpoint.py"
     monkeypatch.setattr(
-        process_control.psutil, "Process",
-        lambda pid: DeniedCommandProcess(),
+        process_control, "_read_process_snapshot",
+        lambda pid: {"created_at": 1234.5},
     )
-
-    with pytest.raises(RuntimeError, match="Cannot verify checkpoint watcher PID"):
-        process_control.stop_owned_watcher(_metadata(script), script_path=script)
+    with pytest.raises(RuntimeError, match="process metadata is incomplete"):
+        process_control.stop_owned_watcher(_metadata(), script_path=script)
 
 
 def test_access_denied_while_terminating_watcher_blocks_recovery(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ):
     script = tmp_path / "autonomous_engineering_checkpoint.py"
-
-    class DeniedTerminateProcess(FakeProcess):
-        def terminate(self) -> None:
-            raise psutil.AccessDenied(pid=4321)
-
     monkeypatch.setattr(
-        process_control.psutil, "Process",
-        lambda pid: DeniedTerminateProcess(command=_command(script)),
+        process_control, "_read_process_snapshot",
+        lambda pid: _snapshot(command=_command(script)),
     )
 
+    def denied(pid: int, timeout: float):
+        raise PermissionError("terminate denied")
+
+    monkeypatch.setattr(process_control, "_terminate_process", denied)
     with pytest.raises(RuntimeError, match="could not be stopped and reaped"):
-        process_control.stop_owned_watcher(_metadata(script), script_path=script)
+        process_control.stop_owned_watcher(_metadata(), script_path=script)
 
 
 def test_reused_pid_is_not_terminated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     script = tmp_path / "autonomous_engineering_checkpoint.py"
-    process = FakeProcess(created=9999.0, command=["unrelated.exe"])
-    monkeypatch.setattr(process_control.psutil, "Process", lambda pid: process)
+    terminated: list[int] = []
+    monkeypatch.setattr(
+        process_control, "_read_process_snapshot",
+        lambda pid: _snapshot(created=9999.0, command=["unrelated.exe"]),
+    )
+    monkeypatch.setattr(process_control, "_terminate_process", lambda pid, timeout: terminated.append(pid))
 
-    process_control.stop_owned_watcher(_metadata(script), script_path=script)
+    process_control.stop_owned_watcher(_metadata(), script_path=script)
 
-    assert process.terminated is False
-    assert process.killed is False
+    assert terminated == []
 
 
 def test_matching_command_with_mismatched_creation_time_is_ambiguous(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ):
     script = tmp_path / "autonomous_engineering_checkpoint.py"
-    process = FakeProcess(created=9999.0, command=_command(script))
-    monkeypatch.setattr(process_control.psutil, "Process", lambda pid: process)
+    terminated: list[int] = []
+    monkeypatch.setattr(
+        process_control, "_read_process_snapshot",
+        lambda pid: _snapshot(created=9999.0, command=_command(script)),
+    )
+    monkeypatch.setattr(process_control, "_terminate_process", lambda pid, timeout: terminated.append(pid))
 
     with pytest.raises(RuntimeError, match="ownership is ambiguous"):
-        process_control.stop_owned_watcher(_metadata(script), script_path=script)
+        process_control.stop_owned_watcher(_metadata(), script_path=script)
 
-    assert process.terminated is False
+    assert terminated == []
 
 
 def test_live_pid_with_mismatched_command_blocks_recovery(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     script = tmp_path / "autonomous_engineering_checkpoint.py"
-    process = FakeProcess(command=["python.exe", "different.py", "watch"])
-    monkeypatch.setattr(process_control.psutil, "Process", lambda pid: process)
+    terminated: list[int] = []
+    monkeypatch.setattr(
+        process_control, "_read_process_snapshot",
+        lambda pid: _snapshot(command=["python.exe", "different.py", "watch"]),
+    )
+    monkeypatch.setattr(process_control, "_terminate_process", lambda pid, timeout: terminated.append(pid))
 
     with pytest.raises(RuntimeError, match="command line does not match"):
-        process_control.stop_owned_watcher(_metadata(script), script_path=script)
+        process_control.stop_owned_watcher(_metadata(), script_path=script)
 
-    assert process.terminated is False
+    assert terminated == []
 
 
 def test_legacy_active_watcher_without_start_identity_blocks_recovery(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ):
     script = tmp_path / "autonomous_engineering_checkpoint.py"
-    metadata = _metadata(script)
-    metadata.pop("watcher_started_at")
-    process = FakeProcess(command=_command(script))
-    monkeypatch.setattr(process_control.psutil, "Process", lambda pid: process)
+    monkeypatch.setattr(
+        process_control, "_read_process_snapshot",
+        lambda pid: _snapshot(command=_command(script)),
+    )
 
     with pytest.raises(RuntimeError, match="legacy metadata without a process-start identity"):
-        process_control.stop_owned_watcher(metadata, script_path=script)
-
-    assert process.terminated is False
+        process_control.stop_owned_watcher(_metadata(started_at=None), script_path=script)
 
 
 def test_missing_watcher_process_is_already_stopped(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     script = tmp_path / "autonomous_engineering_checkpoint.py"
+    terminated: list[int] = []
+    monkeypatch.setattr(process_control, "_read_process_snapshot", lambda pid: None)
+    monkeypatch.setattr(process_control, "_terminate_process", lambda pid, timeout: terminated.append(pid))
 
-    def missing(pid: int):
-        raise psutil.NoSuchProcess(pid=pid)
+    process_control.stop_owned_watcher(_metadata(), script_path=script)
 
-    monkeypatch.setattr(process_control.psutil, "Process", missing)
-
-    process_control.stop_owned_watcher(_metadata(script), script_path=script)
+    assert terminated == []
 
 
-def test_unresponsive_watcher_is_killed_and_reaped(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_unresponsive_watcher_blocks_recovery_and_preserves_checkpoint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
     script = tmp_path / "autonomous_engineering_checkpoint.py"
-    process = FakeProcess(command=_command(script))
+    monkeypatch.setattr(
+        process_control, "_read_process_snapshot",
+        lambda pid: _snapshot(command=_command(script)),
+    )
 
-    def wait(timeout: float | None = None) -> int:
-        process.wait_calls += 1
-        if process.wait_calls == 1:
-            raise psutil.TimeoutExpired(timeout)
-        return 0
+    def timeout(pid: int, timeout: float):
+        raise TimeoutError("process did not exit")
 
-    process.wait = wait  # type: ignore[method-assign]
-    monkeypatch.setattr(process_control.psutil, "Process", lambda pid: process)
+    monkeypatch.setattr(process_control, "_terminate_process", timeout)
+    with pytest.raises(RuntimeError, match="could not be stopped and reaped"):
+        process_control.stop_owned_watcher(_metadata(), script_path=script)
 
-    process_control.stop_owned_watcher(_metadata(script), script_path=script)
 
-    assert process.terminated is True
-    assert process.killed is True
-    assert process.wait_calls == 2
+def test_process_start_time_uses_os_snapshot_and_rejects_missing_pid(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(process_control, "_read_process_snapshot", lambda pid: _snapshot(created=4321.25))
+    assert process_control.process_start_time(4321) == 4321.25
+
+    monkeypatch.setattr(process_control, "_read_process_snapshot", lambda pid: None)
+    with pytest.raises(RuntimeError, match="process is not running"):
+        process_control.process_start_time(4321)
