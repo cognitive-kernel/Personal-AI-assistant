@@ -144,3 +144,25 @@ def test_chat_observation_pages_cover_content_matches_and_long_answers_without_l
         for candidate_id in reconstructed
     }
     assert set(reconstructed) == set(expected)
+
+
+
+def test_short_nonempty_assistant_answers_are_retained_without_trusting_credentials(tmp_path, monkeypatch):
+    _initialize_learning_database(tmp_path, monkeypatch)
+    short = _capture_candidate(
+        conversation_id=50,
+        query="What is the result?",
+        answer="42",
+    )
+    credential = _capture_candidate(
+        conversation_id=51,
+        query="Show an API key",
+        answer="API_KEY=sk_test_1234567890abcdef",
+    )
+
+    assert short is not None
+    assert short["content"] == "42"
+    assert short["status"] == "unverified"
+    assert credential is None
+    stored = learning_candidates.list_chat_candidates(status="unverified", limit=10)
+    assert [item["content"] for item in stored] == ["42"]
