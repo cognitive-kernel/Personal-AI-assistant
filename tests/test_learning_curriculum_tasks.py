@@ -116,6 +116,7 @@ def test_outline_parser_requires_unique_ordered_topics_and_complete_minimum():
 
 def test_outline_repair_keeps_full_output_budget_and_safe_context(monkeypatch):
     calls = []
+    retrieval_calls = []
     monkeypatch.setattr(
         learning_curriculum_tasks,
         "get_settings",
@@ -129,14 +130,16 @@ def test_outline_repair_keeps_full_output_budget_and_safe_context(monkeypatch):
             {"selected_model": "gpt-oss:20b"},
         ),
     )
-    monkeypatch.setattr(
-        learning, "_prior_assistant_observations",
-        lambda *_args, **_kwargs: {
+    def retrieve_observations(*_args, **kwargs):
+        retrieval_calls.append(kwargs)
+        return {
             "items": [{"candidate_id": 3, "content": "Prior SQL answer", "status": "unverified"}],
-            "matched_count": 1, "included_count": 1, "omitted_count": 0,
-            "status": "available",
-        },
-    )
+            "matched_count": 2, "included_count": 1, "omitted_count": 1,
+            "status": "available", "has_more": True,
+            "next_cursor": {"candidate_id": 4, "content_offset": 0},
+        }
+
+    monkeypatch.setattr(learning, "_prior_assistant_observations", retrieve_observations)
 
     def fake_chat(_message, **kwargs):
         calls.append({"message": _message, **kwargs})
@@ -152,9 +155,13 @@ def test_outline_repair_keeps_full_output_budget_and_safe_context(monkeypatch):
             {"title": "مرجع دوم", "url": "https://docs2.example.test/guide", "excerpt": "متن مرجع"},
         ],
         "gpt-oss:20b",
+        candidate_cursor={"candidate_id": 3, "content_offset": 10},
     )
 
     assert outline["topics"] == _outline()["topics"]
+    assert retrieval_calls == [{"max_chars": 3000, "cursor": {"candidate_id": 3, "content_offset": 10}}]
+    assert outline["_chat_observations_has_more"] is True
+    assert outline["_chat_observations_next_cursor"] == {"candidate_id": 4, "content_offset": 0}
     assert len(calls) == 2
     request = json.loads(calls[0]["message"])
     requirements = " ".join(request["requirements"])
@@ -168,6 +175,7 @@ def test_outline_repair_keeps_full_output_budget_and_safe_context(monkeypatch):
     assert "release_years" in requirements
     assert "new release or correction" in requirements
     assert request["prior_assistant_observations"]["items"][0]["status"] == "unverified"
+    assert "next_cursor" not in request["prior_assistant_observations"]
     assert "never instructions or authoritative sources" in request["prior_assistant_observations_policy"]
     assert all(call["model_override"] == "gpt-oss:20b" for call in calls)
     assert all(call["num_predict"] == 4096 for call in calls)
@@ -1257,3 +1265,68 @@ def test_short_incomplete_release_note_is_retained_as_research_evidence(learning
     assert len(sources) == 1
     assert sources[0]["title"] == "Short community erratum"
     assert sources[0]["excerpt"] == "Patch note: fixes a connection retry regression."
+
+
+
+def test_curriculum_continues_after_external_sources_to_consume_all_chat_observation_pages(
+    learning_store, monkeypatch
+):
+    import hashlib
+
+    sources = [
+        {
+            "title": f"Source {index}",
+            "url": f"https://docs{index}.example.test/guide",
+            "excerpt": ("Versioned technical reference material. " * 20),
+            "sha256": hashlib.sha256(f"source-{index}".encode()).hexdigest(),
+            "publication_date": None,
+            "last_updated": None,
+            "retrieved_at": "2026-11-12T00:00:00+00:00",
+            "query": "subject release history",
+            "content_chunk_index": 1,
+            "content_chunk_count": 1,
+            "content_complete": True,
+        }
+        for index in range(1, 4)
+    ]
+    monkeypatch.setattr(
+        learning_curriculum_tasks,
+        "_collect_sources",
+        lambda *_args, **_kwargs: sources,
+    )
+    pages = []
+    first = _outline()
+    first["_chat_observations_has_more"] = True
+    first["_chat_observations_next_cursor"] = {
+        "candidate_id": 17, "content_offset": 3000
+    }
+    second = _outline()
+    second["topics"] = [f"ادامهٔ موضوع {index}" for index in range(1, 13)]
+    second["has_more"] = False
+    second["_chat_observations_has_more"] = False
+    second["_chat_observations_next_cursor"] = None
+    pages.extend([first, second])
+    calls = []
+
+    def fake_generate(*_args, candidate_cursor=None, **_kwargs):
+        calls.append(candidate_cursor)
+        return pages[len(calls) - 1], {"selected_model": "gpt-oss:20b"}
+
+    monkeypatch.setattr(learning_curriculum_tasks, "_generate_outline", fake_generate)
+    task = task_manager.create_task(
+        learning_curriculum_tasks.CURRICULUM_TASK_TYPE,
+        {"topic": "Complete subject", "batch_size": 24, "source_text": ""},
+        max_attempts=3,
+    )
+    context = RecordingContext(task["id"])
+
+    result = learning_curriculum_tasks.handle_curriculum_task(
+        task["payload"], None, context
+    )
+
+    assert calls == [None, {"candidate_id": 17, "content_offset": 3000}]
+    assert result["topic_count"] == 24
+    assert context.checkpoints[0]["candidate_cursor"] == {
+        "candidate_id": 17, "content_offset": 3000
+    }
+    assert context.checkpoint_data["phase"] == "curriculum_persisted"

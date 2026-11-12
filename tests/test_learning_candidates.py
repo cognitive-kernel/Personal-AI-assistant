@@ -94,3 +94,75 @@ def test_lesson_generation_candidate_retrieval_is_fail_open_and_configurable(mon
     assert fallback["status"] == "unavailable"
     assert fallback["items"] == []
     assert fallback["error_type"] == "RuntimeError"
+
+
+
+def test_chat_observation_pages_cover_content_matches_and_long_answers_without_loss(tmp_path, monkeypatch):
+    _initialize_learning_database(tmp_path, monkeypatch)
+    answers = [
+        ("SQL Server transaction log recovery and point-in-time restore. " * 35).strip(),
+        ("SQL Server indexing and query execution plans. " * 18).strip(),
+        ("SQL Server isolation levels and locking. " * 18).strip(),
+    ]
+    for index, answer in enumerate(answers, start=20):
+        _capture_candidate(
+            conversation_id=index,
+            query="Please explain this technical issue",
+            answer=answer,
+        )
+
+    cursor = None
+    chunks = {}
+    pages = 0
+    while True:
+        page = learning_candidates.relevant_chat_candidates(
+            "SQL Server", max_candidates=1, max_chars=1000, cursor=cursor
+        )
+        pages += 1
+        assert page["items"]
+        item = page["items"][0]
+        chunks.setdefault(item["candidate_id"], []).append(item["content"])
+        assert item["status"] == "unverified"
+        if not page["has_more"]:
+            assert page["next_cursor"] is None
+            break
+        assert isinstance(page["next_cursor"], dict)
+        cursor = page["next_cursor"]
+        assert pages < 10
+
+    assert len(chunks) == 3
+    reconstructed = {
+        candidate_id: "".join(parts)
+        for candidate_id, parts in chunks.items()
+    }
+    expected = {
+        candidate["id"]: candidate["content"]
+        for candidate in learning_candidates.list_chat_candidates(status="unverified", limit=20)
+    }
+    assert reconstructed == {
+        candidate_id: expected[candidate_id]
+        for candidate_id in reconstructed
+    }
+    assert set(reconstructed) == set(expected)
+
+
+
+def test_short_nonempty_assistant_answers_are_retained_without_trusting_credentials(tmp_path, monkeypatch):
+    _initialize_learning_database(tmp_path, monkeypatch)
+    short = _capture_candidate(
+        conversation_id=50,
+        query="What is the result?",
+        answer="42",
+    )
+    credential = _capture_candidate(
+        conversation_id=51,
+        query="Show an API key",
+        answer="API_KEY=sk_test_1234567890abcdef",
+    )
+
+    assert short is not None
+    assert short["content"] == "42"
+    assert short["status"] == "unverified"
+    assert credential is None
+    stored = learning_candidates.list_chat_candidates(status="unverified", limit=10)
+    assert [item["content"] for item in stored] == ["42"]

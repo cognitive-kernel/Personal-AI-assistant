@@ -123,13 +123,14 @@ def _topic_tokens(value: str) -> set[str]:
 
 
 def relevant_chat_candidates(
-    topic: str, *, max_candidates: int = 12, max_chars: int = 24000
+    topic: str, *, max_candidates: int = 12, max_chars: int = 24000,
+    cursor: dict[str, int] | None = None,
 ) -> dict[str, Any]:
-    """Retrieve matching assistant answers as unverified, local learning observations.
+    """Page through every matching unverified chat observation without dropping long answers.
 
-    Retrieval never changes candidate trust status. Per-prompt bounds protect the
-    model context; matched candidates beyond those bounds remain stored and visible
-    through list_chat_candidates for later topic-specific retrieval.
+    The cursor is stable across task checkpoints. A long answer is split into bounded
+    content chunks before the next candidate is visited; all omitted observations
+    remain eligible for a later page and keep their original unverified status.
     """
     if not isinstance(topic, str) or not topic.strip() or len(topic) > 300:
         raise ValueError("topic must contain 1–300 characters.")
@@ -137,43 +138,66 @@ def relevant_chat_candidates(
         raise ValueError("max_candidates must be a positive integer.")
     if isinstance(max_chars, bool) or not isinstance(max_chars, int) or max_chars < 1000:
         raise ValueError("max_chars must be at least 1000.")
+    if cursor is None:
+        candidate_id, content_offset = 1, 0
+    else:
+        if (
+            not isinstance(cursor, dict)
+            or set(cursor) != {"candidate_id", "content_offset"}
+            or any(
+                isinstance(cursor.get(key), bool)
+                or not isinstance(cursor.get(key), int)
+                or cursor[key] < (1 if key == "candidate_id" else 0)
+                for key in ("candidate_id", "content_offset")
+            )
+        ):
+            raise ValueError("candidate cursor is invalid.")
+        candidate_id = cursor["candidate_id"]
+        content_offset = cursor["content_offset"]
+
     tokens = _topic_tokens(topic)
     if not tokens:
-        return {"items": [], "matched_count": 0, "included_count": 0, "omitted_count": 0}
-    conditions = " OR ".join("topic_hint LIKE ?" for _ in tokens)
+        return {
+            "items": [], "matched_count": 0, "included_count": 0,
+            "omitted_count": 0, "has_more": False, "next_cursor": None,
+            "context_truncated": False,
+        }
+    hint_conditions = " OR ".join("topic_hint LIKE ?" for _ in tokens)
+    content_conditions = " OR ".join("content LIKE ?" for _ in tokens)
     patterns = [f"%{token}%" for token in sorted(tokens)]
     with learning_connection() as connection:
         rows = connection.execute(
-            f"""SELECT id, conversation_id, message_id, user_message_id, task_id,
-                       source_kind, topic_hint, content, content_sha256,
-                       provenance_json, status, created_at
+            f"""SELECT id, source_kind, topic_hint, content, content_sha256,
+                       provenance_json, created_at
                 FROM learning_chat_candidates
-                WHERE status='unverified' AND ({conditions})
-                ORDER BY created_at DESC, id DESC""",
-            patterns,
+                WHERE status='unverified' AND id>=?
+                  AND (({hint_conditions}) OR ({content_conditions}))
+                ORDER BY id ASC LIMIT ?""",
+            (candidate_id, *patterns, *patterns, max_candidates + 1),
         ).fetchall()
-    normalized_topic = " ".join(topic.casefold().split())
-    ranked: list[tuple[int, Any]] = []
-    for row in rows:
-        hint = str(row["topic_hint"] or "")
-        overlap = len(tokens & _topic_tokens(hint))
-        if overlap == 0:
-            continue
-        exact_phrase = normalized_topic in " ".join(hint.casefold().split())
-        ranked.append((overlap * 10 + (100 if exact_phrase else 0), row))
-    ranked.sort(key=lambda item: (item[0], str(item[1]["created_at"]), int(item[1]["id"])), reverse=True)
+
     items: list[dict[str, Any]] = []
     used_chars = 0
-    for score, row in ranked:
-        if len(items) >= max_candidates:
-            break
-        content = str(row["content"])
-        remaining = max_chars - used_chars
-        if remaining <= 0:
-            break
-        included_content = content[:remaining]
-        if not included_content:
+    next_cursor: dict[str, int] | None = None
+    for row in rows:
+        row_id = int(row["id"])
+        text = str(row["content"])
+        start_offset = content_offset if row_id == candidate_id else 0
+        if start_offset >= len(text):
+            next_cursor = {"candidate_id": row_id + 1, "content_offset": 0}
+            content_offset = 0
             continue
+        remaining = max_chars - used_chars
+        if len(items) >= max_candidates or remaining <= 0:
+            next_cursor = {"candidate_id": row_id, "content_offset": start_offset}
+            break
+        content_chunk = text[start_offset:start_offset + remaining]
+        if not content_chunk:
+            next_cursor = {"candidate_id": row_id, "content_offset": start_offset}
+            break
+        hint = str(row["topic_hint"] or "")
+        overlap = len(tokens & (_topic_tokens(hint) | _topic_tokens(text)))
+        exact_phrase = " ".join(topic.casefold().split()) in " ".join(hint.casefold().split())
         try:
             provenance = json.loads(row["provenance_json"] or "{}")
         except (TypeError, json.JSONDecodeError):
@@ -184,23 +208,37 @@ def relevant_chat_candidates(
             for key in ("source", "answer_sha256", "created_at", "trust", "storage")
             if key in safe_provenance
         }
+        chunk_end = start_offset + len(content_chunk)
+        is_truncated = chunk_end < len(text)
         items.append({
-            "candidate_id": int(row["id"]),
+            "candidate_id": row_id,
             "source_kind": str(row["source_kind"]),
-            "topic_hint": str(row["topic_hint"] or ""),
-            "content": included_content,
+            "topic_hint": hint,
+            "content": content_chunk,
             "content_sha256": str(row["content_sha256"]),
             "provenance": safe_provenance,
             "status": "unverified",
             "created_at": str(row["created_at"]),
-            "relevance_score": score,
-            "content_truncated": len(included_content) < len(content),
+            "relevance_score": overlap * 10 + (100 if exact_phrase else 0),
+            "content_truncated": is_truncated,
+            "content_offset": start_offset,
         })
-        used_chars += len(included_content)
+        used_chars += len(content_chunk)
+        if is_truncated:
+            next_cursor = {"candidate_id": row_id, "content_offset": chunk_end}
+            break
+        next_cursor = {"candidate_id": row_id + 1, "content_offset": 0}
+    else:
+        next_cursor = None
+
+    has_more = next_cursor is not None
     return {
         "items": items,
-        "matched_count": len(ranked),
+        "matched_count": len(rows),
+        "matched_count_is_page_window": True,
         "included_count": len(items),
-        "omitted_count": max(0, len(ranked) - len(items)),
-        "context_truncated": used_chars >= max_chars and len(ranked) > len(items),
+        "omitted_count": max(0, len(rows) - len(items)),
+        "has_more": has_more,
+        "next_cursor": next_cursor,
+        "context_truncated": has_more and used_chars >= max_chars,
     }

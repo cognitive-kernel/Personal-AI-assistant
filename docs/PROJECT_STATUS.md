@@ -2,10 +2,10 @@
 
 ## وضعیت جاری — تکمیل معماری Autonomous Engineering (PR #714)
 
-- مبنای زندهٔ `main`: `215f4928400282cdcabdd0e979910624094523f0`. PR #711 در زنجیرهٔ فعلی main ادغام شده است.
+- مبنای زندهٔ `main`: `a9ae456d56648992dec71226daa443faa50d60c6`. PR #713 در main ادغام شده است و تغییرات یادگیری آن حفظ شده‌اند.
 - شاخهٔ کار: `feat/autonomous-engineering-architecture-completion-20261112`؛ PR [#714](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/714) به‌صورت Draft باز است.
-- مرزبندی مالکیت worktree، checkpoint watcher، هویت فرایند watcher و state پایدار task/PR به ماژول‌های کوچک و قراردادهای مجزا منتقل شده است. قفل task/PR بین Python و PowerShell مشترک است و runner محلی با برچسب یکتای `autonomous-state-owner` انتخاب می‌شود.
-- اعتبارسنجی pending PR و قرارداد تست workflow اصلاح شده‌اند. نتایج exact-head CI در انتظار هستند؛ هیچ‌یک از تست‌های target-host یا اجرای زندهٔ مدل هنوز پذیرفته‌شده نیست.
+- مرزبندی مالکیت worktree، checkpoint watcher، هویت فرایند watcher و state پایدار task/PR به ماژول‌های کوچک و قراردادهای مجزا منتقل شده است. GitHub transport و PR lifecycle نیز از orchestrator جدا شده‌اند.
+- اعتبارسنجی pending PR و قرارداد تست workflow اصلاح شده‌اند. نتایج exact-head CI برای head جدید پس از همگام‌سازی با main در انتظار هستند.
 - گیت‌های باقی‌مانده: تکمیل تست‌های Linux و Windows، browser E2E و dependency audit روی SHA نهایی؛ سپس اجرای واقعی با مدل ذخیره‌شده، Codex sandbox/MXC، crash/restart و restore روی Runner مالک.
 
 
@@ -13,7 +13,7 @@
 
 ## وضعیت تاریخی اتوماسیون — PR #702 (snapshot قدیمی)
 
-- مبنای فعلی `main`: `a01e414ea3124213bc4d06496f55c74ad6ef9ef4`. PR [#701](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/701) در همین SHA ادغام شده است؛ اصلاحات حفظ وظیفهٔ دستی، checkpoint، recovery، هم‌ترازی داشبورد و ترتیب persistence پیش از schedule gate اکنون بخشی از main هستند.
+- این بخش snapshot تاریخی است و وضعیت زندهٔ شاخهٔ اصلی را نشان نمی‌دهد.
 - PR [#702](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/702) روی شاخهٔ `fix/automation-codex-context-smoke-20261107` باز و هنوز ادغام‌نشده است. این PR برای رفع دو گیت باقیماندهٔ Codex/Ollama روی Windows Runner است.
 - شواهد آخرین اجرای ناموفق پیش از اصلاحات: [run 42355938096](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/42355938096). حساب غیرمدیر Runner توانست MXC، اجرای مستقیم `cmd.exe` و Python را با markerهای `MXC_SERVICE_OK` و `MXC_CMD_PYTHON_OK` اجرا کند؛ اما اجرای واقعی Codex پنج command event داشت، هیچ agent message نساخت و smoke gate شکست خورد. این اجرا موفق محسوب نمی‌شود.
 - ریشهٔ Context: preflight قبلی فقط در درخواست warm-up مقدار `options.num_ctx=64000` را می‌فرستاد. درخواست‌های مستقل Codex از مدل پایه دوباره با مقدار پیش‌فرض ۸۱۹۲ بارگذاری می‌شدند. سقف Context مدل در metadata، Context تخصیص‌یافتهٔ runtime را اثبات نمی‌کند.
@@ -406,3 +406,11 @@
 - CI دقیق head جدید شامل workflowهای tests و browser-e2e است که در زمان ثبت این وضعیت queued هستند؛ تا دریافت نتیجهٔ دقیق همان SHA، هیچ pass ادعا نمی‌شود.
 - Browser E2E در head قبلی قبل از اجرای برنامه، به‌علت شکست DNS در دریافت بسته‌های Chromium از Ubuntu repositories متوقف شده بود.
 - این snapshot تاریخی با PR #711 تکمیل شده است: پاسخ‌های چت اکنون در curriculum و تولید درس به‌عنوان observations غیرقابل‌اعتماد استفاده می‌شوند؛ اصلاح گزارش‌شدهٔ درس به‌صورت job/revision مستقل انجام می‌شود. هیچ candidate به‌طور خودکار trusted نمی‌شود.
+
+
+### 2026-11-12 — ادامهٔ یادگیری غیرمخرب و صفحه‌بندی observations
+
+- PR #711 در `main` ادغام شده است؛ این تغییرات در شاخهٔ مستقل `feature/non-destructive-autonomous-learning-v3` دنبال می‌شوند.
+- قرارداد اصلی اکنون admission دادهٔ آموزشی را از صحت factual، کیفیت درس و mastery یادگیرنده جدا می‌کند: پاسخ غیرخالی، حتی ناقص یا بدون منبع، حذف نمی‌شود؛ وضعیت unverified حفظ می‌شود.
+- بازیابی پاسخ‌های قبلی گفتگو اکنون cursor-based است: تطبیق هم در پرسش و هم در محتوای پاسخ انجام می‌شود، پاسخ‌های بلند به قطعه‌های محدود تقسیم می‌شوند و curriculum تا مصرف همهٔ صفحات مرتبط ادامه می‌یابد.
+- تست محلی در این محیط اجرا نشده است. تأیید این شاخه منوط به اجرای CI روی head دقیق و بررسی نتیجهٔ تست‌های regression است؛ اجرای زندهٔ مدل روی میزبان کاربر نیز هنوز ادعا نمی‌شود.
