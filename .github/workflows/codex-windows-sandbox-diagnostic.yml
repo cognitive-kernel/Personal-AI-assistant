@@ -406,6 +406,16 @@ jobs:
           }
           Write-Host "TARGET_RUNNER_ARCHITECTURE_ACCEPTANCE_OK"
 
+      - name: Execute runner readiness contract under the real Windows service identity
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          & "$env:GITHUB_WORKSPACE\scripts\check_autonomous_runner.ps1" -SelectedModel "$env:AUTONOMOUS_ENGINEERING_MODEL"
+          if ($LASTEXITCODE -ne 0) {
+            throw "The production Runner readiness contract failed under the actual service identity."
+          }
+          Write-Host "WINDOWS_RUNNER_READINESS_CONTRACT_OK"
+
       - name: Run adaptive-context regression suite on the target Windows host
         shell: powershell
         run: |
