@@ -41,6 +41,7 @@ def select_context_window(
     model_weight_bytes: int,
     available_memory_bytes: int,
     requested_context_tokens: int | None = None,
+    model_weights_already_loaded: bool = False,
     reserve_bytes: int = DEFAULT_RAM_RESERVE_BYTES,
 ) -> dict[str, int | None]:
     """Select a context from verified model metadata and measured safe RAM.
@@ -54,8 +55,13 @@ def select_context_window(
         raise OllamaModelMetadataError(
             f"Selected model maximum context {maximum} is below the Codex minimum {MIN_CODEX_CONTEXT_TOKENS} tokens."
         )
+    if not isinstance(model_weights_already_loaded, bool):
+        raise OllamaModelMetadataError("model_weights_already_loaded must be a boolean.")
+
     numeric_inputs = {
         "model_weight_bytes": model_weight_bytes,
+        "model_weights_already_loaded": model_weights_already_loaded,
+        "model_weight_reserve_bytes": model_weight_reserve_bytes,
         "available_memory_bytes": available_memory_bytes,
         "reserve_bytes": reserve_bytes,
     }
@@ -99,10 +105,11 @@ def select_context_window(
         MIN_MODEL_OVERHEAD_BYTES,
         int(model_weight_bytes * MODEL_OVERHEAD_RATIO),
     )
+    model_weight_reserve_bytes = 0 if model_weights_already_loaded else model_weight_bytes
     cache_budget_bytes = (
         available_memory_bytes
         - reserve_bytes
-        - model_weight_bytes
+        - model_weight_reserve_bytes
         - overhead_bytes
     )
     if cache_budget_bytes <= 0:
@@ -160,6 +167,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
             model_weight_bytes=payload.get("model_weight_bytes"),
             available_memory_bytes=payload.get("available_memory_bytes"),
             requested_context_tokens=payload.get("requested_context_tokens"),
+            model_weights_already_loaded=payload.get("model_weights_already_loaded", False),
         )
         json.dump(result, sys.stdout, separators=(",", ":"))
         sys.stdout.write("\n")
