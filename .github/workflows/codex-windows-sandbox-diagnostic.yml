@@ -222,7 +222,7 @@ jobs:
             $details = $null
             $metadataError = $null
             try {
-              $body = @{ model = [string]$model.name; verbose = $true } | ConvertTo-Json -Compress
+              $body = @{ model = [string]$model.name; verbose = $false } | ConvertTo-Json -Compress
               $details = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -Body $body -ContentType "application/json" -TimeoutSec 20 -MaximumRedirection 0
             } catch {
               $metadataError = $_.Exception.Message
