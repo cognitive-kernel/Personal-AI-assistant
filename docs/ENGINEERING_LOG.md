@@ -770,3 +770,6 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 
 - The first exact-head run after the upstream recommendation clarification exposed a documentation-only assertion mismatch: the README sentence was rephrased so the existing contract test no longer found its required stable phrase. The implementation and behavior were unaffected.
 - Restored the established wording while retaining the new Ollama >=64k best-effort compatibility qualification. The assertion was not removed or weakened; the full exact-head workflow matrix is rerunning.
+
+
+- The next exact-head run found a second stable-wording assertion in the operations guide. The guide now preserves the existing contract phrase while keeping the new upstream >=64k recommendation caveat. No assertion was removed or weakened; another exact-head run is required.
