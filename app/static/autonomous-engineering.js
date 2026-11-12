@@ -35,7 +35,6 @@
       option.disabled = true;
       option.textContent = "هیچ مدل اصلی قابل انتخابی از Ollama شناسایی نشد";
       select.append(option);
-      if (contextVariant || unavailableSavedModel) option.setAttribute("disabled", "");
       select.value = "";
       return;
     }
@@ -64,6 +63,7 @@
         option.disabled = true;
       }
       select.append(option);
+      if (contextVariant || unavailableSavedModel) option.setAttribute("disabled", "");
     }
     select.value = selectedModel && installed.includes(selectedModel) && !selectedModelIsContextVariant ? selectedModel : "";
   }
