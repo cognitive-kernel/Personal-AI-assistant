@@ -17,7 +17,7 @@ def checkpoint_command(*args: str, capture: bool = True, run_command, python_exe
 
 
 def restore_checkpoint(base_sha: str, *, os_name: str, programdata: str | None, checkpoint_command) -> bool:
-    if os_name != "nt" or not programdata:
+    if os_module.name != "nt" or not programdata:
         return False
     result = checkpoint_command("restore", "--base-sha", base_sha)
     if result.returncode:
@@ -31,7 +31,7 @@ def start_checkpoint_watcher(base_sha: str, run_id: str, task: int, *, os_module
     # The venv's Windows python.exe may report a launcher PID instead of the
     # child interpreter PID. Launch with the base interpreter so Popen.pid and
     # the watcher's os.getpid() agree, while exposing this venv's dependencies.
-    watcher_executable = getattr(sys, "_base_executable", sys_module.executable)
+    watcher_executable = getattr(sys_module, "_base_executable", sys_module.executable)
     watcher_env = os_module.environ.copy()
     venv_site_packages = sysconfig_module.get_paths().get("purelib")
     if venv_site_packages:
@@ -52,10 +52,10 @@ def start_checkpoint_watcher(base_sha: str, run_id: str, task: int, *, os_module
     state_dir.mkdir(parents=True, exist_ok=True)
     ready_path.unlink(missing_ok=True)
     error_path.unlink(missing_ok=True)
-    flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    flags = getattr(subprocess_module, "DETACHED_PROCESS", 0) | getattr(subprocess_module, "CREATE_NEW_PROCESS_GROUP", 0)
     with log_path.open("w", encoding="utf-8") as watcher_log:
         process = subprocess_module.Popen(
-            command, cwd=ROOT, stdin=subprocess_module.DEVNULL, stdout=watcher_log,
+            command, cwd=root, stdin=subprocess_module.DEVNULL, stdout=watcher_log,
             stderr=subprocess_module.STDOUT, close_fds=True, creationflags=flags,
             env=watcher_env,
         )
