@@ -66,6 +66,11 @@
       if (contextVariant || unavailableSavedModel) option.setAttribute("disabled", "");
     }
     select.value = selectedModel && installed.includes(selectedModel) && !selectedModelIsContextVariant ? selectedModel : "";
+    for (const option of select.options) {
+      const contextVariant = /-codex-ctx[0-9]+$/i.test(option.value);
+      const unavailableSavedModel = savedModelUnavailable && option.value === selectedModel;
+      if (contextVariant || unavailableSavedModel) option.disabled = true;
+    }
   }
   function renderRuns(runs) {
     const host = $("recent-runs");
