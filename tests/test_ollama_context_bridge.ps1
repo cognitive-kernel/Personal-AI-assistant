@@ -37,8 +37,14 @@ try {
     $payloadObject = $payload | ConvertFrom-Json
     $payloadObject.available_memory_bytes = [long](10 * 1GB)
     [IO.File]::WriteAllText($inputPath, ($payloadObject | ConvertTo-Json -Depth 20 -Compress), $utf8NoBom)
-    $output = & python $helperPath --input-file $inputPath 2> $errorPath
-    $helperExitCode = $LASTEXITCODE
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $output = & python $helperPath --input-file $inputPath 2> $errorPath
+        $helperExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
     $helperError = if (Test-Path -LiteralPath $errorPath) { Get-Content -LiteralPath $errorPath -Raw } else { "" }
     if ($helperExitCode -eq 0 -or $helperError -notmatch "minimum 64000-token") {
         throw "Insufficient RAM must fail closed instead of returning a low-context fallback. $helperError"
