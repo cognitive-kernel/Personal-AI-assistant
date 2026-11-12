@@ -563,7 +563,9 @@ def test_checkpoint_watcher_real_process_publishes_run_scoped_readiness(
     error_path = state / f"worktree-checkpoint-{run_id}-{task}.error"
     metadata_path = checkpoint.paths(run_id, task)["metadata"]
     try:
-        deadline = time.monotonic() + 20
+        # Windows CIM startup can be cold on hosted runners; allow the bounded
+        # 20-second process query to complete without weakening the readiness assertion.
+        deadline = time.monotonic() + 45
         metadata = None
         while time.monotonic() < deadline and process.poll() is None:
             if error_path.is_file():
