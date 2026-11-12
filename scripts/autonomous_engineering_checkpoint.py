@@ -89,9 +89,14 @@ def git(
 
 def _isolated_test_base_sha() -> str | None:
     """Use the host-verified SHA only inside the explicit pytest Docker harness."""
+    pytest_test = os.environ.get("PYTEST_CURRENT_TEST", "")
+    allowed_tests = (
+        "tests/test_autonomous_engineering_checkpoint_recovery.py::test_checkpoint_watcher_real_process_stops_before_restore",
+        "tests/test_autonomous_engineering_cycle.py::test_checkpoint_watcher_real_process_publishes_run_scoped_readiness",
+    )
     if (
         os.environ.get("AUTONOMOUS_ENGINEERING_TEST_MODE") != "1"
-        or not os.environ.get("PYTEST_CURRENT_TEST")
+        or not any(pytest_test.startswith(test_name) for test_name in allowed_tests)
     ):
         return None
     value = os.environ.get("AUTONOMOUS_ENGINEERING_TEST_BASE_SHA", "").strip().lower()
