@@ -410,9 +410,19 @@ def test_isolated_checkpoint_sha_requires_explicit_pytest_test_mode(monkeypatch:
 
     assert checkpoint._isolated_test_base_sha() is None
 
-    monkeypatch.setenv("PYTEST_CURRENT_TEST", "tests/test_checkpoint.py::test_case (call)")
+    monkeypatch.setenv(
+        "PYTEST_CURRENT_TEST",
+        "tests/test_autonomous_engineering_checkpoint_recovery.py::test_checkpoint_watcher_real_process_stops_before_restore (call)",
+    )
     assert checkpoint._isolated_test_base_sha() == "a" * 40
 
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "tests/test_other.py::test_case (call)")
+    assert checkpoint._isolated_test_base_sha() is None
+
+    monkeypatch.setenv(
+        "PYTEST_CURRENT_TEST",
+        "tests/test_autonomous_engineering_checkpoint_recovery.py::test_checkpoint_watcher_real_process_stops_before_restore (call)",
+    )
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_TEST_BASE_SHA", "invalid")
     with pytest.raises(RuntimeError, match="host-verified checkout SHA"):
         checkpoint._isolated_test_base_sha()
