@@ -39,7 +39,7 @@
 ## وضعیت تاریخی اتوماسیون — PR #702 (snapshot قدیمی)
 
 - مبنای فعلی `main`: `a01e414ea3124213bc4d06496f55c74ad6ef9ef4`. PR [#701](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/701) در همین SHA ادغام شده است؛ اصلاحات حفظ وظیفهٔ دستی، checkpoint، recovery، هم‌ترازی داشبورد و ترتیب persistence پیش از schedule gate اکنون بخشی از main هستند.
-- PR [#702](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/702) با قرارداد ثابت ۶۴k در main ادغام شد؛ آن قرارداد تاریخی اکنون توسط PR #722 superseded می‌شود و نباید به‌عنوان الزام فعال Codex استفاده شود.
+- PR [#702](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/702) با قرارداد ثابت ۶۴k در main ادغام شد؛ PR #722 پیشنهاد جایگزینی آن قرارداد را می‌دهد. تا ادغام PR #722، رفتار main همچنان همان قرارداد #702 است.
 - شواهد آخرین اجرای ناموفق پیش از اصلاحات: [run 42355938096](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/42355938096). حساب غیرمدیر Runner توانست MXC، اجرای مستقیم `cmd.exe` و Python را با markerهای `MXC_SERVICE_OK` و `MXC_CMD_PYTHON_OK` اجرا کند؛ اما اجرای واقعی Codex پنج command event داشت، هیچ agent message نساخت و smoke gate شکست خورد. این اجرا موفق محسوب نمی‌شود.
 - ریشهٔ Context: preflight قبلی فقط در درخواست warm-up مقدار `options.num_ctx=64000` را می‌فرستاد. درخواست‌های مستقل Codex از مدل پایه دوباره با مقدار پیش‌فرض ۸۱۹۲ بارگذاری می‌شدند. سقف Context مدل در metadata، Context تخصیص‌یافتهٔ runtime را اثبات نمی‌کند.
 - ریشهٔ آزمون JSONL: parser قبلی به دقیقاً یک فرمان مدل‌تولیدشده وابسته بود و فرمان را فقط از completion event می‌خواند. این قرارداد نسبت به تعداد tool callهای مدل و تفاوت فیلدهای start/completion شکننده بود.
@@ -53,7 +53,7 @@
   - افزودن regression برای چند فرمان، completion فاقد متن فرمان، تطبیق ID، شکست اجرا، redaction و تثبیت Context.
 - **اعتبارسنجی تاریخی PR #702:** این شاخهٔ ۶۴k به PR #722 منتقل/جایگزین شد و هرگز به‌عنوان قرارداد نهایی ادغام نشد. نتایج Checkهای SHA قدیمی آن مرجع پذیرش نیستند؛ اعتبارسنجی نهایی روی head جاری PR #722 در بخش وضعیت جاری ثبت می‌شود.
 - **گیت‌های باز:** آزمون Context خودکار و fingerprint سخت‌افزار روی head فعلی؛ soak و مصرف حافظه روی میزبان مقصد؛ اجرای کامل autonomous cycle؛ crash/restart recovery؛ staging restore/rollback؛ تأیید مالک. Issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290) همچنان tracker پذیرش کل پروژه است و Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) به بازبینی امنیتی مستقل نیاز دارد.
-- سیاست ادغام: PR #702 ادغام‌شده باقی می‌ماند، اما الزام ثابت ۶۴k آن توسط PR #722 superseded می‌شود. PR #722 تا سبزشدن Workflowهای لازم روی SHA نهایی، موفقیت diagnostic واقعی Windows و تأیید مالک ادغام نمی‌شود. توسعهٔ GitHub-side بدون انتظار برای تست محلی ادامه دارد؛ هیچ merge خودکار، bypass، اجرای unsandboxed یا تغییر سطح دسترسی Runner مجاز نیست.
+- سیاست ادغام: PR #702 ادغام‌شده باقی می‌ماند؛ PR #722 پیشنهاد حذف الزام ثابت ۶۴k را می‌دهد. PR #722 تا سبزشدن Workflowهای لازم روی SHA نهایی، موفقیت diagnostic واقعی Windows و تأیید مالک ادغام نمی‌شود. توسعهٔ GitHub-side بدون انتظار برای تست محلی ادامه دارد؛ هیچ merge خودکار، bypass، اجرای unsandboxed یا تغییر سطح دسترسی Runner مجاز نیست.
 
 ## وضعیت کنسول مهندسی خودکار — جزئیات عملکرد
 
