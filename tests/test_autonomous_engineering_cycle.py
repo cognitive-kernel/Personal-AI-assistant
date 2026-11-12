@@ -901,9 +901,11 @@ def test_codex_arguments_pin_ollama_and_selected_windows_sandbox(monkeypatch):
     ]
     assert "sandbox_workspace_write.exclude_slash_tmp=true" in overrides
     assert any(value.startswith("model_catalog_json=") for value in overrides)
-    assert arguments[arguments.index("--oss"):arguments.index("--oss") + 3] == [
-        "--oss", "model_provider=ollama-local",
-    ]
+    assert 'model_providers.ollama-local.name="Ollama local"' in overrides
+    assert 'model_providers.ollama-local.base_url="http://127.0.0.1:11434/v1/"' in overrides
+    assert 'model_providers.ollama-local.wire_api="responses"' in overrides
+    assert "model_providers.ollama-local.requires_openai_auth=false" in overrides
+    assert "--oss" not in arguments
     assert arguments[arguments.index("--sandbox"):arguments.index("--sandbox") + 2] == [
         "--sandbox", "workspace-write",
     ]
