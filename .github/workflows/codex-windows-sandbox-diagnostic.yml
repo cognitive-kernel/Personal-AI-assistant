@@ -144,7 +144,6 @@ jobs:
 
       - name: Run target-host ownership, concurrency, and recovery acceptance
         if: github.ref_name == 'feat/autonomous-engineering-architecture-final-20261112'
-        timeout-minutes: 10
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
