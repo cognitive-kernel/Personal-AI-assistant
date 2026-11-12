@@ -541,7 +541,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "types: [closed]" not in workflow
     assert "TASK_COMPLETE" in cycle_controller and "QUEUE_EMPTY" in cycle_controller
     assert "open-draft-pr:" not in workflow and "  validate:" not in workflow
-    assert "pytest" in cycle_controller and "tests.yml" in cycle_controller
+    assert "pytest" in cycle_controller and "tests.yml" in pr_lifecycle
     assert "workflow_dispatch:" in tests_workflow and "workflow_dispatch:" in browser_workflow
     assert "pyproject.toml" not in workflow
     assert "WriteAllText" in runner_check

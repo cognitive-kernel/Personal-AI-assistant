@@ -596,3 +596,8 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 
 - Exact-head Linux CI exposed one stale assertion in `test_publish_pull_request_leaves_exact_sha_validated_pr_open_for_owner_merge`: the durable handoff now correctly returns `branch`, `run_id`, and `task` along with PR identity. Updated the expected contract rather than removing those ownership fields.
 - Added an architecture regression that forbids the extracted GitHub and PR lifecycle modules from importing the cycle orchestrator and verifies that the controller retains its compatibility facade.
+
+### 2026-11-12 — Exact-head static contract follow-up
+
+- The full Linux suite reached 99% and exposed one remaining static assertion that still expected the GitHub workflow-dispatch list (`tests.yml`) to live inside the cycle controller. That responsibility is now in the PR lifecycle module. Updated the assertion to check the correct module; the controller's local pytest invocation remains separately asserted.
+- Windows storage/recovery, Browser E2E, and dependency audit were green on the preceding exact head. A fresh full CI run is required for this correction.
