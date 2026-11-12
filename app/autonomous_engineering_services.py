@@ -34,7 +34,7 @@ def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_conte
         "model_supports_tools": False,
         "model_metadata_available": False,
         "model_context_supported": False,
-        "model_context_error": f"Codex requires at least {min_context_tokens} context tokens.",
+        "model_context_error": f"Model must expose at least {min_context_tokens} valid runtime context tokens.",
         "model_metadata_error": "Ollama metadata is unavailable.",
     }
     # Local Ollama metadata must never be sent through an environment proxy.
@@ -85,7 +85,7 @@ def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_conte
 
     show_request = urllib.request.Request(
         "http://127.0.0.1:11434/api/show",
-        data=json.dumps({"model": model, "verbose": True}).encode("utf-8"),
+        data=json.dumps({"model": model, "verbose": False}).encode("utf-8"),
         headers={"Accept": "application/json", "Content-Type": "application/json"},
         method="POST",
     )
@@ -119,7 +119,7 @@ def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_conte
             "model_context_supported": context_supported,
             "model_context_error": (
                 None if context_supported else
-                f"Selected model context is below the Codex minimum of {min_context_tokens} tokens."
+                f"Selected model context is below the minimum supported runtime window of {min_context_tokens} tokens."
                 if metadata_available else
                 "Selected model context metadata is unavailable."
             ),
