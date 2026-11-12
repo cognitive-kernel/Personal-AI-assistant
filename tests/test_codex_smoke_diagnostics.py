@@ -524,21 +524,6 @@ def test_codex_config_pins_sub_64k_context_to_the_verified_ollama_allocation(mon
     entry = json.loads(Path(catalog_path).read_text(encoding="utf-8"))["models"][0]
     assert entry["context_window"] == 1000
     assert entry["max_context_window"] == 1000
-)" in script
-    assert '$legacyPattern = ' in script
-    assert '$isLegacyVariant = [regex]::IsMatch(' in script
-    assert "Select the original Ollama model to prevent nested variants" in script
-    root = Path(__file__).resolve().parents[1]
-    provision = (root / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
-    app_check = (root / "scripts" / "check_autonomous_agent.ps1").read_text(encoding="utf-8")
-    runner_check = (root / "scripts" / "check_autonomous_runner.ps1").read_text(encoding="utf-8")
-    assert "internal Codex context variant" in provision
-    assert "Base model selection" in app_check
-    assert "Base model selection" in runner_check
-
-
-
-
 def test_codex_model_catalog_rejects_non_positive_context(monkeypatch):
     import pytest
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "0")
