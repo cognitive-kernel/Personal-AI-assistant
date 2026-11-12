@@ -177,3 +177,217 @@ def test_model_context_metadata_prefers_architecture_and_uses_conservative_fallb
     }
     assert ollama._model_context_metadata(model_info, "llama") == 32768
     assert ollama._model_context_metadata(model_info, "unknown") == 4096
+
+def test_codex_context_selection_uses_minimum_of_request_model_and_safe_memory():
+    from app.ollama_context import select_context_window
+
+    model_info = {
+        "llama.context_length": 131072,
+        "llama.block_count": 32,
+        "llama.attention.head_count_kv": 8,
+        "llama.attention.key_length": 128,
+        "llama.attention.value_length": 128,
+    }
+    result = select_context_window(
+        model_info=model_info,
+        architecture="llama",
+        model_weight_bytes=5 * 1024**3,
+        available_memory_bytes=20 * 1024**3,
+        requested_context_tokens=100000,
+    )
+
+    assert result["maximum_context_tokens"] == 131072
+    assert result["hardware_maximum_context_tokens"] == 86016
+    assert result["selected_context_tokens"] == 86016
+    assert result["selected_context_tokens"] <= result["requested_context_tokens"]
+    assert result["selected_context_tokens"] <= result["maximum_context_tokens"]
+    assert result["selected_context_tokens"] >= 64000
+
+
+def test_codex_context_selection_caps_at_catalog_supported_maximum():
+    from app.ollama_context import select_context_window
+
+    result = select_context_window(
+        model_info={
+            "llama.context_length": 2097152,
+            "llama.block_count": 1,
+            "llama.attention.head_count_kv": 1,
+            "llama.attention.key_length": 64,
+            "llama.attention.value_length": 64,
+        },
+        architecture="llama",
+        model_weight_bytes=1024**3,
+        available_memory_bytes=100 * 1024**3,
+    )
+
+    assert result["selected_context_tokens"] == 1048576
+    assert result["codex_maximum_context_tokens"] == 1048576
+
+
+def test_codex_context_selection_rejects_models_below_the_64k_minimum():
+    import pytest
+    from app.ollama_context import OllamaModelMetadataError, select_context_window
+
+    with pytest.raises(OllamaModelMetadataError, match="below the Codex minimum 64000"):
+        select_context_window(
+            model_info={
+                "llama.context_length": 8192,
+                "llama.block_count": 1,
+                "llama.attention.head_count_kv": 1,
+                "llama.attention.key_length": 64,
+                "llama.attention.value_length": 64,
+            },
+            architecture="llama",
+            model_weight_bytes=1024**3,
+            available_memory_bytes=16 * 1024**3,
+            requested_context_tokens=65536,
+        )
+
+
+def test_codex_context_selection_fails_closed_when_hardware_cannot_supply_64k():
+    import pytest
+    from app.ollama_context import OllamaModelMetadataError, select_context_window
+
+    with pytest.raises(OllamaModelMetadataError, match="minimum 64000-token context"):
+        select_context_window(
+            model_info={
+                "llama.context_length": 131072,
+                "llama.block_count": 32,
+                "llama.attention.head_count_kv": 8,
+                "llama.attention.key_length": 128,
+                "llama.attention.value_length": 128,
+            },
+            architecture="llama",
+            model_weight_bytes=1024**3,
+            available_memory_bytes=6 * 1024**3,
+        )
+
+
+def test_codex_context_selection_fails_closed_when_model_or_hardware_metadata_is_missing():
+    import pytest
+    from app.ollama_context import OllamaModelMetadataError, select_context_window
+
+    with pytest.raises(OllamaModelMetadataError, match="context_length"):
+        select_context_window(
+            model_info={},
+            architecture="unknown",
+            model_weight_bytes=1024**3,
+            available_memory_bytes=16 * 1024**3,
+        )
+
+    with pytest.raises(OllamaModelMetadataError, match="attention.head_count_kv"):
+        select_context_window(
+            model_info={
+                "llama.context_length": 131072,
+                "llama.block_count": 32,
+            },
+            architecture="llama",
+            model_weight_bytes=1024**3,
+            available_memory_bytes=16 * 1024**3,
+        )
+
+    with pytest.raises(OllamaModelMetadataError, match="safety reserve"):
+        select_context_window(
+            model_info={
+                "llama.context_length": 131072,
+                "llama.block_count": 32,
+                "llama.attention.head_count_kv": 8,
+                "llama.attention.key_length": 128,
+                "llama.attention.value_length": 128,
+            },
+            architecture="llama",
+            model_weight_bytes=12 * 1024**3,
+            available_memory_bytes=8 * 1024**3,
+        )
+
+
+def test_codex_tool_calling_requires_explicit_ollama_tools_capability():
+    from app.ollama_context import supports_tool_calling
+
+    assert supports_tool_calling(["completion", "tools", "thinking"]) is True
+    assert supports_tool_calling(["completion", "thinking"]) is False
+    assert supports_tool_calling(None) is False
+
+
+def test_codex_context_selection_preserves_exact_minimum_without_rounding():
+    from app.ollama_context import select_context_window
+
+    result = select_context_window(
+        model_info={
+            "llama.context_length": 131072,
+            "llama.block_count": 1,
+            "llama.attention.head_count_kv": 1,
+            "llama.attention.key_length": 64,
+            "llama.attention.value_length": 64,
+        },
+        architecture="llama",
+        model_weight_bytes=1024**3,
+        available_memory_bytes=16 * 1024**3,
+        requested_context_tokens=64001,
+    )
+
+    assert result["selected_context_tokens"] == min(
+        result["requested_context_tokens"],
+        result["maximum_context_tokens"],
+        result["hardware_maximum_context_tokens"],
+    )
+    assert result["selected_context_tokens"] == 64001
+
+
+def test_context_selector_cli_reads_utf8_json_from_input_file(tmp_path):
+    import json
+    import subprocess
+    import sys
+
+    from app.ollama_context import select_context_window
+
+    payload = {
+        "architecture": "llama",
+        "model_info": {
+            "llama.context_length": 131072,
+            "llama.block_count": 32,
+            "llama.attention.head_count_kv": 8,
+            "llama.attention.key_length": 128,
+            "llama.attention.value_length": 128,
+        },
+        "model_weight_bytes": 5 * 1024**3,
+        "available_memory_bytes": 20 * 1024**3,
+        "requested_context_tokens": 100000,
+    }
+    input_path = tmp_path / "context-input.json"
+    input_path.write_text(json.dumps(payload), encoding="utf-8")
+    helper_path = Path(__file__).resolve().parents[1] / "app" / "ollama_context.py"
+    result = subprocess.run(
+        [sys.executable, str(helper_path), "--input-file", str(input_path)],
+        check=False, capture_output=True, text=True, encoding="utf-8",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["selected_context_tokens"] == 86016
+
+
+def test_context_selector_cli_rejects_invalid_utf8_json_file(tmp_path):
+    import subprocess
+    import sys
+
+    helper_path = Path(__file__).resolve().parents[1] / "app" / "ollama_context.py"
+    input_path = tmp_path / "invalid-context.json"
+    input_path.write_text("{invalid", encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(helper_path), "--input-file", str(input_path)],
+        check=False, capture_output=True, text=True, encoding="utf-8",
+    )
+    assert result.returncode == 2
+    assert "Expecting property name" in result.stderr
+
+
+def test_context_preflight_uses_file_bridge_and_reuses_verified_loaded_variant():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "scripts" / "verify_ollama_context.ps1").read_text(encoding="utf-8")
+
+    assert "--input-file $inputPath" in script
+    assert "$selectionInput | & python" not in script
+    assert "Get-LoadedCodexContextVariant" in script
+    assert "reused-verified-loaded-variant" in script
+    assert "selectedContext -lt 64000" in script
+
