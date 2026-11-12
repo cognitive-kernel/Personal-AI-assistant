@@ -71,6 +71,17 @@ def _stop_child(process: subprocess.Popen[str]) -> None:
 
 
 class TargetRunnerArchitectureAcceptance(unittest.TestCase):
+    def test_native_windows_cpu_ram_telemetry_works_without_psutil(self):
+        from app import hardware
+
+        with mock.patch.object(hardware, "psutil", None):
+            metrics = hardware.get_system_metrics(cpu_interval=0.1)
+        self.assertIsNotNone(metrics, "Native Windows CPU/RAM telemetry must work without psutil.")
+        self.assertGreater(int(metrics["total_bytes"]), 0)
+        self.assertGreater(int(metrics["available_bytes"]), 0)
+        self.assertGreaterEqual(float(metrics["cpu_percent"]), 0.0)
+        self.assertLessEqual(float(metrics["cpu_percent"]), 100.0)
+
     def test_repository_execution_lock_is_exclusive_and_released_after_process_death(self):
         with tempfile.TemporaryDirectory(prefix="autonomous-execution-lock-") as temp:
             state_dir = Path(temp)
