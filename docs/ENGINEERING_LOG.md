@@ -854,3 +854,11 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - **Correction:** README now records the actual 2 GiB WMI AdapterRAM report and driver version while explicitly distinguishing it from dedicated VRAM. Dedicated and shared memory remain separate WDDM measurements; actual model offload remains based on Ollama `/api/ps` `size_vram`, not the WMI field.
 - **Regression protection:** target-diagnostic contract test now rejects the stale 128 MB statement and requires the recorded AdapterRAM and driver details.
 - **Scope:** no GPU offload is assumed or forced. The Intel UHD 730 remains an integrated adapter; CPU fallback on the i5-12400 remains valid and observable.
+
+
+## 2026-11-12 — Target-host gpt-oss context-capacity regression
+
+- Added a deterministic regression using the recorded target profile: `gptoss` architecture, 131,072-token model ceiling, 24 blocks, 8 KV heads, 64-element key/value dimensions, 13,793,441,566-byte model weights, and 22.42 GiB currently available physical RAM.
+- Under the selector's documented 4 GiB system reserve and 10%-of-weights runtime overhead, the conservative FP16 KV estimate is 49,152 bytes/token and the selected ceiling is 93,699 tokens when weights are not already resident. This leaves the upstream Ollama 64k recommendation feasible for this recorded snapshot while correctly refusing to assume the full 131,072-token model maximum fits.
+- This is a deterministic capacity calculation, not a live model-load or performance claim. Runtime allocation and real Codex tool-call behavior still require the self-hosted diagnostic.
+- The target profile test is additive; no prior assertions or safety gates were removed.
