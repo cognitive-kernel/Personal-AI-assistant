@@ -11,7 +11,7 @@ The consolidated PR #722 readiness script still used `Get-Process Runner.Listene
 - Add a regression test forbidding the old `Get-Process Runner.Listener` path.
 
 ### Validation
-Current PR head: `1dd198c8e39e49923fd1ee5cdc813f9f908c4bbb`. Exact-head tests, sandbox integration, Browser E2E, dependency audit, and self-hosted Windows diagnostic are queued/in progress under runs #43210135405, #43210135295, #43210135539, #43210135297, and #43210128732. None is recorded as passed until its exact-head conclusion is success.
+Current PR head: `4c39205b105a497af9e10780faa7356feecaffa4`. Exact-head tests, sandbox integration, Browser E2E, dependency audit, and self-hosted Windows diagnostic are queued/in progress under runs #43210293958, #43210293805, #43210293787, #43210293781, and #43210286527. None is recorded as passed until its exact-head conclusion is success.
 
 # Engineering Continuity Log
 
