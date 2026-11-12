@@ -27,7 +27,7 @@
     )];
     const savedModelUnavailable = Boolean(selectedModel) && (!installed.includes(selectedModel) || selectedModelIsContextVariant);
     const names = [...installed];
-    if (savedModelUnavailable) names.unshift(selectedModel);
+    if (savedModelUnavailable && !installed.includes(selectedModel)) names.unshift(selectedModel);
     select.replaceChildren();
     if (!installed.length && !savedModelUnavailable) {
       const option = document.createElement("option");
@@ -63,14 +63,8 @@
         option.disabled = true;
       }
       select.append(option);
-      if (contextVariant || unavailableSavedModel) option.setAttribute("disabled", "");
     }
     select.value = selectedModel && installed.includes(selectedModel) && !selectedModelIsContextVariant ? selectedModel : "";
-    for (const option of select.options) {
-      const contextVariant = /-codex-ctx[0-9]+$/i.test(option.value);
-      const unavailableSavedModel = savedModelUnavailable && option.value === selectedModel;
-      if (contextVariant || unavailableSavedModel) option.disabled = true;
-    }
   }
   function renderRuns(runs) {
     const host = $("recent-runs");
