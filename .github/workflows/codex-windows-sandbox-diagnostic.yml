@@ -215,6 +215,19 @@ jobs:
             throw "Ollama model '$env:AUTONOMOUS_ENGINEERING_MODEL' is not installed."
           }
 
+      - name: Run adaptive-context regression suite on the target Windows host
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $venv = Join-Path $env:RUNNER_TEMP "codex-adaptive-context-tests"
+          python -m venv $venv
+          if ($LASTEXITCODE -ne 0) { throw "Could not create an isolated target-host test environment." }
+          $testPython = Join-Path $venv "Scripts\python.exe"
+          & $testPython -m pip install --disable-pip-version-check -e ".[dev]"
+          if ($LASTEXITCODE -ne 0) { throw "Could not install isolated test dependencies on the target host." }
+          & $testPython -m pytest -q tests/test_ollama_context.py tests/test_ollama_model_metadata.py tests/test_codex_smoke_diagnostics.py tests/test_autonomous_engineering.py
+          if ($LASTEXITCODE -ne 0) { throw "Target-host adaptive-context regression suite failed." }
+
       - name: Inventory installed Ollama models and capabilities
         shell: powershell
         run: |
