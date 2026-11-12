@@ -2,7 +2,7 @@
 
 PR #722 current head: `1dd198c8e39e49923fd1ee5cdc813f9f908c4bbb`.
 
-A second Windows-service review found that `scripts/check_autonomous_runner.ps1` still used `Get-Process Runner.Listener`, despite the service-account readiness contract. It now queries running `actions.runner*` services through CIM, resolves their PID through `Win32_Process`, and requires the exact `Runner.Listener.exe` image. A regression assertion protects this contract.
+A second Windows-service review found that `scripts/check_autonomous_runner.ps1` still used `Get-Process Runner.Listener`, despite the service-account readiness contract. It now queries running `actions.runner*` services through CIM, resolves their PID through `Win32_Process`, and requires a `Runner.Listener.exe` child process whose `ParentProcessId` matches the Windows service PID. A regression assertion protects this contract.
 
 Exact-head validation is pending at the time of this update:
 - Tests: [#43210135405](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43209894282)
