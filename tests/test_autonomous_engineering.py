@@ -1408,7 +1408,7 @@ def test_runner_status_uses_native_windows_process_api_without_psutil(monkeypatc
     def fake_run(command, **kwargs):
         observed["command"] = command
         observed["kwargs"] = kwargs
-        return subprocess.CompletedProcess(command, 0, stdout="true\\n", stderr="")
+        return subprocess.CompletedProcess(command, 0, stdout="true\n", stderr="")
 
     monkeypatch.setattr(services.subprocess, "run", fake_run)
     result = services.runner_status(None)
