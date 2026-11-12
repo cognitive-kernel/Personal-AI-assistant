@@ -471,3 +471,20 @@ def test_windows_provisioning_and_app_readiness_use_consistent_cli_resolution():
     assert "Get-Command gh.exe" in app_check
     assert "Get-CimInstance Win32_Process -Filter" in app_check
     assert "Get-Process -Name \"Runner.Listener\"" not in app_check
+
+
+def test_windows_storage_workflow_exercises_adaptive_context_bridge_in_powershell_51():
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+    bridge = (root / "tests" / "test_ollama_context_bridge.ps1").read_text(encoding="utf-8")
+
+    assert "Verify the adaptive context bridge in Windows PowerShell 5.1" in workflow
+    assert "shell: powershell" in workflow
+    assert "tests/test_ollama_context_bridge.ps1" in workflow
+    assert "Start-Process -FilePath $pythonPath -ArgumentList $argumentList" in bridge
+    assert "-RedirectStandardOutput $outputPath -RedirectStandardError $errorPath" in bridge
+    assert "selected_context_tokens" in bridge
+    assert "requested_context_tokens = [long]1000" in bridge
+    assert "model_weights_already_loaded" in bridge
+    assert "Available RAM cannot hold the model weights" in bridge
+    assert "64000" not in bridge
