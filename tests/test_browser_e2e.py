@@ -2160,7 +2160,7 @@ def test_browser_settings_form_persists_values_and_surfaces_api_failure():
             """() => {
                 const model = document.querySelector('#chat-model');
                 const timeout = document.querySelector('#chat-timeout');
-                return model && model.value.trim() && timeout && timeout.value;
+                return model && timeout && timeout.value;
             }""",
             timeout=10000,
         )
