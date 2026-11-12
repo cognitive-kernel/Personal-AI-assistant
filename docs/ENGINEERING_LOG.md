@@ -807,3 +807,6 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - **Compatibility gap:** the GPU telemetry fallback used a PATH-only `powershell.exe` lookup with a 4-second timeout; the psutil-free Runner status fallback used the same PATH-only lookup with a 5-second timeout. On a Windows service account or cold hosted runner, either could report missing GPU/Runner telemetry despite inbox Windows PowerShell being installed.
 - **Correction:** added a shared SystemRoot/WINDIR-based Windows PowerShell resolver with PATH fallback. GPU telemetry and the psutil-free Runner status probe now use the resolved executable with a bounded 20-second timeout. Missing/failed telemetry remains unknown/not-ready; it is never fabricated as zero or success.
 - **Regression protection:** tests verify SystemRoot resolution, the 20-second GPU probe bound, and service-account Runner detection through the resolved PowerShell path.
+
+
+- The production PowerShell preflight was aligned with the tested bridge: it now resolves python.exe explicitly, starts the helper with Start-Process, redirects stdout/stderr to bounded temporary files, parses UTF-8 JSON, and removes all temporary artifacts in finally. The PowerShell 5.1 integration test exercises the same Start-Process/file contract rather than a separate native-stdin path.
