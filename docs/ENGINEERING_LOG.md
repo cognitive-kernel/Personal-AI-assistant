@@ -15,6 +15,8 @@
 - Code/test SHA: `ce94934a48c00e95f6f50fab809e7fb9188b9943`.
 - Full suite: **2,171 passed, 2 skipped, 51 deselected**; Markdown validation (96 files), import-cycle check, deterministic retrieval and claim-to-test checks passed.
 - Windows Storage regressions, Python 3.11.9 and 3.14.6 matrices, Windows Node/Codex checks, Browser E2E, Docker full-suite/sandbox integration, and dependency audit all passed.
+
+- Exact-head workflow evidence: [tests + Python matrix + Windows Storage](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43281188427), [Browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43281188426), [Docker full-suite and real sandbox integration](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43281188706), [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43281188494). The self-hosted [Windows/Ollama diagnostic](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43281178718) remained pending without a runner assignment.
 - Documentation synchronization changes the PR head; exact-head CI must run again on the documentation-inclusive SHA.
 
 ### Residual gates
