@@ -689,3 +689,12 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Exact-head CI for the new commits has not yet completed. No local test output, target-host Codex run, or real tool-call smoke is claimed.
 - Runtime acceptance must prove the Codex model catalog carries the selected value and Ollama /api/ps reports exactly that allocation before and after Codex.
 - No direct main write, force-push, automatic PR merge, deployment, or destructive state change was performed.
+
+## 2026-11-12 — PR #722 exact-head GitHub CI and contract correction
+
+- Verified exact PR head `ff74389cfe033afc9ccf1c9d377930a1cf634a3e` against GitHub Actions. The full Python suite completed with **2,146 passed, 2 skipped, 51 deselected** in 248.97 seconds; Windows Storage regressions passed; Browser E2E passed; dependency audit passed.
+- The claim-to-test coverage benchmark completed with **10/10 cases passed**. Markdown link validation passed for 96 files.
+- Corrected a documentation inconsistency: ADR-020 and the implementation permit every positive integer context, including one token when both model metadata and runtime allocation support it. There is no 512-token or other fixed minimum. Zero/negative values, missing metadata, and a runtime allocation mismatch remain fail-closed.
+- Updated `docs/ROADMAP_ACCEPTANCE.md` and `docs/PROJECT_STATUS.md` to reflect the actual contract and exact-head evidence. Historical entries are retained; this entry explicitly supersedes their stale 512-token-floor and pending-CI statements.
+- The separate self-hosted Windows diagnostic has passed its exact-head CI wait and service-account preparation, and is currently running the adaptive-context regression step. Installed-model inventory, actual Ollama `/api/ps` allocation, Codex `exec_command` tool-call smoke, and post-smoke allocation verification are not yet evidenced; they remain pending and are not claimed as passed.
+- No direct `main` write, force-push, automatic merge, deployment, or destructive state reset was performed. The PR remains Draft/open. GitHub-side implementation and CI work proceeds independently of any later human acceptance; the repository's explicit target-host and owner/manual-merge safeguards remain unchanged.
