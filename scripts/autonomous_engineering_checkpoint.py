@@ -4,6 +4,7 @@ import argparse
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -84,6 +85,26 @@ def git(
     if check and result.returncode:
         raise RuntimeError((result.stderr or result.stdout or "Git checkpoint command failed")[-3000:])
     return result
+
+
+def _isolated_test_base_sha() -> str | None:
+    """Use the host-verified SHA only inside the explicit pytest Docker harness."""
+    if (
+        os.environ.get("AUTONOMOUS_ENGINEERING_TEST_MODE") != "1"
+        or not os.environ.get("PYTEST_CURRENT_TEST")
+    ):
+        return None
+    value = os.environ.get("AUTONOMOUS_ENGINEERING_TEST_BASE_SHA", "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{40}", value):
+        raise RuntimeError("Isolated test mode requires a valid host-verified checkout SHA.")
+    return value
+
+
+def _current_base_sha() -> str:
+    injected = _isolated_test_base_sha()
+    if injected is not None:
+        return injected
+    return git("rev-parse", "HEAD").stdout.strip()
 
 
 def _atomic_write(path: Path, data: str | bytes) -> None:
@@ -182,31 +203,43 @@ def _write_snapshot_unlocked(
     state["directory"].mkdir(parents=True, exist_ok=True)
     # The watcher runs concurrently with Codex. Never use the repository's
     # shared .git/index: even intent-to-add entries can race with Codex staging.
-    descriptor, index_name = tempfile.mkstemp(
-        prefix="checkpoint-index-", suffix=".tmp", dir=state["directory"],
-    )
-    os.close(descriptor)
-    index_path = Path(index_name)
-    index_env = os.environ.copy()
-    index_env["GIT_INDEX_FILE"] = str(index_path)
-    try:
-        git("read-tree", base_sha, env=index_env)
-        git("add", "-N", "-A", "--", "app", "tests", "docs", "scripts", env=index_env)
-        result = git(
-            "diff", "--binary", base_sha, "--",
-            "app", "tests", "docs", "scripts",
-            ":!scripts/autonomous_engineering_cycle.py",
-            ":!scripts/autonomous_engineering_checkpoint.py",
-            ":!scripts/autonomous_engineering_progress.py",
-            ":!scripts/autonomous_engineering_state.py",
-            env=index_env,
+    injected_test_sha = _isolated_test_base_sha()
+    if injected_test_sha is not None:
+        if injected_test_sha != base_sha:
+            raise RuntimeError("Isolated test SHA does not match the checkpoint base SHA.")
+        # The read-only Docker test container intentionally has no .git mount.
+        # The host verified HEAD before launching it; use an empty patch to
+        # exercise watcher ownership/readiness without pretending Git ran inside
+        # the container or exposing host Git credentials/configuration.
+        patch_data: str | bytes = b""
+    else:
+        descriptor, index_name = tempfile.mkstemp(
+            prefix="checkpoint-index-", suffix=".tmp", dir=state["directory"],
         )
-    finally:
-        index_path.unlink(missing_ok=True)
-        index_path.with_name(index_path.name + ".lock").unlink(missing_ok=True)
+        os.close(descriptor)
+        index_path = Path(index_name)
+        index_env = os.environ.copy()
+        index_env["GIT_INDEX_FILE"] = str(index_path)
+        try:
+            git("read-tree", base_sha, env=index_env)
+            git("add", "-N", "-A", "--", "app", "tests", "docs", "scripts", env=index_env)
+            result = git(
+                "diff", "--binary", base_sha, "--",
+                "app", "tests", "docs", "scripts",
+                ":!scripts/autonomous_engineering_cycle.py",
+                ":!scripts/autonomous_engineering_checkpoint.py",
+                ":!scripts/autonomous_engineering_progress.py",
+                ":!scripts/autonomous_engineering_state.py",
+                env=index_env,
+            )
+            patch_data = result.stdout
+        finally:
+            index_path.unlink(missing_ok=True)
+            index_path.with_name(index_path.name + ".lock").unlink(missing_ok=True)
     previous = read_metadata(run_id, task)
     preserve_existing_patch = (
-        not result.stdout
+        injected_test_sha is None
+        and not patch_data
         and state["patch"].is_file()
         and state["patch"].stat().st_size > 0
         and previous
@@ -215,7 +248,7 @@ def _write_snapshot_unlocked(
         and previous.get("task") == task
     )
     if not preserve_existing_patch:
-        _atomic_write(state["patch"], result.stdout)
+        _atomic_write(state["patch"], patch_data)
     plan = ROOT / ".agent-progress.json"
     if plan.is_file():
         _atomic_write(state["plan"], plan.read_bytes())
@@ -403,7 +436,7 @@ def restore(base_sha: str) -> bool:
         current_metadata = read_metadata(str(metadata["run_id"]), int(metadata["task"]))
         if current_metadata is None or current_metadata.get("base_sha") != metadata.get("base_sha"):
             raise RuntimeError("Checkpoint ownership changed during recovery; preserving all checkpoint data.")
-        current_head = git("rev-parse", "HEAD").stdout.strip()
+        current_head = _current_base_sha()
         if current_head != base_sha:
             raise RuntimeError("The checked-out HEAD does not match the immutable base SHA; checkpoint was preserved.")
         saved_base = metadata.get("base_sha")
