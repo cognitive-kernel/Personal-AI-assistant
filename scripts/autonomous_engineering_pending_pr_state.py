@@ -154,7 +154,7 @@ def load_pending_pr_unlocked() -> dict[str, Any] | None:
         or not re.fullmatch(r"[0-9a-f]{40}", str(value.get("head_sha", "")))
         or not re.fullmatch(r"[0-9a-f]{40}", str(value.get("base_sha", "")))
         or not str(value.get("branch", "")).startswith("codex/local-engineering-")
-        or not re.fullmatch(r"https://github\\.com/[^/]+/[^/]+/pull/[1-9][0-9]*", str(value.get("url", "")))
+        or not re.fullmatch(r"https://github\.com/[^/]+/[^/]+/pull/[1-9][0-9]*", str(value.get("url", "")))
     ):
         raise RuntimeError("Pending PR state violates its durable contract; preserving it and refusing a new task.")
     return value
