@@ -170,7 +170,10 @@ jobs:
       group: autonomous-local-engineering-${{ github.repository }}
       cancel-in-progress: false
     runs-on: [self-hosted, Windows, X64, ollama]
-    timeout-minutes: 30
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: read
     env:
       AUTONOMOUS_ENGINEERING_MODEL: ${{ inputs.model || vars.AUTONOMOUS_ENGINEERING_MODEL || '' }}
       AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH: ${{ inputs.context_length || (github.ref_name == 'fix/autonomous-engineering-show-all-ollama-models-20261112' && '10000') || vars.AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH || '' }}
@@ -181,6 +184,50 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+
+      - name: Wait for the complete exact-head GitHub CI matrix
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+          EXPECTED_HEAD_SHA: ${{ github.sha }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+          }
+          $required = @("tests", "browser-e2e", "dependency-audit")
+          $deadline = (Get-Date).AddMinutes(35)
+          $allGreen = $false
+          while ((Get-Date) -lt $deadline) {
+            $uri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs?head_sha=$env:EXPECTED_HEAD_SHA&event=pull_request&per_page=100"
+            $response = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get -TimeoutSec 20
+            $runs = @($response.workflow_runs | Where-Object { $_.head_sha -eq $env:EXPECTED_HEAD_SHA })
+            $allGreen = $true
+            foreach ($name in $required) {
+              $matching = @($runs | Where-Object { $_.name -eq $name } | Sort-Object created_at -Descending)
+              if ($matching.Count -eq 0) {
+                $allGreen = $false
+                break
+              }
+              $latest = $matching[0]
+              if ($latest.status -ne "completed") {
+                $allGreen = $false
+                break
+              }
+              if ($latest.conclusion -ne "success") {
+                throw "Required exact-head workflow '$name' finished with conclusion '$($latest.conclusion)' for $env:EXPECTED_HEAD_SHA."
+              }
+            }
+            if ($allGreen) { break }
+            Start-Sleep -Seconds 15
+          }
+          if (-not $allGreen) {
+            throw "The exact-head GitHub CI matrix did not become fully green before the target-host validation deadline."
+          }
+          Write-Host "All required GitHub workflows are green on exact head $env:EXPECTED_HEAD_SHA."
 
       - name: Prepare the same service-account runtime
         shell: powershell
