@@ -37,6 +37,49 @@ def _snapshot(*, created: float = 1234.5, command: list[str] | None = None) -> d
     return {"created_at": created, "command": command or []}
 
 
+def test_windows_process_snapshot_uses_system_powershell_and_bounded_timeout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    import json
+
+    system_root = tmp_path / "Windows"
+    powershell = system_root / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    powershell.parent.mkdir(parents=True)
+    powershell.write_bytes(b"test executable placeholder")
+    monkeypatch.setenv("SystemRoot", str(system_root))
+    monkeypatch.delenv("WINDIR", raising=False)
+    calls = []
+
+    command_line = (
+        'python.exe "C:\\repo\\scripts\\autonomous_engineering_checkpoint.py" '
+        "watch --base-sha " + "a" * 40 + " --run-id run-42 --task 3 --interval 20"
+    )
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+        return process_control.subprocess.CompletedProcess(
+            args=args,
+            returncode=0,
+            stdout=json.dumps({
+                "pid": 4321,
+                "created_at": "2026-11-12T15:27:00+00:00",
+                "command_line": command_line,
+            }),
+            stderr="",
+        )
+
+    monkeypatch.setattr(process_control.subprocess, "run", fake_run)
+
+    snapshot = process_control._windows_process_snapshot(4321)
+
+    assert snapshot is not None
+    assert snapshot["created_at"] > 0
+    assert any("autonomous_engineering_checkpoint.py" in token for token in snapshot["command"])
+    assert calls[0][0][0] == str(powershell)
+    assert calls[0][1]["timeout"] == 20
+    assert calls[0][1]["check"] is False
+
+
 def test_stops_only_exact_run_task_base_and_process_identity(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     script = tmp_path / "autonomous_engineering_checkpoint.py"
     terminated: list[tuple[int, float]] = []
