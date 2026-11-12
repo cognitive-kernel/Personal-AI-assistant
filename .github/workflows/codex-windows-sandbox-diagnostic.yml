@@ -265,6 +265,18 @@ jobs:
               Select-Object -First 1
             $ollamaPath = if ($ollamaProcess) { [string]$ollamaProcess.ExecutablePath } else { $null }
           }
+          if (-not $ollamaPath) {
+            $profiles = @(Get-CimInstance Win32_UserProfile -ErrorAction Stop | Where-Object {
+              -not $_.Special -and -not [string]::IsNullOrWhiteSpace($_.LocalPath)
+            })
+            foreach ($profile in $profiles) {
+              $candidate = Join-Path ([string]$profile.LocalPath) "AppData\Local\Programs\Ollama\ollama.exe"
+              if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+                $ollamaPath = $candidate
+                break
+              }
+            }
+          }
           if ([string]::IsNullOrWhiteSpace($ollamaPath) -or -not (Test-Path -LiteralPath $ollamaPath -PathType Leaf)) {
             throw "Ollama executable was not found in PATH or among active ollama.exe processes."
           }
