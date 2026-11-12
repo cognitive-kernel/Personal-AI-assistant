@@ -12,7 +12,8 @@ on:
       - .github/workflows/autonomous-codex-engineering.yml
       - scripts/autonomous_engineering_progress.py
       - scripts/verify_ollama_context.ps1
-      - scripts/OllamaContextMemory.psm1
+      - app/ollama_context.py
+      - tests/test_ollama_model_metadata.py
       - tests/test_ollama_context_bridge.ps1
       - tests/test_autonomous_engineering.py
       - tests/test_autonomous_engineering_cycle.py
