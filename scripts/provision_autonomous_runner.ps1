@@ -61,8 +61,8 @@ $architecture = [string]$modelInfo.details.family
 $contextKey = $architecture + ".context_length"
 $rawContext = $modelInfo.model_info.PSObject.Properties[$contextKey]
 $parsedContext = 0L
-if ([string]::IsNullOrWhiteSpace($architecture) -or -not $rawContext -or -not [int64]::TryParse([string]$rawContext.Value, [ref]$parsedContext) -or $parsedContext -lt 512) {
-    throw "Saved model $Model must expose at least 512 valid context tokens for Codex."
+if ([string]::IsNullOrWhiteSpace($architecture) -or -not $rawContext -or -not [int64]::TryParse([string]$rawContext.Value, [ref]$parsedContext) -or $parsedContext -lt 1) {
+    throw "Saved model $Model must expose a positive valid context limit for Codex."
 }
 if (@($modelInfo.capabilities | ForEach-Object { [string]$_ }) -notcontains "tools") {
     throw "Saved model $Model does not advertise the required Ollama tools capability."
