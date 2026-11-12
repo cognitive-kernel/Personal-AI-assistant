@@ -390,6 +390,8 @@ def test_target_diagnostic_matches_recorded_hardware_and_uses_automatic_context(
 
     assert "Get-Command node.exe" in autonomous
     assert "Get-Command python.exe" in autonomous
+    assert "python.exe scripts/autonomous_engineering_progress.py" in autonomous
+    assert "python scripts/autonomous_engineering_progress.py" not in autonomous
     assert "Get-Command node -ErrorAction" not in autonomous
     assert "Get-Command npm.cmd" in autonomous
     assert "Get-Command codex.cmd" in autonomous
