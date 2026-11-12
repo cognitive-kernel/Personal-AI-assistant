@@ -63,6 +63,9 @@ def write_codex_model_catalog(model: str, context_window: int | None = None) -> 
                 "slug": model,
                 "display_name": model,
                 "context_window": context_window,
+                # Codex applies model_context_window config overrides at startup.
+                # Cap that override at the exact Ollama allocation verified by preflight.
+                "max_context_window": context_window,
                 "shell_type": "default",
                 "visibility": "list",
                 "supported_in_api": True,
@@ -115,6 +118,7 @@ def codex_arguments(model: str, report: str) -> list[str]:
     config_overrides = [
         "sandbox_workspace_write.exclude_slash_tmp=true",
         f"model_catalog_json={json.dumps(str(catalog_path))}",
+        f"model_context_window={context_window}",
         'model_providers.ollama-local.name="Ollama local"',
         'model_providers.ollama-local.base_url="http://127.0.0.1:11434/v1/"',
         'model_providers.ollama-local.wire_api="responses"',
