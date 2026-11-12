@@ -38,7 +38,7 @@ def _verified_codex_context_window() -> int:
         raise ValueError("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH must be an integer.") from None
     if not MIN_CONTEXT_TOKENS <= context_window <= MAX_CODEX_CONTEXT_TOKENS:
         raise ValueError(
-            f"Codex context window must be between {MIN_CONTEXT_TOKENS} and {MAX_CODEX_CONTEXT_TOKENS} tokens."
+            f"Codex context window must be a positive integer no greater than {MAX_CODEX_CONTEXT_TOKENS} tokens."
         )
     return context_window
 
@@ -53,7 +53,7 @@ def write_codex_model_catalog(model: str, context_window: int | None = None) -> 
         or not MIN_CONTEXT_TOKENS <= context_window <= MAX_CODEX_CONTEXT_TOKENS
     ):
         raise ValueError(
-            f"Codex context window must be between {MIN_CONTEXT_TOKENS} and {MAX_CODEX_CONTEXT_TOKENS} tokens."
+            f"Codex context window must be a positive integer no greater than {MAX_CODEX_CONTEXT_TOKENS} tokens."
         )
     safe_model = re.sub(r"[^A-Za-z0-9_.-]", "_", model)
     catalog_path = Path(tempfile.gettempdir()) / f"codex-model-catalog-{os.getpid()}-{safe_model}.json"
