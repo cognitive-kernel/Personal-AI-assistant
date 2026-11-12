@@ -746,3 +746,12 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 
 
 - Scope clarification: the removal of the fixed 64k/512-token floors applies to the Codex adaptive-context path. The separate general Ollama chat runtime retains its existing 512-token minimum; it is not used to clamp or reject Codex context selection.
+
+
+## 2026-11-12 — Windows Runner Python-version contract correction
+
+- **Root cause:** the autonomous Windows workflow hard-coded `C:\\Program Files\\Python311\\python.exe`, while Runner provisioning and the operations contract explicitly accept Python 3.11 or newer. A valid system-wide Python 3.12+ installation could therefore pass provisioning but fail at workflow startup.
+- **Correction:** resolve `python.exe` from the actual Runner service account's PATH, validate its executable path, and enforce the same Python >=3.11 contract before adding its directory and Scripts directory to the workflow PATH. No Python installation, user profile, or machine-specific path is assumed.
+- **Regression protection:** the target-host diagnostic contract test now requires version-aware Python discovery and rejects reintroduction of the Python311 hard-coded path.
+- **Scope/safety:** this changes only runtime discovery; it does not install software, alter the user's machine, weaken service identity checks, or change Ollama/Codex context selection.
+- **Validation:** exact-head GitHub Actions are required for the new commit; results are pending and will be recorded against the exact SHA. The PR remains Draft and is not merged.
