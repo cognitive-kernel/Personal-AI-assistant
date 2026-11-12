@@ -389,7 +389,7 @@ def test_context_preflight_uses_file_bridge_and_reuses_verified_loaded_variant()
 
     assert "--input-file $inputPath" in script
     assert "$selectionInput | & python" not in script
-    assert "Get-LoadedCodexContextVariant" in script
+    assert "Get-LoadedCodexContextState" in script
     assert "reused-verified-loaded-variant" in script
     assert "selectedContext -lt 64000" in script
 
