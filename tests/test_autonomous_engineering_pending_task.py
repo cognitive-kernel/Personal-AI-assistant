@@ -86,31 +86,25 @@ def test_manual_task_is_persisted_before_codex_and_ollama_preflight():
     assert capture < codex_install < ollama_check < sandbox_smoke
 
 
-def test_manual_task_persistence_precedes_schedule_gate_and_runner_prerequisites():
+def test_manual_task_persistence_occurs_after_concurrency_ownership_and_before_preflight():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
     workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
-    persist_start = workflow.index("  persist-manual-task:")
     gate_start = workflow.index("  schedule-gate:")
     codex_start = workflow.index("  codex:")
-    persist_job = workflow[persist_start:gate_start]
-    gate_job = workflow[gate_start:codex_start]
     codex_job = workflow[codex_start:]
+    concurrency_start = codex_job.index("    concurrency:")
+    persist_step = codex_job.index("      - name: Persist manual task under the controller's runner and concurrency ownership")
+    python_preflight = codex_job.index("      - name: Use preinstalled system Python under the Runner service identity")
 
-    assert persist_start < gate_start < codex_start
-    assert "if: github.event_name == 'workflow_dispatch' && inputs.manual_task != '' && github.ref == 'refs/heads/main'" in persist_job
-    assert "runs-on: [self-hosted, Windows, X64, ollama]" in persist_job
-    assert "ref: main" in persist_job
-    assert "persist-credentials: false" in persist_job
-    assert "persist_autonomous_manual_task.ps1" in persist_job
-    assert "needs: persist-manual-task" in gate_job
-    assert "if: always()" in gate_job
-    assert "needs: [persist-manual-task, schedule-gate]" in codex_job
-    assert "if: always()" in codex_job
-    assert "concurrency:" in codex_job
-    assert "group: autonomous-local-engineering-${{ github.repository }}" in codex_job
-    assert "Persist manual task before any runner prerequisite checks" not in codex_job
+    assert gate_start < codex_start
+    assert "  persist-manual-task:" not in workflow
+    assert concurrency_start < persist_step < python_preflight
+    assert "needs: schedule-gate" in codex_job
+    assert "if: github.event_name == 'workflow_dispatch' && inputs.manual_task != ''" in codex_job
+    assert "runs-on: [self-hosted, Windows, X64, ollama, autonomous-state-owner]" in codex_job
+    assert "persist_autonomous_manual_task.ps1" in codex_job
     workflow_header = workflow.split("jobs:", 1)[0]
     assert "concurrency:" not in workflow_header
 def test_early_manual_task_persistence_script_is_protected_and_validated_in_ci():
