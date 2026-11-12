@@ -87,7 +87,7 @@ function Get-AutomaticContext {
     try {
         # Windows PowerShell 5.1 pipes native-process stdin as UTF-16LE. Use an
         # explicit UTF-8 file contract so Python receives identical JSON on all shells.
-        $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
         [IO.File]::WriteAllText($inputPath, $selectionInput, $utf8NoBom)
         $selectionOutput = & python $helperPath --input-file $inputPath
         $helperExitCode = $LASTEXITCODE
