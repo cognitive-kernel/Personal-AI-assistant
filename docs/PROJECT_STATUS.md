@@ -2,21 +2,21 @@
 
 ## وضعیت فعلی ماژول مهندسی خودکار
 
-- مخزن: `cognitive-kernel/Personal-AI-assistant`؛ PR [#722](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/722)، شاخه `fix/autonomous-engineering-show-all-ollama-models-20261112`، مقصد `main`. PR باز، Draft و ادغام‌نشده است.
-- **کد/تست دقیق فعلی:** `44e656d752abdc902d45fa98557cabe024a3f001`؛ مبنای `main`: `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`. GitHub تعداد 40 فایل تغییرکرده را گزارش می‌کند؛ عدد 446 commit شامل تاریخچه شاخه است و تعداد تغییرات فایل نیست.
-- **سخت‌افزار تأییدشده کاربر:** Intel Core i5-12400، شش هسته/۱۲ رشته، حدود 31.78 GiB RAM (رده 32GB)، Intel UHD Graphics 730؛ diagnostic اکنون این پروفایل را با telemetry زنده بررسی می‌کند (تلورانس RAM برابر 30–33 GiB). ویندوز 11 x64 build 10.0.26300 نیز تأیید شده است.
-- **نرم‌افزار تأییدشده کاربر:** Windows 11 x64 build 10.0.26300، Python 3.14.6 و Python 3.11.9 از طریق py launcher، Git 2.54.0. Node.js 26.13.0/npm به‌صورت per-job از طریق action پین‌شده نصب می‌شوند و Codex CLI 0.167.0 نیز در workflow نصب می‌شود؛ نصب system-wide آن‌ها پیش‌نیاز میزبان نیست. نسخه و محیط اجرای Ollama روی Runner هنوز از اجرای هدف تأیید نشده‌اند.
-- **Exact-head GitHub CI روی `44e656d752abdc902d45fa98557cabe024a3f001`: هر چهار workflow موفق‌اند.**
-  - Tests: [#43360952224](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43360952224) — full test suite، Python 3.11.9/3.14.6، Windows Storage/PowerShell 5.1 و Node/Codex matrix همگی موفق.
-  - Browser E2E: [#43360952333](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43360952333) — موفق.
-  - Docker sandbox/full suite: [#43360952190](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43360952190) — موفق.
-  - Dependency audit: [#43360953410](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43360953410) — موفق.
-- **Target-host diagnostic:** [#43360945445](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43360945445)؛ cleanup job موفق شده اما `sandbox-diagnostic` همچنان pending است و GitHub هنوز Runner منطبق با برچسب‌های `self-hosted, Windows, X64, ollama, autonomous-state-owner` اختصاص نداده است. روشن بودن رایانه به‌تنهایی اتصال سرویس Runner را ثابت نمی‌کند؛ وضعیت offline/disconnected/missing-label از شواهد فعلی قابل تفکیک نیست.
-- در نتیجه، نسخه و محیط واقعی Ollama، مقدار مؤثر `OLLAMA_NUM_PARALLEL`، مدل load، تخصیص واقعی `/api/ps`، Codex MXC/`exec_command` smoke و بررسی پس از Codex هنوز اجرا/تأیید نشده‌اند. تست soak، crash/restart و staging restore/rollback نیز گیت‌های عملیاتی بازند.
-- اصلاحات adaptive context در Python، API، UI، PowerShell و provisioning باید وزن مدل، سقف معماری، ابعاد KV-cache، tool capability، parallelism، residency و reserve حافظه را یکسان لحاظ کنند؛ ورودی نامعتبر fail-closed است. مدل‌های داخلی context variant در inventory قابل مشاهده‌اند اما مدل پایهٔ قابل انتخاب نیستند.
-- راهنمای Ollama برای Codex حداقل 64k را توصیه می‌کند؛ مقدار پایین‌تر صرفاً best-effort است و بدون smoke واقعی Codex پذیرفته‌شده محسوب نمی‌شود. CI hosted این smoke میزبان واقعی را جایگزین نمی‌کند.
-- Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) برای independent security review باز است؛ Issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290) پذیرش کل پروژه را دنبال می‌کند. خودِ پیاده‌ساز نمی‌تواند بازبینی مستقل را به‌جای reviewer مستقل تأیید کند.
-- هیچ دادهٔ کاربر حذف/بازنویسی نشده، هیچ merge/auto-merge/deploy انجام نشده و تست‌های میزبان/انسانی انجام‌نشده به‌عنوان موفق ثبت نشده‌اند.
+- مخزن: cognitive-kernel/Personal-AI-assistant؛ PR #722، شاخه fix/autonomous-engineering-show-all-ollama-models-20261112، مقصد main. PR باز، Draft و ادغام‌نشده است.
+- **آخرین کد/تست:** f84bc9aa0127f2ec2e8ba6a0e035772841c0d7f7؛ مبنای main: f87e15b9eb76f7395ea4380382d95f1bc64e21ed. پس از این SHA فقط تغییرات مستنداتی در حال ثبت‌اند.
+- **سخت‌افزار تأییدشده کاربر:** Intel Core i5-12400، شش هسته/۱۲ رشته، حدود 31.78 GiB RAM (رده 32GB)، Intel UHD Graphics 730؛ diagnostic این پروفایل را با telemetry زنده بررسی می‌کند (تلورانس RAM برابر 30–33 GiB). Windows 11 x64 build 10.0.26300 نیز تأیید شده است.
+- **نرم‌افزار تأییدشده کاربر:** Windows 11 x64 build 10.0.26300، Python 3.14.6 و Python 3.11.9 از طریق py launcher، Git 2.54.0. Node.js 26.13.0/npm از طریق setup-node پین‌شده در هر job فراهم می‌شود؛ Codex CLI 0.167.0 نیز توسط workflow نصب می‌شود. Ollama نسخه/محیط واقعی روی میزبان هنوز تأیید نشده است.
+- **اصلاحات آخر:** gate سخت‌افزاری تأییدشده دوباره برقرار شد؛ provisioning دیگر به نصب system-wide Node/npm وابسته نیست؛ workflowها Node را با action پین‌شده v6.4.0 provision می‌کنند؛ تست‌ها این قراردادها و ترتیب bootstrap را پوشش می‌دهند؛ CIهای قدیمی برای هر commit جداگانه صف می‌شدند، concurrency اکنون بر اساس PR است تا runهای منسوخ لغو شوند.
+- **CI دقیق روی کد/تست f84bc9aa0127f2ec2e8ba6a0e035772841c0d7f7 در آخرین مشاهده در صف بود:**
+  - Tests: https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43383583299
+  - Browser E2E: https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43383583320
+  - Docker sandbox: https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43383583243
+  - Dependency audit: https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43383583252
+  - اجرای قبلی روی SHA 0852d2d4b9a3e005b8f321847ba239c3c02547ca یک شکست source-contract داشت: تفاوت حروف بزرگ/کوچک در متن diagnostic. assertion اصلاح شد؛ نتیجهٔ آن SHA سبز محسوب نمی‌شود.
+- **Target-host diagnostic:** آخرین اجرای قابل مشاهده #43360945445 بدون تخصیص Runner منطبق pending مانده بود و بعداً superseded/cancelled شد. وضعیت روشن بودن سیستم به‌تنهایی online بودن Runner service را ثابت نمی‌کند. اجرای جدید میزبان هنوز تأیید نشده است.
+- نسخه/فرآیند واقعی Ollama، مقدار مؤثر OLLAMA_NUM_PARALLEL، مدل load، تخصیص /api/ps، Codex MXC/exec_command smoke، soak/crash-restart و staging restore/rollback هنوز NOT RUN / PENDING هستند.
+- Target-host/local/human tests طبق Master Engineering Prompt merge gate پیش‌فرض نیستند، مگر branch protection صراحتاً آن‌ها را الزامی کند؛ توسعهٔ GitHub-side نباید برای آن‌ها متوقف شود. Independent security review در Issue #52 و پذیرش کلی در Issue #290 همچنان بازند.
+- هیچ merge خودکار، bypass، deploy یا تغییر دادهٔ کاربر انجام نشده است. Merge فقط پس از exact-head CI، reviewهای الزامی، بازبینی امنیتی مستقل و تأیید مالک مجاز است.
 
 > بخش‌های بعدی این سند snapshotهای تاریخی‌اند؛ وضعیت جاری و SHA معتبر در همین بخش ثبت می‌شود.
 
