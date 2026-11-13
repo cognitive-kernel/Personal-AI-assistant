@@ -451,6 +451,7 @@ def test_legacy_scrubbed_rejection_remains_readable_without_fabricating_content(
     assert readiness["checks"]["content_retained"] is False
     assert readiness["checks"]["legacy_content_scrubbed"] is True
 
+
 def test_source_diversity_collapses_subdomains_of_the_same_registrable_domain(lifecycle_store, monkeypatch):
     job = learning.create_job("Subdomain source diversity")
     candidate_id, digest = _candidate(job["id"])
