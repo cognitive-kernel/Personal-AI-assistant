@@ -957,6 +957,9 @@ def run_job(job_id: int) -> None:
                     path_topic_context = {"applicability": {"status": "unverified"}, "source_urls": []}
     user_provided_source_available = bool(source_text) and source_kind == "user_provided_text"
     try:
+        if row["method_attempt_key"]:
+            from .learning_method_orchestrator import mark_method_running
+            mark_method_running(job_id)
         # These preparation steps run before model inference, but they can still fail
         # (for example, SQLite errors while persisting web evidence). Keep the job
         # terminally observable instead of leaving it stuck in "running" forever.
@@ -1375,6 +1378,9 @@ def run_job(job_id: int) -> None:
             current = conn.execute("SELECT status FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
             # If the user stopped the path while Ollama was generating, discard this result.
             if current is None or current["status"] != "running":
+                if current is not None and current["status"] == "cancelled" and row["method_attempt_key"]:
+                    from .learning_method_orchestrator import mark_method_cancelled
+                    mark_method_cancelled(job_id)
                 return
             if not isinstance(result.get("lesson"), str) or not result["lesson"].strip():
                 raise LearningError("The model and bounded repair attempt returned no lesson text; source material was retained.")
