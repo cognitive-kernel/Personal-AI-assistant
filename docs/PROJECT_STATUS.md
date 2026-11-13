@@ -486,3 +486,5 @@
 - Research planning and factual-review providers now have independently configurable context, thread count, timeout, keep-alive, source-size and output-token budgets. Both Ollama and OpenAI-compatible adapters consume these persisted limits; fixed purpose-specific caps were removed in favor of bounded Settings plus model/hardware safety validation. Regression tests and exact-head CI are pending.
 
 - The shared Ollama endpoint is now exposed in Settings and covered by browser E2E; per-purpose OpenAI-compatible Base URLs remain independent.
+
+- Settings audit: all 131 `SETTING_DEFAULTS` keys are now surfaced in the dashboard Settings UI. Exact-model pricing JSON is editable and validated; malformed/negative rates are rejected, and missing rates are reported as unknown rather than zero.
