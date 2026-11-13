@@ -257,3 +257,16 @@ def test_every_api_integer_id_query_parameter_has_positive_openapi_minimum():
                     method, path, parameter
                 )
     assert inspected >= 2
+
+
+def test_capability_list_limit_is_bounded_at_http_and_openapi_boundaries(client):
+    for invalid in (0, 501):
+        response = client.get("/api/learning/capabilities", params={"limit": invalid})
+        assert response.status_code == 422
+
+    parameter = next(
+        item for item in app.openapi()["paths"]["/api/learning/capabilities"]["get"]["parameters"]
+        if item["name"] == "limit"
+    )
+    assert parameter["schema"]["minimum"] == 1
+    assert parameter["schema"]["maximum"] == 500
