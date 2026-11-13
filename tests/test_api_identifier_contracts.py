@@ -121,3 +121,24 @@ def test_every_api_integer_path_parameter_has_positive_openapi_minimum():
                     method, path, parameter
                 )
     assert inspected >= 70
+
+
+def test_task_status_filter_query_has_bounded_count_and_value_length(client):
+    too_many = client.get(
+        "/api/tasks",
+        params=[("statuses", "queued")] * 9,
+    )
+    assert too_many.status_code == 422
+
+    too_long = client.get(
+        "/api/tasks",
+        params={"statuses": "q" * 33},
+    )
+    assert too_long.status_code == 422
+
+    parameter = next(
+        item for item in app.openapi()["paths"]["/api/tasks"]["get"]["parameters"]
+        if item["name"] == "statuses"
+    )
+    assert parameter["schema"]["maxItems"] == 8
+    assert parameter["schema"]["items"]["maxLength"] == 32
