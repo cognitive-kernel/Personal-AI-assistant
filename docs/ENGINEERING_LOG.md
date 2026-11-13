@@ -1,3 +1,25 @@
+## 2026-11-13 — Re-audit of PR #722 against the master engineering prompt
+
+### Audit findings
+- Read the complete `docs/MASTER_ENGINEERING_PROMPT.md` from branch `docs/master-engineering-continuity-prompt` (blob `38cdfa9c25bcbd7fc7ba25eb87d4aefd92b41083`). The prompt requires incremental non-regressive changes, root-cause analysis, complete exact-head CI, target-host evidence before merge, and an auditable distinction between passed and pending gates. It also explicitly says not to stop independent GitHub-side work while human/local tests are unavailable.
+- Live PR #722 is Draft/open, targets `main`, and at audit head `9ff0095067a9944cf0f76da504026b18fa440a27`; base is `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`. GitHub reports 431 commits ahead, zero behind, and 40 changed files.
+- All four required GitHub-hosted workflows completed successfully on that exact head: tests #43356884932, Browser E2E #43356884952, Docker sandbox #43356884953, and dependency audit #43356884920. The tests workflow includes Python 3.11.9/3.14.6, Windows Storage/PowerShell 5.1, and Node 26 with Codex CLI 0.167.0/0.167.2.
+- The target-host diagnostic #43356868684 is still pending at `sandbox-diagnostic` with no Runner assignment. Its hosted cleanup job succeeded. Required labels are `self-hosted, Windows, X64, ollama, autonomous-state-owner`; the available evidence cannot distinguish a stopped service, disconnected Runner, missing registration, or label mismatch. No host state was guessed.
+- Reviewed the adaptive selector and Windows preflight. The selector validates positive model weight size, architecture context, all KV-cache dimensions, tool capability, parallel-request count, memory reserve/overhead, and conservative weight residency. The Windows bridge reads only the Ollama owner's persisted user setting with machine fallback and fails closed on unavailable owner/hive/invalid values. A remaining limitation is that persisted registry configuration is not direct proof of a process's inherited environment; target diagnostic evidence must confirm the live server configuration.
+- Hardware/software documentation remains aligned to the recorded Intel Core i5-12400, 6C/12T, about 31.78 GiB RAM, Intel UHD 730 integrated graphics; WMI AdapterRAM is not represented as dedicated VRAM. CI compatibility targets remain Python 3.11.9/3.14.6, Node 26.13.0/npm 11.20.0, Codex CLI 0.167.0/0.167.2. Actual target Ollama >=0.40.16 is not yet verified.
+
+### Documentation reconciliation
+- Updated the current sections of `docs/PROJECT_STATUS.md` and `docs/ROADMAP_ACCEPTANCE.md` to point to the live PR head and exact-head successful workflow runs, and to record target-host/security/project-wide gates as pending/open.
+- Historical snapshots were preserved. No source code, user data, credentials, local state, database, or task/checkpoint record was changed.
+- PR #722 remains Draft/open. No merge, auto-merge, bypass, or deployment was performed.
+
+### Residual risks / next highest-priority work
+1. Obtain a real assignment for the uniquely labelled Windows/Ollama Runner and complete the target diagnostic.
+2. Verify actual Ollama server environment and model residency/context allocation, then run the Codex tool-call smoke.
+3. Run target-host soak, crash/restart, and staging restore/rollback checks.
+4. Obtain independent security review for Issue #52; continue the project-wide acceptance ledger in Issue #290.
+
+---
 ## 2026-11-13 — Re-audit and exact-head evidence reconciliation for PR #722
 
 ### Diagnosis
