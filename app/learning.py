@@ -200,14 +200,14 @@ def create_job(
                     or existing_method["learning_method"] != learning_method
                 ):
                     raise ValueError("method_attempt_key was reused for a different learning job.")
-                if source_text:
-                    existing_source = conn.execute(
-                        "SELECT content FROM learning_source_text WHERE job_id=?",
-                        (int(existing_method["id"]),),
-                    ).fetchone()
-                    existing_source_mismatch = (
-                        existing_source is None or existing_source["content"] != source_text
-                    )
+                existing_source = conn.execute(
+                    "SELECT content FROM learning_source_text WHERE job_id=?",
+                    (int(existing_method["id"]),),
+                ).fetchone()
+                existing_source_mismatch = (
+                    (existing_source is None and bool(source_text))
+                    or (existing_source is not None and existing_source["content"] != source_text)
+                )
                 existing_job_id = int(existing_method["id"])
 
         # Correction creation remains idempotent and is kept separate from method jobs.
