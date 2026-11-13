@@ -228,24 +228,130 @@ def _model_context_metadata(model_info: dict[str, Any], architecture: str | None
     except OllamaModelMetadataError:
         return None
 
+def _dedicated_gpu_budget_gb(hardware: dict[str, Any]) -> float | None:
+    """Return measured dedicated VRAM; shared integrated-GPU RAM is not separate memory."""
+    devices = hardware.get("gpu_devices")
+    if not isinstance(devices, list) or len(devices) != 1:
+        return None
+    device = devices[0]
+    if not isinstance(device, dict):
+        return None
+    device_type = str(device.get("device_type") or "").casefold()
+    vendor = str(device.get("vendor") or "").casefold()
+    name = str(device.get("name") or "").casefold()
+    if "integrated" in device_type or (
+        vendor == "intel" and any(token in name for token in ("uhd", "iris", "integrated"))
+    ):
+        return None
+    free_mb = device.get("memory_free_mb")
+    if (
+        isinstance(free_mb, bool)
+        or not isinstance(free_mb, (int, float))
+        or not math.isfinite(free_mb)
+        or free_mb <= 0
+    ):
+        return None
+    return float(free_mb) / 1024
+
+
+def _model_memory_estimate(
+    model: str,
+    model_info: dict[str, Any],
+    details: dict[str, Any],
+    weight_bytes: int | None,
+    context_tokens: int | None = None,
+) -> dict[str, Any] | None:
+    """Build a conservative model-memory estimate from Ollama's measured metadata."""
+    architecture = str(details.get("family") or "").strip()
+
+    def metadata_number(suffix: str) -> int | None:
+        preferred = f"{architecture}{suffix}" if architecture else None
+        if preferred:
+            value = model_info.get(preferred)
+            if (
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and math.isfinite(value)
+                and value > 0
+            ):
+                return int(value)
+            return None
+        values = []
+        for key, value in model_info.items():
+            if not str(key).endswith(suffix):
+                continue
+            if (
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and math.isfinite(value)
+                and value > 0
+            ):
+                values.append(int(value))
+        # Without a family, accept only an unambiguous metadata dimension.
+        return values[0] if values and len(set(values)) == 1 else None
+
+    layers = metadata_number(".block_count")
+    kv_heads = metadata_number(".attention.head_count_kv")
+    if kv_heads is None:
+        # Full attention heads are a conservative upper bound when KV-head count
+        # is not published; do not infer a smaller grouped-query count.
+        kv_heads = metadata_number(".attention.head_count")
+    key_length = metadata_number(".attention.key_length")
+    value_length = metadata_number(".attention.value_length")
+    if not all((layers, kv_heads, key_length, value_length)):
+        return None
+
+    if isinstance(weight_bytes, bool) or not isinstance(weight_bytes, int) or weight_bytes <= 0:
+        return None
+
+    weights_gib = weight_bytes / (1024 ** 3)
+    dimensions_per_token = layers * kv_heads * (key_length + value_length)
+    # KV-cache dtype is not exposed consistently by Ollama. Budget at 4 bytes
+    # per element (FP32 upper bound) rather than assuming the smaller FP16 cache.
+    cache_bytes_upper_bound = dimensions_per_token * 4
+    cache_bytes_fp16 = dimensions_per_token * 2
+    estimate: dict[str, Any] = {
+        "weight_size_bytes": weight_bytes,
+        "weights_gib": weights_gib,
+        "overhead_gib": max(0.5, weights_gib * 0.10),
+        "kv_cache_bytes_per_token": cache_bytes_upper_bound,
+        "kv_cache_bytes_per_token_upper_bound": cache_bytes_upper_bound,
+        "kv_cache_bytes_per_token_fp16": cache_bytes_fp16,
+        "kv_cache_dtype": "unknown; FP32 upper bound used for safe budgeting",
+    }
+    effective_context = (
+        context_tokens
+        if isinstance(context_tokens, int) and not isinstance(context_tokens, bool) and context_tokens > 0
+        else None
+    )
+    estimate["context_tokens"] = effective_context
+    if effective_context is not None:
+        cache_upper_gib = cache_bytes_upper_bound * effective_context / (1024 ** 3)
+        cache_fp16_gib = cache_bytes_fp16 * effective_context / (1024 ** 3)
+        estimate["kv_cache_gib_upper_bound"] = cache_upper_gib
+        estimate["total_ram_gib_upper_bound"] = weights_gib + cache_upper_gib + estimate["overhead_gib"]
+        # Keep the existing FP16 display fields for clients that still consume them.
+        estimate["kv_cache_gib_float16"] = cache_fp16_gib
+        estimate["total_ram_gib_float16"] = weights_gib + cache_fp16_gib + estimate["overhead_gib"]
+        estimate["full_gpu_vram_gib_float16"] = estimate["total_ram_gib_float16"]
+    return estimate
+
+
 def _recommended_context_tokens(
     maximum_context: int | None,
     memory_estimate: dict[str, Any] | None,
     hardware: dict[str, Any],
 ) -> int | None:
-    """Choose a measured safe context; return None rather than inventing a fallback."""
+    """Return a context only when model dimensions and current memory are measurable."""
     if not isinstance(maximum_context, int) or isinstance(maximum_context, bool) or maximum_context < 512:
         return None
     from .hardware import dynamic_ram_budget_gb
-
     budget = dynamic_ram_budget_gb(get_settings(), hardware)
-    if budget is None or not math.isfinite(float(budget)) or budget < 4:
-        return None
-    if not isinstance(memory_estimate, dict):
+    if budget is None or not isinstance(memory_estimate, dict):
         return None
     weights = memory_estimate.get("weights_gib")
     overhead = memory_estimate.get("overhead_gib")
-    cache_per_token = memory_estimate.get("kv_cache_bytes_per_token")
+    cache_per_token = memory_estimate.get("kv_cache_bytes_per_token_upper_bound")
     if not all(
         isinstance(value, (int, float))
         and not isinstance(value, bool)
@@ -255,32 +361,19 @@ def _recommended_context_tokens(
     ):
         return None
     if get_settings().get("gpu_enabled") is True:
-        devices = hardware.get("gpu_devices")
-        if isinstance(devices, list) and devices:
-            free_values = [
-                device.get("usable_memory_free_mb", device.get("memory_free_mb"))
-                for device in devices if isinstance(device, dict)
-            ]
-            known_free = [
-                float(value) for value in free_values
-                if isinstance(value, (int, float))
-                and not isinstance(value, bool)
-                and math.isfinite(value)
-                and value >= 0
-            ]
-            if known_free and len(known_free) == len(devices):
-                gpu_budget = sum(known_free) / 1024
-                if gpu_budget > float(weights) + float(overhead):
-                    budget = gpu_budget
-    available_for_cache = float(budget) - float(weights) - float(overhead)
-    if available_for_cache <= 0:
+        gpu_budget = _dedicated_gpu_budget_gb(hardware)
+        # Shared iGPU memory is already part of host RAM; never count it twice.
+        if gpu_budget is not None and gpu_budget > float(weights) + float(overhead):
+            budget = gpu_budget
+    available_for_cache = budget - float(weights) - float(overhead)
+    if not math.isfinite(available_for_cache) or available_for_cache <= 0:
         return None
     fit = int(available_for_cache * (1024 ** 3) / float(cache_per_token))
-    candidate = 0
-    for value in (512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576):
-        if value <= maximum_context and value <= fit:
-            candidate = value
-    return candidate if candidate >= 512 else None
+    candidates = (512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576)
+    valid = [value for value in candidates if value <= maximum_context and value <= fit]
+    return max(valid) if valid else None
+
+
 
 def model_identity(
     purpose: str, model: str, *, settings: dict[str, Any] | None = None
@@ -315,93 +408,50 @@ def model_identity(
 
 
 def model_details(model: str, context_tokens: int | None = None) -> dict[str, Any]:
-    """Return local Ollama model metadata and a clearly-labelled context/memory estimate."""
+    """Return local Ollama model metadata and a conservative memory/context estimate."""
     name = str(model or "").strip()
     if not name or len(name) > 200:
         raise OllamaError("Model name is invalid.")
     info = _request("/api/show", {"model": name}, timeout=8)
     model_info = info.get("model_info") if isinstance(info.get("model_info"), dict) else {}
     details = info.get("details") if isinstance(info.get("details"), dict) else {}
-    architecture = details.get("family")
-    maximum_context = _model_context_metadata(model_info, architecture)
-
-    def architecture_number(suffix: str) -> int | None:
-        if not isinstance(architecture, str) or not architecture:
-            return None
-        value = model_info.get(f"{architecture}.{suffix}")
-        return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
-
-    layers = architecture_number("block_count")
-    kv_heads = architecture_number("attention.head_count_kv")
-    key_length = architecture_number("attention.key_length")
-    value_length = architecture_number("attention.value_length")
-    kv_cache_bytes_per_token = (
-        layers * kv_heads * (key_length + value_length) * 2
-        if layers and kv_heads and key_length and value_length else None
-    )
-    tags = list_models()
-    tag = next((item for item in tags if item.get("name") == name), None)
-    weight_bytes = (
-        tag.get("size")
-        if tag and isinstance(tag.get("size"), int) and not isinstance(tag.get("size"), bool) and tag.get("size") > 0
-        else None
+    maximum_context = _model_context_metadata(model_info, details.get("family"))
+    tag = next((item for item in list_models() if item.get("name") == name), None)
+    weight_bytes = tag.get("size") if isinstance(tag, dict) else None
+    estimate = _model_memory_estimate(
+        name,
+        model_info,
+        details,
+        weight_bytes,
+        context_tokens if context_tokens is not None else maximum_context,
     )
     running = _request("/api/ps", timeout=4).get("models", [])
-    running_item = next(
-        (item for item in running if isinstance(item, dict) and item.get("name") == name),
-        None,
-    ) if isinstance(running, list) else None
-    quantization = details.get("quantization_level")
-    parameter_size = details.get("parameter_size")
-    estimate = None
-    if weight_bytes is not None and kv_cache_bytes_per_token is not None:
-        estimate = {
-            "weights_gib": round(weight_bytes / (1024 ** 3), 2),
-            "kv_cache_gib_float16": None,
-            "overhead_gib": round(max(0.5, weight_bytes * 0.10 / (1024 ** 3)), 2),
-            "kv_cache_bytes_per_token": kv_cache_bytes_per_token,
-        }
-        effective_context = (
-            context_tokens
-            if isinstance(context_tokens, int) and not isinstance(context_tokens, bool) and context_tokens > 0
-            else maximum_context
-        )
-        estimate["context_tokens"] = effective_context
-        if effective_context is not None:
-            kv_bytes = kv_cache_bytes_per_token * effective_context
-            estimate["kv_cache_gib_float16"] = round(kv_bytes / (1024 ** 3), 2)
-            estimate["total_ram_gib_float16"] = round(
-                weight_bytes / (1024 ** 3) + kv_bytes / (1024 ** 3) + estimate["overhead_gib"], 2
-            )
-            estimate["full_gpu_vram_gib_float16"] = estimate["total_ram_gib_float16"]
+    running_item = next((item for item in running if isinstance(item, dict) and item.get("name") == name), None) if isinstance(running, list) else None
     hardware = detect_hardware()
     recommended_context = _recommended_context_tokens(maximum_context, estimate, hardware)
-    raw_capabilities = info.get("capabilities")
-    capabilities = sorted({
-        value for value in raw_capabilities if isinstance(value, str) and value
-    }) if isinstance(raw_capabilities, list) else []
     return {
         "name": name,
-        "parameter_size": parameter_size,
-        "quantization": quantization,
+        "parameter_size": details.get("parameter_size"),
+        "quantization": details.get("quantization_level"),
         "maximum_context_tokens": maximum_context,
         "recommended_context_tokens": recommended_context,
         "context_metadata_available": maximum_context is not None,
         "weight_size_bytes": weight_bytes,
-        "architecture": architecture,
-        "capabilities": capabilities,
+        "architecture": details.get("family"),
         "memory_estimate": estimate,
-        "memory_estimate_note": "Planning estimate only; KV cache assumes float16 and is omitted when architecture dimensions are unavailable.",
+        "memory_estimate_note": (
+            "Safe planning uses an FP32 upper bound for KV cache because Ollama does not consistently expose the runtime cache dtype. "
+            "A hardware-safe recommendation is omitted when model dimensions, weights, or available RAM are unknown."
+        ),
         "running": {
             "context_length": running_item.get("context_length"),
             "size_bytes": running_item.get("size"),
             "size_vram_bytes": running_item.get("size_vram"),
-            "processor": (
-                "GPU" if isinstance(running_item.get("size_vram"), int) and running_item.get("size_vram") > 0
-                else "CPU" if isinstance(running_item.get("size_vram"), int) else None
-            ),
+            "processor": ("GPU" if isinstance(running_item.get("size_vram"), int) and running_item.get("size_vram") > 0 else "CPU" if isinstance(running_item.get("size_vram"), int) else None),
         } if running_item else None,
     }
+
+
 
 def runtime_diagnostics(
     model: str | None = None,
@@ -645,7 +695,8 @@ def chat(
     configured_context = settings.get(f"{prefix}_ollama_num_ctx", settings.get("ollama_num_ctx", 4096))
     if num_ctx_override is not None:
         if (
-            isinstance(num_ctx_override, bool)
+            maximum_context is None
+            or isinstance(num_ctx_override, bool)
             or not isinstance(num_ctx_override, int)
             or not 512 <= num_ctx_override <= maximum_context
         ):
@@ -663,11 +714,29 @@ def chat(
             f"Ollama did not publish a verifiable context_length for '{model}'; "
             "refusing to send a request with an unverified context limit."
         )
+    tag = next((item for item in list_models() if item.get("name") == model), None)
+    weight_bytes = tag.get("size") if isinstance(tag, dict) else None
+    memory_estimate = _model_memory_estimate(
+        model,
+        model_info if isinstance(model_info, dict) else {},
+        model_details_meta if isinstance(model_details_meta, dict) else {},
+        weight_bytes,
+    )
+    hardware_safe_context = _recommended_context_tokens(maximum_context, memory_estimate, hardware)
+    if hardware_safe_context is None:
+        raise OllamaError(
+            f"Cannot calculate a hardware-safe context for '{model}': verified model weights, "
+            "KV-cache dimensions, or available-memory telemetry are missing or insufficient. "
+            "No inference request was sent."
+        )
     limits = runtime_limits(
         runtime_settings,
         hardware,
         maximum_context_tokens=maximum_context,
     )
+    # Enforce all three ceilings at dispatch: configured request, model metadata,
+    # and current measured host/GPU memory. Integrated shared RAM is never VRAM.
+    limits["num_ctx"] = min(limits["num_ctx"], maximum_context, hardware_safe_context)
     if num_ctx_override is not None and limits["num_ctx"] < num_ctx_override:
         raise OllamaError(
             "The current safe RAM budget cannot provide the context required for this learning generation; "
