@@ -355,6 +355,11 @@ def test_autonomous_test_plan_skips_human_attestation_only_after_four_path_accur
             trusted_adapter=True,
         )
 
+    gate_status = candidate_store.get("/api/learning/candidates/autonomy-gate")
+    assert gate_status.status_code == 200
+    assert gate_status.json()["autonomous_acceptance_eligible"] is True
+    assert gate_status.json()["accuracy"] == 0.96
+
     canonical = "Python dict.get returns the default value when the key is absent."
     job = learning.create_job("Autonomous oracle plan")
     candidate_id = _candidate(job["id"], content=canonical)
@@ -417,3 +422,12 @@ def test_autonomous_test_plan_stays_blocked_at_exactly_95_percent(candidate_stor
     )
     assert response.status_code == 422
     assert "strictly above 95%" in response.json()["detail"]
+
+
+def test_autonomy_gate_endpoint_is_closed_without_independent_evidence(candidate_store):
+    response = candidate_store.get("/api/learning/candidates/autonomy-gate")
+    assert response.status_code == 200
+    report = response.json()
+    assert report["accuracy"] is None
+    assert report["sample_count"] == 0
+    assert report["autonomous_acceptance_eligible"] is False
