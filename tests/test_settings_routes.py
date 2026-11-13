@@ -179,6 +179,7 @@ def test_settings_api_rejects_context_above_selected_model_limit_atomically(sett
 def test_settings_api_accepts_context_below_selected_model_limit(settings_client, monkeypatch):
     monkeypatch.setattr(ollama, "model_details", lambda name, context_tokens=None: {
         "name": name, "maximum_context_tokens": 65536,
+        "recommended_context_tokens": 32768,
     })
     response = settings_client.patch(
         "/api/settings",
