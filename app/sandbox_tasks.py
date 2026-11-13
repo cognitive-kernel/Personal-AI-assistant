@@ -7,13 +7,12 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import os
 import re
 import time
 from pathlib import Path
 from typing import Any, Callable
 
-from . import sandbox, sandbox_consent, task_manager
+from . import db, sandbox, sandbox_consent, task_manager
 from .task_worker import TaskContext
 
 logger = logging.getLogger("personal_ai_assistant.sandbox_tasks")
@@ -30,23 +29,21 @@ def handler_from_environment(*, allow_language_runners: bool = False) -> Callabl
     [dict[str, Any], dict[str, Any] | None, TaskContext], dict[str, Any]
 ] | None:
     """Return a handler only after explicit opt-in and valid local configuration."""
-    enabled = os.getenv("SANDBOX_ENABLED", "").strip().lower()
-    if enabled in {"", "0", "false", "no", "off"}:
+    settings = db.get_settings()
+    if settings.get("sandbox_enabled", True) is not True:
         return None
-    if enabled not in {"1", "true", "yes", "on"}:
-        raise ValueError("SANDBOX_ENABLED must be a boolean value.")
 
-    executable_value = os.getenv("SANDBOX_DOCKER_EXECUTABLE", "").strip()
-    image = os.getenv("SANDBOX_PYTHON_IMAGE", "").strip()
-    if not executable_value:
-        raise ValueError("SANDBOX_DOCKER_EXECUTABLE is required when sandbox is enabled.")
+    executable_value = str(settings.get("sandbox_docker_executable", "") or "").strip()
+    image = str(settings.get("sandbox_python_image", "") or "").strip()
+    if not executable_value or not image:
+        return None
     executable = Path(executable_value).expanduser()
     if not executable.is_absolute() or not executable.is_file():
-        raise ValueError("SANDBOX_DOCKER_EXECUTABLE must be an existing absolute file path.")
+        raise ValueError("sandbox_docker_executable must be an existing absolute file path.")
     if not _IMAGE_REF.fullmatch(image):
-        raise ValueError("SANDBOX_PYTHON_IMAGE must be an official Python image pinned by SHA-256 digest.")
-    node_image = os.getenv("SANDBOX_NODE_IMAGE", "").strip()
-    rust_image = os.getenv("SANDBOX_RUST_IMAGE", "").strip()
+        raise ValueError("sandbox_python_image must be an official Python image pinned by SHA-256 digest.")
+    node_image = str(settings.get("sandbox_node_image", "") or "").strip()
+    rust_image = str(settings.get("sandbox_rust_image", "") or "").strip()
     if allow_language_runners:
         if node_image and not sandbox.is_valid_language_image_reference(node_image, "javascript"):
             raise ValueError("SANDBOX_NODE_IMAGE must be an official Node image pinned by SHA-256 digest.")
@@ -100,8 +97,8 @@ def handler_from_environment(*, allow_language_runners: bool = False) -> Callabl
             if len(source_code.encode("utf-8")) > 64 * 1024:
                 raise ValueError("Generated practical grader exceeds the sandbox source limit.")
 
-        timeout_seconds = payload.get("timeout_seconds", 10)
-        max_output_bytes = payload.get("max_output_bytes", 32 * 1024)
+        timeout_seconds = payload.get("timeout_seconds", settings.get("sandbox_timeout_seconds", 60))
+        max_output_bytes = payload.get("max_output_bytes", settings.get("sandbox_max_output_bytes", 32768))
         if (
             isinstance(timeout_seconds, bool)
             or not isinstance(timeout_seconds, int)
@@ -265,10 +262,10 @@ def handler_from_environment(*, allow_language_runners: bool = False) -> Callabl
 
 def cleanup_terminal_containers() -> None:
     """Periodically clean stale containers only after the task store reports terminal IDs."""
-    enabled = os.getenv("SANDBOX_ENABLED", "").strip().lower()
-    if enabled not in {"1", "true", "yes", "on"}:
+    settings = db.get_settings()
+    if settings.get("sandbox_enabled", True) is not True:
         return
-    executable_value = os.getenv("SANDBOX_DOCKER_EXECUTABLE", "").strip()
+    executable_value = str(settings.get("sandbox_docker_executable", "") or "").strip()
     executable = Path(executable_value).expanduser()
     if not executable_value or not executable.is_absolute() or not executable.is_file():
         logger.warning("Sandbox cleanup skipped: configured Docker executable is unavailable.")
