@@ -9,12 +9,40 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, StrictInt
 
 from . import (
+    cloud_resources,
     experience_tasks,
     factual_verification_tasks,
+    knowledge_lifecycle_tasks,
+    learning_curriculum_tasks,
+    learning_knowledge_graph_tasks,
     learning_review_tasks,
+    learning_tasks,
+    programming_tasks,
+    research_planner,
+    research_tasks,
     sandbox_tasks,
     task_manager,
 )
+
+# Feature-owned task types must enter through their owning workflow. The generic
+# queue API remains available for explicitly generic/extension task types, but
+# must not bypass per-feature validation, deduplication, consent, or retry policy.
+FEATURE_MANAGED_TASK_TYPES = frozenset({
+    research_tasks.RESEARCH_TASK_TYPE,
+    research_planner.RESEARCH_PLAN_TASK_TYPE,
+    learning_tasks.LEARNING_TASK_TYPE,
+    learning_curriculum_tasks.CURRICULUM_TASK_TYPE,
+    learning_review_tasks.LEARNING_REVIEW_TASK_TYPE,
+    learning_review_tasks.LEARNING_SANDBOX_REVIEW_TASK_TYPE,
+    knowledge_lifecycle_tasks.KNOWLEDGE_VALIDATE_TASK_TYPE,
+    learning_knowledge_graph_tasks.KNOWLEDGE_GRAPH_REVIEW_TASK_TYPE,
+    programming_tasks.PROGRAMMING_TASK_TYPE,
+    cloud_resources.CLOUD_DISCOVERY_TASK_TYPE,
+    sandbox_tasks.SANDBOX_TASK_TYPE,
+    sandbox_tasks.SANDBOX_LANGUAGE_TASK_TYPE,
+    experience_tasks.EXPERIENCE_TEST_TASK_TYPE,
+    factual_verification_tasks.FACTUAL_VERIFY_TASK_TYPE,
+})
 from .task_manager import TaskManagerError, TaskNotFoundError
 
 def require_loopback_client(request: Request) -> None:
@@ -60,19 +88,13 @@ def _raise_task_error(exc: TaskManagerError) -> None:
 
 @router.post("", status_code=202)
 def create_task(request: TaskCreateRequest) -> dict[str, Any]:
-    sandbox_backed_task_types = {
-        sandbox_tasks.SANDBOX_TASK_TYPE,
-        sandbox_tasks.SANDBOX_LANGUAGE_TASK_TYPE,
-        experience_tasks.EXPERIENCE_TEST_TASK_TYPE,
-        factual_verification_tasks.FACTUAL_VERIFY_TASK_TYPE,
-        learning_review_tasks.LEARNING_SANDBOX_REVIEW_TASK_TYPE,
-    }
-    if request.task_type.strip() in sandbox_backed_task_types:
+    task_type = request.task_type.strip()
+    if task_type in FEATURE_MANAGED_TASK_TYPES:
         raise HTTPException(
             status_code=422,
             detail=(
-                "Sandbox-backed task types cannot be submitted through the generic task API; "
-                "use the owning feature workflow to enforce consent, validation, and audit controls."
+                "Feature-managed task types cannot be submitted through the generic task API; "
+                "use the owning feature workflow to enforce validation, consent, deduplication, and retry policy."
             ),
         )
     try:
