@@ -795,7 +795,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
             raise HTTPException(status_code=422, detail="self_improvement_github_repository must use owner/repository format.")
     if "self_improvement_github_token_env" in values:
         token_env = values["self_improvement_github_token_env"]
-        if not re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", token_env):
+        if token_env and not re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", token_env):
             raise HTTPException(status_code=422, detail="self_improvement_github_token_env must be an environment variable name.")
     sandbox_keys = {
         "sandbox_enabled", "sandbox_docker_executable", "sandbox_python_image",
