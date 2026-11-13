@@ -464,6 +464,7 @@ def test_active_codex_documentation_matches_adaptive_context_contract():
     readme = (root / "README.md").read_text(encoding="utf-8")
     status = (root / "docs" / "PROJECT_STATUS.md").read_text(encoding="utf-8")
     operations = (root / "docs" / "operations" / "CODEX_AUTONOMOUS_ENGINEERING.md").read_text(encoding="utf-8")
+    parallelism_script = (root / "scripts" / "verify_ollama_context.ps1").read_text(encoding="utf-8")
     adr = (root / "docs" / "architecture" / "ADR-020-codex-adaptive-context.md").read_text(encoding="utf-8")
 
     assert "حداقل سقف Context برابر ۶۴٬۰۰۰ توکن" not in readme
@@ -638,11 +639,13 @@ def test_current_acceptance_docs_preserve_master_prompt_merge_gates_and_runner_p
     roadmap = (root / "docs" / "ROADMAP_ACCEPTANCE.md").read_text(encoding="utf-8")
     operations = (root / "docs" / "operations" / "CODEX_AUTONOMOUS_ENGINEERING.md").read_text(encoding="utf-8")
 
-    assert "all local tests on the target host" in status.lower()
-    assert "all local tests on the target host" in roadmap.lower()
+    assert "تمام تست‌های لازم روی سیستم مقصد" in status
+    assert "all required local tests on the actual target host" in roadmap.lower()
     assert "not a merge gate by default" not in status.lower()
     assert "not a merge gate by default" not in roadmap.lower()
     assert "Node.js 26.13.0/npm are provisioned per GitHub Actions job" in operations
     assert "Install Node.js LTS system-wide" not in operations
     assert "Node.js LTS and npm must be installed system-wide" not in operations
     assert "process-only launch override may differ" in operations
+    assert "not read from the live Ollama process environment" in parallelism_script
+    assert "process-only launch override may differ" in parallelism_script
