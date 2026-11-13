@@ -245,54 +245,54 @@ def _collect_sources(
     )
     seen = {item["url"] for item in sources}
     pending_queries = [query for query in queries if query not in completed_queries]
-    # Research angles are independent. Run a small bounded window concurrently,
-    # but consume results in the original query order so persistence/checkpoints
-    # remain deterministic and restart-safe.
+    # Persist the in-flight phase before starting any network work.
+    context.checkpoint({
+        "phase": "web_research",
+        "topic_sha256": topic_sha256,
+        "queries": queries,
+        "completed_queries": completed_queries,
+        "sources": _source_metadata_for_checkpoint(sources),
+        **({"outline": preserved_outline} if preserved_outline is not None else {}),
+        **({"model": preserved_model} if preserved_model is not None else {}),
+        **({"model_selection": preserved_model_selection} if preserved_model_selection is not None else {}),
+    })
+    # Independent research angles run in a small bounded window. executor.map
+    # preserves query order, so source persistence and checkpoints stay stable.
     with ThreadPoolExecutor(max_workers=MAX_PARALLEL_RESEARCH_QUERIES) as executor:
         for query, documents in zip(
             pending_queries, executor.map(_discover_query_sources, pending_queries)
         ):
-        context.checkpoint({
-            "phase": "web_research",
-            "topic_sha256": topic_sha256,
-            "queries": queries,
-            "completed_queries": completed_queries,
-            "sources": _source_metadata_for_checkpoint(sources),
-            **({"outline": preserved_outline} if preserved_outline is not None else {}),
-            **({"model": preserved_model} if preserved_model is not None else {}),
-            **({"model_selection": preserved_model_selection} if preserved_model_selection is not None else {}),
-        })
             for document in documents:
-            url = _normalized_source_url(document.url)
-            title = str(document.title).strip()[:150]
-            body = str(document.text).strip()
-            if not url or len(url) > 250 or not title or not body or url in seen:
-                continue
-            excerpt = body[:MAX_SOURCE_EXCERPT_CHARS]
-            source = {
-                "title": title,
-                "url": url,
-                "excerpt": excerpt,
-                "sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
-                "publication_date": getattr(document, "publication_date", None),
-                "last_updated": getattr(document, "last_updated", None),
-                "retrieved_at": datetime.now(timezone.utc).isoformat(),
-                "query": query,
-            }
-            _persist_source_body(context.task_id, source, body)
-            sources.append(source)
-            seen.add(url)
-        completed_queries.append(query)
-        context.checkpoint({
-            "phase": "web_research",
-            "topic_sha256": topic_sha256,
-            "queries": queries,
-            "completed_queries": completed_queries,
-            "sources": _source_metadata_for_checkpoint(sources),
-            **({"outline": preserved_outline} if preserved_outline is not None else {}),
-            **({"model": preserved_model} if preserved_model is not None else {}),
-            **({"model_selection": preserved_model_selection} if preserved_model_selection is not None else {}),
-        })
+                url = _normalized_source_url(document.url)
+                title = str(document.title).strip()[:150]
+                body = str(document.text).strip()
+                if not url or len(url) > 250 or not title or not body or url in seen:
+                    continue
+                excerpt = body[:MAX_SOURCE_EXCERPT_CHARS]
+                source = {
+                    "title": title,
+                    "url": url,
+                    "excerpt": excerpt,
+                    "sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+                    "publication_date": getattr(document, "publication_date", None),
+                    "last_updated": getattr(document, "last_updated", None),
+                    "retrieved_at": datetime.now(timezone.utc).isoformat(),
+                    "query": query,
+                }
+                _persist_source_body(context.task_id, source, body)
+                sources.append(source)
+                seen.add(url)
+            completed_queries.append(query)
+            context.checkpoint({
+                "phase": "web_research",
+                "topic_sha256": topic_sha256,
+                "queries": queries,
+                "completed_queries": completed_queries,
+                "sources": _source_metadata_for_checkpoint(sources),
+                **({"outline": preserved_outline} if preserved_outline is not None else {}),
+                **({"model": preserved_model} if preserved_model is not None else {}),
+                **({"model_selection": preserved_model_selection} if preserved_model_selection is not None else {}),
+            })
 
     # Source count and publisher authority are provenance/quality signals, not
     # curriculum admission gates. Continue with every usable result (including
