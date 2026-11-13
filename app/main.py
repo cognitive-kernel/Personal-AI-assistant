@@ -15,7 +15,7 @@ from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, StrictBool, StrictFloat, StrictInt, ConfigDict
 from . import backup_scheduler, assessment_review, browser_learning, knowledge_lifecycle_tasks, learning_knowledge_graph_tasks, learning_capabilities_routes, learning_recommendations, spaced_repetition, chat_feedback, chat_history, chat_research, cloud_resources, curricula, db, experience_tasks, factual_verification_tasks, learning, ollama, programming_tasks, research_planner, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, list_learning_escalations, reconcile_queued_learning_tasks, resolve_learning_escalation
-from . import learning_review_tasks, learning_curriculum_tasks
+from . import learning_review_tasks, learning_curriculum_tasks, learning_topic_quality_tasks
 from .learning_observability import collect_learning_operational_metrics
 from .task_runtime import TaskRuntime
 from .config import defaults
@@ -386,6 +386,7 @@ def startup() -> None:
     learning_handlers = {
         LEARNING_TASK_TYPE: handle_learning_job,
         learning_curriculum_tasks.CURRICULUM_TASK_TYPE: learning_curriculum_tasks.handle_curriculum_task,
+        learning_topic_quality_tasks.TOPIC_QUALITY_TASK_TYPE: learning_topic_quality_tasks.handle_topic_quality_evaluation,
         learning_review_tasks.LEARNING_REVIEW_TASK_TYPE: learning_review_tasks.handle_candidate_review,
         learning_review_tasks.LEARNING_SANDBOX_REVIEW_TASK_TYPE: learning_review_tasks.handle_candidate_sandbox_review,
         knowledge_lifecycle_tasks.KNOWLEDGE_VALIDATE_TASK_TYPE: knowledge_lifecycle_tasks.handle_validate_candidate,
