@@ -1,7 +1,8 @@
 """Allow-listed task adapter for isolated Python sandbox execution.
 
-The handler is disabled by default. Its Docker executable and image are
-administrator-configured environment values; task payloads cannot override them.
+The module switch defaults to enabled in Settings, but handler registration
+requires valid local Docker configuration. Every execution separately requires
+explicit, persisted and revocable user consent; payloads cannot override setup.
 """
 from __future__ import annotations
 
@@ -52,7 +53,7 @@ def validate_settings(settings: dict[str, Any]) -> None:
 def handler_from_environment(*, allow_language_runners: bool = False) -> Callable[
     [dict[str, Any], dict[str, Any] | None, TaskContext], dict[str, Any]
 ] | None:
-    """Return a handler only after explicit opt-in and valid local configuration."""
+    """Compatibility name: read persistent Settings and require valid local configuration."""
     settings = db.get_settings()
     validate_settings(settings)
     enabled = settings.get("sandbox_enabled", True)
