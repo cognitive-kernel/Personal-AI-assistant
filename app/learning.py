@@ -1391,7 +1391,6 @@ def run_job(job_id: int, *, task_context: Any | None = None) -> None:
 
         assert_execution_owner("learning_before_result_commit")
         with learning_connection() as conn:
-            conn.execute("BEGIN IMMEDIATE")
             current = conn.execute(
                 "SELECT status, execution_owner, execution_epoch FROM learning_jobs WHERE id=?",
                 (job_id,),
