@@ -481,3 +481,6 @@
 - AI Learning, Basic Learning, Topic/Course Learning, Experience System, knowledge library, retrieval, browser workflow, Sandbox and Self-Improvement have enabled fresh-install defaults and explicit Settings switches. Provider/model profiles remain separate per capability; model discovery follows the selected provider.
 - Fixed the import contract and test fixtures after extracting embedding logic into its owning module. Fixed duplicate Settings DOM identity, missing accessible names, and E2E setup that still depended on removed Self-Improvement environment flags.
 - Exact-head CI for these follow-up fixes is running. Do not start local or human testing until all GitHub checks, including crash/recovery and three-method end-to-end acceptance, are complete. PR #746 remains Draft and unmerged.
+
+
+- Research planning and factual-review providers now have independently configurable context, thread count, timeout, keep-alive, source-size and output-token budgets. Both Ollama and OpenAI-compatible adapters consume these persisted limits; fixed purpose-specific caps were removed in favor of bounded Settings plus model/hardware safety validation. Regression tests and exact-head CI are pending.
