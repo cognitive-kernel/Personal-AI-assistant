@@ -9,8 +9,10 @@
   - [#730](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/730): Context تطبیقی Codex/Ollama و Windows PowerShell 5.1؛ exact-head CI موفق، 2,193 passed / 2 skipped / 51 deselected.
   - [#732](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/732): CodeQL v4 برای Python و JavaScript؛ exact-head tests، Browser E2E، Dependency Audit و CodeQL موفق. موفقیت اسکن به معنی صفر بودن alertها نیست.
   - [#733](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/733): تطبیق inventory تست‌های UI با 46 تست مستقل؛ exact-head CI موفق.
-  - [#734](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/734): پوشش رگرسیون مرز loopback و Cross-Origin برای تمام API routeها؛ exact-head CI در حال اجرا است.
-- PRهای بالا هنوز ادغام نشده‌اند؛ نتیجهٔ CI هر PR فقط همان SHA را پوشش می‌دهد و نباید به‌عنوان نتیجهٔ `main` گزارش شود.
+  - [#734](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/734): پوشش رگرسیون مرز loopback و Cross-Origin برای تمام API routeها؛ exact-head CI موفق، 2,136 passed / 2 skipped / 51 deselected، به‌همراه Windows storage، dashboard smoke و dependency audit.
+  - [#735](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/735): همگام‌سازی snapshot وضعیت پروژه با main و PRهای فعال؛ exact-head CI موفق، 2,135 passed / 2 skipped / 51 deselected، به‌همراه Windows storage، dashboard smoke و dependency audit.
+  - [#736](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/736): جلوگیری از دورزدن workflowهای اختصاصی با ثبت task از API عمومی؛ پوشش تمام 14 نوع task ثبت‌شده و تست fitness معماری برای تطبیق registry؛ exact-head CI روی SHA فعلی در حال اجرا است.
+- PRهای بالا هنوز ادغام نشده‌اند؛ نتیجهٔ CI هر PR فقط همان SHA را پوشش می‌دهد و نباید به‌عنوان نتیجهٔ `main` گزارش شود. ادغام نیز تا تکمیل گیت target-host طبق پرامپت ممنوع است.
 - Issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290) همچنان tracker پذیرش کل پروژه و Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) همچنان نیازمند بازبینی مستقل امنیتی است.
 - گیت‌های باز دیگر: ممیزی endpoint به endpoint و قراردادهای API، triage هشدارهای CodeQL، آزمون crash/restart و چندپردازه‌ای، staging restore/rollback، benchmark زندهٔ مدل با digest ثابت، پذیرش کیفیت فارسی/انگلیسی و بازبینی دستی دسترس‌پذیری.
 - تست‌های local/target-host و انسانی در این snapshot اجراشده ادعا نمی‌شوند. کار مستقل GitHub/CI ادامه دارد؛ هیچ‌یک از گیت‌های اجرا/بازبینی انجام‌نشده موفق فرض نمی‌شوند.
