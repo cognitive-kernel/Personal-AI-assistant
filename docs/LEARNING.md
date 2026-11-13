@@ -367,3 +367,8 @@ python scripts/evaluate_learning_acceptance.py path/to/reference-dataset.json pa
 - batch embedding، حداکثر اندازهٔ ورودی embedding، آستانهٔ تشخیص عنوان/محتوای تکراری، اندازهٔ chunk و سایر محدودیت‌های عملیاتی از تنظیمات پایدار خوانده و اعتبارسنجی می‌شوند.
 - هویت cache بردار شامل provider، endpoint و model است؛ تعویض provider یا endpoint باعث استفادهٔ مجدد از بردار فضای قبلی نمی‌شود و داده‌های قبلی حذف نمی‌شوند.
 - در نصب تازه GPU مجاز است، اما استفادهٔ واقعی به تشخیص سخت‌افزار وابسته است؛ محدودیت CPU/RAM همچنان برقرار است.
+
+### هم‌زمانی مسیر یادگیری
+
+- AI Learning، Basic Learning و Topic/Course Learning از coordinator و worker pool پایدار مشترک استفاده می‌کنند؛ provider/model و ظرفیت inference هر روش مستقل است، اما سقف تعداد jobهای هم‌زمان کل مسیر یادگیری با `learning_max_concurrent_jobs` کنترل می‌شود.
+- Browser knowledge library به‌دلیل استفاده از یک Chrome profile مشترک عمداً فقط یک worker هم‌زمان دارد. افزایش این سقف تا زمان جداسازی profileها و fencing مستقل مجاز نیست.
