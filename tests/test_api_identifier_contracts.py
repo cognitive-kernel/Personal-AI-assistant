@@ -157,6 +157,16 @@ def test_every_api_string_query_parameter_has_explicit_size_bounds():
                 if parameter.get("in") != "query":
                     continue
                 parameter_schema = parameter.get("schema", {})
+                branches = parameter_schema.get("anyOf") or parameter_schema.get("oneOf") or []
+                constrained_branch = next(
+                    (
+                        item for item in branches
+                        if item.get("type") in {"string", "array"}
+                    ),
+                    None,
+                )
+                if constrained_branch is not None:
+                    parameter_schema = {**parameter_schema, **constrained_branch}
                 parameter_type = parameter_schema.get("type")
                 if parameter_type == "string" and "enum" not in parameter_schema:
                     inspected += 1
