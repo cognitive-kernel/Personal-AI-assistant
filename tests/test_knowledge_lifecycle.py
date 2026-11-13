@@ -295,7 +295,7 @@ def test_rejection_requires_two_models_and_two_live_contradictory_sources(lifecy
     test_results = [{"test": "prior test result", "passed": False}]
     with db.learning_connection() as connection:
         connection.execute(
-            "UPDATE learning_jobs SET assessment_json=? WHERE id=?",
+            "UPDATE learning_jobs SET assessment_json=?, error='prior job failure' WHERE id=?",
             (assessment_json, job["id"]),
         )
         connection.execute(
@@ -313,7 +313,7 @@ def test_rejection_requires_two_models_and_two_live_contradictory_sources(lifecy
         ).lastrowid)
         connection.execute(
             """UPDATE temporary_knowledge_candidates
-               SET test_plan_json=?, test_results_json=? WHERE id=?""",
+               SET test_plan_json=?, test_results_json=?, failure_reason='prior candidate failure' WHERE id=?""",
             (json.dumps(test_plan), json.dumps(test_results), candidate_id),
         )
     monkeypatch.setattr(
@@ -374,6 +374,8 @@ def test_rejection_requires_two_models_and_two_live_contradictory_sources(lifecy
     assert json.loads(row["test_plan_json"]) == test_plan
     assert json.loads(row["test_results_json"]) == test_results
     assert "rejected_after_review" in row["failure_reason"]
+    assert "prior candidate failure" in row["failure_reason"]
+    assert "prior job failure" in row["failure_reason"]
     assert row["promoted_knowledge_id"] is None
     assert knowledge["status"] == "conflicting"
     assert knowledge["content"] == content
