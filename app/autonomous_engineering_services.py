@@ -41,6 +41,9 @@ def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_conte
         "model_capabilities": [],
         "model_supports_tools": False,
         "model_metadata_available": False,
+        "model_weight_size_available": False,
+        "model_weight_bytes": None,
+        "model_weight_size_error": "Ollama model weight size is unavailable.",
         "model_kv_cache_metadata_available": False,
         "model_kv_cache_metadata_error": "Ollama KV-cache metadata is unavailable.",
         "model_context_supported": False,
@@ -63,10 +66,11 @@ def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_conte
             raise ValueError("Ollama /api/tags response exceeded the safety limit.")
         payload = json.loads(body.decode("utf-8"))
         models = payload.get("models", []) if isinstance(payload, dict) else []
+        model_entries = [item for item in models if isinstance(item, dict)] if isinstance(models, list) else []
         names = sorted({
             str(item.get("name", ""))
-            for item in models
-            if isinstance(item, dict) and item.get("name")
+            for item in model_entries
+            if item.get("name")
         })
     except (OSError, ValueError, urllib.error.URLError, TimeoutError):
         return empty
@@ -74,12 +78,27 @@ def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_conte
     installed = bool(model) and model in names
     selected_is_context_variant = is_context_variant(model)
     selectable_names = [name for name in names if not is_context_variant(name)]
+    selected_entry = next((item for item in model_entries if item.get("name") == model), None)
+    raw_weight_bytes = selected_entry.get("size") if selected_entry else None
+    weight_size_available = (
+        isinstance(raw_weight_bytes, int)
+        and not isinstance(raw_weight_bytes, bool)
+        and raw_weight_bytes > 0
+    )
+    model_weight_bytes = raw_weight_bytes if weight_size_available else None
+    weight_size_error = (
+        None if weight_size_available
+        else "Ollama /api/tags did not report a positive integer size for the selected model."
+    )
     result = {
         **empty,
         "online": True,
         "model_installed": installed,
         "model_selectable": installed and not selected_is_context_variant,
         "model_is_codex_context_variant": selected_is_context_variant,
+        "model_weight_size_available": weight_size_available,
+        "model_weight_bytes": model_weight_bytes,
+        "model_weight_size_error": weight_size_error,
         "models": names,
         "selectable_models": selectable_names,
         "model_metadata_error": (
@@ -129,6 +148,7 @@ def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_conte
         metadata_available = context_length is not None
         context_supported = (
             metadata_available
+            and weight_size_available
             and kv_cache_metadata_available
             and context_length >= min_context_tokens
         )
@@ -137,11 +157,16 @@ def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_conte
             "model_capabilities": capabilities,
             "model_supports_tools": supports_tool_calling_fn(capabilities),
             "model_metadata_available": metadata_available,
+            "model_weight_size_available": weight_size_available,
+            "model_weight_bytes": model_weight_bytes,
+            "model_weight_size_error": weight_size_error,
             "model_kv_cache_metadata_available": kv_cache_metadata_available,
             "model_kv_cache_metadata_error": kv_cache_metadata_error,
             "model_context_supported": context_supported,
             "model_context_error": (
                 None if context_supported else
+                str(weight_size_error)
+                if metadata_available and not weight_size_available else
                 "Selected model KV-cache metadata is incomplete: " + str(kv_cache_metadata_error)
                 if metadata_available and not kv_cache_metadata_available else
                 f"Selected model context is below the minimum supported runtime window of {min_context_tokens} tokens."
