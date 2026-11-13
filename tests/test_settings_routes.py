@@ -500,3 +500,23 @@ def test_temporary_settings_apply_immediately_without_persisting(settings_client
         "learning_llm_base_url": before["learning_llm_base_url"],
         "learning_ollama_model": before["learning_ollama_model"],
     })
+
+ 
+def test_ai_learning_config_reads_persisted_settings(settings_client):
+    from app.ai_learning import config
+
+    assert config.is_enabled() is True
+    assert config.retrieval_is_enabled() is True
+    assert config.browser_is_enabled() is True
+    assert config.max_topics_per_run() == 20
+
+    db.update_settings({
+        "ai_learning_enabled": False,
+        "ai_learning_retrieval_enabled": False,
+        "ai_learning_browser_enabled": False,
+        "ai_learning_lesson_batch_size": 3,
+    })
+    assert config.is_enabled() is False
+    assert config.retrieval_is_enabled() is False
+    assert config.browser_is_enabled() is False
+    assert config.max_topics_per_run() == 3
