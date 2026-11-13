@@ -89,8 +89,11 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
     assert defaults["topic_learning_source_max_chars"] == 100000
     assert defaults["ai_learning_ollama_model"]
     assert defaults["ai_learning_ollama_num_ctx"] >= 512
-    assert defaults["gpu_enabled"] is False
+    assert defaults["gpu_enabled"] is True
     assert defaults["ai_learning_lesson_batch_size"] == 20
+    assert defaults["ai_learning_embedding_input_max_chars"] == 6000
+    assert defaults["ai_learning_title_duplicate_threshold"] == 0.985
+    assert defaults["ai_learning_content_duplicate_threshold"] == 0.90
 
     values = {
         "ai_learning_enabled": False,
@@ -101,6 +104,9 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
         "ai_learning_chunk_target_chars": 2400,
         "ai_learning_chunk_overlap_chars": 240,
         "ai_learning_embedding_batch_size": 32,
+        "ai_learning_embedding_input_max_chars": 12000,
+        "ai_learning_title_duplicate_threshold": 0.95,
+        "ai_learning_content_duplicate_threshold": 0.92,
         "ai_learning_response_timeout_seconds": 2400,
         "ai_learning_max_lesson_continuations": 6,
         "ai_learning_stability_seconds": 30,
@@ -150,6 +156,9 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
         {"ai_learning_chunk_target_chars": 1000, "ai_learning_chunk_overlap_chars": 1000},
         {"ai_learning_browser_timeout_seconds": 9},
         {"ai_learning_max_retries": 6},
+        {"ai_learning_embedding_input_max_chars": 255},
+        {"ai_learning_title_duplicate_threshold": 1.01},
+        {"ai_learning_content_duplicate_threshold": float("nan")},
         {"ai_learning_min_complete_lesson_words": 99},
         {"ai_learning_max_context_relaunches": 4},
         {"ai_learning_stop_stability_seconds": 181},
