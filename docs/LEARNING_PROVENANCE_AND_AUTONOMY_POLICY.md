@@ -54,7 +54,7 @@ This rule concerns routine learning-content review only. It does not waive safet
 
 ## Implementation status
 
-The implementation branch now contains:
+The implementation branch now contains focused modules (`app/learning_source_provenance.py` for source contracts/storage, `app/learning_accuracy_gate.py` for the aggregate evaluator, and `app/learning_policy_errors.py` for shared policy errors), plus:
 - schema migrations for structured candidate-source records and immutable accuracy-evaluation records;
 - automatic web-page and AI provider/model provenance capture for web-grounded lessons;
 - a loopback-only source-metadata API and source details in candidate inspection;
