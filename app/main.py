@@ -643,9 +643,11 @@ def api_storage_health() -> dict[str, Any]:
     return storage_health.check_storage_health()
 
 @app.get("/api/models")
-def models() -> dict[str, Any]:
+def models(
+    purpose: Literal["chat", "learning", "programming", "factual_review", "research_plan", "embedding"] = "chat",
+) -> dict[str, Any]:
     try:
-        return {"models": ollama.list_models()}
+        return ollama.list_provider_models(purpose)
     except ollama.OllamaError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
