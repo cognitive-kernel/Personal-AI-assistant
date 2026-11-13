@@ -468,6 +468,38 @@ def block_unavailable(
     return _block_topic(path_topic_id, reason=reason, evidence={"job_id": job_id})
 
 
+def block_without_quality_gate(path_topic_id: int, *, job_id: int) -> dict[str, Any]:
+    """Fail closed when a completed curriculum job has no independent quality gate."""
+    with learning_connection() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            """INSERT OR IGNORE INTO learning_topic_quality_gates(
+                   path_topic_id, current_job_id, state, next_action, diagnosis_json
+               ) VALUES (?, ?, 'blocked', 'manual_review_required', ?)""",
+            (
+                path_topic_id, job_id,
+                json.dumps({"reason": "missing_quality_gate"}, sort_keys=True),
+            ),
+        )
+        connection.execute(
+            """UPDATE learning_topic_quality_gates
+               SET current_job_id=?, state='blocked', next_action='manual_review_required',
+                   diagnosis_json=?, updated_at=CURRENT_TIMESTAMP
+               WHERE path_topic_id=?""",
+            (
+                job_id,
+                json.dumps({"reason": "missing_quality_gate"}, sort_keys=True),
+                path_topic_id,
+            ),
+        )
+        connection.execute(
+            """UPDATE learning_path_topics SET status='needs_review', updated_at=CURRENT_TIMESTAMP
+               WHERE id=? AND status!='completed'""",
+            (path_topic_id,),
+        )
+    return {"status": "blocked", "path_topic_id": path_topic_id, "reason": "missing_quality_gate"}
+
+
 def _block_topic(
     path_topic_id: int,
     *,
