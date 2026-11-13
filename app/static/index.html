@@ -82,7 +82,7 @@
 </form>
 <p class="muted">ابتدا منابع وب بررسی و سرفصل‌های جامع و مرتب‌شده استخراج می‌شوند؛ سپس هر درس با مدل محلی gpt-oss:20b تولید می‌شود و درس بعدی فقط پس از پایان موفق درس قبلی وارد صف خواهد شد. محتوای تولیدشده تا زمان ارزیابی مستقل، تأیید علمی محسوب نمی‌شود.</p>
 <pre id="learning-output" role="status" aria-live="polite"></pre>
-<div id="learning-outline-output" aria-live="polite"></div><h3>نامزدهای موقت درس</h3><p class="muted">همهٔ درس‌های غیرخالی، حتی اگر ناقص یا کم‌امتیاز باشند، با وضعیت تأییدنشده حفظ می‌شوند؛ نامزدهای موقت برای بررسی factual جدا هستند. ثبت طرح آزمون به‌معنی اجرای آزمون یا ارتقای دانش نیست.</p><button id="refresh-learning-candidates" type="button">بارگذاری نامزدهای موقت</button><div id="learning-candidates" aria-live="polite">نامزدها هنوز بارگذاری نشده‌اند.</div><div id="assessment-form-container"></div><h3>صف بازبینی انسانی</h3><p class="muted">خطاهای اجرایی غیرقابل‌تکرار و jobهای قدیمی ردشده در این صف ثبت می‌شوند؛ امتیاز کیفیت جدید درس را رد نمی‌کند. بازبینی، حذف یا ارتقای خودکار دانش انجام نمی‌دهد.</p><button id="refresh-learning-escalations" type="button">به‌روزرسانی صف بازبینی</button><div id="learning-escalations" aria-live="polite">صف بازبینی هنوز بارگذاری نشده است.</div><h3>بازبینی منبع دانش factual</h3><p class="muted">فقط ادعاهای خام دارای منبع در این صف هستند. تأیید شما ادعا را حداکثر به سطح L1 می‌رساند؛ برای L2 همچنان آزمون مستقل لازم است. ادعاهای پرخطر برای بررسی بیشتر فعال نمی‌شوند.</p><button id="refresh-factual-review-queue" type="button">بارگذاری ادعاهای نیازمند بازبینی منبع</button><div id="factual-review-queue" aria-live="polite">صف منبع هنوز بارگذاری نشده است.</div><h3>آزمون کنترل‌شدهٔ ادعاهای Python</h3><p class="muted">فقط ادعاهای Python در سطح L1 با منبع قابل‌ردیابی نمایش داده می‌شوند. اجرای آزمون به رضایت جاری sandbox، test harness بررسی‌شده توسط انسان، oracle مستقل و تطبیق دقیق نسخه نیاز دارد؛ شکست یا نتیجهٔ نامشخص ادعا را به L2 ارتقا نمی‌دهد.</p><button id="refresh-factual-test-queue" type="button">بارگذاری ادعاهای آمادهٔ آزمون</button><div id="factual-test-queue" aria-live="polite">صف آزمون هنوز بارگذاری نشده است.</div><h3>تاریخچهٔ نتایج آزمون factual</h3><p class="muted">نتیجه، نسخهٔ محیط، hash کد/گزارش و سطح اعتماد فعلی ادعا را نشان می‌دهد. ثبت یا اجرای وظیفه به‌تنهایی به معنی موفقیت یا ارتقای دانش نیست.</p><button id="refresh-factual-test-history" type="button">به‌روزرسانی تاریخچهٔ آزمون‌ها</button><div id="factual-test-history" aria-live="polite">تاریخچهٔ آزمون هنوز بارگذاری نشده است.</div></section></div>
+<div id="learning-outline-output" aria-live="polite"></div><h3>نامزدهای موقت درس</h3><p class="muted">همهٔ درس‌های غیرخالی، حتی اگر ناقص یا کم‌امتیاز باشند، با وضعیت تأییدنشده حفظ می‌شوند؛ نامزدهای متعارض یا ردشده نیز همراه متن، منبع و تاریخچه در همین فهرست باقی می‌مانند و قابل ارتقا نیستند. ثبت طرح آزمون به‌معنی اجرای آزمون یا ارتقای دانش نیست.</p><button id="refresh-learning-candidates" type="button">بارگذاری نامزدهای موقت</button><div id="learning-candidates" aria-live="polite">نامزدها هنوز بارگذاری نشده‌اند.</div><div id="assessment-form-container"></div><h3>صف بازبینی انسانی</h3><p class="muted">خطاهای اجرایی غیرقابل‌تکرار و jobهای قدیمی ردشده در این صف ثبت می‌شوند؛ امتیاز کیفیت جدید درس را رد نمی‌کند. بازبینی، حذف یا ارتقای خودکار دانش انجام نمی‌دهد.</p><button id="refresh-learning-escalations" type="button">به‌روزرسانی صف بازبینی</button><div id="learning-escalations" aria-live="polite">صف بازبینی هنوز بارگذاری نشده است.</div><h3>بازبینی منبع دانش factual</h3><p class="muted">فقط ادعاهای خام دارای منبع در این صف هستند. تأیید شما ادعا را حداکثر به سطح L1 می‌رساند؛ برای L2 همچنان آزمون مستقل لازم است. ادعاهای پرخطر برای بررسی بیشتر فعال نمی‌شوند.</p><button id="refresh-factual-review-queue" type="button">بارگذاری ادعاهای نیازمند بازبینی منبع</button><div id="factual-review-queue" aria-live="polite">صف منبع هنوز بارگذاری نشده است.</div><h3>آزمون کنترل‌شدهٔ ادعاهای Python</h3><p class="muted">فقط ادعاهای Python در سطح L1 با منبع قابل‌ردیابی نمایش داده می‌شوند. اجرای آزمون به رضایت جاری sandbox، test harness بررسی‌شده توسط انسان، oracle مستقل و تطبیق دقیق نسخه نیاز دارد؛ شکست یا نتیجهٔ نامشخص ادعا را به L2 ارتقا نمی‌دهد.</p><button id="refresh-factual-test-queue" type="button">بارگذاری ادعاهای آمادهٔ آزمون</button><div id="factual-test-queue" aria-live="polite">صف آزمون هنوز بارگذاری نشده است.</div><h3>تاریخچهٔ نتایج آزمون factual</h3><p class="muted">نتیجه، نسخهٔ محیط، hash کد/گزارش و سطح اعتماد فعلی ادعا را نشان می‌دهد. ثبت یا اجرای وظیفه به‌تنهایی به معنی موفقیت یا ارتقای دانش نیست.</p><button id="refresh-factual-test-history" type="button">به‌روزرسانی تاریخچهٔ آزمون‌ها</button><div id="factual-test-history" aria-live="polite">تاریخچهٔ آزمون هنوز بارگذاری نشده است.</div></section></div>
 <section id="task-manager-section"><h2>مدیریت وظایف</h2>
 <p class="muted">وظایف صف‌شده در این بخش باقی می‌مانند و پس از بارگذاری مجدد قابل مشاهده‌اند. متن payload نمایش داده نمی‌شود. می‌توانید وظایف در حال اجرا را متوقف یا لغو کنید و وظایف متوقف‌شده را ادامه دهید.</p>
 <div class="cloud-actions">
@@ -1143,18 +1143,20 @@ async function refreshLearningCandidates() {
  const container=el("learning-candidates");
  container.textContent="در حال بارگذاری نامزدهای موقت…";
  try {
-  const result=await api("/api/learning/candidates?status=awaiting_test&limit=50");
+  const result=await api("/api/learning/candidates?limit=50");
   container.replaceChildren();
   const items=result.items||[];
-  if(!items.length){container.textContent="نامزد موقتی برای آزمون وجود ندارد.";return;}
+  if(!items.length){container.textContent="نامزد موقتی ثبت نشده است.";return;}
   for(const item of items){
    const card=document.createElement("article");
    const heading=document.createElement("h4"); heading.textContent="#"+item.id+" — "+item.topic;
    const meta=document.createElement("p");
    meta.textContent="وضعیت: "+item.status+" | صحت hash: "+(item.integrity_valid?"تأیید شد":"نامعتبر")+" | منابع: "+(item.source_urls||[]).length;
    const preview=document.createElement("p"); preview.textContent=item.content_preview||"پیش‌نمایش موجود نیست.";
+   const failure=document.createElement("p"); failure.className="muted";
+   failure.textContent=item.failure_reason||""; failure.hidden=!item.failure_reason;
    const actions=document.createElement("div"); actions.className="cloud-actions";
-   const detailButton=document.createElement("button"); detailButton.type="button"; detailButton.textContent="نمایش متن کامل";
+   const detailButton=document.createElement("button"); detailButton.type="button"; detailButton.textContent="نمایش متن کامل"; detailButton.disabled=!item.integrity_valid;
    detailButton.addEventListener("click",async()=>{
     try{
      const detail=await api("/api/learning/candidates/"+item.id);
@@ -1164,7 +1166,8 @@ async function refreshLearningCandidates() {
     }catch(error){meta.textContent=error.message;}
    });
    const reviewButton=document.createElement("button"); reviewButton.type="button"; reviewButton.textContent="شروع بررسی وب و peer-AI";
-   reviewButton.disabled=!item.integrity_valid;
+   reviewButton.hidden=item.status!=="awaiting_test";
+   reviewButton.disabled=item.status!=="awaiting_test"||!item.integrity_valid;
    reviewButton.addEventListener("click",async()=>{
     reviewButton.disabled=true; meta.textContent="در حال ثبت کار بررسی در صف پایدار…";
     try{
@@ -1174,6 +1177,15 @@ async function refreshLearningCandidates() {
     }catch(error){meta.textContent=error.message;reviewButton.disabled=false;}
    });
    const historyButton=document.createElement("button"); historyButton.type="button"; historyButton.textContent="نمایش سوابق وب و peer-AI";
+   const readinessButton=document.createElement("button"); readinessButton.type="button"; readinessButton.textContent="نمایش وضعیت شواهد و تناقض‌ها";
+   readinessButton.addEventListener("click",async()=>{
+    try{
+     const readiness=await api("/api/learning/candidates/"+item.id+"/readiness");
+     let pre=card.querySelector(".candidate-readiness");
+     if(!pre){pre=document.createElement("pre");pre.className="candidate-readiness";card.append(pre);}
+     pre.textContent=JSON.stringify(readiness,null,2);
+    }catch(error){meta.textContent=error.message;}
+   });
    historyButton.addEventListener("click",async()=>{
     try{
      const history=await api("/api/learning/candidates/"+item.id+"/review-history");
@@ -1185,7 +1197,8 @@ async function refreshLearningCandidates() {
    const planExists=Array.isArray(item.test_plan)?item.test_plan.length>0:Object.keys(item.test_plan||{}).length>0;
    const planButton=document.createElement("button"); planButton.type="button";
    planButton.textContent=planExists?"طرح آزمون ثبت شده":"ثبت طرح آزمون";
-   planButton.disabled=planExists||!item.integrity_valid;
+   planButton.hidden=item.status!=="awaiting_test";
+   planButton.disabled=item.status!=="awaiting_test"||planExists||!item.integrity_valid;
    planButton.addEventListener("click",()=>{
     if(card.querySelector("form"))return;
     const form=document.createElement("form");
@@ -1243,7 +1256,8 @@ async function refreshLearningCandidates() {
     card.append(form);
    });
    const sandboxButton=document.createElement("button"); sandboxButton.type="button"; sandboxButton.textContent="اجرای آزمون‌های Python در sandbox";
-   sandboxButton.disabled=!item.integrity_valid||!planExists||item.test_plan?.oracle_reviewed!==true||!Array.isArray(item.test_plan?.tests)||item.test_plan.tests.length<1||item.test_plan.tests.length>3||item.test_plan.tests.some(test=>typeof test.python_test_code!=="string"||!test.python_test_code.trim()||typeof test.expected_stdout!=="string");
+   sandboxButton.hidden=item.status!=="awaiting_test";
+   sandboxButton.disabled=item.status!=="awaiting_test"||!item.integrity_valid||!planExists||item.test_plan?.oracle_reviewed!==true||!Array.isArray(item.test_plan?.tests)||item.test_plan.tests.length<1||item.test_plan.tests.length>3||item.test_plan.tests.some(test=>typeof test.python_test_code!=="string"||!test.python_test_code.trim()||typeof test.expected_stdout!=="string");
    sandboxButton.addEventListener("click",async()=>{
     if(!window.confirm("کد آزمون ثبت‌شده در محیط Docker بدون شبکه اجرا و stdout دقیق مقایسه می‌شود. نتیجه به‌تنهایی درستی علمی را ثابت نمی‌کند و دانش را ارتقا نمی‌دهد. ادامه می‌دهید؟"))return;
     sandboxButton.disabled=true; meta.textContent="در حال ثبت آزمون محدود sandbox در صف پایدار…";
@@ -1253,8 +1267,8 @@ async function refreshLearningCandidates() {
      meta.textContent="آزمون sandbox در صف ثبت شد؛ شناسهٔ کار: "+queued.task_id+". نتیجهٔ آزمون ثبت شد؛ دانش ارتقا نمی‌یابد.";
     }catch(error){meta.textContent=error.message;sandboxButton.disabled=false;}
    });
-   actions.append(detailButton,reviewButton,historyButton,planButton,sandboxButton);
-   card.append(heading,meta,preview,actions);
+   actions.append(detailButton,historyButton,readinessButton,reviewButton,planButton,sandboxButton);
+   card.append(heading,meta,preview,failure,actions);
    container.append(card);
   }
  }catch(error){container.textContent="بارگذاری نامزدهای موقت ناموفق بود: "+error.message;}
