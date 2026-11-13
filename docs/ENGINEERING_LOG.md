@@ -635,3 +635,32 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Issue #290 remains authoritative: no automatic PR merge, deployment, cloud provisioning, or remote execution. The controller never calls the merge API and accepts only a human merge actor; owner review and manual merge remain required.
 - This CI proves repository tests and the configured Windows storage regression job only. A real target-host Codex/Ollama tool-call smoke, long-duration soak, crash/restart acceptance, staging restore/rollback, and independent security review (Issue #52) remain pending and are not claimed.
 - No direct write to `main`, force-push, deployment, destructive state reset, or user-data deletion occurred. This verification snapshot is for the exact SHA above; any subsequent commit requires its own exact-head CI.
+
+
+## 2026-11-13 — PR #746: quality-gate CI diagnosis and method-attempt event ledger
+
+### Root-cause analysis
+
+- Exact-head CI on `a36a0647cac3d1a9413a2d0c3eb8f23578839747` completed with 2,160 passed, 2 skipped, and 3 failed.
+- The curriculum progression fixture marked a job completed without a lesson body. The new quality gate correctly refused to evaluate empty content; the fixture was inconsistent with the domain contract.
+- The quality-gate success path wrote `topic_quality_gate_v1` into `learning_path_topics.latest_score_kind`, whose historical CHECK constraint permits only four legacy values. The quality-gate table already owns its score and evaluation reference, so duplicating that classification into the legacy column was unnecessary and invalid.
+- The schema migration test asserted version 49 despite registered migrations 50 and 51. This was a brittle test expectation, not a migration failure.
+- Migration 51's `learning_topic_method_attempts` table combined mutable lifecycle statuses with UPDATE/DELETE-blocking triggers and one row per attempt. That schema cannot represent an append-only lifecycle history.
+
+### Corrective changes
+
+- The curriculum test now stores non-empty lesson content and asserts that the next topic remains unqueued while the independent quality evaluation is pending.
+- The pass path updates only the topic's completion state. The quality gate remains the single owner of its score and evaluation metadata.
+- The migration regression now asserts contiguous migration registration rather than hard-coding the old version.
+- Migration 52 adds `learning_topic_method_attempt_events`: each transition is a separate immutable row with event sequence, stable idempotency key, payload hash, method/attempt identity, content hash, evidence, diagnosis, and optional job/run references.
+- New `app/learning_topic_method_attempts.py` validates the fixed method order, lifecycle transitions, event-key replay, evidence serialization, and score/hash contracts. Focused tests cover concurrent duplicate delivery and database-enforced immutability.
+- ADR-020 records the ownership model, transition contract, AI browser constraints, restart/fencing requirements, acceptance tests, and explicit runtime gaps. `docs/LEARNING.md` and `docs/PROJECT_STATUS.md` now link the implementation status and do not claim the three-method state machine is complete.
+- PR #746 description records the failed CI evidence and residual work; no test was removed, skipped, or weakened.
+
+### Validation and residual risk
+
+- The prior SHA's other required workflows (CodeQL, Browser E2E, dependency audit, Windows storage regressions) passed; the tests workflow failed on the three cases above.
+- The fixes and migration 52 were committed after that run. Exact-head CI for the latest SHA must be checked independently; no result from `a36a064` is treated as validation of later commits.
+- The append-only event ledger is a foundation only. Runtime orchestration still does not start AI Learning, then Basic Learning, then Topic/Course Learning. The existing quality handler still uses a same-lane correction job after failure. This is a blocking implementation gap, not a completed requirement.
+- AI Learning is feature-flagged and uses a separate database plus a visible Playwright/Chrome worker. Its adapter must handle disabled/unavailable/auth-required states, durable run ownership, content transfer, provenance, and restart recovery without bypassing authentication.
+- PR #746 remains Draft and unmerged. Local/target-host and human tests have not been run. Issue #290 and independent security review Issue #52 remain open.
