@@ -251,36 +251,6 @@ jobs:
             }
           }
 
-      - name: Report availability of the unique Windows/Ollama Runner
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPOSITORY: ${{ github.repository }}
-        shell: pwsh
-        run: |
-          $headers = @{
-            Authorization = "Bearer $env:GH_TOKEN"
-            Accept = "application/vnd.github+json"
-            "X-GitHub-Api-Version" = "2022-11-28"
-          }
-          $requiredLabels = @("self-hosted", "Windows", "X64", "ollama", "autonomous-state-owner")
-          $uri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runners?per_page=100"
-          try {
-            $inventory = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get -TimeoutSec 15
-            $matching = @($inventory.runners | Where-Object {
-              $availableLabels = @($_.labels | ForEach-Object { [string]$_.name })
-              @($requiredLabels | Where-Object { $availableLabels -notcontains $_ }).Count -eq 0
-            })
-            if ($matching.Count -eq 0) {
-              Write-Warning "No registered repository Runner currently has every required label: $($requiredLabels -join ', ')."
-            } else {
-              foreach ($runner in $matching) {
-                Write-Host "Target Runner: name=$($runner.name); status=$($runner.status); busy=$($runner.busy); labels=$((@($runner.labels | ForEach-Object { $_.name }) -join ', '))"
-              }
-            }
-          } catch {
-            Write-Warning "Could not read repository Runner inventory: $($_.Exception.Message)"
-          }
-
   sandbox-diagnostic:
     if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'fix/autonomous-engineering-show-all-ollama-models-20261112') }}
     needs: cancel-stale-diagnostics
