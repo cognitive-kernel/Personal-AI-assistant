@@ -12,6 +12,8 @@ $ErrorActionPreference = "Stop"
 $baseUrl = "http://127.0.0.1:11434"
 $minimumContextTokens = 1
 
+. (Join-Path $PSScriptRoot "ollama_context_helpers.ps1")
+
 function Get-OllamaNumParallel {
     # Ollama reads OLLAMA_NUM_PARALLEL from the environment of the server
     # process. The Runner may use a different account, so inspect only this
@@ -54,21 +56,19 @@ function Get-OllamaNumParallel {
             throw "The machine environment registry key is unavailable."
         }
 
-        $rawValue = $null
+        $userValue = $null
         if ($null -ne $userEnvironment) {
-            $rawValue = $userEnvironment.GetValue(
+            $userValue = $userEnvironment.GetValue(
                 "OLLAMA_NUM_PARALLEL",
                 $null,
                 [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames
             )
         }
-        if ($null -eq $rawValue) {
-            $rawValue = $machineEnvironment.GetValue(
-                "OLLAMA_NUM_PARALLEL",
-                $null,
-                [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames
-            )
-        }
+        $machineValue = $machineEnvironment.GetValue(
+            "OLLAMA_NUM_PARALLEL",
+            $null,
+            [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames
+        )
     } catch {
         throw "Could not read the Ollama server owner's persisted parallelism setting. $($_.Exception.Message)"
     } finally {
@@ -77,15 +77,7 @@ function Get-OllamaNumParallel {
         if ($null -ne $machineEnvironment) { $machineEnvironment.Close() }
     }
 
-    if ($null -eq $rawValue -or [string]::IsNullOrWhiteSpace([string]$rawValue)) {
-        # Ollama's documented default is one parallel request per model.
-        $rawValue = "1"
-    }
-    $parallelRequests = [uint64]0
-    if (-not [uint64]::TryParse(([string]$rawValue).Trim(), [ref]$parallelRequests) -or $parallelRequests -lt 1) {
-        throw "The Ollama server's OLLAMA_NUM_PARALLEL setting must be a positive integer."
-    }
-    return $parallelRequests
+    return (Resolve-OllamaParallelRequestCount -UserValue $userValue -MachineValue $machineValue)
 }
 
 function Get-ModelInfo {
@@ -160,16 +152,9 @@ function Get-AutomaticContext {
     if ($loadedBase.Count -gt 1) {
         throw "Ollama reported multiple loaded instances of selected model '$ModelName'; refusing ambiguous memory accounting."
     }
-    # Free physical RAM excludes CPU-resident weights, but not weights held
-    # in dedicated VRAM. Treat any VRAM residency or missing telemetry
-    # conservatively by charging the full installed weight size to system RAM.
     $modelWeightsAlreadyLoaded = $false
-    if ($loadedBase.Count -eq 1 -and $null -ne $loadedBase[0].size_vram) {
-        $sizeVramBytes = 0L
-        if (-not [int64]::TryParse([string]$loadedBase[0].size_vram, [ref]$sizeVramBytes) -or $sizeVramBytes -lt 0) {
-            throw "Ollama /api/ps reported invalid size_vram telemetry for '$ModelName'."
-        }
-        $modelWeightsAlreadyLoaded = $sizeVramBytes -eq 0
+    if ($loadedBase.Count -eq 1) {
+        $modelWeightsAlreadyLoaded = Test-OllamaWeightsAlreadyLoaded -LoadedModel $loadedBase[0]
     }
 
     $selectionInput = @{
