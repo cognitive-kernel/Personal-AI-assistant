@@ -51,7 +51,7 @@ There is no fixed minimum context window. The only numeric validity rule is that
 
 ## Runtime enforcement
 
-1. Read architecture-specific model metadata and tool-calling capability from Ollama using bounded /api/show requests (verbose=false).
+1. Read architecture-specific model context metadata, all KV-cache dimensions used by the memory estimate, and tool-calling capability from Ollama using bounded /api/show requests (verbose=false). The readiness API and settings-save path must reject a model whose KV-cache dimensions are incomplete; a valid context_length alone is insufficient.
 2. Estimate host capacity from current free physical memory, model weight size, KV-cache dimensions, reserve, and overhead.
 3. Select the minimum of requested, hardware, model, and catalog ceilings.
 4. Remove stale current-format and legacy `-codex-64k` variants for the selected base model before measuring current free RAM, then create a separate context-specific variant with exactly the selected num_ctx; never mutate the original model.
