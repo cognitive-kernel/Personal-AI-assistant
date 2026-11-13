@@ -82,6 +82,8 @@ SETTING_DEFAULTS: dict[str, object] = {
     "ai_learning_browser_timeout_seconds": 300,
     "ai_learning_browser_poll_interval_ms": 1000,
     "ai_learning_browser_control_poll_interval_ms": 100,
+    "ai_learning_browser_lease_seconds": 90,
+    "ai_learning_browser_lease_heartbeat_seconds": 15,
     "ai_learning_max_retries": 2,
     "ai_learning_llm_provider": "ollama",
     "ai_learning_llm_base_url": "https://api.openai.com/v1",
