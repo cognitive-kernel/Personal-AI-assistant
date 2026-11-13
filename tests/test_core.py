@@ -943,7 +943,7 @@ def test_resource_limit_settings_are_persisted(tmp_path, monkeypatch):
     assert saved["cpu_resource_limit_percent"] == 75
     assert saved["ram_resource_limit_percent"] == 80
     assert saved["gpu_resource_limit_percent"] == 65
-    assert saved["gpu_enabled"] is False
+    assert saved["gpu_enabled"] is True
     assert saved["ram_budget_max_gb"] == 20
     assert saved["ram_safety_reserve_gb"] == 5
     assert saved["chat_model_keep_alive"] == "10m"
