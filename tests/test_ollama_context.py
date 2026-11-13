@@ -160,11 +160,21 @@ def test_context_selection_uses_a_single_token_when_that_is_the_verified_capacit
     assert result["selected_context_tokens"] == 1
 
 
-def test_context_selection_requires_architecture_specific_kv_metadata():
+@pytest.mark.parametrize(
+    "missing_key",
+    [
+        "llama.block_count",
+        "llama.attention.head_count_kv",
+        "llama.attention.key_length",
+        "llama.attention.value_length",
+    ],
+)
+def test_context_selection_requires_every_architecture_specific_kv_dimension(missing_key):
     data = payload()
-    data["model_info"].pop("llama.attention.head_count_kv")
-    with pytest.raises(OllamaModelMetadataError, match="head_count_kv"):
+    data["model_info"].pop(missing_key)
+    with pytest.raises(OllamaModelMetadataError) as error:
         select_context_window(**data)
+    assert missing_key in str(error.value)
 
 
 def test_tool_calling_capability_is_explicit():
