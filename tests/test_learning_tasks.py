@@ -91,7 +91,7 @@ def test_learning_task_handler_recovers_stale_job_for_queue_retry(
             (stale_status, job["id"]),
         )
 
-    def fake_run_job(job_id):
+    def fake_run_job(job_id, *, task_context=None):
         with db.learning_connection() as conn:
             conn.execute(
                 "UPDATE learning_jobs SET status='running' WHERE id=?", (job_id,)
