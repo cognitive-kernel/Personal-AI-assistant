@@ -13,6 +13,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 from .db import connection
+from .config import configured_int_setting as _configured_int_setting, configured_float_setting as _configured_float_setting
 from .embedding_service import _dedupe_normalize, _title_embeddings, _title_tokens, _filter_duplicate_titles, _dedupe_content_hash, _embedding_cosine, _find_semantic_duplicate_content, TITLE_SEMANTIC_DUPLICATE_THRESHOLD, SEMANTIC_DUPLICATE_THRESHOLD
 from ..db import get_settings
 from ..config import SETTING_DEFAULTS
@@ -21,28 +22,6 @@ from ..pinned_http import PinnedHTTPHandler, PinnedHTTPSHandler
 CHUNK_TARGET_CHARS = int(SETTING_DEFAULTS["ai_learning_chunk_target_chars"])
 CHUNK_OVERLAP_CHARS = int(SETTING_DEFAULTS["ai_learning_chunk_overlap_chars"])
 MAX_SCHEDULED_RUN_RETRIES = int(SETTING_DEFAULTS["ai_learning_max_retries"])
-
-def _configured_int_setting(name: str, default: int, minimum: int, maximum: int) -> int:
-    """Read a validated integer from the shared persistent settings contract."""
-    settings = get_settings()
-    value = settings.get(name, default)
-    if type(value) is not int or not minimum <= value <= maximum:
-        raise RuntimeError(f"Persisted setting {name} is outside its validated range.")
-    return value
-
-def _configured_float_setting(name: str, default: float, minimum: float, maximum: float) -> float:
-    """Read a finite, range-checked numeric setting from the shared settings contract."""
-    settings = get_settings()
-    value = settings.get(name, default)
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, (int, float))
-        or not math.isfinite(value)
-        or not minimum <= value <= maximum
-    ):
-        raise RuntimeError(f"Persisted setting {name} is outside its validated range.")
-    return float(value)
-
 
 class NotFoundError(KeyError):
     """Requested learning resource does not exist."""
