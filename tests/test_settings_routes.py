@@ -85,6 +85,8 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
     assert defaults["basic_learning_enabled"] is True
     assert defaults["topic_learning_enabled"] is True
     assert defaults["experience_system_enabled"] is True
+    assert defaults["sandbox_enabled"] is True
+    assert defaults["self_improvement_enabled"] is True
     assert defaults["topic_learning_llm_provider"] == "ollama"
     assert defaults["topic_learning_source_max_chars"] == 100000
     assert defaults["ai_learning_ollama_model"]
@@ -100,6 +102,8 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
         "experience_system_enabled": False,
         "ai_learning_retrieval_enabled": False,
         "ai_learning_browser_enabled": False,
+        "sandbox_enabled": False,
+        "self_improvement_enabled": False,
         "ai_learning_lesson_batch_size": 5,
         "ai_learning_chunk_target_chars": 2400,
         "ai_learning_chunk_overlap_chars": 240,
@@ -146,6 +150,8 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
         {"experience_system_enabled": "false"},
         {"ai_learning_retrieval_enabled": 1},
         {"ai_learning_browser_enabled": None},
+        {"sandbox_enabled": "true"},
+        {"self_improvement_enabled": 1},
         {"ai_learning_lesson_batch_size": 21},
         {"ai_learning_chunk_target_chars": 255},
         {"ai_learning_chunk_overlap_chars": 2001},
