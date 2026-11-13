@@ -315,3 +315,18 @@ def test_every_api_integer_query_parameter_has_explicit_lower_bound():
                 else:
                     assert minimum >= 0, (method, path, parameter)
     assert inspected >= 8
+
+
+def test_learning_jobs_and_knowledge_list_limits_are_bounded(client):
+    for path, invalid, maximum in (
+        ("/api/learning/jobs", 201, 200),
+        ("/api/knowledge", 301, 300),
+    ):
+        response = client.get(path, params={"limit": invalid})
+        assert response.status_code == 422
+        parameter = next(
+            item for item in app.openapi()["paths"][path]["get"]["parameters"]
+            if item["name"] == "limit"
+        )
+        assert parameter["schema"]["minimum"] == 1
+        assert parameter["schema"]["maximum"] == maximum
