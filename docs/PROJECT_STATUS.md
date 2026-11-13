@@ -3,7 +3,7 @@
 ## وضعیت فعلی ماژول مهندسی خودکار
 
 - مخزن: cognitive-kernel/Personal-AI-assistant؛ PR #722، شاخه fix/autonomous-engineering-show-all-ollama-models-20261112، مقصد main. PR باز، Draft و ادغام‌نشده است.
-- **آخرین کد/تست:** bf8fcb1df573996606adbaba6e40b72ab725a79c؛ مبنای main: f87e15b9eb76f7395ea4380382d95f1bc64e21ed. پس از این SHA فقط تغییرات مستنداتی در حال ثبت‌اند.
+- **آخرین کد/تست کاملاً تأییدشده:** bf8fcb1df573996606adbaba6e40b72ab725a79c؛ چهار CI میزبانی‌شده روی این SHA موفق شدند. پس از آن اصلاحات مستنداتی و شفاف‌سازی قرارداد `OLLAMA_NUM_PARALLEL` به شاخه افزوده شده و CI دقیق head جدید دوباره لازم است. مبنای main: f87e15b9eb76f7395ea4380382d95f1bc64e21ed.
 - **سخت‌افزار تأییدشده کاربر:** Intel Core i5-12400، شش هسته/۱۲ رشته، حدود 31.78 GiB RAM (رده 32GB)، Intel UHD Graphics 730؛ diagnostic این پروفایل را با telemetry زنده بررسی می‌کند (تلورانس RAM برابر 30–33 GiB). Windows 11 x64 build 10.0.26300 نیز تأیید شده است.
 - **نرم‌افزار تأییدشده کاربر:** Windows 11 x64 build 10.0.26300، Python 3.14.6 و Python 3.11.9 از طریق py launcher، Git 2.54.0. Node.js 26.13.0/npm از طریق setup-node پین‌شده در هر job فراهم می‌شود؛ Codex CLI 0.167.0 نیز توسط workflow نصب می‌شود. Ollama نسخه/محیط واقعی روی میزبان هنوز تأیید نشده است.
 - **اصلاحات ثبت‌شده:** gate سخت‌افزاری تأییدشده دوباره برقرار شد؛ provisioning دیگر به نصب system-wide Node/npm وابسته نیست؛ workflowها Node را با action پین‌شده v6.4.0 provision می‌کنند؛ تست‌ها این قراردادها و ترتیب bootstrap را پوشش می‌دهند؛ CIهای قدیمی برای هر commit جداگانه صف می‌شدند، concurrency اکنون بر اساس PR است تا runهای منسوخ لغو شوند؛ diagnostic روی PR head واقعی اجرا می‌شود و فقط برای شاخهٔ مورداعتماد فعال است.
@@ -13,8 +13,8 @@
   - Docker sandbox: https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43384649608 — موفق.
   - Dependency audit: https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43384649862 — موفق.
 - **Target-host diagnostic:** https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43384649592؛ مرحلهٔ cleanup موفق شده اما job مربوط به sandbox-diagnostic همچنان pending و بدون Runner assignment است. برچسب‌های لازم: self-hosted, Windows, X64, ollama, autonomous-state-owner. روشن بودن رایانه به‌تنهایی online بودن سرویس Runner را ثابت نمی‌کند.
-- نسخه/فرآیند واقعی Ollama، مقدار مؤثر OLLAMA_NUM_PARALLEL، مدل load، تخصیص /api/ps، Codex MXC/exec_command smoke، soak/crash-restart و staging restore/rollback هنوز NOT RUN / PENDING هستند.
-- Target-host/local/human tests طبق Master Engineering Prompt merge gate پیش‌فرض نیستند، مگر branch protection صراحتاً آن‌ها را الزامی کند؛ توسعهٔ GitHub-side نباید برای آن‌ها متوقف شود. Independent security review در Issue #52 و پذیرش کلی در Issue #290 همچنان بازند.
+- نسخه/فرآیند واقعی Ollama، مقدار مؤثر `OLLAMA_NUM_PARALLEL` (رجیستری فقط تنظیم پایدار را می‌خواند و محیط زندهٔ process را مستقیماً نمی‌بیند)، مدل load، تخصیص /api/ps، Codex MXC/exec_command smoke، soak/crash-restart و staging restore/rollback هنوز NOT RUN / PENDING هستند.
+- **گیت ادغام طبق Master Engineering Prompt:** تا زمانی که تمام workflowهای لازم روی exact head سبز نشده‌اند و تمام تست‌های لازم روی سیستم مقصد اجرا و موفق نشده‌اند، ادغام به main ممنوع است. این شرط مانع ادامهٔ توسعه، تست‌های مستقل و تکمیل کارهای GitHub-side نیست. پذیرش انسانی/ارزیابی زنده و عملیات soak/restore جداگانه ثبت می‌شوند؛ Issue #52 نیز تا بازبینی امنیتی مستقل باز می‌ماند.
 - هیچ merge خودکار، bypass، deploy یا تغییر دادهٔ کاربر انجام نشده است. Merge فقط پس از exact-head CI، reviewهای الزامی، بازبینی امنیتی مستقل و تأیید مالک مجاز است.
 
 > بخش‌های بعدی این سند snapshotهای تاریخی‌اند؛ وضعیت جاری و SHA معتبر در همین بخش ثبت می‌شود.
@@ -83,7 +83,7 @@
 - CLIهای ویندوز با npm.cmd و codex.cmd اجرا می‌شوند؛ Ollama از PATH، مسیر process فعال یا مسیر استاندارد نصب در پروفایل‌های Windows (Win32_UserProfile) پیدا می‌شود؛ مسیر ثابت کاربر Admin حذف شده است. Diagnostic جدید readiness واقعی Runner را زیر همان حساب سرویس اجرا می‌کند.
 - PR #720 و PR #721 به‌دلیل ادغام اصلاحاتشان در PR #722 بسته شدند تا شاخه‌های موازی و قراردادهای متناقض باقی نمانند.
 - آخرین head در حال اعتبارسنجی: ae5f0fb26c26ac02e4a9bd04fd1f8362c9796d6a. تست کامل، Sandbox integration، Browser E2E، Dependency Audit و diagnostic خودمیزبان برای همین SHA در runهای ثبت‌شده در بخش بازبینی تکمیلی قرار دارند. تا پایان هر job هیچ‌کدام pass اعلام نمی‌شوند.
-- مطابق Master Engineering Prompt، توسعهٔ مستقل و GitHub-side بدون انتظار برای تست دستی/محلی/target-host ادامه دارد. گیت‌های merge شامل exact-head CI، بررسی‌های الزامی مخزن و بازبینی امنیتی مستقل‌اند؛ تست میزبان و پذیرش انسانی به‌صورت NOT RUN / PENDING ثبت می‌شوند و جزو merge gate نیستند مگر branch protection صراحتاً آن‌ها را الزامی کند.
+- مطابق Master Engineering Prompt، توسعهٔ مستقل و GitHub-side بدون انتظار برای تست دستی/محلی/target-host ادامه دارد. گیت ادغام شامل exact-head CI و اجرای موفق تمام تست‌های لازم روی سیستم مقصد است؛ این شرط از پرامپت اصلی می‌آید و به branch protection وابسته نیست. تست میزبان و پذیرش انسانی تا زمان اجرا باید NOT RUN / PENDING بمانند.
 
 ## وضعیت جاری — سازگاری پویا و ایمن Context در Codex (PR #722)
 
@@ -155,7 +155,7 @@
 - پایش نسخه‌ها در runtime یادگیری هر ۳۰ ثانیه اجرا می‌شود؛ حداکثر سه مسیر due در هر چرخه پردازش می‌شوند و باقی‌مانده با زمان‌بندی پایدار در چرخه‌های بعدی ادامه می‌یابد. تغییر release fingerprint یک پژوهش افزایشی جدید ایجاد می‌کند و مسیر قدیمی حفظ می‌شود.
 - تنظیمات دائمی و موقت provider/model برای laneهای موجود از API و رابط تنظیمات پشتیبانی می‌شود؛ Ollama و endpointهای محلی/راه‌دور OpenAI-compatible قابل انتخاب‌اند. مدل پیش‌فرض learning برابر `gpt-oss:20b` است؛ اجرای واقعی آن روی محیط میزبان مقصد هنوز انجام‌شده ادعا نمی‌شود.
 - آخرین اعتبارسنجی exact-head پیش از ادغام روی SHA `cd0f7242d44b51b2b5b76c29e4f1abd39409bee0`: tests **2045 passed / 50 deselected**، Windows storage **11 passed / 47 deselected**، Browser E2E موفق و dependency audit موفق. همین SHA با squash در merge commit بالا وارد `main` شد. وجود فایل‌های کلیدی و migration 47 روی `main` پس از ادغام نیز بررسی شد.
-- اجرای واقعی میزبان مقصد، تست انسانی و اجرای زندهٔ `gpt-oss:20b` هنوز انجام‌شده ادعا نمی‌شوند و طبق Master Engineering Prompt merge gate پیش‌فرض نیستند؛ هر نتیجهٔ آن‌ها به‌صورت جداگانه و NOT RUN / PENDING ثبت می‌شود.
+- اجرای واقعی میزبان مقصد، تست انسانی و اجرای زندهٔ `gpt-oss:20b` هنوز انجام‌شده ادعا نمی‌شوند. تست‌های محلی لازم روی سیستم مقصد طبق Master Engineering Prompt شرط ادغام‌اند؛ توسعهٔ GitHub-side برای آن‌ها متوقف نمی‌شود و هر نتیجهٔ انجام‌نشده به‌صورت NOT RUN / PENDING ثبت می‌شود.
 
 
 ## 1.1 تغییرات جدید پس از snapshot قبلی
