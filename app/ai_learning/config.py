@@ -1,7 +1,6 @@
 """Settings-backed feature controls for the isolated AI-learning subsystem."""
 from __future__ import annotations
 
-import sqlite3
 import os
 import sqlite3
 from typing import Any
