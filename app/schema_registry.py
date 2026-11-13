@@ -1655,6 +1655,15 @@ LEARNING_MIGRATIONS = (
             "CREATE UNIQUE INDEX idx_learning_jobs_method_attempt_key ON learning_jobs(method_attempt_key) WHERE method_attempt_key IS NOT NULL",
         ),
     ),
+    Migration(
+        54,
+        "fenced-learning-job-execution-ownership",
+        (
+            "ALTER TABLE learning_jobs ADD COLUMN execution_owner TEXT",
+            "ALTER TABLE learning_jobs ADD COLUMN execution_epoch INTEGER NOT NULL DEFAULT 0 CHECK(execution_epoch >= 0)",
+            "CREATE INDEX idx_learning_jobs_execution_owner ON learning_jobs(execution_owner, execution_epoch)",
+        ),
+    ),
 )
 
 
