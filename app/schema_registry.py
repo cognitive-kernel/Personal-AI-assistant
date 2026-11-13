@@ -1528,6 +1528,8 @@ LEARNING_MIGRATIONS = (
         50,
         "sequential-per-topic-quality-gates",
         (
+            "ALTER TABLE learning_jobs ADD COLUMN correction_request_key TEXT",
+            "CREATE UNIQUE INDEX idx_learning_jobs_correction_request ON learning_jobs(correction_request_key) WHERE correction_request_key IS NOT NULL",
             """CREATE TABLE learning_topic_quality_gates (
                 path_topic_id INTEGER PRIMARY KEY REFERENCES learning_path_topics(id) ON DELETE CASCADE,
                 current_job_id INTEGER REFERENCES learning_jobs(id),
