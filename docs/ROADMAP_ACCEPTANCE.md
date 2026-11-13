@@ -7,7 +7,7 @@
 - Windows/Ollama target diagnostic [#43393787042](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43393787042): hosted cleanup passed; self-hosted job is still pending without a matching online/idle Runner. No live Ollama allocation or Codex tool-call smoke is claimed.
 - The preflight reads persisted registry configuration for `OLLAMA_NUM_PARALLEL`, not the live process environment. A process-only launch override may differ; effective runtime parallelism remains unverified until target-host launch configuration is checked.
 - **NOT RUN / PENDING:** actual Ollama version/process, model load and `/api/ps` allocation, target-host Codex tool-call smoke, soak/crash-restart, staging restore/rollback, and required local target-host tests. Do not infer these from hosted CI.
-- **Merge gate:** the Master Engineering Prompt requires both green exact-head GitHub Actions and successful required local tests on the actual target host before merge. Continue all independent GitHub-side implementation and validation while these external tests are pending; do not merge or bypass the gate.
+- **Merge gate:** the Master Engineering Prompt requires both green exact-head GitHub Actions and that **all required local tests on the actual target host** pass before merge. Continue all independent GitHub-side implementation and validation while these external tests are pending; do not merge or bypass the gate.
 - Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) remains open for independent security review; Issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290) tracks project-wide acceptance. PR #722 remains Draft/open/unmerged.
 
 ---
