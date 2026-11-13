@@ -318,7 +318,9 @@ def handle_learning_job(
 
     context.checkpoint({"phase": "learning_queued", "job_id": job_id})
     try:
-        learning.run_job(job_id)
+        context.checkpoint({"phase": "learning_job_start", "job_id": job_id})
+    learning.run_job(job_id, task_context=context)
+    context.checkpoint({"phase": "learning_job_finished", "job_id": job_id})
     except learning.LearningError as exc:
         cause = exc.__cause__
         task = task_manager.get_task(context.task_id) or {}
