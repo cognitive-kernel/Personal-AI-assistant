@@ -645,6 +645,9 @@ def test_current_acceptance_docs_preserve_master_prompt_merge_gates_and_runner_p
     roadmap = (root / "docs" / "ROADMAP_ACCEPTANCE.md").read_text(encoding="utf-8")
     operations = (root / "docs" / "operations" / "CODEX_AUTONOMOUS_ENGINEERING.md").read_text(encoding="utf-8")
     parallelism_script = (root / "scripts" / "verify_ollama_context.ps1").read_text(encoding="utf-8")
+    autonomous_workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    diagnostic_workflow = (root / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml").read_text(encoding="utf-8")
+    tests_workflow = (root / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
 
     assert "تمام تست‌های لازم روی سیستم مقصد" in status
     assert "all required local tests on the actual target host" in roadmap.lower()
