@@ -268,25 +268,15 @@ def _model_memory_estimate(
         preferred = f"{architecture}{suffix}" if architecture else None
         if preferred:
             value = model_info.get(preferred)
-            if (
-                isinstance(value, (int, float))
-                and not isinstance(value, bool)
-                and math.isfinite(value)
-                and value > 0
-            ):
-                return int(value)
+            if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+                return value
             return None
         values = []
         for key, value in model_info.items():
             if not str(key).endswith(suffix):
                 continue
-            if (
-                isinstance(value, (int, float))
-                and not isinstance(value, bool)
-                and math.isfinite(value)
-                and value > 0
-            ):
-                values.append(int(value))
+            if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+                values.append(value)
         # Without a family, accept only an unambiguous metadata dimension.
         return values[0] if values and len(set(values)) == 1 else None
 
