@@ -90,5 +90,5 @@ These are **provisional, evidence-based progress scores** using the fixed stage 
 - PR #737 is green on exact head `5bf13d05283daa2785a52bebfa9d8adf15f988b8`: 2,142 passed, 2 skipped, 51 deselected.
 - PR #738 head `5841e303916d0e4791724cde7ff5d53e131e772b`: three workflows passed; full test workflow remains in progress.
 - PR #739 head `9edfdd38716b88708b53772aa93d75c3850b77b7`: dependency audit passed; other checks are running after correction of a test-fixture defect.
-- PR #740 head `a30858b14a897fa463a96a4c5599153c81137e41`: dependency audit and Windows storage passed; test and dashboard checks are running.
+- PR #725 exact head `0c576ed9530d5b08f3f2e016f7fa36fe7d83b9e4` is fully green (2,137 passed, 2 skipped, 51 deselected); duplicate PR #740 was closed as superseded.
 - These are evidence notes, not a recalculated weighted score. The old score remains historical until all gates and the complete route/module audit are reconciled.
