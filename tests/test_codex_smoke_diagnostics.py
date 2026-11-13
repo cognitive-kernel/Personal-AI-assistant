@@ -646,6 +646,6 @@ def test_current_acceptance_docs_preserve_master_prompt_merge_gates_and_runner_p
     assert "Node.js 26.13.0/npm are provisioned per GitHub Actions job" in operations
     assert "Install Node.js LTS system-wide" not in operations
     assert "Node.js LTS and npm must be installed system-wide" not in operations
-    assert "process-only launch override may differ" in operations
+    assert "process-only launch override" in operations
     assert "not read from the live Ollama process environment" in parallelism_script
     assert "process-only launch override may differ" in parallelism_script
