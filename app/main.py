@@ -763,7 +763,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     if "gpu_enabled" in values and not isinstance(values["gpu_enabled"], bool):
         raise HTTPException(status_code=422, detail="gpu_enabled must be a boolean.")
-    for key in ("ai_learning_enabled", "basic_learning_enabled", "topic_learning_enabled", "ai_learning_retrieval_enabled", "ai_learning_browser_enabled"):
+    for key in ("ai_learning_enabled", "basic_learning_enabled", "topic_learning_enabled", "experience_system_enabled", "ai_learning_retrieval_enabled", "ai_learning_browser_enabled"):
         if key in values and type(values[key]) is not bool:
             raise HTTPException(status_code=422, detail=f"{key} must be a boolean.")
     keep_alive_values = {"auto", "0", "1m", "5m", "10m", "30m"}
