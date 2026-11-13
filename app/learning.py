@@ -1593,7 +1593,6 @@ def run_job(job_id: int, *, task_context: Any | None = None) -> None:
             raise
         assert_execution_owner("learning_execution_failed")
         learning_execution.fail_if_current(execution_lease, str(exc)[:1000])
-        raise
         raise LearningError(f"Learning job {job_id} failed: {exc}") from exc
 
 def get_job(job_id: int) -> dict[str, Any]:
