@@ -140,7 +140,7 @@ def status() -> dict[str, Any]:
     return {"enabled": config.is_enabled(), "retrieval_enabled": config.retrieval_is_enabled(),
             "browser_enabled": config.browser_is_enabled(),
             "provider_mode": "playwright_visible_chatgpt_ui",
-            "note": "The dashboard starts a persistent local Chrome/Playwright worker that interacts with the visible ChatGPT page. No OpenAI API key is used. Successful outlines continue into lesson batches; lessons remain unpublished for review."}
+            "note": "This is the separate AI-learning knowledge-library browser subsystem, not the model-backed AI Learning lane in the three-method learning coordinator. The dashboard starts a persistent local Chrome/Playwright worker that interacts with the visible ChatGPT page; no OpenAI API key is used for this browser flow. Successful outlines continue into lesson batches; lessons remain unpublished for review."}
 
 @router.get("/control")
 def learning_control() -> dict[str, Any]:
