@@ -1,9 +1,9 @@
 """Loopback-only API for generating and reviewing curriculum evolution proposals."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, ConfigDict, Field
 
 from . import curriculum_evolution
@@ -24,7 +24,7 @@ class CurriculumProposalReviewRequest(BaseModel):
 
 
 @router.post("/paths/{path_id}/curriculum-proposals/generate")
-def generate_curriculum_proposals(path_id: int) -> dict[str, Any]:
+def generate_curriculum_proposals(path_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     try:
         return curriculum_evolution.generate_proposals(path_id=path_id)
     except KeyError as exc:
@@ -36,7 +36,7 @@ def generate_curriculum_proposals(path_id: int) -> dict[str, Any]:
 
 
 @router.get("/paths/{path_id}/curriculum-proposals")
-def get_curriculum_proposals(path_id: int, limit: int = 50) -> dict[str, Any]:
+def get_curriculum_proposals(path_id: Annotated[int, Path(ge=1)], limit: int = 50) -> dict[str, Any]:
     try:
         return curriculum_evolution.list_proposals(path_id=path_id, limit=limit)
     except KeyError as exc:
@@ -49,7 +49,7 @@ def get_curriculum_proposals(path_id: int, limit: int = 50) -> dict[str, Any]:
 
 @router.post("/curriculum-proposals/{proposal_id}/review")
 def review_curriculum_proposal(
-    proposal_id: int, request: CurriculumProposalReviewRequest
+    proposal_id: Annotated[int, Path(ge=1)], request: CurriculumProposalReviewRequest
 ) -> dict[str, Any]:
     try:
         return curriculum_evolution.review_proposal(
