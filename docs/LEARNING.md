@@ -68,7 +68,7 @@
 - AI Learning یک وابستگی اختیاری و مبتنی بر مرورگر قابل‌مشاهده است. خاموش‌بودن feature flag، نبود مرورگر یا نیاز به احراز هویت باید با علت دقیق به‌عنوان `unavailable` ثبت شود و مسیر طبق قرارداد به Basic Learning برود؛ هیچ کنترل امنیتی یا ورود کاربر دور زده نمی‌شود.
 - محتوای تولیدشده حتی در شکست/ارزیابی inconclusive حفظ می‌شود؛ ارزیابی اجرا‌نشده یا رأی خودمدل به‌تنهایی قبولی نیست.
 
-**وضعیت پیاده‌سازی:** migration 51 متادیتای روش را اضافه می‌کند؛ migration 52 و ماژول `app/learning_topic_method_attempts.py` دفتر رویداد append-only، idempotency و ترتیب انتقال را پیاده‌سازی می‌کنند. طراحی معماری در [ADR-020](architecture/ADR-020-durable-sequential-learning-method-orchestration.md) ثبت شده است. اجرای کامل coordinator و سه adapter، انتقال واقعی AI → Basic → Topic/Course، اتصال Experience System و تست‌های crash/restart و multi-worker هنوز باز هستند؛ تا تکمیل و CI سبز، این چرخه کامل محسوب نمی‌شود.
+**وضعیت پیاده‌سازی:** migration 51 متادیتای روش، migration 52 دفتر رویداد append-only، و migration 53 شناسهٔ یکتای job برای هر روش/تلاش را اضافه می‌کنند. ماژول `app/learning_topic_method_attempts.py` ترتیب انتقال و idempotency رویدادها را اعتبارسنجی می‌کند و `learning.create_job` هویت method job را با قفل تراکنشی و بررسی hash متن حفظ می‌کند. طراحی معماری در [ADR-020](architecture/ADR-020-durable-sequential-learning-method-orchestration.md) ثبت شده است. اجرای کامل coordinator و سه adapter، انتقال واقعی AI → Basic → Topic/Course، اتصال Experience System و تست‌های crash/restart و multi-worker هنوز باز هستند؛ تا تکمیل و CI سبز، این چرخه کامل محسوب نمی‌شود.
 
 ## 2. معماری و نقاط ورود کد
 
