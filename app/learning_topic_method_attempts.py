@@ -17,7 +17,6 @@ METHOD_ORDER = ("ai_learning", "basic_learning", "topic_learning")
 METHOD_STATUSES = frozenset({
     "queued", "running", "failed", "passed", "unavailable", "inconclusive",
 })
-_TERMINAL_STATUSES = frozenset({"failed", "passed", "unavailable", "inconclusive"})
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _MAX_JSON_BYTES = 32 * 1024
 
@@ -99,8 +98,8 @@ def append_attempt_event(
         or not 0 <= score <= 100
     ):
         raise MethodAttemptError("score must be between 0 and 100.")
-    diagnosis, diagnosis_json = _json_object(diagnosis, "diagnosis")
-    evidence, evidence_json = _json_object(evidence, "evidence")
+    _, diagnosis_json = _json_object(diagnosis, "diagnosis")
+    _, evidence_json = _json_object(evidence, "evidence")
     payload = {
         "path_topic_id": path_topic_id,
         "method": method,
