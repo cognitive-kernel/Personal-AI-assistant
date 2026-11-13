@@ -1,19 +1,19 @@
-# وضعیت جاری پروژه — 2026-11-12
+# وضعیت جاری پروژه — 2026-11-13
 
 ## وضعیت فعلی ماژول مهندسی خودکار
 
-- مبنای کار `main`: `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`؛ PR #719 شامل معماری مالکیت وظایف/checkpoint در این commit ادغام شده است.
-- شاخهٔ فعال: `fix/autonomous-engineering-show-all-ollama-models-20261112`؛ PR [#722](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/722) باز و Draft است.
-- قابلیت‌های اصلی automation در `main` شامل کنترل چرخه، task persistence، checkpoint، قفل worktree و state، recovery، pause/resume، cancellation، progress telemetry، sandbox و PR lifecycle است. PR #722 مسیر adaptive Codex/Ollama context و سازگاری Windows Runner را تکمیل می‌کند.
-- انتخاب مدل: تمام مدل‌های نصب‌شده در داشبورد قابل مشاهده‌اند؛ فقط `selectable_models` گزینه‌های قابل انتخاب را تعیین می‌کند. نسخه‌های داخلی `-codex-ctx<tokens>` و legacy `-codex-64k` قابل مشاهده اما غیرفعال‌اند و در API، readiness، provisioning و PowerShell به‌عنوان مدل پایه پذیرفته نمی‌شوند.
-- سازگاری سخت‌افزار: هدف ثبت‌شده Intel Core i5-12400، شش هسته/۱۲ رشته، حدود 31.78 GiB RAM و Intel UHD Graphics 730 است. AdapterRAM گزارش‌شده توسط WMI به‌عنوان VRAM اختصاصی فرض نمی‌شود؛ offload واقعی فقط با WDDM و Ollama `/api/ps` قابل تأیید است.
-- سازگاری نرم‌افزار: Python 3.11+ (CI روی 3.11.9 و 3.14.6)، Node.js 26.13.0، npm 11.20.0، Codex CLI 0.167.0/0.167.2 و حداقل Ollama 0.40.16. CI این نسخه‌ها را بررسی می‌کند؛ نسخهٔ واقعی Ollama و بارگذاری مدل فقط روی Runner مقصد قابل اثبات است.
-- اصلاح تازهٔ diagnostic: مسیر ثابت `C:\Program Files\Python311\python.exe` حذف شد. diagnostic اکنون همان `python.exe` قابل resolve در PATH حساب سرویس Runner را انتخاب، نسخهٔ 3.11+ را کنترل، و همان مسیر را برای آزمون target-host reuse می‌کند؛ این با workflow اصلی هم‌راستا است.
-- آخرین SHA پیش از اصلاح Python-path: `6e92a422dd7c39f35f3ecc4a1d1839e03f370df9`؛ هر ۹ check GitHub-hosted موفق شدند: Python suite **۲۱۷۱ passed، ۲ skipped، ۵۱ deselected**، Windows Storage، Python 3.11.9/3.14.6، Node/Codex دو نسخه، Browser E2E، Docker sandbox و dependency audit.
-- SHA کد/تست پس از اصلاح Python-path: `ea196bf01361bb1e55b10bcc4c91e79d1f2c8913`. ماتریس exact-head جدید آغاز شده و در آخرین بررسی checkها queued بودند؛ نتایج SHA قبلی به این commit تعمیم داده نمی‌شوند.
-- اجرای diagnostic هدف روی همان SHA: [run #43290291632](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43290291632)؛ cleanup میزبان GitHub موفق شده، اما job ویندوز با labelهای `self-hosted, Windows, X64, ollama, autonomous-state-owner` هنوز pending و بدون `runner_name` است. روشن بودن رایانه به‌تنهایی وضعیت سرویس Runner یا اتصال آن به GitHub را اثبات نمی‌کند.
-- PR #707 به‌عنوان تغییر تکراری بسته شده است؛ معماری checkpoint/process ownership و durable task-state در PR #719 ادغام شده و PR #707 جداگانه نباید ادغام شود.
-- گیت‌های بیرونی باز: تخصیص Runner مقصد و Codex/Ollama tool-call smoke، soak و crash/restart روی میزبان، staging restore/rollback، و بازبینی امنیتی مستقل Issue #52. توسعه و تست‌های قابل انجام در GitHub ادامه دارد؛ تست اجرا‌نشده موفق اعلام نمی‌شود و merge انجام نمی‌شود.
+- مبنای کار `main`: `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`.
+- شاخهٔ فعال: `fix/autonomous-engineering-show-all-ollama-models-20261112`؛ PR [#722](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/722) باز و Draft است؛ آخرین SHA کد/تست بررسی‌شده `3b48da376cb90b0e0602f6300504152769ed79a0`.
+- قابلیت‌های اصلی automation در `main` شامل چرخهٔ مهندسی، task persistence، checkpoint، قفل worktree و state، recovery، pause/resume، cancellation، progress telemetry، sandbox و PR lifecycle است. PR #722 اصلاحات adaptive Codex/Ollama context و سازگاری Windows Runner را اضافه می‌کند.
+- انتخاب مدل: تمام مدل‌های نصب‌شده در داشبورد قابل مشاهده‌اند؛ فقط `selectable_models` گزینه‌های قابل انتخاب را تعیین می‌کند. نسخه‌های داخلی `-codex-ctx<tokens>` و legacy `-codex-64k` قابل مشاهده اما غیرفعال‌اند و به‌عنوان مدل پایه پذیرفته نمی‌شوند.
+- پروفایل سخت‌افزاری ثبت‌شده: Intel Core i5-12400، شش هسته/۱۲ رشته، حدود 31.78 GiB RAM و Intel UHD Graphics 730. AdapterRAM در WMI به‌عنوان VRAM اختصاصی فرض نمی‌شود؛ وضعیت حافظهٔ واقعی از WDDM و Ollama `/api/ps` تفکیک می‌شود.
+- baseline نرم‌افزاری: Python 3.11.9 و 3.14.6 در CI؛ Node.js 26.13.0/npm 11.20.0؛ Codex CLI 0.167.0 و 0.167.2؛ حداقل Ollama 0.40.16. CI نسخه‌های Python/Node/Codex را بررسی کرده است؛ نسخه و تخصیص واقعی Ollama فقط روی Runner مقصد قابل تأیید است.
+- **GitHub-hosted CI روی SHA دقیق `3b48da376cb90b0e0602f6300504152769ed79a0` موفق است:** tests، Python 3.11.9/3.14.6، Windows Storage regressions، Node 26/Codex 0.167.0 و 0.167.2، Browser E2E، Docker sandbox integration و dependency audit همگی success گزارش شده‌اند. این وضعیت فقط به همین SHA تعلق دارد.
+- **Target-host diagnostic روی همان SHA هنوز pending است:** [run #43290742576](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43290742576)، job با labelهای `self-hosted, Windows, X64, ollama, autonomous-state-owner`. تخصیص Runner و اجرای واقعی Ollama allocation/Codex tool-call هنوز اثبات نشده است؛ روشن بودن رایانه به‌تنهایی آنلاین بودن سرویس Runner را ثابت نمی‌کند.
+- شواهد قبلی [run #43197193053](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43197193053) مربوط به head و پیکربندی پیشین است؛ آن را به‌عنوان قبولی diagnostic برای کد adaptive-context فعلی PR #722 محسوب نمی‌کنیم.
+- اصلاحات موجود در PR #722 مسیر ثابت Python را حذف کرده و Python را از PATH همان حساب سرویس Runner resolve می‌کند؛ نسخهٔ Python و مسیر اجرایی واحد در preflight و target-host acceptance استفاده می‌شوند.
+- PR #707 superseded و بسته شده است؛ معماری ownership/checkpoint در PR #719 به main منتقل شده و نباید شاخهٔ قدیمی جداگانه ادغام شود.
+- گیت‌های باز: diagnostic واقعی Codex/Ollama روی Runner، soak و crash/restart میزبان، staging restore/rollback و بازبینی امنیتی مستقل Issue #52. توسعه و تست‌های مستقل GitHub ادامه می‌یابد؛ هیچ نتیجهٔ اجرا‌نشده‌ای موفق گزارش نمی‌شود و merge/deploy انجام نمی‌شود.
 
 > بخش‌های بعدی این سند snapshotهای تاریخی‌اند؛ وضعیت جاری و SHA معتبر در همین بخش ثبت می‌شود.
 
