@@ -197,10 +197,14 @@ def record_candidate_source(
     }
     with learning_connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
-        if connection.execute(
-            "SELECT 1 FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
-        ).fetchone() is None:
+        candidate = connection.execute(
+            "SELECT status, promoted_knowledge_id FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+        if candidate is None:
             raise LearningProvenanceError("Learning candidate does not exist.")
+        if candidate["promoted_knowledge_id"] is not None or candidate["status"] == "failed":
+            raise LearningProvenanceError("Source provenance is immutable after promotion or rejection.")
         existing = connection.execute(
             """SELECT * FROM learning_candidate_sources
                WHERE candidate_id=? AND source_type=?
