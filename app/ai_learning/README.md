@@ -1,12 +1,14 @@
 # AI Learning module
 
-This package is optional and isolated. It must not replace the existing chat model, current learning module, or task runtime.
+This package is enabled by default and remains isolated. It must not replace the existing chat model, current learning module, or task runtime.
 
-## Feature gates
+## Settings controls
 
-- AI_LEARNING_ENABLED=0 (default): management API is disabled; startup does not initialize the module database.
-- AI_LEARNING_ENABLED=1: enables the management API and initializes only AI_LEARNING_DB_PATH (default data/ai_learning.db).
-- AI_LEARNING_RETRIEVAL_ENABLED=1: additionally enables lexical search over explicitly published content. It has no effect unless the module itself is enabled.
+- `ai_learning_enabled`: enabled by default; controls the management API and subsystem.
+- `ai_learning_retrieval_enabled`: enabled by default; retrieves only explicitly published content.
+- `ai_learning_browser_enabled`: enabled by default; controls the visible-browser adapter.
+- Batch sizes, chunk dimensions, embedding batch size, browser/response timeouts, continuation count, stability window and retry budget are persisted in the central Settings store and validated by `PATCH /api/settings`.
+- The browser worker remains serialized by its durable lease and shared Chrome profile. A concurrency setting is intentionally not exposed until independent profiles and fencing are implemented.
 
 Do not expose the host service beyond loopback. The host application intentionally has no remote authentication.
 
