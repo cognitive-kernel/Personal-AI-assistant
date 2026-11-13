@@ -40,6 +40,7 @@ on:
       - scripts/verify_ollama_context.ps1
       - tests/test_autonomous_engineering.py
       - tests/test_ollama_context.py
+      - tests/test_ollama_context_bridge.ps1
       - tests/test_ollama_model_metadata.py
       - tests/test_codex_smoke_diagnostics.py
       - tests/test_browser_e2e.py
