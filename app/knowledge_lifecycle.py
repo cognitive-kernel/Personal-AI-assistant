@@ -651,9 +651,12 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
             ).fetchone()
             previous_failure = str(candidate["failure_reason"] or "").strip()
             previous_error = str(previous_job["error"] or "").strip() if previous_job else ""
-            history = " ".join(item for item in (previous_failure, previous_error) if item)
-            if history and not history.startswith("rejected_after_review:"):
-                reason += " Previous failure history retained: " + history[:1000]
+            candidate_reason = reason
+            job_error = reason
+            if previous_failure and not previous_failure.startswith("rejected_after_review:"):
+                candidate_reason += " Previous candidate failure retained: " + previous_failure[:1000]
+            if previous_error and not previous_error.startswith("rejected_after_review:"):
+                job_error += " Previous job error retained: " + previous_error[:1000]
             connection.execute(
                 """UPDATE knowledge_items SET status='conflicting'
                    WHERE job_id=? AND status='unverified'""",
@@ -663,14 +666,14 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
                 """UPDATE learning_jobs
                    SET status='rejected', error=?, updated_at=CURRENT_TIMESTAMP
                    WHERE id=?""",
-                (reason, candidate["job_id"]),
+                (job_error, candidate["job_id"]),
             )
             updated = connection.execute(
                 """UPDATE temporary_knowledge_candidates
                    SET status='failed', failure_reason=?, updated_at=CURRENT_TIMESTAMP
                    WHERE id=? AND content_sha256=? AND promoted_knowledge_id IS NULL
                      AND status IN ('awaiting_test','passed','failed')""",
-                (reason, candidate_id, current_hash),
+                (candidate_reason, candidate_id, current_hash),
             )
             if updated.rowcount != 1:
                 raise ValueError("Candidate changed before its rejection state could be recorded.")
