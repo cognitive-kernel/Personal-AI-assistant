@@ -86,9 +86,10 @@ def select_context_window(
     The RAM estimate assumes a float16 KV cache multiplied by Ollama's configured
     parallel request count, reserves 4 GiB for Windows and other processes, and adds
     at least 0.5 GiB or 10% of model weights as
-    runtime overhead. If the base model is already resident, its weights are
-    not charged twice because free physical memory already excludes them.
-    Missing telemetry or architecture dimensions are errors,
+    runtime overhead. Model weights are treated as already accounted for
+    only when Ollama reports a loaded CPU-resident model with zero VRAM allocation;
+    positive or missing VRAM telemetry causes the full installed weight size to be
+    charged conservatively. Missing telemetry or architecture dimensions are errors,
     never guessed fallback values. A successful estimate is still verified
     against Ollama's actual loaded context before Codex is dispatched.
     """
