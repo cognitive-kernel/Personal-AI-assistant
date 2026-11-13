@@ -7,6 +7,7 @@ from app import (
     experience_tasks,
     factual_verification_tasks,
     learning_review_tasks,
+    main as app_main,
     sandbox_tasks,
     task_routes,
 )
@@ -113,3 +114,15 @@ def test_sandbox_routes_are_loopback_only(tmp_path, monkeypatch):
     with TestClient(app, client=("192.0.2.10", 12345)) as client:
         response = client.get("/api/sandbox/consent")
         assert response.status_code == 403
+
+
+
+def test_every_registered_runtime_handler_is_blocked_from_generic_submission(local_client):
+    registered = {
+        task_type
+        for runtime in app_main._task_runtimes
+        for task_type in runtime.handlers
+        if task_type != "__unregistered_task_type__"
+    }
+    assert registered
+    assert registered <= task_routes.FEATURE_MANAGED_TASK_TYPES
