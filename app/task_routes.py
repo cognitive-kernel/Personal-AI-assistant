@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import ipaddress
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, StrictInt
 
 from . import task_manager
@@ -84,7 +84,7 @@ def list_tasks(
 
 
 @router.delete("/{task_id}")
-def delete_task(task_id: int) -> dict[str, Any]:
+def delete_task(task_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     task = task_manager.get_task(task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found.")
@@ -105,7 +105,7 @@ def delete_task(task_id: int) -> dict[str, Any]:
 
 @router.get("/{task_id}/events")
 def get_task_events(
-    task_id: int,
+    task_id: Annotated[int, Path(ge=1)],
     limit: int = Query(default=50, ge=1, le=100),
     before_id: int | None = Query(default=None, ge=1),
 ) -> dict[str, Any]:
@@ -119,7 +119,7 @@ def get_task_events(
 
 
 @router.get("/{task_id}")
-def get_task(task_id: int) -> dict[str, Any]:
+def get_task(task_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     task = task_manager.get_task(task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found.")
@@ -127,7 +127,7 @@ def get_task(task_id: int) -> dict[str, Any]:
 
 
 @router.post("/{task_id}/pause")
-def pause_task(task_id: int) -> dict[str, Any]:
+def pause_task(task_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     try:
         return task_manager.request_pause(task_id)
     except TaskManagerError as exc:
@@ -135,7 +135,7 @@ def pause_task(task_id: int) -> dict[str, Any]:
 
 
 @router.post("/{task_id}/resume")
-def resume_task(task_id: int) -> dict[str, Any]:
+def resume_task(task_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     try:
         return task_manager.resume_task(task_id)
     except TaskManagerError as exc:
@@ -145,7 +145,7 @@ def resume_task(task_id: int) -> dict[str, Any]:
 
 
 @router.post("/{task_id}/cancel")
-def cancel_task(task_id: int) -> dict[str, Any]:
+def cancel_task(task_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     task = task_manager.get_task(task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found.")
@@ -167,7 +167,7 @@ def cancel_task(task_id: int) -> dict[str, Any]:
 
 
 @router.patch("/{task_id}/priority")
-def set_task_priority(task_id: int, request: TaskPriorityRequest) -> dict[str, Any]:
+def set_task_priority(task_id: Annotated[int, Path(ge=1)], request: TaskPriorityRequest) -> dict[str, Any]:
     try:
         return task_manager.update_task_priority(task_id, request.priority)
     except TaskManagerError as exc:
@@ -177,7 +177,7 @@ def set_task_priority(task_id: int, request: TaskPriorityRequest) -> dict[str, A
 
 
 @router.patch("/{task_id}/schedule")
-def reschedule_task(task_id: int, request: TaskScheduleRequest) -> dict[str, Any]:
+def reschedule_task(task_id: Annotated[int, Path(ge=1)], request: TaskScheduleRequest) -> dict[str, Any]:
     try:
         return task_manager.reschedule_task(task_id, request.scheduled_at)
     except TaskManagerError as exc:
