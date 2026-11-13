@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.ai_learning import browser_automation
 from app.ai_learning.browser_automation import BrowserAutomationError, _provider_gate_error
 
 
@@ -24,3 +25,43 @@ def test_provider_gate_classifier_ignores_normal_chat_content():
         "https://chatgpt.com/c/example",
         "This lesson explains how HTTP 429 Too Many Requests works.",
     ) is None
+
+
+class _FailingCloseContext:
+    def close(self):
+        raise RuntimeError("context close failed")
+
+
+def test_browser_context_cleanup_does_not_mask_primary_failure(monkeypatch):
+    events = []
+    monkeypatch.setattr(
+        "app.ai_learning.browser_automation._log_event",
+        lambda event, **fields: events.append((event, fields)),
+    )
+
+    browser_automation._close_browser_context(
+        _FailingCloseContext(), preserve_primary_error=True
+    )
+
+    assert events == [
+        (
+            "browser_context_close_failed",
+            {
+                "exception_type": "RuntimeError",
+                "message": "context close failed",
+                "primary_error_active": True,
+            },
+        )
+    ]
+
+
+def test_browser_context_cleanup_failure_is_visible_after_success(monkeypatch):
+    monkeypatch.setattr(
+        "app.ai_learning.browser_automation._log_event",
+        lambda *args, **kwargs: None,
+    )
+    with pytest.raises(BrowserAutomationError) as raised:
+        browser_automation._close_browser_context(
+            _FailingCloseContext(), preserve_primary_error=False
+        )
+    assert raised.value.code == "browser_context_cleanup_failed"
