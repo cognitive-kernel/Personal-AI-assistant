@@ -1,8 +1,8 @@
 """Loopback-only endpoints for evidence-bound temporary knowledge review."""
 from __future__ import annotations
 
-from typing import Any, Literal
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Annotated, Any, Literal
+from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, ConfigDict, Field
 
 from . import knowledge_lifecycle, task_manager, db
@@ -38,7 +38,7 @@ class CandidatePromotionRequest(BaseModel):
 
 
 @router.post("/{candidate_id}/evidence")
-def record_candidate_evidence(candidate_id: int, request: CandidateReviewRequest) -> dict[str, Any]:
+def record_candidate_evidence(candidate_id: Annotated[int, Path(ge=1)], request: CandidateReviewRequest) -> dict[str, Any]:
     try:
         item = knowledge_lifecycle.record_candidate_review(
             candidate_id,
@@ -61,7 +61,7 @@ def record_candidate_evidence(candidate_id: int, request: CandidateReviewRequest
 
 
 @router.get("/{candidate_id}/readiness")
-def get_candidate_readiness(candidate_id: int) -> dict[str, Any]:
+def get_candidate_readiness(candidate_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     try:
         return knowledge_lifecycle.candidate_readiness(candidate_id)
     except KeyError as exc:
@@ -72,7 +72,7 @@ def get_candidate_readiness(candidate_id: int) -> dict[str, Any]:
 
 
 @router.post("/{candidate_id}/validate", status_code=202)
-def enqueue_candidate_validation(candidate_id: int) -> dict[str, Any]:
+def enqueue_candidate_validation(candidate_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     """Schedule source/model validation; network and model work stays in the queue worker."""
     try:
         readiness = knowledge_lifecycle.candidate_readiness(candidate_id)
@@ -118,7 +118,7 @@ def enqueue_candidate_validation(candidate_id: int) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="Knowledge validation could not be queued.") from exc
 
 @router.post("/{candidate_id}/promote")
-def promote_candidate(candidate_id: int, request: CandidatePromotionRequest) -> dict[str, Any]:
+def promote_candidate(candidate_id: Annotated[int, Path(ge=1)], request: CandidatePromotionRequest) -> dict[str, Any]:
     try:
         return knowledge_lifecycle.promote_candidate(
             candidate_id, expected_candidate_sha256=request.expected_candidate_sha256
