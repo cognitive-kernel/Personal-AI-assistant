@@ -286,3 +286,52 @@ def test_candidate_claim_coverage_is_exposed_and_incomplete_mapping_fails_closed
     assert plan["claim_coverage"]["covered_claim_count"] == 2
     assert saved.json()["executed"] is False
     assert saved.json()["promoted"] is False
+
+
+def test_candidate_source_api_enforces_web_ai_and_book_metadata(candidate_store):
+    job = learning.create_job("Candidate source metadata")
+    candidate_id = _candidate(job["id"])
+
+    invalid_ai = candidate_store.post(
+        f"/api/learning/candidates/{candidate_id}/sources",
+        json={"source_type": "ai", "provider": "OpenAI", "model_id": "model-x"},
+    )
+    assert invalid_ai.status_code == 422
+
+    ai = candidate_store.post(
+        f"/api/learning/candidates/{candidate_id}/sources",
+        json={
+            "source_type": "ai",
+            "provider": "OpenAI",
+            "model_id": "model-x",
+            "reference_url": "https://learn.microsoft.com/en-us/",
+            "metadata": {"response_id": "response-123"},
+        },
+    )
+    assert ai.status_code == 201
+    assert ai.json()["source"]["verification_status"] == "unverified"
+    assert ai.json()["promoted"] is False
+
+    invalid_book = candidate_store.post(
+        f"/api/learning/candidates/{candidate_id}/sources",
+        json={"source_type": "book", "book_title": "A reference book"},
+    )
+    assert invalid_book.status_code == 422
+
+    book = candidate_store.post(
+        f"/api/learning/candidates/{candidate_id}/sources",
+        json={
+            "source_type": "book",
+            "book_title": "Clean Architecture",
+            "book_author": "Robert C. Martin",
+            "edition": "1st",
+            "page": "35",
+        },
+    )
+    assert book.status_code == 201
+
+    detail = candidate_store.get(
+        f"/api/learning/candidates/{candidate_id}"
+    ).json()["candidate"]
+    assert {item["source_type"] for item in detail["source_provenance"]} == {"ai", "book"}
+    assert detail["status"] == "awaiting_test"
