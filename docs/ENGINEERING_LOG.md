@@ -1,4 +1,257 @@
+## 2026-11-13 — Whole-project re-audit and current GitHub evidence
+
+- Re-read the complete Master Engineering Prompt and re-audited active project PRs, issues, main baseline, current acceptance documentation, and exact-head workflows.
+- **PR #722 / branch:** `fix/autonomous-engineering-show-all-ollama-models-20261112`; base/main `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`. The branch history exceeds 500 commits while its net review diff is about 41 files; it is 0 commits behind main. PR remains Draft/open/unmerged. Avoid a merge commit importing the oversized history; use a reviewed squash or rebuild a clean branch after review.
+- **Last fully validated code/test SHA:** `add976d03aee1c8f6932590814d9c844338efc7f`. Tests [#43411202236](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202236): **2,193 passed, 2 skipped, 51 deselected**; Python 3.11.9/3.14.6, Windows Storage/PowerShell 5.1, Codex CLI 0.167.2/0.168.0, Markdown validation (96 files), import-cycle check, and claim-to-test benchmark (10/10) passed. Browser E2E [#43411202329](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202329), Docker full-suite and real sandbox integration [#43411202201](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202201), and Dependency Audit [#43411202351](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202351) passed on that SHA.
+- **Documentation-only updates after that code/test SHA:** no corresponding workflow run is recorded at this checkpoint. The green runs above are not represented as exact-head validation for those later documentation commits.
+- **Target Windows/Ollama diagnostic:** [#43411202380](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202380) hosted cleanup passed; `sandbox-diagnostic` remains pending because GitHub assigned no matching self-hosted Runner. This is not a pass.
+- **Target profile:** Intel Core i5-12400 (6 physical / 12 logical cores), approximately 31.78 GiB RAM, Intel UHD Graphics 730; Windows 11 x64 build 10.0.26300; Python 3.11.9/3.14.6 and Git 2.54.0. Node.js/npm and Codex CLI are provisioned per CI job.
+- **Runtime limitation:** Windows preflight reads persisted registry `OLLAMA_NUM_PARALLEL`, not the live Ollama process environment block. A process-only override may differ; live Ollama version/process and `/api/ps` allocation are not verified.
+- **Not run / pending:** actual target-host Codex tool-call smoke, target-host soak/crash-restart, staging restore/rollback, and required target-host tests. Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) still requires independent security review; Issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290) tracks project-wide acceptance.
+- **Related project fixes:** [PR #725](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/725) fixes Issue #723's exception-suppressing `finally` path; exact-head CI passed (2,137 passed, 2 skipped, 51 deselected), Browser E2E and Dependency Audit passed, and it is ready for review. [PR #727](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/727) ports and hardens generic Ollama model/KV-cache memory safety on current main; exact-head CI is running after correcting two test fixtures. PR #706 is Draft/stale (56 commits behind) and is not safe to merge; PR #726 was closed as superseded by #727.
+- The scorecard now identifies 57.45% / 60.47% as the last formal 2026-11-01 calculation, not a current completion claim. Current main CI is recorded separately in `docs/ACCEPTANCE_SCORECARD.md`.
+- Continue repository-side engineering and hosted validation without waiting for local or human tests. Keep unavailable target-host results marked PENDING/NOT RUN. Do not merge, bypass, auto-merge, or deploy while required gates remain open.
+- Root causes corrected in separate reviewable PRs: browser-learning worker exception suppression in PR #725; generic Ollama model-weight/KV-cache/hardware context safety and settings-route ordering in PR #727.
+- PR #706's branch is stale and remains Draft pending closure; its two settings-route failures were traced to checking hardware metadata before the model maximum and a test fixture missing safe-context recommendation metadata. The corrected implementation and regression tests are on current-main-based PR #727.
+- Issue #724 was identified as a duplicate of #723 and closed. Issue #723 remains open until PR #725 is merged.
+
+---
+
+## 2026-11-13 — Re-audit corrections: merge gate, Runner prerequisites, and Ollama parallelism evidence
+
+- Re-read the complete Master Engineering Prompt from `docs/master-engineering-continuity-prompt`. It explicitly requires both exact-head GitHub Actions and successful local tests on the target host before merge. Earlier current-status summaries incorrectly described target-host tests as a non-gate unless branch protection required them; those current summaries are corrected. Historical snapshots remain historical and are not current policy.
+- This does **not** pause GitHub-side development. CI, source-contract tests, docs, static analysis, and deterministic sandbox tests continue while target-host tests are NOT RUN/PENDING. No merge is allowed until the prompt's target-host requirement is satisfied.
+- Corrected the operations guide: Node.js 26.13.0/npm are provisioned per workflow job by the pinned setup-node action. Installing Node system-wide is not a Runner prerequisite. Python 3.11+ and Ollama remain target-host prerequisites; their availability under the actual Runner service identity is not yet verified.
+- **Ollama parallelism evidence limitation:** the Windows preflight reads the Ollama owner's persisted user/machine registry value, not the live process environment block. A process-only `OLLAMA_NUM_PARALLEL` launch override can differ. The PowerShell preflight now emits an explicit warning; docs and ADR no longer call the registry value the proven effective process value. Runtime parallelism remains unverified until the target-host launch configuration is established.
+- The confirmed target hardware remains Intel Core i5-12400 (6C/12T), approximately 31.78 GiB RAM, Intel UHD Graphics 730, Windows 11 x64 build 10.0.26300. No hardware gate was weakened.
+- At this checkpoint, exact-head hosted tests, Browser E2E, Docker sandbox, and dependency audit passed on `a34c05670d7d7924518143e1a10effaddb205edc`; subsequent audit/test/doc corrections require another full exact-head CI run. The self-hosted Windows diagnostic still has no Runner assignment.
+
+---
+
+## 2026-11-13 — Latest code/test validation: bf8fcb1df573996606adbaba6e40b72ab725a79c
+
+- Final validated code/test head: bf8fcb1df573996606adbaba6e40b72ab725a79c; four required hosted CI workflows all passed: tests #43384649649 (full test suite, Python 3.11.9/3.14.6, Windows Storage, Node/Codex matrix), Browser E2E #43384649576, Docker sandbox #43384649608, and dependency audit #43384649862.
+- Owner-confirmed hardware checks remain enforced: Intel Core i5-12400 (6C/12T), 31.78 GiB-class RAM (30–33 GiB tolerance), Intel UHD Graphics 730, Windows 11 build 26300.
+- Node.js 26.13.0/npm are provisioned per workflow job using SHA-pinned setup-node v7.1.0; Runner provisioning no longer requires system-wide Node/npm. Codex CLI 0.168.0 (latest official release on 2026-11-13) is installed by the workflow; 0.167.2 remains in the compatibility matrix.
+- Target diagnostic #43384649592: hosted cleanup passed; self-hosted sandbox-diagnostic remains pending without a Runner assignment. Live Ollama/Codex smoke, soak/crash-restart and staging restore/rollback are not claimed.
+- Required target-host tests are an explicit merge gate under the Master Engineering Prompt, regardless of branch-protection settings. Keep them NOT RUN / PENDING until executed; continue independent GitHub-side work meanwhile. Independent security review remains open in Issue #52. PR #722 remains Draft/open/unmerged.
+
+---
+
+## 2026-11-13 — User-confirmed hardware correction and target-profile enforcement
+
+- The owner explicitly confirmed the target hardware: Intel Core i5-12400, 6 physical cores / 12 logical threads, approximately 31.78 GiB RAM, Intel UHD Graphics 730; confirmed OS: Windows 11 x64 build 10.0.26300.
+- The previous audit incorrectly reclassified this known profile as unverified and removed the target-profile gate. This was a documentation and acceptance-contract error.
+- Restored live CIM checks for CPU model/topology, 30–33 GiB RAM tolerance, UHD 730 presence, and Windows 11 build 26300. Context sizing continues to use measured free memory and actual Ollama allocation; WMI AdapterRAM is not treated as dedicated VRAM.
+- Updated README, operations guide, project status, acceptance ledger, and regression source-contracts to reflect the owner-confirmed profile.
+- Removed Node.js/npm as system-wide Runner prerequisites: production and diagnostic workflows now provision Node 26.13.0/npm per job using SHA-pinned setup-node v7.1.0; Codex CLI 0.168.0 is installed by the workflow. Runner provisioning no longer fails just because Node is absent from the host PATH.
+- The target diagnostic remains pending until GitHub assigns the uniquely labelled self-hosted Runner. No target-host pass is claimed.
+
+---
+
+## 2026-11-13 — Exact-head CI completion and final compatibility re-audit
+
+- Re-read the full master engineering prompt and re-checked PR #722, current branch files, workflow definitions, project status, acceptance ledger, and open Issues.
+- Exact code/test head: `44e656d752abdc902d45fa98557cabe024a3f001`; base/main: `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`.
+- All four required hosted workflows passed on this exact SHA: tests #43360952224 (including full test suite, Python 3.11.9/3.14.6, Windows Storage and Node/Codex matrix), Browser E2E #43360952333, Docker sandbox #43360952190, and dependency audit #43360953410.
+- The earlier project-status and acceptance-ledger entries still described the previous SHA `fb53916fe072241b5910fbc3c194ff206ecb6312` and in-progress CI. Their current summaries are synchronized to this exact SHA and the completed run IDs.
+- Target diagnostic #43360945445: hosted cleanup succeeded; `sandbox-diagnostic` is still pending without a Runner assignment. Required labels remain `self-hosted, Windows, X64, ollama, autonomous-state-owner`. No label relaxation was made because the unique durable-state owner is a safety invariant.
+- Consequently no target-host Ollama process/configuration, live model allocation, Codex MXC/exec_command smoke, soak/crash-restart, or staging restore/rollback result is claimed.
+- Independent security review remains open in Issue #52; project-wide acceptance remains open in Issue #290. No merge, auto-merge, bypass, or deployment.
+
+---
+
+## 2026-11-13 — Remove unverified target hardware gate and require complete CI matrix
+
+### Root cause
+- The Windows target diagnostic compared the host to Intel Core i5-12400 / 6 cores / 12 threads / 30–33 GiB RAM / Intel UHD Graphics 730 and failed if any value differed.
+- At the time of that change, the recorded context was incomplete. The owner has now explicitly confirmed Intel Core i5-12400 (6C/12T), approximately 31.78 GiB RAM, Intel UHD Graphics 730, and Windows 11 build 26300; the profile is a real acceptance requirement.
+
+### Correction
+- The owner-confirmed target-profile checks have been restored in `.github/workflows/codex-windows-sandbox-diagnostic.yml`: CPU model and topology, 30–33 GiB RAM tolerance, UHD 730 presence, and Windows 11 build 26300. Live telemetry remains the basis for context/resource sizing.
+- Updated the source-contract regression test to require the confirmed hardware profile and prevent its accidental removal.
+- Extended the target diagnostic's exact-head wait set to include `Sandbox integration CI`, so the target-host stage cannot start while the Docker sandbox workflow is missing or non-green.
+- Corrected README and operations documentation: the Intel i5-12400/32-GB/UHD-730 profile is owner-confirmed; actual free RAM, WDDM GPU memory, and Ollama allocation remain live measurements.
+
+### Validation and residual risk
+- The first test attempt on SHA `15d8fc91ce8d3d2036fe0e0e4d1a0334e5cecd6a` caught a mismatch between the test's expected README sentence and the authored wording. The test expectation was corrected; no test was deleted or weakened.
+- Current code/test SHA: `fb53916fe072241b5910fbc3c194ff206ecb6312`. Exact-head runs [tests #43360632558](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43360632558), [Browser E2E #43360632835](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43360632835), [Docker sandbox #43360632554](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43360632554), and [dependency audit #43360632584](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43360632584) were in progress/queued when recorded.
+- Target diagnostic [#43360630126](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43360630126) remains pending without a Runner assignment. No actual hardware inventory, live Ollama environment/allocation, Codex tool-call smoke, or host recovery result is claimed.
+- PR #722 remains Draft/open. Issue #52 independent review and Issue #290 project-wide acceptance remain open. No merge, auto-merge, bypass, or deployment.
+
+---
+
+## 2026-11-13 — Re-audit of PR #722 against the master engineering prompt
+
+### Audit findings
+- Read the complete `docs/MASTER_ENGINEERING_PROMPT.md` from branch `docs/master-engineering-continuity-prompt` (blob `38cdfa9c25bcbd7fc7ba25eb87d4aefd92b41083`). The prompt requires incremental non-regressive changes, root-cause analysis, complete exact-head CI, target-host evidence before merge, and an auditable distinction between passed and pending gates. It also explicitly says not to stop independent GitHub-side work while human/local tests are unavailable.
+- Live PR #722 is Draft/open, targets `main`, and at audit head `9ff0095067a9944cf0f76da504026b18fa440a27`; base is `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`. GitHub reports 431 commits ahead, zero behind, and 40 changed files.
+- All four required GitHub-hosted workflows completed successfully on that exact head: tests #43356884932, Browser E2E #43356884952, Docker sandbox #43356884953, and dependency audit #43356884920. The tests workflow includes Python 3.11.9/3.14.6, Windows Storage/PowerShell 5.1, and Node 26 with Codex CLI 0.167.0/0.167.2.
+- The target-host diagnostic #43356868684 is still pending at `sandbox-diagnostic` with no Runner assignment. Its hosted cleanup job succeeded. Required labels are `self-hosted, Windows, X64, ollama, autonomous-state-owner`; the available evidence cannot distinguish a stopped service, disconnected Runner, missing registration, or label mismatch. No host state was guessed.
+- Reviewed the adaptive selector and Windows preflight. The selector validates positive model weight size, architecture context, all KV-cache dimensions, tool capability, parallel-request count, memory reserve/overhead, and conservative weight residency. The Windows bridge reads only the Ollama owner's persisted user setting with machine fallback and fails closed on unavailable owner/hive/invalid values. A remaining limitation is that persisted registry configuration is not direct proof of a process's inherited environment; target diagnostic evidence must confirm the live server configuration.
+- At the time of this historical snapshot, Intel Core i5-12400, 6C/12T, 31.78 GiB RAM, and Intel UHD 730 had not yet been confirmed by the user. The user subsequently confirmed this hardware profile; live target telemetry still awaits Runner assignment. The current CI matrix is Python 3.11.9/3.14.6, Node 26.13.0/npm 11.20.0, Codex CLI 0.167.2/0.168.0. Actual target Ollama >=0.40.16 is not yet verified.
+
+### Documentation reconciliation
+- Updated the current sections of `docs/PROJECT_STATUS.md` and `docs/ROADMAP_ACCEPTANCE.md` to point to the live PR head and exact-head successful workflow runs, and to record target-host/security/project-wide gates as pending/open.
+- Historical snapshots were preserved. No source code, user data, credentials, local state, database, or task/checkpoint record was changed.
+- PR #722 remains Draft/open. No merge, auto-merge, bypass, or deployment was performed.
+
+### Residual risks / next highest-priority work
+1. Obtain a real assignment for the uniquely labelled Windows/Ollama Runner and complete the target diagnostic.
+2. Verify actual Ollama server environment and model residency/context allocation, then run the Codex tool-call smoke.
+3. Run target-host soak, crash/restart, and staging restore/rollback checks.
+4. Obtain independent security review for Issue #52; continue the project-wide acceptance ledger in Issue #290.
+
+---
+## 2026-11-13 — Re-audit and exact-head evidence reconciliation for PR #722
+
+### Diagnosis
+- The implementation and hosted checks had advanced to head `9132b88073b2e238ebb2e7d38057c071aef02544`, but the opening/current sections of `PROJECT_STATUS.md` and `ROADMAP_ACCEPTANCE.md` still described the earlier `09cc8b3` snapshot and marked hosted CI as awaiting rerun. This made the current project state internally inconsistent.
+- Live GitHub job inspection confirms all four hosted workflow groups pass on `9132b88073b2e238ebb2e7d38057c071aef02544`; the separate self-hosted diagnostic remains pending because GitHub has not assigned a Runner.
+- PR review history contains no submitted review or inline review threads. The Codex review bot reported that its usage limit was reached; this is not an independent review.
+
+### Reconciliation
+- Updated the current-state sections of `PROJECT_STATUS.md` and `ROADMAP_ACCEPTANCE.md` to use the exact current head and link the successful tests, Windows/Node matrix, Browser E2E, dependency audit, and Docker sandbox runs.
+- Recorded target-host diagnostics, live Ollama/Codex smoke, host soak/recovery, staging restore/rollback, independent security review, and project-wide evaluation as pending/open—not passed.
+- Preserved historical snapshots below the current-state sections. No source code, user database, credentials, task state, or checkpoint data was modified.
+
+### Evidence and residual risk
+- PR head before this documentation-only reconciliation: `9132b88073b2e238ebb2e7d38057c071aef02544`.
+- Hosted checks: [tests/Python/Windows/Node](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43355342104), [Browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43355342087), [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43355342099), [Docker sandbox](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43355342197).
+- Target-host diagnostic [#43355339345](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43355339345) remains pending without a Runner assignment. No live Ollama allocation or Codex `exec_command` result is claimed.
+- Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) still requires an independent security review. PR #722 remains Draft/open; no merge, auto-merge, bypass, or deployment.
+
+---
+
+## 2026-11-12 — Final Autonomous Engineering audit: provisioning and Runner ownership
+
+### Root-cause findings
+- The model inventory is intentionally visible in full; `selectable_models` remains the allow-list for enabled choices. A suffix mismatch left legacy `-codex-64k` aliases inconsistently rejected across browser, Python, PowerShell readiness, and provisioning paths.
+- The target-host Codex diagnostic used generic Ollama Runner labels, while the production autonomous job uses the unique `autonomous-state-owner` label. The diagnostic could therefore run on a different Ollama Runner and inspect a different local model/state directory.
+
+### Corrective changes
+- Unified current `-codex-ctx<tokens>` and legacy `-codex-64k` recognition across UI, API validation, both PowerShell readiness scripts, provisioning, and context verification. Generated aliases remain visible but disabled; they cannot be saved as the base model.
+- Pinned the Windows Codex/Ollama diagnostic to the same unique `autonomous-state-owner` Runner used by the production workflow.
+- Added regression coverage for the provisioning guard and the diagnostic Runner label.
+- Rechecked target hardware assumptions: Intel Core i5-12400 (6C/12T), approximately 31.78 GiB RAM, Intel UHD Graphics 730. WMI AdapterRAM is not treated as dedicated VRAM; runtime Ollama allocation remains authoritative.
+- CI executed Python 3.11.9/3.14.6 and Node.js 26.13.0/npm 11.20.0 with Codex CLI 0.167.0/0.167.2. The code enforces Ollama >=0.40.16; the installed target-host Ollama version and live model allocation remain unverified until the self-hosted diagnostic runs.
+
+### Exact-head GitHub validation
+- Code/test SHA: `ce94934a48c00e95f6f50fab809e7fb9188b9943`.
+- Full suite: **2,171 passed, 2 skipped, 51 deselected**; Markdown validation (96 files), import-cycle check, deterministic retrieval and claim-to-test checks passed.
+- Windows Storage regressions, Python 3.11.9 and 3.14.6 matrices, Windows Node/Codex checks, Browser E2E, Docker full-suite/sandbox integration, and dependency audit all passed.
+
+- Exact-head workflow evidence: [tests + Python matrix + Windows Storage](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43281188427), [Browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43281188426), [Docker full-suite and real sandbox integration](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43281188706), [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43281188494). The self-hosted [Windows/Ollama diagnostic](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43281178718) remained pending without a runner assignment.
+- Documentation synchronization changes the PR head; exact-head CI must run again on the documentation-inclusive SHA.
+
+### Residual gates
+- Target-host diagnostics `#43281178718` (code/test SHA) and `#43282258559` (documentation-inclusive SHA) are pending with no Runner assigned. The production main-branch run `#43220800164` has its `codex` job queued with no Runner name and requires `self-hosted, Windows, X64, ollama, autonomous-state-owner`. A powered-on PC does not prove that its GitHub Runner service is connected and matching those labels.
+- No live Ollama allocation, target-host Codex tool-call smoke, local soak/crash-restart, staging restore/rollback, human evaluation, or independent security review is claimed. Issue #52 remains open.
+- PR #722 remains Draft and unmerged. Continue GitHub-side work; do not bypass repository-enforced checks or independent security review; target-host evidence remains separately tracked and does not block delivery by default.
+
+---
+
+## 2026-11-12 — Windows Codex CLI toolchain compatibility
+
+- The target environment uses Node.js 26.13.0 with npm 11.20.0 and Codex CLI 0.167.0. Official Node release metadata confirms Node 26.13.0 is LTS and bundles npm 11.20.0.
+- Added a Windows GitHub Actions matrix that verifies Node/npm exactly and installs/runs both the target Codex CLI 0.167.0 and current 0.167.2 patch line without credentials. This validates the command/runtime boundary separately from the target-host Ollama service.
+- The local Windows/Ollama runner diagnostic remains separate from GitHub-hosted CI evidence. The Master Engineering Prompt requires successful target-host tests before merge regardless of branch-protection configuration; pending target-host tests must not stop independent GitHub-side implementation, testing, or PR preparation.
+
+---
+
+## 2026-11-12 — Exact Python runtime compatibility for Autonomous Engineering
+
+- The owner environment includes Python 3.11.9 and 3.14.6, while the project declares `requires-python >=3.11`; the previous GitHub test job exercised only the moving Python 3.11 line.
+- Added a GitHub-hosted matrix for the automation-specific regression suite on exact Python 3.11.9 and 3.14.6. It covers the dashboard/API, cycle/checkpoint ownership and recovery, durable task/PR state, hardware telemetry, Ollama metadata/context, and Codex configuration contracts. Python 3.11.9 is pinned to Ubuntu 24.04 because the newer Ubuntu 26.04 runner image does not publish that archived patch build; Python 3.14.6 uses Ubuntu 26.04.
+- This validates both installed Python runtimes without relying on the owner's local test run. The full project suite remains on Python 3.11, and Windows-specific PowerShell/SQLite checks remain on Windows runners.
+- The workflow change requires fresh exact-head checks; earlier green runs do not validate the new matrix.
+
+---
+
+## 2026-11-12 — PR #707 superseded by merged PR #719
+
+- Compared all 30 paths in PR #707 against the merged PR #719 and current `main`.
+- PR #719 already includes the checkpoint/process identity and lifetime locks, worktree execution lock, durable task-state mutex/path helpers, PowerShell owner-record module, serialized manual-task workflow, unique Runner label, ADR-014/015, and corresponding regression coverage.
+- PR #707's branch was based on the pre-#719 main snapshot, was non-mergeable, and its remaining failures came from stale URL validation and workflow test assumptions. The current main implementations supersede those changes.
+- Closed PR #707 with an explanatory audit comment; no stale code was merged. Updated PR #722 and the current status/acceptance ledgers so it no longer appears as an unresolved rebase dependency.
+
+- Latest documentation-inclusive PR #722 head before this final status synchronization: `234643106cfe675bacc18290a926987131f34aee`. Dependency audit passed; Python suite, Windows Storage, Browser E2E, and Docker sandbox were still running; the self-hosted Windows diagnostic remained pending without a runner assignment.
+
+---
+
+## 2026-11-12 — Autonomous Engineering model-selector consistency
+
+### Root-cause analysis
+- The status API intentionally exposes `models` (the complete installed inventory) and `selectable_models` (the base-model allow-list). The dashboard intentionally keeps all installed models visible, but only enables entries accepted by `selectable_models`. The actual defect was an inconsistent internal-variant suffix contract: some client/PowerShell/provisioning paths recognized current `-codex-ctx<tokens>` aliases but did not reject legacy `-codex-64k` aliases consistently.
+- This inconsistency could let a legacy generated Codex alias pass a readiness/provisioning path that should require the original Ollama base model. It was not a reason to hide the installed-model inventory.
+
+### Corrective changes
+- Preserve the complete installed `models` list for visibility and use `selectable_models` as the authoritative allow-list for enabled choices.
+- Apply the same current-and-legacy variant rule across Python settings validation, Ollama status filtering, browser selection, both Windows readiness scripts, provisioning, and runtime context verification.
+- Keep generated aliases visible but natively disabled; reject saved aliases before dispatch and require the original base model.
+- Add regression assertions for the Python API, both browser-visible variants, app/Runner readiness, and provisioning. Existing backend validation remains fail-closed.
+
+### Validation
+- Changes are on PR #722 branch `fix/autonomous-engineering-show-all-ollama-models-20261112`.
+- Code/test SHA `6246b9aa6f1a3728a1d32e6f98499dedd3153412` triggered exact-head Python tests, Windows storage regressions, Browser E2E, isolated Docker sandbox, dependency audit, and the self-hosted Windows diagnostic. Dependency audit passed; the other runs were still active/pending when this entry was written.
+- This log-only follow-up changes the PR head; all exact-head checks must be read again on the final documentation-inclusive SHA. No local target-host or human test is claimed.
+
+---
+
+## 2026-11-12 — Per-user Ollama path and target readiness coverage
+
+- Root cause: a non-admin Windows Runner may not receive Ollama's per-user install directory in PATH, and WMI can omit ExecutablePath for a process owned by another account. The old fixed Administrator path was not portable.
+- Fix: runner readiness, provisioning, autonomous workflow bootstrap, and target diagnostic now fall back to enumerating non-special Win32_UserProfile paths and probing the standard AppData\\Local\\Programs\\Ollama\\ollama.exe location. The executable is still invoked and version-checked; no username or admin elevation is assumed.
+- The target Windows diagnostic now executes the production check_autonomous_runner.ps1 under the actual service identity and requires WINDOWS_RUNNER_READINESS_CONTRACT_OK.
+- Regression tests assert the profile-discovery fallback in all four entry points.
+- Code/test head: ae5f0fb26c26ac02e4a9bd04fd1f8362c9796d6a. Exact-head tests #43211124252, sandbox #43211124343, browser #43211124438, dependency audit #43211124379, and Windows diagnostic #43211116634 were queued/in progress when recorded; focused Codex/context tests have passed, while the full suite and integration gates remain pending.
+
+## 2026-11-12 — Windows Runner service-identity readiness correction
+
+### Root cause
+The consolidated PR #722 readiness script still used `Get-Process Runner.Listener`. That check depends on process visibility from the current account and does not prove that the registered GitHub Actions Windows service is running under its configured service identity.
+
+### Correction
+- Query `Win32_Service` for a running `actions.runner*` service with a nonzero PID.
+- Resolve that PID through `Win32_Process` and require a `Runner.Listener.exe` child whose `ParentProcessId` matches the service PID.
+- Report the service name, configured service account, and PID only after both checks succeed.
+- Treat CIM inspection failure or an unverifiable listener as not-ready (fail-closed).
+- Add a regression test forbidding the old `Get-Process Runner.Listener` path.
+
+### Validation
+Current PR head: `ae5f0fb26c26ac02e4a9bd04fd1f8362c9796d6a`. Exact-head tests, sandbox integration, Browser E2E, dependency audit, and self-hosted Windows diagnostic are queued/in progress under runs #43211124252, #43211124343, #43211124438, #43211124379, and #43211116634. None is recorded as passed until its exact-head conclusion is success.
+
 # Engineering Continuity Log
+
+## 2026-11-12 — PR #722: adaptive Codex context bounded by model and host capacity
+
+### Root-cause analysis
+
+- A fixed 64,000-token threshold existed across model selection, settings readiness, PowerShell preflight, Runner checks, and the Codex model catalog. A separate 512-token floor remained in the follow-up implementation, which still contradicted the requirement that Codex adapt to any positive capacity.
+- The earlier capacity calculation conflated the hardware-derived token ceiling with the model's advertised context ceiling. It also needed to avoid charging model weights twice when the selected base model was already resident.
+- Ollama's verbose model-show response can be unnecessarily large; metadata required by this path is available through verbose=false.
+
+### Corrective changes
+
+- The selected context is clamped to the minimum of the independently reported hardware ceiling, model context limit, and Codex catalog ceiling. A user/workflow request above that ceiling cannot be persisted or passed to Codex.
+- Removed both the 64k Codex minimum and the arbitrary 512-token runtime floor. Context validation now accepts any positive integer; zero/negative values and a host budget unable to provide even one token remain invalid.
+- Kept the original Ollama model immutable. The workflow creates/reuses a separate -codex-ctx<tokens> variant, verifies its saved num_ctx, confirms the exact allocated context with /api/ps, and repeats the check after Codex.
+- Model-weight memory is subtracted only when the base model is not already resident. Hardware capacity is still architecture-aware because KV-cache bytes/token depend on the selected model's architecture.
+- Updated readiness/provisioning scripts, Codex catalog validation, dashboard context display, ADR-020, operations guidance, and regression tests. /api/show uses verbose=false; loopback/proxy/redirect and response-size guards remain intact.
+
+### Validation status
+
+- Current branch: fix/autonomous-engineering-show-all-ollama-models-20261112; PR #722 remains Draft and unmerged.
+- Target-host diagnostic is configured to test a 10,000-token request on the Windows Runner, including the real Codex tool-call smoke and exact runtime allocation checks.
+- Exact-head CI and target-host execution results are pending after the latest commits. No local/target-host success is claimed without captured output.
+
+### Residual risk
+
+- The KV-cache estimate uses the current FP16 assumption and is only a preflight estimate; Ollama's actual loaded allocation and remaining physical-memory check are authoritative.
+- Very small positive contexts may be rejected by a particular Ollama/model runtime or Codex build. Such runtime rejection must be reported with evidence; the application must not reintroduce an arbitrary policy floor.
+- Smaller contexts reduce the amount of repository and conversation evidence available in one turn. Existing durable checkpoints and bounded-task execution remain necessary.
+
+---
 
 ## 2026-11-11 — PR #709: research-first learning with gpt-oss:20b
 
@@ -526,7 +779,7 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - General assistant answers persisted through `append_assistant_message` are now staged locally as `learning_chat_candidates` under migration 45. Candidates retain the query hint, conversation/message/task identifiers, SHA-256 hashes and provenance, begin as `unverified`, and are never automatically promoted to trusted factual knowledge or sent to an external provider. Very short answers and obvious credential-bearing exchanges are skipped. The candidate capture is best-effort after chat persistence, so staging failure does not discard a saved conversation.
 - The subject hint is the originating user query, not yet a canonical taxonomy label; candidate-to-course promotion remains a separate workflow. The ingestion path covers assistant messages persisted in local chat history, not transient responses that are never stored.
 - Exact-head CI on `e62342e79d882c44e07340e28a728bcbf03846ab`: main suite **2028 passed / 50 deselected**; Windows storage **11 passed / 47 deselected**; browser E2E and dependency audit succeeded; generated learning artifacts, Markdown links, import-cycle guard, retrieval benchmark and claim-to-test coverage benchmark all succeeded. The claim-to-test benchmark passed 10/10 with zero false accepts and zero false rejects.
-- Target-host execution and a live `gpt-oss:20b` benchmark were intentionally excluded from the merge gate at the user's direction and are not claimed as completed.
+- Target-host execution and a live `gpt-oss:20b` benchmark were not run and are not claimed as completed. The user's direction was to continue GitHub-side engineering without waiting for these tests; it did not waive the Master Engineering Prompt's pre-merge target-host validation requirement.
 
 
 ## Universal learning contract v2 — source coverage and delivery policy
@@ -635,3 +888,266 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Issue #290 remains authoritative: no automatic PR merge, deployment, cloud provisioning, or remote execution. The controller never calls the merge API and accepts only a human merge actor; owner review and manual merge remain required.
 - This CI proves repository tests and the configured Windows storage regression job only. A real target-host Codex/Ollama tool-call smoke, long-duration soak, crash/restart acceptance, staging restore/rollback, and independent security review (Issue #52) remain pending and are not claimed.
 - No direct write to `main`, force-push, deployment, destructive state reset, or user-data deletion occurred. This verification snapshot is for the exact SHA above; any subsequent commit requires its own exact-head CI.
+
+## 2026-11-12 — Adaptive Codex context bounded by model and hardware capacity (PR #722)
+
+### Root cause
+
+- A fixed 64,000-token floor was duplicated across the context selector, Autonomous Engineering settings/readiness, Windows preflight and provisioning scripts, Codex catalog validation, dashboard copy, and operations documentation.
+- The prior selector also folded the model maximum into the reported hardware maximum, obscuring the two independent constraints.
+- The service and PowerShell metadata paths used verbose Ollama /api/show responses even though the concise response exposes the architecture metadata needed for context planning.
+
+### Decision and implementation
+
+- Recorded ADR-020. Hardware capacity is computed independently from model capacity using available physical RAM, the 4 GiB reserve, installed model weights, runtime overhead, and architecture-specific KV-cache bytes/token.
+- The effective context ceiling is min(hardware capacity, model maximum, Codex catalog maximum). The selected context is the requested value clamped to that ceiling, or the effective ceiling when no request is supplied.
+- Removed the Codex-specific 64k minimum. The 512-token floor remains only as the minimum valid model/runtime metadata window; below that, safe initialization cannot be established.
+- Updated the Python selector, Autonomous Engineering status/settings, PowerShell preflight, Codex catalog, readiness/provisioning checks, dashboard wording, and operations guide. User/workflow requests above the verified ceiling are clamped before model-variant creation and Codex dispatch.
+- Switched relevant Ollama /api/show metadata requests to verbose=false while preserving response-size guards and runtime verification through /api/ps.
+- Added regressions for 10,000-token hardware capacity, an 8,192-token model cap, request clamping, and saving an installed model below 64k.
+
+### Validation boundary
+
+- Active branch: fix/autonomous-engineering-show-all-ollama-models-20261112; existing PR: #722.
+- Exact-head CI for the new commits has not yet completed. No local test output, target-host Codex run, or real tool-call smoke is claimed.
+- Runtime acceptance must prove the Codex model catalog carries the selected value and Ollama /api/ps reports exactly that allocation before and after Codex.
+- No direct main write, force-push, automatic PR merge, deployment, or destructive state change was performed.
+
+## 2026-11-12 — PR #722 exact-head GitHub CI and contract correction
+
+- Verified exact PR head `ff74389cfe033afc9ccf1c9d377930a1cf634a3e` against GitHub Actions. The full Python suite completed with **2,146 passed, 2 skipped, 51 deselected** in 248.97 seconds; Windows Storage regressions passed; Browser E2E passed; dependency audit passed.
+- The claim-to-test coverage benchmark completed with **10/10 cases passed**. Markdown link validation passed for 96 files.
+- Corrected a documentation inconsistency: ADR-020 and the implementation permit every positive integer context, including one token when both model metadata and runtime allocation support it. There is no 512-token or other fixed minimum. Zero/negative values, missing metadata, and a runtime allocation mismatch remain fail-closed.
+- Updated `docs/ROADMAP_ACCEPTANCE.md` and `docs/PROJECT_STATUS.md` to reflect the actual contract and exact-head evidence. Historical entries are retained; this entry explicitly supersedes their stale 512-token-floor and pending-CI statements.
+- The separate self-hosted Windows diagnostic has passed its exact-head CI wait and service-account preparation, and is currently running the adaptive-context regression step. Installed-model inventory, actual Ollama `/api/ps` allocation, Codex `exec_command` tool-call smoke, and post-smoke allocation verification are not yet evidenced; they remain pending and are not claimed as passed.
+- No direct `main` write, force-push, automatic merge, deployment, or destructive state reset was performed. The PR remains Draft/open. GitHub-side implementation and CI work proceeds independently of any later human acceptance; the repository's explicit target-host and owner/manual-merge safeguards remain unchanged.
+
+
+## 2026-11-12 — PR #722 exact-head and target Windows runtime acceptance completed
+
+- Exact PR head `326b41a862661f032143fb0b8d26f80d8174ffc5` completed all required GitHub workflows successfully: tests **2,146 passed, 2 skipped, 51 deselected**; Windows Storage regressions, Browser E2E, and dependency audit passed.
+- Self-hosted Windows diagnostic [#43197193053](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43197193053) passed. It enumerated 13 installed Ollama models with no metadata errors; verified `gpt-oss:20b-codex-ctx10000` with architecture maximum 131,072 and actual runtime allocation 10,000; measured 10,666,065,920 bytes of remaining physical RAM after allocation; executed a real Codex `exec_command` JSONL smoke with exit code 0 and verified the workspace probe, paired command events, expected agent message, and completed non-failed turn; re-verified the allocation after Codex and released the internal model from RAM.
+- Updated the PR description and acceptance records to distinguish exact-head CI and target-runner evidence from the still-open project-wide soak, crash/restart, staging restore/rollback, independent security review, and human evaluation gates.
+- No direct `main` write, force-push, automatic merge, deployment, or destructive state reset was performed. PR #722 remains Draft/open for owner review.
+
+
+## 2026-11-12 — Target-host compatibility and Docker failure correction (PR #722)
+
+- Re-audited the module against the then-required target profile: Intel Core i5-12400 (6C/12T), 31.78 GiB-class physical RAM, Intel UHD Graphics 730, Windows service-account runner, Ollama >=0.40.16, and pinned Codex CLI 0.167.0. The hardware was later user-confirmed; the installed Ollama version remains unverified.
+- Removed the diagnostic's branch-specific 10,000-token default so an empty request exercises automatic model/hardware/Codex capacity selection. The previous 10k smoke remains a manual-request test only.
+- Removed hard-coded Admin-user Ollama paths and PowerShell npm/Codex wrappers; use npm.cmd/codex.cmd and locate ollama.exe from PATH or its active process.
+- Added target hardware fingerprint and /api/ps device-allocation evidence. WMI AdapterRAM for Intel UHD is explicitly not treated as dedicated VRAM.
+- Integrated native process identity/termination and optional psutil telemetry. Windows process creation time is rechecked on the opened handle; Linux pidfd pins the process object and prevents PID-reuse signaling. Unsupported safe termination fails closed.
+- Repaired isolated Docker behavior tests: resolve/validate the Git HEAD on the host and pass only the SHA into the no-network, read-only test container. The container does not receive a .git mount.
+- Added native target-host architecture acceptance for telemetry, locks, watcher identity, task-owner preservation, and pending-PR cleanup.
+- PR #720 and PR #721 were closed as superseded; their relevant changes were reconciled into PR #722 without importing the old 64k context floor or verbose metadata behavior.
+- Exact current head 1bb8a4f802d2496e355dd4d86a0595d275512cad has five workflows queued/running (tests, sandbox integration, browser E2E, dependency audit, Windows diagnostic). No pass is claimed before completion.
+- No merge, deployment, direct main write, force-push, or destructive user-state operation was performed.
+
+
+- Scope clarification: the removal of the fixed 64k/512-token floors applies to the Codex adaptive-context path. The separate general Ollama chat runtime retains its existing 512-token minimum; it is not used to clamp or reject Codex context selection.
+
+
+## 2026-11-12 — Windows Runner Python-version contract correction
+
+- **Root cause:** the autonomous Windows workflow hard-coded `C:\\Program Files\\Python311\\python.exe`, while Runner provisioning and the operations contract explicitly accept Python 3.11 or newer. A valid system-wide Python 3.12+ installation could therefore pass provisioning but fail at workflow startup.
+- **Correction:** resolve `python.exe` from the actual Runner service account's PATH, validate its executable path, and enforce the same Python >=3.11 contract before adding its directory and Scripts directory to the workflow PATH. No Python installation, user profile, or machine-specific path is assumed.
+- **Regression protection:** the target-host diagnostic contract test now requires version-aware Python discovery and rejects reintroduction of the Python311 hard-coded path.
+- **Scope/safety:** this changes only runtime discovery; it does not install software, alter the user's machine, weaken service identity checks, or change Ollama/Codex context selection.
+- **Validation:** exact-head GitHub Actions are required for the new commit; results are pending and will be recorded against the exact SHA. The PR remains Draft and is not merged.
+
+
+## 2026-11-12 — Clarify upstream Codex context recommendation
+
+- **Evidence:** the official Ollama Codex integration guide recommends a context window of at least 64k tokens. The adaptive-context implementation intentionally removes an application-enforced 64k floor so constrained hosts can attempt smaller verified contexts; those are not equivalent to the upstream-recommended configuration.
+- **Correction:** ADR-020, the operations guide, and README now distinguish the application's no-fixed-floor policy from Ollama's >=64k recommendation. Sub-64k operation is explicitly labelled best-effort and requires a successful real Codex tool-call smoke test; /api/ps allocation alone is not presented as proof that arbitrary prompts fit.
+- **Regression protection:** documentation-contract tests assert that the upstream recommendation and best-effort qualification remain visible.
+- **Source:** https://docs.ollama.com/integrations/codex
+- **Validation:** exact-head GitHub Actions are running for the resulting commit; no result is claimed until all required checks complete.
+
+
+## 2026-11-12 — Documentation regression assertion repair
+
+- The first exact-head run after the upstream recommendation clarification exposed a documentation-only assertion mismatch: the README sentence was rephrased so the existing contract test no longer found its required stable phrase. The implementation and behavior were unaffected.
+- Restored the established wording while retaining the new Ollama >=64k best-effort compatibility qualification. The assertion was not removed or weakened; the full exact-head workflow matrix is rerunning.
+
+
+- The next exact-head run found a second stable-wording assertion in the operations guide. The guide now preserves the existing contract phrase while keeping the new upstream >=64k recommendation caveat. No assertion was removed or weakened; another exact-head run is required.
+
+
+## 2026-11-12 — Windows checkpoint watcher CIM startup hardening
+
+- **Observed failure:** exact-head Windows Storage regression failed in `test_checkpoint_watcher_real_process_publishes_run_scoped_readiness`. The watcher reported that its Windows process metadata query could not complete. The failure occurred in the subprocess invocation boundary before process identity could be published; the prior wrapper discarded the underlying `OSError` / subprocess exception, so the precise host-side cause (executable resolution versus startup timeout) was not observable from CI evidence.
+- **Correction:** resolve Windows PowerShell from the OS `SystemRoot` / `WINDIR` installation path first, retaining PATH fallback; increase the bounded CIM subprocess timeout from 8 to 20 seconds; include the exception type and message in fail-closed diagnostics. The test's outer readiness window is 45 seconds so it can accommodate the bounded query.
+- **Regression protection:** added a Windows process-snapshot test proving system PowerShell resolution, bounded timeout, returned PID/creation-time/command parsing, and no relaxation of ownership validation.
+- **Safety:** CIM failure still fails closed. PID, creation-time, command-line, run/task/base-SHA checks and the native Windows handle/GetProcessTimes recheck are unchanged. No process is terminated based on a failed metadata query.
+- **Validation:** new exact-head GitHub Actions are required; previous green jobs on earlier SHAs are not reused as evidence for this change.
+
+
+## 2026-11-12 — PowerShell 5.1 bridge and Codex context override hardening
+
+- **Compatibility gap:** the Windows Storage workflow exercised the Python context helper under PowerShell 7 only. The production autonomous workflow invokes its PowerShell preflight under Windows PowerShell 5.1, so the older shell's UTF-8 file/process bridge was not independently covered.
+- **Correction:** added a dedicated Windows PowerShell 5.1 integration script using explicit UTF-8-without-BOM input/output/error files and a bounded child process. It covers normal adaptive selection, a supported 1,000-token context below the Ollama 64k recommendation, insufficient-RAM fail-closed behavior, and correct accounting when model weights are already resident. The Windows Storage job now runs this script under `shell: powershell`; a source-contract regression ensures the job cannot silently drop it.
+- **Context pinning issue:** Codex supports a global `model_context_window` configuration override, and model catalog entries have a separate `max_context_window` field used to cap such overrides. Supplying only `context_window` in the generated catalog did not prove that inherited Runner-account Codex settings could not raise the context above Ollama's verified allocation.
+- **Correction:** generated catalog entries now set both `context_window` and `max_context_window` to the verified allocation, and the CLI passes `model_context_window` explicitly with that same value. Added regression tests for a 1,000-token allocation and documentation coverage. This preserves the upstream >=64k recommendation as a best-effort qualification, not a hard floor.
+- **Sources:** [Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference) and [Codex model metadata schema](https://github.com/openai/codex/blob/main/codex-rs/protocol/src/openai_models.rs).
+- **Validation:** the Windows Storage regression passed on intermediate code SHA `4643710b92ba782eeaf7213039640c99bf2cc71a` after the CIM hardening. The newly added PowerShell 5.1 bridge and Codex override changes require a fresh exact-head CI matrix; no previous SHA is substituted for that validation.
+
+
+## 2026-11-12 — Legacy Codex context-variant migration safety
+
+- **Compatibility gap:** the previous fixed-context integration created installed Ollama models named `<base>-codex-64k`; the adaptive integration now uses `<base>-codex-ctx<tokens>`. The model selector and preflight recognized only the new suffix, so a leftover legacy model could appear as a user-selectable base model or remain resident while the next hardware budget was calculated.
+- **Correction:** both current and legacy generated suffixes are now classified as internal, excluded from selectable models, and rejected if passed as the saved base model. Preflight unloads both suffix formats for the selected base before recalculating current free RAM and creating the new exact-context variant.
+- **Regression protection:** inventory tests include both current and legacy variants; settings reject a legacy variant before Ollama/GitHub access; PowerShell contract tests assert legacy cleanup and rejection.
+- **Scope:** the separate general Ollama chat context path is unchanged; PR #706 remains separate.
+
+
+## 2026-11-12 — Windows PowerShell resolution for hardware and readiness telemetry
+
+- **Compatibility gap:** the GPU telemetry fallback used a PATH-only `powershell.exe` lookup with a 4-second timeout; the psutil-free Runner status fallback used the same PATH-only lookup with a 5-second timeout. On a Windows service account or cold hosted runner, either could report missing GPU/Runner telemetry despite inbox Windows PowerShell being installed.
+- **Correction:** added a shared SystemRoot/WINDIR-based Windows PowerShell resolver with PATH fallback. GPU telemetry and the psutil-free Runner status probe now use the resolved executable with a bounded 20-second timeout. Missing/failed telemetry remains unknown/not-ready; it is never fabricated as zero or success.
+- **Regression protection:** tests verify SystemRoot resolution, the 20-second GPU probe bound, and service-account Runner detection through the resolved PowerShell path.
+
+
+- The production PowerShell preflight was aligned with the tested bridge: it now resolves python.exe explicitly, starts the helper with Start-Process, redirects stdout/stderr to bounded temporary files, parses UTF-8 JSON, and removes all temporary artifacts in finally. The PowerShell 5.1 integration test exercises the same Start-Process/file contract rather than a separate native-stdin path.
+
+
+## 2026-11-12 — Remove the arbitrary 1,048,576-token Codex catalog ceiling
+
+- **Finding:** the adaptive selector's catalog cap was hard-coded to 1,048,576 even though Codex's model metadata schema represents both context_window and max_context_window as signed 64-bit integers. This silently imposed an application limit unrelated to the selected Ollama model or actual host capacity.
+- **Correction:** the selector now uses a Codex-safe signed 64-bit ceiling of floor((2^63 - 1) / 9), because Codex derives automatic compaction with (context_window * 9) / 10 using i64 arithmetic. The selected context is still bounded by model architecture and measured host memory. The generated model catalog separately pins context_window and max_context_window to the exact selected runtime allocation, so this representational ceiling cannot authorize an oversized Codex context.
+- **Regression protection:** tests now prove a model context of 2,097,152 is not clipped to 1,048,576 and verify the i64 catalog ceiling. General Ollama chat context caps in app/main.py, app/ollama.py, and its UI remain unchanged and separate.
+- **Source:** Codex ModelInfo defines context_window and max_context_window as optional i64 fields: https://github.com/openai/codex/blob/main/codex-rs/protocol/src/openai_models.rs
+
+
+## 2026-11-12 — Repair malformed regression-test assertion found by CI
+
+- **Observed failure:** the exact-head tests and Docker sandbox jobs both stopped during pytest collection with a SyntaxError in tests/test_codex_smoke_diagnostics.py. The error was introduced while updating a PowerShell regex source-contract assertion; the assertion string was truncated and the remainder of its test function was displaced. This was a test-source defect, not a runtime failure in Ollama or Codex.
+- **Correction:** restored the entire context-preflight contract test, retained its runner-provisioning assertions, and added the current/legacy variant, Start-Process, explicit python.exe, and UTF-8 stdout/stderr bridge assertions as complete Python statements.
+- **Validation:** exact-head tests, Windows Storage, Docker sandbox, browser E2E, and audit must rerun on the new commit; the failed pre-fix runs are not counted as evidence.
+
+
+- **Arithmetic refinement:** Codex's source uses i64 for context metadata but calculates the default compaction threshold with `(context_window * 9) / 10` (non-saturating multiplication). The safe selector ceiling is therefore `floor((2^63 - 1) / 9)`, not i64::MAX. The model/hardware ceilings bind far below this on supported PCs, but the selector now respects the downstream arithmetic contract instead of merely the field type.
+
+
+- **Second CI finding:** after restoring the truncated test function, the next pytest collection still found an unmatched closing parenthesis at the end of tests/test_codex_smoke_diagnostics.py. The earlier edit had left a duplicate trailing copy of the pre-existing diagnostics tests after the newly added bridge/config tests. Removed that duplicate tail while preserving the original tests and both new tests; the file now contains a single definition of each test. The failed 1e836 run is not counted; a fresh exact-head run is required.
+
+
+## 2026-11-12 — Restore single-copy Windows preflight after regression review
+
+- **Observed defect:** the latest Windows-preflight edits left duplicated sections in scripts/verify_ollama_context.ps1. The resulting script had six VerifyOnly branches instead of the original two, and CI correctly caught the drift through the existing source-contract test.
+- **Correction:** restored the file from the last verified 375-line revision, then reapplied only the required changes: legacy/current variant rejection and cleanup plus the Windows PowerShell 5.1 Start-Process UTF-8 file bridge. The resulting script is 393 lines and has exactly two VerifyOnly branches, one verification result marker, and one release marker.
+- **Regression protection:** the test now checks the internal-variant pattern variable, legacy cleanup, production Start-Process bridge, and the existing exact branch-count contract. The Windows workflow path assertion matches the actual PowerShell command form.
+- **Validation:** the failing CI assertions on the earlier script revision are not reused; the new exact-head test and Windows Storage jobs must pass.
+
+
+## 2026-11-12 — Correct sorted model-inventory regression expectation
+
+- **Observed failure:** the isolated Docker suite found one assertion mismatch in the legacy-variant inventory test. The API intentionally sorts the complete installed-model inventory; the fixture listed the new adaptive suffix before the legacy suffix, while the actual sorted result places `-codex-64k` first.
+- **Correction:** reordered only the expected test list to match the API's stable sorted contract. The implementation continues to preserve both installed models in inventory while excluding both from selectable base models.
+- **Validation:** fresh exact-head tests and Docker sandbox runs are required; the failed c02c run is not counted as green.
+
+
+## 2026-11-12 — Correct target-host integrated GPU memory documentation
+
+- **Observed mismatch:** the README still described the Intel integrated GPU as having 128 MB reported memory, while the current target-host record reports Intel UHD Graphics 730, WMI AdapterRAM 2 GiB, and Intel driver 32.0.101.6129. Neither WMI AdapterRAM nor a shared-memory limit is proof of dedicated VRAM.
+- **Correction:** README now records the actual 2 GiB WMI AdapterRAM report and driver version while explicitly distinguishing it from dedicated VRAM. Dedicated and shared memory remain separate WDDM measurements; actual model offload remains based on Ollama `/api/ps` `size_vram`, not the WMI field.
+- **Regression protection:** target-diagnostic contract test now rejects the stale 128 MB statement and requires the recorded AdapterRAM and driver details.
+- **Scope:** no GPU offload is assumed or forced. The Intel UHD 730 remains an integrated adapter; CPU fallback on the i5-12400 remains valid and observable.
+
+
+## 2026-11-12 — Target-host gpt-oss context-capacity regression
+
+- Added a deterministic regression using the recorded target profile: `gptoss` architecture, 131,072-token model ceiling, 24 blocks, 8 KV heads, 64-element key/value dimensions, 13,793,441,566-byte model weights, and 22.42 GiB currently available physical RAM.
+- Under the selector's documented 4 GiB system reserve and 10%-of-weights runtime overhead, the conservative FP16 KV estimate is 49,152 bytes/token and the selected ceiling is 93,699 tokens when weights are not already resident. This leaves the upstream Ollama 64k recommendation feasible for this recorded snapshot while correctly refusing to assume the full 131,072-token model maximum fits.
+- This is a deterministic capacity calculation, not a live model-load or performance claim. Runtime allocation and real Codex tool-call behavior still require the self-hosted diagnostic.
+- The target profile test is additive; no prior assertions or safety gates were removed.
+
+
+## 2026-11-12 — Isolated full-suite Docker timeout and workflow heredoc repair
+
+- **Observed failure:** on PR head `6f8239db9497a046b69a0d637fb38a1e78988b6d`, the full test suite inside the 2 GiB / 2 CPU no-network Docker sandbox emitted progress through 100% but the process did not exit within the workflow's 240-second budget. The job correctly failed as `timed_out`; this is not counted as a pass. The separate GitHub-hosted test job and Windows/browser/audit jobs passed on that SHA.
+- **Root-cause boundary:** available logs establish the strict 240-second cutoff and full progress output, but do not yet establish whether final pytest teardown, process shutdown, or resource pressure caused the delay. Do not label this as a proven test hang or change the sandbox resource/security limits based on speculation.
+- **Correction:** increase the explicit isolated full-suite budget to 600 seconds, still below the job's 15-minute timeout; raise the helper's validated maximum to 600 seconds and its default to 300 seconds. The no-network, read-only mount, dropped capabilities, non-root UID, 2 GiB memory, 2 CPU, PID cap, pinned image, and no-host-fallback constraints remain unchanged. Added regression coverage for the 600-second bound and rejection of 601 seconds.
+- **Workflow defect:** the inline Python heredoc in `.github/workflows/sandbox-integration-ci.yml` lacked its terminating `PY` marker. Added the missing marker to remove the Bash EOF warning and make the script boundary explicit.
+- **Validation:** the Docker sandbox integration workflow and all exact-head checks must rerun after these changes. The timeout extension is a diagnostic opportunity, not a claim that the full isolated suite now passes.
+
+## 2026-11-12 — Resolve target Python from the actual Windows Runner environment
+
+- **Root cause:** the target diagnostic workflow hard-coded `C:\Program Files\Python311\python.exe` in both runtime preflight and target-host architecture acceptance. The production autonomous workflow instead resolves `python.exe` from the Runner service account's PATH. A valid installation elsewhere on PATH could therefore pass production preflight but fail the diagnostic before testing; alternatively, the diagnostic could test a different Python installation than the production job.
+- **Correction:** resolve `python.exe` once with `Get-Command` under the actual Runner service identity, validate that it is Python 3.11 or newer, publish the exact executable path to `GITHUB_ENV`, and reuse it for target-host architecture acceptance. The same Python directory and Scripts directory are added to the workflow PATH for the later venv step. No Python version floor was raised and no local/global package state is modified.
+- **Regression protection:** added source-contract assertions for dynamic resolution, minimum-version validation, persisted path reuse, and absence of the former fixed Python311 path.
+- **Compatibility:** this matches the production workflow's PATH-based Python discovery and the GitHub matrix already exercised on Python 3.11.9 and 3.14.6.
+- **Validation:** code/test SHA `ea196bf01361bb1e55b10bcc4c91e79d1f2c8913` triggered a fresh exact-head GitHub matrix. At the time of this entry, checks were queued/in progress; no pass is claimed for this SHA. Diagnostic run [#43290291632](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43290291632) completed its GitHub-hosted cleanup but the self-hosted Windows job remained pending without a Runner assignment. The preceding SHA `6e92a422dd7c39f35f3ecc4a1d1839e03f370df9` had all nine GitHub-hosted checks green, including 2,171 passed, 2 skipped, and 51 deselected in the Python suite.
+
+
+## 2026-11-13 — PR #722 exact-head evidence reconciliation
+
+- **Root cause:** the current-status and acceptance documents still referenced earlier PR #722 commits, while the live PR head had advanced to `3b48da376cb90b0e0602f6300504152769ed79a0`. The roadmap also described a prior self-hosted diagnostic as completed operational evidence without sufficiently separating it from the current adaptive-context head.
+- **Correction:** synchronized `docs/PROJECT_STATUS.md` and the PR #722 section of `docs/ROADMAP_ACCEPTANCE.md` to the live base/head and exact-head GitHub check results. The older diagnostic run #43197193053 is explicitly historical; current diagnostic run #43290742576 remains pending.
+- **Exact-head hosted evidence on `3b48da376cb90b0e0602f6300504152769ed79a0`:** tests, Python 3.11.9/3.14.6, Windows Storage, Node 26/Codex 0.167.0 and 0.167.2, Browser E2E, Docker sandbox integration, and dependency audit all reported success.
+- **Not established:** self-hosted Runner assignment, actual target Ollama version/model allocation, Codex tool-call smoke on this head, target-host soak/crash-restart, staging restore/rollback, or independent security review. These remain pending; no merge or deployment is authorized.
+- The documentation commits below advance the PR head; the hosted checks above validate the preceding code/test SHA only. A fresh exact-head CI cycle is required for the documentation-inclusive head.
+
+
+## 2026-11-13 — Reject models with incomplete KV-cache metadata before dispatch
+
+- **Root cause:** Autonomous Engineering readiness and settings persistence previously treated a positive architecture-specific `context_length` plus `tools` capability as sufficient model metadata. The actual adaptive selector also requires `block_count`, `attention.head_count_kv`, `attention.key_length`, and `attention.value_length` to calculate KV-cache bytes per token. A model missing any of those fields could appear ready and be saved, only to fail later in the Windows context preflight.
+- **Correction:** extracted a shared `kv_cache_bytes_per_token` validator and reused it in both the adaptive selector and the Ollama readiness service. `model_context_supported` is now false when any required KV dimension is missing or invalid; the API exposes the specific metadata failure and settings persistence refuses the model before any GitHub variable write.
+- **Regression coverage:** complete metadata is included in successful service fixtures; a new regression verifies that a model with a valid context limit and tools capability but missing KV dimensions remains online yet is not context-supported. Existing selector tests continue to cover invalid/missing dimensions and the KV-cache calculation.
+- **Safety:** no context floor, model fallback, general chat limit, existing stored model, or task data was changed. The failure is surfaced before dispatch rather than after the autonomous workflow starts.
+- **Validation:** implementation and tests are committed on the PR #722 branch; exact-head GitHub CI is required for the new SHA. No live target-host or human result is claimed.
+
+
+## 2026-11-13 — Exact-head CI restarted after KV-readiness correction
+
+- The KV-cache readiness implementation and regression tests are committed through code/test SHA `1f682576df85f6049dfe2b8f7e6b0f20fe790d5b`.
+- The documentation-inclusive PR head is `ac09c4475c54fd34fac53f7ce420cc083a4b9da6`.
+- Exact-head tests, Python 3.11.9/3.14.6, Windows Storage, Node/Codex, Browser E2E, Docker sandbox, and dependency-audit checks have been queued for the documentation-inclusive SHA. Prior green results on `3b48da376cb90b0e0602f6300504152769ed79a0` are not carried forward.
+- The target-host diagnostic remains a separate self-hosted gate; no live Ollama or Codex smoke result is claimed for the new code.
+
+
+## 2026-11-13 — Require model weight size before declaring Codex readiness
+
+- **Additional root cause:** after the KV-dimension correction, the status service still read only model names from `/api/tags`. The runtime selector and PowerShell preflight also require a positive integer `size` for the selected model to budget its weights. A malformed/incomplete tag entry could therefore still appear context-supported and fail later during preflight.
+- **Correction:** readiness now validates and exposes the selected model's positive integer weight size, and includes it in the context-supported contract. Missing, zero, boolean, or string sizes keep Ollama online for diagnosis but prevent model settings from being saved.
+- **Regression coverage:** added cases for missing, zero, string, and boolean weight sizes; successful service fixtures now carry an explicit installed-model size. The model remains local-only; no fallback size is inferred.
+- **Validation:** the change and tests are committed on PR #722; exact-head GitHub CI must complete before claiming success.
+
+
+## 2026-11-13 — Unified model metadata gates across Python and Windows
+
+- The adaptive context readiness contract now requires all inputs consumed by the runtime estimator: a positive integer model weight size from `/api/tags`, a positive architecture-specific `context_length`, positive KV-cache `block_count`, `attention.head_count_kv`, `attention.key_length`, `attention.value_length`, and Ollama `tools` capability.
+- Python status/settings validation, app readiness, Runner readiness, and Runner provisioning enforce the same model-size and KV-dimension contract. Incomplete metadata fails before GitHub settings writes or Codex dispatch.
+- PowerShell readiness scripts reject non-integer model sizes to match Python's JSON type contract. The Windows PowerShell 5.1 bridge regression parses all three scripts.
+- Exact code/test head: `63b13bcea8888e108e1029b93af789025081ae4e`. Its hosted CI matrix is queued; no test pass is claimed for this head.
+- The context estimate uses FP16 KV-cache bytes per token. Ollama documents `f16` as the default KV-cache type and `q8_0`/`q4_0` as lower-memory options; the FP16 estimate is therefore the conservative memory case among those documented types.
+- **Remaining host-specific assumption:** Ollama's documented `OLLAMA_NUM_PARALLEL` default is 1 and required memory scales with parallel requests. The current estimator budgets one parallel request; the target-host diagnostic must verify the effective setting before acceptance. A custom value above 1 is not yet included in the estimate.
+
+
+## 2026-11-13 — Documentation and acceptance contract reconciled
+
+- Consolidated the current module status, roadmap acceptance evidence, ADR-020, and operations guide in documentation commit `9d7c54d3b0edd290165f2306539147319ffa51ea`.
+- The guide now states the exact model metadata gate (positive weight size, context limit, all KV-cache dimensions, and tool capability), the FP16 cache assumption, and the remaining `OLLAMA_NUM_PARALLEL=1` host-verification requirement.
+- The final PR head must pass the full pull-request CI matrix and the target-host diagnostic; prior green checks on older SHAs are historical evidence only.
+
+
+## 2026-11-13 — Include Ollama parallel request count in context budgeting
+
+- **Root cause:** the FP16 KV-cache estimate divided the available cache budget by per-token cache bytes for a single request. Ollama's `OLLAMA_NUM_PARALLEL` increases KV-cache memory proportionally, so a value above one could make the selected Codex context unsafe.
+- **Implementation:** the shared selector now accepts and validates `parallel_requests`, multiplies KV-cache bytes per token by that value, and reports both per-request and total cache cost. The Windows preflight resolves the owner of the process listening on port 11434 and reads only `OLLAMA_NUM_PARALLEL` from that account's registry environment value, falling back to machine environment. An absent setting uses Ollama's documented default of 1; unavailable owner/environment or invalid values fail closed. The Runner account's environment is not assumed to be the Ollama server's environment.
+- **Regression coverage:** Python covers four-way scaling and rejects invalid counts; the PowerShell 5.1 bridge covers the four-way result and parses the production preflight script. Source-contract tests assert that the runtime path passes the resolved value to the shared selector.
+- **Hardware/software compatibility:** the target profile remains Intel Core i5-12400 / 6C-12T / 31.78 GiB RAM / Intel UHD 730. No GPU VRAM is inferred from WMI AdapterRAM. Python 3.11.9/3.14.6, Node 26.13.0/npm 11.20.0 and Codex 0.167.0/0.167.2 remain the CI compatibility matrix; actual Ollama 0.40.16+ and server environment still require target-host evidence.
+- **Validation boundary:** previous exact-head CI on `8327332f8d56b51f77101a2aeed75bcd3c016fd0` passed hosted tests, Browser E2E, Docker sandbox, and dependency audit, but predates this change. Fresh exact-head CI is required. Target diagnostic run [#43349551168](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43349551168) remains pending at `sandbox-diagnostic`; no live Ollama allocation or Codex tool-call smoke is claimed.
+- PR #722 remains Draft/open. Issue #52 independent security review, target-host soak/crash-restart, staging restore/rollback, and project-wide acceptance remain open. No merge, auto-merge, or deployment occurred.
+
+
+- **Follow-up hardening:** replaced PowerShell Registry-provider existence checks with direct read-only .NET RegistryKey access. The preflight reads only the `OLLAMA_NUM_PARALLEL` value, distinguishes a missing user Environment key from an inaccessible user hive, and fails closed on access errors instead of silently assuming the default. Regression source contracts protect this lookup.
+
+
+## 2026-11-13 — Conservative GPU-residency accounting and PowerShell helper tests
+
+- **Root cause:** treating every loaded model as already reflected in free physical RAM is unsafe when Ollama has placed model weights in dedicated VRAM; system RAM telemetry does not account for dedicated VRAM allocations.
+- **Correction:** `Test-OllamaWeightsAlreadyLoaded` returns true only when `/api/ps` reports `size_vram=0`. Positive or missing VRAM telemetry charges the full installed model weight size to the system-RAM budget; malformed or negative telemetry fails closed. This is deliberately conservative for integrated/shared-memory GPUs, avoiding false-safe capacity estimates on discrete GPUs.
+- **Testability:** extracted pure PowerShell helpers for parallelism resolution and VRAM residency into `scripts/ollama_context_helpers.ps1`. The Windows PowerShell 5.1 bridge now tests default parallelism, user-over-machine precedence, invalid values, CPU residency, positive VRAM, missing telemetry, and invalid VRAM metadata without requiring a live Ollama server.
+- **Validation boundary:** exact-head CI on the code/test SHA above is required after this documentation synchronization. The self-hosted target diagnostic remains pending; no live Ollama allocation or Codex tool-call smoke is claimed.

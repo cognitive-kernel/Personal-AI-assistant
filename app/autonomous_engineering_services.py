@@ -3,14 +3,22 @@
 from __future__ import annotations
 
 import json
-import psutil
+import os
+import subprocess
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any
+
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 from fastapi import HTTPException
 
-from .ollama_context import OllamaModelMetadataError
+from .hardware import windows_powershell_executable
+from .ollama_context import OllamaModelMetadataError, kv_cache_bytes_per_token
 
 
 class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -33,8 +41,13 @@ def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_conte
         "model_capabilities": [],
         "model_supports_tools": False,
         "model_metadata_available": False,
+        "model_weight_size_available": False,
+        "model_weight_bytes": None,
+        "model_weight_size_error": "Ollama model weight size is unavailable.",
+        "model_kv_cache_metadata_available": False,
+        "model_kv_cache_metadata_error": "Ollama KV-cache metadata is unavailable.",
         "model_context_supported": False,
-        "model_context_error": f"Codex requires at least {min_context_tokens} context tokens.",
+        "model_context_error": f"Model must expose valid context and KV-cache metadata for at least {min_context_tokens} runtime tokens.",
         "model_metadata_error": "Ollama metadata is unavailable.",
     }
     # Local Ollama metadata must never be sent through an environment proxy.
@@ -53,10 +66,11 @@ def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_conte
             raise ValueError("Ollama /api/tags response exceeded the safety limit.")
         payload = json.loads(body.decode("utf-8"))
         models = payload.get("models", []) if isinstance(payload, dict) else []
+        model_entries = [item for item in models if isinstance(item, dict)] if isinstance(models, list) else []
         names = sorted({
             str(item.get("name", ""))
-            for item in models
-            if isinstance(item, dict) and item.get("name")
+            for item in model_entries
+            if item.get("name")
         })
     except (OSError, ValueError, urllib.error.URLError, TimeoutError):
         return empty
@@ -64,12 +78,27 @@ def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_conte
     installed = bool(model) and model in names
     selected_is_context_variant = is_context_variant(model)
     selectable_names = [name for name in names if not is_context_variant(name)]
+    selected_entry = next((item for item in model_entries if item.get("name") == model), None)
+    raw_weight_bytes = selected_entry.get("size") if selected_entry else None
+    weight_size_available = (
+        isinstance(raw_weight_bytes, int)
+        and not isinstance(raw_weight_bytes, bool)
+        and raw_weight_bytes > 0
+    )
+    model_weight_bytes = raw_weight_bytes if weight_size_available else None
+    weight_size_error = (
+        None if weight_size_available
+        else "Ollama /api/tags did not report a positive integer size for the selected model."
+    )
     result = {
         **empty,
         "online": True,
         "model_installed": installed,
         "model_selectable": installed and not selected_is_context_variant,
         "model_is_codex_context_variant": selected_is_context_variant,
+        "model_weight_size_available": weight_size_available,
+        "model_weight_bytes": model_weight_bytes,
+        "model_weight_size_error": weight_size_error,
         "models": names,
         "selectable_models": selectable_names,
         "model_metadata_error": (
@@ -85,7 +114,7 @@ def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_conte
 
     show_request = urllib.request.Request(
         "http://127.0.0.1:11434/api/show",
-        data=json.dumps({"model": model, "verbose": True}).encode("utf-8"),
+        data=json.dumps({"model": model, "verbose": False}).encode("utf-8"),
         headers={"Accept": "application/json", "Content-Type": "application/json"},
         method="POST",
     )
@@ -104,22 +133,43 @@ def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_conte
             context_length = maximum_context_fn(model_info, architecture)
         except OllamaModelMetadataError:
             context_length = None
+        try:
+            kv_cache_bytes_per_token(model_info, architecture)
+            kv_cache_metadata_available = True
+            kv_cache_metadata_error = None
+        except OllamaModelMetadataError as exc:
+            kv_cache_metadata_available = False
+            kv_cache_metadata_error = str(exc)
         raw_capabilities = details_payload.get("capabilities")
         capabilities = sorted({
             value for value in raw_capabilities
             if isinstance(value, str) and value
         }) if isinstance(raw_capabilities, list) else []
         metadata_available = context_length is not None
-        context_supported = metadata_available and context_length >= min_context_tokens
+        context_supported = (
+            metadata_available
+            and weight_size_available
+            and kv_cache_metadata_available
+            and context_length >= min_context_tokens
+        )
         result.update({
             "model_context_length": context_length,
             "model_capabilities": capabilities,
             "model_supports_tools": supports_tool_calling_fn(capabilities),
             "model_metadata_available": metadata_available,
+            "model_weight_size_available": weight_size_available,
+            "model_weight_bytes": model_weight_bytes,
+            "model_weight_size_error": weight_size_error,
+            "model_kv_cache_metadata_available": kv_cache_metadata_available,
+            "model_kv_cache_metadata_error": kv_cache_metadata_error,
             "model_context_supported": context_supported,
             "model_context_error": (
                 None if context_supported else
-                f"Selected model context is below the Codex minimum of {min_context_tokens} tokens."
+                str(weight_size_error)
+                if metadata_available and not weight_size_available else
+                "Selected model KV-cache metadata is incomplete: " + str(kv_cache_metadata_error)
+                if metadata_available and not kv_cache_metadata_available else
+                f"Selected model context is below the minimum supported runtime window of {min_context_tokens} tokens."
                 if metadata_available else
                 "Selected model context metadata is unavailable."
             ),
@@ -141,17 +191,50 @@ def codex_status(which, run_command) -> dict[str, Any]:
     return {"installed": bool(version), "version": version}
 
 
-def runner_status(process_iter) -> dict[str, Any]:
+def runner_status(process_iter=None) -> dict[str, Any]:
+    """Detect the GitHub Runner with psutil when present, otherwise native OS APIs."""
+    if process_iter is None and psutil is not None:
+        process_iter = psutil.process_iter
     found = False
-    for process in process_iter(["name", "cmdline"]):
+    if process_iter is not None:
+        errors = (OSError,) + ((psutil.Error,) if psutil is not None else ())
         try:
-            name = (process.info.get("name") or "").casefold()
-            command = " ".join(process.info.get("cmdline") or []).casefold()
-            if "runner.listener" in name or "runner.listener" in command:
-                found = True
-                break
-        except (psutil.Error, OSError):
-            continue
+            for process in process_iter(["name", "cmdline"]):
+                try:
+                    name = (process.info.get("name") or "").casefold()
+                    command = " ".join(process.info.get("cmdline") or []).casefold()
+                    if "runner.listener" in name or "runner.listener" in command:
+                        found = True
+                        break
+                except errors:
+                    continue
+        except errors:
+            found = False
+    elif os.name == "nt":
+        script = r"""
+$ErrorActionPreference = 'Stop'
+$found = Get-CimInstance -ClassName Win32_Process | Where-Object {
+    $_.Name -match 'Runner\.Listener' -or $_.CommandLine -match 'Runner\.Listener'
+} | Select-Object -First 1
+if ($null -ne $found) { 'true' } else { 'false' }
+"""
+        try:
+            result = subprocess.run(
+                [windows_powershell_executable(), "-NoProfile", "-NonInteractive", "-Command", script],
+                capture_output=True, text=True, timeout=20, check=False, shell=False,
+            )
+            found = bool(result.returncode == 0 and result.stdout.strip().casefold() == "true")
+        except (OSError, subprocess.TimeoutExpired):
+            found = False
+    elif Path("/proc").is_dir():
+        for command_path in Path("/proc").glob("[0-9]*/cmdline"):
+            try:
+                command = command_path.read_bytes().replace(b"\0", b" ").decode("utf-8", errors="replace").casefold()
+                if "runner.listener" in command:
+                    found = True
+                    break
+            except OSError:
+                continue
     return {"running": found, "process_detected": found}
 
 

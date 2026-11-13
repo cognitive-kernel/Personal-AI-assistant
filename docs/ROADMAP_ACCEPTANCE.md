@@ -1,4 +1,94 @@
+## 2026-11-13 — Master Engineering Prompt merge-gate and exact-head snapshot
+
+The repository must continue implementation, automated regression work, static analysis, and GitHub-hosted validation without waiting for local or human execution. However, **all required local tests on the actual target host** remain an explicit pre-merge requirement under `docs/MASTER_ENGINEERING_PROMPT.md`. Unavailable tests remain PENDING / NOT RUN; they do not suspend independent engineering work or authorize bypassing the merge gate.
+
+- **PR #722 / branch:** `fix/autonomous-engineering-show-all-ollama-models-20261112`; base/main `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`. The branch history exceeds 500 commits while its net review diff is about 41 files; it is 0 commits behind main. PR remains Draft/open/unmerged. Avoid a merge commit importing the oversized history; use a reviewed squash or rebuild a clean branch after review.
+- **Last fully validated code/test SHA:** `add976d03aee1c8f6932590814d9c844338efc7f`. Tests [#43411202236](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202236): **2,193 passed, 2 skipped, 51 deselected**; Python 3.11.9/3.14.6, Windows Storage/PowerShell 5.1, Codex CLI 0.167.2/0.168.0, Markdown validation (96 files), import-cycle check, and claim-to-test benchmark (10/10) passed. Browser E2E [#43411202329](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202329), Docker full-suite and real sandbox integration [#43411202201](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202201), and Dependency Audit [#43411202351](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202351) passed on that SHA.
+- **Documentation-only updates after that code/test SHA:** no corresponding workflow run is recorded at this checkpoint. The green runs above are not represented as exact-head validation for those later documentation commits.
+- **Target Windows/Ollama diagnostic:** [#43411202380](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202380) hosted cleanup passed; `sandbox-diagnostic` remains pending because GitHub assigned no matching self-hosted Runner. This is not a pass.
+- **Target profile:** Intel Core i5-12400 (6 physical / 12 logical cores), approximately 31.78 GiB RAM, Intel UHD Graphics 730; Windows 11 x64 build 10.0.26300; Python 3.11.9/3.14.6 and Git 2.54.0. Node.js/npm and Codex CLI are provisioned per CI job.
+- **Runtime limitation:** Windows preflight reads persisted registry `OLLAMA_NUM_PARALLEL`, not the live Ollama process environment block. A process-only override may differ; live Ollama version/process and `/api/ps` allocation are not verified.
+- **Not run / pending:** actual target-host Codex tool-call smoke, target-host soak/crash-restart, staging restore/rollback, and required target-host tests. Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) still requires independent security review; Issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290) tracks project-wide acceptance.
+- **Related project fixes:** [PR #725](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/725) fixes Issue #723's exception-suppressing `finally` path; exact-head CI passed (2,137 passed, 2 skipped, 51 deselected), Browser E2E and Dependency Audit passed, and it is ready for review. [PR #727](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/727) ports and hardens generic Ollama model/KV-cache memory safety on current main; exact-head CI is running after correcting two test fixtures. PR #706 is Draft/stale (56 commits behind) and is not safe to merge; PR #726 was closed as superseded by #727.
+- The scorecard now identifies 57.45% / 60.47% as the last formal 2026-11-01 calculation, not a current completion claim. Current main CI is recorded separately in `docs/ACCEPTANCE_SCORECARD.md`.
+- Continue repository-side engineering and hosted validation without waiting for local or human tests. Keep unavailable target-host results marked PENDING/NOT RUN. Do not merge, bypass, auto-merge, or deploy while required gates remain open.
+
+---
+
+## 2026-11-12 — Latest Autonomous Engineering module audit
+
+Code/test SHA `6e92a422dd7c39f35f3ecc4a1d1839e03f370df9` passed all nine GitHub-hosted checks:
+- Full suite: **2,171 passed, 2 skipped, 51 deselected**.
+- Python 3.11.9 and 3.14.6 compatibility matrices: passed.
+- Windows Storage/checkpoint regressions: passed.
+- Node.js 26.13.0/npm 11.20.0 with Codex CLI 0.167.2 and 0.168.0: the current compatibility matrix; exact-head rerun is required after this version update.
+- Browser E2E, Docker full-suite/sandbox integration, and dependency audit: passed.
+
+A further audit found that the self-hosted diagnostic used a fixed Python 3.11 installation path while the production workflow resolves Python from the Runner service PATH. The diagnostic now resolves the same executable dynamically, validates Python >=3.11, and reuses that exact executable for target-host checks. A regression assertion protects the contract.
+
+**Latest validation:** new code/test SHA `ea196bf01361bb1e55b10bcc4c91e79d1f2c8913` has triggered a fresh exact-head matrix; its checks were queued at the last observation. Previous green results are not carried forward to this SHA.
+
+**Target-host gate remains pending:** diagnostic run [#43290291632](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43290291632) completed GitHub-hosted cleanup, but the Windows job has no Runner assignment. No live Ollama allocation, Codex tool-call smoke, or target-host soak is claimed. Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) remains open for independent security review. PR #722 stays Draft and unmerged.
+
+The owner requested continued GitHub-side work without waiting for local/human tests. Continue independent code, test, documentation, and GitHub CI work; do not bypass exact-head CI, repository-enforced approvals, or independent security review; target-host tests remain NOT RUN / PENDING: they do not block development or PR preparation, but the Master Engineering Prompt makes successful required target-host tests a pre-merge gate.
+
+---
+
+## 2026-11-12 — PR #707 ownership/checkpoint reconciliation
+
+PR #707 was closed as superseded. Merged PR #719 (merge commit `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`) already incorporated its checkpoint/process ownership, durable task-state locking, serialized manual-task persistence, unique Runner ownership, ADR-014/015, and regression coverage. Current `main` has newer implementations than the stale PR #707 branch; its old workflow assertions and pending-PR URL validation are not to be merged separately. PR #722 no longer depends on rebasing PR #707. Historical references below describe the state at the time they were recorded. The latest documentation-inclusive PR #722 head before this status update was `234643106cfe675bacc18290a926987131f34aee`: dependency audit passed; tests, Windows Storage, Browser E2E, and Docker sandbox were in progress; the self-hosted Windows diagnostic remained pending without a runner assignment.
+
+---
+
+## 2026-11-12 — GitHub-hosted validation completed for adaptive Codex/Ollama
+
+Code/test SHA `65b07b3a6dee54b6a1e27356f5f7a7df8ad87c3` passed the GitHub-hosted matrix:
+
+- Python: **2,171 passed, 2 skipped, 51 deselected**.
+- Windows Storage regressions: passed.
+- Browser/dashboard E2E: passed.
+- Dependency audit: passed.
+- Exact-head evidence: [tests/Python/Windows Storage](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43281188427), [Browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43281188426), [Docker full-suite and sandbox integration](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43281188706), [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43281188494).
+- Isolated Docker full-suite: passed within the corrected 600-second execution budget.
+- Real Docker sandbox integration: passed (5 tests).
+- Markdown validation: 96 files; import-cycle check passed.
+- Deterministic claim-to-test coverage benchmark: 10/10, zero false accepts and zero false rejects. It explicitly reports no human scoring or independent semantic test review.
+- Lexical retrieval benchmark ran on the synthetic bilingual fixture in lexical fallback mode because no embedding vectors were cached; these metrics do not establish general retrieval quality or live-model performance.
+
+**Still blocked / unverified:** self-hosted Windows/Ollama diagnostic is pending with no runner assigned; therefore no live model load, `/api/ps` allocation, or actual Codex tool-call smoke is claimed. PR #707 remains open, non-mergeable and overlaps 11 files with PR #722. Issue #52 remains open for independent security review. No human evaluation, target-host soak, restore/rollback rehearsal, or independent security sign-off is claimed.
+
+This validation applies to the code/test snapshot SHA above. The following documentation synchronization commits change the PR head; all exact-head checks must rerun on that new SHA. Keep PR #722 Draft while exact-head CI is running. Do not merge/deploy until exact-head CI is green, all required local target-host tests have passed, repository-enforced approvals and independent security review are satisfied, and the owner authorizes it. Continue GitHub-side work while target-host tests remain pending; they are a merge gate, not a development gate.
+
+## 2026-11-12 — Exact-head Docker sandbox timeout remediation
+
+On PR #722 head `6f8239db9497a046b69a0d637fb38a1e78988b6d`, the full suite inside the isolated 2 GiB / 2 CPU container reached 100% progress but exceeded the 240-second limit before process exit. The logs do not prove whether pytest teardown, process shutdown, or resource pressure caused the delay. This was a failure, not a pass.
+
+The helper's bounded timeout maximum is now 600 seconds (default 300), the CI invocation uses 600 seconds, and the workflow job remains capped at 15 minutes. The missing closing `PY` heredoc marker was restored. A regression test accepts 600 and rejects 601 seconds. Container isolation/resource restrictions were not relaxed. Current exact head is `0398f2a8ab0fdc72a1aed253cdce4fb43cda24d3`; tests #43262594755, Docker #43262595072, Browser E2E #43262594986, dependency audit #43262594968, and self-hosted Windows diagnostic #43262580900 must complete on this exact SHA before this gate is marked passed.
+
+## 2026-11-12 — Exact-head acceptance update after target-hardware review
+
+Latest code/test commit before documentation synchronization: `36eccfe9bf0fbdff9fde0642cd460e2b677cc757`. README, regression test, and engineering log were then updated to correct the Intel UHD 730 AdapterRAM description and add a target-profile capacity calculation; the resulting final PR head must run the full exact-head CI matrix.
+
+Previously verified GitHub-hosted checks on `57a5e70f19cf3328eb6fc075e3525e65c0cae18a`:
+- Tests: **2,169 passed, 2 skipped, 51 deselected**.
+- Windows Storage regressions: passed.
+- Browser/dashboard E2E: passed.
+- Dependency audit: passed.
+- Isolated Docker full suite and real sandbox integration: passed.
+
+The subsequent target-profile regression models the recorded gpt-oss:20b architecture (24 blocks, 8 KV heads, K/V dimensions 64), 13,793,441,566-byte weights, and 22.42 GiB available physical memory. With a 4 GiB system reserve and conservative FP16 KV accounting, the calculated maximum is 93,699 tokens; this shows that the upstream-recommended 64k context is feasible for that recorded memory snapshot, but does not claim that 131,072 tokens or a live Codex session will fit.
+
+The self-hosted Windows/Ollama diagnostic on the preceding head [#43258285063](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43258285063) was still pending without a runner assignment when inspected. It is not a pass and must be checked again on the final PR head. No live Ollama load, actual Codex tool-call smoke, local target-host run, or human adjudication is claimed.
+
+PR #707 remains open with overlapping ownership/checkpoint files and failing CI; coordinate/rebase it before merging either branch. Issue #52 remains open for independent security review. The repository Codex review bot reported its usage limit reached, so no independent Codex review or security sign-off is claimed.
+
+Do not infer exact-head success from earlier SHAs. Keep PR #722 Draft until its final-head checks and target-host gates required by the Master Engineering Prompt are satisfied. Continue independent GitHub-side implementation and tests; do not bypass, skip, or weaken gates.
+
 # Project acceptance gates
+
+## 2026-11-12 — Adaptive Codex context (PR #722)
+
+The previous fixed 64k Codex threshold and the follow-up 512-token floor are removed. The selector accepts positive integer requests when supported by model and hardware metadata; actual Codex usable-window behavior and a real tool-call smoke are separate execution gates. Zero/negative values and missing metadata fail closed. Requests above the effective ceiling are clamped before persistence/runtime allocation. Exact PR head `326b41a862661f032143fb0b8d26f80d8174ffc5` passed 2,146 tests (2 skipped, 51 deselected), Windows Storage regressions, Browser E2E, and dependency audit. Self-hosted Windows diagnostic [#43197193053](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43197193053) verified 13 installed Ollama models, actual `num_ctx=10000` allocation for `gpt-oss:20b-codex-ctx10000` (architecture maximum 131,072), 10,666,065,920 bytes remaining physical RAM, a real successful Codex `exec_command` JSONL smoke (exit code 0), post-smoke allocation verification, and model release.
 
 This file is the release-gate ledger for tracking issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290). It distinguishes repository implementation and CI evidence from target-host operations, live-model evaluation, human adjudication, and independent review. A merged PR is not by itself proof that an acceptance gate passed.
 
@@ -260,3 +350,27 @@ Append evidence only after it has actually been produced.
 ## 2026-11-01 — Post-merge CI confirmation for PR #671
 
 The current `main` SHA `2a5c83bf0ba924f4a2c8f206338a04872562d72d` has completed all three post-merge workflows successfully: tests [#41239355370](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355370), dashboard/browser smoke [#41239355374](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355374), and dependency audit [#41239355466](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355466). Windows storage regressions passed within the tests workflow. This verifies CI for this SHA; it does not satisfy target-host operations, live-model/human evaluation, manual accessibility, staging/rollback, or independent security review.
+
+## 2026-11-13 — Adaptive Codex context contract (PR #722; validation snapshot)
+
+- **Requirement:** Codex context is bounded by the minimum of host-safe capacity, architecture-specific model maximum, and Codex catalog representation. Requests above the ceiling are clamped before variant creation and dispatch; missing/invalid evidence fails closed.
+- **Implementation:** the adaptive selector, model inventory filtering, context-specific Ollama variant, exact `/api/ps` allocation verification, Codex catalog pinning, Windows PowerShell 5.1 bridge, and Runner path discovery are present on PR #722.
+- **Readiness correction:** a valid `context_length` alone is not sufficient. The status API and settings-save path now require a positive integer model weight size from `/api/tags` and architecture-specific `block_count`, `attention.head_count_kv`, `attention.key_length`, and `attention.value_length` before marking a model usable; incomplete KV metadata fails closed before dispatch.
+- **Hardware/software profile:** Intel Core i5-12400 (6 cores/12 threads), 31.78 GiB RAM class, Intel UHD Graphics 730; Python 3.11.9/3.14.6, Node.js 26.13.0/npm 11.20.0, Codex CLI 0.167.0/0.167.2. Actual Ollama version and live model allocation are not established by GitHub-hosted CI.
+- **Prior exact-head hosted validation:** SHA `3b48da376cb90b0e0602f6300504152769ed79a0` passed tests, Python runtime matrix, Windows Storage regressions, Node/Codex compatibility, Browser E2E, Docker sandbox integration, and dependency audit. This predates the KV-readiness correction below.
+- **Current metadata-readiness correction:** Python, Windows app/Runner checks, provisioning, and regression tests are on SHA `63b13bcea8888e108e1029b93af789025081ae4e`. Exact-head tests/Python/Windows/Node, Browser E2E, Docker sandbox, and dependency-audit runs are queued (#43349099618, #43349099613, #43349099694, #43349099637); no pass is claimed until they complete.
+- **Target-host validation:** [diagnostic run #43349092697](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43349092697) is queued for the self-hosted Windows Runner. No successful current-head Ollama allocation or Codex tool-call smoke is claimed.
+- **Historical evidence boundary:** [run #43197193053](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43197193053) passed for an earlier implementation/head; it does not validate the current adaptive-context changes. Do not count it as current PR #722 target-host acceptance.
+- **Residual gates:** actual target-host tool-call smoke, effective `OLLAMA_NUM_PARALLEL` verification (the estimator currently budgets one parallel request), long-duration soak, crash/restart acceptance, staging restore/rollback, and independent security review (Issue #52). PR #722 remains Draft/open; no merge, auto-merge, or deployment is performed.
+
+## 2026-11-12 — Consolidated Windows/Linux process and sandbox acceptance
+
+- Integrated native process snapshots and PID-safe termination. Windows revalidates process creation time after opening the process handle. Linux uses pidfd signaling, preserves SIGTERM-to-SIGKILL escalation, and fails closed if safe pidfd support is unavailable.
+- Integrated native CPU/RAM telemetry with psutil as an optional hardware extra; Runner detection has native Windows CIM and Linux /proc fallbacks.
+- Corrected integrated Intel GPU reporting: WMI AdapterRAM is retained as reported metadata, not assumed to be dedicated VRAM. WDDM dedicated/shared counters and host-available RAM govern usable memory.
+- Fixed the Docker real-process test failure by passing a validated host checkout SHA into the isolated container rather than relying on an unavailable .git worktree pointer.
+- The target Windows diagnostic now checks the recorded i5-12400 / 6-core-12-thread / 30–33 GiB / UHD 730 host profile and executes process/lock/recovery acceptance.
+- Automatic-context target-runner validation no longer forces 10,000 tokens; it records the actual /api/ps context, model bytes, and VRAM bytes. Current head 1bb8a4f802d2496e355dd4d86a0595d275512cad has exact-head tests, sandbox integration, Browser E2E, dependency audit, and self-hosted diagnostic queued/running. Results remain pending until each workflow completes.
+
+
+- Scope clarification: the removal of the fixed 64k/512-token floors applies to the Codex adaptive-context path. The separate general Ollama chat runtime retains its existing 512-token minimum; it is not used to clamp or reject Codex context selection.

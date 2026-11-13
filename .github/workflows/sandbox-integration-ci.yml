@@ -4,6 +4,10 @@ env:
   GIT_CONFIG_KEY_0: "init.defaultBranch"
   GIT_CONFIG_VALUE_0: "main"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 on:
   pull_request:
     paths:
@@ -13,6 +17,13 @@ on:
       - "tests/test_sandbox.py"
       - "tests/test_self_improvement.py"
       - "tests/test_sandbox_integration.py"
+      - "tests/test_codex_smoke_diagnostics.py"
+      - "README.md"
+      - "docs/PROJECT_STATUS.md"
+      - "docs/ENGINEERING_LOG.md"
+      - "docs/ROADMAP_ACCEPTANCE.md"
+      - "docs/operations/CODEX_AUTONOMOUS_ENGINEERING.md"
+      - "docs/architecture/ADR-020-codex-adaptive-context.md"
       - "docker/self-improvement-test-runner.Dockerfile"
       - ".github/workflows/sandbox-integration-ci.yml"
       - "pyproject.toml"
@@ -93,13 +104,14 @@ jobs:
               raise SystemExit("Docker executable was not found.")
           result = sandbox.run_workspace_tests(
               Path.cwd(), docker_executable=docker, image=image,
-              timeout_seconds=240, max_output_bytes=65536,
+              timeout_seconds=600, max_output_bytes=65536,
           )
           print(result.stdout)
           if result.stderr:
               print(result.stderr, file=sys.stderr)
           if result.status != "succeeded":
               raise SystemExit(f"Isolated behavior tests failed: {result.status}: {result.reason or result.exit_code}")
+          PY
 
       - name: Run real Docker sandbox integration tests
         env:

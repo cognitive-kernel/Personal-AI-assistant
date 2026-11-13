@@ -160,6 +160,10 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert "model_supports_tools" in agent_script
     assert "model_selectable" in agent_script
     assert "نسخهٔ داخلی Context" in agent_script
+    assert "renderModels(data.models || data.selectable_models" in agent_script
+    assert "/-codex-(?:ctx[0-9]+|[0-9]+k)$/i.test(name)" in agent_script
+    assert "selectedIsInternalContextVariant" in agent_script
+    assert "selectable.has(name)" in agent_script
 
 
 def test_autonomous_engineering_routes_are_registered():
@@ -226,9 +230,9 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
         def open(self, request, timeout):
             captured.setdefault("requests", []).append((request.full_url, timeout))
             if request.full_url.endswith("/api/tags"):
-                return io.BytesIO(b'{"models":[{"name":"gpt-oss:20b"}]}')
+                return io.BytesIO(b'{"models":[{"name":"gpt-oss:20b","size":13793441566}]}')
             return io.BytesIO(
-                b'{"details":{"family":"llama"},"model_info":{"llama.context_length":65536},'
+                b'{"details":{"family":"llama"},"model_info":{"llama.context_length":65536,"llama.block_count":32,"llama.attention.head_count_kv":8,"llama.attention.key_length":128,"llama.attention.value_length":128},'
                 b'"capabilities":["completion","tools"]}'
             )
 
@@ -264,6 +268,9 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
     assert result["model_installed"] is True
     assert result["model_context_length"] == 65536
     assert result["model_supports_tools"] is True
+    assert result["model_weight_size_available"] is True
+    assert result["model_weight_bytes"] == 13793441566
+    assert result["model_kv_cache_metadata_available"] is True
     assert result["model_context_supported"] is True
 
 
@@ -325,7 +332,7 @@ def test_ollama_status_hides_generated_codex_context_variants_and_rejects_saved_
             calls.append(request.full_url)
             assert request.full_url == "http://127.0.0.1:11434/api/tags"
             return io.BytesIO(
-                b'{"models":[{"name":"base-model:14b"},{"name":"base-model:14b-codex-ctx65536"}]}'
+                b'{"models":[{"name":"base-model:14b"},{"name":"base-model:14b-codex-ctx65536"},{"name":"base-model:14b-codex-64k"}]}'
             )
 
     monkeypatch.setattr(agent.urllib.request, "build_opener", lambda *args: FakeOpener())
@@ -337,7 +344,11 @@ def test_ollama_status_hides_generated_codex_context_variants_and_rejects_saved_
     assert result["model_installed"] is True
     assert result["model_selectable"] is False
     assert result["model_is_codex_context_variant"] is True
-    assert result["models"] == ["base-model:14b", "base-model:14b-codex-ctx65536"]
+    assert result["models"] == [
+        "base-model:14b",
+        "base-model:14b-codex-64k",
+        "base-model:14b-codex-ctx65536",
+    ]
     assert result["selectable_models"] == ["base-model:14b"]
     assert "original Ollama model" in result["model_metadata_error"]
 
@@ -353,6 +364,26 @@ def test_save_settings_rejects_generated_codex_context_variant_before_local_or_g
         agent.save_autonomous_engineering_settings(
             agent.EngineeringSettings(
                 model="base-model:14b-codex-ctx65536",
+                interval_hours=4,
+                execution_mode="continuous",
+            )
+        )
+
+    assert error.value.status_code == 422
+    assert "مدل اصلی Ollama" in error.value.detail
+
+
+def test_save_settings_rejects_legacy_generated_codex_context_variant_before_local_or_github_access(monkeypatch):
+    def unexpected_model_lookup(model):
+        raise AssertionError("Legacy generated context variants must be rejected before Ollama access.")
+
+    monkeypatch.setattr(agent, "_ollama_status", unexpected_model_lookup)
+    monkeypatch.setattr(agent.shutil, "which", lambda _: None)
+
+    with pytest.raises(HTTPException) as error:
+        agent.save_autonomous_engineering_settings(
+            agent.EngineeringSettings(
+                model="base-model:14b-codex-64k",
                 interval_hours=4,
                 execution_mode="continuous",
             )
@@ -1173,7 +1204,7 @@ def test_cancel_finds_active_run_after_ten_newer_completed_runs(monkeypatch):
     assert calls[-1][3] == "999"
 
 
-def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_codex_requirement():
+def test_autonomous_workflows_enforce_positive_and_exact_ollama_runtime_context():
     root = Path(__file__).resolve().parents[1]
     context_gate = (root / "scripts" / "verify_ollama_context.ps1").read_text(encoding="utf-8")
     assert all("-MaximumRedirection 0" in line for line in context_gate.splitlines() if "$baseUrl/api/" in line and "Invoke-RestMethod" in line)
@@ -1193,10 +1224,13 @@ def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_c
     assert "/api/ps" in context_gate
     assert "context_length" in context_gate
     assert "if ($VerifyOnly) {" in context_gate
-    assert context_gate.count("if ($VerifyOnly) {") == 1
+    # VerifyOnly has two intentional branches: persisted-model verification before
+    # runtime inspection, and model release after the verification-only probe.
+    assert context_gate.count("if ($VerifyOnly) {") == 2
     assert context_gate.count("OLLAMA_RUNTIME_CONTEXT_OK") == 1
     assert "if ($allocated -lt $selectedContext)" not in context_gate
-    assert "-lt 64000" in context_gate
+    assert "-lt $minimumContextTokens" in context_gate
+    assert "64000" not in context_gate
     verify_only = context_gate.split("if ($VerifyOnly) {", 1)[1].split("} else {", 1)[0]
     assert "$modelInfo.modelfile" in verify_only
     assert "PARAMETER\\s+num_ctx" in verify_only
@@ -1207,8 +1241,8 @@ def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_c
     assert "Get-AutomaticContext" in context_gate
     assert "Assert-ToolCallingCapability" in context_gate
     assert "ollama_context.py" in context_gate
-    assert "return [int64][Math]::Min($Maximum, 512)" not in context_gate
-    assert "return [int64][Math]::Min($Maximum, 2048)" not in context_gate
+    assert "$minimumContextTokens = 1" in context_gate
+    assert "64000" not in context_gate
     assert "AUTONOMOUS_ENGINEERING_MODEL=$codexModel" in context_gate
     assert production_paths.count("scripts/verify_ollama_context.ps1") == 2
     diagnostic_job = diagnostic_paths.split("  sandbox-diagnostic:", 1)[1]
@@ -1222,22 +1256,59 @@ def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_c
     assert '--require-command-fragment "$probeFileName"' in production
     assert "Cancel superseded CI runs for this branch" in diagnostic
     assert '("tests.yml", "browser-e2e.yml", "dependency-audit.yml")' in diagnostic
-    assert "if ($run.head_sha -eq $env:GITHUB_SHA) { continue }" in diagnostic
+    assert "if ($run.head_sha -eq $env:TARGET_HEAD_SHA) { continue }" in diagnostic
     assert "/cancel" in diagnostic and "/force-cancel" in diagnostic
+
+
+@pytest.mark.parametrize("reported_size", [None, 0, "123456", True])
+def test_ollama_status_rejects_installed_model_without_positive_integer_weight_size(monkeypatch, reported_size):
+    model_entry = {"name": "bad-size:latest"}
+    if reported_size is not None:
+        model_entry["size"] = reported_size
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            if request.full_url.endswith("/api/tags"):
+                return io.BytesIO(json.dumps({"models": [model_entry]}).encode("utf-8"))
+            return io.BytesIO(json.dumps({
+                "details": {"family": "llama"},
+                "model_info": {
+                    "llama.context_length": 65536,
+                    "llama.block_count": 32,
+                    "llama.attention.head_count_kv": 8,
+                    "llama.attention.key_length": 128,
+                    "llama.attention.value_length": 128,
+                },
+                "capabilities": ["completion", "tools"],
+            }).encode("utf-8"))
+
+    monkeypatch.setattr(agent.urllib.request, "build_opener", lambda *handlers: FakeOpener())
+
+    result = agent._ollama_status("bad-size:latest")
+
+    assert result["online"] is True
+    assert result["model_installed"] is True
+    assert result["model_weight_size_available"] is False
+    assert result["model_weight_bytes"] is None
+    assert result["model_context_supported"] is False
+    assert "positive integer size" in result["model_context_error"]
 
 
 def test_ollama_status_returns_every_installed_model_without_inserting_defaults(monkeypatch):
     names = [f"model-{index}:latest" for index in range(55)]
     selected = names[-1]
 
+    show_requests = []
+
     class FakeOpener:
         def open(self, request, timeout):
             if request.full_url.endswith("/api/tags"):
-                payload = {"models": [{"name": name} for name in names]}
+                payload = {"models": [{"name": name, "size": 1234567890} for name in names]}
             else:
+                show_requests.append(json.loads(request.data.decode("utf-8")))
                 payload = {
                     "details": {"family": "llama"},
-                    "model_info": {"llama.context_length": 32768},
+                    "model_info": {"llama.context_length": 32768, "llama.block_count": 32, "llama.attention.head_count_kv": 8, "llama.attention.key_length": 128, "llama.attention.value_length": 128},
                     "capabilities": ["completion", "tools"],
                 }
             return io.BytesIO(json.dumps(payload).encode("utf-8"))
@@ -1251,8 +1322,10 @@ def test_ollama_status_returns_every_installed_model_without_inserting_defaults(
     assert "gpt-oss:20b" not in result["models"]
     assert result["model_installed"] is True
     assert result["model_metadata_available"] is True
-    assert result["model_context_supported"] is False
-    assert "64000" in result["model_context_error"]
+    assert result["model_kv_cache_metadata_available"] is True
+    assert result["model_context_supported"] is True
+    assert result["model_context_error"] is None
+    assert show_requests == [{"model": selected, "verbose": False}]
 
 
 def test_ollama_status_keeps_server_online_when_selected_model_metadata_fails(monkeypatch):
@@ -1272,6 +1345,93 @@ def test_ollama_status_keeps_server_online_when_selected_model_metadata_fails(mo
     assert result["model_context_supported"] is False
     assert result["model_supports_tools"] is False
     assert "OSError" in result["model_metadata_error"]
+
+
+@pytest.mark.parametrize(
+    "missing_key",
+    [
+        "llama.block_count",
+        "llama.attention.head_count_kv",
+        "llama.attention.key_length",
+        "llama.attention.value_length",
+    ],
+)
+def test_ollama_status_rejects_models_with_incomplete_kv_dimensions(monkeypatch, missing_key):
+    model_info = {
+        "llama.context_length": 65536,
+        "llama.block_count": 32,
+        "llama.attention.head_count_kv": 8,
+        "llama.attention.key_length": 128,
+        "llama.attention.value_length": 128,
+    }
+    model_info.pop(missing_key)
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            if request.full_url.endswith("/api/tags"):
+                return io.BytesIO(b'{"models":[{"name":"context-only:latest","size":1234567890}]}')
+            return io.BytesIO(json.dumps({
+                "details": {"family": "llama"},
+                "model_info": model_info,
+                "capabilities": ["completion", "tools"],
+            }).encode("utf-8"))
+
+    monkeypatch.setattr(agent.urllib.request, "build_opener", lambda *handlers: FakeOpener())
+
+    result = agent._ollama_status("context-only:latest")
+
+    assert result["online"] is True
+    assert result["model_metadata_available"] is True
+    assert result["model_kv_cache_metadata_available"] is False
+    assert missing_key in result["model_kv_cache_metadata_error"]
+    assert result["model_context_supported"] is False
+    assert "KV-cache metadata is incomplete" in result["model_context_error"]
+
+
+def test_save_settings_accepts_installed_model_with_context_below_64k(monkeypatch):
+    saved = []
+    monkeypatch.setattr(agent, "_ollama_status", lambda model: {
+        "online": True,
+        "model_installed": True,
+        "model_metadata_available": True,
+        "model_context_supported": True,
+        "model_context_length": 10000,
+        "model_supports_tools": True,
+    })
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "_run", lambda *args, **kwargs: subprocess.CompletedProcess([], 0, "", ""))
+    monkeypatch.setattr(agent, "_save_repository_variables", lambda gh, updates: saved.extend(updates))
+
+    result = agent.save_autonomous_engineering_settings(
+        agent.EngineeringSettings(model="small:latest", interval_hours=4, execution_mode="continuous")
+    )
+
+    assert result["saved"] is True
+    assert result["model"] == "small:latest"
+    assert ("AUTONOMOUS_ENGINEERING_MODEL", "small:latest") in saved
+
+
+
+def test_ollama_status_accepts_one_token_model_context(monkeypatch):
+    class FakeOpener:
+        def open(self, request, timeout):
+            if request.full_url.endswith("/api/tags"):
+                return io.BytesIO(b'{"models":[{"name":"tiny:latest","size":1000000}]}')
+            return io.BytesIO(json.dumps({
+                "details": {"family": "tiny"},
+                "model_info": {"tiny.context_length": 1, "tiny.block_count": 1, "tiny.attention.head_count_kv": 1, "tiny.attention.key_length": 1, "tiny.attention.value_length": 1},
+                "capabilities": ["completion", "tools"],
+            }).encode("utf-8"))
+
+    monkeypatch.setattr(agent.urllib.request, "build_opener", lambda *handlers: FakeOpener())
+
+    result = agent._ollama_status("tiny:latest")
+
+    assert result["model_metadata_available"] is True
+    assert result["model_context_length"] == 1
+    assert result["model_kv_cache_metadata_available"] is True
+    assert result["model_context_supported"] is True
+    assert result["model_supports_tools"] is True
 
 
 def test_save_settings_rejects_model_without_explicit_tool_calling_support(monkeypatch):
@@ -1311,15 +1471,32 @@ def test_app_and_runner_readiness_scripts_require_model_context_and_tool_capabil
         assert "/api/show" in script
         assert all("-MaximumRedirection 0" in line for line in script.splitlines() if "http://127.0.0.1:11434" in line and "Invoke-RestMethod" in line)
         assert ".context_length" in script
+        assert all(key in script for key in (
+            ".block_count",
+            ".attention.head_count_kv",
+            ".attention.key_length",
+            ".attention.value_length",
+        ))
         assert '"tools"' in script
         assert "Model context metadata" in script
-        assert "-ge 64000" in script
+        assert "Model weight size" in script
+        assert "modelTag.size" in script
+        assert "Model KV-cache metadata" in script
+        assert "-ge 1" in script
         assert "Model tool calling" in script
 
     provisioning = (root / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
     assert ".context_length" in provisioning
+    assert all(key in provisioning for key in (
+        ".block_count",
+        ".attention.head_count_kv",
+        ".attention.key_length",
+        ".attention.value_length",
+    ))
     assert all("-MaximumRedirection 0" in line for line in provisioning.splitlines() if "http://127.0.0.1:11434" in line and "Invoke-RestMethod" in line)
-    assert "-lt 64000" in provisioning
+    assert "-lt 1" in provisioning
+    assert "modelTag.size" in provisioning
+    assert "positive integer weight size" in provisioning
     assert '"tools"' in provisioning
 
 def test_master_engineering_prompt_requires_known_defect_closure_before_code_changes():
@@ -1340,5 +1517,32 @@ def test_ollama_context_powershell_bridge_uses_explicit_file_not_native_stdin():
     script = (root / "scripts" / "verify_ollama_context.ps1").read_text(encoding="utf-8")
     helper = (root / "app" / "ollama_context.py").read_text(encoding="utf-8")
     assert "--input-file" in script
-    assert "$selectionInput | & python" not in script
+    assert "Get-Command python.exe -ErrorAction Stop" in script
+    assert "Start-Process -FilePath $pythonPath -ArgumentList $argumentList" in script
+    assert "-RedirectStandardOutput $selectionOutputPath -RedirectStandardError $selectionErrorPath" in script
+    assert "& python $helperPath" not in script
     assert 'parser.add_argument("--input-file"' in helper
+
+def test_runner_status_uses_native_windows_process_api_without_psutil(monkeypatch):
+    import subprocess
+    from types import SimpleNamespace
+    from app import autonomous_engineering_services as services
+
+    observed = {}
+    monkeypatch.setattr(services, "psutil", None)
+    monkeypatch.setattr(services, "os", SimpleNamespace(name="nt"))
+    powershell_path = r"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    monkeypatch.setattr(services, "windows_powershell_executable", lambda: powershell_path)
+
+    def fake_run(command, **kwargs):
+        observed["command"] = command
+        observed["kwargs"] = kwargs
+        return subprocess.CompletedProcess(command, 0, stdout="true\n", stderr="")
+
+    monkeypatch.setattr(services.subprocess, "run", fake_run)
+    result = services.runner_status(None)
+
+    assert result == {"running": True, "process_detected": True}
+    assert observed["command"][:3] == [powershell_path, "-NoProfile", "-NonInteractive"]
+    assert observed["kwargs"]["shell"] is False
+    assert observed["kwargs"]["timeout"] == 20

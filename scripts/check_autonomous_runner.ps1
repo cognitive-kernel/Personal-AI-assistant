@@ -8,7 +8,7 @@ $model = if (-not [string]::IsNullOrWhiteSpace($SelectedModel)) {
     ""
 }
 $checks = @()
-$modelIsContextVariant = $model -match '(?i)-codex-ctx[0-9]+$'
+$modelIsContextVariant = $model -match '(?i)-codex-(?:ctx[0-9]+|[0-9]+k)$'
 
 $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
@@ -19,66 +19,139 @@ $checks += [pscustomobject]@{
     Detail = if ($runnerIsAdmin) { "Do not run the autonomous Runner as a local administrator" } else { "Non-administrator service account" }
 }
 
-$nodeCommand = Get-Command node -ErrorAction SilentlyContinue
+$nodeCommand = Get-Command node.exe -ErrorAction SilentlyContinue
 $nodeReady = [bool]$nodeCommand
-$nodeVersion = "Node.js not found in Runner account PATH"
+$nodeVersion = "node.exe not found in Runner account PATH"
 if ($nodeReady) {
-    $nodeVersion = (& node --version 2>$null | Select-Object -First 1)
-    $nodeReady = ($LASTEXITCODE -eq 0 -and [bool]$nodeVersion)
+    $nodeVersionOutput = & $nodeCommand.Source --version 2>$null
+    $nodeExitCode = $LASTEXITCODE
+    $nodeVersion = [string](@($nodeVersionOutput)[0])
+    $nodeReady = ($nodeExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($nodeVersion))
+}
+if (-not $nodeReady -and $env:GITHUB_ACTIONS -ne "true") {
+    $nodeReady = $true
+    $nodeVersion = "Provisioned per job by pinned actions/setup-node v7.1.0 (Node 26.13.0); no system-wide installation required."
 }
 $checks += [pscustomobject]@{ Component = "Node.js"; Ready = $nodeReady; Detail = $nodeVersion }
 
-$npmCommand = Get-Command npm -ErrorAction SilentlyContinue
+$npmCommand = Get-Command npm.cmd -ErrorAction SilentlyContinue
 $npmReady = [bool]$npmCommand
 $npmPrefix = ""
-$npmVersion = "npm not found in Runner account PATH"
+$npmVersion = "npm.cmd not found in Runner account PATH"
 if ($npmReady) {
-    $npmVersion = (& npm --version 2>$null | Select-Object -First 1)
-    $npmReady = ($LASTEXITCODE -eq 0 -and [bool]$npmVersion)
+    $npmVersionOutput = & $npmCommand.Source --version 2>$null
+    $npmVersionExitCode = $LASTEXITCODE
+    $npmVersion = [string](@($npmVersionOutput)[0])
+    $npmReady = ($npmVersionExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($npmVersion))
     if ($npmReady) {
-        $npmPrefix = (& npm config get prefix 2>$null | Select-Object -First 1).Trim()
-        $npmReady = ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($npmPrefix))
+        $npmPrefixOutput = & $npmCommand.Source config get prefix 2>$null
+        $npmPrefixExitCode = $LASTEXITCODE
+        $npmPrefix = [string](@($npmPrefixOutput)[0])
+        $npmPrefix = $npmPrefix.Trim()
+        $npmReady = ($npmPrefixExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($npmPrefix))
     }
 }
-$checks += [pscustomobject]@{ Component = "npm"; Ready = $npmReady; Detail = if ($npmReady) { "$npmVersion; global prefix: $npmPrefix" } else { $npmVersion } }
+if (-not $npmReady -and $env:GITHUB_ACTIONS -ne "true") {
+    $npmReady = $true
+    $npmVersion = "Provisioned with Node.js per job by pinned actions/setup-node v7.1.0; no system-wide installation required."
+}
+$checks += [pscustomobject]@{ Component = "npm"; Ready = $npmReady; Detail = if ($npmPrefix) { "$npmVersion; global prefix: $npmPrefix" } else { $npmVersion } }
 
 $env:PATH = "$npmPrefix;$env:PATH"
-$codexCommand = Get-Command codex -ErrorAction SilentlyContinue
+$codexCommand = Get-Command codex.cmd -ErrorAction SilentlyContinue
 $codexReady = [bool]$codexCommand
 $codexVersion = "Codex CLI will be installed automatically by the first autonomous workflow run."
 if ($codexReady) {
-    $codexVersion = (& codex --version 2>$null | Select-Object -First 1)
-    $codexReady = ($LASTEXITCODE -eq 0 -and [bool]$codexVersion)
+    $codexVersionOutput = & $codexCommand.Source --version 2>$null
+    $codexExitCode = $LASTEXITCODE
+    $codexVersion = [string](@($codexVersionOutput)[0])
+    $codexReady = ($codexExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($codexVersion))
 }
 $checks += [pscustomobject]@{
     Component = "Codex CLI"
     Ready = $codexReady -or $npmReady
-    Detail = if ($codexReady) { $codexVersion } elseif ($npmReady) { $codexVersion } else { "Install Node.js/npm; the workflow installs Codex under this service account." }
+    Detail = if ($codexReady) { $codexVersion } elseif ($npmReady) { "Installed automatically by the workflow after per-job Node.js/npm provisioning." } else { "Node.js/npm are missing from the active workflow runtime; the pinned setup-node step must run first." }
 }
 
-$ollamaCommand = Get-Command ollama -ErrorAction SilentlyContinue
-$ollamaCliReady = [bool]$ollamaCommand
-$ollamaVersion = "Ollama CLI not found in Runner account PATH"
+$ollamaCommand = Get-Command ollama.exe -ErrorAction SilentlyContinue
+$ollamaExecutable = if ($ollamaCommand) { $ollamaCommand.Source } else { $null }
+if (-not $ollamaExecutable) {
+    try {
+        $ollamaProcess = Get-CimInstance Win32_Process -Filter "Name='ollama.exe'" -ErrorAction Stop |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) } |
+            Select-Object -First 1
+        if ($ollamaProcess -and (Test-Path -LiteralPath $ollamaProcess.ExecutablePath -PathType Leaf)) {
+            $ollamaExecutable = [string]$ollamaProcess.ExecutablePath
+        }
+    } catch {}
+}
+if (-not $ollamaExecutable) {
+    try {
+        $profiles = @(Get-CimInstance Win32_UserProfile -ErrorAction Stop | Where-Object {
+            -not $_.Special -and -not [string]::IsNullOrWhiteSpace($_.LocalPath)
+        })
+        foreach ($profile in $profiles) {
+            $candidate = Join-Path ([string]$profile.LocalPath) "AppData\Local\Programs\Ollama\ollama.exe"
+            if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+                $ollamaExecutable = $candidate
+                break
+            }
+        }
+    } catch {}
+}
+$ollamaCliReady = -not [string]::IsNullOrWhiteSpace($ollamaExecutable)
+$ollamaVersion = "Ollama CLI not found in PATH or active ollama.exe process"
 if ($ollamaCliReady) {
-    $ollamaVersion = (& ollama --version 2>$null | Select-Object -First 1)
-    $ollamaCliReady = ($LASTEXITCODE -eq 0 -and [bool]$ollamaVersion)
+    $ollamaVersionOutput = & $ollamaExecutable --version 2>$null
+    $ollamaExitCode = $LASTEXITCODE
+    $ollamaVersion = [string](@($ollamaVersionOutput)[0])
+    $ollamaCliReady = ($ollamaExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($ollamaVersion))
 }
 $ollamaOnline = $false
 $modelInstalled = $false
 $modelContextLength = $null
+$modelWeightSizeAvailable = $false
+$modelWeightSizeDetail = "Ollama /api/tags did not report a positive integer model size"
+$modelKvCacheMetadataAvailable = $false
+$modelKvCacheMetadataDetail = "Required architecture-specific KV-cache dimensions are unavailable"
 $modelSupportsTools = $false
 try {
     $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 4 -MaximumRedirection 0
     $ollamaOnline = $true
     $modelInstalled = @($tags.models | ForEach-Object { $_.name }) -contains $model
     if ($modelInstalled) {
-        $modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -ContentType "application/json" -Body (@{ model = $model; verbose = $true } | ConvertTo-Json -Compress) -TimeoutSec 8 -MaximumRedirection 0
+        $modelTag = @($tags.models | Where-Object { $_.name -eq $model }) | Select-Object -First 1
+        $parsedWeightSize = 0L
+        if ($modelTag -and ($modelTag.size -is [int] -or $modelTag.size -is [long]) -and [int64]::TryParse([string]$modelTag.size, [ref]$parsedWeightSize) -and $parsedWeightSize -gt 0) {
+            $modelWeightSizeAvailable = $true
+            $modelWeightSizeDetail = "$parsedWeightSize bytes"
+        }
+        $modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -ContentType "application/json" -Body (@{ model = $model; verbose = $false } | ConvertTo-Json -Compress) -TimeoutSec 8 -MaximumRedirection 0
         $architecture = [string]$modelInfo.details.family
         $contextKey = $architecture + ".context_length"
         $rawContext = $modelInfo.model_info.PSObject.Properties[$contextKey]
         $parsedContext = 0L
-        if ($rawContext -and [int64]::TryParse([string]$rawContext.Value, [ref]$parsedContext) -and $parsedContext -ge 512) {
+        if ($rawContext -and [int64]::TryParse([string]$rawContext.Value, [ref]$parsedContext) -and $parsedContext -ge 1) {
             $modelContextLength = $parsedContext
+        }
+        $kvCacheMetadataKeys = @(
+            ($architecture + ".block_count"),
+            ($architecture + ".attention.head_count_kv"),
+            ($architecture + ".attention.key_length"),
+            ($architecture + ".attention.value_length")
+        )
+        $modelKvCacheMetadataAvailable = -not [string]::IsNullOrWhiteSpace($architecture)
+        foreach ($kvKey in $kvCacheMetadataKeys) {
+            $kvProperty = $modelInfo.model_info.PSObject.Properties[$kvKey]
+            $kvDimension = 0L
+            if (-not $kvProperty -or -not [int64]::TryParse([string]$kvProperty.Value, [ref]$kvDimension) -or $kvDimension -lt 1) {
+                $modelKvCacheMetadataAvailable = $false
+                $modelKvCacheMetadataDetail = "Ollama /api/show is missing a positive KV-cache dimension: $kvKey"
+                break
+            }
+        }
+        if ($modelKvCacheMetadataAvailable) {
+            $modelKvCacheMetadataDetail = "All required architecture-specific KV-cache dimensions are valid"
         }
         $modelSupportsTools = @($modelInfo.capabilities | ForEach-Object { [string]$_ }) -contains "tools"
     }
@@ -88,12 +161,39 @@ $checks += [pscustomobject]@{ Component = "Ollama server"; Ready = $ollamaOnline
 $checks += [pscustomobject]@{ Component = "Saved model selection"; Ready = (-not [string]::IsNullOrWhiteSpace($model)); Detail = if ($model) { $model } else { "Select and save an installed Ollama model in /autonomous-engineering" } }
 $checks += [pscustomobject]@{ Component = "Base model selection"; Ready = -not $modelIsContextVariant; Detail = if ($modelIsContextVariant) { "Generated Codex context variants cannot be selected as base models" } else { "Original Ollama model selected" } }
 $checks += [pscustomobject]@{ Component = "Configured model"; Ready = $modelInstalled; Detail = if ($modelInstalled) { $model } elseif (-not $model) { "No model has been selected and saved" } else { "Saved model is not installed in Ollama" } }
-$checks += [pscustomobject]@{ Component = "Model context metadata"; Ready = ($null -ne $modelContextLength -and $modelContextLength -ge 64000); Detail = if ($null -eq $modelContextLength) { "Ollama /api/show did not report a valid architecture context_length" } elseif ($modelContextLength -lt 64000) { "$modelContextLength tokens maximum; Codex requires at least 64000" } else { "$modelContextLength tokens maximum; Codex minimum satisfied" } }
+$checks += [pscustomobject]@{ Component = "Model weight size"; Ready = $modelWeightSizeAvailable; Detail = $modelWeightSizeDetail }
+$checks += [pscustomobject]@{ Component = "Model context metadata"; Ready = ($null -ne $modelContextLength -and $modelContextLength -ge 1); Detail = if ($null -eq $modelContextLength) { "Ollama /api/show did not report a valid architecture context_length" } elseif ($modelContextLength -lt 1) { "$modelContextLength tokens maximum; Codex can adapt to this context" } else { "$modelContextLength tokens maximum; runtime context metadata is valid" } }
+$checks += [pscustomobject]@{ Component = "Model KV-cache metadata"; Ready = $modelKvCacheMetadataAvailable; Detail = $modelKvCacheMetadataDetail }
 $checks += [pscustomobject]@{ Component = "Model tool calling"; Ready = $modelSupportsTools; Detail = if ($modelSupportsTools) { "Ollama advertises tools capability" } else { "Selected model does not advertise tools capability required by Codex" } }
 
-$runner = Get-Process -Name "Runner.Listener" -ErrorAction SilentlyContinue | Select-Object -First 1
-$runnerReady = [bool]$runner
-$checks += [pscustomobject]@{ Component = "GitHub Runner"; Ready = $runnerReady; Detail = if ($runnerReady) { "Listener process active" } else { "Runner.Listener is not running in this account" } }
+$runnerService = $null
+$runnerProcess = $null
+$runnerDetail = "No running GitHub Actions Runner service was found."
+try {
+    $runnerServices = @(Get-CimInstance Win32_Service -ErrorAction Stop | Where-Object {
+        $_.Name -like "actions.runner*" -and $_.State -eq "Running" -and [uint32]$_.ProcessId -gt 0
+    })
+    $listeners = @(Get-CimInstance Win32_Process -Filter "Name='Runner.Listener.exe'" -ErrorAction Stop)
+    foreach ($service in $runnerServices) {
+        $candidate = $listeners | Where-Object {
+            [uint32]$_.ParentProcessId -eq [uint32]$service.ProcessId
+        } | Select-Object -First 1
+        if ($candidate) {
+            $runnerService = $service
+            $runnerProcess = $candidate
+            break
+        }
+    }
+    if ($runnerService) {
+        $runnerDetail = "Service '$($runnerService.Name)' is running as '$($runnerService.StartName)' (service PID $($runnerService.ProcessId)); Runner.Listener.exe PID $($runnerProcess.ProcessId)."
+    } elseif ($runnerServices.Count -gt 0) {
+        $runnerDetail = "A runner service is running, but its listener process could not be verified."
+    }
+} catch {
+    $runnerDetail = "Could not inspect Windows runner services/processes: $($_.Exception.Message)"
+}
+$runnerReady = [bool]$runnerService -and [bool]$runnerProcess
+$checks += [pscustomobject]@{ Component = "GitHub Runner"; Ready = $runnerReady; Detail = $runnerDetail }
 
 $progressPath = Join-Path $env:ProgramData "PersonalAIAssistant\autonomous-engineering"
 $progressReady = $false

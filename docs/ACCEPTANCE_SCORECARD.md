@@ -1,9 +1,20 @@
 # Weighted engineering and acceptance scorecard
 
-**Snapshot:** 2026-11-01  
-**Repository:** `cognitive-kernel/Personal-AI-assistant`  
-**Scored baseline:** `main` at `2a5c83bf0ba924f4a2c8f206338a04872562d72d`  
+**Last formal score calculation:** 2026-11-01  
+**Last scored baseline:** `main` at `2a5c83bf0ba924f4a2c8f206338a04872562d72d`  
+**Current main baseline:** `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`  
 **Purpose:** Reproducible progress accounting required by `docs/MASTER_ENGINEERING_PROMPT.md`. This is a provisional engineering-progress measure, not a release-readiness or product-quality certification.
+
+## 2026-11-13 — Current baseline and pending PR evidence (score not recalculated)
+
+The weighted value below (**57.45% overall / 60.47% repository engineering**) is the last formally calculated result from 2026-11-01. It is **historical, not a fresh score for current main**. A new score is intentionally deferred until the full issue #290 workstream audit is complete; no gate is promoted solely because a PR is open or hosted CI passes.
+
+- Current main `f87e15b9eb76f7395ea4380382d95f1bc64e21ed` exact CI passed: Tests [#43168304132](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43168304132) — **2,135 passed, 2 skipped, 51 deselected**, 11 focused regressions, 95 Markdown files, import-cycle check, and claim-to-test benchmark 10/10; Browser E2E [#43168304155](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43168304155) and Dependency Audit [#43168304149](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43168304149) passed.
+- PR #722 code/test SHA `add976d03aee1c8f6932590814d9c844338efc7f` passed Tests [#43411202236](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202236) — **2,193 passed, 2 skipped, 51 deselected**; Browser E2E [#43411202329](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202329), Docker full-suite/sandbox [#43411202201](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202201), and Dependency Audit [#43411202351](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202351) passed. Its self-hosted target diagnostic [#43411202380](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202380) remains pending with no Runner assignment. Documentation-only commits followed this code/test SHA and have no recorded exact-head workflow run.
+- PR #725 fixes the browser-learning worker's exception-suppressing `finally` path; exact-head CI passed **2,137 passed, 2 skipped, 51 deselected**, Browser E2E and Dependency Audit passed. It is ready for review but not merged.
+- PR #727 adds hardware-safe generic Ollama chat/context enforcement on current main. Its first full-suite run found two learning-curriculum test fixtures that did not mock the new `/api/tags` weight lookup; the fixtures were corrected and a fresh exact-head CI run is in progress. No passing result is counted yet. PR #726 was closed as superseded by #727.
+- PR #706 is stale (56 commits behind main), Draft, and has two failed settings-route tests; its relevant current-main correction is being carried in PR #726.
+- Issue #52 still requires an independent security review. Target-host Codex smoke, soak/restart, staging restore/rollback, and live Persian/English adjudication remain unverified. The latest main autonomous schedule-gate success [#43402375351](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43402375351) skipped the Codex job; it is not target-host evidence.
 
 ## Scoring method
 
@@ -20,9 +31,9 @@ Each gate has a fixed weight. The evidence state maps to a fixed progress factor
 
 A gate cannot be marked ACCEPTED solely because code exists or CI is green. If evidence applies only to a PR head, it is described as exact-head evidence and is not silently promoted to post-merge evidence. Post-merge CI is tracked separately.
 
-## Weighted gate matrix
+## Weighted gate matrix — 2026-11-01 snapshot
 
-| Gate | Weight | Current state | Factor | Weighted points | Evidence / remaining condition |
+| Gate | Weight | State at last scored snapshot | Factor | Weighted points | Evidence / remaining condition |
 |---|---:|---|---:|---:|---|
 | Repository and architecture audit | 12 | IN PROGRESS | 0.25 | 3.00 | Architecture map and module inventory exist; comprehensive risk-ranked audit and file/line coverage are not complete. |
 | Backend and API contracts | 10 | IN PROGRESS | 0.25 | 2.50 | Strict validation and API regressions exist; a complete endpoint-by-endpoint contract audit is not evidenced. |
@@ -39,14 +50,14 @@ A gate cannot be marked ACCEPTED solely because code exists or CI is green. If e
 | Independent security review | 2 | BLOCKED — external | 0.00 | 0.00 | Issue #52 requires an independent reviewer; implementer CI cannot satisfy this gate. |
 | **Total** | **100** |  |  | **57.45** |  |
 
-## Calculations
+## Historical calculations — 2026-11-01
 
 - **Engineering completion:** repository-engineering points divided by repository-engineering weight. External-only gates (target-host, human adjudication, independent security review) are excluded from this denominator: `57.45 / 95 × 100 = 60.47%`.
 - **Overall acceptance progress:** all weighted points divided by 100, including external gates: `57.45 / 100 × 100 = 57.45%`.
 
 These are **provisional, evidence-based progress scores** using the fixed stage factors above. The weights express project risk/prioritization, not statistical confidence. The score must be recalculated when a gate changes state, new evidence is accepted, or the scope/weights are revised. Do not interpret the score as a claim that 60.47% of source lines or features are complete.
 
-## Current exact-SHA evidence
+## Prior exact-SHA evidence (historical)
 
 - PR #664 exact head `19a95d93702d6281bdf6ae065a309a9b133de746`: 1,800 passed / 47 deselected; Windows storage, Chromium dashboard smoke, dependency audit, 88 Markdown files, import-cycle checks and benchmark 10/10 passed. [Tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212570053) · [Browser](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212570102) · [Audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212570079).
 - PR #667 exact head `810fe450668ff6c3e0e5b74c286533abb32dfb55`: 1,801 passed / 47 deselected; Windows storage, Chromium browser E2E, dependency audit, 87 Markdown files and benchmark 10/10 passed. [Tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41211765586) · [Browser](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41211765242) · [Audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41211765399).

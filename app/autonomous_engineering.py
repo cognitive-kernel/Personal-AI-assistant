@@ -12,13 +12,16 @@ import urllib.request
 import re
 from typing import Any
 
-import psutil
+try:
+    import psutil
+except ImportError:
+    psutil = None
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
 from .autonomous_engineering_progress import get_progress, storage_accessible
-from .ollama_context import MIN_CODEX_CONTEXT_TOKENS, maximum_context_tokens, supports_tool_calling
+from .ollama_context import MIN_CONTEXT_TOKENS, maximum_context_tokens, supports_tool_calling
 
 _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
 
@@ -33,7 +36,7 @@ _WORKFLOW = "autonomous-codex-engineering.yml"
 _DEFAULT_INTERVAL_HOURS = 24
 _ALLOWED_INTERVAL_HOURS = {1, 2, 4, 6, 12, 24}
 _MODEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$")
-_CODEX_CONTEXT_VARIANT_PATTERN = re.compile(r"-codex-ctx[0-9]+$", re.IGNORECASE)
+_CODEX_CONTEXT_VARIANT_PATTERN = re.compile(r"-codex-(?:ctx[0-9]+|[0-9]+k)$", re.IGNORECASE)
 
 
 def _is_codex_context_variant(model: str) -> bool:
@@ -84,7 +87,7 @@ def _ollama_status(model: str) -> dict[str, Any]:
     return _services.ollama_status(
         model,
         build_opener=urllib.request.build_opener,
-        min_context_tokens=MIN_CODEX_CONTEXT_TOKENS,
+        min_context_tokens=MIN_CONTEXT_TOKENS,
         maximum_context_fn=maximum_context_tokens,
         supports_tool_calling_fn=supports_tool_calling,
         is_context_variant=_is_codex_context_variant,
@@ -96,7 +99,7 @@ def _codex_status() -> dict[str, Any]:
 
 
 def _runner_status() -> dict[str, Any]:
-    return _services.runner_status(psutil.process_iter)
+    return _services.runner_status(psutil.process_iter if psutil is not None else None)
 
 
 def _github_snapshot() -> dict[str, Any]:
@@ -163,6 +166,11 @@ def collect_status() -> dict[str, Any]:
         "selectable_models": ollama.get("selectable_models", ollama.get("models", [])),
         "model_is_codex_context_variant": ollama.get("model_is_codex_context_variant", False),
         "model_context_length": ollama.get("model_context_length"),
+        "model_weight_size_available": ollama.get("model_weight_size_available", False),
+        "model_weight_bytes": ollama.get("model_weight_bytes"),
+        "model_weight_size_error": ollama.get("model_weight_size_error"),
+        "model_kv_cache_metadata_available": ollama.get("model_kv_cache_metadata_available", False),
+        "model_kv_cache_metadata_error": ollama.get("model_kv_cache_metadata_error"),
         "model_context_supported": ollama.get("model_context_supported", False),
         "model_context_error": ollama.get("model_context_error"),
         "model_capabilities": ollama.get("model_capabilities", []),
@@ -298,7 +306,11 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
         maximum = local_model.get("model_context_length")
         raise HTTPException(
             status_code=422,
-            detail=f"Codex به حداقل {MIN_CODEX_CONTEXT_TOKENS} توکن Context نیاز دارد؛ سقف مدل انتخاب‌شده {maximum} است و ذخیره نشد.",
+            detail=(
+                "مدل انتخاب‌شده metadata کامل Context/KV-cache و اندازهٔ معتبر وزن مدل برای برآورد امن حافظه ندارد "
+                "یا پنجرهٔ Context آن قابل استفاده نیست؛ تنظیمات ذخیره نشد. "
+                + str(local_model.get("model_context_error") or f"Context maximum: {maximum}")
+            ),
         )
     if not local_model.get("model_supports_tools"):
         raise HTTPException(status_code=422, detail="مدل انتخاب‌شده قابلیت tools را اعلام نکرده و برای Codex قابل استفاده نیست.")

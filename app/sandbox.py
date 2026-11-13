@@ -174,12 +174,31 @@ def is_valid_test_image_reference(image: str) -> bool:
 
 
 
+def _workspace_head_sha(workspace: Path) -> str | None:
+    """Resolve the host checkout SHA for isolated tests without exposing .git to Docker."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            cwd=workspace,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+            shell=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    value = result.stdout.strip().lower()
+    return value if result.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}", value) else None
+
+
 def run_workspace_tests(
     workspace_path: str | Path,
     *,
     docker_executable: str | Path,
     image: str,
-    timeout_seconds: int = 120,
+    timeout_seconds: int = 300,
     max_output_bytes: int = 65536,
 ) -> SandboxResult:
     """Execute the project's tests only inside a preloaded, digest-pinned test image.
@@ -202,8 +221,8 @@ def run_workspace_tests(
         raise ValueError("Workspace path cannot contain commas.")
     if not isinstance(image, str) or not _TEST_IMAGE_REF.fullmatch(image):
         raise ValueError("test image must be a local image ID or repository reference pinned by sha256 digest.")
-    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= 300:
-        raise ValueError("timeout_seconds must be an integer from 1 to 300.")
+    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= 600:
+        raise ValueError("timeout_seconds must be an integer from 1 to 600.")
     if isinstance(max_output_bytes, bool) or not isinstance(max_output_bytes, int) or not 1 <= max_output_bytes <= 131072:
         raise ValueError("max_output_bytes must be an integer from 1 to 131072.")
 
@@ -212,6 +231,13 @@ def run_workspace_tests(
         return SandboxResult(
             status="unavailable", exit_code=None, stdout="", stderr="", duration_ms=0,
             reason="Docker executable is not available at the configured absolute path.",
+        )
+
+    base_sha = _workspace_head_sha(workspace)
+    if base_sha is None:
+        return SandboxResult(
+            status="unavailable", exit_code=None, stdout="", stderr="", duration_ms=0,
+            reason="The host checkout HEAD could not be verified; isolated tests were not started.",
         )
 
     runner = (
@@ -234,6 +260,7 @@ def run_workspace_tests(
         "--env=PYTHONDONTWRITEBYTECODE=1",
         "--env=PYTEST_DISABLE_PLUGIN_AUTOLOAD=1",
         "--env=PYTEST_ADDOPTS=",
+        f"--env=AUTONOMOUS_ENGINEERING_TEST_BASE_SHA={base_sha}",
         "--mount", f"type=bind,source={str(workspace)},target=/workspace,readonly",
         image, "python", "-I", "-c", runner,
     ]

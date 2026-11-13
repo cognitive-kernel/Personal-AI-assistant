@@ -162,14 +162,43 @@ jobs:
           $ErrorActionPreference = "Stop"
           Write-Host "Runner identity:"
           whoami
-          $pythonPath = "C:\Program Files\Python311\python.exe"
+          $pythonCommand = Get-Command python.exe -ErrorAction Stop
+          $pythonPath = [string]$pythonCommand.Source
+          if ([string]::IsNullOrWhiteSpace($pythonPath) -or -not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) {
+            throw "Python executable resolution returned an invalid path."
+          }
           $pythonDirectory = Split-Path -Parent $pythonPath
           $scriptsPath = Join-Path $pythonDirectory "Scripts"
-          $ollamaPath = "C:\Users\Admin\AppData\Local\Programs\Ollama\ollama.exe"
-          $ollamaDirectory = Split-Path -Parent $ollamaPath
-          if (-not (Test-Path -LiteralPath $ollamaPath -PathType Leaf)) {
-            throw "Ollama executable was not found at: $ollamaPath"
+          $pythonVersionOutput = & $pythonPath -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')"
+          $pythonVersionNumber = $null
+          try { $pythonVersionNumber = [version](([string]$pythonVersionOutput).Trim()) } catch {}
+          if ($LASTEXITCODE -ne 0 -or $null -eq $pythonVersionNumber -or $pythonVersionNumber -lt [version]"3.11") {
+            throw "Python 3.11 or newer is required; found '$pythonVersionOutput'."
           }
+          $ollamaCommand = Get-Command ollama.exe -ErrorAction SilentlyContinue
+          $ollamaPath = if ($ollamaCommand) { $ollamaCommand.Source } else { $null }
+          if (-not $ollamaPath) {
+            $ollamaProcess = Get-CimInstance Win32_Process -Filter "Name='ollama.exe'" -ErrorAction Stop |
+              Where-Object { -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) } |
+              Select-Object -First 1
+            $ollamaPath = if ($ollamaProcess) { [string]$ollamaProcess.ExecutablePath } else { $null }
+          }
+          if (-not $ollamaPath) {
+            $profiles = @(Get-CimInstance Win32_UserProfile -ErrorAction Stop | Where-Object {
+              -not $_.Special -and -not [string]::IsNullOrWhiteSpace($_.LocalPath)
+            })
+            foreach ($profile in $profiles) {
+              $candidate = Join-Path ([string]$profile.LocalPath) "AppData\Local\Programs\Ollama\ollama.exe"
+              if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+                $ollamaPath = $candidate
+                break
+              }
+            }
+          }
+          if ([string]::IsNullOrWhiteSpace($ollamaPath) -or -not (Test-Path -LiteralPath $ollamaPath -PathType Leaf)) {
+            throw "Ollama executable was not found in PATH or among active ollama.exe processes."
+          }
+          $ollamaDirectory = Split-Path -Parent $ollamaPath
           if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) {
             throw "System-wide Python was not found at: $pythonPath"
           }
@@ -183,11 +212,11 @@ jobs:
           @($pythonDirectory, $scriptsPath, $ollamaDirectory) |
             Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
           $env:PATH = "$pythonDirectory;$scriptsPath;$ollamaDirectory;$env:PATH"
-          python --version
+          python.exe --version
           if ($LASTEXITCODE -ne 0) {
             throw "Python is not resolvable through PATH under the Runner service identity."
           }
-          (Get-Command python).Source | Write-Host
+          (Get-Command python.exe -ErrorAction Stop).Source | Write-Host
           & $ollamaPath --version
           if ($LASTEXITCODE -ne 0) {
             throw "Ollama CLI cannot execute under the Runner service identity."
@@ -217,12 +246,12 @@ jobs:
             "--label", "Engineering cycle started",
             "--activity", "Workflow started and environment prerequisites are being checked"
           )
-          & python scripts/autonomous_engineering_progress.py @progressArgs
+          & python.exe scripts/autonomous_engineering_progress.py @progressArgs
           if ($LASTEXITCODE -ne 0) { throw "Could not initialize engineering progress" }
       - name: Snapshot accepted scorecard from trusted main
         shell: powershell
         run: |
-          python scripts/autonomous_engineering_progress.py snapshot --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT"
+          python.exe scripts/autonomous_engineering_progress.py snapshot --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT"
           if ($LASTEXITCODE -ne 0) { throw "Could not snapshot the accepted main-branch scorecard" }
 
       - name: Capture live GitHub state with the read-only workflow token
@@ -415,34 +444,45 @@ jobs:
           '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\capture_state.py"
           python "$env:RUNNER_TEMP\capture_state.py"
 
+      - name: Provision pinned Node.js and npm for this workflow run
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "26.13.0"
+          check-latest: false
+          package-manager-cache: false
+
       - name: Ensure Codex CLI is installed for the Runner service account
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-            throw "Node.js must be installed system-wide and available in the Runner service PATH."
+          $node = Get-Command node.exe -ErrorAction Stop
+          $nodeVersionOutput = & $node.Source --version 2>&1
+          $nodeVersionExitCode = $LASTEXITCODE
+          $nodeVersion = (@($nodeVersionOutput) -join " ").Trim()
+          $nodeVersionNumber = $null
+          try { $nodeVersionNumber = [version]($nodeVersion.TrimStart("v")) } catch {}
+          if ($nodeVersionExitCode -ne 0 -or $null -eq $nodeVersionNumber -or $nodeVersionNumber -lt [version]"26.13.0") {
+            throw "Node.js 26.13.0 or newer must be provisioned for this workflow run; found '$nodeVersion'."
           }
-          $npm = Get-Command npm -ErrorAction SilentlyContinue
-          if (-not $npm) {
-            throw "npm was not found in the Runner service PATH. Install Node.js LTS system-wide and restart the Runner service."
-          }
-          $npmPrefix = (npm config get prefix).Trim()
+          $npm = Get-Command npm.cmd -ErrorAction Stop
+          $npmPrefix = (& $npm.Source config get prefix 2>&1 | Out-String).Trim()
           if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($npmPrefix)) {
             throw "Could not determine the Runner account's npm global prefix."
           }
           $env:PATH = "$npmPrefix;$env:PATH"
-          $requiredCodexVersion = "0.167.0"
+          $requiredCodexVersion = "0.168.0"
           $installedVersion = ""
-          if (Get-Command codex -ErrorAction SilentlyContinue) {
-            $installedVersion = (& codex --version 2>$null | Out-String).Trim()
+          $codexCommand = Get-Command codex.cmd -ErrorAction SilentlyContinue
+          if ($codexCommand) {
+            $installedVersion = (& $codexCommand.Source --version 2>$null | Out-String).Trim()
           }
           if ($installedVersion -notmatch [regex]::Escape($requiredCodexVersion)) {
-            npm install --global "@openai/codex@$requiredCodexVersion"
+            & $npm.Source install --global "@openai/codex@$requiredCodexVersion"
             if ($LASTEXITCODE -ne 0) { throw "Could not install the pinned Codex CLI $requiredCodexVersion for the Runner service account." }
           }
           $npmPrefix | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
           $env:PATH = "$npmPrefix;$env:PATH"
-          $codexCommand = Get-Command codex -ErrorAction Stop
+          $codexCommand = Get-Command codex.cmd -ErrorAction Stop
           $verifiedVersion = (& $codexCommand.Source --version 2>&1 | Out-String).Trim()
           Write-Host "Codex executable: $($codexCommand.Source)"
           Write-Host "Codex version: $verifiedVersion"
@@ -459,8 +499,8 @@ jobs:
           if ($principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {
             throw "The autonomous Runner must use a non-administrator service account"
           }
-          $ollama = Get-Command ollama -ErrorAction Stop
-          $codex = Get-Command codex -ErrorAction Stop
+          $ollama = Get-Command ollama.exe -ErrorAction Stop
+          $codex = Get-Command codex.cmd -ErrorAction Stop
           $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 5 -MaximumRedirection 0
           $model = [string]$env:AUTONOMOUS_ENGINEERING_MODEL
           if ([string]::IsNullOrWhiteSpace($model)) {
@@ -470,9 +510,9 @@ jobs:
           if (-not $installed) {
             throw "Required local model '$model' is not installed. Run: ollama pull $model"
           }
-          codex --version
+          & $codex.Source --version
           if ($LASTEXITCODE -ne 0) { throw "Codex CLI is not executable in the Runner service account" }
-          ollama --version
+          & $ollama.Source --version
           if ($LASTEXITCODE -ne 0) { throw "Ollama CLI is not executable in the Runner service account" }
 
       - name: Verify the selected model's allocated Ollama context
@@ -517,7 +557,7 @@ jobs:
             $smokeReport = Join-Path $env:RUNNER_TEMP "codex-sandbox-$backend-report.md"
             $evidenceReport = Join-Path $env:RUNNER_TEMP "codex-sandbox-$backend-evidence.json"
             Write-Host "Testing Codex exec_command with the Windows '$backend' sandbox backend."
-            python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-$backend" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$smokePrompt" --report "$smokeReport" --require-command-output "CODEX_WORKSPACE_SANDBOX_OK" --expected-agent-message "OLLAMA_PROVIDER_AND_SANDBOX_OK" --events-report "$evidenceReport" --require-command-fragment "$probeFileName" --require-command-fragment "write_text" --require-command-fragment "read_text" --require-command-fragment "unlink"
+            python.exe scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-$backend" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$smokePrompt" --report "$smokeReport" --require-command-output "CODEX_WORKSPACE_SANDBOX_OK" --expected-agent-message "OLLAMA_PROVIDER_AND_SANDBOX_OK" --events-report "$evidenceReport" --require-command-fragment "$probeFileName" --require-command-fragment "write_text" --require-command-fragment "read_text" --require-command-fragment "unlink"
             $smokeExitCode = $LASTEXITCODE
             Write-Host "Codex smoke exit code for '$backend': $smokeExitCode"
             if (Test-Path -LiteralPath $smokeReport -PathType Leaf) {
@@ -556,7 +596,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          python --version
+          python.exe --version
           python -c "import sys; assert sys.version_info >= (3, 11)"
           python -m venv .venv
           .\\.venv\\Scripts\\python.exe -m pip install --disable-pip-version-check --retries 10 --timeout 120 -e ".[dev]"
@@ -645,7 +685,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $env:PATH = "$env:GITHUB_WORKSPACE\.venv\Scripts;$env:PATH"
-          python scripts/autonomous_engineering_cycle.py run --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$env:RUNNER_TEMP\codex-prompt.md" --mode "$env:AUTONOMOUS_ENGINEERING_MODE"
+          python.exe scripts/autonomous_engineering_cycle.py run --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$env:RUNNER_TEMP\codex-prompt.md" --mode "$env:AUTONOMOUS_ENGINEERING_MODE"
           if ($LASTEXITCODE -ne 0) { throw "Autonomous task, tests, exact-SHA validation, or PR publication failed" }
 
       - name: Verify persistent Ollama context after autonomous Codex task
