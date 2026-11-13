@@ -103,7 +103,7 @@ def _request(
     purpose: str | None = None,
 ) -> dict[str, Any]:
     settings = get_settings()
-    if path == "/api/chat" and purpose in {"chat", "learning", "programming", "ai_learning", "factual_review", "research_plan"}:
+    if path == "/api/chat" and purpose in {"chat", "learning", "programming", "ai_learning", "topic_learning", "factual_review", "research_plan"}:
         profile = purpose
         if settings.get(f"{profile}_llm_provider", "ollama") == "openai_compatible":
             request_payload = payload if isinstance(payload, dict) else {}
@@ -553,7 +553,7 @@ def runtime_diagnostics(
     """Combine host telemetry with Ollama's observed loaded-model allocation."""
     hardware = detect_hardware()
     settings = get_settings()
-    profile = purpose if purpose in {"chat", "learning", "programming", "ai_learning"} else "chat"
+    profile = purpose if purpose in {"chat", "learning", "programming", "ai_learning", "topic_learning"} else "chat"
     requested_context = context_tokens if isinstance(context_tokens, int) and not isinstance(context_tokens, bool) else settings.get(f"{profile}_ollama_num_ctx", settings.get("ollama_num_ctx", 2048))
     result: dict[str, Any] = {
         "hardware": hardware,
@@ -680,7 +680,7 @@ def _openai_compatible_chat(
             messages.append({"role": item["role"], "content": item["content"][:12000]})
     message_limit = (
         min(256000, max(1000, int(settings.get(f"{purpose}_source_max_chars", 12000 if purpose == "learning" else 100000))))
-        if purpose in {"learning", "ai_learning"}
+        if purpose in {"learning", "ai_learning", "topic_learning"}
         else 72000 if purpose == "programming"
         else 16000 if purpose == "factual_review"
         else 12000
@@ -761,7 +761,7 @@ def chat(
     num_ctx_override: int | None = None,
 ) -> str:
     if purpose not in {"chat", "learning", "ai_learning", "programming", "factual_review", "research_plan"}:
-        raise ValueError("purpose must be chat, learning, ai_learning, programming, factual_review, or research_plan.")
+        raise ValueError("purpose must be chat, learning, ai_learning, topic_learning, programming, factual_review, or research_plan.")
     settings = get_settings()
     prefix = purpose
     provider_profile = purpose
