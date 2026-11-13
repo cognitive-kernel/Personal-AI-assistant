@@ -373,6 +373,8 @@ def test_windows_runner_cli_checks_use_cmd_shims_and_discover_active_ollama():
     assert "| Select-Object -First 1)" not in runner_check
     assert "Get-Command codex.cmd" in runner_check
     assert "$codexCommand.Source --version" in runner_check
+    assert "Provisioned per job by pinned actions/setup-node v6.4.0" in runner_check
+    assert "no system-wide installation required" in runner_check
     assert "Get-Command ollama.exe" in runner_check
     assert 'Get-CimInstance Win32_Process -Filter "Name=\'ollama.exe\'"' in runner_check
     assert "$ollamaExecutable --version" in runner_check
