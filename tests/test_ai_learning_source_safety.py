@@ -128,7 +128,7 @@ def test_source_check_rejects_private_ipv6_addresses_before_connecting(
     topic = service.add_topic(course["id"], "IPv6 network validation")
     service.decide_topics([topic["id"]], "approved")
     lesson = service.create_lesson(topic["id"], "Private IPv6 source")
-    version = service.add_content_version(lesson["id"], "# Private IPv6 source\\n\\nA private IPv6 test source.")
+    version = service.add_content_version(lesson["id"], "# Private IPv6 source\n\nA private IPv6 test source.")
     with connection() as conn:
         cursor = conn.execute(
             """INSERT INTO sources(content_version_id,title,url,publisher,source_type,validation_status)
@@ -160,7 +160,7 @@ def test_source_check_rejects_mixed_public_and_private_ipv6_dns_before_connectin
     service.decide_topics([topic["id"]], "approved")
     lesson = service.create_lesson(topic["id"], "Mixed IPv6 source")
     url = "https://mixed-ipv6.example/docs"
-    version = service.add_content_version(lesson["id"], "# Mixed IPv6 source\\n\\nA mixed DNS test source.")
+    version = service.add_content_version(lesson["id"], "# Mixed IPv6 source\n\nA mixed DNS test source.")
     with connection() as conn:
         cursor = conn.execute(
             """INSERT INTO sources(content_version_id,title,url,publisher,source_type,validation_status)
