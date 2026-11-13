@@ -106,7 +106,7 @@
 ### Residual gates
 - Target-host diagnostics `#43281178718` (code/test SHA) and `#43282258559` (documentation-inclusive SHA) are pending with no Runner assigned. The production main-branch run `#43220800164` has its `codex` job queued with no Runner name and requires `self-hosted, Windows, X64, ollama, autonomous-state-owner`. A powered-on PC does not prove that its GitHub Runner service is connected and matching those labels.
 - No live Ollama allocation, target-host Codex tool-call smoke, local soak/crash-restart, staging restore/rollback, human evaluation, or independent security review is claimed. Issue #52 remains open.
-- PR #722 remains Draft and unmerged. Continue GitHub-side work; do not bypass target-host or independent-review gates.
+- PR #722 remains Draft and unmerged. Continue GitHub-side work; do not bypass repository-enforced checks or independent security review; target-host evidence remains separately tracked and does not block delivery by default.
 
 ---
 
@@ -114,7 +114,7 @@
 
 - The target environment uses Node.js 26.13.0 with npm 11.20.0 and Codex CLI 0.167.0. Official Node release metadata confirms Node 26.13.0 is LTS and bundles npm 11.20.0.
 - Added a Windows GitHub Actions matrix that verifies Node/npm exactly and installs/runs both the target Codex CLI 0.167.0 and current 0.167.2 patch line without credentials. This validates the command/runtime boundary separately from the target-host Ollama service.
-- The local Windows/Ollama runner diagnostic remains a separate mandatory target-host merge gate under the master engineering prompt.
+- The local Windows/Ollama runner diagnostic remains separate operational acceptance evidence; the master engineering prompt says target-host/local/human tests are not merge gates by default unless branch protection explicitly requires them.
 
 ---
 
