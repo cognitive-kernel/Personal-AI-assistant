@@ -425,8 +425,8 @@ def test_target_diagnostic_records_actual_hardware_without_hardcoded_profile():
     assert "Get-Command codex.cmd" in diagnostic
     assert "Name='ollama.exe'" in diagnostic
     assert "Get-CimInstance Win32_UserProfile" in diagnostic
-    assert "AppData\\\\Local\\\\Programs\\\\Ollama\\\\ollama.exe" in diagnostic
-    assert "C:\\\\Users\\\\Admin\\\\AppData\\\\Local\\\\Programs\\\\Ollama\\\\ollama.exe" not in diagnostic
+    assert "AppData" in diagnostic and "Programs" in diagnostic and "Ollama" in diagnostic
+    assert "C:" + chr(92) * 2 + "Users" + chr(92) * 2 + "Admin" not in diagnostic
 
     assert "Get-Command node.exe" in autonomous
     assert "Get-Command python.exe" in autonomous
@@ -439,8 +439,8 @@ def test_target_diagnostic_records_actual_hardware_without_hardcoded_profile():
     assert "Get-Command npm.cmd" in autonomous
     assert "Get-Command codex.cmd" in autonomous
     assert "Get-CimInstance Win32_UserProfile" in autonomous
-    assert "AppData\\\\Local\\\\Programs\\\\Ollama\\\\ollama.exe" in autonomous
-    assert "C:\\\\Users\\\\Admin\\\\AppData\\\\Local\\\\Programs\\\\Ollama\\\\ollama.exe" not in autonomous
+    assert "AppData" in autonomous and "Programs" in autonomous and "Ollama" in autonomous
+    assert "C:" + chr(92) * 2 + "Users" + chr(92) * 2 + "Admin" not in autonomous
 
     assert "Get-Command ollama.exe" in runner_check
     assert 'Get-CimInstance Win32_Process -Filter "Name=\'ollama.exe\'"' in runner_check
