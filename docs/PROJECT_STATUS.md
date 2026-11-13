@@ -121,7 +121,7 @@
   - افزودن regression برای چند فرمان، completion فاقد متن فرمان، تطبیق ID، شکست اجرا، redaction و تثبیت Context.
 - **اعتبارسنجی تاریخی PR #702:** این شاخهٔ ۶۴k به PR #722 منتقل/جایگزین شد و هرگز به‌عنوان قرارداد نهایی ادغام نشد. نتایج Checkهای SHA قدیمی آن مرجع پذیرش نیستند؛ اعتبارسنجی نهایی روی head جاری PR #722 در بخش وضعیت جاری ثبت می‌شود.
 - **گیت‌های باز:** آزمون Context خودکار و fingerprint سخت‌افزار روی head فعلی؛ soak و مصرف حافظه روی میزبان مقصد؛ اجرای کامل autonomous cycle؛ crash/restart recovery؛ staging restore/rollback؛ تأیید مالک. Issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290) همچنان tracker پذیرش کل پروژه است و Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) به بازبینی امنیتی مستقل نیاز دارد.
-- سیاست ادغام: PR #702 ادغام‌شده باقی می‌ماند؛ PR #722 پیشنهاد حذف الزام ثابت ۶۴k را می‌دهد. PR #722 تا سبزشدن Workflowهای لازم روی SHA نهایی، تکمیل reviewهای الزامی و تأیید مالک ادغام نمی‌شود. diagnostic واقعی Windows و آزمون‌های live Ollama به‌عنوان شواهد عملیاتی جداگانه ثبت می‌شوند و بدون الزام branch protection مانع تحویل کد نیستند؛ هیچ merge خودکار، bypass، اجرای unsandboxed یا تغییر سطح دسترسی Runner مجاز نیست.
+- سیاست ادغام: PR #702 ادغام‌شده باقی می‌ماند؛ PR #722 پیشنهاد حذف الزام ثابت ۶۴k را می‌دهد. PR #722 تا سبزشدن workflowهای لازم روی SHA نهایی، موفقیت تست‌های لازم روی سیستم مقصد طبق Master Engineering Prompt، تکمیل reviewهای الزامی و تأیید مالک ادغام نمی‌شود. diagnostic واقعی Windows و آزمون‌های live Ollama مانع ادامهٔ توسعه و آماده‌سازی PR نیستند، اما گیت ادغام را تشکیل می‌دهند؛ هیچ merge خودکار، bypass، اجرای unsandboxed یا تغییر سطح دسترسی Runner مجاز نیست.
 
 ## وضعیت کنسول مهندسی خودکار — جزئیات عملکرد
 

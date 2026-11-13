@@ -148,7 +148,7 @@
 
 - The target environment uses Node.js 26.13.0 with npm 11.20.0 and Codex CLI 0.167.0. Official Node release metadata confirms Node 26.13.0 is LTS and bundles npm 11.20.0.
 - Added a Windows GitHub Actions matrix that verifies Node/npm exactly and installs/runs both the target Codex CLI 0.167.0 and current 0.167.2 patch line without credentials. This validates the command/runtime boundary separately from the target-host Ollama service.
-- The local Windows/Ollama runner diagnostic remains separate operational acceptance evidence; the master engineering prompt says target-host/local/human tests are not merge gates by default unless branch protection explicitly requires them.
+- The local Windows/Ollama runner diagnostic remains separate from GitHub-hosted CI evidence. The Master Engineering Prompt requires successful target-host tests before merge regardless of branch-protection configuration; pending target-host tests must not stop independent GitHub-side implementation, testing, or PR preparation.
 
 ---
 
@@ -772,7 +772,7 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - General assistant answers persisted through `append_assistant_message` are now staged locally as `learning_chat_candidates` under migration 45. Candidates retain the query hint, conversation/message/task identifiers, SHA-256 hashes and provenance, begin as `unverified`, and are never automatically promoted to trusted factual knowledge or sent to an external provider. Very short answers and obvious credential-bearing exchanges are skipped. The candidate capture is best-effort after chat persistence, so staging failure does not discard a saved conversation.
 - The subject hint is the originating user query, not yet a canonical taxonomy label; candidate-to-course promotion remains a separate workflow. The ingestion path covers assistant messages persisted in local chat history, not transient responses that are never stored.
 - Exact-head CI on `e62342e79d882c44e07340e28a728bcbf03846ab`: main suite **2028 passed / 50 deselected**; Windows storage **11 passed / 47 deselected**; browser E2E and dependency audit succeeded; generated learning artifacts, Markdown links, import-cycle guard, retrieval benchmark and claim-to-test coverage benchmark all succeeded. The claim-to-test benchmark passed 10/10 with zero false accepts and zero false rejects.
-- Target-host execution and a live `gpt-oss:20b` benchmark were intentionally excluded from the merge gate at the user's direction and are not claimed as completed.
+- Target-host execution and a live `gpt-oss:20b` benchmark were not run and are not claimed as completed. The user's direction was to continue GitHub-side engineering without waiting for these tests; it did not waive the Master Engineering Prompt's pre-merge target-host validation requirement.
 
 
 ## Universal learning contract v2 — source coverage and delivery policy

@@ -27,7 +27,7 @@ A further audit found that the self-hosted diagnostic used a fixed Python 3.11 i
 
 **Target-host gate remains pending:** diagnostic run [#43290291632](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43290291632) completed GitHub-hosted cleanup, but the Windows job has no Runner assignment. No live Ollama allocation, Codex tool-call smoke, or target-host soak is claimed. Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) remains open for independent security review. PR #722 stays Draft and unmerged.
 
-The owner requested continued GitHub-side work without waiting for local/human tests. Continue independent code, test, documentation, and GitHub CI work; do not bypass exact-head CI, repository-enforced approvals, or independent security review; target-host tests remain NOT RUN / PENDING and do not block delivery by default.
+The owner requested continued GitHub-side work without waiting for local/human tests. Continue independent code, test, documentation, and GitHub CI work; do not bypass exact-head CI, repository-enforced approvals, or independent security review; target-host tests remain NOT RUN / PENDING: they do not block development or PR preparation, but the Master Engineering Prompt makes successful required target-host tests a pre-merge gate.
 
 ---
 
