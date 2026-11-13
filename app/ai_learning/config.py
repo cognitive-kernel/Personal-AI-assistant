@@ -5,6 +5,8 @@ import os
 import sqlite3
 from typing import Any
 
+from ..config import SETTING_DEFAULTS
+
 _DEFAULTS: dict[str, bool] = {
     "ai_learning_enabled": True,
     "ai_learning_retrieval_enabled": True,
@@ -55,7 +57,7 @@ def max_topics_per_run() -> int:
         if "no such table: settings" not in str(exc).casefold():
             raise
         settings = {}
-    value = settings.get("ai_learning_lesson_batch_size", 20)
+    value = settings.get("ai_learning_lesson_batch_size", SETTING_DEFAULTS["ai_learning_lesson_batch_size"])
     if type(value) is not int or not 1 <= value <= 20:
         raise RuntimeError("Setting ai_learning_lesson_batch_size is outside its validated range.")
     return value
