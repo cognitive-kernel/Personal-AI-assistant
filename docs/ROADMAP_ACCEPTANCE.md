@@ -293,7 +293,7 @@ No PR is merged by this checkpoint. Local/target-host and human testing have not
 |---|---|---|
 | API integer path/query bounds | PR #738, head `5841e303916d0e4791724cde7ff5d53e131e772b`; Windows storage, dashboard smoke, dependency audit passed | Full test workflow in progress |
 | Task queue resource bounds | PR #739, head `9edfdd38716b88708b53772aa93d75c3850b77b7`; task payload <=1 MiB, checkpoint/result <=4 MiB, bounded queue metadata | Fresh exact-head CI in progress after a test-fixture correction |
-| Browser-learning exception propagation | PR #740, head `a30858b14a897fa463a96a4c5599153c81137e41`; Issue #723 regression tests added | Dependency audit and Windows storage passed; test/dashboard in progress |
+| Browser-learning exception propagation | PR #725, head `0c576ed9530d5b08f3f2e016f7fa36fe7d83b9e4`; Issue #723 regression tests added | All required exact-head CI passed (2,137 passed, 2 skipped, 51 deselected); issue remains open until merge |
 | Documentation/scorecard freshness | PR #735, head `b9e11e474dc9f2c6b3ec9148577daf64c7b82844` | All four required checks passed; latest documentation update requires another exact-head run |
 
 No merge has occurred. Issue #52 independent review, CodeQL alert disposition, branch-protection administration, target-host crash/recovery/restore/rollback, and pinned live-model/human adjudication remain separate open gates. Local and human tests have not started.
