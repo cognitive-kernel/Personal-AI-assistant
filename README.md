@@ -2,12 +2,11 @@
 
 دستیار هوش مصنوعی شخصی با رویکرد **local-first**؛ هدف این مخزن ساخت تدریجی یک Agent قابل توسعه، قابل آزمون و سازگار با منابع سخت‌افزاری سیستم است.
 
-## سخت‌افزار هدف
-- RAM: 32 GB
-- CPU: Intel Core i5-12400 (12th Gen)
-- GPU: Intel UHD Graphics 730 (یکپارچه)؛ WMI مقدار 2 GiB برای AdapterRAM گزارش کرده و درایور ثبت‌شده 32.0.101.6129 است. این مقدار به معنی 2 GiB حافظه اختصاصی VRAM نیست؛ ظرفیت Dedicated و Shared جداگانه از WDDM و تخصیص واقعی Ollama سنجیده می‌شوند.
+## سازگاری سخت‌افزار و سیستم‌عامل
 
-برنامه منابع واقعی را هنگام اجرا تشخیص می‌دهد، تعداد thread و context را محدود می‌کند و GPU را به‌صورت پیش‌فرض مجبور به استفاده نمی‌کند. اجرای کارهای سنگین باید بودجه منابع داشته باشد.
+No CPU, RAM, or GPU model is a fixed runtime requirement. The target diagnostic records the actual Windows build, CPU name/core counts, physical RAM, and GPU inventory; context selection uses live available memory, model metadata, KV-cache cost, parallel request count, and safety reserve. Missing or invalid required telemetry fails closed; a valid host is not rejected merely because it differs from an old repository profile.
+
+The previously documented Intel Core i5-12400 / 32 GB RAM / Intel UHD Graphics 730 profile is historical repository context only, not a verified specification of the current user's computer and not an acceptance gate. WMI AdapterRAM alone does not prove dedicated VRAM; WDDM and actual Ollama allocation are separate runtime measurements.
 
 ## وضعیت فعلی
 
