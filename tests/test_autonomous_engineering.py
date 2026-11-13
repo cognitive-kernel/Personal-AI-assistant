@@ -232,7 +232,7 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
             if request.full_url.endswith("/api/tags"):
                 return io.BytesIO(b'{"models":[{"name":"gpt-oss:20b"}]}')
             return io.BytesIO(
-                b'{"details":{"family":"llama"},"model_info":{"llama.context_length":65536},'
+                b'{"details":{"family":"llama"},"model_info":{"llama.context_length":65536,"llama.block_count":32,"llama.attention.head_count_kv":8,"llama.attention.key_length":128,"llama.attention.value_length":128},'
                 b'"capabilities":["completion","tools"]}'
             )
 
@@ -268,6 +268,7 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
     assert result["model_installed"] is True
     assert result["model_context_length"] == 65536
     assert result["model_supports_tools"] is True
+    assert result["model_kv_cache_metadata_available"] is True
     assert result["model_context_supported"] is True
 
 
@@ -1271,7 +1272,7 @@ def test_ollama_status_returns_every_installed_model_without_inserting_defaults(
                 show_requests.append(json.loads(request.data.decode("utf-8")))
                 payload = {
                     "details": {"family": "llama"},
-                    "model_info": {"llama.context_length": 32768},
+                    "model_info": {"llama.context_length": 32768, "llama.block_count": 32, "llama.attention.head_count_kv": 8, "llama.attention.key_length": 128, "llama.attention.value_length": 128},
                     "capabilities": ["completion", "tools"],
                 }
             return io.BytesIO(json.dumps(payload).encode("utf-8"))
@@ -1285,6 +1286,7 @@ def test_ollama_status_returns_every_installed_model_without_inserting_defaults(
     assert "gpt-oss:20b" not in result["models"]
     assert result["model_installed"] is True
     assert result["model_metadata_available"] is True
+    assert result["model_kv_cache_metadata_available"] is True
     assert result["model_context_supported"] is True
     assert result["model_context_error"] is None
     assert show_requests == [{"model": selected, "verbose": False}]
@@ -1307,6 +1309,29 @@ def test_ollama_status_keeps_server_online_when_selected_model_metadata_fails(mo
     assert result["model_context_supported"] is False
     assert result["model_supports_tools"] is False
     assert "OSError" in result["model_metadata_error"]
+
+
+def test_ollama_status_rejects_context_only_metadata_without_kv_dimensions(monkeypatch):
+    class FakeOpener:
+        def open(self, request, timeout):
+            if request.full_url.endswith("/api/tags"):
+                return io.BytesIO(b'{"models":[{"name":"context-only:latest"}]}')
+            return io.BytesIO(json.dumps({
+                "details": {"family": "llama"},
+                "model_info": {"llama.context_length": 65536},
+                "capabilities": ["completion", "tools"],
+            }).encode("utf-8"))
+
+    monkeypatch.setattr(agent.urllib.request, "build_opener", lambda *handlers: FakeOpener())
+
+    result = agent._ollama_status("context-only:latest")
+
+    assert result["online"] is True
+    assert result["model_metadata_available"] is True
+    assert result["model_kv_cache_metadata_available"] is False
+    assert "head_count_kv" in result["model_kv_cache_metadata_error"]
+    assert result["model_context_supported"] is False
+    assert "KV-cache metadata is incomplete" in result["model_context_error"]
 
 
 def test_save_settings_accepts_installed_model_with_context_below_64k(monkeypatch):
@@ -1340,7 +1365,7 @@ def test_ollama_status_accepts_one_token_model_context(monkeypatch):
                 return io.BytesIO(b'{"models":[{"name":"tiny:latest"}]}')
             return io.BytesIO(json.dumps({
                 "details": {"family": "tiny"},
-                "model_info": {"tiny.context_length": 1},
+                "model_info": {"tiny.context_length": 1, "tiny.block_count": 1, "tiny.attention.head_count_kv": 1, "tiny.attention.key_length": 1, "tiny.attention.value_length": 1},
                 "capabilities": ["completion", "tools"],
             }).encode("utf-8"))
 
@@ -1350,6 +1375,7 @@ def test_ollama_status_accepts_one_token_model_context(monkeypatch):
 
     assert result["model_metadata_available"] is True
     assert result["model_context_length"] == 1
+    assert result["model_kv_cache_metadata_available"] is True
     assert result["model_context_supported"] is True
     assert result["model_supports_tools"] is True
 
