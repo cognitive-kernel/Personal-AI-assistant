@@ -36,7 +36,11 @@ def enqueue_topic_quality_evaluation(job_id: int) -> dict[str, Any] | None:
         if gate is None:
             return None
         if gate["state"] == "passed":
-            return {"status": "already_passed", "path_topic_id": int(path_topic_id)}
+            next_topic = learning.queue_next_researched_path_topic(int(path_topic_id))
+            return {
+                "status": "already_passed", "path_topic_id": int(path_topic_id),
+                "next_topic": next_topic,
+            }
         current_job_id = gate["current_job_id"]
         if current_job_id is not None and int(current_job_id) != job_id:
             return {"status": "owned_by_another_job", "path_topic_id": int(path_topic_id)}
@@ -118,7 +122,11 @@ def handle_topic_quality_evaluation(
     if gate is None:
         raise PermanentTaskError("This topic is not enrolled in the sequential quality gate.")
     if gate["state"] == "passed":
-        return {"path_topic_id": path_topic_id, "job_id": job_id, "status": "already_passed"}
+        next_topic = learning.queue_next_researched_path_topic(path_topic_id)
+        return {
+            "path_topic_id": path_topic_id, "job_id": job_id,
+            "status": "already_passed", "next_topic": next_topic,
+        }
     if gate["state"] == "blocked":
         return {"path_topic_id": path_topic_id, "job_id": job_id, "status": "blocked"}
     if gate["current_job_id"] is None or int(gate["current_job_id"]) != job_id:
