@@ -138,7 +138,7 @@ def test_promotion_refuses_stale_hash_and_keeps_candidate(lifecycle_store):
     job = learning.create_job("Stale candidate")
     candidate_id, digest = _candidate(job["id"])
 
-    with pytest.raises(ValueError, match="not met every"):
+    with pytest.raises(ValueError, match="not met the executed-test"):
         knowledge_lifecycle.promote_candidate(
             candidate_id, expected_candidate_sha256=digest
         )
@@ -192,6 +192,19 @@ def test_two_models_and_two_live_sources_allow_audited_promotion(lifecycle_store
              json.dumps(urls), digest, json.dumps({"accepted": True})),
         )
         candidate_id = int(cursor.lastrowid)
+        connection.execute(
+            """INSERT INTO learning_candidate_sources(
+                   candidate_id, source_type, source_url, verification_status
+               ) VALUES (?, 'web', ?, 'unverified')""",
+            (candidate_id, urls[0]),
+        )
+        connection.execute(
+            """INSERT INTO learning_candidate_sources(
+                   candidate_id, source_type, reference_url, provider, model_id,
+                   verification_status
+               ) VALUES (?, 'ai', ?, 'ollama', 'gpt-oss:20b', 'unverified')""",
+            (candidate_id, "https://ollama.com/library/gpt-oss"),
+        )
 
     monkeypatch.setattr(
         "app.web_sources.fetch_public_document",
