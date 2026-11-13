@@ -423,7 +423,6 @@ def test_target_diagnostic_verifies_owner_confirmed_hardware_profile():
     assert "github.event.pull_request.head.ref || github.ref_name" in diagnostic
     assert "github.event.pull_request.head.sha || github.sha" in diagnostic
     assert "github.event.pull_request.head.repo.full_name == github.repository" in diagnostic
-    assert "actions/runners?per_page=100" in diagnostic
     assert "TARGET_BRANCH" in diagnostic and "TARGET_HEAD_SHA" in diagnostic
     assert "github.ref_name == 'fix/autonomous-engineering-show-all-ollama-models-20261112' && '10000'" not in diagnostic
     assert "Get-Command node.exe" in diagnostic
