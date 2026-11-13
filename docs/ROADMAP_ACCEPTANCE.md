@@ -6,7 +6,7 @@
 - Windows/Ollama target diagnostic [#43360945445](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43360945445) has completed hosted cleanup but its `sandbox-diagnostic` job remains pending without a matching Runner assignment. Required labels: `self-hosted, Windows, X64, ollama, autonomous-state-owner`. The machine being powered on does not prove the Runner service is connected and online.
 - Therefore actual Ollama version/process environment, `OLLAMA_NUM_PARALLEL`, loaded model, `/api/ps` allocation, Codex MXC/exec_command smoke, target-host soak/crash-restart and staging restore/rollback are **NOT RUN / PENDING**, not passed.
 - Independent security review remains pending in [Issue #52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52); project-wide acceptance remains open in [Issue #290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290).
-- Continue all independent GitHub-side work. Do not weaken unique state-owner labels or target-host merge gates. No merge, auto-merge, bypass or deployment.
+- Continue all independent GitHub-side work. Do not weaken unique state-owner labels or repository-enforced merge gates. Target-host execution is tracked separately and is not a merge gate unless branch protection explicitly requires it. No auto-merge, bypass or deployment.
 
 ---
 
@@ -25,7 +25,7 @@ A further audit found that the self-hosted diagnostic used a fixed Python 3.11 i
 
 **Target-host gate remains pending:** diagnostic run [#43290291632](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43290291632) completed GitHub-hosted cleanup, but the Windows job has no Runner assignment. No live Ollama allocation, Codex tool-call smoke, or target-host soak is claimed. Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) remains open for independent security review. PR #722 stays Draft and unmerged.
 
-The owner requested continued GitHub-side work without waiting for local/human tests. Continue independent code, test, documentation, and GitHub CI work; do not bypass exact-head or target-host merge gates.
+The owner requested continued GitHub-side work without waiting for local/human tests. Continue independent code, test, documentation, and GitHub CI work; do not bypass exact-head CI, repository-enforced approvals, or independent security review; target-host tests remain NOT RUN / PENDING and do not block delivery by default.
 
 ---
 
@@ -52,7 +52,7 @@ Code/test SHA `65b07b3a6dee54b6a1e27356f5f7a7df8ad87c3` passed the GitHub-hosted
 
 **Still blocked / unverified:** self-hosted Windows/Ollama diagnostic is pending with no runner assigned; therefore no live model load, `/api/ps` allocation, or actual Codex tool-call smoke is claimed. PR #707 remains open, non-mergeable and overlaps 11 files with PR #722. Issue #52 remains open for independent security review. No human evaluation, target-host soak, restore/rollback rehearsal, or independent security sign-off is claimed.
 
-This validation applies to the code/test snapshot SHA above. The following documentation synchronization commits change the PR head; all exact-head checks must rerun on that new SHA. Keep PR #722 Draft and do not merge/deploy until required target-host and independent review gates are satisfied.
+This validation applies to the code/test snapshot SHA above. The following documentation synchronization commits change the PR head; all exact-head checks must rerun on that new SHA. Keep PR #722 Draft while exact-head CI is running. Do not merge/deploy until exact-head CI, repository-enforced approvals, independent security review, and owner authorization are satisfied; target-host/local/human acceptance remains separately tracked and is not a merge gate by default.
 
 ## 2026-11-12 — Exact-head Docker sandbox timeout remediation
 
