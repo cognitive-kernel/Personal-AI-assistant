@@ -1,3 +1,15 @@
+## 2026-11-13 — Exact-head CI completion and final compatibility re-audit
+
+- Re-read the full master engineering prompt and re-checked PR #722, current branch files, workflow definitions, project status, acceptance ledger, and open Issues.
+- Exact code/test head: `44e656d752abdc902d45fa98557cabe024a3f001`; base/main: `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`.
+- All four required hosted workflows passed on this exact SHA: tests #43360952224 (including full test suite, Python 3.11.9/3.14.6, Windows Storage and Node/Codex matrix), Browser E2E #43360952333, Docker sandbox #43360952190, and dependency audit #43360953410.
+- The earlier project-status and acceptance-ledger entries still described the previous SHA `fb53916fe072241b5910fbc3c194ff206ecb6312` and in-progress CI. Their current summaries are synchronized to this exact SHA and the completed run IDs.
+- Target diagnostic #43360945445: hosted cleanup succeeded; `sandbox-diagnostic` is still pending without a Runner assignment. Required labels remain `self-hosted, Windows, X64, ollama, autonomous-state-owner`. No label relaxation was made because the unique durable-state owner is a safety invariant.
+- Consequently no target-host Ollama process/configuration, live model allocation, Codex MXC/exec_command smoke, soak/crash-restart, or staging restore/rollback result is claimed.
+- Independent security review remains open in Issue #52; project-wide acceptance remains open in Issue #290. No merge, auto-merge, bypass, or deployment.
+
+---
+
 ## 2026-11-13 — Remove unverified target hardware gate and require complete CI matrix
 
 ### Root cause
@@ -26,7 +38,7 @@
 - All four required GitHub-hosted workflows completed successfully on that exact head: tests #43356884932, Browser E2E #43356884952, Docker sandbox #43356884953, and dependency audit #43356884920. The tests workflow includes Python 3.11.9/3.14.6, Windows Storage/PowerShell 5.1, and Node 26 with Codex CLI 0.167.0/0.167.2.
 - The target-host diagnostic #43356868684 is still pending at `sandbox-diagnostic` with no Runner assignment. Its hosted cleanup job succeeded. Required labels are `self-hosted, Windows, X64, ollama, autonomous-state-owner`; the available evidence cannot distinguish a stopped service, disconnected Runner, missing registration, or label mismatch. No host state was guessed.
 - Reviewed the adaptive selector and Windows preflight. The selector validates positive model weight size, architecture context, all KV-cache dimensions, tool capability, parallel-request count, memory reserve/overhead, and conservative weight residency. The Windows bridge reads only the Ollama owner's persisted user setting with machine fallback and fails closed on unavailable owner/hive/invalid values. A remaining limitation is that persisted registry configuration is not direct proof of a process's inherited environment; target diagnostic evidence must confirm the live server configuration.
-- Hardware/software documentation remains aligned to the recorded Intel Core i5-12400, 6C/12T, about 31.78 GiB RAM, Intel UHD 730 integrated graphics; WMI AdapterRAM is not represented as dedicated VRAM. CI compatibility targets remain Python 3.11.9/3.14.6, Node 26.13.0/npm 11.20.0, Codex CLI 0.167.0/0.167.2. Actual target Ollama >=0.40.16 is not yet verified.
+- Hardware documentation no longer treats Intel Core i5-12400, 6C/12T, 31.78 GiB RAM, or Intel UHD 730 as the user's confirmed hardware; these are historical repository assumptions only. Actual host telemetry remains pending Runner assignment. CI compatibility targets remain Python 3.11.9/3.14.6, Node 26.13.0/npm 11.20.0, Codex CLI 0.167.0/0.167.2. Actual target Ollama >=0.40.16 is not yet verified.
 
 ### Documentation reconciliation
 - Updated the current sections of `docs/PROJECT_STATUS.md` and `docs/ROADMAP_ACCEPTANCE.md` to point to the live PR head and exact-head successful workflow runs, and to record target-host/security/project-wide gates as pending/open.
