@@ -1124,6 +1124,18 @@ def _persist_researched_path(
                  json.dumps(source_urls, ensure_ascii=False),
                  hierarchy_path, depth),
             )
+            topic_row = connection.execute(
+                "SELECT id FROM learning_path_topics WHERE path_id=? AND topic=?",
+                (path_id, lesson_topic),
+            ).fetchone()
+            if topic_row is None:
+                raise RuntimeError("Curriculum topic could not be resolved after persistence.")
+            connection.execute(
+                """INSERT OR IGNORE INTO learning_topic_quality_gates(
+                       path_topic_id, state, max_repairs, next_action
+                   ) VALUES (?, 'pending', 3, 'await_first_lesson')""",
+                (int(topic_row["id"]),),
+            )
         connection.execute(
             "UPDATE learning_paths SET title=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
             (outline["title"], path_id),
