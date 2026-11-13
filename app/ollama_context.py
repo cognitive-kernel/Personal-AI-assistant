@@ -37,6 +37,34 @@ def supports_tool_calling(capabilities: Any) -> bool:
     return isinstance(capabilities, list) and "tools" in capabilities
 
 
+def kv_cache_bytes_per_token(model_info: dict[str, Any], architecture: str) -> int:
+    """Validate the architecture-specific dimensions required for KV-cache budgeting."""
+    if not isinstance(model_info, dict) or not isinstance(architecture, str) or not architecture.strip():
+        raise OllamaModelMetadataError("Model architecture/KV-cache metadata is unavailable.")
+    prefix = f"{architecture}."
+    required = {
+        "layers": f"{prefix}block_count",
+        "kv_heads": f"{prefix}attention.head_count_kv",
+        "key_length": f"{prefix}attention.key_length",
+        "value_length": f"{prefix}attention.value_length",
+    }
+    dimensions: dict[str, int] = {}
+    for name, key in required.items():
+        value = model_info.get(key)
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise OllamaModelMetadataError(f"Required KV-cache metadata '{key}' is unavailable.")
+        dimensions[name] = value
+    bytes_per_token = (
+        dimensions["layers"]
+        * dimensions["kv_heads"]
+        * (dimensions["key_length"] + dimensions["value_length"])
+        * 2
+    )
+    if bytes_per_token <= 0:
+        raise OllamaModelMetadataError("KV-cache memory estimate is invalid.")
+    return bytes_per_token
+
+
 def select_context_window(
     *,
     model_info: dict[str, Any],
@@ -83,28 +111,7 @@ def select_context_window(
             f"Requested context must be a positive integer."
         )
 
-    prefix = f"{architecture}."
-    required = {
-        "layers": f"{prefix}block_count",
-        "kv_heads": f"{prefix}attention.head_count_kv",
-        "key_length": f"{prefix}attention.key_length",
-        "value_length": f"{prefix}attention.value_length",
-    }
-    dimensions: dict[str, int] = {}
-    for name, key in required.items():
-        value = model_info.get(key)
-        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-            raise OllamaModelMetadataError(f"Required KV-cache metadata '{key}' is unavailable.")
-        dimensions[name] = value
-
-    bytes_per_token = (
-        dimensions["layers"]
-        * dimensions["kv_heads"]
-        * (dimensions["key_length"] + dimensions["value_length"])
-        * 2
-    )
-    if bytes_per_token <= 0:
-        raise OllamaModelMetadataError("KV-cache memory estimate is invalid.")
+    bytes_per_token = kv_cache_bytes_per_token(model_info, architecture)
 
     overhead_bytes = max(
         MIN_MODEL_OVERHEAD_BYTES,
