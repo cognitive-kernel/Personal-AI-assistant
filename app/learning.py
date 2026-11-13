@@ -1585,6 +1585,15 @@ def run_job(job_id: int, *, task_context: Any | None = None) -> None:
             # Never delete user-provided or retrieved source material because a
             # heuristic score is low. It remains provenance-labelled and untrusted.
     except Exception as exc:
+        from .task_worker import TaskInterrupted
+
+        if isinstance(exc, TaskInterrupted):
+            if "cancel" in str(exc).casefold():
+                learning_execution.cancel_if_current(execution_lease)
+                if row["method_attempt_key"]:
+                    from .learning_method_orchestrator import mark_method_cancelled
+                    mark_method_cancelled(job_id)
+            raise
         assert_execution_owner("learning_execution_failed")
         learning_execution.fail_if_current(execution_lease, str(exc)[:1000])
         raise
