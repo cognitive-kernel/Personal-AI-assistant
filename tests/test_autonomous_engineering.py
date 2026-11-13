@@ -1256,7 +1256,7 @@ def test_autonomous_workflows_enforce_positive_and_exact_ollama_runtime_context(
     assert '--require-command-fragment "$probeFileName"' in production
     assert "Cancel superseded CI runs for this branch" in diagnostic
     assert '("tests.yml", "browser-e2e.yml", "dependency-audit.yml")' in diagnostic
-    assert "if ($run.head_sha -eq $env:GITHUB_SHA) { continue }" in diagnostic
+    assert "if ($run.head_sha -eq $env:TARGET_HEAD_SHA) { continue }" in diagnostic
     assert "/cancel" in diagnostic and "/force-cancel" in diagnostic
 
 
