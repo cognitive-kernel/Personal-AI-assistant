@@ -1156,13 +1156,20 @@ async function refreshLearningCandidates() {
    const failure=document.createElement("p"); failure.className="muted";
    failure.textContent=item.failure_reason||""; failure.hidden=!item.failure_reason;
    const actions=document.createElement("div"); actions.className="cloud-actions";
-   const detailButton=document.createElement("button"); detailButton.type="button"; detailButton.textContent="نمایش متن کامل"; detailButton.disabled=!item.integrity_valid;
+   const detailButton=document.createElement("button"); detailButton.type="button"; detailButton.textContent="نمایش متن و شواهد کامل"; detailButton.disabled=!item.integrity_valid;
    detailButton.addEventListener("click",async()=>{
     try{
      const detail=await api("/api/learning/candidates/"+item.id);
-     let pre=card.querySelector("pre");
-     if(!pre){pre=document.createElement("pre");card.append(pre);}
-     pre.textContent=detail.candidate.content;
+     let pre=card.querySelector("pre.candidate-detail");
+     if(!pre){pre=document.createElement("pre");pre.className="candidate-detail";card.append(pre);}
+     pre.textContent=JSON.stringify({
+      content:detail.candidate.content,
+      source_urls:detail.candidate.source_urls,
+      quality_report:detail.candidate.quality_report,
+      test_plan:detail.candidate.test_plan,
+      test_results:detail.candidate.test_results,
+      failure_reason:detail.candidate.failure_reason
+     },null,2);
     }catch(error){meta.textContent=error.message;}
    });
    const reviewButton=document.createElement("button"); reviewButton.type="button"; reviewButton.textContent="شروع بررسی وب و peer-AI";
