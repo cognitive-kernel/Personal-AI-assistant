@@ -230,6 +230,8 @@ def queue_initial_method(path_topic_id: int) -> dict[str, Any]:
             return _queue_next(path_topic_id, method, attempt_number, source_job_id=last.get("job_id"))
         if last["status"] == "passed":
             return {"status": "passed", "path_topic_id": path_topic_id}
+        if last["status"] == "cancelled":
+            return {"status": "cancelled", "path_topic_id": path_topic_id}
 
     return _queue_first_enabled_method(path_topic_id, attempt_number=1)
 
@@ -275,6 +277,27 @@ def mark_method_running(job_id: int) -> None:
         event_key=f"{job['method_attempt_key']}:running",
         job_id=job_id,
         evidence={"worker_claimed_job": True},
+    )
+
+
+def mark_method_cancelled(job_id: int, *, reason: str = "Cancelled by user.") -> None:
+    from . import learning
+
+    job = learning.get_job(job_id)
+    identity = _method_attempt_identity(job)
+    if identity is None:
+        return
+    path_topic_id, method, attempt_number = identity
+    latest = latest_attempt_event(path_topic_id, method, attempt_number)
+    if latest is not None and latest["status"] == "cancelled":
+        return
+    append_attempt_event(
+        path_topic_id, method, attempt_number, "cancelled",
+        event_key=f"{job['method_attempt_key']}:cancelled",
+        job_id=job_id,
+        content_sha256=_content_hash(job),
+        diagnosis={"reason": str(reason)[:500]},
+        evidence={"cancelled_by_user": True},
     )
 
 
