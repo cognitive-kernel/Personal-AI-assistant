@@ -470,3 +470,8 @@
 
 - Chrome executable path and dedicated browser-profile directory are now read from Settings rather than AI_LEARNING_CHROME_PATH/AI_LEARNING_BROWSER_PROFILE environment variables. An empty Chrome path uses safe platform auto-detection; the profile path remains user-configurable.
 - Browser page/control polling intervals and lease duration/heartbeat are also settings-backed, with bounded validation and a heartbeat-to-lease safety ratio. The active worker uses a snapshot of lease values until it releases ownership.
+### 2026-11-13 — First responsibility-based split of AI-learning service
+
+- Extracted title embedding, semantic duplicate detection, provider-scoped cache identity and duplicate-threshold policy from the large AI-learning service module into app/ai_learning/embedding_service.py.
+- Centralized validated numeric setting readers in app/ai_learning/config.py; the legacy service facade re-exports imported names to preserve existing callers and tests.
+- The extraction is intentionally incremental: app/ai_learning/service.py and browser_automation.py remain large and still need further responsibility-based decomposition. No claim is made that the modularization requirement is complete.
