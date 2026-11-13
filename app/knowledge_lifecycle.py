@@ -84,6 +84,13 @@ def record_candidate_review(
     candidate_sha256 = _digest(candidate_sha256, "candidate_sha256")
     if review_kind not in _REVIEW_KINDS or verdict not in _VERDICTS:
         raise ValueError("Unsupported review kind or verdict.")
+    # Reject terminal candidates before any live source fetch or model-adapter work.
+    with learning_connection() as connection:
+        current_candidate = _candidate_row(connection, candidate_id)
+        if current_candidate["status"] == "failed" and str(current_candidate["failure_reason"] or "").startswith("rejected_after_review:"):
+            raise ValueError("Candidate was rejected after review; create a new versioned candidate to reassess it.")
+        if candidate_sha256 != current_candidate["content_sha256"]:
+            raise ValueError("Review candidate hash is stale; refresh the candidate before recording evidence.")
     if review_kind != "source" and _trusted_adapter is not True:
         raise ValueError("AI/test evidence can only be written by a trusted internal adapter, not the public API.")
     if not isinstance(reviewer_id, str) or not 1 <= len(reviewer_id.strip()) <= 200:
