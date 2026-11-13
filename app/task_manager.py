@@ -49,9 +49,11 @@ def _timestamp(value: datetime | None = None) -> str:
 def _json(
     value: Any,
     *,
-    max_bytes: int = MAX_TASK_RECORD_BYTES,
+    max_bytes: int | None = None,
     field_name: str = "Task data",
 ) -> str:
+    if max_bytes is None:
+        max_bytes = MAX_TASK_RECORD_BYTES
     try:
         encoded = json.dumps(value, ensure_ascii=False, allow_nan=False)
         size = len(encoded.encode("utf-8"))
