@@ -56,7 +56,7 @@ def grant_sandbox_consent(request: ConsentGrantRequest) -> dict[str, Any]:
     if not _configured():
         raise HTTPException(
             status_code=409,
-            detail="Sandbox is not configured. Verify SANDBOX_ENABLED, Docker executable, and image digest first.",
+            detail="Sandbox is not configured. Enable it and configure an absolute Docker executable plus digest-pinned images in dashboard Settings.",
         )
     try:
         return {"consent": sandbox_consent.grant_consent()}
