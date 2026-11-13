@@ -184,7 +184,7 @@ def test_source_check_redacts_malformed_http_response_details(isolated_store, mo
     service.decide_topics([topic["id"]], "approved")
     lesson = service.create_lesson(topic["id"], "Malformed source")
     url = "https://malformed.example/docs"
-    version = service.add_content_version(lesson["id"], "# Malformed source\\n\\nA source used for response-boundary tests.")
+    version = service.add_content_version(lesson["id"], "# Malformed source\n\nA source used for response-boundary tests.")
     with connection() as conn:
         cursor = conn.execute(
             """INSERT INTO sources(content_version_id,title,url,publisher,source_type,validation_status)
@@ -224,7 +224,7 @@ def test_source_check_redacts_dns_error_details(isolated_store, monkeypatch):
     service.decide_topics([topic["id"]], "approved")
     lesson = service.create_lesson(topic["id"], "DNS error source")
     url = "https://dns-error.example/docs"
-    version = service.add_content_version(lesson["id"], "# DNS error source\\n\\nA source used for DNS diagnostic tests.")
+    version = service.add_content_version(lesson["id"], "# DNS error source\n\nA source used for DNS diagnostic tests.")
     with connection() as conn:
         cursor = conn.execute(
             """INSERT INTO sources(content_version_id,title,url,publisher,source_type,validation_status)
