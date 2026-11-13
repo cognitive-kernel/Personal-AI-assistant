@@ -679,7 +679,8 @@ def _openai_compatible_chat(
         if item.get("role") in {"user", "assistant"} and isinstance(item.get("content"), str):
             messages.append({"role": item["role"], "content": item["content"][:12000]})
     message_limit = (
-        256000 if purpose in {"learning", "ai_learning"}
+        min(256000, max(1000, int(settings.get(f"{purpose}_source_max_chars", 12000 if purpose == "learning" else 100000))))
+        if purpose in {"learning", "ai_learning"}
         else 72000 if purpose == "programming"
         else 16000 if purpose == "factual_review"
         else 12000
