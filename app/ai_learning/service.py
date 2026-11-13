@@ -14,12 +14,13 @@ from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 from .db import connection
 from ..db import get_settings
+from ..config import SETTING_DEFAULTS
 from ..ollama import embed as ollama_embed
 from ..pinned_http import PinnedHTTPHandler, PinnedHTTPSHandler
 
-CHUNK_TARGET_CHARS = 1_800
-CHUNK_OVERLAP_CHARS = 180
-MAX_SCHEDULED_RUN_RETRIES = 2
+CHUNK_TARGET_CHARS = int(SETTING_DEFAULTS["ai_learning_chunk_target_chars"])
+CHUNK_OVERLAP_CHARS = int(SETTING_DEFAULTS["ai_learning_chunk_overlap_chars"])
+MAX_SCHEDULED_RUN_RETRIES = int(SETTING_DEFAULTS["ai_learning_max_retries"])
 
 def _configured_int_setting(name: str, default: int, minimum: int, maximum: int) -> int:
     """Read a validated integer from the shared persistent settings contract."""
