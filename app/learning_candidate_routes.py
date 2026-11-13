@@ -45,6 +45,25 @@ class CandidateTestPlanRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+class CandidateSourceRequest(BaseModel):
+    source_type: Literal["web", "ai", "book", "other"]
+    source_url: str | None = Field(default=None, max_length=2048)
+    reference_url: str | None = Field(default=None, max_length=2048)
+    title: str | None = Field(default=None, max_length=500)
+    book_title: str | None = Field(default=None, max_length=500)
+    book_author: str | None = Field(default=None, max_length=500)
+    provider: str | None = Field(default=None, max_length=200)
+    model_id: str | None = Field(default=None, max_length=200)
+    edition: str | None = Field(default=None, max_length=500)
+    publisher: str | None = Field(default=None, max_length=500)
+    isbn: str | None = Field(default=None, max_length=100)
+    page: str | None = Field(default=None, max_length=100)
+    chapter: str | None = Field(default=None, max_length=500)
+    description: str | None = Field(default=None, max_length=2000)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="forbid")
+
 
 def _decode_json(value: str, *, field: str) -> Any:
     try:
@@ -279,3 +298,28 @@ def save_candidate_test_plan(
         raise
     except (OSError, sqlite3.Error) as exc:
         raise HTTPException(status_code=503, detail="Candidate test plan could not be saved.") from exc
+
+
+@router.post("/{candidate_id}/sources", status_code=201)
+def add_candidate_source(
+    candidate_id: int,
+    request: CandidateSourceRequest,
+) -> dict[str, Any]:
+    """Append validated source provenance; this never verifies or promotes a candidate."""
+    from .learning_provenance import record_candidate_source
+
+    payload = request.model_dump(exclude_none=True)
+    try:
+        record = record_candidate_source(candidate_id, payload)
+        return {
+            "candidate_id": candidate_id,
+            "source": record,
+            "promoted": False,
+            "note": "Source metadata is recorded as unverified provenance; it is not proof of claim support.",
+        }
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if "does not exist" in message else 409 if "immutable" in message else 422
+        raise HTTPException(status_code=status_code, detail=message) from exc
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Learning source provenance could not be saved.") from exc
