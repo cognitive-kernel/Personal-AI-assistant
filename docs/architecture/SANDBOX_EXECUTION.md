@@ -23,7 +23,7 @@ The image must match the official Python image name and include a SHA-256 digest
 
 ## Deliberate limitations
 
-- The low-level primitive is wrapped by `app/sandbox_tasks.py` as the allow-listed task type `sandbox.run_python`. The handler is registered only when `SANDBOX_ENABLED=true` (or `1`/`yes`/`on`) and the administrator provides a valid absolute `SANDBOX_DOCKER_EXECUTABLE` and a digest-pinned official `SANDBOX_PYTHON_IMAGE`. Submission is exposed only through the loopback-only, consent-aware `/api/sandbox` routes; the generic `/api/tasks` route rejects this task type.
+- The low-level primitive is wrapped by `app/sandbox_tasks.py` as the allow-listed task type `sandbox.run_python`. The handler is registered only when the persisted `sandbox_enabled` setting is true and Settings contains a valid absolute Docker executable plus a digest-pinned official Python image. The module switch defaults to enabled, but missing configuration leaves the handler unavailable. Submission is exposed only through the loopback-only, consent-aware `/api/sandbox` routes; the generic `/api/tasks` route rejects this task type.
 - Arbitrary source code is never executed during startup or without the configured Docker sandbox, explicit persisted consent, and a user-submitted bounded run request.
 - There is no network access from the container, no secrets or host directories are mounted, and no persistent output directory is created.
 - Docker daemon access is a privileged host capability; deployment must protect the Docker socket and restrict who can configure the executable/image.
@@ -40,7 +40,7 @@ The image must match the official Python image name and include a SHA-256 digest
 
 ## Allow-listed task adapter
 
-The task payload accepts only `source_code`, `timeout_seconds` (1–120, default 10), and `max_output_bytes` (1–65536, default 32768). It cannot choose the Docker executable or image. The handler records a SHA-256 source digest and execution metadata in task checkpoints/results, not the source itself; the source remains in the task payload because it is the input being tested. Execution remains disabled unless the operator explicitly sets `SANDBOX_ENABLED` and supplies the local Docker path plus a verified image reference.
+The task payload accepts only `source_code`, `timeout_seconds` (1–120, default 10), and `max_output_bytes` (1–65536, default 32768). It cannot choose the Docker executable or image. The handler records a SHA-256 source digest and execution metadata in task checkpoints/results, not the source itself; the source remains in the task payload because it is the input being tested. Execution remains unavailable until the operator configures the local Docker path and verified image in Settings. Even when the module is enabled and configured, every execution still requires explicit persisted user consent.
 
 This adapter does not install dependencies, enable network access, expose an HTTP endpoint, or run arbitrary payloads outside the registered sandbox handler.
 
@@ -49,7 +49,7 @@ This adapter does not install dependencies, enable network access, expose an HTT
 
 The loopback-only `/api/sandbox` routes expose consent status/history, explicit consent grant, revocation, and bounded task submission. Consent defaults to off and is stored in the settings database with a policy version and append-only grant/revoke events. The generic `/api/tasks` endpoint rejects `sandbox.run_python` so callers must use the consent-aware route.
 
-The handler checks current consent before execution and periodically while the container runs. Revocation causes the sandbox client to stop at its next control poll; queued tasks also fail closed if consent is absent when they begin. This is an explicit local consent mechanism, not a claim of strong user authentication: the API remains loopback-only and the host account/Docker daemon must be protected.
+The handler checks current consent before execution and periodically while the container runs. Consent defaults to off and is separate from the `sandbox_enabled` module setting. Revocation causes the sandbox client to stop at its next control poll; queued tasks also fail closed if consent is absent when they begin. This is an explicit local consent mechanism, not a claim of strong user authentication: the API remains loopback-only and the host account/Docker daemon must be protected.
 
 
 ## Orphan-container cleanup (explicit, conservative)
