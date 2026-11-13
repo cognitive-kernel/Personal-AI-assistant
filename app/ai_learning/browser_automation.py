@@ -41,6 +41,18 @@ _LOGGER: logging.Logger | None = None
 _BROWSER_SESSION = threading.local()
 _MAX_CONTEXT_RELAUNCHES = 1
 
+def _claim_configured_worker_lease() -> int | None:
+    """Claim the shared browser lease using one validated settings snapshot."""
+    global _WORKER_LEASE_SECONDS, _WORKER_LEASE_HEARTBEAT_SECONDS
+    lease_seconds = _configured_seconds("ai_learning_browser_lease_seconds", 90, 30, 600)
+    heartbeat_seconds = _configured_seconds("ai_learning_browser_lease_heartbeat_seconds", 15, 5, 30)
+    if heartbeat_seconds * 3 > lease_seconds:
+        raise RuntimeError("Browser lease heartbeat must be no more than one third of the lease duration.")
+    _WORKER_LEASE_SECONDS = lease_seconds
+    _WORKER_LEASE_HEARTBEAT_SECONDS = float(heartbeat_seconds)
+    return service.claim_worker_lease(_WORKER_OWNER, lease_seconds=lease_seconds)
+
+
 def _configured_seconds(name: str, default: int, minimum: int, maximum: int) -> int:
     """Read a validated runtime duration from the shared settings store."""
     settings = service.get_settings()
@@ -1552,9 +1564,7 @@ def _dispatch_next_persisted_run() -> dict[str, Any]:
 
         # SQLite serializes this claim across independent application processes.
         # The lease covers the shared Chrome profile as well as the durable run.
-        epoch = service.claim_worker_lease(
-            _WORKER_OWNER, lease_seconds=_WORKER_LEASE_SECONDS
-        )
+        epoch = _claim_configured_worker_lease()
         if epoch is None:
             return {
                 "status": "worker_busy",
@@ -1991,7 +2001,7 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
                 "message": "صف یادگیری تا زمان تلاش مجدد خودکار در مکث موقت است؛ کارهای باقی‌مانده پس از آن ادامه پیدا می‌کنند.",
             }
 
-        epoch = service.claim_worker_lease(_WORKER_OWNER, lease_seconds=_WORKER_LEASE_SECONDS)
+        epoch = _claim_configured_worker_lease()
         if epoch is None:
             return {
                 "status": "worker_busy",
