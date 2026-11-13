@@ -194,4 +194,9 @@ def test_practical_learning_job_filter_rejects_non_positive_ids(client):
         item for item in app.openapi()["paths"]["/api/learning/practical/exercises"]["get"]["parameters"]
         if item["name"] == "job_id"
     )
-    assert parameter["schema"]["minimum"] == 1
+    numeric_schema = parameter["schema"]
+    branches = numeric_schema.get("anyOf") or numeric_schema.get("oneOf") or []
+    integer_branch = next((item for item in branches if item.get("type") == "integer"), None)
+    if integer_branch is not None:
+        numeric_schema = {**numeric_schema, **integer_branch}
+    assert numeric_schema["minimum"] == 1
