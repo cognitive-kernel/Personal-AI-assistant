@@ -4,9 +4,9 @@
 
 ## سازگاری سخت‌افزار و سیستم‌عامل
 
-No CPU, RAM, or GPU model is a fixed runtime requirement. The target diagnostic records the actual Windows build, CPU name/core counts, physical RAM, and GPU inventory; context selection uses live available memory, model metadata, KV-cache cost, parallel request count, and safety reserve. Missing or invalid required telemetry fails closed; a valid host is not rejected merely because it differs from an old repository profile.
+Owner-confirmed target host: Intel Core i5-12400 (6 physical cores / 12 logical threads), approximately 31.78 GiB physical RAM (32 GB class), Intel UHD Graphics 730, Windows 11 x64 build 10.0.26300. The self-hosted diagnostic records live telemetry and verifies this target profile (30–33 GiB RAM tolerance) before resource-dependent acceptance. Context sizing still uses live available memory, model metadata, KV-cache cost, parallel request count, and safety reserve.
 
-The previously documented Intel Core i5-12400 / 32 GB RAM / Intel UHD Graphics 730 profile is historical repository context only, not a verified specification of the current user's computer and not an acceptance gate. WMI AdapterRAM alone does not prove dedicated VRAM; WDDM and actual Ollama allocation are separate runtime measurements.
+The Intel UHD 730 is an integrated GPU. WMI AdapterRAM alone does not prove dedicated VRAM; WDDM dedicated/shared memory and actual Ollama `/api/ps` allocation remain separate runtime measurements. GPU offload is not assumed; CPU inference on the i5-12400 remains a supported fallback.
 
 ## وضعیت فعلی
 
