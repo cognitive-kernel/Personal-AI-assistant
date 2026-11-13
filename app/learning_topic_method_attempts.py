@@ -15,7 +15,7 @@ from .db import learning_connection
 
 METHOD_ORDER = ("ai_learning", "basic_learning", "topic_learning")
 METHOD_STATUSES = frozenset({
-    "queued", "running", "failed", "passed", "unavailable", "inconclusive",
+    "queued", "running", "failed", "passed", "unavailable", "inconclusive", "cancelled",
 })
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _MAX_JSON_BYTES = 32 * 1024
@@ -143,7 +143,7 @@ def append_attempt_event(
         allowed = (
             {"queued"} if previous_status is None
             else {"running", "failed", "unavailable"} if previous_status == "queued"
-            else {"passed", "failed", "unavailable", "inconclusive"} if previous_status == "running"
+            else {"passed", "failed", "unavailable", "inconclusive", "cancelled"} if previous_status == "running"
             else set()
         )
         if status not in allowed:
