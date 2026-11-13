@@ -22,9 +22,15 @@ class FakeContext:
 def _configure(monkeypatch, tmp_path):
     executable = tmp_path / "docker"
     executable.write_text("test executable", encoding="utf-8")
-    monkeypatch.setenv("SANDBOX_ENABLED", "true")
-    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", str(executable))
-    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.12-slim@sha256:" + "a" * 64)
+    settings = {
+        "sandbox_enabled": True,
+        "sandbox_docker_executable": str(executable),
+        "sandbox_python_image": "python:3.12-slim@sha256:" + "a" * 64,
+        "sandbox_test_image": "sha256:" + "c" * 64,
+        "sandbox_node_image": "",
+        "sandbox_rust_image": "",
+    }
+    monkeypatch.setattr(sandbox_tasks.db, "get_settings", lambda: settings)
     monkeypatch.setattr(sandbox_tasks.sandbox_consent, "is_enabled", lambda: True)
 
 
@@ -44,9 +50,7 @@ def _experience(status="identified"):
 
 
 def test_runner_requires_configured_sandbox_and_assertion(monkeypatch):
-    monkeypatch.delenv("SANDBOX_ENABLED", raising=False)
-    monkeypatch.delenv("SANDBOX_DOCKER_EXECUTABLE", raising=False)
-    monkeypatch.delenv("SANDBOX_PYTHON_IMAGE", raising=False)
+    monkeypatch.setattr(sandbox_tasks.db, "get_settings", lambda: {"sandbox_enabled": True})
     assert experience_tasks.handler_from_environment() is None
     with pytest.raises(ValueError, match="assert statement"):
         experience_tasks.validate_test_harness("print('looks good')")
