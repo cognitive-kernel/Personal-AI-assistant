@@ -188,6 +188,7 @@ def test_source_check_rejects_mixed_public_and_private_ipv6_dns_before_connectin
     with pytest.raises(ValueError, match="خصوصی یا غیرعمومی"):
         service.check_content_source(source_id)
 
+
 def test_source_check_rejects_mixed_public_and_private_dns_before_connecting(
     isolated_store, monkeypatch
 ):
