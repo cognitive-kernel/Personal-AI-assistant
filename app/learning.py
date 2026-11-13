@@ -1402,10 +1402,7 @@ def run_job(job_id: int, *, task_context: Any | None = None) -> None:
                 current["status"] == "cancelled"
                 and current["execution_owner"] == execution_lease.owner
                 and int(current["execution_epoch"]) == execution_lease.epoch
-                and row["method_attempt_key"]
             ):
-                from .learning_method_orchestrator import mark_method_cancelled
-                mark_method_cancelled(job_id)
                 return
             if (
                 current["status"] != "running"
