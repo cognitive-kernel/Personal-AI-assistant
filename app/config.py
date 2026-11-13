@@ -61,6 +61,7 @@ SETTING_DEFAULTS: dict[str, object] = {
     "ai_learning_enabled": True,
     "basic_learning_enabled": True,
     "topic_learning_enabled": True,
+    "experience_system_enabled": True,
     "ai_learning_retrieval_enabled": True,
     "ai_learning_browser_enabled": True,
     "ai_learning_lesson_batch_size": 20,
