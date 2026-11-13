@@ -635,3 +635,31 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Issue #290 remains authoritative: no automatic PR merge, deployment, cloud provisioning, or remote execution. The controller never calls the merge API and accepts only a human merge actor; owner review and manual merge remain required.
 - This CI proves repository tests and the configured Windows storage regression job only. A real target-host Codex/Ollama tool-call smoke, long-duration soak, crash/restart acceptance, staging restore/rollback, and independent security review (Issue #52) remain pending and are not claimed.
 - No direct write to `main`, force-push, deployment, destructive state reset, or user-data deletion occurred. This verification snapshot is for the exact SHA above; any subsequent commit requires its own exact-head CI.
+
+## 2026-11-13 — Preserve rejected learning candidates and contradictory evidence
+
+### Root-cause analysis
+
+- `validate_candidate_with_models()` treated agreement between two reviewers and two distinct source domains that contradicted a candidate as permission to scrub it.
+- The rejection branch physically deleted `learning_source_text` and the unverified `knowledge_items` row, cleared `learning_jobs.assessment_json`, and blanked candidate content, source URLs, quality report, and test plan.
+- This contradicted the learning-completion contract: contradictory or low-confidence observations must remain attributable and versioned; rejection must block promotion, not erase evidence.
+
+### Corrective change
+
+- Keep the original candidate content/hash, source URLs and text, assessment, quality report, test plan/results, and review records.
+- Mark the durable knowledge row `conflicting`, the job `rejected`, and the temporary candidate `failed` with a reason that records the contradictory evidence and points to a new versioned candidate for reassessment.
+- Keep promotion and additional review blocked for a terminal rejected candidate; `candidate_readiness` exposes the actual contradictions and explicitly reports retained content.
+- Preserve backward compatibility for legacy rows already scrubbed by the old implementation; they remain readable and are clearly identified as unrecoverable legacy records.
+
+### Regression coverage
+
+- Update the existing two-model/two-source contradiction regression to prove all source and candidate data, assessment, quality report, test plan/results, and content remain intact.
+- Assert the retained knowledge row is marked `conflicting`, promotion is blocked, and a terminal candidate does not trigger new source/model calls.
+- Add a compatibility regression for legacy scrubbed rows.
+- Align `LEARNING_COMPLETION_POLICY.md` with the new retention behavior.
+
+### Validation
+
+- Exact-head GitHub Actions for the associated PR are pending.
+- No local, target-host, or human test is claimed.
+- No migration or physical data deletion is introduced.
