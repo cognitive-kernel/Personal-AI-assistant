@@ -644,7 +644,7 @@ def api_storage_health() -> dict[str, Any]:
 
 @app.get("/api/models")
 def models(
-    purpose: Literal["chat", "learning", "programming", "ai_learning", "topic_learning", "topic_learning", "factual_review", "research_plan", "embedding"] = "chat",
+    purpose: Literal["chat", "learning", "programming", "ai_learning", "topic_learning", "factual_review", "research_plan", "embedding"] = "chat",
 ) -> dict[str, Any]:
     try:
         return ollama.list_provider_models(purpose)
@@ -667,7 +667,7 @@ def model_details(
 def hardware_diagnostics(
     model: str | None = Query(default=None, max_length=200),
     context_tokens: int | None = Query(default=None, ge=512, le=1048576),
-    purpose: Literal["chat", "learning", "programming", "ai_learning"] = "chat",
+    purpose: Literal["chat", "learning", "programming", "ai_learning", "topic_learning"] = "chat",
 ) -> dict[str, Any]:
     try:
         return ollama.runtime_diagnostics(
@@ -767,11 +767,11 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         if key in values and type(values[key]) is not bool:
             raise HTTPException(status_code=422, detail=f"{key} must be a boolean.")
     keep_alive_values = {"auto", "0", "1m", "5m", "10m", "30m"}
-    for purpose in ("chat", "learning", "programming", "ai_learning"):
+    for purpose in ("chat", "learning", "programming", "ai_learning", "topic_learning"):
         key = f"{purpose}_model_keep_alive"
         if key in values and (not isinstance(values[key], str) or values[key] not in keep_alive_values):
             raise HTTPException(status_code=422, detail=f"{key} must be one of: auto, 0, 1m, 5m, 10m, 30m.")
-    for purpose in ("chat", "research_plan", "learning", "programming", "ai_learning", "factual_review", "embedding"):
+    for purpose in ("chat", "research_plan", "learning", "programming", "ai_learning", "topic_learning", "factual_review", "embedding"):
         provider_key = f"{purpose}_llm_provider"
         base_url_key = f"{purpose}_llm_base_url"
         api_key_env_key = f"{purpose}_llm_api_key_env"
@@ -813,7 +813,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         ("ai_learning_max_retries", 0, 5),
         ("ai_learning_source_max_chars", 1000, 256000),
     ]
-    for prefix in ("chat", "learning", "programming", "ai_learning"):
+    for prefix in ("chat", "learning", "programming", "ai_learning", "topic_learning"):
         numeric_ranges.extend([
             (f"{prefix}_ollama_timeout_seconds", 5, 600),
             (f"{prefix}_ollama_num_ctx", 512, 1048576),
