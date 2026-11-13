@@ -7,8 +7,8 @@ from contextlib import asynccontextmanager
 import logging
 from pathlib import Path
 from urllib.parse import urlsplit
-from typing import Any, Literal
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
+from typing import Annotated, Any, Literal
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Path as ApiPath, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
@@ -1151,7 +1151,7 @@ def enroll_learning_path(request: CurriculumEnrollment) -> dict[str, Any]:
 
 
 @app.post("/api/learning/paths/{path_id}/sync")
-def sync_learning_path(path_id: int) -> dict[str, Any]:
+def sync_learning_path(path_id: Annotated[int, ApiPath(ge=1)]) -> dict[str, Any]:
     try:
         return learning.sync_curriculum_path(path_id)
     except KeyError as exc:
@@ -1159,7 +1159,7 @@ def sync_learning_path(path_id: int) -> dict[str, Any]:
 
 
 @app.post("/api/learning/paths/{path_id}/start")
-def start_learning_path(path_id: int) -> dict[str, Any]:
+def start_learning_path(path_id: Annotated[int, ApiPath(ge=1)]) -> dict[str, Any]:
     try:
         return learning.start_path_learning(path_id)
     except KeyError as exc:
@@ -1167,7 +1167,7 @@ def start_learning_path(path_id: int) -> dict[str, Any]:
 
 
 @app.post("/api/learning/paths/{path_id}/stop")
-def stop_learning_path(path_id: int) -> dict[str, Any]:
+def stop_learning_path(path_id: Annotated[int, ApiPath(ge=1)]) -> dict[str, Any]:
     try:
         return learning.stop_path_learning(path_id)
     except KeyError as exc:
@@ -1175,7 +1175,7 @@ def stop_learning_path(path_id: int) -> dict[str, Any]:
 
 
 @app.post("/api/learning/paths/{path_id}/topics/{topic_id}/start")
-def start_learning_path_topic(path_id: int, topic_id: int) -> dict[str, Any]:
+def start_learning_path_topic(path_id: Annotated[int, ApiPath(ge=1)], topic_id: int) -> dict[str, Any]:
     try:
         return learning.start_topic_learning(path_id, topic_id)
     except KeyError as exc:
@@ -1185,7 +1185,7 @@ def start_learning_path_topic(path_id: int, topic_id: int) -> dict[str, Any]:
 
 
 @app.post("/api/learning/paths/{path_id}/topics/{topic_id}/regenerate", status_code=202)
-def regenerate_learning_path_topic(path_id: int, topic_id: int) -> dict[str, Any]:
+def regenerate_learning_path_topic(path_id: Annotated[int, ApiPath(ge=1)], topic_id: int) -> dict[str, Any]:
     try:
         return learning.regenerate_topic_learning(path_id, topic_id)
     except KeyError as exc:
@@ -1195,7 +1195,7 @@ def regenerate_learning_path_topic(path_id: int, topic_id: int) -> dict[str, Any
 
 
 @app.post("/api/learning/paths/{path_id}/topics/{topic_id}/stop")
-def stop_learning_path_topic(path_id: int, topic_id: int) -> dict[str, Any]:
+def stop_learning_path_topic(path_id: Annotated[int, ApiPath(ge=1)], topic_id: int) -> dict[str, Any]:
     try:
         return learning.stop_topic_learning(path_id, topic_id)
     except KeyError as exc:
@@ -1203,7 +1203,7 @@ def stop_learning_path_topic(path_id: int, topic_id: int) -> dict[str, Any]:
 
 
 @app.patch("/api/learning/paths/{path_id}/topics/{topic_id}")
-def update_learning_path_topic(path_id: int, topic_id: int, request: PathTopicProgress) -> dict[str, Any]:
+def update_learning_path_topic(path_id: Annotated[int, ApiPath(ge=1)], topic_id: int, request: PathTopicProgress) -> dict[str, Any]:
     try:
         return learning.update_path_topic(path_id, topic_id, request.status, request.latest_score)
     except KeyError as exc:
@@ -1289,7 +1289,7 @@ def list_due_learning_reviews(limit: int = Query(default=50, ge=1, le=100)) -> d
     dependencies=[Depends(require_loopback_client)],
 )
 def record_learning_topic_review(
-    path_id: int,
+    path_id: Annotated[int, ApiPath(ge=1)],
     topic_id: int,
     request: SpacedRepetitionRequest,
 ) -> dict[str, Any]:
@@ -1306,7 +1306,7 @@ def record_learning_topic_review(
     dependencies=[Depends(require_loopback_client)],
 )
 def get_learning_topic_review_history(
-    path_id: int,
+    path_id: Annotated[int, ApiPath(ge=1)],
     topic_id: int,
     limit: int = Query(default=30, ge=1, le=100),
 ) -> dict[str, Any]:
