@@ -319,8 +319,8 @@ def handle_learning_job(
     context.checkpoint({"phase": "learning_queued", "job_id": job_id})
     try:
         context.checkpoint({"phase": "learning_job_start", "job_id": job_id})
-    learning.run_job(job_id, task_context=context)
-    context.checkpoint({"phase": "learning_job_finished", "job_id": job_id})
+        learning.run_job(job_id, task_context=context)
+        context.checkpoint({"phase": "learning_job_finished", "job_id": job_id})
     except learning.LearningError as exc:
         cause = exc.__cause__
         task = task_manager.get_task(context.task_id) or {}
@@ -369,6 +369,8 @@ def handle_learning_job(
 
     result = learning.get_job(job_id)
     status = result["status"]
+    if status == "cancelled" and result.get("method_attempt_key"):
+        learning_method_orchestrator.mark_method_cancelled(job_id, reason="Learning job cancelled before quality evaluation.")
     if status == "rejected":
         _record_learning_escalation(
             context.task_id, job_id, "quality_rejected",
