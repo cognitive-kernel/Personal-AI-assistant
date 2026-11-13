@@ -1,6 +1,6 @@
 # Weighted engineering and acceptance scorecard
 
-> **Historical snapshot warning (2026-11-13):** The weighted values below are the original 2026-11-01 snapshot, not a current score. The scored baseline SHA and evidence are historical. New PRs #734–#738 and the current acceptance blockers have not yet been fully incorporated into a recalculated score. Do not quote the old 60.47% / 57.45% values as current project progress.
+> **Historical snapshot warning (2026-11-13):** The weighted values below are the original 2026-11-01 snapshot, not a current score. The scored baseline SHA and evidence are historical. PRs #725–#744 now add further exact-head evidence, including API/security hardening, task bounds, and learning-data retention/recovery; the weights have not been recalculated against a complete current architecture and endpoint audit. There is no post-merge CI evidence for current `main` SHA `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`. Do not quote the old 60.47% / 57.45% values as current project progress.
 
 **Snapshot:** 2026-11-01  
 **Repository:** `cognitive-kernel/Personal-AI-assistant`  
