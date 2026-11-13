@@ -440,3 +440,12 @@
 - The path-ID audit is intentionally incremental. Other route families remain to be inspected and covered; PR #738 does not claim project-wide completion.
 - No PR was merged, no direct main write occurred, and no local/target-host/human testing was performed. No live-model, independent security-review, or target-host operational acceptance is claimed.
 - Remaining work includes full module/data-ownership inventory, API contract and identifier coverage beyond the above route families, UI workflow parity, task-type fault-injection coverage, code-scanning alert disposition, independent security review (Issue #52), and accurate final acceptance evidence (Issue #290).
+
+
+## 2026-11-13 — Task queue and browser-worker hardening
+
+- PR [#738](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/738) current head `5841e303916d0e4791724cde7ff5d53e131e772b`: Windows storage regressions, dashboard smoke, and dependency audit passed; full test workflow is still running. It covers positive integer IDs across the inventoried API routes, bounded task status filters, positive practical-learning job query validation, and OpenAPI fitness checks for path IDs and string query inputs.
+- PR [#739](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/739) current head `9edfdd38716b88708b53772aa93d75c3850b77b7`: dependency audit passed; tests, Windows storage, and dashboard smoke are running. It bounds durable task payload/checkpoint/result records and service-level queue metadata. The first CI run exposed a test-fixture argument duplication, corrected in this new head; fresh exact-head CI is required.
+- PR [#740](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/740) current head `a30858b14a897fa463a96a4c5599153c81137e41`: dependency audit and Windows storage regressions passed; tests and dashboard smoke are running. It fixes Issue #723 by preserving the original browser-learning worker exception, preventing queue drain after failed runs, and ensuring lease cleanup.
+- PR #735 documentation branch passed all four required workflows on `b9e11e474dc9f2c6b3ec9148577daf64c7b82844`; the new notes in this checkpoint require fresh exact-head CI.
+- No PR is merged. Local/target-host/human tests remain deferred. Issue #52 independent review, CodeQL alert disposition, branch protection administration, and target-host acceptance remain open.
