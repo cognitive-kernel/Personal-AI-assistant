@@ -5,10 +5,10 @@ import hashlib
 import json
 import os
 import sqlite3
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 from . import factual_knowledge, factual_source_checks, factual_verification_tasks, sandbox_consent, sandbox_tasks, task_manager
@@ -103,7 +103,7 @@ def list_factual_test_history(
 
 @router.post("/{knowledge_id}/run-test", status_code=status.HTTP_202_ACCEPTED)
 def queue_factual_claim_test(
-    knowledge_id: int,
+    knowledge_id: Annotated[int, Path(ge=1)],
     request: FactualClaimTestRequest,
 ) -> dict[str, Any]:
     if request.confirm is not True:
@@ -242,7 +242,7 @@ def list_factual_source_refresh_queue(
 
 @router.post("/{knowledge_id}/refresh-sources")
 def refresh_factual_claim_sources(
-    knowledge_id: int,
+    knowledge_id: Annotated[int, Path(ge=1)],
     request: FactualSourceRefreshRequest,
 ) -> dict[str, Any]:
     if request.confirm is not True:
@@ -259,7 +259,7 @@ def refresh_factual_claim_sources(
 
 @router.get("/{knowledge_id}/source-checks")
 def list_factual_claim_source_checks(
-    knowledge_id: int,
+    knowledge_id: Annotated[int, Path(ge=1)],
     limit: int = Query(default=50, ge=1, le=200),
 ) -> dict[str, Any]:
     try:
@@ -347,7 +347,7 @@ def list_factual_test_queue(
 
 @router.post("/{knowledge_id}/approve-source")
 def approve_factual_source(
-    knowledge_id: int,
+    knowledge_id: Annotated[int, Path(ge=1)],
     request: FactualSourceReviewRequest,
 ) -> dict[str, Any]:
     """Record explicit local-human review before allowing L0 -> L1 source promotion."""
@@ -432,7 +432,7 @@ def approve_factual_source(
 
 @router.post("/{knowledge_id}/reject-source")
 def reject_factual_source(
-    knowledge_id: int,
+    knowledge_id: Annotated[int, Path(ge=1)],
     request: FactualSourceReviewRequest,
 ) -> dict[str, Any]:
     """Quarantine a reviewed source/claim without asserting that the claim is false."""
