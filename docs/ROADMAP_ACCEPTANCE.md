@@ -334,19 +334,15 @@ Append evidence only after it has actually been produced.
 
 The current `main` SHA `2a5c83bf0ba924f4a2c8f206338a04872562d72d` has completed all three post-merge workflows successfully: tests [#41239355370](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355370), dashboard/browser smoke [#41239355374](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355374), and dependency audit [#41239355466](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355466). Windows storage regressions passed within the tests workflow. This verifies CI for this SHA; it does not satisfy target-host operations, live-model/human evaluation, manual accessibility, staging/rollback, or independent security review.
 
-## 2026-11-12 — Adaptive Codex context contract (PR #722; implementation in progress)
+## 2026-11-13 — Adaptive Codex context contract (PR #722; validation snapshot)
 
-- **Requirement:** Codex must adapt to any valid context capacity that the selected model and host can safely provide; 64,000 tokens is not a startup or execution minimum.
-- **Hard ceiling:** C_effective = min(C_hardware, C_model, C_catalog). A requested value above this ceiling is clamped before persistence, Ollama model-variant creation, and Codex catalog generation.
-- **Independent capacities:** C_hardware is estimated from current free physical RAM and the model-specific KV-cache cost; C_model comes from architecture-specific Ollama metadata. The status/selection logic must not conflate these two values.
-- **Runtime enforcement:** The persistent Ollama variant and Codex catalog receive the same selected context; /api/ps must report that exact context before and after Codex execution.
-- **Validity rule:** There is no fixed context floor. Any positive integer is valid when the selected model, hardware estimate, Codex catalog, and actual Ollama runtime all support it. Zero/negative values and missing/invalid metadata fail closed; runtime allocation must match the selected value exactly.
-- **Evidence:** ADR-020, the operations guide, and selector/API/PowerShell regressions document the contract. Coverage includes a 10,000-token hardware ceiling, an 8,192-token model ceiling, clamping, a one-token positive capacity, and settings acceptance below 64k.
-- **Exact-head CI:** SHA `326b41a862661f032143fb0b8d26f80d8174ffc5`; full suite **2,146 passed, 2 skipped, 51 deselected**; Windows Storage regressions passed; Browser E2E passed; dependency audit passed. The implementation code had already passed the claim-to-test benchmark 10/10 on code/test SHA `ff74389cfe033afc9ccf1c9d377930a1cf634a3e`.
-- **Completed operational evidence:** Self-hosted Windows diagnostic [#43197193053](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43197193053) passed model inventory, metadata, real `/api/ps` allocation, Codex `exec_command`, post-smoke allocation, and model-release checks.
-- **Remaining operational evidence:** long-duration target-host soak, crash/restart acceptance, staging restore/rollback, independent security review (Issue #52), and live-model/human evaluation remain separate project gates.
-- **State:** IMPLEMENTED; earlier exact-head GitHub CI and an explicit 10k-token self-hosted Codex smoke passed on their recorded SHAs. The current head is under a new CI/target-host validation cycle as recorded at the top of this file; those older results do not make the current head green. PR #722 remains Draft/open; no merge or deployment was performed.
-
+- **Requirement:** Codex context is bounded by the minimum of host-safe capacity, architecture-specific model maximum, and Codex catalog representation. Requests above the ceiling are clamped before variant creation and dispatch; missing/invalid evidence fails closed.
+- **Implementation:** the adaptive selector, model inventory filtering, context-specific Ollama variant, exact `/api/ps` allocation verification, Codex catalog pinning, Windows PowerShell 5.1 bridge, and Runner path discovery are present on PR #722.
+- **Hardware/software profile:** Intel Core i5-12400 (6 cores/12 threads), 31.78 GiB RAM class, Intel UHD Graphics 730; Python 3.11.9/3.14.6, Node.js 26.13.0/npm 11.20.0, Codex CLI 0.167.0/0.167.2. Actual Ollama version and live model allocation are not established by GitHub-hosted CI.
+- **Exact-head hosted validation:** SHA `3b48da376cb90b0e0602f6300504152769ed79a0` passed tests, Python runtime matrix, Windows Storage regressions, Node/Codex compatibility, Browser E2E, Docker sandbox integration, and dependency audit.
+- **Target-host validation:** [diagnostic run #43290742576](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43290742576) remains pending on the self-hosted Windows Runner. No successful current-head Ollama allocation or Codex tool-call smoke is claimed.
+- **Historical evidence boundary:** [run #43197193053](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43197193053) passed for an earlier implementation/head; it does not validate the current adaptive-context changes. Do not count it as current PR #722 target-host acceptance.
+- **Residual gates:** actual target-host tool-call smoke, long-duration soak, crash/restart acceptance, staging restore/rollback, and independent security review (Issue #52). PR #722 remains Draft/open; no merge, auto-merge, or deployment is performed.
 
 ## 2026-11-12 — Consolidated Windows/Linux process and sandbox acceptance
 
