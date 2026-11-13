@@ -98,3 +98,10 @@ All learning entry points use one worker-start boundary. If `thread.start()` rai
 ## اثبات بازیابی پس از process restart
 
 `tests/test_ai_learning_retrieval_boundary.py::test_published_knowledge_is_retrievable_after_a_new_process` یک فرایند Python تازه را با همان `AI_LEARNING_DB_PATH` اجرا می‌کند. فرایند تازه فقط نسخهٔ منتشرشده را از مسیر `integration.retrieve_context` دریافت می‌کند، نسخهٔ draft را نمی‌بیند و query trace را در همان SQLite ثبت می‌کند. این آزمون ماندگاری و قرارداد retrieval را می‌سنجد؛ کیفیت زندهٔ مدل یا صحت factual پاسخ را نمی‌سنجد.
+
+
+## وضعیت فعلی تنظیمات (جایگزین راهنمای تاریخی feature flag)
+
+- AI Learning method و کتابخانهٔ دانش مستقل در نصب تازه فعال‌اند و هرکدام تنظیم جدا در داشبورد دارند.
+- متغیرهای محیطی AI_LEARNING_ENABLED و AI_LEARNING_RETRIEVAL_ENABLED دیگر مرجع فعال‌سازی نیستند؛ تنظیمات پایدار دیتابیس مرجع هستند.
+- provider/model و ظرفیت‌های هر قابلیت از تنظیمات انتخاب می‌شوند؛ این سند شامل گزارش‌های تاریخی اجرای قبل از این قرارداد نیز هست.
