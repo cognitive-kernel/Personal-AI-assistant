@@ -36,6 +36,7 @@ try {
         model_weight_bytes = [long](5 * 1GB)
         available_memory_bytes = [long](20 * 1GB)
         requested_context_tokens = [long]100000
+        parallel_requests = [int]1
     } | ConvertTo-Json -Depth 20 -Compress
     [IO.File]::WriteAllText($inputPath, $payload, $utf8NoBom)
 
@@ -87,6 +88,23 @@ try {
     $selection = [IO.File]::ReadAllText($outputPath, [Text.Encoding]::UTF8) | ConvertFrom-Json -ErrorAction Stop
     if ([int64]$selection.selected_context_tokens -ne 94208) {
         throw "Expected 94208 tokens when model weights are already resident; received $($selection.selected_context_tokens)."
+    }
+
+    # Four configured parallel requests consume four times the KV-cache budget.
+    $payloadObject.parallel_requests = [int]4
+    $payloadObject.model_weights_already_loaded = $false
+    $payloadObject.available_memory_bytes = [long](20 * 1GB)
+    $payloadObject.model_weight_bytes = [long](5 * 1GB)
+    $payloadObject.requested_context_tokens = [long]100000
+    [IO.File]::WriteAllText($inputPath, ($payloadObject | ConvertTo-Json -Depth 20 -Compress), $utf8NoBom)
+    $helperExitCode = Invoke-ContextSelector
+    if ($helperExitCode -ne 0) {
+        $helperError = if (Test-Path -LiteralPath $errorPath) { [IO.File]::ReadAllText($errorPath, [Text.Encoding]::UTF8) } else { "" }
+        throw "Four-way parallel KV-cache budgeting failed: $helperError"
+    }
+    $selection = [IO.File]::ReadAllText($outputPath, [Text.Encoding]::UTF8) | ConvertFrom-Json -ErrorAction Stop
+    if ([int64]$selection.selected_context_tokens -ne 21504) {
+        throw "Expected 21504 tokens for four parallel requests; received $($selection.selected_context_tokens)."
     }
 } finally {
     foreach ($temporaryPath in @($inputPath, $outputPath, $errorPath)) {
