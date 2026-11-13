@@ -117,7 +117,8 @@ try {
 $readinessScripts = @(
     "scripts\check_autonomous_agent.ps1",
     "scripts\check_autonomous_runner.ps1",
-    "scripts\provision_autonomous_runner.ps1"
+    "scripts\provision_autonomous_runner.ps1",
+    "scripts\verify_ollama_context.ps1"
 )
 foreach ($relativePath in $readinessScripts) {
     $scriptPath = Join-Path (Split-Path -Parent $PSScriptRoot) $relativePath
