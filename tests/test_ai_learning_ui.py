@@ -170,3 +170,18 @@ def test_ai_learning_page_contains_shared_main_navigation():
     assert '<nav class="main-nav" aria-label="منوی اصلی">' in html
     assert 'href="/autonomous-engineering"' in html
     assert 'aria-current="page">یادگیری از هوش مصنوعی</a>' in html
+
+ 
+def test_main_settings_page_exposes_ai_learning_module_and_capacity_controls():
+    from pathlib import Path
+
+    html = (Path(__file__).resolve().parents[1] / "app" / "static" / "index.html").read_text(encoding="utf-8")
+    for control_id in (
+        "ai-learning-enabled", "ai-learning-retrieval-enabled", "ai-learning-browser-enabled",
+        "ai-learning-lesson-batch", "ai-learning-chunk-target", "ai-learning-chunk-overlap",
+        "ai-learning-embedding-batch", "ai-learning-browser-timeout",
+        "ai-learning-response-timeout", "ai-learning-continuations",
+        "ai-learning-stability", "ai-learning-retries",
+    ):
+        assert f'id="{control_id}"' in html
+    assert "AI_LEARNING_ENABLED=1" not in html
