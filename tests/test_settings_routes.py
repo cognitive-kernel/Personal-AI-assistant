@@ -77,6 +77,8 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
     assert defaults["ai_learning_llm_provider"] == "ollama"
     assert defaults["ai_learning_ollama_model"]
     assert defaults["ai_learning_source_max_chars"] == 100000
+    assert defaults["ai_learning_ollama_model"]
+    assert defaults["ai_learning_ollama_num_ctx"] >= 512
     assert defaults["gpu_enabled"] is True
     assert defaults["ai_learning_lesson_batch_size"] == 20
 
@@ -98,6 +100,10 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
         "ai_learning_llm_api_key_env": "OPENAI_API_KEY",
         "ai_learning_ollama_model": "gpt-5-test",
         "ai_learning_source_max_chars": 120000,
+        "ai_learning_ollama_num_ctx": 8192,
+        "ai_learning_ollama_num_thread": 4,
+        "ai_learning_ollama_timeout_seconds": 120,
+        "ai_learning_model_keep_alive": "5m",
     }
     response = settings_client.patch("/api/settings", json={"values": values})
     assert response.status_code == 200
@@ -133,6 +139,18 @@ def test_ai_learning_settings_reject_invalid_values_atomically(settings_client, 
     assert response.status_code == 422
     after = db.get_settings()
     assert after["chat_ollama_model"] == before["chat_ollama_model"]
+
+
+
+def test_model_catalog_endpoint_uses_requested_capability_provider(settings_client, monkeypatch):
+    monkeypatch.setattr(ollama, "list_provider_models", lambda purpose: {
+        "provider": "openai_compatible",
+        "models": [{"name": purpose + "-model", "size": None}],
+    })
+    response = settings_client.get("/api/models?purpose=ai_learning")
+    assert response.status_code == 200
+    assert response.json()["provider"] == "openai_compatible"
+    assert response.json()["models"][0]["name"] == "ai_learning-model"
 
 
 def test_settings_api_seeds_and_persists_learning_cost_preferences(settings_client):
