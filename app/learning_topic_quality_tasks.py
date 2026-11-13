@@ -179,6 +179,20 @@ def handle_topic_quality_evaluation(
                 "diagnosis": "Independent evaluator was unavailable; this topic cannot pass without an executed evaluation.",
             }
             evaluation_id = _append_evaluation(unavailable, outcome="unavailable", score=None)
+            if job.get("method_attempt_key"):
+                from . import learning_method_orchestrator
+                blocked = learning_method_orchestrator.block_unavailable(
+                    job_id,
+                    reason="independent_evaluator_unavailable",
+                    evaluation_id=evaluation_id,
+                    diagnosis=unavailable,
+                    evidence={"evaluator_version": learning_topic_evaluator.EVALUATOR_VERSION},
+                )
+                return {
+                    "path_topic_id": path_topic_id, "job_id": job_id, "status": "blocked",
+                    "reason": "independent_evaluator_unavailable", "evaluation_id": evaluation_id,
+                    "method_state": blocked,
+                }
             with learning_connection() as connection:
                 connection.execute(
                     """UPDATE learning_topic_quality_gates
@@ -197,6 +211,41 @@ def handle_topic_quality_evaluation(
             "inconclusive" if record.get("evaluator_verdict") == "inconclusive" else "failed"
         )
         evaluation_id = _append_evaluation(record, outcome=outcome, score=record.get("score"))
+    if job.get("method_attempt_key"):
+        from . import learning_method_orchestrator
+        if outcome == "passed":
+            transition = learning_method_orchestrator.complete_method(
+                job_id,
+                score=float(record["score"]),
+                evaluation_id=evaluation_id,
+                content_sha256=expected_hash,
+                diagnosis=record,
+                evidence={
+                    "evaluator_id": record.get("evaluator_digest"),
+                    "evaluator_version": record.get("version"),
+                    "independent_evaluator": record.get("independent_evaluator") is True,
+                },
+            )
+        else:
+            transition = learning_method_orchestrator.advance_after_failure(
+                job_id,
+                reason=str(record.get("overall_diagnosis") or "Independent lesson evaluation did not pass."),
+                score=record.get("score"),
+                diagnosis=record,
+                evidence={
+                    "evaluation_id": evaluation_id,
+                    "evaluator_id": record.get("evaluator_digest"),
+                    "evaluator_version": record.get("version"),
+                    "independent_evaluator": record.get("independent_evaluator") is True,
+                },
+                outcome="inconclusive" if outcome == "inconclusive" else "failed",
+            )
+        return {
+            "path_topic_id": path_topic_id, "job_id": job_id,
+            "status": "passed" if outcome == "passed" else transition.get("status", "blocked"),
+            "score": record.get("score"), "evaluation_id": evaluation_id,
+            "method_transition": transition,
+        }
     diagnosis_json = json.dumps(record, ensure_ascii=False, sort_keys=True)
     if outcome == "passed":
         with learning_connection() as connection:
