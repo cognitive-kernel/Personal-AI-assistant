@@ -26,6 +26,15 @@ jobs:
         run: python -m pytest -vv tests/test_autonomous_engineering_cycle.py -k "checkpoint or repository_execution_lock"
       - name: Run test suite
         run: pytest -vv --durations=25 -o faulthandler_timeout=60
+      - name: Export API contract inventory
+        run: python scripts/export_api_contract_inventory.py --output api-contract-inventory.json
+      - name: Upload API contract inventory
+        uses: actions/upload-artifact@v7
+        with:
+          name: api-contract-inventory-${{ github.sha }}
+          path: api-contract-inventory.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Verify generated learning artifacts
         run: python scripts/generate_learning_artifacts.py --check
       - name: Validate repository-local Markdown links
