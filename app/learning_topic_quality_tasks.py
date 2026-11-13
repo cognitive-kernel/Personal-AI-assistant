@@ -276,20 +276,26 @@ def handle_topic_quality_evaluation(
                    WHERE path_topic_id=? AND current_job_id=? AND state!='passed'""",
                 (record["score"], expected_hash, evaluation_id, diagnosis_json, path_topic_id, job_id),
             )
-    correction = learning.submit_lesson_issue(job_id, issue_report, request_key=request_key)
+    correction = learning.submit_lesson_issue(
+        job_id, issue_report, request_key=request_key, enqueue=False
+    )
+    correction_job_id = int(correction["correction_job"]["id"])
     with learning_connection() as connection:
         connection.execute(
             """UPDATE learning_topic_quality_gates
                SET current_job_id=?, state='repairing', next_action='evaluate_corrected_lesson',
                    updated_at=CURRENT_TIMESTAMP
                WHERE path_topic_id=? AND current_job_id=?""",
-            (int(correction["correction_job"]["id"]), path_topic_id, job_id),
+            (correction_job_id, path_topic_id, job_id),
         )
+    # Publish the correction only after durable gate ownership points at it. A
+    # fast worker can therefore never finish before the gate recognizes its job.
+    correction_task = learning._enqueue_learning_job(correction_job_id)
     context.checkpoint({
         "phase": "topic_quality_repair_queued",
         "path_topic_id": path_topic_id,
         "failed_job_id": job_id,
-        "correction_job_id": int(correction["correction_job"]["id"]),
+        "correction_job_id": correction_job_id,
         "evaluation_id": evaluation_id,
     })
     return {
