@@ -438,7 +438,7 @@ def model_keep_alive(
     Long-lived learning/programming models can be substantially larger and are unloaded
     after each request to avoid accumulating several profile models in Ollama memory.
     """
-    if purpose not in {"chat", "learning", "programming"}:
+    if purpose not in {"chat", "learning", "programming", "ai_learning"}:
         return "0"
     settings = settings or {}
     configured = settings.get(f"{purpose}_model_keep_alive", "auto" if purpose == "chat" else "0")
