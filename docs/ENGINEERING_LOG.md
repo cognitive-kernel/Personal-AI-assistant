@@ -1,12 +1,10 @@
-## 2026-11-13 — Exact code/test head f84bc9aa0127f2ec2e8ba6a0e035772841c0d7f7: final hardware, runtime and CI correction
+## 2026-11-13 — Latest code/test validation: bf8fcb1df573996606adbaba6e40b72ab725a79c
 
-- Reinstated the owner-confirmed hardware contract in the Windows diagnostic and regression tests: Intel Core i5-12400, 6C/12T, 31.78 GiB-class RAM (30–33 GiB tolerance), Intel UHD Graphics 730, Windows 11 build 26300.
-- Node.js 26.13.0/npm are now installed per workflow job using SHA-pinned setup-node v6.4.0. The production autonomous workflow and Windows diagnostic run this step before invoking npm/Codex; Runner provisioning no longer requires system-wide Node/npm. Codex CLI 0.167.0 is installed by the workflow.
-- Runner readiness checks now explain that Node/npm/Codex are workflow-managed when run outside Actions, instead of falsely reporting them as required host installs.
-- Required CI for code/test SHA f84bc9aa0127f2ec2e8ba6a0e035772841c0d7f7 was queued at the latest observation: tests #43383583299, Browser E2E #43383583320, Docker sandbox #43383583243, dependency audit #43383583252. A previous Python 3.14.6 source-contract failure caused by case-sensitive test wording was fixed; no green result is claimed until this current run set completes.
-- Required CI concurrency groups now key on workflow + PR/ref, not commit SHA, so newer PR commits cancel superseded runs instead of leaving every old commit queued.
-- Master prompt merge policy was rechecked: target-host/local/human acceptance is not a merge gate by default unless branch protection explicitly requires it. Exact-head CI, repository-enforced approvals, independent security review and owner authorization remain mandatory.
-- Target-host Runner assignment and live Ollama/tool-call/soak/restore evidence remain pending; no target-host pass, merge, bypass or deployment is claimed.
+- Final validated code/test head: bf8fcb1df573996606adbaba6e40b72ab725a79c; four required hosted CI workflows all passed: tests #43384649649 (full test suite, Python 3.11.9/3.14.6, Windows Storage, Node/Codex matrix), Browser E2E #43384649576, Docker sandbox #43384649608, and dependency audit #43384649862.
+- Owner-confirmed hardware checks remain enforced: Intel Core i5-12400 (6C/12T), 31.78 GiB-class RAM (30–33 GiB tolerance), Intel UHD Graphics 730, Windows 11 build 26300.
+- Node.js 26.13.0/npm are provisioned per workflow job using SHA-pinned setup-node v6.4.0; Runner provisioning no longer requires system-wide Node/npm. Codex CLI 0.167.0 is installed by the workflow.
+- Target diagnostic #43384649592: hosted cleanup passed; self-hosted sandbox-diagnostic remains pending without a Runner assignment. Live Ollama/Codex smoke, soak/crash-restart and staging restore/rollback are not claimed.
+- Target-host/local/human acceptance is not a merge gate by default unless branch protection explicitly requires it. Independent security review remains open in Issue #52. PR #722 remains Draft/open/unmerged.
 
 ---
 
