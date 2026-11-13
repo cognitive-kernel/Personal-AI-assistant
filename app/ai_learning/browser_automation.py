@@ -408,7 +408,7 @@ def _provider_gate_error(url: str, visible_text: str) -> BrowserAutomationError 
 
 
 def _chrome_path() -> str | None:
-    configured = os.getenv("AI_LEARNING_CHROME_PATH", "").strip()
+    configured = str(service.get_settings().get("ai_learning_chrome_path", "") or "").strip()
     candidates = [configured] if configured else []
     if os.name == "nt":
         candidates += [
@@ -421,7 +421,7 @@ def _chrome_path() -> str | None:
 
 
 def _profile_path() -> Path:
-    configured = os.getenv("AI_LEARNING_BROWSER_PROFILE", "").strip()
+    configured = str(service.get_settings().get("ai_learning_browser_profile", "data/ai_learning_browser_profile") or "data/ai_learning_browser_profile").strip()
     path = Path(configured) if configured else Path("data/ai_learning_browser_profile")
     if not path.is_absolute():
         path = Path.cwd() / path
