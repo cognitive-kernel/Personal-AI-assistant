@@ -49,6 +49,7 @@ def test_private_source_address_is_rejected_before_http_request(isolated_store, 
     [
         ("https://example.com/docs", PinnedHTTPSHandler, "93.184.216.34"),
         ("http://example.com/docs", PinnedHTTPHandler, "93.184.216.34"),
+        ("https://[2606:4700:4700::1111]/docs", PinnedHTTPSHandler, "2606:4700:4700::1111"),
     ],
 )
 def test_source_check_pins_validated_ip_and_disables_proxy(
@@ -71,7 +72,10 @@ def test_source_check_pins_validated_ip_and_disables_proxy(
 
     def resolve(*args, **kwargs):
         dns_calls.append((args, kwargs))
-        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (expected_ip, 443 if url.startswith("https:") else 80))]
+        port = 443 if url.startswith("https:") else 80
+        if ":" in expected_ip:
+            return [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", (expected_ip, port, 0, 0))]
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (expected_ip, port))]
 
     monkeypatch.setattr(service.socket, "getaddrinfo", resolve)
     captured = {}
