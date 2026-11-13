@@ -963,3 +963,12 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - **Exact-head hosted evidence on `3b48da376cb90b0e0602f6300504152769ed79a0`:** tests, Python 3.11.9/3.14.6, Windows Storage, Node 26/Codex 0.167.0 and 0.167.2, Browser E2E, Docker sandbox integration, and dependency audit all reported success.
 - **Not established:** self-hosted Runner assignment, actual target Ollama version/model allocation, Codex tool-call smoke on this head, target-host soak/crash-restart, staging restore/rollback, or independent security review. These remain pending; no merge or deployment is authorized.
 - The documentation commits below advance the PR head; the hosted checks above validate the preceding code/test SHA only. A fresh exact-head CI cycle is required for the documentation-inclusive head.
+
+
+## 2026-11-13 — Reject models with incomplete KV-cache metadata before dispatch
+
+- **Root cause:** Autonomous Engineering readiness and settings persistence previously treated a positive architecture-specific `context_length` plus `tools` capability as sufficient model metadata. The actual adaptive selector also requires `block_count`, `attention.head_count_kv`, `attention.key_length`, and `attention.value_length` to calculate KV-cache bytes per token. A model missing any of those fields could appear ready and be saved, only to fail later in the Windows context preflight.
+- **Correction:** extracted a shared `kv_cache_bytes_per_token` validator and reused it in both the adaptive selector and the Ollama readiness service. `model_context_supported` is now false when any required KV dimension is missing or invalid; the API exposes the specific metadata failure and settings persistence refuses the model before any GitHub variable write.
+- **Regression coverage:** complete metadata is included in successful service fixtures; a new regression verifies that a model with a valid context limit and tools capability but missing KV dimensions remains online yet is not context-supported. Existing selector tests continue to cover invalid/missing dimensions and the KV-cache calculation.
+- **Safety:** no context floor, model fallback, general chat limit, existing stored model, or task data was changed. The failure is surfaced before dispatch rather than after the autonomous workflow starts.
+- **Validation:** implementation and tests are committed on the PR #722 branch; exact-head GitHub CI is required for the new SHA. No live target-host or human result is claimed.
