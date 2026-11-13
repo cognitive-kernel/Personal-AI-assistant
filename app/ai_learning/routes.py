@@ -169,6 +169,9 @@ def start_browser_outline(request: BrowserOutlineStart) -> dict[str, Any]:
 def start_browser_lessons(request: BrowserLessonStart) -> dict[str, Any]:
     if not config.browser_is_enabled():
         raise HTTPException(status_code=409, detail="The AI-learning browser provider is disabled in settings.")
+    maximum_topics = config.max_topics_per_run()
+    if len(request.topic_ids) > maximum_topics:
+        raise HTTPException(status_code=422, detail=f"One browser run accepts at most {maximum_topics} topics under the current settings.")
     return _call(browser_automation.start_lesson_run, request.course_id, request.topic_ids, request.request_key, request.force_retry)
 
 @router.post("/runs", status_code=201)
