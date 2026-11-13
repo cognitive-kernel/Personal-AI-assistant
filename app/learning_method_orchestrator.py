@@ -260,10 +260,9 @@ def queue_initial_method(
                     attempt_number=1,
                     source_job_id=int(current["id"]),
                 )
-            return advance_after_failure(
+            return record_generation_failure(
                 int(current["id"]),
                 reason=str(current.get("error") or "Learning method execution failed."),
-                evidence={"recovered_terminal_job": True},
             )
 
     events = list_attempt_events(path_topic_id)
@@ -416,8 +415,10 @@ def advance_after_failure(
     path_topic_id, method, attempt_number = identity
     if outcome not in {"failed", "inconclusive"}:
         raise MethodAttemptError("Failure outcome must be failed or inconclusive.")
+    stable_reason = str(job.get("error") or reason)[:1000] if outcome == "failed" else str(reason)[:1000]
     details = dict(diagnosis or {})
-    details.setdefault("reason", str(reason)[:1000])
+    details.setdefault("reason", stable_reason)
+    event_evidence = {"failure_stage": "generation"} if details.get("failure_stage") == "generation" else (evidence or {})
     append_attempt_event(
         path_topic_id, method, attempt_number, outcome,
         event_key=f"{job['method_attempt_key']}:{outcome}",
@@ -425,7 +426,7 @@ def advance_after_failure(
         content_sha256=_content_hash(job),
         score=score,
         diagnosis=details,
-        evidence=evidence or {},
+        evidence=event_evidence,
     )
     return _queue_next(path_topic_id, method, attempt_number, source_job_id=job_id)
 
@@ -580,6 +581,6 @@ def record_generation_failure(
     return advance_after_failure(
         job_id,
         reason=reason,
-        evidence=evidence,
+        evidence={"failure_stage": "generation"},
         diagnosis={"failure_stage": "generation"},
     )
