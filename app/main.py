@@ -952,7 +952,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
                 values[context_key] = context_value
                 if model_key == "chat_ollama_model":
                     values["ollama_num_ctx"] = context_value
-    for key in ("ollama_model", "ollama_embedding_model", "chat_ollama_model", "research_plan_ollama_model", "learning_ollama_model", "programming_ollama_model"):
+    for key in ("ollama_model", "ollama_embedding_model", "chat_ollama_model", "research_plan_ollama_model", "learning_ollama_model", "programming_ollama_model", "ai_learning_ollama_model"):
         if key in values and (
             not isinstance(values[key], str) or not values[key].strip() or len(values[key]) > 200
         ):
