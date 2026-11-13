@@ -394,6 +394,7 @@ def test_target_diagnostic_records_actual_hardware_without_hardcoded_profile():
 
     assert "No fixed CPU, RAM, or GPU model is a runtime requirement" in readme
     assert "TARGET_HOST_HARDWARE_PROFILE" in diagnostic
+    assert '$required = @("tests", "browser-e2e", "dependency-audit", "Sandbox integration CI")' in diagnostic
     assert "os_build" in diagnostic
     assert "cpu_name" in diagnostic
     assert "physical_cores" in diagnostic
