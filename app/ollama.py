@@ -419,6 +419,10 @@ def model_details(model: str, context_tokens: int | None = None) -> dict[str, An
     running_item = next((item for item in running if isinstance(item, dict) and item.get("name") == name), None) if isinstance(running, list) else None
     hardware = detect_hardware()
     recommended_context = _recommended_context_tokens(maximum_context, estimate, hardware)
+    raw_capabilities = info.get("capabilities")
+    capabilities = sorted({
+        value for value in raw_capabilities if isinstance(value, str) and value
+    }) if isinstance(raw_capabilities, list) else []
     return {
         "name": name,
         "parameter_size": details.get("parameter_size"),
@@ -428,6 +432,7 @@ def model_details(model: str, context_tokens: int | None = None) -> dict[str, An
         "context_metadata_available": maximum_context is not None,
         "weight_size_bytes": weight_bytes,
         "architecture": details.get("family"),
+        "capabilities": capabilities,
         "memory_estimate": estimate,
         "memory_estimate_note": (
             "Safe planning uses an FP32 upper bound for KV cache because Ollama does not consistently expose the runtime cache dtype. "
