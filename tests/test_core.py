@@ -747,11 +747,16 @@ def test_ollama_chat_uses_dedicated_profile_settings(tmp_path, monkeypatch):
 
     def fake_request(path, payload=None, timeout=None):
         if path == "/api/show":
-            return {"details": {"family": "llama"}, "model_info": {"llama.context_length": 32768}}
+            return {"details": {"family": "llama"}, "model_info": {
+                "llama.context_length": 32768, "llama.block_count": 32,
+                "llama.attention.head_count_kv": 8, "llama.attention.key_length": 128,
+                "llama.attention.value_length": 128,
+            }}
         captured.update(path=path, payload=payload, timeout=timeout)
         return {"message": {"content": "سلام"}}
 
     monkeypatch.setattr(ollama, "_request", fake_request)
+    monkeypatch.setattr(ollama, "list_models", lambda: [{"name": "qwen2.5:7b", "size": 4_000_000_000}])
     assert ollama.chat("سلام") == "سلام"
     assert captured["path"] == "/api/chat"
     assert captured["payload"]["model"] == "qwen2.5:7b"
@@ -825,10 +830,15 @@ def test_ollama_chat_sends_ram_aware_keep_alive_and_profile_options(monkeypatch)
     })
     def fake_request(path, payload=None, timeout=None):
         if path == "/api/show":
-            return {"details": {"family": "llama"}, "model_info": {"llama.context_length": 32768}}
+            return {"details": {"family": "llama"}, "model_info": {
+                "llama.context_length": 32768, "llama.block_count": 1,
+                "llama.attention.head_count_kv": 1, "llama.attention.key_length": 1,
+                "llama.attention.value_length": 1,
+            }}
         captured.update(path=path, payload=payload, timeout=timeout)
         return {"message": {"content": "ok"}}
     monkeypatch.setattr(ollama, "_request", fake_request)
+    monkeypatch.setattr(ollama, "list_models", lambda: [{"name": "qwen2.5:7b", "size": 4_000_000_000}])
 
     assert ollama.chat("hello", purpose="chat") == "ok"
     assert captured["payload"]["keep_alive"] == "5m"
@@ -858,11 +868,16 @@ def test_ollama_chat_respects_configured_ram_budget(monkeypatch):
         ollama,
         "_request",
         lambda path, payload=None, timeout=None: (
-            {"details": {"family": "llama"}, "model_info": {"llama.context_length": 32768}}
+            {"details": {"family": "llama"}, "model_info": {
+                "llama.context_length": 32768, "llama.block_count": 1,
+                "llama.attention.head_count_kv": 1, "llama.attention.key_length": 1,
+                "llama.attention.value_length": 1,
+            }}
             if path == "/api/show"
             else captured.update(payload=payload) or {"message": {"content": "ok"}}
         ),
     )
+    monkeypatch.setattr(ollama, "list_models", lambda: [{"name": "qwen2.5:7b", "size": 4_000_000_000}])
 
     assert ollama.chat("hello", purpose="chat") == "ok"
     assert captured["payload"]["keep_alive"] == "1m"
@@ -890,11 +905,16 @@ def test_ollama_programming_model_is_unloaded_after_request(monkeypatch):
     monkeypatch.setattr(
         ollama, "_request",
         lambda path, payload=None, timeout=None: (
-            {"details": {"family": "qwen"}, "model_info": {"qwen.context_length": 32768}}
+            {"details": {"family": "qwen"}, "model_info": {
+                "qwen.context_length": 32768, "qwen.block_count": 1,
+                "qwen.attention.head_count_kv": 1, "qwen.attention.key_length": 1,
+                "qwen.attention.value_length": 1,
+            }}
             if path == "/api/show"
             else captured.update(payload=payload) or {"message": {"content": "ok"}}
         ),
     )
+    monkeypatch.setattr(ollama, "list_models", lambda: [{"name": "qwen3:14b", "size": 8_000_000_000}])
 
     assert ollama.chat("review this code", purpose="programming") == "ok"
     assert captured["payload"]["keep_alive"] == "0"
