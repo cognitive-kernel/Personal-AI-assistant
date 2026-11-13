@@ -54,4 +54,11 @@ This rule concerns routine learning-content review only. It does not waive safet
 
 ## Implementation status
 
-The pure source-contract validator and aggregate accuracy evaluator are introduced in `app/learning_provenance.py`. They are not, by themselves, proof that all ingestion paths persist provenance or that production promotion uses the aggregate gate. Those integrations and their database/API/architecture tests remain required before this policy can be marked enabled.
+The implementation branch now contains:
+- schema migrations for structured candidate-source records and immutable accuracy-evaluation records;
+- automatic web-page and AI provider/model provenance capture for web-grounded lessons;
+- a loopback-only source-metadata API and source details in candidate inspection;
+- promotion checks that reject candidates without the mandatory AI reference and identified origin source;
+- the aggregate accuracy evaluator wired into candidate readiness, promotion, and the autonomous test-plan path.
+
+The gate remains **disabled by default** because trusted verifier adapters have not yet been connected to all four learning paths. Until all four paths contribute independently evidenced evaluation records and the aggregate ratio exceeds 95%, the existing review gate remains active. This branch must pass CI on its exact head before merge; passing CI alone does not prove live-provider or target-host acceptance.
