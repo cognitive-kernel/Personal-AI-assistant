@@ -739,13 +739,16 @@ def _select_learning_generation_model(
     *,
     claim_review_sources: list[dict[str, Any]] | None = None,
     topic: str = "",
+    provider_purpose: str = "learning",
     generation_scope: str = "lesson_generation_single_repair_and_optional_claim_review",
     completion_token_budget: int = 7800,
 ) -> tuple[str, dict[str, Any]]:
     """Apply configured cost/quality policy without silently bypassing hard constraints."""
     from .learning_cost_manager import select_learning_model
 
-    provider = settings.get("learning_llm_provider", "ollama")
+    if provider_purpose not in {"ai_learning", "learning", "topic_learning"}:
+        raise LearningError("Unsupported learning provider purpose.")
+    provider = settings.get(f"{provider_purpose}_llm_provider", "ollama")
     profiles = settings.get("learning_model_cost_profiles", {})
     minimum_quality = settings.get("learning_model_minimum_quality_score", 0.0)
     budget_microusd = settings.get("learning_task_budget_microusd")
