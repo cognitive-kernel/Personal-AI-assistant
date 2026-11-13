@@ -60,11 +60,11 @@ def resource_snapshot() -> dict[str, Any]:
     detected = hardware.detect_hardware()
     cpu_percent = None
     ram_percent = None
-    if hardware.psutil is not None:
-        cpu_percent = _finite_number(hardware.psutil.cpu_percent(interval=0.1))
-        memory = hardware.psutil.virtual_memory()
-        ram_percent = _finite_number(getattr(memory, "percent", None))
-        available = _finite_number(getattr(memory, "available", None))
+    metrics = hardware.get_system_metrics(cpu_interval=0.1)
+    if isinstance(metrics, dict):
+        cpu_percent = _finite_number(metrics.get("cpu_percent"))
+        ram_percent = _finite_number(metrics.get("memory_percent"))
+        available = _finite_number(metrics.get("available_bytes"))
         if available is not None:
             detected["available_ram_gb"] = round(available / (1024**3), 2)
     return {

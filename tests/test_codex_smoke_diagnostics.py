@@ -1,6 +1,24 @@
 from scripts import autonomous_engineering_progress as progress
 
 
+def test_progress_cli_imports_codex_config_when_run_as_a_standalone_script(tmp_path):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    script = root / "scripts" / "autonomous_engineering_progress.py"
+    result = subprocess.run(
+        [sys.executable, str(script), "--help"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "codex" in result.stdout
+
+
 def test_codex_smoke_evidence_reports_each_command_without_logging_raw_commands():
     events = [
         {"type": "item.started", "item": {
@@ -75,6 +93,7 @@ def test_codex_model_catalog_registers_the_selected_ollama_context():
     entry = catalog["models"][0]
     assert entry["slug"] == model
     assert entry["context_window"] == 64000
+    assert entry["max_context_window"] == 64000
     assert entry["shell_type"] == "default"
     assert entry["input_modalities"] == ["text"]
     assert [level["effort"] for level in entry["supported_reasoning_levels"]] == [
@@ -133,6 +152,7 @@ def test_codex_diagnostic_uses_bounded_reasoning_effort_without_changing_default
     assert 'model_reasoning_effort="low"' in overrides
     assert "sandbox_workspace_write.exclude_slash_tmp=true" in overrides
     assert any(value.startswith("model_catalog_json=") for value in overrides)
+    assert "model_context_window=64000" in overrides
     assert not any(value.startswith("model_providers.ollama.") for value in overrides)
 
     monkeypatch.delenv("CODEX_MODEL_REASONING_EFFORT")
@@ -165,14 +185,55 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert 'parameters = @{ num_ctx = $selectedContext }' in context_script
     assert 'PARAMETER\\s+num_ctx' in context_script
     assert 'AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH=$selectedContext' in context_script
-    assert context_script.count('if ($VerifyOnly) {') == 1
+    assert context_script.count('if ($VerifyOnly) {') == 2
     assert context_script.count('OLLAMA_RUNTIME_CONTEXT_OK') == 1
     assert 'if ($allocated -ne $selectedContext)' in context_script
     assert 'if ($allocated -lt $selectedContext)' not in context_script
-    assert '-lt 64000' in context_script
+    assert '-lt $minimumContextTokens' in context_script
+    assert '64000' not in context_script
+    assert 'Stop-LoadedCodexVariants -BaseModel $baseModel' in context_script
+    assert 'model_weights_already_loaded = $modelWeightsAlreadyLoaded' in context_script
+    assert "Test-OllamaWeightsAlreadyLoaded" in context_script
+    assert "Resolve-OllamaParallelRequestCount" in context_script
+    assert "Get-OllamaNumParallel" in context_script
+    assert "Get-NetTCPConnection -LocalPort 11434" in context_script
+    assert "[Microsoft.Win32.Registry]::Users" in context_script
+    assert "OpenSubKey(\"Environment\"" in context_script
+    assert "parallel_requests = (Get-OllamaNumParallel)" in context_script
+    assert "kv_cache_bytes_per_token_total" in context_script
+    assert 'remainingPhysicalMemoryBytes' in context_script
+    assert '$remainingPhysicalMemoryBytes -lt [int64]$contextSelection.reserve_bytes' in context_script
+    assert 'keep_alive = 0' in context_script
+    assert 'OLLAMA_RUNTIME_CONTEXT_RELEASED' in context_script
+    inventory_step = diagnostic.split("      - name: Inventory installed Ollama models and capabilities", 1)[1].split(
+        "      - name: Verify the selected model's allocated Ollama context", 1
+    )[0]
+    assert 'verbose = $false' in inventory_step
+    assert 'verbose = $true' not in inventory_step
     assert 'AUTONOMOUS_ENGINEERING_MODEL=$codexModel' in context_script
     assert '-VerifyOnly' in diagnostic
     assert '-VerifyOnly' in autonomous
+    assert 'group: autonomous-local-engineering-${{ github.repository }}' in diagnostic
+    target_host_tests = diagnostic.split(
+        "      - name: Run adaptive-context regression suite on the target Windows host", 1
+    )[1].split("      - name: Inventory installed Ollama models and capabilities", 1)[0]
+    assert "python -m venv" in target_host_tests
+    assert "tests/test_ollama_context.py" in target_host_tests
+    assert "tests/test_ollama_model_metadata.py" in target_host_tests
+    assert "tests/test_codex_smoke_diagnostics.py" in target_host_tests
+    assert "tests/test_autonomous_engineering.py" in target_host_tests
+    ci_gate = diagnostic.split(
+        "      - name: Wait for the complete exact-head GitHub CI matrix", 1
+    )[1].split("      - name: Prepare the same service-account runtime", 1)[0]
+    assert 'required = @("tests", "browser-e2e", "dependency-audit", "Sandbox integration CI")' in ci_gate
+    assert "EXPECTED_HEAD_SHA" in ci_gate
+    assert '$pythonCommand = Get-Command python.exe -ErrorAction Stop' in diagnostic
+    assert '$env:AUTONOMOUS_ENGINEERING_PYTHON = $pythonPath' in diagnostic
+    assert '"autonomous_engineering_python=$pythonPath" | Out-File -FilePath $env:GITHUB_ENV' in diagnostic
+    assert '$systemPython = [string]$env:AUTONOMOUS_ENGINEERING_PYTHON' in diagnostic
+    assert 'Python 3.11 or newer is required under the Runner service identity' in diagnostic
+    assert 'C:\\Program Files\\Python311\\python.exe' not in diagnostic
+    assert "latest.conclusion -ne \"success\"" in ci_gate
     assert 'Verify persistent Ollama context after Codex smoke' in diagnostic
     assert 'Verify persistent Ollama context after autonomous Codex task' in autonomous
     assert 'steps.context_preflight.outcome == \'success\'' in diagnostic
@@ -186,8 +247,10 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert "inputs.model || 'gpt-oss:20b'" not in diagnostic
     assert 'run-name: "Codex Windows Sandbox Diagnostic #' in diagnostic
     cleanup_job = diagnostic.split("  sandbox-diagnostic:", 1)[0]
-    assert '$branch = [uri]::EscapeDataString($env:GITHUB_REF_NAME)' in cleanup_job
-    assert '/compare/$($run.head_sha)...$env:GITHUB_SHA' in cleanup_job
+    assert '$branch = [uri]::EscapeDataString($env:TARGET_BRANCH)' in cleanup_job
+    assert '/compare/$($run.head_sha)...$env:TARGET_HEAD_SHA' in cleanup_job
+    assert 'TARGET_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}' in cleanup_job
+    assert 'TARGET_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}' in cleanup_job
     assert '$comparison.status -ne "ahead"' in cleanup_job
     assert '$comparison.behind_by -ne 0' in cleanup_job
     assert '$comparison.ahead_by -le 0' in cleanup_job
@@ -195,7 +258,8 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert all("-MaximumRedirection 0" in line for line in autonomous.splitlines() if "http://127.0.0.1:11434" in line and "Invoke-RestMethod" in line)
     assert all("-MaximumRedirection 0" in line for line in diagnostic.splitlines() if "http://127.0.0.1:11434" in line and "Invoke-RestMethod" in line)
     sandbox_job = diagnostic.split("  sandbox-diagnostic:", 1)[1]
-    assert "timeout-minutes: 30" in sandbox_job
+    assert "runs-on: [self-hosted, Windows, X64, ollama, autonomous-state-owner]" in sandbox_job
+    assert "timeout-minutes: 45" in sandbox_job
     assert "timeout-minutes: 25" in sandbox_job
     assert "Use the exec_command tool exactly once" not in diagnostic
     assert "Use the exec_command tool exactly once" not in autonomous
@@ -220,8 +284,15 @@ def test_context_preflight_uses_deterministic_variant_from_selected_base_model()
     assert '$codexModel = "$baseModel-codex-ctx$selectedContext"' in script
     assert 'from = $baseModel' in script
     assert '$existingContext.Success' in script
-    assert "if ($Model -match '(?i)-codex-ctx[0-9]+" in script
+    assert "$internalVariantPattern =" in script
+    assert "if ($Model -match $internalVariantPattern)" in script
+    assert '$legacyPattern = ' in script
+    assert '$isLegacyVariant = [regex]::IsMatch(' in script
     assert "Select the original Ollama model to prevent nested variants" in script
+    assert "Start-Process -FilePath $pythonPath -ArgumentList $argumentList" in script
+    assert "-RedirectStandardOutput $selectionOutputPath -RedirectStandardError $selectionErrorPath" in script
+    assert "& python $helperPath" not in script
+
     root = Path(__file__).resolve().parents[1]
     provision = (root / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
     app_check = (root / "scripts" / "check_autonomous_agent.ps1").read_text(encoding="utf-8")
@@ -229,23 +300,33 @@ def test_context_preflight_uses_deterministic_variant_from_selected_base_model()
     assert "internal Codex context variant" in provision
     assert "Base model selection" in app_check
     assert "Base model selection" in runner_check
+    legacy_and_current_variant_guard = "$modelIsContextVariant = $model -match '(?i)-codex-(?:ctx[0-9]+|[0-9]+k)$'"
+    assert legacy_and_current_variant_guard in app_check
+    assert legacy_and_current_variant_guard in runner_check
 
 
-
-
-def test_codex_model_catalog_rejects_context_below_64k(monkeypatch):
+def test_codex_model_catalog_rejects_non_positive_context(monkeypatch):
     import pytest
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "63999")
-    with pytest.raises(ValueError, match="64000"):
-        progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx63999")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "0")
+    with pytest.raises(ValueError, match="positive integer"): 
+        progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx511")
+
+
+
+def test_codex_model_catalog_accepts_a_single_token_context(monkeypatch):
+    import json
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "1")
+    path = progress.write_codex_model_catalog("tiny:latest-codex-ctx1")
+    catalog = json.loads(path.read_text(encoding="utf-8"))
+    assert catalog["models"][0]["context_window"] == 1
 
 
 def test_codex_model_catalog_uses_selected_context_from_environment(monkeypatch):
     import json
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
-    path = progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx64000")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "10000")
+    path = progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx10000")
     catalog = json.loads(path.read_text(encoding="utf-8"))
-    assert catalog["models"][0]["context_window"] == 64000
+    assert catalog["models"][0]["context_window"] == 10000
 
 
 def test_settings_expose_visible_installed_model_selectors_and_manual_context_inputs():
@@ -277,3 +358,308 @@ def test_codex_uses_unique_custom_ollama_provider_without_redefining_reserved_pr
     assert not any(value.startswith("model_providers.ollama.") for value in overrides)
     assert "--oss" not in arguments
     assert "--local-provider" not in arguments
+
+def test_windows_runner_cli_checks_use_cmd_shims_and_discover_active_ollama():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    runner_check = (root / "scripts" / "check_autonomous_runner.ps1").read_text(encoding="utf-8")
+    workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+
+    assert "Get-Command npm.cmd" in runner_check
+    assert "$npmCommand.Source --version" in runner_check
+    assert "$npmVersionExitCode = $LASTEXITCODE" in runner_check
+    assert "$npmPrefixExitCode = $LASTEXITCODE" in runner_check
+    assert "$codexExitCode = $LASTEXITCODE" in runner_check
+    assert "$ollamaExitCode = $LASTEXITCODE" in runner_check
+    assert "| Select-Object -First 1)" not in runner_check
+    assert "Get-Command codex.cmd" in runner_check
+    assert "$codexCommand.Source --version" in runner_check
+    assert "Provisioned per job by pinned actions/setup-node v7.1.0" in runner_check
+    assert "no system-wide installation required" in runner_check
+    assert "Get-Command ollama.exe" in runner_check
+    assert 'Get-CimInstance Win32_Process -Filter "Name=\'ollama.exe\'"' in runner_check
+    assert "$ollamaExecutable --version" in runner_check
+
+    assert "Get-Command npm.cmd" in workflow
+    assert "& $npm.Source install --global" in workflow
+    assert "Get-Command codex.cmd" in workflow
+    assert 'Get-CimInstance Win32_Process -Filter "Name=\'ollama.exe\'"' in workflow
+    assert "C:\\Users\\Admin\\AppData\\Local\\Programs\\Ollama\\ollama.exe" not in workflow
+
+def test_target_diagnostic_verifies_owner_confirmed_hardware_profile():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    diagnostic = (root / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml").read_text(encoding="utf-8")
+    autonomous = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    runner_check = (root / "scripts" / "check_autonomous_runner.ps1").read_text(encoding="utf-8")
+    readme = (root / "README.md").read_text(encoding="utf-8")
+
+    assert "Intel Core i5-12400" in readme and "31.78 GiB" in readme and "Intel UHD Graphics 730" in readme
+    assert "TARGET_HOST_HARDWARE_PROFILE" in diagnostic
+    assert '$required = @("tests", "browser-e2e", "dependency-audit", "Sandbox integration CI")' in diagnostic
+    assert "os_build" in diagnostic
+    assert "cpu_name" in diagnostic
+    assert "physical_cores" in diagnostic
+    assert "logical_processors" in diagnostic
+    assert "total_physical_ram_gib" in diagnostic
+    assert "gpu_inventory" in diagnostic
+    assert "$physicalCores -ne 6 -or $logicalProcessors -ne 12" in diagnostic
+    assert "$totalRamGiB -lt 30.0 -or $totalRamGiB -gt 33.0" in diagnostic
+    assert "$operatingSystem.BuildNumber -ne '26300'" in diagnostic
+    assert "$gpuMatches.Count -lt 1" in diagnostic
+    assert "Target CPU does not match the owner-confirmed Intel Core i5-12400 profile" in diagnostic
+    assert "physicalCores -ne 6 -or $logicalProcessors -ne 12" in diagnostic
+    assert "31.78 GiB / 32 GB class (30–33 GiB tolerance)" in diagnostic
+    assert "Intel.*UHD.*730" in diagnostic
+    assert "Windows 11 build 26300" in diagnostic
+    assert "Owner-confirmed target hardware profile verified" in diagnostic
+    assert "wmi_adapter_ram_bytes" in diagnostic
+    assert "OLLAMA_RUNTIME_DEVICE_ALLOCATION" in diagnostic
+    assert "size_vram" in diagnostic
+    assert "check_autonomous_runner.ps1" in diagnostic
+    assert "WINDOWS_RUNNER_READINESS_CONTRACT_OK" in diagnostic
+    assert "github.event.pull_request.head.ref || github.ref_name" in diagnostic
+    assert "github.event.pull_request.head.sha || github.sha" in diagnostic
+    assert "github.event.pull_request.head.repo.full_name == github.repository" in diagnostic
+    assert "TARGET_BRANCH" in diagnostic and "TARGET_HEAD_SHA" in diagnostic
+    assert "github.ref_name == 'fix/autonomous-engineering-show-all-ollama-models-20261112' && '10000'" not in diagnostic
+    assert "Get-Command node.exe" in diagnostic
+    assert 'Node.js version mismatch: expected at least v26.13.0' in diagnostic
+    assert 'npm version mismatch: expected at least 11.20.0' in diagnostic
+    assert "Node version: $nodeVersion" in diagnostic
+    assert "npm version: $npmVersion" in diagnostic
+    assert "expected at least 0.40.16" in diagnostic
+    assert "PowerShell version:" in diagnostic
+    assert "Get-Command npm.cmd" in diagnostic
+    assert "Get-Command codex.cmd" in diagnostic
+    assert "Name='ollama.exe'" in diagnostic
+    assert "Get-CimInstance Win32_UserProfile" in diagnostic
+    assert "AppData" in diagnostic and "Programs" in diagnostic and "Ollama" in diagnostic
+    assert "C:" + chr(92) * 2 + "Users" + chr(92) * 2 + "Admin" not in diagnostic
+
+    assert "Get-Command node.exe" in autonomous
+    assert "Get-Command python.exe" in autonomous
+    assert '$pythonCommand = Get-Command python.exe -ErrorAction Stop' in autonomous
+    assert '$pythonVersionNumber -lt [version]"3.11"' in autonomous
+    assert 'C:\\\\Program Files\\\\Python311\\\\python.exe' not in autonomous
+    assert "python.exe scripts/autonomous_engineering_progress.py" in autonomous
+    assert "python scripts/autonomous_engineering_progress.py" not in autonomous
+    assert "Get-Command node -ErrorAction" not in autonomous
+    assert "Get-Command npm.cmd" in autonomous
+    assert "Get-Command codex.cmd" in autonomous
+    assert "Get-CimInstance Win32_UserProfile" in autonomous
+    assert "AppData" in autonomous and "Programs" in autonomous and "Ollama" in autonomous
+    assert "C:" + chr(92) * 2 + "Users" + chr(92) * 2 + "Admin" not in autonomous
+
+    assert "Get-Command ollama.exe" in runner_check
+    assert 'Get-CimInstance Win32_Process -Filter "Name=\'ollama.exe\'"' in runner_check
+    assert "$ollamaExecutable --version" in runner_check
+
+def test_active_codex_documentation_matches_adaptive_context_contract():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    status = (root / "docs" / "PROJECT_STATUS.md").read_text(encoding="utf-8")
+    operations = (root / "docs" / "operations" / "CODEX_AUTONOMOUS_ENGINEERING.md").read_text(encoding="utf-8")
+    parallelism_script = (root / "scripts" / "verify_ollama_context.ps1").read_text(encoding="utf-8")
+    autonomous_workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    diagnostic_workflow = (root / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml").read_text(encoding="utf-8")
+    tests_workflow = (root / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+    autonomous_workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    diagnostic_workflow = (root / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml").read_text(encoding="utf-8")
+    tests_workflow = (root / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+    adr = (root / "docs" / "architecture" / "ADR-020-codex-adaptive-context.md").read_text(encoding="utf-8")
+
+    assert "حداقل سقف Context برابر ۶۴٬۰۰۰ توکن" not in readme
+    assert "اگر ظرفیت امن به ۶۴٬۰۰۰ توکن نرسد" not in readme
+    assert "هیچ حداقل ثابت ۶۴٬۰۰۰ یا ۵۱۲ توکنی وجود ندارد" in readme
+    assert "PR [#702](" in status
+    assert "با قرارداد ثابت ۶۴k در main ادغام شد" in status
+    assert "PR #722 پیشنهاد حذف الزام ثابت ۶۴k را می‌دهد" in status
+    assert "حداقل Codex یک توکن مثبت" in status
+    assert "There is no Codex-specific 64,000-token minimum" in operations
+    assert "docs.ollama.com/integrations/codex" in operations
+    assert "at least 64k tokens" in operations
+    assert "docs.ollama.com/integrations/codex" in adr
+    assert "below the upstream-documented recommendation" in adr
+    assert "docs.ollama.com/integrations/codex" in readme
+    assert "آزمون واقعی فراخوانی ابزار Codex" in readme
+    assert "There is no fixed minimum context window" in adr
+    assert '"max_context_window": context_window' in (root / "scripts" / "autonomous_engineering_codex_config.py").read_text(encoding="utf-8")
+    assert "model_context_window={context_window}" in (root / "scripts" / "autonomous_engineering_codex_config.py").read_text(encoding="utf-8")
+    assert "inherited Codex configuration from raising" in adr
+    assert "inherited Codex config cannot increase it" in operations
+    assert "floor((2^63 - 1) / 9)" in adr
+    assert "automatic compaction" in adr
+    assert "currently 1,048,576 tokens" not in adr
+    assert "تنظیمات قدیمی Codex نتوانند Context بزرگ‌تری تحمیل کنند" in readme
+
+def test_sandbox_ci_runs_when_windows_diagnostic_contract_changes():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "sandbox-integration-ci.yml").read_text(encoding="utf-8")
+    assert '"tests/test_codex_smoke_diagnostics.py"' in workflow
+    for required_doc in ("README.md", "docs/PROJECT_STATUS.md", "docs/ENGINEERING_LOG.md", "docs/ROADMAP_ACCEPTANCE.md", "docs/operations/CODEX_AUTONOMOUS_ENGINEERING.md", "docs/architecture/ADR-020-codex-adaptive-context.md"):
+        assert f'"{required_doc}"' in workflow
+
+
+def test_required_ci_workflows_cancel_superseded_runs_for_the_same_pull_request():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    expected = "group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"
+    for workflow_name in ("tests.yml", "browser-e2e.yml", "dependency-audit.yml", "sandbox-integration-ci.yml"):
+        workflow = (root / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
+        assert expected in workflow
+        assert "-${{ github.sha }}" not in workflow
+
+
+def test_node_runtime_is_provisioned_per_github_job_not_preinstalled_on_target_host():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    action_pin = "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1"
+    for workflow_name in ("autonomous-codex-engineering.yml", "codex-windows-sandbox-diagnostic.yml", "tests.yml"):
+        workflow = (root / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
+        assert action_pin in workflow
+        assert 'node-version: "26.13.0"' in workflow
+        assert "package-manager-cache: false" in workflow
+
+    autonomous = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    diagnostic = (root / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml").read_text(encoding="utf-8")
+    assert autonomous.index("Provision pinned Node.js and npm") < autonomous.index("Ensure Codex CLI is installed")
+    assert diagnostic.index("Provision pinned Node.js and npm") < diagnostic.index("Prepare the same service-account runtime")
+    assert "must be provisioned for this workflow run" in autonomous
+
+    provision = (root / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
+    assert "Get-Command node.exe" not in provision
+    assert "Get-Command npm.cmd" not in provision
+
+
+def test_windows_provisioning_and_app_readiness_use_consistent_cli_resolution():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    provision = (root / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
+    app_check = (root / "scripts" / "check_autonomous_agent.ps1").read_text(encoding="utf-8")
+    runner_check = (root / "scripts" / "check_autonomous_runner.ps1").read_text(encoding="utf-8")
+
+    assert "Get-Command ollama.exe" in provision
+    assert "Get-CimInstance Win32_Process -Filter \"Name='ollama.exe'\"" in provision
+    assert "Get-CimInstance Win32_UserProfile" in provision
+    assert "AppData\\Local\\Programs\\Ollama\\ollama.exe" in provision
+    assert "Get-Command node.exe" not in provision
+    assert "Get-Command npm.cmd" not in provision
+    assert "Get-Command git.exe" in provision
+    assert "Get-Command python.exe" in provision
+    assert "Get-Command gh.exe" in provision
+    assert "Node.js 26.13.0 or newer is required" not in provision
+    assert "npm 11.20.0 or newer is required" not in provision
+    assert "Ollama 0.40.16 or newer is required" in provision
+    assert 'if ($Model -match "(?i)-codex-(?:ctx[0-9]+|[0-9]+k)$")' in provision
+    assert "Get-Command ollama -ErrorAction" not in provision
+    assert "Get-Command npm -ErrorAction" not in provision
+    for script in (provision, app_check, runner_check):
+        assert ".block_count" in script
+        assert ".attention.head_count_kv" in script
+        assert ".attention.key_length" in script
+        assert ".attention.value_length" in script
+
+    assert "Model weight size" in app_check
+    assert "Model weight size" in runner_check
+    assert "modelTag.size" in provision
+    assert "Model KV-cache metadata" in app_check
+    assert "Model KV-cache metadata" in runner_check
+    assert "Get-Command gh.exe" in app_check
+    assert "Get-CimInstance Win32_Process -Filter" in app_check
+    assert "Get-Process -Name \"Runner.Listener\"" not in app_check
+
+
+def test_windows_storage_workflow_exercises_adaptive_context_bridge_in_powershell_51():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+    bridge = (root / "tests" / "test_ollama_context_bridge.ps1").read_text(encoding="utf-8")
+
+    assert "Verify the adaptive context bridge in Windows PowerShell 5.1" in workflow
+    assert "shell: powershell" in workflow
+    assert "test_ollama_context_bridge.ps1" in workflow
+    assert "Start-Process -FilePath $pythonPath -ArgumentList $argumentList" in bridge
+    assert "-RedirectStandardOutput $outputPath -RedirectStandardError $errorPath" in bridge
+    assert "selected_context_tokens" in bridge
+    assert "requested_context_tokens = [long]1000" in bridge
+    assert "model_weights_already_loaded" in bridge
+    assert "Available RAM cannot hold the model weights" in bridge
+    assert "64000" not in bridge
+
+
+def test_codex_config_pins_sub_64k_context_to_the_verified_ollama_allocation(monkeypatch):
+    import json
+    from pathlib import Path
+
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "1000")
+    arguments = progress.codex_arguments("qwen2.5:7b-codex-ctx1000", "report.md")
+    overrides = [
+        arguments[index + 1]
+        for index, value in enumerate(arguments[:-1])
+        if value == "-c"
+    ]
+
+    assert "model_context_window=1000" in overrides
+    catalog_override = next(value for value in overrides if value.startswith("model_catalog_json="))
+    catalog_path = json.loads(catalog_override.split("=", 1)[1])
+    entry = json.loads(Path(catalog_path).read_text(encoding="utf-8"))["models"][0]
+    assert entry["context_window"] == 1000
+    assert entry["max_context_window"] == 1000
+
+
+def test_hosted_ci_workflows_cancel_superseded_runs_per_pull_request():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    workflows = (
+        ".github/workflows/tests.yml",
+        ".github/workflows/browser-e2e.yml",
+        ".github/workflows/dependency-audit.yml",
+        ".github/workflows/sandbox-integration-ci.yml",
+    )
+    expected_group = "group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"
+    for relative_path in workflows:
+        content = (root / relative_path).read_text(encoding="utf-8")
+        assert expected_group in content
+        assert "-${{ github.sha }}" not in content
+        assert "cancel-in-progress: true" in content
+
+
+
+def test_current_acceptance_docs_preserve_master_prompt_merge_gates_and_runner_provisioning():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    status = (root / "docs" / "PROJECT_STATUS.md").read_text(encoding="utf-8")
+    roadmap = (root / "docs" / "ROADMAP_ACCEPTANCE.md").read_text(encoding="utf-8")
+    operations = (root / "docs" / "operations" / "CODEX_AUTONOMOUS_ENGINEERING.md").read_text(encoding="utf-8")
+    parallelism_script = (root / "scripts" / "verify_ollama_context.ps1").read_text(encoding="utf-8")
+    autonomous_workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    diagnostic_workflow = (root / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml").read_text(encoding="utf-8")
+    tests_workflow = (root / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+
+    assert "تمام تست‌های لازم روی سیستم مقصد" in status
+    assert "all required local tests on the actual target host" in roadmap.lower()
+    assert "not a merge gate by default" not in status.lower()
+    assert "not a merge gate by default" not in roadmap.lower()
+    assert "Node.js 26.13.0/npm are provisioned per GitHub Actions job" in operations
+    assert "Install Node.js LTS system-wide" not in operations
+    assert "Node.js LTS and npm must be installed system-wide" not in operations
+    assert "process-only launch override" in operations
+    assert "not read from the live Ollama process environment" in parallelism_script
+    assert "process-only launch override may differ" in parallelism_script
+    assert '$requiredCodexVersion = "0.168.0"' in autonomous_workflow
+    assert '$requiredCodexVersion = "0.168.0"' in diagnostic_workflow
+    assert 'codex-version: ["0.167.2", "0.168.0"]' in tests_workflow
+    assert "0.167.0" not in autonomous_workflow + diagnostic_workflow + tests_workflow

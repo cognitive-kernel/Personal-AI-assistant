@@ -523,14 +523,21 @@ def test_checkpoint_watcher_real_process_publishes_run_scoped_readiness(
     from scripts import autonomous_engineering_checkpoint as checkpoint
 
     root = Path(__file__).resolve().parents[1]
-    base_sha = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=root, check=True,
-        capture_output=True, text=True,
-    ).stdout.strip()
+    base_sha = os.environ.get("AUTONOMOUS_ENGINEERING_TEST_BASE_SHA", "").strip().lower()
+    if base_sha:
+        if len(base_sha) != 40 or any(char not in "0123456789abcdef" for char in base_sha):
+            raise AssertionError("Injected isolated-test checkout SHA is invalid.")
+    else:
+        base_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=root, check=True,
+            capture_output=True, text=True,
+        ).stdout.strip()
     state = tmp_path / "checkpoint-state"
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(state))
     env = os.environ.copy()
     env["AUTONOMOUS_ENGINEERING_PROGRESS_DIR"] = str(state)
+    if os.environ.get("AUTONOMOUS_ENGINEERING_TEST_BASE_SHA"):
+        env["AUTONOMOUS_ENGINEERING_TEST_MODE"] = "1"
     run_id = f"integration-{os.getpid()}"
     task = 91
     # Match the production launch path: on Windows, bypass the venv launcher
@@ -556,7 +563,9 @@ def test_checkpoint_watcher_real_process_publishes_run_scoped_readiness(
     error_path = state / f"worktree-checkpoint-{run_id}-{task}.error"
     metadata_path = checkpoint.paths(run_id, task)["metadata"]
     try:
-        deadline = time.monotonic() + 20
+        # Windows CIM startup can be cold on hosted runners; allow the bounded
+        # 20-second process query to complete without weakening the readiness assertion.
+        deadline = time.monotonic() + 45
         metadata = None
         while time.monotonic() < deadline and process.poll() is None:
             if error_path.is_file():
@@ -1231,7 +1240,12 @@ def test_windows_sandbox_diagnostic_cancels_only_older_queued_runs_and_uses_uniq
     assert "continue" in cleanup_job
     assert "/cancel" in cleanup_job
     assert "/force-cancel" in cleanup_job
-    assert "concurrency:" not in cleanup_job
+    assert "Normal cancellation for superseded" in cleanup_job
+    assert "afterForceCancel.status -ne \"completed\"" in cleanup_job
+    assert "Force-cancelled superseded" in cleanup_job
+    assert "concurrency:" in cleanup_job
+    assert "group: ${{ github.workflow }}-cleanup-${{ github.ref }}" in cleanup_job
+    assert "cancel-in-progress: true" in cleanup_job
     assert "needs: cancel-stale-diagnostics" in sandbox_job
     sandbox_job_header = sandbox_job.split("steps:", 1)[0]
     assert "if: always()" not in sandbox_job_header

@@ -27,20 +27,41 @@ function Get-AccountSidValue([string]$AccountName) {
 }
 $progressPath = Join-Path $env:ProgramData "PersonalAIAssistant\autonomous-engineering"
 try { $null = ([Security.Principal.NTAccount]$appIdentity).Translate([Security.Principal.SecurityIdentifier]) } catch { throw "Application account $appIdentity does not exist." }
-$null = Get-Command ollama -ErrorAction Stop
-$node = Get-Command node -ErrorAction Stop
-$npm = Get-Command npm -ErrorAction Stop
-$git = Get-Command git -ErrorAction Stop
-$python = Get-Command python -ErrorAction Stop
-& $node.Source --version
-if ($LASTEXITCODE -ne 0) { throw "Node.js is not executable." }
-& $npm.Source --version
-if ($LASTEXITCODE -ne 0) { throw "npm is not executable." }
+$ollamaCommand = Get-Command ollama.exe -ErrorAction SilentlyContinue
+$ollamaPath = if ($ollamaCommand) { $ollamaCommand.Source } else { $null }
+if (-not $ollamaPath) {
+    $ollamaProcess = Get-CimInstance Win32_Process -Filter "Name='ollama.exe'" -ErrorAction Stop |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) } |
+        Select-Object -First 1
+    $ollamaPath = if ($ollamaProcess) { [string]$ollamaProcess.ExecutablePath } else { $null }
+}
+if (-not $ollamaPath) {
+    $profiles = @(Get-CimInstance Win32_UserProfile -ErrorAction Stop | Where-Object {
+        -not $_.Special -and -not [string]::IsNullOrWhiteSpace($_.LocalPath)
+    })
+    foreach ($profile in $profiles) {
+        $candidate = Join-Path ([string]$profile.LocalPath) "AppData\Local\Programs\Ollama\ollama.exe"
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            $ollamaPath = $candidate
+            break
+        }
+    }
+}
+if ([string]::IsNullOrWhiteSpace($ollamaPath) -or -not (Test-Path -LiteralPath $ollamaPath -PathType Leaf)) {
+    throw "Ollama executable was not found in PATH or among active ollama.exe processes."
+}
+$git = Get-Command git.exe -ErrorAction Stop
+$python = Get-Command python.exe -ErrorAction Stop
+$gh = Get-Command gh.exe -ErrorAction Stop
+$ollamaVersion = (@(& $ollamaPath --version 2>&1) -join " ").Trim()
+$ollamaVersionMatch = [regex]::Match($ollamaVersion, '(?i)([0-9]+\.[0-9]+\.[0-9]+)')
+$ollamaVersionNumber = $null
+if ($ollamaVersionMatch.Success) { try { $ollamaVersionNumber = [version]$ollamaVersionMatch.Groups[1].Value } catch {} }
+if ($LASTEXITCODE -ne 0 -or $null -eq $ollamaVersionNumber -or $ollamaVersionNumber -lt [version]"0.40.16") { throw "Ollama 0.40.16 or newer is required; found '$ollamaVersion'." }
 & $git.Source --version
 if ($LASTEXITCODE -ne 0) { throw "Git is not executable." }
 $pythonVersion = (& $python.Source -c "import sys; print(sys.version_info.major, sys.version_info.minor, sep=chr(46))")
 if ($LASTEXITCODE -ne 0 -or [version]$pythonVersion -lt [version]"3.11") { throw "Python 3.11 or newer is required on the Runner host." }
-$gh = Get-Command gh -ErrorAction Stop
 & $gh.Source auth status --hostname github.com
 if ($LASTEXITCODE -ne 0) { throw "Authenticate gh as an account with repository Administration: write permission." }
 if ([string]::IsNullOrWhiteSpace($Model)) {
@@ -49,20 +70,38 @@ if ([string]::IsNullOrWhiteSpace($Model)) {
 if ([string]::IsNullOrWhiteSpace($Model)) {
     throw "No saved AUTONOMOUS_ENGINEERING_MODEL repository variable exists. Save an installed model in the autonomous-engineering dashboard first."
 }
-if ($Model -match "(?i)-codex-ctx[0-9]+$") {
+if ($Model -match "(?i)-codex-(?:ctx[0-9]+|[0-9]+k)$") {
     throw "The saved model is an internal Codex context variant. Save the original Ollama model in the dashboard."
 }
 $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 8 -MaximumRedirection 0
-if (@($tags.models | ForEach-Object { $_.name }) -notcontains $Model) {
+$modelTag = @($tags.models | Where-Object { $_.name -eq $Model }) | Select-Object -First 1
+if (-not $modelTag) {
     throw "Saved model $Model is not installed. Install it with ollama pull $Model, then save it in the dashboard."
 }
-$modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -ContentType "application/json" -Body (@{ model = $Model; verbose = $true } | ConvertTo-Json -Compress) -TimeoutSec 15 -MaximumRedirection 0
+$parsedWeightSize = 0L
+if (($modelTag.size -isnot [int] -and $modelTag.size -isnot [long]) -or -not [int64]::TryParse([string]$modelTag.size, [ref]$parsedWeightSize) -or $parsedWeightSize -le 0) {
+    throw "Saved model $Model must expose a positive integer weight size in Ollama /api/tags for safe context budgeting."
+}
+$modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -ContentType "application/json" -Body (@{ model = $Model; verbose = $false } | ConvertTo-Json -Compress) -TimeoutSec 15 -MaximumRedirection 0
 $architecture = [string]$modelInfo.details.family
 $contextKey = $architecture + ".context_length"
 $rawContext = $modelInfo.model_info.PSObject.Properties[$contextKey]
 $parsedContext = 0L
-if ([string]::IsNullOrWhiteSpace($architecture) -or -not $rawContext -or -not [int64]::TryParse([string]$rawContext.Value, [ref]$parsedContext) -or $parsedContext -lt 64000) {
-    throw "Saved model $Model must expose at least 64000 context tokens for Codex."
+if ([string]::IsNullOrWhiteSpace($architecture) -or -not $rawContext -or -not [int64]::TryParse([string]$rawContext.Value, [ref]$parsedContext) -or $parsedContext -lt 1) {
+    throw "Saved model $Model must expose a positive valid context limit for Codex."
+}
+$kvCacheMetadataKeys = @(
+    ($architecture + ".block_count"),
+    ($architecture + ".attention.head_count_kv"),
+    ($architecture + ".attention.key_length"),
+    ($architecture + ".attention.value_length")
+)
+foreach ($kvKey in $kvCacheMetadataKeys) {
+    $kvProperty = $modelInfo.model_info.PSObject.Properties[$kvKey]
+    $kvDimension = 0L
+    if (-not $kvProperty -or -not [int64]::TryParse([string]$kvProperty.Value, [ref]$kvDimension) -or $kvDimension -lt 1) {
+        throw "Saved model $Model must expose positive architecture-specific KV-cache metadata ($kvKey) for safe context budgeting."
+    }
 }
 if (@($modelInfo.capabilities | ForEach-Object { [string]$_ }) -notcontains "tools") {
     throw "Saved model $Model does not advertise the required Ollama tools capability."

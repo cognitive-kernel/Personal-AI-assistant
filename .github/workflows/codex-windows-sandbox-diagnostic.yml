@@ -1,31 +1,85 @@
 name: Codex Windows Sandbox Diagnostic
-run-name: "Codex Windows Sandbox Diagnostic #${{ github.run_number }} - ${{ github.ref_name }} @ ${{ github.sha }}"
+run-name: "Codex Windows Sandbox Diagnostic #${{ github.run_number }} - ${{ github.event.pull_request.head.ref || github.ref_name }} @ ${{ github.event.pull_request.head.sha || github.sha }}"
 
 on:
   push:
     branches:
       - feat/autonomous-engineering-complete-20261112
+      - fix/autonomous-engineering-show-all-ollama-models-20261112
     paths:
       - .github/workflows/codex-windows-sandbox-diagnostic.yml
+      - app/autonomous_engineering.py
+      - app/autonomous_engineering_services.py
+      - app/hardware.py
+      - app/sandbox.py
+      - pyproject.toml
+      - scripts/autonomous_engineering_checkpoint_process.py
+      - scripts/validate_autonomous_engineering_target_host.py
+      - tests/test_autonomous_engineering_checkpoint_process.py
+      - tests/test_autonomous_engineering_checkpoint_recovery.py
+      - tests/test_autonomous_engineering_cycle.py
+      - tests/test_hardware.py
+      - tests/test_sandbox.py
       - .github/workflows/autonomous-codex-engineering.yml
       - .github/workflows/browser-e2e.yml
       - docs/operations/CODEX_AUTONOMOUS_ENGINEERING.md
+      - docs/architecture/ADR-020-codex-adaptive-context.md
+      - docs/ROADMAP_ACCEPTANCE.md
+      - scripts/autonomous_engineering_codex_config.py
+      - scripts/check_autonomous_agent.ps1
       - scripts/provision_autonomous_runner.ps1
       - scripts/check_autonomous_runner.ps1
       - scripts/check_autonomous_agent.ps1
       - app/static/autonomous-engineering.js
       - app/autonomous_engineering.py
+      - app/autonomous_engineering_services.py
       - app/main.py
       - app/ollama.py
       - app/ollama_context.py
       - scripts/autonomous_engineering_progress.py
       - scripts/verify_ollama_context.ps1
       - tests/test_autonomous_engineering.py
+      - tests/test_ollama_context.py
+      - tests/test_ollama_context_bridge.ps1
+      - tests/test_ollama_model_metadata.py
+      - tests/test_codex_smoke_diagnostics.py
       - tests/test_browser_e2e.py
       - docs/PROJECT_STATUS.md
       - docs/ENGINEERING_LOG.md
       - tests/test_autonomous_engineering_cycle.py
       - tests/test_codex_smoke_diagnostics.py
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/codex-windows-sandbox-diagnostic.yml
+      - .github/workflows/autonomous-codex-engineering.yml
+      - app/autonomous_engineering.py
+      - app/autonomous_engineering_services.py
+      - app/hardware.py
+      - app/ollama_context.py
+      - app/sandbox.py
+      - pyproject.toml
+      - scripts/check_autonomous_agent.ps1
+      - scripts/check_autonomous_runner.ps1
+      - scripts/provision_autonomous_runner.ps1
+      - scripts/validate_autonomous_engineering_target_host.py
+      - scripts/verify_ollama_context.ps1
+      - tests/test_autonomous_engineering.py
+      - tests/test_autonomous_engineering_checkpoint_process.py
+      - tests/test_autonomous_engineering_checkpoint_recovery.py
+      - tests/test_autonomous_engineering_cycle.py
+      - tests/test_codex_smoke_diagnostics.py
+      - tests/test_hardware.py
+      - tests/test_ollama_context.py
+      - tests/test_ollama_context_bridge.ps1
+      - tests/test_ollama_model_metadata.py
+      - tests/test_sandbox.py
+      - README.md
+      - docs/PROJECT_STATUS.md
+      - docs/ENGINEERING_LOG.md
+      - docs/ROADMAP_ACCEPTANCE.md
+      - docs/operations/CODEX_AUTONOMOUS_ENGINEERING.md
+      - docs/architecture/ADR-020-codex-adaptive-context.md
   workflow_dispatch:
     inputs:
       model:
@@ -44,8 +98,12 @@ permissions:
 
 jobs:
   cancel-stale-diagnostics:
+    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'fix/autonomous-engineering-show-all-ollama-models-20261112') }}
     runs-on: ubuntu-latest
     continue-on-error: true
+    concurrency:
+      group: ${{ github.workflow }}-cleanup-${{ github.ref }}
+      cancel-in-progress: true
     permissions:
       actions: write
       contents: read
@@ -55,6 +113,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPOSITORY: ${{ github.repository }}
           CURRENT_RUN_NUMBER: ${{ github.run_number }}
+          TARGET_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          TARGET_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         shell: pwsh
         run: |
           $headers = @{
@@ -62,7 +122,7 @@ jobs:
             Accept = "application/vnd.github+json"
             "X-GitHub-Api-Version" = "2022-11-28"
           }
-          $branch = [uri]::EscapeDataString($env:GITHUB_REF_NAME)
+          $branch = [uri]::EscapeDataString($env:TARGET_BRANCH)
           $uri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/workflows/codex-windows-sandbox-diagnostic.yml/runs?branch=$branch&per_page=100"
           try {
             $response = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get -TimeoutSec 15
@@ -84,17 +144,33 @@ jobs:
                 $cancelUri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)/cancel"
                 try {
                   Invoke-RestMethod -Uri $cancelUri -Headers $headers -Method Post -TimeoutSec 15 | Out-Null
-                  Start-Sleep -Seconds 2
+                } catch {
+                  # A 409 can mean cancellation is already in progress. Still
+                  # inspect the run and force-cancel only when it is not complete.
+                  Write-Warning "Normal cancellation for stale diagnostic run $($run.id) did not complete: $($_.Exception.Message)"
+                }
+                Start-Sleep -Seconds 2
+                try {
                   $afterCancel = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)" -Headers $headers -Method Get -TimeoutSec 15
                   if ($afterCancel.status -ne "completed") {
                     $forceCancelUri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)/force-cancel"
-                    Invoke-RestMethod -Uri $forceCancelUri -Headers $headers -Method Post -TimeoutSec 15 | Out-Null
-                    Write-Host "Force-cancelled stale diagnostic run $($run.id) after normal cancellation remained pending."
+                    try {
+                      Invoke-RestMethod -Uri $forceCancelUri -Headers $headers -Method Post -TimeoutSec 15 | Out-Null
+                    } catch {
+                      Write-Warning "Force cancellation for stale diagnostic run $($run.id) returned: $($_.Exception.Message)"
+                    }
+                    Start-Sleep -Seconds 1
+                    $afterForceCancel = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)" -Headers $headers -Method Get -TimeoutSec 15
+                    if ($afterForceCancel.status -ne "completed") {
+                      Write-Warning "Stale diagnostic run $($run.id) is still not completed after force-cancel."
+                    } else {
+                      Write-Host "Force-cancelled stale diagnostic run $($run.id)."
+                    }
                   } else {
                     Write-Host "Cancelled stale diagnostic run $($run.id) (run number $($run.run_number))."
                   }
                 } catch {
-                  Write-Warning "Could not cancel stale run $($run.id): $($_.Exception.Message)"
+                  Write-Warning "Could not verify cancellation for stale run $($run.id): $($_.Exception.Message)"
                 }
               }
             }
@@ -106,6 +182,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPOSITORY: ${{ github.repository }}
+          TARGET_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          TARGET_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         shell: pwsh
         run: |
           $headers = @{
@@ -113,7 +191,7 @@ jobs:
             Accept = "application/vnd.github+json"
             "X-GitHub-Api-Version" = "2022-11-28"
           }
-          $branch = [uri]::EscapeDataString($env:GITHUB_REF_NAME)
+          $branch = [uri]::EscapeDataString($env:TARGET_BRANCH)
           $workflowFiles = @("tests.yml", "browser-e2e.yml", "dependency-audit.yml")
           foreach ($workflowFile in $workflowFiles) {
             $workflow = [uri]::EscapeDataString($workflowFile)
@@ -121,11 +199,11 @@ jobs:
             try {
               $response = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get -TimeoutSec 15
               foreach ($run in @($response.workflow_runs)) {
-                if ($run.head_sha -eq $env:GITHUB_SHA) { continue }
+                if ($run.head_sha -eq $env:TARGET_HEAD_SHA) { continue }
                 if ($run.status -notin @("queued", "in_progress")) { continue }
                 # A stale diagnostic may finish after a newer push. Cancel only
                 # runs whose commit is a strict ancestor of this diagnostic SHA.
-                $compareUri = "https://api.github.com/repos/$env:GH_REPOSITORY/compare/$($run.head_sha)...$env:GITHUB_SHA"
+                $compareUri = "https://api.github.com/repos/$env:GH_REPOSITORY/compare/$($run.head_sha)...$env:TARGET_HEAD_SHA"
                 try {
                   $comparison = Invoke-RestMethod -Uri $compareUri -Headers $headers -Method Get -TimeoutSec 15
                 } catch {
@@ -133,21 +211,39 @@ jobs:
                   continue
                 }
                 if ($comparison.status -ne "ahead" -or [int]$comparison.behind_by -ne 0 -or [int]$comparison.ahead_by -le 0) {
-                  Write-Host "Keeping $workflowFile run $($run.id): its commit is not a strict ancestor of $env:GITHUB_SHA."
+                  Write-Host "Keeping $workflowFile run $($run.id): its commit is not a strict ancestor of $env:TARGET_HEAD_SHA."
                   continue
                 }
                 $cancelUri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)/cancel"
                 try {
                   Invoke-RestMethod -Uri $cancelUri -Headers $headers -Method Post -TimeoutSec 15 | Out-Null
-                  Start-Sleep -Seconds 1
+                } catch {
+                  # Continue to the status check: 409 may indicate a concurrent
+                  # cancellation request rather than a reason to skip cleanup.
+                  Write-Warning "Normal cancellation for superseded $workflowFile run $($run.id) did not complete: $($_.Exception.Message)"
+                }
+                Start-Sleep -Seconds 1
+                try {
                   $afterCancel = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)" -Headers $headers -Method Get -TimeoutSec 15
                   if ($afterCancel.status -ne "completed") {
                     $forceCancelUri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)/force-cancel"
-                    Invoke-RestMethod -Uri $forceCancelUri -Headers $headers -Method Post -TimeoutSec 15 | Out-Null
+                    try {
+                      Invoke-RestMethod -Uri $forceCancelUri -Headers $headers -Method Post -TimeoutSec 15 | Out-Null
+                    } catch {
+                      Write-Warning "Force cancellation for superseded $workflowFile run $($run.id) returned: $($_.Exception.Message)"
+                    }
+                    Start-Sleep -Seconds 1
+                    $afterForceCancel = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)" -Headers $headers -Method Get -TimeoutSec 15
+                    if ($afterForceCancel.status -ne "completed") {
+                      Write-Warning "Superseded $workflowFile run $($run.id) is still not completed after force-cancel."
+                    } else {
+                      Write-Host "Force-cancelled superseded $workflowFile run $($run.id) at $($run.head_sha)."
+                    }
+                  } else {
+                    Write-Host "Cancelled superseded $workflowFile run $($run.id) at $($run.head_sha)."
                   }
-                  Write-Host "Cancelled superseded $workflowFile run $($run.id) at $($run.head_sha)."
                 } catch {
-                  Write-Warning "Could not cancel superseded $workflowFile run $($run.id): $($_.Exception.Message)"
+                  Write-Warning "Could not verify cancellation for superseded $workflowFile run $($run.id): $($_.Exception.Message)"
                 }
               }
             } catch {
@@ -156,52 +252,298 @@ jobs:
           }
 
   sandbox-diagnostic:
+    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'fix/autonomous-engineering-show-all-ollama-models-20261112') }}
     needs: cancel-stale-diagnostics
-    runs-on: [self-hosted, Windows, X64, ollama]
-    timeout-minutes: 30
+    concurrency:
+      group: autonomous-local-engineering-${{ github.repository }}
+      cancel-in-progress: false
+    runs-on: [self-hosted, Windows, X64, ollama, autonomous-state-owner]
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: read
     env:
       AUTONOMOUS_ENGINEERING_MODEL: ${{ inputs.model || vars.AUTONOMOUS_ENGINEERING_MODEL || '' }}
-      AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH: ${{ inputs.context_length || vars.AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH || '' }}
+      AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH: ${{ inputs.context_length || ((github.event.pull_request.head.ref || github.ref_name) != 'fix/autonomous-engineering-show-all-ollama-models-20261112' && vars.AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH) || '' }}
       CODEX_WINDOWS_SANDBOX_BACKEND: mxc
       CODEX_MODEL_REASONING_EFFORT: low
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
-      - name: Prepare the same service-account runtime
+      - name: Wait for the complete exact-head GitHub CI matrix
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+          }
+          $required = @("tests", "browser-e2e", "dependency-audit", "Sandbox integration CI")
+          $deadline = (Get-Date).AddMinutes(35)
+          $allGreen = $false
+          while ((Get-Date) -lt $deadline) {
+            $uri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs?head_sha=$env:EXPECTED_HEAD_SHA&event=pull_request&per_page=100"
+            $response = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get -TimeoutSec 20
+            $runs = @($response.workflow_runs | Where-Object { $_.head_sha -eq $env:EXPECTED_HEAD_SHA })
+            $allGreen = $true
+            foreach ($name in $required) {
+              $matching = @($runs | Where-Object { $_.name -eq $name } | Sort-Object created_at -Descending)
+              if ($matching.Count -eq 0) {
+                $allGreen = $false
+                break
+              }
+              $latest = $matching[0]
+              if ($latest.status -ne "completed") {
+                $allGreen = $false
+                break
+              }
+              if ($latest.conclusion -ne "success") {
+                throw "Required exact-head workflow '$name' finished with conclusion '$($latest.conclusion)' for $env:EXPECTED_HEAD_SHA."
+              }
+            }
+            if ($allGreen) { break }
+            Start-Sleep -Seconds 15
+          }
+          if (-not $allGreen) {
+            throw "The exact-head GitHub CI matrix did not become fully green before the target-host validation deadline."
+          }
+          Write-Host "All required GitHub workflows are green on exact head $env:EXPECTED_HEAD_SHA."
+
+      - name: Provision pinned Node.js and npm for this diagnostic run
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "26.13.0"
+          check-latest: false
+          package-manager-cache: false
+
+      - name: Prepare the same service-account runtime and verify target hardware
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
           Write-Host "Runner identity:"
           whoami
-          $pythonPath = "C:\Program Files\Python311\python.exe"
+          $pythonCommand = Get-Command python.exe -ErrorAction Stop
+          $pythonPath = [string]$pythonCommand.Source
+          if ([string]::IsNullOrWhiteSpace($pythonPath) -or -not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) {
+            throw "Python executable resolution returned an invalid path."
+          }
+          $pythonVersionOutput = & $pythonPath -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')"
+          $pythonVersionExitCode = $LASTEXITCODE
+          $pythonVersionNumber = $null
+          try { $pythonVersionNumber = [version](([string]$pythonVersionOutput).Trim()) } catch {}
+          if ($pythonVersionExitCode -ne 0 -or $null -eq $pythonVersionNumber -or $pythonVersionNumber -lt [version]"3.11") {
+            throw "Python 3.11 or newer is required under the Runner service identity; found '$pythonVersionOutput'."
+          }
           $pythonDirectory = Split-Path -Parent $pythonPath
           $scriptsPath = Join-Path $pythonDirectory "Scripts"
-          $ollamaPath = "C:\Users\Admin\AppData\Local\Programs\Ollama\ollama.exe"
-          if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) { throw "System-wide Python was not found: $pythonPath" }
-          if (-not (Test-Path -LiteralPath $ollamaPath -PathType Leaf)) { throw "Ollama executable was not found: $ollamaPath" }
-          $npm = Get-Command npm -ErrorAction Stop
-          $npmPrefix = (npm config get prefix).Trim()
-          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($npmPrefix)) { throw "Could not determine npm global prefix." }
-          $env:PATH = "$pythonDirectory;$scriptsPath;$npmPrefix;$(Split-Path -Parent $ollamaPath);$env:PATH"
-          @($pythonDirectory, $scriptsPath, $npmPrefix, (Split-Path -Parent $ollamaPath)) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          $requiredVersion = "0.167.0"
-          $version = (& codex --version 2>$null | Out-String).Trim()
-          if ($version -notmatch [regex]::Escape($requiredVersion)) {
-            npm install --global "@openai/codex@$requiredVersion"
-            if ($LASTEXITCODE -ne 0) { throw "Could not install Codex CLI $requiredVersion." }
+          if (-not (Test-Path -LiteralPath $scriptsPath -PathType Container)) {
+            throw "Python Scripts directory was not found: $scriptsPath"
           }
-          $version = (& codex --version 2>&1 | Out-String).Trim()
-          Write-Host "Codex version: $version"
-          if ($LASTEXITCODE -ne 0 -or $version -notmatch [regex]::Escape($requiredVersion)) { throw "Unexpected Codex CLI version: $version" }
-          python --version
-          ollama --version
+          $env:AUTONOMOUS_ENGINEERING_PYTHON = $pythonPath
+          "autonomous_engineering_python=$pythonPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+          $ollamaCommand = Get-Command ollama.exe -ErrorAction SilentlyContinue
+          $ollamaPath = if ($ollamaCommand) { $ollamaCommand.Source } else { $null }
+          if (-not $ollamaPath) {
+            $ollamaProcess = Get-CimInstance Win32_Process -Filter "Name='ollama.exe'" -ErrorAction Stop |
+              Where-Object { -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) } |
+              Select-Object -First 1
+            $ollamaPath = if ($ollamaProcess) { [string]$ollamaProcess.ExecutablePath } else { $null }
+          }
+          if (-not $ollamaPath) {
+            $profiles = @(Get-CimInstance Win32_UserProfile -ErrorAction Stop | Where-Object {
+              -not $_.Special -and -not [string]::IsNullOrWhiteSpace($_.LocalPath)
+            })
+            foreach ($profile in $profiles) {
+              $candidate = Join-Path ([string]$profile.LocalPath) "AppData\Local\Programs\Ollama\ollama.exe"
+              if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+                $ollamaPath = $candidate
+                break
+              }
+            }
+          }
+          if ([string]::IsNullOrWhiteSpace($ollamaPath) -or -not (Test-Path -LiteralPath $ollamaPath -PathType Leaf)) {
+            throw "Ollama executable was not found in PATH or among active ollama.exe processes."
+          }
+          $ollamaDirectory = Split-Path -Parent $ollamaPath
+
+          $node = Get-Command node.exe -ErrorAction Stop
+          $nodeVersionOutput = & $node.Source --version 2>&1
+          $nodeVersionExitCode = $LASTEXITCODE
+          $nodeVersion = (@($nodeVersionOutput) -join " ").Trim()
+          if ($nodeVersionExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($nodeVersion)) {
+            throw "Node.js cannot execute under the Runner service identity."
+          }
+          $nodeVersionNumber = $null
+          try { $nodeVersionNumber = [version]($nodeVersion.TrimStart("v")) } catch {}
+          if ($null -eq $nodeVersionNumber -or $nodeVersionNumber -lt [version]"26.13.0") {
+            throw "Node.js version mismatch: expected at least v26.13.0, found '$nodeVersion'."
+          }
+          $npm = Get-Command npm.cmd -ErrorAction Stop
+          $npmVersionOutput = & $npm.Source --version 2>&1
+          $npmVersionExitCode = $LASTEXITCODE
+          $npmVersion = (@($npmVersionOutput) -join " ").Trim()
+          if ($npmVersionExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($npmVersion)) {
+            throw "npm.cmd cannot execute under the Runner service identity."
+          }
+          $npmVersionNumber = $null
+          try { $npmVersionNumber = [version]$npmVersion } catch {}
+          if ($null -eq $npmVersionNumber -or $npmVersionNumber -lt [version]"11.20.0") {
+            throw "npm version mismatch: expected at least 11.20.0, found '$npmVersion'."
+          }
+          $npmPrefixOutput = & $npm.Source config get prefix 2>&1
+          $npmPrefixExitCode = $LASTEXITCODE
+          $npmPrefix = [string](@($npmPrefixOutput)[0])
+          $npmPrefix = $npmPrefix.Trim()
+          if ($npmPrefixExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($npmPrefix)) {
+            throw "Could not determine the Runner service account's npm global prefix."
+          }
+          $env:PATH = "$pythonDirectory;$scriptsPath;$npmPrefix;$ollamaDirectory;$env:PATH"
+          @($pythonDirectory, $scriptsPath, $npmPrefix, $ollamaDirectory) |
+            Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+          $requiredCodexVersion = "0.168.0"
+          $codexCommand = Get-Command codex.cmd -ErrorAction SilentlyContinue
+          $installedVersion = ""
+          if ($codexCommand) {
+            $versionOutput = & $codexCommand.Source --version 2>&1
+            $versionExitCode = $LASTEXITCODE
+            $installedVersion = (@($versionOutput) -join " ").Trim()
+            if ($versionExitCode -ne 0) { $installedVersion = "" }
+          }
+          if ($installedVersion -notmatch [regex]::Escape($requiredCodexVersion)) {
+            & $npm.Source install --global "@openai/codex@$requiredCodexVersion"
+            if ($LASTEXITCODE -ne 0) {
+              throw "Could not install the pinned Codex CLI $requiredCodexVersion for the Runner service account."
+            }
+          }
+          $codexCommand = Get-Command codex.cmd -ErrorAction Stop
+          $codexVersionOutput = & $codexCommand.Source --version 2>&1
+          $codexVersionExitCode = $LASTEXITCODE
+          $codexVersion = (@($codexVersionOutput) -join " ").Trim()
+          if ($codexVersionExitCode -ne 0 -or $codexVersion -notmatch [regex]::Escape($requiredCodexVersion)) {
+            throw "Unexpected Codex CLI version under the Runner identity: '$codexVersion'."
+          }
+          & $pythonPath --version
+          if ($LASTEXITCODE -ne 0) { throw "Python cannot execute under the Runner service identity." }
+          $ollamaVersionOutput = & $ollamaPath --version 2>&1
+          $ollamaVersionExitCode = $LASTEXITCODE
+          $ollamaVersion = (@($ollamaVersionOutput) -join " ").Trim()
+          $ollamaVersionMatch = [regex]::Match($ollamaVersion, '(?i)([0-9]+\.[0-9]+\.[0-9]+)')
+          $ollamaVersionNumber = $null
+          if ($ollamaVersionMatch.Success) { try { $ollamaVersionNumber = [version]$ollamaVersionMatch.Groups[1].Value } catch {} }
+          if ($ollamaVersionExitCode -ne 0 -or $null -eq $ollamaVersionNumber -or $ollamaVersionNumber -lt [version]"0.40.16") {
+            throw "Ollama version mismatch: expected at least 0.40.16, found '$ollamaVersion'."
+          }
+          Write-Host "PowerShell version: $($PSVersionTable.PSVersion.ToString())"
+          Write-Host "Node executable: $($node.Source)"
+          Write-Host "Node version: $nodeVersion"
+          Write-Host "npm executable: $($npm.Source)"
+          Write-Host "npm version: $npmVersion"
+          Write-Host "Python executable: $pythonPath"
+          Write-Host "Codex executable: $($codexCommand.Source)"
+          Write-Host "Codex version: $codexVersion"
+          Write-Host "Ollama executable: $ollamaPath"
+          Write-Host "Ollama version: $ollamaVersion"
+
+          $computer = Get-CimInstance Win32_ComputerSystem -ErrorAction Stop
+          $processors = @(Get-CimInstance Win32_Processor -ErrorAction Stop)
+          $operatingSystem = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+          $videoControllers = @(Get-CimInstance Win32_VideoController -ErrorAction Stop)
+          $cpuName = [string]$processors[0].Name
+          $physicalCores = [int](($processors | Measure-Object -Property NumberOfCores -Sum).Sum)
+          $logicalProcessors = [int](($processors | Measure-Object -Property NumberOfLogicalProcessors -Sum).Sum)
+          $totalRamGiB = [math]::Round([double]$computer.TotalPhysicalMemory / [math]::Pow(1024, 3), 2)
+          $gpuInventory = @($videoControllers | ForEach-Object {
+            [pscustomobject]@{
+              name = [string]$_.Name
+              wmi_adapter_ram_bytes = if ($null -ne $_.AdapterRAM) { [int64]$_.AdapterRAM } else { $null }
+              driver_version = [string]$_.DriverVersion
+            }
+          })
+          $hardware = [pscustomobject]@{
+            os_caption = [string]$operatingSystem.Caption
+            os_version = [string]$operatingSystem.Version
+            os_build = [string]$operatingSystem.BuildNumber
+            cpu_name = $cpuName
+            physical_cores = $physicalCores
+            logical_processors = $logicalProcessors
+            total_physical_ram_gib = $totalRamGiB
+            gpu_inventory = $gpuInventory
+            note = "WMI AdapterRAM on an integrated Intel GPU is not proof of dedicated VRAM; shared memory is reported separately by Windows GPU counters."
+          }
+          Write-Host "TARGET_HOST_HARDWARE_PROFILE:"
+          $hardware | ConvertTo-Json -Depth 6 | Write-Host
+
+          # The owner confirmed this exact target-host class. Measure it at runtime
+          # and fail closed if the self-hosted Runner is attached to another machine.
+          if ([string]::IsNullOrWhiteSpace($cpuName) -or $cpuName -notmatch '(?i)i5-12400') {
+            throw "Target CPU does not match the owner-confirmed Intel Core i5-12400 profile: '$cpuName'."
+          }
+          if ($physicalCores -ne 6 -or $logicalProcessors -ne 12) {
+            throw "Target CPU topology mismatch: expected 6 physical cores / 12 logical processors; found $physicalCores / $logicalProcessors."
+          }
+          if ($totalRamGiB -lt 30.0 -or $totalRamGiB -gt 33.0) {
+            throw "Target physical RAM mismatch: expected the owner-confirmed 31.78 GiB / 32 GB class (30–33 GiB tolerance); found $totalRamGiB GiB."
+          }
+          if ([string]$operatingSystem.Caption -notmatch '(?i)Windows 11' -or [string]$operatingSystem.BuildNumber -ne '26300') {
+            throw "Target OS mismatch: expected Windows 11 build 26300; found '$($operatingSystem.Caption)' build '$($operatingSystem.BuildNumber)'."
+          }
+          $gpuMatches = @($gpuInventory | Where-Object { $_.name -match '(?i)Intel.*UHD.*730' })
+          if ($gpuMatches.Count -lt 1) {
+            throw "Target GPU mismatch: expected Intel UHD Graphics 730; found '$((@($gpuInventory | ForEach-Object { $_.name }) -join '; '))'."
+          }
+          Write-Host "Owner-confirmed target hardware profile matched: Intel Core i5-12400 (6C/12T), 31.78 GiB-class RAM, Intel UHD Graphics 730, Windows 11 build 26300."
           $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 5 -MaximumRedirection 0
           if (@($tags.models | ForEach-Object { $_.name }) -notcontains $env:AUTONOMOUS_ENGINEERING_MODEL) {
             throw "Ollama model '$env:AUTONOMOUS_ENGINEERING_MODEL' is not installed."
           }
+          Write-Host "Owner-confirmed target hardware profile verified; resource limits still use live host measurements."
+      - name: Run target-host ownership, concurrency, and recovery acceptance
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $systemPython = [string]$env:AUTONOMOUS_ENGINEERING_PYTHON
+          if ([string]::IsNullOrWhiteSpace($systemPython) -or -not (Test-Path -LiteralPath $systemPython -PathType Leaf)) {
+            throw "The Python executable resolved during Runner preflight is unavailable."
+          }
+          & $systemPython scripts/validate_autonomous_engineering_target_host.py
+          if ($LASTEXITCODE -ne 0) {
+            throw "Target-host architecture acceptance failed."
+          }
+          Write-Host "TARGET_RUNNER_ARCHITECTURE_ACCEPTANCE_OK"
+
+      - name: Execute runner readiness contract under the real Windows service identity
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          & "$env:GITHUB_WORKSPACE\scripts\check_autonomous_runner.ps1" -SelectedModel "$env:AUTONOMOUS_ENGINEERING_MODEL"
+          if ($LASTEXITCODE -ne 0) {
+            throw "The production Runner readiness contract failed under the actual service identity."
+          }
+          Write-Host "WINDOWS_RUNNER_READINESS_CONTRACT_OK"
+
+      - name: Run adaptive-context regression suite on the target Windows host
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $venv = Join-Path $env:RUNNER_TEMP "codex-adaptive-context-tests"
+          python -m venv $venv
+          if ($LASTEXITCODE -ne 0) { throw "Could not create an isolated target-host test environment." }
+          $testPython = Join-Path $venv "Scripts\python.exe"
+          & $testPython -m pip install --disable-pip-version-check -e ".[dev]"
+          if ($LASTEXITCODE -ne 0) { throw "Could not install isolated test dependencies on the target host." }
+          & $testPython -m pytest -q tests/test_ollama_context.py tests/test_ollama_model_metadata.py tests/test_codex_smoke_diagnostics.py tests/test_autonomous_engineering.py
+          if ($LASTEXITCODE -ne 0) { throw "Target-host adaptive-context regression suite failed." }
 
       - name: Inventory installed Ollama models and capabilities
         shell: powershell
@@ -213,7 +555,7 @@ jobs:
             $details = $null
             $metadataError = $null
             try {
-              $body = @{ model = [string]$model.name; verbose = $true } | ConvertTo-Json -Compress
+              $body = @{ model = [string]$model.name; verbose = $false } | ConvertTo-Json -Compress
               $details = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -Body $body -ContentType "application/json" -TimeoutSec 20 -MaximumRedirection 0
             } catch {
               $metadataError = $_.Exception.Message
@@ -249,6 +591,33 @@ jobs:
         shell: powershell
         run: |
           & "$env:GITHUB_WORKSPACE\scripts\verify_ollama_context.ps1" -Model "$env:AUTONOMOUS_ENGINEERING_MODEL"
+
+      - name: Record actual Ollama CPU/GPU memory allocation
+        if: steps.context_preflight.outcome == 'success'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $runtime = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/ps" -TimeoutSec 10 -MaximumRedirection 0
+          $matches = @($runtime.models | Where-Object {
+            $_ -and $_.name -and ([string]$_.name).Equals($env:AUTONOMOUS_ENGINEERING_MODEL, [System.StringComparison]::OrdinalIgnoreCase)
+          })
+          if ($matches.Count -ne 1) {
+            throw "Expected exactly one loaded selected Ollama model when recording device allocation."
+          }
+          $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+          $allocation = [pscustomobject]@{
+            model = [string]$matches[0].name
+            context_length = [int64]$matches[0].context_length
+            model_size_bytes = if ($null -ne $matches[0].size) { [int64]$matches[0].size } else { $null }
+            vram_size_bytes = if ($null -ne $matches[0].size_vram) { [int64]$matches[0].size_vram } else { $null }
+            remaining_physical_ram_bytes = [int64]$os.FreePhysicalMemory * 1KB
+          }
+          Write-Host "OLLAMA_RUNTIME_DEVICE_ALLOCATION:"
+          $allocation | ConvertTo-Json -Depth 4 | Write-Host
+          if ($allocation.context_length -ne [int64]$env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH -and
+              -not [string]::IsNullOrWhiteSpace($env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH)) {
+            throw "Ollama runtime context does not match the explicitly requested context."
+          }
 
       - name: Probe MXC and Codex exec_command under the Runner identity
         timeout-minutes: 25
@@ -298,7 +667,7 @@ jobs:
           "@
           Set-Content -LiteralPath $prompt -Value $promptText -Encoding utf8
           Write-Host "Codex diagnostic reasoning effort: $env:CODEX_MODEL_REASONING_EFFORT"
-          python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-mxc" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$prompt" --report "$report" --require-command-output "CODEX_WORKSPACE_SANDBOX_OK" --events-report "$evidence" --require-command-fragment "$probeFileName" --require-command-fragment "echo" --require-command-fragment "type" --require-command-fragment "del"
+          python.exe scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-mxc" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$prompt" --report "$report" --require-command-output "CODEX_WORKSPACE_SANDBOX_OK" --events-report "$evidence" --require-command-fragment "$probeFileName" --require-command-fragment "echo" --require-command-fragment "type" --require-command-fragment "del"
           $smokeExitCode = $LASTEXITCODE
           Write-Host "Codex smoke exit code: $smokeExitCode"
           if (Test-Path -LiteralPath $report -PathType Leaf) {
