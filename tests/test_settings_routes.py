@@ -77,13 +77,17 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
     assert defaults["ai_learning_llm_provider"] == "ollama"
     assert defaults["ai_learning_ollama_model"]
     assert defaults["ai_learning_source_max_chars"] == 100000
+    assert defaults["ai_learning_min_complete_lesson_words"] == 1200
+    assert defaults["ai_learning_max_context_relaunches"] == 1
+    assert defaults["ai_learning_stop_stability_seconds"] == 45
+    assert defaults["ai_learning_last_stop_stability_seconds"] == 25
     assert defaults["basic_learning_enabled"] is True
     assert defaults["topic_learning_enabled"] is True
     assert defaults["topic_learning_llm_provider"] == "ollama"
     assert defaults["topic_learning_source_max_chars"] == 100000
     assert defaults["ai_learning_ollama_model"]
     assert defaults["ai_learning_ollama_num_ctx"] >= 512
-    assert defaults["gpu_enabled"] is True
+    assert defaults["gpu_enabled"] is False
     assert defaults["ai_learning_lesson_batch_size"] == 20
 
     values = {
@@ -99,6 +103,10 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
         "ai_learning_stability_seconds": 30,
         "ai_learning_browser_timeout_seconds": 600,
         "ai_learning_max_retries": 3,
+        "ai_learning_min_complete_lesson_words": 2400,
+        "ai_learning_max_context_relaunches": 2,
+        "ai_learning_stop_stability_seconds": 60,
+        "ai_learning_last_stop_stability_seconds": 35,
         "ai_learning_llm_provider": "openai_compatible",
         "ai_learning_llm_base_url": "https://api.openai.com/v1",
         "ai_learning_llm_api_key_env": "OPENAI_API_KEY",
@@ -137,6 +145,10 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
         {"ai_learning_chunk_target_chars": 1000, "ai_learning_chunk_overlap_chars": 1000},
         {"ai_learning_browser_timeout_seconds": 9},
         {"ai_learning_max_retries": 6},
+        {"ai_learning_min_complete_lesson_words": 99},
+        {"ai_learning_max_context_relaunches": 4},
+        {"ai_learning_stop_stability_seconds": 181},
+        {"ai_learning_last_stop_stability_seconds": 0},
     ],
 )
 def test_ai_learning_settings_reject_invalid_values_atomically(settings_client, values):
