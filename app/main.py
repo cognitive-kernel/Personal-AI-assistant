@@ -644,7 +644,7 @@ def api_storage_health() -> dict[str, Any]:
 
 @app.get("/api/models")
 def models(
-    purpose: Literal["chat", "learning", "programming", "ai_learning", "factual_review", "research_plan", "embedding"] = "chat",
+    purpose: Literal["chat", "learning", "programming", "ai_learning", "topic_learning", "topic_learning", "factual_review", "research_plan", "embedding"] = "chat",
 ) -> dict[str, Any]:
     try:
         return ollama.list_provider_models(purpose)
@@ -845,6 +845,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         "learning_ollama_num_ctx": "learning_ollama_model",
         "programming_ollama_num_ctx": "programming_ollama_model",
         "ai_learning_ollama_num_ctx": "ai_learning_ollama_model",
+        "topic_learning_ollama_num_ctx": "topic_learning_ollama_model",
     }
     model_metadata_cache: dict[str, dict[str, Any]] = {}
     for context_key, model_key in context_profiles.items():
@@ -952,7 +953,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
                 values[context_key] = context_value
                 if model_key == "chat_ollama_model":
                     values["ollama_num_ctx"] = context_value
-    for key in ("ollama_model", "ollama_embedding_model", "chat_ollama_model", "research_plan_ollama_model", "learning_ollama_model", "programming_ollama_model", "ai_learning_ollama_model"):
+    for key in ("ollama_model", "ollama_embedding_model", "chat_ollama_model", "research_plan_ollama_model", "learning_ollama_model", "programming_ollama_model", "ai_learning_ollama_model", "topic_learning_ollama_model"):
         if key in values and (
             not isinstance(values[key], str) or not values[key].strip() or len(values[key]) > 200
         ):
