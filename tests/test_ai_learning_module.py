@@ -322,6 +322,27 @@ def test_ai_learning_modules_are_enabled_by_default(monkeypatch):
     assert config.retrieval_is_enabled() is True
     assert config.browser_is_enabled() is True
 
+def test_ai_learning_method_and_knowledge_library_switches_are_independent(monkeypatch):
+    from app.ai_learning import config
+
+    settings = {
+        "ai_learning_enabled": False,
+        "ai_learning_knowledge_enabled": True,
+        "ai_learning_retrieval_enabled": True,
+        "ai_learning_browser_enabled": True,
+    }
+    monkeypatch.setattr(config, "_setting", lambda name: settings[name])
+    assert config.is_enabled() is True
+    assert config.retrieval_is_enabled() is True
+    assert config.browser_is_enabled() is True
+
+    settings["ai_learning_knowledge_enabled"] = False
+    settings["ai_learning_enabled"] = True
+    assert config.is_enabled() is False
+    assert config.retrieval_is_enabled() is False
+    assert config.browser_is_enabled() is False
+
+
 def test_ai_learning_chunk_sizes_come_from_persistent_settings(isolated_store, monkeypatch):
     monkeypatch.setattr(service, "get_settings", lambda: {
         "ai_learning_chunk_target_chars": 256,
