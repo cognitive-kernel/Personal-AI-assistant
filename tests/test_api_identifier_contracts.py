@@ -140,8 +140,13 @@ def test_task_status_filter_query_has_bounded_count_and_value_length(client):
         item for item in app.openapi()["paths"]["/api/tasks"]["get"]["parameters"]
         if item["name"] == "statuses"
     )
-    assert parameter["schema"]["maxItems"] == 8
-    assert parameter["schema"]["items"]["maxLength"] == 32
+    status_schema = parameter["schema"]
+    branches = status_schema.get("anyOf") or status_schema.get("oneOf") or []
+    array_branch = next((item for item in branches if item.get("type") == "array"), None)
+    if array_branch is not None:
+        status_schema = {**status_schema, **array_branch}
+    assert status_schema["maxItems"] == 8
+    assert status_schema["items"]["maxLength"] == 32
 
 
 def test_every_api_string_query_parameter_has_explicit_size_bounds():
