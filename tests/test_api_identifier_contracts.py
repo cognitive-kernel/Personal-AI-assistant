@@ -270,3 +270,19 @@ def test_capability_list_limit_is_bounded_at_http_and_openapi_boundaries(client)
     )
     assert parameter["schema"]["minimum"] == 1
     assert parameter["schema"]["maximum"] == 500
+
+
+def test_curriculum_proposal_list_limit_is_bounded_at_http_and_openapi_boundaries(client):
+    for invalid in (0, 101):
+        response = client.get(
+            "/api/learning/paths/1/curriculum-proposals",
+            params={"limit": invalid},
+        )
+        assert response.status_code == 422
+
+    parameter = next(
+        item for item in app.openapi()["paths"]["/api/learning/paths/{path_id}/curriculum-proposals"]["get"]["parameters"]
+        if item["name"] == "limit"
+    )
+    assert parameter["schema"]["minimum"] == 1
+    assert parameter["schema"]["maximum"] == 100
