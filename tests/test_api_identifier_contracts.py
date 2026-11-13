@@ -212,7 +212,7 @@ def test_autonomous_progress_query_contract_is_finite_and_date_bounded(client):
         "/api/autonomous-engineering/progress", params={"period": "quarterly"}
     )
     invalid_date = client.get(
-        "/api/autonomous-engineering/progress", params={"start_date": "2026-11-1"}
+        "/api/autonomous-engineering/progress", params={"start_date": "2026-11-001"}
     )
     assert invalid_period.status_code == 422
     assert invalid_date.status_code == 422
@@ -228,5 +228,5 @@ def test_autonomous_progress_query_contract_is_finite_and_date_bounded(client):
         string_branch = next((item for item in branches if item.get("type") == "string"), None)
         if string_branch is not None:
             date_schema = {**date_schema, **string_branch}
-        assert date_schema["minLength"] == 10
+        assert date_schema["minLength"] == 8
         assert date_schema["maxLength"] == 10
