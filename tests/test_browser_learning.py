@@ -727,3 +727,71 @@ def test_startup_recovery_releases_lease_when_recovery_transaction_fails(tmp_pat
             "SELECT owner_token FROM browser_learning_worker_lease WHERE lease_name='browser-learning'"
         ).fetchone()
     assert lease is None
+
+
+def test_scheduled_worker_preserves_run_exception_and_releases_lease(
+    tmp_path, monkeypatch
+):
+    _init(tmp_path, monkeypatch)
+    course_id = 4242
+    assert browser_learning._acquire_course_worker_lease()
+    monkeypatch.setattr(browser_learning, "_ACTIVE_COURSE_ID", course_id)
+    status_lookups = []
+    dispatched = []
+
+    def fail_run(_course_id):
+        raise RuntimeError("original provider failure")
+
+    def fail_status_lookup(_course_id):
+        status_lookups.append(_course_id)
+        raise RuntimeError("secondary status lookup failure")
+
+    monkeypatch.setattr(browser_learning, "run_course", fail_run)
+    monkeypatch.setattr(browser_learning, "get_course", fail_status_lookup)
+    monkeypatch.setattr(
+        browser_learning, "dispatch_next_course", lambda: dispatched.append(True)
+    )
+
+    with pytest.raises(RuntimeError, match="original provider failure"):
+        browser_learning._scheduled_course_worker(course_id)
+
+    assert status_lookups == []
+    assert dispatched == []
+    assert browser_learning._ACTIVE_COURSE_ID is None
+    with db.learning_connection() as connection:
+        lease = connection.execute(
+            "SELECT owner_token FROM browser_learning_worker_lease "
+            "WHERE lease_name='browser-learning'"
+        ).fetchone()
+    assert lease is None
+
+
+def test_scheduled_worker_status_lookup_failure_stops_queue_drain_and_releases_lease(
+    tmp_path, monkeypatch
+):
+    _init(tmp_path, monkeypatch)
+    course_id = 4243
+    assert browser_learning._acquire_course_worker_lease()
+    monkeypatch.setattr(browser_learning, "_ACTIVE_COURSE_ID", course_id)
+    dispatched = []
+
+    monkeypatch.setattr(browser_learning, "run_course", lambda _course_id: None)
+
+    def fail_status_lookup(_course_id):
+        raise RuntimeError("status lookup unavailable")
+
+    monkeypatch.setattr(browser_learning, "get_course", fail_status_lookup)
+    monkeypatch.setattr(
+        browser_learning, "dispatch_next_course", lambda: dispatched.append(True)
+    )
+
+    browser_learning._scheduled_course_worker(course_id)
+
+    assert dispatched == []
+    assert browser_learning._ACTIVE_COURSE_ID is None
+    with db.learning_connection() as connection:
+        lease = connection.execute(
+            "SELECT owner_token FROM browser_learning_worker_lease "
+            "WHERE lease_name='browser-learning'"
+        ).fetchone()
+    assert lease is None
