@@ -1479,6 +1479,8 @@ def test_app_and_runner_readiness_scripts_require_model_context_and_tool_capabil
         ))
         assert '"tools"' in script
         assert "Model context metadata" in script
+        assert "Model weight size" in script
+        assert "modelTag.size" in script
         assert "Model KV-cache metadata" in script
         assert "-ge 1" in script
         assert "Model tool calling" in script
@@ -1493,6 +1495,8 @@ def test_app_and_runner_readiness_scripts_require_model_context_and_tool_capabil
     ))
     assert all("-MaximumRedirection 0" in line for line in provisioning.splitlines() if "http://127.0.0.1:11434" in line and "Invoke-RestMethod" in line)
     assert "-lt 1" in provisioning
+    assert "modelTag.size" in provisioning
+    assert "positive integer weight size" in provisioning
     assert '"tools"' in provisioning
 
 def test_master_engineering_prompt_requires_known_defect_closure_before_code_changes():
