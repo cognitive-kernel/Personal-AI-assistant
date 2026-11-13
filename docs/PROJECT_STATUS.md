@@ -450,3 +450,8 @@
 - Provider/model selection is per capability and model discovery follows the selected provider. Semantic embedding caches are namespaced by provider, endpoint, and model to prevent cross-provider vector reuse.
 - Batch sizes, chunk dimensions, embedding input limits, duplicate thresholds, timeouts, continuation counts, stability windows, and retry limits are configurable and validated.
 - Added focused tests for the settings contract and embedding identity. The latest exact-head CI is queued; PR remains Draft/unmerged. Local and human testing have not started.
+### 2026-11-13 — All module switches exposed in Settings (PR #746)
+
+- Audit of every boolean in SETTING_DEFAULTS confirms each has a matching Settings UI control; all fresh-install software-module defaults are true, including Sandbox and Self-Improvement.
+- Sandbox and Self-Improvement configuration fields are now exposed and validated. Sandbox execution still requires digest-pinned images, a valid local Docker executable, and explicit persisted user consent; enabling the module alone never executes code.
+- Obsolete environment-gate instructions were removed. API keys remain environment-only secrets; provider names and model selection remain persistent Settings.
