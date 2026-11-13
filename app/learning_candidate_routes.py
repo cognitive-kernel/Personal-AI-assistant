@@ -91,6 +91,8 @@ def _candidate(row: sqlite3.Row, *, include_content: bool = False) -> dict[str, 
     if include_content:
         if not result["integrity_valid"]:
             raise HTTPException(status_code=409, detail="Candidate content hash mismatch; review is blocked.")
+        from .learning_provenance import list_candidate_sources
+        result["source_provenance"] = list_candidate_sources(int(result["id"]))
         result["content"] = content
     else:
         result["content_preview"] = content[:600]
