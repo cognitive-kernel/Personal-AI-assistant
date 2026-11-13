@@ -73,13 +73,24 @@ def test_sandbox_run_requires_consent_then_queues_a_bounded_task(local_client):
     assert task["max_attempts"] == 1
 
 
-def test_generic_task_endpoint_cannot_bypass_sandbox_consent_route(local_client):
+@pytest.mark.parametrize(
+    "task_type",
+    [sandbox_tasks.SANDBOX_TASK_TYPE, sandbox_tasks.SANDBOX_LANGUAGE_TASK_TYPE],
+)
+def test_generic_task_endpoint_cannot_bypass_sandbox_consent_route(local_client, task_type):
     response = local_client.post(
         "/api/tasks",
-        json={"task_type": "sandbox.run_python", "payload": {"source_code": "print('bypass')"}},
+        json={
+            "task_type": task_type,
+            "payload": {"source_code": "print('bypass')", "language": "javascript"},
+            "max_attempts": 20,
+        },
     )
     assert response.status_code == 422
     assert "consent" in response.json()["detail"]
+    listed = local_client.get("/api/tasks")
+    assert listed.status_code == 200
+    assert all(task["task_type"] != task_type for task in listed.json()["tasks"])
 
 
 def test_sandbox_routes_are_loopback_only(tmp_path, monkeypatch):
