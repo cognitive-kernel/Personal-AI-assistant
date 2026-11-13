@@ -418,6 +418,26 @@ def test_rejection_requires_two_models_and_two_live_contradictory_sources(lifecy
     assert repeated["status"] == "rejected_after_review"
     assert repeated["ready_for_promotion"] is False
 
+
+def test_legacy_scrubbed_rejection_remains_readable_without_fabricating_content(lifecycle_store):
+    job = learning.create_job("Legacy scrubbed candidate")
+    candidate_id, _digest = _candidate(job["id"])
+    with db.learning_connection() as connection:
+        connection.execute(
+            """UPDATE temporary_knowledge_candidates
+               SET content='', status='failed',
+                   failure_reason='rejected_after_review: legacy scrubbed record'
+               WHERE id=?""",
+            (candidate_id,),
+        )
+
+    readiness = knowledge_lifecycle.candidate_readiness(candidate_id)
+
+    assert readiness["status"] == "rejected_after_review"
+    assert readiness["ready_for_promotion"] is False
+    assert readiness["checks"]["content_retained"] is False
+    assert readiness["checks"]["legacy_content_scrubbed"] is True
+
 def test_source_diversity_collapses_subdomains_of_the_same_registrable_domain(lifecycle_store, monkeypatch):
     job = learning.create_job("Subdomain source diversity")
     candidate_id, digest = _candidate(job["id"])
