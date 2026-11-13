@@ -163,7 +163,7 @@ def queue_initial_method(path_topic_id: int) -> dict[str, Any]:
     from . import learning
     from .learning_topic_quality_tasks import enqueue_topic_quality_evaluation
 
-    topic, _path_id = _topic_context(path_topic_id)
+    _topic, _path_id = _topic_context(path_topic_id)
     with learning_connection() as connection:
         connection.execute(
             """INSERT OR IGNORE INTO learning_topic_quality_gates(
@@ -219,7 +219,13 @@ def queue_initial_method(path_topic_id: int) -> dict[str, Any]:
                     task = None
                 return {"status": "resumed", "method": method, "job": job, "task": task}
         if last["status"] in {"failed", "unavailable", "inconclusive"}:
-            if last["status"] == "unavailable":
+            try:
+                last_evidence = json.loads(last.get("evidence_json") or "{}")
+            except (TypeError, ValueError, json.JSONDecodeError):
+                last_evidence = {}
+            if last["status"] == "unavailable" and not (
+                isinstance(last_evidence, dict) and last_evidence.get("disabled_by_user_setting") is True
+            ):
                 return _block_topic(path_topic_id, reason="method_unavailable", evidence={"last_event": last})
             return _queue_next(path_topic_id, method, attempt_number, source_job_id=last.get("job_id"))
         if last["status"] == "passed":
