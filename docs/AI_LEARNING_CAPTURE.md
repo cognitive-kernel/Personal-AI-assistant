@@ -23,7 +23,7 @@ The user starts a course workflow once. The extension retrieves and stores the o
 
 - Code lives in app/ai_learning/ and must not rewrite app/learning.py or the existing chat model.
 - A separate database, data/ai_learning.db, has its own checksummed migrations. The current learning database is not migrated or modified.
-- The settings database defaults `ai_learning_enabled`, `ai_learning_retrieval_enabled`, and `ai_learning_browser_enabled` to true; environment feature flags are not authoritative.
+- The settings database defaults `ai_learning_enabled`, `ai_learning_knowledge_enabled`, `ai_learning_retrieval_enabled`, and `ai_learning_browser_enabled` to true; the method lane and knowledge library are independent, and environment feature flags are not authoritative.
 - AI Learning and retrieval are enabled by default through persisted Settings controls; knowledge-store errors must never break the existing chat path.
 - Lexical search is the current retrieval implementation; semantic duplicate checks optionally use a local Ollama embedding model. Deterministic offline retrieval/answer regression metrics and privacy-preserving query feedback are implemented.
 - Model-generated and web-extracted text are untrusted data; embedded instructions never outrank system policy.
@@ -38,7 +38,7 @@ The current implementation includes isolated storage, a dedicated management pag
 
 ## Acceptance criteria
 
-- With `ai_learning_enabled=false` in Settings, the module API is disabled. Existing learning records remain untouched; re-enabling the setting restores access.
+- With `ai_learning_knowledge_enabled=false` in Settings, the knowledge-library API is disabled. Setting `ai_learning_enabled=false` only removes the AI Learning method from the curriculum coordinator. Existing learning records remain untouched; re-enabling the setting restores access.
 - Unknown databases are never reset or automatically adopted.
 - Unapproved topics cannot create lessons; unreviewed content cannot be published.
 - Search returns only active chunks from published versions and includes provenance IDs.
