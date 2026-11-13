@@ -65,7 +65,7 @@ def create_task(request: TaskCreateRequest) -> dict[str, Any]:
         sandbox_tasks.SANDBOX_LANGUAGE_TASK_TYPE,
         experience_tasks.EXPERIENCE_TEST_TASK_TYPE,
         factual_verification_tasks.FACTUAL_VERIFY_TASK_TYPE,
-        learning_review_tasks.LEARNING_REVIEW_TASK_TYPE,
+        learning_review_tasks.LEARNING_SANDBOX_REVIEW_TASK_TYPE,
     }
     if request.task_type.strip() in sandbox_backed_task_types:
         raise HTTPException(
