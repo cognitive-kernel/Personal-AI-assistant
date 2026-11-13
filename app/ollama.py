@@ -759,7 +759,7 @@ def chat(
     num_predict: int | None = None,
     num_ctx_override: int | None = None,
 ) -> str:
-    if purpose not in {"chat", "learning", "programming", "factual_review", "research_plan"}:
+    if purpose not in {"chat", "learning", "ai_learning", "programming", "factual_review", "research_plan"}:
         raise ValueError("purpose must be chat, learning, ai_learning, programming, factual_review, or research_plan.")
     settings = get_settings()
     prefix = purpose
@@ -842,6 +842,8 @@ def chat(
         if item.get("role") in {"user", "assistant"} and isinstance(item.get("content"), str):
             messages.append({"role": item["role"], "content": item["content"][:12000]})
     message_limit = 16000 if purpose == "factual_review" else 12000
+    if purpose in {"learning", "ai_learning"}:
+        message_limit = min(256000, max(1000, int(settings.get(f"{purpose}_source_max_chars", 12000 if purpose == "learning" else 100000))))
     if purpose == "programming":
         message_limit = min(72000, max(12000, int(settings.get("programming_source_max_chars", 12000)) + 6500))
     messages.append({"role": "user", "content": message[:message_limit]})
