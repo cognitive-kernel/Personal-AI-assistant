@@ -798,6 +798,16 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
     if "self_improvement_github_repository" in values and values["self_improvement_github_repository"].strip():
         if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", values["self_improvement_github_repository"].strip()):
             raise HTTPException(status_code=422, detail="self_improvement_github_repository must use owner/repository format.")
+    if "self_improvement_github_base_branch" in values:
+        base_branch = values["self_improvement_github_base_branch"]
+        if base_branch and (
+            not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,254}", base_branch)
+            or ".." in base_branch
+            or "//" in base_branch
+            or "@{" in base_branch
+            or base_branch.endswith(("/", "."))
+        ):
+            raise HTTPException(status_code=422, detail="self_improvement_github_base_branch is not a valid branch name.")
     if "self_improvement_github_token_env" in values:
         token_env = values["self_improvement_github_token_env"]
         if token_env and not re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", token_env):
