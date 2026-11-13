@@ -139,13 +139,19 @@ def create_job(
     topic = topic.strip()
     if not topic or len(topic) > 300:
         raise ValueError("Topic must contain 1–300 characters.")
-    source_text = (source_text or "").strip()
-    source_limit = max(1000, min(100000, int(get_settings().get("learning_source_max_chars", 12000))))
-    if len(source_text) > source_limit:
-        raise ValueError(f"Source text is too large (current limit: {source_limit} characters).")
     allowed_methods = {"ai_learning", "basic_learning", "topic_learning"}
     if not isinstance(learning_method, str) or learning_method not in allowed_methods:
         raise ValueError("learning_method is unsupported.")
+    source_text = (source_text or "").strip()
+    source_limit_key = {
+        "ai_learning": "ai_learning_source_max_chars",
+        "basic_learning": "learning_source_max_chars",
+        "topic_learning": "topic_learning_source_max_chars",
+    }[learning_method]
+    default_source_limit = 100000 if learning_method != "basic_learning" else 12000
+    source_limit = max(1000, min(256000, int(get_settings().get(source_limit_key, default_source_limit))))
+    if len(source_text) > source_limit:
+        raise ValueError(f"Source text is too large (current limit: {source_limit} characters).")
     if method_attempt_key is not None:
         if (
             not isinstance(method_attempt_key, str)
