@@ -980,3 +980,11 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - The documentation-inclusive PR head is `ac09c4475c54fd34fac53f7ce420cc083a4b9da6`.
 - Exact-head tests, Python 3.11.9/3.14.6, Windows Storage, Node/Codex, Browser E2E, Docker sandbox, and dependency-audit checks have been queued for the documentation-inclusive SHA. Prior green results on `3b48da376cb90b0e0602f6300504152769ed79a0` are not carried forward.
 - The target-host diagnostic remains a separate self-hosted gate; no live Ollama or Codex smoke result is claimed for the new code.
+
+
+## 2026-11-13 — Require model weight size before declaring Codex readiness
+
+- **Additional root cause:** after the KV-dimension correction, the status service still read only model names from `/api/tags`. The runtime selector and PowerShell preflight also require a positive integer `size` for the selected model to budget its weights. A malformed/incomplete tag entry could therefore still appear context-supported and fail later during preflight.
+- **Correction:** readiness now validates and exposes the selected model's positive integer weight size, and includes it in the context-supported contract. Missing, zero, boolean, or string sizes keep Ollama online for diagnosis but prevent model settings from being saved.
+- **Regression coverage:** added cases for missing, zero, string, and boolean weight sizes; successful service fixtures now carry an explicit installed-model size. The model remains local-only; no fallback size is inferred.
+- **Validation:** the change and tests are committed on PR #722; exact-head GitHub CI must complete before claiming success.
