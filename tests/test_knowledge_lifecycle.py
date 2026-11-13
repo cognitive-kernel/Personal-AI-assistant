@@ -359,7 +359,7 @@ def test_rejection_requires_two_models_and_two_live_contradictory_sources(lifecy
             (job["id"],),
         ).fetchone()
         job_row = connection.execute(
-            "SELECT status, assessment_json FROM learning_jobs WHERE id=?",
+            "SELECT status, assessment_json, error FROM learning_jobs WHERE id=?",
             (job["id"],),
         ).fetchone()
         source_row = connection.execute(
@@ -375,7 +375,7 @@ def test_rejection_requires_two_models_and_two_live_contradictory_sources(lifecy
     assert json.loads(row["test_results_json"]) == test_results
     assert "rejected_after_review" in row["failure_reason"]
     assert "prior candidate failure" in row["failure_reason"]
-    assert "prior job failure" in row["failure_reason"]
+    assert "prior job failure" in job_row["error"]
     assert row["promoted_knowledge_id"] is None
     assert knowledge["status"] == "conflicting"
     assert knowledge["content"] == content
