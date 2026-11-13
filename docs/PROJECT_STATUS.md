@@ -84,7 +84,7 @@
 - CLIهای ویندوز با npm.cmd و codex.cmd اجرا می‌شوند؛ Ollama از PATH، مسیر process فعال یا مسیر استاندارد نصب در پروفایل‌های Windows (Win32_UserProfile) پیدا می‌شود؛ مسیر ثابت کاربر Admin حذف شده است. Diagnostic جدید readiness واقعی Runner را زیر همان حساب سرویس اجرا می‌کند.
 - PR #720 و PR #721 به‌دلیل ادغام اصلاحاتشان در PR #722 بسته شدند تا شاخه‌های موازی و قراردادهای متناقض باقی نمانند.
 - آخرین head در حال اعتبارسنجی: ae5f0fb26c26ac02e4a9bd04fd1f8362c9796d6a. تست کامل، Sandbox integration، Browser E2E، Dependency Audit و diagnostic خودمیزبان برای همین SHA در runهای ثبت‌شده در بخش بازبینی تکمیلی قرار دارند. تا پایان هر job هیچ‌کدام pass اعلام نمی‌شوند.
-- مطابق Master Engineering Prompt، توسعهٔ مستقل و GitHub-side بدون انتظار برای تست دستی/محلی ادامه دارد؛ بااین‌حال merge به main تا تکمیل گیت‌های لازم exact-head CI و target-host مجاز نیست.
+- مطابق Master Engineering Prompt، توسعهٔ مستقل و GitHub-side بدون انتظار برای تست دستی/محلی/target-host ادامه دارد. گیت‌های merge شامل exact-head CI، بررسی‌های الزامی مخزن و بازبینی امنیتی مستقل‌اند؛ تست میزبان و پذیرش انسانی به‌صورت NOT RUN / PENDING ثبت می‌شوند و جزو merge gate نیستند مگر branch protection صراحتاً آن‌ها را الزامی کند.
 
 ## وضعیت جاری — سازگاری پویا و ایمن Context در Codex (PR #722)
 
@@ -124,7 +124,7 @@
   - افزودن regression برای چند فرمان، completion فاقد متن فرمان، تطبیق ID، شکست اجرا، redaction و تثبیت Context.
 - **اعتبارسنجی تاریخی PR #702:** این شاخهٔ ۶۴k به PR #722 منتقل/جایگزین شد و هرگز به‌عنوان قرارداد نهایی ادغام نشد. نتایج Checkهای SHA قدیمی آن مرجع پذیرش نیستند؛ اعتبارسنجی نهایی روی head جاری PR #722 در بخش وضعیت جاری ثبت می‌شود.
 - **گیت‌های باز:** آزمون Context خودکار و fingerprint سخت‌افزار روی head فعلی؛ soak و مصرف حافظه روی میزبان مقصد؛ اجرای کامل autonomous cycle؛ crash/restart recovery؛ staging restore/rollback؛ تأیید مالک. Issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290) همچنان tracker پذیرش کل پروژه است و Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) به بازبینی امنیتی مستقل نیاز دارد.
-- سیاست ادغام: PR #702 ادغام‌شده باقی می‌ماند؛ PR #722 پیشنهاد حذف الزام ثابت ۶۴k را می‌دهد. PR #722 تا سبزشدن Workflowهای لازم روی SHA نهایی، موفقیت diagnostic واقعی Windows و تأیید مالک ادغام نمی‌شود. توسعهٔ GitHub-side بدون انتظار برای تست محلی ادامه دارد؛ هیچ merge خودکار، bypass، اجرای unsandboxed یا تغییر سطح دسترسی Runner مجاز نیست.
+- سیاست ادغام: PR #702 ادغام‌شده باقی می‌ماند؛ PR #722 پیشنهاد حذف الزام ثابت ۶۴k را می‌دهد. PR #722 تا سبزشدن Workflowهای لازم روی SHA نهایی، تکمیل reviewهای الزامی و تأیید مالک ادغام نمی‌شود. diagnostic واقعی Windows و آزمون‌های live Ollama به‌عنوان شواهد عملیاتی جداگانه ثبت می‌شوند و بدون الزام branch protection مانع تحویل کد نیستند؛ هیچ merge خودکار، bypass، اجرای unsandboxed یا تغییر سطح دسترسی Runner مجاز نیست.
 
 ## وضعیت کنسول مهندسی خودکار — جزئیات عملکرد
 
@@ -156,7 +156,7 @@
 - پایش نسخه‌ها در runtime یادگیری هر ۳۰ ثانیه اجرا می‌شود؛ حداکثر سه مسیر due در هر چرخه پردازش می‌شوند و باقی‌مانده با زمان‌بندی پایدار در چرخه‌های بعدی ادامه می‌یابد. تغییر release fingerprint یک پژوهش افزایشی جدید ایجاد می‌کند و مسیر قدیمی حفظ می‌شود.
 - تنظیمات دائمی و موقت provider/model برای laneهای موجود از API و رابط تنظیمات پشتیبانی می‌شود؛ Ollama و endpointهای محلی/راه‌دور OpenAI-compatible قابل انتخاب‌اند. مدل پیش‌فرض learning برابر `gpt-oss:20b` است؛ اجرای واقعی آن روی محیط میزبان مقصد هنوز انجام‌شده ادعا نمی‌شود.
 - آخرین اعتبارسنجی exact-head پیش از ادغام روی SHA `cd0f7242d44b51b2b5b76c29e4f1abd39409bee0`: tests **2045 passed / 50 deselected**، Windows storage **11 passed / 47 deselected**، Browser E2E موفق و dependency audit موفق. همین SHA با squash در merge commit بالا وارد `main` شد. وجود فایل‌های کلیدی و migration 47 روی `main` پس از ادغام نیز بررسی شد.
-- اجرای واقعی میزبان مقصد، تست انسانی و اجرای زندهٔ `gpt-oss:20b` هنوز انجام‌شده ادعا نمی‌شوند و طبق دستور کاربر merge gate نیستند؛ هر نتیجهٔ آن‌ها در گزارش به‌صورت جداگانه ثبت می‌شود.
+- اجرای واقعی میزبان مقصد، تست انسانی و اجرای زندهٔ `gpt-oss:20b` هنوز انجام‌شده ادعا نمی‌شوند و طبق Master Engineering Prompt merge gate پیش‌فرض نیستند؛ هر نتیجهٔ آن‌ها به‌صورت جداگانه و NOT RUN / PENDING ثبت می‌شود.
 
 
 ## 1.1 تغییرات جدید پس از snapshot قبلی
