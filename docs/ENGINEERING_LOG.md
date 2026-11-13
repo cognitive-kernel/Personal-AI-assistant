@@ -684,3 +684,12 @@ Continue E-02/E-01 with the complete route and task-registry contract inventory,
 - PR #739 adds service-level limits so direct internal callers cannot bypass HTTP bounds: task type, priority, retry count, dedupe key, serialized payload, checkpoint and result. The 512-character idempotency-key bound preserves the longest existing two-digest sandbox-review key plus request ID. First CI run: 1 failure in a newly added parameterized test because the fixture passed `task_type` twice; implementation was not implicated. Test corrected; fresh head `9edfdd38716b88708b53772aa93d75c3850b77b7` is running CI.
 - Issue #723 is already addressed by the stronger, earlier PR #725: both the original `run_course()` exception and a status-lookup failure propagate after lease cleanup, and queue advancement is prevented on failure. Exact head `0c576ed9530d5b08f3f2e016f7fa36fe7d83b9e4` passed all required CI (2,137 passed, 2 skipped, 51 deselected). Duplicate PR #740 was closed; Issue #723 stays open until PR #725 merges.
 - No PR merge, direct main write, local/target-host/human test, or destructive operation occurred. All exact-head results must be refreshed after further commits.
+
+
+## 2026-11-13 — Latest API/task evidence and browser cleanup audit
+
+- PR #738 exact-head CI passed on `cde0d1561118a07242c056758129030bd57dd8a6`: 2,170 passed, 2 skipped, 51 deselected; all required workflows and repository validation/benchmark checks passed. The API-wide fitness tests now enforce positive integer path IDs, bounded integer/string query inputs, and published pagination constraints across the inventoried routes.
+- PR #739 exact-head CI passed on `9edfdd38716b88708b53772aa93d75c3850b77b7`: 2,143 passed, 2 skipped, 51 deselected; all required workflows passed.
+- PR #741 identifies and fixes a separate cleanup-precedence issue in AI-learning browser automation: a failing `context.close()` could replace a provider/cancellation/Playwright error. Its helper preserves the primary exception and makes cleanup failures visible after successful capture. Exact head `f90c9dbafd46775048cece55dba7fb492a6fab3e`: test suite in progress; other required checks passed.
+- PR #725, not duplicate PR #740, is the authoritative fix for Issue #723 and has green exact-head CI. PR #740 is closed as superseded; Issue #723 remains open until PR #725 merges.
+- No merge, direct main write, local/target-host/human test, or destructive operation occurred.
