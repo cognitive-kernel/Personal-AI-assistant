@@ -3,6 +3,7 @@ import concurrent.futures
 import pytest
 
 from app import db, learning, learning_method_orchestrator
+from app.learning_topic_method_attempts import list_attempt_events
 
 
 @pytest.fixture
@@ -125,8 +126,8 @@ def test_new_topic_starts_with_ai_learning_and_persists_method_ownership(method_
     assert result["method"] == "ai_learning"
     assert result["job"]["learning_method"] == "ai_learning"
     assert result["method_attempt_key"] == f"path-topic:{topic_id}:method:ai_learning:attempt:1"
-    events = learning_method_orchestrator.list_attempt_events(topic_id) if hasattr(learning_method_orchestrator, "list_attempt_events") else None
-    assert events is None or events[0]["status"] == "queued"
+    events = list_attempt_events(topic_id)
+    assert events[0]["status"] == "queued"
     with db.learning_connection() as connection:
         gate = connection.execute(
             "SELECT current_job_id, state FROM learning_topic_quality_gates WHERE path_topic_id=?",
@@ -153,8 +154,8 @@ def test_generation_failure_advances_to_basic_once_and_is_replay_safe(method_job
 
     assert first["method"] == "basic_learning"
     assert replay["job"]["id"] == first["job"]["id"]
-    events = learning_method_orchestrator.list_attempt_events(topic_id) if hasattr(learning_method_orchestrator, "list_attempt_events") else None
-    assert events is None or [event["status"] for event in events] == ["queued", "running", "failed", "queued"]
+    events = list_attempt_events(topic_id)
+    assert [event["status"] for event in events] == ["queued", "running", "failed", "queued"]
     with db.learning_connection() as connection:
         jobs = connection.execute(
             "SELECT learning_method, COUNT(*) AS count FROM learning_jobs WHERE path_topic_id=? GROUP BY learning_method",
