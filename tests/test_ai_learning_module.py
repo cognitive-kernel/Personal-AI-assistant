@@ -2,7 +2,7 @@ from __future__ import annotations
 import hashlib
 import sqlite3
 import pytest
-from app.ai_learning import service
+from app.ai_learning import embedding_service, service
 from app.ai_learning import browser_automation
 from app.ai_learning.db import initialize_store, connection, StoreSchemaError
 
@@ -344,7 +344,7 @@ def test_ai_learning_method_and_knowledge_library_switches_are_independent(monke
 
 
 def test_ai_learning_chunk_sizes_come_from_persistent_settings(isolated_store, monkeypatch):
-    monkeypatch.setattr(service, "get_settings", lambda: {
+    monkeypatch.setattr(embedding_service, "get_settings", lambda: {
         "ai_learning_chunk_target_chars": 256,
         "ai_learning_chunk_overlap_chars": 64,
     })
@@ -356,13 +356,13 @@ def test_ai_learning_chunk_sizes_come_from_persistent_settings(isolated_store, m
 
 def test_ai_learning_embedding_batch_size_comes_from_settings(isolated_store, monkeypatch):
     calls = []
-    monkeypatch.setattr(service, "get_settings", lambda: {"ai_learning_embedding_batch_size": 2})
+    monkeypatch.setattr(embedding_service, "get_settings", lambda: {"ai_learning_embedding_batch_size": 2})
 
     def embed(texts, model=None):
         calls.append(list(texts))
         return [[float(index + 1)] for index, _text in enumerate(texts)]
 
-    monkeypatch.setattr(service, "ollama_embed", embed)
+    monkeypatch.setattr(embedding_service, "ollama_embed", embed)
     vectors = service._title_embeddings(["first", "second", "third"])
     assert len(vectors) == 3
     assert [len(batch) for batch in calls] == [2, 1]
@@ -450,7 +450,7 @@ def test_outline_import_rejects_unstructured_response(isolated_store):
 
 def test_run_lifecycle_imports_outline_without_auto_approval(isolated_store, monkeypatch):
     course = service.create_course(title="SQL Server")
-    monkeypatch.setattr(service, "ollama_embed", lambda texts, model: [[float(i + 1), 1.0] for i, _ in enumerate(texts)])
+    monkeypatch.setattr(embedding_service, "ollama_embed", lambda texts, model: [[float(i + 1), 1.0] for i, _ in enumerate(texts)])
     run = service.create_run(course["id"], run_type="outline", request_key="outline-test-1")
     assert run["status"] == "queued"
     assert "numbered topics" in run["prompt_text"]
@@ -499,7 +499,7 @@ def test_batch_run_requires_topic_markers_and_can_retry_mapping(isolated_store, 
             for text in texts
         ]
 
-    monkeypatch.setattr(service, "ollama_embed", fake_embed)
+    monkeypatch.setattr(embedding_service, "ollama_embed", fake_embed)
     completed = service.complete_run(run["id"], corrected)
     assert completed["status"] == "succeeded"
     assert len(service.list_lessons(a["id"])) == 1
@@ -1199,7 +1199,7 @@ def test_semantic_duplicate_content_is_rejected_across_different_lessons(
         }
         return [vectors[text] for text in texts]
 
-    monkeypatch.setattr(service, "ollama_embed", fake_embed)
+    monkeypatch.setattr(embedding_service, "ollama_embed", fake_embed)
     with pytest.raises(ValueError, match="بسیار مشابه"):
         service.add_content_version(lesson_b["id"], paraphrase)
 
@@ -1247,7 +1247,7 @@ def test_chatgpt_lesson_is_saved_when_embedding_model_is_unavailable(isolated_st
     def unavailable_embed(texts, model=None):
         raise RuntimeError("embedding model not installed")
 
-    monkeypatch.setattr(service, "ollama_embed", unavailable_embed)
+    monkeypatch.setattr(embedding_service, "ollama_embed", unavailable_embed)
     answer = (
         "# Transaction management in SQL Server 2025\n\n"
         "Transactions group database operations into a logical unit. SQL Server uses "
@@ -1294,7 +1294,7 @@ def test_chatgpt_capture_skips_semantically_duplicate_lesson(isolated_store, mon
         }
         return [vectors[text] for text in texts]
 
-    monkeypatch.setattr(service, "ollama_embed", fake_embed)
+    monkeypatch.setattr(embedding_service, "ollama_embed", fake_embed)
     completed = service.complete_run(run["id"], paraphrase)
     assert completed["status"] == "succeeded"
     with connection() as conn:
@@ -1343,7 +1343,7 @@ def test_semantic_duplicates_inside_one_batch_are_saved_only_once(isolated_store
         }
         return [vectors[next(key for key in vectors if key in text)] for text in texts]
 
-    monkeypatch.setattr(service, "ollama_embed", fake_embed)
+    monkeypatch.setattr(embedding_service, "ollama_embed", fake_embed)
     completed = service.complete_run(run["id"], response)
     assert completed["status"] == "succeeded"
 
@@ -1388,7 +1388,7 @@ def test_semantic_dedup_does_not_reject_a_different_lesson(isolated_store, monke
         }
         return [vectors[text] for text in texts]
 
-    monkeypatch.setattr(service, "ollama_embed", fake_embed)
+    monkeypatch.setattr(embedding_service, "ollama_embed", fake_embed)
     version = service.add_content_version(lesson_b["id"], different)
     assert version["version_no"] == 1
 
