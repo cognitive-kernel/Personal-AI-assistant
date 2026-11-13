@@ -26,8 +26,7 @@ def isolated_store(tmp_path, monkeypatch):
 
 
 def test_chat_retrieval_gate_off_returns_no_learning_context(isolated_store, monkeypatch):
-    monkeypatch.setenv("AI_LEARNING_ENABLED", "0")
-    monkeypatch.setenv("AI_LEARNING_RETRIEVAL_ENABLED", "1")
+    monkeypatch.setattr(integration, "retrieval_is_enabled", lambda: False)
     assert integration.retrieve_context("approved context needle") == []
 
 
