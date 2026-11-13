@@ -682,3 +682,9 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - AI-learning embedding input length, embedding batch size, title/content duplicate thresholds, lesson batch size, chunk dimensions, and browser/recovery limits are persisted and range-validated. Chunk overlap must remain smaller than the chunk target.
 - Added app/ai_learning/embedding_identity.py. Semantic embedding cache keys now include provider, normalized endpoint, and model; changing providers or endpoints cannot reuse vectors produced in a different embedding space. Existing cache rows are retained and naturally become unused rather than being deleted.
 - Added focused regression coverage for independent switches, setting defaults/validation, and provider-scoped cache identities. Exact-head CI must validate these changes; no local or human test is claimed.
+### 2026-11-13 — Complete module-switch coverage and sandbox configuration UI
+
+- Every boolean module/capability setting in SETTING_DEFAULTS now has a corresponding Settings UI control, including Sandbox and Self-Improvement. Fresh-install boolean defaults are enabled; the settings API rejects coercive/non-boolean values.
+- Sandbox Docker path, digest-pinned Python/test/Node/Rust images, execution/test timeouts, output ceiling, Self-Improvement repository path, GitHub repository/base branch, and token environment-variable name are exposed in Settings with bounded validation.
+- Sandbox being enabled does not authorize code execution: a valid local Docker executable/image and explicit, persisted, revocable user consent remain mandatory. Missing prerequisites leave the handler unavailable; no host-execution fallback is allowed.
+- Legacy SANDBOX_ENABLED/SANDBOX_DOCKER_EXECUTABLE/SANDBOX_PYTHON_IMAGE environment-gate guidance was removed from .env.example and sandbox architecture documentation; persisted Settings are authoritative. GitHub credentials remain environment secrets.
