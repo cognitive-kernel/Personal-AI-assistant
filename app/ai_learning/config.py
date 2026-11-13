@@ -56,7 +56,7 @@ def max_topics_per_run() -> int:
         if "no such table: settings" not in str(exc).casefold():
             raise
         settings = {}
-    value = settings.get("ai_learning_lesson_batch_size", 1)
+    value = settings.get("ai_learning_lesson_batch_size", 20)
     if type(value) is not int or not 1 <= value <= 20:
         raise RuntimeError("Setting ai_learning_lesson_batch_size is outside its validated range.")
     return value
