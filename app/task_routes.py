@@ -73,7 +73,7 @@ def create_task(request: TaskCreateRequest) -> dict[str, Any]:
 
 @router.get("")
 def list_tasks(
-    statuses: list[Annotated[str, StringConstraints(max_length=32)]] | None = Query(default=None, max_length=8),
+    statuses: list[Annotated[str, StringConstraints(max_length=32)]] | None = Query(default=None, max_length=8, json_schema_extra={"maxItems": 8}),
     limit: int = Query(default=50, ge=1, le=100),
     cursor: str | None = Query(default=None, max_length=256),
 ) -> dict[str, Any]:
