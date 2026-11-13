@@ -56,3 +56,22 @@ def test_pagination_bounds_are_published_in_openapi_schema():
         assert parameter["schema"]["minimum"] == minimum
         if maximum is not None:
             assert parameter["schema"]["maximum"] == maximum
+
+
+def test_every_api_limit_parameter_has_explicit_bounded_openapi_constraints():
+    schema = app.openapi()
+    inspected = 0
+    for path, path_item in schema["paths"].items():
+        if not path.startswith("/api/"):
+            continue
+        for method, operation in path_item.items():
+            if method not in {"get", "post", "put", "patch", "delete"}:
+                continue
+            for parameter in operation.get("parameters", []):
+                if parameter.get("name") != "limit":
+                    continue
+                inspected += 1
+                bounds = parameter["schema"]
+                assert bounds.get("minimum", 0) >= 1, (method, path, parameter)
+                assert 1 <= bounds.get("maximum", 0) <= 500, (method, path, parameter)
+    assert inspected >= 10
