@@ -781,7 +781,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         if key in values and (
             not isinstance(values[key], str)
             or len(values[key]) > maximum
-            or "\\x00" in values[key]
+            or chr(0) in values[key]
         ):
             raise HTTPException(status_code=422, detail=f"{key} must be text of at most {maximum} characters.")
     if "sandbox_docker_executable" in values and values["sandbox_docker_executable"].strip():
