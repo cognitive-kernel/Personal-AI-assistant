@@ -812,6 +812,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         ("ai_learning_stability_seconds", 1, 120),
         ("ai_learning_max_retries", 0, 5),
         ("ai_learning_source_max_chars", 1000, 256000),
+        ("topic_learning_source_max_chars", 1000, 256000),
     ]
     for prefix in ("chat", "learning", "programming", "ai_learning", "topic_learning"):
         numeric_ranges.extend([
