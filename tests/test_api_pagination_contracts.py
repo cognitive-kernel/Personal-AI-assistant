@@ -5,6 +5,27 @@ from app import cloud_resources, db
 from app.main import app
 
 
+def _resolve_openapi_schema(schema: dict, document: dict) -> dict:
+    """Resolve local OpenAPI schema references before asserting constraints."""
+    resolved = dict(schema)
+    visited = set()
+    while "$ref" in resolved:
+        reference = resolved.pop("$ref")
+        if not isinstance(reference, str) or not reference.startswith("#/"):
+            raise AssertionError(f"Unsupported OpenAPI schema reference: {reference!r}")
+        if reference in visited:
+            raise AssertionError(f"Circular OpenAPI schema reference: {reference}")
+        visited.add(reference)
+        target = document
+        for segment in reference[2:].split("/"):
+            segment = segment.replace("~1", "/").replace("~0", "~")
+            target = target[segment]
+        if not isinstance(target, dict):
+            raise AssertionError(f"OpenAPI schema reference is not an object: {reference}")
+        resolved = {**target, **resolved}
+    return resolved
+
+
 @pytest.fixture
 def local_api_client(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
@@ -53,9 +74,9 @@ def test_pagination_bounds_are_published_in_openapi_schema():
     for (path, method, name), (minimum, maximum) in expected.items():
         parameters = schema["paths"][path][method]["parameters"]
         parameter = next(item for item in parameters if item["name"] == name)
-        assert parameter["schema"]["minimum"] == minimum
+        bounds = _resolve_openapi_schema(parameter["schema"], schema)\n        assert bounds["minimum"] == minimum
         if maximum is not None:
-            assert parameter["schema"]["maximum"] == maximum
+            assert bounds["maximum"] == maximum
 
 
 def test_every_api_limit_parameter_has_explicit_bounded_openapi_constraints():
@@ -71,7 +92,7 @@ def test_every_api_limit_parameter_has_explicit_bounded_openapi_constraints():
                 if parameter.get("name") != "limit":
                     continue
                 inspected += 1
-                bounds = parameter["schema"]
+                bounds = _resolve_openapi_schema(parameter["schema"], schema)
                 assert bounds.get("minimum", 0) >= 1, (method, path, parameter)
                 assert 1 <= bounds.get("maximum", 0) <= 500, (method, path, parameter)
     assert inspected >= 10
