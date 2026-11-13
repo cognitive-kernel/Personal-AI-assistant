@@ -13,7 +13,7 @@ from . import learning
 from .db import learning_connection
 from . import task_manager
 from . import ollama, learning_topic_quality_tasks, learning_method_orchestrator
-from .task_worker import PermanentTaskError, RetryableTaskError, TaskContext
+from .task_worker import PermanentTaskError, RetryableTaskError, TaskContext, TaskInterrupted
 
 logger = logging.getLogger(__name__)
 
@@ -321,6 +321,11 @@ def handle_learning_job(
         context.checkpoint({"phase": "learning_job_start", "job_id": job_id})
         learning.run_job(job_id, task_context=context)
         context.checkpoint({"phase": "learning_job_finished", "job_id": job_id})
+    except TaskInterrupted:
+        cancelled_job = learning.get_job(job_id)
+        if cancelled_job.get("status") == "cancelled" and cancelled_job.get("method_attempt_key"):
+            learning_method_orchestrator.mark_method_cancelled(job_id)
+        raise
     except learning.LearningError as exc:
         cause = exc.__cause__
         task = task_manager.get_task(context.task_id) or {}
