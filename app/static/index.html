@@ -218,7 +218,7 @@
 <div class="cloud-actions"><button id="sandbox-consent-grant" type="button">ثبت رضایت</button><button id="sandbox-consent-revoke" type="button">لغو رضایت</button><button id="sandbox-refresh" type="button">به‌روزرسانی وضعیت</button><button id="sandbox-cancel" type="button" disabled>لغو اجرای فعال</button></div>
 <form id="sandbox-run-form">
 <label>کد Python<textarea id="sandbox-source" dir="ltr" rows="7" maxlength="65536" required placeholder="print('Hello')" aria-label="print('Hello')"></textarea></label>
-<div class="cloud-form-grid"><label>مهلت اجرا (ثانیه)<input id="sandbox-run-timeout" type="number" min="1" max="120" value="10" required></label><label>حداکثر خروجی (بایت)<input id="sandbox-output-limit" type="number" min="1" max="65536" value="32768" required></label></div>
+<div class="cloud-form-grid"><label>مهلت اجرا (ثانیه)<input id="sandbox-timeout" type="number" min="1" max="120" value="10" required></label><label>حداکثر خروجی (بایت)<input id="sandbox-output-limit" type="number" min="1" max="65536" value="32768" required></label></div>
 <button id="sandbox-run" type="submit" disabled>اجرای ایزوله</button></form>
 <pre id="sandbox-run-output">برای شروع، وضعیت محیط را بررسی کنید.</pre></section>
 <section id="self-improvement-section"><h2>پیشنهادهای خودبهبود کد</h2>
@@ -2244,7 +2244,7 @@ el("sandbox-run-form").addEventListener("submit",async event=>{
  try {
   const queued=await api("/api/sandbox/run",{method:"POST",body:JSON.stringify({
    source_code:source,
-   timeout_seconds:Number(el("sandbox-run-timeout").value),
+   timeout_seconds:Number(el("sandbox-timeout").value),
    max_output_bytes:Number(el("sandbox-output-limit").value)
   })});
   const task=queued.task;
