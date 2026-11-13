@@ -54,12 +54,12 @@ def _repo_root() -> Path:
     settings = _settings()
     if settings.get("self_improvement_enabled", True) is not True:
         raise ProposalError("Self-improvement is disabled in dashboard Settings.")
-    raw = str(settings.get("self_improvement_repo_root", "") or os.getenv("SELF_IMPROVEMENT_REPO_ROOT", "")).strip()
+    raw = str(settings.get("self_improvement_repo_root", "") or "").strip()
     if not raw:
         raise ProposalError("Configure the local Git repository path in dashboard Settings before using self-improvement.")
     candidate = Path(raw).expanduser()
     if not candidate.is_absolute():
-        raise ProposalError("SELF_IMPROVEMENT_REPO_ROOT must be an absolute path.")
+        raise ProposalError("self_improvement_repo_root in Settings must be an absolute path.")
     try:
         root = candidate.resolve(strict=True)
     except OSError as exc:
