@@ -180,6 +180,24 @@ def queue_initial_method(path_topic_id: int) -> dict[str, Any]:
     if gate["state"] == "blocked":
         return {"status": "blocked", "path_topic_id": path_topic_id}
 
+    if gate["current_job_id"] is None:
+        with learning_connection() as connection:
+            latest_job = connection.execute(
+                "SELECT id, status FROM learning_jobs WHERE path_topic_id=? ORDER BY id DESC LIMIT 1",
+                (path_topic_id,),
+            ).fetchone()
+            if latest_job is not None and latest_job["status"] in {"queued", "running", "completed", "failed", "rejected"}:
+                connection.execute(
+                    """UPDATE learning_topic_quality_gates
+                       SET current_job_id=?, state='pending', updated_at=CURRENT_TIMESTAMP
+                       WHERE path_topic_id=? AND current_job_id IS NULL""",
+                    (int(latest_job["id"]), path_topic_id),
+                )
+                gate = connection.execute(
+                    "SELECT state, current_job_id FROM learning_topic_quality_gates WHERE path_topic_id=?",
+                    (path_topic_id,),
+                ).fetchone()
+
     if gate["current_job_id"] is not None:
         current = learning.get_job(int(gate["current_job_id"]))
         if current["status"] in {"queued", "running"}:
