@@ -1,3 +1,13 @@
+## 2026-11-13 — User-confirmed hardware correction and target-profile enforcement
+
+- The owner explicitly confirmed the target hardware: Intel Core i5-12400, 6 physical cores / 12 logical threads, approximately 31.78 GiB RAM, Intel UHD Graphics 730; confirmed OS: Windows 11 x64 build 10.0.26300.
+- The previous audit incorrectly reclassified this known profile as unverified and removed the target-profile gate. This was a documentation and acceptance-contract error.
+- Restored live CIM checks for CPU model/topology, 30–33 GiB RAM tolerance, UHD 730 presence, and Windows 11 build 26300. Context sizing continues to use measured free memory and actual Ollama allocation; WMI AdapterRAM is not treated as dedicated VRAM.
+- Updated README, operations guide, project status, acceptance ledger, and regression source-contracts to reflect the owner-confirmed profile.
+- The target diagnostic remains blocked until GitHub assigns the uniquely labelled self-hosted Runner. No target-host pass is claimed.
+
+---
+
 ## 2026-11-13 — Exact-head CI completion and final compatibility re-audit
 
 - Re-read the full master engineering prompt and re-checked PR #722, current branch files, workflow definitions, project status, acceptance ledger, and open Issues.
@@ -14,13 +24,13 @@
 
 ### Root cause
 - The Windows target diagnostic compared the host to Intel Core i5-12400 / 6 cores / 12 threads / 30–33 GiB RAM / Intel UHD Graphics 730 and failed if any value differed.
-- Personal context confirms Windows 11 x64 build 10.0.26300, Python 3.14.6, Python 3.11.9, and Git 2.54.0. It does not confirm the CPU, RAM capacity, or GPU. The repository's former hardware profile was therefore an unverified assumption, not a user requirement; retaining it could reject the actual host incorrectly.
+- At the time of that change, the recorded context was incomplete. The owner has now explicitly confirmed Intel Core i5-12400 (6C/12T), approximately 31.78 GiB RAM, Intel UHD Graphics 730, and Windows 11 build 26300; the profile is a real acceptance requirement.
 
 ### Correction
-- Removed exact CPU/core/RAM/GPU equality checks from `.github/workflows/codex-windows-sandbox-diagnostic.yml`. The workflow now records the actual Windows/CPU/RAM/GPU profile and requires only complete positive CPU and physical-RAM telemetry before resource-dependent checks.
-- Updated the source-contract regression test to forbid reintroduction of the fixed hardware gate.
+- The owner-confirmed target-profile checks have been restored in `.github/workflows/codex-windows-sandbox-diagnostic.yml`: CPU model and topology, 30–33 GiB RAM tolerance, UHD 730 presence, and Windows 11 build 26300. Live telemetry remains the basis for context/resource sizing.
+- Updated the source-contract regression test to require the confirmed hardware profile and prevent its accidental removal.
 - Extended the target diagnostic's exact-head wait set to include `Sandbox integration CI`, so the target-host stage cannot start while the Docker sandbox workflow is missing or non-green.
-- Corrected README and operations documentation: the Intel i5-12400/32-GB/UHD-730 profile is historical repository context, not verified user hardware or a runtime acceptance condition. The estimator remains based on live host measurements.
+- Corrected README and operations documentation: the Intel i5-12400/32-GB/UHD-730 profile is owner-confirmed; actual free RAM, WDDM GPU memory, and Ollama allocation remain live measurements.
 
 ### Validation and residual risk
 - The first test attempt on SHA `15d8fc91ce8d3d2036fe0e0e4d1a0334e5cecd6a` caught a mismatch between the test's expected README sentence and the authored wording. The test expectation was corrected; no test was deleted or weakened.
