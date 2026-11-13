@@ -19,6 +19,11 @@ ACTIVE_STATUSES = {"running", "pause_requested", "cancel_requested"}
 TERMINAL_STATUSES = {"cancelled", "succeeded", "failed"}
 RETRY_BASE_DELAY_SECONDS = 2
 RETRY_MAX_DELAY_SECONDS = 300
+MAX_TASK_TYPE_CHARS = 100
+MAX_TASK_PAYLOAD_BYTES = 1024 * 1024
+MAX_TASK_PRIORITY = 100_000
+MAX_TASK_ATTEMPTS = 20
+MAX_TASK_DEDUPE_KEY_CHARS = 256
 
 
 class TaskManagerError(RuntimeError):
@@ -78,19 +83,28 @@ def create_task(
     scheduled_at: datetime | None = None,
     dedupe_key: str | None = None,
 ) -> dict[str, Any]:
-    if not isinstance(task_type, str) or not task_type.strip():
-        raise ValueError("task_type must be a non-empty string.")
+    if not isinstance(task_type, str) or not task_type.strip() or len(task_type.strip()) > MAX_TASK_TYPE_CHARS:
+        raise ValueError(f"task_type must be a non-empty string of at most {MAX_TASK_TYPE_CHARS} characters.")
     if not isinstance(payload, dict):
         raise ValueError("payload must be a JSON object.")
-    if isinstance(priority, bool) or not isinstance(priority, int):
-        raise ValueError("priority must be an integer.")
-    if isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or max_attempts < 1:
-        raise ValueError("max_attempts must be an integer greater than zero.")
+    if isinstance(priority, bool) or not isinstance(priority, int) or not -MAX_TASK_PRIORITY <= priority <= MAX_TASK_PRIORITY:
+        raise ValueError(f"priority must be an integer between {-MAX_TASK_PRIORITY} and {MAX_TASK_PRIORITY}.")
+    if isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or not 1 <= max_attempts <= MAX_TASK_ATTEMPTS:
+        raise ValueError(f"max_attempts must be an integer between 1 and {MAX_TASK_ATTEMPTS}.")
     if dedupe_key is not None and (
         not isinstance(dedupe_key, str) or not dedupe_key.strip()
+        or len(dedupe_key.strip()) > MAX_TASK_DEDUPE_KEY_CHARS
     ):
-        raise ValueError("dedupe_key must be a non-empty string when provided.")
+        raise ValueError(f"dedupe_key must be a non-empty string of at most {MAX_TASK_DEDUPE_KEY_CHARS} characters when provided.")
     encoded_payload = _json(payload)
+    try:
+        payload_size = len(encoded_payload.encode("utf-8"))
+    except UnicodeEncodeError as exc:
+        raise ValueError("Task payload must contain valid Unicode scalar values.") from exc
+    if payload_size > MAX_TASK_PAYLOAD_BYTES:
+        raise ValueError(
+            f"Task payload exceeds the {MAX_TASK_PAYLOAD_BYTES}-byte serialized limit."
+        )
     normalized_type = task_type.strip()
     normalized_key = dedupe_key.strip() if dedupe_key is not None else None
     due = _timestamp(scheduled_at)
