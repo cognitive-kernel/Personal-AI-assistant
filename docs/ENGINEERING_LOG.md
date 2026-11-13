@@ -13,7 +13,7 @@
 
 - Final validated code/test head: bf8fcb1df573996606adbaba6e40b72ab725a79c; four required hosted CI workflows all passed: tests #43384649649 (full test suite, Python 3.11.9/3.14.6, Windows Storage, Node/Codex matrix), Browser E2E #43384649576, Docker sandbox #43384649608, and dependency audit #43384649862.
 - Owner-confirmed hardware checks remain enforced: Intel Core i5-12400 (6C/12T), 31.78 GiB-class RAM (30–33 GiB tolerance), Intel UHD Graphics 730, Windows 11 build 26300.
-- Node.js 26.13.0/npm are provisioned per workflow job using SHA-pinned setup-node v6.4.0; Runner provisioning no longer requires system-wide Node/npm. Codex CLI 0.167.0 is installed by the workflow.
+- Node.js 26.13.0/npm are provisioned per workflow job using SHA-pinned setup-node v7.1.0; Runner provisioning no longer requires system-wide Node/npm. Codex CLI 0.167.0 is installed by the workflow.
 - Target diagnostic #43384649592: hosted cleanup passed; self-hosted sandbox-diagnostic remains pending without a Runner assignment. Live Ollama/Codex smoke, soak/crash-restart and staging restore/rollback are not claimed.
 - Target-host/local/human acceptance is not a merge gate by default unless branch protection explicitly requires it. Independent security review remains open in Issue #52. PR #722 remains Draft/open/unmerged.
 
@@ -25,7 +25,7 @@
 - The previous audit incorrectly reclassified this known profile as unverified and removed the target-profile gate. This was a documentation and acceptance-contract error.
 - Restored live CIM checks for CPU model/topology, 30–33 GiB RAM tolerance, UHD 730 presence, and Windows 11 build 26300. Context sizing continues to use measured free memory and actual Ollama allocation; WMI AdapterRAM is not treated as dedicated VRAM.
 - Updated README, operations guide, project status, acceptance ledger, and regression source-contracts to reflect the owner-confirmed profile.
-- Removed Node.js/npm as system-wide Runner prerequisites: production and diagnostic workflows now provision Node 26.13.0/npm per job using SHA-pinned setup-node v6.4.0; Codex CLI 0.167.0 is installed by the workflow. Runner provisioning no longer fails just because Node is absent from the host PATH.
+- Removed Node.js/npm as system-wide Runner prerequisites: production and diagnostic workflows now provision Node 26.13.0/npm per job using SHA-pinned setup-node v7.1.0; Codex CLI 0.167.0 is installed by the workflow. Runner provisioning no longer fails just because Node is absent from the host PATH.
 - The target diagnostic remains pending until GitHub assigns the uniquely labelled self-hosted Runner. No target-host pass is claimed.
 
 ---
