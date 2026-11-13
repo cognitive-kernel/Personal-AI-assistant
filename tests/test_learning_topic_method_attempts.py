@@ -76,6 +76,28 @@ def test_attempt_events_are_append_only_and_enforce_transitions(method_attempt_s
             )
 
 
+def test_cancelled_method_attempt_is_terminal_and_never_retried(method_attempt_store):
+    topic_id = method_attempt_store
+    append_attempt_event(
+        topic_id, "ai_learning", 1, "queued", event_key="ai:cancel:queued"
+    )
+    append_attempt_event(
+        topic_id, "ai_learning", 1, "running", event_key="ai:cancel:running"
+    )
+    cancelled = append_attempt_event(
+        topic_id, "ai_learning", 1, "cancelled",
+        event_key="ai:cancel:cancelled",
+        diagnosis={"reason": "user_requested_stop"},
+        evidence={"cancelled_by_user": True},
+    )
+    assert cancelled["status"] == "cancelled"
+    assert latest_attempt_event(topic_id, "ai_learning", 1)["status"] == "cancelled"
+    with pytest.raises(MethodAttemptError, match="Invalid method-attempt transition"):
+        append_attempt_event(
+            topic_id, "ai_learning", 1, "failed", event_key="ai:cancel:late-failure"
+        )
+
+
 def test_attempt_event_idempotency_is_safe_under_concurrent_delivery(method_attempt_store):
     topic_id = method_attempt_store
 
