@@ -30,7 +30,10 @@ def handler_from_environment(*, allow_language_runners: bool = False) -> Callabl
 ] | None:
     """Return a handler only after explicit opt-in and valid local configuration."""
     settings = db.get_settings()
-    if settings.get("sandbox_enabled", True) is not True:
+    enabled = settings.get("sandbox_enabled", True)
+    if type(enabled) is not bool:
+        raise ValueError("sandbox_enabled must be a boolean setting.")
+    if not enabled:
         return None
 
     executable_value = str(settings.get("sandbox_docker_executable", "") or "").strip()
