@@ -624,7 +624,7 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
         except Exception:
             paused = False
         if paused:
-            page.wait_for_timeout(1000)
+            page.wait_for_timeout(_configured_seconds("ai_learning_browser_poll_interval_ms", 1000, 100, 5000))
             deadline += 1.0
             continue
         if cancel_event is not None and cancel_event.is_set():
@@ -705,7 +705,7 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
                         stable_since = None
                         _log_event("response_continuation_clicked", elapsed_seconds=round(elapsed, 1),
                                    answer_chars=len(current), button_text=continue_button_text)
-                        page.wait_for_timeout(1000)
+                        page.wait_for_timeout(_configured_seconds("ai_learning_browser_poll_interval_ms", 1000, 100, 5000))
                         continue
                     except Exception as exc:
                         _log_event("response_continuation_click_failed", exception_type=type(exc).__name__,
@@ -740,7 +740,7 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
             last_stop_visible = stop_visible
             # Keep the wait inside the guarded block: Playwright raises here if the
             # page/context/browser closes between polling iterations.
-            page.wait_for_timeout(1000)
+            page.wait_for_timeout(_configured_seconds("ai_learning_browser_poll_interval_ms", 1000, 100, 5000))
         except BrowserAutomationError:
             raise
         except Exception as exc:
@@ -1137,7 +1137,7 @@ def _browser_capture(
                     page.wait_for_load_state("networkidle", timeout=8000)
                 except Exception:
                     pass
-                page.wait_for_timeout(1200)
+                page.wait_for_timeout(_configured_seconds("ai_learning_browser_poll_interval_ms", 1000, 100, 5000))
                 _log_event("page_ready", url=page.url, assistant_message_count=_assistant_message_count(page), dom=_dom_diagnostics(page))
                 # On an empty landing page, classify explicit security/rate-limit gates
                 # before submitting. Existing conversations may legitimately discuss these terms.
@@ -1664,7 +1664,7 @@ def stop_browser_automation() -> dict[str, Any]:
             still_active = _ACTIVE
         if not still_active:
             break
-        time.sleep(0.1)
+        time.sleep(_configured_seconds("ai_learning_browser_control_poll_interval_ms", 100, 10, 1000) / 1000)
     with _LOCK:
         worker_stopped = not _ACTIVE
     _log_event(
