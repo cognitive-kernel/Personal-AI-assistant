@@ -649,13 +649,13 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Keep the original candidate content/hash, source URLs and text, assessment, quality report, test plan/results, and review records.
 - Mark the durable knowledge row `conflicting`, the job `rejected`, and the temporary candidate `failed` with a reason that records the contradictory evidence and points to a new versioned candidate for reassessment.
 - Keep promotion and additional review blocked for a terminal rejected candidate; `candidate_readiness` exposes the actual contradictions and explicitly reports retained content.
-- Preserve backward compatibility for legacy rows already scrubbed by the old implementation; they remain readable and are clearly identified as unrecoverable legacy records.
+- Preserve backward compatibility for legacy rows already scrubbed by the old implementation. Add a dry-run-by-default recovery utility that restores only content whose SHA-256 matches the preserved job lesson, source URLs still present in learning_evidence, and the quality report still present in the job record; deleted source text, assessment, test plan, and original knowledge version are never guessed.
 
 ### Regression coverage
 
 - Update the existing two-model/two-source contradiction regression to prove all source and candidate data, assessment, quality report, test plan/results, and content remain intact.
 - Assert the retained knowledge row is marked `conflicting`, promotion is blocked, and a terminal candidate does not trigger new source/model calls.
-- Add a compatibility regression for legacy scrubbed rows.
+- Add a compatibility regression for legacy scrubbed rows plus dry-run/apply, exact-hash mismatch, idempotence, and partial-recovery reporting for the legacy repair utility.
 - Align `LEARNING_COMPLETION_POLICY.md` with the new retention behavior.
 
 ### Validation
