@@ -982,6 +982,9 @@ def run_job(job_id: int, *, task_context: Any | None = None) -> None:
         verified_factual_context = _verified_factual_context_for_topic(topic)
         failure_warnings = _failure_warnings_for_topic(topic, limit=3)
         settings = get_settings()
+        max_output_tokens = settings.get(f"{provider_purpose}_max_output_tokens", 3900)
+        if isinstance(max_output_tokens, bool) or not isinstance(max_output_tokens, int) or not 1 <= max_output_tokens <= 8192:
+            raise LearningError(f"Configured output-token budget for {provider_purpose} is invalid.")
         candidate_observations = _prior_assistant_observations(topic, settings)
         source_limit_key = f"{provider_purpose}_source_max_chars"
         default_source_limit = 100000 if provider_purpose != "learning" else 12000
@@ -1144,7 +1147,7 @@ def run_job(job_id: int, *, task_context: Any | None = None) -> None:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": serialized_prompt},
             ],
-            "options": {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"], "num_predict": 3900},
+            "options": {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"], "num_predict": max_output_tokens},
         }, timeout=request_timeout, purpose=provider_purpose)
         provider_usage: dict[str, dict[str, int]] = {
             "initial_generation": _ollama_usage_summary(response)
@@ -1242,8 +1245,8 @@ def run_job(job_id: int, *, task_context: Any | None = None) -> None:
                     {"role": "system", "content": repair_system_prompt},
                     {"role": "user", "content": serialized_repair_prompt},
                 ],
-                "options": {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"], "num_predict": 3900},
-            }, timeout=request_timeout, purpose="learning")
+                "options": {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"], "num_predict": max_output_tokens},
+            }, timeout=request_timeout, purpose=provider_purpose)
             provider_usage["quality_repair"] = _ollama_usage_summary(retry_response)
             retry_raw = retry_response.get("message", {}).get("content")
             try:
