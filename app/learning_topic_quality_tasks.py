@@ -301,6 +301,8 @@ def handle_topic_quality_evaluation(
     return {
         "path_topic_id": path_topic_id, "job_id": job_id, "status": "repairing",
         "score": record["score"], "evaluation_id": evaluation_id,
-        "correction_job_id": int(correction["correction_job"]["id"]),
-        "repair_count": repair_count + 1, "max_repairs": max_repairs,
+        "correction_job_id": correction_job_id,
+        "correction_task_id": correction_task["id"],
+        "repair_count": repair_count if repair_already_counted else repair_count + 1,
+        "max_repairs": max_repairs,
     }
