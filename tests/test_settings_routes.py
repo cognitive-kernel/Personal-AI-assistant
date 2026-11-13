@@ -83,6 +83,8 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
     assert defaults["ai_learning_browser_control_poll_interval_ms"] == 100
     assert defaults["ai_learning_browser_lease_seconds"] == 90
     assert defaults["ai_learning_browser_lease_heartbeat_seconds"] == 15
+    assert defaults["ai_learning_chrome_path"] == ""
+    assert defaults["ai_learning_browser_profile"] == "data/ai_learning_browser_profile"
     assert defaults["ai_learning_max_context_relaunches"] == 1
     assert defaults["ai_learning_stop_stability_seconds"] == 45
     assert defaults["ai_learning_last_stop_stability_seconds"] == 25
@@ -132,6 +134,8 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
         "ai_learning_browser_control_poll_interval_ms": 200,
         "ai_learning_browser_lease_seconds": 120,
         "ai_learning_browser_lease_heartbeat_seconds": 20,
+        "ai_learning_chrome_path": "/usr/bin/google-chrome",
+        "ai_learning_browser_profile": "/tmp/ai-learning-profile",
         "ai_learning_max_retries": 3,
         "ai_learning_min_complete_lesson_words": 2400,
         "ai_learning_max_context_relaunches": 2,
@@ -192,6 +196,7 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
         {"ai_learning_browser_control_poll_interval_ms": 1001},
         {"ai_learning_browser_lease_seconds": 29},
         {"ai_learning_browser_lease_heartbeat_seconds": 31},
+        {"ai_learning_chrome_path": "relative/chrome"},
         {"ai_learning_browser_lease_seconds": 30, "ai_learning_browser_lease_heartbeat_seconds": 15},
         {"ai_learning_max_retries": 6},
         {"ai_learning_embedding_input_max_chars": 255},
