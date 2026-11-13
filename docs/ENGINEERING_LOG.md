@@ -1,11 +1,14 @@
-## 2026-11-13 — Documentation-inclusive exact-head CI passed
+## 2026-11-13 — Exact-head CI recheck and current acceptance state
 
-- Current validated documentation-inclusive PR head at this checkpoint: `abc53b92a6495e3f7264af44aaf2c0de06a388ff`; code/test changes remain at `f21f6b01990824680a189ff513bb997b5caed498`.
-- The first documentation-only revision exposed a contract assertion requiring the literal phrase `all required local tests on the actual target host`. Restored that exact phrase in ROADMAP_ACCEPTANCE without weakening the assertion. The acceptance-contract test passed on the resulting exact head.
-- Exact-head Tests [#43395977181](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43395977181): 2,193 passed, 2 skipped, 51 deselected; Python 3.11.9/3.14.6, Windows Storage/PowerShell 5.1, checkpoint recovery, and Codex CLI 0.167.2/0.168.0 passed.
-- Exact-head Browser E2E [#43395977168](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43395977168), Docker full-suite and real sandbox integration [#43395977108](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43395977108), and Dependency Audit [#43395977208](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43395977208) passed. Markdown link validation passed for 96 files; import-cycle check passed; claim-to-test structural benchmark passed 10/10.
-- Target Windows/Ollama diagnostic [#43395977350](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43395977350) remains pending after hosted cleanup because no matching self-hosted Runner has been assigned. Live Ollama version/process, actual process environment for `OLLAMA_NUM_PARALLEL`, `/api/ps` allocation, Codex tool-call smoke, soak/crash-restart, and target-host tests remain unverified.
-- Required target-host tests remain a pre-merge gate under the Master Engineering Prompt; their absence does not stop independent GitHub-side work. PR #722 remains Draft/open/unmerged; no merge, bypass, auto-merge, deployment, or user-data operation occurred.
+- Re-read the complete Master Engineering Prompt and audited the current PR #722 branch against the merged main baseline f87e15b9eb76f7395ea4380382d95f1bc64e21ed.
+- Current PR head at this checkpoint: 0613b572525d2a2faa9b169a5babc279db40daba; code/test changes are at f21f6b01990824680a189ff513bb997b5caed498. The documentation-only head is based directly on current main; compare reports zero commits behind.
+- Exact-head tests [#43396751698](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43396751698): **2,193 passed, 2 skipped, 51 deselected**; Windows Storage/PowerShell 5.1, Python 3.11.9/3.14.6, Node.js 26.13.0/npm 11.20.0 with Codex CLI 0.167.2/0.168.0, Markdown validation (96 files), import-cycle check, and claim-to-test structural benchmark (10/10) passed.
+- Exact-head Browser E2E [#43396751609](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43396751609), Docker full-suite and real sandbox integration [#43396751572](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43396751572), and Dependency Audit [#43396751631](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43396751631) all passed.
+- Target Windows/Ollama diagnostic [#43396751673](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43396751673): hosted cleanup succeeded; the self-hosted diagnostic remains pending without Runner assignment. No live Ollama allocation, Codex tool-call smoke, or target-host soak is claimed.
+- The registry-derived OLLAMA_NUM_PARALLEL value is not proof of the running process environment. A process-only override remains an explicit verification limitation.
+- Required actual target-host tests, live Ollama/Codex smoke, soak/crash-restart, staging restore/rollback, and independent security review (#52) remain open. Project-wide acceptance remains tracked by #290. No merge, bypass, auto-merge, or deployment.
+
+---
 
 ---
 
