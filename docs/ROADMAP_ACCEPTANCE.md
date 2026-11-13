@@ -16,7 +16,7 @@ Code/test SHA `6e92a422dd7c39f35f3ecc4a1d1839e03f370df9` passed all nine GitHub-
 - Full suite: **2,171 passed, 2 skipped, 51 deselected**.
 - Python 3.11.9 and 3.14.6 compatibility matrices: passed.
 - Windows Storage/checkpoint regressions: passed.
-- Node.js 26.13.0/npm 11.20.0 with Codex CLI 0.167.0 and 0.167.2: passed.
+- Node.js 26.13.0/npm 11.20.0 with Codex CLI 0.167.2 and 0.168.0: the current compatibility matrix; exact-head rerun is required after this version update.
 - Browser E2E, Docker full-suite/sandbox integration, and dependency audit: passed.
 
 A further audit found that the self-hosted diagnostic used a fixed Python 3.11 installation path while the production workflow resolves Python from the Runner service PATH. The diagnostic now resolves the same executable dynamically, validates Python >=3.11, and reuses that exact executable for target-host checks. A regression assertion protects the contract.
