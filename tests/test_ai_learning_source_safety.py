@@ -255,7 +255,6 @@ def test_source_check_rejects_malformed_authority_before_dns(isolated_store, mon
         service.check_content_source(source_id)
 
 
-
 def test_source_check_redacts_malformed_http_response_details(isolated_store, monkeypatch):
     course = service.create_course(title="Malformed response")
     topic = service.add_topic(course["id"], "Network validation")
@@ -321,6 +320,7 @@ def test_source_check_redacts_dns_error_details(isolated_store, monkeypatch):
     assert result["validation_status"] == "rejected"
     assert "gaierror" in result["excerpt"]
     assert "SECRET-DNS-DETAIL" not in result["excerpt"]
+
 
 def test_source_links_remain_unverified_until_explicit_validation(isolated_store):
     course = service.create_course(title="منابع و انتشار")
