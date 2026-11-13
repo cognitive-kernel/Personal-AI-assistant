@@ -693,3 +693,19 @@ Continue E-02/E-01 with the complete route and task-registry contract inventory,
 - PR #741 identifies and fixes a separate cleanup-precedence issue in AI-learning browser automation: a failing `context.close()` could replace a provider/cancellation/Playwright error. Its helper preserves the primary exception and makes cleanup failures visible after successful capture. Exact head `f90c9dbafd46775048cece55dba7fb492a6fab3e` passed all required CI: 2,137 passed, 2 skipped, 51 deselected.
 - PR #725, not duplicate PR #740, is the authoritative fix for Issue #723 and has green exact-head CI. PR #740 is closed as superseded; Issue #723 remains open until PR #725 merges.
 - No merge, direct main write, local/target-host/human test, or destructive operation occurred.
+
+## 2026-11-13 — GitHub safety, data-retention, and exact-head reconciliation
+
+### New remediation PRs
+
+- PR #742 requires an exact server-side confirmation phrase before the broad AI-learning reset endpoint can delete data. Exact-head CI: 2,138 passed, 2 skipped, 51 deselected; Windows storage, Browser E2E, and Dependency Audit passed.
+- PR #743 rejects empty URL userinfo and explicit empty ports in AI-learning source checks before DNS resolution. Exact-head CI: 2,139 passed, 2 skipped, 51 deselected; Windows storage, Browser E2E, and Dependency Audit passed.
+- PR #744 removes destructive cleanup from contradictory learning-candidate rejection. Candidate/source/assessment/quality/test/review evidence is retained, the durable knowledge row becomes `conflicting`, and promotion remains blocked. The UI now exposes rejected candidates and their evidence without offering terminal mutation actions.
+- PR #744 also adds a dry-run-by-default legacy recovery utility. It restores content only when the preserved job lesson exactly matches the original SHA-256, and restores source URLs/quality only from records still present. Deleted source text, assessment, test plan, and original knowledge-version metadata are never guessed. Exact-head CI: 2,139 passed, 2 skipped, 51 deselected; Windows storage, Browser E2E, and Dependency Audit passed.
+
+### Repository and release status
+
+- There are 15 open, unmerged PRs based on main `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`; see the current status block in `docs/PROJECT_STATUS.md`.
+- GitHub currently reports no workflow runs for the current main SHA, so no post-merge/current-main CI result is claimed.
+- Issue #52 remains open for independent security review; CodeQL SARIF upload is not proof of zero alerts.
+- Local/target-host, live-model, human adjudication, accessibility, staging restore/rollback, and Windows self-hosted diagnostic gates remain unrun or unverified. No PR is merged or auto-merged.
