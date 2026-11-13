@@ -286,3 +286,32 @@ def test_curriculum_proposal_list_limit_is_bounded_at_http_and_openapi_boundarie
     )
     assert parameter["schema"]["minimum"] == 1
     assert parameter["schema"]["maximum"] == 100
+
+
+def test_every_api_integer_query_parameter_has_explicit_lower_bound():
+    schema = app.openapi()
+    inspected = 0
+    for path, path_item in schema["paths"].items():
+        if not path.startswith("/api/"):
+            continue
+        for method, operation in path_item.items():
+            if method not in {"get", "post", "put", "patch", "delete"}:
+                continue
+            for parameter in operation.get("parameters", []):
+                if parameter.get("in") != "query":
+                    continue
+                parameter_schema = parameter.get("schema", {})
+                branches = parameter_schema.get("anyOf") or parameter_schema.get("oneOf") or []
+                integer_branch = next((item for item in branches if item.get("type") == "integer"), None)
+                if integer_branch is not None:
+                    parameter_schema = {**parameter_schema, **integer_branch}
+                if parameter_schema.get("type") != "integer":
+                    continue
+                inspected += 1
+                minimum = parameter_schema.get("minimum")
+                assert minimum is not None, (method, path, parameter)
+                if parameter.get("name", "").endswith("_id") or parameter.get("name") == "limit":
+                    assert minimum >= 1, (method, path, parameter)
+                else:
+                    assert minimum >= 0, (method, path, parameter)
+    assert inspected >= 8
