@@ -190,9 +190,17 @@ def test_research_task_persists_sources_outline_and_starts_only_first_lesson(
     learning_store, monkeypatch
 ):
     discovered = []
+    discovered_lock = threading.Lock()
+
     def fake_discover(query, *, limit):
-        discovered.append((query, limit))
-        return [_source(len(discovered))]
+        with discovered_lock:
+            discovered.append((query, limit))
+            source_index = len(discovered)
+        return [web_sources.SourceDocument(
+            url=f"https://docs{source_index}.example.test/guide",
+            title=f"راهنمای مرجع {source_index}",
+            text=(f"محتوای مستند برای موضوع شماره {source_index}. " * 8),
+        )]
 
     monkeypatch.setattr(web_sources, "discover_sources", fake_discover)
     model_calls = []
