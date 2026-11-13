@@ -166,6 +166,8 @@ def collect_status() -> dict[str, Any]:
         "selectable_models": ollama.get("selectable_models", ollama.get("models", [])),
         "model_is_codex_context_variant": ollama.get("model_is_codex_context_variant", False),
         "model_context_length": ollama.get("model_context_length"),
+        "model_kv_cache_metadata_available": ollama.get("model_kv_cache_metadata_available", False),
+        "model_kv_cache_metadata_error": ollama.get("model_kv_cache_metadata_error"),
         "model_context_supported": ollama.get("model_context_supported", False),
         "model_context_error": ollama.get("model_context_error"),
         "model_capabilities": ollama.get("model_capabilities", []),
@@ -301,7 +303,11 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
         maximum = local_model.get("model_context_length")
         raise HTTPException(
             status_code=422,
-            detail=f"حداکثر Context مدل انتخاب‌شده ({maximum}) از حداقل پنجرهٔ اجرایی معتبر کمتر است؛ تنظیمات ذخیره نشد.",
+            detail=(
+                "مدل انتخاب‌شده metadata کامل Context/KV-cache برای برآورد امن حافظه ندارد "
+                "یا پنجرهٔ Context آن قابل استفاده نیست؛ تنظیمات ذخیره نشد. "
+                + str(local_model.get("model_context_error") or f"Context maximum: {maximum}")
+            ),
         )
     if not local_model.get("model_supports_tools"):
         raise HTTPException(status_code=422, detail="مدل انتخاب‌شده قابلیت tools را اعلام نکرده و برای Codex قابل استفاده نیست.")
