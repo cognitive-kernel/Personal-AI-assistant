@@ -2463,20 +2463,15 @@ def start_researched_path_learning(
 
 
 def queue_next_researched_path_topic(path_topic_id: int) -> dict[str, Any] | None:
-    """Advance a researched path only after its current lesson completed successfully."""
+    """Advance any learning path only after the current topic passes its quality gate."""
     with learning_connection() as conn:
         row = conn.execute(
             "SELECT path_id FROM learning_path_topics WHERE id=?",
             (path_topic_id,),
         ).fetchone()
-        if row is None:
-            return None
-        path_id = int(row["path_id"])
-        is_researched = conn.execute(
-            "SELECT 1 FROM learning_path_research WHERE path_id=?",
-            (path_id,),
-        ).fetchone()
-    return start_path_learning(path_id)
+    if row is None:
+        return None
+    return start_path_learning(int(row["path_id"]))
 
 
 def start_path_learning(path_id: int) -> dict[str, Any]:
