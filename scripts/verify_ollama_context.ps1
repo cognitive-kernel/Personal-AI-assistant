@@ -15,9 +15,10 @@ $minimumContextTokens = 1
 . (Join-Path $PSScriptRoot "ollama_context_helpers.ps1")
 
 function Get-OllamaNumParallel {
-    # Ollama reads OLLAMA_NUM_PARALLEL from the environment of the server
-    # process. The Runner may use a different account, so inspect only this
-    # setting in the server owner's persisted Windows environment.
+    # Read the server owner's persisted user/machine configuration, not the
+    # running process environment (which Windows does not expose through CIM).
+    # A process-only launch override can differ; never describe this as proof
+    # of the live process value. Target-host acceptance must account for this.
     try {
         $listeners = @(
             Get-NetTCPConnection -LocalPort 11434 -State Listen -ErrorAction Stop |
@@ -77,7 +78,9 @@ function Get-OllamaNumParallel {
         if ($null -ne $machineEnvironment) { $machineEnvironment.Close() }
     }
 
-    return (Resolve-OllamaParallelRequestCount -UserValue $userValue -MachineValue $machineValue)
+    $parallelRequests = Resolve-OllamaParallelRequestCount -UserValue $userValue -MachineValue $machineValue
+    Write-Warning "OLLAMA_NUM_PARALLEL=$parallelRequests was resolved from persisted Windows configuration/defaults, not read from the live Ollama process environment. A process-only launch override may differ; verify the server launch configuration before treating this estimate as runtime proof."
+    return $parallelRequests
 }
 
 function Get-ModelInfo {
