@@ -667,3 +667,12 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 ### Next engineering task
 
 Continue E-02/E-01 with the complete route and task-registry contract inventory, then trace each feature-owned submission path against the generic task boundary and add focused regressions. Keep all PRs unmerged until the repository's exact-head CI and target-host merge gates are satisfied.
+
+
+## 2026-11-13 — Continued API boundary audit
+
+- Rechecked the current main SHA and active PR heads. PR #737 is still awaiting its full test workflow; its other required checks passed on exact head `5bf13d05283daa2785a52bebfa9d8adf15f988b8`.
+- A second route audit found integer resource path identifiers that lacked a consistent positive lower bound. PR #738 applies `Path(ge=1)` to task-control, curriculum-evolution, cloud-resource, and all integer IDs in the AI-learning router; tests assert HTTP 422 for zero IDs and published OpenAPI minimums.
+- PR #738 exact head `541de4a94398ef46e64f6e9c1055ef9b34327f1b` is awaiting its full CI matrix. Additional route families remain in the audit queue; no global claim is made.
+- The earlier #737 OpenAPI test failure was traced to a nullable `anyOf(integer, null)` schema for optional `path_id`; the test helper now resolves refs and checks the integer branch. The current exact-head full test run has not yet completed.
+- No merge, deployment, local/target-host test, human test, or destructive data operation occurred. The independent Issue #52 review, branch-protection administration, CodeQL alert disposition, and external acceptance gates remain open.
