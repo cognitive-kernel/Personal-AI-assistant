@@ -109,3 +109,6 @@ The test uses deterministic fixture embeddings and makes no Ollama/model request
 - Browser page polling, worker-control polling, lease duration and lease heartbeat are persisted settings.
 - The API requires a heartbeat no greater than one third of the lease duration. The worker snapshots these values when it claims the lease; mid-run settings changes apply to the next claim, not the active worker.
 - The shared Chrome profile remains serialized to one browser worker. A higher concurrency setting is not exposed until independent browser profiles and separate fencing ownership exist.
+
+
+- Chrome executable auto-detection override and the isolated browser profile directory are persisted Settings, not environment feature flags. The selected profile is shared by one browser worker at a time.
