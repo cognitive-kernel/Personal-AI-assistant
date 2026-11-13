@@ -130,6 +130,7 @@ def create_job(
     source_text: str | None = None,
     path_topic_id: int | None = None,
     lesson_review: dict[str, Any] | None = None,
+    correction_request_key: str | None = None,
 ) -> dict[str, Any]:
     topic = topic.strip()
     if not topic or len(topic) > 300:
@@ -139,13 +140,28 @@ def create_job(
     if len(source_text) > source_limit:
         raise ValueError(f"Source text is too large (current limit: {source_limit} characters).")
     source_kind = "user_provided_text" if source_text else "model_knowledge_no_external_source"
+    if correction_request_key is not None and (
+        not isinstance(correction_request_key, str)
+        or not correction_request_key.strip()
+        or len(correction_request_key.strip()) > 200
+    ):
+        raise ValueError("correction_request_key must contain 1–200 characters.")
+    correction_request_key = correction_request_key.strip() if correction_request_key else None
     existing_job_id: int | None = None
     existing_source_mismatch = False
     job_id: int | None = None
     with learning_connection() as conn:
+        # Correction creation is idempotent across task retries and worker recovery.
+        if correction_request_key is not None:
+            existing_correction = conn.execute(
+                "SELECT id FROM learning_jobs WHERE correction_request_key=?",
+                (correction_request_key,),
+            ).fetchone()
+            if existing_correction is not None:
+                existing_job_id = int(existing_correction["id"])
         # Path-topic creation is idempotent under concurrent start/resume requests.
         # Acquire the SQLite write reservation before checking for an active job.
-        if path_topic_id is not None:
+        if existing_job_id is None and path_topic_id is not None:
             conn.execute("BEGIN IMMEDIATE")
             topic_row = conn.execute(
                 "SELECT id FROM learning_path_topics WHERE id=?", (path_topic_id,)
@@ -176,13 +192,14 @@ def create_job(
                     )
         if existing_job_id is None:
             cursor = conn.execute(
-                "INSERT INTO learning_jobs(topic, status, source_kind, path_topic_id, lesson_review_json) "
-                "VALUES (?, 'queued', ?, ?, ?)",
+                "INSERT INTO learning_jobs(topic, status, source_kind, path_topic_id, lesson_review_json, correction_request_key) "
+                "VALUES (?, 'queued', ?, ?, ?, ?)",
                 (
                     topic,
                     source_kind,
                     path_topic_id,
                     json.dumps(lesson_review, ensure_ascii=False) if lesson_review else None,
+                    correction_request_key,
                 ),
             )
             job_id = int(cursor.lastrowid)
@@ -1730,10 +1747,16 @@ def submit_assessment(
     }
 
 
-def submit_lesson_issue(job_id: int, issue_report: str) -> dict[str, Any]:
-    """Create a versioned correction job from a user's report without rewriting history."""
+def submit_lesson_issue(
+    job_id: int, issue_report: str, *, request_key: str | None = None
+) -> dict[str, Any]:
+    """Create an idempotent, versioned correction job without rewriting history."""
     if not isinstance(issue_report, str) or not issue_report.strip() or len(issue_report) > 5000:
         raise ValueError("issue_report must contain 1–5000 characters.")
+    if request_key is not None and (
+        not isinstance(request_key, str) or not request_key.strip() or len(request_key.strip()) > 200
+    ):
+        raise ValueError("request_key must contain 1–200 characters.")
     with learning_connection() as conn:
         row = conn.execute(
             "SELECT topic, path_topic_id, lesson, status FROM learning_jobs WHERE id=?",
@@ -1750,7 +1773,8 @@ def submit_lesson_issue(job_id: int, issue_report: str) -> dict[str, Any]:
         ).fetchall()
     previous_lesson = str(row["lesson"])
     review = {
-        "correction_mode": "user_reported_runtime_failure",
+        "correction_mode": "automated_topic_quality_gate" if request_key else "user_reported_runtime_failure",
+        "request_key": request_key.strip() if request_key else None,
         "prior_job_id": int(job_id),
         "previous_lesson": previous_lesson[:20000],
         "previous_lesson_sha256": hashlib.sha256(previous_lesson.encode("utf-8")).hexdigest(),
@@ -1767,6 +1791,7 @@ def submit_lesson_issue(job_id: int, issue_report: str) -> dict[str, Any]:
         str(row["topic"]),
         path_topic_id=int(row["path_topic_id"]) if row["path_topic_id"] is not None else None,
         lesson_review=review,
+        correction_request_key=request_key,
     )
     task = _enqueue_learning_job(int(correction["id"]))
     correction["task_id"] = task["id"]
