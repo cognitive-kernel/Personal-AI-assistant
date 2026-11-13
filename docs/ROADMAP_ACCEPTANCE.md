@@ -1,12 +1,11 @@
-## 2026-11-13 — Owner-confirmed target profile, Node bootstrap and CI queue correction (PR #722)
+## 2026-11-13 — Latest validated code/test head (PR #722)
 
-- **Code/test SHA:** f84bc9aa0127f2ec2e8ba6a0e035772841c0d7f7; base/main: f87e15b9eb76f7395ea4380382d95f1bc64e21ed. PR #722 remains Draft/open/unmerged.
-- User-confirmed target hardware: Intel Core i5-12400 (6C/12T), approximately 31.78 GiB RAM (32-GB class), Intel UHD Graphics 730; Windows 11 x64 build 10.0.26300. Confirmed software: Python 3.14.6/3.11.9 and Git 2.54.0.
-- Target diagnostic verifies CPU model/topology, 30–33 GiB RAM tolerance, UHD 730 presence, and Windows 11 build 26300 from live CIM telemetry. Context sizing continues to use live free memory and actual Ollama allocation; integrated GPU WMI AdapterRAM is not treated as dedicated VRAM.
-- Node.js 26.13.0/npm are provisioned per job through SHA-pinned setup-node v6.4.0; Codex CLI 0.167.0 is installed by the workflow. System-wide Node/npm are no longer Runner provisioning prerequisites. Provisioning/readiness docs and regression tests reflect this.
-- Required CI runs on this code/test SHA were queued at the latest check: tests #43383583299, Browser E2E #43383583320, Docker sandbox #43383583243, and dependency audit #43383583252.
-- A previous Python 3.14.6 source-contract run failed only because the test expected lowercase while the diagnostic emitted uppercase Owner-confirmed; the assertion was corrected. The failed SHA is not marked green; the current exact-head run must pass.
-- Target-host diagnostic still lacks a matching Runner assignment. Ollama version/process environment, OLLAMA_NUM_PARALLEL, loaded model, /api/ps, Codex tool-call smoke, soak/crash-restart and staging restore/rollback remain NOT RUN / PENDING.
+- **Code/test SHA:** bf8fcb1df573996606adbaba6e40b72ab725a79c; base/main: f87e15b9eb76f7395ea4380382d95f1bc64e21ed. PR #722 remains Draft/open/unmerged; subsequent updates are documentation-only.
+- User-confirmed hardware: Intel Core i5-12400 (6C/12T), approximately 31.78 GiB RAM (32-GB class), Intel UHD Graphics 730; Windows 11 x64 build 10.0.26300. Confirmed software: Python 3.14.6/3.11.9 and Git 2.54.0.
+- Target diagnostic verifies CPU model/topology, 30–33 GiB RAM tolerance, UHD 730 presence, and Windows 11 build 26300 from live CIM telemetry. Context sizing uses live free memory and actual Ollama allocation; integrated GPU WMI AdapterRAM is not treated as dedicated VRAM.
+- Node.js 26.13.0/npm are provisioned per job through SHA-pinned setup-node v6.4.0; Codex CLI 0.167.0 is installed by the workflow. System-wide Node/npm are not Runner provisioning prerequisites.
+- All four required hosted CI workflows passed on this code/test SHA: [tests #43384649649](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43384649649), [Browser E2E #43384649576](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43384649576), [Docker sandbox #43384649608](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43384649608), and [dependency audit #43384649862](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43384649862).
+- Target-host diagnostic [#43384649592](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43384649592) passed its hosted cleanup stage, but its self-hosted sandbox-diagnostic job remains pending without a Runner assignment. Ollama version/process environment, OLLAMA_NUM_PARALLEL, loaded model, /api/ps, Codex tool-call smoke, soak/crash-restart and staging restore/rollback remain NOT RUN / PENDING.
 - Per the master prompt, target-host/local/human acceptance is not a merge gate by default unless branch protection explicitly requires it. Continue GitHub-side work. Independent security review remains required in Issue #52; no automatic merge, bypass or deployment.
 
 ---
