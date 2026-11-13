@@ -23,6 +23,16 @@ def _resolve_openapi_schema(schema: dict, document: dict) -> dict:
         if not isinstance(target, dict):
             raise AssertionError(f"OpenAPI schema reference is not an object: {reference}")
         resolved = {**target, **resolved}
+    # Optional constrained query parameters are emitted as anyOf(integer, null)
+    # by OpenAPI 3.1; assert the numeric branch, not the union wrapper.
+    branches = resolved.get("anyOf") or resolved.get("oneOf") or []
+    numeric_branch = next(
+        (item for item in branches if item.get("type") in {"integer", "number"}),
+        None,
+    )
+    if numeric_branch is not None:
+        numeric = _resolve_openapi_schema(numeric_branch, document)
+        return {**resolved, **numeric}
     return resolved
 
 
@@ -75,7 +85,7 @@ def test_pagination_bounds_are_published_in_openapi_schema():
         parameters = schema["paths"][path][method]["parameters"]
         parameter = next(item for item in parameters if item["name"] == name)
         bounds = _resolve_openapi_schema(parameter["schema"], schema)
-        assert bounds["minimum"] == minimum
+        assert bounds.get("type") in {"integer", "number"}\n        assert bounds["minimum"] == minimum
         if maximum is not None:
             assert bounds["maximum"] == maximum
 
