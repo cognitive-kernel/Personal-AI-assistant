@@ -59,7 +59,7 @@ SETTING_DEFAULTS: dict[str, object] = {
     "ai_learning_enabled": True,
     "ai_learning_retrieval_enabled": True,
     "ai_learning_browser_enabled": True,
-    "ai_learning_lesson_batch_size": 1,
+    "ai_learning_lesson_batch_size": 20,
     "ai_learning_chunk_target_chars": 1800,
     "ai_learning_chunk_overlap_chars": 180,
     "ai_learning_embedding_batch_size": 64,
