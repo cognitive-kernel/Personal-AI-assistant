@@ -92,3 +92,13 @@ These are **provisional, evidence-based progress scores** using the fixed stage 
 - PR #739 head `9edfdd38716b88708b53772aa93d75c3850b77b7`: dependency audit passed; other checks are running after correction of a test-fixture defect.
 - PR #725 exact head `0c576ed9530d5b08f3f2e016f7fa36fe7d83b9e4` is fully green (2,137 passed, 2 skipped, 51 deselected); duplicate PR #740 was closed as superseded.
 - These are evidence notes, not a recalculated weighted score. The old score remains historical until all gates and the complete route/module audit are reconciled.
+
+
+## 2026-11-13 — Latest evidence reconciliation
+
+- PR #737: exact-head CI green, 2,142 passed, 2 skipped, 51 deselected.
+- PR #738: exact-head CI green, 2,170 passed, 2 skipped, 51 deselected.
+- PR #739: exact-head CI green, 2,143 passed, 2 skipped, 51 deselected.
+- PR #725: exact-head CI green, 2,137 passed, 2 skipped, 51 deselected; authoritative fix for Issue #723, which remains open until merge.
+- PR #741: test workflow in progress; other required checks passed.
+- This is an evidence update only, not a recalculated weighted score. The 2026-11-01 score remains historical until all gates and module inventory are reconciled.
