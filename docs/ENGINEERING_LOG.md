@@ -635,3 +635,35 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Issue #290 remains authoritative: no automatic PR merge, deployment, cloud provisioning, or remote execution. The controller never calls the merge API and accepts only a human merge actor; owner review and manual merge remain required.
 - This CI proves repository tests and the configured Windows storage regression job only. A real target-host Codex/Ollama tool-call smoke, long-duration soak, crash/restart acceptance, staging restore/rollback, and independent security review (Issue #52) remain pending and are not claimed.
 - No direct write to `main`, force-push, deployment, destructive state reset, or user-data deletion occurred. This verification snapshot is for the exact SHA above; any subsequent commit requires its own exact-head CI.
+
+
+## 2026-11-13 — API boundary audit and current GitHub acceptance snapshot
+
+### Baseline and continuity
+
+- Re-read `docs/MASTER_ENGINEERING_PROMPT.md`, `docs/ENGINEERING_DELIVERY_ESTIMATE.md`, `docs/PROJECT_STATUS.md`, and the open acceptance tracker. The authoritative `main` SHA is `f87e15b9eb76f7395ea4380382d95f1bc64e21ed` after PR #719; older `main` snapshots in historical sections are not current.
+- The approved delivery baseline remains 176 engineering hours (144 task hours + 32 contingency), 22 working days, target 2026-12-01. No actual engineering hours are recorded in this session because elapsed tool/chat time is not a reliable labor-time measure. No reforecast is made without a defensible task-hour measurement.
+- No direct write to `main`, force-push, merge, deployment, cloud provisioning, remote execution, destructive data operation, or local/human test was performed.
+
+### Root-cause findings
+
+- PR #734 addressed a test-coverage gap in the global HTTP boundary: loopback and same-origin protections were enforced centrally, but the regression suite covered only representative endpoints. The new test enumerates all registered `/api/` route/method pairs and verifies non-loopback and cross-origin requests are rejected before endpoint handlers execute.
+- Exact-head PR #734 commit `17bd893ded33cce8658498fd5453393efb059406`: **2,136 passed, 2 skipped, 51 deselected**; Windows storage regressions, dashboard smoke, dependency audit, 95-file Markdown validation, AST import-cycle check, and claim-to-test benchmark 10/10 passed. This is PR-head evidence only.
+- A deeper handler-registry audit for PR #736 found a broader API contract defect: `POST /api/tasks` could directly enqueue all internal feature task types. This bypassed the owning workflow's validation, deduplication/idempotency key, consent/evidence checks, and retry policy. The issue was not limited to sandbox tasks.
+- PR #736 now blocks every one of the 14 feature-managed task types registered by runtime handlers, while retaining generic extension/test task types. A parameterized regression verifies each blocked type cannot be persisted through the generic endpoint, and an architecture fitness test fails if a runtime handler is added without updating the blocklist. Exact-head CI is pending on the latest commit; no pass is claimed.
+
+### Documentation reconciliation
+
+- PR #735 updates the current project status snapshot and acceptance ledger to distinguish the live `main` baseline from exact-head PR evidence and to record branch-protection, CodeQL-alert-access, and independent-review limitations.
+- Exact-head PR #735 commit `e19c76362df4af79ed76e8b9f52491eed0314cd8`: **2,135 passed, 2 skipped, 51 deselected**; Windows storage regressions, dashboard smoke, dependency audit, 95-file Markdown validation, AST import-cycle check, and claim-to-test benchmark 10/10 passed. Subsequent documentation commits in this PR require fresh exact-head CI.
+
+### Repository-level blockers
+
+- GitHub reports `main.protected=false`. The connected integration exposes branch-protection/ruleset reads but no write action; enabling required checks and preventing direct pushes requires repository-admin action.
+- CodeQL v4 on PR #732 completed and uploaded SARIF, but alert retrieval is not exposed through the connected integration. A successful scan is not evidence of zero alerts.
+- Issue #52 still requires an independent security reviewer. The implementer cannot self-certify that independent review.
+- The endpoint-wide middleware regression does not complete the endpoint-by-endpoint API contract inventory. Crash/restart and multi-process operational acceptance, staging restore/rollback, pinned live-model evaluation, human adjudication, manual accessibility review, and target-host evidence remain separate gates.
+
+### Next engineering task
+
+Continue E-02/E-01 with the complete route and task-registry contract inventory, then trace each feature-owned submission path against the generic task boundary and add focused regressions. Keep all PRs unmerged until the repository's exact-head CI and target-host merge gates are satisfied.
