@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from app.ai_learning import integration, service
+from app.ai_learning import embedding_service, integration, service
 from app.ai_learning.db import connection, initialize_store
 
 
@@ -74,7 +74,7 @@ def test_published_knowledge_is_retrievable_after_a_new_process(
             ])
         return vectors
 
-    monkeypatch.setattr(service, "ollama_embed", distinct_embeddings)
+    monkeypatch.setattr(embedding_service, "ollama_embed", distinct_embeddings)
     monkeypatch.setenv("AI_LEARNING_ENABLED", "1")
     monkeypatch.setenv("AI_LEARNING_RETRIEVAL_ENABLED", "1")
 
