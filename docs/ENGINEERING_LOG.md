@@ -954,3 +954,12 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - **Regression protection:** added source-contract assertions for dynamic resolution, minimum-version validation, persisted path reuse, and absence of the former fixed Python311 path.
 - **Compatibility:** this matches the production workflow's PATH-based Python discovery and the GitHub matrix already exercised on Python 3.11.9 and 3.14.6.
 - **Validation:** code/test SHA `ea196bf01361bb1e55b10bcc4c91e79d1f2c8913` triggered a fresh exact-head GitHub matrix. At the time of this entry, checks were queued/in progress; no pass is claimed for this SHA. Diagnostic run [#43290291632](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43290291632) completed its GitHub-hosted cleanup but the self-hosted Windows job remained pending without a Runner assignment. The preceding SHA `6e92a422dd7c39f35f3ecc4a1d1839e03f370df9` had all nine GitHub-hosted checks green, including 2,171 passed, 2 skipped, and 51 deselected in the Python suite.
+
+
+## 2026-11-13 — PR #722 exact-head evidence reconciliation
+
+- **Root cause:** the current-status and acceptance documents still referenced earlier PR #722 commits, while the live PR head had advanced to `3b48da376cb90b0e0602f6300504152769ed79a0`. The roadmap also described a prior self-hosted diagnostic as completed operational evidence without sufficiently separating it from the current adaptive-context head.
+- **Correction:** synchronized `docs/PROJECT_STATUS.md` and the PR #722 section of `docs/ROADMAP_ACCEPTANCE.md` to the live base/head and exact-head GitHub check results. The older diagnostic run #43197193053 is explicitly historical; current diagnostic run #43290742576 remains pending.
+- **Exact-head hosted evidence on `3b48da376cb90b0e0602f6300504152769ed79a0`:** tests, Python 3.11.9/3.14.6, Windows Storage, Node 26/Codex 0.167.0 and 0.167.2, Browser E2E, Docker sandbox integration, and dependency audit all reported success.
+- **Not established:** self-hosted Runner assignment, actual target Ollama version/model allocation, Codex tool-call smoke on this head, target-host soak/crash-restart, staging restore/rollback, or independent security review. These remain pending; no merge or deployment is authorized.
+- The documentation commits below advance the PR head; the hosted checks above validate the preceding code/test SHA only. A fresh exact-head CI cycle is required for the documentation-inclusive head.
