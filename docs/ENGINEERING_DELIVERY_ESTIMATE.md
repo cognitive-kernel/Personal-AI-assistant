@@ -110,7 +110,7 @@ The run-scoped checkpoint readiness and snapshot-index isolation defect is track
 
 ## 2026-11-13 — Continued audit checkpoint
 
-- The current audited main SHA remains `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`. PR #737 is addressing pagination schema enforcement; PR #738 extends positive path-ID validation across task, curriculum, cloud-resource and AI-learning routes.
+- The current audited main SHA remains `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`. PR #737 completed exact-head CI successfully with 2,142 passed, 2 skipped, and 51 deselected. PR #738 extends positive path-ID validation across task, curriculum, cloud-resource, AI-learning, experience, factual-verification, learning-candidate/review/lifecycle, knowledge-graph, prerequisite, source-sync, self-improvement, and main application routes; its current head is awaiting CI.
 - These findings remain within E-01 (repository/architecture audit) and E-02 (API/persistence contracts). The remaining route families and endpoint contracts have not yet been inventoried completely; no extra hours or contingency consumption are recorded.
 - The original 176-hour budget, 144-hour task estimate, 32-hour reserve, and 2026-12-01 planning target remain unchanged. Actual engineering labor hours are not measured; elapsed tool/chat time is not used as a proxy.
 - PR #737 and #738 have not completed exact-head CI at this checkpoint. No merge or completion claim is made.
