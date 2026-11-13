@@ -4,8 +4,8 @@
 
 - مخزن: `cognitive-kernel/Personal-AI-assistant`؛ PR [#722](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/722)، شاخه `fix/autonomous-engineering-show-all-ollama-models-20261112`، مقصد `main`. PR باز، Draft و ادغام‌نشده است.
 - **کد/تست دقیق فعلی:** `44e656d752abdc902d45fa98557cabe024a3f001`؛ مبنای `main`: `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`. GitHub تعداد 40 فایل تغییرکرده را گزارش می‌کند؛ عدد 446 commit شامل تاریخچه شاخه است و تعداد تغییرات فایل نیست.
-- **اصلاح سازگاری سخت‌افزار:** gate مبتنی بر Intel i5-12400 / 6C-12T / 30–33 GiB / UHD 730 حذف شده است؛ این مشخصات تاریخی و تأییدنشده‌اند. Diagnostic اطلاعات واقعی Windows/CPU/RAM/GPU را ثبت می‌کند و sizing از telemetry زنده استفاده می‌کند. CPU/RAM ضروری باید معتبر باشند؛ GPU اختیاری است.
-- **مشخصات نرم‌افزاری تأییدشده:** Windows 11 x64 build 10.0.26300، Python 3.14.6 و 3.11.9، Git 2.54.0. CPU، RAM، GPU، Node، Codex CLI و Ollama نصب‌شده روی میزبان هنوز از اجرای Runner تأیید نشده‌اند.
+- **سخت‌افزار تأییدشده کاربر:** Intel Core i5-12400، شش هسته/۱۲ رشته، حدود 31.78 GiB RAM (رده 32GB)، Intel UHD Graphics 730؛ diagnostic اکنون این پروفایل را با telemetry زنده بررسی می‌کند (تلورانس RAM برابر 30–33 GiB). ویندوز 11 x64 build 10.0.26300 نیز تأیید شده است.
+- **نرم‌افزار تأییدشده کاربر:** Windows 11 x64 build 10.0.26300، Python 3.14.6 و Python 3.11.9 از طریق py launcher، Git 2.54.0. Node/npm، Codex CLI و نسخه/محیط اجرای Ollama روی Runner هنوز از اجرای هدف تأیید نشده‌اند.
 - **Exact-head GitHub CI روی `44e656d752abdc902d45fa98557cabe024a3f001`: هر چهار workflow موفق‌اند.**
   - Tests: [#43360952224](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43360952224) — full test suite، Python 3.11.9/3.14.6، Windows Storage/PowerShell 5.1 و Node/Codex matrix همگی موفق.
   - Browser E2E: [#43360952333](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43360952333) — موفق.
