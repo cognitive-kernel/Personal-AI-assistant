@@ -1,3 +1,23 @@
+## 2026-11-13 — Re-audit and exact-head evidence reconciliation for PR #722
+
+### Diagnosis
+- The implementation and hosted checks had advanced to head `9132b88073b2e238ebb2e7d38057c071aef02544`, but the opening/current sections of `PROJECT_STATUS.md` and `ROADMAP_ACCEPTANCE.md` still described the earlier `09cc8b3` snapshot and marked hosted CI as awaiting rerun. This made the current project state internally inconsistent.
+- Live GitHub job inspection confirms all four hosted workflow groups pass on `9132b88073b2e238ebb2e7d38057c071aef02544`; the separate self-hosted diagnostic remains pending because GitHub has not assigned a Runner.
+- PR review history contains no submitted review or inline review threads. The Codex review bot reported that its usage limit was reached; this is not an independent review.
+
+### Reconciliation
+- Updated the current-state sections of `PROJECT_STATUS.md` and `ROADMAP_ACCEPTANCE.md` to use the exact current head and link the successful tests, Windows/Node matrix, Browser E2E, dependency audit, and Docker sandbox runs.
+- Recorded target-host diagnostics, live Ollama/Codex smoke, host soak/recovery, staging restore/rollback, independent security review, and project-wide evaluation as pending/open—not passed.
+- Preserved historical snapshots below the current-state sections. No source code, user database, credentials, task state, or checkpoint data was modified.
+
+### Evidence and residual risk
+- PR head before this documentation-only reconciliation: `9132b88073b2e238ebb2e7d38057c071aef02544`.
+- Hosted checks: [tests/Python/Windows/Node](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43355342104), [Browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43355342087), [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43355342099), [Docker sandbox](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43355342197).
+- Target-host diagnostic [#43355339345](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43355339345) remains pending without a Runner assignment. No live Ollama allocation or Codex `exec_command` result is claimed.
+- Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) still requires an independent security review. PR #722 remains Draft/open; no merge, auto-merge, bypass, or deployment.
+
+---
+
 ## 2026-11-12 — Final Autonomous Engineering audit: provisioning and Runner ownership
 
 ### Root-cause findings
