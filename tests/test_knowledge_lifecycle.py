@@ -412,6 +412,17 @@ def test_rejection_requires_two_models_and_two_live_contradictory_sources(lifecy
         "app.web_sources.fetch_public_document",
         lambda *_args, **_kwargs: pytest.fail("terminal rejection must not fetch sources again"),
     )
+    with pytest.raises(ValueError, match="new versioned candidate"):
+        knowledge_lifecycle.record_candidate_review(
+            candidate_id,
+            candidate_sha256=digest,
+            review_kind="source",
+            verdict="inconclusive",
+            reviewer_id="source-reviewer",
+            note="A terminal candidate requires a new version before reassessment.",
+            source_url=urls[0],
+            source_sha256="2" * 64,
+        )
     monkeypatch.setattr(
         "app.ollama.list_models",
         lambda: pytest.fail("terminal rejection must not invoke models again"),
