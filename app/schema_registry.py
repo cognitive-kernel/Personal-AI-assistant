@@ -1610,7 +1610,6 @@ LEARNING_MIGRATIONS = (
                BEGIN SELECT RAISE(ABORT, 'topic learning method attempts are append-only'); END""",
         ),
     ),
-    ),
 )
 
 
