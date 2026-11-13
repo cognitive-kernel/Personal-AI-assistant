@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 import json
-import math
 import os
 import re
 import socket
@@ -14,7 +13,17 @@ from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 from .db import connection
 from .config import configured_int_setting as _configured_int_setting, configured_float_setting as _configured_float_setting
-from .embedding_service import _dedupe_normalize, _title_embeddings, _title_tokens, _filter_duplicate_titles, _dedupe_content_hash, _embedding_cosine, _find_semantic_duplicate_content, TITLE_SEMANTIC_DUPLICATE_THRESHOLD, SEMANTIC_DUPLICATE_THRESHOLD
+from .embedding_service import (
+    SEMANTIC_DUPLICATE_THRESHOLD,
+    TITLE_SEMANTIC_DUPLICATE_THRESHOLD,
+    _dedupe_content_hash,
+    _dedupe_normalize,
+    _embedding_cosine,
+    _filter_duplicate_titles,
+    _find_semantic_duplicate_content,
+    _title_embeddings,
+    _title_tokens,
+)
 from ..db import get_settings
 from ..config import SETTING_DEFAULTS
 from ..pinned_http import PinnedHTTPHandler, PinnedHTTPSHandler
