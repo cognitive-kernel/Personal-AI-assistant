@@ -335,3 +335,85 @@ def test_candidate_source_api_enforces_web_ai_and_book_metadata(candidate_store)
     ).json()["candidate"]
     assert {item["source_type"] for item in detail["source_provenance"]} == {"ai", "book"}
     assert detail["status"] == "awaiting_test"
+
+
+def test_autonomous_test_plan_skips_human_attestation_only_after_four_path_accuracy_gate(candidate_store):
+    from app.learning_provenance import record_accuracy_evaluation
+
+    paths = ["ai_learning", "basic_learning", "curriculum_learning", "experience_system"]
+    for index in range(100):
+        record_accuracy_evaluation(
+            {
+                "sample_id": f"autonomous-plan-{index}",
+                "learning_path": paths[index % len(paths)],
+                "outcome": "correct" if index < 96 else "incorrect",
+                "verification_method": "deterministic_oracle",
+                "verifier_id": "trusted-oracle-v1",
+                "evidence_ref": f"oracle://learning-case/{index}",
+                "evaluated_at": "2026-11-13T10:00:00Z",
+            },
+            trusted_adapter=True,
+        )
+
+    canonical = "Python dict.get returns the default value when the key is absent."
+    job = learning.create_job("Autonomous oracle plan")
+    candidate_id = _candidate(job["id"], content=canonical)
+    response = candidate_store.post(
+        f"/api/learning/candidates/{candidate_id}/test-plan",
+        json={
+            "confirm": True,
+            "oracle_reviewed": False,
+            "review_note": "Accepted by the aggregate learning accuracy policy.",
+            "tests": [{
+                "name": "dict get default oracle",
+                "objective": "Check the exact Python dictionary default behavior.",
+                "expected_result": "The oracle must match the documented behavior.",
+                "oracle_id": "python.dict-get-default",
+                "oracle_version": 1,
+                "claim": canonical,
+            }],
+        },
+    )
+    assert response.status_code == 201, response.text
+    plan = response.json()["test_plan"]
+    assert plan["oracle_reviewed"] is False
+    assert plan["review_mode"] == "autonomous_accuracy_gate"
+    assert plan["autonomy_gate"]["accuracy"] == 0.96
+    assert plan["autonomy_gate"]["sample_count"] == 100
+
+
+def test_autonomous_test_plan_stays_blocked_at_exactly_95_percent(candidate_store):
+    from app.learning_provenance import record_accuracy_evaluation
+
+    paths = ["ai_learning", "basic_learning", "curriculum_learning", "experience_system"]
+    for index in range(100):
+        record_accuracy_evaluation(
+            {
+                "sample_id": f"blocked-plan-{index}",
+                "learning_path": paths[index % len(paths)],
+                "outcome": "correct" if index < 95 else "incorrect",
+                "verification_method": "deterministic_oracle",
+                "verifier_id": "trusted-oracle-v1",
+                "evidence_ref": f"oracle://learning-case/{index}",
+                "evaluated_at": "2026-11-13T10:00:00Z",
+            },
+            trusted_adapter=True,
+        )
+
+    job = learning.create_job("Blocked autonomous oracle plan")
+    candidate_id = _candidate(job["id"])
+    response = candidate_store.post(
+        f"/api/learning/candidates/{candidate_id}/test-plan",
+        json={
+            "confirm": True,
+            "oracle_reviewed": False,
+            "review_note": "This request must remain blocked at the exact threshold.",
+            "tests": [{
+                "name": "not yet eligible",
+                "objective": "Verify that exact 95 percent does not enable autonomous review.",
+                "expected_result": "Human oracle attestation remains required.",
+            }],
+        },
+    )
+    assert response.status_code == 422
+    assert "strictly above 95%" in response.json()["detail"]
