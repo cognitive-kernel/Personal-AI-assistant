@@ -10,7 +10,7 @@
   - [#732](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/732) CodeQL v4 برای Python و JavaScript؛ Tests، Browser E2E، Dependency Audit و CodeQL موفق؛ 2,135 passed، 2 skipped، 51 deselected. نتیجه اسکن به معنی صفر بودن alertها نیست.
   - [#733](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/733) تطبیق inventory رابط کاربری با 46 تست مستقل؛ سه Workflow اصلی موفق؛ 2,135 passed، 2 skipped، 51 deselected.
   - [#734](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/734) رگرسیون مرز loopback و Cross-Origin برای تمام API routeها؛ سه Workflow اصلی موفق؛ 2,136 passed، 2 skipped، 51 deselected.
-  - [#735](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/735) همگام‌سازی اسناد وضعیت و پذیرش؛ exact-head CI روی revision قبلی موفق بود؛ این به‌روزرسانی جدید باید روی head نهایی خودش دوباره CI بگیرد.
+  - [#735](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/735) همگام‌سازی اسناد وضعیت و پذیرش؛ وضعیت exact-head CI هر revision در خود PR ثبت می‌شود و جایگزین CI پس از ادغام main نیست.
   - [#736](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/736) جلوگیری از دور زدن workflowهای feature-owned از API عمومی؛ سه Workflow اصلی موفق؛ 2,149 passed، 2 skipped، 51 deselected.
   - [#737](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/737) محدودیت Pagination در مرز HTTP/OpenAPI؛ سه Workflow اصلی موفق؛ 2,142 passed، 2 skipped، 51 deselected.
   - [#738](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/738) اعتبارسنجی شناسه‌های مثبت در مسیرهای API؛ سه Workflow اصلی موفق؛ 2,170 passed، 2 skipped، 51 deselected.
