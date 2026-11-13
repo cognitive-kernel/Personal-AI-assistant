@@ -440,11 +440,17 @@ def test_factual_review_uses_bounded_timeout_context_and_model_override(monkeypa
     monkeypatch.setattr(ollama, "get_settings", lambda: {"ollama_timeout_seconds": 120})
     monkeypatch.setattr(ollama, "detect_hardware", lambda: {})
     monkeypatch.setattr(ollama, "runtime_limits", lambda *_args, **_kwargs: {"num_ctx": 8192, "cpu_threads": 3})
+    monkeypatch.setattr(ollama, "_recommended_context_tokens", lambda maximum, estimate, hardware: maximum)
+    monkeypatch.setattr(ollama, "list_models", lambda: [{"name": "reviewer:1", "size": 1_000_000_000}])
     monkeypatch.setattr(ollama, "model_keep_alive", lambda *_args, **_kwargs: "0")
 
     def fake_request(path, payload=None, *, timeout):
         if path == "/api/show":
-            return {"details": {"family": "llama"}, "model_info": {"llama.context_length": 8192}}
+            return {"details": {"family": "llama"}, "model_info": {
+                "llama.context_length": 8192, "llama.block_count": 1,
+                "llama.attention.head_count_kv": 1, "llama.attention.key_length": 1,
+                "llama.attention.value_length": 1,
+            }}
         captured.update(path=path, payload=payload, timeout=timeout)
         return {"message": {"content": "review result"}}
 

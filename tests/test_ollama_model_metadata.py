@@ -80,8 +80,10 @@ def test_model_details_recommends_context_within_model_and_memory_limits(monkeyp
     })
     result = ollama.model_details("llama:8b")
     assert result["maximum_context_tokens"] == 131072
-    assert result["recommended_context_tokens"] == 65536
+    assert result["recommended_context_tokens"] == 32768
     assert result["recommended_context_tokens"] <= result["maximum_context_tokens"]
+    assert result["memory_estimate"]["kv_cache_dtype"].startswith("unknown; FP32 upper bound")
+    assert result["memory_estimate"]["kv_cache_bytes_per_token_upper_bound"] == 32 * 8 * 256 * 4
 
 
 def test_model_details_uses_conservative_context_when_ram_is_low(monkeypatch):
@@ -127,6 +129,7 @@ def test_chat_clamps_requested_context_to_verified_model_maximum(monkeypatch):
         "gpu_available": False,
     })
     monkeypatch.setattr(ollama, "model_keep_alive", lambda *args: "5m")
+    monkeypatch.setattr(ollama, "list_models", lambda: [{"name": "llama:8b", "size": 5_000_000_000}])
     from app import usage_metrics
     monkeypatch.setattr(usage_metrics, "record_ollama_response", lambda **kwargs: None)
 
@@ -135,7 +138,13 @@ def test_chat_clamps_requested_context_to_verified_model_maximum(monkeypatch):
         if path == "/api/show":
             return {
                 "details": {"family": "llama"},
-                "model_info": {"llama.context_length": 8192},
+                "model_info": {
+                    "llama.context_length": 8192,
+                    "llama.block_count": 32,
+                    "llama.attention.head_count_kv": 8,
+                    "llama.attention.key_length": 128,
+                    "llama.attention.value_length": 128,
+                },
             }
         if path == "/api/chat":
             return {"message": {"content": "ok"}}
@@ -344,3 +353,115 @@ def test_codex_context_selection_preserves_exact_minimum_without_rounding():
         result["hardware_maximum_context_tokens"],
     )
     assert result["selected_context_tokens"] == 64001
+
+def test_chat_clamps_context_to_current_hardware_budget_not_only_model_maximum(monkeypatch):
+    calls = []
+    monkeypatch.setattr(ollama, "get_settings", lambda: {
+        "chat_ollama_model": "llama:8b",
+        "chat_ollama_num_ctx": 65536,
+        "chat_ollama_num_thread": 0,
+        "cpu_resource_limit_percent": 90,
+        "ram_budget_max_gb": 25,
+        "ram_safety_reserve_gb": 4,
+        "gpu_enabled": False,
+    })
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {
+        "logical_cpu_count": 8, "total_ram_gb": 8, "available_ram_gb": 8,
+        "gpu_devices": [], "gpu_available": False,
+    })
+    monkeypatch.setattr(ollama, "list_models", lambda: [{"name": "llama:8b", "size": 2_000_000_000}])
+    monkeypatch.setattr(ollama, "model_keep_alive", lambda *args: "0")
+    from app import usage_metrics
+    monkeypatch.setattr(usage_metrics, "record_ollama_response", lambda **kwargs: None)
+
+    def fake_request(path, payload=None, timeout=None):
+        calls.append((path, payload))
+        if path == "/api/show":
+            return {
+                "details": {"family": "llama"},
+                "model_info": {
+                    "llama.context_length": 131072,
+                    "llama.block_count": 32,
+                    "llama.attention.head_count_kv": 8,
+                    "llama.attention.key_length": 128,
+                    "llama.attention.value_length": 128,
+                },
+            }
+        if path == "/api/chat":
+            return {"message": {"content": "ok"}}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(ollama, "_request", fake_request)
+    assert ollama.chat("hello") == "ok"
+    payload = next(payload for path, payload in calls if path == "/api/chat")
+    assert payload["options"]["num_ctx"] == 4096
+
+
+def test_chat_refuses_inference_when_hardware_safe_context_cannot_be_estimated(monkeypatch):
+    calls = []
+    monkeypatch.setattr(ollama, "get_settings", lambda: {
+        "chat_ollama_model": "unknown-architecture:latest",
+        "chat_ollama_num_ctx": 8192,
+        "chat_ollama_num_thread": 0,
+        "cpu_resource_limit_percent": 90,
+        "ram_budget_max_gb": 25,
+        "ram_safety_reserve_gb": 4,
+        "gpu_enabled": False,
+    })
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {
+        "logical_cpu_count": 8, "available_ram_gb": 24, "gpu_devices": [],
+    })
+    monkeypatch.setattr(ollama, "list_models", lambda: [{"name": "unknown-architecture:latest", "size": 2_000_000_000}])
+
+    def fake_request(path, payload=None, timeout=None):
+        calls.append(path)
+        if path == "/api/show":
+            return {
+                "details": {"family": "unknown"},
+                "model_info": {"unknown.context_length": 32768},
+            }
+        raise AssertionError("No inference may run without a hardware-safe context.")
+
+    monkeypatch.setattr(ollama, "_request", fake_request)
+    import pytest
+    with pytest.raises(ollama.OllamaError, match="Cannot calculate a hardware-safe context"):
+        ollama.chat("hello")
+    assert calls == ["/api/show"]
+
+
+def test_integrated_intel_gpu_shared_memory_is_not_a_dedicated_vram_budget():
+    assert ollama._dedicated_gpu_budget_gb({
+        "gpu_devices": [{
+            "vendor": "Intel",
+            "name": "Intel UHD Graphics 730",
+            "device_type": "integrated",
+            "memory_free_mb": 8192,
+        }]
+    }) is None
+
+
+def test_dedicated_discrete_gpu_memory_can_be_used_when_measured():
+    assert ollama._dedicated_gpu_budget_gb({
+        "gpu_devices": [{
+            "vendor": "NVIDIA",
+            "name": "Discrete GPU",
+            "device_type": "discrete",
+            "memory_free_mb": 8192,
+        }]
+    }) == 8.0
+
+
+def test_model_memory_estimate_rejects_fractional_architecture_dimensions():
+    estimate = ollama._model_memory_estimate(
+        "bad-metadata",
+        {
+            "llama.block_count": 32.5,
+            "llama.attention.head_count_kv": 8,
+            "llama.attention.key_length": 128,
+            "llama.attention.value_length": 128,
+        },
+        {"family": "llama"},
+        2_000_000_000,
+    )
+    assert estimate is None
+

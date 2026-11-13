@@ -900,11 +900,36 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
                 values[context_key] = context_value
                 if model_key == "chat_ollama_model":
                     values["ollama_num_ctx"] = context_value
+
+        # Enforce the model's declared maximum before requiring memory telemetry.
+        # This keeps an over-model request deterministic even if RAM/KV metadata
+        # is incomplete, while still failing closed for an in-range unsafe request.
         if isinstance(context_value, int) and not isinstance(context_value, bool) and context_value > maximum:
             raise HTTPException(
                 status_code=422,
                 detail=f"{context_key} cannot exceed {maximum} tokens supported by {model_name}.",
             )
+
+        if context_changed:
+            hardware_safe_context = metadata.get("recommended_context_tokens")
+            if (
+                not isinstance(hardware_safe_context, int)
+                or isinstance(hardware_safe_context, bool)
+                or hardware_safe_context < 512
+                or hardware_safe_context > maximum
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"A hardware-safe context cannot be calculated for {model_name}; "
+                        "verify model weights, KV-cache metadata, and available RAM first."
+                    ),
+                )
+            if isinstance(context_value, int) and context_value > hardware_safe_context:
+                context_value = hardware_safe_context
+                values[context_key] = context_value
+                if model_key == "chat_ollama_model":
+                    values["ollama_num_ctx"] = context_value
     for key in ("ollama_model", "ollama_embedding_model", "chat_ollama_model", "research_plan_ollama_model", "learning_ollama_model", "programming_ollama_model"):
         if key in values and (
             not isinstance(values[key], str) or not values[key].strip() or len(values[key]) > 200
