@@ -102,7 +102,7 @@ $readinessScripts = @(
     "scripts\provision_autonomous_runner.ps1"
 )
 foreach ($relativePath in $readinessScripts) {
-    $scriptPath = Join-Path $repositoryRoot $relativePath
+    $scriptPath = Join-Path (Split-Path -Parent $PSScriptRoot) $relativePath
     $tokens = $null
     $parseErrors = $null
     [System.Management.Automation.Language.Parser]::ParseFile(
