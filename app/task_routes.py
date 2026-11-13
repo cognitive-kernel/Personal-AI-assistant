@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
-from pydantic import BaseModel, Field, StrictInt
+from pydantic import BaseModel, Field, StrictInt, StringConstraints
 
 from . import task_manager
 from .task_manager import TaskManagerError, TaskNotFoundError
@@ -73,7 +73,7 @@ def create_task(request: TaskCreateRequest) -> dict[str, Any]:
 
 @router.get("")
 def list_tasks(
-    statuses: list[str] | None = Query(default=None),
+    statuses: list[Annotated[str, StringConstraints(max_length=32)]] | None = Query(default=None, max_length=8),
     limit: int = Query(default=50, ge=1, le=100),
     cursor: str | None = Query(default=None, max_length=256),
 ) -> dict[str, Any]:
