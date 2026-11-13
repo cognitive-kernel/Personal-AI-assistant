@@ -4,7 +4,7 @@ This package is enabled by default and remains isolated. It must not replace the
 
 ## Settings controls
 
-- `ai_learning_enabled`: enabled by default; controls the management API and subsystem.
+- `ai_learning_knowledge_enabled`: enabled by default; controls the knowledge-library management API and subsystem. `ai_learning_enabled` independently controls the model-backed AI Learning method in the three-method curriculum.
 - `ai_learning_retrieval_enabled`: enabled by default; retrieves only explicitly published content.
 - `ai_learning_browser_enabled`: enabled by default; controls the visible-browser adapter.
 - Batch sizes, chunk dimensions, embedding batch size, browser/response timeouts, continuation count, stability window and retry budget are persisted in the central Settings store and validated by `PATCH /api/settings`.
@@ -98,7 +98,7 @@ Login requirements, human verification, missing Chrome/Playwright dependencies, 
 
 ## Persisted queue recovery and quality regression checks
 
-The AI-learning run records in SQLite are the source of truth for explicitly submitted outline/lesson work. When `ai_learning_enabled` is true in the persisted Settings store (the default), application startup initializes the isolated store and attempts to dispatch the oldest persisted `queued` run whose `next_retry_at` is due, or an interrupted `running` run, unless global pause is active. The 30-second learning-runtime maintenance callback also dispatches due scheduled retries. The dispatcher drains remaining persisted runs after each worker finishes. Recovery reuses the saved prompt and run ID; it does not restore the exact ChatGPT tab state, and ChatGPT may need to generate the answer again. The browser still runs as an in-process thread, but the shared SQLite lease serializes ownership across application processes using the same local AI-learning DB and Chrome profile. This does not make SQLite a multi-host distributed queue.
+The AI-learning run records in SQLite are the source of truth for explicitly submitted outline/lesson work. When `ai_learning_knowledge_enabled` is true in the persisted Settings store (the default), application startup initializes the isolated store and attempts to dispatch the oldest persisted `queued` run whose `next_retry_at` is due, or an interrupted `running` run, unless global pause is active. The 30-second learning-runtime maintenance callback also dispatches due scheduled retries. The dispatcher drains remaining persisted runs after each worker finishes. Recovery reuses the saved prompt and run ID; it does not restore the exact ChatGPT tab state, and ChatGPT may need to generate the answer again. The browser still runs as an in-process thread, but the shared SQLite lease serializes ownership across application processes using the same local AI-learning DB and Chrome profile. This does not make SQLite a multi-host distributed queue.
 
 The offline quality evaluator in `app/ai_learning/evaluation.py` measures expected retrieval hits, forbidden result-ID leakage, Persian/Arabic text normalization, expected answer-concept coverage, explicitly forbidden phrases, answer minimum length and expected source-link coverage. It has no external-model dependency and is intended for deterministic regression tests, not a proof of factual correctness. Human review remains required before publishing knowledge. Run it through the regular test suite with `pytest tests/test_ai_learning_evaluation.py tests/test_ai_learning_queue_recovery.py`.
 
