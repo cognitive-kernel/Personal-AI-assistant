@@ -12,7 +12,8 @@ from urllib.parse import urlparse
 from typing import Any
 
 from .db import get_settings, init_databases, learning_connection
-from .learning_provenance import candidate_source_contract_status, get_aggregate_learning_accuracy
+from .learning_source_provenance import candidate_source_contract_status
+from .learning_accuracy_gate import get_aggregate_learning_accuracy
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _REVIEW_KINDS = {"source", "ai_review", "test_review"}
