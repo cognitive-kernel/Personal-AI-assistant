@@ -731,7 +731,7 @@ def test_playwright_capture_uses_visible_ui_and_keeps_extension_permissions_narr
     assert "storage_state(" not in automation
     assert '_configured_seconds("ai_learning_stability_seconds", int(_STABLE_SECONDS), 1, 120)' in automation
     assert "_capture_lesson_until_complete" in automation
-    assert "_MAX_LESSON_CONTINUATIONS = 8" in automation
+    assert '_MAX_LESSON_CONTINUATIONS = int(SETTING_DEFAULTS["ai_learning_max_lesson_continuations"])' in automation
     assert "lesson_continuation_limit" in automation
     assert "service.save_run_partial_response(" in automation
     assert "_worker_lease_kwargs" in automation
