@@ -30,6 +30,20 @@ def _configured_int_setting(name: str, default: int, minimum: int, maximum: int)
         raise RuntimeError(f"Persisted setting {name} is outside its validated range.")
     return value
 
+def _configured_float_setting(name: str, default: float, minimum: float, maximum: float) -> float:
+    """Read a finite, range-checked numeric setting from the shared settings contract."""
+    settings = get_settings()
+    value = settings.get(name, default)
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or not minimum <= value <= maximum
+    ):
+        raise RuntimeError(f"Persisted setting {name} is outside its validated range.")
+    return float(value)
+
+
 class NotFoundError(KeyError):
     """Requested learning resource does not exist."""
 
@@ -166,7 +180,7 @@ def _filter_duplicate_titles(candidates: list[str], existing_titles: list[str]) 
                     candidate_vector,
                     embedding_cache[_dedupe_normalize(existing)],
                 )
-                if score >= TITLE_SEMANTIC_DUPLICATE_THRESHOLD:
+                if score >= _configured_float_setting("ai_learning_title_duplicate_threshold", TITLE_SEMANTIC_DUPLICATE_THRESHOLD, 0.80, 1.0):
                     if best is None or score > best[1]:
                         best = (existing, score)
         if best:
@@ -1567,7 +1581,7 @@ def complete_run(
                         return get_run(run_id)
                     for previous_topic_id, previous_title, previous_vector in seen_sections:
                         score = _embedding_cosine(vector, previous_vector)
-                        if score >= SEMANTIC_DUPLICATE_THRESHOLD and topic_id not in duplicate_sections:
+                        if score >= _configured_float_setting("ai_learning_content_duplicate_threshold", SEMANTIC_DUPLICATE_THRESHOLD, 0.80, 1.0) and topic_id not in duplicate_sections:
                             previous_topic = next(
                                 (str(item["title"]) for item in topics if int(item["id"]) == previous_topic_id),
                                 f"topic {previous_topic_id}",
@@ -2258,9 +2272,9 @@ def _find_semantic_duplicate_content(
     for row in rows:
         text = str(row["markdown"]).strip()
         if text:
-            content_by_hash.setdefault(_dedupe_content_hash(text), text[:6000])
+            content_by_hash.setdefault(_dedupe_content_hash(text), text[:_configured_int_setting("ai_learning_embedding_input_max_chars", 6000, 256, 100000)])
     candidate_hash = _dedupe_content_hash(markdown)
-    content_by_hash.setdefault(candidate_hash, markdown.strip()[:6000])
+    content_by_hash.setdefault(candidate_hash, markdown.strip()[:_configured_int_setting("ai_learning_embedding_input_max_chars", 6000, 256, 100000)])
 
     cached = conn.execute(
         "SELECT content_sha256,embedding_json FROM semantic_embedding_cache WHERE embedding_model=?",
@@ -2279,8 +2293,9 @@ def _find_semantic_duplicate_content(
             continue
 
     missing = [(digest, text) for digest, text in content_by_hash.items() if digest not in vectors]
-    for offset in range(0, len(missing), 32):
-        batch = missing[offset:offset + 32]
+    embedding_batch_size = _configured_int_setting("ai_learning_embedding_batch_size", 64, 1, 256)
+    for offset in range(0, len(missing), embedding_batch_size):
+        batch = missing[offset:offset + embedding_batch_size]
         batch_vectors = ollama_embed([text for _, text in batch], model=model)
         if len(batch_vectors) != len(batch):
             raise RuntimeError("Embedding model returned an incomplete batch.")
@@ -2316,7 +2331,8 @@ def _find_semantic_duplicate_content(
                 "score": score,
                 "method": "embedding",
             }
-    return best if best is not None and float(best["score"]) >= SEMANTIC_DUPLICATE_THRESHOLD else None
+    content_duplicate_threshold = _configured_float_setting("ai_learning_content_duplicate_threshold", SEMANTIC_DUPLICATE_THRESHOLD, 0.80, 1.0)
+    return best if best is not None and float(best["score"]) >= content_duplicate_threshold else None
 
 
 def add_content_version(lesson_id: int, markdown: str, *, raw_response: str | None = None,
