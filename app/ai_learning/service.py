@@ -13,6 +13,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 from .db import connection
+from .embedding_identity import embedding_cache_identity
 from ..db import get_settings
 from ..config import SETTING_DEFAULTS
 from ..ollama import embed as ollama_embed
@@ -1540,13 +1541,14 @@ def complete_run(
                     or os.getenv("OLLAMA_EMBEDDING_MODEL")
                     or "nomic-embed-text"
                 ).strip()
+                embedding_cache_model = embedding_cache_identity(embedding_settings, embedding_model)
                 seen_sections: list[tuple[int, str, list[float]]] = []
                 for topic_id, title, body in sections:
                     digest = _dedupe_content_hash(body)
                     cached = conn.execute(
                         "SELECT embedding_json FROM semantic_embedding_cache "
                         "WHERE content_sha256=? AND embedding_model=?",
-                        (digest, embedding_model),
+                        (digest, embedding_cache_model),
                     ).fetchone()
                     if cached is None:
                         conn.execute(
@@ -2266,7 +2268,8 @@ def _find_semantic_duplicate_content(
         or "nomic-embed-text"
     ).strip()
     if not model:
-        raise RuntimeError("No local embedding model is configured.")
+        raise RuntimeError("No embedding model is configured.")
+    embedding_cache_model = embedding_cache_identity(settings, model)
 
     content_by_hash: dict[str, str] = {}
     for row in rows:
@@ -2278,7 +2281,7 @@ def _find_semantic_duplicate_content(
 
     cached = conn.execute(
         "SELECT content_sha256,embedding_json FROM semantic_embedding_cache WHERE embedding_model=?",
-        (model,),
+        (embedding_cache_model,),
     ).fetchall()
     vectors: dict[str, list[float]] = {}
     for row in cached:
@@ -2305,7 +2308,7 @@ def _find_semantic_duplicate_content(
                 """INSERT INTO semantic_embedding_cache(content_sha256,embedding_model,embedding_json)
                    VALUES(?,?,?) ON CONFLICT(content_sha256,embedding_model)
                    DO UPDATE SET embedding_json=excluded.embedding_json""",
-                (digest, model, encoded),
+                (digest, embedding_cache_model, encoded),
             )
             vectors[digest] = [float(value) for value in vector]
 
