@@ -401,9 +401,10 @@ def test_target_diagnostic_verifies_owner_confirmed_hardware_profile():
     assert "logical_processors" in diagnostic
     assert "total_physical_ram_gib" in diagnostic
     assert "gpu_inventory" in diagnostic
-    assert "physicalCores -le 0" in diagnostic
-    assert "logicalProcessors -le 0" in diagnostic
-    assert "totalRamGiB -le 0" in diagnostic
+    assert "$physicalCores -ne 6 -or $logicalProcessors -ne 12" in diagnostic
+    assert "$totalRamGiB -lt 30.0 -or $totalRamGiB -gt 33.0" in diagnostic
+    assert "$operatingSystem.BuildNumber -ne '26300'" in diagnostic
+    assert "$gpuMatches.Count -lt 1" in diagnostic
     assert "Target CPU does not match the owner-confirmed Intel Core i5-12400 profile" in diagnostic
     assert "physicalCores -ne 6 -or $logicalProcessors -ne 12" in diagnostic
     assert "31.78 GiB / 32 GB class (30–33 GiB tolerance)" in diagnostic
