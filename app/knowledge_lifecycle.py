@@ -178,7 +178,7 @@ def candidate_readiness(candidate_id: int) -> dict[str, Any]:
                 "SELECT COUNT(*) FROM knowledge_candidate_reviews WHERE candidate_id=?", (candidate_id,)
             ).fetchone()[0])
             contradictions = [
-                {"kind": item["review_kind"], "reviewer_id": item["reviewer_id"], "note": item["note"][:300]}
+                {"kind": item["review_kind"], "reviewer_id": item["reviewer_id"], "source_host": item["source_host"], "note": item["note"][:300]}
                 for item in reviews if item["verdict"] == "contradicts"
             ]
             content_retained = bool(str(candidate["content"] or ""))
