@@ -21,6 +21,14 @@ CHUNK_TARGET_CHARS = 1_800
 CHUNK_OVERLAP_CHARS = 180
 MAX_SCHEDULED_RUN_RETRIES = 2
 
+def _configured_int_setting(name: str, default: int, minimum: int, maximum: int) -> int:
+    """Read a validated integer from the shared persistent settings contract."""
+    settings = get_settings()
+    value = settings.get(name, default)
+    if type(value) is not int or not minimum <= value <= maximum:
+        raise RuntimeError(f"Persisted setting {name} is outside its validated range.")
+    return value
+
 class NotFoundError(KeyError):
     """Requested learning resource does not exist."""
 
@@ -62,8 +70,9 @@ def _title_embeddings(texts: list[str]) -> list[list[float]]:
         raise RuntimeError("No local embedding model is configured for title duplicate checks.")
     # Keep large outlines from becoming one oversized local-model request.
     vectors: list[list[float]] = []
-    for offset in range(0, len(texts), 64):
-        batch = texts[offset:offset + 64]
+    batch_size = _configured_int_setting("ai_learning_embedding_batch_size", 64, 1, 256)
+    for offset in range(0, len(texts), batch_size):
+        batch = texts[offset:offset + batch_size]
         batch_vectors = ollama_embed(batch, model=model)
         if len(batch_vectors) != len(batch) or any(not vector for vector in batch_vectors):
             raise RuntimeError("Embedding model returned incomplete title vectors.")
@@ -652,7 +661,7 @@ def schedule_run_retry(
     *,
     delay_seconds: int,
     response_text: str | None = None,
-    max_attempts: int = MAX_SCHEDULED_RUN_RETRIES,
+    max_attempts: int | None = None,
     worker_lease_owner: str | None = None,
     worker_lease_epoch: int | None = None,
 ) -> dict[str, Any] | None:
@@ -661,8 +670,12 @@ def schedule_run_retry(
     error_message = _clean_text(error_message, "error_message", 1000)
     if isinstance(delay_seconds, bool) or not isinstance(delay_seconds, int) or not 1 <= delay_seconds <= 86_400:
         raise ValueError("delay_seconds must be an integer between 1 and 86400.")
-    if isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or not 1 <= max_attempts <= 10:
-        raise ValueError("max_attempts must be an integer between 1 and 10.")
+    if max_attempts is None:
+        max_attempts = _configured_int_setting("ai_learning_max_retries", MAX_SCHEDULED_RUN_RETRIES, 0, 5)
+    if isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or not 0 <= max_attempts <= 10:
+        raise ValueError("max_attempts must be an integer between 0 and 10.")
+    if max_attempts == 0:
+        return None
     if response_text is not None:
         response_text = _clean_required_text(response_text, "response_text")
     with connection() as conn:
@@ -2615,18 +2628,22 @@ def soft_delete_lesson(lesson_id: int) -> dict[str, Any]:
         return {"id": lesson_id, "deleted": True, "remaining_lessons": remaining_lessons}
 
 def _chunk_text(markdown: str) -> list[tuple[str, str]]:
+    target_chars = _configured_int_setting("ai_learning_chunk_target_chars", CHUNK_TARGET_CHARS, 256, 10000)
+    overlap_chars = _configured_int_setting("ai_learning_chunk_overlap_chars", CHUNK_OVERLAP_CHARS, 0, 2000)
+    if overlap_chars >= target_chars:
+        raise RuntimeError("AI-learning chunk overlap must be smaller than the target size.")
     chunks: list[tuple[str, str]] = []
     heading = ""
     buffer = ""
     def flush() -> None:
         nonlocal buffer
         text = buffer.strip()
-        while len(text) > CHUNK_TARGET_CHARS:
+        while len(text) > target_chars:
             cut = text.rfind("\n", 0, CHUNK_TARGET_CHARS)
-            if cut < CHUNK_TARGET_CHARS // 2:
-                cut = CHUNK_TARGET_CHARS
+            if cut < target_chars // 2:
+                cut = target_chars
             chunks.append((heading, text[:cut].strip()))
-            text = text[max(0, cut - CHUNK_OVERLAP_CHARS):].strip()
+            text = text[max(0, cut - overlap_chars):].strip()
         if text:
             chunks.append((heading, text))
         buffer = ""
@@ -2636,10 +2653,10 @@ def _chunk_text(markdown: str) -> list[tuple[str, str]]:
             heading = line.strip()[:500]
         else:
             buffer += line + "\n"
-            if len(buffer) >= CHUNK_TARGET_CHARS:
+            if len(buffer) >= target_chars:
                 flush()
     flush()
-    return chunks or [("", markdown[:CHUNK_TARGET_CHARS])]
+    return chunks or [("", markdown[:target_chars])]
 
 def publish_content(version_id: int) -> dict[str, Any]:
     """Publish only reviewed content; replace active chunks atomically."""
