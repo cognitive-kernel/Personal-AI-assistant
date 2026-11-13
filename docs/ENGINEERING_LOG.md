@@ -635,3 +635,24 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Issue #290 remains authoritative: no automatic PR merge, deployment, cloud provisioning, or remote execution. The controller never calls the merge API and accepts only a human merge actor; owner review and manual merge remain required.
 - This CI proves repository tests and the configured Windows storage regression job only. A real target-host Codex/Ollama tool-call smoke, long-duration soak, crash/restart acceptance, staging restore/rollback, and independent security review (Issue #52) remain pending and are not claimed.
 - No direct write to `main`, force-push, deployment, destructive state reset, or user-data deletion occurred. This verification snapshot is for the exact SHA above; any subsequent commit requires its own exact-head CI.
+
+## 2026-11-13 — PR #742: enforce server-side confirmation for destructive AI-learning reset
+
+### Root-cause analysis
+
+- `POST /api/ai-learning/reset-learning-data` deleted captured topics, lessons, content versions, run history, and query traces after checking browser-worker quiescence.
+- The exact confirmation phrase was enforced only by the browser UI. The API accepted a bodyless POST, so a local caller bypassing the UI could invoke the destructive operation without the confirmation step.
+- Worker quiescence prevented concurrent writes but did not establish explicit user intent; these are separate safety invariants.
+
+### Corrective change
+
+- Add a strict Pydantic request contract requiring the exact phrase `RESET AI LEARNING DATA` and rejecting missing, legacy, or extra fields before the reset function is called.
+- Update the active AI-learning UI to submit that phrase to the server.
+- Add regressions proving invalid requests do not call the reset operation and a valid request invokes it once.
+- Update the operator/testing instructions. The existing worker/lease checks and reset data semantics are unchanged.
+
+### Data safety and validation
+
+- No database, migration, stored lesson, course, task, or user data was modified by the implementation.
+- Exact-head GitHub Actions for PR #742 are pending; no local or human test is claimed.
+- Residual risk: the operation remains intentionally destructive after explicit confirmation and worker-quiescence checks. This fix does not replace backup/restore acceptance or independent security review.
