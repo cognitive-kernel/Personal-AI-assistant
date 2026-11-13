@@ -679,24 +679,21 @@ def _openai_compatible_chat(
         if item.get("role") in {"user", "assistant"} and isinstance(item.get("content"), str):
             messages.append({"role": item["role"], "content": item["content"][:12000]})
     message_limit = (
-        min(256000, max(1000, int(settings.get(f"{purpose}_source_max_chars", 12000 if purpose == "learning" else 100000))))
-        if purpose in {"learning", "ai_learning", "topic_learning"}
+        min(256000, max(1000, int(settings.get(f"{purpose}_source_max_chars", 16000))))
+        if purpose in {"learning", "ai_learning", "topic_learning", "research_plan", "factual_review"}
         else 72000 if purpose == "programming"
-        else 16000 if purpose == "factual_review"
         else 12000
     )
     messages.append({"role": "user", "content": message[:message_limit]})
     payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False}
+    if num_predict is None and purpose in {"factual_review", "research_plan"}:
+        num_predict = settings.get(f"{purpose}_max_output_tokens")
     if num_predict is not None:
         if isinstance(num_predict, bool) or not isinstance(num_predict, int) or not 1 <= num_predict <= 8192:
             raise ValueError("num_predict must be an integer between 1 and 8192.")
         payload["max_tokens"] = num_predict
     if response_format == "json":
         payload["response_format"] = {"type": "json_object"}
-    if purpose == "factual_review":
-        payload["max_tokens"] = 500
-    elif purpose == "research_plan":
-        payload["max_tokens"] = 700
     request = urllib.request.Request(
         normalized_base + "/chat/completions",
         data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST"
