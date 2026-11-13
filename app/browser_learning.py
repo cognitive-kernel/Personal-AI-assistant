@@ -316,11 +316,14 @@ def _scheduled_course_worker(course_id: int) -> None:
                 _ACTIVE_COURSE_ID = None
         # Drain the queue after success only. A provider/authentication/dependency
         # failure should not cascade across every interrupted course in one startup.
+        status: str | None = None
         try:
             status = get_course(course_id)["status"]
         except Exception:
-            _stop_course_worker_lease_heartbeat(release=True)
-            return
+            # A failed status lookup must not dispatch another course. Avoid
+            # returning from this finally block: that would suppress an
+            # exception already propagating from run_course().
+            status = None
         if status == "completed":
             dispatch_next_course()
         else:
