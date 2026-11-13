@@ -36,10 +36,11 @@ def proposal_repo(tmp_path, monkeypatch):
     _git(root, "config", "user.email", "test@example.invalid")
     _git(root, "add", "app", "tests", "docs")
     _git(root, "commit", "-qm", "baseline")
-    monkeypatch.setenv("SELF_IMPROVEMENT_REPO_ROOT", str(root))
+    # Repository location is configured after the isolated settings DB is initialized.
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
+    db.update_settings({"self_improvement_repo_root": str(root)})
     return root
 
 
