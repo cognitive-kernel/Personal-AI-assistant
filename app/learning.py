@@ -982,7 +982,7 @@ def run_job(job_id: int, *, task_context: Any | None = None) -> None:
         verified_factual_context = _verified_factual_context_for_topic(topic)
         failure_warnings = _failure_warnings_for_topic(topic, limit=3)
         settings = get_settings()
-        max_output_tokens = settings.get(f"{provider_purpose}_max_output_tokens", 3900)
+        max_output_tokens = settings.get(f"{provider_purpose}_max_output_tokens")
         if isinstance(max_output_tokens, bool) or not isinstance(max_output_tokens, int) or not 1 <= max_output_tokens <= 8192:
             raise LearningError(f"Configured output-token budget for {provider_purpose} is invalid.")
         candidate_observations = _prior_assistant_observations(topic, settings)
