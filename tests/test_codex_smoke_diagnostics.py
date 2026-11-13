@@ -496,6 +496,8 @@ def test_sandbox_ci_runs_when_windows_diagnostic_contract_changes():
     root = Path(__file__).resolve().parents[1]
     workflow = (root / ".github" / "workflows" / "sandbox-integration-ci.yml").read_text(encoding="utf-8")
     assert '"tests/test_codex_smoke_diagnostics.py"' in workflow
+    for required_doc in ("README.md", "docs/PROJECT_STATUS.md", "docs/ENGINEERING_LOG.md", "docs/ROADMAP_ACCEPTANCE.md", "docs/operations/CODEX_AUTONOMOUS_ENGINEERING.md", "docs/architecture/ADR-020-codex-adaptive-context.md"):
+        assert f'"{required_doc}"' in workflow
 
 
 def test_required_ci_workflows_cancel_superseded_runs_for_the_same_pull_request():
