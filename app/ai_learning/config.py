@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sqlite3
 import os
+import sqlite3
 from typing import Any
 
 _DEFAULTS: dict[str, bool] = {
@@ -49,7 +50,12 @@ def max_topics_per_run() -> int:
     """Return the configured upper bound for one browser lesson run."""
     from ..db import get_settings
 
-    settings = get_settings()
+    try:
+        settings = get_settings()
+    except sqlite3.OperationalError as exc:
+        if "no such table: settings" not in str(exc).casefold():
+            raise
+        settings = {}
     value = settings.get("ai_learning_lesson_batch_size", 1)
     if type(value) is not int or not 1 <= value <= 20:
         raise RuntimeError("Setting ai_learning_lesson_batch_size is outside its validated range.")
