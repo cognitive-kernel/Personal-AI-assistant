@@ -47,6 +47,7 @@ def client(tmp_path, monkeypatch):
         ("get", "/api/conversations/0/messages", None),
         ("get", "/api/learning/browser/courses/0", None),
         ("get", "/api/learning/jobs/0", None),
+        ("get", "/api/learning/capabilities?path_id=0", None),
         ("get", "/api/research/plans/0", None),
     ],
 )
@@ -230,3 +231,29 @@ def test_autonomous_progress_query_contract_is_finite_and_date_bounded(client):
             date_schema = {**date_schema, **string_branch}
         assert date_schema["minLength"] == 8
         assert date_schema["maxLength"] == 10
+
+
+def test_every_api_integer_id_query_parameter_has_positive_openapi_minimum():
+    schema = app.openapi()
+    inspected = 0
+    for path, path_item in schema["paths"].items():
+        if not path.startswith("/api/"):
+            continue
+        for method, operation in path_item.items():
+            if method not in {"get", "post", "put", "patch", "delete"}:
+                continue
+            for parameter in operation.get("parameters", []):
+                if parameter.get("in") != "query" or not parameter.get("name", "").endswith("_id"):
+                    continue
+                parameter_schema = parameter.get("schema", {})
+                branches = parameter_schema.get("anyOf") or parameter_schema.get("oneOf") or []
+                integer_branch = next((item for item in branches if item.get("type") == "integer"), None)
+                if integer_branch is not None:
+                    parameter_schema = {**parameter_schema, **integer_branch}
+                if parameter_schema.get("type") != "integer":
+                    continue
+                inspected += 1
+                assert parameter_schema.get("minimum", 0) >= 1, (
+                    method, path, parameter
+                )
+    assert inspected >= 2
