@@ -742,3 +742,6 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Added independent output-token budgets for AI Learning, Basic Learning, and Topic/Course Learning, with bounded API validation and Settings UI controls. The previous fixed 3900-token generation/repair limits are now read from the selected method profile.
 - Fixed a provider-routing defect in lesson repair: retries previously forced the Basic Learning provider even when the original job used AI Learning or Topic/Course Learning. Repair requests now retain the original method's provider/model profile and output budget.
 - Settings persistence tests cover defaults, custom values, and invalid limits; the Settings UI contract test requires load/save wiring for every default key.
+
+
+- Extracted the method-scoped lesson request contract into `app/learning_model_adapter.py`. Initial generation and quality repair now share one validated adapter for provider identity, context, threads, timeout and output-token budget; focused tests cover all three method profiles and invalid contracts without network access.
