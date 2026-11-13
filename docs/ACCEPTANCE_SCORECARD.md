@@ -1,9 +1,20 @@
 # Weighted engineering and acceptance scorecard
 
-**Snapshot:** 2026-11-01  
-**Repository:** `cognitive-kernel/Personal-AI-assistant`  
-**Scored baseline:** `main` at `2a5c83bf0ba924f4a2c8f206338a04872562d72d`  
+**Last formal score calculation:** 2026-11-01  
+**Last scored baseline:** `main` at `2a5c83bf0ba924f4a2c8f206338a04872562d72d`  
+**Current main baseline:** `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`  
 **Purpose:** Reproducible progress accounting required by `docs/MASTER_ENGINEERING_PROMPT.md`. This is a provisional engineering-progress measure, not a release-readiness or product-quality certification.
+
+## 2026-11-13 — Current baseline and pending PR evidence (score not recalculated)
+
+The weighted value below (**57.45% overall / 60.47% repository engineering**) is the last formally calculated result from 2026-11-01. It is **historical, not a fresh score for current main**. A new score is intentionally deferred until the full issue #290 workstream audit is complete; no gate is promoted solely because a PR is open or hosted CI passes.
+
+- Current main `f87e15b9eb76f7395ea4380382d95f1bc64e21ed` exact CI passed: Tests [#43168304132](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43168304132) — **2,135 passed, 2 skipped, 51 deselected**, 11 focused regressions, 95 Markdown files, import-cycle check, and claim-to-test benchmark 10/10; Browser E2E [#43168304155](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43168304155) and Dependency Audit [#43168304149](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43168304149) passed.
+- PR #722 code/test SHA `add976d03aee1c8f6932590814d9c844338efc7f` passed Tests [#43411202236](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202236) — **2,193 passed, 2 skipped, 51 deselected**; Browser E2E [#43411202329](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202329), Docker full-suite/sandbox [#43411202201](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202201), and Dependency Audit [#43411202351](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202351) passed. Its self-hosted target diagnostic [#43411202380](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202380) remains pending with no Runner assignment. Documentation-only commits followed this code/test SHA and have no recorded exact-head workflow run.
+- PR #725 fixes the browser-learning worker's exception-suppressing `finally` path; exact-head CI passed **2,137 passed, 2 skipped, 51 deselected**, Browser E2E and Dependency Audit passed. It is ready for review but not merged.
+- PR #726 adds hardware-safe generic Ollama chat/context enforcement on current main; exact-head CI was still running at this snapshot. No result is counted yet.
+- PR #706 is stale (56 commits behind main), Draft, and has two failed settings-route tests; its relevant current-main correction is being carried in PR #726.
+- Issue #52 still requires an independent security review. Target-host Codex smoke, soak/restart, staging restore/rollback, and live Persian/English adjudication remain unverified. The latest main autonomous schedule-gate success [#43402375351](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43402375351) skipped the Codex job; it is not target-host evidence.
 
 ## Scoring method
 
