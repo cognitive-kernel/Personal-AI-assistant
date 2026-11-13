@@ -572,8 +572,10 @@ def test_create_task_bounds_serialized_utf8_payload_size_without_partial_persist
     ],
 )
 def test_create_task_rejects_out_of_contract_queue_metadata(task_store, kwargs, message):
+    task_type = kwargs.get("task_type", "bounded.metadata")
+    options = {key: value for key, value in kwargs.items() if key != "task_type"}
     with pytest.raises(ValueError, match=message):
-        task_manager.create_task("bounded.metadata", {}, **kwargs)
+        task_manager.create_task(task_type, {}, **options)
     assert task_manager.list_tasks(limit=10) == []
 
 
