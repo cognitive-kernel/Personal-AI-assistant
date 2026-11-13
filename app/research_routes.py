@@ -1,9 +1,9 @@
 """Loopback-only API for queuing persistent research chat tasks."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, Field, StrictInt, ConfigDict
 
 from . import chat_history, db, research_planner, research_tasks, task_manager
@@ -97,7 +97,7 @@ def queue_research_plan(request: ResearchPlanRequest) -> dict[str, Any]:
 
 
 @router.get("/plans/{task_id}")
-def get_research_plan_progress(task_id: int) -> dict[str, Any]:
+def get_research_plan_progress(task_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     if isinstance(task_id, bool) or task_id < 1:
         raise HTTPException(status_code=422, detail="task_id must be a positive integer.")
     task = task_manager.get_task(task_id)
