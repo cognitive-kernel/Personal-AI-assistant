@@ -1,3 +1,9 @@
+## 2026-11-13 — Master Engineering Prompt merge-gate contract
+
+The repository may continue implementation, automated regression work, static analysis, and GitHub-hosted validation without waiting for local or human execution. However, **all required local tests on the actual target host** remain an explicit pre-merge requirement under `docs/MASTER_ENGINEERING_PROMPT.md`. Tests that are unavailable must remain marked PENDING / NOT RUN; this does not suspend independent engineering work and does not authorize bypassing the merge gate.
+
+---
+
 ## 2026-11-13 — Exact-head validation snapshot (PR #722)
 
 - **Latest exact-head PR commit:** `0613b572525d2a2faa9b169a5babc279db40daba` (documentation-only after code/test SHA `f21f6b01990824680a189ff513bb997b5caed498`). Exact-head CI has now completed successfully: Tests [#43396751698](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43396751698) — **2,193 passed, 2 skipped, 51 deselected**; Browser E2E [#43396751609](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43396751609); Docker full-suite and real sandbox integration [#43396751572](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43396751572); Dependency Audit [#43396751631](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43396751631). All four are successful on this exact SHA.
