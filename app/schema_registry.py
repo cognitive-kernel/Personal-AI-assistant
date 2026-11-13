@@ -1571,7 +1571,7 @@ LEARNING_MIGRATIONS = (
                BEFORE DELETE ON learning_topic_quality_evaluations
                BEGIN SELECT RAISE(ABORT, 'topic quality evaluations are append-only'); END""",
         ),
-
+    ),
     Migration(
         51,
         "three-method-topic-learning-fallback",
