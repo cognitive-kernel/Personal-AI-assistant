@@ -23,42 +23,47 @@ class FakeContext:
 def _configure(monkeypatch, tmp_path):
     executable = tmp_path / "docker"
     executable.write_text("test executable", encoding="utf-8")
-    monkeypatch.setenv("SANDBOX_ENABLED", "true")
-    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", str(executable))
-    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.12-slim@sha256:" + "a" * 64)
+    settings = {
+        "sandbox_enabled": True,
+        "sandbox_docker_executable": str(executable),
+        "sandbox_python_image": "python:3.12-slim@sha256:" + "a" * 64,
+        "sandbox_test_image": "sha256:" + "c" * 64,
+        "sandbox_node_image": "",
+        "sandbox_rust_image": "",
+    }
+    monkeypatch.setattr(sandbox_tasks.db, "get_settings", lambda: settings)
     return executable
 
 
-def test_sandbox_handler_is_disabled_by_default(monkeypatch):
-    monkeypatch.delenv("SANDBOX_ENABLED", raising=False)
-    monkeypatch.delenv("SANDBOX_DOCKER_EXECUTABLE", raising=False)
-    monkeypatch.delenv("SANDBOX_PYTHON_IMAGE", raising=False)
+def test_sandbox_handler_is_unavailable_without_runtime_configuration(monkeypatch):
+    monkeypatch.setattr(sandbox_tasks.db, "get_settings", lambda: {"sandbox_enabled": True})
     assert sandbox_tasks.handler_from_environment() is None
 
 
 @pytest.mark.parametrize("value", ["maybe", "enabled", "2"])
-def test_sandbox_handler_rejects_ambiguous_enable_flag(monkeypatch, value):
-    monkeypatch.setenv("SANDBOX_ENABLED", value)
-    with pytest.raises(ValueError, match="SANDBOX_ENABLED"):
+def test_sandbox_handler_rejects_ambiguous_enable_setting(monkeypatch, value):
+    monkeypatch.setattr(sandbox_tasks.db, "get_settings", lambda: {"sandbox_enabled": value})
+    with pytest.raises(ValueError, match="sandbox_enabled"):
         sandbox_tasks.handler_from_environment()
 
 
 def test_sandbox_handler_requires_absolute_existing_docker_and_digest_pinned_image(
     monkeypatch, tmp_path
 ):
-    monkeypatch.setenv("SANDBOX_ENABLED", "1")
-    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", "docker")
-    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:latest")
+    settings = {
+        "sandbox_enabled": True,
+        "sandbox_docker_executable": "docker",
+        "sandbox_python_image": "python:latest",
+    }
+    monkeypatch.setattr(sandbox_tasks.db, "get_settings", lambda: settings)
     with pytest.raises(ValueError, match="absolute file path"):
         sandbox_tasks.handler_from_environment()
 
     executable = _configure(monkeypatch, tmp_path)
-    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:latest")
+    settings["sandbox_docker_executable"] = str(executable)
     with pytest.raises(ValueError, match="SHA-256 digest"):
         sandbox_tasks.handler_from_environment()
-    monkeypatch.setenv(
-        "SANDBOX_PYTHON_IMAGE", "docker.io/library/python:3.12-slim@sha256:" + "a" * 64
-    )
+    settings["sandbox_python_image"] = "docker.io/library/python:3.12-slim@sha256:" + "a" * 64
     assert sandbox_tasks.handler_from_environment() is not None
     assert executable.is_file()
 
@@ -213,7 +218,7 @@ def test_terminal_container_cleanup_is_disabled_when_sandbox_is_off(
     monkeypatch, tmp_path
 ):
     executable = _configure(monkeypatch, tmp_path)
-    monkeypatch.setenv("SANDBOX_ENABLED", "false")
+    sandbox_tasks.db.get_settings()["sandbox_enabled"] = False
     called = []
     monkeypatch.setattr(
         sandbox_tasks.sandbox, "cleanup_orphaned_containers",
@@ -226,17 +231,17 @@ def test_terminal_container_cleanup_is_disabled_when_sandbox_is_off(
 
 
 @pytest.mark.parametrize(
-    ("language", "env_name", "image", "runner_name"),
+    ("language", "setting_key", "image", "runner_name"),
     [
-        ("javascript", "SANDBOX_NODE_IMAGE", "node:22-bookworm-slim@sha256:" + "b" * 64, "run_language"),
-        ("rust", "SANDBOX_RUST_IMAGE", "rust:1.84-slim@sha256:" + "c" * 64, "run_language"),
+        ("javascript", "sandbox_node_image", "node:22-bookworm-slim@sha256:" + "b" * 64, "run_language"),
+        ("rust", "sandbox_rust_image", "rust:1.84-slim@sha256:" + "c" * 64, "run_language"),
     ],
 )
 def test_language_runner_uses_only_configured_digest_pinned_image(
-    monkeypatch, tmp_path, language, env_name, image, runner_name
+    monkeypatch, tmp_path, language, setting_key, image, runner_name
 ):
     executable = _configure(monkeypatch, tmp_path)
-    monkeypatch.setenv(env_name, image)
+    sandbox_tasks.db.get_settings()[setting_key] = image
     monkeypatch.setattr(sandbox_tasks.sandbox_consent, "is_enabled", lambda: True)
     captured = {}
 
