@@ -4,10 +4,12 @@ import math
 import json
 import platform
 import re
+import uuid
 from typing import Any
 from urllib.parse import urlencode, urlparse
 from .db import learning_connection, get_settings
 from . import ollama
+from . import learning_execution
 from .ollama import _request
 from . import learning_prerequisites
 from . import curricula, factual_knowledge, learning_evidence_gate
@@ -902,17 +904,28 @@ def _select_learning_generation_model(
     }
 
 
-def run_job(job_id: int) -> None:
+def run_job(job_id: int, *, task_context: Any | None = None) -> None:
+    """Generate one lesson under both the task lease and a fenced domain-job epoch."""
+    if task_context is not None:
+        task_context.checkpoint({"phase": "learning_job_claim", "job_id": job_id})
+        execution_owner = f"task:{task_context.task_id}:{task_context.worker_id}"
+    else:
+        execution_owner = f"direct:{uuid.uuid4().hex}"
+    execution_lease = learning_execution.claim_execution(job_id, execution_owner)
+    if execution_lease is None:
+        return
+
+    def assert_execution_owner(phase: str) -> None:
+        if task_context is not None:
+            task_context.checkpoint({
+                "phase": phase,
+                "job_id": job_id,
+                "execution_epoch": execution_lease.epoch,
+            })
+        learning_execution.assert_current(execution_lease)
+
+    assert_execution_owner("learning_job_claimed")
     with learning_connection() as conn:
-        # Atomically claim a queued job. Multiple workers may call run_job for the
-        # same ID after a retry/reconciliation race; only one may start inference.
-        claim = conn.execute(
-            "UPDATE learning_jobs SET status='running', updated_at=CURRENT_TIMESTAMP "
-            "WHERE id=? AND status='queued'",
-            (job_id,),
-        )
-        if claim.rowcount != 1:
-            return
         row = conn.execute("SELECT * FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
         if row is None:
             return
