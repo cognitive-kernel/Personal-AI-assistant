@@ -2375,9 +2375,20 @@ def start_researched_path_learning(
                 "SELECT state, current_job_id FROM learning_topic_quality_gates WHERE path_topic_id=?",
                 (topic["id"],),
             ).fetchone()
-        if quality_gate is None and topic["status"] == "completed":
-            skipped_completed += 1
-            continue
+            if quality_gate is None:
+                conn.execute(
+                    """INSERT OR IGNORE INTO learning_topic_quality_gates(
+                           path_topic_id, current_job_id, state, next_action
+                       ) VALUES (?, ?, 'pending', 'evaluate_existing_lesson')""",
+                    (
+                        int(topic["id"]),
+                        int(latest["id"]) if latest is not None and latest["status"] == "completed" else None,
+                    ),
+                )
+                quality_gate = conn.execute(
+                    "SELECT state, current_job_id FROM learning_topic_quality_gates WHERE path_topic_id=?",
+                    (topic["id"],),
+                ).fetchone()
         if quality_gate is not None:
             if quality_gate["state"] == "passed":
                 skipped_completed += 1
