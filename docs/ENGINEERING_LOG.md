@@ -1,3 +1,14 @@
+## 2026-11-13 — Documentation-inclusive exact-head CI passed
+
+- Current validated documentation-inclusive PR head at this checkpoint: `abc53b92a6495e3f7264af44aaf2c0de06a388ff`; code/test changes remain at `f21f6b01990824680a189ff513bb997b5caed498`.
+- The first documentation-only revision exposed a contract assertion requiring the literal phrase `all required local tests on the actual target host`. Restored that exact phrase in ROADMAP_ACCEPTANCE without weakening the assertion. The acceptance-contract test passed on the resulting exact head.
+- Exact-head Tests [#43395977181](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43395977181): 2,193 passed, 2 skipped, 51 deselected; Python 3.11.9/3.14.6, Windows Storage/PowerShell 5.1, checkpoint recovery, and Codex CLI 0.167.2/0.168.0 passed.
+- Exact-head Browser E2E [#43395977168](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43395977168), Docker full-suite and real sandbox integration [#43395977108](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43395977108), and Dependency Audit [#43395977208](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43395977208) passed. Markdown link validation passed for 96 files; import-cycle check passed; claim-to-test structural benchmark passed 10/10.
+- Target Windows/Ollama diagnostic [#43395977350](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43395977350) remains pending after hosted cleanup because no matching self-hosted Runner has been assigned. Live Ollama version/process, actual process environment for `OLLAMA_NUM_PARALLEL`, `/api/ps` allocation, Codex tool-call smoke, soak/crash-restart, and target-host tests remain unverified.
+- Required target-host tests remain a pre-merge gate under the Master Engineering Prompt; their absence does not stop independent GitHub-side work. PR #722 remains Draft/open/unmerged; no merge, bypass, auto-merge, deployment, or user-data operation occurred.
+
+---
+
 ## 2026-11-13 — Exact-head CI closure and documentation reconciliation
 
 - Re-audited PR #722 against the complete Master Engineering Prompt, current PR head, open Issues #52/#290, and exact-head GitHub Actions.
