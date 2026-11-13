@@ -1,7 +1,7 @@
 import hashlib
 import json
 
-from app import db, learning
+from app import db, knowledge_lifecycle, learning
 from scripts.repair_legacy_rejected_candidates import repair_legacy_rejected_candidates
 
 
@@ -105,7 +105,7 @@ def test_legacy_repair_is_dry_run_by_default_and_restores_only_verified_fields(t
     assert source_text_exists is None
     assert knowledge_item_exists is None
 
-    readiness = __import__("app.knowledge_lifecycle", fromlist=["candidate_readiness"]).candidate_readiness(candidate_id)
+    readiness = knowledge_lifecycle.candidate_readiness(candidate_id)
     assert readiness["status"] == "rejected_after_review"
     assert readiness["checks"]["content_hash_valid"] is True
     assert readiness["checks"]["legacy_partial_recovery"] is True
