@@ -1,9 +1,17 @@
 import json
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app import db, main, ollama
+from app import config, db, main, ollama
+
+
+def test_every_persisted_setting_is_loaded_and_saved_by_dashboard_settings():
+    html_path = Path(__file__).resolve().parents[1] / "app" / "static" / "index.html"
+    html = html_path.read_text(encoding="utf-8")
+    missing = [key for key in config.SETTING_DEFAULTS if html.count(key) < 2]
+    assert missing == [], f"Settings without both load/save wiring: {missing}"
 
 
 @pytest.fixture
