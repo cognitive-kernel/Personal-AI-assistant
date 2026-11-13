@@ -83,3 +83,12 @@ These are **provisional, evidence-based progress scores** using the fixed stage 
 - PRs #734 and #736 have exact-head CI evidence as recorded in the engineering log. PR #737 exact-head CI passed on `5bf13d05283daa2785a52bebfa9d8adf15f988b8` (2,142 passed, 2 skipped, 51 deselected); PR #738 CI is queued/running on `d1190c83a3e2a413e7ee8b9f35c95f10e45a3985`.
 - A defensible current weighted score is deferred until the API/module inventory and all current exact-head checks are complete. No score inflation or interpolation is applied.
 - External gates (independent security review, target-host operations, live-model/human adjudication) remain separately blocked and must never be counted as accepted based on repository CI.
+
+
+## 2026-11-13 — Latest evidence checkpoint
+
+- PR #737 is green on exact head `5bf13d05283daa2785a52bebfa9d8adf15f988b8`: 2,142 passed, 2 skipped, 51 deselected.
+- PR #738 head `5841e303916d0e4791724cde7ff5d53e131e772b`: three workflows passed; full test workflow remains in progress.
+- PR #739 head `9edfdd38716b88708b53772aa93d75c3850b77b7`: dependency audit passed; other checks are running after correction of a test-fixture defect.
+- PR #740 head `a30858b14a897fa463a96a4c5599153c81137e41`: dependency audit and Windows storage passed; test and dashboard checks are running.
+- These are evidence notes, not a recalculated weighted score. The old score remains historical until all gates and the complete route/module audit are reconciled.
