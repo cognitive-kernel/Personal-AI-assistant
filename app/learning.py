@@ -917,6 +917,10 @@ def run_job(job_id: int) -> None:
         if row is None:
             return
         topic, source_kind = row["topic"], row["source_kind"]
+        learning_method = str(row["learning_method"] or "basic_learning")
+        provider_purpose = {"ai_learning": "ai_learning", "basic_learning": "learning", "topic_learning": "topic_learning"}.get(learning_method)
+        if provider_purpose is None:
+            raise LearningError(f"Unsupported persisted learning method: {learning_method}.")
         review_json = row["lesson_review_json"] if "lesson_review_json" in row.keys() else None
         try:
             lesson_review = json.loads(review_json) if review_json else None
@@ -962,14 +966,16 @@ def run_job(job_id: int) -> None:
         failure_warnings = _failure_warnings_for_topic(topic, limit=3)
         settings = get_settings()
         candidate_observations = _prior_assistant_observations(topic, settings)
-        raw_source_limit = settings.get("learning_source_max_chars", 12000)
+        source_limit_key = f"{provider_purpose}_source_max_chars"
+        default_source_limit = 100000 if provider_purpose != "learning" else 12000
+        raw_source_limit = settings.get(source_limit_key, default_source_limit)
         if (
             isinstance(raw_source_limit, bool)
             or not isinstance(raw_source_limit, int)
-            or not 1000 <= raw_source_limit <= 100000
+            or not 1000 <= raw_source_limit <= 256000
         ):
-            raw_source_limit = 12000
-        source_limit = max(1000, min(100000, raw_source_limit))
+            raw_source_limit = default_source_limit
+        source_limit = max(1000, min(256000, raw_source_limit))
         model_source_text = source_text[:source_limit] if source_text else ""
         source_text_truncated = len(source_text) > len(model_source_text)
         indexed_knowledge = _indexed_knowledge_for_topic(topic)
@@ -989,6 +995,12 @@ def run_job(job_id: int) -> None:
         raise LearningError(f"Learning job {job_id} preparation failed.") from exc
     prompt = {
         "topic": topic,
+        "learning_method": learning_method,
+        "learning_method_guidance": {
+            "ai_learning": "AI Learning lane: use the dedicated AI Learning provider/model profile; build a coherent mental model, identify conceptual dependencies, and teach the topic through progressive explanation and synthesis. Preserve source provenance and label model-only claims unverified.",
+            "basic_learning": "Basic Learning lane: use the dedicated Basic Learning provider/model profile; teach from first principles with a clear sequence of definitions, a worked example, practice and common misconceptions.",
+            "topic_learning": "Topic/Course Learning lane: use the dedicated Topic/Course provider/model profile; prioritize the researched course map, exact syllabus position, release chronology, source evidence and unresolved coverage gaps. Do not substitute generic model knowledge for missing course evidence.",
+        }[learning_method],
         "curriculum_provenance": path_topic_context,
         "curriculum_provenance_policy": (
             "For researched-course lessons, use the durable subject map and release ledger as the syllabus-wide chronology; "
