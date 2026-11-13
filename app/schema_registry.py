@@ -1485,6 +1485,31 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_learning_candidate_sources_reference ON learning_candidate_sources(reference_url, source_url)",
         ),
     ),
+,
+    Migration(
+        49,
+        "immutable-cross-path-learning-accuracy-evaluations",
+        (
+            """CREATE TABLE learning_accuracy_evaluations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sample_id TEXT NOT NULL UNIQUE CHECK(length(trim(sample_id)) BETWEEN 1 AND 200),
+                learning_path TEXT NOT NULL
+                    CHECK(learning_path IN ('ai_learning','basic_learning','curriculum_learning','experience_system')),
+                outcome TEXT NOT NULL CHECK(outcome IN ('correct','incorrect')),
+                verification_method TEXT NOT NULL
+                    CHECK(verification_method IN ('official_source_comparison','deterministic_oracle',
+                        'sandbox_test','independent_model','human_adjudication')),
+                verifier_id TEXT NOT NULL CHECK(length(trim(verifier_id)) BETWEEN 1 AND 200),
+                generator_id TEXT,
+                evidence_ref TEXT NOT NULL CHECK(length(trim(evidence_ref)) BETWEEN 1 AND 2048),
+                evaluated_at TEXT NOT NULL,
+                record_json TEXT NOT NULL,
+                record_sha256 TEXT NOT NULL CHECK(length(record_sha256) = 64),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_learning_accuracy_path_outcome ON learning_accuracy_evaluations(learning_path, outcome, id)",
+        ),
+    ),
 )
 
 
