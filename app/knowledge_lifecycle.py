@@ -654,7 +654,7 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
                 """UPDATE temporary_knowledge_candidates
                    SET status='failed', failure_reason=?, updated_at=CURRENT_TIMESTAMP
                    WHERE id=? AND content_sha256=? AND promoted_knowledge_id IS NULL
-                     AND status IN ('awaiting_test','passed')""",
+                     AND status IN ('awaiting_test','passed','failed')""",
                 (reason, candidate_id, current_hash),
             )
             if updated.rowcount != 1:
