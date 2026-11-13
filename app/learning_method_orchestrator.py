@@ -254,6 +254,12 @@ def queue_initial_method(
                 "job": current, "evaluation": evaluation,
             }
         if current["status"] in {"failed", "rejected"}:
+            if not current.get("method_attempt_key"):
+                return _queue_first_enabled_method(
+                    path_topic_id,
+                    attempt_number=1,
+                    source_job_id=int(current["id"]),
+                )
             return advance_after_failure(
                 int(current["id"]),
                 reason=str(current.get("error") or "Learning method execution failed."),
