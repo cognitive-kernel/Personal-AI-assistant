@@ -727,3 +727,66 @@ def test_startup_recovery_releases_lease_when_recovery_transaction_fails(tmp_pat
             "SELECT owner_token FROM browser_learning_worker_lease WHERE lease_name='browser-learning'"
         ).fetchone()
     assert lease is None
+
+def test_scheduled_worker_preserves_run_exception_when_status_lookup_fails(monkeypatch):
+    course_id = 991
+    cleanup_calls = []
+    failure = RuntimeError("provider execution failed")
+
+    monkeypatch.setattr(browser_learning, "_ensure_process_identity", lambda: None)
+    monkeypatch.setattr(browser_learning, "_ACTIVE_COURSE_ID", course_id)
+
+    def fail_run(_course_id):
+        raise failure
+
+    def fail_status_lookup(_course_id):
+        raise LookupError("course status unavailable")
+
+    monkeypatch.setattr(browser_learning, "run_course", fail_run)
+    monkeypatch.setattr(browser_learning, "get_course", fail_status_lookup)
+    monkeypatch.setattr(
+        browser_learning,
+        "_stop_course_worker_lease_heartbeat",
+        lambda *, release: cleanup_calls.append(release),
+    )
+    monkeypatch.setattr(
+        browser_learning,
+        "dispatch_next_course",
+        lambda: pytest.fail("a failed status lookup must not dispatch another course"),
+    )
+
+    with pytest.raises(RuntimeError, match="provider execution failed") as error:
+        browser_learning._scheduled_course_worker(course_id)
+
+    assert error.value is failure
+    assert cleanup_calls == [True]
+    assert browser_learning._ACTIVE_COURSE_ID is None
+
+
+def test_scheduled_worker_stops_lease_without_dispatch_when_status_lookup_fails(monkeypatch):
+    course_id = 992
+    cleanup_calls = []
+
+    monkeypatch.setattr(browser_learning, "_ensure_process_identity", lambda: None)
+    monkeypatch.setattr(browser_learning, "_ACTIVE_COURSE_ID", course_id)
+    monkeypatch.setattr(browser_learning, "run_course", lambda _course_id: None)
+    monkeypatch.setattr(
+        browser_learning,
+        "get_course",
+        lambda _course_id: (_ for _ in ()).throw(LookupError("course status unavailable")),
+    )
+    monkeypatch.setattr(
+        browser_learning,
+        "_stop_course_worker_lease_heartbeat",
+        lambda *, release: cleanup_calls.append(release),
+    )
+    monkeypatch.setattr(
+        browser_learning,
+        "dispatch_next_course",
+        lambda: pytest.fail("a failed status lookup must not dispatch another course"),
+    )
+
+    browser_learning._scheduled_course_worker(course_id)
+
+    assert cleanup_calls == [True]
+    assert browser_learning._ACTIVE_COURSE_ID is None
