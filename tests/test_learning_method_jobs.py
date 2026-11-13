@@ -2,7 +2,7 @@ import concurrent.futures
 
 import pytest
 
-from app import db, learning, learning_method_orchestrator
+from app import db, learning, learning_execution, learning_method_orchestrator
 from app.learning_topic_method_attempts import list_attempt_events
 
 
@@ -21,6 +21,57 @@ def method_job_store(tmp_path, monkeypatch):
             (path_id,),
         ).lastrowid)
     return topic_id
+
+
+def test_learning_job_execution_epoch_fences_stale_workers(method_job_store):
+    topic_id = method_job_store
+    job = learning.create_job(
+        "Research adapters",
+        path_topic_id=topic_id,
+        learning_method="ai_learning",
+        method_attempt_key=f"topic:{topic_id}:ai_learning:1",
+    )
+    first = learning_execution.claim_execution(job["id"], "worker-a")
+    assert first is not None
+    learning_execution.assert_current(first)
+
+    # Simulate durable task recovery: the new owner requeues the domain job,
+    # then claims a strictly newer execution epoch.
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE learning_jobs SET status='queued' WHERE id=?",
+            (job["id"],),
+        )
+    second = learning_execution.claim_execution(job["id"], "worker-b")
+    assert second is not None
+    assert second.epoch == first.epoch + 1
+
+    with pytest.raises(learning_execution.LearningExecutionLeaseLostError):
+        learning_execution.assert_current(first)
+    assert learning_execution.fail_if_current(first, "stale worker failure") is False
+    learning_execution.assert_current(second)
+    current = learning.get_job(job["id"])
+    assert current["status"] == "running"
+    assert current["execution_owner"] == "worker-b"
+    assert current["execution_epoch"] == second.epoch
+
+
+def test_learning_job_execution_claim_is_atomic_under_concurrency(method_job_store):
+    topic_id = method_job_store
+    job = learning.create_job(
+        "Research adapters",
+        path_topic_id=topic_id,
+        learning_method="ai_learning",
+        method_attempt_key=f"topic:{topic_id}:ai_learning:1",
+    )
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        claims = list(executor.map(
+            lambda index: learning_execution.claim_execution(job["id"], f"worker-{index}"),
+            range(8),
+        ))
+    owners = [claim for claim in claims if claim is not None]
+    assert len(owners) == 1
+    learning_execution.assert_current(owners[0])
 
 
 def test_method_job_creation_is_idempotent_and_versioned(method_job_store):
