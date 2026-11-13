@@ -30,6 +30,7 @@ class Defaults:
     programming_ollama_model: str = os.getenv("PROGRAMMING_OLLAMA_MODEL", "qwen3:14b")
     factual_review_ollama_model: str = os.getenv("FACTUAL_REVIEW_OLLAMA_MODEL", "")
     ai_learning_ollama_model: str = os.getenv("AI_LEARNING_OLLAMA_MODEL", os.getenv("CHAT_OLLAMA_MODEL", "qwen2.5:7b"))
+    topic_learning_ollama_model: str = os.getenv("TOPIC_LEARNING_OLLAMA_MODEL", os.getenv("LEARNING_OLLAMA_MODEL", "gpt-oss:20b"))
     settings_db_path: str = os.getenv("SETTINGS_DB_PATH", "data/settings.db")
     learning_db_path: str = os.getenv("LEARNING_DB_PATH", "data/learning.db")
     cloud_resources_db_path: str = os.getenv("CLOUD_RESOURCES_DB_PATH", "data/cloud_resources.db")
@@ -78,6 +79,15 @@ SETTING_DEFAULTS: dict[str, object] = {
     "ai_learning_ollama_timeout_seconds": defaults.ollama_timeout_seconds,
     "ai_learning_model_keep_alive": "0",
     "ai_learning_source_max_chars": 100000,
+    "topic_learning_llm_provider": "ollama",
+    "topic_learning_llm_base_url": "https://api.openai.com/v1",
+    "topic_learning_llm_api_key_env": "",
+    "topic_learning_ollama_model": defaults.topic_learning_ollama_model,
+    "topic_learning_ollama_num_ctx": defaults.ollama_num_ctx,
+    "topic_learning_ollama_num_thread": defaults.ollama_num_thread,
+    "topic_learning_ollama_timeout_seconds": defaults.ollama_timeout_seconds,
+    "topic_learning_model_keep_alive": "0",
+    "topic_learning_source_max_chars": 100000,
     "ram_budget_max_gb": 25,
     "ram_safety_reserve_gb": 4,
     "chat_llm_provider": "ollama",
