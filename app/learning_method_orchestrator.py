@@ -113,14 +113,32 @@ def queue_method_attempt(
                     (source_job_id,),
                 ).fetchone()
             source_text = str(source["content"]) if source is not None else ""
-        job = learning.create_job(
-            topic,
-            source_text=source_text or None,
-            path_topic_id=path_topic_id,
-            learning_method=method,
-            method_attempt_key=method_key,
-            lesson_review=lesson_review,
-        )
+        try:
+            job = learning.create_job(
+                topic,
+                source_text=source_text or None,
+                path_topic_id=path_topic_id,
+                learning_method=method,
+                method_attempt_key=method_key,
+                lesson_review=lesson_review,
+            )
+        except (ValueError, TypeError, KeyError, AssertionError) as exc:
+            append_attempt_event(
+                path_topic_id, method, attempt_number, "failed",
+                event_key=method_key + ":job_creation_failed",
+                diagnosis={
+                    "reason": "Learning method job creation rejected its input or contract.",
+                    "failure_stage": "job_creation",
+                    "exception_type": type(exc).__name__,
+                },
+                evidence={
+                    "failure_stage": "job_creation",
+                    "source_job_id": source_job_id,
+                },
+            )
+            return _queue_next(
+                path_topic_id, method, attempt_number, source_job_id=source_job_id
+            )
     job_id = int(job["id"])
 
     with learning_connection() as connection:
