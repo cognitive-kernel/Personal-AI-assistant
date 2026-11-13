@@ -142,3 +142,35 @@ def test_task_status_filter_query_has_bounded_count_and_value_length(client):
     )
     assert parameter["schema"]["maxItems"] == 8
     assert parameter["schema"]["items"]["maxLength"] == 32
+
+
+def test_every_api_string_query_parameter_has_explicit_size_bounds():
+    schema = app.openapi()
+    inspected = 0
+    for path, path_item in schema["paths"].items():
+        if not path.startswith("/api/"):
+            continue
+        for method, operation in path_item.items():
+            if method not in {"get", "post", "put", "patch", "delete"}:
+                continue
+            for parameter in operation.get("parameters", []):
+                if parameter.get("in") != "query":
+                    continue
+                parameter_schema = parameter.get("schema", {})
+                parameter_type = parameter_schema.get("type")
+                if parameter_type == "string" and "enum" not in parameter_schema:
+                    inspected += 1
+                    assert parameter_schema.get("maxLength", 0) >= 1, (
+                        method, path, parameter
+                    )
+                elif parameter_type == "array":
+                    item_schema = parameter_schema.get("items", {})
+                    if item_schema.get("type") == "string" and "enum" not in item_schema:
+                        inspected += 1
+                        assert parameter_schema.get("maxItems", 0) >= 1, (
+                            method, path, parameter
+                        )
+                        assert item_schema.get("maxLength", 0) >= 1, (
+                            method, path, parameter
+                        )
+    assert inspected >= 5
