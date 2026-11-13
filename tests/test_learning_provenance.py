@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import pytest
 
-from app.learning_provenance import (
+from app.learning_policy_errors import LearningPolicyError
+from app.learning_accuracy_gate import (
     LEARNING_PATHS,
-    LearningProvenanceError,
     evaluate_aggregate_learning_accuracy,
+    record_accuracy_evaluation,
+    get_aggregate_learning_accuracy,
+)
+from app.learning_source_provenance import (
     validate_learning_source,
     validate_learning_sources,
+    list_candidate_sources,
+    record_candidate_source,
 )
 
 
@@ -18,7 +24,7 @@ def test_web_source_requires_direct_https_page():
         "title": "Microsoft Learn",
     })["source_url"].startswith("https://")
     for url in ("", "http://example.com", "https://user:pass@example.com/page", "javascript:alert(1)"):
-        with pytest.raises(LearningProvenanceError):
+        with pytest.raises(LearningPolicyError):
             validate_learning_source({"source_type": "web", "source_url": url})
 
 
@@ -33,14 +39,14 @@ def test_ai_source_requires_provider_model_and_reference_link():
     for missing in ("provider", "model_id", "reference_url"):
         invalid = dict(source)
         invalid.pop(missing)
-        with pytest.raises(LearningProvenanceError):
+        with pytest.raises(LearningPolicyError):
             validate_learning_source(invalid)
 
 
 def test_book_source_requires_title_and_author():
     valid = {"source_type": "book", "book_title": "Clean Architecture", "book_author": "Robert C. Martin"}
     assert validate_learning_source(valid)["book_author"] == "Robert C. Martin"
-    with pytest.raises(LearningProvenanceError):
+    with pytest.raises(LearningPolicyError):
         validate_learning_source({"source_type": "book", "book_title": "A book"})
 
 
@@ -49,7 +55,7 @@ def test_other_sources_are_supported_without_weakening_required_types():
         {"source_type": "other", "description": "Controlled lab observation"},
         {"source_type": "book", "book_title": "Book", "book_author": "Author"},
     ])[0]["description"] == "Controlled lab observation"
-    with pytest.raises(LearningProvenanceError):
+    with pytest.raises(LearningPolicyError):
         validate_learning_sources([])
 
 
@@ -108,24 +114,24 @@ def test_aggregate_gate_requires_all_four_learning_paths():
 def test_evaluation_rejects_duplicate_or_self_verified_samples():
     records = _records(4)
     records.append(dict(records[0]))
-    with pytest.raises(LearningProvenanceError, match="duplicated"):
+    with pytest.raises(LearningPolicyError, match="duplicated"):
         evaluate_aggregate_learning_accuracy(records)
 
     records = _records(4)
     records[0]["verification_method"] = "independent_model"
     records[0]["generator_id"] = records[0]["verifier_id"]
-    with pytest.raises(LearningProvenanceError, match="generating model"):
+    with pytest.raises(LearningPolicyError, match="generating model"):
         evaluate_aggregate_learning_accuracy(records)
 
 
 def test_evaluation_rejects_missing_evidence_and_timezone():
     records = _records(4)
     records[0]["evidence_ref"] = ""
-    with pytest.raises(LearningProvenanceError, match="evidence_ref"):
+    with pytest.raises(LearningPolicyError, match="evidence_ref"):
         evaluate_aggregate_learning_accuracy(records)
     records = _records(4)
     records[0]["evaluated_at"] = "2026-11-13T10:00:00"
-    with pytest.raises(LearningProvenanceError, match="timezone"):
+    with pytest.raises(LearningPolicyError, match="timezone"):
         evaluate_aggregate_learning_accuracy(records)
 
 
@@ -134,7 +140,7 @@ def test_candidate_source_records_are_persisted_idempotently_and_do_not_promote(
     import json
 
     from app import db, learning
-    from app.learning_provenance import list_candidate_sources, record_candidate_source
+    from app.learning_source_provenance import list_candidate_sources, record_candidate_source
 
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
@@ -180,7 +186,7 @@ def test_persisted_accuracy_gate_is_trusted_idempotent_and_integrity_checked(tmp
     import sqlite3
 
     from app import db
-    from app.learning_provenance import (
+    from app.learning_accuracy_gate import (
         get_aggregate_learning_accuracy,
         record_accuracy_evaluation,
     )
@@ -189,7 +195,7 @@ def test_persisted_accuracy_gate_is_trusted_idempotent_and_integrity_checked(tmp
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
 
-    with pytest.raises(LearningProvenanceError, match="trusted verifier"):
+    with pytest.raises(LearningPolicyError, match="trusted verifier"):
         record_accuracy_evaluation(_records(4)[0])
 
     records = _records(96, 4)
@@ -221,7 +227,7 @@ def test_persisted_accuracy_gate_is_trusted_idempotent_and_integrity_checked(tmp
 
 def test_accuracy_record_id_cannot_be_reused_with_different_evidence(tmp_path, monkeypatch):
     from app import db
-    from app.learning_provenance import record_accuracy_evaluation
+    from app.learning_accuracy_gate import record_accuracy_evaluation
 
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
@@ -229,5 +235,5 @@ def test_accuracy_record_id_cannot_be_reused_with_different_evidence(tmp_path, m
     record = _records(4)[0]
     record_accuracy_evaluation(record, trusted_adapter=True)
     changed = dict(record, outcome="incorrect")
-    with pytest.raises(LearningProvenanceError, match="cannot be reused"):
+    with pytest.raises(LearningPolicyError, match="cannot be reused"):
         record_accuracy_evaluation(changed, trusted_adapter=True)
