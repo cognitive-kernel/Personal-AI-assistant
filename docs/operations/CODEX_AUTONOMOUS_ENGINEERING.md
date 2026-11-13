@@ -17,9 +17,9 @@ Official references: [Ollama Codex integration](https://docs.ollama.com/integrat
 
 ## Target hardware and model
 
-No fixed CPU, RAM capacity, or GPU model is a runtime requirement. The target diagnostic records the actual Windows build, CPU name/core counts, physical RAM, and GPU inventory; context selection uses live available-memory and Ollama allocation evidence. It rejects missing/invalid resource telemetry, not a valid machine merely because its hardware differs from an old repository profile.
+Owner-confirmed target hardware: Intel Core i5-12400 (6 physical cores / 12 logical threads), approximately 31.78 GiB physical RAM (32 GB class), Intel UHD Graphics 730, Windows 11 x64 build 10.0.26300. The target diagnostic checks live CIM telemetry against this profile, allowing 30–33 GiB for RAM reporting variance. A Runner attached to a different host must not pass as the user's target machine.
 
-The previously documented Intel Core i5-12400 / 32 GB RAM / Intel UHD Graphics 730 profile is historical repository context only; it is not verified as the current user's hardware and is not an acceptance gate. WMI AdapterRAM is not proof of dedicated VRAM; WDDM dedicated/shared memory and Ollama /api/ps size_vram remain separate runtime measurements.
+Context sizing uses live available-memory and Ollama allocation evidence, not nominal installed RAM alone. UHD 730 is integrated graphics: WMI AdapterRAM is not proof of dedicated VRAM; WDDM dedicated/shared memory and Ollama `/api/ps` `size_vram` remain separate runtime measurements. CPU-only inference on the i5-12400 remains valid if GPU offload is unavailable.
 
 For this audit, user-confirmed software context is Windows 11 x64 build 10.0.26300, Python 3.14.6 (with Python 3.11.9 also available), and Git 2.54.0. GitHub CI additionally tests Python 3.11.9/3.14.6, Node.js 26.13.0/npm 11.20.0, and Codex CLI 0.167.0/0.167.2. Actual Node/Codex/Ollama installations on the target host must be diagnosed rather than assumed.
 
