@@ -169,3 +169,84 @@ def evaluate_aggregate_learning_accuracy(records: Any) -> dict[str, Any]:
             "production actions, or bypass of safety and access controls."
         ),
     }
+
+
+def record_candidate_source(
+    candidate_id: int,
+    source: Any,
+    *,
+    verification_status: str = "unverified",
+) -> dict[str, Any]:
+    """Persist one validated source record without changing candidate trust/status."""
+    if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
+        raise LearningProvenanceError("candidate_id must be a positive integer.")
+    if verification_status not in {"unverified", "verified", "inconclusive", "contradicted", "stale"}:
+        raise LearningProvenanceError("Unsupported source verification status.")
+    normalized = validate_learning_source(source)
+    from .db import learning_connection
+
+    fields = (
+        "source_type", "source_url", "reference_url", "title", "book_title",
+        "book_author", "provider", "model_id", "edition", "publisher", "isbn",
+        "page", "chapter", "description",
+    )
+    values = {field: normalized.get(field) for field in fields}
+    metadata = {
+        key: value for key, value in normalized.items()
+        if key not in {*fields, "source_type"}
+    }
+    with learning_connection() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        if connection.execute(
+            "SELECT 1 FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
+        ).fetchone() is None:
+            raise LearningProvenanceError("Learning candidate does not exist.")
+        existing = connection.execute(
+            """SELECT * FROM learning_candidate_sources
+               WHERE candidate_id=? AND source_type=?
+                 AND COALESCE(source_url,'')=COALESCE(?,'')
+                 AND COALESCE(reference_url,'')=COALESCE(?,'')
+                 AND COALESCE(book_title,'')=COALESCE(?,'')
+                 AND COALESCE(book_author,'')=COALESCE(?,'')
+                 AND COALESCE(provider,'')=COALESCE(?,'')
+                 AND COALESCE(model_id,'')=COALESCE(?,'')
+               ORDER BY id LIMIT 1""",
+            (
+                candidate_id, values["source_type"], values["source_url"],
+                values["reference_url"], values["book_title"], values["book_author"],
+                values["provider"], values["model_id"],
+            ),
+        ).fetchone()
+        if existing is not None:
+            return dict(existing)
+        cursor = connection.execute(
+            """INSERT INTO learning_candidate_sources(
+                   candidate_id, source_type, source_url, reference_url, title,
+                   book_title, book_author, provider, model_id, edition, publisher,
+                   isbn, page, chapter, description, metadata_json, verification_status
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                candidate_id, *(values[field] for field in fields[1:]),
+                json.dumps(metadata, ensure_ascii=False, sort_keys=True),
+                verification_status,
+            ),
+        )
+        row = connection.execute(
+            "SELECT * FROM learning_candidate_sources WHERE id=?", (cursor.lastrowid,)
+        ).fetchone()
+    return dict(row)
+
+
+def list_candidate_sources(candidate_id: int) -> list[dict[str, Any]]:
+    """Return source provenance in stable insertion order without changing trust."""
+    if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
+        raise LearningProvenanceError("candidate_id must be a positive integer.")
+    from .db import learning_connection
+
+    with learning_connection() as connection:
+        rows = connection.execute(
+            """SELECT * FROM learning_candidate_sources
+               WHERE candidate_id=? ORDER BY id""",
+            (candidate_id,),
+        ).fetchall()
+    return [dict(row) for row in rows]
