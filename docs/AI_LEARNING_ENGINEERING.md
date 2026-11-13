@@ -8,7 +8,7 @@ The optional module gathers structured knowledge for later use by Personal-AI-as
 
 1. Separate responsibilities: routes validate HTTP input and map errors; business rules belong in the service layer; persistence belongs in the store layer; provider-specific browser interactions belong in separate adapters.
 2. Isolate data: use a separate database file, data/ai_learning.db. Never reuse or migrate data/learning.db without a separately reviewed architecture decision, backup and rollback plan.
-3. Default off: AI_LEARNING_ENABLED=0 and AI_LEARNING_RETRIEVAL_ENABLED=0. Registering a route must not initialize the database or enable retrieval.
+3. Default on: AI Learning, published-knowledge retrieval, and the visible-browser adapter are enabled in a fresh installation. Their controls are persisted in the central Settings store, not hard-coded environment flags. Registering a route must not initialize the database; startup initializes the isolated store through the normal migration path.
 4. Explicit publication: receiving model text, approving an outline, reviewing lesson content and publishing knowledge are distinct operations.
 5. Fail closed: unknown schemas, migration checksum mismatches, ambiguous provider responses and uncertain topic mapping must stop the relevant operation rather than guess.
 6. Traceability: every retrieved result must identify its course, topic, lesson, content version and chunk.
