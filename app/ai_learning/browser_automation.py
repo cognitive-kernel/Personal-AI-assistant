@@ -38,6 +38,22 @@ _LOG_LOCK = threading.Lock()
 _LOGGER: logging.Logger | None = None
 _BROWSER_SESSION = threading.local()
 _MAX_CONTEXT_RELAUNCHES = 1
+
+def _configured_seconds(name: str, default: int, minimum: int, maximum: int) -> int:
+    """Read a validated runtime duration from the shared settings store."""
+    settings = service.get_settings()
+    value = settings.get(name, default)
+    if type(value) is not int or not minimum <= value <= maximum:
+        raise RuntimeError(f"Persisted setting {name} is outside its validated range.")
+    return value
+
+
+def _configured_continuations() -> int:
+    settings = service.get_settings()
+    value = settings.get("ai_learning_max_lesson_continuations", _MAX_LESSON_CONTINUATIONS)
+    if type(value) is not int or not 0 <= value <= 20:
+        raise RuntimeError("Persisted setting ai_learning_max_lesson_continuations is invalid.")
+    return value
 def _reset_process_identity() -> None:
     """Reinitialize inherited locks and worker state in a forked child process."""
     global _LOCK, _LOG_LOCK, _WORKER_OWNER_PID, _WORKER_OWNER
@@ -586,10 +602,11 @@ def _send_prompt(page: Any, prompt: str) -> None:
 
 def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: threading.Event | None = None, previous_message_count: int | None = None) -> str:
     started = time.monotonic()
-    deadline = started + _RESPONSE_TIMEOUT_SECONDS
+    response_timeout = _configured_seconds("ai_learning_response_timeout_seconds", _RESPONSE_TIMEOUT_SECONDS, 30, 7200)
+    deadline = started + response_timeout
     next_diagnostic_at = 0.0
     _log_event("response_wait_started", url=page.url, previous_message_count=previous_message_count,
-               previous_answer_chars=len(previous_answer), timeout_seconds=_RESPONSE_TIMEOUT_SECONDS,
+               previous_answer_chars=len(previous_answer), timeout_seconds=response_timeout,
                dom=_dom_diagnostics(page))
     last_text = ""
     stable_since: float | None = None
@@ -694,7 +711,7 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
                 if stable_since is None:
                     stable_since = time.monotonic()
                 stable_for = time.monotonic() - stable_since
-                required_stability = 45.0 if stop_visible else _STABLE_SECONDS
+                required_stability = 45.0 if stop_visible else float(_configured_seconds("ai_learning_stability_seconds", int(_STABLE_SECONDS), 1, 120))
                 if continue_button is not None:
                     required_stability = max(required_stability, 45.0)
                 if continue_button is None and stable_for >= required_stability:
@@ -728,7 +745,7 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
             )
             if last_text and (last_text != previous_answer or new_message_seen) and stable_since is not None:
                 stable_for = time.monotonic() - stable_since
-                required_stability = 25.0 if last_stop_visible else _STABLE_SECONDS
+                required_stability = 25.0 if last_stop_visible else float(_configured_seconds("ai_learning_stability_seconds", int(_STABLE_SECONDS), 1, 120))
                 if stable_for >= required_stability and len(last_text) >= 20:
                     return last_text
             _log_event("response_poll_exception", elapsed_seconds=round(time.monotonic() - started, 1),
@@ -832,7 +849,7 @@ def _capture_lesson_until_complete(
                 "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.",
                 partial_response="\n\n".join(_strip_lesson_status_markers(part) for part in parts),
             )
-        if continuation_count >= _MAX_LESSON_CONTINUATIONS:
+        if continuation_count >= _configured_continuations():
             combined = "\n\n".join(_strip_lesson_status_markers(part) for part in parts)
             _log_event("lesson_continuation_limit", continuation_count=continuation_count,
                        answer_chars=len(combined), completion_status=status)
@@ -1091,11 +1108,12 @@ def _browser_capture(
                     page.on("console", lambda message: _log_event("page_console_error", message=message.text[:300]) if message.type == "error" else None)
                     page.on("requestfailed", lambda request: _log_event("browser_request_failed", url=request.url.split("?")[0][:300], error=request.failure or "unknown") if any(host in request.url for host in ("chatgpt.com", "openai.com")) else None)
                     _BROWSER_SESSION.instrumented_page = page
-                page.set_default_timeout(5000)
+                browser_timeout_ms = _configured_seconds("ai_learning_browser_timeout_seconds", 300, 10, 1800) * 1000
+                page.set_default_timeout(browser_timeout_ms)
                 if cancel_event is not None and cancel_event.is_set():
                     raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
                 _log_event("navigation_started", target="https://chatgpt.com/")
-                page.goto("https://chatgpt.com/", wait_until="domcontentloaded", timeout=60000)
+                page.goto("https://chatgpt.com/", wait_until="domcontentloaded", timeout=browser_timeout_ms)
                 _log_event("navigation_domcontentloaded", url=page.url)
                 try:
                     page.wait_for_load_state("networkidle", timeout=8000)
