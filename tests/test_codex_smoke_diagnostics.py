@@ -383,7 +383,7 @@ def test_windows_runner_cli_checks_use_cmd_shims_and_discover_active_ollama():
     assert 'Get-CimInstance Win32_Process -Filter "Name=\'ollama.exe\'"' in workflow
     assert "C:\\Users\\Admin\\AppData\\Local\\Programs\\Ollama\\ollama.exe" not in workflow
 
-def test_target_diagnostic_records_actual_hardware_without_hardcoded_profile():
+def test_target_diagnostic_verifies_owner_confirmed_hardware_profile():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
@@ -392,7 +392,7 @@ def test_target_diagnostic_records_actual_hardware_without_hardcoded_profile():
     runner_check = (root / "scripts" / "check_autonomous_runner.ps1").read_text(encoding="utf-8")
     readme = (root / "README.md").read_text(encoding="utf-8")
 
-    assert "No CPU, RAM, or GPU model is a fixed runtime requirement" in readme
+    assert "Intel Core i5-12400" in readme and "31.78 GiB" in readme and "Intel UHD Graphics 730" in readme
     assert "TARGET_HOST_HARDWARE_PROFILE" in diagnostic
     assert '$required = @("tests", "browser-e2e", "dependency-audit", "Sandbox integration CI")' in diagnostic
     assert "os_build" in diagnostic
@@ -404,9 +404,12 @@ def test_target_diagnostic_records_actual_hardware_without_hardcoded_profile():
     assert "physicalCores -le 0" in diagnostic
     assert "logicalProcessors -le 0" in diagnostic
     assert "totalRamGiB -le 0" in diagnostic
-    assert "Target CPU does not match" not in diagnostic
-    assert "31.78 GiB / 32 GB class" not in diagnostic
-    assert "Intel.*UHD.*730" not in diagnostic
+    assert "Target CPU does not match the owner-confirmed Intel Core i5-12400 profile" in diagnostic
+    assert "physicalCores -ne 6 -or $logicalProcessors -ne 12" in diagnostic
+    assert "31.78 GiB / 32 GB class (30–33 GiB tolerance)" in diagnostic
+    assert "Intel.*UHD.*730" in diagnostic
+    assert "Windows 11 build 26300" in diagnostic
+    assert "owner-confirmed target hardware profile verified" in diagnostic
     assert "wmi_adapter_ram_bytes" in diagnostic
     assert "OLLAMA_RUNTIME_DEVICE_ALLOCATION" in diagnostic
     assert "size_vram" in diagnostic
