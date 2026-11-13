@@ -715,3 +715,11 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Browser E2E found a duplicate `sandbox-timeout` DOM id shared by the run form and Settings form. The Settings control now has a unique id while the run form keeps its established selector; all three sandbox configuration inputs with placeholders now expose accessible names.
 - Self-Improvement E2E tests now configure the repository path through persisted Settings instead of relying on removed environment-variable behavior. The dashboard no longer instructs users to configure obsolete environment flags.
 - Windows storage regression and CodeQL passed on the prior exact head. The latest exact-head CI is running against the UI/test fixes; no local or human testing has started.
+
+
+### 2026-11-14 — Research and independent-review profiles fully settings-backed
+
+- Exposed research-planning context size, CPU threads, timeout, keep-alive, source-size limit, and output-token budget in Settings. Added corresponding API validation and model-context metadata checks.
+- Added the same independent resource controls for factual review. Removed the fixed 45-second timeout and fixed 4096-context/500-or-700-output caps; execution now uses bounded, persisted per-purpose settings and still applies model/hardware safety ceilings.
+- Both Ollama and OpenAI-compatible paths now honor the configured source-size and output-token budgets. Runtime diagnostics use the selected research/review profile instead of silently falling back to chat settings.
+- Added settings persistence/validation and provider-routing regression coverage. Exact-head GitHub CI is required before acceptance.
