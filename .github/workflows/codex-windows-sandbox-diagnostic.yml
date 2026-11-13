@@ -98,6 +98,7 @@ permissions:
 
 jobs:
   cancel-stale-diagnostics:
+    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'fix/autonomous-engineering-show-all-ollama-models-20261112') }}
     runs-on: ubuntu-latest
     continue-on-error: true
     concurrency:
@@ -281,7 +282,7 @@ jobs:
           }
 
   sandbox-diagnostic:
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.ref == 'fix/autonomous-engineering-show-all-ollama-models-20261112' }}
+    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'fix/autonomous-engineering-show-all-ollama-models-20261112') }}
     needs: cancel-stale-diagnostics
     concurrency:
       group: autonomous-local-engineering-${{ github.repository }}
