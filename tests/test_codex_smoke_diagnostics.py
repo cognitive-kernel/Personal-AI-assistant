@@ -485,6 +485,14 @@ def test_active_codex_documentation_matches_adaptive_context_contract():
     assert "currently 1,048,576 tokens" not in adr
     assert "تنظیمات قدیمی Codex نتوانند Context بزرگ‌تری تحمیل کنند" in readme
 
+def test_sandbox_ci_runs_when_windows_diagnostic_contract_changes():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "sandbox-integration-ci.yml").read_text(encoding="utf-8")
+    assert '"tests/test_codex_smoke_diagnostics.py"' in workflow
+
+
 def test_required_ci_workflows_cancel_superseded_runs_for_the_same_pull_request():
     from pathlib import Path
 
