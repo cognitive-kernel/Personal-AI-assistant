@@ -75,17 +75,19 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
     assert defaults["ai_learning_retrieval_enabled"] is True
     assert defaults["ai_learning_browser_enabled"] is True
     assert defaults["gpu_enabled"] is True
-    assert defaults["ai_learning_outline_batch_size"] == 20
     assert defaults["ai_learning_lesson_batch_size"] == 1
 
     values = {
         "ai_learning_enabled": False,
         "ai_learning_retrieval_enabled": False,
         "ai_learning_browser_enabled": False,
-        "ai_learning_outline_batch_size": 40,
         "ai_learning_lesson_batch_size": 5,
         "ai_learning_chunk_target_chars": 2400,
         "ai_learning_chunk_overlap_chars": 240,
+        "ai_learning_embedding_batch_size": 32,
+        "ai_learning_response_timeout_seconds": 2400,
+        "ai_learning_max_lesson_continuations": 6,
+        "ai_learning_stability_seconds": 30,
         "ai_learning_browser_timeout_seconds": 600,
         "ai_learning_max_retries": 3,
     }
@@ -102,10 +104,13 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
         {"ai_learning_enabled": "false"},
         {"ai_learning_retrieval_enabled": 1},
         {"ai_learning_browser_enabled": None},
-        {"ai_learning_outline_batch_size": 0},
         {"ai_learning_lesson_batch_size": 21},
         {"ai_learning_chunk_target_chars": 255},
         {"ai_learning_chunk_overlap_chars": 2001},
+        {"ai_learning_embedding_batch_size": 0},
+        {"ai_learning_response_timeout_seconds": 29},
+        {"ai_learning_max_lesson_continuations": 21},
+        {"ai_learning_stability_seconds": 0},
         {"ai_learning_chunk_target_chars": 1000, "ai_learning_chunk_overlap_chars": 1000},
         {"ai_learning_browser_timeout_seconds": 9},
         {"ai_learning_max_retries": 6},
