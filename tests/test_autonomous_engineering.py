@@ -230,7 +230,7 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
         def open(self, request, timeout):
             captured.setdefault("requests", []).append((request.full_url, timeout))
             if request.full_url.endswith("/api/tags"):
-                return io.BytesIO(b'{"models":[{"name":"gpt-oss:20b"}]}')
+                return io.BytesIO(b'{"models":[{"name":"gpt-oss:20b","size":13793441566}]}')
             return io.BytesIO(
                 b'{"details":{"family":"llama"},"model_info":{"llama.context_length":65536,"llama.block_count":32,"llama.attention.head_count_kv":8,"llama.attention.key_length":128,"llama.attention.value_length":128},'
                 b'"capabilities":["completion","tools"]}'
@@ -268,6 +268,8 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
     assert result["model_installed"] is True
     assert result["model_context_length"] == 65536
     assert result["model_supports_tools"] is True
+    assert result["model_weight_size_available"] is True
+    assert result["model_weight_bytes"] == 13793441566
     assert result["model_kv_cache_metadata_available"] is True
     assert result["model_context_supported"] is True
 
@@ -1258,6 +1260,40 @@ def test_autonomous_workflows_enforce_positive_and_exact_ollama_runtime_context(
     assert "/cancel" in diagnostic and "/force-cancel" in diagnostic
 
 
+@pytest.mark.parametrize("reported_size", [None, 0, "123456", True])
+def test_ollama_status_rejects_installed_model_without_positive_integer_weight_size(monkeypatch, reported_size):
+    model_entry = {"name": "bad-size:latest"}
+    if reported_size is not None:
+        model_entry["size"] = reported_size
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            if request.full_url.endswith("/api/tags"):
+                return io.BytesIO(json.dumps({"models": [model_entry]}).encode("utf-8"))
+            return io.BytesIO(json.dumps({
+                "details": {"family": "llama"},
+                "model_info": {
+                    "llama.context_length": 65536,
+                    "llama.block_count": 32,
+                    "llama.attention.head_count_kv": 8,
+                    "llama.attention.key_length": 128,
+                    "llama.attention.value_length": 128,
+                },
+                "capabilities": ["completion", "tools"],
+            }).encode("utf-8"))
+
+    monkeypatch.setattr(agent.urllib.request, "build_opener", lambda *handlers: FakeOpener())
+
+    result = agent._ollama_status("bad-size:latest")
+
+    assert result["online"] is True
+    assert result["model_installed"] is True
+    assert result["model_weight_size_available"] is False
+    assert result["model_weight_bytes"] is None
+    assert result["model_context_supported"] is False
+    assert "positive integer size" in result["model_context_error"]
+
+
 def test_ollama_status_returns_every_installed_model_without_inserting_defaults(monkeypatch):
     names = [f"model-{index}:latest" for index in range(55)]
     selected = names[-1]
@@ -1267,7 +1303,7 @@ def test_ollama_status_returns_every_installed_model_without_inserting_defaults(
     class FakeOpener:
         def open(self, request, timeout):
             if request.full_url.endswith("/api/tags"):
-                payload = {"models": [{"name": name} for name in names]}
+                payload = {"models": [{"name": name, "size": 1234567890} for name in names]}
             else:
                 show_requests.append(json.loads(request.data.decode("utf-8")))
                 payload = {
@@ -1333,7 +1369,7 @@ def test_ollama_status_rejects_models_with_incomplete_kv_dimensions(monkeypatch,
     class FakeOpener:
         def open(self, request, timeout):
             if request.full_url.endswith("/api/tags"):
-                return io.BytesIO(b'{"models":[{"name":"context-only:latest"}]}')
+                return io.BytesIO(b'{"models":[{"name":"context-only:latest","size":1234567890}]}')
             return io.BytesIO(json.dumps({
                 "details": {"family": "llama"},
                 "model_info": model_info,
@@ -1380,7 +1416,7 @@ def test_ollama_status_accepts_one_token_model_context(monkeypatch):
     class FakeOpener:
         def open(self, request, timeout):
             if request.full_url.endswith("/api/tags"):
-                return io.BytesIO(b'{"models":[{"name":"tiny:latest"}]}')
+                return io.BytesIO(b'{"models":[{"name":"tiny:latest","size":1000000}]}')
             return io.BytesIO(json.dumps({
                 "details": {"family": "tiny"},
                 "model_info": {"tiny.context_length": 1, "tiny.block_count": 1, "tiny.attention.head_count_kv": 1, "tiny.attention.key_length": 1, "tiny.attention.value_length": 1},
