@@ -882,6 +882,8 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         ("factual_review_max_output_tokens", 1, 8192),
         ("ai_learning_source_max_chars", 1000, 256000),
         ("topic_learning_source_max_chars", 1000, 256000),
+        ("research_plan_source_max_chars", 1000, 256000),
+        ("factual_review_source_max_chars", 1000, 256000),
     ]
     for prefix in ("chat", "research_plan", "learning", "programming", "ai_learning", "topic_learning", "factual_review"):
         numeric_ranges.extend([
