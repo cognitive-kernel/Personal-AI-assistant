@@ -822,7 +822,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     keep_alive_values = {"auto", "0", "1m", "5m", "10m", "30m"}
-    for purpose in ("chat", "learning", "programming", "ai_learning", "topic_learning"):
+    for purpose in ("chat", "research_plan", "learning", "programming", "ai_learning", "topic_learning"):
         key = f"{purpose}_model_keep_alive"
         if key in values and (not isinstance(values[key], str) or values[key] not in keep_alive_values):
             raise HTTPException(status_code=422, detail=f"{key} must be one of: auto, 0, 1m, 5m, 10m, 30m.")
@@ -881,13 +881,13 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         ("ai_learning_source_max_chars", 1000, 256000),
         ("topic_learning_source_max_chars", 1000, 256000),
     ]
-    for prefix in ("chat", "learning", "programming", "ai_learning", "topic_learning"):
+    for prefix in ("chat", "research_plan", "learning", "programming", "ai_learning", "topic_learning"):
         numeric_ranges.extend([
             (f"{prefix}_ollama_timeout_seconds", 5, 600),
             (f"{prefix}_ollama_num_ctx", 512, 1048576),
             (f"{prefix}_ollama_num_thread", 0, 64),
         ])
-        if prefix != "ai_learning":
+        if prefix in {"chat", "learning", "programming"}:
             numeric_ranges.append((f"{prefix}_max_concurrent_jobs", 1, 8))
     numeric_ranges.extend([
         ("chat_source_max_chars", 1000, 12000),
@@ -914,6 +914,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail="ai_learning_chunk_overlap_chars must be smaller than ai_learning_chunk_target_chars.")
     context_profiles = {
         "chat_ollama_num_ctx": "chat_ollama_model",
+        "research_plan_ollama_num_ctx": "research_plan_ollama_model",
         "learning_ollama_num_ctx": "learning_ollama_model",
         "programming_ollama_num_ctx": "programming_ollama_model",
         "ai_learning_ollama_num_ctx": "ai_learning_ollama_model",
