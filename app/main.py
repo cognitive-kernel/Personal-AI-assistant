@@ -853,6 +853,8 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         ("ai_learning_browser_timeout_seconds", 10, 1800),
         ("ai_learning_browser_poll_interval_ms", 100, 5000),
         ("ai_learning_browser_control_poll_interval_ms", 10, 1000),
+        ("ai_learning_browser_lease_seconds", 30, 600),
+        ("ai_learning_browser_lease_heartbeat_seconds", 5, 30),
         ("ai_learning_response_timeout_seconds", 30, 7200),
         ("ai_learning_max_lesson_continuations", 0, 20),
         ("ai_learning_stability_seconds", 1, 120),
@@ -887,6 +889,10 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
     # Context limits are model-specific. Context edits require verifiable metadata;
     # manual model-name changes remain compatible when the existing context is unchanged.
     current_settings = db.get_settings()
+    lease_seconds = values.get("ai_learning_browser_lease_seconds", current_settings.get("ai_learning_browser_lease_seconds", 90))
+    lease_heartbeat_seconds = values.get("ai_learning_browser_lease_heartbeat_seconds", current_settings.get("ai_learning_browser_lease_heartbeat_seconds", 15))
+    if lease_heartbeat_seconds * 3 > lease_seconds:
+        raise HTTPException(status_code=422, detail="AI Learning browser lease heartbeat must be no more than one third of the lease duration.")
     chunk_target = values.get("ai_learning_chunk_target_chars", current_settings.get("ai_learning_chunk_target_chars", 1800))
     chunk_overlap = values.get("ai_learning_chunk_overlap_chars", current_settings.get("ai_learning_chunk_overlap_chars", 180))
     if chunk_overlap >= chunk_target:
