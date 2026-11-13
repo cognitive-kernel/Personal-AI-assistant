@@ -13,6 +13,8 @@ $modelIsContextVariant = $model -match '(?i)-codex-(?:ctx[0-9]+|[0-9]+k)$'
 $ollamaOnline = $false
 $modelInstalled = $false
 $modelContextLength = $null
+$modelWeightSizeAvailable = $false
+$modelWeightSizeDetail = "Ollama /api/tags did not report a positive integer model size"
 $modelKvCacheMetadataAvailable = $false
 $modelKvCacheMetadataDetail = "Required architecture-specific KV-cache dimensions are unavailable"
 $modelSupportsTools = $false
@@ -21,6 +23,12 @@ try {
     $ollamaOnline = $true
     $modelInstalled = @($tags.models | ForEach-Object { $_.name }) -contains $model
     if ($modelInstalled) {
+        $modelTag = @($tags.models | Where-Object { $_.name -eq $model }) | Select-Object -First 1
+        $parsedWeightSize = 0L
+        if ($modelTag -and [int64]::TryParse([string]$modelTag.size, [ref]$parsedWeightSize) -and $parsedWeightSize -gt 0) {
+            $modelWeightSizeAvailable = $true
+            $modelWeightSizeDetail = "$parsedWeightSize bytes"
+        }
         $modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -ContentType "application/json" -Body (@{ model = $model; verbose = $false } | ConvertTo-Json -Compress) -TimeoutSec 8 -MaximumRedirection 0
         $architecture = [string]$modelInfo.details.family
         $contextKey = $architecture + ".context_length"
@@ -55,6 +63,7 @@ $checks += [pscustomobject]@{ Component = "Ollama server"; Ready = $ollamaOnline
 $checks += [pscustomobject]@{ Component = "Saved model selection"; Ready = (-not [string]::IsNullOrWhiteSpace($model)); Detail = if ($model) { $model } else { "Select and save an installed Ollama model in /autonomous-engineering" } }
 $checks += [pscustomobject]@{ Component = "Base model selection"; Ready = -not $modelIsContextVariant; Detail = if ($modelIsContextVariant) { "Generated Codex context variants cannot be selected as base models" } else { "Original Ollama model selected" } }
 $checks += [pscustomobject]@{ Component = "Local model"; Ready = $modelInstalled; Detail = if ($modelInstalled) { $model } elseif (-not $model) { "No model has been selected and saved" } else { "Saved model is not installed in Ollama" } }
+$checks += [pscustomobject]@{ Component = "Model weight size"; Ready = $modelWeightSizeAvailable; Detail = $modelWeightSizeDetail }
 $checks += [pscustomobject]@{ Component = "Model context metadata"; Ready = ($null -ne $modelContextLength -and $modelContextLength -ge 1); Detail = if ($null -eq $modelContextLength) { "Ollama /api/show did not report a valid architecture context_length" } elseif ($modelContextLength -lt 1) { "$modelContextLength tokens maximum; Codex can adapt to this context" } else { "$modelContextLength tokens maximum; runtime context metadata is valid" } }
 $checks += [pscustomobject]@{ Component = "Model KV-cache metadata"; Ready = $modelKvCacheMetadataAvailable; Detail = $modelKvCacheMetadataDetail }
 $checks += [pscustomobject]@{ Component = "Model tool calling"; Ready = $modelSupportsTools; Detail = if ($modelSupportsTools) { "Ollama advertises tools capability" } else { "Selected model does not advertise tools capability required by Codex" } }
