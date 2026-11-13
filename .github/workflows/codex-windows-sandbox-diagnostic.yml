@@ -106,17 +106,33 @@ jobs:
                 $cancelUri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)/cancel"
                 try {
                   Invoke-RestMethod -Uri $cancelUri -Headers $headers -Method Post -TimeoutSec 15 | Out-Null
-                  Start-Sleep -Seconds 2
+                } catch {
+                  # A 409 can mean cancellation is already in progress. Still
+                  # inspect the run and force-cancel only when it is not complete.
+                  Write-Warning "Normal cancellation for stale diagnostic run $($run.id) did not complete: $($_.Exception.Message)"
+                }
+                Start-Sleep -Seconds 2
+                try {
                   $afterCancel = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)" -Headers $headers -Method Get -TimeoutSec 15
                   if ($afterCancel.status -ne "completed") {
                     $forceCancelUri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)/force-cancel"
-                    Invoke-RestMethod -Uri $forceCancelUri -Headers $headers -Method Post -TimeoutSec 15 | Out-Null
-                    Write-Host "Force-cancelled stale diagnostic run $($run.id) after normal cancellation remained pending."
+                    try {
+                      Invoke-RestMethod -Uri $forceCancelUri -Headers $headers -Method Post -TimeoutSec 15 | Out-Null
+                    } catch {
+                      Write-Warning "Force cancellation for stale diagnostic run $($run.id) returned: $($_.Exception.Message)"
+                    }
+                    Start-Sleep -Seconds 1
+                    $afterForceCancel = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)" -Headers $headers -Method Get -TimeoutSec 15
+                    if ($afterForceCancel.status -ne "completed") {
+                      Write-Warning "Stale diagnostic run $($run.id) is still not completed after force-cancel."
+                    } else {
+                      Write-Host "Force-cancelled stale diagnostic run $($run.id)."
+                    }
                   } else {
                     Write-Host "Cancelled stale diagnostic run $($run.id) (run number $($run.run_number))."
                   }
                 } catch {
-                  Write-Warning "Could not cancel stale run $($run.id): $($_.Exception.Message)"
+                  Write-Warning "Could not verify cancellation for stale run $($run.id): $($_.Exception.Message)"
                 }
               }
             }
@@ -161,15 +177,33 @@ jobs:
                 $cancelUri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)/cancel"
                 try {
                   Invoke-RestMethod -Uri $cancelUri -Headers $headers -Method Post -TimeoutSec 15 | Out-Null
-                  Start-Sleep -Seconds 1
+                } catch {
+                  # Continue to the status check: 409 may indicate a concurrent
+                  # cancellation request rather than a reason to skip cleanup.
+                  Write-Warning "Normal cancellation for superseded $workflowFile run $($run.id) did not complete: $($_.Exception.Message)"
+                }
+                Start-Sleep -Seconds 1
+                try {
                   $afterCancel = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)" -Headers $headers -Method Get -TimeoutSec 15
                   if ($afterCancel.status -ne "completed") {
                     $forceCancelUri = "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)/force-cancel"
-                    Invoke-RestMethod -Uri $forceCancelUri -Headers $headers -Method Post -TimeoutSec 15 | Out-Null
+                    try {
+                      Invoke-RestMethod -Uri $forceCancelUri -Headers $headers -Method Post -TimeoutSec 15 | Out-Null
+                    } catch {
+                      Write-Warning "Force cancellation for superseded $workflowFile run $($run.id) returned: $($_.Exception.Message)"
+                    }
+                    Start-Sleep -Seconds 1
+                    $afterForceCancel = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GH_REPOSITORY/actions/runs/$($run.id)" -Headers $headers -Method Get -TimeoutSec 15
+                    if ($afterForceCancel.status -ne "completed") {
+                      Write-Warning "Superseded $workflowFile run $($run.id) is still not completed after force-cancel."
+                    } else {
+                      Write-Host "Force-cancelled superseded $workflowFile run $($run.id) at $($run.head_sha)."
+                    }
+                  } else {
+                    Write-Host "Cancelled superseded $workflowFile run $($run.id) at $($run.head_sha)."
                   }
-                  Write-Host "Cancelled superseded $workflowFile run $($run.id) at $($run.head_sha)."
                 } catch {
-                  Write-Warning "Could not cancel superseded $workflowFile run $($run.id): $($_.Exception.Message)"
+                  Write-Warning "Could not verify cancellation for superseded $workflowFile run $($run.id): $($_.Exception.Message)"
                 }
               }
             } catch {
