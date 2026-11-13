@@ -91,7 +91,7 @@ def _candidate(row: sqlite3.Row, *, include_content: bool = False) -> dict[str, 
     if include_content:
         if not result["integrity_valid"]:
             raise HTTPException(status_code=409, detail="Candidate content hash mismatch; review is blocked.")
-        from .learning_provenance import list_candidate_sources
+        from .learning_source_provenance import list_candidate_sources
         result["source_provenance"] = list_candidate_sources(int(result["id"]))
         result["content"] = content
     else:
@@ -145,7 +145,7 @@ def list_learning_oracles() -> dict[str, Any]:
 @router.get("/autonomy-gate")
 def get_learning_autonomy_gate() -> dict[str, Any]:
     """Expose the current four-path accuracy gate without changing its state."""
-    from .learning_provenance import get_aggregate_learning_accuracy
+    from .learning_accuracy_gate import get_aggregate_learning_accuracy
 
     try:
         return get_aggregate_learning_accuracy()
@@ -207,7 +207,7 @@ def save_candidate_test_plan(
         raise HTTPException(status_code=422, detail="Explicit confirmation is required.")
     autonomy_gate = None
     if request.oracle_reviewed is not True:
-        from .learning_provenance import get_aggregate_learning_accuracy
+        from .learning_accuracy_gate import get_aggregate_learning_accuracy
         autonomy_gate = get_aggregate_learning_accuracy()
         if not autonomy_gate["autonomous_acceptance_eligible"]:
             raise HTTPException(
@@ -341,7 +341,7 @@ def add_candidate_source(
     request: CandidateSourceRequest,
 ) -> dict[str, Any]:
     """Append validated source provenance; this never verifies or promotes a candidate."""
-    from .learning_provenance import record_candidate_source
+    from .learning_source_provenance import record_candidate_source
 
     payload = request.model_dump(exclude_none=True)
     try:
