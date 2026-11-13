@@ -639,6 +639,14 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
         )
         with learning_connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            previous_job = connection.execute(
+                "SELECT error FROM learning_jobs WHERE id=?", (candidate["job_id"],)
+            ).fetchone()
+            previous_failure = str(candidate["failure_reason"] or "").strip()
+            previous_error = str(previous_job["error"] or "").strip() if previous_job else ""
+            history = " ".join(item for item in (previous_failure, previous_error) if item)
+            if history and not history.startswith("rejected_after_review:"):
+                reason += " Previous failure history retained: " + history[:1000]
             connection.execute(
                 """UPDATE knowledge_items SET status='conflicting'
                    WHERE job_id=? AND status='unverified'""",
