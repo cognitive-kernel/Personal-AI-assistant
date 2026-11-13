@@ -45,6 +45,17 @@ def browser_is_enabled() -> bool:
     return is_enabled() and _setting("ai_learning_browser_enabled")
 
 
+def max_topics_per_run() -> int:
+    """Return the configured upper bound for one browser lesson run."""
+    from ..db import get_settings
+
+    settings = get_settings()
+    value = settings.get("ai_learning_lesson_batch_size", 1)
+    if type(value) is not int or not 1 <= value <= 20:
+        raise RuntimeError("Setting ai_learning_lesson_batch_size is outside its validated range.")
+    return value
+
+
 def database_path() -> str:
     """Return the isolated AI-learning database path."""
     return os.getenv("AI_LEARNING_DB_PATH", "data/ai_learning.db")
