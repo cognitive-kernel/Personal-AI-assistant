@@ -96,4 +96,23 @@ try {
     }
 }
 
+$readinessScripts = @(
+    "scripts\check_autonomous_agent.ps1",
+    "scripts\check_autonomous_runner.ps1",
+    "scripts\provision_autonomous_runner.ps1"
+)
+foreach ($relativePath in $readinessScripts) {
+    $scriptPath = Join-Path $repositoryRoot $relativePath
+    $tokens = $null
+    $parseErrors = $null
+    [System.Management.Automation.Language.Parser]::ParseFile(
+        $scriptPath,
+        [ref]$tokens,
+        [ref]$parseErrors
+    ) | Out-Null
+    if ($parseErrors.Count -gt 0) {
+        throw "PowerShell 5.1 parser rejected $relativePath - $($parseErrors[0].Message)"
+    }
+}
+
 Write-Host "Windows PowerShell 5.1 to Python UTF-8 context bridge and adaptive fail-closed selection passed."
