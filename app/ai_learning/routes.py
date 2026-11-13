@@ -46,6 +46,10 @@ class RunHistoryDelete(BaseModel):
     run_ids: list[StrictInt] = Field(min_length=1, max_length=500)
     model_config = ConfigDict(extra="forbid")
 
+class ResetLearningDataRequest(BaseModel):
+    confirmation: Literal["RESET AI LEARNING DATA"]
+    model_config = ConfigDict(extra="forbid")
+
 class RunComplete(BaseModel):
     response_text: str = Field(min_length=1)
     model_config = ConfigDict(extra="forbid")
@@ -209,8 +213,10 @@ def get_course(course_id: int) -> dict[str, Any]:
     return _call(service.get_course, course_id)
 
 @router.post("/reset-learning-data")
-def reset_learning_data() -> dict[str, Any]:
-    """Destructively clear captured learning data only after browser work is quiescent."""
+def reset_learning_data(request: ResetLearningDataRequest) -> dict[str, Any]:
+    """Require an explicit server-validated phrase before destructive learning-data reset."""
+    if request.confirmation != "RESET AI LEARNING DATA":
+        raise HTTPException(status_code=422, detail="Exact reset confirmation is required.")
     return _call(browser_automation.reset_learning_data)
 
 @router.delete("/courses/{course_id}/runs")
