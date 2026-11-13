@@ -212,11 +212,9 @@ def handle_topic_quality_evaluation(
             if updated.rowcount:
                 connection.execute(
                     """UPDATE learning_path_topics
-                       SET status='completed', latest_score=?, latest_score_kind='topic_quality_gate_v1',
-                           latest_score_source='independent_topic_evaluator',
-                           updated_at=CURRENT_TIMESTAMP
+                       SET status='completed', updated_at=CURRENT_TIMESTAMP
                        WHERE id=?""",
-                    (record["score"], path_topic_id),
+                    (path_topic_id,),
                 )
         if updated.rowcount:
             next_result = learning.queue_next_researched_path_topic(path_topic_id)
