@@ -333,21 +333,24 @@ def test_researched_path_queues_next_lesson_only_after_previous_job_succeeds(
 
     with db.learning_connection() as connection:
         connection.execute(
-            "UPDATE learning_jobs SET status='completed' WHERE id=?",
-            (first_job_id,),
+            "UPDATE learning_jobs SET status='completed', lesson=? WHERE id=?",
+            ("A complete lesson with sufficient content for independent evaluation. " * 30, first_job_id),
         )
     second = learning.queue_next_researched_path_topic(first_topic_id)
-    assert second is not None and second["queued_count"] == 1
-    assert second["job_ids"][0] != first_job_id
+    assert second is not None
+    assert second["status"] == "awaiting_topic_quality_evaluation"
+    assert second["active_job_id"] == first_job_id
 
     with db.learning_connection() as connection:
         jobs = connection.execute(
             "SELECT path_topic_id, status FROM learning_jobs ORDER BY id"
         ).fetchall()
-    assert len(jobs) == 2
+        evaluation_tasks = connection.execute(
+            "SELECT COUNT(*) FROM task_queue WHERE task_type='learning.evaluate_topic_quality'"
+        ).fetchone()[0]
+    assert len(jobs) == 1
     assert jobs[0]["status"] == "completed"
-    assert jobs[1]["status"] == "queued"
-    assert jobs[1]["path_topic_id"] == path["topics"][1]["id"]
+    assert evaluation_tasks == 1
 
 
 def test_researched_path_does_not_advance_after_failed_lesson(learning_store, monkeypatch):
