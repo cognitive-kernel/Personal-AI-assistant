@@ -1,3 +1,15 @@
+## 2026-11-13 — Exact-head CI closure and documentation reconciliation
+
+- Re-audited PR #722 against the complete Master Engineering Prompt, current PR head, open Issues #52/#290, and exact-head GitHub Actions.
+- Root cause of the latest CI failure: `test_current_acceptance_docs_preserve_master_prompt_merge_gates_and_runner_provisioning` referenced `autonomous_workflow`, `diagnostic_workflow`, and `tests_workflow` without loading their files. Added the three explicit fixture reads in commit `f21f6b01990824680a189ff513bb997b5caed498`; no assertions or gates were removed.
+- Exact-head CI on that SHA passed: 2,193 tests passed, 2 skipped, 51 deselected; Python 3.11.9/3.14.6, Windows PowerShell 5.1/Storage/checkpoint, Node.js 26.13.0/npm 11.20.0 with Codex 0.167.2/0.168.0, Browser E2E, Docker full suite/real sandbox integration, and dependency audit all passed.
+- The target Windows/Ollama diagnostic remains pending because GitHub has not assigned an online/idle self-hosted Runner with all required labels. No live Ollama process/version, `/api/ps` allocation, Codex tool-call smoke, or target-host soak is claimed.
+- Target hardware remains Intel Core i5-12400 (6C/12T), approximately 31.78 GiB RAM, Intel UHD Graphics 730, Windows 11 x64 build 10.0.26300. Node/npm are provisioned per job. Persisted registry `OLLAMA_NUM_PARALLEL` is not proof of the live process environment; that limitation remains explicit.
+- Corrected the current status and acceptance ledger to identify the exact SHA and CI evidence. The required target-host tests remain a merge gate under the Master Engineering Prompt; GitHub-side implementation must continue without waiting for them.
+- Issue #52 independent security review, target-host Codex runtime smoke, soak/crash-restart, and staging restore/rollback remain open. PR #722 remains Draft/open/unmerged; no merge, auto-merge, bypass, deployment, or user-data operation.
+
+---
+
 ## 2026-11-13 — Re-audit corrections: merge gate, Runner prerequisites, and Ollama parallelism evidence
 
 - Re-read the complete Master Engineering Prompt from `docs/master-engineering-continuity-prompt`. It explicitly requires both exact-head GitHub Actions and successful local tests on the target host before merge. Earlier current-status summaries incorrectly described target-host tests as a non-gate unless branch protection required them; those current summaries are corrected. Historical snapshots remain historical and are not current policy.
@@ -15,7 +27,7 @@
 - Owner-confirmed hardware checks remain enforced: Intel Core i5-12400 (6C/12T), 31.78 GiB-class RAM (30–33 GiB tolerance), Intel UHD Graphics 730, Windows 11 build 26300.
 - Node.js 26.13.0/npm are provisioned per workflow job using SHA-pinned setup-node v7.1.0; Runner provisioning no longer requires system-wide Node/npm. Codex CLI 0.168.0 (latest official release on 2026-11-13) is installed by the workflow; 0.167.2 remains in the compatibility matrix.
 - Target diagnostic #43384649592: hosted cleanup passed; self-hosted sandbox-diagnostic remains pending without a Runner assignment. Live Ollama/Codex smoke, soak/crash-restart and staging restore/rollback are not claimed.
-- Target-host/local/human acceptance is not a merge gate by default unless branch protection explicitly requires it. Independent security review remains open in Issue #52. PR #722 remains Draft/open/unmerged.
+- Required target-host tests are an explicit merge gate under the Master Engineering Prompt, regardless of branch-protection settings. Keep them NOT RUN / PENDING until executed; continue independent GitHub-side work meanwhile. Independent security review remains open in Issue #52. PR #722 remains Draft/open/unmerged.
 
 ---
 
