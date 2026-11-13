@@ -671,8 +671,8 @@ Continue E-02/E-01 with the complete route and task-registry contract inventory,
 
 ## 2026-11-13 — Continued API boundary audit
 
-- Rechecked the current main SHA and active PR heads. PR #737 is still awaiting its full test workflow; its other required checks passed on exact head `5bf13d05283daa2785a52bebfa9d8adf15f988b8`.
+- Rechecked the current main SHA and active PR heads. PR #737 exact-head CI completed successfully on `5bf13d05283daa2785a52bebfa9d8adf15f988b8`: 2,142 passed, 2 skipped, 51 deselected; Windows storage, dashboard smoke, dependency audit, 95-file Markdown validation, AST import-cycle check, and benchmarks passed.
 - A second route audit found integer resource path identifiers that lacked a consistent positive lower bound. PR #738 applies `Path(ge=1)` to task-control, curriculum-evolution, cloud-resource, and all integer IDs in the AI-learning router; tests assert HTTP 422 for zero IDs and published OpenAPI minimums.
-- PR #738 exact head `541de4a94398ef46e64f6e9c1055ef9b34327f1b` is awaiting its full CI matrix. Additional route families remain in the audit queue; no global claim is made.
+- PR #738 current head `d1190c83a3e2a413e7ee8b9f35c95f10e45a3985` is awaiting its full CI matrix. Additional route families remain in the audit queue; no global claim is made.
 - The earlier #737 OpenAPI test failure was traced to a nullable `anyOf(integer, null)` schema for optional `path_id`; the test helper now resolves refs and checks the integer branch. The current exact-head full test run has not yet completed.
 - No merge, deployment, local/target-host test, human test, or destructive data operation occurred. The independent Issue #52 review, branch-protection administration, CodeQL alert disposition, and external acceptance gates remain open.
