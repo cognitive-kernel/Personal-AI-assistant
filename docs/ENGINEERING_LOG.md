@@ -735,3 +735,10 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Added API regression coverage for valid persistence and malformed/negative pricing entries. Exact-head CI is pending.
 
 - Added a regression contract that compares every `SETTING_DEFAULTS` key with the dashboard source and requires both load and save wiring. New settings can no longer be added without corresponding UI integration silently passing the suite.
+
+
+### 2026-11-14 — Per-method generation budgets and retry-provider consistency
+
+- Added independent output-token budgets for AI Learning, Basic Learning, and Topic/Course Learning, with bounded API validation and Settings UI controls. The previous fixed 3900-token generation/repair limits are now read from the selected method profile.
+- Fixed a provider-routing defect in lesson repair: retries previously forced the Basic Learning provider even when the original job used AI Learning or Topic/Course Learning. Repair requests now retain the original method's provider/model profile and output budget.
+- Settings persistence tests cover defaults, custom values, and invalid limits; the Settings UI contract test requires load/save wiring for every default key.
