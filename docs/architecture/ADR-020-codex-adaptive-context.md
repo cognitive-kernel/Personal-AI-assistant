@@ -22,7 +22,8 @@ Let:
 - M_weights be the installed model's reported weight size.
 - M_weight_charge be zero when the selected base model is already resident (because free physical memory already excludes its weights), otherwise M_weights.
 - M_overhead be the conservative model/runtime overhead allowance.
-- B_KV be the estimated KV-cache bytes per token from the model's architecture metadata.
+- B_KV be the estimated FP16 KV-cache bytes per token for one request from the model's architecture metadata.
+- P_parallel be the effective `OLLAMA_NUM_PARALLEL` value read from the Ollama server owner's Windows user/system environment; Ollama defaults this setting to 1 when unset.
 - C_catalog be the Codex-safe signed 64-bit ceiling `floor((2^63 - 1) / 9)`. Codex stores context fields as i64 and derives automatic compaction with `(context_window * 9) / 10`; the lower bound avoids overflow in that multiplication. The application does not add an arbitrary 1,048,576-token cap; actual model and host limits normally bind first.
 
 The host capacity is estimated independently from the model's advertised context ceiling. KV-cache bytes/token necessarily depend on the selected model architecture, but the hardware memory budget is reported separately. If the base model is already loaded, its weight size is not charged twice because the available-memory measurement already reflects resident weights:
@@ -31,7 +32,7 @@ The host capacity is estimated independently from the model's advertised context
 \[
 C_{hardware} =
 \left\lfloor
-\frac{M_{available}-M_{reserve}-M_{weight\_charge}-M_{overhead}}{B_{KV}}
+\frac{M_{available}-M_{reserve}-M_{weight\_charge}-M_{overhead}}{B_{KV} \times P_{parallel}}
 \right\rfloor
 \]
 
@@ -52,12 +53,13 @@ There is no fixed minimum context window. The only numeric validity rule is that
 ## Runtime enforcement
 
 1. Read architecture-specific model context metadata, a positive integer model weight size from `/api/tags`, all KV-cache dimensions used by the memory estimate, and tool-calling capability from Ollama using bounded /api/show requests (verbose=false). The readiness API and settings-save path must reject a model whose KV-cache dimensions are incomplete; a valid context_length alone is insufficient.
-2. Estimate host capacity from current free physical memory, model weight size, KV-cache dimensions, reserve, and overhead.
-3. Select the minimum of requested, hardware, model, and catalog ceilings.
-4. Remove stale current-format and legacy `-codex-64k` variants for the selected base model before measuring current free RAM, then create a separate context-specific variant with exactly the selected num_ctx; never mutate the original model.
-5. Verify the saved variant setting through /api/show.
-6. Load the variant and verify the actual allocated context_length through /api/ps before dispatching Codex.
-7. Supply the exact selected value in Codex's model catalog and repeat runtime verification after execution.
+2. Resolve the Ollama server process owner and read that account's persisted Windows environment, with machine-level environment fallback. Use Ollama's documented default of 1 only when no setting is present; malformed, unavailable, or non-positive values fail closed. The Runner account's own environment is not treated as the server's configuration.
+3. Estimate host capacity from current free physical memory, model weight size, KV-cache dimensions multiplied by `P_parallel`, reserve, and overhead.
+4. Select the minimum of requested, hardware, model, and catalog ceilings.
+5. Remove stale current-format and legacy `-codex-64k` variants for the selected base model before measuring current free RAM, then create a separate context-specific variant with exactly the selected num_ctx; never mutate the original model.
+6. Verify the saved variant setting through /api/show.
+7. Load the variant and verify the actual allocated context_length through /api/ps before dispatching Codex.
+8. Supply the exact selected value in Codex's model catalog and repeat runtime verification after execution.
 
 Any mismatch, missing telemetry, invalid architecture dimensions, missing tools capability, or actual allocation different from the selected value blocks that dispatch. A user- or workflow-supplied value cannot bypass the ceiling.
 
@@ -66,7 +68,8 @@ Any mismatch, missing telemetry, invalid architecture dimensions, missing tools 
 - Models with valid context limits below 64,000 tokens remain eligible when they advertise the required tools capability.
 - Hosts with safe memory for fewer than 64,000 tokens remain eligible; Codex receives the smaller verified context.
 - A smaller context limits the amount of prior conversation and repository evidence available in one turn. The controller should rely on its existing durable checkpoints and bounded task workflow rather than increasing context beyond the safe ceiling.
-- The FP16 KV-cache calculation is a preflight estimate, not proof of allocation. Ollama's loaded runtime report is the final allocation check.
+- Higher `OLLAMA_NUM_PARALLEL` values reduce the safe context ceiling proportionally; the target preflight reads the server owner's Windows environment rather than assuming the Runner account's environment.
+- The FP16 KV-cache calculation is a preflight estimate, not proof of allocation. The configured parallel-request multiplier is included; Ollama's loaded runtime report is the final allocation check.
 - The selected context can change between runs as free physical memory changes. The value must be recalculated for each preflight.
 
 ## Regression requirements
@@ -76,6 +79,7 @@ Tests must prove:
 - A model ceiling of 8,192 tokens produces an 8,192-token Codex catalog when hardware can support more.
 - A request above either ceiling is clamped and never persisted above it.
 - The hardware-derived ceiling is reported independently from the model ceiling.
+- A four-request parallel setting reduces the hardware-derived context ceiling to one quarter of the single-request ceiling, all else equal.
 - Zero/negative context, missing KV metadata, missing memory telemetry, or insufficient memory to provide even one token fails safely.
 - Settings/readiness accept valid models below 64,000 tokens.
 - The actual /api/ps allocation must exactly match the selected context before and after Codex execution.
