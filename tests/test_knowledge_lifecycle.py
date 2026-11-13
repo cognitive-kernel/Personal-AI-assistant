@@ -389,6 +389,7 @@ def test_rejection_requires_two_models_and_two_live_contradictory_sources(lifecy
     assert readiness["checks"]["content_retained"] is True
     assert readiness["checks"]["promotion_blocked"] is True
     assert readiness["contradictions"]
+    assert any(item["source_host"] for item in readiness["contradictions"])
 
     with pytest.raises(ValueError, match="multi-source"):
         knowledge_lifecycle.promote_candidate(
