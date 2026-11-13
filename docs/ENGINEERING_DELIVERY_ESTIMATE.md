@@ -118,6 +118,6 @@ The run-scoped checkpoint readiness and snapshot-index isolation defect is track
 
 ## 2026-11-13 — Additional task-runtime scope checkpoint
 
-- PR #739's durable task payload/checkpoint/result bounds and metadata validation are within E-02/E-05; PR #740's browser-learning worker exception and lease-cleanup correction is within E-05. PR #738 continues E-02 endpoint contract work.
+- PR #739's durable task payload/checkpoint/result bounds and metadata validation are within E-02/E-05; PR #725's browser-learning worker exception and lease-cleanup correction is within E-05. PR #738 continues E-02 endpoint contract work.
 - The first PR #739 test run found a test-fixture error, corrected on the latest branch head. No additional engineering hours are recorded; actual labor time remains unmeasured.
 - Original 176-hour baseline, 144-hour task estimate, 32-hour contingency, and 2026-12-01 planning target remain unchanged pending measured scope and labor.
