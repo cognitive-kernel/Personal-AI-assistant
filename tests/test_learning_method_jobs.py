@@ -213,7 +213,6 @@ def test_user_disabled_ai_learning_falls_back_to_basic_learning(method_job_store
     result = learning_method_orchestrator.queue_initial_method(topic_id)
 
     assert result["method"] == "basic_learning"
-    with db.learning_connection() as connection:
     methods = list_attempt_events(topic_id)
     assert [(row["method"], row["status"]) for row in methods] == [
         ("ai_learning", "unavailable"),
