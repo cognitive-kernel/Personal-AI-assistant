@@ -483,6 +483,22 @@ def test_active_codex_documentation_matches_adaptive_context_contract():
     assert "currently 1,048,576 tokens" not in adr
     assert "تنظیمات قدیمی Codex نتوانند Context بزرگ‌تری تحمیل کنند" in readme
 
+def test_node_runtime_is_provisioned_per_github_job_not_preinstalled_on_target_host():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    action_pin = "actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e"
+    for workflow_name in ("autonomous-codex-engineering.yml", "codex-windows-sandbox-diagnostic.yml", "tests.yml"):
+        workflow = (root / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
+        assert action_pin in workflow
+        assert 'node-version: "26.13.0"' in workflow
+        assert "package-manager-cache: false" in workflow
+
+    provision = (root / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
+    assert "Get-Command node.exe" not in provision
+    assert "Get-Command npm.cmd" not in provision
+
+
 def test_windows_provisioning_and_app_readiness_use_consistent_cli_resolution():
     from pathlib import Path
 
@@ -495,13 +511,13 @@ def test_windows_provisioning_and_app_readiness_use_consistent_cli_resolution():
     assert "Get-CimInstance Win32_Process -Filter \"Name='ollama.exe'\"" in provision
     assert "Get-CimInstance Win32_UserProfile" in provision
     assert "AppData\\Local\\Programs\\Ollama\\ollama.exe" in provision
-    assert "Get-Command node.exe" in provision
-    assert "Get-Command npm.cmd" in provision
+    assert "Get-Command node.exe" not in provision
+    assert "Get-Command npm.cmd" not in provision
     assert "Get-Command git.exe" in provision
     assert "Get-Command python.exe" in provision
     assert "Get-Command gh.exe" in provision
-    assert "Node.js 26.13.0 or newer is required" in provision
-    assert "npm 11.20.0 or newer is required" in provision
+    assert "Node.js 26.13.0 or newer is required" not in provision
+    assert "npm 11.20.0 or newer is required" not in provision
     assert "Ollama 0.40.16 or newer is required" in provision
     assert 'if ($Model -match "(?i)-codex-(?:ctx[0-9]+|[0-9]+k)$")' in provision
     assert "Get-Command ollama -ErrorAction" not in provision
