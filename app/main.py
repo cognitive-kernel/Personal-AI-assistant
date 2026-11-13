@@ -851,6 +851,8 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         ("sandbox_test_timeout_seconds", 1, 1800),
         ("sandbox_max_output_bytes", 1024, 65536),
         ("ai_learning_browser_timeout_seconds", 10, 1800),
+        ("ai_learning_browser_poll_interval_ms", 100, 5000),
+        ("ai_learning_browser_control_poll_interval_ms", 10, 1000),
         ("ai_learning_response_timeout_seconds", 30, 7200),
         ("ai_learning_max_lesson_continuations", 0, 20),
         ("ai_learning_stability_seconds", 1, 120),
