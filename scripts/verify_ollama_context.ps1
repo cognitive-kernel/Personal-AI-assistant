@@ -36,7 +36,11 @@ function Get-OllamaNumParallel {
         throw "Could not resolve the Ollama server process owner SID."
     }
 
-    $userEnvironmentPath = "Registry::HKEY_USERS\$($owner.Sid)\Environment"
+    $userHivePath = "Registry::HKEY_USERS\$($owner.Sid)"
+    if (-not (Test-Path -LiteralPath $userHivePath)) {
+        throw "The Ollama server owner's Windows environment hive is unavailable; refusing to assume its parallel request setting."
+    }
+    $userEnvironmentPath = Join-Path $userHivePath "Environment"
     $machineEnvironmentPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
     $userEnvironment = if (Test-Path -LiteralPath $userEnvironmentPath) {
         Get-ItemProperty -LiteralPath $userEnvironmentPath -ErrorAction Stop
@@ -55,11 +59,11 @@ function Get-OllamaNumParallel {
     if ([string]::IsNullOrWhiteSpace($rawValue)) {
         $rawValue = "1"
     }
-    $parallelRequests = [uint32]0
-    if (-not [uint32]::TryParse($rawValue.Trim(), [ref]$parallelRequests) -or $parallelRequests -lt 1 -or $parallelRequests -gt 1024) {
-        throw "The Ollama server's OLLAMA_NUM_PARALLEL setting is invalid or outside the supported safety bound (1..1024)."
+    $parallelRequests = [uint64]0
+    if (-not [uint64]::TryParse($rawValue.Trim(), [ref]$parallelRequests) -or $parallelRequests -lt 1) {
+        throw "The Ollama server's OLLAMA_NUM_PARALLEL setting must be a positive integer."
     }
-    return [int]$parallelRequests
+    return $parallelRequests
 }
 
 function Get-ModelInfo {
