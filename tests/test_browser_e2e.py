@@ -1572,19 +1572,82 @@ def test_learning_candidate_review_panel_loads_without_executing_or_promoting():
         _goto_section(page, base_url, "learning-section")
         assert page.locator("#refresh-learning-candidates").count() == 1
         response = page.request.get(
-            base_url.rstrip("/") + "/api/learning/candidates?status=awaiting_test&limit=10"
+            base_url.rstrip("/") + "/api/learning/candidates?limit=10"
         )
         assert response.status == 200
         result = response.json()
         assert isinstance(result.get("items"), list)
+
+        failed_candidate = {
+            "id": 987654,
+            "topic": "Retained contradictory candidate",
+            "status": "failed",
+            "integrity_valid": True,
+            "source_urls": ["https://alpha.example.test/source", "https://beta.other.test/source"],
+            "content_preview": "Original content remains available.",
+            "failure_reason": "rejected_after_review: contradictory source evidence; promotion blocked.",
+            "test_plan": [],
+            "test_results": [],
+        }
+        page.route(
+            "**/api/learning/candidates?limit=50",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"items": [failed_candidate], "count": 1}),
+            ),
+        )
+        page.route(
+            "**/api/learning/candidates/987654",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"candidate": {"content": "Original retained candidate content."}}),
+            ),
+        )
+        page.route(
+            "**/api/learning/candidates/987654/readiness",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "candidate_id": 987654,
+                    "status": "rejected_after_review",
+                    "ready_for_promotion": False,
+                    "checks": {"content_retained": True, "promotion_blocked": True},
+                    "contradictions": [{"kind": "source", "note": "The source contradicts the claim."}],
+                }),
+            ),
+        )
+        page.route(
+            "**/api/learning/candidates/987654/review-history",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"items": []}),
+            ),
+        )
+
         page.locator("#refresh-learning-candidates").click()
         page.wait_for_function(
             """() => {
                 const node = document.querySelector('#learning-candidates');
-                return node && node.textContent.trim() &&
-                    !node.textContent.includes('در حال بارگذاری');
+                return node && node.textContent.includes('Retained contradictory candidate');
             }""",
             timeout=10000,
+        )
+        assert "promotion blocked" in page.locator("#learning-candidates").text_content()
+        assert page.get_by_role("button", name="شروع بررسی وب و peer-AI").is_hidden()
+        assert page.get_by_role("button", name="ثبت طرح آزمون").is_hidden()
+        assert page.get_by_role("button", name="اجرای آزمون‌های Python در sandbox").is_hidden()
+
+        page.get_by_role("button", name="نمایش متن کامل").click()
+        page.wait_for_function(
+            "() => document.querySelector('#learning-candidates pre')?.textContent.includes('Original retained candidate content.')"
+        )
+        page.get_by_role("button", name="نمایش وضعیت شواهد و تناقض‌ها").click()
+        page.wait_for_function(
+            "() => document.querySelector('.candidate-readiness')?.textContent.includes('rejected_after_review')"
         )
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
