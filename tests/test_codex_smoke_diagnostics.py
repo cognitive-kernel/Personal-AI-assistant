@@ -569,7 +569,7 @@ def test_hosted_ci_workflows_cancel_superseded_runs_per_pull_request():
         ".github/workflows/dependency-audit.yml",
         ".github/workflows/sandbox-integration-ci.yml",
     )
-    expected_group = "group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"
+    expected_group = "group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}"
     for relative_path in workflows:
         content = (root / relative_path).read_text(encoding="utf-8")
         assert expected_group in content
