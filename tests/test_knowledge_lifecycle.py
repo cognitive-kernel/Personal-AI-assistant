@@ -35,7 +35,21 @@ def _candidate(job_id: int, *, status: str = "awaiting_test") -> tuple[int, str]
              json.dumps(["https://docs.example.test/topic"]),
              digest, json.dumps({"accepted": True}), status, "[]"),
         )
-        return int(cursor.lastrowid), digest
+        candidate_id = int(cursor.lastrowid)
+        connection.execute(
+            """INSERT INTO learning_candidate_sources(
+                   candidate_id, source_type, source_url, verification_status
+               ) VALUES (?, 'web', ?, 'unverified')""",
+            (candidate_id, "https://docs.example.test/topic"),
+        )
+        connection.execute(
+            """INSERT INTO learning_candidate_sources(
+                   candidate_id, source_type, reference_url, provider, model_id,
+                   verification_status
+               ) VALUES (?, 'ai', ?, 'ollama', 'test-model', 'unverified')""",
+            (candidate_id, "https://docs.example.test/topic"),
+        )
+        return candidate_id, digest
 
 
 def test_candidate_readiness_fails_closed_without_evidence(lifecycle_store):
