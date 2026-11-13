@@ -1018,3 +1018,11 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 
 
 - **Follow-up hardening:** replaced PowerShell Registry-provider existence checks with direct read-only .NET RegistryKey access. The preflight reads only the `OLLAMA_NUM_PARALLEL` value, distinguishes a missing user Environment key from an inaccessible user hive, and fails closed on access errors instead of silently assuming the default. Regression source contracts protect this lookup.
+
+
+## 2026-11-13 — Conservative GPU-residency accounting and PowerShell helper tests
+
+- **Root cause:** treating every loaded model as already reflected in free physical RAM is unsafe when Ollama has placed model weights in dedicated VRAM; system RAM telemetry does not account for dedicated VRAM allocations.
+- **Correction:** `Test-OllamaWeightsAlreadyLoaded` returns true only when `/api/ps` reports `size_vram=0`. Positive or missing VRAM telemetry charges the full installed model weight size to the system-RAM budget; malformed or negative telemetry fails closed. This is deliberately conservative for integrated/shared-memory GPUs, avoiding false-safe capacity estimates on discrete GPUs.
+- **Testability:** extracted pure PowerShell helpers for parallelism resolution and VRAM residency into `scripts/ollama_context_helpers.ps1`. The Windows PowerShell 5.1 bridge now tests default parallelism, user-over-machine precedence, invalid values, CPU residency, positive VRAM, missing telemetry, and invalid VRAM metadata without requiring a live Ollama server.
+- **Validation boundary:** exact-head CI on the code/test SHA above is required after this documentation synchronization. The self-hosted target diagnostic remains pending; no live Ollama allocation or Codex tool-call smoke is claimed.
