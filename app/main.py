@@ -806,6 +806,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         ("ai_learning_chunk_target_chars", 256, 10000),
         ("ai_learning_chunk_overlap_chars", 0, 2000),
         ("ai_learning_embedding_batch_size", 1, 256),
+        ("ai_learning_embedding_input_max_chars", 256, 100000),
         ("ai_learning_browser_timeout_seconds", 10, 1800),
         ("ai_learning_response_timeout_seconds", 30, 7200),
         ("ai_learning_max_lesson_continuations", 0, 20),
@@ -980,6 +981,20 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
                 detail="learning_model_minimum_quality_score must be a finite number between 0 and 1.",
             )
         values["learning_model_minimum_quality_score"] = float(quality)
+    for key, minimum, maximum in (
+        ("ai_learning_title_duplicate_threshold", 0.80, 1.0),
+        ("ai_learning_content_duplicate_threshold", 0.80, 1.0),
+    ):
+        if key in values:
+            threshold = values[key]
+            if (
+                isinstance(threshold, bool)
+                or not isinstance(threshold, (int, float))
+                or not math.isfinite(threshold)
+                or not minimum <= threshold <= maximum
+            ):
+                raise HTTPException(status_code=422, detail=f"{key} must be a finite number between {minimum} and {maximum}.")
+            values[key] = float(threshold)
     if "learning_task_budget_microusd" in values:
         budget = values["learning_task_budget_microusd"]
         if budget is not None and (
