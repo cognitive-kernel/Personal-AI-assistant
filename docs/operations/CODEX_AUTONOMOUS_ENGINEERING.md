@@ -119,7 +119,7 @@ The AI-learning page and autonomous-engineering page both include the primary na
 - Keep the runner's working directory and Windows account separate from personal documents, browser profiles, and unrelated credentials where practical.
 - Keep the app bound to loopback. The dashboard controls are not authentication; local processes on the computer can still access the local API.
 - A persistent runner can wait for jobs around the clock, but actual work occurs in finite workflow runs. The hourly schedule can be delayed, and the computer, network, Ollama server, and runner service must remain available.
-- Local CPU inference can be much slower than hosted inference. The target-host performance/soak run, independent security review, and required repository acceptance gates remain mandatory; each task PR requires owner review and manual merge before the queue advances.
+- Local CPU inference can be much slower than hosted inference. Target-host performance/soak is tracked as external operational acceptance evidence and does not block routine PR delivery unless repository branch protection explicitly requires it. Independent security review and repository-enforced approvals remain mandatory; each task PR stays open for owner review and manual merge before the queue advances.
 - The UI's readiness indicator is diagnostic only. A green state does not prove model quality, security, or successful workflow execution.
 
 ## Troubleshooting
@@ -130,7 +130,7 @@ The AI-learning page and autonomous-engineering page both include the primary na
 - **Runner missing:** inspect the runner service in Windows Services and confirm the `ollama` and unique `autonomous-state-owner` labels.
 - **Workflow queued:** confirm the runner is online and has all required labels.
 - **Manual dispatch unavailable:** authenticate GitHub CLI for the same Windows account that runs the app and verify repository Actions permissions.
-- **Model context or memory errors:** check Ollama's loaded model/context configuration and reduce concurrent workloads. The estimator includes the effective `OLLAMA_NUM_PARALLEL` value resolved from the server owner's persisted Windows environment; missing or invalid owner/configuration evidence blocks preflight. Do not claim successful operation until the live target diagnostic and a real Codex tool-call run complete.
+- **Model context or memory errors:** check Ollama's loaded model/context configuration and reduce concurrent workloads. The estimator includes the effective `OLLAMA_NUM_PARALLEL` value resolved from the server owner's persisted Windows environment; missing or invalid owner/configuration evidence blocks preflight. Do not claim successful target-host/live-model operation until the live diagnostic and a real Codex tool-call run complete; record these as NOT RUN / PENDING without stopping independent GitHub-side engineering.
 
 
 ## Automatic Codex CLI provisioning
