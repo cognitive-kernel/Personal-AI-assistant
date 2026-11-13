@@ -475,3 +475,9 @@
 - Extracted title embedding, semantic duplicate detection, provider-scoped cache identity and duplicate-threshold policy from the large AI-learning service module into app/ai_learning/embedding_service.py.
 - Centralized validated numeric setting readers in app/ai_learning/config.py; the legacy service facade re-exports imported names to preserve existing callers and tests.
 - The extraction is intentionally incremental: app/ai_learning/service.py and browser_automation.py remain large and still need further responsibility-based decomposition. No claim is made that the modularization requirement is complete.
+
+### 2026-11-14 — Settings and embedding regression follow-up
+
+- AI Learning, Basic Learning, Topic/Course Learning, Experience System, knowledge library, retrieval, browser workflow, Sandbox and Self-Improvement have enabled fresh-install defaults and explicit Settings switches. Provider/model profiles remain separate per capability; model discovery follows the selected provider.
+- Fixed the import contract and test fixtures after extracting embedding logic into its owning module. Fixed duplicate Settings DOM identity, missing accessible names, and E2E setup that still depended on removed Self-Improvement environment flags.
+- Exact-head CI for these follow-up fixes is running. Do not start local or human testing until all GitHub checks, including crash/recovery and three-method end-to-end acceptance, are complete. PR #746 remains Draft and unmerged.
