@@ -68,6 +68,9 @@ jobs:
   cancel-stale-diagnostics:
     runs-on: ubuntu-latest
     continue-on-error: true
+    concurrency:
+      group: ${{ github.workflow }}-cleanup-${{ github.ref }}
+      cancel-in-progress: true
     permissions:
       actions: write
       contents: read
