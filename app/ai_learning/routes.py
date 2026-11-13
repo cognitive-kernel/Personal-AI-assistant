@@ -138,6 +138,7 @@ def _call(function, *args, **kwargs):
 @router.get("/status")
 def status() -> dict[str, Any]:
     return {"enabled": config.is_enabled(), "retrieval_enabled": config.retrieval_is_enabled(),
+            "browser_enabled": config.browser_is_enabled(),
             "provider_mode": "playwright_visible_chatgpt_ui",
             "note": "The dashboard starts a persistent local Chrome/Playwright worker that interacts with the visible ChatGPT page. No OpenAI API key is used. Successful outlines continue into lesson batches; lessons remain unpublished for review."}
 
@@ -153,15 +154,21 @@ def pause_learning() -> dict[str, Any]:
 
 @router.post("/resume")
 def resume_learning(request: LearningResume) -> dict[str, Any]:
+    if not config.browser_is_enabled():
+        raise HTTPException(status_code=409, detail="The AI-learning browser provider is disabled in settings.")
     return _call(browser_automation.resume_learning, request.course_id)
 
 
 @router.post("/browser/outline", status_code=202)
 def start_browser_outline(request: BrowserOutlineStart) -> dict[str, Any]:
+    if not config.browser_is_enabled():
+        raise HTTPException(status_code=409, detail="The AI-learning browser provider is disabled in settings.")
     return _call(browser_automation.start_outline, request.course_id, request.request_key)
 
 @router.post("/browser/lessons", status_code=202)
 def start_browser_lessons(request: BrowserLessonStart) -> dict[str, Any]:
+    if not config.browser_is_enabled():
+        raise HTTPException(status_code=409, detail="The AI-learning browser provider is disabled in settings.")
     return _call(browser_automation.start_lesson_run, request.course_id, request.topic_ids, request.request_key, request.force_retry)
 
 @router.post("/runs", status_code=201)
