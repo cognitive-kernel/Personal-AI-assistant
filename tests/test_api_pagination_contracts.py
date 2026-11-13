@@ -74,7 +74,8 @@ def test_pagination_bounds_are_published_in_openapi_schema():
     for (path, method, name), (minimum, maximum) in expected.items():
         parameters = schema["paths"][path][method]["parameters"]
         parameter = next(item for item in parameters if item["name"] == name)
-        bounds = _resolve_openapi_schema(parameter["schema"], schema)\n        assert bounds["minimum"] == minimum
+        bounds = _resolve_openapi_schema(parameter["schema"], schema)
+        assert bounds["minimum"] == minimum
         if maximum is not None:
             assert bounds["maximum"] == maximum
 
