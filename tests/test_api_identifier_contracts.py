@@ -67,3 +67,24 @@ def test_integer_resource_path_id_constraints_are_published_in_openapi():
         parameters = schema["paths"][path][method]["parameters"]
         parameter = next(item for item in parameters if item["name"] == name)
         assert parameter["schema"]["minimum"] == 1, (path, method, parameter)
+
+def test_every_ai_learning_integer_path_identifier_is_positive_in_openapi():
+    schema = app.openapi()
+    inspected = 0
+    for path, path_item in schema["paths"].items():
+        if not path.startswith("/api/ai-learning/"):
+            continue
+        for method, operation in path_item.items():
+            if method not in {"get", "post", "put", "patch", "delete"}:
+                continue
+            for parameter in operation.get("parameters", []):
+                if parameter.get("in") != "path":
+                    continue
+                parameter_schema = parameter.get("schema", {})
+                if parameter_schema.get("type") != "integer":
+                    continue
+                inspected += 1
+                assert parameter_schema.get("minimum", 0) >= 1, (
+                    method, path, parameter
+                )
+    assert inspected >= 25
