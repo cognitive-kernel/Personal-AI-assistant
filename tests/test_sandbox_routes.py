@@ -4,9 +4,6 @@ from fastapi.testclient import TestClient
 from app import (
     cloud_resources,
     db,
-    experience_tasks,
-    factual_verification_tasks,
-    learning_review_tasks,
     main as app_main,
     sandbox_tasks,
     task_routes,
