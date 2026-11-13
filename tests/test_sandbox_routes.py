@@ -87,7 +87,7 @@ def test_sandbox_run_requires_consent_then_queues_a_bounded_task(local_client):
         sandbox_tasks.SANDBOX_LANGUAGE_TASK_TYPE,
         experience_tasks.EXPERIENCE_TEST_TASK_TYPE,
         factual_verification_tasks.FACTUAL_VERIFY_TASK_TYPE,
-        learning_review_tasks.LEARNING_REVIEW_TASK_TYPE,
+        learning_review_tasks.LEARNING_SANDBOX_REVIEW_TASK_TYPE,
     ],
 )
 def test_generic_task_endpoint_cannot_bypass_sandbox_consent_route(local_client, task_type):
