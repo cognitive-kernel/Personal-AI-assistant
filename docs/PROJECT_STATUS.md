@@ -460,3 +460,9 @@
 - Removed the remaining direct SANDBOX_ENABLED/SANDBOX_DOCKER_EXECUTABLE/SANDBOX_PYTHON_IMAGE reads from learning candidate review. The path now reads persisted Settings, uses the shared sandbox configuration validator, and applies configured timeout/output limits.
 - The candidate review path still requires explicit current consent before running any code. A disabled module, missing Docker/image configuration, invalid settings, or absent consent records an unavailable/skipped outcome; no host fallback is introduced.
 - Sandbox API errors and architecture documentation now point to dashboard Settings rather than obsolete environment gates. Tests configure sandbox through the persistent settings store.
+### 2026-11-13 — Configurable browser polling and lease safety bounds
+
+- Browser page polling and worker-control polling intervals are now persisted settings rather than fixed sleeps.
+- Browser worker lease duration and heartbeat interval are configurable within safe bounds. The API enforces heartbeat <= one third of lease duration.
+- A worker snapshots lease/heartbeat values when it claims ownership; changing Settings mid-run cannot silently alter the lease parameters used by its active heartbeat thread.
+- Focused tests verify the claimed lease duration and reject unsafe heartbeat ratios.
