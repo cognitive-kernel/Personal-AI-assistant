@@ -481,6 +481,7 @@ def test_windows_provisioning_and_app_readiness_use_consistent_cli_resolution():
     root = Path(__file__).resolve().parents[1]
     provision = (root / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
     app_check = (root / "scripts" / "check_autonomous_agent.ps1").read_text(encoding="utf-8")
+    runner_check = (root / "scripts" / "check_autonomous_runner.ps1").read_text(encoding="utf-8")
 
     assert "Get-Command ollama.exe" in provision
     assert "Get-CimInstance Win32_Process -Filter \"Name='ollama.exe'\"" in provision
@@ -497,7 +498,14 @@ def test_windows_provisioning_and_app_readiness_use_consistent_cli_resolution():
     assert 'if ($Model -match "(?i)-codex-(?:ctx[0-9]+|[0-9]+k)$")' in provision
     assert "Get-Command ollama -ErrorAction" not in provision
     assert "Get-Command npm -ErrorAction" not in provision
+    for script in (provision, app_check, runner_check):
+        assert ".block_count" in script
+        assert ".attention.head_count_kv" in script
+        assert ".attention.key_length" in script
+        assert ".attention.value_length" in script
 
+    assert "Model KV-cache metadata" in app_check
+    assert "Model KV-cache metadata" in runner_check
     assert "Get-Command gh.exe" in app_check
     assert "Get-CimInstance Win32_Process -Filter" in app_check
     assert "Get-Process -Name \"Runner.Listener\"" not in app_check
