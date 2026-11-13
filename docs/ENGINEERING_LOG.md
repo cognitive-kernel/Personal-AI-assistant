@@ -673,3 +673,12 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Migration 54 adds execution_owner and execution_epoch to learning_jobs. The isolated app/learning_execution.py module performs atomic claims and owner/epoch-fenced assert, fail, and cancel operations. learning.run_job receives the live TaskContext and only commits with its current owner and epoch; a stale worker cannot overwrite a newer execution.
 - Experience System observes the three learning methods through a read-only view of the append-only event ledger. It cannot change coordinator state, and the complete Experience module is user-configurable.
 - Focused tests were added or updated for stale execution epochs, concurrent claims, permanent job-creation fallback, settings defaults, and Experience observation. Exact-head CI is still required; local and human testing have intentionally not started.
+
+### 2026-11-13 — Independent module settings and provider-safe AI-learning caches
+
+- Split the three-method AI Learning lane switch (ai_learning_enabled) from the independent AI-learning knowledge-library switch (ai_learning_knowledge_enabled). Retrieval and visible-browser execution remain separately configurable; all four switches are enabled in a fresh installation.
+- The settings UI names the method lane and knowledge library separately so disabling one cannot silently disable the other. The browser-provider switch controls only the visible ChatGPT browser workflow; the model-backed lane uses its own provider/model profile.
+- Fresh installs permit GPU acceleration by default. Actual device availability is still detected at runtime; an unsupported or absent GPU does not become a mandatory dependency. CPU/RAM safeguards remain active.
+- AI-learning embedding input length, embedding batch size, title/content duplicate thresholds, lesson batch size, chunk dimensions, and browser/recovery limits are persisted and range-validated. Chunk overlap must remain smaller than the chunk target.
+- Added app/ai_learning/embedding_identity.py. Semantic embedding cache keys now include provider, normalized endpoint, and model; changing providers or endpoints cannot reuse vectors produced in a different embedding space. Existing cache rows are retained and naturally become unused rather than being deleted.
+- Added focused regression coverage for independent switches, setting defaults/validation, and provider-scoped cache identities. Exact-head CI must validate these changes; no local or human test is claimed.
