@@ -20,7 +20,7 @@ Let:
 - M_available be currently available physical memory at preflight time.
 - M_reserve be the configured system safety reserve.
 - M_weights be the installed model's reported weight size.
-- M_weight_charge be zero when the selected base model is already resident (because free physical memory already excludes its weights), otherwise M_weights.
+- M_weight_charge be zero only when `/api/ps` reports the loaded base model with `size_vram=0` (CPU-resident weights already reduce free physical RAM); if `size_vram` is positive or absent, charge the full M_weights conservatively. Invalid VRAM telemetry fails closed.
 - M_overhead be the conservative model/runtime overhead allowance.
 - B_KV be the estimated FP16 KV-cache bytes per token for one request from the model's architecture metadata.
 - P_parallel be the effective `OLLAMA_NUM_PARALLEL` value read from the Ollama server owner's Windows user/system environment; Ollama defaults this setting to 1 when unset.
