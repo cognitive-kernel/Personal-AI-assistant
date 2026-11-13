@@ -114,7 +114,7 @@ try {
     if ($modelInstalled) {
         $modelTag = @($tags.models | Where-Object { $_.name -eq $model }) | Select-Object -First 1
         $parsedWeightSize = 0L
-        if ($modelTag -and [int64]::TryParse([string]$modelTag.size, [ref]$parsedWeightSize) -and $parsedWeightSize -gt 0) {
+        if ($modelTag -and ($modelTag.size -is [int] -or $modelTag.size -is [long]) -and [int64]::TryParse([string]$modelTag.size, [ref]$parsedWeightSize) -and $parsedWeightSize -gt 0) {
             $modelWeightSizeAvailable = $true
             $modelWeightSizeDetail = "$parsedWeightSize bytes"
         }
