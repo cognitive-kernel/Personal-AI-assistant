@@ -26,6 +26,7 @@ def payload() -> dict:
         "model_weight_bytes": 5 * 1024**3,
         "available_memory_bytes": 20 * 1024**3,
         "requested_context_tokens": 100000,
+        "parallel_requests": 1,
     }
 
 
@@ -60,6 +61,42 @@ def test_recorded_i5_12400_gpt_oss_host_profile_supports_upstream_64k_context():
     assert result["selected_context_tokens"] >= 64_000
     assert result["selected_context_tokens"] <= 131_072
     assert result["model_weight_charge_bytes"] == 13_793_441_566
+    assert result["parallel_requests"] == 1
+    assert result["kv_cache_bytes_per_token_total"] == 49_152
+
+
+def test_parallel_request_count_scales_the_kv_cache_budget():
+    data = {
+        "model_info": {
+            "llama.context_length": 131072,
+            "llama.block_count": 32,
+            "llama.attention.head_count_kv": 8,
+            "llama.attention.key_length": 128,
+            "llama.attention.value_length": 128,
+        },
+        "architecture": "llama",
+        "model_weight_bytes": 5 * 1024**3,
+        "available_memory_bytes": 20 * 1024**3,
+        "requested_context_tokens": 100000,
+        "parallel_requests": 4,
+    }
+
+    result = select_context_window(**data)
+
+    assert result["kv_cache_bytes_per_token"] == 131072
+    assert result["kv_cache_bytes_per_token_total"] == 524288
+    assert result["parallel_requests"] == 4
+    assert result["hardware_maximum_context_tokens"] == 21504
+    assert result["selected_context_tokens"] == 21504
+
+
+@pytest.mark.parametrize("parallel_requests", [0, -1, True, 1.5, "4"])
+def test_context_selection_rejects_invalid_parallel_request_count(parallel_requests):
+    data = payload()
+    data["parallel_requests"] = parallel_requests
+
+    with pytest.raises(OllamaModelMetadataError, match="parallel_requests must be a positive integer"):
+        select_context_window(**data)
 
 
 def test_context_selection_does_not_double_charge_already_loaded_model_weights():
