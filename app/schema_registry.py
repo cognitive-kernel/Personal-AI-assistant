@@ -1523,6 +1523,53 @@ LEARNING_MIGRATIONS = (
                BEGIN SELECT RAISE(ABORT, 'learning accuracy evaluations are immutable'); END""",
         ),
     ),
+
+    Migration(
+        50,
+        "sequential-per-topic-quality-gates",
+        (
+            """CREATE TABLE learning_topic_quality_gates (
+                path_topic_id INTEGER PRIMARY KEY REFERENCES learning_path_topics(id) ON DELETE CASCADE,
+                current_job_id INTEGER REFERENCES learning_jobs(id),
+                state TEXT NOT NULL DEFAULT 'pending'
+                    CHECK(state IN ('pending','evaluating','repairing','passed','blocked')),
+                repair_count INTEGER NOT NULL DEFAULT 0 CHECK(repair_count >= 0),
+                max_repairs INTEGER NOT NULL DEFAULT 3 CHECK(max_repairs BETWEEN 1 AND 10),
+                latest_score REAL CHECK(latest_score IS NULL OR (latest_score >= 0 AND latest_score <= 100)),
+                latest_content_sha256 TEXT CHECK(latest_content_sha256 IS NULL OR length(latest_content_sha256) = 64),
+                latest_evaluation_id INTEGER,
+                diagnosis_json TEXT NOT NULL DEFAULT '{}',
+                next_action TEXT NOT NULL DEFAULT 'await_first_lesson',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_learning_topic_quality_gates_state ON learning_topic_quality_gates(state, updated_at)",
+            """CREATE TABLE learning_topic_quality_evaluations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path_topic_id INTEGER NOT NULL REFERENCES learning_path_topics(id),
+                job_id INTEGER NOT NULL REFERENCES learning_jobs(id),
+                evaluation_sequence INTEGER NOT NULL CHECK(evaluation_sequence >= 1),
+                content_sha256 TEXT NOT NULL CHECK(length(content_sha256) = 64),
+                evaluator_id TEXT NOT NULL CHECK(length(trim(evaluator_id)) BETWEEN 1 AND 256),
+                evaluator_version TEXT NOT NULL CHECK(length(trim(evaluator_version)) BETWEEN 1 AND 120),
+                score REAL CHECK(score IS NULL OR (score >= 0 AND score <= 100)),
+                outcome TEXT NOT NULL CHECK(outcome IN ('passed','failed','unavailable','inconclusive')),
+                result_json TEXT NOT NULL,
+                result_sha256 TEXT NOT NULL CHECK(length(result_sha256) = 64),
+                evaluated_at TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(path_topic_id, content_sha256, evaluator_id, evaluator_version, evaluation_sequence)
+            )""",
+            "CREATE INDEX idx_learning_topic_quality_evaluations_topic ON learning_topic_quality_evaluations(path_topic_id, id)",
+            "CREATE INDEX idx_learning_topic_quality_evaluations_job ON learning_topic_quality_evaluations(job_id, id)",
+            """CREATE TRIGGER prevent_learning_topic_quality_evaluations_update
+               BEFORE UPDATE ON learning_topic_quality_evaluations
+               BEGIN SELECT RAISE(ABORT, 'topic quality evaluations are append-only'); END""",
+            """CREATE TRIGGER prevent_learning_topic_quality_evaluations_delete
+               BEFORE DELETE ON learning_topic_quality_evaluations
+               BEGIN SELECT RAISE(ABORT, 'topic quality evaluations are append-only'); END""",
+        ),
+    ),
 )
 
 
