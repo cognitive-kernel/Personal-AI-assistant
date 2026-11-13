@@ -111,6 +111,79 @@ def test_source_check_pins_validated_ip_and_disables_proxy(
     )
 
 
+
+@pytest.mark.parametrize(
+    "url,address",
+    [
+        ("https://[::1]/docs", "::1"),
+        ("https://[fc00::1]/docs", "fc00::1"),
+        ("https://[fe80::1]/docs", "fe80::1"),
+        ("https://[::ffff:127.0.0.1]/docs", "::ffff:127.0.0.1"),
+    ],
+)
+def test_source_check_rejects_private_ipv6_addresses_before_connecting(
+    isolated_store, monkeypatch, url, address
+):
+    course = service.create_course(title="IPv6 private address")
+    topic = service.add_topic(course["id"], "IPv6 network validation")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Private IPv6 source")
+    version = service.add_content_version(lesson["id"], "# Private IPv6 source\\n\\nA private IPv6 test source.")
+    with connection() as conn:
+        cursor = conn.execute(
+            """INSERT INTO sources(content_version_id,title,url,publisher,source_type,validation_status)
+               VALUES(?,?,?,?,?,'unverified')""",
+            (version["id"], "Private IPv6 source", url, "ipv6.example", "test"),
+        )
+        source_id = int(cursor.lastrowid)
+
+    monkeypatch.setattr(
+        service.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: [
+            (socket.AF_INET6, socket.SOCK_STREAM, 6, "", (address, 443, 0, 0))
+        ],
+    )
+    monkeypatch.setattr(
+        service, "build_opener",
+        lambda *_args, **_kwargs: pytest.fail("private IPv6 must be rejected before connecting"),
+    )
+    with pytest.raises(ValueError, match="خصوصی یا غیرعمومی"):
+        service.check_content_source(source_id)
+
+
+def test_source_check_rejects_mixed_public_and_private_ipv6_dns_before_connecting(
+    isolated_store, monkeypatch
+):
+    course = service.create_course(title="Mixed IPv6 DNS")
+    topic = service.add_topic(course["id"], "IPv6 network validation")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Mixed IPv6 source")
+    url = "https://mixed-ipv6.example/docs"
+    version = service.add_content_version(lesson["id"], "# Mixed IPv6 source\\n\\nA mixed DNS test source.")
+    with connection() as conn:
+        cursor = conn.execute(
+            """INSERT INTO sources(content_version_id,title,url,publisher,source_type,validation_status)
+               VALUES(?,?,?,?,?,'unverified')""",
+            (version["id"], "Mixed IPv6 source", url, "mixed-ipv6.example", "test"),
+        )
+        source_id = int(cursor.lastrowid)
+
+    monkeypatch.setattr(
+        service.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: [
+            (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2606:4700:4700::1111", 443, 0, 0)),
+            (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("fc00::7", 443, 0, 0)),
+        ],
+    )
+    monkeypatch.setattr(
+        service, "build_opener",
+        lambda *_args, **_kwargs: pytest.fail("mixed public/private IPv6 DNS must be rejected"),
+    )
+    with pytest.raises(ValueError, match="خصوصی یا غیرعمومی"):
+        service.check_content_source(source_id)
+
 def test_source_check_rejects_mixed_public_and_private_dns_before_connecting(
     isolated_store, monkeypatch
 ):
@@ -153,6 +226,7 @@ def test_source_check_rejects_mixed_public_and_private_dns_before_connecting(
         "https://:secret@example.com/docs",
         "https://user:@example.com/docs",
         "https://[fe80::1%25eth0]/docs",
+        "https://[not-ipv6]/docs",
     ],
 )
 def test_source_check_rejects_malformed_authority_before_dns(isolated_store, monkeypatch, url):
