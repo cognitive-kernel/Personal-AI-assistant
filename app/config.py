@@ -57,7 +57,7 @@ SETTING_DEFAULTS: dict[str, object] = {
     "cpu_resource_limit_percent": 90,
     "ram_resource_limit_percent": 90,
     "gpu_resource_limit_percent": 90,
-    "gpu_enabled": True,
+    "gpu_enabled": False,
     "ai_learning_enabled": True,
     "basic_learning_enabled": True,
     "topic_learning_enabled": True,
