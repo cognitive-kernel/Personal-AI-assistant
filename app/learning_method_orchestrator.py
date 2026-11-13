@@ -80,6 +80,7 @@ def queue_method_attempt(
     *,
     attempt_number: int = 1,
     source_job_id: int | None = None,
+    lesson_review: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create or recover exactly one method job, then publish it to the durable queue."""
     from . import learning
@@ -118,6 +119,7 @@ def queue_method_attempt(
             path_topic_id=path_topic_id,
             learning_method=method,
             method_attempt_key=method_key,
+            lesson_review=lesson_review,
         )
     job_id = int(job["id"])
 
@@ -158,7 +160,12 @@ def queue_method_attempt(
     }
 
 
-def queue_initial_method(path_topic_id: int) -> dict[str, Any]:
+def queue_initial_method(
+    path_topic_id: int,
+    *,
+    force_new_cycle: bool = False,
+    lesson_review: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Resume the current method or start AI Learning as the first method."""
     from . import learning
     from .learning_topic_quality_tasks import enqueue_topic_quality_evaluation
@@ -175,6 +182,37 @@ def queue_initial_method(path_topic_id: int) -> dict[str, Any]:
             "SELECT state, current_job_id FROM learning_topic_quality_gates WHERE path_topic_id=?",
             (path_topic_id,),
         ).fetchone()
+    if force_new_cycle:
+        with learning_connection() as connection:
+            latest_cycle = int(connection.execute(
+                "SELECT COALESCE(MAX(attempt_number), 0) FROM learning_topic_method_attempts WHERE path_topic_id=?",
+                (path_topic_id,),
+            ).fetchone()[0])
+            latest_job = connection.execute(
+                "SELECT id FROM learning_jobs WHERE path_topic_id=? ORDER BY id DESC LIMIT 1",
+                (path_topic_id,),
+            ).fetchone()
+            next_cycle = latest_cycle + 1
+            if next_cycle > 3:
+                return {"status": "blocked", "path_topic_id": path_topic_id, "reason": "method_cycle_limit_reached"}
+            connection.execute(
+                """UPDATE learning_topic_quality_gates
+                   SET state='pending', current_job_id=NULL, next_action='start_ai_learning',
+                       diagnosis_json='{}', updated_at=CURRENT_TIMESTAMP
+                   WHERE path_topic_id=?""",
+                (path_topic_id,),
+            )
+            connection.execute(
+                "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (path_topic_id,),
+            )
+        return _queue_first_enabled_method(
+            path_topic_id,
+            attempt_number=next_cycle,
+            source_job_id=int(latest_job["id"]) if latest_job is not None else None,
+            lesson_review=lesson_review,
+        )
+
     if gate["state"] == "passed":
         return {"status": "passed", "path_topic_id": path_topic_id}
     if gate["state"] == "blocked":
@@ -254,10 +292,10 @@ def queue_initial_method(path_topic_id: int) -> dict[str, Any]:
     return _queue_first_enabled_method(path_topic_id, attempt_number=1)
 
 
-def _queue_first_enabled_method(path_topic_id: int, *, attempt_number: int) -> dict[str, Any]:
+def _queue_first_enabled_method(path_topic_id: int, *, attempt_number: int, source_job_id: int | None = None, lesson_review: dict[str, Any] | None = None) -> dict[str, Any]:
     for method in METHOD_ORDER:
         if _method_enabled(method):
-            return queue_method_attempt(path_topic_id, method, attempt_number=attempt_number)
+            return queue_method_attempt(path_topic_id, method, attempt_number=attempt_number, source_job_id=source_job_id, lesson_review=lesson_review)
         append_attempt_event(
             path_topic_id, method, attempt_number, "queued",
             event_key=f"path-topic:{path_topic_id}:method:{method}:attempt:{attempt_number}:queued",
