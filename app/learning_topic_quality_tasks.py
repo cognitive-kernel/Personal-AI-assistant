@@ -54,7 +54,7 @@ def enqueue_topic_quality_evaluation(job_id: int) -> dict[str, Any] | None:
         TOPIC_QUALITY_TASK_TYPE,
         {"job_id": job_id, "path_topic_id": int(path_topic_id), "content_sha256": digest},
         priority=0,
-        max_attempts=1,
+        max_attempts=2,
         dedupe_key=key,
     )
     return {"status": "queued", "path_topic_id": int(path_topic_id), "task_id": task["id"]}
@@ -122,6 +122,11 @@ def handle_topic_quality_evaluation(
     if gate["state"] == "blocked":
         return {"path_topic_id": path_topic_id, "job_id": job_id, "status": "blocked"}
     if gate["current_job_id"] is None or int(gate["current_job_id"]) != job_id:
+        if gate["state"] == "repairing":
+            return {
+                "path_topic_id": path_topic_id, "job_id": job_id, "status": "repairing",
+                "current_job_id": gate["current_job_id"],
+            }
         raise PermanentTaskError("Evaluation task no longer owns the current topic attempt.")
 
     context.checkpoint({
@@ -130,10 +135,22 @@ def handle_topic_quality_evaluation(
         "job_id": job_id,
         "content_sha256": expected_hash,
     })
-    try:
-        record = learning_topic_evaluator.evaluate_lesson(job_id)
-    except Exception as exc:
-        unavailable = {
+    with learning_connection() as connection:
+        previous = connection.execute(
+            """SELECT id, outcome, result_json FROM learning_topic_quality_evaluations
+               WHERE path_topic_id=? AND job_id=? AND content_sha256=?
+               ORDER BY id DESC LIMIT 1""",
+            (path_topic_id, job_id, expected_hash),
+        ).fetchone()
+    if previous is not None and previous["outcome"] in {"passed", "failed", "inconclusive"}:
+        evaluation_id = int(previous["id"])
+        record = json.loads(previous["result_json"])
+        outcome = str(previous["outcome"])
+    else:
+        try:
+            record = learning_topic_evaluator.evaluate_lesson(job_id)
+        except Exception as exc:
+            unavailable = {
             "version": learning_topic_evaluator.EVALUATOR_VERSION,
             "job_id": job_id,
             "path_topic_id": path_topic_id,
@@ -157,15 +174,15 @@ def handle_topic_quality_evaluation(
                    WHERE path_topic_id=? AND current_job_id=?""",
                 (evaluation_id, json.dumps(unavailable, ensure_ascii=False, sort_keys=True), path_topic_id, job_id),
             )
-        return {
-            "path_topic_id": path_topic_id, "job_id": job_id, "status": "blocked",
-            "reason": "independent_evaluator_unavailable", "evaluation_id": evaluation_id,
-        }
+            return {
+                "path_topic_id": path_topic_id, "job_id": job_id, "status": "blocked",
+                "reason": "independent_evaluator_unavailable", "evaluation_id": evaluation_id,
+            }
 
-    outcome = "passed" if record.get("passed") is True else (
-        "inconclusive" if record.get("evaluator_verdict") == "inconclusive" else "failed"
-    )
-    evaluation_id = _append_evaluation(record, outcome=outcome, score=record.get("score"))
+        outcome = "passed" if record.get("passed") is True else (
+            "inconclusive" if record.get("evaluator_verdict") == "inconclusive" else "failed"
+        )
+        evaluation_id = _append_evaluation(record, outcome=outcome, score=record.get("score"))
     diagnosis_json = json.dumps(record, ensure_ascii=False, sort_keys=True)
     if outcome == "passed":
         with learning_connection() as connection:
@@ -199,7 +216,21 @@ def handle_topic_quality_evaluation(
 
     repair_count = int(gate["repair_count"])
     max_repairs = int(gate["max_repairs"])
-    if repair_count >= max_repairs:
+    try:
+        prior_diagnosis = json.loads(gate["diagnosis_json"] or "{}")
+    except (TypeError, ValueError):
+        prior_diagnosis = {}
+    repair_already_counted = (
+        gate["state"] == "repairing"
+        and isinstance(prior_diagnosis, dict)
+        and prior_diagnosis.get("evaluation_id") == evaluation_id
+    )
+    if repair_already_counted:
+        # A worker may restart after recording the diagnosis but before creating
+        # the correction job. Reuse the same idempotency key without spending a
+        # second repair allowance.
+        pass
+    elif repair_count >= max_repairs:
         with learning_connection() as connection:
             connection.execute(
                 """UPDATE learning_topic_quality_gates
@@ -235,15 +266,16 @@ def handle_topic_quality_evaluation(
     issue_report = json.dumps(diagnosis, ensure_ascii=False, sort_keys=True)
     request_key = f"topic-quality:{path_topic_id}:{expected_hash}:{evaluation_id}"
     with learning_connection() as connection:
-        connection.execute(
-            """UPDATE learning_topic_quality_gates
-               SET state='repairing', repair_count=repair_count+1,
-                   latest_score=?, latest_content_sha256=?, latest_evaluation_id=?,
-                   diagnosis_json=?, next_action='create_or_resume_versioned_repair',
-                   updated_at=CURRENT_TIMESTAMP
-               WHERE path_topic_id=? AND current_job_id=? AND state!='passed'""",
-            (record["score"], expected_hash, evaluation_id, diagnosis_json, path_topic_id, job_id),
-        )
+        if not repair_already_counted:
+            connection.execute(
+                """UPDATE learning_topic_quality_gates
+                   SET state='repairing', repair_count=repair_count+1,
+                       latest_score=?, latest_content_sha256=?, latest_evaluation_id=?,
+                       diagnosis_json=?, next_action='create_or_resume_versioned_repair',
+                       updated_at=CURRENT_TIMESTAMP
+                   WHERE path_topic_id=? AND current_job_id=? AND state!='passed'""",
+                (record["score"], expected_hash, evaluation_id, diagnosis_json, path_topic_id, job_id),
+            )
     correction = learning.submit_lesson_issue(job_id, issue_report, request_key=request_key)
     with learning_connection() as connection:
         connection.execute(
