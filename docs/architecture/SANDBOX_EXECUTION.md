@@ -40,7 +40,7 @@ The image must match the official Python image name and include a SHA-256 digest
 
 ## Allow-listed task adapter
 
-The task payload accepts only `source_code`, `timeout_seconds` (1–120, default 10), and `max_output_bytes` (1–65536, default 32768). It cannot choose the Docker executable or image. The handler records a SHA-256 source digest and execution metadata in task checkpoints/results, not the source itself; the source remains in the task payload because it is the input being tested. Execution remains unavailable until the operator configures the local Docker path and verified image in Settings. Even when the module is enabled and configured, every execution still requires explicit persisted user consent.
+The task payload accepts only `source_code`, `timeout_seconds` (1–120, defaulted from the persisted `sandbox_timeout_seconds` setting), and `max_output_bytes` (1–65536, defaulted from the persisted `sandbox_max_output_bytes` setting). It cannot choose the Docker executable or image. The handler records a SHA-256 source digest and execution metadata in task checkpoints/results, not the source itself; the source remains in the task payload because it is the input being tested. Execution remains unavailable until the operator configures the local Docker path and verified image in Settings. Even when the module is enabled and configured, every execution still requires explicit persisted user consent.
 
 This adapter does not install dependencies, enable network access, expose an HTTP endpoint, or run arbitrary payloads outside the registered sandbox handler.
 
