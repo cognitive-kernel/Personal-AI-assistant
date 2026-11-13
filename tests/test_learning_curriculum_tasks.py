@@ -1,4 +1,5 @@
 import json
+import threading
 
 import pytest
 
@@ -254,15 +255,24 @@ def test_research_task_persists_sources_outline_and_starts_only_first_lesson(
 
 
 def test_research_retains_more_than_three_sources_from_one_domain(learning_store, monkeypatch):
-    calls = {"count": 0}
+    calls = {"count": 0, "active": 0, "max_active": 0}
+    lock = threading.Lock()
+    pair_barrier = threading.Barrier(2)
 
     def discover(_query, *, limit):
-        calls["count"] += 1
         assert limit == 30
+        with lock:
+            calls["count"] += 1
+            query_index = calls["count"]
+            calls["active"] += 1
+            calls["max_active"] = max(calls["max_active"], calls["active"])
+        pair_barrier.wait(timeout=5)
+        with lock:
+            calls["active"] -= 1
         return [
             web_sources.SourceDocument(
-                url=f"https://community.example.test/guides/{calls['count']}/{index}",
-                title=f"Community guide {calls['count']}-{index}",
+                url=f"https://community.example.test/guides/{query_index}/{index}",
+                title=f"Community guide {query_index}-{index}",
                 text=("Detailed community material with implementation notes. " * 8),
             )
             for index in range(4)
@@ -278,6 +288,7 @@ def test_research_retains_more_than_three_sources_from_one_domain(learning_store
     )
 
     assert calls["count"] == len(learning_curriculum_tasks._research_queries("موضوع با منابع متعدد"))
+    assert calls["max_active"] >= 2
     assert len(sources) == calls["count"] * 4
     assert len({item["url"] for item in sources}) == len(sources)
     assert {item["url"].split("/")[2] for item in sources} == {"community.example.test"}
