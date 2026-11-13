@@ -95,6 +95,19 @@ $parsedContext = 0L
 if ([string]::IsNullOrWhiteSpace($architecture) -or -not $rawContext -or -not [int64]::TryParse([string]$rawContext.Value, [ref]$parsedContext) -or $parsedContext -lt 1) {
     throw "Saved model $Model must expose a positive valid context limit for Codex."
 }
+$kvCacheMetadataKeys = @(
+    ($architecture + ".block_count"),
+    ($architecture + ".attention.head_count_kv"),
+    ($architecture + ".attention.key_length"),
+    ($architecture + ".attention.value_length")
+)
+foreach ($kvKey in $kvCacheMetadataKeys) {
+    $kvProperty = $modelInfo.model_info.PSObject.Properties[$kvKey]
+    $kvDimension = 0L
+    if (-not $kvProperty -or -not [int64]::TryParse([string]$kvProperty.Value, [ref]$kvDimension) -or $kvDimension -lt 1) {
+        throw "Saved model $Model must expose positive architecture-specific KV-cache metadata ($kvKey) for safe context budgeting."
+    }
+}
 if (@($modelInfo.capabilities | ForEach-Object { [string]$_ }) -notcontains "tools") {
     throw "Saved model $Model does not advertise the required Ollama tools capability."
 }
