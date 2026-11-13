@@ -84,8 +84,13 @@ if ($Model -match "(?i)-codex-(?:ctx[0-9]+|[0-9]+k)$") {
     throw "The saved model is an internal Codex context variant. Save the original Ollama model in the dashboard."
 }
 $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 8 -MaximumRedirection 0
-if (@($tags.models | ForEach-Object { $_.name }) -notcontains $Model) {
+$modelTag = @($tags.models | Where-Object { $_.name -eq $Model }) | Select-Object -First 1
+if (-not $modelTag) {
     throw "Saved model $Model is not installed. Install it with ollama pull $Model, then save it in the dashboard."
+}
+$parsedWeightSize = 0L
+if (-not [int64]::TryParse([string]$modelTag.size, [ref]$parsedWeightSize) -or $parsedWeightSize -le 0) {
+    throw "Saved model $Model must expose a positive integer weight size in Ollama /api/tags for safe context budgeting."
 }
 $modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -ContentType "application/json" -Body (@{ model = $Model; verbose = $false } | ConvertTo-Json -Compress) -TimeoutSec 15 -MaximumRedirection 0
 $architecture = [string]$modelInfo.details.family
