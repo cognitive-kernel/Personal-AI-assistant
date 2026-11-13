@@ -93,3 +93,13 @@ See [AI_LEARNING_STATUS.md](AI_LEARNING_STATUS.md) for the implementation checkl
 - the subprocess records a query trace in the same database.
 
 The test uses deterministic fixture embeddings and makes no Ollama/model request. It proves SQLite persistence and the published-only retrieval boundary; it does not prove answer quality, factual correctness, or live-model behavior.
+
+## Settings and provider boundaries
+
+- ai_learning_enabled controls the AI Learning method in the ordered three-method curriculum.
+- ai_learning_knowledge_enabled controls the separate knowledge-library subsystem in app/ai_learning/.
+- ai_learning_retrieval_enabled controls published knowledge retrieval; ai_learning_browser_enabled controls the visible ChatGPT browser worker. These switches are independent and default to enabled.
+- The method lane uses its own provider/model profile (ai_learning_llm_provider, model, endpoint, context, threads and timeout). The browser knowledge workflow is explicitly a separate visible-UI integration and does not claim to use the configured API model.
+- Embedding batch size, maximum embedding input characters, and title/content duplicate thresholds are persisted settings with bounded validation.
+- Semantic embedding cache identity is provider + endpoint + model. Historical vectors are not deleted when a provider changes; they are simply not reused across incompatible vector spaces.
+- GPU acceleration is permitted by default but only used when the selected runtime and host expose a compatible device. CPU and RAM safeguards remain mandatory.
