@@ -4,7 +4,7 @@ Status: implementation is present on `main`; target-machine acceptance is still 
 
 ## Goal
 
-The user starts a course workflow once. The extension retrieves and stores the outline, skips existing topic titles, and continues through lesson batches automatically; lesson content still requires review before publication. The user does not use this repository as a separate study product: Personal-AI-assistant may retrieve published knowledge when answering questions in its normal chat experience. Retrieval integration is optional, isolated and disabled by default.
+The user starts a course workflow once. The extension retrieves and stores the outline, skips existing topic titles, and continues through lesson batches automatically; lesson content still requires review before publication. The user does not use this repository as a separate study product: Personal-AI-assistant retrieves explicitly published knowledge when answering questions in its normal chat experience. The module and retrieval adapter are enabled by default and remain isolated behind settings controls.
 
 ## Target workflow
 
