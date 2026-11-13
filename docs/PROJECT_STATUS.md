@@ -442,3 +442,11 @@
 - Migration 54 and app/learning_execution.py add domain-job owner/epoch fencing. A worker must retain its task lease and current domain execution epoch before it can persist a result or failure.
 - Experience System observes the append-only method ledger through /api/experiences/learning-method-observations and cannot mutate coordinator state.
 - Final acceptance still requires exact-head CI, crash/restart and stale-worker tests, and end-to-end validation of all three methods. PR remains Draft and unmerged; local and human tests have not started.
+
+### 2026-11-13 — Settings independence and provider-safe embeddings (PR #746)
+
+- Fresh-install defaults: AI Learning method, AI-learning knowledge library, Basic Learning, Topic/Course Learning, Experience System, retrieval, browser workflow, and GPU acceleration permission are enabled. Each software module has a persistent user setting; GPU use remains conditional on detected hardware.
+- AI Learning method and the separate browser-backed knowledge library now have independent enablement settings. Browser authentication or browser availability cannot disable the model-backed AI Learning lane.
+- Provider/model selection is per capability and model discovery follows the selected provider. Semantic embedding caches are namespaced by provider, endpoint, and model to prevent cross-provider vector reuse.
+- Batch sizes, chunk dimensions, embedding input limits, duplicate thresholds, timeouts, continuation counts, stability windows, and retry limits are configurable and validated.
+- Added focused tests for the settings contract and embedding identity. The latest exact-head CI is queued; PR remains Draft/unmerged. Local and human testing have not started.
