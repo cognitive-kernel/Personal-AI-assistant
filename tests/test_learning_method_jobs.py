@@ -309,6 +309,7 @@ def test_user_cancellation_does_not_trigger_method_fallback(method_job_store, mo
     learning_method_orchestrator.mark_method_cancelled(job_id)
     result = learning_method_orchestrator.queue_initial_method(topic_id)
     assert result["status"] == "cancelled"
+    assert list_attempt_events(topic_id)[-1]["status"] == "cancelled"
     with db.learning_connection() as connection:
         count = connection.execute(
             "SELECT COUNT(*) FROM learning_jobs WHERE path_topic_id=?",
