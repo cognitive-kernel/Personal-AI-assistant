@@ -142,7 +142,7 @@ def append_attempt_event(
         previous_status = str(latest["status"]) if latest is not None else None
         allowed = (
             {"queued"} if previous_status is None
-            else {"running", "failed", "unavailable"} if previous_status == "queued"
+            else {"running", "failed", "unavailable", "cancelled"} if previous_status == "queued"
             else {"passed", "failed", "unavailable", "inconclusive", "cancelled"} if previous_status == "running"
             else set()
         )
