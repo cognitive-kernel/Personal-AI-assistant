@@ -1571,6 +1571,45 @@ LEARNING_MIGRATIONS = (
                BEFORE DELETE ON learning_topic_quality_evaluations
                BEGIN SELECT RAISE(ABORT, 'topic quality evaluations are append-only'); END""",
         ),
+
+    Migration(
+        51,
+        "three-method-topic-learning-fallback",
+        (
+            "ALTER TABLE learning_topic_quality_gates ADD COLUMN current_method TEXT NOT NULL DEFAULT 'ai_learning' CHECK(current_method IN ('ai_learning','basic_learning','topic_learning'))",
+            "ALTER TABLE learning_topic_quality_gates ADD COLUMN latest_method_attempt_id INTEGER",
+            """UPDATE learning_topic_quality_gates
+               SET current_method='basic_learning',
+                   next_action=CASE WHEN state='passed' THEN 'queue_next_topic'
+                                    ELSE 'resume_existing_basic_learning_job' END
+               WHERE current_job_id IS NOT NULL""",
+            """CREATE TABLE learning_topic_method_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path_topic_id INTEGER NOT NULL REFERENCES learning_path_topics(id),
+                method TEXT NOT NULL CHECK(method IN ('ai_learning','basic_learning','topic_learning')),
+                attempt_number INTEGER NOT NULL CHECK(attempt_number BETWEEN 1 AND 3),
+                status TEXT NOT NULL CHECK(status IN ('queued','running','failed','passed','unavailable','inconclusive')),
+                job_id INTEGER REFERENCES learning_jobs(id),
+                external_run_ref TEXT,
+                content_sha256 TEXT CHECK(content_sha256 IS NULL OR length(content_sha256)=64),
+                score REAL CHECK(score IS NULL OR (score >= 0 AND score <= 100)),
+                diagnosis_json TEXT NOT NULL DEFAULT '{}',
+                evidence_json TEXT NOT NULL DEFAULT '{}',
+                started_at TEXT,
+                finished_at TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(path_topic_id, method, attempt_number)
+            )""",
+            "CREATE INDEX idx_learning_topic_method_attempts_topic ON learning_topic_method_attempts(path_topic_id, id)",
+            "CREATE INDEX idx_learning_topic_method_attempts_status ON learning_topic_method_attempts(status, created_at)",
+            """CREATE TRIGGER prevent_learning_topic_method_attempts_update
+               BEFORE UPDATE ON learning_topic_method_attempts
+               BEGIN SELECT RAISE(ABORT, 'topic learning method attempts are append-only'); END""",
+            """CREATE TRIGGER prevent_learning_topic_method_attempts_delete
+               BEFORE DELETE ON learning_topic_method_attempts
+               BEGIN SELECT RAISE(ABORT, 'topic learning method attempts are append-only'); END""",
+        ),
+    ),
     ),
 )
 
