@@ -5,9 +5,9 @@ Only a controlled runner may attach actual execution evidence and promote record
 """
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import BaseModel, Field, StrictBool, StrictInt, ConfigDict, field_validator
 
 from . import experience, experience_capture_consent, experience_feedback, experience_source_checks, experience_tasks, sandbox_consent, task_manager
@@ -164,7 +164,7 @@ class ExperienceTestRunRequest(BaseModel):
 
 @router.post("/{experience_id}/run-test", status_code=status.HTTP_202_ACCEPTED)
 def queue_experience_test(
-    experience_id: int,
+    experience_id: Annotated[int, Path(ge=1)],
     request: ExperienceTestRunRequest,
 ) -> dict[str, Any]:
     if request.confirm is not True:
@@ -223,7 +223,7 @@ def queue_experience_test(
 
 @router.post("/{experience_id}/feedback")
 def set_experience_feedback(
-    experience_id: int,
+    experience_id: Annotated[int, Path(ge=1)],
     request: ExperienceFeedbackRequest,
 ) -> dict[str, Any]:
     try:
@@ -236,7 +236,7 @@ def set_experience_feedback(
 
 
 @router.get("/{experience_id}/feedback")
-def get_experience_feedback(experience_id: int) -> dict[str, Any]:
+def get_experience_feedback(experience_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     try:
         item = experience.get_experience(experience_id)
         feedback = experience_feedback.get_feedback_map([experience_id]).get(experience_id)
@@ -246,7 +246,7 @@ def get_experience_feedback(experience_id: int) -> dict[str, Any]:
 
 
 @router.delete("/{experience_id}/feedback")
-def delete_experience_feedback(experience_id: int) -> dict[str, Any]:
+def delete_experience_feedback(experience_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     try:
         deleted = experience_feedback.delete_feedback(experience_id)
     except KeyError as exc:
@@ -256,7 +256,7 @@ def delete_experience_feedback(experience_id: int) -> dict[str, Any]:
 
 @router.post("/{experience_id}/refresh-sources")
 def refresh_experience_sources(
-    experience_id: int,
+    experience_id: Annotated[int, Path(ge=1)],
     request: ExperienceSourceRefreshRequest,
 ) -> dict[str, Any]:
     if request.confirm is not True:
@@ -273,7 +273,7 @@ def refresh_experience_sources(
 
 @router.get("/{experience_id}/source-checks")
 def get_experience_source_checks(
-    experience_id: int,
+    experience_id: Annotated[int, Path(ge=1)],
     limit: int = Query(default=30, ge=1, le=100),
 ) -> dict[str, Any]:
     try:
@@ -286,7 +286,7 @@ def get_experience_source_checks(
 
 
 @router.get("/{experience_id}/evolution")
-def get_experience_evolution(experience_id: int) -> dict[str, Any]:
+def get_experience_evolution(experience_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     try:
         return experience.list_experience_evolution(experience_id)
     except KeyError as exc:
@@ -296,7 +296,7 @@ def get_experience_evolution(experience_id: int) -> dict[str, Any]:
 
 
 @router.get("/{experience_id}/versions")
-def get_experience_versions(experience_id: int) -> dict[str, Any]:
+def get_experience_versions(experience_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     try:
         versions = experience.list_experience_versions(experience_id)
     except KeyError as exc:
@@ -346,7 +346,7 @@ def propose_hypotheses(request: HypothesisProposalRequest) -> dict[str, Any]:
 
 
 @router.get("/{experience_id}")
-def get_experience(experience_id: int) -> dict[str, Any]:
+def get_experience(experience_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     try:
         item = experience.get_experience(experience_id)
     except KeyError as exc:
@@ -356,7 +356,7 @@ def get_experience(experience_id: int) -> dict[str, Any]:
 
 @router.patch("/{experience_id}")
 def update_experience(
-    experience_id: int,
+    experience_id: Annotated[int, Path(ge=1)],
     request: ExperienceUpdateRequest,
 ) -> dict[str, Any]:
     changes = (
