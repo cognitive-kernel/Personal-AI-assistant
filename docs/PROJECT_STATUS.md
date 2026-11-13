@@ -1,15 +1,21 @@
 # وضعیت یکپارچهٔ پروژه
 
-## وضعیت جاری — تکمیل Autonomous Engineering
+## وضعیت جاری — بازبینی 2026-11-13
 
-- مبنای زندهٔ `main`: `461c0a2b1deaf5f8af8486846f167da8185c580a`؛ تغییرات release-watch و یادگیری جدید main حفظ شده‌اند.
-- کار فعال: PR [#719](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/719)، شاخهٔ `feat/autonomous-engineering-complete-final-20261112`؛ SHA دقیق و وضعیت Checkها از وضعیت زندهٔ PR خوانده می‌شوند. PR باز است و به main هدف‌گذاری شده است.
-- معماری جدید، مالکیت worktree و checkpoint watcher، هویت process، قفل durable state، GitHub transport و چرخهٔ PR را در ماژول‌های مستقل نگه می‌دارد؛ بازیابی مبهم fail-closed است و دادهٔ task/checkpoint حفظ می‌شود.
-- CI دقیق SHA `1528b86cdc0c0f70a17be2434e374ec7ede2c61c` موفق شد: ۱۱ تست focused، ۲۱۳۵ تست کامل passed، ۲ skipped، ۵۱ deselected؛ Windows Storage، Browser E2E، dependency audit، lexical retrieval benchmark و fail-closed claim-to-test coverage benchmark همگی موفق شدند. اجرای واقعی Codex/Ollama روی Runner مقصد و پذیرش عملیاتی بلندمدت هنوز pending است.
-- مسیریابی Ollama و OpenAI-compatible، هویت مدل، سقف خروجی و provider سفارشی Codex `ollama-local` در follow-upهای PR حفظ/بازیابی شده‌اند؛ diagnostic واقعی Codex/Ollama روی Windows Runner هنوز باید تأیید شود.
+- مبنای واقعی `main`: `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`؛ PR [#719](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/719) در 2026-11-12 ادغام شده است. Snapshot قدیمی `461c0a2b...` دیگر مبنای جاری نیست.
+- PRهای باز و مبتنی بر همین SHA:
+  - [#725](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/725): حفظ Exception اصلی و cleanup ایمن Worker یادگیری مرورگر؛ exact-head CI موفق، 2,137 passed / 2 skipped / 51 deselected.
+  - [#727](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/727): محاسبه سخت‌افزارمحور Context برای تمام درخواست‌های محلی Ollama؛ exact-head CI موفق، 2,143 passed / 2 skipped / 51 deselected.
+  - [#730](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/730): Context تطبیقی Codex/Ollama و Windows PowerShell 5.1؛ exact-head CI موفق، 2,193 passed / 2 skipped / 51 deselected.
+  - [#732](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/732): CodeQL v4 برای Python و JavaScript؛ exact-head tests، Browser E2E، Dependency Audit و CodeQL موفق. موفقیت اسکن به معنی صفر بودن alertها نیست.
+  - [#733](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/733): تطبیق inventory تست‌های UI با 46 تست مستقل؛ exact-head CI موفق.
+  - [#734](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/734): پوشش رگرسیون مرز loopback و Cross-Origin برای تمام API routeها؛ exact-head CI در حال اجرا است.
+- PRهای بالا هنوز ادغام نشده‌اند؛ نتیجهٔ CI هر PR فقط همان SHA را پوشش می‌دهد و نباید به‌عنوان نتیجهٔ `main` گزارش شود.
+- Issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290) همچنان tracker پذیرش کل پروژه و Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) همچنان نیازمند بازبینی مستقل امنیتی است.
+- گیت‌های باز دیگر: ممیزی endpoint به endpoint و قراردادهای API، triage هشدارهای CodeQL، آزمون crash/restart و چندپردازه‌ای، staging restore/rollback، benchmark زندهٔ مدل با digest ثابت، پذیرش کیفیت فارسی/انگلیسی و بازبینی دستی دسترس‌پذیری.
+- تست‌های local/target-host و انسانی در این snapshot اجراشده ادعا نمی‌شوند. کار مستقل GitHub/CI ادامه دارد؛ هیچ‌یک از گیت‌های اجرا/بازبینی انجام‌نشده موفق فرض نمی‌شوند.
 
-
-> تاریخ بازبینی: 2026-11-12. وضعیت جاری در ابتدای سند ثبت شده است؛ یادداشت‌های پایین‌تر snapshotهای تاریخی هستند.
+> تاریخ بازبینی: 2026-11-13. یادداشت‌های پایین‌تر snapshotهای تاریخی هستند و نباید جایگزین وضعیت جاری بالا شوند.
 
 ## وضعیت تاریخی اتوماسیون — PR #702 (snapshot قدیمی)
 
