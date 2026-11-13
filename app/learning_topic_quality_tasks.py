@@ -36,6 +36,7 @@ def enqueue_topic_quality_evaluation(job_id: int) -> dict[str, Any] | None:
         if gate is None:
             return None
         if gate["state"] == "passed":
+            connection.commit()
             next_topic = learning.queue_next_researched_path_topic(int(path_topic_id))
             return {
                 "status": "already_passed", "path_topic_id": int(path_topic_id),
