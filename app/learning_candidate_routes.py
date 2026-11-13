@@ -142,6 +142,17 @@ def list_learning_oracles() -> dict[str, Any]:
     }
 
 
+@router.get("/autonomy-gate")
+def get_learning_autonomy_gate() -> dict[str, Any]:
+    """Expose the current four-path accuracy gate without changing its state."""
+    from .learning_provenance import get_aggregate_learning_accuracy
+
+    try:
+        return get_aggregate_learning_accuracy()
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Learning autonomy gate is unavailable.") from exc
+
+
 @router.get("/{candidate_id}/claims")
 def get_learning_candidate_claims(candidate_id: int) -> dict[str, Any]:
     """Return stable, positional claim IDs for explicit test-plan coverage mapping."""
