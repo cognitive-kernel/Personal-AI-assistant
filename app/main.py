@@ -1040,6 +1040,12 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         values["learning_model_cost_profiles"], dict
     ):
         raise HTTPException(status_code=422, detail="learning_model_cost_profiles must be a JSON object.")
+    if "learning_model_pricing_json" in values:
+        from . import learning_costs
+        try:
+            learning_costs.validate_pricing_catalog_json(values["learning_model_pricing_json"])
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     if "learning_model_minimum_quality_score" in values:
         quality = values["learning_model_minimum_quality_score"]
         if (
