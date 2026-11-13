@@ -8,6 +8,7 @@ from app import (
     factual_verification_tasks,
     learning_review_tasks,
     sandbox_tasks,
+    task_routes,
 )
 from app.main import app
 from app.sandbox import SandboxResult
@@ -80,17 +81,8 @@ def test_sandbox_run_requires_consent_then_queues_a_bounded_task(local_client):
     assert task["max_attempts"] == 1
 
 
-@pytest.mark.parametrize(
-    "task_type",
-    [
-        sandbox_tasks.SANDBOX_TASK_TYPE,
-        sandbox_tasks.SANDBOX_LANGUAGE_TASK_TYPE,
-        experience_tasks.EXPERIENCE_TEST_TASK_TYPE,
-        factual_verification_tasks.FACTUAL_VERIFY_TASK_TYPE,
-        learning_review_tasks.LEARNING_SANDBOX_REVIEW_TASK_TYPE,
-    ],
-)
-def test_generic_task_endpoint_cannot_bypass_sandbox_consent_route(local_client, task_type):
+@pytest.mark.parametrize("task_type", sorted(task_routes.FEATURE_MANAGED_TASK_TYPES))
+def test_generic_task_endpoint_rejects_feature_managed_task_types(local_client, task_type):
     response = local_client.post(
         "/api/tasks",
         json={
@@ -100,7 +92,7 @@ def test_generic_task_endpoint_cannot_bypass_sandbox_consent_route(local_client,
         },
     )
     assert response.status_code == 422
-    assert "consent" in response.json()["detail"]
+    assert "owning feature workflow" in response.json()["detail"]
     listed = local_client.get("/api/tasks")
     assert listed.status_code == 200
     assert all(task["task_type"] != task_type for task in listed.json()["tasks"])
