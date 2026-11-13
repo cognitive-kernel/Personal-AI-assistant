@@ -73,6 +73,7 @@ def select_context_window(
     available_memory_bytes: int,
     requested_context_tokens: int | None = None,
     reserve_bytes: int = DEFAULT_RAM_RESERVE_BYTES,
+    parallel_requests: int = 1,
     model_weights_already_loaded: bool = False,
 ) -> dict[str, int | bool | None]:
     """Choose a safe context by adapting to the model and host capacity.
@@ -82,8 +83,9 @@ def select_context_window(
     model capacity, and the Codex catalog limit. A requested value above that
     ceiling is clamped; it never causes an over-allocation.
 
-    The RAM estimate assumes a float16 KV cache, reserves 4 GiB for Windows and
-    other processes, and adds at least 0.5 GiB or 10% of model weights as
+    The RAM estimate assumes a float16 KV cache multiplied by Ollama's configured
+    parallel request count, reserves 4 GiB for Windows and other processes, and adds
+    at least 0.5 GiB or 10% of model weights as
     runtime overhead. If the base model is already resident, its weights are
     not charged twice because free physical memory already excludes them.
     Missing telemetry or architecture dimensions are errors,
@@ -95,6 +97,7 @@ def select_context_window(
         "model_weight_bytes": model_weight_bytes,
         "available_memory_bytes": available_memory_bytes,
         "reserve_bytes": reserve_bytes,
+        "parallel_requests": parallel_requests,
     }
     for name, value in numeric_inputs.items():
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
@@ -112,6 +115,9 @@ def select_context_window(
         )
 
     bytes_per_token = kv_cache_bytes_per_token(model_info, architecture)
+    total_cache_bytes_per_token = bytes_per_token * parallel_requests
+    if total_cache_bytes_per_token <= 0:
+        raise OllamaModelMetadataError("Parallel KV-cache memory estimate is invalid.")
 
     overhead_bytes = max(
         MIN_MODEL_OVERHEAD_BYTES,
@@ -132,7 +138,7 @@ def select_context_window(
         )
 
     # Keep the host-derived capacity independent of the model's own context cap.
-    hardware_maximum = cache_budget_bytes // bytes_per_token
+    hardware_maximum = cache_budget_bytes // total_cache_bytes_per_token
     if hardware_maximum < MIN_CONTEXT_TOKENS:
         raise OllamaModelMetadataError(
             f"Available RAM cannot safely support even one context token."
@@ -161,6 +167,8 @@ def select_context_window(
         "requested_context_tokens": requested,
         "selected_context_tokens": selected,
         "kv_cache_bytes_per_token": bytes_per_token,
+        "kv_cache_bytes_per_token_total": total_cache_bytes_per_token,
+        "parallel_requests": parallel_requests,
         "model_weight_bytes": model_weight_bytes,
         "model_weight_charge_bytes": model_weight_charge_bytes,
         "model_weights_already_loaded": model_weights_already_loaded,
@@ -187,6 +195,7 @@ def _main(argv: list[str] | None = None) -> int:
             model_weight_bytes=payload.get("model_weight_bytes"),
             available_memory_bytes=payload.get("available_memory_bytes"),
             requested_context_tokens=payload.get("requested_context_tokens"),
+            parallel_requests=payload.get("parallel_requests", 1),
             model_weights_already_loaded=payload.get("model_weights_already_loaded", False),
         )
         json.dump(result, sys.stdout, separators=(",", ":"))
