@@ -1485,7 +1485,6 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_learning_candidate_sources_reference ON learning_candidate_sources(reference_url, source_url)",
         ),
     ),
-,
     Migration(
         49,
         "immutable-cross-path-learning-accuracy-evaluations",
