@@ -4,6 +4,10 @@ env:
   GIT_CONFIG_KEY_0: "init.defaultBranch"
   GIT_CONFIG_VALUE_0: "main"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 on:
   pull_request:
     paths:
