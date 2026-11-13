@@ -84,6 +84,8 @@ SETTING_DEFAULTS: dict[str, object] = {
     "ai_learning_browser_control_poll_interval_ms": 100,
     "ai_learning_browser_lease_seconds": 90,
     "ai_learning_browser_lease_heartbeat_seconds": 15,
+    "ai_learning_chrome_path": "",
+    "ai_learning_browser_profile": "data/ai_learning_browser_profile",
     "ai_learning_max_retries": 2,
     "ai_learning_llm_provider": "ollama",
     "ai_learning_llm_base_url": "https://api.openai.com/v1",
