@@ -766,6 +766,37 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
     for key in ("ai_learning_enabled", "ai_learning_knowledge_enabled", "basic_learning_enabled", "topic_learning_enabled", "experience_system_enabled", "ai_learning_retrieval_enabled", "ai_learning_browser_enabled", "sandbox_enabled", "self_improvement_enabled"):
         if key in values and type(values[key]) is not bool:
             raise HTTPException(status_code=422, detail=f"{key} must be a boolean.")
+    bounded_text_settings = {
+        "sandbox_docker_executable": 2048,
+        "sandbox_python_image": 512,
+        "sandbox_test_image": 512,
+        "sandbox_node_image": 512,
+        "sandbox_rust_image": 512,
+        "self_improvement_repo_root": 2048,
+        "self_improvement_github_repository": 200,
+        "self_improvement_github_base_branch": 255,
+        "self_improvement_github_token_env": 128,
+    }
+    for key, maximum in bounded_text_settings.items():
+        if key in values and (
+            not isinstance(values[key], str)
+            or len(values[key]) > maximum
+            or "\\x00" in values[key]
+        ):
+            raise HTTPException(status_code=422, detail=f"{key} must be text of at most {maximum} characters.")
+    if "sandbox_docker_executable" in values and values["sandbox_docker_executable"].strip():
+        if not Path(values["sandbox_docker_executable"]).expanduser().is_absolute():
+            raise HTTPException(status_code=422, detail="sandbox_docker_executable must be an absolute path.")
+    if "self_improvement_repo_root" in values and values["self_improvement_repo_root"].strip():
+        if not Path(values["self_improvement_repo_root"]).expanduser().is_absolute():
+            raise HTTPException(status_code=422, detail="self_improvement_repo_root must be an absolute path.")
+    if "self_improvement_github_repository" in values and values["self_improvement_github_repository"].strip():
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", values["self_improvement_github_repository"].strip()):
+            raise HTTPException(status_code=422, detail="self_improvement_github_repository must use owner/repository format.")
+    if "self_improvement_github_token_env" in values:
+        token_env = values["self_improvement_github_token_env"]
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", token_env):
+            raise HTTPException(status_code=422, detail="self_improvement_github_token_env must be an environment variable name.")
     keep_alive_values = {"auto", "0", "1m", "5m", "10m", "30m"}
     for purpose in ("chat", "learning", "programming", "ai_learning", "topic_learning"):
         key = f"{purpose}_model_keep_alive"
@@ -807,6 +838,9 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         ("ai_learning_chunk_overlap_chars", 0, 2000),
         ("ai_learning_embedding_batch_size", 1, 256),
         ("ai_learning_embedding_input_max_chars", 256, 100000),
+        ("sandbox_timeout_seconds", 1, 120),
+        ("sandbox_test_timeout_seconds", 1, 1800),
+        ("sandbox_max_output_bytes", 1024, 65536),
         ("ai_learning_browser_timeout_seconds", 10, 1800),
         ("ai_learning_response_timeout_seconds", 30, 7200),
         ("ai_learning_max_lesson_continuations", 0, 20),
