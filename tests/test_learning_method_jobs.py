@@ -205,6 +205,30 @@ def test_three_method_failures_block_topic_without_fourth_method(method_job_stor
     ]
 
 
+def test_permanent_method_job_creation_failure_advances_to_next_method(method_job_store, monkeypatch):
+    topic_id = method_job_store
+    original_create = learning.create_job
+    monkeypatch.setattr(learning, "_enqueue_learning_job", lambda job_id: {"id": f"task-{job_id}"})
+
+    def fail_ai_job(*args, **kwargs):
+        if kwargs.get("learning_method") == "ai_learning":
+            raise ValueError("invalid AI method job contract")
+        return original_create(*args, **kwargs)
+
+    monkeypatch.setattr(learning, "create_job", fail_ai_job)
+    result = learning_method_orchestrator.queue_initial_method(topic_id)
+
+    assert result["method"] == "basic_learning"
+    events = list_attempt_events(topic_id)
+    assert [(event["method"], event["status"]) for event in events] == [
+        ("ai_learning", "queued"),
+        ("ai_learning", "failed"),
+        ("basic_learning", "queued"),
+    ]
+    assert events[1]["diagnosis_json"]
+    assert events[1]["evidence_json"]
+
+
 def test_user_disabled_ai_learning_falls_back_to_basic_learning(method_job_store, monkeypatch):
     topic_id = method_job_store
     db.update_settings({"ai_learning_enabled": False})
