@@ -3,23 +3,26 @@
 ## وضعیت جاری — ممیزی GitHub در 2026-11-13
 
 - مبنای واقعی `main`: `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`؛ PR #719 در 2026-11-12 ادغام شده است.
-- 12 PR باز، همگی مبتنی بر همین SHA و هنوز ادغام‌نشده‌اند. هر نتیجه فقط به exact head همان PR مربوط است:
+- اکنون **15 PR باز** وجود دارد؛ همه بر مبنای همین SHA و هنوز ادغام‌نشده‌اند. نتیجهٔ هر Workflow فقط به exact head همان PR مربوط است:
   - [#725](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/725) حفظ Exception اصلی و آزادسازی lease در Browser Learning؛ Tests، Browser E2E و Dependency Audit موفق؛ 2,137 passed، 2 skipped، 51 deselected.
   - [#727](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/727) محدودسازی سخت‌افزارمحور Context برای Ollama؛ سه Workflow اصلی موفق؛ 2,143 passed، 2 skipped، 51 deselected.
-  - [#730](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/730) Context تطبیقی Codex/Ollama و Windows preflight؛ Tests، Browser E2E، Dependency Audit و Sandbox integration موفق؛ diagnostic واقعی Windows به علت نبود Runner واجد شرایط skipped است و قبولی میزبان هدف محسوب نمی‌شود.
-  - [#732](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/732) CodeQL v4 برای Python و JavaScript؛ Tests، Browser E2E، Dependency Audit و CodeQL موفق. نتیجه اسکن به معنی صفر بودن alertها نیست.
+  - [#730](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/730) Context تطبیقی Codex/Ollama و Windows preflight؛ Tests، Browser E2E، Dependency Audit و Sandbox integration موفق؛ 2,193 passed، 2 skipped، 51 deselected. diagnostic واقعی Windows به علت نبود Runner واجد شرایط skipped است و قبولی میزبان هدف محسوب نمی‌شود.
+  - [#732](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/732) CodeQL v4 برای Python و JavaScript؛ Tests، Browser E2E، Dependency Audit و CodeQL موفق؛ 2,135 passed، 2 skipped، 51 deselected. نتیجه اسکن به معنی صفر بودن alertها نیست.
   - [#733](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/733) تطبیق inventory رابط کاربری با 46 تست مستقل؛ سه Workflow اصلی موفق؛ 2,135 passed، 2 skipped، 51 deselected.
   - [#734](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/734) رگرسیون مرز loopback و Cross-Origin برای تمام API routeها؛ سه Workflow اصلی موفق؛ 2,136 passed، 2 skipped، 51 deselected.
-  - [#735](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/735) همگام‌سازی اسناد وضعیت و پذیرش؛ سه Workflow اصلی روی head فعلی موفق؛ 2,135 passed، 2 skipped، 51 deselected.
-  - [#736](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/736) جلوگیری از دور زدن workflowهای feature-owned از API عمومی؛ سه Workflow اصلی روی head فعلی موفق.
+  - [#735](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/735) همگام‌سازی اسناد وضعیت و پذیرش؛ exact-head CI روی revision قبلی موفق بود؛ این به‌روزرسانی جدید باید روی head نهایی خودش دوباره CI بگیرد.
+  - [#736](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/736) جلوگیری از دور زدن workflowهای feature-owned از API عمومی؛ سه Workflow اصلی موفق؛ 2,149 passed، 2 skipped، 51 deselected.
   - [#737](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/737) محدودیت Pagination در مرز HTTP/OpenAPI؛ سه Workflow اصلی موفق؛ 2,142 passed، 2 skipped، 51 deselected.
   - [#738](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/738) اعتبارسنجی شناسه‌های مثبت در مسیرهای API؛ سه Workflow اصلی موفق؛ 2,170 passed، 2 skipped، 51 deselected.
   - [#739](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/739) محدودسازی payload/checkpoint/result و metadata صف پایدار؛ سه Workflow اصلی موفق؛ 2,143 passed، 2 skipped، 51 deselected.
   - [#741](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/741) حفظ خطای اصلی هنگام شکست cleanup در Browser Capture؛ سه Workflow اصلی موفق؛ 2,137 passed، 2 skipped، 51 deselected.
+  - [#742](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/742) تأیید server-side برای reset مخرب داده‌های یادگیری؛ سه Workflow اصلی موفق؛ 2,138 passed، 2 skipped، 51 deselected.
+  - [#743](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/743) رد authorityهای malformed در بررسی URL منابع یادگیری؛ سه Workflow اصلی موفق؛ 2,139 passed، 2 skipped، 51 deselected.
+  - [#744](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/744) حفظ نامزدهای متعارض و شواهد یادگیری، نمایش آن‌ها در UI و ابزار بازیابی امن رکوردهای قدیمی؛ سه Workflow اصلی موفق؛ 2,139 passed، 2 skipped، 51 deselected. Browser E2E شامل نمایش شواهد و غیرفعال بودن عملیات روی نامزد terminal است.
 - Issue [#723](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/723) با PR #725 اصلاح شده و CI آن سبز است؛ تا تکمیل فرایند ادغام، issue باز می‌ماند.
 - Issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290) مرجع اصلی پذیرش کل پروژه است. Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) برای بازبینی مستقل امنیتی باز است.
-- گیت‌های GitHub باقیمانده شامل ممیزی endpoint به endpoint، بررسی یافته‌های CodeQL، تکمیل evidence ledger، کنترل branch protection، و بررسی همه مسیرهای durability/recovery است. سبز بودن CI جایگزین بازبینی مستقل امنیتی یا شواهد اجرای زنده نیست.
-- وضعیت خارج از GitHub: تست local/target-host، soak و crash/restart روی میزبان مقصد، staging restore/rollback، اجرای زنده مدل با digest ثابت، adjudication انسانی کیفیت فارسی/انگلیسی، و بازبینی دستی accessibility انجام نشده‌اند و عمداً به مرحله بعد موکول شده‌اند.
+- گیت‌های GitHub باقیمانده شامل تکمیل ممیزی endpoint به endpoint، triage یافته‌های CodeQL، تأیید branch protection، بازبینی مستقل امنیتی و تأیید نهایی اسناد پذیرش است. سبز بودن CI جایگزین بازبینی مستقل امنیتی یا شواهد اجرای زنده نیست.
+- وضعیت خارج از GitHub: تست local/target-host، soak و crash/restart روی میزبان مقصد، staging restore/rollback، اجرای زنده مدل با digest ثابت، adjudication انسانی کیفیت فارسی/انگلیسی و بازبینی دستی accessibility انجام نشده‌اند و عمداً تا تکمیل کار GitHub اجرا نمی‌شوند.
 - هیچ PR ادغام نشده و هیچ نتیجهٔ exact-head به‌عنوان نتیجهٔ `main` گزارش نمی‌شود. طبق سند مرجع، تا تکمیل گیت‌های الزامی از ادغام یا دور زدن branch protection خودداری می‌شود.
 
 > تاریخ بازبینی: 2026-11-13. یادداشت‌های پایین‌تر snapshotهای تاریخی هستند و نباید جایگزین وضعیت جاری بالا شوند.
