@@ -811,14 +811,16 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         ("ai_learning_max_lesson_continuations", 0, 20),
         ("ai_learning_stability_seconds", 1, 120),
         ("ai_learning_max_retries", 0, 5),
+        ("ai_learning_source_max_chars", 1000, 256000),
     ]
     for prefix in ("chat", "learning", "programming", "ai_learning"):
         numeric_ranges.extend([
             (f"{prefix}_ollama_timeout_seconds", 5, 600),
             (f"{prefix}_ollama_num_ctx", 512, 1048576),
             (f"{prefix}_ollama_num_thread", 0, 64),
-            (f"{prefix}_max_concurrent_jobs", 1, 8),
         ])
+        if prefix != "ai_learning":
+            numeric_ranges.append((f"{prefix}_max_concurrent_jobs", 1, 8))
     numeric_ranges.extend([
         ("chat_source_max_chars", 1000, 12000),
         ("learning_source_max_chars", 1000, 100000),
