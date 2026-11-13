@@ -1641,7 +1641,7 @@ def test_learning_candidate_review_panel_loads_without_executing_or_promoting():
         assert page.get_by_role("button", name="ثبت طرح آزمون").is_hidden()
         assert page.get_by_role("button", name="اجرای آزمون‌های Python در sandbox").is_hidden()
 
-        page.get_by_role("button", name="نمایش متن کامل").click()
+        page.get_by_role("button", name="نمایش متن و شواهد کامل").click()
         page.wait_for_function(
             "() => document.querySelector('#learning-candidates pre')?.textContent.includes('Original retained candidate content.')"
         )
