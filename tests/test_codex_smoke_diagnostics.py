@@ -627,3 +627,22 @@ def test_hosted_ci_workflows_cancel_superseded_runs_per_pull_request():
         assert expected_group in content
         assert "-${{ github.sha }}" not in content
         assert "cancel-in-progress: true" in content
+
+
+
+def test_current_acceptance_docs_preserve_master_prompt_merge_gates_and_runner_provisioning():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    status = (root / "docs" / "PROJECT_STATUS.md").read_text(encoding="utf-8")
+    roadmap = (root / "docs" / "ROADMAP_ACCEPTANCE.md").read_text(encoding="utf-8")
+    operations = (root / "docs" / "operations" / "CODEX_AUTONOMOUS_ENGINEERING.md").read_text(encoding="utf-8")
+
+    assert "all local tests on the target host" in status.lower()
+    assert "all local tests on the target host" in roadmap.lower()
+    assert "not a merge gate by default" not in status.lower()
+    assert "not a merge gate by default" not in roadmap.lower()
+    assert "Node.js 26.13.0/npm are provisioned per GitHub Actions job" in operations
+    assert "Install Node.js LTS system-wide" not in operations
+    assert "Node.js LTS and npm must be installed system-wide" not in operations
+    assert "process-only launch override may differ" in operations
