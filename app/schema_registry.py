@@ -1610,6 +1610,40 @@ LEARNING_MIGRATIONS = (
                BEGIN SELECT RAISE(ABORT, 'topic learning method attempts are append-only'); END""",
         ),
     ),
+    Migration(
+        52,
+        "append-only-topic-method-attempt-events",
+        (
+            """CREATE TABLE learning_topic_method_attempt_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path_topic_id INTEGER NOT NULL REFERENCES learning_path_topics(id),
+                method TEXT NOT NULL CHECK(method IN ('ai_learning','basic_learning','topic_learning')),
+                attempt_number INTEGER NOT NULL CHECK(attempt_number BETWEEN 1 AND 3),
+                event_sequence INTEGER NOT NULL CHECK(event_sequence >= 1),
+                status TEXT NOT NULL CHECK(status IN ('queued','running','failed','passed','unavailable','inconclusive')),
+                event_key TEXT NOT NULL UNIQUE CHECK(length(trim(event_key)) BETWEEN 1 AND 200),
+                payload_sha256 TEXT NOT NULL CHECK(length(payload_sha256)=64),
+                job_id INTEGER REFERENCES learning_jobs(id),
+                external_run_ref TEXT,
+                content_sha256 TEXT CHECK(content_sha256 IS NULL OR length(content_sha256)=64),
+                score REAL CHECK(score IS NULL OR (score >= 0 AND score <= 100)),
+                diagnosis_json TEXT NOT NULL DEFAULT '{}',
+                evidence_json TEXT NOT NULL DEFAULT '{}',
+                occurred_at TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(path_topic_id, method, attempt_number, event_sequence)
+            )""",
+            "CREATE INDEX idx_learning_topic_method_events_topic ON learning_topic_method_attempt_events(path_topic_id, id)",
+            "CREATE INDEX idx_learning_topic_method_events_attempt ON learning_topic_method_attempt_events(path_topic_id, method, attempt_number, event_sequence)",
+            "CREATE INDEX idx_learning_topic_method_events_status ON learning_topic_method_attempt_events(status, created_at)",
+            """CREATE TRIGGER prevent_learning_topic_method_attempt_events_update
+               BEFORE UPDATE ON learning_topic_method_attempt_events
+               BEGIN SELECT RAISE(ABORT, 'topic method attempt events are append-only'); END""",
+            """CREATE TRIGGER prevent_learning_topic_method_attempt_events_delete
+               BEFORE DELETE ON learning_topic_method_attempt_events
+               BEGIN SELECT RAISE(ABORT, 'topic method attempt events are append-only'); END""",
+        ),
+    ),
 )
 
 
