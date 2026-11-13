@@ -131,7 +131,7 @@ Benchmark باید نسخه‌دار و جدا از داده تولید/آموز
 | P0 | ارزیاب عمومی کد و oracle مستقل | آزمون واقعی برای هر زبان/نسخه پشتیبانی‌شده |
 | P1 | telemetry زمان و token و benchmark خط مبنا | گزارش p50/p95 و کیفیت پیش از بهینه‌سازی |
 | P1 | cache نسخه‌دار منابع و dedup بین دوره‌ها | کاهش fetch تکراری بدون استفاده از داده stale |
-| P1 | concurrency محدود جست‌وجو و کارهای مستقل | کاهش latency بدون افت coverage یا افزایش خطای provider |
+| P1 | benchmark و تنظیم concurrency محدود جست‌وجو و کارهای مستقل | اثبات کاهش p50/p95 بدون افت coverage یا افزایش خطای provider |
 | P1 | retrieval ترکیبی lexical/semantic و reranking | بهبود precision/recall روی benchmark ثابت |
 | P1 | ارزیابی تطبیقی و تشخیص شکاف مهارتی | کاهش زمان رسیدن به mastery بدون افت retention |
 | P2 | تست‌های property-based/fuzz و differential | کشف خطاهای جدید با regression پایدار |
