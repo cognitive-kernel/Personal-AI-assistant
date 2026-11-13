@@ -1104,8 +1104,9 @@ def check_content_source(source_id: int) -> dict[str, Any]:
         len(url) > 2048
         or parsed.scheme not in {"http", "https"}
         or not host
-        or parsed.username
-        or parsed.password
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.netloc.endswith(":")
         or port not in {None, expected_port}
     ):
         raise ValueError("پیوند منبع معتبر HTTP/HTTPS نیست.")
