@@ -253,11 +253,13 @@ def test_research_task_persists_sources_outline_and_starts_only_first_lesson(
     assert retried["path_id"] == result["path_id"]
     assert retried["outline_sha256"] == result["outline_sha256"]
     assert len(discovered) == 8
-    # Eight full source bodies each span multiple evidence chunks; every chunk
-    # must be reviewed before the curriculum can be finalized.
-    assert len(model_calls) == learning_curriculum_tasks._source_evidence_batch_count(
+    # Every retained source-evidence batch must be reviewed. Model calls may
+    # additionally include resumable pages of prior assistant observations, so
+    # total generation calls must not be equated with source-batch count.
+    source_batch_count = learning_curriculum_tasks._source_evidence_batch_count(
         learning_curriculum_tasks._hydrate_source_bodies(task["id"], context.checkpoint_data["sources"])
     )
+    assert len(model_calls) >= source_batch_count
     assert len(model_calls) == 2
     assert retried["queue_status"] == "already_active"
 
