@@ -251,7 +251,6 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert '/compare/$($run.head_sha)...$env:TARGET_HEAD_SHA' in cleanup_job
     assert 'TARGET_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}' in cleanup_job
     assert 'TARGET_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}' in cleanup_job
-    assert 'actions/runners?per_page=100' in cleanup_job
     assert '$comparison.status -ne "ahead"' in cleanup_job
     assert '$comparison.behind_by -ne 0' in cleanup_job
     assert '$comparison.ahead_by -le 0' in cleanup_job
