@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable
 
-from . import service
+from . import config, service
 
 _LOCK = threading.Lock()
 _WORKER_OWNER_PID = os.getpid()
@@ -1511,6 +1511,8 @@ def _dispatch_next_persisted_run() -> dict[str, Any]:
     """Claim the process-wide browser lease before dispatching one durable queued run."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID, _WORKER_LEASE_EPOCH
     _ensure_process_identity()
+    if not config.browser_is_enabled():
+        return {"status": "browser_provider_disabled", "active": False}
     with _LOCK:
         if _ACTIVE:
             return {"status": "already_active", "active": True, "run_id": _ACTIVE_RUN_ID}
@@ -1694,6 +1696,8 @@ def recover_orphaned_runs() -> dict[str, Any]:
 
 
 def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
+    if not config.browser_is_enabled():
+        raise BrowserAutomationError("browser_provider_disabled", "ارائه‌دهندهٔ مرورگر AI Learning در تنظیمات غیرفعال است.")
     """Persist an outline request, then dispatch it under the shared browser lease."""
     _ensure_process_identity()
     control = service.get_learning_control()
@@ -1738,6 +1742,10 @@ def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
 
 
 def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, force_retry: bool = False) -> dict[str, Any]:
+    if not config.browser_is_enabled():
+        raise BrowserAutomationError("browser_provider_disabled", "ارائه‌دهندهٔ مرورگر AI Learning در تنظیمات غیرفعال است.")
+    if len(topic_ids) > config.max_topics_per_run():
+        raise ValueError(f"One browser run accepts at most {config.max_topics_per_run()} topics under the current settings.")
     """Persist every selected topic as its own FIFO run before dispatching browser work."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
     _ensure_process_identity()
