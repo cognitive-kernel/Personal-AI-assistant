@@ -1311,14 +1311,32 @@ def test_ollama_status_keeps_server_online_when_selected_model_metadata_fails(mo
     assert "OSError" in result["model_metadata_error"]
 
 
-def test_ollama_status_rejects_context_only_metadata_without_kv_dimensions(monkeypatch):
+@pytest.mark.parametrize(
+    "missing_key",
+    [
+        "llama.block_count",
+        "llama.attention.head_count_kv",
+        "llama.attention.key_length",
+        "llama.attention.value_length",
+    ],
+)
+def test_ollama_status_rejects_models_with_incomplete_kv_dimensions(monkeypatch, missing_key):
+    model_info = {
+        "llama.context_length": 65536,
+        "llama.block_count": 32,
+        "llama.attention.head_count_kv": 8,
+        "llama.attention.key_length": 128,
+        "llama.attention.value_length": 128,
+    }
+    model_info.pop(missing_key)
+
     class FakeOpener:
         def open(self, request, timeout):
             if request.full_url.endswith("/api/tags"):
                 return io.BytesIO(b'{"models":[{"name":"context-only:latest"}]}')
             return io.BytesIO(json.dumps({
                 "details": {"family": "llama"},
-                "model_info": {"llama.context_length": 65536},
+                "model_info": model_info,
                 "capabilities": ["completion", "tools"],
             }).encode("utf-8"))
 
@@ -1329,7 +1347,7 @@ def test_ollama_status_rejects_context_only_metadata_without_kv_dimensions(monke
     assert result["online"] is True
     assert result["model_metadata_available"] is True
     assert result["model_kv_cache_metadata_available"] is False
-    assert "head_count_kv" in result["model_kv_cache_metadata_error"]
+    assert missing_key in result["model_kv_cache_metadata_error"]
     assert result["model_context_supported"] is False
     assert "KV-cache metadata is incomplete" in result["model_context_error"]
 
