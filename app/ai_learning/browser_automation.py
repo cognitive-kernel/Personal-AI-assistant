@@ -318,6 +318,27 @@ class BrowserAutomationError(RuntimeError):
         self.partial_response = partial_response
 
 
+def _close_browser_context(context: Any, *, preserve_primary_error: bool) -> None:
+    """Close a one-shot browser context without replacing an active failure."""
+    try:
+        context.close()
+    except BaseException as exc:
+        _log_event(
+            "browser_context_close_failed",
+            exception_type=type(exc).__name__,
+            message=str(exc)[:500],
+            primary_error_active=preserve_primary_error,
+        )
+        if preserve_primary_error:
+            return
+        if isinstance(exc, Exception):
+            raise BrowserAutomationError(
+                "browser_context_cleanup_failed",
+                "Chrome browser context could not be closed safely.",
+            ) from exc
+        raise
+
+
 def _provider_gate_error(url: str, visible_text: str) -> BrowserAutomationError | None:
     """Classify explicit visible provider gates; never attempt to bypass them."""
     lowered_url = (url or "").casefold()
@@ -1059,6 +1080,7 @@ def _browser_capture(
     _log_event("browser_configured", chrome_path=chrome, profile_path=str(profile))
     try:
         with _browser_session(sync_playwright, chrome, profile) as (playwright, context):
+            operation_failed = False
             try:
                 # A persistent Chrome profile can restore old tabs after a crash or
                 # interrupted run. Keep exactly one tab per attempt; otherwise every
@@ -1149,9 +1171,14 @@ def _browser_capture(
                 _log_event("capture_succeeded", elapsed_seconds=round(time.monotonic() - capture_started, 1),
                            answer_chars=len(answer))
                 return answer
+            except BaseException:
+                operation_failed = True
+                raise
             finally:
                 if not getattr(_BROWSER_SESSION, "reuse_enabled", False):
-                    context.close()
+                    _close_browser_context(
+                        context, preserve_primary_error=operation_failed
+                    )
     except BrowserAutomationError as exc:
         _log_event("capture_failed", elapsed_seconds=round(time.monotonic() - capture_started, 1),
                    error_code=exc.code, message=str(exc)[:500])
