@@ -485,6 +485,17 @@ def test_active_codex_documentation_matches_adaptive_context_contract():
     assert "currently 1,048,576 tokens" not in adr
     assert "تنظیمات قدیمی Codex نتوانند Context بزرگ‌تری تحمیل کنند" in readme
 
+def test_required_ci_workflows_cancel_superseded_runs_for_the_same_pull_request():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    expected = "group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"
+    for workflow_name in ("tests.yml", "browser-e2e.yml", "dependency-audit.yml", "sandbox-integration-ci.yml"):
+        workflow = (root / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
+        assert expected in workflow
+        assert "-${{ github.sha }}" not in workflow
+
+
 def test_node_runtime_is_provisioned_per_github_job_not_preinstalled_on_target_host():
     from pathlib import Path
 
