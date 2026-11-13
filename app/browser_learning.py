@@ -310,21 +310,40 @@ def _scheduled_course_worker(course_id: int) -> None:
     _ensure_process_identity()
     try:
         run_course(course_id)
-    finally:
+    except BaseException:
+        # Preserve the original worker exception. In particular, never return
+        # from a finally block: doing so would silently suppress provider,
+        # authentication, or runtime failures raised by run_course().
         with _COURSE_DISPATCH_LOCK:
             if _ACTIVE_COURSE_ID == course_id:
                 _ACTIVE_COURSE_ID = None
-        # Drain the queue after success only. A provider/authentication/dependency
-        # failure should not cascade across every interrupted course in one startup.
         try:
-            status = get_course(course_id)["status"]
+            _stop_course_worker_lease_heartbeat(release=True)
         except Exception:
+            # Cleanup must not replace the exception that caused worker exit.
+            pass
+        raise
+
+    with _COURSE_DISPATCH_LOCK:
+        if _ACTIVE_COURSE_ID == course_id:
+            _ACTIVE_COURSE_ID = None
+
+    # Drain the queue after success only. A provider/authentication/dependency
+    # failure should not cascade across every interrupted course in one startup.
+    try:
+        status = get_course(course_id)["status"]
+    except Exception:
+        try:
             _stop_course_worker_lease_heartbeat(release=True)
-            return
-        if status == "completed":
-            dispatch_next_course()
-        else:
-            _stop_course_worker_lease_heartbeat(release=True)
+        except Exception:
+            pass
+        # Keep the status lookup failure visible to the worker supervisor.
+        raise
+
+    if status == "completed":
+        dispatch_next_course()
+    else:
+        _stop_course_worker_lease_heartbeat(release=True)
 
 
 def _course_dispatch_gate(conn: Any) -> tuple[dict[str, Any] | None, Any | None]:
