@@ -18,7 +18,7 @@ router = APIRouter(
 
 
 @router.get("/capabilities")
-def get_capabilities(path_id: int | None = Query(default=None, ge=1), limit: int = 200) -> dict[str, Any]:
+def get_capabilities(path_id: int | None = Query(default=None, ge=1), limit: int = Query(default=200, ge=1, le=500)) -> dict[str, Any]:
     try:
         return learning_capabilities.get_capability_map(path_id=path_id, limit=limit)
     except KeyError as exc:
