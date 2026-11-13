@@ -375,7 +375,7 @@ def test_windows_runner_cli_checks_use_cmd_shims_and_discover_active_ollama():
     assert "| Select-Object -First 1)" not in runner_check
     assert "Get-Command codex.cmd" in runner_check
     assert "$codexCommand.Source --version" in runner_check
-    assert "Provisioned per job by pinned actions/setup-node v6.4.0" in runner_check
+    assert "Provisioned per job by pinned actions/setup-node v7.1.0" in runner_check
     assert "no system-wide installation required" in runner_check
     assert "Get-Command ollama.exe" in runner_check
     assert 'Get-CimInstance Win32_Process -Filter "Name=\'ollama.exe\'"' in runner_check
@@ -516,7 +516,7 @@ def test_node_runtime_is_provisioned_per_github_job_not_preinstalled_on_target_h
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
-    action_pin = "actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e"
+    action_pin = "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1"
     for workflow_name in ("autonomous-codex-engineering.yml", "codex-windows-sandbox-diagnostic.yml", "tests.yml"):
         workflow = (root / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
         assert action_pin in workflow
