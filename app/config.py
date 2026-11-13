@@ -76,7 +76,6 @@ SETTING_DEFAULTS: dict[str, object] = {
     "ai_learning_ollama_num_ctx": defaults.ollama_num_ctx,
     "ai_learning_ollama_num_thread": defaults.ollama_num_thread,
     "ai_learning_ollama_timeout_seconds": defaults.ollama_timeout_seconds,
-    "ai_learning_max_concurrent_jobs": 1,
     "ai_learning_model_keep_alive": "0",
     "ai_learning_source_max_chars": 100000,
     "ram_budget_max_gb": 25,
