@@ -8,7 +8,11 @@ def test_api_contract_inventory_covers_every_documented_api_operation():
     assert summary["api_operations"] > 0
     assert summary["documented_api_operations"] > 0
     assert summary["duplicate_route_keys"] == 0
-    assert summary["missing_from_inventory"] == 0, {\n        "missing": inventory["findings"]["missing_from_inventory"][:20],\n        "registered": [(route["method"], route["path"]) for route in inventory["routes"][:20]],\n        "summary": summary,\n    }
+    assert summary["missing_from_inventory"] == 0, (
+        inventory["findings"]["missing_from_inventory"][:20],
+        [(route["method"], route["path"]) for route in inventory["routes"][:20]],
+        summary,
+    )
     assert summary["included_routes_not_documented"] == 0
     assert summary["missing_operation_ids"] == 0
     assert summary["duplicate_operation_ids"] == 0
