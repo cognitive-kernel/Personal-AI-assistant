@@ -30,7 +30,7 @@ if ($nodeReady) {
 }
 if (-not $nodeReady -and $env:GITHUB_ACTIONS -ne "true") {
     $nodeReady = $true
-    $nodeVersion = "Provisioned per job by pinned actions/setup-node v6.4.0 (Node 26.13.0); no system-wide installation required."
+    $nodeVersion = "Provisioned per job by pinned actions/setup-node v7.1.0 (Node 26.13.0); no system-wide installation required."
 }
 $checks += [pscustomobject]@{ Component = "Node.js"; Ready = $nodeReady; Detail = $nodeVersion }
 
@@ -53,7 +53,7 @@ if ($npmReady) {
 }
 if (-not $npmReady -and $env:GITHUB_ACTIONS -ne "true") {
     $npmReady = $true
-    $npmVersion = "Provisioned with Node.js per job by pinned actions/setup-node v6.4.0; no system-wide installation required."
+    $npmVersion = "Provisioned with Node.js per job by pinned actions/setup-node v7.1.0; no system-wide installation required."
 }
 $checks += [pscustomobject]@{ Component = "npm"; Ready = $npmReady; Detail = if ($npmPrefix) { "$npmVersion; global prefix: $npmPrefix" } else { $npmVersion } }
 
