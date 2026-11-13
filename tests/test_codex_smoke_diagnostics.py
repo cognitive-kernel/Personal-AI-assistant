@@ -225,7 +225,7 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     ci_gate = diagnostic.split(
         "      - name: Wait for the complete exact-head GitHub CI matrix", 1
     )[1].split("      - name: Prepare the same service-account runtime", 1)[0]
-    assert 'required = @("tests", "browser-e2e", "dependency-audit")' in ci_gate
+    assert 'required = @("tests", "browser-e2e", "dependency-audit", "Sandbox integration CI")' in ci_gate
     assert "EXPECTED_HEAD_SHA" in ci_gate
     assert '$pythonCommand = Get-Command python.exe -ErrorAction Stop' in diagnostic
     assert '$env:AUTONOMOUS_ENGINEERING_PYTHON = $pythonPath' in diagnostic
@@ -392,7 +392,7 @@ def test_target_diagnostic_records_actual_hardware_without_hardcoded_profile():
     runner_check = (root / "scripts" / "check_autonomous_runner.ps1").read_text(encoding="utf-8")
     readme = (root / "README.md").read_text(encoding="utf-8")
 
-    assert "No fixed CPU, RAM, or GPU model is a runtime requirement" in readme
+    assert "No CPU, RAM, or GPU model is a fixed runtime requirement" in readme
     assert "TARGET_HOST_HARDWARE_PROFILE" in diagnostic
     assert '$required = @("tests", "browser-e2e", "dependency-audit", "Sandbox integration CI")' in diagnostic
     assert "os_build" in diagnostic
