@@ -307,7 +307,7 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
         raise HTTPException(
             status_code=422,
             detail=(
-                "مدل انتخاب‌شده metadata کامل Context/KV-cache برای برآورد امن حافظه ندارد "
+                "مدل انتخاب‌شده metadata کامل Context/KV-cache و اندازهٔ معتبر وزن مدل برای برآورد امن حافظه ندارد "
                 "یا پنجرهٔ Context آن قابل استفاده نیست؛ تنظیمات ذخیره نشد. "
                 + str(local_model.get("model_context_error") or f"Context maximum: {maximum}")
             ),
