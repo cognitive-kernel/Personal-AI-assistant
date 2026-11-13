@@ -125,6 +125,6 @@ The run-scoped checkpoint readiness and snapshot-index isolation defect is track
 
 ## 2026-11-13 — Latest exact-head evidence
 
-- PR #738's API-wide path/query/pagination contract enforcement and PR #739's durable task record bounds passed exact-head CI; PR #741's browser-context cleanup precedence correction is awaiting its full test workflow.
+- PR #738's API-wide path/query/pagination contract enforcement and PR #739's durable task record bounds passed exact-head CI; PR #741's browser-context cleanup precedence correction passed exact-head CI (2,137 passed, 2 skipped, 51 deselected).
 - PR #725 remains the authoritative browser-learning worker fix; duplicate PR #740 was closed as superseded. Issue #723 remains open until the owner merges PR #725.
 - These findings remain within the existing E-02/E-05 scope. The original 176-hour baseline, 144-hour task estimate, 32-hour contingency, and 2026-12-01 target remain unchanged; actual labor hours remain unmeasured.
