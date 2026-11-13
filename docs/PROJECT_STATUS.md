@@ -1,31 +1,20 @@
 # وضعیت جاری پروژه — 2026-11-13
 
-## وضعیت فعلی ماژول مهندسی خودکار
+## وضعیت فعلی پروژه و ماژول مهندسی خودکار
 
-- **PR #722 / branch:** `fix/autonomous-engineering-show-all-ollama-models-20261112`; base/main `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`. The branch history exceeds 500 commits while its net review diff is about 41 files; it is 0 commits behind main. PR remains Draft/open/unmerged. Avoid a merge commit importing the oversized history; use a reviewed squash or rebuild a clean branch after review.
-- **Last fully validated code/test SHA:** `add976d03aee1c8f6932590814d9c844338efc7f`. Tests [#43411202236](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202236): **2,193 passed, 2 skipped, 51 deselected**; Python 3.11.9/3.14.6, Windows Storage/PowerShell 5.1, Codex CLI 0.167.2/0.168.0, Markdown validation (96 files), import-cycle check, and claim-to-test benchmark (10/10) passed. Browser E2E [#43411202329](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202329), Docker full-suite and real sandbox integration [#43411202201](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202201), and Dependency Audit [#43411202351](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202351) passed on that SHA.
-- **Documentation-only updates after that code/test SHA:** no corresponding workflow run is recorded at this checkpoint. The green runs above are not represented as exact-head validation for those later documentation commits.
-- **Target Windows/Ollama diagnostic:** [#43411202380](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202380) hosted cleanup passed; `sandbox-diagnostic` remains pending because GitHub assigned no matching self-hosted Runner. This is not a pass.
+- **Active PR #728:** clean Codex/Ollama adaptive-context review branch, based on current main `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`, with a 41-file net diff. The old 552-commit PR #722 was closed and its net tree rebuilt without importing the oversized history. PR #728 remains Draft/open/unmerged.
+- **Current PR #728 exact-head CI:** Tests [#43414424974](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43414424974), Browser E2E [#43414424927](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43414424927), and Docker sandbox [#43414424911](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43414424911) are running; Dependency Audit [#43414424930](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43414424930) passed. No full exact-head pass is claimed yet.
+- **Target-host diagnostic:** PR pull-request workflow [#43414424976](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43414424976) skipped the sandbox diagnostic by its event condition. The earlier manual target diagnostic [#43411202380](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43411202380) remained pending without a matching self-hosted Runner. Neither is target-host validation.
+- **Current main baseline:** `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`; exact-main Tests [#43168304132](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43168304132) passed **2,135 passed, 2 skipped, 51 deselected**; Browser E2E [#43168304155](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43168304155) and Dependency Audit [#43168304149](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43168304149) passed.
+- **Other root-cause fixes:** [PR #725](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/725) fixes the browser-learning worker's exception-suppressing finally path; exact-head CI passed **2,137 passed, 2 skipped, 51 deselected**, Browser E2E and Dependency Audit passed. [PR #727](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/727) enforces generic Ollama model/KV-cache/hardware context safety; exact-head CI passed **2,143 passed, 2 skipped, 51 deselected**, Windows Storage, Browser E2E and Dependency Audit passed. Both are ready for review and remain unmerged.
+- PR #706 was closed as superseded; its old provider-config change conflicts with the current `ollama-local` custom-provider architecture. PR #726 was closed as superseded by #727. PR #722 was closed and rebuilt as PR #728. Issue #724 was closed as a duplicate of #723.
 - **Target profile:** Intel Core i5-12400 (6 physical / 12 logical cores), approximately 31.78 GiB RAM, Intel UHD Graphics 730; Windows 11 x64 build 10.0.26300; Python 3.11.9/3.14.6 and Git 2.54.0. Node.js/npm and Codex CLI are provisioned per CI job.
 - **Runtime limitation:** Windows preflight reads persisted registry `OLLAMA_NUM_PARALLEL`, not the live Ollama process environment block. A process-only override may differ; live Ollama version/process and `/api/ps` allocation are not verified.
-- **Not run / pending:** actual target-host Codex tool-call smoke, target-host soak/crash-restart, staging restore/rollback, and required target-host tests. Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) still requires independent security review; Issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290) tracks project-wide acceptance.
-- **Related project fixes:** [PR #725](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/725) fixes Issue #723's exception-suppressing `finally` path; exact-head CI passed (2,137 passed, 2 skipped, 51 deselected), Browser E2E and Dependency Audit passed, and it is ready for review. [PR #727](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/727) ports and hardens generic Ollama model/KV-cache memory safety on current main; exact-head CI is running after correcting two test fixtures. PR #706 is Draft/stale (56 commits behind) and is not safe to merge; PR #726 was closed as superseded by #727.
-- The scorecard now identifies 57.45% / 60.47% as the last formal 2026-11-01 calculation, not a current completion claim. Current main CI is recorded separately in `docs/ACCEPTANCE_SCORECARD.md`.
-- Continue repository-side engineering and hosted validation without waiting for local or human tests. Keep unavailable target-host results marked PENDING/NOT RUN. Do not merge, bypass, auto-merge, or deploy while required gates remain open.
+- **Not run / pending:** actual target-host Codex tool-call smoke, target-host soak/crash-restart, staging restore/rollback, required target-host tests, and independent security review. Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) still requires independent review; Issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290) tracks project-wide acceptance.
+- The weighted score 57.45% overall / 60.47% engineering is the last formal 2026-11-01 calculation, not a current completion claim. The scorecard separates current main evidence from PR-head evidence.
+- Continue repository-side implementation and hosted validation without waiting for local or human tests. Keep unavailable target-host results marked PENDING/NOT RUN. Do not merge, bypass, auto-merge, or deploy while required gates remain open.
 
-> بخش‌های بعدی این سند snapshotهای تاریخی‌اند؛ وضعیت جاری و SHA معتبر در GitHub PR ثبت می‌شود.
-
----
-
-> بخش‌های بعدی این سند snapshotهای تاریخی‌اند؛ وضعیت جاری و SHA معتبر در همین بخش ثبت می‌شود.
-
----
-
-> بخش‌های بعدی این سند snapshotهای تاریخی‌اند؛ وضعیت جاری و SHA معتبر در همین بخش ثبت می‌شود.
-
----
-
-> بخش‌های بعدی این سند snapshotهای تاریخی‌اند؛ وضعیت جاری و SHA معتبر در همین بخش ثبت می‌شود.
+> بخش‌های بعدی این سند snapshotهای تاریخی‌اند؛ وضعیت جاری در PRها و بخش‌های ابتدای اسناد پذیرش ثبت می‌شود.
 
 ---
 
