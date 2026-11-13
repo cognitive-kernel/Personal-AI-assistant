@@ -247,7 +247,7 @@ def candidate_readiness(candidate_id: int) -> dict[str, Any]:
                     "checks": {
                         "content_retained": False,
                         "legacy_content_scrubbed": True,
-                        "legacy_recovery_available": True,
+                        "legacy_recovery_check_available": True,
                         "promotion_blocked": True,
                     },
                     "evidence_counts": {"review_records": total_reviews, "contradictions": len(contradictions)},
