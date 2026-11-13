@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, StrictInt
 
-from . import task_manager
+from . import sandbox_tasks, task_manager
 from .task_manager import TaskManagerError, TaskNotFoundError
 
 def require_loopback_client(request: Request) -> None:
@@ -54,10 +54,16 @@ def _raise_task_error(exc: TaskManagerError) -> None:
 
 @router.post("", status_code=202)
 def create_task(request: TaskCreateRequest) -> dict[str, Any]:
-    if request.task_type.strip() == "sandbox.run_python":
+    if request.task_type.strip() in {
+        sandbox_tasks.SANDBOX_TASK_TYPE,
+        sandbox_tasks.SANDBOX_LANGUAGE_TASK_TYPE,
+    }:
         raise HTTPException(
             status_code=422,
-            detail="Submit sandbox execution through POST /api/sandbox/run so consent and audit checks are enforced.",
+            detail=(
+                "Sandbox task types cannot be submitted through the generic task API; "
+                "use a consent-checked sandbox workflow."
+            ),
         )
     try:
         return task_manager.create_task(
