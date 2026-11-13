@@ -98,6 +98,7 @@ SETTING_DEFAULTS: dict[str, object] = {
     "sandbox_node_image": "",
     "sandbox_rust_image": "",
     "sandbox_timeout_seconds": 60,
+    "sandbox_test_timeout_seconds": 300,
     "sandbox_max_output_bytes": 32768,
     "self_improvement_repo_root": "",
     "self_improvement_github_repository": "",
