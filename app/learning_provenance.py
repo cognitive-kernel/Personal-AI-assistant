@@ -56,7 +56,7 @@ def validate_learning_source(record: Any) -> dict[str, Any]:
     if not isinstance(record, dict):
         raise LearningProvenanceError("A learning source must be an object.")
     source_type = record.get("source_type")
-    if source_type not in SOURCE_TYPES:
+    if not isinstance(source_type, str) or source_type not in SOURCE_TYPES:
         raise LearningProvenanceError("source_type must be web, ai, book, or other.")
 
     normalized = dict(record)
@@ -116,13 +116,13 @@ def evaluate_aggregate_learning_accuracy(records: Any) -> dict[str, Any]:
             raise LearningProvenanceError(f"{prefix}.sample_id is duplicated.")
         seen.add(sample_id)
         path = record.get("learning_path")
-        if path not in LEARNING_PATHS:
+        if not isinstance(path, str) or path not in LEARNING_PATHS:
             raise LearningProvenanceError(f"{prefix}.learning_path is unsupported.")
         outcome = record.get("outcome")
-        if outcome not in {"correct", "incorrect"}:
+        if not isinstance(outcome, str) or outcome not in {"correct", "incorrect"}:
             raise LearningProvenanceError(f"{prefix}.outcome must be correct or incorrect.")
         method = record.get("verification_method")
-        if method not in VERIFICATION_METHODS:
+        if not isinstance(method, str) or method not in VERIFICATION_METHODS:
             raise LearningProvenanceError(f"{prefix}.verification_method is unsupported.")
         _required_text(record, "verifier_id", maximum=200)
         _required_text(record, "evidence_ref", maximum=2048)
