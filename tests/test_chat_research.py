@@ -211,14 +211,19 @@ def test_ollama_chat_places_trusted_system_prompt_before_history(monkeypatch):
         "get_settings",
         lambda: {"ollama_model": "test-model", "ollama_timeout_seconds": 5},
     )
-    monkeypatch.setattr(ollama, "detect_hardware", lambda: {})
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {"logical_cpu_count": 4, "available_ram_gb": 20, "gpu_devices": []})
     monkeypatch.setattr(ollama, "runtime_limits", lambda *_args, **_kwargs: {"num_ctx": 1024, "cpu_threads": 2})
+    monkeypatch.setattr(ollama, "list_models", lambda: [{"name": "test-model", "size": 1_000_000_000}])
     captured = {}
     monkeypatch.setattr(
         ollama,
         "_request",
         lambda path, payload=None, **_kwargs: (
-            {"details": {"family": "llama"}, "model_info": {"llama.context_length": 8192}}
+            {"details": {"family": "llama"}, "model_info": {
+                "llama.context_length": 8192, "llama.block_count": 1,
+                "llama.attention.head_count_kv": 1, "llama.attention.key_length": 1,
+                "llama.attention.value_length": 1,
+            }}
             if path == "/api/show"
             else captured.update(path=path, payload=payload) or {"message": {"content": "ok"}}
         ),
