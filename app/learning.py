@@ -2302,6 +2302,31 @@ def start_researched_path_learning(
                 "SELECT id, status FROM learning_jobs WHERE path_topic_id=? ORDER BY id DESC LIMIT 1",
                 (topic["id"],),
             ).fetchone()
+            quality_gate = conn.execute(
+                "SELECT state, current_job_id FROM learning_topic_quality_gates WHERE path_topic_id=?",
+                (topic["id"],),
+            ).fetchone()
+        if quality_gate is not None:
+            if quality_gate["state"] == "passed":
+                skipped_completed += 1
+                continue
+            if quality_gate["state"] == "blocked":
+                return {
+                    "path_id": path_id, "queued_count": 0, "job_ids": [],
+                    "status": "blocked_by_topic_quality_gate",
+                    "blocked_topic": topic["topic"],
+                    "message": "ادامه مسیر تا قبولی ارزیابی مستقل این سرفصل متوقف است.",
+                }
+            if latest is not None and latest["status"] == "completed":
+                from .learning_topic_quality_tasks import enqueue_topic_quality_evaluation
+                evaluation = enqueue_topic_quality_evaluation(int(latest["id"]))
+                return {
+                    "path_id": path_id, "queued_count": 0, "job_ids": [],
+                    "status": "awaiting_topic_quality_evaluation",
+                    "active_job_id": int(latest["id"]),
+                    "evaluation_task": evaluation,
+                    "message": "درس تولید شده است؛ تا ثبت قبولی ارزیابی مستقل، سرفصل بعدی آغاز نمی‌شود.",
+                }
         if latest is not None and latest["status"] in {"queued", "running"}:
             return {
                 "path_id": path_id, "queued_count": 0, "job_ids": [],
