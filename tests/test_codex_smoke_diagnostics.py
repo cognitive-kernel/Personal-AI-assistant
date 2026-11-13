@@ -193,6 +193,9 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert '64000' not in context_script
     assert 'Stop-LoadedCodexVariants -BaseModel $baseModel' in context_script
     assert 'model_weights_already_loaded = $modelWeightsAlreadyLoaded' in context_script
+    assert "$loadedBase[0].size_vram" in context_script
+    assert "$sizeVramBytes -eq 0" in context_script
+    assert "any VRAM residency or missing telemetry" in context_script
     assert "Get-OllamaNumParallel" in context_script
     assert "Get-NetTCPConnection -LocalPort 11434" in context_script
     assert "[Microsoft.Win32.Registry]::Users" in context_script
