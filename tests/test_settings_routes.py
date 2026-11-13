@@ -121,6 +121,9 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
     assert defaults["ai_learning_embedding_input_max_chars"] == 6000
     assert defaults["ai_learning_title_duplicate_threshold"] == 0.985
     assert defaults["ai_learning_content_duplicate_threshold"] == 0.90
+    assert defaults["learning_max_output_tokens"] == 3900
+    assert defaults["ai_learning_max_output_tokens"] == 3900
+    assert defaults["topic_learning_max_output_tokens"] == 3900
 
     values = {
         "ai_learning_enabled": False,
@@ -190,6 +193,9 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
         "ai_learning_ollama_num_thread": 4,
         "ai_learning_ollama_timeout_seconds": 120,
         "ai_learning_model_keep_alive": "5m",
+        "learning_max_output_tokens": 2500,
+        "ai_learning_max_output_tokens": 3000,
+        "topic_learning_max_output_tokens": 3500,
         "learning_model_pricing_json": '{"gpt-5-test":{"input_usd_per_million_tokens":"1.00","output_usd_per_million_tokens":"4.00","pricing_version":"2026-11"}}',
     }
     response = settings_client.patch("/api/settings", json={"values": values})
@@ -212,6 +218,9 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
         {"factual_review_max_output_tokens": 0},
         {"factual_review_source_max_chars": 999},
         {"factual_review_ollama_num_ctx": 511},
+        {"learning_max_output_tokens": 0},
+        {"ai_learning_max_output_tokens": 8193},
+        {"topic_learning_max_output_tokens": 0},
         {"learning_model_pricing_json": "not-json"},
         {"learning_model_pricing_json": '{"model":{"input_usd_per_million_tokens":-1,"output_usd_per_million_tokens":2,"pricing_version":"v1"}}'},
         {"sandbox_enabled": "true"},
