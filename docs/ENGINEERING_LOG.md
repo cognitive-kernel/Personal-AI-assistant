@@ -688,3 +688,8 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Sandbox Docker path, digest-pinned Python/test/Node/Rust images, execution/test timeouts, output ceiling, Self-Improvement repository path, GitHub repository/base branch, and token environment-variable name are exposed in Settings with bounded validation.
 - Sandbox being enabled does not authorize code execution: a valid local Docker executable/image and explicit, persisted, revocable user consent remain mandatory. Missing prerequisites leave the handler unavailable; no host-execution fallback is allowed.
 - Legacy SANDBOX_ENABLED/SANDBOX_DOCKER_EXECUTABLE/SANDBOX_PYTHON_IMAGE environment-gate guidance was removed from .env.example and sandbox architecture documentation; persisted Settings are authoritative. GitHub credentials remain environment secrets.
+### 2026-11-13 — Sandbox configuration unified across learning-review execution
+
+- Removed the remaining direct SANDBOX_ENABLED/SANDBOX_DOCKER_EXECUTABLE/SANDBOX_PYTHON_IMAGE reads from learning candidate review. The path now reads persisted Settings, uses the shared sandbox configuration validator, and applies configured timeout/output limits.
+- The candidate review path still requires explicit current consent before running any code. A disabled module, missing Docker/image configuration, invalid settings, or absent consent records an unavailable/skipped outcome; no host fallback is introduced.
+- Sandbox API errors and architecture documentation now point to dashboard Settings rather than obsolete environment gates. Tests configure sandbox through the persistent settings store.
