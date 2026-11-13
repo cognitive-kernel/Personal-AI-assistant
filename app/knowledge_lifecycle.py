@@ -182,16 +182,77 @@ def candidate_readiness(candidate_id: int) -> dict[str, Any]:
                 for item in reviews if item["verdict"] == "contradicts"
             ]
             content_retained = bool(str(candidate["content"] or ""))
+            legacy_recovery_applied = "legacy_recovery:" in str(candidate["failure_reason"] or "")
+            try:
+                source_urls = json.loads(candidate["source_urls_json"])
+            except (TypeError, json.JSONDecodeError):
+                source_urls = []
+            try:
+                quality_report = json.loads(candidate["quality_report_json"])
+            except (TypeError, json.JSONDecodeError):
+                quality_report = {}
+            try:
+                test_plan = json.loads(candidate["test_plan_json"])
+            except (TypeError, json.JSONDecodeError):
+                test_plan = []
+            try:
+                test_results = json.loads(candidate["test_results_json"])
+            except (TypeError, json.JSONDecodeError):
+                test_results = []
+            if legacy_recovery_applied:
+                job_state = connection.execute(
+                    "SELECT assessment_json FROM learning_jobs WHERE id=?",
+                    (candidate["job_id"],),
+                ).fetchone()
+                source_text_retained = connection.execute(
+                    "SELECT 1 FROM learning_source_text WHERE job_id=?",
+                    (candidate["job_id"],),
+                ).fetchone() is not None
+                knowledge_item_retained = connection.execute(
+                    "SELECT 1 FROM knowledge_items WHERE job_id=?",
+                    (candidate["job_id"],),
+                ).fetchone() is not None
+                return {
+                    "candidate_id": candidate_id,
+                    "candidate_sha256": candidate["content_sha256"],
+                    "status": "rejected_after_review",
+                    "ready_for_promotion": False,
+                    "checks": {
+                        "content_hash_valid": content_retained,
+                        "content_retained": content_retained,
+                        "source_urls_retained": bool(source_urls),
+                        "quality_report_retained": bool(quality_report),
+                        "test_plan_retained": bool(test_plan),
+                        "test_results_retained": bool(test_results),
+                        "source_text_retained": source_text_retained,
+                        "assessment_retained": bool(job_state and job_state["assessment_json"]),
+                        "knowledge_item_version_retained": knowledge_item_retained,
+                        "legacy_partial_recovery": True,
+                        "promotion_blocked": True,
+                    },
+                    "evidence_counts": {
+                        "review_records": total_reviews,
+                        "current_hash_reviews": len(reviews),
+                        "contradictions": len(contradictions),
+                    },
+                    "contradictions": contradictions,
+                    "note": "This legacy record was only partially recoverable. The repair tool restores candidate content only when its SHA-256 exactly matches the preserved job lesson, and restores source URLs/quality metadata only from preserved database records. Missing source text, assessment, test plan, or original knowledge version cannot be fabricated; promotion remains blocked.",
+                }
             if not content_retained:
                 return {
                     "candidate_id": candidate_id,
                     "candidate_sha256": candidate["content_sha256"],
                     "status": "rejected_after_review",
                     "ready_for_promotion": False,
-                    "checks": {"content_retained": False, "legacy_content_scrubbed": True, "promotion_blocked": True},
+                    "checks": {
+                        "content_retained": False,
+                        "legacy_content_scrubbed": True,
+                        "legacy_recovery_available": True,
+                        "promotion_blocked": True,
+                    },
                     "evidence_counts": {"review_records": total_reviews, "contradictions": len(contradictions)},
                     "contradictions": contradictions,
-                    "note": "This legacy record was scrubbed by an earlier implementation; its original content cannot be reconstructed. New rejections retain content and provenance.",
+                    "note": "This legacy record was scrubbed by an earlier implementation. Run scripts/repair_legacy_rejected_candidates.py in read-only mode first; it can restore only exact-hash-matching lesson content and source/quality metadata still present in the database. Deleted source text, assessment, test plan, and knowledge version cannot be fabricated.",
                 }
             return {
                 "candidate_id": candidate_id,
