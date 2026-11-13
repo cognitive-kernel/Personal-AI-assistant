@@ -829,6 +829,10 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
     # Context limits are model-specific. Context edits require verifiable metadata;
     # manual model-name changes remain compatible when the existing context is unchanged.
     current_settings = db.get_settings()
+    chunk_target = values.get("ai_learning_chunk_target_chars", current_settings.get("ai_learning_chunk_target_chars", 1800))
+    chunk_overlap = values.get("ai_learning_chunk_overlap_chars", current_settings.get("ai_learning_chunk_overlap_chars", 180))
+    if chunk_overlap >= chunk_target:
+        raise HTTPException(status_code=422, detail="ai_learning_chunk_overlap_chars must be smaller than ai_learning_chunk_target_chars.")
     context_profiles = {
         "chat_ollama_num_ctx": "chat_ollama_model",
         "learning_ollama_num_ctx": "learning_ollama_model",
