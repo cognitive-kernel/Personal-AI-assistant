@@ -442,7 +442,7 @@ async function refresh() {
   const banner = el("storage-degraded-banner");
   if (banner) banner.hidden = true;
  }
- try { const s = await api("/api/settings"); el("cpu-resource-limit").value=s.cpu_resource_limit_percent ?? 90; el("ram-resource-limit").value=s.ram_resource_limit_percent ?? 90; el("gpu-resource-limit").value=s.gpu_resource_limit_percent ?? 90; el("gpu-enabled").checked=s.gpu_enabled === true; el("ai-learning-enabled").checked=s.ai_learning_enabled !== false; el("ai-learning-retrieval-enabled").checked=s.ai_learning_retrieval_enabled !== false; el("ai-learning-browser-enabled").checked=s.ai_learning_browser_enabled !== false; el("ai-learning-lesson-batch").value=s.ai_learning_lesson_batch_size ?? 20; el("ai-learning-chunk-target").value=s.ai_learning_chunk_target_chars ?? 1800; el("ai-learning-chunk-overlap").value=s.ai_learning_chunk_overlap_chars ?? 180; el("ai-learning-embedding-batch").value=s.ai_learning_embedding_batch_size ?? 64; el("ai-learning-response-timeout").value=s.ai_learning_response_timeout_seconds ?? 1800; el("ai-learning-continuations").value=s.ai_learning_max_lesson_continuations ?? 8; el("ai-learning-stability").value=s.ai_learning_stability_seconds ?? 20; el("ai-learning-browser-timeout").value=s.ai_learning_browser_timeout_seconds ?? 300; el("ai-learning-retries").value=s.ai_learning_max_retries ?? 2; el("ram-budget-max").value=s.ram_budget_max_gb ?? 25; el("ram-safety-reserve").value=s.ram_safety_reserve_gb ?? 4; const fields={"chat-provider":"chat_llm_provider","chat-base-url":"chat_llm_base_url","chat-api-key-env":"chat_llm_api_key_env","research-plan-provider":"research_plan_llm_provider","research-plan-base-url":"research_plan_llm_base_url","research-plan-api-key-env":"research_plan_llm_api_key_env","research-plan-model":"research_plan_ollama_model","learning-provider":"learning_llm_provider","learning-base-url":"learning_llm_base_url","learning-api-key-env":"learning_llm_api_key_env","programming-provider":"programming_llm_provider","programming-base-url":"programming_llm_base_url","programming-api-key-env":"programming_llm_api_key_env","factual-review-provider":"factual_review_llm_provider","factual-review-base-url":"factual_review_llm_base_url","factual-review-api-key-env":"factual_review_llm_api_key_env","embedding-provider":"embedding_llm_provider","embedding-base-url":"embedding_llm_base_url","embedding-api-key-env":"embedding_llm_api_key_env","embedding-model":"ollama_embedding_model","chat-keep-alive":"chat_model_keep_alive","learning-keep-alive":"learning_model_keep_alive","programming-keep-alive":"programming_model_keep_alive","chat-model":"chat_ollama_model","chat-ctx":"chat_ollama_num_ctx","chat-threads":"chat_ollama_num_thread","chat-timeout":"chat_ollama_timeout_seconds","chat-concurrency":"chat_max_concurrent_jobs","chat-source-limit":"chat_source_max_chars","learning-model":"learning_ollama_model","learning-ctx":"learning_ollama_num_ctx","learning-threads":"learning_ollama_num_thread","learning-timeout":"learning_ollama_timeout_seconds","learning-concurrency":"learning_max_concurrent_jobs","learning-source-limit":"learning_source_max_chars","programming-model":"programming_ollama_model","programming-ctx":"programming_ollama_num_ctx","programming-threads":"programming_ollama_num_thread","programming-timeout":"programming_ollama_timeout_seconds","programming-concurrency":"programming_max_concurrent_jobs","programming-source-limit":"programming_source_max_chars","factual-review-model":"factual_review_ollama_model","learning-min-quality":"learning_model_minimum_quality_score"}; for(const [id,key] of Object.entries(fields)) el(id).value=s[key] ?? s.ollama_model ?? ""; el("programming-context").maxLength=Number(s.programming_source_max_chars ?? 12000); el("learning-cost-profiles").value=JSON.stringify(s.learning_model_cost_profiles || {},null,2); el("learning-external-review-providers").value=JSON.stringify(s.learning_external_review_providers || [],null,2); el("learning-task-budget").value=s.learning_task_budget_microusd == null ? "" : s.learning_task_budget_microusd; refreshOllamaModels(); } catch(error) { el("settings-output").textContent=error.message; }
+ try { const s = await api("/api/settings"); el("cpu-resource-limit").value=s.cpu_resource_limit_percent ?? 90; el("ram-resource-limit").value=s.ram_resource_limit_percent ?? 90; el("gpu-resource-limit").value=s.gpu_resource_limit_percent ?? 90; el("gpu-enabled").checked=s.gpu_enabled === true; el("ai-learning-enabled").checked=s.ai_learning_enabled !== false; el("ai-learning-retrieval-enabled").checked=s.ai_learning_retrieval_enabled !== false; el("ai-learning-browser-enabled").checked=s.ai_learning_browser_enabled !== false; el("ai-learning-lesson-batch").value=s.ai_learning_lesson_batch_size ?? 20; el("ai-learning-chunk-target").value=s.ai_learning_chunk_target_chars ?? 1800; el("ai-learning-chunk-overlap").value=s.ai_learning_chunk_overlap_chars ?? 180; el("ai-learning-embedding-batch").value=s.ai_learning_embedding_batch_size ?? 64; el("ai-learning-response-timeout").value=s.ai_learning_response_timeout_seconds ?? 1800; el("ai-learning-continuations").value=s.ai_learning_max_lesson_continuations ?? 8; el("ai-learning-stability").value=s.ai_learning_stability_seconds ?? 20; el("ai-learning-browser-timeout").value=s.ai_learning_browser_timeout_seconds ?? 300; el("ai-learning-retries").value=s.ai_learning_max_retries ?? 2; el("ram-budget-max").value=s.ram_budget_max_gb ?? 25; el("ram-safety-reserve").value=s.ram_safety_reserve_gb ?? 4; const fields={"chat-provider":"chat_llm_provider","chat-base-url":"chat_llm_base_url","chat-api-key-env":"chat_llm_api_key_env","research-plan-provider":"research_plan_llm_provider","research-plan-base-url":"research_plan_llm_base_url","research-plan-api-key-env":"research_plan_llm_api_key_env","research-plan-model":"research_plan_ollama_model","learning-provider":"learning_llm_provider","learning-base-url":"learning_llm_base_url","learning-api-key-env":"learning_llm_api_key_env","programming-provider":"programming_llm_provider","programming-base-url":"programming_llm_base_url","programming-api-key-env":"programming_llm_api_key_env","factual-review-provider":"factual_review_llm_provider","factual-review-base-url":"factual_review_llm_base_url","factual-review-api-key-env":"factual_review_llm_api_key_env","embedding-provider":"embedding_llm_provider","embedding-base-url":"embedding_llm_base_url","embedding-api-key-env":"embedding_llm_api_key_env","embedding-model":"ollama_embedding_model","chat-keep-alive":"chat_model_keep_alive","learning-keep-alive":"learning_model_keep_alive","programming-keep-alive":"programming_model_keep_alive","chat-model":"chat_ollama_model","chat-ctx":"chat_ollama_num_ctx","chat-threads":"chat_ollama_num_thread","chat-timeout":"chat_ollama_timeout_seconds","chat-concurrency":"chat_max_concurrent_jobs","chat-source-limit":"chat_source_max_chars","learning-model":"learning_ollama_model","learning-ctx":"learning_ollama_num_ctx","learning-threads":"learning_ollama_num_thread","learning-timeout":"learning_ollama_timeout_seconds","learning-concurrency":"learning_max_concurrent_jobs","learning-source-limit":"learning_source_max_chars","programming-model":"programming_ollama_model","programming-ctx":"programming_ollama_num_ctx","programming-threads":"programming_ollama_num_thread","programming-timeout":"programming_ollama_timeout_seconds","programming-concurrency":"programming_max_concurrent_jobs","programming-source-limit":"programming_source_max_chars","factual-review-model":"factual_review_ollama_model","learning-min-quality":"learning_model_minimum_quality_score"}; for(const [id,key] of Object.entries(fields)) el(id).value=s[key] ?? s.ollama_model ?? ""; el("programming-context").maxLength=Number(s.programming_source_max_chars ?? 12000); el("learning-cost-profiles").value=JSON.stringify(s.learning_model_cost_profiles || {},null,2); el("learning-external-review-providers").value=JSON.stringify(s.learning_external_review_providers || [],null,2); el("learning-task-budget").value=s.learning_task_budget_microusd == null ? "" : s.learning_task_budget_microusd; refreshProviderModels(); } catch(error) { el("settings-output").textContent=error.message; }
 }
 async function refreshStorageHealth() {
  const output=el("storage-health-output");
@@ -1448,52 +1448,58 @@ el("refresh-factual-review-queue").addEventListener("click",refreshFactualReview
 refreshFactualReviewQueue();
 el("refresh-learning-escalations").addEventListener("click",refreshLearningEscalations);
 refreshLearningEscalations();
-async function refreshOllamaModels() {
+const providerModelProfiles = [
+ ["chat","chat","chat-model-installed","chat-model"],
+ ["research_plan","research-plan","research-plan-model-installed","research-plan-model"],
+ ["learning","learning","learning-model-installed","learning-model"],
+ ["programming","programming","programming-model-installed","programming-model"],
+ ["factual_review","factual-review","factual-review-model-installed","factual-review-model"],
+ ["embedding","embedding","embedding-model-installed","embedding-model"]
+];
+async function refreshProviderModels() {
  const list=el("ollama-model-options");
- if(!list) return;
- list.replaceChildren();
- const providers=["chat","research-plan","learning","programming","factual-review","embedding"];
- if(providers.every(name=>el(name+"-provider")?.value==="openai_compatible")) {
-  for(const id of ["chat-model-installed","learning-model-installed","programming-model-installed"]) {
-   const select=el(id);
-   if(select) select.replaceChildren(new Option("مدل‌ها از endpoint انتخاب‌شده دریافت می‌شوند",""));
-  }
-  for(const profile of modelContextProfiles) await refreshModelContextHint(profile);
-  el("settings-output").textContent="تمام مسیرها از provider سازگار استفاده می‌کنند؛ فهرست مدل Ollama لازم نیست.";
-  return;
- }
- const installedSelects = [
-  ["chat-model-installed","chat-model"],
-  ["learning-model-installed","learning-model"],
-  ["programming-model-installed","programming-model"]
- ];
- for(const [selectId] of installedSelects) {
+ if(list) list.replaceChildren();
+ const results=await Promise.all(providerModelProfiles.map(async profile=>{
+  const [purpose,prefix,selectId]=profile;
   const select=el(selectId);
-  if(select) select.replaceChildren(new Option("انتخاب مدل نصب‌شده",""));
- }
- try {
-  const result=await api("/api/models");
+  if(select) select.replaceChildren(new Option("در حال دریافت مدل‌ها…",""));
+  try {
+   const result=await api("/api/models?purpose="+encodeURIComponent(purpose));
+   return {profile,result};
+  } catch(error) {
+   return {profile,error};
+  }
+ }));
+ const known=new Set();
+ const messages=[];
+ for(const item of results) {
+  const [purpose,prefix,selectId,inputId]=item.profile;
+  const select=el(selectId), input=el(inputId);
+  if(item.error) {
+   if(select) select.replaceChildren(new Option("فهرست مدل در دسترس نیست؛ نام را دستی وارد کنید",""));
+   messages.push(prefix+": "+item.error.message);
+   continue;
+  }
+  const result=item.result||{};
   const models=Array.isArray(result.models)?result.models:[];
+  if(select) select.replaceChildren(new Option("انتخاب مدل از "+(result.provider||"provider"),""));
   for(const model of models) {
    if(!model || typeof model.name!=="string" || !model.name.trim()) continue;
-   const label=model.size ? model.name+" — "+Math.round(model.size/1073741824*10)/10+" GiB" : model.name;
-   const datalistOption=document.createElement("option");
-   datalistOption.value=model.name;
-   datalistOption.label=label;
-   list.append(datalistOption);
-   for(const [selectId] of installedSelects) {
-    const select=el(selectId);
-    if(select) select.add(new Option(label,model.name));
+   const name=model.name.trim();
+   const label=model.size ? name+" — "+Math.round(model.size/1073741824*10)/10+" GiB" : name;
+   if(select) select.add(new Option(label,name));
+   if(list && !known.has(name)) {
+    const option=document.createElement("option");
+    option.value=name;
+    option.label=label;
+    list.append(option);
+    known.add(name);
    }
   }
-  for(const [selectId,inputId] of installedSelects) {
-   const select=el(selectId), input=el(inputId);
-   if(select && input && models.some(model=>model && model.name===input.value.trim())) select.value=input.value.trim();
-  }
-  el("settings-output").textContent="مدل‌های نصب‌شدهٔ Ollama: "+models.filter(model=>model&&typeof model.name==="string").length;
- } catch(error) {
-  el("settings-output").textContent="فهرست مدل‌های نصب‌شده دریافت نشد؛ نام مدل را می‌توانید دستی وارد کنید. "+error.message;
+  if(select && input && models.some(model=>model && model.name===input.value.trim())) select.value=input.value.trim();
+  messages.push(prefix+": "+models.length+" مدل از "+(result.provider||"provider"));
  }
+ el("settings-output").textContent=messages.join("\n");
  for(const profile of modelContextProfiles) await refreshModelContextHint(profile);
  await refreshHardwareDiagnostics(modelContextProfiles[0]);
 }
@@ -1624,13 +1630,20 @@ for(const profile of modelContextProfiles) {
   if(installedSelect && installedSelect.value!==el(modelId).value.trim()) installedSelect.value="";
  });
  el(modelId)?.addEventListener("change",async()=>{await refreshModelContextHint(profile,true);await refreshHardwareDiagnostics(profile);});
- el(purpose+"-provider")?.addEventListener("change",refreshProfileDiagnostics);
+ el(purpose+"-provider")?.addEventListener("change",()=>{refreshProfileDiagnostics();refreshProviderModels();});
  el(modelId)?.addEventListener("blur",refreshProfileDiagnostics);
  el(contextId)?.addEventListener("input",()=>{el(contextId).setCustomValidity("");});
  el(contextId)?.addEventListener("change",refreshProfileDiagnostics);
 }
 
-el("refresh-ollama-models").addEventListener("click", refreshOllamaModels);
+for(const [purpose,prefix,selectId,inputId] of providerModelProfiles.filter(item=>!["chat","learning","programming"].includes(item[0]))) {
+ const select=el(selectId), input=el(inputId);
+ select?.addEventListener("change",()=>{if(select.value && input) input.value=select.value;});
+ input?.addEventListener("input",()=>{if(select && select.value!==input.value.trim()) select.value="";});
+ el(prefix+"-provider")?.addEventListener("change",refreshProviderModels);
+}
+
+el("refresh-ollama-models").addEventListener("click", refreshProviderModels);
 el("settings-form").addEventListener("submit", async event => {
  event.preventDefault();
  let learningCostProfiles;
