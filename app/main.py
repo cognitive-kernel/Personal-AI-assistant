@@ -311,7 +311,7 @@ def _maintain_learning_runtime() -> None:
         browser_learning.dispatch_next_course()
     except Exception:
         logger.exception("Browser-learning dispatch failed; it will retry next interval.")
-    if ai_learning_config.is_enabled():
+    if ai_learning_config.browser_is_enabled():
         try:
             ai_learning_browser_automation.recover_orphaned_runs()
         except Exception:
@@ -352,7 +352,7 @@ def startup() -> None:
         )
     # Recover only explicit, persisted AI-learning runs. This never auto-generates
     # new topics/lessons and respects the durable global pause flag.
-    if ai_learning_config.is_enabled():
+    if ai_learning_config.browser_is_enabled():
         try:
             ai_learning_browser_automation.recover_pending_runs()
         except Exception:
