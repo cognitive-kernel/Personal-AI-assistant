@@ -281,7 +281,8 @@ def test_one_available_reviewer_does_not_reject_or_promote_candidate(lifecycle_s
 
 
 def test_rejection_requires_two_models_and_two_live_contradictory_sources(lifecycle_store, monkeypatch):
-    job = learning.create_job("Repeated contradiction")
+    source_text = "Original source material must remain auditable after a contradiction decision."
+    job = learning.create_job("Repeated contradiction", source_text=source_text)
     content = "Temporary lesson whose central claim may be contradicted by evidence."
     digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
     urls = ["https://alpha.example.test/guide", "https://beta.other.test/reference"]
@@ -289,7 +290,14 @@ def test_rejection_requires_two_models_and_two_live_contradictory_sources(lifecy
         urls[0]: "Alpha source explicitly contradicts the claim, including its mechanism and documented constraints.",
         urls[1]: "Beta source explicitly contradicts the claim and documents an incompatible behavior and scope.",
     }
+    assessment_json = json.dumps({"previous_assessment": "preserve this diagnostic"})
+    test_plan = {"version": 1, "tests": [{"name": "prior test plan"}]}
+    test_results = [{"test": "prior test result", "passed": False}]
     with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE learning_jobs SET assessment_json=? WHERE id=?",
+            (assessment_json, job["id"]),
+        )
         connection.execute(
             """INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id)
                VALUES (?, ?, ?, ?, 'unverified', ?)""",
@@ -303,6 +311,11 @@ def test_rejection_requires_two_models_and_two_live_contradictory_sources(lifecy
             (job["id"], "Repeated contradiction", content, "web_retrieved",
              json.dumps(urls), digest, json.dumps({"accepted": True})),
         ).lastrowid)
+        connection.execute(
+            """UPDATE temporary_knowledge_candidates
+               SET test_plan_json=?, test_results_json=? WHERE id=?""",
+            (json.dumps(test_plan), json.dumps(test_results), candidate_id),
+        )
     monkeypatch.setattr(
         "app.web_sources.fetch_public_document",
         lambda url, *_args, **_kwargs: SimpleNamespace(text=texts[url], title=url),
@@ -336,34 +349,74 @@ def test_rejection_requires_two_models_and_two_live_contradictory_sources(lifecy
     assert result["status"] == "rejected_after_review"
     with db.learning_connection() as connection:
         row = connection.execute(
-            "SELECT status, content, source_urls_json, failure_reason, promoted_knowledge_id FROM temporary_knowledge_candidates WHERE id=?",
+            """SELECT status, content, source_urls_json, quality_report_json,
+                      test_plan_json, test_results_json, failure_reason, promoted_knowledge_id
+               FROM temporary_knowledge_candidates WHERE id=?""",
             (candidate_id,),
         ).fetchone()
-        remaining_unverified = connection.execute(
-            "SELECT COUNT(*) FROM knowledge_items WHERE job_id=? AND status='unverified'",
+        knowledge = connection.execute(
+            "SELECT status, content FROM knowledge_items WHERE job_id=?",
             (job["id"],),
-        ).fetchone()[0]
+        ).fetchone()
         job_row = connection.execute(
             "SELECT status, assessment_json FROM learning_jobs WHERE id=?",
             (job["id"],),
         ).fetchone()
-        source_text_count = connection.execute(
-            "SELECT COUNT(*) FROM learning_source_text WHERE job_id=?",
+        source_row = connection.execute(
+            "SELECT content FROM learning_source_text WHERE job_id=?",
             (job["id"],),
-        ).fetchone()[0]
+        ).fetchone()
+
     assert row["status"] == "failed"
-    assert row["content"] == ""
-    assert row["source_urls_json"] == "[]"
+    assert row["content"] == content
+    assert json.loads(row["source_urls_json"]) == urls
+    assert json.loads(row["quality_report_json"]) == {"accepted": True}
+    assert json.loads(row["test_plan_json"]) == test_plan
+    assert json.loads(row["test_results_json"]) == test_results
     assert "rejected_after_review" in row["failure_reason"]
     assert row["promoted_knowledge_id"] is None
-    assert remaining_unverified == 0
+    assert knowledge["status"] == "conflicting"
+    assert knowledge["content"] == content
     assert job_row["status"] == "rejected"
-    assert job_row["assessment_json"] is None
-    assert source_text_count == 0
+    assert job_row["assessment_json"] == assessment_json
+    assert source_row["content"] == source_text
+
     readiness = knowledge_lifecycle.candidate_readiness(candidate_id)
     assert readiness["status"] == "rejected_after_review"
     assert readiness["ready_for_promotion"] is False
+    assert readiness["checks"]["content_retained"] is True
+    assert readiness["checks"]["promotion_blocked"] is True
+    assert readiness["contradictions"]
 
+    with pytest.raises(ValueError, match="multi-source"):
+        knowledge_lifecycle.promote_candidate(
+            candidate_id, expected_candidate_sha256=digest
+        )
+    with pytest.raises(ValueError, match="new versioned candidate"):
+        knowledge_lifecycle.record_candidate_review(
+            candidate_id,
+            candidate_sha256=digest,
+            review_kind="ai_review",
+            verdict="inconclusive",
+            reviewer_id="reviewer-three",
+            model_id="reviewer-three",
+            note="A terminal candidate requires a new version before reassessment.",
+            input_sha256="0" * 64,
+            output_sha256="1" * 64,
+            _trusted_adapter=True,
+        )
+
+    monkeypatch.setattr(
+        "app.web_sources.fetch_public_document",
+        lambda *_args, **_kwargs: pytest.fail("terminal rejection must not fetch sources again"),
+    )
+    monkeypatch.setattr(
+        "app.ollama.list_models",
+        lambda: pytest.fail("terminal rejection must not invoke models again"),
+    )
+    repeated = knowledge_lifecycle.validate_candidate_with_models(candidate_id)
+    assert repeated["status"] == "rejected_after_review"
+    assert repeated["ready_for_promotion"] is False
 
 def test_source_diversity_collapses_subdomains_of_the_same_registrable_domain(lifecycle_store, monkeypatch):
     job = learning.create_job("Subdomain source diversity")
