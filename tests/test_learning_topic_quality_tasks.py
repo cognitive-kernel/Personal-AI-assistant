@@ -216,3 +216,144 @@ def test_topic_evaluation_enqueue_is_idempotent(topic_quality_store):
     ]
     assert len(tasks) == 1
     assert tasks[0]["payload"]["content_sha256"] == __import__("hashlib").sha256(lesson.encode()).hexdigest()
+
+
+
+def _method_scoped_completed_job(monkeypatch):
+    from app import learning_method_orchestrator
+
+    with db.learning_connection() as connection:
+        path_id = int(connection.execute(
+            "INSERT INTO learning_paths(curriculum_slug, title) VALUES ('method-quality-test', 'Method quality test')"
+        ).lastrowid)
+        topic_id = int(connection.execute(
+            "INSERT INTO learning_path_topics(path_id, topic, position, status) VALUES (?, 'Independent methods', 1, 'in_progress')",
+            (path_id,),
+        ).lastrowid)
+    monkeypatch.setattr(learning, "_enqueue_learning_job", lambda job_id: {"id": f"task-{job_id}"})
+    transition = learning_method_orchestrator.queue_initial_method(topic_id)
+    job_id = int(transition["job"]["id"])
+    learning_method_orchestrator.mark_method_running(job_id)
+    lesson = (
+        "A complete lesson explains the concept, its prerequisites, a worked example, "
+        "expected output, common errors, and a short practice task with a verified answer."
+    )
+    with db.learning_connection() as connection:
+        connection.execute(
+            """UPDATE learning_jobs SET status='completed', lesson=?, assessment_json=?, quality_json=?
+               WHERE id=?""",
+            (
+                lesson,
+                json.dumps({"learning_outcomes": ["Understand the concept"], "questions": ["Explain it"], "answer_key": ["A clear explanation."]}),
+                json.dumps({"score": 90, "reasons": []}),
+                job_id,
+            ),
+        )
+        connection.execute(
+            "UPDATE learning_topic_quality_gates SET state='evaluating', current_job_id=? WHERE path_topic_id=?",
+            (job_id, topic_id),
+        )
+    return path_id, topic_id, job_id, lesson
+
+
+def test_method_scoped_quality_failure_queues_basic_learning_not_same_lane(
+    topic_quality_store, monkeypatch
+):
+    _path_id, topic_id, job_id, lesson = _method_scoped_completed_job(monkeypatch)
+    import app.learning_topic_evaluator as evaluator
+    monkeypatch.setattr(evaluator, "evaluate_lesson", lambda _job_id: {
+        **_evaluation(passed=False, score=60),
+        "job_id": job_id,
+        "path_topic_id": topic_id,
+        "content_sha256": __import__("hashlib").sha256(lesson.encode()).hexdigest(),
+    })
+    monkeypatch.setattr(
+        learning, "submit_lesson_issue",
+        lambda *_args, **_kwargs: pytest.fail("same-method repair must not be used for method-scoped topics"),
+    )
+
+    result = handle_topic_quality_evaluation(
+        {
+            "job_id": job_id,
+            "path_topic_id": topic_id,
+            "content_sha256": __import__("hashlib").sha256(lesson.encode()).hexdigest(),
+        },
+        None,
+        RecordingContext(),
+    )
+
+    assert result["status"] == "queued"
+    assert result["method_transition"]["method"] == "basic_learning"
+    with db.learning_connection() as connection:
+        jobs = connection.execute(
+            "SELECT learning_method FROM learning_jobs WHERE path_topic_id=? ORDER BY id",
+            (topic_id,),
+        ).fetchall()
+    assert [row["learning_method"] for row in jobs] == ["ai_learning", "basic_learning"]
+
+
+def test_method_scoped_quality_pass_closes_gate_and_advances_once(
+    topic_quality_store, monkeypatch
+):
+    _path_id, topic_id, job_id, lesson = _method_scoped_completed_job(monkeypatch)
+    import app.learning_topic_evaluator as evaluator
+    monkeypatch.setattr(evaluator, "evaluate_lesson", lambda _job_id: {
+        **_evaluation(passed=True),
+        "job_id": job_id,
+        "path_topic_id": topic_id,
+        "content_sha256": __import__("hashlib").sha256(lesson.encode()).hexdigest(),
+    })
+    advanced = []
+    monkeypatch.setattr(learning, "queue_next_researched_path_topic", lambda value: advanced.append(value) or {"status": "completed"})
+
+    result = handle_topic_quality_evaluation(
+        {
+            "job_id": job_id,
+            "path_topic_id": topic_id,
+            "content_sha256": __import__("hashlib").sha256(lesson.encode()).hexdigest(),
+        },
+        None,
+        RecordingContext(),
+    )
+
+    assert result["status"] == "passed"
+    assert result["method_transition"]["method"] == "ai_learning"
+    assert advanced == [topic_id]
+    with db.learning_connection() as connection:
+        gate = connection.execute(
+            "SELECT state, current_job_id FROM learning_topic_quality_gates WHERE path_topic_id=?",
+            (topic_id,),
+        ).fetchone()
+    assert gate["state"] == "passed"
+    assert gate["current_job_id"] == job_id
+
+
+def test_method_scoped_evaluator_unavailable_blocks_without_skipping_to_basic(
+    topic_quality_store, monkeypatch
+):
+    _path_id, topic_id, job_id, lesson = _method_scoped_completed_job(monkeypatch)
+    import app.learning_topic_evaluator as evaluator
+    monkeypatch.setattr(evaluator, "evaluate_lesson", lambda _job_id: (_ for _ in ()).throw(RuntimeError("evaluator offline")))
+
+    result = handle_topic_quality_evaluation(
+        {
+            "job_id": job_id,
+            "path_topic_id": topic_id,
+            "content_sha256": __import__("hashlib").sha256(lesson.encode()).hexdigest(),
+        },
+        None,
+        RecordingContext(),
+    )
+
+    assert result["status"] == "blocked"
+    with db.learning_connection() as connection:
+        gate = connection.execute(
+            "SELECT state FROM learning_topic_quality_gates WHERE path_topic_id=?",
+            (topic_id,),
+        ).fetchone()
+        count = connection.execute(
+            "SELECT COUNT(*) FROM learning_jobs WHERE path_topic_id=?",
+            (topic_id,),
+        ).fetchone()[0]
+    assert gate["state"] == "blocked"
+    assert count == 1
