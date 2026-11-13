@@ -15,6 +15,7 @@ from typing import Any
 from .db import get_settings
 from .hardware import detect_hardware, ensure_resource_headroom, model_keep_alive, runtime_limits
 from .ollama_context import OllamaModelMetadataError, maximum_context_tokens
+from .pinned_http import PinnedHTTPHandler, PinnedHTTPSHandler
 
 class OllamaError(RuntimeError):
     def __init__(self, message: str, *, retryable: bool = False) -> None:
@@ -220,6 +221,102 @@ def list_models() -> list[dict[str, Any]]:
         }
         for item in models if isinstance(item, dict)
     ]
+
+
+def list_provider_models(purpose: str) -> dict[str, Any]:
+    """Discover models from the provider selected for one capability."""
+    allowed = {"chat", "learning", "programming", "factual_review", "research_plan", "embedding"}
+    if purpose not in allowed:
+        raise ValueError("Unsupported model discovery purpose.")
+    settings = get_settings()
+    provider = settings.get(f"{purpose}_llm_provider", "ollama")
+    if provider == "ollama":
+        return {"provider": provider, "models": list_models()}
+    if provider != "openai_compatible":
+        raise OllamaError(f"Unsupported model discovery provider for {purpose}.")
+
+    base_url = normalize_openai_compatible_base_url(
+        settings.get(f"{purpose}_llm_base_url", "")
+    )
+    parsed = urllib.parse.urlparse(base_url)
+    host = (parsed.hostname or "").lower().rstrip(".")
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    try:
+        addresses = {
+            ipaddress.ip_address(item[4][0].split("%", 1)[0])
+            for item in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        }
+    except (OSError, ValueError) as exc:
+        raise OllamaError("Could not safely resolve the selected provider host.") from exc
+    if not addresses:
+        raise OllamaError("The selected provider host returned no IP addresses.")
+    if parsed.scheme == "https":
+        if any(not address.is_global for address in addresses):
+            raise OllamaError("The HTTPS provider host resolved to a private or non-public address.")
+    elif any(not address.is_loopback for address in addresses):
+        raise OllamaError("Plain HTTP model discovery is allowed only for loopback providers.")
+    pinned_ip = sorted(address.compressed for address in addresses)[0]
+
+    api_key_env = settings.get(f"{purpose}_llm_api_key_env", "")
+    headers = {"Accept": "application/json", "User-Agent": "Personal-AI-Assistant/1.0"}
+    if api_key_env:
+        if not isinstance(api_key_env, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", api_key_env):
+            raise OllamaError("The API-key environment variable name is invalid.")
+        api_key = os.environ.get(api_key_env)
+        if not api_key:
+            raise OllamaError(f"The configured API-key environment variable '{api_key_env}' is not set.")
+        if len(api_key) > 4096 or any(ord(character) < 32 for character in api_key):
+            raise OllamaError("The configured API key contains invalid header characters or exceeds 4096 characters.")
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    def resolve_pinned_request(request_url: str) -> str:
+        request_parsed = urllib.parse.urlparse(request_url)
+        request_host = (request_parsed.hostname or "").lower().rstrip(".")
+        request_port = request_parsed.port or (443 if request_parsed.scheme == "https" else 80)
+        if request_parsed.scheme != parsed.scheme or request_host != host or request_port != port:
+            raise OllamaError("The model-list request attempted to leave the selected provider origin.")
+        return pinned_ip
+
+    request = urllib.request.Request(base_url + "/models", headers=headers, method="GET")
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        _NoRedirectHandler(),
+        PinnedHTTPHandler(resolve_pinned_request),
+        PinnedHTTPSHandler(resolve_pinned_request),
+    )
+    try:
+        with opener.open(request, timeout=10) as response:
+            body = response.read(_MAX_RESPONSE_BYTES + 1)
+        if len(body) > _MAX_RESPONSE_BYTES:
+            raise OllamaError("Provider model list exceeded the 8 MiB limit.")
+        payload = json.loads(body.decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raise OllamaError(
+            f"Selected provider model discovery returned HTTP {exc.code}.",
+            retryable=exc.code in {408, 425, 429, 500, 502, 503, 504},
+        ) from exc
+    except (urllib.error.URLError, TimeoutError, socket.timeout, OSError, http.client.HTTPException, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise OllamaError(
+            f"Selected provider model discovery failed: {type(exc).__name__}",
+            retryable=True,
+        ) from exc
+    entries = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(entries, list):
+        raise OllamaError("Selected provider returned an invalid /models response.")
+    models = []
+    seen: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("id") or entry.get("name")
+        if not isinstance(name, str) or not name.strip() or len(name.strip()) > 200:
+            continue
+        name = name.strip()
+        if name in seen:
+            continue
+        seen.add(name)
+        models.append({"name": name, "size": None, "modified_at": None, "digest": None})
+    return {"provider": provider, "models": models}
 
 
 def _model_context_metadata(model_info: dict[str, Any], architecture: str | None = None) -> int | None:
