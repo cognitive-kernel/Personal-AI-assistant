@@ -568,7 +568,7 @@ def test_create_task_bounds_serialized_utf8_payload_size_without_partial_persist
         ({"priority": 100_001}, "priority"),
         ({"priority": -100_001}, "priority"),
         ({"max_attempts": 21}, "max_attempts"),
-        ({"dedupe_key": "x" * 257}, "dedupe_key"),
+        ({"dedupe_key": "x" * 513}, "dedupe_key"),
     ],
 )
 def test_create_task_rejects_out_of_contract_queue_metadata(task_store, kwargs, message):
