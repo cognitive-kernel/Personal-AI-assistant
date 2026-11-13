@@ -214,10 +214,7 @@ def test_user_disabled_ai_learning_falls_back_to_basic_learning(method_job_store
 
     assert result["method"] == "basic_learning"
     with db.learning_connection() as connection:
-        methods = connection.execute(
-            "SELECT method, status FROM learning_topic_method_attempts WHERE path_topic_id=? ORDER BY id",
-            (topic_id,),
-        ).fetchall()
+    methods = list_attempt_events(topic_id)
     assert [(row["method"], row["status"]) for row in methods] == [
         ("ai_learning", "unavailable"),
         ("basic_learning", "queued"),
