@@ -89,7 +89,7 @@ if (-not $modelTag) {
     throw "Saved model $Model is not installed. Install it with ollama pull $Model, then save it in the dashboard."
 }
 $parsedWeightSize = 0L
-if (-not [int64]::TryParse([string]$modelTag.size, [ref]$parsedWeightSize) -or $parsedWeightSize -le 0) {
+if (($modelTag.size -isnot [int] -and $modelTag.size -isnot [long]) -or -not [int64]::TryParse([string]$modelTag.size, [ref]$parsedWeightSize) -or $parsedWeightSize -le 0) {
     throw "Saved model $Model must expose a positive integer weight size in Ollama /api/tags for safe context budgeting."
 }
 $modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -ContentType "application/json" -Body (@{ model = $Model; verbose = $false } | ConvertTo-Json -Compress) -TimeoutSec 15 -MaximumRedirection 0
