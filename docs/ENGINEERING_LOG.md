@@ -664,3 +664,12 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - The append-only event ledger is a foundation only. Runtime orchestration still does not start AI Learning, then Basic Learning, then Topic/Course Learning. The existing quality handler still uses a same-lane correction job after failure. This is a blocking implementation gap, not a completed requirement.
 - AI Learning is feature-flagged and uses a separate database plus a visible Playwright/Chrome worker. Its adapter must handle disabled/unavailable/auth-required states, durable run ownership, content transfer, provenance, and restart recovery without bypassing authentication.
 - PR #746 remains Draft and unmerged. Local/target-host and human tests have not been run. Issue #290 and independent security review Issue #52 remain open.
+
+
+### 2026-11-13 — AI Learning settings and fenced execution ownership
+
+- AI Learning, Basic Learning, Topic/Course Learning, knowledge retrieval, the AI Learning browser console, and Experience System are enabled in a fresh installation. Provider/model selection remains independent per capability; Ollama and OpenAI-compatible API are selected through each profile, and model discovery uses the selected provider. GPU availability is a hardware capability rather than a software module, so it remains subject to actual device support.
+- AI Learning size and recovery limits now use persisted settings: chunk and batch sizes, embedding batch, timeouts, lesson continuations, response stability, minimum lesson length, and Chrome relaunch count. Each value has a bounded validation range; chunk overlap must remain smaller than the target chunk size.
+- Migration 54 adds execution_owner and execution_epoch to learning_jobs. The isolated app/learning_execution.py module performs atomic claims and owner/epoch-fenced assert, fail, and cancel operations. learning.run_job receives the live TaskContext and only commits with its current owner and epoch; a stale worker cannot overwrite a newer execution.
+- Experience System observes the three learning methods through a read-only view of the append-only event ledger. It cannot change coordinator state, and the complete Experience module is user-configurable.
+- Focused tests were added or updated for stale execution epochs, concurrent claims, permanent job-creation fallback, settings defaults, and Experience observation. Exact-head CI is still required; local and human testing have intentionally not started.
