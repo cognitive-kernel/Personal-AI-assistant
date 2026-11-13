@@ -468,6 +468,9 @@ def test_active_codex_documentation_matches_adaptive_context_contract():
     autonomous_workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
     diagnostic_workflow = (root / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml").read_text(encoding="utf-8")
     tests_workflow = (root / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+    autonomous_workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    diagnostic_workflow = (root / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml").read_text(encoding="utf-8")
+    tests_workflow = (root / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
     adr = (root / "docs" / "architecture" / "ADR-020-codex-adaptive-context.md").read_text(encoding="utf-8")
 
     assert "حداقل سقف Context برابر ۶۴٬۰۰۰ توکن" not in readme
