@@ -977,6 +977,7 @@ def run_job(job_id: int, *, task_context: Any | None = None) -> None:
         # (for example, SQLite errors while persisting web evidence). Keep the job
         # terminally observable instead of leaving it stuck in "running" forever.
         if not source_text and source_kind == "model_knowledge_no_external_source":
+            assert_execution_owner("learning_source_discovery")
             source_text, source_kind = _discover_and_store_sources(job_id, topic)
         verified_factual_context = _verified_factual_context_for_topic(topic)
         failure_warnings = _failure_warnings_for_topic(topic, limit=3)
@@ -1001,13 +1002,8 @@ def run_job(job_id: int, *, task_context: Any | None = None) -> None:
         )[:4000]
     except Exception as exc:
         safe_error = f"Learning preparation failed ({type(exc).__name__})."
-        with learning_connection() as conn:
-            conn.execute(
-                """UPDATE learning_jobs
-                   SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP
-                   WHERE id=? AND status='running'""",
-                (safe_error, job_id),
-            )
+        assert_execution_owner("learning_preparation_failed")
+        learning_execution.fail_if_current(execution_lease, safe_error)
         raise LearningError(f"Learning job {job_id} preparation failed.") from exc
     prompt = {
         "topic": topic,
@@ -1133,6 +1129,7 @@ def run_job(job_id: int, *, task_context: Any | None = None) -> None:
         generation_budget.reserve("initial_generation", predict_tokens=3900)
         # Resolve model policy before reserving durable inference budget. A failed
         # discovery/eligibility check must not consume a model-call reservation.
+        assert_execution_owner("learning_initial_generation_budget")
         durable_initial_budget = reserve_job_budget(
             job_id, "initial_generation", calls=1, predict_tokens=3900
         )
@@ -1140,6 +1137,7 @@ def run_job(job_id: int, *, task_context: Any | None = None) -> None:
             raise LearningError(
                 "Initial generation budget was exhausted or already consumed; refusing an untracked duplicate model request."
             )
+        assert_execution_owner("learning_initial_model_request")
         response = _request("/api/chat", {
             "model": model, "stream": False, "format": "json",
             "messages": [
@@ -1204,6 +1202,7 @@ def run_job(job_id: int, *, task_context: Any | None = None) -> None:
         # Make one targeted quality-repair attempt for any rejected lesson, not only short output.
         durable_repair_budget = {"reserved": False, "reason": "quality_accepted"}
         if not quality["accepted"]:
+            assert_execution_owner("learning_quality_repair_budget")
             durable_repair_budget = reserve_job_budget(
                 job_id, "quality_repair", calls=1, predict_tokens=3900
             )
@@ -1236,6 +1235,7 @@ def run_job(job_id: int, *, task_context: Any | None = None) -> None:
                 {"system_prompt": repair_system_prompt, "user_prompt": serialized_repair_prompt},
             )["sha256"]
             generation_attempts = 2
+            assert_execution_owner("learning_quality_repair_model_request")
             retry_response = _request("/api/chat", {
                 "model": model, "stream": False, "format": "json",
                 "messages": [
@@ -1321,6 +1321,7 @@ def run_job(job_id: int, *, task_context: Any | None = None) -> None:
                     from .claim_review import review_answer_claims
                     from .learning_durable_budget import reserve_job_budget
 
+                    assert_execution_owner("learning_claim_review_budget")
                     review_budget = reserve_job_budget(
                         job_id, "claim_review", calls=1, predict_tokens=1000
                     )
@@ -1333,6 +1334,7 @@ def run_job(job_id: int, *, task_context: Any | None = None) -> None:
                             "reviewer": "local_ollama_model_assisted_not_independent",
                         }
                     else:
+                        assert_execution_owner("learning_claim_review_request")
                         claim_review_result = review_answer_claims(
                             topic, result["lesson"], sources, model_override=model
                         )
