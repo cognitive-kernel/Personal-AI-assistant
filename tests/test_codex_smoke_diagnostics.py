@@ -195,7 +195,8 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert 'model_weights_already_loaded = $modelWeightsAlreadyLoaded' in context_script
     assert "Get-OllamaNumParallel" in context_script
     assert "Get-NetTCPConnection -LocalPort 11434" in context_script
-    assert "Registry::HKEY_USERS" in context_script
+    assert "[Microsoft.Win32.Registry]::Users" in context_script
+    assert "OpenSubKey(\"Environment\"" in context_script
     assert "parallel_requests = (Get-OllamaNumParallel)" in context_script
     assert "kv_cache_bytes_per_token_total" in context_script
     assert 'remainingPhysicalMemoryBytes' in context_script
