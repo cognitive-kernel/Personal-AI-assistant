@@ -17,11 +17,11 @@ Official references: [Ollama Codex integration](https://docs.ollama.com/integrat
 
 ## Target hardware and model
 
-The repository's target machine is documented as:
+No fixed CPU, RAM capacity, or GPU model is a runtime requirement. The target diagnostic records the actual Windows build, CPU name/core counts, physical RAM, and GPU inventory; context selection uses live available-memory and Ollama allocation evidence. It rejects missing/invalid resource telemetry, not a valid machine merely because its hardware differs from an old repository profile.
 
-- 32 GB RAM
-- Intel Core i5-12400 (12th Gen)
-- Intel UHD Graphics 730 integrated graphics; Windows WMI has reported 2 GiB AdapterRAM and the recorded driver is 32.0.101.6129. WMI AdapterRAM is not treated as proof of dedicated VRAM; the diagnostic records WDDM dedicated/shared memory and Ollama /api/ps size_vram at runtime.
+The previously documented Intel Core i5-12400 / 32 GB RAM / Intel UHD Graphics 730 profile is historical repository context only; it is not verified as the current user's hardware and is not an acceptance gate. WMI AdapterRAM is not proof of dedicated VRAM; WDDM dedicated/shared memory and Ollama /api/ps size_vram remain separate runtime measurements.
+
+For this audit, user-confirmed software context is Windows 11 x64 build 10.0.26300, Python 3.14.6 (with Python 3.11.9 also available), and Git 2.54.0. GitHub CI additionally tests Python 3.11.9/3.14.6, Node.js 26.13.0/npm 11.20.0, and Codex CLI 0.167.0/0.167.2. Actual Node/Codex/Ollama installations on the target host must be diagnosed rather than assumed.
 
 There is no default or fallback model. The operator must explicitly select an installed model in the dashboard and save it before the autonomous workflow can run. The selected model must advertise Ollama `tools` capability, expose a positive architecture-specific `context_length` in `/api/show`, include a positive integer weight `size` in `/api/tags`, and expose all KV-cache dimensions used by the memory estimator (`block_count`, `attention.head_count_kv`, `attention.key_length`, `attention.value_length`). There is no Codex-specific 64,000-token minimum enforced by this application: it adapts context to the smaller of the model limit and the host's safe memory capacity. **Important compatibility note:** the [official Ollama Codex integration guide](https://docs.ollama.com/integrations/codex) recommends at least 64k tokens. A value below 64k is below that upstream recommendation and must be treated as best-effort; exact `/api/ps` allocation proves the configured size, not that every Codex prompt or task fits. The target-runner real Codex tool-call smoke test must also pass before dispatch is accepted. GPU offload is not assumed from the WMI AdapterRAM value: the actual Ollama /api/ps size_vram allocation is recorded on the target runner. If the integrated GPU cannot offload useful model layers, inference runs primarily on the Core i5-12400 CPU and coding sessions may be slow; a smaller context also limits how much prior conversation and repository evidence fits in one turn.
 
