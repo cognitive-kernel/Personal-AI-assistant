@@ -410,7 +410,7 @@ def test_target_diagnostic_verifies_owner_confirmed_hardware_profile():
     assert "31.78 GiB / 32 GB class (30–33 GiB tolerance)" in diagnostic
     assert "Intel.*UHD.*730" in diagnostic
     assert "Windows 11 build 26300" in diagnostic
-    assert "owner-confirmed target hardware profile verified" in diagnostic
+    assert "Owner-confirmed target hardware profile verified" in diagnostic
     assert "wmi_adapter_ram_bytes" in diagnostic
     assert "OLLAMA_RUNTIME_DEVICE_ALLOCATION" in diagnostic
     assert "size_vram" in diagnostic
