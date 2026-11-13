@@ -708,3 +708,10 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Extracted title embedding, semantic duplicate detection, provider-scoped cache identity and duplicate-threshold policy from the large AI-learning service module into app/ai_learning/embedding_service.py.
 - Centralized validated numeric setting readers in app/ai_learning/config.py; the legacy service facade re-exports imported names to preserve existing callers and tests.
 - The extraction is intentionally incremental: app/ai_learning/service.py and browser_automation.py remain large and still need further responsibility-based decomposition. No claim is made that the modularization requirement is complete.
+
+### 2026-11-14 — Regression repair after embedding-service extraction and Settings E2E audit
+
+- Root cause: the embedding extraction moved `ollama_embed` and settings reads into `app/ai_learning/embedding_service.py`, but the shared test fixture and duplicate-title tests still patched the old `service` module. Updated fixtures to patch the owning module and retained service-layer settings isolation. Restored the content-similarity threshold export used by the service facade.
+- Browser E2E found a duplicate `sandbox-timeout` DOM id shared by the run form and Settings form. The Settings control now has a unique id while the run form keeps its established selector; all three sandbox configuration inputs with placeholders now expose accessible names.
+- Self-Improvement E2E tests now configure the repository path through persisted Settings instead of relying on removed environment-variable behavior. The dashboard no longer instructs users to configure obsolete environment flags.
+- Windows storage regression and CodeQL passed on the prior exact head. The latest exact-head CI is running against the UI/test fixes; no local or human testing has started.
