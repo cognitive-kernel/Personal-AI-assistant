@@ -292,7 +292,29 @@ def queue_initial_method(
                 return _block_topic(path_topic_id, reason="method_unavailable", evidence={"last_event": last})
             return _queue_next(path_topic_id, method, attempt_number, source_job_id=last.get("job_id"))
         if last["status"] == "passed":
-            return {"status": "passed", "path_topic_id": path_topic_id}
+            method_key = f"path-topic:{path_topic_id}:method:{method}:attempt:{attempt_number}"
+            passed_job = _find_job_by_method_key(method_key)
+            try:
+                passed_evidence = json.loads(last.get("evidence_json") or "{}")
+                passed_diagnosis = json.loads(last.get("diagnosis_json") or "{}")
+            except (TypeError, ValueError, json.JSONDecodeError):
+                passed_evidence, passed_diagnosis = {}, {}
+            evaluation_id = passed_evidence.get("evaluation_id") if isinstance(passed_evidence, dict) else None
+            if (
+                passed_job is not None
+                and isinstance(evaluation_id, int)
+                and isinstance(last.get("score"), (int, float))
+                and isinstance(last.get("content_sha256"), str)
+            ):
+                return complete_method(
+                    int(passed_job["id"]),
+                    score=float(last["score"]),
+                    evaluation_id=evaluation_id,
+                    content_sha256=str(last["content_sha256"]),
+                    diagnosis=passed_diagnosis if isinstance(passed_diagnosis, dict) else {},
+                    evidence=passed_evidence,
+                )
+            return _block_topic(path_topic_id, reason="passed_event_missing_recovery_evidence")
 
     return _queue_first_enabled_method(path_topic_id, attempt_number=1)
 
