@@ -24,25 +24,25 @@ def client(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize(
-    ("method", "path"),
+    ("method", "path", "payload"),
     [
-        ("get", "/api/tasks/0"),
-        ("delete", "/api/tasks/0"),
-        ("get", "/api/tasks/0/events"),
-        ("post", "/api/tasks/0/pause"),
-        ("post", "/api/tasks/0/resume"),
-        ("post", "/api/tasks/0/cancel"),
-        ("patch", "/api/tasks/0/priority"),
-        ("patch", "/api/tasks/0/schedule"),
-        ("post", "/api/learning/paths/0/curriculum-proposals/generate"),
-        ("get", "/api/learning/paths/0/curriculum-proposals"),
-        ("post", "/api/learning/curriculum-proposals/0/review"),
-        ("get", "/api/cloud-resources/plans/0"),
-        ("delete", "/api/cloud-resources/0"),
+        ("get", "/api/tasks/0", None),
+        ("delete", "/api/tasks/0", None),
+        ("get", "/api/tasks/0/events", None),
+        ("post", "/api/tasks/0/pause", None),
+        ("post", "/api/tasks/0/resume", None),
+        ("post", "/api/tasks/0/cancel", None),
+        ("patch", "/api/tasks/0/priority", {"priority": 0}),
+        ("patch", "/api/tasks/0/schedule", {"scheduled_at": "2026-11-14T12:00:00Z"}),
+        ("post", "/api/learning/paths/0/curriculum-proposals/generate", None),
+        ("get", "/api/learning/paths/0/curriculum-proposals", None),
+        ("post", "/api/learning/curriculum-proposals/0/review", {"decision": "reject", "note": "This proposal is not sufficiently supported."}),
+        ("get", "/api/cloud-resources/plans/0", None),
+        ("delete", "/api/cloud-resources/0", None),
     ],
 )
-def test_integer_resource_path_ids_reject_zero_at_http_boundary(client, method, path):
-    response = getattr(client, method)(path, json={} if method in {"post", "patch"} else None)
+def test_integer_resource_path_ids_reject_zero_at_http_boundary(client, method, path, payload):
+    response = getattr(client, method)(path, json=payload)
     assert response.status_code == 422, (method, path, response.text)
 
 
