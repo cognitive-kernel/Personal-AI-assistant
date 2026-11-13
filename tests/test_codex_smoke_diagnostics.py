@@ -193,6 +193,11 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert '64000' not in context_script
     assert 'Stop-LoadedCodexVariants -BaseModel $baseModel' in context_script
     assert 'model_weights_already_loaded = $modelWeightsAlreadyLoaded' in context_script
+    assert "Get-OllamaNumParallel" in context_script
+    assert "Get-NetTCPConnection -LocalPort 11434" in context_script
+    assert "Registry::HKEY_USERS" in context_script
+    assert "parallel_requests = (Get-OllamaNumParallel)" in context_script
+    assert "kv_cache_bytes_per_token_total" in context_script
     assert 'remainingPhysicalMemoryBytes' in context_script
     assert '$remainingPhysicalMemoryBytes -lt [int64]$contextSelection.reserve_bytes' in context_script
     assert 'keep_alive = 0' in context_script
