@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import socket
 import urllib.request
 
@@ -151,6 +152,7 @@ def test_source_check_rejects_mixed_public_and_private_dns_before_connecting(
         "https://@example.com/docs",
         "https://:secret@example.com/docs",
         "https://user:@example.com/docs",
+        "https://[fe80::1%25eth0]/docs",
     ],
 )
 def test_source_check_rejects_malformed_authority_before_dns(isolated_store, monkeypatch, url):
@@ -174,6 +176,73 @@ def test_source_check_rejects_malformed_authority_before_dns(isolated_store, mon
     with pytest.raises(ValueError, match="HTTP/HTTPS"):
         service.check_content_source(source_id)
 
+
+
+def test_source_check_redacts_malformed_http_response_details(isolated_store, monkeypatch):
+    course = service.create_course(title="Malformed response")
+    topic = service.add_topic(course["id"], "Network validation")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Malformed source")
+    url = "https://malformed.example/docs"
+    version = service.add_content_version(lesson["id"], "# Malformed source\\n\\nA source used for response-boundary tests.")
+    with connection() as conn:
+        cursor = conn.execute(
+            """INSERT INTO sources(content_version_id,title,url,publisher,source_type,validation_status)
+               VALUES(?,?,?,?,?,'unverified')""",
+            (version["id"], "Malformed source", url, "malformed.example", "test"),
+        )
+        source_id = int(cursor.lastrowid)
+
+    monkeypatch.setattr(
+        service.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))
+        ],
+    )
+    calls = []
+
+    class Opener:
+        def open(self, request, timeout):
+            calls.append(request.get_method())
+            if request.get_method() == "HEAD":
+                raise service.HTTPError(url, 405, "Method Not Allowed", {}, None)
+            raise http.client.BadStatusLine("SECRET-RAW-REMOTE-RESPONSE")
+
+    monkeypatch.setattr(service, "build_opener", lambda *_args, **_kwargs: Opener())
+    result = service.check_content_source(source_id)
+
+    assert result["validation_status"] == "rejected"
+    assert calls == ["HEAD", "GET"]
+    assert "BadStatusLine" in result["excerpt"]
+    assert "SECRET-RAW-REMOTE-RESPONSE" not in result["excerpt"]
+
+
+def test_source_check_redacts_dns_error_details(isolated_store, monkeypatch):
+    course = service.create_course(title="DNS error redaction")
+    topic = service.add_topic(course["id"], "Network validation")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "DNS error source")
+    url = "https://dns-error.example/docs"
+    version = service.add_content_version(lesson["id"], "# DNS error source\\n\\nA source used for DNS diagnostic tests.")
+    with connection() as conn:
+        cursor = conn.execute(
+            """INSERT INTO sources(content_version_id,title,url,publisher,source_type,validation_status)
+               VALUES(?,?,?,?,?,'unverified')""",
+            (version["id"], "DNS error source", url, "dns-error.example", "test"),
+        )
+        source_id = int(cursor.lastrowid)
+
+    monkeypatch.setattr(
+        service.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(socket.gaierror("SECRET-DNS-DETAIL")),
+    )
+    result = service.check_content_source(source_id)
+
+    assert result["validation_status"] == "rejected"
+    assert "gaierror" in result["excerpt"]
+    assert "SECRET-DNS-DETAIL" not in result["excerpt"]
 
 def test_source_links_remain_unverified_until_explicit_validation(isolated_store):
     course = service.create_course(title="منابع و انتشار")
