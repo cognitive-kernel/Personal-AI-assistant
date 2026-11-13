@@ -302,8 +302,8 @@ def handle_topic_quality_evaluation(
                 (record["score"], expected_hash, evaluation_id, diagnosis_json, path_topic_id, job_id),
             )
             connection.execute(
-                "UPDATE learning_path_topics SET status='needs_review', latest_score=?, latest_score_kind='topic_quality_gate_v1', latest_score_source='independent_topic_evaluator', updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                (record["score"], path_topic_id),
+                "UPDATE learning_path_topics SET status='needs_review', updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (path_topic_id),
             )
         return {
             "path_topic_id": path_topic_id, "job_id": job_id, "status": "blocked",
