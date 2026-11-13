@@ -430,3 +430,13 @@
 - regression جدید تغییر release note در نتیجهٔ هفتم را شبیه‌سازی می‌کند؛ پایش باید آن را کشف و یک curriculum refresh نسخه‌دار صف‌بندی کند.
 - fingerprint دوره‌های قبلی ممکن است یک‌بار به‌دلیل گسترش نتایج تغییر کند؛ refresh افزایشی است و درس‌های تاریخی را بازنویسی نمی‌کند.
 - سقف ۳۰، اندازهٔ صفحهٔ هر query در adapter جست‌وجو است؛ این تغییر ادعای کشف تضمینی همهٔ منابع اینترنتی نیست.
+
+
+## 2026-11-13 — Continued GitHub engineering audit
+
+- Current audited `main` remains `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`; all changes below remain on draft PR branches and are not merged.
+- PR [#737](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/737) fixes four HTTP pagination contracts (curriculum proposals, learning capabilities, learning jobs, and knowledge items). Its latest head at this checkpoint is `5bf13d05283daa2785a52bebfa9d8adf15f988b8`. Dependency audit, Windows storage regressions, and dashboard smoke passed; full test workflow is still running, so exact-head CI is not yet green.
+- PR [#738](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/738) adds positive integer path-ID validation for task-control, curriculum-evolution, cloud-resource, and AI-learning endpoints, with HTTP and OpenAPI regressions. Latest head: `541de4a94398ef46e64f6e9c1055ef9b34327f1b`; all four CI workflows are still running.
+- The path-ID audit is intentionally incremental. Other route families remain to be inspected and covered; PR #738 does not claim project-wide completion.
+- No PR was merged, no direct main write occurred, and no local/target-host/human testing was performed. No live-model, independent security-review, or target-host operational acceptance is claimed.
+- Remaining work includes full module/data-ownership inventory, API contract and identifier coverage beyond the above route families, UI workflow parity, task-type fault-injection coverage, code-scanning alert disposition, independent security review (Issue #52), and accurate final acceptance evidence (Issue #290).
