@@ -4,7 +4,8 @@
 - The previous audit incorrectly reclassified this known profile as unverified and removed the target-profile gate. This was a documentation and acceptance-contract error.
 - Restored live CIM checks for CPU model/topology, 30–33 GiB RAM tolerance, UHD 730 presence, and Windows 11 build 26300. Context sizing continues to use measured free memory and actual Ollama allocation; WMI AdapterRAM is not treated as dedicated VRAM.
 - Updated README, operations guide, project status, acceptance ledger, and regression source-contracts to reflect the owner-confirmed profile.
-- The target diagnostic remains blocked until GitHub assigns the uniquely labelled self-hosted Runner. No target-host pass is claimed.
+- Removed Node.js/npm as system-wide Runner prerequisites: production and diagnostic workflows now provision Node 26.13.0/npm per job using SHA-pinned setup-node v6.4.0; Codex CLI 0.167.0 is installed by the workflow. Runner provisioning no longer fails just because Node is absent from the host PATH.
+- The target diagnostic remains pending until GitHub assigns the uniquely labelled self-hosted Runner. No target-host pass is claimed.
 
 ---
 
