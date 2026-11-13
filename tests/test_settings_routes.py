@@ -180,6 +180,7 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
         {"sandbox_rust_image": "rust:latest"},
         {"self_improvement_repo_root": "relative/project"},
         {"self_improvement_github_repository": "not-a-repository"},
+        {"self_improvement_github_base_branch": "../unsafe"},
         {"sandbox_timeout_seconds": 121},
         {"sandbox_max_output_bytes": 0},
         {"self_improvement_github_token_env": "not-valid"},
