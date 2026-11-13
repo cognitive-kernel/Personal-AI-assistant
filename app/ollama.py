@@ -553,7 +553,7 @@ def runtime_diagnostics(
     """Combine host telemetry with Ollama's observed loaded-model allocation."""
     hardware = detect_hardware()
     settings = get_settings()
-    profile = purpose if purpose in {"chat", "learning", "programming", "ai_learning", "topic_learning"} else "chat"
+    profile = purpose if purpose in {"chat", "research_plan", "learning", "programming", "ai_learning", "topic_learning", "factual_review"} else "chat"
     requested_context = context_tokens if isinstance(context_tokens, int) and not isinstance(context_tokens, bool) else settings.get(f"{profile}_ollama_num_ctx", settings.get("ollama_num_ctx", 2048))
     result: dict[str, Any] = {
         "hardware": hardware,
