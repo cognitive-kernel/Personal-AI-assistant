@@ -998,3 +998,10 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Exact code/test head: `63b13bcea8888e108e1029b93af789025081ae4e`. Its hosted CI matrix is queued; no test pass is claimed for this head.
 - The context estimate uses FP16 KV-cache bytes per token. Ollama documents `f16` as the default KV-cache type and `q8_0`/`q4_0` as lower-memory options; the FP16 estimate is therefore the conservative memory case among those documented types.
 - **Remaining host-specific assumption:** Ollama's documented `OLLAMA_NUM_PARALLEL` default is 1 and required memory scales with parallel requests. The current estimator budgets one parallel request; the target-host diagnostic must verify the effective setting before acceptance. A custom value above 1 is not yet included in the estimate.
+
+
+## 2026-11-13 — Documentation and acceptance contract reconciled
+
+- Consolidated the current module status, roadmap acceptance evidence, ADR-020, and operations guide in documentation commit `9d7c54d3b0edd290165f2306539147319ffa51ea`.
+- The guide now states the exact model metadata gate (positive weight size, context limit, all KV-cache dimensions, and tool capability), the FP16 cache assumption, and the remaining `OLLAMA_NUM_PARALLEL=1` host-verification requirement.
+- The final PR head must pass the full pull-request CI matrix and the target-host diagnostic; prior green checks on older SHAs are historical evidence only.
