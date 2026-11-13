@@ -47,10 +47,12 @@ def proposal_repo(tmp_path, monkeypatch):
 
 
 def _enable_static_check(monkeypatch):
-    monkeypatch.setenv("SANDBOX_ENABLED", "1")
-    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", sys.executable)
-    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.11-slim@sha256:" + "b" * 64)
-    monkeypatch.setenv("SANDBOX_TEST_IMAGE", "sha256:" + "c" * 64)
+    db.update_settings({
+        "sandbox_enabled": True,
+        "sandbox_docker_executable": sys.executable,
+        "sandbox_python_image": "python:3.11-slim@sha256:" + "b" * 64,
+        "sandbox_test_image": "sha256:" + "c" * 64,
+    })
     monkeypatch.setattr(self_improvement.sandbox_consent, "is_enabled", lambda: True)
     monkeypatch.setattr(
         self_improvement.sandbox,
