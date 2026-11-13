@@ -1,6 +1,6 @@
 import pytest
 
-from app.ai_learning import db, service
+from app.ai_learning import db, embedding_service, service
 
 
 @pytest.fixture
@@ -16,7 +16,7 @@ def test_course_titles_are_unique_after_persian_normalization(learning_store):
 
 
 def test_topic_titles_are_unique_on_create_and_edit(learning_store, monkeypatch):
-    monkeypatch.setattr(service, "ollama_embed", lambda texts, model: [
+    monkeypatch.setattr(embedding_service, "ollama_embed", lambda texts, model: [
         [1.0, 0.0] if "ایندکس" in text else [0.0, 1.0] for text in texts
     ])
     course = service.create_course(title="دوره آزمایشی")
