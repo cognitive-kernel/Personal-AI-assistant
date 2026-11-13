@@ -151,29 +151,29 @@ def handle_topic_quality_evaluation(
             record = learning_topic_evaluator.evaluate_lesson(job_id)
         except Exception as exc:
             unavailable = {
-            "version": learning_topic_evaluator.EVALUATOR_VERSION,
-            "job_id": job_id,
-            "path_topic_id": path_topic_id,
-            "content_sha256": expected_hash,
-            "evaluator_digest": "unavailable",
-            "evaluated_at": learning_topic_evaluator._timestamp(),
-            "score": None,
-            "passed": False,
-            "independent_evaluator": False,
-            "outcome": "unavailable",
-            "error_type": type(exc).__name__,
-            "diagnosis": "Independent evaluator was unavailable; this topic cannot pass without an executed evaluation.",
-        }
-        evaluation_id = _append_evaluation(unavailable, outcome="unavailable", score=None)
-        with learning_connection() as connection:
-            connection.execute(
-                """UPDATE learning_topic_quality_gates
-                   SET state='blocked', latest_evaluation_id=?, diagnosis_json=?,
-                       next_action='configure_or_restore_independent_evaluator',
-                       updated_at=CURRENT_TIMESTAMP
-                   WHERE path_topic_id=? AND current_job_id=?""",
-                (evaluation_id, json.dumps(unavailable, ensure_ascii=False, sort_keys=True), path_topic_id, job_id),
-            )
+                "version": learning_topic_evaluator.EVALUATOR_VERSION,
+                "job_id": job_id,
+                "path_topic_id": path_topic_id,
+                "content_sha256": expected_hash,
+                "evaluator_digest": "unavailable",
+                "evaluated_at": learning_topic_evaluator._timestamp(),
+                "score": None,
+                "passed": False,
+                "independent_evaluator": False,
+                "outcome": "unavailable",
+                "error_type": type(exc).__name__,
+                "diagnosis": "Independent evaluator was unavailable; this topic cannot pass without an executed evaluation.",
+            }
+            evaluation_id = _append_evaluation(unavailable, outcome="unavailable", score=None)
+            with learning_connection() as connection:
+                connection.execute(
+                    """UPDATE learning_topic_quality_gates
+                       SET state='blocked', latest_evaluation_id=?, diagnosis_json=?,
+                           next_action='configure_or_restore_independent_evaluator',
+                           updated_at=CURRENT_TIMESTAMP
+                       WHERE path_topic_id=? AND current_job_id=?""",
+                    (evaluation_id, json.dumps(unavailable, ensure_ascii=False, sort_keys=True), path_topic_id, job_id),
+                )
             return {
                 "path_topic_id": path_topic_id, "job_id": job_id, "status": "blocked",
                 "reason": "independent_evaluator_unavailable", "evaluation_id": evaluation_id,
