@@ -2346,6 +2346,9 @@ def stop_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
             (topic_id,),
         )
     for row in rows:
+        if row["status"] in {"queued", "running"}:
+            from .learning_method_orchestrator import mark_method_cancelled
+            mark_method_cancelled(int(row["id"]), reason="Stopped by user from the topic control.")
         _cancel_learning_job_task(int(row["id"]))
     return {
         "topic_id": topic_id,
@@ -2547,6 +2550,9 @@ def stop_path_learning(path_id: int) -> dict[str, Any]:
             (path_id,),
         )
     for row in rows:
+        if row["status"] in {"queued", "running"}:
+            from .learning_method_orchestrator import mark_method_cancelled
+            mark_method_cancelled(int(row["id"]), reason="Stopped by user from the path control.")
         _cancel_learning_job_task(int(row["id"]))
     return {
         "path_id": path_id,
