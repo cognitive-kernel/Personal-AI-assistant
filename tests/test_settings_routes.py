@@ -95,6 +95,16 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
     assert defaults["self_improvement_enabled"] is True
     assert defaults["topic_learning_llm_provider"] == "ollama"
     assert defaults["topic_learning_source_max_chars"] == 100000
+    assert defaults["research_plan_ollama_num_ctx"] >= 512
+    assert defaults["research_plan_ollama_num_thread"] >= 0
+    assert defaults["research_plan_ollama_timeout_seconds"] >= 5
+    assert defaults["research_plan_model_keep_alive"] == "0"
+    assert defaults["research_plan_source_max_chars"] == 16000
+    assert defaults["research_plan_max_output_tokens"] == 700
+    assert defaults["factual_review_ollama_num_ctx"] == 4096
+    assert defaults["factual_review_ollama_timeout_seconds"] == 120
+    assert defaults["factual_review_source_max_chars"] == 16000
+    assert defaults["factual_review_max_output_tokens"] == 500
     assert defaults["ai_learning_ollama_model"]
     assert defaults["ai_learning_ollama_num_ctx"] >= 512
     assert defaults["gpu_enabled"] is True
@@ -151,6 +161,18 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
         "topic_learning_llm_api_key_env": "OPENAI_API_KEY",
         "topic_learning_ollama_model": "gpt-5-topic-test",
         "topic_learning_source_max_chars": 150000,
+        "research_plan_ollama_num_ctx": 8192,
+        "research_plan_ollama_num_thread": 6,
+        "research_plan_ollama_timeout_seconds": 180,
+        "research_plan_model_keep_alive": "5m",
+        "research_plan_source_max_chars": 32000,
+        "research_plan_max_output_tokens": 1200,
+        "factual_review_ollama_num_ctx": 8192,
+        "factual_review_ollama_num_thread": 4,
+        "factual_review_ollama_timeout_seconds": 90,
+        "factual_review_model_keep_alive": "1m",
+        "factual_review_source_max_chars": 24000,
+        "factual_review_max_output_tokens": 900,
         "ai_learning_ollama_num_ctx": 8192,
         "ai_learning_ollama_num_thread": 4,
         "ai_learning_ollama_timeout_seconds": 120,
@@ -171,6 +193,11 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
         {"experience_system_enabled": "false"},
         {"ai_learning_retrieval_enabled": 1},
         {"ai_learning_browser_enabled": None},
+        {"research_plan_max_output_tokens": 0},
+        {"research_plan_max_output_tokens": 8193},
+        {"factual_review_max_output_tokens": 0},
+        {"factual_review_source_max_chars": 999},
+        {"factual_review_ollama_num_ctx": 511},
         {"sandbox_enabled": "true"},
         {"self_improvement_enabled": 1},
         {"sandbox_docker_executable": "relative/docker"},
