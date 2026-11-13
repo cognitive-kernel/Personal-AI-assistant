@@ -69,6 +69,58 @@ def test_settings_api_rejects_invalid_ollama_urls_without_persisting(
 
 
 
+def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(settings_client):
+    defaults = settings_client.get("/api/settings").json()
+    assert defaults["ai_learning_enabled"] is True
+    assert defaults["ai_learning_retrieval_enabled"] is True
+    assert defaults["ai_learning_browser_enabled"] is True
+    assert defaults["gpu_enabled"] is True
+    assert defaults["ai_learning_outline_batch_size"] == 20
+    assert defaults["ai_learning_lesson_batch_size"] == 1
+
+    values = {
+        "ai_learning_enabled": False,
+        "ai_learning_retrieval_enabled": False,
+        "ai_learning_browser_enabled": False,
+        "ai_learning_outline_batch_size": 40,
+        "ai_learning_lesson_batch_size": 5,
+        "ai_learning_chunk_target_chars": 2400,
+        "ai_learning_chunk_overlap_chars": 240,
+        "ai_learning_browser_timeout_seconds": 600,
+        "ai_learning_max_retries": 3,
+    }
+    response = settings_client.patch("/api/settings", json={"values": values})
+    assert response.status_code == 200
+    for key, value in values.items():
+        assert response.json()[key] == value
+    assert settings_client.get("/api/settings").json()["ai_learning_enabled"] is False
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"ai_learning_enabled": "false"},
+        {"ai_learning_retrieval_enabled": 1},
+        {"ai_learning_browser_enabled": None},
+        {"ai_learning_outline_batch_size": 0},
+        {"ai_learning_lesson_batch_size": 21},
+        {"ai_learning_chunk_target_chars": 255},
+        {"ai_learning_chunk_overlap_chars": 2001},
+        {"ai_learning_browser_timeout_seconds": 9},
+        {"ai_learning_max_retries": 6},
+    ],
+)
+def test_ai_learning_settings_reject_invalid_values_atomically(settings_client, values):
+    before = db.get_settings()
+    response = settings_client.patch(
+        "/api/settings",
+        json={"values": {**values, "chat_ollama_model": "must-not-save"}},
+    )
+    assert response.status_code == 422
+    after = db.get_settings()
+    assert after["chat_ollama_model"] == before["chat_ollama_model"]
+
+
 def test_settings_api_seeds_and_persists_learning_cost_preferences(settings_client):
     defaults = settings_client.get("/api/settings")
     assert defaults.status_code == 200
