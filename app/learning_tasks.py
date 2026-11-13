@@ -296,7 +296,9 @@ def handle_learning_job(
         if status == "completed" and job.get("path_topic_id") is not None:
             evaluation = learning_topic_quality_tasks.enqueue_topic_quality_evaluation(job_id)
             if evaluation is None:
-                learning.queue_next_researched_path_topic(int(job["path_topic_id"]))
+                learning_method_orchestrator.block_without_quality_gate(
+                    int(job["path_topic_id"]), job_id=job_id
+                )
         return {"job_id": job_id, "learning_status": status, "already_terminal": True}
 
     # A task is reclaimed only after its previous lease expires. A stale learning
@@ -381,5 +383,7 @@ def handle_learning_job(
     if status == "completed" and result.get("path_topic_id") is not None:
         evaluation = learning_topic_quality_tasks.enqueue_topic_quality_evaluation(job_id)
         if evaluation is None:
-            learning.queue_next_researched_path_topic(int(result["path_topic_id"]))
+            learning_method_orchestrator.block_without_quality_gate(
+                int(result["path_topic_id"]), job_id=job_id
+            )
     return {"job_id": job_id, "learning_status": status, "already_terminal": False}
