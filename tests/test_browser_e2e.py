@@ -2146,7 +2146,7 @@ def test_browser_settings_form_persists_values_and_surfaces_api_failure():
         page = browser.new_page()
         page.on("pageerror", lambda error: browser_errors.append(str(error)))
         page.route(
-            "**/api/models",
+            "**/api/models*",
             lambda route: route.fulfill(
                 status=200,
                 content_type="application/json",
