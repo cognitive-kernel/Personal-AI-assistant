@@ -699,7 +699,7 @@ Continue E-02/E-01 with the complete route and task-registry contract inventory,
 ### New remediation PRs
 
 - PR #742 requires an exact server-side confirmation phrase before the broad AI-learning reset endpoint can delete data. Exact-head CI: 2,138 passed, 2 skipped, 51 deselected; Windows storage, Browser E2E, and Dependency Audit passed.
-- PR #743 rejects empty URL userinfo and explicit empty ports in AI-learning source checks before DNS resolution. Exact-head CI: 2,139 passed, 2 skipped, 51 deselected; Windows storage, Browser E2E, and Dependency Audit passed.
+- PR #743 hardens AI-learning source checks: rejects empty userinfo/ports and scoped IPv6 before DNS, verifies public IPv4/IPv6 pinning, and redacts raw DNS/malformed-HTTP exception text. Expanded exact-head CI: 2,149 passed, 2 skipped, 51 deselected; Windows storage, Browser E2E, and Dependency Audit passed.
 - PR #744 removes destructive cleanup from contradictory learning-candidate rejection. Candidate/source/assessment/quality/test/review evidence is retained, the durable knowledge row becomes `conflicting`, and promotion remains blocked. The UI now exposes rejected candidates and their evidence without offering terminal mutation actions.
 - PR #744 also adds a dry-run-by-default legacy recovery utility. It restores content only when the preserved job lesson exactly matches the original SHA-256, and restores source URLs/quality only from records still present. Deleted source text, assessment, test plan, and original knowledge-version metadata are never guessed. Exact-head CI: 2,139 passed, 2 skipped, 51 deselected; Windows storage, Browser E2E, and Dependency Audit passed.
 
