@@ -2200,6 +2200,8 @@ def test_browser_settings_form_persists_values_and_surfaces_api_failure():
         page.locator("#learning-api-key-env").fill("")
         page.locator("#learning-model").fill("local-learning-model")
         page.locator("#learning-task-budget").fill("123")
+        pricing_catalog = '{"browser-e2e-model":{"input_usd_per_million_tokens":"1.25","output_usd_per_million_tokens":"3.75","pricing_version":"e2e-2026-11"}}'
+        page.locator("#learning-model-pricing").fill(pricing_catalog)
         page.locator("#programming-source-limit").fill("20000")
         page.locator("#settings-form button[type='submit']").click()
         page.wait_for_function(
@@ -2209,6 +2211,7 @@ def test_browser_settings_form_persists_values_and_surfaces_api_failure():
         )
         saved = page.request.get(base_url.rstrip("/") + "/api/settings")
         assert saved.status == 200
+        assert saved.json()["learning_model_pricing_json"] == pricing_catalog
         saved_settings = saved.json()
         assert saved_settings["chat_ollama_model"] == "browser-e2e-manual-model"
         assert saved_settings["learning_llm_provider"] == "openai_compatible"
