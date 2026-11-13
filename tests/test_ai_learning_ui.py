@@ -178,6 +178,8 @@ def test_main_settings_page_exposes_ai_learning_module_and_capacity_controls():
     html = (Path(__file__).resolve().parents[1] / "app" / "static" / "index.html").read_text(encoding="utf-8")
     for control_id in (
         "ai-learning-enabled", "ai-learning-retrieval-enabled", "ai-learning-browser-enabled",
+        "ai_learning-provider", "ai_learning-model-installed", "ai_learning-model",
+        "ai_learning-ctx", "ai_learning-threads", "ai_learning-timeout", "ai_learning-source-limit",
         "ai-learning-lesson-batch", "ai-learning-chunk-target", "ai-learning-chunk-overlap",
         "ai-learning-embedding-batch", "ai-learning-browser-timeout",
         "ai-learning-response-timeout", "ai-learning-continuations",
