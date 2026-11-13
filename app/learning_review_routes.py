@@ -4,10 +4,10 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from .db import learning_connection
@@ -47,7 +47,7 @@ def _decode(value: str, field: str) -> Any:
 
 
 @router.post("/{candidate_id}/review", status_code=202)
-def queue_candidate_review(candidate_id: int, request: CandidateReviewRequest) -> dict[str, Any]:
+def queue_candidate_review(candidate_id: Annotated[int, Path(ge=1)], request: CandidateReviewRequest) -> dict[str, Any]:
     if request.confirm is not True:
         raise HTTPException(status_code=422, detail="Explicit confirmation to start evidence review is required.")
     if isinstance(candidate_id, bool) or candidate_id < 1:
@@ -91,7 +91,7 @@ def queue_candidate_review(candidate_id: int, request: CandidateReviewRequest) -
 
 
 @router.get("/{candidate_id}/review-history")
-def get_candidate_review_history(candidate_id: int) -> dict[str, Any]:
+def get_candidate_review_history(candidate_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     if isinstance(candidate_id, bool) or candidate_id < 1:
         raise HTTPException(status_code=422, detail="candidate_id must be a positive integer.")
     try:
@@ -159,7 +159,7 @@ def get_candidate_review_history(candidate_id: int) -> dict[str, Any]:
 
 @router.post("/{candidate_id}/sandbox-test", status_code=202)
 def queue_candidate_sandbox_review(
-    candidate_id: int, request: CandidateSandboxReviewRequest
+    candidate_id: Annotated[int, Path(ge=1)], request: CandidateSandboxReviewRequest
 ) -> dict[str, Any]:
     if request.confirm is not True:
         raise HTTPException(status_code=422, detail="Explicit confirmation to execute candidate examples is required.")
