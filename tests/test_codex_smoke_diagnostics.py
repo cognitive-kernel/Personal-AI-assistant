@@ -418,7 +418,11 @@ def test_target_diagnostic_verifies_owner_confirmed_hardware_profile():
     assert "size_vram" in diagnostic
     assert "check_autonomous_runner.ps1" in diagnostic
     assert "WINDOWS_RUNNER_READINESS_CONTRACT_OK" in diagnostic
-    assert "github.ref_name != 'fix/autonomous-engineering-show-all-ollama-models-20261112'" in diagnostic
+    assert "github.event.pull_request.head.ref || github.ref_name" in diagnostic
+    assert "github.event.pull_request.head.sha || github.sha" in diagnostic
+    assert "github.event.pull_request.head.repo.full_name == github.repository" in diagnostic
+    assert "actions/runners?per_page=100" in diagnostic
+    assert "TARGET_BRANCH" in diagnostic and "TARGET_HEAD_SHA" in diagnostic
     assert "github.ref_name == 'fix/autonomous-engineering-show-all-ollama-models-20261112' && '10000'" not in diagnostic
     assert "Get-Command node.exe" in diagnostic
     assert 'Node.js version mismatch: expected at least v26.13.0' in diagnostic
