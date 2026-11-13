@@ -726,3 +726,10 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 
 
 - Added the shared Ollama service endpoint to the Settings UI. Per-capability provider/model choices remain independent; local Ollama profiles use the configured shared Ollama endpoint, while OpenAI-compatible profiles use their own validated Base URL and environment-only API-key reference.
+
+
+### 2026-11-14 — Complete Settings surface audit
+
+- Compared all 131 keys in `SETTING_DEFAULTS` against the dashboard Settings UI; every key is now represented, including the shared Ollama endpoint and the exact-model pricing catalog.
+- Added a bounded JSON contract for the pricing catalog (model id, input/output USD per million tokens, and pricing version) and exposed it in Settings. Invalid catalogs are rejected atomically; unknown or absent rates remain unknown rather than being treated as zero.
+- Added API regression coverage for valid persistence and malformed/negative pricing entries. Exact-head CI is pending.
