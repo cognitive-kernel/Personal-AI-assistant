@@ -1771,3 +1771,33 @@ def test_ai_learning_retry_migration_adds_bounded_schedule_columns(isolated_stor
     assert {"retry_after", "retry_reason"} <= control_columns
     assert {"worker_lease_owner", "worker_lease_until", "worker_lease_epoch"} <= control_columns
     assert version == 7
+
+def test_reset_learning_data_cascades_captured_content_but_preserves_course_definitions(isolated_store):
+    course = service.create_course(title="Preserved course definition")
+    topic = service.add_topic(course["id"], "Captured topic")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Captured lesson")
+    version = service.add_content_version(
+        lesson["id"],
+        "# Captured lesson\\n\\nThis content is intentionally removed by the explicit reset.",
+    )
+
+    result = service.reset_learning_data()
+
+    assert result["reset"] is True
+    assert result["preserved_courses"] == 1
+    assert result["deleted"] == {
+        "runs": 0,
+        "topics": 1,
+        "lessons": 1,
+        "versions": 1,
+    }
+    assert service.get_course(course["id"])["topics"] == []
+
+    with connection() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM courses").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM topics").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM lessons").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM content_versions").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM sources").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0] == 0
