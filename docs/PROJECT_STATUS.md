@@ -432,3 +432,13 @@
 - regression جدید تغییر release note در نتیجهٔ هفتم را شبیه‌سازی می‌کند؛ پایش باید آن را کشف و یک curriculum refresh نسخه‌دار صف‌بندی کند.
 - fingerprint دوره‌های قبلی ممکن است یک‌بار به‌دلیل گسترش نتایج تغییر کند؛ refresh افزایشی است و درس‌های تاریخی را بازنویسی نمی‌کند.
 - سقف ۳۰، اندازهٔ صفحهٔ هر query در adapter جست‌وجو است؛ این تغییر ادعای کشف تضمینی همهٔ منابع اینترنتی نیست.
+
+
+### 2026-11-13 — Current settings and execution ownership status in PR #746
+
+- AI Learning is enabled by default and is the first learning method. Basic Learning and Topic/Course Learning are also enabled in a fresh installation and remain independently configurable. Experience System is an observer of all three methods, not a fourth method.
+- Provider/model profiles are independent for AI Learning, Basic Learning, Topic/Course Learning, chat, research planning, programming, factual review, and embeddings. Ollama and OpenAI-compatible API are selected per capability; model discovery follows the selected provider.
+- AI Learning batch, chunk, embedding batch, timeout, continuation, response-stability, minimum lesson length, and browser-recovery limits are persisted in Settings and validated.
+- Migration 54 and app/learning_execution.py add domain-job owner/epoch fencing. A worker must retain its task lease and current domain execution epoch before it can persist a result or failure.
+- Experience System observes the append-only method ledger through /api/experiences/learning-method-observations and cannot mutate coordinator state.
+- Final acceptance still requires exact-head CI, crash/restart and stale-worker tests, and end-to-end validation of all three methods. PR remains Draft and unmerged; local and human tests have not started.
