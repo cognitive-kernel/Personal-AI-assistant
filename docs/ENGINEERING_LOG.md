@@ -676,3 +676,11 @@ Continue E-02/E-01 with the complete route and task-registry contract inventory,
 - PR #738 current head `d1190c83a3e2a413e7ee8b9f35c95f10e45a3985` is awaiting its full CI matrix. Additional route families remain in the audit queue; no global claim is made.
 - The earlier #737 OpenAPI test failure was traced to a nullable `anyOf(integer, null)` schema for optional `path_id`; the test helper now resolves refs and checks the integer branch. The current exact-head full test run has not yet completed.
 - No merge, deployment, local/target-host test, human test, or destructive data operation occurred. The independent Issue #52 review, branch-protection administration, CodeQL alert disposition, and external acceptance gates remain open.
+
+
+## 2026-11-13 — Durable task and browser-learning root-cause findings
+
+- The current route/API boundary PR #738 now includes a global OpenAPI fitness check for positive integer path IDs and bounded string query inputs, plus task-status list and practical-learning job-filter regressions. Exact head `5841e303916d0e4791724cde7ff5d53e131e772b`: Windows storage, dashboard smoke and dependency audit passed; full test suite remains in progress.
+- PR #739 adds service-level limits so direct internal callers cannot bypass HTTP bounds: task type, priority, retry count, dedupe key, serialized payload, checkpoint and result. The 512-character idempotency-key bound preserves the longest existing two-digest sandbox-review key plus request ID. First CI run: 1 failure in a newly added parameterized test because the fixture passed `task_type` twice; implementation was not implicated. Test corrected; fresh head `9edfdd38716b88708b53772aa93d75c3850b77b7` is running CI.
+- Issue #723's finally-block exception suppression is addressed in PR #740. A failed `run_course()` now skips status lookup/queue drain and releases the lease; a status lookup failure after normal return also releases the lease without draining. Exact head `a30858b14a897fa463a96a4c5599153c81137e41`: dependency audit and Windows storage passed; test and dashboard smoke are running.
+- No PR merge, direct main write, local/target-host/human test, or destructive operation occurred. All exact-head results must be refreshed after further commits.
