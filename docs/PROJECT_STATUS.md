@@ -455,3 +455,8 @@
 - Audit of every boolean in SETTING_DEFAULTS confirms each has a matching Settings UI control; all fresh-install software-module defaults are true, including Sandbox and Self-Improvement.
 - Sandbox and Self-Improvement configuration fields are now exposed and validated. Sandbox execution still requires digest-pinned images, a valid local Docker executable, and explicit persisted user consent; enabling the module alone never executes code.
 - Obsolete environment-gate instructions were removed. API keys remain environment-only secrets; provider names and model selection remain persistent Settings.
+### 2026-11-13 — Sandbox configuration unified across learning-review execution
+
+- Removed the remaining direct SANDBOX_ENABLED/SANDBOX_DOCKER_EXECUTABLE/SANDBOX_PYTHON_IMAGE reads from learning candidate review. The path now reads persisted Settings, uses the shared sandbox configuration validator, and applies configured timeout/output limits.
+- The candidate review path still requires explicit current consent before running any code. A disabled module, missing Docker/image configuration, invalid settings, or absent consent records an unavailable/skipped outcome; no host fallback is introduced.
+- Sandbox API errors and architecture documentation now point to dashboard Settings rather than obsolete environment gates. Tests configure sandbox through the persistent settings store.
