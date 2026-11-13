@@ -72,6 +72,7 @@ def test_settings_api_rejects_invalid_ollama_urls_without_persisting(
 def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(settings_client):
     defaults = settings_client.get("/api/settings").json()
     assert defaults["ai_learning_enabled"] is True
+    assert defaults["ai_learning_knowledge_enabled"] is True
     assert defaults["ai_learning_retrieval_enabled"] is True
     assert defaults["ai_learning_browser_enabled"] is True
     assert defaults["ai_learning_llm_provider"] == "ollama"
@@ -135,6 +136,7 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
     "values",
     [
         {"ai_learning_enabled": "false"},
+        {"ai_learning_knowledge_enabled": "false"},
         {"experience_system_enabled": "false"},
         {"ai_learning_retrieval_enabled": 1},
         {"ai_learning_browser_enabled": None},
