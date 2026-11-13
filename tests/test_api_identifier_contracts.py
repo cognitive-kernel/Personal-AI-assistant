@@ -39,6 +39,10 @@ def client(tmp_path, monkeypatch):
         ("post", "/api/learning/curriculum-proposals/0/review", {"decision": "reject", "note": "This proposal is not sufficiently supported."}),
         ("get", "/api/cloud-resources/plans/0", None),
         ("delete", "/api/cloud-resources/0", None),
+        ("get", "/api/ai-learning/runs/0", None),
+        ("get", "/api/ai-learning/courses/0", None),
+        ("get", "/api/ai-learning/versions/0", None),
+        ("post", "/api/ai-learning/sources/0/check", None),
     ],
 )
 def test_integer_resource_path_ids_reject_zero_at_http_boundary(client, method, path, payload):
