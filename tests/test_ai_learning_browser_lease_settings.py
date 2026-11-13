@@ -2,6 +2,8 @@ from app.ai_learning import browser_automation
 
 
 def test_browser_worker_lease_claim_uses_settings_snapshot(monkeypatch):
+    monkeypatch.setattr(browser_automation, "_WORKER_LEASE_SECONDS", 90)
+    monkeypatch.setattr(browser_automation, "_WORKER_LEASE_HEARTBEAT_SECONDS", 15.0)
     settings = {
         "ai_learning_browser_lease_seconds": 120,
         "ai_learning_browser_lease_heartbeat_seconds": 20,
@@ -27,6 +29,8 @@ def test_browser_worker_lease_claim_uses_settings_snapshot(monkeypatch):
 
 
 def test_browser_worker_lease_rejects_unsafe_heartbeat_ratio(monkeypatch):
+    monkeypatch.setattr(browser_automation, "_WORKER_LEASE_SECONDS", 90)
+    monkeypatch.setattr(browser_automation, "_WORKER_LEASE_HEARTBEAT_SECONDS", 15.0)
     settings = {
         "ai_learning_browser_lease_seconds": 30,
         "ai_learning_browser_lease_heartbeat_seconds": 15,
