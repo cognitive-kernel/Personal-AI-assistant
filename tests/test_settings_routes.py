@@ -83,6 +83,7 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
     assert defaults["ai_learning_last_stop_stability_seconds"] == 25
     assert defaults["basic_learning_enabled"] is True
     assert defaults["topic_learning_enabled"] is True
+    assert defaults["experience_system_enabled"] is True
     assert defaults["topic_learning_llm_provider"] == "ollama"
     assert defaults["topic_learning_source_max_chars"] == 100000
     assert defaults["ai_learning_ollama_model"]
@@ -92,6 +93,7 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
 
     values = {
         "ai_learning_enabled": False,
+        "experience_system_enabled": False,
         "ai_learning_retrieval_enabled": False,
         "ai_learning_browser_enabled": False,
         "ai_learning_lesson_batch_size": 5,
@@ -133,6 +135,7 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
     "values",
     [
         {"ai_learning_enabled": "false"},
+        {"experience_system_enabled": "false"},
         {"ai_learning_retrieval_enabled": 1},
         {"ai_learning_browser_enabled": None},
         {"ai_learning_lesson_batch_size": 21},
