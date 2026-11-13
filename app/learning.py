@@ -2283,32 +2283,15 @@ def _latest_completed_topic_review(topic_id: int) -> dict[str, Any] | None:
 def start_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
     with learning_connection() as conn:
         topic = conn.execute(
-            "SELECT id, topic FROM learning_path_topics WHERE id=? AND path_id=?",
+            "SELECT id FROM learning_path_topics WHERE id=? AND path_id=?",
             (topic_id, path_id),
         ).fetchone()
         if topic is None:
             raise KeyError(topic_id)
-        latest = conn.execute(
-            "SELECT id, status FROM learning_jobs WHERE path_topic_id=? ORDER BY id DESC LIMIT 1",
-            (topic_id,),
-        ).fetchone()
-        if latest and latest["status"] == "completed":
-            return get_job(int(latest["id"]))
-        if latest and latest["status"] in {"queued", "running"}:
-            return get_job(int(latest["id"]))
-    lesson_review = _latest_completed_topic_review(topic_id)
-    # create_job enforces the active prerequisite graph. Do not mutate topic state
-    # until that guard has succeeded, otherwise a blocked start leaves a false
-    # in_progress status behind.
-    job = create_job(topic["topic"], path_topic_id=topic_id, lesson_review=lesson_review)
-    with learning_connection() as conn:
-        conn.execute(
-            "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
-            (topic_id, path_id),
-        )
-    _enqueue_learning_job(int(job["id"]))
-    return job
+    from .learning_method_orchestrator import queue_initial_method
 
+    transition = queue_initial_method(topic_id)
+    return transition.get("job") if isinstance(transition.get("job"), dict) else transition
 
 
 def regenerate_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
@@ -2443,22 +2426,34 @@ def start_researched_path_learning(
                 "blocked_topic": topic["topic"],
                 "message": "ادامهٔ صف به‌دلیل ناموفق‌بودن درس قبلی متوقف است؛ برای تلاش دوباره، شروع مسیر را انتخاب کنید.",
             }
-        job = create_job(topic["topic"], path_topic_id=int(topic["id"]))
-        with learning_connection() as conn:
-            conn.execute(
-                "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP "
-                "WHERE id=? AND path_id=? AND status!='completed'",
-                (topic["id"], path_id),
-            )
-        task = _enqueue_learning_job(int(job["id"]))
+        from .learning_method_orchestrator import queue_initial_method
+        transition = queue_initial_method(int(topic["id"]))
+        if transition.get("status") == "blocked":
+            return {
+                "path_id": path_id, "queued_count": 0, "job_ids": [],
+                "status": "blocked_by_learning_methods",
+                "blocked_topic": topic["topic"],
+                "message": "تمام روش‌های یادگیری ناموفق یا غیرفعال‌اند؛ این سرفصل نیازمند بررسی است.",
+            }
+        job = transition.get("job")
+        task = transition.get("task")
+        if not isinstance(job, dict):
+            return {
+                "path_id": path_id, "queued_count": 0, "job_ids": [],
+                "status": transition.get("status", "already_active"),
+                "active_job_id": None,
+                "skipped_completed_count": skipped_completed,
+                "message": "وضعیت روش جاری از دفتر رویدادهای پایدار بازیابی شد.",
+            }
         return {
             "path_id": path_id,
-            "queued_count": 1,
+            "queued_count": 1 if task is not None else 0,
             "job_ids": [int(job["id"])],
-            "task_id": task["id"],
-            "status": "queued",
+            "task_id": task["id"] if isinstance(task, dict) else None,
+            "method": job.get("learning_method"),
+            "status": "queued" if task is not None else str(job.get("status", "unknown")),
             "skipped_completed_count": skipped_completed,
-            "message": "فقط درس بعدی صف‌بندی شد؛ درس بعدی پس از پایان موفق این درس اضافه می‌شود.",
+            "message": "روش بعدی یادگیری صف‌بندی شد؛ سرفصل بعدی فقط پس از قبولی ارزیابی مستقل آغاز می‌شود.",
         }
     return {
         "path_id": path_id, "queued_count": 0, "job_ids": [],
@@ -2481,52 +2476,75 @@ def queue_next_researched_path_topic(path_topic_id: int) -> dict[str, Any] | Non
             "SELECT 1 FROM learning_path_research WHERE path_id=?",
             (path_id,),
         ).fetchone()
-    if is_researched is None:
-        return None
-    return start_researched_path_learning(path_id, allow_retry=False)
+    return start_path_learning(path_id)
 
 
 def start_path_learning(path_id: int) -> dict[str, Any]:
     path = get_learning_path(path_id)
     if path.get("research"):
         return start_researched_path_learning(path_id, allow_retry=True)
-    queued_ids: list[int] = []
-    skipped_active = 0
+
+    from .learning_method_orchestrator import queue_initial_method
     skipped_completed = 0
-    skipped_existing_lesson = 0
     for topic in path["topics"]:
-        if topic["status"] == "completed":
-            skipped_completed += 1
-            continue
-        with learning_connection() as conn:
-            latest = conn.execute(
-                "SELECT id, status FROM learning_jobs WHERE path_topic_id=? ORDER BY id DESC LIMIT 1",
-                (topic["id"],),
-            ).fetchone()
-        if latest and latest["status"] in {"queued", "running"}:
-            skipped_active += 1
-            continue
-        if latest and latest["status"] == "completed":
-            # Preserve generated lessons when resuming a path; do not regenerate them.
-            skipped_existing_lesson += 1
-            continue
-        job = create_job(topic["topic"], path_topic_id=topic["id"])
         with learning_connection() as conn:
             conn.execute(
-                "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
-                (topic["id"], path_id),
+                """INSERT OR IGNORE INTO learning_topic_quality_gates(
+                       path_topic_id, state, next_action
+                   ) VALUES (?, 'pending', 'start_ai_learning')""",
+                (int(topic["id"]),),
             )
-        _enqueue_learning_job(int(job["id"]))
-        queued_ids.append(job["id"])
+            gate = conn.execute(
+                "SELECT state, current_job_id FROM learning_topic_quality_gates WHERE path_topic_id=?",
+                (int(topic["id"]),),
+            ).fetchone()
+        if gate["state"] == "passed":
+            skipped_completed += 1
+            continue
+        if gate["state"] == "blocked":
+            return {
+                "path_id": path_id, "queued_count": 0, "job_ids": [],
+                "status": "blocked_by_learning_methods", "blocked_topic": topic["topic"],
+                "message": "این سرفصل پس از شکست روش‌های یادگیری متوقف شده و نیازمند بررسی است.",
+            }
+        transition = queue_initial_method(int(topic["id"]))
+        if transition.get("status") == "passed":
+            skipped_completed += 1
+            continue
+        job = transition.get("job")
+        task = transition.get("task")
+        if isinstance(job, dict):
+            return {
+                "path_id": path_id,
+                "queued_count": 1 if task is not None else 0,
+                "job_ids": [int(job["id"])],
+                "task_id": task["id"] if isinstance(task, dict) else None,
+                "method": job.get("learning_method"),
+                "status": "queued" if task is not None else str(job.get("status", "unknown")),
+                "skipped_completed_count": skipped_completed,
+                "message": "فقط یک روش برای سرفصل جاری اجرا می‌شود؛ پیشروی منوط به قبولی ارزیابی مستقل است.",
+            }
+        if transition.get("status") == "awaiting_evaluation":
+            return {
+                "path_id": path_id, "queued_count": 0, "job_ids": [],
+                "status": "awaiting_topic_quality_evaluation",
+                "active_job_id": transition.get("job", {}).get("id"),
+                "evaluation_task": transition.get("evaluation"),
+                "skipped_completed_count": skipped_completed,
+                "message": "درس موجود حفظ شده است؛ ارزیابی مستقل پیش از پیشروی اجرا می‌شود.",
+            }
+        if transition.get("status") == "blocked":
+            return {
+                "path_id": path_id, "queued_count": 0, "job_ids": [],
+                "status": "blocked_by_learning_methods", "blocked_topic": topic["topic"],
+                "message": "این سرفصل نیازمند بررسی است.",
+            }
     return {
-        "path_id": path_id,
-        "queued_count": len(queued_ids),
-        "job_ids": queued_ids,
-        "skipped_active_count": skipped_active,
-        "skipped_completed_count": skipped_completed,
-        "skipped_existing_lesson_count": skipped_existing_lesson,
-        "message": "یادگیری از درس‌های ناتمام ادامه پیدا می‌کند؛ درس‌های تولیدشده دوباره ساخته نمی‌شوند.",
+        "path_id": path_id, "queued_count": 0, "job_ids": [],
+        "status": "completed", "skipped_completed_count": skipped_completed,
+        "message": "تمام سرفصل‌های این مسیر قبولی معتبر گرفته‌اند.",
     }
+
 
 def stop_path_learning(path_id: int) -> dict[str, Any]:
     # Mark both queued and currently running jobs as cancelled. Ollama requests already
