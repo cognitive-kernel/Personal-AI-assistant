@@ -142,9 +142,24 @@ def test_source_check_rejects_mixed_public_and_private_dns_before_connecting(
         service.check_content_source(source_id)
 
 
-@pytest.mark.parametrize("url", ["https://example.com:8443/docs", "https://example.com:invalid/docs"])
-def test_source_check_rejects_nonstandard_or_malformed_ports(isolated_store, url):
-    course = service.create_course(title="Invalid source port")
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.com:8443/docs",
+        "https://example.com:invalid/docs",
+        "https://example.com:/docs",
+        "https://@example.com/docs",
+        "https://:secret@example.com/docs",
+        "https://user:@example.com/docs",
+    ],
+)
+def test_source_check_rejects_malformed_authority_before_dns(isolated_store, monkeypatch, url):
+    monkeypatch.setattr(
+        service.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: pytest.fail("malformed URL must be rejected before DNS"),
+    )
+    course = service.create_course(title="Invalid source authority")
     topic = service.add_topic(course["id"], "Network validation")
     service.decide_topics([topic["id"]], "approved")
     lesson = service.create_lesson(topic["id"], "Invalid source")
