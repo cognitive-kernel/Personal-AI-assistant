@@ -4,7 +4,7 @@ The Manifest V3 extension connects the local learning module to the user's exist
 
 ## One-time setup
 
-1. Start Personal-AI-assistant on localhost and enable the module with `AI_LEARNING_ENABLED=1`.
+1. Start Personal-AI-assistant on localhost and verify that «کتابخانهٔ دانش مستقل AI Learning» and its browser provider are enabled in Settings.
 2. Open `chrome://extensions`, enable Developer mode, and choose **Load unpacked**.
 3. Select `app/ai_learning/browser_extension`.
 4. Open `http://127.0.0.1:8000/ai-learning` and select the course.
