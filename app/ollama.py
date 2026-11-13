@@ -225,7 +225,7 @@ def list_models() -> list[dict[str, Any]]:
 
 def list_provider_models(purpose: str) -> dict[str, Any]:
     """Discover models from the provider selected for one capability."""
-    allowed = {"chat", "learning", "programming", "ai_learning", "factual_review", "research_plan", "embedding"}
+    allowed = {"chat", "learning", "programming", "ai_learning", "topic_learning", "factual_review", "research_plan", "embedding"}
     if purpose not in allowed:
         raise ValueError("Unsupported model discovery purpose.")
     settings = get_settings()
