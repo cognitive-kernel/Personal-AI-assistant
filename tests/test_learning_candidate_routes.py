@@ -338,7 +338,7 @@ def test_candidate_source_api_enforces_web_ai_and_book_metadata(candidate_store)
 
 
 def test_autonomous_test_plan_skips_human_attestation_only_after_four_path_accuracy_gate(candidate_store):
-    from app.learning_provenance import record_accuracy_evaluation
+    from app.learning_accuracy_gate import record_accuracy_evaluation
 
     paths = ["ai_learning", "basic_learning", "curriculum_learning", "experience_system"]
     for index in range(100):
@@ -388,7 +388,7 @@ def test_autonomous_test_plan_skips_human_attestation_only_after_four_path_accur
 
 
 def test_autonomous_test_plan_stays_blocked_at_exactly_95_percent(candidate_store):
-    from app.learning_provenance import record_accuracy_evaluation
+    from app.learning_accuracy_gate import record_accuracy_evaluation
 
     paths = ["ai_learning", "basic_learning", "curriculum_learning", "experience_system"]
     for index in range(100):
