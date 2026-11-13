@@ -1644,6 +1644,17 @@ LEARNING_MIGRATIONS = (
                BEGIN SELECT RAISE(ABORT, 'topic method attempt events are append-only'); END""",
         ),
     ),
+    Migration(
+        53,
+        "idempotent-learning-method-jobs",
+        (
+            """ALTER TABLE learning_jobs ADD COLUMN learning_method TEXT NOT NULL
+               DEFAULT 'basic_learning'
+               CHECK(learning_method IN ('ai_learning','basic_learning','topic_learning'))""",
+            "ALTER TABLE learning_jobs ADD COLUMN method_attempt_key TEXT",
+            "CREATE UNIQUE INDEX idx_learning_jobs_method_attempt_key ON learning_jobs(method_attempt_key) WHERE method_attempt_key IS NOT NULL",
+        ),
+    ),
 )
 
 
