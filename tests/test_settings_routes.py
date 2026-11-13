@@ -75,7 +75,7 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
     assert defaults["ai_learning_retrieval_enabled"] is True
     assert defaults["ai_learning_browser_enabled"] is True
     assert defaults["gpu_enabled"] is True
-    assert defaults["ai_learning_lesson_batch_size"] == 1
+    assert defaults["ai_learning_lesson_batch_size"] == 20
 
     values = {
         "ai_learning_enabled": False,
