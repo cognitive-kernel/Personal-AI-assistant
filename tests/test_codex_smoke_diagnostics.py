@@ -465,6 +465,9 @@ def test_active_codex_documentation_matches_adaptive_context_contract():
     status = (root / "docs" / "PROJECT_STATUS.md").read_text(encoding="utf-8")
     operations = (root / "docs" / "operations" / "CODEX_AUTONOMOUS_ENGINEERING.md").read_text(encoding="utf-8")
     parallelism_script = (root / "scripts" / "verify_ollama_context.ps1").read_text(encoding="utf-8")
+    autonomous_workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    diagnostic_workflow = (root / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml").read_text(encoding="utf-8")
+    tests_workflow = (root / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
     adr = (root / "docs" / "architecture" / "ADR-020-codex-adaptive-context.md").read_text(encoding="utf-8")
 
     assert "حداقل سقف Context برابر ۶۴٬۰۰۰ توکن" not in readme
@@ -650,3 +653,7 @@ def test_current_acceptance_docs_preserve_master_prompt_merge_gates_and_runner_p
     assert "process-only launch override" in operations
     assert "not read from the live Ollama process environment" in parallelism_script
     assert "process-only launch override may differ" in parallelism_script
+    assert '$requiredCodexVersion = "0.168.0"' in autonomous_workflow
+    assert '$requiredCodexVersion = "0.168.0"' in diagnostic_workflow
+    assert 'codex-version: ["0.167.2", "0.168.0"]' in tests_workflow
+    assert "0.167.0" not in autonomous_workflow + diagnostic_workflow + tests_workflow
