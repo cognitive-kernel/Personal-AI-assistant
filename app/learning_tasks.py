@@ -12,7 +12,7 @@ from typing import Any
 from . import learning
 from .db import learning_connection
 from . import task_manager
-from . import ollama, learning_topic_quality_tasks
+from . import ollama, learning_topic_quality_tasks, learning_method_orchestrator
 from .task_worker import PermanentTaskError, RetryableTaskError, TaskContext
 
 logger = logging.getLogger(__name__)
@@ -241,6 +241,31 @@ def cancel_learning_job(job_id: int) -> dict[str, Any] | None:
     return cancel_learning_task(job_id)
 
 
+def _advance_failed_method(job_id: int, context: TaskContext, reason: str) -> dict[str, Any] | None:
+    """Fallback only method-scoped curriculum jobs; preserve legacy job behavior."""
+    job = learning.get_job(job_id)
+    if not job.get("method_attempt_key"):
+        return None
+    if job.get("status") == "cancelled":
+        learning_method_orchestrator.mark_method_cancelled(job_id, reason="Cancelled before method fallback.")
+        return {"status": "cancelled", "job_id": job_id}
+    result = learning_method_orchestrator.record_generation_failure(
+        job_id,
+        reason=reason,
+        evidence={
+            "task_id": context.task_id,
+            "task_attempts": int((task_manager.get_task(context.task_id) or {}).get("attempts", 0)),
+            "failure_type": reason[:160],
+        },
+    )
+    if result.get("status") == "blocked":
+        _record_learning_escalation(
+            context.task_id, job_id, "all_learning_methods_failed",
+            "All configured learning methods failed or were unavailable; the topic is blocked for review.",
+        )
+    return result
+
+
 def handle_learning_job(
     payload: dict[str, Any],
     checkpoint: dict[str, Any] | None,
@@ -257,6 +282,12 @@ def handle_learning_job(
         raise PermanentTaskError(f"Learning job {job_id} does not exist") from exc
 
     status = job["status"]
+    if status in {"failed", "rejected"} and job.get("method_attempt_key"):
+        fallback = _advance_failed_method(
+            job_id, context, str(job.get("error") or "Learning method failed before task recovery.")
+        )
+        if fallback is not None:
+            return {"job_id": job_id, "learning_status": status, "method_fallback": fallback}
     if status in _TERMINAL_LEARNING_STATUSES:
         if status == "rejected":
             _record_learning_escalation(
@@ -298,23 +329,38 @@ def handle_learning_job(
         if isinstance(cause, ollama.OllamaError):
             if cause.retryable:
                 if attempts >= max_attempts:
+                    fallback = _advance_failed_method(job_id, context, f"Model request failed: {type(cause).__name__}")
+                    if fallback is not None:
+                        return {"job_id": job_id, "learning_status": "failed", "method_fallback": fallback}
                     _record_learning_escalation(
                         context.task_id, job_id, "attempts_exhausted",
                         f"Model request failed after {attempts} attempt(s): {type(cause).__name__}",
                     )
                 raise RetryableTaskError("Learning model request failed; retry may succeed.") from exc
+            fallback = _advance_failed_method(job_id, context, f"Non-retryable model error: {type(cause).__name__}")
+            if fallback is not None:
+                return {"job_id": job_id, "learning_status": "failed", "method_fallback": fallback}
             _record_learning_escalation(
                 context.task_id, job_id, "permanent_failure",
                 f"Non-retryable model error: {type(cause).__name__}",
             )
             raise PermanentTaskError("Learning model configuration or policy is invalid.") from exc
         if isinstance(cause, (ValueError, TypeError, KeyError, AssertionError, sqlite3.IntegrityError)):
+            fallback = _advance_failed_method(job_id, context, f"Non-retryable learning error: {type(cause).__name__}")
+            if fallback is not None:
+                return {"job_id": job_id, "learning_status": "failed", "method_fallback": fallback}
             _record_learning_escalation(
                 context.task_id, job_id, "permanent_failure",
                 f"Non-retryable learning error: {type(cause).__name__}",
             )
             raise PermanentTaskError("Learning job failed because of invalid input or an internal invariant.") from exc
         if attempts >= max_attempts:
+            fallback = _advance_failed_method(
+                job_id, context,
+                f"Learning execution failed: {type(cause).__name__ if cause else type(exc).__name__}",
+            )
+            if fallback is not None:
+                return {"job_id": job_id, "learning_status": "failed", "method_fallback": fallback}
             _record_learning_escalation(
                 context.task_id, job_id, "attempts_exhausted",
                 f"Learning execution failed after {attempts} attempt(s): {type(cause).__name__ if cause else type(exc).__name__}",
