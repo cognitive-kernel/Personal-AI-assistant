@@ -12,7 +12,7 @@ This file is the release-gate ledger for tracking issue [#290](https://github.co
 - PR #732: **2,135 passed, 2 skipped, 51 deselected**; Tests, Windows storage, Browser E2E, Dependency Audit and CodeQL v4 passed. SARIF upload is not evidence of zero alerts; alert triage remains open.
 - PR #733: **2,135 passed, 2 skipped, 51 deselected**; Tests, Windows storage, Browser E2E and Dependency Audit passed.
 - PR #734: **2,136 passed, 2 skipped, 51 deselected**; Tests, Windows storage, Browser E2E and Dependency Audit passed.
-- PR #735: previous exact head `e19c76362df4af79ed76e8b9f52491eed0314cd8` passed **2,135 tests, 2 skipped, 51 deselected**; this status refresh changes its head and requires a fresh exact-head run.
+- PR #735 is the current status/acceptance documentation PR; its latest exact-head CI evidence is recorded in the PR body. PR-head results are not post-merge CI for current `main`.
 - PR #736: **2,149 passed, 2 skipped, 51 deselected**; Tests, Windows storage, Browser E2E and Dependency Audit passed.
 - PR #737: **2,142 passed, 2 skipped, 51 deselected**; Tests, Windows storage, Browser E2E and Dependency Audit passed.
 - PR #738: **2,170 passed, 2 skipped, 51 deselected**; Tests, Windows storage, Browser E2E and Dependency Audit passed.
