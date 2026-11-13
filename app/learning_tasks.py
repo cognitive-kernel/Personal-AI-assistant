@@ -252,11 +252,7 @@ def _advance_failed_method(job_id: int, context: TaskContext, reason: str) -> di
     result = learning_method_orchestrator.record_generation_failure(
         job_id,
         reason=reason,
-        evidence={
-            "task_id": context.task_id,
-            "task_attempts": int((task_manager.get_task(context.task_id) or {}).get("attempts", 0)),
-            "failure_type": reason[:160],
-        },
+        evidence={"failure_stage": "generation"},
     )
     if result.get("status") == "blocked":
         _record_learning_escalation(
