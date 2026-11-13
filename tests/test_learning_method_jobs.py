@@ -2,7 +2,7 @@ import concurrent.futures
 
 import pytest
 
-from app import db, learning
+from app import db, learning, learning_method_orchestrator
 
 
 @pytest.fixture
@@ -112,3 +112,134 @@ def test_method_job_contract_rejects_invalid_identity(method_job_store, kwargs):
     values.update(kwargs)
     with pytest.raises(ValueError):
         learning.create_job(**values)
+
+
+
+def test_new_topic_starts_with_ai_learning_and_persists_method_ownership(method_job_store, monkeypatch):
+    topic_id = method_job_store
+    monkeypatch.setattr(learning, "_enqueue_learning_job", lambda job_id: {"id": f"task-{job_id}"})
+
+    result = learning_method_orchestrator.queue_initial_method(topic_id)
+
+    assert result["status"] == "queued"
+    assert result["method"] == "ai_learning"
+    assert result["job"]["learning_method"] == "ai_learning"
+    assert result["method_attempt_key"] == f"path-topic:{topic_id}:method:ai_learning:attempt:1"
+    events = learning_method_orchestrator.list_attempt_events(topic_id) if hasattr(learning_method_orchestrator, "list_attempt_events") else None
+    assert events is None or events[0]["status"] == "queued"
+    with db.learning_connection() as connection:
+        gate = connection.execute(
+            "SELECT current_job_id, state FROM learning_topic_quality_gates WHERE path_topic_id=?",
+            (topic_id,),
+        ).fetchone()
+    assert gate["current_job_id"] == result["job"]["id"]
+    assert gate["state"] == "pending"
+
+
+def test_generation_failure_advances_to_basic_once_and_is_replay_safe(method_job_store, monkeypatch):
+    topic_id = method_job_store
+    monkeypatch.setattr(learning, "_enqueue_learning_job", lambda job_id: {"id": f"task-{job_id}"})
+    initial = learning_method_orchestrator.queue_initial_method(topic_id)
+    job_id = int(initial["job"]["id"])
+    learning_method_orchestrator.mark_method_running(job_id)
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE learning_jobs SET status='failed', error='provider timeout' WHERE id=?",
+            (job_id,),
+        )
+
+    first = learning_method_orchestrator.record_generation_failure(job_id, reason="provider timeout")
+    replay = learning_method_orchestrator.record_generation_failure(job_id, reason="provider timeout")
+
+    assert first["method"] == "basic_learning"
+    assert replay["job"]["id"] == first["job"]["id"]
+    events = learning_method_orchestrator.list_attempt_events(topic_id) if hasattr(learning_method_orchestrator, "list_attempt_events") else None
+    assert events is None or [event["status"] for event in events] == ["queued", "running", "failed", "queued"]
+    with db.learning_connection() as connection:
+        jobs = connection.execute(
+            "SELECT learning_method, COUNT(*) AS count FROM learning_jobs WHERE path_topic_id=? GROUP BY learning_method",
+            (topic_id,),
+        ).fetchall()
+    assert {row["learning_method"]: row["count"] for row in jobs} == {
+        "ai_learning": 1, "basic_learning": 1,
+    }
+
+
+def test_three_method_failures_block_topic_without_fourth_method(method_job_store, monkeypatch):
+    topic_id = method_job_store
+    monkeypatch.setattr(learning, "_enqueue_learning_job", lambda job_id: {"id": f"task-{job_id}"})
+    transition = learning_method_orchestrator.queue_initial_method(topic_id)
+
+    for expected_method in ("ai_learning", "basic_learning", "topic_learning"):
+        assert transition["method"] == expected_method
+        job_id = int(transition["job"]["id"])
+        learning_method_orchestrator.mark_method_running(job_id)
+        with db.learning_connection() as connection:
+            connection.execute(
+                "UPDATE learning_jobs SET status='failed', error=? WHERE id=?",
+                (expected_method + " failed", job_id),
+            )
+        transition = learning_method_orchestrator.record_generation_failure(
+            job_id, reason=expected_method + " failed"
+        )
+
+    assert transition["status"] == "blocked"
+    with db.learning_connection() as connection:
+        gate = connection.execute(
+            "SELECT state FROM learning_topic_quality_gates WHERE path_topic_id=?",
+            (topic_id,),
+        ).fetchone()
+        topic = connection.execute(
+            "SELECT status FROM learning_path_topics WHERE id=?",
+            (topic_id,),
+        ).fetchone()
+        jobs = connection.execute(
+            "SELECT learning_method FROM learning_jobs WHERE path_topic_id=? ORDER BY id",
+            (topic_id,),
+        ).fetchall()
+    assert gate["state"] == "blocked"
+    assert topic["status"] == "needs_review"
+    assert [row["learning_method"] for row in jobs] == [
+        "ai_learning", "basic_learning", "topic_learning",
+    ]
+
+
+def test_user_disabled_ai_learning_falls_back_to_basic_learning(method_job_store, monkeypatch):
+    topic_id = method_job_store
+    db.update_settings({"ai_learning_enabled": False})
+    monkeypatch.setattr(learning, "_enqueue_learning_job", lambda job_id: {"id": f"task-{job_id}"})
+
+    result = learning_method_orchestrator.queue_initial_method(topic_id)
+
+    assert result["method"] == "basic_learning"
+    with db.learning_connection() as connection:
+        methods = connection.execute(
+            "SELECT method, status FROM learning_topic_method_attempts WHERE path_topic_id=? ORDER BY id",
+            (topic_id,),
+        ).fetchall()
+    assert [(row["method"], row["status"]) for row in methods] == [
+        ("ai_learning", "unavailable"),
+        ("basic_learning", "queued"),
+    ]
+
+
+def test_user_cancellation_does_not_trigger_method_fallback(method_job_store, monkeypatch):
+    topic_id = method_job_store
+    monkeypatch.setattr(learning, "_enqueue_learning_job", lambda job_id: {"id": f"task-{job_id}"})
+    initial = learning_method_orchestrator.queue_initial_method(topic_id)
+    job_id = int(initial["job"]["id"])
+    learning_method_orchestrator.mark_method_running(job_id)
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE learning_jobs SET status='cancelled', error='user cancelled' WHERE id=?",
+            (job_id,),
+        )
+    learning_method_orchestrator.mark_method_cancelled(job_id)
+    result = learning_method_orchestrator.queue_initial_method(topic_id)
+    assert result["status"] == "cancelled"
+    with db.learning_connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM learning_jobs WHERE path_topic_id=?",
+            (topic_id,),
+        ).fetchone()[0]
+    assert count == 1
