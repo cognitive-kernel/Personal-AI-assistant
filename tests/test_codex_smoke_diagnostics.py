@@ -557,3 +557,20 @@ def test_codex_config_pins_sub_64k_context_to_the_verified_ollama_allocation(mon
     entry = json.loads(Path(catalog_path).read_text(encoding="utf-8"))["models"][0]
     assert entry["context_window"] == 1000
     assert entry["max_context_window"] == 1000
+
+
+def test_hosted_ci_workflows_cancel_superseded_runs_per_pull_request():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    workflows = (
+        ".github/workflows/tests.yml",
+        ".github/workflows/browser-e2e.yml",
+        ".github/workflows/dependency-audit.yml",
+        ".github/workflows/sandbox-integration-ci.yml",
+    )
+    expected_group = "group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"
+    for relative_path in workflows:
+        content = (root / relative_path).read_text(encoding="utf-8")
+        assert expected_group in content
+        assert "cancel-in-progress: true" in content
