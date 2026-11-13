@@ -160,7 +160,17 @@ function Get-AutomaticContext {
     if ($loadedBase.Count -gt 1) {
         throw "Ollama reported multiple loaded instances of selected model '$ModelName'; refusing ambiguous memory accounting."
     }
-    $modelWeightsAlreadyLoaded = $loadedBase.Count -eq 1
+    # Free physical RAM excludes CPU-resident weights, but not weights held
+    # in dedicated VRAM. Treat any VRAM residency or missing telemetry
+    # conservatively by charging the full installed weight size to system RAM.
+    $modelWeightsAlreadyLoaded = $false
+    if ($loadedBase.Count -eq 1 -and $null -ne $loadedBase[0].size_vram) {
+        $sizeVramBytes = 0L
+        if (-not [int64]::TryParse([string]$loadedBase[0].size_vram, [ref]$sizeVramBytes) -or $sizeVramBytes -lt 0) {
+            throw "Ollama /api/ps reported invalid size_vram telemetry for '$ModelName'."
+        }
+        $modelWeightsAlreadyLoaded = $sizeVramBytes -eq 0
+    }
 
     $selectionInput = @{
         model_info = $Info.model_info
