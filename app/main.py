@@ -800,11 +800,14 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         ("gpu_resource_limit_percent", 10, 95),
         ("ram_budget_max_gb", 1, 25),
         ("ram_safety_reserve_gb", 1, 8),
-        ("ai_learning_outline_batch_size", 1, 100),
         ("ai_learning_lesson_batch_size", 1, 20),
         ("ai_learning_chunk_target_chars", 256, 10000),
         ("ai_learning_chunk_overlap_chars", 0, 2000),
+        ("ai_learning_embedding_batch_size", 1, 256),
         ("ai_learning_browser_timeout_seconds", 10, 1800),
+        ("ai_learning_response_timeout_seconds", 30, 7200),
+        ("ai_learning_max_lesson_continuations", 0, 20),
+        ("ai_learning_stability_seconds", 1, 120),
         ("ai_learning_max_retries", 0, 5),
     ]
     for prefix in ("chat", "learning", "programming"):
