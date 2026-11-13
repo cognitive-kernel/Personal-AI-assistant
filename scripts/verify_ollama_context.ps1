@@ -14,8 +14,8 @@ $minimumContextTokens = 1
 
 function Get-OllamaNumParallel {
     # Ollama reads OLLAMA_NUM_PARALLEL from the environment of the server
-    # process. The Runner may use a different account, so inspect the owner
-    # account's persisted Windows environment rather than the Runner's env.
+    # process. The Runner may use a different account, so inspect only this
+    # setting in the server owner's persisted Windows environment.
     try {
         $listeners = @(
             Get-NetTCPConnection -LocalPort 11434 -State Listen -ErrorAction Stop |
@@ -36,31 +36,53 @@ function Get-OllamaNumParallel {
         throw "Could not resolve the Ollama server process owner SID."
     }
 
-    $userHivePath = "Registry::HKEY_USERS\$($owner.Sid)"
-    if (-not (Test-Path -LiteralPath $userHivePath)) {
-        throw "The Ollama server owner's Windows environment hive is unavailable; refusing to assume its parallel request setting."
+    $usersRoot = [Microsoft.Win32.Registry]::Users
+    $userHive = $null
+    $userEnvironment = $null
+    $machineEnvironment = $null
+    try {
+        $userHive = $usersRoot.OpenSubKey([string]$owner.Sid, $false)
+        if ($null -eq $userHive) {
+            throw "The Ollama server owner's Windows environment hive is unavailable."
+        }
+        $userEnvironment = $userHive.OpenSubKey("Environment", $false)
+        $machineEnvironment = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey(
+            "SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+            $false
+        )
+        if ($null -eq $machineEnvironment) {
+            throw "The machine environment registry key is unavailable."
+        }
+
+        $rawValue = $null
+        if ($null -ne $userEnvironment) {
+            $rawValue = $userEnvironment.GetValue(
+                "OLLAMA_NUM_PARALLEL",
+                $null,
+                [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames
+            )
+        }
+        if ($null -eq $rawValue) {
+            $rawValue = $machineEnvironment.GetValue(
+                "OLLAMA_NUM_PARALLEL",
+                $null,
+                [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames
+            )
+        }
+    } catch {
+        throw "Could not read the Ollama server owner's persisted parallelism setting. $($_.Exception.Message)"
+    } finally {
+        if ($null -ne $userEnvironment) { $userEnvironment.Close() }
+        if ($null -ne $userHive) { $userHive.Close() }
+        if ($null -ne $machineEnvironment) { $machineEnvironment.Close() }
     }
-    $userEnvironmentPath = Join-Path $userHivePath "Environment"
-    $machineEnvironmentPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
-    $userEnvironment = if (Test-Path -LiteralPath $userEnvironmentPath) {
-        Get-ItemProperty -LiteralPath $userEnvironmentPath -ErrorAction Stop
-    } else { $null }
-    $machineEnvironment = Get-ItemProperty -LiteralPath $machineEnvironmentPath -ErrorAction Stop
-    $userSetting = if ($userEnvironment) { $userEnvironment.PSObject.Properties["OLLAMA_NUM_PARALLEL"] } else { $null }
-    $machineSetting = $machineEnvironment.PSObject.Properties["OLLAMA_NUM_PARALLEL"]
-    if ($userSetting) {
-        $rawValue = [string]$userSetting.Value
-    } elseif ($machineSetting) {
-        $rawValue = [string]$machineSetting.Value
-    } else {
+
+    if ($null -eq $rawValue -or [string]::IsNullOrWhiteSpace([string]$rawValue)) {
         # Ollama's documented default is one parallel request per model.
         $rawValue = "1"
     }
-    if ([string]::IsNullOrWhiteSpace($rawValue)) {
-        $rawValue = "1"
-    }
     $parallelRequests = [uint64]0
-    if (-not [uint64]::TryParse($rawValue.Trim(), [ref]$parallelRequests) -or $parallelRequests -lt 1) {
+    if (-not [uint64]::TryParse(([string]$rawValue).Trim(), [ref]$parallelRequests) -or $parallelRequests -lt 1) {
         throw "The Ollama server's OLLAMA_NUM_PARALLEL setting must be a positive integer."
     }
     return $parallelRequests
