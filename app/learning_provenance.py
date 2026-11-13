@@ -289,3 +289,74 @@ def candidate_source_contract_status(connection: Any, candidate_id: int) -> dict
         "origin_source_present": has_origin_record,
         "complete": has_ai_reference and has_origin_record,
     }
+
+
+def record_accuracy_evaluation(
+    record: Any,
+    *,
+    trusted_adapter: bool = False,
+) -> dict[str, Any]:
+    """Append one independently evidenced accuracy result from a trusted verifier adapter."""
+    if trusted_adapter is not True:
+        raise LearningProvenanceError("Accuracy evaluations may only be written by trusted verifier adapters.")
+    evaluate_aggregate_learning_accuracy([record])
+    import hashlib
+    from .db import learning_connection
+
+    encoded = json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    with learning_connection() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        existing = connection.execute(
+            "SELECT * FROM learning_accuracy_evaluations WHERE sample_id=?",
+            (record["sample_id"].strip(),),
+        ).fetchone()
+        if existing is not None:
+            if existing["record_sha256"] != digest:
+                raise LearningProvenanceError("An evaluation sample ID cannot be reused with different evidence.")
+            return dict(existing)
+        cursor = connection.execute(
+            """INSERT INTO learning_accuracy_evaluations(
+                   sample_id, learning_path, outcome, verification_method, verifier_id,
+                   generator_id, evidence_ref, evaluated_at, record_json, record_sha256
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                record["sample_id"].strip(), record["learning_path"], record["outcome"],
+                record["verification_method"], record["verifier_id"].strip(),
+                record.get("generator_id"), record["evidence_ref"].strip(),
+                record["evaluated_at"].strip(), encoded, digest,
+            ),
+        )
+        row = connection.execute(
+            "SELECT * FROM learning_accuracy_evaluations WHERE id=?",
+            (cursor.lastrowid,),
+        ).fetchone()
+    return dict(row)
+
+
+def get_aggregate_learning_accuracy() -> dict[str, Any]:
+    """Recompute the current aggregate gate from immutable, hash-checked evaluations."""
+    import hashlib
+    from .db import learning_connection
+
+    with learning_connection() as connection:
+        rows = connection.execute(
+            """SELECT record_json, record_sha256 FROM learning_accuracy_evaluations
+               ORDER BY id"""
+        ).fetchall()
+    records = []
+    for index, row in enumerate(rows):
+        encoded = row["record_json"]
+        observed = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+        if observed != row["record_sha256"]:
+            raise LearningProvenanceError(
+                f"Stored learning accuracy evaluation {index + 1} failed its integrity check."
+            )
+        try:
+            record = json.loads(encoded)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise LearningProvenanceError(
+                f"Stored learning accuracy evaluation {index + 1} is malformed."
+            ) from exc
+        records.append(record)
+    return evaluate_aggregate_learning_accuracy(records)
