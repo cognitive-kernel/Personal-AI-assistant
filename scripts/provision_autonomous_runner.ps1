@@ -50,19 +50,9 @@ if (-not $ollamaPath) {
 if ([string]::IsNullOrWhiteSpace($ollamaPath) -or -not (Test-Path -LiteralPath $ollamaPath -PathType Leaf)) {
     throw "Ollama executable was not found in PATH or among active ollama.exe processes."
 }
-$node = Get-Command node.exe -ErrorAction Stop
-$npm = Get-Command npm.cmd -ErrorAction Stop
 $git = Get-Command git.exe -ErrorAction Stop
 $python = Get-Command python.exe -ErrorAction Stop
 $gh = Get-Command gh.exe -ErrorAction Stop
-$nodeVersion = (@(& $node.Source --version 2>&1) -join " ").Trim()
-$nodeVersionNumber = $null
-try { $nodeVersionNumber = [version]($nodeVersion.TrimStart("v")) } catch {}
-if ($LASTEXITCODE -ne 0 -or $null -eq $nodeVersionNumber -or $nodeVersionNumber -lt [version]"26.13.0") { throw "Node.js 26.13.0 or newer is required; found '$nodeVersion'." }
-$npmVersion = (@(& $npm.Source --version 2>&1) -join " ").Trim()
-$npmVersionNumber = $null
-try { $npmVersionNumber = [version]$npmVersion } catch {}
-if ($LASTEXITCODE -ne 0 -or $null -eq $npmVersionNumber -or $npmVersionNumber -lt [version]"11.20.0") { throw "npm 11.20.0 or newer is required; found '$npmVersion'." }
 $ollamaVersion = (@(& $ollamaPath --version 2>&1) -join " ").Trim()
 $ollamaVersionMatch = [regex]::Match($ollamaVersion, '(?i)([0-9]+\.[0-9]+\.[0-9]+)')
 $ollamaVersionNumber = $null
