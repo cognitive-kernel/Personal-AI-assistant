@@ -1748,7 +1748,8 @@ def submit_assessment(
 
 
 def submit_lesson_issue(
-    job_id: int, issue_report: str, *, request_key: str | None = None
+    job_id: int, issue_report: str, *, request_key: str | None = None,
+    enqueue: bool = True,
 ) -> dict[str, Any]:
     """Create an idempotent, versioned correction job without rewriting history."""
     if not isinstance(issue_report, str) or not issue_report.strip() or len(issue_report) > 5000:
@@ -1793,12 +1794,13 @@ def submit_lesson_issue(
         lesson_review=review,
         correction_request_key=request_key,
     )
-    task = _enqueue_learning_job(int(correction["id"]))
-    correction["task_id"] = task["id"]
+    task = _enqueue_learning_job(int(correction["id"])) if enqueue else None
+    if task is not None:
+        correction["task_id"] = task["id"]
     return {
         "original_job_id": int(job_id),
         "correction_job": correction,
-        "queued": True,
+        "queued": task is not None,
         "note": "Original lesson and its evidence remain unchanged; the correction is a new versioned learning job.",
     }
 
