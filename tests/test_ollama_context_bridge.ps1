@@ -41,6 +41,47 @@ try {
     [IO.File]::WriteAllText($inputPath, $payload, $utf8NoBom)
 
     $helperExitCode = Invoke-ContextSelector
+# Exercise the pure PowerShell metadata helpers without requiring a live Ollama server.
+if ((Resolve-OllamaParallelRequestCount -UserValue $null -MachineValue $null) -ne 1) {
+    throw "An unset Ollama parallel request setting must use the documented default of one."
+}
+if ((Resolve-OllamaParallelRequestCount -UserValue "4" -MachineValue "2") -ne 4) {
+    throw "The Ollama user-level parallel setting must take precedence over the machine setting."
+}
+if ((Resolve-OllamaParallelRequestCount -UserValue $null -MachineValue "3") -ne 3) {
+    throw "The machine-level Ollama parallel setting was not resolved."
+}
+$cpuResidentModel = [pscustomobject]@{ size_vram = 0 }
+if (-not (Test-OllamaWeightsAlreadyLoaded -LoadedModel $cpuResidentModel)) {
+    throw "CPU-resident model weights should already be reflected in free physical RAM."
+}
+$gpuResidentModel = [pscustomobject]@{ size_vram = 1024 }
+if (Test-OllamaWeightsAlreadyLoaded -LoadedModel $gpuResidentModel) {
+    throw "VRAM-resident model weights must be charged conservatively to system RAM."
+}
+$unknownResidencyModel = [pscustomobject]@{}
+if (Test-OllamaWeightsAlreadyLoaded -LoadedModel $unknownResidencyModel) {
+    throw "Missing VRAM telemetry must not be treated as proof of CPU residency."
+}
+$invalidParallelRejected = $false
+try {
+    Resolve-OllamaParallelRequestCount -UserValue "invalid" -MachineValue $null | Out-Null
+} catch {
+    $invalidParallelRejected = $true
+}
+if (-not $invalidParallelRejected) {
+    throw "Invalid OLLAMA_NUM_PARALLEL values must be rejected."
+}
+$invalidVramRejected = $false
+try {
+    Test-OllamaWeightsAlreadyLoaded -LoadedModel ([pscustomobject]@{ size_vram = -1 }) | Out-Null
+} catch {
+    $invalidVramRejected = $true
+}
+if (-not $invalidVramRejected) {
+    throw "Negative size_vram telemetry must be rejected."
+}
+
     if ($helperExitCode -ne 0) {
         $helperError = if (Test-Path -LiteralPath $errorPath) { [IO.File]::ReadAllText($errorPath, [Text.Encoding]::UTF8) } else { "" }
         throw "The UTF-8 file bridge did not return a valid context selection: $helperError"
@@ -118,7 +159,8 @@ $readinessScripts = @(
     "scripts\check_autonomous_agent.ps1",
     "scripts\check_autonomous_runner.ps1",
     "scripts\provision_autonomous_runner.ps1",
-    "scripts\verify_ollama_context.ps1"
+    "scripts\verify_ollama_context.ps1",
+    "scripts\ollama_context_helpers.ps1"
 )
 foreach ($relativePath in $readinessScripts) {
     $scriptPath = Join-Path (Split-Path -Parent $PSScriptRoot) $relativePath
