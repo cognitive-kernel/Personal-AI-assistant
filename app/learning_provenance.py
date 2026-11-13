@@ -250,3 +250,38 @@ def list_candidate_sources(candidate_id: int) -> list[dict[str, Any]]:
             (candidate_id,),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def candidate_source_contract_status(connection: Any, candidate_id: int) -> dict[str, Any]:
+    """Check mandatory source metadata without confusing provenance with verification."""
+    rows = connection.execute(
+        """SELECT source_type, source_url, reference_url, book_title, book_author,
+                  provider, model_id, description
+           FROM learning_candidate_sources WHERE candidate_id=? ORDER BY id""",
+        (candidate_id,),
+    ).fetchall()
+    sources = [dict(row) for row in rows]
+    has_ai_reference = any(
+        item["source_type"] == "ai"
+        and bool(item["provider"])
+        and bool(item["model_id"])
+        and bool(item["reference_url"])
+        for item in sources
+    )
+    has_origin_record = any(
+        (
+            item["source_type"] == "web" and bool(item["source_url"])
+        ) or (
+            item["source_type"] == "book"
+            and bool(item["book_title"]) and bool(item["book_author"])
+        ) or (
+            item["source_type"] == "other" and bool(item["description"])
+        )
+        for item in sources
+    )
+    return {
+        "source_record_count": len(sources),
+        "ai_reference_present": has_ai_reference,
+        "origin_source_present": has_origin_record,
+        "complete": has_ai_reference and has_origin_record,
+    }
