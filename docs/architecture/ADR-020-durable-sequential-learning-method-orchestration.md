@@ -1,12 +1,12 @@
 # ADR-020: Durable sequential learning-method orchestration
 
-- **Status:** Proposed; append-only event ledger implemented, runtime orchestration pending
+- **Status:** In Progress; runtime method orchestration, fallback, Experience observation, and execution fencing implemented; exact-head validation pending
 - **Date:** 2026-11-13
 - **Decision owners:** Repository maintainers
 
 ## Context and root cause
 
-Researched curriculum topics currently enter the Basic Learning job lane directly. A separate quality-gate worker evaluates the generated lesson and, on failure, calls `learning.submit_lesson_issue()` to create another correction job in the same lane. This repeats the same learning method; it does not implement the required fallback sequence:
+Historically, researched curriculum topics entered the Basic Learning job lane directly and a failed quality gate could create another correction job in the same lane. The current method-scoped coordinator replaces that behavior with the required fallback sequence:
 
 1. AI Learning
 2. Basic Learning
@@ -14,7 +14,7 @@ Researched curriculum topics currently enter the Basic Learning job lane directl
 
 The existing `learning_topic_method_attempts` table (migration 51) is append-only but models mutable lifecycle states such as queued/running/failed in a single row. Its update/delete triggers prohibit lifecycle transitions, while its unique key allows only one row per method/attempt. That is not a valid append-only event model.
 
-AI Learning is also not a simple synchronous model call: it is an optional subsystem with its own database, a feature flag defaulting off, a visible Playwright/Chrome worker, durable runs, and possible authentication or explicit user-action states. The coordinator must not assume browser availability or conflate a queued browser run with a completed lesson.
+The AI Learning method now uses its own provider/model profile (ai_learning_llm_provider) and is enabled by default. Basic Learning and Topic/Course Learning use separate profiles. The visible Playwright/Chrome AI-learning console is a distinct optional interface, also enabled by default; its browser authentication/session state must never be treated as proof that a method job completed.
 
 ## Decision
 
@@ -56,20 +56,21 @@ The ledger enforces the transition order and rejects event-key reuse with differ
 ## Runtime implementation status
 
 Implemented:
-- Migration 51 introduced method metadata and the initial method-attempt table.
-- Migration 52 introduced a separate append-only lifecycle event ledger.
-- `app/learning_topic_method_attempts.py` validates event contracts, method order, idempotency, transition ordering, and concurrent replay.
-- Focused tests cover method order, invalid transitions, append-only enforcement, payload-key collision, and concurrent duplicate delivery.
+- Migration 51 introduced method metadata; migration 52 added the append-only lifecycle event ledger; migration 53 added method-scoped job identity; migration 54 added execution owner and monotonic epoch fields.
+- `app/learning_topic_method_attempts.py` validates the fixed method order, event idempotency, transition ordering, and concurrent replay.
+- `app/learning_method_orchestrator.py` starts the first enabled method, records disabled/unavailable methods, advances after permanent generation or evaluation failure, and blocks after the third method.
+- `learning.run_job` maps AI Learning, Basic Learning, and Topic/Course Learning to their independent provider/model settings.
+- `app/learning_execution.py` fences job claims, failures, cancellations, and commits by owner plus execution epoch; `learning_tasks` passes the live task context and checkpoints around execution.
+- The Experience System exposes a read-only observation endpoint over the immutable event ledger; it cannot mutate coordinator state.
+- Focused tests cover fallback after permanent job-creation failure, user-disabled AI Learning, concurrent job creation/claim, stale execution epochs, append-only events, and observer read-only behavior.
 
-Not yet implemented:
-- Coordinator orchestration that starts AI Learning before Basic Learning.
-- AI Learning adapter that creates/recovers a visible-browser run and safely imports the resulting content/provenance.
-- Distinct Basic Learning and Topic/Course Learning adapters.
-- Evaluator-result-to-next-method transition and third-method blocking.
-- Experience System observation of every method event.
-- Crash/restart, lease-loss, concurrent-worker, stale-content, and end-to-end three-method tests.
+Remaining validation:
+- Run the exact-head CI suite and resolve every failure without removing or weakening tests.
+- Add/complete crash-after-event-before-enqueue, crash-after-evaluation-before-advance, lease-loss during provider inference, stale-worker final-commit, and full three-method end-to-end scenarios.
+- Validate each provider adapter against configured Ollama and OpenAI-compatible endpoints; no remote model execution is claimed by source-level tests.
+- Confirm the separate visible-browser subsystem's recovery and user-authentication behavior; it is not the AI Learning method executor.
 
-The current quality-gate handler still uses the existing same-lane correction path after a failed evaluation. Therefore the required three-method fallback is **not complete**, and this ADR remains Proposed.
+Method-specific failures now advance to the next method; the legacy same-lane correction behavior remains only for non-method-scoped legacy jobs. The three-method workflow is implemented in the runtime path but is **not yet accepted as complete** until the remaining failure/recovery tests and exact-head CI pass.
 
 ## Acceptance tests
 
