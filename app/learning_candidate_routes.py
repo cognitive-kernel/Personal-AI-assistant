@@ -39,7 +39,7 @@ class CandidateTestPlanItem(BaseModel):
 
 class CandidateTestPlanRequest(BaseModel):
     confirm: StrictBool
-    oracle_reviewed: StrictBool
+    oracle_reviewed: StrictBool = False
     review_note: str = Field(min_length=20, max_length=1000)
     tests: list[CandidateTestPlanItem] = Field(min_length=1, max_length=10)
 
@@ -194,11 +194,25 @@ def save_candidate_test_plan(
 ) -> dict[str, Any]:
     if request.confirm is not True:
         raise HTTPException(status_code=422, detail="Explicit confirmation is required.")
+    autonomy_gate = None
     if request.oracle_reviewed is not True:
-        raise HTTPException(
-            status_code=422,
-            detail="A human must attest that the proposed tests use an independent oracle.",
-        )
+        from .learning_provenance import get_aggregate_learning_accuracy
+        autonomy_gate = get_aggregate_learning_accuracy()
+        if not autonomy_gate["autonomous_acceptance_eligible"]:
+            raise HTTPException(
+                status_code=422,
+                detail="Human oracle attestation remains required until independently verified accuracy across all four learning paths is strictly above 95%.",
+            )
+        for item in request.tests:
+            if not (
+                item.oracle_id is not None
+                and item.oracle_version is not None
+                and item.claim is not None
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Autonomous test plans must bind every test to a registered independent oracle and exact claim.",
+                )
     for item in request.tests:
         has_code = item.python_test_code is not None
         has_expected_stdout = item.expected_stdout is not None
@@ -222,10 +236,18 @@ def save_candidate_test_plan(
     coverage_request = bool(has_claim_mapping)
     plan = {
         "version": 4 if has_claim_mapping else (3 if has_oracle_reference else 2),
-        "oracle_reviewed": True,
+        "oracle_reviewed": request.oracle_reviewed,
+        "review_mode": "human" if request.oracle_reviewed else "autonomous_accuracy_gate",
         "review_note": request.review_note.strip(),
         "tests": plan_tests,
     }
+    if autonomy_gate is not None:
+        plan["autonomy_gate"] = {
+            "policy_version": autonomy_gate["policy_version"],
+            "accuracy": autonomy_gate["accuracy"],
+            "sample_count": autonomy_gate["sample_count"],
+            "threshold_exclusive": autonomy_gate["threshold_exclusive"],
+        }
     encoded = json.dumps(plan, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     try:
         with learning_connection() as connection:
