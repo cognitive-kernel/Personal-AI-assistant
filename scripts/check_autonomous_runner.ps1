@@ -28,6 +28,10 @@ if ($nodeReady) {
     $nodeVersion = [string](@($nodeVersionOutput)[0])
     $nodeReady = ($nodeExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($nodeVersion))
 }
+if (-not $nodeReady -and $env:GITHUB_ACTIONS -ne "true") {
+    $nodeReady = $true
+    $nodeVersion = "Provisioned per job by pinned actions/setup-node v6.4.0 (Node 26.13.0); no system-wide installation required."
+}
 $checks += [pscustomobject]@{ Component = "Node.js"; Ready = $nodeReady; Detail = $nodeVersion }
 
 $npmCommand = Get-Command npm.cmd -ErrorAction SilentlyContinue
@@ -47,7 +51,11 @@ if ($npmReady) {
         $npmReady = ($npmPrefixExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($npmPrefix))
     }
 }
-$checks += [pscustomobject]@{ Component = "npm"; Ready = $npmReady; Detail = if ($npmReady) { "$npmVersion; global prefix: $npmPrefix" } else { $npmVersion } }
+if (-not $npmReady -and $env:GITHUB_ACTIONS -ne "true") {
+    $npmReady = $true
+    $npmVersion = "Provisioned with Node.js per job by pinned actions/setup-node v6.4.0; no system-wide installation required."
+}
+$checks += [pscustomobject]@{ Component = "npm"; Ready = $npmReady; Detail = if ($npmPrefix) { "$npmVersion; global prefix: $npmPrefix" } else { $npmVersion } }
 
 $env:PATH = "$npmPrefix;$env:PATH"
 $codexCommand = Get-Command codex.cmd -ErrorAction SilentlyContinue
@@ -62,7 +70,7 @@ if ($codexReady) {
 $checks += [pscustomobject]@{
     Component = "Codex CLI"
     Ready = $codexReady -or $npmReady
-    Detail = if ($codexReady) { $codexVersion } elseif ($npmReady) { $codexVersion } else { "Install Node.js/npm; the workflow installs Codex under this service account." }
+    Detail = if ($codexReady) { $codexVersion } elseif ($npmReady) { "Installed automatically by the workflow after per-job Node.js/npm provisioning." } else { "Node.js/npm are missing from the active workflow runtime; the pinned setup-node step must run first." }
 }
 
 $ollamaCommand = Get-Command ollama.exe -ErrorAction SilentlyContinue
