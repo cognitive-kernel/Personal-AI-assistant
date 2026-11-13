@@ -1,3 +1,23 @@
+## 2026-11-13 — Remove unverified target hardware gate and require complete CI matrix
+
+### Root cause
+- The Windows target diagnostic compared the host to Intel Core i5-12400 / 6 cores / 12 threads / 30–33 GiB RAM / Intel UHD Graphics 730 and failed if any value differed.
+- Personal context confirms Windows 11 x64 build 10.0.26300, Python 3.14.6, Python 3.11.9, and Git 2.54.0. It does not confirm the CPU, RAM capacity, or GPU. The repository's former hardware profile was therefore an unverified assumption, not a user requirement; retaining it could reject the actual host incorrectly.
+
+### Correction
+- Removed exact CPU/core/RAM/GPU equality checks from `.github/workflows/codex-windows-sandbox-diagnostic.yml`. The workflow now records the actual Windows/CPU/RAM/GPU profile and requires only complete positive CPU and physical-RAM telemetry before resource-dependent checks.
+- Updated the source-contract regression test to forbid reintroduction of the fixed hardware gate.
+- Extended the target diagnostic's exact-head wait set to include `Sandbox integration CI`, so the target-host stage cannot start while the Docker sandbox workflow is missing or non-green.
+- Corrected README and operations documentation: the Intel i5-12400/32-GB/UHD-730 profile is historical repository context, not verified user hardware or a runtime acceptance condition. The estimator remains based on live host measurements.
+
+### Validation and residual risk
+- The first test attempt on SHA `15d8fc91ce8d3d2036fe0e0e4d1a0334e5cecd6a` caught a mismatch between the test's expected README sentence and the authored wording. The test expectation was corrected; no test was deleted or weakened.
+- Current code/test SHA: `fb53916fe072241b5910fbc3c194ff206ecb6312`. Exact-head runs [tests #43360632558](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43360632558), [Browser E2E #43360632835](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43360632835), [Docker sandbox #43360632554](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43360632554), and [dependency audit #43360632584](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43360632584) were in progress/queued when recorded.
+- Target diagnostic [#43360630126](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43360630126) remains pending without a Runner assignment. No actual hardware inventory, live Ollama environment/allocation, Codex tool-call smoke, or host recovery result is claimed.
+- PR #722 remains Draft/open. Issue #52 independent review and Issue #290 project-wide acceptance remain open. No merge, auto-merge, bypass, or deployment.
+
+---
+
 ## 2026-11-13 — Re-audit of PR #722 against the master engineering prompt
 
 ### Audit findings
