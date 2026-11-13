@@ -41,6 +41,9 @@ def _title_embeddings(texts: list[str]) -> list[list[float]]:
     return vectors
 
 
+# Conservative semantic-content similarity threshold; persisted settings may override it.
+SEMANTIC_DUPLICATE_THRESHOLD = 0.90
+
 TITLE_SEMANTIC_DUPLICATE_THRESHOLD = 0.985
 
 
