@@ -17,14 +17,14 @@ The user starts a course workflow once. The extension retrieves and stores the o
 7. Pause, resume and retry independently at course, topic and lesson levels.
 8. Edit content by creating a new version; retain source, raw response and content hash.
 9. Review and explicitly publish content. Only published versions under approved topics may be retrieved.
-10. Search internal knowledge from the normal assistant response path only after separately enabling and testing the integration.
+10. Search explicitly published internal knowledge from the normal assistant response path by default; the user can disable retrieval in Settings.
 
 ## Isolation and compatibility
 
 - Code lives in app/ai_learning/ and must not rewrite app/learning.py or the existing chat model.
 - A separate database, data/ai_learning.db, has its own checksummed migrations. The current learning database is not migrated or modified.
-- AI_LEARNING_ENABLED=0 and AI_LEARNING_RETRIEVAL_ENABLED=0 are the defaults.
-- Knowledge-store errors must not break the existing chat path.
+- The settings database defaults `ai_learning_enabled`, `ai_learning_retrieval_enabled`, and `ai_learning_browser_enabled` to true; environment feature flags are not authoritative.
+- AI Learning and retrieval are enabled by default through persisted Settings controls; knowledge-store errors must never break the existing chat path.
 - Lexical search is the current retrieval implementation; semantic duplicate checks optionally use a local Ollama embedding model. Deterministic offline retrieval/answer regression metrics and privacy-preserving query feedback are implemented.
 - Model-generated and web-extracted text are untrusted data; embedded instructions never outrank system policy.
 
