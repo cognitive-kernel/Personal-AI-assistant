@@ -150,7 +150,7 @@ def build_api_contract_inventory(application=app) -> dict[str, Any]:
         for parameter in item["parameters"]:
             schema = parameter["schema"]
             if parameter["in"] == "path" and schema.get("type") == "integer":
-                if schema.get("minimum", 1) < 1:
+                if schema.get("minimum") is None or schema.get("minimum", 0) < 1:
                     path_id_gaps.append(f"{item['method']} {item['path']}:{parameter['name']}")
             if parameter["in"] == "query" and parameter["name"] == "limit":
                 if "minimum" not in schema or "maximum" not in schema:
