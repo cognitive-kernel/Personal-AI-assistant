@@ -315,12 +315,12 @@ def test_rejected_topic_is_removed_from_retrieval(isolated_store):
     assert service.search_knowledge("Parameterized injection")["count"] == 0
 
 
-def test_feature_flags_are_off_by_default(monkeypatch):
+def test_ai_learning_modules_are_enabled_by_default(monkeypatch):
     from app.ai_learning import config
-    monkeypatch.delenv("AI_LEARNING_ENABLED", raising=False)
-    monkeypatch.delenv("AI_LEARNING_RETRIEVAL_ENABLED", raising=False)
-    assert config.is_enabled() is False
-    assert config.retrieval_is_enabled() is False
+    monkeypatch.setattr(config, "_setting", lambda name: config._DEFAULTS[name])
+    assert config.is_enabled() is True
+    assert config.retrieval_is_enabled() is True
+    assert config.browser_is_enabled() is True
 
 def test_outline_import_creates_pending_topics_and_preserves_raw_response(isolated_store, monkeypatch):
     course = service.create_course(title="SQL Server 2005")
@@ -731,10 +731,9 @@ def test_playwright_capture_uses_visible_ui_and_keeps_extension_permissions_narr
     assert '"page_crashed_event"' in automation
     assert '"browser_request_failed"' in automation
 
-def test_opt_in_retrieval_adapter_returns_traceable_published_context(isolated_store, monkeypatch):
+def test_enabled_retrieval_adapter_returns_traceable_published_context(isolated_store, monkeypatch):
     from app.ai_learning import integration
-    monkeypatch.setenv("AI_LEARNING_ENABLED", "1")
-    monkeypatch.setenv("AI_LEARNING_RETRIEVAL_ENABLED", "1")
+    monkeypatch.setattr(integration, "retrieval_is_enabled", lambda: True)
     course = service.create_course(title="SQL Server")
     topic = service.add_topic(course["id"], "Indexes")
     service.decide_topics([topic["id"]], "approved")
@@ -755,10 +754,9 @@ def test_opt_in_retrieval_adapter_returns_traceable_published_context(isolated_s
     assert "indexes improve performance" not in trace["query_sha256"]
 
 
-def test_opt_in_retrieval_adapter_is_off_when_flag_is_disabled(isolated_store, monkeypatch):
+def test_retrieval_adapter_is_off_when_user_disables_it(isolated_store, monkeypatch):
     from app.ai_learning import integration
-    monkeypatch.setenv("AI_LEARNING_ENABLED", "0")
-    monkeypatch.setenv("AI_LEARNING_RETRIEVAL_ENABLED", "1")
+    monkeypatch.setattr(integration, "retrieval_is_enabled", lambda: False)
     assert integration.retrieve_context("anything") == []
 
 
