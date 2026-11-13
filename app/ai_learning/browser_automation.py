@@ -1100,7 +1100,7 @@ def _browser_capture(
     if not chrome:
         raise BrowserAutomationError(
             "chrome_not_found",
-            "Chrome پیدا نشد. مسیر آن را در AI_LEARNING_CHROME_PATH تنظیم کنید.",
+            "Chrome پیدا نشد. مسیر اجرایی آن را در بخش تنظیمات AI Learning مشخص کنید.",
         )
     profile = _profile_path()
     _log_event("browser_configured", chrome_path=chrome, profile_path=str(profile))
