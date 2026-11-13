@@ -106,3 +106,11 @@ The run-scoped checkpoint readiness and snapshot-index isolation defect is track
 - These newly evidenced tasks fit the existing E-01/E-02/E-06 work-package scope; no additional hours are added until the remaining endpoint inventory and defect count are established. The original 32-hour contingency remains unallocated.
 - Actual engineering hours remain **not measured**; elapsed conversation/tool time is not substituted for labor accounting. The original 2026-12-01 forecast is retained as a planning target, not a guaranteed completion date. Reforecast only after task-level hours and newly discovered scope are measured.
 - Target-host, human adjudication, and independent-review time remain excluded from the engineering-hour baseline, but their acceptance evidence remains required and separately tracked.
+
+
+## 2026-11-13 — Continued audit checkpoint
+
+- The current audited main SHA remains `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`. PR #737 is addressing pagination schema enforcement; PR #738 extends positive path-ID validation across task, curriculum, cloud-resource and AI-learning routes.
+- These findings remain within E-01 (repository/architecture audit) and E-02 (API/persistence contracts). The remaining route families and endpoint contracts have not yet been inventoried completely; no extra hours or contingency consumption are recorded.
+- The original 176-hour budget, 144-hour task estimate, 32-hour reserve, and 2026-12-01 planning target remain unchanged. Actual engineering labor hours are not measured; elapsed tool/chat time is not used as a proxy.
+- PR #737 and #738 have not completed exact-head CI at this checkpoint. No merge or completion claim is made.
