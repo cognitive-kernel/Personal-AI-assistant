@@ -308,23 +308,31 @@ def recover_interrupted_courses() -> int:
 def _scheduled_course_worker(course_id: int) -> None:
     global _ACTIVE_COURSE_ID
     _ensure_process_identity()
+    run_succeeded = False
     try:
         run_course(course_id)
+        run_succeeded = True
     finally:
         with _COURSE_DISPATCH_LOCK:
             if _ACTIVE_COURSE_ID == course_id:
                 _ACTIVE_COURSE_ID = None
-        # Drain the queue after success only. A provider/authentication/dependency
-        # failure should not cascade across every interrupted course in one startup.
-        try:
-            status = get_course(course_id)["status"]
-        except Exception:
+        # Drain the queue only when run_course returned normally and the durable
+        # status confirms completion. Never let cleanup suppress the original
+        # provider/authentication/dependency exception.
+        if not run_succeeded:
             _stop_course_worker_lease_heartbeat(release=True)
-            return
-        if status == "completed":
-            dispatch_next_course()
         else:
-            _stop_course_worker_lease_heartbeat(release=True)
+            try:
+                status = get_course(course_id)["status"]
+            except Exception:
+                # A failed status lookup must stop dispatch, but must not return
+                # from finally or suppress an exception already in flight.
+                _stop_course_worker_lease_heartbeat(release=True)
+            else:
+                if status == "completed":
+                    dispatch_next_course()
+                else:
+                    _stop_course_worker_lease_heartbeat(release=True)
 
 
 def _course_dispatch_gate(conn: Any) -> tuple[dict[str, Any] | None, Any | None]:
