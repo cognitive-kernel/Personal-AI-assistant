@@ -80,6 +80,6 @@ These are **provisional, evidence-based progress scores** using the fixed stage 
 ## 2026-11-13 — Recalculation deferred pending complete evidence
 
 - Current main SHA: `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`.
-- PRs #734 and #736 have exact-head CI evidence as recorded in the engineering log. PR #737 full test CI is still running on `5bf13d05283daa2785a52bebfa9d8adf15f988b8`; PR #738 CI is running on `541de4a94398ef46e64f6e9c1055ef9b34327f1b`.
+- PRs #734 and #736 have exact-head CI evidence as recorded in the engineering log. PR #737 exact-head CI passed on `5bf13d05283daa2785a52bebfa9d8adf15f988b8` (2,142 passed, 2 skipped, 51 deselected); PR #738 CI is queued/running on `d1190c83a3e2a413e7ee8b9f35c95f10e45a3985`.
 - A defensible current weighted score is deferred until the API/module inventory and all current exact-head checks are complete. No score inflation or interpolation is applied.
 - External gates (independent security review, target-host operations, live-model/human adjudication) remain separately blocked and must never be counted as accepted based on repository CI.
