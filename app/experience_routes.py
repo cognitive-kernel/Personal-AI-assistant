@@ -15,10 +15,22 @@ from . import experience_learning_observer
 from .db import get_settings
 from .task_routes import require_loopback_client
 
+def require_experience_system_enabled() -> None:
+    """Gate the complete Experience System through its persisted module setting."""
+    try:
+        enabled = get_settings().get("experience_system_enabled", True)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Experience System settings are unavailable.") from exc
+    if type(enabled) is not bool:
+        raise HTTPException(status_code=503, detail="Experience System enablement setting is invalid.")
+    if not enabled:
+        raise HTTPException(status_code=409, detail="Experience System is disabled in settings.")
+
+
 router = APIRouter(
     prefix="/api/experiences",
     tags=["experience-memory"],
-    dependencies=[Depends(require_loopback_client)],
+    dependencies=[Depends(require_loopback_client), Depends(require_experience_system_enabled)],
 )
 
 EditableStatus = Literal[
@@ -137,8 +149,6 @@ def list_learning_method_observations(
     path_topic_id: int | None = Query(default=None, ge=1),
     limit: int = Query(default=100, ge=1, le=200),
 ) -> dict[str, Any]:
-    if get_settings().get("experience_system_enabled", True) is not True:
-        raise HTTPException(status_code=409, detail="Experience System is disabled in settings.")
     try:
         items = experience_learning_observer.list_method_observations(
             path_topic_id=path_topic_id, limit=limit
