@@ -3,7 +3,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
+from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from app import db
 
@@ -150,6 +156,7 @@ def repair_legacy_rejected_candidates(*, apply: bool = False) -> dict[str, Any]:
 
     return {
         "mode": "apply" if apply else "dry_run",
+        "database_path": str(db.defaults.learning_db_path),
         "scanned": len(reports),
         "updated": updated_count,
         "candidates": reports,
