@@ -349,9 +349,13 @@ def test_candidate_sandbox_review_requires_consent_configuration_and_reviewed_pl
         )
     docker = tmp_path / "docker"
     docker.write_text("test executable", encoding="utf-8")
-    monkeypatch.setenv("SANDBOX_ENABLED", "true")
-    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", str(docker))
-    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.12-slim@sha256:" + "a" * 64)
+    db.update_settings({
+        "sandbox_enabled": True,
+        "sandbox_docker_executable": str(docker),
+        "sandbox_python_image": "python:3.12-slim@sha256:" + "a" * 64,
+        "sandbox_timeout_seconds": 10,
+        "sandbox_max_output_bytes": 8192,
+    })
     sandbox_consent.grant_consent()
 
     queued = review_store.post(path, json=request)
@@ -397,9 +401,13 @@ def test_candidate_sandbox_worker_runs_reviewed_test_code_and_never_promotes(rev
         )
     docker = tmp_path / "docker"
     docker.write_text("test executable", encoding="utf-8")
-    monkeypatch.setenv("SANDBOX_ENABLED", "true")
-    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", str(docker))
-    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.12-slim@sha256:" + "a" * 64)
+    db.update_settings({
+        "sandbox_enabled": True,
+        "sandbox_docker_executable": str(docker),
+        "sandbox_python_image": "python:3.12-slim@sha256:" + "a" * 64,
+        "sandbox_timeout_seconds": 10,
+        "sandbox_max_output_bytes": 8192,
+    })
     sandbox_consent.grant_consent()
     calls = []
     monkeypatch.setattr(
@@ -454,9 +462,13 @@ def test_candidate_sandbox_records_missing_docker_as_unavailable_not_failed(revi
         )
     docker = tmp_path / "docker"
     docker.write_text("test executable", encoding="utf-8")
-    monkeypatch.setenv("SANDBOX_ENABLED", "true")
-    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", str(docker))
-    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.12-slim@sha256:" + "a" * 64)
+    db.update_settings({
+        "sandbox_enabled": True,
+        "sandbox_docker_executable": str(docker),
+        "sandbox_python_image": "python:3.12-slim@sha256:" + "a" * 64,
+        "sandbox_timeout_seconds": 10,
+        "sandbox_max_output_bytes": 8192,
+    })
     sandbox_consent.grant_consent()
     monkeypatch.setattr(sandbox, "run_python", lambda *args, **kwargs: SandboxResult("unavailable", None, "", "", 1))
 
@@ -495,9 +507,13 @@ def test_cancelled_sandbox_run_does_not_create_test_failure_experience(review_st
         )
     docker = tmp_path / "docker"
     docker.write_text("test executable", encoding="utf-8")
-    monkeypatch.setenv("SANDBOX_ENABLED", "true")
-    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", str(docker))
-    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.12-slim@sha256:" + "a" * 64)
+    db.update_settings({
+        "sandbox_enabled": True,
+        "sandbox_docker_executable": str(docker),
+        "sandbox_python_image": "python:3.12-slim@sha256:" + "a" * 64,
+        "sandbox_timeout_seconds": 10,
+        "sandbox_max_output_bytes": 8192,
+    })
     sandbox_consent.grant_consent()
     monkeypatch.setattr(sandbox, "run_python", lambda *args, **kwargs: SandboxResult("cancelled", None, "", "", 1))
 
@@ -532,9 +548,13 @@ def test_candidate_sandbox_expected_stdout_mismatch_is_a_failed_test(review_stor
         )
     docker = tmp_path / "docker"
     docker.write_text("test executable", encoding="utf-8")
-    monkeypatch.setenv("SANDBOX_ENABLED", "true")
-    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", str(docker))
-    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.12-slim@sha256:" + "a" * 64)
+    db.update_settings({
+        "sandbox_enabled": True,
+        "sandbox_docker_executable": str(docker),
+        "sandbox_python_image": "python:3.12-slim@sha256:" + "a" * 64,
+        "sandbox_timeout_seconds": 10,
+        "sandbox_max_output_bytes": 8192,
+    })
     sandbox_consent.grant_consent()
     monkeypatch.setattr(sandbox, "run_python", lambda *args, **kwargs: SandboxResult("succeeded", 0, "actual", "", 1))
 
@@ -890,9 +910,13 @@ def test_sandbox_retry_after_terminal_ledger_write_failure_is_bounded_and_idempo
 
     docker = tmp_path / "docker"
     docker.write_text("test executable", encoding="utf-8")
-    monkeypatch.setenv("SANDBOX_ENABLED", "true")
-    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", str(docker))
-    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.12-slim@sha256:" + "a" * 64)
+    db.update_settings({
+        "sandbox_enabled": True,
+        "sandbox_docker_executable": str(docker),
+        "sandbox_python_image": "python:3.12-slim@sha256:" + "a" * 64,
+        "sandbox_timeout_seconds": 10,
+        "sandbox_max_output_bytes": 8192,
+    })
     sandbox_consent.grant_consent()
     sandbox_calls = []
     monkeypatch.setattr(
@@ -986,9 +1010,13 @@ def test_sandbox_failure_experience_persistence_retries_without_rerunning_test(
         )
     docker = tmp_path / "docker"
     docker.write_text("test executable", encoding="utf-8")
-    monkeypatch.setenv("SANDBOX_ENABLED", "true")
-    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", str(docker))
-    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.12-slim@sha256:" + "a" * 64)
+    db.update_settings({
+        "sandbox_enabled": True,
+        "sandbox_docker_executable": str(docker),
+        "sandbox_python_image": "python:3.12-slim@sha256:" + "a" * 64,
+        "sandbox_timeout_seconds": 10,
+        "sandbox_max_output_bytes": 8192,
+    })
     sandbox_consent.grant_consent()
     sandbox_calls = []
     monkeypatch.setattr(
