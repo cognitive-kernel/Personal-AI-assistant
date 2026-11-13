@@ -174,3 +174,60 @@ def test_candidate_source_records_are_persisted_idempotently_and_do_not_promote(
         ).fetchone()
     assert status["status"] == "awaiting_test"
     assert status["promoted_knowledge_id"] is None
+
+
+def test_persisted_accuracy_gate_is_trusted_idempotent_and_integrity_checked(tmp_path, monkeypatch):
+    import sqlite3
+
+    from app import db
+    from app.learning_provenance import (
+        get_aggregate_learning_accuracy,
+        record_accuracy_evaluation,
+    )
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+
+    with pytest.raises(LearningProvenanceError, match="trusted verifier"):
+        record_accuracy_evaluation(_records(4)[0])
+
+    records = _records(96, 4)
+    first = record_accuracy_evaluation(records[0], trusted_adapter=True)
+    repeated = record_accuracy_evaluation(records[0], trusted_adapter=True)
+    assert first["id"] == repeated["id"]
+
+    for record in records[1:]:
+        record_accuracy_evaluation(record, trusted_adapter=True)
+
+    report = get_aggregate_learning_accuracy()
+    assert report["sample_count"] == 100
+    assert report["correct_count"] == 96
+    assert report["accuracy"] == pytest.approx(0.96)
+    assert report["autonomous_acceptance_eligible"] is True
+
+    with db.learning_connection() as connection:
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            connection.execute(
+                "UPDATE learning_accuracy_evaluations SET outcome='incorrect' WHERE sample_id=?",
+                (records[0]["sample_id"],),
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            connection.execute(
+                "DELETE FROM learning_accuracy_evaluations WHERE sample_id=?",
+                (records[0]["sample_id"],),
+            )
+
+
+def test_accuracy_record_id_cannot_be_reused_with_different_evidence(tmp_path, monkeypatch):
+    from app import db
+    from app.learning_provenance import record_accuracy_evaluation
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    record = _records(4)[0]
+    record_accuracy_evaluation(record, trusted_adapter=True)
+    changed = dict(record, outcome="incorrect")
+    with pytest.raises(LearningProvenanceError, match="cannot be reused"):
+        record_accuracy_evaluation(changed, trusted_adapter=True)
