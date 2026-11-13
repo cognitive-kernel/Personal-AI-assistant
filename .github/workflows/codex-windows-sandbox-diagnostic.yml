@@ -411,7 +411,7 @@ jobs:
           @($pythonDirectory, $scriptsPath, $npmPrefix, $ollamaDirectory) |
             Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
-          $requiredCodexVersion = "0.167.0"
+          $requiredCodexVersion = "0.168.0"
           $codexCommand = Get-Command codex.cmd -ErrorAction SilentlyContinue
           $installedVersion = ""
           if ($codexCommand) {
