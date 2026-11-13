@@ -100,7 +100,7 @@ def queue_method_attempt(
             event_key=event_key,
             evidence={"method_order": list(METHOD_ORDER), "method_key": method_key},
         )
-    elif latest["status"] in {"failed", "unavailable", "inconclusive", "passed"}:
+    elif latest["status"] in {"failed", "unavailable", "inconclusive", "passed", "cancelled"}:
         raise MethodAttemptError("This method attempt is already terminal.")
 
     job = _find_job_by_method_key(method_key)
@@ -317,6 +317,8 @@ def queue_initial_method(
                 else:
                     task = None
                 return {"status": "resumed", "method": method, "job": job, "task": task}
+        if last["status"] == "cancelled":
+            return {"status": "cancelled", "path_topic_id": path_topic_id}
         if last["status"] in {"failed", "unavailable", "inconclusive"}:
             try:
                 last_evidence = json.loads(last.get("evidence_json") or "{}")
@@ -413,11 +415,11 @@ def mark_method_cancelled(job_id: int, *, reason: str = "Cancelled by user.") ->
     if latest is not None and latest["status"] == "cancelled":
         return
     append_attempt_event(
-        path_topic_id, method, attempt_number, "failed",
+        path_topic_id, method, attempt_number, "cancelled",
         event_key=f"{job['method_attempt_key']}:cancelled",
         job_id=job_id,
         content_sha256=_content_hash(job),
-        diagnosis={"reason": str(reason)[:500]},
+        diagnosis={"reason": str(reason)[:500], "terminal_state": "cancelled"},
         evidence={"cancelled_by_user": True},
     )
 
