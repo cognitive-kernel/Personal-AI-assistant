@@ -131,7 +131,11 @@ def create_job(
     path_topic_id: int | None = None,
     lesson_review: dict[str, Any] | None = None,
     correction_request_key: str | None = None,
+    *,
+    learning_method: str = "basic_learning",
+    method_attempt_key: str | None = None,
 ) -> dict[str, Any]:
+    """Create one durable job with an optional method-scoped idempotency identity."""
     topic = topic.strip()
     if not topic or len(topic) > 300:
         raise ValueError("Topic must contain 1–300 characters.")
@@ -139,7 +143,19 @@ def create_job(
     source_limit = max(1000, min(100000, int(get_settings().get("learning_source_max_chars", 12000))))
     if len(source_text) > source_limit:
         raise ValueError(f"Source text is too large (current limit: {source_limit} characters).")
-    source_kind = "user_provided_text" if source_text else "model_knowledge_no_external_source"
+    allowed_methods = {"ai_learning", "basic_learning", "topic_learning"}
+    if not isinstance(learning_method, str) or learning_method not in allowed_methods:
+        raise ValueError("learning_method is unsupported.")
+    if method_attempt_key is not None:
+        if (
+            not isinstance(method_attempt_key, str)
+            or not method_attempt_key.strip()
+            or len(method_attempt_key.strip()) > 200
+        ):
+            raise ValueError("method_attempt_key must contain 1–200 characters.")
+        method_attempt_key = method_attempt_key.strip()
+        if path_topic_id is None or correction_request_key is not None:
+            raise ValueError("Method-scoped jobs require a path topic and cannot be correction jobs.")
     if correction_request_key is not None and (
         not isinstance(correction_request_key, str)
         or not correction_request_key.strip()
@@ -147,22 +163,63 @@ def create_job(
     ):
         raise ValueError("correction_request_key must contain 1–200 characters.")
     correction_request_key = correction_request_key.strip() if correction_request_key else None
+
+    if learning_method == "topic_learning":
+        source_kind = "researched_topic_course" if source_text else "topic_course_no_external_source"
+        evidence_type = "research_context"
+        source_ref = "learning-path-research"
+        evidence_note = "Persisted curriculum research context; source-level verification remains separate."
+    elif learning_method == "ai_learning":
+        source_kind = "ai_learning_provider"
+        evidence_type = "ai_learning_context"
+        source_ref = "ai-learning-run"
+        evidence_note = "AI Learning output/context; provider identity and source provenance are recorded separately."
+    else:
+        source_kind = "user_provided_text" if source_text else "model_knowledge_no_external_source"
+        evidence_type = "user_text"
+        source_ref = "user-provided"
+        evidence_note = "متن ورودی کاربر؛ اعتبار مستقل منبع بررسی نشده است."
+
     existing_job_id: int | None = None
     existing_source_mismatch = False
     job_id: int | None = None
     with learning_connection() as conn:
-        # Correction creation is idempotent across task retries and worker recovery.
-        if correction_request_key is not None:
+        # Serialize identity lookup and creation. This makes retries safe even when
+        # multiple workers receive the same method task concurrently.
+        conn.execute("BEGIN IMMEDIATE")
+        if method_attempt_key is not None:
+            existing_method = conn.execute(
+                """SELECT id, topic, path_topic_id, learning_method
+                   FROM learning_jobs WHERE method_attempt_key=?""",
+                (method_attempt_key,),
+            ).fetchone()
+            if existing_method is not None:
+                if (
+                    existing_method["topic"] != topic
+                    or existing_method["path_topic_id"] != path_topic_id
+                    or existing_method["learning_method"] != learning_method
+                ):
+                    raise ValueError("method_attempt_key was reused for a different learning job.")
+                if source_text:
+                    existing_source = conn.execute(
+                        "SELECT content FROM learning_source_text WHERE job_id=?",
+                        (int(existing_method["id"]),),
+                    ).fetchone()
+                    existing_source_mismatch = (
+                        existing_source is None or existing_source["content"] != source_text
+                    )
+                existing_job_id = int(existing_method["id"])
+
+        # Correction creation remains idempotent and is kept separate from method jobs.
+        if existing_job_id is None and correction_request_key is not None:
             existing_correction = conn.execute(
                 "SELECT id FROM learning_jobs WHERE correction_request_key=?",
                 (correction_request_key,),
             ).fetchone()
             if existing_correction is not None:
                 existing_job_id = int(existing_correction["id"])
-        # Path-topic creation is idempotent under concurrent start/resume requests.
-        # Acquire the SQLite write reservation before checking for an active job.
+
         if existing_job_id is None and path_topic_id is not None:
-            conn.execute("BEGIN IMMEDIATE")
             topic_row = conn.execute(
                 "SELECT id FROM learning_path_topics WHERE id=?", (path_topic_id,)
             ).fetchone()
@@ -176,43 +233,56 @@ def create_job(
                     + str(first_blocked["topic"]) + " (" + str(first_blocked["status"]) + ")."
                 )
             existing = conn.execute(
-                "SELECT id FROM learning_jobs WHERE path_topic_id=? AND status IN ('queued', 'running') "
-                "ORDER BY id DESC LIMIT 1",
+                """SELECT id, method_attempt_key FROM learning_jobs
+                   WHERE path_topic_id=? AND status IN ('queued', 'running')
+                   ORDER BY id DESC LIMIT 1""",
                 (path_topic_id,),
             ).fetchone()
             if existing is not None:
-                existing_job_id = int(existing["id"])
-                if source_text:
-                    existing_source = conn.execute(
-                        "SELECT content FROM learning_source_text WHERE job_id=?",
-                        (existing_job_id,),
-                    ).fetchone()
-                    existing_source_mismatch = (
-                        existing_source is None or existing_source["content"] != source_text
-                    )
+                if method_attempt_key is not None:
+                    if existing["method_attempt_key"] != method_attempt_key:
+                        raise ValueError("Another learning method already owns this curriculum topic.")
+                    existing_job_id = int(existing["id"])
+                elif existing_job_id is None:
+                    existing_job_id = int(existing["id"])
+                    if source_text:
+                        existing_source = conn.execute(
+                            "SELECT content FROM learning_source_text WHERE job_id=?",
+                            (existing_job_id,),
+                        ).fetchone()
+                        existing_source_mismatch = (
+                            existing_source is None or existing_source["content"] != source_text
+                        )
+
         if existing_job_id is None:
             cursor = conn.execute(
-                "INSERT INTO learning_jobs(topic, status, source_kind, path_topic_id, lesson_review_json, correction_request_key) "
-                "VALUES (?, 'queued', ?, ?, ?, ?)",
+                """INSERT INTO learning_jobs(
+                       topic, status, source_kind, path_topic_id, lesson_review_json,
+                       correction_request_key, learning_method, method_attempt_key
+                   ) VALUES (?, 'queued', ?, ?, ?, ?, ?, ?)""",
                 (
-                    topic,
-                    source_kind,
-                    path_topic_id,
+                    topic, source_kind, path_topic_id,
                     json.dumps(lesson_review, ensure_ascii=False) if lesson_review else None,
-                    correction_request_key,
+                    correction_request_key, learning_method, method_attempt_key,
                 ),
             )
             job_id = int(cursor.lastrowid)
             if source_text:
                 digest = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
-                conn.execute("INSERT INTO learning_source_text(job_id, content) VALUES (?, ?)", (job_id, source_text))
-                conn.execute("""INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
-                    VALUES (?, 'user_text', 'user-provided', ?, 'متن ورودی کاربر؛ اعتبار مستقل منبع بررسی نشده است.')""", (job_id, digest))
+                conn.execute(
+                    "INSERT INTO learning_source_text(job_id, content) VALUES (?, ?)",
+                    (job_id, source_text),
+                )
+                conn.execute(
+                    """INSERT INTO learning_evidence(
+                           job_id, evidence_type, source_ref, content_hash, note
+                       ) VALUES (?, ?, ?, ?, ?)""",
+                    (job_id, evidence_type, source_ref, digest, evidence_note),
+                )
+
     if existing_job_id is not None:
         if existing_source_mismatch:
-            raise ValueError(
-                "An active learning job already exists for this path topic with different source text."
-            )
+            raise ValueError("An existing learning job has different source text for this request key.")
         return get_job(existing_job_id)
     if job_id is None:
         raise LearningError("Learning job could not be created.")
