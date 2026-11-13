@@ -1084,22 +1084,22 @@ def run_job(job_id: int) -> None:
     from .learning_durable_budget import reserve_job_budget
     generation_budget = LearningPipelineBudget(max_calls=2, max_predict_tokens=7800)
     try:
-        if settings.get("learning_llm_provider", "ollama") == "openai_compatible":
+        if settings.get(f"{provider_purpose}_llm_provider", "ollama") == "openai_compatible":
             # The configured endpoint owns context allocation; do not reject a
             # remote model because this host lacks the model's local RAM budget.
             limits = {
-                "num_ctx": int(settings.get("learning_ollama_num_ctx", settings["ollama_num_ctx"])),
+                "num_ctx": int(settings.get(f"{provider_purpose}_ollama_num_ctx", settings["ollama_num_ctx"])),
                 "cpu_threads": 0,
             }
         else:
             limits = runtime_limits({
-                "ollama_num_ctx": settings.get("learning_ollama_num_ctx", settings["ollama_num_ctx"]),
-                "ollama_num_thread": settings.get("learning_ollama_num_thread", settings["ollama_num_thread"]),
+                "ollama_num_ctx": settings.get(f"{provider_purpose}_ollama_num_ctx", settings["ollama_num_ctx"]),
+                "ollama_num_thread": settings.get(f"{provider_purpose}_ollama_num_thread", settings["ollama_num_thread"]),
                 "cpu_resource_limit_percent": settings.get("cpu_resource_limit_percent", 90),
                 "ram_budget_max_gb": settings.get("ram_budget_max_gb", 25),
                 "ram_safety_reserve_gb": settings.get("ram_safety_reserve_gb", 4),
             }, detect_hardware())
-        configured_model = str(settings.get("learning_ollama_model", settings["ollama_model"])).strip()
+        configured_model = str(settings.get(f"{provider_purpose}_ollama_model", settings["ollama_model"])).strip()
         claim_review_sources = (
             _claim_review_sources(source_text)
             if source_kind == "web_retrieved" and source_text
@@ -1111,8 +1111,9 @@ def run_job(job_id: int) -> None:
             configured_model,
             claim_review_sources=claim_review_sources,
             topic=topic,
+            provider_purpose=provider_purpose,
         )
-        request_timeout = int(settings.get("learning_ollama_timeout_seconds", settings["ollama_timeout_seconds"]))
+        request_timeout = int(settings.get(f"{provider_purpose}_ollama_timeout_seconds", settings["ollama_timeout_seconds"]))
         generation_budget.reserve("initial_generation", predict_tokens=3900)
         # Resolve model policy before reserving durable inference budget. A failed
         # discovery/eligibility check must not consume a model-call reservation.
@@ -1130,7 +1131,7 @@ def run_job(job_id: int) -> None:
                 {"role": "user", "content": serialized_prompt},
             ],
             "options": {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"], "num_predict": 3900},
-        }, timeout=request_timeout, purpose="learning")
+        }, timeout=request_timeout, purpose=provider_purpose)
         provider_usage: dict[str, dict[str, int]] = {
             "initial_generation": _ollama_usage_summary(response)
         }
