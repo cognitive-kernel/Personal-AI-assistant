@@ -13,6 +13,7 @@ from . import learning
 from .db import learning_connection
 from . import task_manager
 from . import ollama, learning_topic_quality_tasks, learning_method_orchestrator
+from . import learning_execution
 from .task_worker import PermanentTaskError, RetryableTaskError, TaskContext, TaskInterrupted
 
 logger = logging.getLogger(__name__)
@@ -371,6 +372,26 @@ def handle_learning_job(
                 f"Learning execution failed after {attempts} attempt(s): {type(cause).__name__ if cause else type(exc).__name__}",
             )
         raise RetryableTaskError("Learning job execution failed; retry may succeed.") from exc
+    except learning_execution.LearningExecutionLeaseLostError as exc:
+        raise RetryableTaskError("Learning job execution ownership changed; stale result was discarded.") from exc
+    except Exception as exc:
+        # Do not advance method state if this worker no longer owns the task lease.
+        context.control_status()
+        task = task_manager.get_task(context.task_id) or {}
+        attempts = int(task.get("attempts", 0))
+        max_attempts = int(task.get("max_attempts", 1))
+        if attempts >= max_attempts:
+            fallback = _advance_failed_method(
+                job_id, context, f"Unexpected learning execution failure: {type(exc).__name__}"
+            )
+            if fallback is not None:
+                return {"job_id": job_id, "learning_status": "failed", "method_fallback": fallback}
+            _record_learning_escalation(
+                context.task_id, job_id, "unexpected_execution_failure",
+                f"Unexpected learning execution failure after {attempts} attempt(s): {type(exc).__name__}",
+            )
+            raise PermanentTaskError("Learning execution failed after its bounded retry budget.") from exc
+        raise RetryableTaskError("Learning execution failed unexpectedly; retry may succeed.") from exc
 
     result = learning.get_job(job_id)
     status = result["status"]
