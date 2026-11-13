@@ -122,10 +122,15 @@ def handle_topic_quality_evaluation(
     if gate["state"] == "blocked":
         return {"path_topic_id": path_topic_id, "job_id": job_id, "status": "blocked"}
     if gate["current_job_id"] is None or int(gate["current_job_id"]) != job_id:
-        if gate["state"] == "repairing":
+        if gate["state"] == "repairing" and gate["current_job_id"] is not None:
+            current_job_id = int(gate["current_job_id"])
+            current_job = learning.get_job(current_job_id)
+            if current_job.get("status") == "queued":
+                learning._enqueue_learning_job(current_job_id)
             return {
                 "path_topic_id": path_topic_id, "job_id": job_id, "status": "repairing",
-                "current_job_id": gate["current_job_id"],
+                "current_job_id": current_job_id,
+                "recovered_correction_queue": current_job.get("status") == "queued",
             }
         raise PermanentTaskError("Evaluation task no longer owns the current topic attempt.")
 
