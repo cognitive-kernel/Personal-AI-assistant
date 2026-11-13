@@ -535,3 +535,27 @@ def test_provider_model_discovery_rejects_mixed_public_and_private_dns(monkeypat
     import pytest
     with pytest.raises(ollama.OllamaError, match="private or non-public"):
         ollama.list_provider_models("chat")
+
+
+def test_ai_learning_chat_uses_its_own_selected_provider_and_model(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(ollama, "get_settings", lambda: {
+        "ai_learning_llm_provider": "openai_compatible",
+        "ai_learning_llm_base_url": "https://api.openai.com/v1",
+        "ai_learning_llm_api_key_env": "OPENAI_API_KEY",
+        "ai_learning_ollama_model": "gpt-5-test",
+        "ai_learning_ollama_timeout_seconds": 90,
+        "ai_learning_source_max_chars": 12345,
+    })
+
+    def fake_chat(message, history, system_prompt, **kwargs):
+        captured.update(kwargs)
+        captured["message"] = message
+        return "AI-learning provider response"
+
+    monkeypatch.setattr(ollama, "_openai_compatible_chat", fake_chat)
+    result = ollama.chat("course outline", purpose="ai_learning")
+    assert result == "AI-learning provider response"
+    assert captured["purpose"] == "ai_learning"
+    assert captured["model"] == "gpt-5-test"
+    assert captured["timeout"] == 90
