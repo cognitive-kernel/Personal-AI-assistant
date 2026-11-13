@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import config, service
+from ..config import SETTING_DEFAULTS
 
 _LOCK = threading.Lock()
 _WORKER_OWNER_PID = os.getpid()
@@ -30,10 +31,11 @@ _ACTIVE_RUN_ID: int | None = None
 _ACTIVE_COURSE_ID: int | None = None
 _CANCEL_EVENTS: dict[int, threading.Event] = {}
 _SHUTTING_DOWN = False
-_RESPONSE_TIMEOUT_SECONDS = 1800
-_STABLE_SECONDS = 20.0
-_MAX_LESSON_CONTINUATIONS = 8
-_MIN_COMPLETE_LESSON_WORDS = 1200
+_RESPONSE_TIMEOUT_SECONDS = int(SETTING_DEFAULTS["ai_learning_response_timeout_seconds"])
+_STABLE_SECONDS = float(SETTING_DEFAULTS["ai_learning_stability_seconds"])
+_MAX_LESSON_CONTINUATIONS = int(SETTING_DEFAULTS["ai_learning_max_lesson_continuations"])
+_MIN_COMPLETE_LESSON_WORDS = int(SETTING_DEFAULTS["ai_learning_min_complete_lesson_words"])
+_MAX_CONTEXT_RELAUNCHES = int(SETTING_DEFAULTS["ai_learning_max_context_relaunches"])
 _LOG_LOCK = threading.Lock()
 _LOGGER: logging.Logger | None = None
 _BROWSER_SESSION = threading.local()
@@ -200,7 +202,10 @@ def _browser_session(sync_playwright_factory: Any, chrome: str, profile: Path):
         if context is None:
             if context_lost:
                 relaunches = int(getattr(_BROWSER_SESSION, "context_relaunches", 0))
-                if relaunches >= _MAX_CONTEXT_RELAUNCHES:
+                max_relaunches = _configured_seconds(
+                    "ai_learning_max_context_relaunches", _MAX_CONTEXT_RELAUNCHES, 0, 3
+                )
+                if relaunches >= max_relaunches:
                     raise BrowserAutomationError(
                         "chatgpt_browser_closed",
                         "پنجرهٔ Chrome دوباره بسته شد؛ یک بار تلاش کنترل‌شده برای بازگشایی انجام شد و برای جلوگیری از چرخهٔ بازشدن پنجره‌ها، بازیابی دستی لازم است.",
@@ -711,7 +716,12 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
                 if stable_since is None:
                     stable_since = time.monotonic()
                 stable_for = time.monotonic() - stable_since
-                required_stability = 45.0 if stop_visible else float(_configured_seconds("ai_learning_stability_seconds", int(_STABLE_SECONDS), 1, 120))
+                required_stability = float(_configured_seconds(
+                    "ai_learning_stop_stability_seconds",
+                    int(SETTING_DEFAULTS["ai_learning_stop_stability_seconds"]), 1, 180
+                )) if stop_visible else float(_configured_seconds(
+                    "ai_learning_stability_seconds", int(_STABLE_SECONDS), 1, 120
+                ))
                 if continue_button is not None:
                     required_stability = max(required_stability, 45.0)
                 if continue_button is None and stable_for >= required_stability:
@@ -745,7 +755,12 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
             )
             if last_text and (last_text != previous_answer or new_message_seen) and stable_since is not None:
                 stable_for = time.monotonic() - stable_since
-                required_stability = 25.0 if last_stop_visible else float(_configured_seconds("ai_learning_stability_seconds", int(_STABLE_SECONDS), 1, 120))
+                required_stability = float(_configured_seconds(
+                    "ai_learning_last_stop_stability_seconds",
+                    int(SETTING_DEFAULTS["ai_learning_last_stop_stability_seconds"]), 1, 180
+                )) if last_stop_visible else float(_configured_seconds(
+                    "ai_learning_stability_seconds", int(_STABLE_SECONDS), 1, 120
+                ))
                 if stable_for >= required_stability and len(last_text) >= 20:
                     return last_text
             _log_event("response_poll_exception", elapsed_seconds=round(time.monotonic() - started, 1),
@@ -821,6 +836,9 @@ def _capture_lesson_until_complete(
     parts = [first_answer]
     status = _lesson_completion_status(first_answer)
     continuation_count = 0
+    minimum_complete_words = _configured_seconds(
+        "ai_learning_min_complete_lesson_words", minimum_complete_words, 100, 10000
+    )
 
     def checkpoint() -> None:
         combined = "\n\n".join(_strip_lesson_status_markers(part) for part in parts)
@@ -838,7 +856,7 @@ def _capture_lesson_until_complete(
     checkpoint()
     while status != "COMPLETE" or (
         _lesson_word_count("\n\n".join(_strip_lesson_status_markers(part) for part in parts))
-        < _MIN_COMPLETE_LESSON_WORDS
+        < minimum_complete_words
         and not _lesson_has_terminal_bibliography(
             "\n\n".join(_strip_lesson_status_markers(part) for part in parts)
         )
@@ -867,7 +885,7 @@ def _capture_lesson_until_complete(
         merged_word_count = _lesson_word_count(
             "\n\n".join(_strip_lesson_status_markers(part) for part in parts)
         )
-        if status == "COMPLETE" and merged_word_count < _MIN_COMPLETE_LESSON_WORDS:
+        if status == "COMPLETE" and merged_word_count < minimum_complete_words:
             continuation_instruction = (
                 "The previous response claimed COMPLETE prematurely, but the merged lesson has only "
                 + str(merged_word_count) + " words. This is not acceptable as a complete lesson. "
@@ -875,13 +893,13 @@ def _capture_lesson_until_complete(
                 "Add the missing instructional depth: explain underlying mechanisms, give step-by-step practical examples, "
                 "show expected outputs where relevant, cover edge cases and troubleshooting, discuss security/performance/reliability, "
                 "and finish with recap, exercises, and answer key where appropriate. The merged lesson must reach at least "
-                + str(_MIN_COMPLETE_LESSON_WORDS) + " words before you may use LESSON_STATUS: COMPLETE. "
+                + str(minimum_complete_words) + " words before you may use LESSON_STATUS: COMPLETE. "
             )
         else:
             continuation_instruction = (
                 "Continue with the next missing heading, examples, expected outputs, troubleshooting, recap, exercises/answer key, "
                 "and sources as applicable. The full merged lesson must contain at least "
-                + str(_MIN_COMPLETE_LESSON_WORDS) + " words before it may be marked COMPLETE. "
+                + str(minimum_complete_words) + " words before it may be marked COMPLETE. "
                 "If any planned teaching or the minimum length remains unfinished, use CONTINUE_REQUIRED. "
             )
         continuation_prompt = (
