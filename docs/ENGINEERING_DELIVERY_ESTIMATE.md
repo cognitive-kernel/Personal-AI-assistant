@@ -97,3 +97,12 @@ The older `docs/ACCEPTANCE_SCORECARD.md` reports 60.47% engineering progress usi
 ## 2026-11-05 — Checkpoint Watcher remediation tracking
 
 The run-scoped checkpoint readiness and snapshot-index isolation defect is tracked as part of work package E-05 (durable tasks, fault injection, and resilience) in PR #689. The original 176-hour baseline, work-package allocations, and target forecast are unchanged. No actual engineering hours are entered in this note because elapsed chat/tool time is not a reliable labor-time measurement. Acceptance remains pending exact-head CI and target-runner operational verification.
+
+
+## 2026-11-13 — Continuity checkpoint and scope confirmation
+
+- Current reviewed `main` is `f87e15b9eb76f7395ea4380382d95f1bc64e21ed` after PR #719. The original planning baseline commit and 176-hour budget above remain immutable historical baselines.
+- E-01 (repository/module/data-ownership audit) and E-02 (endpoint-by-endpoint API and persistence contracts) remain in progress. The current API audit identified a generic task submission boundary defect; PR #736 adds a runtime-registry fitness test and fail-closed submission guard. PR #734 adds route-wide loopback/Cross-Origin middleware regression coverage.
+- These newly evidenced tasks fit the existing E-01/E-02/E-06 work-package scope; no additional hours are added until the remaining endpoint inventory and defect count are established. The original 32-hour contingency remains unallocated.
+- Actual engineering hours remain **not measured**; elapsed conversation/tool time is not substituted for labor accounting. The original 2026-12-01 forecast is retained as a planning target, not a guaranteed completion date. Reforecast only after task-level hours and newly discovered scope are measured.
+- Target-host, human adjudication, and independent-review time remain excluded from the engineering-hour baseline, but their acceptance evidence remains required and separately tracked.
