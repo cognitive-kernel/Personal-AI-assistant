@@ -18,7 +18,7 @@ except ImportError:
 from fastapi import HTTPException
 
 from .hardware import windows_powershell_executable
-from .ollama_context import OllamaModelMetadataError
+from .ollama_context import OllamaModelMetadataError, kv_cache_bytes_per_token
 
 
 class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -41,8 +41,10 @@ def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_conte
         "model_capabilities": [],
         "model_supports_tools": False,
         "model_metadata_available": False,
+        "model_kv_cache_metadata_available": False,
+        "model_kv_cache_metadata_error": "Ollama KV-cache metadata is unavailable.",
         "model_context_supported": False,
-        "model_context_error": f"Model must expose at least {min_context_tokens} valid runtime context tokens.",
+        "model_context_error": f"Model must expose valid context and KV-cache metadata for at least {min_context_tokens} runtime tokens.",
         "model_metadata_error": "Ollama metadata is unavailable.",
     }
     # Local Ollama metadata must never be sent through an environment proxy.
@@ -112,21 +114,36 @@ def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_conte
             context_length = maximum_context_fn(model_info, architecture)
         except OllamaModelMetadataError:
             context_length = None
+        try:
+            kv_cache_bytes_per_token(model_info, architecture)
+            kv_cache_metadata_available = True
+            kv_cache_metadata_error = None
+        except OllamaModelMetadataError as exc:
+            kv_cache_metadata_available = False
+            kv_cache_metadata_error = str(exc)
         raw_capabilities = details_payload.get("capabilities")
         capabilities = sorted({
             value for value in raw_capabilities
             if isinstance(value, str) and value
         }) if isinstance(raw_capabilities, list) else []
         metadata_available = context_length is not None
-        context_supported = metadata_available and context_length >= min_context_tokens
+        context_supported = (
+            metadata_available
+            and kv_cache_metadata_available
+            and context_length >= min_context_tokens
+        )
         result.update({
             "model_context_length": context_length,
             "model_capabilities": capabilities,
             "model_supports_tools": supports_tool_calling_fn(capabilities),
             "model_metadata_available": metadata_available,
+            "model_kv_cache_metadata_available": kv_cache_metadata_available,
+            "model_kv_cache_metadata_error": kv_cache_metadata_error,
             "model_context_supported": context_supported,
             "model_context_error": (
                 None if context_supported else
+                "Selected model KV-cache metadata is incomplete: " + str(kv_cache_metadata_error)
+                if metadata_available and not kv_cache_metadata_available else
                 f"Selected model context is below the minimum supported runtime window of {min_context_tokens} tokens."
                 if metadata_available else
                 "Selected model context metadata is unavailable."
