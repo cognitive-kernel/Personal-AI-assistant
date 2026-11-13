@@ -46,7 +46,10 @@ def client(tmp_path, monkeypatch):
     ],
 )
 def test_integer_resource_path_ids_reject_zero_at_http_boundary(client, method, path, payload):
-    response = getattr(client, method)(path, json=payload)
+    if payload is None:
+        response = getattr(client, method)(path)
+    else:
+        response = getattr(client, method)(path, json=payload)
     assert response.status_code == 422, (method, path, response.text)
 
 
