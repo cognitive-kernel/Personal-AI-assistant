@@ -494,6 +494,12 @@ def test_node_runtime_is_provisioned_per_github_job_not_preinstalled_on_target_h
         assert 'node-version: "26.13.0"' in workflow
         assert "package-manager-cache: false" in workflow
 
+    autonomous = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    diagnostic = (root / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml").read_text(encoding="utf-8")
+    assert autonomous.index("Provision pinned Node.js and npm") < autonomous.index("Ensure Codex CLI is installed")
+    assert diagnostic.index("Provision pinned Node.js and npm") < diagnostic.index("Prepare the same service-account runtime")
+    assert "must be provisioned for this workflow run" in autonomous
+
     provision = (root / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
     assert "Get-Command node.exe" not in provision
     assert "Get-Command npm.cmd" not in provision
