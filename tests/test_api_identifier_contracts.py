@@ -43,6 +43,10 @@ def client(tmp_path, monkeypatch):
         ("get", "/api/ai-learning/courses/0", None),
         ("get", "/api/ai-learning/versions/0", None),
         ("post", "/api/ai-learning/sources/0/check", None),
+        ("delete", "/api/conversations/0", None),
+        ("get", "/api/conversations/0/messages", None),
+        ("get", "/api/learning/browser/courses/0", None),
+        ("get", "/api/learning/jobs/0", None),
     ],
 )
 def test_integer_resource_path_ids_reject_zero_at_http_boundary(client, method, path, payload):
@@ -95,3 +99,24 @@ def test_every_ai_learning_integer_path_identifier_is_positive_in_openapi():
                     method, path, parameter
                 )
     assert inspected >= 25
+
+def test_every_api_integer_path_parameter_has_positive_openapi_minimum():
+    schema = app.openapi()
+    inspected = 0
+    for path, path_item in schema["paths"].items():
+        if not path.startswith("/api/"):
+            continue
+        for method, operation in path_item.items():
+            if method not in {"get", "post", "put", "patch", "delete"}:
+                continue
+            for parameter in operation.get("parameters", []):
+                if parameter.get("in") != "path":
+                    continue
+                parameter_schema = parameter.get("schema", {})
+                if parameter_schema.get("type") != "integer":
+                    continue
+                inspected += 1
+                assert parameter_schema.get("minimum", 0) >= 1, (
+                    method, path, parameter
+                )
+    assert inspected >= 70
