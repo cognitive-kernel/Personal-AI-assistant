@@ -279,6 +279,7 @@ def test_research_planning_uses_its_own_provider_and_model_profile(monkeypatch):
             "research_plan_llm_provider": "openai_compatible",
             "research_plan_ollama_model": "research-local-model",
             "research_plan_ollama_timeout_seconds": 60,
+            "research_plan_max_output_tokens": 1200,
         },
     )
     monkeypatch.setattr(ollama, "detect_hardware", lambda: {})
@@ -290,6 +291,8 @@ def test_research_planning_uses_its_own_provider_and_model_profile(monkeypatch):
     assert ollama.chat("plan research", purpose="research_plan") == "plan"
     assert captured["purpose"] == "research_plan"
     assert captured["model"] == "research-local-model"
+    assert captured["timeout"] == 60
+    assert captured["num_predict"] == 1200
 
 
 def test_compatible_learning_provider_does_not_truncate_long_source_context(monkeypatch):
@@ -335,3 +338,28 @@ def test_compatible_provider_model_identity_is_endpoint_and_model_scoped(monkeyp
     assert first["identity"] == same["identity"]
     assert first["identity"] != other_model["identity"]
     assert first["identity"] != other_endpoint["identity"]
+
+
+def test_factual_review_uses_its_own_timeout_and_output_budget(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        ollama, "get_settings",
+        lambda: {
+            "factual_review_llm_provider": "openai_compatible",
+            "factual_review_ollama_model": "review-model",
+            "factual_review_ollama_timeout_seconds": 90,
+            "factual_review_max_output_tokens": 900,
+            "factual_review_source_max_chars": 24000,
+        },
+    )
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {})
+    monkeypatch.setattr(
+        ollama, "_openai_compatible_chat",
+        lambda *args, **kwargs: captured.update(kwargs) or "review",
+    )
+
+    assert ollama.chat("review lesson", purpose="factual_review") == "review"
+    assert captured["purpose"] == "factual_review"
+    assert captured["model"] == "review-model"
+    assert captured["timeout"] == 90
+    assert captured["num_predict"] == 900
