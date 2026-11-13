@@ -17,7 +17,7 @@
   - [#739](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/739) محدودسازی payload/checkpoint/result و metadata صف پایدار؛ سه Workflow اصلی موفق؛ 2,143 passed، 2 skipped، 51 deselected.
   - [#741](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/741) حفظ خطای اصلی هنگام شکست cleanup در Browser Capture؛ سه Workflow اصلی موفق؛ 2,137 passed، 2 skipped، 51 deselected.
   - [#742](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/742) تأیید server-side برای reset مخرب داده‌های یادگیری؛ سه Workflow اصلی موفق؛ 2,138 passed، 2 skipped، 51 deselected.
-  - [#743](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/743) رد authorityهای malformed در بررسی URL منابع یادگیری؛ سه Workflow اصلی موفق؛ 2,139 passed، 2 skipped، 51 deselected.
+  - [#743](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/743) سخت‌گیری authorityهای URL، رد scoped IPv6، pin کردن IPv4/IPv6 عمومی و حذف متن خام خطاهای DNS/HTTP از diagnostics؛ سه Workflow اصلی موفق؛ 2,149 passed، 2 skipped، 51 deselected.
   - [#744](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/744) حفظ نامزدهای متعارض و شواهد یادگیری، نمایش آن‌ها در UI و ابزار بازیابی امن رکوردهای قدیمی؛ سه Workflow اصلی موفق؛ 2,139 passed، 2 skipped، 51 deselected. Browser E2E شامل نمایش شواهد و غیرفعال بودن عملیات روی نامزد terminal است.
 - Issue [#723](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/723) با PR #725 اصلاح شده و CI آن سبز است؛ تا تکمیل فرایند ادغام، issue باز می‌ماند.
 - Issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290) مرجع اصلی پذیرش کل پروژه است. Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) برای بازبینی مستقل امنیتی باز است.
