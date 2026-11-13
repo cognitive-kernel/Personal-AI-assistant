@@ -10,6 +10,7 @@ from urllib.parse import urlencode, urlparse
 from .db import learning_connection, get_settings
 from . import ollama
 from . import learning_execution
+from . import learning_model_adapter
 from .ollama import _request
 from . import learning_prerequisites
 from . import curricula, factual_knowledge, learning_evidence_gate
@@ -1141,14 +1142,17 @@ def run_job(job_id: int, *, task_context: Any | None = None) -> None:
                 "Initial generation budget was exhausted or already consumed; refusing an untracked duplicate model request."
             )
         assert_execution_owner("learning_initial_model_request")
-        response = _request("/api/chat", {
-            "model": model, "stream": False, "format": "json",
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": serialized_prompt},
-            ],
-            "options": {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"], "num_predict": max_output_tokens},
-        }, timeout=request_timeout, purpose=provider_purpose)
+        response = learning_model_adapter.request_lesson_json(
+            _request,
+            provider_purpose=provider_purpose,
+            model=model,
+            system_prompt=system_prompt,
+            user_prompt=serialized_prompt,
+            context_tokens=limits["num_ctx"],
+            cpu_threads=limits["cpu_threads"],
+            timeout_seconds=request_timeout,
+            max_output_tokens=max_output_tokens,
+        )
         provider_usage: dict[str, dict[str, int]] = {
             "initial_generation": _ollama_usage_summary(response)
         }
@@ -1239,14 +1243,17 @@ def run_job(job_id: int, *, task_context: Any | None = None) -> None:
             )["sha256"]
             generation_attempts = 2
             assert_execution_owner("learning_quality_repair_model_request")
-            retry_response = _request("/api/chat", {
-                "model": model, "stream": False, "format": "json",
-                "messages": [
-                    {"role": "system", "content": repair_system_prompt},
-                    {"role": "user", "content": serialized_repair_prompt},
-                ],
-                "options": {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"], "num_predict": max_output_tokens},
-            }, timeout=request_timeout, purpose=provider_purpose)
+            retry_response = learning_model_adapter.request_lesson_json(
+                _request,
+                provider_purpose=provider_purpose,
+                model=model,
+                system_prompt=repair_system_prompt,
+                user_prompt=serialized_repair_prompt,
+                context_tokens=limits["num_ctx"],
+                cpu_threads=limits["cpu_threads"],
+                timeout_seconds=request_timeout,
+                max_output_tokens=max_output_tokens,
+            )
             provider_usage["quality_repair"] = _ollama_usage_summary(retry_response)
             retry_raw = retry_response.get("message", {}).get("content")
             try:
