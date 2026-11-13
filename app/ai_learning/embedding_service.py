@@ -13,7 +13,6 @@ from ..db import get_settings
 from ..ollama import embed as ollama_embed
 from .config import configured_float_setting as _configured_float_setting
 from .config import configured_int_setting as _configured_int_setting
-from .db import connection
 from .embedding_identity import embedding_cache_identity
 
 def _dedupe_normalize(value: str) -> str:
@@ -27,7 +26,7 @@ def _title_embeddings(texts: list[str]) -> list[list[float]]:
     settings = get_settings()
     model = str(settings.get("ollama_embedding_model") or os.getenv("OLLAMA_EMBEDDING_MODEL") or "nomic-embed-text").strip()
     if not model:
-        raise RuntimeError("No local embedding model is configured for title duplicate checks.")
+        raise RuntimeError("No embedding model is configured for title duplicate checks.")
     # Keep large outlines from becoming one oversized local-model request.
     vectors: list[list[float]] = []
     batch_size = _configured_int_setting("ai_learning_embedding_batch_size", 64, 1, 256)
