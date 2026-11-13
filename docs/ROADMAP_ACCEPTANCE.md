@@ -307,6 +307,6 @@ No merge has occurred. Issue #52 independent review, CodeQL alert disposition, b
 | API path/query contract inventory | PR #738, head `cde0d1561118a07242c056758129030bd57dd8a6` | Exact-head CI green: 2,170 passed, 2 skipped, 51 deselected |
 | Durable task record resource bounds | PR #739, head `9edfdd38716b88708b53772aa93d75c3850b77b7` | Exact-head CI green: 2,143 passed, 2 skipped, 51 deselected |
 | Browser-learning worker exception precedence | PR #725, head `0c576ed9530d5b08f3f2e016f7fa36fe7d83b9e4` | Exact-head CI green; Issue #723 remains open until merge |
-| AI-learning browser context cleanup precedence | PR #741, head `f90c9dbafd46775048cece55dba7fb492a6fab3e` | Test workflow in progress; other checks passed |
+| AI-learning browser context cleanup precedence | PR #741, head `f90c9dbafd46775048cece55dba7fb492a6fab3e` | Exact-head CI green: 2,137 passed, 2 skipped, 51 deselected |
 
 No PR has been merged. Independent Issue #52 review, CodeQL alert disposition, branch-protection administration, target-host crash/recovery/restore/rollback, and pinned live-model/human adjudication remain open. Local and human tests have not started.
