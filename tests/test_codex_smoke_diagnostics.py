@@ -504,6 +504,9 @@ def test_windows_provisioning_and_app_readiness_use_consistent_cli_resolution():
         assert ".attention.key_length" in script
         assert ".attention.value_length" in script
 
+    assert "Model weight size" in app_check
+    assert "Model weight size" in runner_check
+    assert "modelTag.size" in provision
     assert "Model KV-cache metadata" in app_check
     assert "Model KV-cache metadata" in runner_check
     assert "Get-Command gh.exe" in app_check
