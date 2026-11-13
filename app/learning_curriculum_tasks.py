@@ -6,6 +6,7 @@ persists its provenance, and starts exactly one lesson at a time.
 from __future__ import annotations
 
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 import json
 import re
 from datetime import datetime, timezone
@@ -24,6 +25,7 @@ MAX_PROMPT_SOURCE_EXCERPTS = 8
 MAX_SOURCE_EXCERPT_CHARS = 1000
 MAX_PROMPT_CHARS = 20000
 CURRICULUM_CONTEXT_TOKENS = 8192
+MAX_PARALLEL_RESEARCH_QUERIES = 3
 
 _SEARCH_QUERY_SUFFIXES = (
     "complete syllabus curriculum fundamentals advanced topics",
@@ -186,6 +188,14 @@ def _hydrate_source_bodies(
     return hydrated
 
 
+def _discover_query_sources(query: str) -> list[Any]:
+    """Run one independent query; provider failures remain an empty, diagnosable result."""
+    try:
+        return list(web_sources.discover_sources(query, limit=30))
+    except web_sources.SourceFetchError:
+        return []
+
+
 def _collect_sources(
     topic: str,
     *,
@@ -234,9 +244,14 @@ def _collect_sources(
         else None
     )
     seen = {item["url"] for item in sources}
-    for query in queries:
-        if query in completed_queries:
-            continue
+    pending_queries = [query for query in queries if query not in completed_queries]
+    # Research angles are independent. Run a small bounded window concurrently,
+    # but consume results in the original query order so persistence/checkpoints
+    # remain deterministic and restart-safe.
+    with ThreadPoolExecutor(max_workers=MAX_PARALLEL_RESEARCH_QUERIES) as executor:
+        for query, documents in zip(
+            pending_queries, executor.map(_discover_query_sources, pending_queries)
+        ):
         context.checkpoint({
             "phase": "web_research",
             "topic_sha256": topic_sha256,
@@ -247,11 +262,7 @@ def _collect_sources(
             **({"model": preserved_model} if preserved_model is not None else {}),
             **({"model_selection": preserved_model_selection} if preserved_model_selection is not None else {}),
         })
-        try:
-            documents = web_sources.discover_sources(query, limit=30)
-        except web_sources.SourceFetchError:
-            documents = []
-        for document in documents:
+            for document in documents:
             url = _normalized_source_url(document.url)
             title = str(document.title).strip()[:150]
             body = str(document.text).strip()
