@@ -972,3 +972,11 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - **Regression coverage:** complete metadata is included in successful service fixtures; a new regression verifies that a model with a valid context limit and tools capability but missing KV dimensions remains online yet is not context-supported. Existing selector tests continue to cover invalid/missing dimensions and the KV-cache calculation.
 - **Safety:** no context floor, model fallback, general chat limit, existing stored model, or task data was changed. The failure is surfaced before dispatch rather than after the autonomous workflow starts.
 - **Validation:** implementation and tests are committed on the PR #722 branch; exact-head GitHub CI is required for the new SHA. No live target-host or human result is claimed.
+
+
+## 2026-11-13 — Exact-head CI restarted after KV-readiness correction
+
+- The KV-cache readiness implementation and regression tests are committed through code/test SHA `1f682576df85f6049dfe2b8f7e6b0f20fe790d5b`.
+- The documentation-inclusive PR head is `ac09c4475c54fd34fac53f7ce420cc083a4b9da6`.
+- Exact-head tests, Python 3.11.9/3.14.6, Windows Storage, Node/Codex, Browser E2E, Docker sandbox, and dependency-audit checks have been queued for the documentation-inclusive SHA. Prior green results on `3b48da376cb90b0e0602f6300504152769ed79a0` are not carried forward.
+- The target-host diagnostic remains a separate self-hosted gate; no live Ollama or Codex smoke result is claimed for the new code.
