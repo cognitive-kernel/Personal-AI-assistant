@@ -127,3 +127,50 @@ def test_evaluation_rejects_missing_evidence_and_timezone():
     records[0]["evaluated_at"] = "2026-11-13T10:00:00"
     with pytest.raises(LearningProvenanceError, match="timezone"):
         evaluate_aggregate_learning_accuracy(records)
+
+
+def test_candidate_source_records_are_persisted_idempotently_and_do_not_promote(tmp_path, monkeypatch):
+    import hashlib
+    import json
+
+    from app import db, learning
+    from app.learning_provenance import list_candidate_sources, record_candidate_source
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    job = learning.create_job("Source provenance persistence", source_text="User supplied source text.")
+    content = "Candidate content must remain unverified."
+    with db.learning_connection() as connection:
+        cursor = connection.execute(
+            """INSERT INTO temporary_knowledge_candidates(
+                   job_id, topic, content, source_kind, source_urls_json,
+                   content_sha256, quality_report_json
+               ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                job["id"], "Source provenance persistence", content, "user_provided_text",
+                "[]", hashlib.sha256(content.encode("utf-8")).hexdigest(),
+                json.dumps({"score": 90}),
+            ),
+        )
+        candidate_id = int(cursor.lastrowid)
+
+    source = {
+        "source_type": "ai",
+        "provider": "OpenAI",
+        "model_id": "test-model",
+        "reference_url": "https://learn.microsoft.com/en-us/",
+        "reference_section": "Overview",
+    }
+    first = record_candidate_source(candidate_id, source)
+    second = record_candidate_source(candidate_id, source)
+    assert first["id"] == second["id"]
+    assert first["verification_status"] == "unverified"
+    assert len(list_candidate_sources(candidate_id)) == 1
+    with db.learning_connection() as connection:
+        status = connection.execute(
+            "SELECT status, promoted_knowledge_id FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+    assert status["status"] == "awaiting_test"
+    assert status["promoted_knowledge_id"] is None
