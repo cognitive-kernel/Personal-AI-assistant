@@ -105,6 +105,7 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
     assert defaults["factual_review_ollama_timeout_seconds"] == 120
     assert defaults["factual_review_source_max_chars"] == 16000
     assert defaults["factual_review_max_output_tokens"] == 500
+    assert defaults["learning_model_pricing_json"] == ""
     assert defaults["ai_learning_ollama_model"]
     assert defaults["ai_learning_ollama_num_ctx"] >= 512
     assert defaults["gpu_enabled"] is True
@@ -181,6 +182,7 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
         "ai_learning_ollama_num_thread": 4,
         "ai_learning_ollama_timeout_seconds": 120,
         "ai_learning_model_keep_alive": "5m",
+        "learning_model_pricing_json": '{"gpt-5-test":{"input_usd_per_million_tokens":"1.00","output_usd_per_million_tokens":"4.00","pricing_version":"2026-11"}}',
     }
     response = settings_client.patch("/api/settings", json={"values": values})
     assert response.status_code == 200
@@ -202,6 +204,8 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
         {"factual_review_max_output_tokens": 0},
         {"factual_review_source_max_chars": 999},
         {"factual_review_ollama_num_ctx": 511},
+        {"learning_model_pricing_json": "not-json"},
+        {"learning_model_pricing_json": '{"model":{"input_usd_per_million_tokens":-1,"output_usd_per_million_tokens":2,"pricing_version":"v1"}}'},
         {"sandbox_enabled": "true"},
         {"self_improvement_enabled": 1},
         {"sandbox_docker_executable": "relative/docker"},
