@@ -106,6 +106,7 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
         {"ai_learning_lesson_batch_size": 21},
         {"ai_learning_chunk_target_chars": 255},
         {"ai_learning_chunk_overlap_chars": 2001},
+        {"ai_learning_chunk_target_chars": 1000, "ai_learning_chunk_overlap_chars": 1000},
         {"ai_learning_browser_timeout_seconds": 9},
         {"ai_learning_max_retries": 6},
     ],
