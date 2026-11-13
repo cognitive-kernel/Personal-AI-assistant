@@ -77,6 +77,10 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
     assert defaults["ai_learning_llm_provider"] == "ollama"
     assert defaults["ai_learning_ollama_model"]
     assert defaults["ai_learning_source_max_chars"] == 100000
+    assert defaults["basic_learning_enabled"] is True
+    assert defaults["topic_learning_enabled"] is True
+    assert defaults["topic_learning_llm_provider"] == "ollama"
+    assert defaults["topic_learning_source_max_chars"] == 100000
     assert defaults["ai_learning_ollama_model"]
     assert defaults["ai_learning_ollama_num_ctx"] >= 512
     assert defaults["gpu_enabled"] is True
@@ -100,6 +104,11 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
         "ai_learning_llm_api_key_env": "OPENAI_API_KEY",
         "ai_learning_ollama_model": "gpt-5-test",
         "ai_learning_source_max_chars": 120000,
+        "topic_learning_llm_provider": "openai_compatible",
+        "topic_learning_llm_base_url": "https://api.openai.com/v1",
+        "topic_learning_llm_api_key_env": "OPENAI_API_KEY",
+        "topic_learning_ollama_model": "gpt-5-topic-test",
+        "topic_learning_source_max_chars": 150000,
         "ai_learning_ollama_num_ctx": 8192,
         "ai_learning_ollama_num_thread": 4,
         "ai_learning_ollama_timeout_seconds": 120,
