@@ -699,3 +699,7 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Browser worker lease duration and heartbeat interval are configurable within safe bounds. The API enforces heartbeat <= one third of lease duration.
 - A worker snapshots lease/heartbeat values when it claims ownership; changing Settings mid-run cannot silently alter the lease parameters used by its active heartbeat thread.
 - Focused tests verify the claimed lease duration and reject unsafe heartbeat ratios.
+### 2026-11-13 — Browser host paths moved into persistent Settings
+
+- Chrome executable path and dedicated browser-profile directory are now read from Settings rather than AI_LEARNING_CHROME_PATH/AI_LEARNING_BROWSER_PROFILE environment variables. An empty Chrome path uses safe platform auto-detection; the profile path remains user-configurable.
+- Browser page/control polling intervals and lease duration/heartbeat are also settings-backed, with bounded validation and a heartbeat-to-lease safety ratio. The active worker uses a snapshot of lease values until it releases ownership.
