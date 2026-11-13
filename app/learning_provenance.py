@@ -181,7 +181,7 @@ def record_candidate_source(
     """Persist one validated source record without changing candidate trust/status."""
     if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
         raise LearningProvenanceError("candidate_id must be a positive integer.")
-    if verification_status not in {"unverified", "verified", "inconclusive", "contradicted", "stale"}:
+    if not isinstance(verification_status, str) or verification_status not in {"unverified", "verified", "inconclusive", "contradicted", "stale"}:
         raise LearningProvenanceError("Unsupported source verification status.")
     normalized = validate_learning_source(source)
     from .db import learning_connection
@@ -231,7 +231,7 @@ def record_candidate_source(
                    isbn, page, chapter, description, metadata_json, verification_status
                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                candidate_id, *(values[field] for field in fields[1:]),
+                candidate_id, *(values[field] for field in fields),
                 json.dumps(metadata, ensure_ascii=False, sort_keys=True),
                 verification_status,
             ),
