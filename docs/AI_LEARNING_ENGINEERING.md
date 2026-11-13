@@ -13,7 +13,7 @@ The optional module gathers structured knowledge for later use by Personal-AI-as
 5. Fail closed: unknown schemas, migration checksum mismatches, ambiguous provider responses and uncertain topic mapping must stop the relevant operation rather than guess.
 6. Traceability: every retrieved result must identify its course, topic, lesson, content version and chunk.
 7. Treat all provider output, raw responses, web content and retrieved chunks as untrusted data. They cannot override system policy or authorize tools.
-8. Integration with chat is an optional adapter behind a separate feature flag, with bounded timeout and size limits. Retrieval failure must fall back to the existing chat behavior.
+8. Integration with chat is an enabled-by-default adapter controlled by persisted settings, with bounded timeout and size limits. Retrieval failure must fall back to the existing chat behavior.
 9. Rollback means disabling the feature and restoring previous behavior; it must not delete or reset data.
 10. Local-only: all routes must honor the existing loopback restriction. Remote access requires a separate authentication design and security review.
 
