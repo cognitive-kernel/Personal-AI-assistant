@@ -272,6 +272,53 @@ def test_settings_api_auto_selects_context_when_model_changes_without_manual_val
     assert response.json()["ollama_num_ctx"] == 32768
 
 
+
+def test_settings_api_rejects_context_change_without_hardware_safe_estimate(settings_client, monkeypatch):
+    monkeypatch.setattr(ollama, "model_details", lambda name, context_tokens=None: {
+        "name": name,
+        "maximum_context_tokens": 65536,
+        "recommended_context_tokens": None,
+    })
+    response = settings_client.patch(
+        "/api/settings",
+        json={"values": {"chat_ollama_num_ctx": 16384}},
+    )
+    assert response.status_code == 422
+    assert "hardware-safe context cannot be calculated" in response.json()["detail"]
+
+
+def test_settings_api_clamps_manual_context_to_hardware_safe_estimate(settings_client, monkeypatch):
+    monkeypatch.setattr(ollama, "model_details", lambda name, context_tokens=None: {
+        "name": name,
+        "maximum_context_tokens": 65536,
+        "recommended_context_tokens": 4096,
+    })
+    response = settings_client.patch(
+        "/api/settings",
+        json={"values": {"chat_ollama_num_ctx": 16384}},
+    )
+    assert response.status_code == 200
+    assert response.json()["chat_ollama_num_ctx"] == 4096
+    assert response.json()["ollama_num_ctx"] == 4096
+
+
+def test_settings_api_does_not_invent_context_when_model_memory_estimate_is_missing(settings_client, monkeypatch):
+    before = db.get_settings()
+    monkeypatch.setattr(ollama, "model_details", lambda name, context_tokens=None: {
+        "name": name,
+        "maximum_context_tokens": 65536,
+        "recommended_context_tokens": None,
+    })
+    response = settings_client.patch(
+        "/api/settings",
+        json={"values": {"chat_ollama_model": "unknown-memory-model:latest"}},
+    )
+    assert response.status_code == 200
+    after = db.get_settings()
+    assert after["chat_ollama_model"] == "unknown-memory-model:latest"
+    assert after["chat_ollama_num_ctx"] == before["chat_ollama_num_ctx"]
+
+
 def test_settings_api_preserves_manual_model_selection_when_context_is_unchanged(settings_client, monkeypatch):
     before = db.get_settings()
     monkeypatch.setattr(ollama, "model_details", lambda name, context_tokens=None: {
