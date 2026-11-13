@@ -103,3 +103,9 @@ The test uses deterministic fixture embeddings and makes no Ollama/model request
 - Embedding batch size, maximum embedding input characters, and title/content duplicate thresholds are persisted settings with bounded validation.
 - Semantic embedding cache identity is provider + endpoint + model. Historical vectors are not deleted when a provider changes; they are simply not reused across incompatible vector spaces.
 - GPU acceleration is permitted by default but only used when the selected runtime and host expose a compatible device. CPU and RAM safeguards remain mandatory.
+
+## Browser worker timing and lease settings
+
+- Browser page polling, worker-control polling, lease duration and lease heartbeat are persisted settings.
+- The API requires a heartbeat no greater than one third of the lease duration. The worker snapshots these values when it claims the lease; mid-run settings changes apply to the next claim, not the active worker.
+- The shared Chrome profile remains serialized to one browser worker. A higher concurrency setting is not exposed until independent browser profiles and separate fencing ownership exist.
