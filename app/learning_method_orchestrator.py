@@ -279,6 +279,8 @@ def queue_initial_method(
                 last_evidence = json.loads(last.get("evidence_json") or "{}")
             except (TypeError, ValueError, json.JSONDecodeError):
                 last_evidence = {}
+            if isinstance(last_evidence, dict) and last_evidence.get("cancelled_by_user") is True:
+                return {"status": "cancelled", "path_topic_id": path_topic_id}
             if last["status"] == "unavailable" and not (
                 isinstance(last_evidence, dict) and last_evidence.get("disabled_by_user_setting") is True
             ):
@@ -286,8 +288,6 @@ def queue_initial_method(
             return _queue_next(path_topic_id, method, attempt_number, source_job_id=last.get("job_id"))
         if last["status"] == "passed":
             return {"status": "passed", "path_topic_id": path_topic_id}
-        if last["status"] == "cancelled":
-            return {"status": "cancelled", "path_topic_id": path_topic_id}
 
     return _queue_first_enabled_method(path_topic_id, attempt_number=1)
 
@@ -348,7 +348,7 @@ def mark_method_cancelled(job_id: int, *, reason: str = "Cancelled by user.") ->
     if latest is not None and latest["status"] == "cancelled":
         return
     append_attempt_event(
-        path_topic_id, method, attempt_number, "cancelled",
+        path_topic_id, method, attempt_number, "failed",
         event_key=f"{job['method_attempt_key']}:cancelled",
         job_id=job_id,
         content_sha256=_content_hash(job),
