@@ -114,3 +114,10 @@ The run-scoped checkpoint readiness and snapshot-index isolation defect is track
 - These findings remain within E-01 (repository/architecture audit) and E-02 (API/persistence contracts). The remaining route families and endpoint contracts have not yet been inventoried completely; no extra hours or contingency consumption are recorded.
 - The original 176-hour budget, 144-hour task estimate, 32-hour reserve, and 2026-12-01 planning target remain unchanged. Actual engineering labor hours are not measured; elapsed tool/chat time is not used as a proxy.
 - PR #737 and #738 have not completed exact-head CI at this checkpoint. No merge or completion claim is made.
+
+
+## 2026-11-13 — Additional task-runtime scope checkpoint
+
+- PR #739's durable task payload/checkpoint/result bounds and metadata validation are within E-02/E-05; PR #740's browser-learning worker exception and lease-cleanup correction is within E-05. PR #738 continues E-02 endpoint contract work.
+- The first PR #739 test run found a test-fixture error, corrected on the latest branch head. No additional engineering hours are recorded; actual labor time remains unmeasured.
+- Original 176-hour baseline, 144-hour task estimate, 32-hour contingency, and 2026-12-01 planning target remain unchanged pending measured scope and labor.
