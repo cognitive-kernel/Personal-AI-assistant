@@ -456,7 +456,7 @@
 - PR #737: green on `5bf13d05283daa2785a52bebfa9d8adf15f988b8` — 2,142 passed, 2 skipped, 51 deselected.
 - PR #738: green on `cde0d1561118a07242c056758129030bd57dd8a6` — 2,170 passed, 2 skipped, 51 deselected; all four required workflows passed. This closes the currently inventoried API path-ID, integer/string query-bound, and pagination-bound test gaps.
 - PR #739: green on `9edfdd38716b88708b53772aa93d75c3850b77b7` — 2,143 passed, 2 skipped, 51 deselected; durable task payload/checkpoint/result and metadata bounds are validated.
-- PR #741: current head `f90c9dbafd46775048cece55dba7fb492a6fab3e`; dependency audit, Windows storage and dashboard smoke passed; full test suite is still running. It covers cleanup-error precedence in AI-learning browser capture.
+- PR #741: exact head `f90c9dbafd46775048cece55dba7fb492a6fab3e` is fully green — 2,137 passed, 2 skipped, 51 deselected; all four required workflows and repository validation/benchmark checks passed. It covers cleanup-error precedence in AI-learning browser capture.
 - PR #725 remains the authoritative browser-learning worker exception fix for Issue #723, green on exact head `0c576ed9530d5b08f3f2e016f7fa36fe7d83b9e4`. Duplicate PR #740 is closed as superseded. Issue #723 remains open until PR #725 is merged.
 - PR #735 documentation branch passed its previous exact-head CI; this reconciliation requires a fresh run on the new documentation commit.
 - No PR is merged. Local/target-host/human tests remain deferred. Issue #52 independent review, CodeQL alert disposition, branch-protection administration, target-host operations, and live-model evaluation remain open.
