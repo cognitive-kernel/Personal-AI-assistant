@@ -1,3 +1,14 @@
+## 2026-11-13 — Re-audit corrections: merge gate, Runner prerequisites, and Ollama parallelism evidence
+
+- Re-read the complete Master Engineering Prompt from `docs/master-engineering-continuity-prompt`. It explicitly requires both exact-head GitHub Actions and successful local tests on the target host before merge. Earlier current-status summaries incorrectly described target-host tests as a non-gate unless branch protection required them; those current summaries are corrected. Historical snapshots remain historical and are not current policy.
+- This does **not** pause GitHub-side development. CI, source-contract tests, docs, static analysis, and deterministic sandbox tests continue while target-host tests are NOT RUN/PENDING. No merge is allowed until the prompt's target-host requirement is satisfied.
+- Corrected the operations guide: Node.js 26.13.0/npm are provisioned per workflow job by the pinned setup-node action. Installing Node system-wide is not a Runner prerequisite. Python 3.11+ and Ollama remain target-host prerequisites; their availability under the actual Runner service identity is not yet verified.
+- **Ollama parallelism evidence limitation:** the Windows preflight reads the Ollama owner's persisted user/machine registry value, not the live process environment block. A process-only `OLLAMA_NUM_PARALLEL` launch override can differ. The PowerShell preflight now emits an explicit warning; docs and ADR no longer call the registry value the proven effective process value. Runtime parallelism remains unverified until the target-host launch configuration is established.
+- The confirmed target hardware remains Intel Core i5-12400 (6C/12T), approximately 31.78 GiB RAM, Intel UHD Graphics 730, Windows 11 x64 build 10.0.26300. No hardware gate was weakened.
+- At this checkpoint, exact-head hosted tests, Browser E2E, Docker sandbox, and dependency audit passed on `a34c05670d7d7924518143e1a10effaddb205edc`; subsequent audit/test/doc corrections require another full exact-head CI run. The self-hosted Windows diagnostic still has no Runner assignment.
+
+---
+
 ## 2026-11-13 — Latest code/test validation: bf8fcb1df573996606adbaba6e40b72ab725a79c
 
 - Final validated code/test head: bf8fcb1df573996606adbaba6e40b72ab725a79c; four required hosted CI workflows all passed: tests #43384649649 (full test suite, Python 3.11.9/3.14.6, Windows Storage, Node/Codex matrix), Browser E2E #43384649576, Docker sandbox #43384649608, and dependency audit #43384649862.
