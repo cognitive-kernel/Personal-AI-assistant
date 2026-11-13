@@ -1389,20 +1389,51 @@ def run_job(job_id: int, *, task_context: Any | None = None) -> None:
             if evidence_gate.get("accepted") is not True:
                 quality["verification_status"] = "needs_review"
 
+        assert_execution_owner("learning_before_result_commit")
         with learning_connection() as conn:
-            current = conn.execute("SELECT status FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
-            # If the user stopped the path while Ollama was generating, discard this result.
-            if current is None or current["status"] != "running":
-                if current is not None and current["status"] == "cancelled" and row["method_attempt_key"]:
-                    from .learning_method_orchestrator import mark_method_cancelled
-                    mark_method_cancelled(job_id)
+            conn.execute("BEGIN IMMEDIATE")
+            current = conn.execute(
+                "SELECT status, execution_owner, execution_epoch FROM learning_jobs WHERE id=?",
+                (job_id,),
+            ).fetchone()
+            # A cancelled path or a newer execution epoch must never be overwritten.
+            if current is None:
+                return
+            if (
+                current["status"] == "cancelled"
+                and current["execution_owner"] == execution_lease.owner
+                and int(current["execution_epoch"]) == execution_lease.epoch
+                and row["method_attempt_key"]
+            ):
+                from .learning_method_orchestrator import mark_method_cancelled
+                mark_method_cancelled(job_id)
+                return
+            if (
+                current["status"] != "running"
+                or current["execution_owner"] != execution_lease.owner
+                or int(current["execution_epoch"]) != execution_lease.epoch
+            ):
                 return
             if not isinstance(result.get("lesson"), str) or not result["lesson"].strip():
                 raise LearningError("The model and bounded repair attempt returned no lesson text; source material was retained.")
             quality["lesson_retained"] = True
             quality["retention_policy"] = "all_nonempty_lessons_are_preserved; heuristic_quality_is_advisory_only"
-            conn.execute("UPDATE learning_jobs SET status='completed', lesson=?, assessment_json=?, quality_json=?, error=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                (result["lesson"], json.dumps(assessment, ensure_ascii=False), json.dumps(quality, ensure_ascii=False), job_id))
+            completed = conn.execute(
+                """UPDATE learning_jobs
+                   SET status='completed', lesson=?, assessment_json=?, quality_json=?, error=NULL,
+                       updated_at=CURRENT_TIMESTAMP
+                   WHERE id=? AND status='running' AND execution_owner=? AND execution_epoch=?""",
+                (
+                    result["lesson"],
+                    json.dumps(assessment, ensure_ascii=False),
+                    json.dumps(quality, ensure_ascii=False),
+                    job_id,
+                    execution_lease.owner,
+                    execution_lease.epoch,
+                ),
+            )
+            if completed.rowcount != 1:
+                return
             # Automatically persist the lesson-quality score on its curriculum topic.
             # This is a content-quality score, not a score for the learner's understanding.
             path_topic_id = conn.execute(
@@ -1555,9 +1586,9 @@ def run_job(job_id: int, *, task_context: Any | None = None) -> None:
             # Never delete user-provided or retrieved source material because a
             # heuristic score is low. It remains provenance-labelled and untrusted.
     except Exception as exc:
-        with learning_connection() as conn:
-            conn.execute("UPDATE learning_jobs SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'",
-                         (str(exc)[:1000], job_id))
+        assert_execution_owner("learning_execution_failed")
+        learning_execution.fail_if_current(execution_lease, str(exc)[:1000])
+        raise
         raise LearningError(f"Learning job {job_id} failed: {exc}") from exc
 
 def get_job(job_id: int) -> dict[str, Any]:
