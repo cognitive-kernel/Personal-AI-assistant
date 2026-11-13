@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import BaseModel, Field, StrictBool, StrictStr
 
 from . import cloud_resource_planner, cloud_resources
@@ -65,7 +65,7 @@ def list_resource_selection_plans(
 
 
 @router.get("/plans/{plan_id}")
-def get_resource_selection_plan(plan_id: int) -> dict[str, Any]:
+def get_resource_selection_plan(plan_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     try:
         return cloud_resources.get_resource_selection_plan(plan_id)
     except cloud_resources.CloudResourceNotFoundError as exc:
@@ -120,7 +120,7 @@ def add_manual_cloud_resource(request: ManualCandidateRequest) -> dict[str, Any]
 
 
 @router.delete("/{candidate_id}")
-def delete_cloud_resource(candidate_id: int) -> dict[str, Any]:
+def delete_cloud_resource(candidate_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     try:
         return {"deleted": True, "candidate": cloud_resources.delete_candidate(candidate_id)}
     except cloud_resources.CloudResourceNotFoundError as exc:
@@ -143,7 +143,7 @@ class CandidateReviewRequest(BaseModel):
 
 @router.patch("/{candidate_id}/review")
 def review_cloud_resource(
-    candidate_id: int,
+    candidate_id: Annotated[int, Path(ge=1)],
     request: CandidateReviewRequest,
 ) -> dict[str, Any]:
     try:
@@ -174,8 +174,8 @@ class ClaimReviewRequest(BaseModel):
 
 @router.patch("/{candidate_id}/claims/{claim_id}/review")
 def review_cloud_resource_claim(
-    candidate_id: int,
-    claim_id: int,
+    candidate_id: Annotated[int, Path(ge=1)],
+    claim_id: Annotated[int, Path(ge=1)],
     request: ClaimReviewRequest,
 ) -> dict[str, Any]:
     try:
