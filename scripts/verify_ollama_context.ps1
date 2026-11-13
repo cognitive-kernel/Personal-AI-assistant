@@ -12,6 +12,56 @@ $ErrorActionPreference = "Stop"
 $baseUrl = "http://127.0.0.1:11434"
 $minimumContextTokens = 1
 
+function Get-OllamaNumParallel {
+    # Ollama reads OLLAMA_NUM_PARALLEL from the environment of the server
+    # process. The Runner may use a different account, so inspect the owner
+    # account's persisted Windows environment rather than the Runner's env.
+    try {
+        $listeners = @(
+            Get-NetTCPConnection -LocalPort 11434 -State Listen -ErrorAction Stop |
+                Select-Object -ExpandProperty OwningProcess -Unique
+        )
+    } catch {
+        throw "Could not identify the Ollama server process to verify parallelism. $($_.Exception.Message)"
+    }
+    if ($listeners.Count -ne 1 -or [uint32]$listeners[0] -le 0) {
+        throw "Expected exactly one local Ollama server listener on port 11434 to verify OLLAMA_NUM_PARALLEL."
+    }
+    $serverProcess = Get-CimInstance Win32_Process -Filter ("ProcessId={0}" -f [uint32]$listeners[0]) -ErrorAction Stop
+    if (-not $serverProcess) {
+        throw "Could not inspect the Ollama server process owner."
+    }
+    $owner = Invoke-CimMethod -InputObject $serverProcess -MethodName GetOwnerSid -ErrorAction Stop
+    if ($owner.ReturnValue -ne 0 -or [string]::IsNullOrWhiteSpace([string]$owner.Sid)) {
+        throw "Could not resolve the Ollama server process owner SID."
+    }
+
+    $userEnvironmentPath = "Registry::HKEY_USERS\$($owner.Sid)\Environment"
+    $machineEnvironmentPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
+    $userEnvironment = if (Test-Path -LiteralPath $userEnvironmentPath) {
+        Get-ItemProperty -LiteralPath $userEnvironmentPath -ErrorAction Stop
+    } else { $null }
+    $machineEnvironment = Get-ItemProperty -LiteralPath $machineEnvironmentPath -ErrorAction Stop
+    $userSetting = if ($userEnvironment) { $userEnvironment.PSObject.Properties["OLLAMA_NUM_PARALLEL"] } else { $null }
+    $machineSetting = $machineEnvironment.PSObject.Properties["OLLAMA_NUM_PARALLEL"]
+    if ($userSetting) {
+        $rawValue = [string]$userSetting.Value
+    } elseif ($machineSetting) {
+        $rawValue = [string]$machineSetting.Value
+    } else {
+        # Ollama's documented default is one parallel request per model.
+        $rawValue = "1"
+    }
+    if ([string]::IsNullOrWhiteSpace($rawValue)) {
+        $rawValue = "1"
+    }
+    $parallelRequests = [uint32]0
+    if (-not [uint32]::TryParse($rawValue.Trim(), [ref]$parallelRequests) -or $parallelRequests -lt 1 -or $parallelRequests -gt 1024) {
+        throw "The Ollama server's OLLAMA_NUM_PARALLEL setting is invalid or outside the supported safety bound (1..1024)."
+    }
+    return [int]$parallelRequests
+}
+
 function Get-ModelInfo {
     param([Parameter(Mandatory = $true)][string]$ModelName)
     $body = @{ model = $ModelName; verbose = $false } | ConvertTo-Json -Compress
@@ -91,6 +141,7 @@ function Get-AutomaticContext {
         architecture = [string]$Info.details.family
         model_weight_bytes = $weightBytes
         model_weights_already_loaded = $modelWeightsAlreadyLoaded
+        parallel_requests = (Get-OllamaNumParallel)
         available_memory_bytes = $availableMemoryBytes
         requested_context_tokens = $RequestedContext
     } | ConvertTo-Json -Depth 30 -Compress
@@ -295,7 +346,8 @@ if ($VerifyOnly) {
     Write-Host "Installed model weight size: $($contextSelection.model_weight_bytes) bytes"
     Write-Host "Model weights already resident: $([bool]$contextSelection.model_weights_already_loaded)"
     Write-Host "Model weight charge in this selection: $($contextSelection.model_weight_charge_bytes) bytes"
-    Write-Host "Estimated KV cache: $($contextSelection.kv_cache_bytes_per_token) bytes/token"
+    Write-Host "Ollama parallel requests: $($contextSelection.parallel_requests)"
+    Write-Host "Estimated KV cache: $($contextSelection.kv_cache_bytes_per_token) bytes/token/request; $($contextSelection.kv_cache_bytes_per_token_total) bytes/token total"
     Write-Host "Reserved system RAM: $($contextSelection.reserve_bytes) bytes"
     Write-Host "Model/runtime overhead budget: $($contextSelection.overhead_bytes) bytes"
     if ($null -ne $requestedContext) {
