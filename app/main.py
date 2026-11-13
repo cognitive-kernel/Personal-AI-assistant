@@ -986,7 +986,7 @@ def create_learning_job(request: LearningRequest) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 @app.get("/api/learning/jobs")
-def learning_jobs(limit: int = 50) -> dict[str, Any]:
+def learning_jobs(limit: int = Query(default=50, ge=1, le=200)) -> dict[str, Any]:
     return {"jobs": learning.list_jobs(limit)}
 
 
@@ -1128,7 +1128,7 @@ def legacy_scheduler_status() -> dict[str, Any]:
 
 
 @app.get("/api/knowledge")
-def knowledge_items(limit: int = 100) -> dict[str, Any]:
+def knowledge_items(limit: int = Query(default=100, ge=1, le=300)) -> dict[str, Any]:
     with db.learning_connection() as conn:
         rows = conn.execute(
             """SELECT id, topic, content, source_kind, version, status, job_id, created_at
