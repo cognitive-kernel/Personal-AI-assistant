@@ -21,6 +21,7 @@ RETRY_BASE_DELAY_SECONDS = 2
 RETRY_MAX_DELAY_SECONDS = 300
 MAX_TASK_TYPE_CHARS = 100
 MAX_TASK_PAYLOAD_BYTES = 1024 * 1024
+MAX_TASK_RECORD_BYTES = 4 * 1024 * 1024
 MAX_TASK_PRIORITY = 100_000
 MAX_TASK_ATTEMPTS = 20
 MAX_TASK_DEDUPE_KEY_CHARS = 512
@@ -45,11 +46,22 @@ def _timestamp(value: datetime | None = None) -> str:
     return current.astimezone(timezone.utc).isoformat(timespec="microseconds")
 
 
-def _json(value: Any) -> str:
+def _json(
+    value: Any,
+    *,
+    max_bytes: int = MAX_TASK_RECORD_BYTES,
+    field_name: str = "Task data",
+) -> str:
     try:
-        return json.dumps(value, ensure_ascii=False, allow_nan=False)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("Task data must be JSON-serializable and contain no NaN/Infinity.") from exc
+        encoded = json.dumps(value, ensure_ascii=False, allow_nan=False)
+        size = len(encoded.encode("utf-8"))
+    except (TypeError, ValueError, UnicodeEncodeError) as exc:
+        raise ValueError(
+            f"{field_name} must be JSON-serializable UTF-8 and contain no NaN/Infinity."
+        ) from exc
+    if size > max_bytes:
+        raise ValueError(f"{field_name} exceeds the {max_bytes}-byte serialized limit.")
+    return encoded
 
 
 def _task(row: sqlite3.Row | None) -> dict[str, Any] | None:
@@ -96,15 +108,9 @@ def create_task(
         or len(dedupe_key.strip()) > MAX_TASK_DEDUPE_KEY_CHARS
     ):
         raise ValueError(f"dedupe_key must be a non-empty string of at most {MAX_TASK_DEDUPE_KEY_CHARS} characters when provided.")
-    encoded_payload = _json(payload)
-    try:
-        payload_size = len(encoded_payload.encode("utf-8"))
-    except UnicodeEncodeError as exc:
-        raise ValueError("Task payload must contain valid Unicode scalar values.") from exc
-    if payload_size > MAX_TASK_PAYLOAD_BYTES:
-        raise ValueError(
-            f"Task payload exceeds the {MAX_TASK_PAYLOAD_BYTES}-byte serialized limit."
-        )
+    encoded_payload = _json(
+        payload, max_bytes=MAX_TASK_PAYLOAD_BYTES, field_name="Task payload"
+    )
     normalized_type = task_type.strip()
     normalized_key = dedupe_key.strip() if dedupe_key is not None else None
     due = _timestamp(scheduled_at)
@@ -407,7 +413,7 @@ def renew_lease(task_id: int, worker_id: str, *, lease_seconds: int = 300) -> di
 
 
 def save_checkpoint(task_id: int, worker_id: str, checkpoint: dict[str, Any]) -> dict[str, Any]:
-    encoded = _json(checkpoint)
+    encoded = _json(checkpoint, field_name="Task checkpoint")
     now = _timestamp()
     with db.learning_connection() as conn:
         # Hold the write reservation across the ownership check and checkpoint write.
@@ -433,7 +439,7 @@ def save_checkpoint(task_id: int, worker_id: str, checkpoint: dict[str, Any]) ->
 
 
 def complete_task(task_id: int, worker_id: str, result: dict[str, Any]) -> dict[str, Any]:
-    encoded = _json(result)
+    encoded = _json(result, field_name="Task result")
     now = _timestamp()
     with db.learning_connection() as conn:
         # A reclaiming worker must not interleave between validation and completion.
