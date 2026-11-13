@@ -174,3 +174,14 @@ def test_every_api_string_query_parameter_has_explicit_size_bounds():
                             method, path, parameter
                         )
     assert inspected >= 5
+
+
+def test_practical_learning_job_filter_rejects_non_positive_ids(client):
+    response = client.get("/api/learning/practical/exercises", params={"job_id": 0})
+    assert response.status_code == 422
+
+    parameter = next(
+        item for item in app.openapi()["paths"]["/api/learning/practical/exercises"]["get"]["parameters"]
+        if item["name"] == "job_id"
+    )
+    assert parameter["schema"]["minimum"] == 1
