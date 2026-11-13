@@ -1471,6 +1471,8 @@ LEARNING_MIGRATIONS = (
                 verification_status TEXT NOT NULL DEFAULT 'unverified'
                     CHECK(verification_status IN ('unverified','verified','inconclusive','contradicted','stale')),
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CHECK(source_url IS NULL OR substr(source_url, 1, 8) = 'https://'),
+                CHECK(reference_url IS NULL OR substr(reference_url, 1, 8) = 'https://'),
                 CHECK(
                     (source_type='web' AND source_url IS NOT NULL AND length(trim(source_url)) > 0)
                     OR (source_type='ai' AND provider IS NOT NULL AND length(trim(provider)) > 0
@@ -1483,6 +1485,12 @@ LEARNING_MIGRATIONS = (
             )""",
             "CREATE INDEX idx_learning_candidate_sources_candidate ON learning_candidate_sources(candidate_id, source_type, id)",
             "CREATE INDEX idx_learning_candidate_sources_reference ON learning_candidate_sources(reference_url, source_url)",
+            """CREATE TRIGGER prevent_learning_candidate_sources_update
+               BEFORE UPDATE ON learning_candidate_sources
+               BEGIN SELECT RAISE(ABORT, 'learning source provenance is append-only'); END""",
+            """CREATE TRIGGER prevent_learning_candidate_sources_delete
+               BEFORE DELETE ON learning_candidate_sources
+               BEGIN SELECT RAISE(ABORT, 'learning source provenance is append-only'); END""",
         ),
     ),
     Migration(
@@ -1507,6 +1515,12 @@ LEARNING_MIGRATIONS = (
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )""",
             "CREATE INDEX idx_learning_accuracy_path_outcome ON learning_accuracy_evaluations(learning_path, outcome, id)",
+            """CREATE TRIGGER prevent_learning_accuracy_evaluations_update
+               BEFORE UPDATE ON learning_accuracy_evaluations
+               BEGIN SELECT RAISE(ABORT, 'learning accuracy evaluations are immutable'); END""",
+            """CREATE TRIGGER prevent_learning_accuracy_evaluations_delete
+               BEFORE DELETE ON learning_accuracy_evaluations
+               BEGIN SELECT RAISE(ABORT, 'learning accuracy evaluations are immutable'); END""",
         ),
     ),
 )
