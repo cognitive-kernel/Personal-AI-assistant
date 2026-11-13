@@ -438,20 +438,17 @@ jobs:
           Write-Host "TARGET_HOST_HARDWARE_PROFILE:"
           $hardware | ConvertTo-Json -Depth 6 | Write-Host
 
-          if ($cpuName -notmatch '(?i)i5-12400' -or $physicalCores -ne 6 -or $logicalProcessors -ne 12) {
-            throw "Target CPU does not match the recorded Intel Core i5-12400 6-core/12-thread profile."
-          }
-          if ($totalRamGiB -lt 30 -or $totalRamGiB -gt 33) {
-            throw "Target physical RAM $totalRamGiB GiB does not match the recorded 31.78 GiB / 32 GB class."
-          }
-          if (-not ($gpuInventory.name -match '(?i)Intel.*UHD.*730')) {
-            throw "Target GPU does not match the recorded Intel UHD Graphics 730 profile."
+          # Hardware is measured, not pinned to a historical machine profile.
+          # Reject missing core telemetry, but do not reject a valid host because
+          # its CPU, RAM size, or GPU differs from an old repository assumption.
+          if ([string]::IsNullOrWhiteSpace($cpuName) -or $physicalCores -le 0 -or $logicalProcessors -le 0 -or $totalRamGiB -le 0) {
+            throw "Windows did not return complete CPU/physical-RAM telemetry; refusing resource-dependent validation."
           }
           $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 5 -MaximumRedirection 0
           if (@($tags.models | ForEach-Object { $_.name }) -notcontains $env:AUTONOMOUS_ENGINEERING_MODEL) {
             throw "Ollama model '$env:AUTONOMOUS_ENGINEERING_MODEL' is not installed."
           }
-          Write-Host "Target hardware matches the recorded user system profile."
+          Write-Host "Target hardware telemetry recorded; resource limits will use live host measurements."
       - name: Run target-host ownership, concurrency, and recovery acceptance
         shell: powershell
         run: |
