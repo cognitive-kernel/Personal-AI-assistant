@@ -5,6 +5,7 @@ mutates candidate status, or treats model confidence as evidence of correctness.
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from typing import Any
 from urllib.parse import urlsplit
