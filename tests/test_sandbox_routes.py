@@ -1,7 +1,14 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app import cloud_resources, db, sandbox_tasks
+from app import (
+    cloud_resources,
+    db,
+    experience_tasks,
+    factual_verification_tasks,
+    learning_review_tasks,
+    sandbox_tasks,
+)
 from app.main import app
 from app.sandbox import SandboxResult
 
@@ -75,7 +82,13 @@ def test_sandbox_run_requires_consent_then_queues_a_bounded_task(local_client):
 
 @pytest.mark.parametrize(
     "task_type",
-    [sandbox_tasks.SANDBOX_TASK_TYPE, sandbox_tasks.SANDBOX_LANGUAGE_TASK_TYPE],
+    [
+        sandbox_tasks.SANDBOX_TASK_TYPE,
+        sandbox_tasks.SANDBOX_LANGUAGE_TASK_TYPE,
+        experience_tasks.EXPERIENCE_TEST_TASK_TYPE,
+        factual_verification_tasks.FACTUAL_VERIFY_TASK_TYPE,
+        learning_review_tasks.LEARNING_SANDBOX_REVIEW_TASK_TYPE,
+    ],
 )
 def test_generic_task_endpoint_cannot_bypass_sandbox_consent_route(local_client, task_type):
     response = local_client.post(
