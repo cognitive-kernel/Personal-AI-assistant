@@ -69,6 +69,18 @@ def assert_current(lease: LearningExecutionLease) -> None:
         )
 
 
+def cancel_if_current(lease: LearningExecutionLease, reason: str = "user_cancelled") -> bool:
+    """Mark a job cancelled only while this execution epoch still owns it."""
+    with learning_connection() as connection:
+        updated = connection.execute(
+            """UPDATE learning_jobs
+               SET status='cancelled', error=?, updated_at=CURRENT_TIMESTAMP
+               WHERE id=? AND status='running' AND execution_owner=? AND execution_epoch=?""",
+            (reason[:1000], lease.job_id, lease.owner, lease.epoch),
+        )
+    return updated.rowcount == 1
+
+
 def fail_if_current(lease: LearningExecutionLease, error: str) -> bool:
     """Set a job failed only if this exact execution epoch still owns it."""
     if not isinstance(error, str) or not error.strip():
