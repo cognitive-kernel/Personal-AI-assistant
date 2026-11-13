@@ -102,6 +102,8 @@ if ($ollamaCliReady) {
 $ollamaOnline = $false
 $modelInstalled = $false
 $modelContextLength = $null
+$modelKvCacheMetadataAvailable = $false
+$modelKvCacheMetadataDetail = "Required architecture-specific KV-cache dimensions are unavailable"
 $modelSupportsTools = $false
 try {
     $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 4 -MaximumRedirection 0
@@ -116,6 +118,25 @@ try {
         if ($rawContext -and [int64]::TryParse([string]$rawContext.Value, [ref]$parsedContext) -and $parsedContext -ge 1) {
             $modelContextLength = $parsedContext
         }
+        $kvCacheMetadataKeys = @(
+            ($architecture + ".block_count"),
+            ($architecture + ".attention.head_count_kv"),
+            ($architecture + ".attention.key_length"),
+            ($architecture + ".attention.value_length")
+        )
+        $modelKvCacheMetadataAvailable = -not [string]::IsNullOrWhiteSpace($architecture)
+        foreach ($kvKey in $kvCacheMetadataKeys) {
+            $kvProperty = $modelInfo.model_info.PSObject.Properties[$kvKey]
+            $kvDimension = 0L
+            if (-not $kvProperty -or -not [int64]::TryParse([string]$kvProperty.Value, [ref]$kvDimension) -or $kvDimension -lt 1) {
+                $modelKvCacheMetadataAvailable = $false
+                $modelKvCacheMetadataDetail = "Ollama /api/show is missing a positive KV-cache dimension: $kvKey"
+                break
+            }
+        }
+        if ($modelKvCacheMetadataAvailable) {
+            $modelKvCacheMetadataDetail = "All required architecture-specific KV-cache dimensions are valid"
+        }
         $modelSupportsTools = @($modelInfo.capabilities | ForEach-Object { [string]$_ }) -contains "tools"
     }
 } catch {}
@@ -125,6 +146,7 @@ $checks += [pscustomobject]@{ Component = "Saved model selection"; Ready = (-not
 $checks += [pscustomobject]@{ Component = "Base model selection"; Ready = -not $modelIsContextVariant; Detail = if ($modelIsContextVariant) { "Generated Codex context variants cannot be selected as base models" } else { "Original Ollama model selected" } }
 $checks += [pscustomobject]@{ Component = "Configured model"; Ready = $modelInstalled; Detail = if ($modelInstalled) { $model } elseif (-not $model) { "No model has been selected and saved" } else { "Saved model is not installed in Ollama" } }
 $checks += [pscustomobject]@{ Component = "Model context metadata"; Ready = ($null -ne $modelContextLength -and $modelContextLength -ge 1); Detail = if ($null -eq $modelContextLength) { "Ollama /api/show did not report a valid architecture context_length" } elseif ($modelContextLength -lt 1) { "$modelContextLength tokens maximum; Codex can adapt to this context" } else { "$modelContextLength tokens maximum; runtime context metadata is valid" } }
+$checks += [pscustomobject]@{ Component = "Model KV-cache metadata"; Ready = $modelKvCacheMetadataAvailable; Detail = $modelKvCacheMetadataDetail }
 $checks += [pscustomobject]@{ Component = "Model tool calling"; Ready = $modelSupportsTools; Detail = if ($modelSupportsTools) { "Ollama advertises tools capability" } else { "Selected model does not advertise tools capability required by Codex" } }
 
 $runnerService = $null
