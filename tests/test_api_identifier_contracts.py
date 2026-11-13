@@ -47,6 +47,7 @@ def client(tmp_path, monkeypatch):
         ("get", "/api/conversations/0/messages", None),
         ("get", "/api/learning/browser/courses/0", None),
         ("get", "/api/learning/jobs/0", None),
+        ("get", "/api/research/plans/0", None),
     ],
 )
 def test_integer_resource_path_ids_reject_zero_at_http_boundary(client, method, path, payload):
