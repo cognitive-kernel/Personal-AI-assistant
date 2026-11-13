@@ -23,7 +23,7 @@ Let:
 - M_weight_charge be zero only when `/api/ps` reports the loaded base model with `size_vram=0` (CPU-resident weights already reduce free physical RAM); if `size_vram` is positive or absent, charge the full M_weights conservatively. Invalid VRAM telemetry fails closed.
 - M_overhead be the conservative model/runtime overhead allowance.
 - B_KV be the estimated FP16 KV-cache bytes per token for one request from the model's architecture metadata.
-- P_parallel be the effective `OLLAMA_NUM_PARALLEL` value read from the Ollama server owner's Windows user/system environment; Ollama defaults this setting to 1 when unset.
+- P_parallel be the configured `OLLAMA_NUM_PARALLEL` value read from the Ollama server owner's persisted Windows user/system environment; Ollama defaults this setting to 1 when unset. This is not a direct read of the running process environment; a process-only launch override may differ and remains unverified.
 - C_catalog be the Codex-safe signed 64-bit ceiling `floor((2^63 - 1) / 9)`. Codex stores context fields as i64 and derives automatic compaction with `(context_window * 9) / 10`; the lower bound avoids overflow in that multiplication. The application does not add an arbitrary 1,048,576-token cap; actual model and host limits normally bind first.
 
 The host capacity is estimated independently from the model's advertised context ceiling. KV-cache bytes/token necessarily depend on the selected model architecture, but the hardware memory budget is reported separately. If the base model is already loaded, its weight size is not charged twice because the available-memory measurement already reflects resident weights:
@@ -53,7 +53,7 @@ There is no fixed minimum context window. The only numeric validity rule is that
 ## Runtime enforcement
 
 1. Read architecture-specific model context metadata, a positive integer model weight size from `/api/tags`, all KV-cache dimensions used by the memory estimate, and tool-calling capability from Ollama using bounded /api/show requests (verbose=false). The readiness API and settings-save path must reject a model whose KV-cache dimensions are incomplete; a valid context_length alone is insufficient.
-2. Resolve the Ollama server process owner and read that account's persisted Windows environment, with machine-level environment fallback. Use Ollama's documented default of 1 only when no setting is present; malformed, unavailable, or non-positive values fail closed. The Runner account's own environment is not treated as the server's configuration.
+2. Resolve the Ollama server process owner and read that account's persisted Windows environment, with machine-level environment fallback. Use Ollama's documented default of 1 only when no persisted setting is present; malformed, unavailable, or non-positive values fail closed. The Runner account's own environment is not treated as the server's configuration. This registry lookup does not inspect the live Ollama process environment block; a process-only launch override may differ. The preflight emits a warning, and target-host acceptance must ensure the server was launched with the persisted setting (or leave effective parallelism explicitly unverified).
 3. Estimate host capacity from current free physical memory, model weight size, KV-cache dimensions multiplied by `P_parallel`, reserve, and overhead.
 4. Select the minimum of requested, hardware, model, and catalog ceilings.
 5. Remove stale current-format and legacy `-codex-64k` variants for the selected base model before measuring current free RAM, then create a separate context-specific variant with exactly the selected num_ctx; never mutate the original model.
@@ -68,7 +68,7 @@ Any mismatch, missing telemetry, invalid architecture dimensions, missing tools 
 - Models with valid context limits below 64,000 tokens remain eligible when they advertise the required tools capability.
 - Hosts with safe memory for fewer than 64,000 tokens remain eligible; Codex receives the smaller verified context.
 - A smaller context limits the amount of prior conversation and repository evidence available in one turn. The controller should rely on its existing durable checkpoints and bounded task workflow rather than increasing context beyond the safe ceiling.
-- Higher `OLLAMA_NUM_PARALLEL` values reduce the safe context ceiling proportionally; the target preflight reads the server owner's Windows environment rather than assuming the Runner account's environment.
+- Higher `OLLAMA_NUM_PARALLEL` values reduce the safe context ceiling proportionally; the target preflight reads the server owner's persisted Windows configuration rather than assuming the Runner account's environment. This does not prove the running process has no temporary override.
 - The FP16 KV-cache calculation is a preflight estimate, not proof of allocation. The configured parallel-request multiplier is included; Ollama's loaded runtime report is the final allocation check.
 - The selected context can change between runs as free physical memory changes. The value must be recalculated for each preflight.
 
