@@ -63,6 +63,32 @@ def max_topics_per_run() -> int:
     return value
 
 
+def configured_int_setting(name: str, default: int, minimum: int, maximum: int) -> int:
+    """Read a validated integer from the shared persistent settings contract."""
+    from ..db import get_settings
+
+    value = get_settings().get(name, default)
+    if type(value) is not int or not minimum <= value <= maximum:
+        raise RuntimeError(f"Persisted setting {name} is outside its validated range.")
+    return value
+
+
+def configured_float_setting(name: str, default: float, minimum: float, maximum: float) -> float:
+    """Read a finite, range-checked numeric setting from the shared settings contract."""
+    import math
+    from ..db import get_settings
+
+    value = get_settings().get(name, default)
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or not minimum <= value <= maximum
+    ):
+        raise RuntimeError(f"Persisted setting {name} is outside its validated range.")
+    return float(value)
+
+
 def database_path() -> str:
     """Return the isolated AI-learning database path."""
     return os.getenv("AI_LEARNING_DB_PATH", "data/ai_learning.db")
