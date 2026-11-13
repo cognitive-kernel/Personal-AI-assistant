@@ -25,14 +25,37 @@ _IMAGE_REF = re.compile(
 _ALLOWED_PAYLOAD_KEYS = {"source_code", "timeout_seconds", "max_output_bytes", "learning_practical"}
 
 
+def validate_settings(settings: dict[str, Any]) -> None:
+    """Validate persisted sandbox configuration without granting execution consent."""
+    if not isinstance(settings, dict):
+        raise ValueError("Sandbox settings must be a mapping.")
+    enabled = settings.get("sandbox_enabled", True)
+    if type(enabled) is not bool:
+        raise ValueError("sandbox_enabled must be a boolean setting.")
+    executable_value = str(settings.get("sandbox_docker_executable", "") or "").strip()
+    if executable_value and not Path(executable_value).expanduser().is_absolute():
+        raise ValueError("sandbox_docker_executable must be an absolute path.")
+    python_image = str(settings.get("sandbox_python_image", "") or "").strip()
+    if python_image and not _IMAGE_REF.fullmatch(python_image):
+        raise ValueError("sandbox_python_image must be an official Python image pinned by SHA-256 digest.")
+    test_image = str(settings.get("sandbox_test_image", "") or "").strip()
+    if test_image and not sandbox.is_valid_test_image_reference(test_image):
+        raise ValueError("sandbox_test_image must be an immutable sha256 image ID or digest-pinned repository reference.")
+    node_image = str(settings.get("sandbox_node_image", "") or "").strip()
+    if node_image and not sandbox.is_valid_language_image_reference(node_image, "javascript"):
+        raise ValueError("sandbox_node_image must be an official Node image pinned by SHA-256 digest.")
+    rust_image = str(settings.get("sandbox_rust_image", "") or "").strip()
+    if rust_image and not sandbox.is_valid_language_image_reference(rust_image, "rust"):
+        raise ValueError("sandbox_rust_image must be an official Rust image pinned by SHA-256 digest.")
+
+
 def handler_from_environment(*, allow_language_runners: bool = False) -> Callable[
     [dict[str, Any], dict[str, Any] | None, TaskContext], dict[str, Any]
 ] | None:
     """Return a handler only after explicit opt-in and valid local configuration."""
     settings = db.get_settings()
+    validate_settings(settings)
     enabled = settings.get("sandbox_enabled", True)
-    if type(enabled) is not bool:
-        raise ValueError("sandbox_enabled must be a boolean setting.")
     if not enabled:
         return None
 
