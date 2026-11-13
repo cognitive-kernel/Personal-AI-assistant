@@ -988,3 +988,13 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - **Correction:** readiness now validates and exposes the selected model's positive integer weight size, and includes it in the context-supported contract. Missing, zero, boolean, or string sizes keep Ollama online for diagnosis but prevent model settings from being saved.
 - **Regression coverage:** added cases for missing, zero, string, and boolean weight sizes; successful service fixtures now carry an explicit installed-model size. The model remains local-only; no fallback size is inferred.
 - **Validation:** the change and tests are committed on PR #722; exact-head GitHub CI must complete before claiming success.
+
+
+## 2026-11-13 — Unified model metadata gates across Python and Windows
+
+- The adaptive context readiness contract now requires all inputs consumed by the runtime estimator: a positive integer model weight size from `/api/tags`, a positive architecture-specific `context_length`, positive KV-cache `block_count`, `attention.head_count_kv`, `attention.key_length`, `attention.value_length`, and Ollama `tools` capability.
+- Python status/settings validation, app readiness, Runner readiness, and Runner provisioning enforce the same model-size and KV-dimension contract. Incomplete metadata fails before GitHub settings writes or Codex dispatch.
+- PowerShell readiness scripts reject non-integer model sizes to match Python's JSON type contract. The Windows PowerShell 5.1 bridge regression parses all three scripts.
+- Exact code/test head: `63b13bcea8888e108e1029b93af789025081ae4e`. Its hosted CI matrix is queued; no test pass is claimed for this head.
+- The context estimate uses FP16 KV-cache bytes per token. Ollama documents `f16` as the default KV-cache type and `q8_0`/`q4_0` as lower-memory options; the FP16 estimate is therefore the conservative memory case among those documented types.
+- **Remaining host-specific assumption:** Ollama's documented `OLLAMA_NUM_PARALLEL` default is 1 and required memory scales with parallel requests. The current estimator budgets one parallel request; the target-host diagnostic must verify the effective setting before acceptance. A custom value above 1 is not yet included in the estimate.
