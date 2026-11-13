@@ -205,3 +205,28 @@ def test_practical_learning_job_filter_rejects_non_positive_ids(client):
     if integer_branch is not None:
         numeric_schema = {**numeric_schema, **integer_branch}
     assert numeric_schema["minimum"] == 1
+
+
+def test_autonomous_progress_query_contract_is_finite_and_date_bounded(client):
+    invalid_period = client.get(
+        "/api/autonomous-engineering/progress", params={"period": "quarterly"}
+    )
+    invalid_date = client.get(
+        "/api/autonomous-engineering/progress", params={"start_date": "2026-11-1"}
+    )
+    assert invalid_period.status_code == 422
+    assert invalid_date.status_code == 422
+
+    parameters = {
+        item["name"]: item["schema"]
+        for item in app.openapi()["paths"]["/api/autonomous-engineering/progress"]["get"]["parameters"]
+    }
+    assert set(parameters["period"]["enum"]) == {"daily", "weekly", "custom"}
+    for name in ("start_date", "end_date"):
+        date_schema = parameters[name]
+        branches = date_schema.get("anyOf") or date_schema.get("oneOf") or []
+        string_branch = next((item for item in branches if item.get("type") == "string"), None)
+        if string_branch is not None:
+            date_schema = {**date_schema, **string_branch}
+        assert date_schema["minLength"] == 10
+        assert date_schema["maxLength"] == 10
