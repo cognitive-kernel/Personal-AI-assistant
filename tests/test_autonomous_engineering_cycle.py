@@ -1240,6 +1240,9 @@ def test_windows_sandbox_diagnostic_cancels_only_older_queued_runs_and_uses_uniq
     assert "continue" in cleanup_job
     assert "/cancel" in cleanup_job
     assert "/force-cancel" in cleanup_job
+    assert "Normal cancellation for superseded" in cleanup_job
+    assert "afterForceCancel.status -ne \"completed\"" in cleanup_job
+    assert "Force-cancelled superseded" in cleanup_job
     assert "concurrency:" not in cleanup_job
     assert "needs: cancel-stale-diagnostics" in sandbox_job
     sandbox_job_header = sandbox_job.split("steps:", 1)[0]
