@@ -7,7 +7,7 @@
 - **NOT RUN / PENDING:** live Ollama /api/ps allocation, real Codex tool-call smoke on the target host, soak/crash-restart, staging restore/rollback, and required target-host tests.
 - **Merge gate:** the Master Engineering Prompt requires green exact-head GitHub Actions and successful required tests on the actual target host before merge. Continue GitHub-side work while external tests are pending; do not merge or bypass this gate. Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) still requires independent security review; Issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290) tracks project-wide acceptance. PR #722 remains Draft/open/unmerged.
 
-------
+---
 
 ## 2026-11-12 — Latest Autonomous Engineering module audit
 
