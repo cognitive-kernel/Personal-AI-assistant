@@ -1417,13 +1417,26 @@ def test_app_and_runner_readiness_scripts_require_model_context_and_tool_capabil
         assert "/api/show" in script
         assert all("-MaximumRedirection 0" in line for line in script.splitlines() if "http://127.0.0.1:11434" in line and "Invoke-RestMethod" in line)
         assert ".context_length" in script
+        assert all(key in script for key in (
+            ".block_count",
+            ".attention.head_count_kv",
+            ".attention.key_length",
+            ".attention.value_length",
+        ))
         assert '"tools"' in script
         assert "Model context metadata" in script
+        assert "Model KV-cache metadata" in script
         assert "-ge 1" in script
         assert "Model tool calling" in script
 
     provisioning = (root / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
     assert ".context_length" in provisioning
+    assert all(key in provisioning for key in (
+        ".block_count",
+        ".attention.head_count_kv",
+        ".attention.key_length",
+        ".attention.value_length",
+    ))
     assert all("-MaximumRedirection 0" in line for line in provisioning.splitlines() if "http://127.0.0.1:11434" in line and "Invoke-RestMethod" in line)
     assert "-lt 1" in provisioning
     assert '"tools"' in provisioning
