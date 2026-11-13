@@ -802,6 +802,11 @@ def test_browser_self_improvement_proposal_is_saved_without_mutating_checkout():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
+        settings_response = page.request.patch(
+            base_url.rstrip("/") + "/api/settings",
+            data={"values": {"self_improvement_repo_root": str(Path(__file__).resolve().parents[1])}},
+        )
+        assert settings_response.status == 200, settings_response.text()
         _goto_section(page, base_url, "self-improvement-section")
         page.locator("#self-improvement-title").fill(title)
         page.locator("#self-improvement-rationale").fill(
@@ -993,6 +998,11 @@ def test_browser_validates_and_rejects_self_improvement_proposal_without_applyin
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
+        settings_response = page.request.patch(
+            base_url.rstrip("/") + "/api/settings",
+            data={"values": {"self_improvement_repo_root": str(Path(__file__).resolve().parents[1])}},
+        )
+        assert settings_response.status == 200, settings_response.text()
         _goto_section(page, base_url, "self-improvement-section")
         page.on("dialog", lambda dialog: dialog.accept())
         page.locator("#self-improvement-title").fill(title)
