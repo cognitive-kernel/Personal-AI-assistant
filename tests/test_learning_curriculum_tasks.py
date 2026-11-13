@@ -396,7 +396,10 @@ def test_ollama_chat_applies_curriculum_output_token_limit(monkeypatch):
         "ram_safety_reserve_gb": 4,
         "gpu_enabled": False,
     })
-    monkeypatch.setattr(ollama, "detect_hardware", lambda: {"logical_cpu_count": 12})
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {
+        "logical_cpu_count": 12, "available_ram_gb": 25, "total_ram_gb": 32,
+        "gpu_devices": [],
+    })
     runtime_settings_seen = {}
     def fake_runtime_limits(settings, *_args, **_kwargs):
         runtime_settings_seen.update(settings)
@@ -407,9 +410,17 @@ def test_ollama_chat_applies_curriculum_output_token_limit(monkeypatch):
     def fake_request(path, payload=None, **_kwargs):
         if path == "/api/show":
             return {
-                "model_info": {"llama.context_length": 8192},
+                "model_info": {
+                    "llama.context_length": 8192,
+                    "llama.block_count": 1,
+                    "llama.attention.head_count_kv": 1,
+                    "llama.attention.key_length": 1,
+                    "llama.attention.value_length": 1,
+                },
                 "details": {"family": "llama"},
             }
+        if path == "/api/tags":
+            return {"models": [{"name": "gpt-oss:20b", "size": 1_000_000_000}]}
         captured.update(payload)
         return {"message": {"content": "{}"}}
 
@@ -442,17 +453,34 @@ def test_ollama_chat_fails_closed_when_hardware_cannot_provide_required_context(
         "ram_safety_reserve_gb": 4,
         "gpu_enabled": False,
     })
-    monkeypatch.setattr(ollama, "detect_hardware", lambda: {"logical_cpu_count": 12})
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {
+        "logical_cpu_count": 12, "available_ram_gb": 5, "total_ram_gb": 32,
+        "gpu_devices": [],
+    })
     monkeypatch.setattr(ollama, "runtime_limits", lambda *_args, **_kwargs: {
         "num_ctx": 4096, "cpu_threads": 1,
     })
     monkeypatch.setattr(ollama, "model_keep_alive", lambda *_args, **_kwargs: "0")
-    monkeypatch.setattr(ollama, "_request", lambda path, *_args, **_kwargs: {
-        "model_info": {"llama.context_length": 8192},
-        "details": {"family": "llama"},
-    } if path == "/api/show" else pytest.fail("chat request must not run with a truncated context"))
 
-    with pytest.raises(ollama.OllamaError, match="safe RAM budget"):
+    def fake_request(path, *_args, **_kwargs):
+        if path == "/api/show":
+            return {
+                "model_info": {
+                    "llama.context_length": 8192,
+                    "llama.block_count": 40,
+                    "llama.attention.head_count_kv": 8,
+                    "llama.attention.key_length": 128,
+                    "llama.attention.value_length": 128,
+                },
+                "details": {"family": "llama"},
+            }
+        if path == "/api/tags":
+            return {"models": [{"name": "gpt-oss:20b", "size": 12_000_000_000}]}
+        return pytest.fail("chat request must not run when the hardware-safe context is unavailable")
+
+    monkeypatch.setattr(ollama, "_request", fake_request)
+
+    with pytest.raises(ollama.OllamaError, match="hardware-safe context"):
         ollama.chat(
             "Build a comprehensive course outline",
             purpose="learning",
