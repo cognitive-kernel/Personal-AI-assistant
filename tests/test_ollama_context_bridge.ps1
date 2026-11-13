@@ -1,6 +1,8 @@
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+. (Join-Path (Split-Path -Parent $PSScriptRoot) "scripts\ollama_context_helpers.ps1")
+
 $helperPath = Join-Path (Split-Path -Parent $PSScriptRoot) "app\ollama_context.py"
 if (-not (Test-Path -LiteralPath $helperPath -PathType Leaf)) {
     throw "Ollama context selector was not found: $helperPath"
