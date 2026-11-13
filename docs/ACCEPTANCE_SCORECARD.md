@@ -1,5 +1,7 @@
 # Weighted engineering and acceptance scorecard
 
+> **Historical snapshot warning (2026-11-13):** The weighted values below are the original 2026-11-01 snapshot, not a current score. The scored baseline SHA and evidence are historical. New PRs #734–#738 and the current acceptance blockers have not yet been fully incorporated into a recalculated score. Do not quote the old 60.47% / 57.45% values as current project progress.
+
 **Snapshot:** 2026-11-01  
 **Repository:** `cognitive-kernel/Personal-AI-assistant`  
 **Scored baseline:** `main` at `2a5c83bf0ba924f4a2c8f206338a04872562d72d`  
@@ -73,3 +75,11 @@ These are **provisional, evidence-based progress scores** using the fixed stage 
 - PR [#671](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/671) merged as exact `main` SHA `2a5c83bf0ba924f4a2c8f206338a04872562d72d`. Exact PR-head tests [#41221895391](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41221895391), browser E2E [#41221895422](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41221895422), and dependency audit [#41221895550](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41221895550) passed.
 - At the initial checkpoint, post-merge tests and dashboard smoke were still running. They subsequently completed successfully on the exact `main` SHA: tests [#41239355370](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355370) (including Windows storage regressions), dashboard smoke [#41239355374](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355374), and dependency audit [#41239355466](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355466).
 - Progress remains **60.47% engineering / 57.45% overall**; the change does not close an external gate.
+
+
+## 2026-11-13 — Recalculation deferred pending complete evidence
+
+- Current main SHA: `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`.
+- PRs #734 and #736 have exact-head CI evidence as recorded in the engineering log. PR #737 full test CI is still running on `5bf13d05283daa2785a52bebfa9d8adf15f988b8`; PR #738 CI is running on `541de4a94398ef46e64f6e9c1055ef9b34327f1b`.
+- A defensible current weighted score is deferred until the API/module inventory and all current exact-head checks are complete. No score inflation or interpolation is applied.
+- External gates (independent security review, target-host operations, live-model/human adjudication) remain separately blocked and must never be counted as accepted based on repository CI.
