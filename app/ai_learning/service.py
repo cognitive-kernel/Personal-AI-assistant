@@ -2639,7 +2639,7 @@ def _chunk_text(markdown: str) -> list[tuple[str, str]]:
         nonlocal buffer
         text = buffer.strip()
         while len(text) > target_chars:
-            cut = text.rfind("\n", 0, CHUNK_TARGET_CHARS)
+            cut = text.rfind("\n", 0, target_chars)
             if cut < target_chars // 2:
                 cut = target_chars
             chunks.append((heading, text[:cut].strip()))
