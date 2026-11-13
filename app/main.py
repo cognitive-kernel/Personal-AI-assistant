@@ -797,6 +797,15 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         token_env = values["self_improvement_github_token_env"]
         if not re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", token_env):
             raise HTTPException(status_code=422, detail="self_improvement_github_token_env must be an environment variable name.")
+    sandbox_keys = {
+        "sandbox_enabled", "sandbox_docker_executable", "sandbox_python_image",
+        "sandbox_test_image", "sandbox_node_image", "sandbox_rust_image",
+    }
+    if sandbox_keys.intersection(values):
+        try:
+            sandbox_tasks.validate_settings({**db.get_settings(), **values})
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     keep_alive_values = {"auto", "0", "1m", "5m", "10m", "30m"}
     for purpose in ("chat", "learning", "programming", "ai_learning", "topic_learning"):
         key = f"{purpose}_model_keep_alive"
