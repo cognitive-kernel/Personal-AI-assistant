@@ -470,7 +470,7 @@ jobs:
             throw "Could not determine the Runner account's npm global prefix."
           }
           $env:PATH = "$npmPrefix;$env:PATH"
-          $requiredCodexVersion = "0.167.0"
+          $requiredCodexVersion = "0.168.0"
           $installedVersion = ""
           $codexCommand = Get-Command codex.cmd -ErrorAction SilentlyContinue
           if ($codexCommand) {
