@@ -2294,9 +2294,6 @@ def start_researched_path_learning(
         raise KeyError(f"Researched learning path {path_id} not found.")
     skipped_completed = 0
     for topic in path["topics"]:
-        if topic["status"] == "completed":
-            skipped_completed += 1
-            continue
         with learning_connection() as conn:
             latest = conn.execute(
                 "SELECT id, status FROM learning_jobs WHERE path_topic_id=? ORDER BY id DESC LIMIT 1",
@@ -2306,6 +2303,9 @@ def start_researched_path_learning(
                 "SELECT state, current_job_id FROM learning_topic_quality_gates WHERE path_topic_id=?",
                 (topic["id"],),
             ).fetchone()
+        if quality_gate is None and topic["status"] == "completed":
+            skipped_completed += 1
+            continue
         if quality_gate is not None:
             if quality_gate["state"] == "passed":
                 skipped_completed += 1
