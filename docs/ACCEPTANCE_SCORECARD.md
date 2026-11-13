@@ -100,5 +100,5 @@ These are **provisional, evidence-based progress scores** using the fixed stage 
 - PR #738: exact-head CI green, 2,170 passed, 2 skipped, 51 deselected.
 - PR #739: exact-head CI green, 2,143 passed, 2 skipped, 51 deselected.
 - PR #725: exact-head CI green, 2,137 passed, 2 skipped, 51 deselected; authoritative fix for Issue #723, which remains open until merge.
-- PR #741: test workflow in progress; other required checks passed.
+- PR #741: exact-head CI green, 2,137 passed, 2 skipped, 51 deselected.
 - This is an evidence update only, not a recalculated weighted score. The 2026-11-01 score remains historical until all gates and module inventory are reconciled.
