@@ -1359,6 +1359,69 @@ def run_job(job_id: int) -> None:
                             json.dumps(quality, ensure_ascii=False),
                         ),
                     )
+                    candidate_row = conn.execute(
+                        "SELECT id FROM temporary_knowledge_candidates WHERE job_id=?",
+                        (job_id,),
+                    ).fetchone()
+                    if candidate_row is None:
+                        raise LearningError("Temporary candidate was not persisted; source provenance cannot be attached.")
+                    candidate_id = int(candidate_row["id"])
+                    for source_url in list(dict.fromkeys(source_urls)):
+                        conn.execute(
+                            """INSERT INTO learning_candidate_sources(
+                                   candidate_id, source_type, source_url, verification_status,
+                                   metadata_json
+                               )
+                               SELECT ?, 'web', ?, 'unverified', ?
+                               WHERE NOT EXISTS (
+                                   SELECT 1 FROM learning_candidate_sources
+                                   WHERE candidate_id=? AND source_type='web' AND source_url=?
+                               )""",
+                            (
+                                candidate_id, source_url,
+                                json.dumps({"job_id": job_id, "capture": "learning_evidence"}, sort_keys=True),
+                                candidate_id, source_url,
+                            ),
+                        )
+                    if source_kind == "web_retrieved" and source_urls:
+                        provider = str(settings.get("learning_llm_provider", "ollama")).strip()
+                        for reference_url in list(dict.fromkeys(source_urls)):
+                            conn.execute(
+                                """INSERT INTO learning_candidate_sources(
+                                       candidate_id, source_type, reference_url, provider,
+                                       model_id, verification_status, metadata_json
+                                   )
+                                   SELECT ?, 'ai', ?, ?, ?, 'unverified', ?
+                                   WHERE NOT EXISTS (
+                                       SELECT 1 FROM learning_candidate_sources
+                                       WHERE candidate_id=? AND source_type='ai'
+                                         AND reference_url=? AND provider=? AND model_id=?
+                                   )""",
+                                (
+                                    candidate_id, reference_url, provider, model,
+                                    json.dumps({"job_id": job_id, "generation_scope": "lesson_generation"}, sort_keys=True),
+                                    candidate_id, reference_url, provider, model,
+                                ),
+                            )
+                    elif source_kind == "user_provided_text":
+                        conn.execute(
+                            """INSERT INTO learning_candidate_sources(
+                                   candidate_id, source_type, description, verification_status,
+                                   metadata_json
+                               )
+                               SELECT ?, 'other', 'User-provided source text; origin not independently identified.',
+                                      'unverified', ?
+                               WHERE NOT EXISTS (
+                                   SELECT 1 FROM learning_candidate_sources
+                                   WHERE candidate_id=? AND source_type='other'
+                                     AND description='User-provided source text; origin not independently identified.'
+                               )""",
+                            (
+                                candidate_id,
+                                json.dumps({"job_id": job_id, "capture": "user_provided_text"}, sort_keys=True),
+                                candidate_id,
+                            ),
+                        )
             # Never delete user-provided or retrieved source material because a
             # heuristic score is low. It remains provenance-labelled and untrusted.
     except Exception as exc:
