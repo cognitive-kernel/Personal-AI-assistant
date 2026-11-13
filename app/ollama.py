@@ -767,8 +767,15 @@ def chat(
     provider_profile = purpose
     hardware = detect_hardware()
     request_timeout = int(settings.get(f"{prefix}_ollama_timeout_seconds", settings.get("ollama_timeout_seconds", 120)))
-    if purpose in {"factual_review", "research_plan"}:
-        request_timeout = max(1, min(request_timeout, 45))
+    effective_num_predict = num_predict
+    if effective_num_predict is None and purpose in {"factual_review", "research_plan"}:
+        effective_num_predict = settings.get(f"{purpose}_max_output_tokens")
+    if effective_num_predict is not None and (
+        isinstance(effective_num_predict, bool)
+        or not isinstance(effective_num_predict, int)
+        or not 1 <= effective_num_predict <= 8192
+    ):
+        raise OllamaError(f"Configured {purpose} output token budget is invalid.")
     model = str(model_override if model_override is not None else settings.get(f"{prefix}_ollama_model", settings.get("ollama_model", "qwen2.5:7b"))).strip()
     if not model or len(model) > 200:
         raise ValueError("model must be a non-empty name of at most 200 characters.")
@@ -776,7 +783,7 @@ def chat(
     if provider == "openai_compatible":
         return _openai_compatible_chat(
             message, history, system_prompt, purpose=provider_profile, model=model,
-            timeout=request_timeout, num_predict=num_predict,
+            timeout=request_timeout, num_predict=effective_num_predict,
         )
     if provider != "ollama":
         raise OllamaError(f"Unsupported {purpose} LLM provider: {provider}.")
@@ -842,7 +849,7 @@ def chat(
     for item in history or []:
         if item.get("role") in {"user", "assistant"} and isinstance(item.get("content"), str):
             messages.append({"role": item["role"], "content": item["content"][:12000]})
-    message_limit = 16000 if purpose == "factual_review" else 12000
+    message_limit = min(256000, max(1000, int(settings.get(f"{purpose}_source_max_chars", 12000)))) if purpose in {"research_plan", "factual_review"} else 12000
     if purpose in {"learning", "ai_learning", "topic_learning"}:
         message_limit = min(256000, max(1000, int(settings.get(f"{purpose}_source_max_chars", 12000 if purpose == "learning" else 100000))))
     if purpose == "programming":
@@ -851,16 +858,8 @@ def chat(
     options = {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"]}
     if not bool(settings.get("gpu_enabled", False)):
         options["num_gpu"] = 0
-    if num_predict is not None:
-        if isinstance(num_predict, bool) or not isinstance(num_predict, int) or not 1 <= num_predict <= 8192:
-            raise ValueError("num_predict must be an integer between 1 and 8192.")
-        options["num_predict"] = num_predict
-    if purpose == "factual_review":
-        options["num_ctx"] = min(int(options["num_ctx"]), 4096)
-        options["num_predict"] = 500
-    elif purpose == "research_plan":
-        options["num_ctx"] = min(int(options["num_ctx"]), 4096)
-        options["num_predict"] = 700
+    if effective_num_predict is not None:
+        options["num_predict"] = effective_num_predict
     response = _request("/api/chat", {
         "model": model, "stream": False, "messages": messages, "keep_alive": keep_alive,
         "options": options,
