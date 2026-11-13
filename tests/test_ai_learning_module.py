@@ -322,6 +322,31 @@ def test_ai_learning_modules_are_enabled_by_default(monkeypatch):
     assert config.retrieval_is_enabled() is True
     assert config.browser_is_enabled() is True
 
+def test_ai_learning_chunk_sizes_come_from_persistent_settings(isolated_store, monkeypatch):
+    monkeypatch.setattr(service, "get_settings", lambda: {
+        "ai_learning_chunk_target_chars": 256,
+        "ai_learning_chunk_overlap_chars": 64,
+    })
+    chunks = service._chunk_text("x" * 700)
+    assert len(chunks) > 1
+    assert all(len(body) <= 256 for _heading, body in chunks)
+    assert chunks[1][1].startswith("x" * 64)
+
+
+def test_ai_learning_embedding_batch_size_comes_from_settings(isolated_store, monkeypatch):
+    calls = []
+    monkeypatch.setattr(service, "get_settings", lambda: {"ai_learning_embedding_batch_size": 2})
+
+    def embed(texts, model=None):
+        calls.append(list(texts))
+        return [[float(index + 1)] for index, _text in enumerate(texts)]
+
+    monkeypatch.setattr(service, "ollama_embed", embed)
+    vectors = service._title_embeddings(["first", "second", "third"])
+    assert len(vectors) == 3
+    assert [len(batch) for batch in calls] == [2, 1]
+
+
 def test_outline_import_creates_pending_topics_and_preserves_raw_response(isolated_store, monkeypatch):
     course = service.create_course(title="SQL Server 2005")
     monkeypatch.setattr(service, "_filter_duplicate_titles", lambda candidates, existing: (list(candidates), []))
