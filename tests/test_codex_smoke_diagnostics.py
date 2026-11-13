@@ -392,7 +392,7 @@ def test_target_diagnostic_records_actual_hardware_without_hardcoded_profile():
     runner_check = (root / "scripts" / "check_autonomous_runner.ps1").read_text(encoding="utf-8")
     readme = (root / "README.md").read_text(encoding="utf-8")
 
-    assert "No CPU, RAM, or GPU model is a fixed runtime requirement" in readme
+    assert "No fixed CPU, RAM, or GPU model is a runtime requirement" in readme
     assert "TARGET_HOST_HARDWARE_PROFILE" in diagnostic
     assert "os_build" in diagnostic
     assert "cpu_name" in diagnostic
