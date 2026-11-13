@@ -11,6 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, StrictBool, StrictInt, ConfigDict, field_validator
 
 from . import experience, experience_capture_consent, experience_feedback, experience_source_checks, experience_tasks, sandbox_consent, task_manager
+from . import experience_learning_observer
+from .db import get_settings
 from .task_routes import require_loopback_client
 
 router = APIRouter(
@@ -128,6 +130,29 @@ def list_experiences(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"items": items, "count": len(items)}
+
+
+@router.get("/learning-method-observations")
+def list_learning_method_observations(
+    path_topic_id: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=100, ge=1, le=200),
+) -> dict[str, Any]:
+    if get_settings().get("experience_system_enabled", True) is not True:
+        raise HTTPException(status_code=409, detail="Experience System is disabled in settings.")
+    try:
+        items = experience_learning_observer.list_method_observations(
+            path_topic_id=path_topic_id, limit=limit
+        )
+    except experience_learning_observer.ExperienceLearningObserverError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Learning-method experience history is unavailable.") from exc
+    return {
+        "items": items,
+        "count": len(items),
+        "source": "append_only_learning_method_attempt_event_ledger",
+        "state_transition_owner": "learning_method_coordinator",
+    }
 
 
 @router.get("/search")
