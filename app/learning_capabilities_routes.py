@@ -4,7 +4,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, StrictInt
 
 from . import learning_capabilities, learning_practical, sandbox_consent, sandbox_tasks, task_manager
@@ -42,7 +42,7 @@ def _practical_sandbox_available() -> bool:
 
 
 @router.get("/practical/exercises")
-def list_practical_exercises(job_id: int | None = None) -> dict[str, Any]:
+def list_practical_exercises(job_id: int | None = Query(default=None, ge=1)) -> dict[str, Any]:
     exercises = learning_practical.list_exercises()
     if job_id is not None:
         if isinstance(job_id, bool) or not isinstance(job_id, int) or job_id < 1:
