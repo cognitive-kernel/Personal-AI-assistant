@@ -490,3 +490,5 @@
 - Settings audit: all 131 `SETTING_DEFAULTS` keys are now surfaced in the dashboard Settings UI. Exact-model pricing JSON is editable and validated; malformed/negative rates are rejected, and missing rates are reported as unknown rather than zero.
 
 - AI Learning, Basic Learning, and Topic/Course Learning now have separate output-token budgets. Lesson repair uses the same provider/model profile as the original method instead of incorrectly switching to Basic Learning.
+
+- Method-scoped lesson generation and repair now share the focused `app/learning_model_adapter.py` contract. Provider identity and configured output budgets cannot silently change between initial generation and repair.
