@@ -2295,12 +2295,11 @@ def start_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
 
 
 def regenerate_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
-    """Create a new lesson version while preserving every prior lesson and its evidence."""
+    """Start a bounded new method cycle without superseding or overwriting prior jobs."""
     lesson_review = _latest_completed_topic_review(topic_id)
     with learning_connection() as conn:
-        conn.execute("BEGIN IMMEDIATE")
         topic = conn.execute(
-            "SELECT id, topic FROM learning_path_topics WHERE id=? AND path_id=?",
+            "SELECT id FROM learning_path_topics WHERE id=? AND path_id=?",
             (topic_id, path_id),
         ).fetchone()
         if topic is None:
@@ -2319,27 +2318,14 @@ def regenerate_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
         ).fetchone()
         if active is not None:
             return get_job(int(active["id"]))
-        old_job_ids = [
-            int(row["id"]) for row in conn.execute(
-                "SELECT id FROM learning_jobs WHERE path_topic_id=? AND lesson IS NOT NULL",
-                (topic_id,),
-            ).fetchall()
-        ]
-        if old_job_ids:
-            placeholders = ",".join("?" for _ in old_job_ids)
-            conn.execute(
-                f"UPDATE learning_jobs SET status='superseded', "
-                f"error='نسخهٔ تازه‌ای از این درس درخواست شد؛ محتوای این نسخه برای تاریخچه حفظ شده است.', "
-                f"updated_at=CURRENT_TIMESTAMP WHERE id IN ({placeholders})",
-                old_job_ids,
-            )
-        conn.execute(
-            "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
-            (topic_id, path_id),
-        )
-    job = create_job(topic["topic"], path_topic_id=topic_id, lesson_review=lesson_review)
-    _enqueue_learning_job(int(job["id"]))
-    return job
+    from .learning_method_orchestrator import queue_initial_method
+
+    transition = queue_initial_method(
+        topic_id,
+        force_new_cycle=True,
+        lesson_review=lesson_review,
+    )
+    return transition.get("job") if isinstance(transition.get("job"), dict) else transition
 
 
 def stop_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
