@@ -761,6 +761,9 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     if "gpu_enabled" in values and not isinstance(values["gpu_enabled"], bool):
         raise HTTPException(status_code=422, detail="gpu_enabled must be a boolean.")
+    for key in ("ai_learning_enabled", "ai_learning_retrieval_enabled", "ai_learning_browser_enabled"):
+        if key in values and type(values[key]) is not bool:
+            raise HTTPException(status_code=422, detail=f"{key} must be a boolean.")
     keep_alive_values = {"auto", "0", "1m", "5m", "10m", "30m"}
     for purpose in ("chat", "learning", "programming"):
         key = f"{purpose}_model_keep_alive"
@@ -797,6 +800,12 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         ("gpu_resource_limit_percent", 10, 95),
         ("ram_budget_max_gb", 1, 25),
         ("ram_safety_reserve_gb", 1, 8),
+        ("ai_learning_outline_batch_size", 1, 100),
+        ("ai_learning_lesson_batch_size", 1, 20),
+        ("ai_learning_chunk_target_chars", 256, 10000),
+        ("ai_learning_chunk_overlap_chars", 0, 2000),
+        ("ai_learning_browser_timeout_seconds", 10, 1800),
+        ("ai_learning_max_retries", 0, 5),
     ]
     for prefix in ("chat", "learning", "programming"):
         numeric_ranges.extend([
