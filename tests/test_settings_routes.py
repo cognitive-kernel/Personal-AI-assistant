@@ -74,6 +74,9 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
     assert defaults["ai_learning_enabled"] is True
     assert defaults["ai_learning_retrieval_enabled"] is True
     assert defaults["ai_learning_browser_enabled"] is True
+    assert defaults["ai_learning_llm_provider"] == "ollama"
+    assert defaults["ai_learning_ollama_model"]
+    assert defaults["ai_learning_source_max_chars"] == 100000
     assert defaults["gpu_enabled"] is True
     assert defaults["ai_learning_lesson_batch_size"] == 20
 
@@ -90,6 +93,11 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
         "ai_learning_stability_seconds": 30,
         "ai_learning_browser_timeout_seconds": 600,
         "ai_learning_max_retries": 3,
+        "ai_learning_llm_provider": "openai_compatible",
+        "ai_learning_llm_base_url": "https://api.openai.com/v1",
+        "ai_learning_llm_api_key_env": "OPENAI_API_KEY",
+        "ai_learning_ollama_model": "gpt-5-test",
+        "ai_learning_source_max_chars": 120000,
     }
     response = settings_client.patch("/api/settings", json={"values": values})
     assert response.status_code == 200
