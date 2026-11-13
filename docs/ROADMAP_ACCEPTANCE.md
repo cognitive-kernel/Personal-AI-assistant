@@ -268,3 +268,20 @@ Append evidence only after it has actually been produced.
 ## 2026-11-01 — Post-merge CI confirmation for PR #671
 
 The current `main` SHA `2a5c83bf0ba924f4a2c8f206338a04872562d72d` has completed all three post-merge workflows successfully: tests [#41239355370](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355370), dashboard/browser smoke [#41239355374](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355374), and dependency audit [#41239355466](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355466). Windows storage regressions passed within the tests workflow. This verifies CI for this SHA; it does not satisfy target-host operations, live-model/human evaluation, manual accessibility, staging/rollback, or independent security review.
+
+
+## 2026-11-13 — Continued acceptance audit
+
+| Gate | Current evidence | Status |
+|---|---|---|
+| HTTP route-wide security boundary | PR #734 exact-head regression checks every registered API route/method for loopback and cross-origin rejection | Exact-head CI previously passed; endpoint-specific payload/response contracts remain separate |
+| Generic task submission ownership | PR #736 blocks all 14 registered feature-managed task types from generic task submission and adds a registry fitness test | Exact-head CI passed: 2,149 passed, 2 skipped, 51 deselected |
+| Pagination HTTP/OpenAPI contracts | PR #737 bounds four endpoints and checks all API `limit` parameters; nullable OpenAPI integer union handling corrected | Head `5bf13d05283daa2785a52bebfa9d8adf15f988b8`: dependency audit, Windows storage and dashboard smoke passed; full tests still running |
+| Positive resource path identifiers | PR #738 applies positive integer constraints to task, curriculum, cloud-resource and AI-learning IDs; adds HTTP/OpenAPI regressions | Head `541de4a94398ef46e64f6e9c1055ef9b34327f1b`: CI running |
+| Complete endpoint-by-endpoint API inventory | Additional route families and error/persistence/auth/timeout contracts remain unreviewed | In progress |
+| Independent security review | Issue #52 requires an independent reviewer; no reviewer identity/findings/retest evidence recorded | Blocked by external reviewer |
+| CodeQL findings disposition | PR #732 uploaded SARIF; alert retrieval is unavailable in the connected integration | Unverified; do not infer zero alerts |
+| Target-host recovery and rollback | Windows host baseline, crash/restart soak, staging restore and rollback evidence | Pending target-host operator |
+| Live Persian/English model quality | Pinned provider/model run and adjudication remain absent | Pending; no quality claim |
+
+No PR is merged by this checkpoint. Local/target-host and human testing have not started. The full project is not complete; Issue #290 remains open and authoritative.
