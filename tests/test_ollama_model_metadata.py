@@ -470,8 +470,6 @@ def test_model_memory_estimate_rejects_fractional_architecture_dimensions():
 
 def test_provider_model_discovery_uses_selected_openai_compatible_endpoint(monkeypatch):
     import json
-    from contextlib import contextmanager
-    import ipaddress
     import socket
 
     monkeypatch.setattr(ollama, "get_settings", lambda: {
