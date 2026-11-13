@@ -248,6 +248,26 @@ def queue_initial_method(
                 "method": current.get("learning_method"), "job": current, "task": task,
             }
         if current["status"] == "completed":
+            identity = _method_attempt_identity(current)
+            if identity is not None:
+                _topic_id, method, attempt_number = identity
+                passed_event = latest_attempt_event(path_topic_id, method, attempt_number)
+                if passed_event is not None and passed_event["status"] == "passed":
+                    try:
+                        passed_evidence = json.loads(passed_event.get("evidence_json") or "{}")
+                        passed_diagnosis = json.loads(passed_event.get("diagnosis_json") or "{}")
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        passed_evidence, passed_diagnosis = {}, {}
+                    evaluation_id = passed_evidence.get("evaluation_id") if isinstance(passed_evidence, dict) else None
+                    if isinstance(evaluation_id, int) and isinstance(passed_event.get("score"), (int, float)) and isinstance(passed_event.get("content_sha256"), str):
+                        return complete_method(
+                            int(current["id"]),
+                            score=float(passed_event["score"]),
+                            evaluation_id=evaluation_id,
+                            content_sha256=str(passed_event["content_sha256"]),
+                            diagnosis=passed_diagnosis if isinstance(passed_diagnosis, dict) else {},
+                            evidence=passed_evidence,
+                        )
             evaluation = enqueue_topic_quality_evaluation(int(current["id"]))
             return {
                 "status": "awaiting_evaluation", "path_topic_id": path_topic_id,
