@@ -501,6 +501,11 @@ def test_dashboard_uses_researched_courses_and_hides_preset_catalog_controls():
     assert 'id="curriculum-select"' not in page
     assert 'id="enroll-curriculum"' not in page
     assert "loadLearningCurricula();" not in script
+    assert "renderTopicApplicability(topic, row);" in script
+    assert "applicability.versions" in script
+    assert "applicability.release_years" in script
+    assert "applicability.release_dates" in script
+    assert "منابع اختصاصی این سرفصل" in script
 
 
 def test_curriculum_generation_continues_beyond_forty_topics_without_truncating(learning_store, monkeypatch):
