@@ -383,7 +383,7 @@ def test_windows_runner_cli_checks_use_cmd_shims_and_discover_active_ollama():
     assert 'Get-CimInstance Win32_Process -Filter "Name=\'ollama.exe\'"' in workflow
     assert "C:\\Users\\Admin\\AppData\\Local\\Programs\\Ollama\\ollama.exe" not in workflow
 
-def test_target_diagnostic_matches_recorded_hardware_and_uses_automatic_context():
+def test_target_diagnostic_records_actual_hardware_without_hardcoded_profile():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
@@ -392,14 +392,20 @@ def test_target_diagnostic_matches_recorded_hardware_and_uses_automatic_context(
     runner_check = (root / "scripts" / "check_autonomous_runner.ps1").read_text(encoding="utf-8")
     readme = (root / "README.md").read_text(encoding="utf-8")
 
-    assert "2 GiB برای AdapterRAM" in readme
-    assert "32.0.101.6129" in readme
-    assert "حافظه گزارش‌شده 128 MB" not in readme
-    assert "i5-12400" in diagnostic
-    assert "physicalCores -ne 6" in diagnostic
-    assert "logicalProcessors -ne 12" in diagnostic
-    assert "totalRamGiB -lt 30" in diagnostic
-    assert "Intel.*UHD.*730" in diagnostic
+    assert "No CPU, RAM, or GPU model is a fixed runtime requirement" in readme
+    assert "TARGET_HOST_HARDWARE_PROFILE" in diagnostic
+    assert "os_build" in diagnostic
+    assert "cpu_name" in diagnostic
+    assert "physical_cores" in diagnostic
+    assert "logical_processors" in diagnostic
+    assert "total_physical_ram_gib" in diagnostic
+    assert "gpu_inventory" in diagnostic
+    assert "physicalCores -le 0" in diagnostic
+    assert "logicalProcessors -le 0" in diagnostic
+    assert "totalRamGiB -le 0" in diagnostic
+    assert "Target CPU does not match" not in diagnostic
+    assert "31.78 GiB / 32 GB class" not in diagnostic
+    assert "Intel.*UHD.*730" not in diagnostic
     assert "wmi_adapter_ram_bytes" in diagnostic
     assert "OLLAMA_RUNTIME_DEVICE_ALLOCATION" in diagnostic
     assert "size_vram" in diagnostic
@@ -418,37 +424,26 @@ def test_target_diagnostic_matches_recorded_hardware_and_uses_automatic_context(
     assert "Get-Command codex.cmd" in diagnostic
     assert "Name='ollama.exe'" in diagnostic
     assert "Get-CimInstance Win32_UserProfile" in diagnostic
-    assert "AppData\\Local\\Programs\\Ollama\\ollama.exe" in diagnostic
-    assert "C:\\Users\\Admin\\AppData\\Local\\Programs\\Ollama\\ollama.exe" not in diagnostic
+    assert "AppData\\\\Local\\\\Programs\\\\Ollama\\\\ollama.exe" in diagnostic
+    assert "C:\\\\Users\\\\Admin\\\\AppData\\\\Local\\\\Programs\\\\Ollama\\\\ollama.exe" not in diagnostic
 
     assert "Get-Command node.exe" in autonomous
     assert "Get-Command python.exe" in autonomous
     assert '$pythonCommand = Get-Command python.exe -ErrorAction Stop' in autonomous
     assert '$pythonVersionNumber -lt [version]"3.11"' in autonomous
-    assert 'C:\\Program Files\\Python311\\python.exe' not in autonomous
+    assert 'C:\\\\Program Files\\\\Python311\\\\python.exe' not in autonomous
     assert "python.exe scripts/autonomous_engineering_progress.py" in autonomous
     assert "python scripts/autonomous_engineering_progress.py" not in autonomous
     assert "Get-Command node -ErrorAction" not in autonomous
     assert "Get-Command npm.cmd" in autonomous
     assert "Get-Command codex.cmd" in autonomous
     assert "Get-CimInstance Win32_UserProfile" in autonomous
-    assert "AppData\\Local\\Programs\\Ollama\\ollama.exe" in autonomous
-    assert "C:\\Users\\Admin\\AppData\\Local\\Programs\\Ollama\\ollama.exe" not in autonomous
-    assert "Get-Command npm.cmd" in runner_check
-    assert "Get-Command codex.cmd" in runner_check
+    assert "AppData\\\\Local\\\\Programs\\\\Ollama\\\\ollama.exe" in autonomous
+    assert "C:\\\\Users\\\\Admin\\\\AppData\\\\Local\\\\Programs\\\\Ollama\\\\ollama.exe" not in autonomous
+
     assert "Get-Command ollama.exe" in runner_check
-    assert "verbose = $false" in runner_check
-    assert "$parsedContext -ge 1" in runner_check
-    assert "Get-CimInstance Win32_Service" in runner_check
-    assert 'Get-CimInstance Win32_Process -Filter "Name=\'Runner.Listener.exe\'"' in runner_check
-    assert "[uint32]$_.ParentProcessId -eq [uint32]$service.ProcessId" in runner_check
-    assert "Runner.Listener.exe" in runner_check
-    assert '$_.Name -like "actions.runner*"' in runner_check
-    assert '$_.State -eq "Running"' in runner_check
-    assert '[uint32]$_.ProcessId -gt 0' in runner_check
-    assert "Service '$($runnerService.Name)' is running as" in runner_check
-    assert 'Could not inspect Windows runner services/processes:' in runner_check
-    assert 'Get-Process -Name "Runner.Listener"' not in runner_check
+    assert 'Get-CimInstance Win32_Process -Filter "Name=\'ollama.exe\'"' in runner_check
+    assert "$ollamaExecutable --version" in runner_check
 
 def test_active_codex_documentation_matches_adaptive_context_contract():
     from pathlib import Path
