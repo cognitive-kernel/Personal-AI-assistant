@@ -1,18 +1,50 @@
-"""Feature gates for the optional AI-learning subsystem."""
+"""Settings-backed feature controls for the isolated AI-learning subsystem."""
 from __future__ import annotations
-import os
 
-def _enabled(name: str, *, default: bool = False) -> bool:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    return value.strip().casefold() in {"1", "true", "yes", "on"}
+import sqlite3
+import os
+from typing import Any
+
+_DEFAULTS: dict[str, bool] = {
+    "ai_learning_enabled": True,
+    "ai_learning_retrieval_enabled": True,
+    "ai_learning_browser_enabled": True,
+}
+
+
+def _setting(name: str) -> bool:
+    """Read one validated persisted setting; use defaults only before settings DB bootstrap."""
+    try:
+        from ..db import get_settings
+
+        settings: dict[str, Any] = get_settings()
+    except sqlite3.OperationalError as exc:
+        # Unit-level callers may inspect configuration before app startup has
+        # initialized the settings schema. Do not hide corruption or other DB errors.
+        if "no such table: settings" not in str(exc).casefold():
+            raise
+        settings = {}
+    value = settings.get(name, _DEFAULTS[name])
+    if type(value) is not bool:
+        raise RuntimeError(f"Setting {name} must be a boolean.")
+    return value
+
 
 def is_enabled() -> bool:
-    return _enabled("AI_LEARNING_ENABLED", default=False)
+    """Whether the AI-learning subsystem is enabled (enabled in a fresh install)."""
+    return _setting("ai_learning_enabled")
+
 
 def retrieval_is_enabled() -> bool:
-    return is_enabled() and _enabled("AI_LEARNING_RETRIEVAL_ENABLED", default=False)
+    """Whether published AI-learning knowledge may participate in retrieval."""
+    return is_enabled() and _setting("ai_learning_retrieval_enabled")
+
+
+def browser_is_enabled() -> bool:
+    """Whether the visible-browser provider adapter is enabled."""
+    return is_enabled() and _setting("ai_learning_browser_enabled")
+
 
 def database_path() -> str:
+    """Return the isolated AI-learning database path."""
     return os.getenv("AI_LEARNING_DB_PATH", "data/ai_learning.db")
