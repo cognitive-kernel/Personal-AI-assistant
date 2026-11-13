@@ -1445,6 +1445,46 @@ LEARNING_MIGRATIONS = (
             )""",
         ),
     ),
+    Migration(
+        48,
+        "structured-learning-source-provenance",
+        (
+            """CREATE TABLE learning_candidate_sources (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL
+                    REFERENCES temporary_knowledge_candidates(id) ON DELETE RESTRICT,
+                source_type TEXT NOT NULL CHECK(source_type IN ('web','ai','book','other')),
+                source_url TEXT,
+                reference_url TEXT,
+                title TEXT,
+                book_title TEXT,
+                book_author TEXT,
+                provider TEXT,
+                model_id TEXT,
+                edition TEXT,
+                publisher TEXT,
+                isbn TEXT,
+                page TEXT,
+                chapter TEXT,
+                description TEXT,
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                verification_status TEXT NOT NULL DEFAULT 'unverified'
+                    CHECK(verification_status IN ('unverified','verified','inconclusive','contradicted','stale')),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CHECK(
+                    (source_type='web' AND source_url IS NOT NULL AND length(trim(source_url)) > 0)
+                    OR (source_type='ai' AND provider IS NOT NULL AND length(trim(provider)) > 0
+                        AND model_id IS NOT NULL AND length(trim(model_id)) > 0
+                        AND reference_url IS NOT NULL AND length(trim(reference_url)) > 0)
+                    OR (source_type='book' AND book_title IS NOT NULL AND length(trim(book_title)) > 0
+                        AND book_author IS NOT NULL AND length(trim(book_author)) > 0)
+                    OR (source_type='other' AND description IS NOT NULL AND length(trim(description)) > 0)
+                )
+            )""",
+            "CREATE INDEX idx_learning_candidate_sources_candidate ON learning_candidate_sources(candidate_id, source_type, id)",
+            "CREATE INDEX idx_learning_candidate_sources_reference ON learning_candidate_sources(reference_url, source_url)",
+        ),
+    ),
 )
 
 
