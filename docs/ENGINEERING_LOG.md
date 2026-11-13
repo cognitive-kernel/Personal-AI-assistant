@@ -635,3 +635,23 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Issue #290 remains authoritative: no automatic PR merge, deployment, cloud provisioning, or remote execution. The controller never calls the merge API and accepts only a human merge actor; owner review and manual merge remain required.
 - This CI proves repository tests and the configured Windows storage regression job only. A real target-host Codex/Ollama tool-call smoke, long-duration soak, crash/restart acceptance, staging restore/rollback, and independent security review (Issue #52) remain pending and are not claimed.
 - No direct write to `main`, force-push, deployment, destructive state reset, or user-data deletion occurred. This verification snapshot is for the exact SHA above; any subsequent commit requires its own exact-head CI.
+
+## 2026-11-13 — PR #743: reject malformed AI-learning source authorities
+
+### Root-cause analysis
+
+- `check_content_source()` used truthiness checks for parsed username/password values. Explicitly empty userinfo was therefore treated as absent.
+- The same path did not reject an authority ending in an explicit colon with no port; `urlparse` reports `port=None` for that form, making it indistinguishable from an omitted port without an additional authority check.
+- The path already validated all DNS answers as public, pinned the selected address, disabled ambient proxies, and rejected redirects. The defect was in the URL syntax contract before those controls.
+
+### Corrective change
+
+- Reject username/password whenever the parsed value is not `None`, including empty values.
+- Reject explicit empty ports before DNS resolution.
+- Add regressions for empty username, empty password, empty port, malformed port, and non-standard port; assert no DNS lookup occurs for malformed authorities.
+
+### Validation
+
+- Exact-head GitHub Actions for PR #743 are pending; no local or human test is claimed.
+- Existing valid HTTP/HTTPS source-check behavior and DNS-pinning behavior are unchanged.
+- This is a focused parser hardening change, not an independent security review or closure of Issue #52.
