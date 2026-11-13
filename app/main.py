@@ -767,6 +767,8 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         if key in values and type(values[key]) is not bool:
             raise HTTPException(status_code=422, detail=f"{key} must be a boolean.")
     bounded_text_settings = {
+        "ai_learning_chrome_path": 2048,
+        "ai_learning_browser_profile": 2048,
         "sandbox_docker_executable": 2048,
         "sandbox_python_image": 512,
         "sandbox_test_image": 512,
@@ -784,6 +786,9 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
             or chr(0) in values[key]
         ):
             raise HTTPException(status_code=422, detail=f"{key} must be text of at most {maximum} characters.")
+    if "ai_learning_chrome_path" in values and values["ai_learning_chrome_path"].strip():
+        if not Path(values["ai_learning_chrome_path"]).expanduser().is_absolute():
+            raise HTTPException(status_code=422, detail="ai_learning_chrome_path must be an absolute path.")
     if "sandbox_docker_executable" in values and values["sandbox_docker_executable"].strip():
         if not Path(values["sandbox_docker_executable"]).expanduser().is_absolute():
             raise HTTPException(status_code=422, detail="sandbox_docker_executable must be an absolute path.")
