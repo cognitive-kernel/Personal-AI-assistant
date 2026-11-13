@@ -723,3 +723,6 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Added the same independent resource controls for factual review. Removed the fixed 45-second timeout and fixed 4096-context/500-or-700-output caps; execution now uses bounded, persisted per-purpose settings and still applies model/hardware safety ceilings.
 - Both Ollama and OpenAI-compatible paths now honor the configured source-size and output-token budgets. Runtime diagnostics use the selected research/review profile instead of silently falling back to chat settings.
 - Added settings persistence/validation and provider-routing regression coverage. Exact-head GitHub CI is required before acceptance.
+
+
+- Added the shared Ollama service endpoint to the Settings UI. Per-capability provider/model choices remain independent; local Ollama profiles use the configured shared Ollama endpoint, while OpenAI-compatible profiles use their own validated Base URL and environment-only API-key reference.
