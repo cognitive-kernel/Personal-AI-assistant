@@ -130,6 +130,8 @@ class WindowsProcessJob:
                 ctypes.byref(owner_job_handle), 0, False, self.DUPLICATE_SAME_ACCESS,
             ):
                 raise ctypes.WinError(ctypes.get_last_error())
+            if not owner_job_handle.value:
+                raise RuntimeError("The owning controller did not receive a valid Job Object handle.")
         finally:
             self._kernel32.CloseHandle(owner_handle)
 
