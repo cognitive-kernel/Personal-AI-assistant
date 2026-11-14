@@ -123,3 +123,21 @@ def test_durable_state_lock_uses_a_session_independent_file_contract():
     assert "autonomous-durable-state.lock" in powershell_persistence
     assert ".Lock(0, 1)" in powershell_persistence
     assert ".Unlock(0, 1)" in powershell_persistence
+
+
+def test_configured_state_root_must_be_absolute(monkeypatch, tmp_path: Path):
+    from scripts import autonomous_engineering_state_paths as paths
+
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "relative-state")
+    with pytest.raises(ValueError, match="absolute path"):
+        paths.execution_state_directory()
+
+
+def test_windows_state_root_never_falls_back_to_a_user_profile(monkeypatch):
+    from scripts import autonomous_engineering_state_paths as paths
+
+    monkeypatch.setattr(paths.os, "name", "nt")
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", raising=False)
+    monkeypatch.delenv("PROGRAMDATA", raising=False)
+    with pytest.raises(RuntimeError, match="PROGRAMDATA"):
+        paths.execution_state_directory()
