@@ -67,3 +67,17 @@ PR #757 keeps MXC as the only automatic candidate. The legacy `unelevated` candi
 Reference: https://learn.chatgpt.com/docs/windows/windows-sandbox
 
 **Acceptance boundary:** repository CI can validate argument construction, diagnostics, and process supervision. Only a successful real `codex exec` workspace create/read/delete smoke on the target Runner can establish which sandbox backend is operational. The target-host smoke remains pending while the durable autonomous-engineering pause is enabled. No pause setting, task/checkpoint data, host ACL, Runner identity, or production Codex installation was changed by this PR.
+
+
+## 2026-11-14 addendum — controller command process-tree ownership
+
+A follow-up review found that adding a timeout to `subprocess.run` bounded the direct command process but did not establish ownership of descendants. A timed-out test, Git helper, or validation command could therefore leave a child process alive after the controller released its repository lock. A normally exiting command could also leave a deliberately detached background child.
+
+Decision:
+- Route every controller command through `scripts/autonomous_engineering_command_runner.py`.
+- On Windows, create the command suspended, assign it to a kill-on-close Job Object before resuming it, and close the Job Object after command completion. Assignment failure is fatal; there is no unowned fallback.
+- On POSIX, start the command in a dedicated process group and terminate the group on timeout and after the command's direct process exits, so background descendants cannot outlive the command contract.
+- Preserve the existing per-command deadlines and diagnostic timeout exception. Process-tree cleanup is part of the command contract, not an optional timeout behavior.
+- Test both timeout cleanup and successful-parent/background-child cleanup, in addition to existing controller deadline tests.
+
+This extends the process ownership invariant beyond Codex while keeping the Codex owner-ancestry supervisor, durable-state mutex, repository lock, and checkpoint-watcher contracts independently scoped.
