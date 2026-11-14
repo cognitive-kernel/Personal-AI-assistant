@@ -28,6 +28,7 @@ The recovery workflow already preserves the pending task and checkpoint, and dis
 4. Give controller subprocesses explicit deadlines: five minutes by default, fifteen minutes for the full Python suite, twenty-five minutes for exact-head PR publication/validation, and thirty seconds beyond the Codex runner's own thirty-minute deadline for its parent wrapper.
 5. Convert command timeout into a named, bounded diagnostic error. Never interpret timeout as success.
 6. Preserve the six-hour GitHub job ceiling as a final platform safety boundary, not as the normal task retry budget.
+7. Open a recovery circuit breaker after three consecutive failed autonomous runs. Do not dispatch another run while the breaker is open; preserve the durable task/checkpoint and require an owner to inspect the first failing run and explicitly resume after correction. A successful run naturally resets the streak derived from workflow history.
 
 ## Consequences and acceptance
 
