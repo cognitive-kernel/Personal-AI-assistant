@@ -334,23 +334,6 @@ def run_cycle(args: argparse.Namespace) -> int:
             return 0
         raise RuntimeError("The saved autonomous PR was closed without a confirmed merge; pending task and checkpoint are preserved.")
 
-    pending_pr = find_open_autonomous_pr(token, repo)
-    if pending_pr:
-        record(
-            args.run_id, args.run_attempt, "recovery",
-            f"بازیابی PR #{pending_pr.get('number')}",
-            "اعتبارسنجی PR باز و ثبت وضعیت پایدار؛ منتظر بازبینی و ادغام دستی مالک",
-        )
-        validated = complete_pending_pr(token, repo, pending_pr, args.run_id, 1)
-        record(
-            args.run_id, args.run_attempt, "publication",
-            f"PR #{validated['number']} آمادهٔ بازبینی مالک است",
-            "CI دقیق موفق است؛ PR برای بازبینی مالک باز می‌ماند و هیچ ادغام یا وظیفهٔ بعدی به‌صورت خودکار انجام نمی‌شود",
-        )
-        snapshot(args.run_id, args.run_attempt)
-        print(f"PR #{validated['number']} passed exact-head checks and is awaiting owner review: {validated['url']}")
-        return 0
-
     started = time.monotonic()
     request_file = ROOT / ".agent-request.json"
     task = 1
