@@ -8,11 +8,12 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt
 from . import db, learning_knowledge_graph, task_manager
 from .learning_knowledge_graph_tasks import KNOWLEDGE_GRAPH_REVIEW_TASK_TYPE
 from .task_routes import require_loopback_client
+from .module_settings import require_module_enabled
 
 router = APIRouter(
     prefix="/api/learning/knowledge-graph",
     tags=["learning-knowledge-graph"],
-    dependencies=[Depends(require_loopback_client)],
+    dependencies=[Depends(require_loopback_client), Depends(require_module_enabled("knowledge_graph"))],
 )
 
 
