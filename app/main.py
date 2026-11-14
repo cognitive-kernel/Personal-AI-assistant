@@ -17,7 +17,7 @@ from . import backup_scheduler, assessment_review, browser_learning, knowledge_l
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, list_learning_escalations, reconcile_queued_learning_tasks, resolve_learning_escalation
 from . import learning_review_tasks, learning_curriculum_tasks, learning_topic_quality_tasks
 from .learning_observability import collect_learning_operational_metrics
-from .task_runtime import TaskRuntime
+from .task_runtime import TaskRuntime, reject_unregistered_task
 from .config import defaults
 from .hardware import detect_hardware, runtime_limits
 from .task_routes import require_loopback_client, router as task_router
@@ -450,7 +450,7 @@ def startup() -> None:
     )
     fallback_placeholder = "__unregistered_task_type__"
     fallback_runtime = TaskRuntime(
-        {fallback_placeholder: lambda *_args: {"ok": True}},
+        {fallback_placeholder: reject_unregistered_task},
         worker_count=1,
         worker_prefix="dead-letter-worker",
         poll_interval=0.5,
