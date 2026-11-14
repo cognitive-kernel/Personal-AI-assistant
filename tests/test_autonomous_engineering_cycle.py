@@ -1039,7 +1039,7 @@ def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkey
     prompt = tmp_path / "prompt.md"
     prompt.write_text("Do the task", encoding="utf-8")
     monkeypatch.setattr(progress.shutil, "which", lambda _: r"C:\\npm\\codex.CMD")
-    monkeypatch.setattr(progress, "codex_command", lambda executable, arguments: ["cmd.exe", "/d", "/c", "call", executable, *arguments])
+    monkeypatch.setattr(progress, "codex_command", lambda executable, arguments, **kwargs: ["cmd.exe", "/d", "/c", "call", executable, *arguments])
     monkeypatch.setattr(progress, "persist", lambda record: True)
     monkeypatch.setattr(progress, "PLAN_FILE", tmp_path / ".agent-progress.json")
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "progress"))
