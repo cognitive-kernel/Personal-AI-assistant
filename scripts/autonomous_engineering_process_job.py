@@ -146,6 +146,30 @@ class WindowsProcessJob:
         if not self._kernel32.TerminateJobObject(self._handle, int(exit_code) & 0xFFFFFFFF):
             raise ctypes.WinError(ctypes.get_last_error())
 
+    def wait_for_empty(self, timeout_seconds: float) -> bool:
+        """Wait until every process assigned to this Job Object has exited."""
+        if os.name != "nt":
+            return True
+        if not self._handle or not self._kernel32:
+            raise RuntimeError("The Windows process job has not been initialized.")
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or timeout_seconds < 0
+        ):
+            raise ValueError("Job wait timeout must be a non-negative number.")
+        self._kernel32.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        self._kernel32.WaitForSingleObject.restype = ctypes.c_uint32
+        wait_ms = min(0xFFFFFFFE, int(timeout_seconds * 1000))
+        result = self._kernel32.WaitForSingleObject(self._handle, wait_ms)
+        if result == 0x00000000:
+            return True
+        if result == 0x00000102:
+            return False
+        if result == 0xFFFFFFFF:
+            raise ctypes.WinError(ctypes.get_last_error())
+        raise RuntimeError(f"Unexpected Job Object wait result: 0x{result:08x}.")
+
     def assign_and_resume(self, process: Any) -> None:
         """Assign a CREATE_SUSPENDED child before it can spawn descendants."""
         if os.name != "nt":
