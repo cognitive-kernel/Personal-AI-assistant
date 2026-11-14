@@ -109,7 +109,7 @@ def test_failed_local_and_github_checks_retry_same_task_then_wait_for_owner_merg
     monkeypatch.setattr(cycle, "clear_pending_state", lambda: (_ for _ in ()).throw(AssertionError("pending state cleared before owner merge")))
     calls = {"codex": 0, "pytest": 0}
 
-    def fake_run(command, *, env=None, capture=False):
+    def fake_run(command, *, env=None, capture=False, timeout_seconds=None):
         if any("autonomous_engineering_progress.py" in str(part) for part in command):
             calls["codex"] += 1
             report = Path(command[command.index("--report") + 1])
@@ -138,6 +138,31 @@ def test_failed_local_and_github_checks_retry_same_task_then_wait_for_owner_merg
 
 
 
+
+
+def test_cycle_run_applies_default_command_deadline(monkeypatch: pytest.MonkeyPatch):
+    captured = {}
+
+    def fake_subprocess_run(command, **kwargs):
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(cycle.subprocess, "run", fake_subprocess_run)
+
+    result = cycle.run(["python", "--version"])
+
+    assert result.returncode == 0
+    assert captured["timeout"] == cycle.DEFAULT_COMMAND_TIMEOUT_SECONDS
+
+
+def test_cycle_run_converts_timeout_to_a_diagnostic_error(monkeypatch: pytest.MonkeyPatch):
+    def fake_subprocess_run(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    monkeypatch.setattr(cycle.subprocess, "run", fake_subprocess_run)
+
+    with pytest.raises(RuntimeError, match="exceeded its 17-second deadline"):
+        cycle.run(["python", "--version"], timeout_seconds=17)
 
 
 def test_run_cycle_bounds_failed_codex_attempts_and_preserves_task(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
@@ -170,8 +195,9 @@ def test_run_cycle_bounds_failed_codex_attempts_and_preserves_task(monkeypatch: 
     )
     calls = {"codex": 0}
 
-    def fake_run(command, *, env=None, capture=False):
+    def fake_run(command, *, env=None, capture=False, timeout_seconds=None):
         assert any("autonomous_engineering_progress.py" in str(part) for part in command)
+        assert timeout_seconds == cycle.CODEX_TASK_TIMEOUT_SECONDS + 30
         calls["codex"] += 1
         return subprocess.CompletedProcess(command, 1, "", "simulated Codex failure")
 
