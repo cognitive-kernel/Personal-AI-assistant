@@ -106,13 +106,15 @@ def write_codex_model_catalog(model: str, context_window: int | None = None) -> 
 
 
 def codex_arguments(model: str, report: str) -> list[str]:
-    # Pin the provider and the Windows sandbox backend explicitly. The native
-    # unelevated backend in affected Codex CLI releases can reject exec_command
-    # before process creation or refuse workspace-write root layouts. The
-    # workflow selects a backend only after a real in-workspace tool smoke test.
+    # Select only an explicitly smoke-tested Windows sandbox implementation.
+    # Unelevated is still a restricted-token sandbox; it is not an unsandboxed
+    # fallback. This supports non-admin service identities that cannot open
+    # the elevated helper's SYSTEM/Administrators-only setup mutex.
     backend = os.getenv("CODEX_WINDOWS_SANDBOX_BACKEND", "mxc").strip().casefold()
-    if backend not in {"mxc", "elevated"}:
-        raise ValueError("CODEX_WINDOWS_SANDBOX_BACKEND must be 'mxc' or 'elevated'.")
+    if backend not in {"mxc", "elevated", "unelevated"}:
+        raise ValueError(
+            "CODEX_WINDOWS_SANDBOX_BACKEND must be 'mxc', 'elevated', or 'unelevated'."
+        )
     reasoning_effort = os.getenv("CODEX_MODEL_REASONING_EFFORT", "").strip().casefold()
     if reasoning_effort and reasoning_effort not in {"low", "medium", "high"}:
         raise ValueError("CODEX_MODEL_REASONING_EFFORT must be 'low', 'medium', or 'high'.")
