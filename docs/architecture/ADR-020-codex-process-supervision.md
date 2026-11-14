@@ -25,7 +25,7 @@ The Codex stream configuration also allowed a 15-minute idle interval, ten strea
 1. Keep the existing task-state mutex, worktree lock, checkpoint watcher, and PR-state ownership modules separate. Do not replace their contracts with one global lock.
 2. Route Codex through a small process-supervisor module. It records the PID and OS creation time of the owning controller ancestry and refuses to start if that identity cannot be verified.
 3. The supervisor enforces a hard wall-clock budget. A sandbox smoke is limited to 300 seconds; a normal engineering Codex session is limited to 1,800 seconds.
-4. On Windows, the supervisor assigns itself to a kill-on-close Job Object and duplicates a handle into its owning progress process. Codex and all descendants inherit job membership automatically. The supervisor monitors the recorded owner ancestry and uses TerminateJobObject on timeout, owner loss, and final cleanup. If the supervisor crashes, the owner-held handle keeps the job alive until the progress owner exits; closing the final handle then terminates any surviving descendants.
+4. On Windows, the progress controller creates a kill-on-close Job Object, starts the Codex supervisor suspended, assigns it to the job, and only then resumes it. The supervisor and all Codex descendants inherit the controller-owned job. The supervisor receives an explicit --parent-job-managed contract and does not create a competing nested job. If the supervisor exits unexpectedly while descendants remain, the progress controller terminates the residual job members and waits for the Job Object to become signaled before returning or starting a retry. If the progress controller itself exits, closing its final Job Object handle terminates the entire tree.
 5. On POSIX hosts, the Codex process starts in a new process group; timeout or owner loss terminates and reaps that group.
 6. Use a short smoke-specific stream idle timeout and no provider retries. Normal engineering sessions retain a larger but bounded retry budget.
 7. If parent identity, process termination, or process reaping cannot be established, fail closed. Do not treat a timeout as a successful smoke or task.
@@ -95,3 +95,18 @@ Decision:
 - Add regression tests for a POSIX child termination handler completing before return, immediate Windows Job Object drain, and fail-closed cleanup of an unassigned suspended Windows child.
 
 The invariant is now: controller command return (and therefore release of the caller's repository lock) occurs only after every owned live process has exited. Zombie processes are treated as terminated because they cannot execute or mutate state.
+
+
+## 2026-11-14 addendum — controller-owned Codex Job Object
+
+A failure-injection review found that the previous owner-pinned inner Job Object only guaranteed descendant cleanup when the progress owner itself exited. If the Codex supervisor crashed while the progress owner remained alive, the inner Job Object handle stayed pinned in that owner, but the owner had no handle value with which to terminate residual descendants before a retry.
+
+The production ownership boundary is now moved one level up:
+- autonomous_engineering_progress.py owns the Windows Job Object and creates the Codex supervisor suspended.
+- The supervisor is assigned to that Job Object before resume. All Codex processes and descendants inherit job membership.
+- codex_command passes --parent-job-managed; the Codex supervisor does not create a second Job Object or duplicate a hidden handle into its parent.
+- When the supervisor exits for any reason, the progress owner waits for the wrapper, checks whether the job is empty, terminates remaining descendants, and waits for the job's signaled state before returning. A leftover descendant makes the attempt fail rather than appear successful.
+- If the progress owner itself crashes, Windows closes its job handle and KILL_ON_JOB_CLOSE terminates the complete process tree.
+- The direct Codex-runner Windows Job Object path remains available for isolated/direct invocation tests; the production progress path uses the controller-owned contract.
+
+A Windows regression now simulates an abrupt supervisor exit while its owner remains alive and asserts that the descendant is already gone before run_codex returns. This is the required pre-retry no-overlap invariant.
