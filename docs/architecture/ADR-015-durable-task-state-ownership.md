@@ -19,10 +19,16 @@ Atomic file replacement protects an individual write from partial contents, but 
 ## Decision
 
 1. Introduce `scripts/autonomous_engineering_state_lock.py` as the shared durable-state synchronization contract.
-2. On Windows, Python and PowerShell acquire the same named kernel mutex:
-   `Local\PersonalAIAssistant.AutonomousEngineering.State.v1`.
-   The mutex is process/thread-owned by the OS and is abandoned automatically on process death. Both runtimes treat an abandoned mutex as acquired, then validate the persisted state before proceeding.
-3. On POSIX, the same Python API uses a non-blocking `flock` loop with a bounded timeout. The lock file is diagnostic/persistent; the kernel lock, not the file's presence, determines ownership.
+2. On Windows, Python and PowerShell acquire the same byte-range lock on
+   `autonomous-durable-state.lock` in the configured shared state directory.
+   Python uses `msvcrt.locking`; PowerShell uses `.NET FileStream.Lock`.
+   Both use byte offset 0 and length 1, so they contend on the same OS file lock
+   across logon sessions and Windows accounts. The OS releases the lock when a
+   process exits; a stale lock file is harmless and is never treated as ownership.
+3. On POSIX, the same Python API uses a non-blocking `flock` loop with a bounded
+   timeout on the same state file. Directory ACLs are provisioned separately
+   from the lock protocol and must grant the participating application/Runner
+   identities the required access; no account name or SID is embedded in code.
 4. Resolve the state root through `autonomous_engineering_state_paths.py` for checkpoint, execution, progress telemetry, and task/PR state. Expand environment variables consistently across Python and PowerShell.
 5. PowerShell manual-task persistence runs inside the `codex` job's GitHub concurrency group and holds the shared mutex across active-run detection, pending-task/pending-PR validation, open-PR checks, and atomic task write. It rejects a new single-slot task while another autonomous run is queued or active; the schedule gate fails the manual dispatch visibly when paused or occupied. It never silently queues a task that a currently running cycle could later erase.
 6. The workflow capture step is read-only for the durable task file. It acquires the shared mutex, verifies any supplied task exactly matches the task already persisted by the earlier step in the same serialized job, and reads the persisted task for the request.
@@ -42,14 +48,14 @@ Atomic file replacement protects an individual write from partial contents, but 
 ## Validation
 
 - Unit tests for POSIX lock exclusion, bounded wait, and process-crash release.
-- Windows integration test proving PowerShell and Python contend on the exact same named mutex.
+- Windows integration test proving PowerShell and Python contend on the same byte-range lock file.
 - Tests for pending task owner lease round-trip, claim/recovery reassignment, task digest mismatch, Python/PowerShell SHA-256 interoperability, pending PR round-trip/corruption rejection, publication owner record persistence before CI dispatch, and interrupted post-merge cleanup recovery.
 - Windows workflow tests for PowerShell parsing, durable-state mutex interoperability, checkpoint watcher lifecycle, and repository execution-lock contention.
 - Exact-head full suite, browser E2E, dependency audit, and target Runner end-to-end acceptance remain required before merge.
 
 ## Runner affinity and deployment constraint
 
-The Windows mutex and ProgramData state directory are host-local, not distributed locks. The `codex` job therefore requires the unique `autonomous-state-owner` self-hosted Runner label in addition to `Windows`, `X64`, and `ollama`. `provision_autonomous_runner.ps1` adds that label to the configured Runner and verifies that exactly one registered Runner owns it. The workflow must not be run against multiple unlabelled or independently configured hosts that each have a separate local ProgramData state directory. GitHub's concurrency group serializes jobs; the unique Runner label keeps sequential jobs on the same durable-state host.
+The Windows file lock and ProgramData state directory are host-local, not distributed locks. The `codex` job therefore requires the unique `autonomous-state-owner` self-hosted Runner label in addition to `Windows`, `X64`, and `ollama`. `provision_autonomous_runner.ps1` adds that label to the configured Runner and verifies that exactly one registered Runner owns it. The workflow must not be run against multiple unlabelled or independently configured hosts that each have a separate local ProgramData state directory. GitHub's concurrency group serializes jobs; the unique Runner label keeps sequential jobs on the same durable-state host.
 
 ## Consequences
 
@@ -57,4 +63,4 @@ The Windows mutex and ProgramData state directory are host-local, not distribute
 - The single pending-task slot is safer but does not become a queue; callers receive a clear rejection while another run is active.
 - The task's current owner is explicit and recoverable, while the original submission identity remains auditable across retries. Multi-file post-merge cleanup is resumable through a durable intent record rather than relying on a sequence of untracked deletes.
 - The repository execution lock remains separate: it owns the mutable worktree, while this mutex owns durable task/PR state. The checkpoint-store lock separately owns watcher lifetime and checkpoint mutation.
-- Local state is deliberately pinned to one uniquely labelled Windows Runner; the named mutex is not represented as a cross-machine distributed lock.
+- Local state is deliberately pinned to one uniquely labelled Windows Runner; the file lock is not represented as a cross-machine distributed lock.
