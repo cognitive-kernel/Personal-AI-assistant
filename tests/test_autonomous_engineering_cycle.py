@@ -127,23 +127,24 @@ def test_failed_local_and_github_checks_stop_at_retry_budget_and_preserve_task(t
 def test_cycle_run_applies_default_command_deadline(monkeypatch: pytest.MonkeyPatch):
     captured = {}
 
-    def fake_subprocess_run(command, **kwargs):
+    def fake_run_command(command, **kwargs):
         captured.update(kwargs)
         return subprocess.CompletedProcess(command, 0, "", "")
 
-    monkeypatch.setattr(cycle.subprocess, "run", fake_subprocess_run)
+    monkeypatch.setattr(cycle, "_run_command", fake_run_command)
 
     result = cycle.run(["python", "--version"])
 
     assert result.returncode == 0
-    assert captured["timeout"] == cycle.DEFAULT_COMMAND_TIMEOUT_SECONDS
+    assert captured["timeout_seconds"] == cycle.DEFAULT_COMMAND_TIMEOUT_SECONDS
+    assert captured["cwd"] == cycle.ROOT
 
 
 def test_cycle_run_converts_timeout_to_a_diagnostic_error(monkeypatch: pytest.MonkeyPatch):
-    def fake_subprocess_run(command, **kwargs):
-        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+    def fake_run_command(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, kwargs["timeout_seconds"])
 
-    monkeypatch.setattr(cycle.subprocess, "run", fake_subprocess_run)
+    monkeypatch.setattr(cycle, "_run_command", fake_run_command)
 
     with pytest.raises(RuntimeError, match="exceeded its 17-second deadline"):
         cycle.run(["python", "--version"], timeout_seconds=17)
