@@ -98,6 +98,60 @@ def test_openai_compatible_chat_supports_local_endpoint_without_api_key(monkeypa
         "http://127.0.0.1:0/v1",
     ],
 )
+def test_model_discovery_uses_selected_ollama_provider(monkeypatch):
+    monkeypatch.setattr(
+        ollama,
+        "get_settings",
+        lambda: {"chat_llm_provider": "ollama"},
+    )
+    installed = [{"name": "qwen3:14b", "size": 8_000_000_000}]
+    monkeypatch.setattr(ollama, "list_models", lambda: installed)
+
+    assert ollama.list_provider_models("chat") == {
+        "provider": "ollama",
+        "models": installed,
+    }
+
+
+def test_model_discovery_uses_selected_openai_compatible_provider(monkeypatch):
+    captured = {}
+    monkeypatch.setenv("TEST_MODEL_DISCOVERY_KEY", "secret-value")
+    monkeypatch.setattr(
+        ollama,
+        "get_settings",
+        lambda: {
+            "ai_learning_llm_provider": "openai_compatible",
+            "ai_learning_llm_base_url": "https://llm.example.test/v1",
+            "ai_learning_llm_api_key_env": "TEST_MODEL_DISCOVERY_KEY",
+        },
+    )
+    monkeypatch.setattr(
+        ollama.socket,
+        "getaddrinfo",
+        lambda host, port, **kwargs: [(None, None, None, None, ("93.184.216.34", port))],
+    )
+    monkeypatch.setattr(
+        ollama.urllib.request,
+        "build_opener",
+        lambda *_args, **_kwargs: _FakeOpener(
+            {"data": [{"id": "model-a"}, {"id": "model-b"}, {"id": "model-a"}]},
+            captured,
+        ),
+    )
+
+    result = ollama.list_provider_models("ai_learning")
+
+    assert result == {
+        "provider": "openai_compatible",
+        "models": [
+            {"name": "model-a", "size": None, "modified_at": None, "digest": None},
+            {"name": "model-b", "size": None, "modified_at": None, "digest": None},
+        ],
+    }
+    assert captured["url"] == "https://llm.example.test/v1/models"
+    assert captured["authorization"] == "Bearer secret-value"
+
+
 def test_openai_compatible_base_url_rejects_unsafe_urls(url):
     with pytest.raises(ollama.OllamaError):
         ollama.normalize_openai_compatible_base_url(url)
