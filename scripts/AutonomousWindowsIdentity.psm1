@@ -39,12 +39,17 @@ function Set-AutonomousDirectoryAcl {
     param(
         [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$Path,
         [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string]$RunnerSid,
-        [Parameter()][ValidatePattern("^S-1-")][string]$ReadOnlySid
+        [Parameter()][ValidatePattern("^S-1-")][string]$ReadOnlySid,
+        [Parameter()][ValidatePattern("^S-1-")][string]$AdditionalModifySid
     )
 
     $icacls = Get-Command icacls.exe -ErrorAction Stop
-    $grants = @("*$($RunnerSid):(OI)(CI)M")
-    if ($ReadOnlySid -and $ReadOnlySid -ne $RunnerSid) {
+    $modifySids = @($RunnerSid)
+    if ($AdditionalModifySid -and $AdditionalModifySid -notin $modifySids) {
+        $modifySids += $AdditionalModifySid
+    }
+    $grants = @($modifySids | ForEach-Object { "*$($_):(OI)(CI)M" })
+    if ($ReadOnlySid -and $ReadOnlySid -notin $modifySids) {
         $grants += "*$($ReadOnlySid):(OI)(CI)RX"
     }
     $arguments = @($Path, "/inheritance:r", "/grant:r") + $grants
