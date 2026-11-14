@@ -68,13 +68,13 @@ def test_codex_smoke_evidence_reports_each_command_without_logging_raw_commands(
 
 
 def test_codex_model_catalog_registers_the_selected_ollama_context():
-    model = "gpt-oss:20b-codex-ctx64000"
-    path = progress.write_codex_model_catalog(model, context_window=64000)
+    model = "gpt-oss:20b-codex-ctx16384"
+    path = progress.write_codex_model_catalog(model, context_window=16384)
     catalog = __import__("json").loads(path.read_text(encoding="utf-8"))
     assert len(catalog["models"]) == 1
     entry = catalog["models"][0]
     assert entry["slug"] == model
-    assert entry["context_window"] == 64000
+    assert entry["context_window"] == 16384
     assert entry["shell_type"] == "default"
     assert entry["input_modalities"] == ["text"]
     assert [level["effort"] for level in entry["supported_reasoning_levels"]] == [
@@ -124,9 +124,9 @@ def test_codex_diagnostic_uses_bounded_reasoning_effort_without_changing_default
     import pytest
     from scripts import autonomous_engineering_progress as progress
 
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "16384")
     monkeypatch.setenv("CODEX_MODEL_REASONING_EFFORT", "low")
-    arguments = progress.codex_arguments("gpt-oss:20b-codex-ctx64000", "report.md")
+    arguments = progress.codex_arguments("gpt-oss:20b-codex-ctx16384", "report.md")
     overrides = [
         arguments[i + 1] for i, value in enumerate(arguments[:-1]) if value == "-c"
     ]
@@ -136,7 +136,7 @@ def test_codex_diagnostic_uses_bounded_reasoning_effort_without_changing_default
     assert not any(value.startswith("model_providers.ollama.") for value in overrides)
 
     monkeypatch.delenv("CODEX_MODEL_REASONING_EFFORT")
-    default_arguments = progress.codex_arguments("gpt-oss:20b-codex-64k", "report.md")
+    default_arguments = progress.codex_arguments("gpt-oss:20b-codex-ctx16384", "report.md")
     default_overrides = [
         default_arguments[i + 1]
         for i, value in enumerate(default_arguments[:-1])
@@ -169,7 +169,7 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert context_script.count('OLLAMA_RUNTIME_CONTEXT_OK') == 1
     assert 'if ($allocated -ne $selectedContext)' in context_script
     assert 'if ($allocated -lt $selectedContext)' not in context_script
-    assert '-lt 64000' in context_script
+    assert '-le 0' in context_script
     assert 'AUTONOMOUS_ENGINEERING_MODEL=$codexModel' in context_script
     assert '-VerifyOnly' in diagnostic
     assert '-VerifyOnly' in autonomous
@@ -233,19 +233,19 @@ def test_context_preflight_uses_deterministic_variant_from_selected_base_model()
 
 
 
-def test_codex_model_catalog_rejects_context_below_64k(monkeypatch):
+def test_codex_model_catalog_rejects_non_positive_context(monkeypatch):
     import pytest
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "63999")
-    with pytest.raises(ValueError, match="64000"):
-        progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx63999")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "0")
+    with pytest.raises(ValueError, match="positive integer"):
+        progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx0")
 
 
 def test_codex_model_catalog_uses_selected_context_from_environment(monkeypatch):
     import json
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
-    path = progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx64000")
+    path = progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx16384")
     catalog = json.loads(path.read_text(encoding="utf-8"))
-    assert catalog["models"][0]["context_window"] == 64000
+    assert catalog["models"][0]["context_window"] == 16384
 
 
 def test_settings_expose_visible_installed_model_selectors_and_manual_context_inputs():
