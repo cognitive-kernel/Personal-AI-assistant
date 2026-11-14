@@ -298,10 +298,9 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
     if not local_model.get("model_metadata_available"):
         raise HTTPException(status_code=422, detail="حداکثر Context مدل از metadata معتبر Ollama قابل تأیید نیست؛ مدل ذخیره نشد.")
     if not local_model.get("model_context_supported"):
-        maximum = local_model.get("model_context_length")
         raise HTTPException(
             status_code=422,
-            detail=f"Codex به حداقل {MIN_CODEX_CONTEXT_TOKENS} توکن Context نیاز دارد؛ سقف مدل انتخاب‌شده {maximum} است و ذخیره نشد.",
+            detail="با توجه به metadata مدل و حافظهٔ آزاد فعلی، ظرفیت امن Context قابل محاسبه نیست؛ تنظیمات ذخیره نشد.",
         )
     if not local_model.get("model_supports_tools"):
         raise HTTPException(status_code=422, detail="مدل انتخاب‌شده قابلیت tools را اعلام نکرده و برای Codex قابل استفاده نیست.")
