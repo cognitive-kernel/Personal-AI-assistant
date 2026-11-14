@@ -1,5 +1,34 @@
 # Engineering Continuity Log
 
+## 2026-11-14 — Ollama context preflight latency and duplicate model loads
+
+### Root-cause analysis
+
+- scripts/verify_ollama_context.ps1 ran sequential metadata, memory-planning, capability, model-create, warmup, and runtime-allocation operations without per-operation latency telemetry.
+- When Ollama omitted capabilities, scripts/verify_ollama_tools.py performed a live tool-call request with keep_alive=0 for a model that was not already loaded. The preflight then issued a separate /api/generate warmup, cold-loading the same derived Codex model a second time.
+- The workflow's post-run -VerifyOnly invocation repeated capability inference and warmup even though its contract was to verify the already-prepared runtime context.
+- Existing model detection swallowed every /api/show exception. A transient timeout or server failure could be treated as model absent, causing a misleading /api/create attempt.
+
+### Corrective changes
+
+- Split the PowerShell implementation into focused API/timing, metadata/runtime, hardware planning, and warmup modules; the entry-point script now coordinates these contracts.
+- Added bounded per-request timing telemetry for Ollama HTTP calls and phase timing for hardware/context planning and the live tool probe.
+- Deferred a live tool-call probe until the persistent Codex variant is available. The explicit --keep-alive 10m probe now both verifies tool calling and retains the exact model for Codex; the separate warmup is skipped in that path.
+- When Ollama exposes valid tools capability metadata, the script performs one warmup with num_predict=1 rather than an unconstrained response.
+- Made -VerifyOnly inference-free: it checks model metadata, saved num_ctx, and actual /api/ps allocation only. It does not probe tools or reload the model.
+- Changed model lookup so only HTTP 404 means not installed; other API failures remain actionable errors.
+- Preserved the tool probe's default residency-neutral behavior for provisioning and other existing callers. The keep-alive override is explicit and allowlisted.
+- Added unit and architecture regression tests for the new ownership and single-load contracts. Recorded the decision in ADR-022.
+
+### Validation and residual risk
+
+- GitHub Actions exact-head validation is pending; no local or target-host result is claimed.
+- The 45-second live tool probe and existing workflow timeouts remain bounded. A cold first model load may still take time, but the previous duplicate cold load is removed.
+- A post-run model eviction now fails the runtime verification instead of being hidden by an extra inference. The live Windows Runner must confirm that the configured Ollama residency is sufficient for the autonomous task lifecycle.
+- No runner identity, ACL, privilege, model selection, source model, main branch, Pause state, or user data was changed.
+
+---
+
 ## 2026-11-11 — PR #709: research-first learning with gpt-oss:20b
 
 ### Root-cause analysis
