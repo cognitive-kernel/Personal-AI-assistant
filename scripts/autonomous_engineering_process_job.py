@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import math
 import os
 from typing import Any
 
@@ -155,6 +156,7 @@ class WindowsProcessJob:
         if (
             isinstance(timeout_seconds, bool)
             or not isinstance(timeout_seconds, (int, float))
+            or not math.isfinite(float(timeout_seconds))
             or timeout_seconds < 0
         ):
             raise ValueError("Job wait timeout must be a non-negative number.")
