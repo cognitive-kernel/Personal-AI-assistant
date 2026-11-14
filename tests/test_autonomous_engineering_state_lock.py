@@ -8,10 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.autonomous_engineering_state_lock import (
-    MUTEX_NAME,
-    durable_state_lock,
-)
+from scripts.autonomous_engineering_state_lock import durable_state_lock
 
 
 def test_durable_state_lock_excludes_other_processes_and_releases_after_scope(
