@@ -199,9 +199,11 @@ def test_codex_runner_kills_inherited_group_when_output_owner_disappears(tmp_pat
         [sys.executable, str(owner_script)],
         cwd=Path(__file__).resolve().parents[1],
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
     )
-    assert owner.wait(timeout=15) == 0
+    owner_exit = owner.wait(timeout=15)
+    owner_stderr = owner.stderr.read().decode("utf-8", errors="replace") if owner.stderr else ""
+    assert owner_exit == 0, f"Owner harness failed: {owner_stderr}"
     child_pid = int(child_pid_file.read_text(encoding="utf-8"))
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
