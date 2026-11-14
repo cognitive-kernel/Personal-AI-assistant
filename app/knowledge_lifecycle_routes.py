@@ -13,7 +13,7 @@ from .module_settings import require_module_enabled
 router = APIRouter(
     prefix="/api/learning/candidates",
     tags=["knowledge-lifecycle"],
-    dependencies=[Depends(require_loopback_client), Depends(require_module_enabled("knowledge_base"))],
+    dependencies=[Depends(require_loopback_client)],
 )
 
 
@@ -38,7 +38,7 @@ class CandidatePromotionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-@router.post("/{candidate_id}/evidence")
+@router.post("/{candidate_id}/evidence", dependencies=[Depends(require_module_enabled("knowledge_base"))])
 def record_candidate_evidence(candidate_id: int, request: CandidateReviewRequest) -> dict[str, Any]:
     try:
         item = knowledge_lifecycle.record_candidate_review(
@@ -72,7 +72,7 @@ def get_candidate_readiness(candidate_id: int) -> dict[str, Any]:
 
 
 
-@router.post("/{candidate_id}/validate", status_code=202)
+@router.post("/{candidate_id}/validate", status_code=202, dependencies=[Depends(require_module_enabled("knowledge_base"))])
 def enqueue_candidate_validation(candidate_id: int) -> dict[str, Any]:
     """Schedule source/model validation; network and model work stays in the queue worker."""
     try:
@@ -118,7 +118,7 @@ def enqueue_candidate_validation(candidate_id: int) -> dict[str, Any]:
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Knowledge validation could not be queued.") from exc
 
-@router.post("/{candidate_id}/promote")
+@router.post("/{candidate_id}/promote", dependencies=[Depends(require_module_enabled("knowledge_base"))])
 def promote_candidate(candidate_id: int, request: CandidatePromotionRequest) -> dict[str, Any]:
     try:
         return knowledge_lifecycle.promote_candidate(
