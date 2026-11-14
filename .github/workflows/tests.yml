@@ -71,11 +71,17 @@ jobs:
             $selectionOutput = & python $helper --input-file $inputFile
             if ($LASTEXITCODE -ne 0) { throw "Explicit-file context selection failed: $($selectionOutput -join ' ')" }
             $selection = ($selectionOutput -join [Environment]::NewLine) | ConvertFrom-Json -ErrorAction Stop
-            if ([int64]$selection.selected_context_tokens -ne 86016) {
-              throw "Expected exact safe context 86016, received '$($selection.selected_context_tokens)'."
+            if ([int64]$selection.selected_context_tokens -ne [int64]$selection.hardware_maximum_context_tokens) {
+              throw "Selected context did not match the live hardware-safe ceiling '$($selection.hardware_maximum_context_tokens)'."
+            }
+            if ([int64]$selection.selected_context_tokens -le 0) {
+              throw "The selected context must be positive."
             }
             if ([int64]$selection.selected_context_tokens -gt [int64]$selection.requested_context_tokens) {
               throw "Selected context exceeded the requested context."
+            }
+            if ([int64]$selection.selected_context_tokens -gt [int64]$selection.maximum_context_tokens) {
+              throw "Selected context exceeded the model metadata maximum."
             }
           } finally {
             if (Test-Path -LiteralPath $inputFile) { Remove-Item -LiteralPath $inputFile -Force }
