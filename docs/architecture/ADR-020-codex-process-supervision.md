@@ -124,3 +124,10 @@ The production POSIX boundary now mirrors the Windows ownership shape:
 - The shared process-group primitives live in autonomous_engineering_process_group.py and are reused by the command runner, Codex runner, and progress owner. This avoids three subtly different implementations of POSIX cleanup.
 
 Regression coverage now verifies that an abruptly exited supervisor cannot leave a live descendant when its owner is still running, and that the owner can drain an inherited process group after the runner returns.
+
+
+## 2026-11-14 addendum — output-owner disconnect failure path
+
+A further failure-injection case covered the interval where the progress owner disappears while the Codex runner is blocked forwarding a large output chunk. In that state, the runner may receive a broken pipe before its next owner-ancestry poll. The output-forwarding boundary now treats a closed stdout/stderr owner channel as an ownership-loss event and terminates the inherited POSIX group (or returns to the Windows outer Job Object owner, which drains it). Diagnostic writes are best-effort and cannot prevent cleanup.
+
+Regression coverage fills the owner output pipe, exits the owner while the runner is blocked, and verifies that the sleeping Codex descendant does not survive.
