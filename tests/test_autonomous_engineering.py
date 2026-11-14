@@ -270,6 +270,47 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
     assert result["model_context_supported"] is True
 
 
+def test_ollama_status_probes_tool_calling_when_capabilities_metadata_is_missing(monkeypatch):
+    from app import ollama
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            if request.full_url.endswith("/api/tags"):
+                return io.BytesIO(json.dumps({
+                    "models": [{"name": "gpt-oss:20b", "size": 5 * 1024**3, "digest": "sha256:model"}]
+                }).encode("utf-8"))
+            if request.full_url.endswith("/api/show"):
+                return io.BytesIO(json.dumps({
+                    "details": {"family": "incorrect-family"},
+                    "model_info": {
+                        "general.architecture": "gptoss",
+                        "gptoss.context_length": 131072,
+                        "gptoss.block_count": 24,
+                        "gptoss.attention.head_count_kv": 8,
+                        "gptoss.attention.key_length": 64,
+                        "gptoss.attention.value_length": 64,
+                    },
+                }).encode("utf-8"))
+            if request.full_url.endswith("/api/chat"):
+                return io.BytesIO(json.dumps({
+                    "message": {"tool_calls": [{
+                        "function": {"name": "autonomous_engineering_capability_probe", "arguments": {}}
+                    }]}
+                }).encode("utf-8"))
+            raise AssertionError(request.full_url)
+
+    agent._services._TOOL_PROBE_CACHE.clear()
+    monkeypatch.setattr(agent.urllib.request, "build_opener", lambda *args: FakeOpener())
+    monkeypatch.setattr(ollama, "model_details", lambda model: {"recommended_context_tokens": 32768})
+
+    result = agent._ollama_status("gpt-oss:20b")
+
+    assert result["model_context_length"] == 131072
+    assert result["model_supports_tools"] is True
+    assert result["model_tools_metadata_available"] is False
+    assert result["model_tools_verification_method"] == "live_tool_call_probe"
+
+
 def test_ollama_status_lists_installed_models_without_selecting_one(monkeypatch):
     class FakeOpener:
         def open(self, request, timeout):
