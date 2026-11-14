@@ -6,6 +6,7 @@ function Invoke-OllamaApi {
         [ValidateRange(1, 900)][int]$TimeoutSec = 20
     )
 
+    Write-Host ("[ollama-timing] start method={0} path={1} timeout_sec={2}" -f $Method, $Path, $TimeoutSec)
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
     try {
         $arguments = @{
