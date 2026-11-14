@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from app.ollama_context import OllamaModelMetadataError, select_context_window, supports_tool_calling
+from app.ollama_context import OllamaModelMetadataError, maximum_context_tokens, select_context_window, supports_tool_calling
 
 ROOT = Path(__file__).resolve().parents[1]
 HELPER = ROOT / "app" / "ollama_context.py"
@@ -103,3 +103,11 @@ def test_context_helper_reads_json_from_explicit_file(tmp_path: Path):
     )
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)["selected_context_tokens"] == 47104
+
+
+def test_context_metadata_uses_general_architecture_when_details_family_is_inconsistent():
+    info = {
+        "general.architecture": "gptoss",
+        "gptoss.context_length": 131072,
+    }
+    assert maximum_context_tokens(info, "incorrect-family") == 131072
