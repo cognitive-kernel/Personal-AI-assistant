@@ -455,3 +455,12 @@ def test_windows_gpu_shared_memory_is_capped_by_host_ram_available(monkeypatch):
     assert device["usable_shared_memory_free_mb"] == 1024
     assert device["usable_memory_free_mb"] == 1792
     assert device["usable_memory_scope"] == "dedicated+shared"
+
+
+
+def test_runtime_limits_fail_closed_when_no_context_is_configured_or_model_derived():
+    with pytest.raises(ValueError, match="positive configured or model-derived context"):
+        runtime_limits(
+            {"ollama_num_thread": 4},
+            {"logical_cpu_count": 8, "total_ram_gb": 32, "available_ram_gb": 25},
+        )
