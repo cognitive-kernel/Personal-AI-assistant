@@ -77,6 +77,27 @@ def test_command_timeout_validation_rejects_boolean_and_non_positive_values(tmp_
             run_command(command, cwd=tmp_path, env=None, capture=False, timeout_seconds=timeout)
 
 
+def test_binary_command_input_is_preserved_byte_for_byte(tmp_path: Path):
+    payload = b"checkpoint\\x00patch\\r\\nwith\\xffbytes\\n"
+    output_path = tmp_path / "received-patch.bin"
+    script = (
+        "import pathlib,sys; "
+        "pathlib.Path(" + repr(str(output_path)) + ").write_bytes(sys.stdin.buffer.read())"
+    )
+
+    result = run_command(
+        [sys.executable, "-c", script],
+        cwd=tmp_path,
+        env=None,
+        capture=True,
+        timeout_seconds=5,
+        input_data=payload,
+    )
+
+    assert result.returncode == 0
+    assert output_path.read_bytes() == payload
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows Job Object owner-close contract.")
 def test_windows_owner_exit_terminates_command_and_descendants(tmp_path: Path):
     repository_root = Path(__file__).resolve().parents[1]
