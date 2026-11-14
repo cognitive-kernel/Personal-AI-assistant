@@ -46,6 +46,18 @@ def test_windows_provisioning_does_not_require_a_fixed_users_group_or_admin_acl_
     assert 'Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid' in script
 
 
+
+def test_windows_provisioning_uses_the_runtime_shared_state_path_contract():
+    script = (ROOT / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
+    paths_module = (ROOT / "scripts" / "AutonomousWindowsPaths.psm1").read_text(encoding="utf-8")
+
+    assert 'Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsPaths.psm1")' in script
+    assert "$env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR" in script
+    assert "Resolve-AutonomousStateDirectory" in paths_module
+    assert "AUTONOMOUS_ENGINEERING_PROGRESS_DIR must be an absolute shared path." in paths_module
+    assert "per-user fallback is not supported on Windows" in paths_module
+    assert "RunnerRoot and shared autonomous state directory must be separate" in script
+
 def test_windows_provisioning_keeps_runner_least_privilege_as_a_role_invariant():
     script = (ROOT / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
 
