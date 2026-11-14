@@ -21,11 +21,13 @@ except ImportError:
     from autonomous_engineering_process_job import WindowsProcessJob
 
 
-def capture_parent_chain(max_depth: int = 4) -> list[dict[str, float | int]]:
+def capture_parent_chain(max_depth: int = 3) -> list[dict[str, float | int]]:
     chain: list[dict[str, float | int]] = []
     process = psutil.Process(os.getpid())
-    for _ in range(max_depth):
+    for index in range(max_depth):
         chain.append({"pid": process.pid, "started_at": float(process.create_time())})
+        if index + 1 >= max_depth:
+            break
         parent = process.parent()
         if parent is None:
             break
