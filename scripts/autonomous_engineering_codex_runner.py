@@ -95,6 +95,7 @@ def run(
     parent_chain: list[dict[str, Any]],
     *,
     attach_current_process: bool = False,
+    parent_job_managed: bool = False,
 ) -> int:
     if (
         not isinstance(command, list)
@@ -110,15 +111,17 @@ def run(
         return 125
 
     job = WindowsProcessJob()
-    job.__enter__()
+    external_job_managed = os.name == "nt" and parent_job_managed
+    if not external_job_managed:
+        job.__enter__()
     process: subprocess.Popen[bytes] | None = None
     process_tree_cleaned = False
-    owner_bound_windows_job = os.name == "nt" and attach_current_process
+    owner_bound_windows_job = os.name == "nt" and attach_current_process and not external_job_managed
     try:
         if owner_bound_windows_job:
             job.attach_current_process_to_owner(int(parent_chain[0]["pid"]))
         creationflags = (
-            0 if owner_bound_windows_job
+            0 if owner_bound_windows_job or external_job_managed
             else WindowsProcessJob.CREATE_SUSPENDED if os.name == "nt"
             else 0
         )
@@ -153,6 +156,8 @@ def run(
                 if owner_bound_windows_job:
                     job.terminate(125)
                     os._exit(125)
+                if external_job_managed:
+                    return 125
                 _terminate_process(process, job)
                 process_tree_cleaned = True
                 return 125
@@ -162,6 +167,8 @@ def run(
                 if owner_bound_windows_job:
                     job.terminate(124)
                     os._exit(124)
+                if external_job_managed:
+                    return 124
                 _terminate_process(process, job)
                 process_tree_cleaned = True
                 return 124
@@ -182,6 +189,8 @@ def run(
                 if owner_bound_windows_job:
                     job.terminate(125)
                     os._exit(125)
+                if external_job_managed:
+                    return 125
                 _terminate_process(process, job)
                 process_tree_cleaned = True
                 return 125
@@ -191,6 +200,8 @@ def run(
                 if owner_bound_windows_job:
                     job.terminate(124)
                     os._exit(124)
+                if external_job_managed:
+                    return 124
                 _terminate_process(process, job)
                 process_tree_cleaned = True
                 return 124
@@ -199,12 +210,14 @@ def run(
         if owner_bound_windows_job:
             job.terminate(exit_code)
             os._exit(exit_code)
+        if external_job_managed:
+            return exit_code
         if os.name != "nt":
             _terminate_process(process, job)
             process_tree_cleaned = True
         return exit_code
     finally:
-        if process is not None and not process_tree_cleaned:
+        if process is not None and not process_tree_cleaned and not external_job_managed:
             if owner_bound_windows_job and process.poll() is None:
                 job.terminate(125)
                 os._exit(125)
@@ -218,6 +231,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--timeout-seconds", type=int, required=True)
     parser.add_argument("--parent-chain", required=True)
+    parser.add_argument("--parent-job-managed", action="store_true")
     known, command = parser.parse_known_args()
     if command and command[0] == "--":
         command = command[1:]
@@ -227,7 +241,11 @@ def main() -> int:
         raise SystemExit("Invalid Codex parent-process ownership metadata.")
     if not isinstance(chain, list):
         raise SystemExit("Invalid Codex parent-process ownership metadata.")
-    return run(command, known.timeout_seconds, chain, attach_current_process=True)
+    return run(
+        command, known.timeout_seconds, chain,
+        attach_current_process=True,
+        parent_job_managed=known.parent_job_managed,
+    )
 
 
 if __name__ == "__main__":
