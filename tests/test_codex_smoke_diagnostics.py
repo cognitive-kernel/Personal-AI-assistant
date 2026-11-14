@@ -242,7 +242,7 @@ def test_codex_model_catalog_rejects_non_positive_context(monkeypatch):
 
 def test_codex_model_catalog_uses_selected_context_from_environment(monkeypatch):
     import json
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "16384")
     path = progress.write_codex_model_catalog("qwen2.5:7b-codex-ctx16384")
     catalog = json.loads(path.read_text(encoding="utf-8"))
     assert catalog["models"][0]["context_window"] == 16384
@@ -263,7 +263,7 @@ def test_settings_expose_visible_installed_model_selectors_and_manual_context_in
 
 def test_codex_uses_unique_custom_ollama_provider_without_redefining_reserved_provider(monkeypatch):
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
-    arguments = progress.codex_arguments("gpt-oss:20b-codex-ctx64000", "report.md")
+    arguments = progress.codex_arguments("gpt-oss:20b-codex-ctx16384", "report.md")
     overrides = [
         arguments[index + 1]
         for index, value in enumerate(arguments[:-1])
