@@ -24,6 +24,7 @@ Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsPaths.psm1") -Force
 $runnerIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $RunnerAccount
 $appIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $AppAccount
 $runnerLocalName = Get-AutonomousLocalAccountName -AccountName $runnerIdentity
+$runnerIsLocal = -not [string]::IsNullOrWhiteSpace($runnerLocalName)
 if ($runnerLocalName -and ($runnerLocalName.Length -gt 20 -or $runnerLocalName -match '[\\/"\[\]:;|=,+*?<>]')) { throw "Invalid local Runner account name." }
 $machineStateDirectory = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")
 $processStateDirectory = $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR
