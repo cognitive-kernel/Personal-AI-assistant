@@ -11,11 +11,12 @@ from . import cloud_resource_planner, cloud_resources
 from .kaggle_quota_client import KaggleQuotaClientError, fetch_quota_snapshot
 from .oci_quota_client import OciQuotaClientError, fetch_service_limits
 from .task_routes import require_loopback_client
+from .module_settings import require_module_enabled
 
 router = APIRouter(
     prefix="/api/cloud-resources",
     tags=["cloud-resources"],
-    dependencies=[Depends(require_loopback_client)],
+    dependencies=[Depends(require_loopback_client), Depends(require_module_enabled("cloud_resources"))],
 )
 
 
