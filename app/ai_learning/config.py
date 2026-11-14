@@ -8,7 +8,7 @@ from typing import Any
 from ..config import SETTING_DEFAULTS
 
 _DEFAULTS: dict[str, bool] = {
-    "ai_learning_enabled": True,
+    "ai_learning_knowledge_enabled": True,
     "ai_learning_retrieval_enabled": True,
     "ai_learning_browser_enabled": True,
 }
@@ -34,7 +34,7 @@ def _setting(name: str) -> bool:
 
 def is_enabled() -> bool:
     """Whether the AI-learning subsystem is enabled (enabled in a fresh install)."""
-    return _setting("ai_learning_enabled")
+    return _setting("ai_learning_knowledge_enabled")
 
 
 def retrieval_is_enabled() -> bool:
