@@ -240,17 +240,37 @@ def test_resource_headroom_fails_closed_when_psutil_is_unavailable(monkeypatch):
     with pytest.raises(RuntimeError, match="CPU/RAM telemetry is unavailable"):
         hardware.ensure_resource_headroom()
 
-def test_ram_ceiling_subtracts_safety_reserve_before_context_selection():
-    limits = hardware.runtime_limits(
-        {
-            "ollama_num_ctx": 8192,
-            "ollama_num_thread": 0,
-            "ram_budget_max_gb": 6,
-            "ram_safety_reserve_gb": 4,
-        },
-        {"logical_cpu_count": 8, "total_ram_gb": 32, "available_ram_gb": 24},
+def test_ram_safety_reserve_is_applied_during_context_selection(monkeypatch):
+    from app import ollama
+
+    settings = {
+        "ram_budget_max_gb": 6,
+        "ram_safety_reserve_gb": 4,
+        "gpu_enabled": False,
+    }
+    monkeypatch.setattr(ollama, "get_settings", lambda: settings)
+    hardware_info = {
+        "logical_cpu_count": 8,
+        "total_ram_gb": 32,
+        "available_ram_gb": 24,
+    }
+    memory_estimate = {
+        "weights_gib": 1.0,
+        "overhead_gib": 0.5,
+        "kv_cache_bytes_per_token_upper_bound": 1024 ** 2,
+    }
+
+    selected_context = ollama._recommended_context_tokens(
+        8192, memory_estimate, hardware_info
     )
-    assert limits["num_ctx"] == 2048
+    limits = hardware.runtime_limits(
+        {"ollama_num_ctx": 8192, "ollama_num_thread": 0},
+        hardware_info,
+        maximum_context_tokens=8192,
+    )
+
+    assert selected_context == 512
+    assert limits["num_ctx"] == 8192
 
 
 
