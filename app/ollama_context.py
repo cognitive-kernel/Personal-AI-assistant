@@ -15,15 +15,27 @@ class OllamaModelMetadataError(ValueError):
     """Raised when model or host metadata is insufficient for a safe context choice."""
 
 
-def maximum_context_tokens(model_info: dict[str, Any], architecture: str) -> int:
-    if not isinstance(model_info, dict) or not isinstance(architecture, str) or not architecture.strip():
+def resolve_model_architecture(model_info: dict[str, Any], architecture: str | None) -> str:
+    if not isinstance(model_info, dict):
         raise OllamaModelMetadataError("Model architecture/context metadata is unavailable.")
-    value = model_info.get(f"{architecture}.context_length")
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise OllamaModelMetadataError(
-            f"Model metadata does not expose a valid {architecture}.context_length."
-        )
-    return value
+    candidates = []
+    if isinstance(architecture, str) and architecture.strip():
+        candidates.append(architecture.strip())
+    declared = model_info.get("general.architecture")
+    if isinstance(declared, str) and declared.strip() and declared.strip() not in candidates:
+        candidates.append(declared.strip())
+    for candidate in candidates:
+        value = model_info.get(f"{candidate}.context_length")
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            return candidate
+    raise OllamaModelMetadataError(
+        "Model metadata does not expose a valid architecture-specific context_length."
+    )
+
+
+def maximum_context_tokens(model_info: dict[str, Any], architecture: str | None) -> int:
+    resolved_architecture = resolve_model_architecture(model_info, architecture)
+    return model_info[f"{resolved_architecture}.context_length"]
 
 
 def supports_tool_calling(capabilities: Any) -> bool:
