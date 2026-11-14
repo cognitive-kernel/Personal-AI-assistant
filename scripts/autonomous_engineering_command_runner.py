@@ -13,65 +13,20 @@ import time
 from pathlib import Path
 from typing import Mapping, Sequence
 
-import psutil
 
 try:
     from .autonomous_engineering_process_job import WindowsProcessJob
 except ImportError:  # Direct script execution from the scripts directory.
     from autonomous_engineering_process_job import WindowsProcessJob
 
-
-def _posix_group_has_live_members(process_group_id: int) -> bool:
-    for process in psutil.process_iter(["pid", "status"]):
-        try:
-            if os.getpgid(process.pid) != process_group_id:
-                continue
-            if process.info.get("status") != psutil.STATUS_ZOMBIE:
-                return True
-        except (ProcessLookupError, PermissionError, psutil.NoSuchProcess):
-            continue
-        except psutil.AccessDenied:
-            # An uninspectable process in the owned group is still considered
-            # live. Returning early would release ownership without proof.
-            try:
-                if os.getpgid(process.pid) == process_group_id:
-                    return True
-            except (ProcessLookupError, PermissionError, psutil.NoSuchProcess):
-                continue
-    return False
-
-
-def _wait_for_posix_group_exit(process_group_id: int, timeout_seconds: float) -> bool:
-    deadline = time.monotonic() + timeout_seconds
-    while _posix_group_has_live_members(process_group_id):
-        if time.monotonic() >= deadline:
-            return False
-        time.sleep(0.025)
-    return True
+try:
+    from .autonomous_engineering_process_group import terminate_process_group
+except ImportError:  # Direct script execution from the scripts directory.
+    from autonomous_engineering_process_group import terminate_process_group
 
 
 def _terminate_posix_group(process: subprocess.Popen[str]) -> None:
-    process_group_id = process.pid
-    try:
-        os.killpg(process_group_id, signal.SIGTERM)
-    except ProcessLookupError:
-        return
-    try:
-        process.wait(timeout=0.5)
-    except subprocess.TimeoutExpired:
-        pass
-    # Escalate unconditionally after the grace window. A process can fork
-    # between a process-table scan and its completion; SIGKILL closes that
-    # race because no remaining group member can create another descendant.
-    _wait_for_posix_group_exit(process_group_id, 0.5)
-    try:
-        os.killpg(process_group_id, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
-    if not _wait_for_posix_group_exit(process_group_id, 5):
-        raise RuntimeError(
-            f"Could not confirm termination of every process in group {process_group_id}."
-        )
+    terminate_process_group(process.pid)
     if process.poll() is None:
         process.wait(timeout=5)
 
