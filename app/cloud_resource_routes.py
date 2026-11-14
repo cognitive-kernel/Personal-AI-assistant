@@ -51,7 +51,7 @@ class ResourcePlanningRequest(BaseModel):
     allowed_provider_domains: list[StrictStr] = Field(default_factory=list, max_length=100)
 
 
-@router.get("/plans")
+@router.get("/plans", dependencies=[Depends(require_module_enabled("cloud_plan"))])
 def list_resource_selection_plans(
     limit: int = Query(default=20, ge=1, le=100),
 ) -> dict[str, Any]:
@@ -65,7 +65,7 @@ def list_resource_selection_plans(
         raise HTTPException(status_code=503, detail="Resource plan history is unavailable.") from exc
 
 
-@router.get("/plans/{plan_id}")
+@router.get("/plans/{plan_id}", dependencies=[Depends(require_module_enabled("cloud_plan"))])
 def get_resource_selection_plan(plan_id: int) -> dict[str, Any]:
     try:
         return cloud_resources.get_resource_selection_plan(plan_id)
@@ -75,7 +75,7 @@ def get_resource_selection_plan(plan_id: int) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="Resource plan history is unavailable.") from exc
 
 
-@router.post("/plan")
+@router.post("/plan", dependencies=[Depends(require_module_enabled("cloud_plan"))])
 def plan_cloud_resource_selection(request: ResourcePlanningRequest) -> dict[str, Any]:
     """Return a loopback-only dry-run resource plan; never starts remote execution."""
     try:
@@ -203,7 +203,7 @@ class ProviderQuotaConsentRequest(BaseModel):
     executable_path: str = Field(default="", max_length=2048)
 
 
-@router.get("/kaggle-quota")
+@router.get("/kaggle-quota", dependencies=[Depends(require_module_enabled("kaggle_quota"))])
 def get_kaggle_quota_status() -> dict[str, Any]:
     try:
         return {
@@ -215,7 +215,7 @@ def get_kaggle_quota_status() -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="Kaggle quota status storage is unavailable.") from exc
 
 
-@router.patch("/kaggle-quota/consent")
+@router.patch("/kaggle-quota/consent", dependencies=[Depends(require_module_enabled("kaggle_quota"))])
 def update_kaggle_quota_consent(request: ProviderQuotaConsentRequest) -> dict[str, Any]:
     try:
         consent = cloud_resources.record_provider_consent(
@@ -234,7 +234,7 @@ def update_kaggle_quota_consent(request: ProviderQuotaConsentRequest) -> dict[st
         raise HTTPException(status_code=503, detail="Kaggle quota consent storage is unavailable.") from exc
 
 
-@router.post("/kaggle-quota/refresh")
+@router.post("/kaggle-quota/refresh", dependencies=[Depends(require_module_enabled("kaggle_quota"))])
 def refresh_kaggle_quota() -> dict[str, Any]:
     try:
         consent = cloud_resources.get_provider_consent()
@@ -279,7 +279,7 @@ class OciLimitConsentRequest(BaseModel):
     compartment_id: str = Field(default="", max_length=512)
 
 
-@router.get("/oci-limits")
+@router.get("/oci-limits", dependencies=[Depends(require_module_enabled("oci_quota"))])
 def get_oci_limits_status() -> dict[str, Any]:
     try:
         return {
@@ -292,7 +292,7 @@ def get_oci_limits_status() -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="OCI limit status storage is unavailable.") from exc
 
 
-@router.patch("/oci-limits/consent")
+@router.patch("/oci-limits/consent", dependencies=[Depends(require_module_enabled("oci_quota"))])
 def update_oci_limit_consent(request: OciLimitConsentRequest) -> dict[str, Any]:
     try:
         consent = cloud_resources.record_oci_limit_consent(
@@ -316,7 +316,7 @@ def update_oci_limit_consent(request: OciLimitConsentRequest) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="OCI limit consent storage is unavailable.") from exc
 
 
-@router.post("/oci-limits/refresh")
+@router.post("/oci-limits/refresh", dependencies=[Depends(require_module_enabled("oci_quota"))])
 def refresh_oci_limits() -> dict[str, Any]:
     try:
         consent = cloud_resources.get_oci_limit_consent()
