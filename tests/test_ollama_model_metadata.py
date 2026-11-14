@@ -255,7 +255,7 @@ def test_chat_refuses_to_send_when_model_context_metadata_is_unavailable(monkeyp
     import pytest
     with pytest.raises(ollama.OllamaError, match="verifiable context_length"):
         ollama.chat("hello")
-    assert calls == ["/api/show", "/api/ps"]
+    assert calls == ["/api/show"]
 
 
 def test_model_context_metadata_requires_exact_architecture_metadata():
