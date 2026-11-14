@@ -102,7 +102,7 @@ def test_open_pr_requires_explicit_confirmation_and_configuration(proposal_repo,
 
     with pytest.raises(self_improvement.ProposalError, match="Explicit confirmation"):
         self_improvement.open_review_pull_request(proposal["id"], confirm=False)
-    with pytest.raises(self_improvement.ProposalError, match="SELF_IMPROVEMENT_GITHUB_REPOSITORY"):
+    with pytest.raises(self_improvement.ProposalError, match="dashboard Settings"):
         self_improvement.open_review_pull_request(proposal["id"], confirm=True)
 
 
