@@ -196,7 +196,7 @@ def run(
                 try:
                     sys.stdout.buffer.write(chunk)
                     sys.stdout.buffer.flush()
-                except OSError:
+                except (OSError, ValueError):
                     _diagnostic("Codex supervisor output owner disappeared; terminating the owned process tree.")
                     if owner_bound_windows_job:
                         job.terminate(125)
