@@ -29,6 +29,14 @@ def codex_command(
     parent_group_managed: bool = False,
 ) -> list[str]:
     """Run Codex through an owner-aware supervisor, preserving the native CLI contract."""
+    if not isinstance(executable, str) or not executable:
+        raise ValueError("Codex executable must be a non-empty string.")
+    if not isinstance(arguments, list) or any(not isinstance(item, str) or not item for item in arguments):
+        raise ValueError("Codex arguments must be a list of non-empty strings.")
+    if not isinstance(parent_job_managed, bool) or not isinstance(parent_group_managed, bool):
+        raise ValueError("Parent process ownership flags must be booleans.")
+    if parent_job_managed and parent_group_managed:
+        raise ValueError("Windows Job Object and POSIX process-group ownership are mutually exclusive.")
     if timeout_seconds is None:
         try:
             report_index = arguments.index("--output-last-message")
