@@ -73,15 +73,23 @@ def test_durable_state_lock_is_released_after_owner_process_crashes(tmp_path: Pa
         pass
 
 
-@pytest.mark.skipif(os.name != "nt", reason="PowerShell/Win32 mutex interoperability is Windows-only")
-def test_python_and_powershell_share_the_same_durable_state_mutex(tmp_path: Path):
-    ready = tmp_path / "powershell-mutex-ready.txt"
+@pytest.mark.skipif(os.name != "nt", reason="PowerShell/Windows file-lock interoperability is Windows-only")
+def test_python_and_powershell_share_the_same_durable_state_file_lock(tmp_path: Path):
+    state_dir = tmp_path / "shared-state"
+    state_dir.mkdir()
+    lock_path = state_dir / "autonomous-durable-state.lock"
+    ready = tmp_path / "powershell-lock-ready.txt"
+    escaped_lock = str(lock_path).replace("'", "''")
+    escaped_ready = str(ready).replace("'", "''")
     script = (
-        f"$mutex = [System.Threading.Mutex]::new($false, '{MUTEX_NAME}'); "
-        "$null = $mutex.WaitOne(); "
-        f"[System.IO.File]::WriteAllText('{str(ready)}', 'ready'); "
+        "$path = '" + escaped_lock + "'; "
+        "$stream = [System.IO.File]::Open($path, [System.IO.FileMode]::OpenOrCreate, "
+        "[System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::ReadWrite); "
+        "if ($stream.Length -eq 0) { $stream.WriteByte(0); $stream.Flush() }; "
+        "$stream.Lock(0, 1); "
+        "[System.IO.File]::WriteAllText('" + escaped_ready + "', 'ready'); "
         "Start-Sleep -Seconds 2; "
-        "$mutex.ReleaseMutex(); $mutex.Dispose()"
+        "$stream.Unlock(0, 1); $stream.Dispose()"
     )
     child = subprocess.Popen(
         ["pwsh", "-NoProfile", "-Command", script],
@@ -94,15 +102,15 @@ def test_python_and_powershell_share_the_same_durable_state_mutex(tmp_path: Path
         while time.monotonic() < deadline and not ready.is_file():
             if child.poll() is not None:
                 output = child.stdout.read() if child.stdout else ""
-                pytest.fail(f"PowerShell mutex owner exited early: {output}")
+                pytest.fail(f"PowerShell file-lock owner exited early: {output}")
             time.sleep(0.05)
-        assert ready.is_file(), "PowerShell did not acquire the shared mutex."
+        assert ready.is_file(), "PowerShell did not acquire the shared state file lock."
 
         with pytest.raises(TimeoutError):
-            with durable_state_lock(timeout_seconds=0.1):
+            with durable_state_lock(state_dir, timeout_seconds=0.1):
                 pass
     finally:
         child.wait(timeout=10)
 
-    with durable_state_lock(timeout_seconds=2):
+    with durable_state_lock(state_dir, timeout_seconds=2):
         pass
