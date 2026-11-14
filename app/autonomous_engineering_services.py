@@ -51,6 +51,7 @@ def _probe_tool_calling(opener, model: str, digest: str) -> bool:
             },
         }],
         "options": {"temperature": 0, "num_predict": 64},
+        "think": False,
     }
     request = urllib.request.Request(
         "http://127.0.0.1:11434/api/chat",
