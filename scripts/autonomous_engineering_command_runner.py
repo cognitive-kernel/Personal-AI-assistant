@@ -152,11 +152,13 @@ def run_command(
                     _terminate_windows_job(job, 125)
                 finally:
                     if process.poll() is None:
-                        # Assignment itself can fail. A suspended process that
-                        # never entered the job must still be explicitly killed.
-                        process.kill()
-                    if process.poll() is None:
-                        process.wait(timeout=5)
+                        try:
+                            process.wait(timeout=1)
+                        except subprocess.TimeoutExpired:
+                            # Assignment itself can fail. A suspended process
+                            # that never entered the job must still be killed.
+                            process.kill()
+                            process.wait(timeout=5)
             else:
                 _terminate_posix_group(process)
         job.close()
