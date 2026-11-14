@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app import db, learning, learning_execution, learning_method_orchestrator, task_manager
+from app import db, learning, learning_execution, learning_method_orchestrator, task_manager, task_manager_core
 from app.task_manager import TaskManagerError
 from app.task_worker import TaskContext
 from app.task_ownership import LEARNING_JOB_TASK_TYPE, TOPIC_QUALITY_TASK_TYPE
@@ -34,7 +34,7 @@ def method_lease_store(tmp_path, monkeypatch):
 
 def _reclaimed_context(monkeypatch, task_type: str, payload: dict):
     now = datetime(2026, 11, 14, tzinfo=timezone.utc)
-    monkeypatch.setattr(task_manager, "_now", lambda: now)
+    monkeypatch.setattr(task_manager_core, "_now", lambda: now)
     task = task_manager.create_task(task_type, payload, max_attempts=3)
     first = task_manager.claim_next_task("same-worker", lease_seconds=5)
     now += timedelta(seconds=6)

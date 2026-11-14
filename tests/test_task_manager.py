@@ -4,7 +4,7 @@ import pytest
 
 from app.task_manager import TaskManagerError
 
-from app import db, task_manager
+from app import db, task_manager, task_manager_core, task_queue_store, task_lease_manager
 
 
 @pytest.fixture
@@ -64,9 +64,9 @@ def test_claim_respects_priority_and_scheduled_time(task_store):
 
 def test_failed_task_retries_with_bounded_backoff_and_respects_attempt_limit(task_store, monkeypatch):
     current = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    monkeypatch.setattr(task_manager, "_now", lambda: current)
+    monkeypatch.setattr(task_manager_core, "_now", lambda: current)
     # Keep this lifecycle test deterministic; jitter bounds are tested separately.
-    monkeypatch.setattr(task_manager.random, "uniform", lambda low, high: 2.0)
+    monkeypatch.setattr(task_lease_manager.random, "uniform", lambda low, high: 2.0)
     task = task_manager.create_task("retryable", {}, max_attempts=2)
     first = task_manager.claim_next_task("worker-a")
     assert first["id"] == task["id"]
@@ -110,7 +110,7 @@ def test_pause_checkpoint_resume_and_cancel(task_store):
 
 def test_expired_lease_is_reclaimed_and_retry_limit_is_enforced(task_store, monkeypatch):
     current = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    monkeypatch.setattr(task_manager, "_now", lambda: current)
+    monkeypatch.setattr(task_manager_core, "_now", lambda: current)
     task = task_manager.create_task("crash-recovery", {}, max_attempts=2)
     claimed = task_manager.claim_next_task("worker-a", lease_seconds=5)
     assert claimed["attempts"] == 1
@@ -130,7 +130,7 @@ def test_expired_lease_is_reclaimed_and_retry_limit_is_enforced(task_store, monk
 
 def test_expired_pause_or_cancel_request_does_not_stick_forever(task_store, monkeypatch):
     current = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    monkeypatch.setattr(task_manager, "_now", lambda: current)
+    monkeypatch.setattr(task_manager_core, "_now", lambda: current)
 
     paused_task = task_manager.create_task("pause-crash", {})
     task_manager.claim_next_task("worker-a", lease_seconds=5)
@@ -161,7 +161,7 @@ def test_invalid_task_data_is_rejected(task_store):
 
 def test_expired_worker_cannot_mutate_after_lease_lapses(task_store, monkeypatch):
     current = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    monkeypatch.setattr(task_manager, "_now", lambda: current)
+    monkeypatch.setattr(task_manager_core, "_now", lambda: current)
     task = task_manager.create_task("lease-fencing", {}, max_attempts=2)
     first_claim = task_manager.claim_next_task("worker-a", lease_seconds=5)
 
@@ -178,7 +178,7 @@ def test_expired_worker_cannot_mutate_after_lease_lapses(task_store, monkeypatch
 
 def test_worker_can_renew_lease_and_naive_schedule_is_rejected(task_store, monkeypatch):
     current = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    monkeypatch.setattr(task_manager, "_now", lambda: current)
+    monkeypatch.setattr(task_manager_core, "_now", lambda: current)
     task = task_manager.create_task("heartbeat", {})
     claimed = task_manager.claim_next_task("worker", lease_seconds=5)
 
@@ -213,7 +213,7 @@ def test_sandbox_task_crash_is_terminal_after_single_attempt(task_store, monkeyp
     from app.sandbox_tasks import SANDBOX_TASK_TYPE
 
     current = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    monkeypatch.setattr(task_manager, "_now", lambda: current)
+    monkeypatch.setattr(task_manager_core, "_now", lambda: current)
     source = "print('must not be retried after worker crash')"
     task = task_manager.create_task(
         SANDBOX_TASK_TYPE,
@@ -294,7 +294,7 @@ def test_terminal_task_grace_period_validates_age(task_store, age):
 
 def test_checkpoint_and_expired_lease_survive_store_reinitialization(task_store, monkeypatch):
     current = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    monkeypatch.setattr(task_manager, "_now", lambda: current)
+    monkeypatch.setattr(task_manager_core, "_now", lambda: current)
 
     task = task_manager.create_task("restart-recovery", {"topic": "SQLite"}, max_attempts=2)
     first = task_manager.claim_next_task("worker-before-restart", lease_seconds=5)
@@ -391,7 +391,7 @@ def test_abrupt_worker_process_exit_recovers_checkpoint_after_lease_expiry(task_
 
     # Advance the queue's clock beyond the lease without sleeping for the real lease.
     expired_at = datetime.fromisoformat(crashed["lease_expires_at"].replace("Z", "+00:00"))
-    monkeypatch.setattr(task_manager, "_now", lambda: expired_at + timedelta(seconds=1))
+    monkeypatch.setattr(task_manager_core, "_now", lambda: expired_at + timedelta(seconds=1))
     recovered = task_manager.claim_next_task("worker-restarted", lease_seconds=30)
 
     assert recovered is not None
@@ -440,13 +440,13 @@ def test_worker_mutations_lock_before_validating_lease(task_store, monkeypatch, 
     claimed = task_manager.claim_next_task("worker-a", lease_seconds=30)
     assert claimed["id"] == task["id"]
 
-    original = task_manager._owned_running_task
+    original = task_lease_manager._owned_running_task
 
     def assert_transaction_started(conn, task_id, worker_id, lease_epoch):
         assert conn.in_transaction, "lease validation must occur inside a write transaction"
         return original(conn, task_id, worker_id, lease_epoch)
 
-    monkeypatch.setattr(task_manager, "_owned_running_task", assert_transaction_started)
+    monkeypatch.setattr(task_lease_manager, "_owned_running_task", assert_transaction_started)
     operations = {
         "renew": lambda: task_manager.renew_lease(task["id"], "worker-a", lease_epoch=claimed["lease_epoch"], lease_seconds=60),
         "checkpoint": lambda: task_manager.save_checkpoint(task["id"], "worker-a", {"step": 1}, lease_epoch=claimed["lease_epoch"]),
@@ -552,7 +552,7 @@ def test_create_task_bounds_serialized_utf8_payload_size_without_partial_persist
 ):
     payload = {"value": "é"}
     encoded = task_manager._json(payload).encode("utf-8")
-    monkeypatch.setattr(task_manager, "MAX_TASK_PAYLOAD_BYTES", len(encoded))
+    monkeypatch.setattr(task_queue_store, "MAX_TASK_PAYLOAD_BYTES", len(encoded))
     accepted = task_manager.create_task("bounded.payload", payload)
     assert accepted["payload"] == payload
 

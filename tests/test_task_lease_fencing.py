@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app import db, task_manager
+from app import db, task_manager, task_manager_core
 from app.task_manager import TaskManagerError
 
 
@@ -20,7 +20,7 @@ def test_same_worker_id_cannot_mutate_a_reclaimed_lease_epoch(
     fenced_task_store, monkeypatch
 ):
     now = datetime(2026, 11, 14, tzinfo=timezone.utc)
-    monkeypatch.setattr(task_manager, "_now", lambda: now)
+    monkeypatch.setattr(task_manager_core, "_now", lambda: now)
     task = task_manager.create_task("fencing.same-worker", {}, max_attempts=3)
 
     first = task_manager.claim_next_task("shared-worker", lease_seconds=5)

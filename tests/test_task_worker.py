@@ -46,7 +46,7 @@ def test_worker_fails_unknown_task_type_without_executing_payload(worker_store):
 def test_worker_retries_handler_failure_with_backoff_then_marks_exhausted(worker_store, monkeypatch):
     current = datetime(2026, 1, 1, tzinfo=timezone.utc)
     monkeypatch.setattr(task_manager, "_now", lambda: current)
-    monkeypatch.setattr(task_manager.random, "uniform", lambda low, high: 2.0)
+    monkeypatch.setattr(task_lease_manager.random, "uniform", lambda low, high: 2.0)
     task = task_manager.create_task("test.flaky", {}, max_attempts=2)
 
     def fail(_payload, _checkpoint, _context):
