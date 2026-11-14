@@ -137,3 +137,29 @@ The AI-learning page and autonomous-engineering page both include the primary na
 The autonomous workflow installs `@openai/codex` automatically on its first run under the dedicated Runner service account. Node.js LTS and npm must be installed system-wide and available in the Runner service PATH. The workflow uses that account's npm global prefix and does not require an OpenAI login or API key because it explicitly selects the local Ollama provider. No GitHub CLI credentials are stored in the Runner account.
 
 This automatic provisioning section supersedes the earlier step 5 instructions to sign in as the Runner account and install Codex CLI manually.
+
+
+## Windows identity and path portability
+
+The autonomous engineering components do not assume a particular Windows profile name,
+Python installation directory, or Ollama installation directory. Workflow steps resolve
+`python`, `ollama`, `node`, `npm`, and Git from the PATH visible to the actual
+Runner service identity. Install Python and Ollama in machine-accessible locations and
+ensure their executable directories are present in that service identity's PATH; a
+per-user installation that is invisible to the Runner must fail prerequisite checks
+rather than being silently substituted.
+
+The Runner installation root defaults to
+`%ProgramData%\GitHubActionsRunner`. The shared state root defaults to
+`%ProgramData%\PersonalAIAssistant\autonomous-engineering` and can be overridden
+with `AUTONOMOUS_ENGINEERING_PROGRESS_DIR`. The provisioning script resolves the
+configured application and Runner account names to their current machine SIDs and
+applies access to those selected identities; no account name or SID is embedded in
+the Python modules or workflow paths.
+
+Python and PowerShell serialize durable state through the same byte-range lock file
+inside the shared state directory. This lock works across Windows logon sessions;
+the directory ACL is a separate installation concern and must grant the participating
+application/Runner identities the access required by their roles. The lock is local
+to one host and is not a distributed lock. Keep the Runner service non-administrator;
+do not loosen upstream Codex sandbox ACLs or substitute unsandboxed execution.
