@@ -413,7 +413,6 @@ def runtime_limits(
     thread_ceiling = max(1, int(cpu_count * cpu_limit / 100))
     requested_threads = configured_threads if configured_threads > 0 else thread_ceiling
     threads = min(thread_ceiling, requested_threads)
-    ram_budget = dynamic_ram_budget_gb(settings, hardware)
     configured_context = settings.get("ollama_num_ctx")
     if isinstance(configured_context, bool) or not isinstance(configured_context, int) or configured_context <= 0:
         configured_context = maximum_context_tokens if (
