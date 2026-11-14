@@ -12,6 +12,11 @@ from pathlib import Path
 from typing import Any
 
 try:
+    from .autonomous_engineering_command_runner import run_command
+except ImportError:  # Direct script execution from the scripts directory.
+    from autonomous_engineering_command_runner import run_command
+
+try:
     from .autonomous_engineering_checkpoint_contract import (
         SCHEMA_VERSION,
         build_checkpoint_metadata,
@@ -72,14 +77,20 @@ def watcher_marker_paths(run_id: str, task: int) -> tuple[Path, Path]:
     return (state["directory"] / f"{stem}.ready", state["directory"] / f"{stem}.error")
 
 
+GIT_COMMAND_TIMEOUT_SECONDS = 120
+
+
 def git(
     *args: str,
     check: bool = True,
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(
-        ["git", *args], cwd=ROOT, env=env, capture_output=True, text=True,
-        encoding="utf-8", errors="replace", check=False,
+    result = run_command(
+        ["git", *args],
+        cwd=ROOT,
+        env=env,
+        capture=True,
+        timeout_seconds=GIT_COMMAND_TIMEOUT_SECONDS,
     )
     if check and result.returncode:
         raise RuntimeError((result.stderr or result.stdout or "Git checkpoint command failed")[-3000:])
@@ -422,21 +433,23 @@ def restore(base_sha: str) -> bool:
             if state["plan"].is_file():
                 (ROOT / ".agent-progress.json").write_bytes(state["plan"].read_bytes())
             return False
-        check = subprocess.run(
+        check = run_command(
             ["git", "apply", "--check", "--binary"],
-            input=patch,
+            input_data=patch,
             cwd=ROOT,
-            capture_output=True,
-            check=False,
+            env=None,
+            capture=True,
+            timeout_seconds=GIT_COMMAND_TIMEOUT_SECONDS,
         )
         if check.returncode:
             raise RuntimeError("The saved worktree checkpoint no longer applies cleanly; it was preserved.")
-        apply = subprocess.run(
+        apply = run_command(
             ["git", "apply", "--binary"],
-            input=patch,
+            input_data=patch,
             cwd=ROOT,
-            capture_output=True,
-            check=False,
+            env=None,
+            capture=True,
+            timeout_seconds=GIT_COMMAND_TIMEOUT_SECONDS,
         )
         if apply.returncode:
             raise RuntimeError("Could not restore the saved worktree checkpoint; it was preserved.")
