@@ -4,7 +4,7 @@ Status: implementation is present on `main`; target-machine acceptance is still 
 
 ## Goal
 
-The user starts a course workflow once. The extension retrieves and stores the outline, skips existing topic titles, and continues through lesson batches automatically; lesson content still requires review before publication. The user does not use this repository as a separate study product: Personal-AI-assistant may retrieve published knowledge when answering questions in its normal chat experience. Retrieval integration is optional, isolated and disabled by default.
+The user starts a course workflow once. The extension retrieves and stores the outline, skips existing topic titles, and continues through lesson batches automatically; lesson content still requires review before publication. The user does not use this repository as a separate study product: Personal-AI-assistant retrieves explicitly published knowledge when answering questions in its normal chat experience. The module and retrieval adapter are enabled by default and remain isolated behind settings controls.
 
 ## Target workflow
 
@@ -17,14 +17,14 @@ The user starts a course workflow once. The extension retrieves and stores the o
 7. Pause, resume and retry independently at course, topic and lesson levels.
 8. Edit content by creating a new version; retain source, raw response and content hash.
 9. Review and explicitly publish content. Only published versions under approved topics may be retrieved.
-10. Search internal knowledge from the normal assistant response path only after separately enabling and testing the integration.
+10. Search explicitly published internal knowledge from the normal assistant response path by default; the user can disable retrieval in Settings.
 
 ## Isolation and compatibility
 
 - Code lives in app/ai_learning/ and must not rewrite app/learning.py or the existing chat model.
 - A separate database, data/ai_learning.db, has its own checksummed migrations. The current learning database is not migrated or modified.
-- AI_LEARNING_ENABLED=0 and AI_LEARNING_RETRIEVAL_ENABLED=0 are the defaults.
-- Knowledge-store errors must not break the existing chat path.
+- The settings database defaults `ai_learning_enabled`, `ai_learning_knowledge_enabled`, `ai_learning_retrieval_enabled`, and `ai_learning_browser_enabled` to true; the method lane and knowledge library are independent, and environment feature flags are not authoritative.
+- AI Learning and retrieval are enabled by default through persisted Settings controls; knowledge-store errors must never break the existing chat path.
 - Lexical search is the current retrieval implementation; semantic duplicate checks optionally use a local Ollama embedding model. Deterministic offline retrieval/answer regression metrics and privacy-preserving query feedback are implemented.
 - Model-generated and web-extracted text are untrusted data; embedded instructions never outrank system policy.
 
@@ -34,11 +34,11 @@ The isolated schema contains courses, topics, lessons, content versions, runs, b
 
 ## Implementation boundary today
 
-The current implementation includes isolated storage, a dedicated management page, course/topic APIs, topic ordering, approval/rejection, lesson creation and title editing, content versioning, manual review/publishing, chunking, lexical search, semantic duplicate checks when a local embedding model is available, and deterministic quality evaluation. The Playwright worker interacts with the visible ChatGPT UI, detects common login/human-verification/rate-limit gates, and persists run state for single-instance startup recovery. Startup recovery queries all non-archived running runs directly from SQLite and returns them to the queue; FIFO dispatch also queries the global durable queue directly. These operations do not inherit the dashboard's 100-course and 50-runs-per-course pagination caps. Explicit user approval is required before lessons are generated from topics, and lessons remain unpublished until reviewed. Search traces store a one-way query hash and selected chunk IDs; the search UI accepts helpful/not-helpful feedback. The worker is still DOM-sensitive and does not provide cross-process leases or exact remote-generation continuation; this recovery path therefore retains the documented single-instance deployment boundary. Runtime maintenance also checks for orphaned persisted runs when no local worker is active and requeues them with bounded browser-capture retries; explicit cancellation, global pause, shutdown, and `needs_user_action` states remain respected. The main chat path has an optional retrieval hook, disabled by default; with its feature flag off, the existing response path is unchanged. CI and target-machine checks are still required before operational acceptance.
+The current implementation includes isolated storage, a dedicated management page, course/topic APIs, topic ordering, approval/rejection, lesson creation and title editing, content versioning, manual review/publishing, chunking, lexical search, semantic duplicate checks when a local embedding model is available, and deterministic quality evaluation. The Playwright worker interacts with the visible ChatGPT UI, detects common login/human-verification/rate-limit gates, and persists run state for single-instance startup recovery. Startup recovery queries all non-archived running runs directly from SQLite and returns them to the queue; FIFO dispatch also queries the global durable queue directly. These operations do not inherit the dashboard's 100-course and 50-runs-per-course pagination caps. Explicit user approval is required before lessons are generated from topics, and lessons remain unpublished until reviewed. Search traces store a one-way query hash and selected chunk IDs; the search UI accepts helpful/not-helpful feedback. The worker is still DOM-sensitive and does not provide cross-process leases or exact remote-generation continuation; this recovery path therefore retains the documented single-instance deployment boundary. Runtime maintenance also checks for orphaned persisted runs when no local worker is active and requeues them with bounded browser-capture retries; explicit cancellation, global pause, shutdown, and `needs_user_action` states remain respected. The main chat path retrieves explicitly published knowledge by default. The user can disable retrieval in Settings; retrieval errors still fall back to the existing response path. CI and target-machine checks are still required before operational acceptance.
 
 ## Acceptance criteria
 
-- With the feature flag off, the module database is not initialized and the module API is disabled.
+- With `ai_learning_knowledge_enabled=false` in Settings, the knowledge-library API is disabled. Setting `ai_learning_enabled=false` only removes the AI Learning method from the curriculum coordinator. Existing learning records remain untouched; re-enabling the setting restores access.
 - Unknown databases are never reset or automatically adopted.
 - Unapproved topics cannot create lessons; unreviewed content cannot be published.
 - Search returns only active chunks from published versions and includes provenance IDs.

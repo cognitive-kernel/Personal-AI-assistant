@@ -1,6 +1,6 @@
 import pytest
 
-from app.ai_learning import db, service
+from app.ai_learning import db, embedding_service, service
 
 
 @pytest.fixture
@@ -16,7 +16,7 @@ def test_course_titles_are_unique_after_persian_normalization(learning_store):
 
 
 def test_topic_titles_are_unique_on_create_and_edit(learning_store, monkeypatch):
-    monkeypatch.setattr(service, "ollama_embed", lambda texts, model: [
+    monkeypatch.setattr(embedding_service, "ollama_embed", lambda texts, model: [
         [1.0, 0.0] if "ایندکس" in text else [0.0, 1.0] for text in texts
     ])
     course = service.create_course(title="دوره آزمایشی")
@@ -33,7 +33,7 @@ def test_topic_titles_are_unique_on_create_and_edit(learning_store, monkeypatch)
 def test_outline_import_skips_punctuation_and_persian_letter_duplicates(learning_store, monkeypatch):
     course = service.create_course(title="SQL Server")
     monkeypatch.setattr(
-        service,
+        embedding_service,
         "ollama_embed",
         lambda texts, model: [[1.0, float(index)] for index, _ in enumerate(texts)],
     )
@@ -50,7 +50,7 @@ def test_outline_import_skips_punctuation_and_persian_letter_duplicates(learning
 
 
 def test_lesson_titles_are_unique_within_topic_on_create_and_edit(learning_store, monkeypatch):
-    monkeypatch.setattr(service, "ollama_embed", lambda texts, model: [
+    monkeypatch.setattr(embedding_service, "ollama_embed", lambda texts, model: [
         [1.0, 0.0] if "ایندکس" in text else [0.0, 1.0] for text in texts
     ])
     course = service.create_course(title="دوره درس‌ها")
@@ -96,7 +96,7 @@ def test_semantically_duplicate_lesson_content_is_detected_without_saving_again(
             (lesson["id"], existing_body, existing_body, digest),
         )
         monkeypatch.setattr(
-            service,
+            embedding_service,
             "ollama_embed",
             lambda texts, model: [[1.0, 0.0] for _ in texts],
         )
@@ -112,7 +112,7 @@ def test_semantically_duplicate_lesson_content_is_detected_without_saving_again(
 def test_outline_import_skips_semantically_duplicate_topic_titles(learning_store, monkeypatch):
     course = service.create_course(title="SQL Server")
     existing = service.add_topic(course["id"], "مدیریت ایندکس‌های ترکیبی در SQL Server")
-    monkeypatch.setattr(service, "ollama_embed", lambda texts, model: [
+    monkeypatch.setattr(embedding_service, "ollama_embed", lambda texts, model: [
         [0.0, 1.0] if "موضوع" in text else [1.0, 0.0] for text in texts
     ])
 
@@ -131,7 +131,7 @@ def test_outline_import_skips_semantically_duplicate_topic_titles(learning_store
 def test_semantic_title_check_fails_closed_if_embedding_unavailable(learning_store, monkeypatch):
     course = service.create_course(title="SQL Server")
     service.add_topic(course["id"], "مدیریت ایندکس‌های ترکیبی در SQL Server")
-    monkeypatch.setattr(service, "ollama_embed", lambda texts, model: (_ for _ in ()).throw(RuntimeError("offline")))
+    monkeypatch.setattr(embedding_service, "ollama_embed", lambda texts, model: (_ for _ in ()).throw(RuntimeError("offline")))
 
     with pytest.raises(ValueError, match="بررسی معنایی عنوان‌های تکراری"):
         service.add_topic(course["id"], "مدیریت ایندکس‌های ترکیبی برای SQL Server")
@@ -141,7 +141,7 @@ def test_semantic_title_check_fails_closed_if_embedding_unavailable(learning_sto
 def test_related_but_distinct_outline_topics_are_not_filtered(learning_store, monkeypatch):
     course = service.create_course(title="SQL Server")
     service.add_topic(course["id"], "طراحی ایندکس‌های SQL Server")
-    monkeypatch.setattr(service, "ollama_embed", lambda texts, model: [[1.0, 0.0] for _ in texts])
+    monkeypatch.setattr(embedding_service, "ollama_embed", lambda texts, model: [[1.0, 0.0] for _ in texts])
 
     result = service.import_outline(
         course["id"],
@@ -180,7 +180,7 @@ def test_persian_content_duplicate_normalizes_arabic_yeh_and_kaf_without_embeddi
 def test_first_outline_import_skips_semantically_duplicate_items(learning_store, monkeypatch):
     course = service.create_course(title="SQL Server")
     monkeypatch.setattr(
-        service,
+        embedding_service,
         "ollama_embed",
         lambda texts, model: [[1.0, 0.0] for _ in texts],
     )
@@ -204,7 +204,7 @@ def test_first_generated_outline_skips_semantically_duplicate_items(learning_sto
     )
     service.start_run(run["id"])
     monkeypatch.setattr(
-        service,
+        embedding_service,
         "ollama_embed",
         lambda texts, model: [[1.0, 0.0] for _ in texts],
     )
@@ -226,7 +226,7 @@ def test_first_outline_import_fails_closed_if_semantic_comparison_is_unavailable
 ):
     course = service.create_course(title="SQL Server")
     monkeypatch.setattr(
-        service,
+        embedding_service,
         "ollama_embed",
         lambda texts, model: (_ for _ in ()).throw(RuntimeError("offline")),
     )

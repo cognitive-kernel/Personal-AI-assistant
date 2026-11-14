@@ -27,9 +27,13 @@ def local_client(tmp_path, monkeypatch):
 
     docker = tmp_path / "docker"
     docker.write_text("test executable", encoding="utf-8")
-    monkeypatch.setenv("SANDBOX_ENABLED", "true")
-    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", str(docker))
-    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.12-slim@sha256:" + "a" * 64)
+    db.init_databases()
+    db.update_settings({
+        "sandbox_enabled": True,
+        "sandbox_docker_executable": str(docker),
+        "sandbox_python_image": "python:3.12-slim@sha256:" + "a" * 64,
+        "sandbox_test_image": "sha256:" + "c" * 64,
+    })
     monkeypatch.setattr(
         sandbox_tasks.sandbox,
         "run_python",

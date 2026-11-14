@@ -656,3 +656,113 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - No database, migration, stored lesson, course, task, or user data was modified by the implementation.
 - Exact-head GitHub Actions for PR #742 are pending; no local or human test is claimed.
 - Residual risk: the operation remains intentionally destructive after explicit confirmation and worker-quiescence checks. This fix does not replace backup/restore acceptance or independent security review.
+
+
+## 2026-11-13 — PR #746: quality-gate CI diagnosis and method-attempt event ledger
+
+### Root-cause analysis
+
+- Exact-head CI on `a36a0647cac3d1a9413a2d0c3eb8f23578839747` completed with 2,160 passed, 2 skipped, and 3 failed.
+- The curriculum progression fixture marked a job completed without a lesson body. The new quality gate correctly refused to evaluate empty content; the fixture was inconsistent with the domain contract.
+- The quality-gate success path wrote `topic_quality_gate_v1` into `learning_path_topics.latest_score_kind`, whose historical CHECK constraint permits only four legacy values. The quality-gate table already owns its score and evaluation reference, so duplicating that classification into the legacy column was unnecessary and invalid.
+- The schema migration test asserted version 49 despite registered migrations 50 and 51. This was a brittle test expectation, not a migration failure.
+- Migration 51's `learning_topic_method_attempts` table combined mutable lifecycle statuses with UPDATE/DELETE-blocking triggers and one row per attempt. That schema cannot represent an append-only lifecycle history.
+
+### Corrective changes
+
+- The curriculum test now stores non-empty lesson content and asserts that the next topic remains unqueued while the independent quality evaluation is pending.
+- The pass path updates only the topic's completion state. The quality gate remains the single owner of its score and evaluation metadata.
+- The migration regression now asserts contiguous migration registration rather than hard-coding the old version.
+- Migration 52 adds `learning_topic_method_attempt_events`: each transition is a separate immutable row with event sequence, stable idempotency key, payload hash, method/attempt identity, content hash, evidence, diagnosis, and optional job/run references.
+- New `app/learning_topic_method_attempts.py` validates the fixed method order, lifecycle transitions, event-key replay, evidence serialization, and score/hash contracts. Focused tests cover concurrent duplicate delivery and database-enforced immutability.
+- ADR-020 records the ownership model, transition contract, AI browser constraints, restart/fencing requirements, acceptance tests, and explicit runtime gaps. `docs/LEARNING.md` and `docs/PROJECT_STATUS.md` now link the implementation status and do not claim the three-method state machine is complete.
+- PR #746 description records the failed CI evidence and residual work; no test was removed, skipped, or weakened.
+
+### Validation and residual risk
+
+- The prior SHA's other required workflows (CodeQL, Browser E2E, dependency audit, Windows storage regressions) passed; the tests workflow failed on the three cases above.
+- The fixes and migration 52 were committed after that run. Exact-head CI for the latest SHA must be checked independently; no result from `a36a064` is treated as validation of later commits.
+- The append-only event ledger is a foundation only. Runtime orchestration still does not start AI Learning, then Basic Learning, then Topic/Course Learning. The existing quality handler still uses a same-lane correction job after failure. This is a blocking implementation gap, not a completed requirement.
+- AI Learning is feature-flagged and uses a separate database plus a visible Playwright/Chrome worker. Its adapter must handle disabled/unavailable/auth-required states, durable run ownership, content transfer, provenance, and restart recovery without bypassing authentication.
+- PR #746 remains Draft and unmerged. Local/target-host and human tests have not been run. Issue #290 and independent security review Issue #52 remain open.
+
+
+### 2026-11-13 — AI Learning settings and fenced execution ownership
+
+- AI Learning, Basic Learning, Topic/Course Learning, knowledge retrieval, the AI Learning browser console, and Experience System are enabled in a fresh installation. Provider/model selection remains independent per capability; Ollama and OpenAI-compatible API are selected through each profile, and model discovery uses the selected provider. GPU availability is a hardware capability rather than a software module, so it remains subject to actual device support.
+- AI Learning size and recovery limits now use persisted settings: chunk and batch sizes, embedding batch, timeouts, lesson continuations, response stability, minimum lesson length, and Chrome relaunch count. Each value has a bounded validation range; chunk overlap must remain smaller than the target chunk size.
+- Migration 54 adds execution_owner and execution_epoch to learning_jobs. The isolated app/learning_execution.py module performs atomic claims and owner/epoch-fenced assert, fail, and cancel operations. learning.run_job receives the live TaskContext and only commits with its current owner and epoch; a stale worker cannot overwrite a newer execution.
+- Experience System observes the three learning methods through a read-only view of the append-only event ledger. It cannot change coordinator state, and the complete Experience module is user-configurable.
+- Focused tests were added or updated for stale execution epochs, concurrent claims, permanent job-creation fallback, settings defaults, and Experience observation. Exact-head CI is still required; local and human testing have intentionally not started.
+
+### 2026-11-13 — Independent module settings and provider-safe AI-learning caches
+
+- Split the three-method AI Learning lane switch (ai_learning_enabled) from the independent AI-learning knowledge-library switch (ai_learning_knowledge_enabled). Retrieval and visible-browser execution remain separately configurable; all four switches are enabled in a fresh installation.
+- The settings UI names the method lane and knowledge library separately so disabling one cannot silently disable the other. The browser-provider switch controls only the visible ChatGPT browser workflow; the model-backed lane uses its own provider/model profile.
+- Fresh installs permit GPU acceleration by default. Actual device availability is still detected at runtime; an unsupported or absent GPU does not become a mandatory dependency. CPU/RAM safeguards remain active.
+- AI-learning embedding input length, embedding batch size, title/content duplicate thresholds, lesson batch size, chunk dimensions, and browser/recovery limits are persisted and range-validated. Chunk overlap must remain smaller than the chunk target.
+- Added app/ai_learning/embedding_identity.py. Semantic embedding cache keys now include provider, normalized endpoint, and model; changing providers or endpoints cannot reuse vectors produced in a different embedding space. Existing cache rows are retained and naturally become unused rather than being deleted.
+- Added focused regression coverage for independent switches, setting defaults/validation, and provider-scoped cache identities. Exact-head CI must validate these changes; no local or human test is claimed.
+### 2026-11-13 — Complete module-switch coverage and sandbox configuration UI
+
+- Every boolean module/capability setting in SETTING_DEFAULTS now has a corresponding Settings UI control, including Sandbox and Self-Improvement. Fresh-install boolean defaults are enabled; the settings API rejects coercive/non-boolean values.
+- Sandbox Docker path, digest-pinned Python/test/Node/Rust images, execution/test timeouts, output ceiling, Self-Improvement repository path, GitHub repository/base branch, and token environment-variable name are exposed in Settings with bounded validation.
+- Sandbox being enabled does not authorize code execution: a valid local Docker executable/image and explicit, persisted, revocable user consent remain mandatory. Missing prerequisites leave the handler unavailable; no host-execution fallback is allowed.
+- Legacy SANDBOX_ENABLED/SANDBOX_DOCKER_EXECUTABLE/SANDBOX_PYTHON_IMAGE environment-gate guidance was removed from .env.example and sandbox architecture documentation; persisted Settings are authoritative. GitHub credentials remain environment secrets.
+### 2026-11-13 — Sandbox configuration unified across learning-review execution
+
+- Removed the remaining direct SANDBOX_ENABLED/SANDBOX_DOCKER_EXECUTABLE/SANDBOX_PYTHON_IMAGE reads from learning candidate review. The path now reads persisted Settings, uses the shared sandbox configuration validator, and applies configured timeout/output limits.
+- The candidate review path still requires explicit current consent before running any code. A disabled module, missing Docker/image configuration, invalid settings, or absent consent records an unavailable/skipped outcome; no host fallback is introduced.
+- Sandbox API errors and architecture documentation now point to dashboard Settings rather than obsolete environment gates. Tests configure sandbox through the persistent settings store.
+### 2026-11-13 — Configurable browser polling and lease safety bounds
+
+- Browser page polling and worker-control polling intervals are now persisted settings rather than fixed sleeps.
+- Browser worker lease duration and heartbeat interval are configurable within safe bounds. The API enforces heartbeat <= one third of lease duration.
+- A worker snapshots lease/heartbeat values when it claims ownership; changing Settings mid-run cannot silently alter the lease parameters used by its active heartbeat thread.
+- Focused tests verify the claimed lease duration and reject unsafe heartbeat ratios.
+### 2026-11-13 — Browser host paths moved into persistent Settings
+
+- Chrome executable path and dedicated browser-profile directory are now read from Settings rather than AI_LEARNING_CHROME_PATH/AI_LEARNING_BROWSER_PROFILE environment variables. An empty Chrome path uses safe platform auto-detection; the profile path remains user-configurable.
+- Browser page/control polling intervals and lease duration/heartbeat are also settings-backed, with bounded validation and a heartbeat-to-lease safety ratio. The active worker uses a snapshot of lease values until it releases ownership.
+### 2026-11-13 — First responsibility-based split of AI-learning service
+
+- Extracted title embedding, semantic duplicate detection, provider-scoped cache identity and duplicate-threshold policy from the large AI-learning service module into app/ai_learning/embedding_service.py.
+- Centralized validated numeric setting readers in app/ai_learning/config.py; the legacy service facade re-exports imported names to preserve existing callers and tests.
+- The extraction is intentionally incremental: app/ai_learning/service.py and browser_automation.py remain large and still need further responsibility-based decomposition. No claim is made that the modularization requirement is complete.
+
+### 2026-11-14 — Regression repair after embedding-service extraction and Settings E2E audit
+
+- Root cause: the embedding extraction moved `ollama_embed` and settings reads into `app/ai_learning/embedding_service.py`, but the shared test fixture and duplicate-title tests still patched the old `service` module. Updated fixtures to patch the owning module and retained service-layer settings isolation. Restored the content-similarity threshold export used by the service facade.
+- Browser E2E found a duplicate `sandbox-timeout` DOM id shared by the run form and Settings form. The Settings control now has a unique id while the run form keeps its established selector; all three sandbox configuration inputs with placeholders now expose accessible names.
+- Self-Improvement E2E tests now configure the repository path through persisted Settings instead of relying on removed environment-variable behavior. The dashboard no longer instructs users to configure obsolete environment flags.
+- Windows storage regression and CodeQL passed on the prior exact head. The latest exact-head CI is running against the UI/test fixes; no local or human testing has started.
+
+
+### 2026-11-14 — Research and independent-review profiles fully settings-backed
+
+- Exposed research-planning context size, CPU threads, timeout, keep-alive, source-size limit, and output-token budget in Settings. Added corresponding API validation and model-context metadata checks.
+- Added the same independent resource controls for factual review. Removed the fixed 45-second timeout and fixed 4096-context/500-or-700-output caps; execution now uses bounded, persisted per-purpose settings and still applies model/hardware safety ceilings.
+- Both Ollama and OpenAI-compatible paths now honor the configured source-size and output-token budgets. Runtime diagnostics use the selected research/review profile instead of silently falling back to chat settings.
+- Added settings persistence/validation and provider-routing regression coverage. Exact-head GitHub CI is required before acceptance.
+
+
+- Added the shared Ollama service endpoint to the Settings UI. Per-capability provider/model choices remain independent; local Ollama profiles use the configured shared Ollama endpoint, while OpenAI-compatible profiles use their own validated Base URL and environment-only API-key reference.
+
+
+### 2026-11-14 — Complete Settings surface audit
+
+- Compared all 131 keys in `SETTING_DEFAULTS` against the dashboard Settings UI; every key is now represented, including the shared Ollama endpoint and the exact-model pricing catalog.
+- Added a bounded JSON contract for the pricing catalog (model id, input/output USD per million tokens, and pricing version) and exposed it in Settings. Invalid catalogs are rejected atomically; unknown or absent rates remain unknown rather than being treated as zero.
+- Added API regression coverage for valid persistence and malformed/negative pricing entries. Exact-head CI is pending.
+
+- Added a regression contract that compares every `SETTING_DEFAULTS` key with the dashboard source and requires both load and save wiring. New settings can no longer be added without corresponding UI integration silently passing the suite.
+
+
+### 2026-11-14 — Per-method generation budgets and retry-provider consistency
+
+- Added independent output-token budgets for AI Learning, Basic Learning, and Topic/Course Learning, with bounded API validation and Settings UI controls. The previous fixed 3900-token generation/repair limits are now read from the selected method profile.
+- Fixed a provider-routing defect in lesson repair: retries previously forced the Basic Learning provider even when the original job used AI Learning or Topic/Course Learning. Repair requests now retain the original method's provider/model profile and output budget.
+- Settings persistence tests cover defaults, custom values, and invalid limits; the Settings UI contract test requires load/save wiring for every default key.
+
+
+- Extracted the method-scoped lesson request contract into `app/learning_model_adapter.py`. Initial generation and quality repair now share one validated adapter for provider identity, context, threads, timeout and output-token budget; focused tests cover all three method profiles and invalid contracts without network access.

@@ -104,7 +104,7 @@ def run_benchmark(
                         continue
                     if task["task_type"] != "benchmark.noop" or task["payload"].get("benchmark") is not True:
                         raise RuntimeError("Benchmark encountered an unexpected task in its isolated store.")
-                    task_manager.complete_task(task["id"], worker_id, {"ok": True})
+                    task_manager.complete_task(task["id"], worker_id, {"ok": True}, lease_epoch=task["lease_epoch"])
                     with completed_lock:
                         completed += 1
             except BaseException:

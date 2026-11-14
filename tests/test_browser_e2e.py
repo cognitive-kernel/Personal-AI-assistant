@@ -802,6 +802,11 @@ def test_browser_self_improvement_proposal_is_saved_without_mutating_checkout():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
+        settings_response = page.request.patch(
+            base_url.rstrip("/") + "/api/settings",
+            data={"values": {"self_improvement_repo_root": str(Path(__file__).resolve().parents[1])}},
+        )
+        assert settings_response.status == 200, settings_response.text()
         _goto_section(page, base_url, "self-improvement-section")
         page.locator("#self-improvement-title").fill(title)
         page.locator("#self-improvement-rationale").fill(
@@ -993,6 +998,11 @@ def test_browser_validates_and_rejects_self_improvement_proposal_without_applyin
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
+        settings_response = page.request.patch(
+            base_url.rstrip("/") + "/api/settings",
+            data={"values": {"self_improvement_repo_root": str(Path(__file__).resolve().parents[1])}},
+        )
+        assert settings_response.status == 200, settings_response.text()
         _goto_section(page, base_url, "self-improvement-section")
         page.on("dialog", lambda dialog: dialog.accept())
         page.locator("#self-improvement-title").fill(title)
@@ -2146,7 +2156,7 @@ def test_browser_settings_form_persists_values_and_surfaces_api_failure():
         page = browser.new_page()
         page.on("pageerror", lambda error: browser_errors.append(str(error)))
         page.route(
-            "**/api/models",
+            "**/api/models*",
             lambda route: route.fulfill(
                 status=200,
                 content_type="application/json",
@@ -2165,6 +2175,12 @@ def test_browser_settings_form_persists_values_and_surfaces_api_failure():
             timeout=10000,
         )
         assert page.locator("#ollama-model-options option").count() == 1
+        assert page.locator("#ollama-base-url").input_value() == "http://127.0.0.1:11434"
+        settings_payload = page.request.get(base_url.rstrip("/") + "/api/settings").json()
+        assert settings_payload["ai_learning_max_output_tokens"] == 3900
+        assert settings_payload["topic_learning_max_output_tokens"] == 3900
+        assert settings_payload["learning_max_output_tokens"] == 3900
+        assert settings_payload["gpu_enabled"] is True
         for select_id in ("chat-model-installed", "learning-model-installed", "programming-model-installed"):
             assert page.locator(f"#{select_id} option[value='ci-model']").count() == 1
         page.locator("#chat-model-installed").select_option("ci-model")
@@ -2189,6 +2205,8 @@ def test_browser_settings_form_persists_values_and_surfaces_api_failure():
         page.locator("#learning-api-key-env").fill("")
         page.locator("#learning-model").fill("local-learning-model")
         page.locator("#learning-task-budget").fill("123")
+        pricing_catalog = '{"browser-e2e-model":{"input_usd_per_million_tokens":"1.25","output_usd_per_million_tokens":"3.75","pricing_version":"e2e-2026-11"}}'
+        page.locator("#learning-model-pricing").fill(pricing_catalog)
         page.locator("#programming-source-limit").fill("20000")
         page.locator("#settings-form button[type='submit']").click()
         page.wait_for_function(
@@ -2198,6 +2216,7 @@ def test_browser_settings_form_persists_values_and_surfaces_api_failure():
         )
         saved = page.request.get(base_url.rstrip("/") + "/api/settings")
         assert saved.status == 200
+        assert saved.json()["learning_model_pricing_json"] == pricing_catalog
         saved_settings = saved.json()
         assert saved_settings["chat_ollama_model"] == "browser-e2e-manual-model"
         assert saved_settings["learning_llm_provider"] == "openai_compatible"

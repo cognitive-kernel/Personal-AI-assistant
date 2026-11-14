@@ -155,7 +155,7 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
 
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
-        assert LEARNING_MIGRATIONS[-1].version == 47
+        assert LEARNING_MIGRATIONS[-1].version == len(LEARNING_MIGRATIONS)
         usage_columns = {row[1] for row in connection.execute("PRAGMA table_info(model_usage_events)")}
         graph_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_knowledge_graph_edges)")}
         browser_columns = {row[1] for row in connection.execute("PRAGMA table_info(browser_learning_courses)")}
@@ -473,7 +473,7 @@ def test_browser_learning_retry_migration_preserves_existing_courses():
         )
         connection.commit()
 
-        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 47
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
 
         row = connection.execute(
             """SELECT topic, status, retry_count, next_retry_at
@@ -817,7 +817,7 @@ def test_release_watch_migration_seeds_existing_researched_curricula_without_cha
         )
         connection.commit()
 
-        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 47
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
         watch = connection.execute(
             "SELECT status, last_source_fingerprint, last_task_id FROM learning_release_watch WHERE path_id=?",
             (path_id,),

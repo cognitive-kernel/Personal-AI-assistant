@@ -4,10 +4,13 @@ import math
 import json
 import platform
 import re
+import uuid
 from typing import Any
 from urllib.parse import urlencode, urlparse
 from .db import learning_connection, get_settings
 from . import ollama
+from . import learning_execution
+from . import learning_model_adapter
 from .ollama import _request
 from . import learning_prerequisites
 from . import curricula, factual_knowledge, learning_evidence_gate
@@ -130,23 +133,102 @@ def create_job(
     source_text: str | None = None,
     path_topic_id: int | None = None,
     lesson_review: dict[str, Any] | None = None,
+    correction_request_key: str | None = None,
+    *,
+    learning_method: str = "basic_learning",
+    method_attempt_key: str | None = None,
 ) -> dict[str, Any]:
+    """Create one durable job with an optional method-scoped idempotency identity."""
     topic = topic.strip()
     if not topic or len(topic) > 300:
         raise ValueError("Topic must contain 1–300 characters.")
+    allowed_methods = {"ai_learning", "basic_learning", "topic_learning"}
+    if not isinstance(learning_method, str) or learning_method not in allowed_methods:
+        raise ValueError("learning_method is unsupported.")
     source_text = (source_text or "").strip()
-    source_limit = max(1000, min(100000, int(get_settings().get("learning_source_max_chars", 12000))))
+    source_limit_key = {
+        "ai_learning": "ai_learning_source_max_chars",
+        "basic_learning": "learning_source_max_chars",
+        "topic_learning": "topic_learning_source_max_chars",
+    }[learning_method]
+    default_source_limit = 100000 if learning_method != "basic_learning" else 12000
+    source_limit = max(1000, min(256000, int(get_settings().get(source_limit_key, default_source_limit))))
     if len(source_text) > source_limit:
         raise ValueError(f"Source text is too large (current limit: {source_limit} characters).")
-    source_kind = "user_provided_text" if source_text else "model_knowledge_no_external_source"
+    if method_attempt_key is not None:
+        if (
+            not isinstance(method_attempt_key, str)
+            or not method_attempt_key.strip()
+            or len(method_attempt_key.strip()) > 200
+        ):
+            raise ValueError("method_attempt_key must contain 1–200 characters.")
+        method_attempt_key = method_attempt_key.strip()
+        if path_topic_id is None or correction_request_key is not None:
+            raise ValueError("Method-scoped jobs require a path topic and cannot be correction jobs.")
+    if correction_request_key is not None and (
+        not isinstance(correction_request_key, str)
+        or not correction_request_key.strip()
+        or len(correction_request_key.strip()) > 200
+    ):
+        raise ValueError("correction_request_key must contain 1–200 characters.")
+    correction_request_key = correction_request_key.strip() if correction_request_key else None
+
+    if learning_method == "topic_learning":
+        source_kind = "researched_topic_course" if source_text else "topic_course_no_external_source"
+        evidence_type = "research_context"
+        source_ref = "learning-path-research"
+        evidence_note = "Persisted curriculum research context; source-level verification remains separate."
+    elif learning_method == "ai_learning":
+        source_kind = "ai_learning_provider"
+        evidence_type = "ai_learning_context"
+        source_ref = "ai-learning-run"
+        evidence_note = "AI Learning output/context; provider identity and source provenance are recorded separately."
+    else:
+        source_kind = "user_provided_text" if source_text else "model_knowledge_no_external_source"
+        evidence_type = "user_text"
+        source_ref = "user-provided"
+        evidence_note = "متن ورودی کاربر؛ اعتبار مستقل منبع بررسی نشده است."
+
     existing_job_id: int | None = None
     existing_source_mismatch = False
     job_id: int | None = None
     with learning_connection() as conn:
-        # Path-topic creation is idempotent under concurrent start/resume requests.
-        # Acquire the SQLite write reservation before checking for an active job.
-        if path_topic_id is not None:
-            conn.execute("BEGIN IMMEDIATE")
+        # Serialize identity lookup and creation. This makes retries safe even when
+        # multiple workers receive the same method task concurrently.
+        conn.execute("BEGIN IMMEDIATE")
+        if method_attempt_key is not None:
+            existing_method = conn.execute(
+                """SELECT id, topic, path_topic_id, learning_method
+                   FROM learning_jobs WHERE method_attempt_key=?""",
+                (method_attempt_key,),
+            ).fetchone()
+            if existing_method is not None:
+                if (
+                    existing_method["topic"] != topic
+                    or existing_method["path_topic_id"] != path_topic_id
+                    or existing_method["learning_method"] != learning_method
+                ):
+                    raise ValueError("method_attempt_key was reused for a different learning job.")
+                existing_source = conn.execute(
+                    "SELECT content FROM learning_source_text WHERE job_id=?",
+                    (int(existing_method["id"]),),
+                ).fetchone()
+                existing_source_mismatch = (
+                    (existing_source is None and bool(source_text))
+                    or (existing_source is not None and existing_source["content"] != source_text)
+                )
+                existing_job_id = int(existing_method["id"])
+
+        # Correction creation remains idempotent and is kept separate from method jobs.
+        if existing_job_id is None and correction_request_key is not None:
+            existing_correction = conn.execute(
+                "SELECT id FROM learning_jobs WHERE correction_request_key=?",
+                (correction_request_key,),
+            ).fetchone()
+            if existing_correction is not None:
+                existing_job_id = int(existing_correction["id"])
+
+        if existing_job_id is None and path_topic_id is not None:
             topic_row = conn.execute(
                 "SELECT id FROM learning_path_topics WHERE id=?", (path_topic_id,)
             ).fetchone()
@@ -160,42 +242,56 @@ def create_job(
                     + str(first_blocked["topic"]) + " (" + str(first_blocked["status"]) + ")."
                 )
             existing = conn.execute(
-                "SELECT id FROM learning_jobs WHERE path_topic_id=? AND status IN ('queued', 'running') "
-                "ORDER BY id DESC LIMIT 1",
+                """SELECT id, method_attempt_key FROM learning_jobs
+                   WHERE path_topic_id=? AND status IN ('queued', 'running')
+                   ORDER BY id DESC LIMIT 1""",
                 (path_topic_id,),
             ).fetchone()
             if existing is not None:
-                existing_job_id = int(existing["id"])
-                if source_text:
-                    existing_source = conn.execute(
-                        "SELECT content FROM learning_source_text WHERE job_id=?",
-                        (existing_job_id,),
-                    ).fetchone()
-                    existing_source_mismatch = (
-                        existing_source is None or existing_source["content"] != source_text
-                    )
+                if method_attempt_key is not None:
+                    if existing["method_attempt_key"] != method_attempt_key:
+                        raise ValueError("Another learning method already owns this curriculum topic.")
+                    existing_job_id = int(existing["id"])
+                elif existing_job_id is None:
+                    existing_job_id = int(existing["id"])
+                    if source_text:
+                        existing_source = conn.execute(
+                            "SELECT content FROM learning_source_text WHERE job_id=?",
+                            (existing_job_id,),
+                        ).fetchone()
+                        existing_source_mismatch = (
+                            existing_source is None or existing_source["content"] != source_text
+                        )
+
         if existing_job_id is None:
             cursor = conn.execute(
-                "INSERT INTO learning_jobs(topic, status, source_kind, path_topic_id, lesson_review_json) "
-                "VALUES (?, 'queued', ?, ?, ?)",
+                """INSERT INTO learning_jobs(
+                       topic, status, source_kind, path_topic_id, lesson_review_json,
+                       correction_request_key, learning_method, method_attempt_key
+                   ) VALUES (?, 'queued', ?, ?, ?, ?, ?, ?)""",
                 (
-                    topic,
-                    source_kind,
-                    path_topic_id,
+                    topic, source_kind, path_topic_id,
                     json.dumps(lesson_review, ensure_ascii=False) if lesson_review else None,
+                    correction_request_key, learning_method, method_attempt_key,
                 ),
             )
             job_id = int(cursor.lastrowid)
             if source_text:
                 digest = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
-                conn.execute("INSERT INTO learning_source_text(job_id, content) VALUES (?, ?)", (job_id, source_text))
-                conn.execute("""INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
-                    VALUES (?, 'user_text', 'user-provided', ?, 'متن ورودی کاربر؛ اعتبار مستقل منبع بررسی نشده است.')""", (job_id, digest))
+                conn.execute(
+                    "INSERT INTO learning_source_text(job_id, content) VALUES (?, ?)",
+                    (job_id, source_text),
+                )
+                conn.execute(
+                    """INSERT INTO learning_evidence(
+                           job_id, evidence_type, source_ref, content_hash, note
+                       ) VALUES (?, ?, ?, ?, ?)""",
+                    (job_id, evidence_type, source_ref, digest, evidence_note),
+                )
+
     if existing_job_id is not None:
         if existing_source_mismatch:
-            raise ValueError(
-                "An active learning job already exists for this path topic with different source text."
-            )
+            raise ValueError("An existing learning job has different source text for this request key.")
         return get_job(existing_job_id)
     if job_id is None:
         raise LearningError("Learning job could not be created.")
@@ -652,13 +748,16 @@ def _select_learning_generation_model(
     *,
     claim_review_sources: list[dict[str, Any]] | None = None,
     topic: str = "",
+    provider_purpose: str = "learning",
     generation_scope: str = "lesson_generation_single_repair_and_optional_claim_review",
     completion_token_budget: int = 7800,
 ) -> tuple[str, dict[str, Any]]:
     """Apply configured cost/quality policy without silently bypassing hard constraints."""
     from .learning_cost_manager import select_learning_model
 
-    provider = settings.get("learning_llm_provider", "ollama")
+    if provider_purpose not in {"ai_learning", "learning", "topic_learning"}:
+        raise LearningError("Unsupported learning provider purpose.")
+    provider = settings.get(f"{provider_purpose}_llm_provider", "ollama")
     profiles = settings.get("learning_model_cost_profiles", {})
     minimum_quality = settings.get("learning_model_minimum_quality_score", 0.0)
     budget_microusd = settings.get("learning_task_budget_microusd")
@@ -806,21 +905,36 @@ def _select_learning_generation_model(
     }
 
 
-def run_job(job_id: int) -> None:
+def run_job(job_id: int, *, task_context: Any | None = None) -> None:
+    """Generate one lesson under both the task lease and a fenced domain-job epoch."""
+    if task_context is not None:
+        task_context.checkpoint({"phase": "learning_job_claim", "job_id": job_id})
+        execution_owner = f"task:{task_context.task_id}:{task_context.worker_id}"
+    else:
+        execution_owner = f"direct:{uuid.uuid4().hex}"
+    execution_lease = learning_execution.claim_execution(job_id, execution_owner)
+    if execution_lease is None:
+        return
+
+    def assert_execution_owner(phase: str) -> None:
+        if task_context is not None:
+            task_context.checkpoint({
+                "phase": phase,
+                "job_id": job_id,
+                "execution_epoch": execution_lease.epoch,
+            })
+        learning_execution.assert_current(execution_lease)
+
+    assert_execution_owner("learning_job_claimed")
     with learning_connection() as conn:
-        # Atomically claim a queued job. Multiple workers may call run_job for the
-        # same ID after a retry/reconciliation race; only one may start inference.
-        claim = conn.execute(
-            "UPDATE learning_jobs SET status='running', updated_at=CURRENT_TIMESTAMP "
-            "WHERE id=? AND status='queued'",
-            (job_id,),
-        )
-        if claim.rowcount != 1:
-            return
         row = conn.execute("SELECT * FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
         if row is None:
             return
         topic, source_kind = row["topic"], row["source_kind"]
+        learning_method = str(row["learning_method"] or "basic_learning")
+        provider_purpose = {"ai_learning": "ai_learning", "basic_learning": "learning", "topic_learning": "topic_learning"}.get(learning_method)
+        if provider_purpose is None:
+            raise LearningError(f"Unsupported persisted learning method: {learning_method}.")
         review_json = row["lesson_review_json"] if "lesson_review_json" in row.keys() else None
         try:
             lesson_review = json.loads(review_json) if review_json else None
@@ -857,23 +971,34 @@ def run_job(job_id: int) -> None:
                     path_topic_context = {"applicability": {"status": "unverified"}, "source_urls": []}
     user_provided_source_available = bool(source_text) and source_kind == "user_provided_text"
     try:
+        if row["method_attempt_key"]:
+            from .learning_method_orchestrator import mark_method_running
+            mark_method_running(
+                job_id, execution_lease=execution_lease, task_context=task_context
+            )
         # These preparation steps run before model inference, but they can still fail
         # (for example, SQLite errors while persisting web evidence). Keep the job
         # terminally observable instead of leaving it stuck in "running" forever.
         if not source_text and source_kind == "model_knowledge_no_external_source":
+            assert_execution_owner("learning_source_discovery")
             source_text, source_kind = _discover_and_store_sources(job_id, topic)
         verified_factual_context = _verified_factual_context_for_topic(topic)
         failure_warnings = _failure_warnings_for_topic(topic, limit=3)
         settings = get_settings()
+        max_output_tokens = settings.get(f"{provider_purpose}_max_output_tokens")
+        if isinstance(max_output_tokens, bool) or not isinstance(max_output_tokens, int) or not 1 <= max_output_tokens <= 8192:
+            raise LearningError(f"Configured output-token budget for {provider_purpose} is invalid.")
         candidate_observations = _prior_assistant_observations(topic, settings)
-        raw_source_limit = settings.get("learning_source_max_chars", 12000)
+        source_limit_key = f"{provider_purpose}_source_max_chars"
+        default_source_limit = 100000 if provider_purpose != "learning" else 12000
+        raw_source_limit = settings.get(source_limit_key, default_source_limit)
         if (
             isinstance(raw_source_limit, bool)
             or not isinstance(raw_source_limit, int)
-            or not 1000 <= raw_source_limit <= 100000
+            or not 1000 <= raw_source_limit <= 256000
         ):
-            raw_source_limit = 12000
-        source_limit = max(1000, min(100000, raw_source_limit))
+            raw_source_limit = default_source_limit
+        source_limit = max(1000, min(256000, raw_source_limit))
         model_source_text = source_text[:source_limit] if source_text else ""
         source_text_truncated = len(source_text) > len(model_source_text)
         indexed_knowledge = _indexed_knowledge_for_topic(topic)
@@ -883,16 +1008,17 @@ def run_job(job_id: int) -> None:
         )[:4000]
     except Exception as exc:
         safe_error = f"Learning preparation failed ({type(exc).__name__})."
-        with learning_connection() as conn:
-            conn.execute(
-                """UPDATE learning_jobs
-                   SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP
-                   WHERE id=? AND status='running'""",
-                (safe_error, job_id),
-            )
+        assert_execution_owner("learning_preparation_failed")
+        learning_execution.fail_if_current(execution_lease, safe_error)
         raise LearningError(f"Learning job {job_id} preparation failed.") from exc
     prompt = {
         "topic": topic,
+        "learning_method": learning_method,
+        "learning_method_guidance": {
+            "ai_learning": "AI Learning lane: use the dedicated AI Learning provider/model profile; build a coherent mental model, identify conceptual dependencies, and teach the topic through progressive explanation and synthesis. Preserve source provenance and label model-only claims unverified.",
+            "basic_learning": "Basic Learning lane: use the dedicated Basic Learning provider/model profile; teach from first principles with a clear sequence of definitions, a worked example, practice and common misconceptions.",
+            "topic_learning": "Topic/Course Learning lane: use the dedicated Topic/Course provider/model profile; prioritize the researched course map, exact syllabus position, release chronology, source evidence and unresolved coverage gaps. Do not substitute generic model knowledge for missing course evidence.",
+        }[learning_method],
         "curriculum_provenance": path_topic_context,
         "curriculum_provenance_policy": (
             "For researched-course lessons, use the durable subject map and release ledger as the syllabus-wide chronology; "
@@ -976,22 +1102,22 @@ def run_job(job_id: int) -> None:
     from .learning_durable_budget import reserve_job_budget
     generation_budget = LearningPipelineBudget(max_calls=2, max_predict_tokens=7800)
     try:
-        if settings.get("learning_llm_provider", "ollama") == "openai_compatible":
+        if settings.get(f"{provider_purpose}_llm_provider", "ollama") == "openai_compatible":
             # The configured endpoint owns context allocation; do not reject a
             # remote model because this host lacks the model's local RAM budget.
             limits = {
-                "num_ctx": int(settings.get("learning_ollama_num_ctx", settings["ollama_num_ctx"])),
+                "num_ctx": int(settings.get(f"{provider_purpose}_ollama_num_ctx", settings["ollama_num_ctx"])),
                 "cpu_threads": 0,
             }
         else:
             limits = runtime_limits({
-                "ollama_num_ctx": settings.get("learning_ollama_num_ctx", settings["ollama_num_ctx"]),
-                "ollama_num_thread": settings.get("learning_ollama_num_thread", settings["ollama_num_thread"]),
+                "ollama_num_ctx": settings.get(f"{provider_purpose}_ollama_num_ctx", settings["ollama_num_ctx"]),
+                "ollama_num_thread": settings.get(f"{provider_purpose}_ollama_num_thread", settings["ollama_num_thread"]),
                 "cpu_resource_limit_percent": settings.get("cpu_resource_limit_percent", 90),
                 "ram_budget_max_gb": settings.get("ram_budget_max_gb", 25),
                 "ram_safety_reserve_gb": settings.get("ram_safety_reserve_gb", 4),
             }, detect_hardware())
-        configured_model = str(settings.get("learning_ollama_model", settings["ollama_model"])).strip()
+        configured_model = str(settings.get(f"{provider_purpose}_ollama_model", settings["ollama_model"])).strip()
         claim_review_sources = (
             _claim_review_sources(source_text)
             if source_kind == "web_retrieved" and source_text
@@ -1003,11 +1129,13 @@ def run_job(job_id: int) -> None:
             configured_model,
             claim_review_sources=claim_review_sources,
             topic=topic,
+            provider_purpose=provider_purpose,
         )
-        request_timeout = int(settings.get("learning_ollama_timeout_seconds", settings["ollama_timeout_seconds"]))
+        request_timeout = int(settings.get(f"{provider_purpose}_ollama_timeout_seconds", settings["ollama_timeout_seconds"]))
         generation_budget.reserve("initial_generation", predict_tokens=3900)
         # Resolve model policy before reserving durable inference budget. A failed
         # discovery/eligibility check must not consume a model-call reservation.
+        assert_execution_owner("learning_initial_generation_budget")
         durable_initial_budget = reserve_job_budget(
             job_id, "initial_generation", calls=1, predict_tokens=3900
         )
@@ -1015,14 +1143,18 @@ def run_job(job_id: int) -> None:
             raise LearningError(
                 "Initial generation budget was exhausted or already consumed; refusing an untracked duplicate model request."
             )
-        response = _request("/api/chat", {
-            "model": model, "stream": False, "format": "json",
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": serialized_prompt},
-            ],
-            "options": {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"], "num_predict": 3900},
-        }, timeout=request_timeout, purpose="learning")
+        assert_execution_owner("learning_initial_model_request")
+        response = learning_model_adapter.request_lesson_json(
+            _request,
+            provider_purpose=provider_purpose,
+            model=model,
+            system_prompt=system_prompt,
+            user_prompt=serialized_prompt,
+            context_tokens=limits["num_ctx"],
+            cpu_threads=limits["cpu_threads"],
+            timeout_seconds=request_timeout,
+            max_output_tokens=max_output_tokens,
+        )
         provider_usage: dict[str, dict[str, int]] = {
             "initial_generation": _ollama_usage_summary(response)
         }
@@ -1079,6 +1211,7 @@ def run_job(job_id: int) -> None:
         # Make one targeted quality-repair attempt for any rejected lesson, not only short output.
         durable_repair_budget = {"reserved": False, "reason": "quality_accepted"}
         if not quality["accepted"]:
+            assert_execution_owner("learning_quality_repair_budget")
             durable_repair_budget = reserve_job_budget(
                 job_id, "quality_repair", calls=1, predict_tokens=3900
             )
@@ -1111,14 +1244,18 @@ def run_job(job_id: int) -> None:
                 {"system_prompt": repair_system_prompt, "user_prompt": serialized_repair_prompt},
             )["sha256"]
             generation_attempts = 2
-            retry_response = _request("/api/chat", {
-                "model": model, "stream": False, "format": "json",
-                "messages": [
-                    {"role": "system", "content": repair_system_prompt},
-                    {"role": "user", "content": serialized_repair_prompt},
-                ],
-                "options": {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"], "num_predict": 3900},
-            }, timeout=request_timeout, purpose="learning")
+            assert_execution_owner("learning_quality_repair_model_request")
+            retry_response = learning_model_adapter.request_lesson_json(
+                _request,
+                provider_purpose=provider_purpose,
+                model=model,
+                system_prompt=repair_system_prompt,
+                user_prompt=serialized_repair_prompt,
+                context_tokens=limits["num_ctx"],
+                cpu_threads=limits["cpu_threads"],
+                timeout_seconds=request_timeout,
+                max_output_tokens=max_output_tokens,
+            )
             provider_usage["quality_repair"] = _ollama_usage_summary(retry_response)
             retry_raw = retry_response.get("message", {}).get("content")
             try:
@@ -1196,6 +1333,7 @@ def run_job(job_id: int) -> None:
                     from .claim_review import review_answer_claims
                     from .learning_durable_budget import reserve_job_budget
 
+                    assert_execution_owner("learning_claim_review_budget")
                     review_budget = reserve_job_budget(
                         job_id, "claim_review", calls=1, predict_tokens=1000
                     )
@@ -1208,6 +1346,7 @@ def run_job(job_id: int) -> None:
                             "reviewer": "local_ollama_model_assisted_not_independent",
                         }
                     else:
+                        assert_execution_owner("learning_claim_review_request")
                         claim_review_result = review_answer_claims(
                             topic, result["lesson"], sources, model_override=model
                         )
@@ -1262,17 +1401,47 @@ def run_job(job_id: int) -> None:
             if evidence_gate.get("accepted") is not True:
                 quality["verification_status"] = "needs_review"
 
+        assert_execution_owner("learning_before_result_commit")
         with learning_connection() as conn:
-            current = conn.execute("SELECT status FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
-            # If the user stopped the path while Ollama was generating, discard this result.
-            if current is None or current["status"] != "running":
+            current = conn.execute(
+                "SELECT status, execution_owner, execution_epoch FROM learning_jobs WHERE id=?",
+                (job_id,),
+            ).fetchone()
+            # A cancelled path or a newer execution epoch must never be overwritten.
+            if current is None:
+                return
+            if (
+                current["status"] == "cancelled"
+                and current["execution_owner"] == execution_lease.owner
+                and int(current["execution_epoch"]) == execution_lease.epoch
+            ):
+                return
+            if (
+                current["status"] != "running"
+                or current["execution_owner"] != execution_lease.owner
+                or int(current["execution_epoch"]) != execution_lease.epoch
+            ):
                 return
             if not isinstance(result.get("lesson"), str) or not result["lesson"].strip():
                 raise LearningError("The model and bounded repair attempt returned no lesson text; source material was retained.")
             quality["lesson_retained"] = True
             quality["retention_policy"] = "all_nonempty_lessons_are_preserved; heuristic_quality_is_advisory_only"
-            conn.execute("UPDATE learning_jobs SET status='completed', lesson=?, assessment_json=?, quality_json=?, error=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                (result["lesson"], json.dumps(assessment, ensure_ascii=False), json.dumps(quality, ensure_ascii=False), job_id))
+            completed = conn.execute(
+                """UPDATE learning_jobs
+                   SET status='completed', lesson=?, assessment_json=?, quality_json=?, error=NULL,
+                       updated_at=CURRENT_TIMESTAMP
+                   WHERE id=? AND status='running' AND execution_owner=? AND execution_epoch=?""",
+                (
+                    result["lesson"],
+                    json.dumps(assessment, ensure_ascii=False),
+                    json.dumps(quality, ensure_ascii=False),
+                    job_id,
+                    execution_lease.owner,
+                    execution_lease.epoch,
+                ),
+            )
+            if completed.rowcount != 1:
+                return
             # Automatically persist the lesson-quality score on its curriculum topic.
             # This is a content-quality score, not a score for the learner's understanding.
             path_topic_id = conn.execute(
@@ -1359,12 +1528,83 @@ def run_job(job_id: int) -> None:
                             json.dumps(quality, ensure_ascii=False),
                         ),
                     )
+                    candidate_row = conn.execute(
+                        "SELECT id FROM temporary_knowledge_candidates WHERE job_id=?",
+                        (job_id,),
+                    ).fetchone()
+                    if candidate_row is None:
+                        raise LearningError("Temporary candidate was not persisted; source provenance cannot be attached.")
+                    candidate_id = int(candidate_row["id"])
+                    for source_url in list(dict.fromkeys(source_urls)):
+                        conn.execute(
+                            """INSERT INTO learning_candidate_sources(
+                                   candidate_id, source_type, source_url, verification_status,
+                                   metadata_json
+                               )
+                               SELECT ?, 'web', ?, 'unverified', ?
+                               WHERE NOT EXISTS (
+                                   SELECT 1 FROM learning_candidate_sources
+                                   WHERE candidate_id=? AND source_type='web' AND source_url=?
+                               )""",
+                            (
+                                candidate_id, source_url,
+                                json.dumps({"job_id": job_id, "capture": "learning_evidence"}, sort_keys=True),
+                                candidate_id, source_url,
+                            ),
+                        )
+                    if source_kind == "web_retrieved" and source_urls:
+                        provider = str(settings.get("learning_llm_provider", "ollama")).strip()
+                        for reference_url in list(dict.fromkeys(source_urls)):
+                            conn.execute(
+                                """INSERT INTO learning_candidate_sources(
+                                       candidate_id, source_type, reference_url, provider,
+                                       model_id, verification_status, metadata_json
+                                   )
+                                   SELECT ?, 'ai', ?, ?, ?, 'unverified', ?
+                                   WHERE NOT EXISTS (
+                                       SELECT 1 FROM learning_candidate_sources
+                                       WHERE candidate_id=? AND source_type='ai'
+                                         AND reference_url=? AND provider=? AND model_id=?
+                                   )""",
+                                (
+                                    candidate_id, reference_url, provider, model,
+                                    json.dumps({"job_id": job_id, "generation_scope": "lesson_generation"}, sort_keys=True),
+                                    candidate_id, reference_url, provider, model,
+                                ),
+                            )
+                    elif source_kind == "user_provided_text":
+                        conn.execute(
+                            """INSERT INTO learning_candidate_sources(
+                                   candidate_id, source_type, description, verification_status,
+                                   metadata_json
+                               )
+                               SELECT ?, 'other', 'User-provided source text; origin not independently identified.',
+                                      'unverified', ?
+                               WHERE NOT EXISTS (
+                                   SELECT 1 FROM learning_candidate_sources
+                                   WHERE candidate_id=? AND source_type='other'
+                                     AND description='User-provided source text; origin not independently identified.'
+                               )""",
+                            (
+                                candidate_id,
+                                json.dumps({"job_id": job_id, "capture": "user_provided_text"}, sort_keys=True),
+                                candidate_id,
+                            ),
+                        )
             # Never delete user-provided or retrieved source material because a
             # heuristic score is low. It remains provenance-labelled and untrusted.
     except Exception as exc:
-        with learning_connection() as conn:
-            conn.execute("UPDATE learning_jobs SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'",
-                         (str(exc)[:1000], job_id))
+        from .task_worker import TaskInterrupted
+
+        if isinstance(exc, TaskInterrupted):
+            if "cancel" in str(exc).casefold():
+                learning_execution.cancel_if_current(execution_lease)
+                if row["method_attempt_key"]:
+                    from .learning_method_orchestrator import mark_method_cancelled
+                    mark_method_cancelled(job_id)
+            raise
+        assert_execution_owner("learning_execution_failed")
+        learning_execution.fail_if_current(execution_lease, str(exc)[:1000])
         raise LearningError(f"Learning job {job_id} failed: {exc}") from exc
 
 def get_job(job_id: int) -> dict[str, Any]:
@@ -1667,10 +1907,17 @@ def submit_assessment(
     }
 
 
-def submit_lesson_issue(job_id: int, issue_report: str) -> dict[str, Any]:
-    """Create a versioned correction job from a user's report without rewriting history."""
+def submit_lesson_issue(
+    job_id: int, issue_report: str, *, request_key: str | None = None,
+    enqueue: bool = True,
+) -> dict[str, Any]:
+    """Create an idempotent, versioned correction job without rewriting history."""
     if not isinstance(issue_report, str) or not issue_report.strip() or len(issue_report) > 5000:
         raise ValueError("issue_report must contain 1–5000 characters.")
+    if request_key is not None and (
+        not isinstance(request_key, str) or not request_key.strip() or len(request_key.strip()) > 200
+    ):
+        raise ValueError("request_key must contain 1–200 characters.")
     with learning_connection() as conn:
         row = conn.execute(
             "SELECT topic, path_topic_id, lesson, status FROM learning_jobs WHERE id=?",
@@ -1687,7 +1934,8 @@ def submit_lesson_issue(job_id: int, issue_report: str) -> dict[str, Any]:
         ).fetchall()
     previous_lesson = str(row["lesson"])
     review = {
-        "correction_mode": "user_reported_runtime_failure",
+        "correction_mode": "automated_topic_quality_gate" if request_key else "user_reported_runtime_failure",
+        "request_key": request_key.strip() if request_key else None,
         "prior_job_id": int(job_id),
         "previous_lesson": previous_lesson[:20000],
         "previous_lesson_sha256": hashlib.sha256(previous_lesson.encode("utf-8")).hexdigest(),
@@ -1704,13 +1952,15 @@ def submit_lesson_issue(job_id: int, issue_report: str) -> dict[str, Any]:
         str(row["topic"]),
         path_topic_id=int(row["path_topic_id"]) if row["path_topic_id"] is not None else None,
         lesson_review=review,
+        correction_request_key=request_key,
     )
-    task = _enqueue_learning_job(int(correction["id"]))
-    correction["task_id"] = task["id"]
+    task = _enqueue_learning_job(int(correction["id"])) if enqueue else None
+    if task is not None:
+        correction["task_id"] = task["id"]
     return {
         "original_job_id": int(job_id),
         "correction_job": correction,
-        "queued": True,
+        "queued": task is not None,
         "note": "Original lesson and its evidence remain unchanged; the correction is a new versioned learning job.",
     }
 
@@ -2095,41 +2345,30 @@ def _latest_completed_topic_review(topic_id: int) -> dict[str, Any] | None:
 def start_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
     with learning_connection() as conn:
         topic = conn.execute(
-            "SELECT id, topic FROM learning_path_topics WHERE id=? AND path_id=?",
+            "SELECT id FROM learning_path_topics WHERE id=? AND path_id=?",
             (topic_id, path_id),
         ).fetchone()
         if topic is None:
             raise KeyError(topic_id)
-        latest = conn.execute(
-            "SELECT id, status FROM learning_jobs WHERE path_topic_id=? ORDER BY id DESC LIMIT 1",
-            (topic_id,),
-        ).fetchone()
-        if latest and latest["status"] == "completed":
-            return get_job(int(latest["id"]))
-        if latest and latest["status"] in {"queued", "running"}:
-            return get_job(int(latest["id"]))
-    lesson_review = _latest_completed_topic_review(topic_id)
-    # create_job enforces the active prerequisite graph. Do not mutate topic state
-    # until that guard has succeeded, otherwise a blocked start leaves a false
-    # in_progress status behind.
-    job = create_job(topic["topic"], path_topic_id=topic_id, lesson_review=lesson_review)
-    with learning_connection() as conn:
-        conn.execute(
-            "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
-            (topic_id, path_id),
-        )
-    _enqueue_learning_job(int(job["id"]))
-    return job
+        blocked = learning_prerequisites.blocked_prerequisites(conn, topic_id)
+        if blocked:
+            first_blocked = blocked[0]
+            raise ValueError(
+                "Prerequisite topic is not completed: "
+                + str(first_blocked["topic"]) + " (" + str(first_blocked["status"]) + ")."
+            )
+    from .learning_method_orchestrator import queue_initial_method
 
+    transition = queue_initial_method(topic_id)
+    return transition.get("job") if isinstance(transition.get("job"), dict) else transition
 
 
 def regenerate_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
-    """Create a new lesson version while preserving every prior lesson and its evidence."""
+    """Start a bounded new method cycle without superseding or overwriting prior jobs."""
     lesson_review = _latest_completed_topic_review(topic_id)
     with learning_connection() as conn:
-        conn.execute("BEGIN IMMEDIATE")
         topic = conn.execute(
-            "SELECT id, topic FROM learning_path_topics WHERE id=? AND path_id=?",
+            "SELECT id FROM learning_path_topics WHERE id=? AND path_id=?",
             (topic_id, path_id),
         ).fetchone()
         if topic is None:
@@ -2148,27 +2387,14 @@ def regenerate_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
         ).fetchone()
         if active is not None:
             return get_job(int(active["id"]))
-        old_job_ids = [
-            int(row["id"]) for row in conn.execute(
-                "SELECT id FROM learning_jobs WHERE path_topic_id=? AND lesson IS NOT NULL",
-                (topic_id,),
-            ).fetchall()
-        ]
-        if old_job_ids:
-            placeholders = ",".join("?" for _ in old_job_ids)
-            conn.execute(
-                f"UPDATE learning_jobs SET status='superseded', "
-                f"error='نسخهٔ تازه‌ای از این درس درخواست شد؛ محتوای این نسخه برای تاریخچه حفظ شده است.', "
-                f"updated_at=CURRENT_TIMESTAMP WHERE id IN ({placeholders})",
-                old_job_ids,
-            )
-        conn.execute(
-            "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
-            (topic_id, path_id),
-        )
-    job = create_job(topic["topic"], path_topic_id=topic_id, lesson_review=lesson_review)
-    _enqueue_learning_job(int(job["id"]))
-    return job
+    from .learning_method_orchestrator import queue_initial_method
+
+    transition = queue_initial_method(
+        topic_id,
+        force_new_cycle=True,
+        lesson_review=lesson_review,
+    )
+    return transition.get("job") if isinstance(transition.get("job"), dict) else transition
 
 
 def stop_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
@@ -2189,6 +2415,9 @@ def stop_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
             (topic_id,),
         )
     for row in rows:
+        if row["status"] in {"queued", "running"}:
+            from .learning_method_orchestrator import mark_method_cancelled
+            mark_method_cancelled(int(row["id"]), reason="Stopped by user from the topic control.")
         _cancel_learning_job_task(int(row["id"]))
     return {
         "topic_id": topic_id,
@@ -2206,14 +2435,50 @@ def start_researched_path_learning(
         raise KeyError(f"Researched learning path {path_id} not found.")
     skipped_completed = 0
     for topic in path["topics"]:
-        if topic["status"] == "completed":
-            skipped_completed += 1
-            continue
         with learning_connection() as conn:
             latest = conn.execute(
                 "SELECT id, status FROM learning_jobs WHERE path_topic_id=? ORDER BY id DESC LIMIT 1",
                 (topic["id"],),
             ).fetchone()
+            quality_gate = conn.execute(
+                "SELECT state, current_job_id FROM learning_topic_quality_gates WHERE path_topic_id=?",
+                (topic["id"],),
+            ).fetchone()
+            if quality_gate is None:
+                conn.execute(
+                    """INSERT OR IGNORE INTO learning_topic_quality_gates(
+                           path_topic_id, current_job_id, state, next_action
+                       ) VALUES (?, ?, 'pending', 'evaluate_existing_lesson')""",
+                    (
+                        int(topic["id"]),
+                        int(latest["id"]) if latest is not None and latest["status"] == "completed" else None,
+                    ),
+                )
+                quality_gate = conn.execute(
+                    "SELECT state, current_job_id FROM learning_topic_quality_gates WHERE path_topic_id=?",
+                    (topic["id"],),
+                ).fetchone()
+        if quality_gate is not None:
+            if quality_gate["state"] == "passed":
+                skipped_completed += 1
+                continue
+            if quality_gate["state"] == "blocked":
+                return {
+                    "path_id": path_id, "queued_count": 0, "job_ids": [],
+                    "status": "blocked_by_topic_quality_gate",
+                    "blocked_topic": topic["topic"],
+                    "message": "ادامه مسیر تا قبولی ارزیابی مستقل این سرفصل متوقف است.",
+                }
+            if latest is not None and latest["status"] == "completed":
+                from .learning_topic_quality_tasks import enqueue_topic_quality_evaluation
+                evaluation = enqueue_topic_quality_evaluation(int(latest["id"]))
+                return {
+                    "path_id": path_id, "queued_count": 0, "job_ids": [],
+                    "status": "awaiting_topic_quality_evaluation",
+                    "active_job_id": int(latest["id"]),
+                    "evaluation_task": evaluation,
+                    "message": "درس تولید شده است؛ تا ثبت قبولی ارزیابی مستقل، سرفصل بعدی آغاز نمی‌شود.",
+                }
         if latest is not None and latest["status"] in {"queued", "running"}:
             return {
                 "path_id": path_id, "queued_count": 0, "job_ids": [],
@@ -2230,22 +2495,34 @@ def start_researched_path_learning(
                 "blocked_topic": topic["topic"],
                 "message": "ادامهٔ صف به‌دلیل ناموفق‌بودن درس قبلی متوقف است؛ برای تلاش دوباره، شروع مسیر را انتخاب کنید.",
             }
-        job = create_job(topic["topic"], path_topic_id=int(topic["id"]))
-        with learning_connection() as conn:
-            conn.execute(
-                "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP "
-                "WHERE id=? AND path_id=? AND status!='completed'",
-                (topic["id"], path_id),
-            )
-        task = _enqueue_learning_job(int(job["id"]))
+        from .learning_method_orchestrator import queue_initial_method
+        transition = queue_initial_method(int(topic["id"]))
+        if transition.get("status") == "blocked":
+            return {
+                "path_id": path_id, "queued_count": 0, "job_ids": [],
+                "status": "blocked_by_learning_methods",
+                "blocked_topic": topic["topic"],
+                "message": "تمام روش‌های یادگیری ناموفق یا غیرفعال‌اند؛ این سرفصل نیازمند بررسی است.",
+            }
+        job = transition.get("job")
+        task = transition.get("task")
+        if not isinstance(job, dict):
+            return {
+                "path_id": path_id, "queued_count": 0, "job_ids": [],
+                "status": transition.get("status", "already_active"),
+                "active_job_id": None,
+                "skipped_completed_count": skipped_completed,
+                "message": "وضعیت روش جاری از دفتر رویدادهای پایدار بازیابی شد.",
+            }
         return {
             "path_id": path_id,
-            "queued_count": 1,
+            "queued_count": 1 if task is not None else 0,
             "job_ids": [int(job["id"])],
-            "task_id": task["id"],
-            "status": "queued",
+            "task_id": task["id"] if isinstance(task, dict) else None,
+            "method": job.get("learning_method"),
+            "status": "queued" if task is not None else str(job.get("status", "unknown")),
             "skipped_completed_count": skipped_completed,
-            "message": "فقط درس بعدی صف‌بندی شد؛ درس بعدی پس از پایان موفق این درس اضافه می‌شود.",
+            "message": "روش بعدی یادگیری صف‌بندی شد؛ سرفصل بعدی فقط پس از قبولی ارزیابی مستقل آغاز می‌شود.",
         }
     return {
         "path_id": path_id, "queued_count": 0, "job_ids": [],
@@ -2255,65 +2532,87 @@ def start_researched_path_learning(
 
 
 def queue_next_researched_path_topic(path_topic_id: int) -> dict[str, Any] | None:
-    """Advance a researched path only after its current lesson completed successfully."""
+    """Advance any learning path only after the current topic passes its quality gate."""
     with learning_connection() as conn:
         row = conn.execute(
             "SELECT path_id FROM learning_path_topics WHERE id=?",
             (path_topic_id,),
         ).fetchone()
-        if row is None:
-            return None
-        path_id = int(row["path_id"])
-        is_researched = conn.execute(
-            "SELECT 1 FROM learning_path_research WHERE path_id=?",
-            (path_id,),
-        ).fetchone()
-    if is_researched is None:
+    if row is None:
         return None
-    return start_researched_path_learning(path_id, allow_retry=False)
+    path_id = int(row["path_id"])
+    path = get_learning_path(path_id)
+    if path.get("research") is not None:
+        return start_researched_path_learning(path_id, allow_retry=False)
+    return start_path_learning(path_id)
 
 
 def start_path_learning(path_id: int) -> dict[str, Any]:
     path = get_learning_path(path_id)
     if path.get("research"):
         return start_researched_path_learning(path_id, allow_retry=True)
-    queued_ids: list[int] = []
-    skipped_active = 0
+
+    from .learning_method_orchestrator import queue_initial_method
     skipped_completed = 0
-    skipped_existing_lesson = 0
     for topic in path["topics"]:
-        if topic["status"] == "completed":
-            skipped_completed += 1
-            continue
-        with learning_connection() as conn:
-            latest = conn.execute(
-                "SELECT id, status FROM learning_jobs WHERE path_topic_id=? ORDER BY id DESC LIMIT 1",
-                (topic["id"],),
-            ).fetchone()
-        if latest and latest["status"] in {"queued", "running"}:
-            skipped_active += 1
-            continue
-        if latest and latest["status"] == "completed":
-            # Preserve generated lessons when resuming a path; do not regenerate them.
-            skipped_existing_lesson += 1
-            continue
-        job = create_job(topic["topic"], path_topic_id=topic["id"])
         with learning_connection() as conn:
             conn.execute(
-                "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
-                (topic["id"], path_id),
+                """INSERT OR IGNORE INTO learning_topic_quality_gates(
+                       path_topic_id, state, next_action
+                   ) VALUES (?, 'pending', 'start_ai_learning')""",
+                (int(topic["id"]),),
             )
-        _enqueue_learning_job(int(job["id"]))
-        queued_ids.append(job["id"])
+            gate = conn.execute(
+                "SELECT state, current_job_id FROM learning_topic_quality_gates WHERE path_topic_id=?",
+                (int(topic["id"]),),
+            ).fetchone()
+        if gate["state"] == "passed":
+            skipped_completed += 1
+            continue
+        if gate["state"] == "blocked":
+            return {
+                "path_id": path_id, "queued_count": 0, "job_ids": [],
+                "status": "blocked_by_learning_methods", "blocked_topic": topic["topic"],
+                "message": "این سرفصل پس از شکست روش‌های یادگیری متوقف شده و نیازمند بررسی است.",
+            }
+        transition = queue_initial_method(int(topic["id"]))
+        if transition.get("status") == "passed":
+            skipped_completed += 1
+            continue
+        job = transition.get("job")
+        task = transition.get("task")
+        if isinstance(job, dict):
+            return {
+                "path_id": path_id,
+                "queued_count": 1 if task is not None else 0,
+                "job_ids": [int(job["id"])],
+                "task_id": task["id"] if isinstance(task, dict) else None,
+                "method": job.get("learning_method"),
+                "status": "queued" if task is not None else str(job.get("status", "unknown")),
+                "skipped_completed_count": skipped_completed,
+                "message": "فقط یک روش برای سرفصل جاری اجرا می‌شود؛ پیشروی منوط به قبولی ارزیابی مستقل است.",
+            }
+        if transition.get("status") == "awaiting_evaluation":
+            return {
+                "path_id": path_id, "queued_count": 0, "job_ids": [],
+                "status": "awaiting_topic_quality_evaluation",
+                "active_job_id": transition.get("job", {}).get("id"),
+                "evaluation_task": transition.get("evaluation"),
+                "skipped_completed_count": skipped_completed,
+                "message": "درس موجود حفظ شده است؛ ارزیابی مستقل پیش از پیشروی اجرا می‌شود.",
+            }
+        if transition.get("status") == "blocked":
+            return {
+                "path_id": path_id, "queued_count": 0, "job_ids": [],
+                "status": "blocked_by_learning_methods", "blocked_topic": topic["topic"],
+                "message": "این سرفصل نیازمند بررسی است.",
+            }
     return {
-        "path_id": path_id,
-        "queued_count": len(queued_ids),
-        "job_ids": queued_ids,
-        "skipped_active_count": skipped_active,
-        "skipped_completed_count": skipped_completed,
-        "skipped_existing_lesson_count": skipped_existing_lesson,
-        "message": "یادگیری از درس‌های ناتمام ادامه پیدا می‌کند؛ درس‌های تولیدشده دوباره ساخته نمی‌شوند.",
+        "path_id": path_id, "queued_count": 0, "job_ids": [],
+        "status": "completed", "skipped_completed_count": skipped_completed,
+        "message": "تمام سرفصل‌های این مسیر قبولی معتبر گرفته‌اند.",
     }
+
 
 def stop_path_learning(path_id: int) -> dict[str, Any]:
     # Mark both queued and currently running jobs as cancelled. Ollama requests already
@@ -2335,6 +2634,9 @@ def stop_path_learning(path_id: int) -> dict[str, Any]:
             (path_id,),
         )
     for row in rows:
+        if row["status"] in {"queued", "running"}:
+            from .learning_method_orchestrator import mark_method_cancelled
+            mark_method_cancelled(int(row["id"]), reason="Stopped by user from the path control.")
         _cancel_learning_job_task(int(row["id"]))
     return {
         "path_id": path_id,

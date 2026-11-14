@@ -69,11 +69,12 @@ def test_current_sqlite_schema_contracts(tmp_path, monkeypatch):
     } <= learning_tables
     assert {"quality_json", "path_topic_id"} <= columns["learning_jobs"]
     assert {"static_check_json", "static_checked_at"} <= columns["self_improvement_proposals"]
-    assert {"dedupe_key", "lease_owner", "lease_expires_at", "checkpoint_json"} <= columns["task_queue"]
+    assert {"dedupe_key", "lease_owner", "lease_expires_at", "lease_epoch", "checkpoint_json"} <= columns["task_queue"]
     assert {
         "idx_task_queue_ready",
         "idx_task_queue_lease",
         "idx_task_queue_dedupe_key",
+        "idx_task_queue_lease_owner_epoch",
     } <= indexes
     assert foreign_key_violations == []
 

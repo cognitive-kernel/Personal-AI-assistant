@@ -1,4 +1,5 @@
 import json
+import threading
 
 import pytest
 
@@ -189,9 +190,17 @@ def test_research_task_persists_sources_outline_and_starts_only_first_lesson(
     learning_store, monkeypatch
 ):
     discovered = []
+    discovered_lock = threading.Lock()
+
     def fake_discover(query, *, limit):
-        discovered.append((query, limit))
-        return [_source(len(discovered))]
+        with discovered_lock:
+            discovered.append((query, limit))
+            source_index = len(discovered)
+        return [web_sources.SourceDocument(
+            url=f"https://docs{source_index}.example.test/guide",
+            title=f"راهنمای مرجع {source_index}",
+            text=(f"محتوای مستند برای موضوع شماره {source_index}. " * 8),
+        )]
 
     monkeypatch.setattr(web_sources, "discover_sources", fake_discover)
     model_calls = []
@@ -244,25 +253,36 @@ def test_research_task_persists_sources_outline_and_starts_only_first_lesson(
     assert retried["path_id"] == result["path_id"]
     assert retried["outline_sha256"] == result["outline_sha256"]
     assert len(discovered) == 8
-    # Eight full source bodies each span multiple evidence chunks; every chunk
-    # must be reviewed before the curriculum can be finalized.
-    assert len(model_calls) == learning_curriculum_tasks._source_evidence_batch_count(
+    # Every retained source-evidence batch must be reviewed. Model calls may
+    # additionally include resumable pages of prior assistant observations, so
+    # total generation calls must not be equated with source-batch count.
+    source_batch_count = learning_curriculum_tasks._source_evidence_batch_count(
         learning_curriculum_tasks._hydrate_source_bodies(task["id"], context.checkpoint_data["sources"])
     )
+    assert len(model_calls) >= source_batch_count
     assert len(model_calls) == 2
     assert retried["queue_status"] == "already_active"
 
 
 def test_research_retains_more_than_three_sources_from_one_domain(learning_store, monkeypatch):
-    calls = {"count": 0}
+    calls = {"count": 0, "active": 0, "max_active": 0}
+    lock = threading.Lock()
+    pair_barrier = threading.Barrier(2)
 
     def discover(_query, *, limit):
-        calls["count"] += 1
         assert limit == 30
+        with lock:
+            calls["count"] += 1
+            query_index = calls["count"]
+            calls["active"] += 1
+            calls["max_active"] = max(calls["max_active"], calls["active"])
+        pair_barrier.wait(timeout=5)
+        with lock:
+            calls["active"] -= 1
         return [
             web_sources.SourceDocument(
-                url=f"https://community.example.test/guides/{calls['count']}/{index}",
-                title=f"Community guide {calls['count']}-{index}",
+                url=f"https://community.example.test/guides/{query_index}/{index}",
+                title=f"Community guide {query_index}-{index}",
                 text=("Detailed community material with implementation notes. " * 8),
             )
             for index in range(4)
@@ -278,6 +298,7 @@ def test_research_retains_more_than_three_sources_from_one_domain(learning_store
     )
 
     assert calls["count"] == len(learning_curriculum_tasks._research_queries("موضوع با منابع متعدد"))
+    assert calls["max_active"] >= 2
     assert len(sources) == calls["count"] * 4
     assert len({item["url"] for item in sources}) == len(sources)
     assert {item["url"].split("/")[2] for item in sources} == {"community.example.test"}
@@ -312,21 +333,24 @@ def test_researched_path_queues_next_lesson_only_after_previous_job_succeeds(
 
     with db.learning_connection() as connection:
         connection.execute(
-            "UPDATE learning_jobs SET status='completed' WHERE id=?",
-            (first_job_id,),
+            "UPDATE learning_jobs SET status='completed', lesson=? WHERE id=?",
+            ("A complete lesson with sufficient content for independent evaluation. " * 30, first_job_id),
         )
     second = learning.queue_next_researched_path_topic(first_topic_id)
-    assert second is not None and second["queued_count"] == 1
-    assert second["job_ids"][0] != first_job_id
+    assert second is not None
+    assert second["status"] == "awaiting_topic_quality_evaluation"
+    assert second["active_job_id"] == first_job_id
 
     with db.learning_connection() as connection:
         jobs = connection.execute(
             "SELECT path_topic_id, status FROM learning_jobs ORDER BY id"
         ).fetchall()
-    assert len(jobs) == 2
+        evaluation_tasks = connection.execute(
+            "SELECT COUNT(*) FROM task_queue WHERE task_type='learning.evaluate_topic_quality'"
+        ).fetchone()[0]
+    assert len(jobs) == 1
     assert jobs[0]["status"] == "completed"
-    assert jobs[1]["status"] == "queued"
-    assert jobs[1]["path_topic_id"] == path["topics"][1]["id"]
+    assert evaluation_tasks == 1
 
 
 def test_researched_path_does_not_advance_after_failed_lesson(learning_store, monkeypatch):
@@ -501,6 +525,11 @@ def test_dashboard_uses_researched_courses_and_hides_preset_catalog_controls():
     assert 'id="curriculum-select"' not in page
     assert 'id="enroll-curriculum"' not in page
     assert "loadLearningCurricula();" not in script
+    assert "renderTopicApplicability(topic, row);" in script
+    assert "applicability.versions" in script
+    assert "applicability.release_years" in script
+    assert "applicability.release_dates" in script
+    assert "منابع اختصاصی این سرفصل" in script
 
 
 def test_curriculum_generation_continues_beyond_forty_topics_without_truncating(learning_store, monkeypatch):

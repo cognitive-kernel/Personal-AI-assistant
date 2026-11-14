@@ -14,6 +14,7 @@ from .db import learning_connection
 from . import sandbox_consent, sandbox_tasks, learning_candidate_channels
 from .learning_review_tasks import enqueue_candidate_review, enqueue_candidate_sandbox_review
 from .task_routes import require_loopback_client
+from .module_settings import require_module_enabled
 
 router = APIRouter(
     prefix="/api/learning/candidates",
@@ -46,7 +47,7 @@ def _decode(value: str, field: str) -> Any:
         raise HTTPException(status_code=503, detail=f"Stored review {field} is invalid.") from exc
 
 
-@router.post("/{candidate_id}/review", status_code=202)
+@router.post("/{candidate_id}/review", status_code=202, dependencies=[Depends(require_module_enabled("topic_learning"))])
 def queue_candidate_review(candidate_id: int, request: CandidateReviewRequest) -> dict[str, Any]:
     if request.confirm is not True:
         raise HTTPException(status_code=422, detail="Explicit confirmation to start evidence review is required.")
@@ -157,7 +158,7 @@ def get_candidate_review_history(candidate_id: int) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="Candidate review history is unavailable.") from exc
 
 
-@router.post("/{candidate_id}/sandbox-test", status_code=202)
+@router.post("/{candidate_id}/sandbox-test", status_code=202, dependencies=[Depends(require_module_enabled("topic_learning"))])
 def queue_candidate_sandbox_review(
     candidate_id: int, request: CandidateSandboxReviewRequest
 ) -> dict[str, Any]:

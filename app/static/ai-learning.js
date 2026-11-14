@@ -33,10 +33,10 @@ function node(tag, text, className) {
 async function loadStatus() {
   const s = await api("/api/ai-learning/status");
   if (!s.enabled) {
-    message("ماژول غیرفعال است. برای فعال‌سازی، AI_LEARNING_ENABLED=1 را تنظیم و برنامه را مجدداً اجرا کنید.", true);
+    message("ماژول AI Learning در تنظیمات غیرفعال است. برای ادامه، آن را از بخش تنظیمات فعال کنید.", true);
     return false;
   }
-  message("ماژول فعال است؛ بازیابی دانش: " + (s.retrieval_enabled ? "فعال" : "غیرفعال"));
+  message("ماژول فعال است؛ بازیابی دانش: " + (s.retrieval_enabled ? "فعال" : "غیرفعال") + "؛ ارائه‌دهنده مرورگر: " + (s.browser_enabled ? "فعال" : "غیرفعال"));
   return true;
 }
 async function loadCourses(preferredId) {

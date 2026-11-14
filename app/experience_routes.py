@@ -11,7 +11,21 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, StrictBool, StrictInt, ConfigDict, field_validator
 
 from . import experience, experience_capture_consent, experience_feedback, experience_source_checks, experience_tasks, sandbox_consent, task_manager
+from . import experience_learning_observer
+from .db import get_settings
 from .task_routes import require_loopback_client
+
+def require_experience_system_enabled() -> None:
+    """Gate the complete Experience System through its persisted module setting."""
+    try:
+        enabled = get_settings().get("experience_system_enabled", True)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Experience System settings are unavailable.") from exc
+    if type(enabled) is not bool:
+        raise HTTPException(status_code=503, detail="Experience System enablement setting is invalid.")
+    if not enabled:
+        raise HTTPException(status_code=409, detail="Experience System is disabled in settings.")
+
 
 router = APIRouter(
     prefix="/api/experiences",
@@ -130,6 +144,27 @@ def list_experiences(
     return {"items": items, "count": len(items)}
 
 
+@router.get("/learning-method-observations")
+def list_learning_method_observations(
+    path_topic_id: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=100, ge=1, le=200),
+) -> dict[str, Any]:
+    try:
+        items = experience_learning_observer.list_method_observations(
+            path_topic_id=path_topic_id, limit=limit
+        )
+    except experience_learning_observer.ExperienceLearningObserverError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Learning-method experience history is unavailable.") from exc
+    return {
+        "items": items,
+        "count": len(items),
+        "source": "append_only_learning_method_attempt_event_ledger",
+        "state_transition_owner": "learning_method_coordinator",
+    }
+
+
 @router.get("/search")
 def search_experiences(
     query: str = Query(min_length=1, max_length=3000),
@@ -143,7 +178,7 @@ def search_experiences(
     return {"verified": verified, "warnings": warnings}
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_experience_system_enabled)])
 def create_experience(request: ExperienceCreateRequest) -> dict[str, Any]:
     try:
         item = experience.create_experience(request.topic, request.problem, request.hypothesis)
@@ -162,7 +197,7 @@ class ExperienceTestRunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-@router.post("/{experience_id}/run-test", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/{experience_id}/run-test", status_code=status.HTTP_202_ACCEPTED, dependencies=[Depends(require_experience_system_enabled)])
 def queue_experience_test(
     experience_id: int,
     request: ExperienceTestRunRequest,
@@ -221,7 +256,7 @@ def queue_experience_test(
     }
 
 
-@router.post("/{experience_id}/feedback")
+@router.post("/{experience_id}/feedback", dependencies=[Depends(require_experience_system_enabled)])
 def set_experience_feedback(
     experience_id: int,
     request: ExperienceFeedbackRequest,
@@ -254,7 +289,7 @@ def delete_experience_feedback(experience_id: int) -> dict[str, Any]:
     return {"experience_id": experience_id, "deleted": deleted}
 
 
-@router.post("/{experience_id}/refresh-sources")
+@router.post("/{experience_id}/refresh-sources", dependencies=[Depends(require_experience_system_enabled)])
 def refresh_experience_sources(
     experience_id: int,
     request: ExperienceSourceRefreshRequest,
@@ -304,7 +339,7 @@ def get_experience_versions(experience_id: int) -> dict[str, Any]:
     return {"experience_id": experience_id, "versions": versions}
 
 
-@router.post("/from-retained-knowledge/hypotheses", status_code=status.HTTP_201_CREATED)
+@router.post("/from-retained-knowledge/hypotheses", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_experience_system_enabled)])
 def propose_experience_hypotheses_from_retained_knowledge(
     request: RetainedKnowledgeHypothesisRequest,
 ) -> dict[str, Any]:
@@ -324,7 +359,7 @@ def propose_experience_hypotheses_from_retained_knowledge(
     }
 
 
-@router.post("/hypotheses/propose", status_code=status.HTTP_201_CREATED)
+@router.post("/hypotheses/propose", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_experience_system_enabled)])
 def propose_hypotheses(request: HypothesisProposalRequest) -> dict[str, Any]:
     """Create reviewable hypothesis drafts; generated output is never treated as evidence."""
     try:
@@ -354,7 +389,7 @@ def get_experience(experience_id: int) -> dict[str, Any]:
     return {"experience": item}
 
 
-@router.patch("/{experience_id}")
+@router.patch("/{experience_id}", dependencies=[Depends(require_experience_system_enabled)])
 def update_experience(
     experience_id: int,
     request: ExperienceUpdateRequest,

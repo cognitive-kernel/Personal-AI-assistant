@@ -4,7 +4,7 @@ import pytest
 
 from app.task_manager import TaskManagerError
 
-from app import db, task_manager
+from app import db, task_manager, task_manager_core, task_queue_store, task_lease_manager
 
 
 @pytest.fixture
@@ -38,10 +38,10 @@ def test_task_lifecycle_persists_payload_checkpoint_and_result(task_store):
     assert claimed["attempts"] == 1
     assert claimed["lease_owner"] == "worker-a"
 
-    saved = task_manager.save_checkpoint(created["id"], "worker-a", {"unit": 3, "cursor": "abc"})
+    saved = task_manager.save_checkpoint(created["id"], "worker-a", {"unit": 3, "cursor": "abc"}, lease_epoch=claimed["lease_epoch"])
     assert saved["checkpoint"] == {"unit": 3, "cursor": "abc"}
 
-    completed = task_manager.complete_task(created["id"], "worker-a", {"lessons": 3})
+    completed = task_manager.complete_task(created["id"], "worker-a", {"lessons": 3}, lease_epoch=claimed["lease_epoch"])
     assert completed["status"] == "succeeded"
     assert completed["result"] == {"lessons": 3}
     assert completed["lease_owner"] is None
@@ -64,14 +64,14 @@ def test_claim_respects_priority_and_scheduled_time(task_store):
 
 def test_failed_task_retries_with_bounded_backoff_and_respects_attempt_limit(task_store, monkeypatch):
     current = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    monkeypatch.setattr(task_manager, "_now", lambda: current)
+    monkeypatch.setattr(task_manager_core, "_now", lambda: current)
     # Keep this lifecycle test deterministic; jitter bounds are tested separately.
-    monkeypatch.setattr(task_manager.random, "uniform", lambda low, high: 2.0)
+    monkeypatch.setattr(task_lease_manager.random, "uniform", lambda low, high: 2.0)
     task = task_manager.create_task("retryable", {}, max_attempts=2)
     first = task_manager.claim_next_task("worker-a")
     assert first["id"] == task["id"]
 
-    retry = task_manager.fail_task(task["id"], "worker-a", "temporary", retry=True)
+    retry = task_manager.fail_task(task["id"], "worker-a", "temporary", lease_epoch=first["lease_epoch"], retry=True)
     assert retry["status"] == "queued"
     assert retry["attempts"] == 1
     assert datetime.fromisoformat(retry["scheduled_at"]) == current + timedelta(seconds=2)
@@ -80,7 +80,7 @@ def test_failed_task_retries_with_bounded_backoff_and_respects_attempt_limit(tas
     current += timedelta(seconds=2)
     second = task_manager.claim_next_task("worker-b")
     assert second["id"] == task["id"]
-    failed = task_manager.fail_task(task["id"], "worker-b", "still broken", retry=True)
+    failed = task_manager.fail_task(task["id"], "worker-b", "still broken", lease_epoch=second["lease_epoch"], retry=True)
     assert failed["status"] == "failed"
     assert failed["attempts"] == 2
 
@@ -92,24 +92,25 @@ def test_pause_checkpoint_resume_and_cancel(task_store):
 
     requested = task_manager.request_pause(task["id"])
     assert requested["status"] == "pause_requested"
-    paused = task_manager.save_checkpoint(task["id"], "worker", {"step": 5})
+    paused = task_manager.save_checkpoint(task["id"], "worker", {"step": 5}, lease_epoch=claimed["lease_epoch"])
     assert paused["status"] == "paused"
     assert paused["checkpoint"] == {"step": 5}
 
     resumed = task_manager.resume_task(task["id"])
     assert resumed["status"] == "queued"
-    assert task_manager.claim_next_task("worker-2")["id"] == task["id"]
+    resumed_claim = task_manager.claim_next_task("worker-2")
+    assert resumed_claim["id"] == task["id"]
 
     cancelled = task_manager.request_cancel(task["id"])
     assert cancelled["status"] == "cancel_requested"
-    settled = task_manager.save_checkpoint(task["id"], "worker-2", {"step": 6})
+    settled = task_manager.save_checkpoint(task["id"], "worker-2", {"step": 6}, lease_epoch=resumed_claim["lease_epoch"])
     assert settled["status"] == "cancelled"
     assert task_manager.claim_next_task("worker-3") is None
 
 
 def test_expired_lease_is_reclaimed_and_retry_limit_is_enforced(task_store, monkeypatch):
     current = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    monkeypatch.setattr(task_manager, "_now", lambda: current)
+    monkeypatch.setattr(task_manager_core, "_now", lambda: current)
     task = task_manager.create_task("crash-recovery", {}, max_attempts=2)
     claimed = task_manager.claim_next_task("worker-a", lease_seconds=5)
     assert claimed["attempts"] == 1
@@ -129,7 +130,7 @@ def test_expired_lease_is_reclaimed_and_retry_limit_is_enforced(task_store, monk
 
 def test_expired_pause_or_cancel_request_does_not_stick_forever(task_store, monkeypatch):
     current = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    monkeypatch.setattr(task_manager, "_now", lambda: current)
+    monkeypatch.setattr(task_manager_core, "_now", lambda: current)
 
     paused_task = task_manager.create_task("pause-crash", {})
     task_manager.claim_next_task("worker-a", lease_seconds=5)
@@ -160,28 +161,28 @@ def test_invalid_task_data_is_rejected(task_store):
 
 def test_expired_worker_cannot_mutate_after_lease_lapses(task_store, monkeypatch):
     current = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    monkeypatch.setattr(task_manager, "_now", lambda: current)
+    monkeypatch.setattr(task_manager_core, "_now", lambda: current)
     task = task_manager.create_task("lease-fencing", {}, max_attempts=2)
-    task_manager.claim_next_task("worker-a", lease_seconds=5)
+    first_claim = task_manager.claim_next_task("worker-a", lease_seconds=5)
 
     current = current + timedelta(seconds=6)
     with pytest.raises(TaskManagerError, match="lease has expired"):
-        task_manager.save_checkpoint(task["id"], "worker-a", {"stale": True})
+        task_manager.save_checkpoint(task["id"], "worker-a", {"stale": True}, lease_epoch=first_claim["lease_epoch"])
 
     reclaimed = task_manager.claim_next_task("worker-b", lease_seconds=30)
     assert reclaimed["id"] == task["id"]
-    assert task_manager.save_checkpoint(task["id"], "worker-b", {"fresh": True})["checkpoint"] == {
+    assert task_manager.save_checkpoint(task["id"], "worker-b", {"fresh": True}, lease_epoch=reclaimed["lease_epoch"])["checkpoint"] == {
         "fresh": True
     }
 
 
 def test_worker_can_renew_lease_and_naive_schedule_is_rejected(task_store, monkeypatch):
     current = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    monkeypatch.setattr(task_manager, "_now", lambda: current)
+    monkeypatch.setattr(task_manager_core, "_now", lambda: current)
     task = task_manager.create_task("heartbeat", {})
     claimed = task_manager.claim_next_task("worker", lease_seconds=5)
 
-    renewed = task_manager.renew_lease(task["id"], "worker", lease_seconds=50)
+    renewed = task_manager.renew_lease(task["id"], "worker", lease_epoch=claimed["lease_epoch"], lease_seconds=50)
     assert renewed["lease_expires_at"] > claimed["lease_expires_at"]
 
     with pytest.raises(ValueError, match="timezone"):
@@ -212,7 +213,7 @@ def test_sandbox_task_crash_is_terminal_after_single_attempt(task_store, monkeyp
     from app.sandbox_tasks import SANDBOX_TASK_TYPE
 
     current = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    monkeypatch.setattr(task_manager, "_now", lambda: current)
+    monkeypatch.setattr(task_manager_core, "_now", lambda: current)
     source = "print('must not be retried after worker crash')"
     task = task_manager.create_task(
         SANDBOX_TASK_TYPE,
@@ -228,7 +229,7 @@ def test_sandbox_task_crash_is_terminal_after_single_attempt(task_store, monkeyp
         "source_sha256": "a" * 64,
         "execution_status": "running",
     }
-    task_manager.save_checkpoint(task["id"], "sandbox-worker", checkpoint)
+    task_manager.save_checkpoint(task["id"], "sandbox-worker", checkpoint, lease_epoch=claimed["lease_epoch"])
 
     # Model a process crash: the worker never settles the task and its lease expires.
     current = current + timedelta(seconds=6)
@@ -246,12 +247,12 @@ def test_sandbox_task_crash_is_terminal_after_single_attempt(task_store, monkeyp
 
 def test_list_terminal_task_ids_excludes_queued_and_running_tasks(task_store):
     succeeded = task_manager.create_task("terminal.success", {})
-    task_manager.claim_next_task("worker-success")
-    task_manager.complete_task(succeeded["id"], "worker-success", {"ok": True})
+    success_claim = task_manager.claim_next_task("worker-success")
+    task_manager.complete_task(succeeded["id"], "worker-success", {"ok": True}, lease_epoch=success_claim["lease_epoch"])
 
     failed = task_manager.create_task("terminal.failure", {}, max_attempts=1)
-    task_manager.claim_next_task("worker-failure")
-    task_manager.fail_task(failed["id"], "worker-failure", "expected", retry=False)
+    failure_claim = task_manager.claim_next_task("worker-failure")
+    task_manager.fail_task(failed["id"], "worker-failure", "expected", lease_epoch=failure_claim["lease_epoch"], retry=False)
 
     running = task_manager.create_task("not.terminal.running", {})
     queued = task_manager.create_task("not.terminal.queued", {})
@@ -270,7 +271,7 @@ def test_list_terminal_task_ids_waits_for_terminal_grace_period(task_store):
     task = task_manager.create_task("grace.success", {})
     claimed = task_manager.claim_next_task("grace-worker")
     assert claimed["id"] == task["id"]
-    task_manager.complete_task(task["id"], "grace-worker", {"ok": True})
+    task_manager.complete_task(task["id"], "grace-worker", {"ok": True}, lease_epoch=claimed["lease_epoch"])
 
     assert task["id"] not in task_manager.list_terminal_task_ids(
         min_terminal_age_seconds=60
@@ -293,13 +294,13 @@ def test_terminal_task_grace_period_validates_age(task_store, age):
 
 def test_checkpoint_and_expired_lease_survive_store_reinitialization(task_store, monkeypatch):
     current = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    monkeypatch.setattr(task_manager, "_now", lambda: current)
+    monkeypatch.setattr(task_manager_core, "_now", lambda: current)
 
     task = task_manager.create_task("restart-recovery", {"topic": "SQLite"}, max_attempts=2)
     first = task_manager.claim_next_task("worker-before-restart", lease_seconds=5)
     assert first["id"] == task["id"]
     checkpoint = {"phase": "source_review", "source_cursor": 2}
-    task_manager.save_checkpoint(task["id"], "worker-before-restart", checkpoint)
+    task_manager.save_checkpoint(task["id"], "worker-before-restart", checkpoint, lease_epoch=first["lease_epoch"])
 
     # Reinitializing the database/schema simulates application process restart while
     # retaining the same persistent SQLite files. No in-memory worker state is reused.
@@ -315,8 +316,8 @@ def test_checkpoint_and_expired_lease_survive_store_reinitialization(task_store,
     assert recovered["lease_owner"] == "worker-after-restart"
     assert recovered["checkpoint"] == checkpoint
 
-    with pytest.raises(TaskManagerError, match="not owned by this worker"):
-        task_manager.save_checkpoint(task["id"], "worker-before-restart", {"phase": "stale"})
+    with pytest.raises(TaskManagerError, match="stale|not owned by this worker"):
+        task_manager.save_checkpoint(task["id"], "worker-before-restart", {"phase": "stale"}, lease_epoch=first["lease_epoch"])
 
 
 
@@ -358,7 +359,8 @@ def _crash_after_checkpoint(paths, task_id, worker_id):
     if claimed is None or claimed["id"] != task_id:
         os._exit(71)
     child_task_manager.save_checkpoint(
-        task_id, worker_id, {"phase": "after_source_fetch", "cursor": 3}
+        task_id, worker_id, {"phase": "after_source_fetch", "cursor": 3},
+        lease_epoch=claimed["lease_epoch"],
     )
     os._exit(23)
 
@@ -389,7 +391,7 @@ def test_abrupt_worker_process_exit_recovers_checkpoint_after_lease_expiry(task_
 
     # Advance the queue's clock beyond the lease without sleeping for the real lease.
     expired_at = datetime.fromisoformat(crashed["lease_expires_at"].replace("Z", "+00:00"))
-    monkeypatch.setattr(task_manager, "_now", lambda: expired_at + timedelta(seconds=1))
+    monkeypatch.setattr(task_manager_core, "_now", lambda: expired_at + timedelta(seconds=1))
     recovered = task_manager.claim_next_task("worker-restarted", lease_seconds=30)
 
     assert recovered is not None
@@ -398,8 +400,8 @@ def test_abrupt_worker_process_exit_recovers_checkpoint_after_lease_expiry(task_
     assert recovered["attempts"] == 2
     assert recovered["lease_owner"] == "worker-restarted"
     assert recovered["checkpoint"] == {"phase": "after_source_fetch", "cursor": 3}
-    with pytest.raises(TaskManagerError, match="not owned by this worker"):
-        task_manager.save_checkpoint(task["id"], "worker-crashed", {"phase": "stale"})
+    with pytest.raises(TaskManagerError, match="stale|not owned by this worker"):
+        task_manager.save_checkpoint(task["id"], "worker-crashed", {"phase": "stale"}, lease_epoch=crashed["lease_epoch"])
 
 
 def test_claim_next_task_can_isolate_task_type_queues(task_store):
@@ -438,18 +440,18 @@ def test_worker_mutations_lock_before_validating_lease(task_store, monkeypatch, 
     claimed = task_manager.claim_next_task("worker-a", lease_seconds=30)
     assert claimed["id"] == task["id"]
 
-    original = task_manager._owned_running_task
+    original = task_lease_manager._owned_running_task
 
-    def assert_transaction_started(conn, task_id, worker_id):
+    def assert_transaction_started(conn, task_id, worker_id, lease_epoch):
         assert conn.in_transaction, "lease validation must occur inside a write transaction"
-        return original(conn, task_id, worker_id)
+        return original(conn, task_id, worker_id, lease_epoch)
 
-    monkeypatch.setattr(task_manager, "_owned_running_task", assert_transaction_started)
+    monkeypatch.setattr(task_lease_manager, "_owned_running_task", assert_transaction_started)
     operations = {
-        "renew": lambda: task_manager.renew_lease(task["id"], "worker-a", lease_seconds=60),
-        "checkpoint": lambda: task_manager.save_checkpoint(task["id"], "worker-a", {"step": 1}),
-        "complete": lambda: task_manager.complete_task(task["id"], "worker-a", {"ok": True}),
-        "fail": lambda: task_manager.fail_task(task["id"], "worker-a", "expected failure"),
+        "renew": lambda: task_manager.renew_lease(task["id"], "worker-a", lease_epoch=claimed["lease_epoch"], lease_seconds=60),
+        "checkpoint": lambda: task_manager.save_checkpoint(task["id"], "worker-a", {"step": 1}, lease_epoch=claimed["lease_epoch"]),
+        "complete": lambda: task_manager.complete_task(task["id"], "worker-a", {"ok": True}, lease_epoch=claimed["lease_epoch"]),
+        "fail": lambda: task_manager.fail_task(task["id"], "worker-a", "expected failure", lease_epoch=claimed["lease_epoch"]),
     }
     operations[mutation]()
 
@@ -524,7 +526,8 @@ def test_fail_task_honors_pending_control_before_retry(task_store, control, expe
     assert requested["status"] == ("cancel_requested" if control == "cancel" else "pause_requested")
 
     settled = task_manager.fail_task(
-        task["id"], "worker-a", "simulated failure before cooperative checkpoint", retry=True
+        task["id"], "worker-a", "simulated failure before cooperative checkpoint",
+        lease_epoch=claimed["lease_epoch"], retry=True
     )
 
     assert settled["status"] == expected_status
@@ -549,11 +552,11 @@ def test_create_task_bounds_serialized_utf8_payload_size_without_partial_persist
 ):
     payload = {"value": "é"}
     encoded = task_manager._json(payload).encode("utf-8")
-    monkeypatch.setattr(task_manager, "MAX_TASK_PAYLOAD_BYTES", len(encoded))
+    monkeypatch.setattr(task_queue_store, "MAX_TASK_PAYLOAD_BYTES", len(encoded))
     accepted = task_manager.create_task("bounded.payload", payload)
     assert accepted["payload"] == payload
 
-    monkeypatch.setattr(task_manager, "MAX_TASK_PAYLOAD_BYTES", len(encoded) - 1)
+    monkeypatch.setattr(task_queue_store, "MAX_TASK_PAYLOAD_BYTES", len(encoded) - 1)
     with pytest.raises(ValueError, match="serialized limit"):
         task_manager.create_task("oversized.payload", payload)
 
@@ -586,14 +589,16 @@ def test_task_checkpoint_and_result_records_are_bounded_before_state_changes(
     claimed = task_manager.claim_next_task("bounded-worker")
     assert claimed["id"] == task["id"]
 
-    monkeypatch.setattr(task_manager, "MAX_TASK_RECORD_BYTES", 8)
+    monkeypatch.setattr(task_lease_manager, "MAX_TASK_RECORD_BYTES", 8)
     with pytest.raises(ValueError, match="Task checkpoint exceeds"):
         task_manager.save_checkpoint(
-            task["id"], "bounded-worker", {"value": "checkpoint too large"}
+            task["id"], "bounded-worker", {"value": "checkpoint too large"},
+            lease_epoch=claimed["lease_epoch"],
         )
     with pytest.raises(ValueError, match="Task result exceeds"):
         task_manager.complete_task(
-            task["id"], "bounded-worker", {"value": "result too large"}
+            task["id"], "bounded-worker", {"value": "result too large"},
+            lease_epoch=claimed["lease_epoch"],
         )
 
     unchanged = task_manager.get_task(task["id"])
@@ -601,8 +606,8 @@ def test_task_checkpoint_and_result_records_are_bounded_before_state_changes(
     assert unchanged["checkpoint"] is None
     assert unchanged["result"] is None
 
-    monkeypatch.setattr(task_manager, "MAX_TASK_RECORD_BYTES", 1024)
+    monkeypatch.setattr(task_lease_manager, "MAX_TASK_RECORD_BYTES", 1024)
     completed = task_manager.complete_task(
-        task["id"], "bounded-worker", {"ok": True}
+        task["id"], "bounded-worker", {"ok": True}, lease_epoch=claimed["lease_epoch"]
     )
     assert completed["status"] == "succeeded"
