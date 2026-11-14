@@ -212,6 +212,8 @@ def test_chat_clamps_requested_context_to_verified_model_maximum(monkeypatch):
                     "llama.attention.value_length": 128,
                 },
             }
+        if path == "/api/ps":
+            return {"models": []}
         if path == "/api/chat":
             return {"message": {"content": "ok"}}
         raise AssertionError(path)
@@ -253,7 +255,7 @@ def test_chat_refuses_to_send_when_model_context_metadata_is_unavailable(monkeyp
     import pytest
     with pytest.raises(ollama.OllamaError, match="verifiable context_length"):
         ollama.chat("hello")
-    assert calls == ["/api/show"]
+    assert calls == ["/api/show", "/api/ps"]
 
 
 def test_model_context_metadata_requires_exact_architecture_metadata():
@@ -476,6 +478,8 @@ def test_chat_refuses_inference_when_hardware_safe_context_cannot_be_estimated(m
                 "details": {"family": "unknown"},
                 "model_info": {"unknown.context_length": 32768},
             }
+        if path == "/api/ps":
+            return {"models": []}
         raise AssertionError("No inference may run without a hardware-safe context.")
 
     monkeypatch.setattr(ollama, "_request", fake_request)
