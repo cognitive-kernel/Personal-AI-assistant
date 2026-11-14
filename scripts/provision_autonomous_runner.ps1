@@ -22,7 +22,7 @@ $appIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $AppAccount
 $runnerLocalName = Get-AutonomousLocalAccountName -AccountName $runnerIdentity
 if ($runnerLocalName -and ($runnerLocalName.Length -gt 20 -or $runnerLocalName -notmatch "^[A-Za-z0-9_.-]+$")) { throw "Invalid local Runner account name." }
 $progressPath = Join-Path $env:ProgramData "PersonalAIAssistant\autonomous-engineering"
-$appSid = Get-AccountSidValue $appIdentity
+$appSid = Get-AutonomousWindowsAccountSid -AccountName $appIdentity
 $null = Get-Command ollama -ErrorAction Stop
 $node = Get-Command node -ErrorAction Stop
 $npm = Get-Command npm -ErrorAction Stop
@@ -153,7 +153,7 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     $serviceState = (Get-CimInstance Win32_Service | Where-Object { $_.Name -eq $services[0].Name }).State
     if ($serviceState -ne "Running") { Start-Service -Name $services[0].Name -ErrorAction Stop }
     $service = Get-CimInstance Win32_Service -Filter "Name='$($services[0].Name)'"
-    if ($service.State -ne "Running" -or (Get-AccountSidValue $service.StartName) -ne (Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity)) {
+    if ($service.State -ne "Running" -or (Get-AutonomousWindowsAccountSid -AccountName $service.StartName) -ne (Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity)) {
         throw "Runner service did not restart under the verified non-administrator identity."
     }
     Write-Host "Existing Runner configuration preserved, uniquely labelled, and verified under $runnerIdentity."
