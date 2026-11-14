@@ -218,6 +218,8 @@ def test_context_preflight_uses_deterministic_variant_from_selected_base_model()
     ).read_text(encoding="utf-8")
 
     assert '$codexModel = "$baseModel-codex-ctx$selectedContext"' in script
+    assert "verify_ollama_tools.py" in script
+    assert 'model_is_loaded = $modelIsLoaded' in script
     assert 'from = $baseModel' in script
     assert '$existingContext.Success' in script
     assert "if ($Model -match '(?i)-codex-ctx[0-9]+" in script
