@@ -1,0 +1,38 @@
+name: Runner identity diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-runner-token:
+    name: Inspect Windows Runner identity and token
+    runs-on: [self-hosted, Windows, X64, ollama, autonomous-state-owner]
+    timeout-minutes: 5
+    steps:
+      - name: Report service identity and effective Windows token
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
+          $adminSid = New-Object System.Security.Principal.SecurityIdentifier("S-1-5-32-544")
+          $adminGroup = $identity.Groups | Where-Object { $_.Value -eq $adminSid.Value }
+          $service = Get-CimInstance Win32_Service -Filter "Name='actions.runner.cognitive-kernel-Personal-AI-assistant.IT-SOLEYMANI-ollama'"
+          [pscustomobject]@{
+            IdentityName = $identity.Name
+            IdentitySid = $identity.User.Value
+            IsAdministratorRole = $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+            AdministratorsSidInToken = [bool]$adminGroup
+            ServiceState = $service.State
+            ServiceStartName = $service.StartName
+            ProcessId = $PID
+          } | Format-List
+          if ($principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator) -or $adminGroup) {
+            throw "Runner process still has an administrative token."
+          }
+          if ($service.State -ne "Running") {
+            throw "Runner service is not running."
+          }
