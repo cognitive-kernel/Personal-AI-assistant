@@ -87,6 +87,12 @@ jobs:
             if (Test-Path -LiteralPath $inputFile) { Remove-Item -LiteralPath $inputFile -Force }
           }
           Write-Host "PowerShell-to-Python explicit-file context bridge passed."
+      - name: Verify Windows command and Codex process-tree ownership
+        run: >-
+          python -m pytest -vv
+          tests/test_autonomous_engineering_command_runner.py
+          tests/test_autonomous_engineering_codex_runner.py
+
       - name: Run real checkpoint watcher startup, stop, and recovery on Windows
         run: >-
           python -m pytest -q
