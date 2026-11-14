@@ -7,6 +7,7 @@ import pytest
 from app import db, learning, learning_execution, learning_method_orchestrator, task_manager
 from app.task_manager import TaskManagerError
 from app.task_worker import TaskContext
+from app.task_ownership import LEARNING_JOB_TASK_TYPE, TOPIC_QUALITY_TASK_TYPE
 from app.learning_topic_method_attempts import list_attempt_events
 
 
@@ -31,16 +32,21 @@ def method_lease_store(tmp_path, monkeypatch):
     return topic_ids
 
 
-def _reclaimed_context(monkeypatch):
+def _reclaimed_context(monkeypatch, task_type: str, payload: dict):
     now = datetime(2026, 11, 14, tzinfo=timezone.utc)
     monkeypatch.setattr(task_manager, "_now", lambda: now)
-    task = task_manager.create_task("learning.method.fence", {})
+    task = task_manager.create_task(task_type, payload, max_attempts=3)
     first = task_manager.claim_next_task("same-worker", lease_seconds=5)
     now += timedelta(seconds=6)
     second = task_manager.claim_next_task("same-worker", lease_seconds=30)
+    assert first is not None and second is not None
     assert first["id"] == second["id"] == task["id"]
-    stale = TaskContext(task_id=task["id"], worker_id="same-worker", lease_epoch=first["lease_epoch"])
-    current = TaskContext(task_id=task["id"], worker_id="same-worker", lease_epoch=second["lease_epoch"])
+    stale = TaskContext(
+        task_id=task["id"], worker_id="same-worker", lease_epoch=first["lease_epoch"]
+    )
+    current = TaskContext(
+        task_id=task["id"], worker_id="same-worker", lease_epoch=second["lease_epoch"]
+    )
     return stale, current
 
 
@@ -54,19 +60,27 @@ def _queue_method(topic_id, monkeypatch):
     domain_lease = learning_execution.claim_execution(job_id, "method-worker")
     assert domain_lease is not None
     learning_method_orchestrator.mark_method_running(job_id, execution_lease=domain_lease)
-    return job_id, domain_lease
+    return job_id
 
 
 def test_stale_task_owner_cannot_pass_or_advance_topic(method_lease_store, monkeypatch):
-    stale, current = _reclaimed_context(monkeypatch)
     topic_id = method_lease_store[0]
-    job_id, _domain_lease = _queue_method(topic_id, monkeypatch)
+    job_id = _queue_method(topic_id, monkeypatch)
     lesson_hash = "a" * 64
     with db.learning_connection() as connection:
         connection.execute(
             "UPDATE learning_jobs SET status='completed', lesson='completed lesson' WHERE id=?",
             (job_id,),
         )
+    stale, current = _reclaimed_context(
+        monkeypatch,
+        TOPIC_QUALITY_TASK_TYPE,
+        {
+            "job_id": job_id,
+            "path_topic_id": topic_id,
+            "content_sha256": lesson_hash,
+        },
+    )
 
     with pytest.raises(TaskManagerError, match="epoch is stale"):
         learning_method_orchestrator.complete_method(
@@ -113,14 +127,16 @@ def test_stale_task_owner_cannot_pass_or_advance_topic(method_lease_store, monke
 
 
 def test_stale_task_owner_cannot_record_failure_or_create_fallback(method_lease_store, monkeypatch):
-    stale, current = _reclaimed_context(monkeypatch)
     topic_id = method_lease_store[1]
-    job_id, _domain_lease = _queue_method(topic_id, monkeypatch)
+    job_id = _queue_method(topic_id, monkeypatch)
     with db.learning_connection() as connection:
         connection.execute(
             "UPDATE learning_jobs SET status='failed', error='provider timeout' WHERE id=?",
             (job_id,),
         )
+    stale, current = _reclaimed_context(
+        monkeypatch, LEARNING_JOB_TASK_TYPE, {"job_id": job_id}
+    )
 
     with pytest.raises(TaskManagerError, match="epoch is stale"):
         learning_method_orchestrator.record_generation_failure(
@@ -147,3 +163,37 @@ def test_stale_task_owner_cannot_record_failure_or_create_fallback(method_lease_
     assert [event["status"] for event in list_attempt_events(topic_id)] == [
         "queued", "running", "failed", "queued"
     ]
+
+
+def test_current_task_cannot_mutate_another_learning_job(method_lease_store, monkeypatch):
+    topic_id = method_lease_store[0]
+    target_job_id = _queue_method(topic_id, monkeypatch)
+    unrelated_job = learning.create_job(
+        "Unrelated topic",
+        path_topic_id=method_lease_store[1],
+        learning_method="ai_learning",
+        method_attempt_key=f"path-topic:{method_lease_store[1]}:method:ai_learning:attempt:1",
+    )
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE learning_jobs SET status='completed', lesson='completed lesson' WHERE id=?",
+            (target_job_id,),
+        )
+    _, context = _reclaimed_context(
+        monkeypatch,
+        TOPIC_QUALITY_TASK_TYPE,
+        {
+            "job_id": unrelated_job["id"],
+            "path_topic_id": method_lease_store[1],
+            "content_sha256": "b" * 64,
+        },
+    )
+    with pytest.raises(TaskManagerError, match="payload does not authorize"):
+        learning_method_orchestrator.complete_method(
+            target_job_id,
+            score=95,
+            evaluation_id=2,
+            content_sha256="a" * 64,
+            diagnosis={"passed": True},
+            task_context=context,
+        )

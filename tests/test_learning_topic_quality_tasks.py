@@ -13,8 +13,12 @@ from app.learning_topic_quality_tasks import (
 class RecordingContext:
     def __init__(self):
         self.checkpoints = []
+        self.contracts = []
 
-    def assert_current(self, connection=None):
+    def assert_current(
+        self, connection=None, *, expected_task_type=None, expected_payload=None
+    ):
+        self.contracts.append((expected_task_type, expected_payload))
         return None
 
     def checkpoint(self, value):

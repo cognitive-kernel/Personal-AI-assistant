@@ -343,7 +343,7 @@ def test_runtime_restarts_partial_worker_set_after_worker_thread_exits(runtime_s
     original_run_worker = TaskRuntime._run_worker
 
     def run_worker(runtime, worker):
-        if worker.worker_id.endswith("-1") and not failed_once.is_set():
+        if worker.worker_label.endswith("-1") and not failed_once.is_set():
             failed_once.set()
             worker_exited.set()
             return

@@ -118,7 +118,11 @@ def advance_after_failure(
         connection.execute("BEGIN IMMEDIATE")
         _assert_task_context(
             connection, task_context, task_type=expected_task_type,
-            payload_fields={"job_id": job_id},
+            payload_fields={
+                "job_id": job_id,
+                "path_topic_id": path_topic_id,
+                "content_sha256": _content_hash(job),
+            } if expected_task_type == TOPIC_QUALITY_TASK_TYPE else {"job_id": job_id},
         )
         gate = connection.execute(
             "SELECT state, current_job_id FROM learning_topic_quality_gates WHERE path_topic_id=?",
@@ -175,7 +179,11 @@ def complete_method(
         connection.execute("BEGIN IMMEDIATE")
         _assert_task_context(
             connection, task_context, task_type=TOPIC_QUALITY_TASK_TYPE,
-            payload_fields={"job_id": job_id},
+            payload_fields={
+                "job_id": job_id,
+                "path_topic_id": path_topic_id,
+                "content_sha256": content_sha256,
+            },
         )
         gate = connection.execute(
             "SELECT state, current_job_id FROM learning_topic_quality_gates WHERE path_topic_id=?",
@@ -249,7 +257,11 @@ def block_unavailable(
         connection.execute("BEGIN IMMEDIATE")
         _assert_task_context(
             connection, task_context, task_type=TOPIC_QUALITY_TASK_TYPE,
-            payload_fields={"job_id": job_id},
+            payload_fields={
+                "job_id": job_id,
+                "path_topic_id": path_topic_id,
+                "content_sha256": _content_hash(job),
+            },
         )
         gate = connection.execute(
             "SELECT state, current_job_id FROM learning_topic_quality_gates WHERE path_topic_id=?",

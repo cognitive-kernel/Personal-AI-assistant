@@ -341,8 +341,10 @@ def handle_learning_job(
                     if (
                         old_task is not None
                         and old_task["status"] in task_manager.ACTIVE_STATUSES
-                        and old_task["lease_expires_at"] is not None
-                        and old_task["lease_expires_at"] > now
+                        and (
+                            old_task["lease_expires_at"] is None
+                            or old_task["lease_expires_at"] > now
+                        )
                     ):
                         raise RetryableTaskError(
                             "Learning job is still owned by another live task execution."

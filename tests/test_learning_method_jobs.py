@@ -2,7 +2,9 @@ import concurrent.futures
 
 import pytest
 
-from app import db, learning, learning_execution, learning_method_orchestrator
+from app import db, learning, learning_execution, learning_method_orchestrator, task_manager
+from app.task_worker import TaskContext
+from app.task_ownership import LEARNING_JOB_TASK_TYPE
 from app.learning_topic_method_attempts import list_attempt_events
 
 
@@ -11,6 +13,7 @@ def method_job_store(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
+    task_manager.initialize_task_store()
     with db.learning_connection() as connection:
         path_id = int(connection.execute(
             "INSERT INTO learning_paths(curriculum_slug, title) VALUES ('method-jobs', 'Method jobs')"
@@ -21,6 +24,19 @@ def method_job_store(tmp_path, monkeypatch):
             (path_id,),
         ).lastrowid)
     return topic_id
+
+def _learning_task_context(job_id: int) -> TaskContext:
+    task = task_manager.create_task(
+        LEARNING_JOB_TASK_TYPE, {"job_id": job_id}, max_attempts=3
+    )
+    claimed = task_manager.claim_next_task(f"method-test-{job_id}", lease_seconds=300)
+    assert claimed is not None and claimed["id"] == task["id"]
+    return TaskContext(
+        task_id=task["id"],
+        worker_id=claimed["lease_owner"],
+        lease_epoch=claimed["lease_epoch"],
+    )
+
 
 
 def test_learning_job_execution_epoch_fences_stale_workers(method_job_store):
@@ -200,8 +216,13 @@ def test_generation_failure_advances_to_basic_once_and_is_replay_safe(method_job
             (job_id,),
         )
 
-    first = learning_method_orchestrator.record_generation_failure(job_id, reason="provider timeout")
-    replay = learning_method_orchestrator.record_generation_failure(job_id, reason="provider timeout")
+    task_context = _learning_task_context(job_id)
+    first = learning_method_orchestrator.record_generation_failure(
+        job_id, reason="provider timeout", task_context=task_context
+    )
+    replay = learning_method_orchestrator.record_generation_failure(
+        job_id, reason="provider timeout", task_context=task_context
+    )
 
     assert first["method"] == "basic_learning"
     assert replay["job"]["id"] == first["job"]["id"]
@@ -231,8 +252,9 @@ def test_three_method_failures_block_topic_without_fourth_method(method_job_stor
                 "UPDATE learning_jobs SET status='failed', error=? WHERE id=?",
                 (expected_method + " failed", job_id),
             )
+        task_context = _learning_task_context(job_id)
         transition = learning_method_orchestrator.record_generation_failure(
-            job_id, reason=expected_method + " failed"
+            job_id, reason=expected_method + " failed", task_context=task_context
         )
 
     assert transition["status"] == "blocked"
