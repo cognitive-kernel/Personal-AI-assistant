@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
@@ -74,7 +75,6 @@ def test_command_timeout_validation_rejects_boolean_and_non_positive_values(tmp_
     for timeout in (True, 0, -1):
         with pytest.raises(ValueError, match="positive integer"):
             run_command(command, cwd=tmp_path, env=None, capture=False, timeout_seconds=timeout)
-
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows Job Object owner-close contract.")
