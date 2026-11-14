@@ -1,5 +1,25 @@
 # Engineering Continuity Log
 
+## 2026-11-14 — PR #757 follow-up: controller-owned POSIX Codex process group
+
+### Root cause
+- The original POSIX process group was created by the Codex runner itself. If that runner crashed while its progress owner remained alive, the owner did not know the group ID and could start a retry while descendants remained.
+- The owner-loss monitor was still necessary for the opposite failure: if the progress owner died, the runner had to terminate the inherited tree itself.
+
+### Corrective change
+- Added autonomous_engineering_process_group.py as the shared POSIX process-group termination/drain contract.
+- The progress owner starts the Codex supervisor in a dedicated session/process group. Codex inherits the same group through --parent-group-managed.
+- When the supervisor exits, progress sends SIGTERM, waits, escalates to SIGKILL, and confirms no live non-zombie members remain before returning.
+- If the progress owner disappears, the Codex runner detects the missing owner ancestry and kills its complete inherited group.
+- The command runner and direct Codex runner reuse the shared process-group helper; cleanup behavior is no longer duplicated across modules.
+- Added regressions for supervisor crash while owner is alive and direct owner draining after runner exit.
+
+### Validation boundary
+- Exact-head CI is required for the new POSIX and Windows owner-bound tests. No target host, Runner, Codex, Ollama, or autonomous service was started; durable Pause remains enabled.
+
+---
+
+
 ## 2026-11-14 — PR #757 follow-up: controller owns the Windows Codex job
 
 ### Root cause
