@@ -10,11 +10,12 @@ from pydantic import BaseModel, Field, StrictBool, StrictInt
 from . import sandbox_consent, sandbox_tasks, task_manager
 from .db import get_settings
 from .task_routes import require_loopback_client
+from .module_settings import require_module_enabled
 
 router = APIRouter(
     prefix="/api/sandbox",
     tags=["sandbox"],
-    dependencies=[Depends(require_loopback_client)],
+    dependencies=[Depends(require_loopback_client), Depends(require_module_enabled("sandbox"))],
 )
 
 
