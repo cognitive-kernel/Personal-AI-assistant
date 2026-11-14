@@ -428,3 +428,13 @@
 - regression جدید تغییر release note در نتیجهٔ هفتم را شبیه‌سازی می‌کند؛ پایش باید آن را کشف و یک curriculum refresh نسخه‌دار صف‌بندی کند.
 - fingerprint دوره‌های قبلی ممکن است یک‌بار به‌دلیل گسترش نتایج تغییر کند؛ refresh افزایشی است و درس‌های تاریخی را بازنویسی نمی‌کند.
 - سقف ۳۰، اندازهٔ صفحهٔ هر query در adapter جست‌وجو است؛ این تغییر ادعای کشف تضمینی همهٔ منابع اینترنتی نیست.
+
+
+## 2026-11-14 — PR #757: execution ownership, locks, and bounded recovery
+
+- Root architectural defects addressed: Codex/controller descendants could outlive the owner and overlap a retry; durable-state and worktree locks did not themselves own OS process trees; task retry loops and helper commands lacked independent total deadlines; recovery workflow could repeat failures indefinitely.
+- Added separate process-tree command runner, Windows Job Object and POSIX process-group primitives, Codex owner-identity supervisor, durable state lock, validated retry policy, and workflow circuit breaker. Checkpoint Git operations are now routed through the same process-tree runner with a 120-second deadline; binary checkpoint patches remain byte-exact.
+- Regression coverage includes ownership loss, broken output pipe, supervisor crash with surviving descendants, timeout cleanup, Windows Job Object drain/assignment failure, POSIX process-group drain, checkpoint concurrency/recovery, and binary stdin preservation. Existing tests and assertions were retained.
+- Root-cause follow-ups from CI: repaired the temporary POSIX owner harness import path; guarded cleanup when a process test double has no PID; added byte-exact command input and checkpoint-runner delegation tests. Operator docs were corrected to the bounded retry/circuit-breaker policy.
+- PR [#757](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/757) remains draft and unmerged. Exact-head CI is being rerun after the latest test and documentation commits. The real non-admin Windows Runner sandbox smoke, long-duration soak, crash/restart acceptance, and independent security review remain open.
+- Durable Pause remains enabled. No Runner, service, local process, task dispatch, or autonomous execution was started; no task/checkpoint/user data was modified.
