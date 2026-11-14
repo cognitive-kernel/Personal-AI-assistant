@@ -62,7 +62,7 @@ def test_task_owner_rejects_task_mutation_and_preserves_owner_file(tmp_path: Pat
         owner_path = pending_task_owner_path(tmp_path)
         before = owner_path.read_bytes()
 
-        with pytest.raises(RuntimeError, match="does not match the task"):
+        with pytest.raises(RuntimeError, match="does not match task content"):
             claim_pending_task_owner_unlocked(
                 tmp_path, "Changed task", "3002", 1, source="recovery",
             )
@@ -93,13 +93,42 @@ def test_task_owner_requires_valid_run_identity_and_attempt(tmp_path: Path):
         )
 
 
+def test_task_digest_normalizes_all_supported_newline_styles():
+    assert task_digest("first line\nsecond line") == task_digest("first line\r\nsecond line")
+    assert task_digest("first line\nsecond line") == task_digest("first line\rsecond line")
+
+
+def test_owner_record_is_portable_between_windows_and_unix_newlines(tmp_path: Path):
+    with durable_state_lock(tmp_path):
+        original = claim_pending_task_owner_unlocked(
+            tmp_path, "first line\nsecond line", "4501", 1, source="manual_dispatch",
+        )
+        validated = validate_pending_task_owner_unlocked(
+            tmp_path, "first line\r\nsecond line", "4501", 1,
+        )
+
+    assert validated == original
+    assert validated["task_sha256"] == task_digest("first line\rsecond line")
+
+
 @pytest.mark.skipif(os.name != "nt", reason="PowerShell/.NET SHA-256 interoperability is Windows-only")
-def test_powershell_and_python_compute_identical_task_digest():
-    task = "Repair checkpoint ownership — خطای بازیابی"
+@pytest.mark.parametrize(
+    "task",
+    [
+        "Repair checkpoint ownership — خطای بازیابی",
+        "first line\nsecond line",
+        "first line\r\nsecond line",
+        "first line\rsecond line",
+        "first line\r\nsecond line\nthird line\rfourth line",
+    ],
+)
+def test_powershell_and_python_compute_identical_task_digest(task: str):
     module_path = Path(__file__).resolve().parents[1] / "scripts" / "AutonomousEngineeringTaskState.psm1"
+    escaped = task.replace("`", "``").replace('"', '`"').replace("\r", "`r").replace("\n", "`n")
     script = (
         f"Import-Module '{module_path}'; "
-        f"Get-AutonomousTaskDigest -Task '{task}'"
+        f'$task = "{escaped}"; '
+        "Get-AutonomousTaskDigest -Task $task"
     )
     result = subprocess.run(
         ["pwsh", "-NoProfile", "-Command", script],
@@ -110,30 +139,22 @@ def test_powershell_and_python_compute_identical_task_digest():
     )
     assert result.stdout.strip() == task_digest(task)
 
-def test_reconcile_quarantines_mismatched_owner_and_preserves_task(tmp_path: Path):
-    task_path = tmp_path / "pending-manual-task.txt"
-    task_path.write_text("Current durable task", encoding="utf-8")
+
+def test_reconcile_refuses_changed_task_and_preserves_owner(tmp_path: Path):
     owner_path = pending_task_owner_path(tmp_path)
     with durable_state_lock(tmp_path):
         claim_pending_task_owner_unlocked(
             tmp_path, "Previous task", "old-run", 1, source="manual_dispatch",
         )
         previous_owner = owner_path.read_bytes()
-        recovered = reconcile_pending_task_owner_unlocked(
-            tmp_path, "Current durable task", "new-run", 2, source="recovery",
-        )
-        validated = validate_pending_task_owner_unlocked(
-            tmp_path, "Current durable task", "new-run", 2,
-        )
 
-    backups = list(tmp_path.glob("pending-manual-task-owner.json.quarantine-*.json"))
-    assert len(backups) == 1
-    assert backups[0].read_bytes() == previous_owner
-    assert recovered == validated
-    assert recovered["task_sha256"] == task_digest("Current durable task")
-    assert recovered["owner_run_id"] == "new-run"
-    assert recovered["source"] == "recovery"
-    assert task_path.read_text(encoding="utf-8") == "Current durable task"
+        with pytest.raises(RuntimeError, match="does not match task content"):
+            reconcile_pending_task_owner_unlocked(
+                tmp_path, "Changed task", "new-run", 2, source="recovery",
+            )
+
+    assert owner_path.read_bytes() == previous_owner
+    assert not list(tmp_path.glob("pending-manual-task-owner.json.quarantine-*.json"))
 
 
 def test_reconcile_quarantines_malformed_owner_record(tmp_path: Path):

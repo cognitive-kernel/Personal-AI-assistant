@@ -2,10 +2,11 @@ Set-StrictMode -Version Latest
 
 function Get-AutonomousTaskDigest {
     param([Parameter(Mandatory=$true)][string]$Task)
+    $normalizedTask = $Task.Replace("`r`n", "`n").Replace("`r", "`n")
     $shaProvider = [System.Security.Cryptography.SHA256]::Create()
     try {
         return [BitConverter]::ToString(
-            $shaProvider.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Task))
+            $shaProvider.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($normalizedTask))
         ).Replace("-", "").ToLowerInvariant()
     } finally {
         $shaProvider.Dispose()
@@ -46,7 +47,7 @@ function Get-AutonomousTaskOwnerRecord {
         -not ($record.schema_version -is [int] -or $record.schema_version -is [long]) -or
         [long]$record.schema_version -ne 1 -or
         -not ($record.task_sha256 -is [string]) -or
-        [string]$record.task_sha256 -cne $taskDigest -or
+        [string]$record.task_sha256 -notmatch '^[0-9a-f]{64}$' -or
         -not ($record.owner_run_id -is [string]) -or
         [string]::IsNullOrWhiteSpace([string]$record.owner_run_id) -or
         -not ($record.submitted_run_id -is [string]) -or
@@ -69,7 +70,10 @@ function Get-AutonomousTaskOwnerRecord {
         -not ($record.source -is [string]) -or
         [string]$record.source -notin @("manual_dispatch", "recovery", "legacy_migration")
     ) {
-        throw "Pending task owner metadata violates schema v1 or does not match the pending task."
+        throw "Pending task owner metadata violates schema v1; preserving it."
+    }
+    if ([string]$record.task_sha256 -cne $taskDigest) {
+        throw "Pending task owner digest does not match the durable task; preserving both records."
     }
     return $record
 }
@@ -88,6 +92,9 @@ function Repair-AutonomousTaskOwnerRecord {
     try {
         $existing = Get-AutonomousTaskOwnerRecord -Path $Path -Task $Task
     } catch {
+        if ($_.Exception.Message -like "*digest does not match the durable task*") {
+            throw
+        }
         if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
             throw
         }

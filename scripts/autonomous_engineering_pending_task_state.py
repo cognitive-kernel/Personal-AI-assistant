@@ -20,7 +20,9 @@ def pending_task_owner_path(state_directory: Path) -> Path:
 
 
 def task_digest(task: str) -> str:
-    return hashlib.sha256(task.encode("utf-8")).hexdigest()
+    """Hash canonical LF text so Python and PowerShell agree on Windows files."""
+    canonical = task.replace("\r\n", "\n").replace("\r", "\n")
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _validate_owner_record(record: Any, task: str) -> dict[str, Any]:
@@ -35,7 +37,6 @@ def _validate_owner_record(record: Any, task: str) -> dict[str, Any]:
             "task_sha256", "owner_run_id", "submitted_run_id", "source"
         ))
         or not re.fullmatch(r"[0-9a-f]{64}", str(record.get("task_sha256", "")))
-        or record["task_sha256"] != task_digest(task)
         or any(
             isinstance(record.get(key), bool)
             or not isinstance(record.get(key), int)
@@ -52,7 +53,11 @@ def _validate_owner_record(record: Any, task: str) -> dict[str, Any]:
         or record["source"] not in _ALLOWED_SOURCES
     ):
         raise RuntimeError(
-            "Pending task owner metadata violates schema v1 or does not match the task; preserving it."
+            "Pending task owner metadata violates schema v1; preserving it."
+        )
+    if record["task_sha256"] != task_digest(task):
+        raise RuntimeError(
+            "Pending task owner digest does not match task content; preserving both records."
         )
     return record
 
@@ -138,8 +143,9 @@ def reconcile_pending_task_owner_unlocked(
     """Reconcile stale ownership metadata without changing the durable task.
 
     The caller must hold the shared state lock and prove that no other run is
-    active. A mismatched or unsupported owner record is preserved under a
-    unique quarantine filename before a new owner lease is committed.
+    active. Malformed or unsupported owner metadata is preserved under a
+    unique quarantine filename. A valid digest mismatch is treated as task
+    mutation and fails closed rather than transferring ownership.
     """
     owner_path = pending_task_owner_path(state_directory)
     try:
@@ -154,28 +160,34 @@ def reconcile_pending_task_owner_unlocked(
     try:
         existing = json.loads(raw.decode("utf-8"))
         _validate_owner_record(existing, task)
-    except (UnicodeDecodeError, ValueError, RuntimeError):
-        stamp = f"{run_id}-{run_attempt}-{time.time_ns()}"
-        backup_path = owner_path.with_name(f"{owner_path.name}.quarantine-{stamp}.json")
-        try:
-            owner_path.replace(backup_path)
-        except OSError as exc:
-            raise RuntimeError(
-                "Stale task ownership metadata could not be quarantined; preserving the task."
-            ) from exc
-        try:
-            return claim_pending_task_owner_unlocked(
-                state_directory, task, run_id, run_attempt, source="recovery",
-            )
-        except Exception:
-            # Restore the old record if the replacement could not be committed.
-            if not owner_path.exists() and backup_path.exists():
-                backup_path.replace(owner_path)
+    except RuntimeError as exc:
+        if "digest does not match task content" in str(exc):
             raise
+        stamp = f"{run_id}-{run_attempt}-{time.time_ns()}"
+    except (UnicodeDecodeError, ValueError):
+        stamp = f"{run_id}-{run_attempt}-{time.time_ns()}"
+    else:
+        return claim_pending_task_owner_unlocked(
+            state_directory, task, run_id, run_attempt, source=source,
+        )
 
-    return claim_pending_task_owner_unlocked(
-        state_directory, task, run_id, run_attempt, source=source,
-    )
+    backup_path = owner_path.with_name(f"{owner_path.name}.quarantine-{stamp}.json")
+    try:
+        owner_path.replace(backup_path)
+    except OSError as exc:
+        raise RuntimeError(
+            "Stale task ownership metadata could not be quarantined; preserving the task."
+        ) from exc
+    try:
+        return claim_pending_task_owner_unlocked(
+            state_directory, task, run_id, run_attempt, source="recovery",
+        )
+    except Exception:
+        # Restore the old record if the replacement could not be committed.
+        if not owner_path.exists() and backup_path.exists():
+            backup_path.replace(owner_path)
+        raise
+
 
 def validate_pending_task_owner_unlocked(
     state_directory: Path,

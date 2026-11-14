@@ -151,6 +151,8 @@ def test_manual_task_state_uses_one_cross_process_lock_and_capture_is_read_only(
     assert "AutonomousEngineeringTaskState.psm1" in script
     assert "pending-manual-task-owner.json" in script
     assert "Get-AutonomousTaskDigest" in task_state_module
+    assert 'Replace("`r`n", "`n").Replace("`r", "`n")' in task_state_module
+    assert "digest does not match the durable task" in task_state_module
     assert "Repair-AutonomousTaskOwnerRecord" in task_state_module
     assert "schema_version = 1" in task_state_module
     assert "claim_count" in task_state_module
