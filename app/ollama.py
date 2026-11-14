@@ -14,7 +14,7 @@ import urllib.request
 from typing import Any
 from .db import get_settings
 from .config import SETTING_DEFAULTS
-from .module_settings import PURPOSE_MODULES, is_module_enabled
+from .module_settings import PURPOSE_MODULES, ModuleDisabledError, is_module_enabled
 from .hardware import detect_hardware, ensure_resource_headroom, model_keep_alive, runtime_limits
 from .ollama_context import OllamaModelMetadataError, maximum_context_tokens
 from .pinned_http import PinnedHTTPHandler, PinnedHTTPSHandler
@@ -768,7 +768,7 @@ def chat(
     settings = get_settings()
     module = PURPOSE_MODULES[purpose]
     if not is_module_enabled(module, settings):
-        raise OllamaError(f"The {module} module is disabled in settings.")
+        raise ModuleDisabledError(module)
     prefix = purpose
     provider_profile = purpose
     hardware = detect_hardware()
@@ -959,7 +959,7 @@ def embed(texts: list[str], model: str | None = None) -> list[list[float]]:
     """Generate bounded local embeddings; reject malformed vectors rather than caching them."""
     settings = get_settings()
     if not is_module_enabled("embedding", settings):
-        raise OllamaError("The embedding module is disabled in settings.")
+        raise ModuleDisabledError("embedding")
     max_batch = settings.get(
         "embedding_max_batch_size", SETTING_DEFAULTS["embedding_max_batch_size"]
     )
