@@ -826,3 +826,14 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Follow-up exact-head CI on commit `395e73df8d39449e77116e3a080deca770762e34` was started; dependency audit completed successfully, while full tests, Windows storage regressions, Browser E2E, and CodeQL were still running at the checkpoint. A further portability refinement changed the harness root derivation to use `Path(__file__).resolve().parents[1]`; its new exact-head matrix must be checked independently.
 - Runtime safety: durable Pause remains enabled. No Runner, service, local process, task dispatch, or autonomous execution was started. No task/checkpoint/user data was changed.
 - Residual acceptance: full exact-head CI, real target-host Codex sandbox smoke/soak, crash/restart acceptance, and independent security review remain open. The target-host gates are intentionally not run while the system is paused.
+
+
+## 2026-11-14 — bounded checkpoint Git execution
+
+- Deep review found a remaining unbounded subprocess path in `autonomous_engineering_checkpoint.py`: watcher snapshots and checkpoint restore used direct `subprocess.run` calls for Git commands and binary `git apply`. These operations bypassed the shared process-tree owner and had no hard deadline.
+- Root cause: process ownership/deadline enforcement had been applied to controller and Codex commands, but the checkpoint module retained its older local subprocess helper.
+- Corrective change: route checkpoint Git status/diff and patch-check/apply operations through `autonomous_engineering_command_runner.run_command`, with a 120-second per-command deadline and the same Windows Job Object/POSIX process-group cleanup contract.
+- The command runner now accepts explicit text or byte stdin. Binary patch input is passed in byte mode and captured output is decoded only at the result boundary; the saved patch is never newline-translated or re-encoded.
+- Regression coverage: byte-for-byte stdin preservation and an assertion that checkpoint Git delegates to the bounded process-tree runner. Existing checkpoint restore/recovery integration tests remain enabled.
+- Operator documentation was corrected: recovery is no longer described as indefinite; it is bounded by two attempts/two hours per workflow run and a three-consecutive-failure circuit breaker. The pending task/checkpoint remain preserved while the breaker is open.
+- Exact-head CI for these follow-up changes is required. Durable Pause remains enabled; no Runner, service, local process, task dispatch, or autonomous execution was started. No task/checkpoint/user data was modified.
