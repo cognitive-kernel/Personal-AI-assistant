@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from . import curriculum_evolution
@@ -36,7 +36,7 @@ def generate_curriculum_proposals(path_id: int) -> dict[str, Any]:
 
 
 @router.get("/paths/{path_id}/curriculum-proposals")
-def get_curriculum_proposals(path_id: int, limit: int = 50) -> dict[str, Any]:
+def get_curriculum_proposals(path_id: int, limit: int = Query(default=50, ge=1, le=100)) -> dict[str, Any]:
     try:
         return curriculum_evolution.list_proposals(path_id=path_id, limit=limit)
     except KeyError as exc:

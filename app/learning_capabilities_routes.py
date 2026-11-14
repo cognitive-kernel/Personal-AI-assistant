@@ -4,7 +4,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, StrictInt
 
 from . import learning_capabilities, learning_practical, sandbox_consent, sandbox_tasks, task_manager
@@ -18,7 +18,7 @@ router = APIRouter(
 
 
 @router.get("/capabilities")
-def get_capabilities(path_id: int | None = None, limit: int = 200) -> dict[str, Any]:
+def get_capabilities(path_id: int | None = Query(default=None, ge=1), limit: int = Query(default=200, ge=1, le=500)) -> dict[str, Any]:
     try:
         return learning_capabilities.get_capability_map(path_id=path_id, limit=limit)
     except KeyError as exc:
