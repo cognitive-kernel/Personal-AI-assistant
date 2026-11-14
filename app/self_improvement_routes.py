@@ -9,11 +9,12 @@ from pydantic import BaseModel, Field, StrictBool, ConfigDict
 from . import self_improvement
 from .self_improvement import ProposalError
 from .task_routes import require_loopback_client
+from .module_settings import require_module_enabled
 
 router = APIRouter(
     prefix="/api/self-improvement",
     tags=["self-improvement"],
-    dependencies=[Depends(require_loopback_client)],
+    dependencies=[Depends(require_loopback_client), Depends(require_module_enabled("self_improvement"))],
 )
 
 
