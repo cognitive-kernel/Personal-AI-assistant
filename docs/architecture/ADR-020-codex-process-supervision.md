@@ -45,7 +45,7 @@ A target-Runner smoke exposed a second, independent failure below the Codex proc
 
 `Failed to create unified exec process: helper_unknown_error: open sandbox setup mutex`.
 
-The Runner is intentionally a non-administrator service identity. The pinned Codex CLI's upstream Windows sandbox helper creates the machine-wide mutex `Global\\CodexSandboxSetup` with the protected security descriptor `D:P(A;;GA;;;SY)(A;;GA;;;BA)`; the upstream source documents that this lock is for LocalSystem or an elevated administrator. A normal non-admin Runner identity is not granted access by that descriptor. This is an upstream helper authorization contract, not a stale application mutex, a Python worktree-lock conflict, or a reason to elevate the Runner.
+The Runner is intentionally a non-administrator service identity. The pinned Codex CLI's upstream Windows sandbox helper creates the machine-wide mutex `Global\CodexSandboxSetup` with the protected security descriptor `D:P(A;;GA;;;SY)(A;;GA;;;BA)`; the upstream source documents that this lock is for LocalSystem or an elevated administrator. A normal non-admin Runner identity is not granted access by that descriptor. This is an upstream helper authorization contract, not a stale application mutex, a Python worktree-lock conflict, or a reason to elevate the Runner.
 
 Primary evidence:
 - [Codex setup_mutex.rs at rust-v0.160.0](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/windows-sandbox-rs/src/setup_mutex.rs) defines the mutex name, descriptor, and identity contract.
