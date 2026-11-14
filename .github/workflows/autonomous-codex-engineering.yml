@@ -14,6 +14,11 @@ on:
         required: false
         type: string
         default: ""
+      replace_pending_task:
+        description: "Explicitly quarantine and replace an older pending task when no autonomous PR is open"
+        required: false
+        type: boolean
+        default: false
       context_length:
         description: "Optional manual Ollama context token count; blank selects a safe value automatically"
         required: false
@@ -152,6 +157,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           MANUAL_TASK: ${{ inputs.manual_task || '' }}
+          REPLACE_PENDING_TASK: ${{ inputs.replace_pending_task && 'true' || 'false' }}
         shell: powershell
         run: |
           & "$env:GITHUB_WORKSPACE\scripts\persist_autonomous_manual_task.ps1"

@@ -30,6 +30,24 @@ def test_manual_task_is_rejected_while_previous_autonomous_pr_is_open():
         raise AssertionError("A new manual task must not supersede an unaccepted PR.")
 
 
+def test_powershell_reconciles_github_pr_state_before_rejecting_a_replacement_task():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "scripts" / "persist_autonomous_manual_task.ps1").read_text(encoding="utf-8")
+    pr_reconciliation = script.index("if ($pendingPrFound)")
+    replacement_guard = script.index("Another manual task is still pending")
+    owner_validation = script.index("Repair-AutonomousTaskOwnerRecord")
+
+    workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    assert pr_reconciliation < replacement_guard < owner_validation
+    assert 'REPLACE_PENDING_TASK: ${{ inputs.replace_pending_task && \'true\' || \'false\' }}' in workflow
+    assert 'replace_pending_task=true' in script
+    assert 'quarantine-$replacementStamp' in script
+    assert 'compare/$mergeSha...main' in script
+    assert 'Repair-AutonomousPendingStateCleanup -StateDirectory $stateDir' in script
+
+
 def test_different_manual_task_cannot_replace_existing_pending_task():
     try:
         validate_manual_task_submission(
@@ -127,7 +145,7 @@ def test_early_manual_task_persistence_script_is_protected_and_validated_in_ci()
     assert "persist_autonomous_manual_task.ps1" in workflow
     assert "pending-autonomous-pr.json" in script
     assert "AUTONOMOUS_ENGINEERING_PROGRESS_DIR" in script
-    assert "awaiting owner merge or post-merge validation" in script
+    assert "still open and must be reviewed before another task can be accepted" in script
     assert "Write-RecoveredPendingPrRecord" in script
     assert "Multiple open autonomous PRs exist" in script
     assert "quarantine-" in script
