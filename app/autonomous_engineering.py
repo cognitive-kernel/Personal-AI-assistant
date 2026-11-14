@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
 from .autonomous_engineering_progress import get_progress, storage_accessible
-from .ollama_context import MIN_CODEX_CONTEXT_TOKENS, maximum_context_tokens, supports_tool_calling
+from .ollama_context import maximum_context_tokens, supports_tool_calling
 
 _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
 
@@ -81,13 +81,15 @@ _NoRedirectHandler = _services.NoRedirectHandler
 
 
 def _ollama_status(model: str) -> dict[str, Any]:
+    from .ollama import model_details
+
     return _services.ollama_status(
         model,
         build_opener=urllib.request.build_opener,
-        min_context_tokens=MIN_CODEX_CONTEXT_TOKENS,
         maximum_context_fn=maximum_context_tokens,
         supports_tool_calling_fn=supports_tool_calling,
         is_context_variant=_is_codex_context_variant,
+        recommended_context_fn=lambda selected_model: model_details(selected_model).get("recommended_context_tokens"),
     )
 
 
@@ -163,6 +165,7 @@ def collect_status() -> dict[str, Any]:
         "selectable_models": ollama.get("selectable_models", ollama.get("models", [])),
         "model_is_codex_context_variant": ollama.get("model_is_codex_context_variant", False),
         "model_context_length": ollama.get("model_context_length"),
+        "model_recommended_context_length": ollama.get("model_recommended_context_length"),
         "model_context_supported": ollama.get("model_context_supported", False),
         "model_context_error": ollama.get("model_context_error"),
         "model_capabilities": ollama.get("model_capabilities", []),
