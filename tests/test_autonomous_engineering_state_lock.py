@@ -214,6 +214,7 @@ def test_windows_state_root_rejects_process_only_configuration(
 
     monkeypatch.setattr(paths, "_is_windows", lambda: True)
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "user-only"))
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_REQUIRE_MACHINE_STATE_DIR", "true")
     _install_fake_machine_environment(monkeypatch, None)
 
     with pytest.raises(RuntimeError, match="process/user-scoped"):
