@@ -37,3 +37,25 @@ The Codex stream configuration also allowed a 15-minute idle interval, ten strea
 - Smoke failures become bounded and diagnosable instead of waiting through repeated long stream retries.
 - The supervisor adds a process boundary and a focused test surface; it does not alter task payloads, checkpoint contents, Git history, user data, or PR merge policy.
 - CI must verify timeout behavior, descendant cleanup, PID-reuse rejection, existing lock exclusion, and existing checkpoint recovery. A real target-Windows Runner soak remains an external acceptance gate.
+
+
+## 2026-11-14 addendum — Windows sandbox setup mutex and non-admin Runner
+
+A target-Runner smoke exposed a second, independent failure below the Codex process supervisor:
+
+`Failed to create unified exec process: helper_unknown_error: open sandbox setup mutex`.
+
+The Runner is intentionally a non-administrator service identity. The pinned Codex CLI's upstream Windows sandbox helper creates the machine-wide mutex `Global\\CodexSandboxSetup` with the protected security descriptor `D:P(A;;GA;;;SY)(A;;GA;;;BA)`; the upstream source documents that this lock is for LocalSystem or an elevated administrator. A normal non-admin Runner identity is not granted access by that descriptor. This is an upstream helper authorization contract, not a stale application mutex, a Python worktree-lock conflict, or a reason to elevate the Runner.
+
+Primary evidence:
+- [Codex setup_mutex.rs at rust-v0.160.0](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/windows-sandbox-rs/src/setup_mutex.rs) defines the mutex name, descriptor, and identity contract.
+- [Codex issue #50163](https://github.com/openai/codex/issues/50163) records the same failure under a non-administrator service identity after successful provisioning.
+- Run 43592197032 confirms the exact helper error in the elevated backend. Its standalone MXC compatibility probe passed. The earlier MXC agent smoke did not prove sandbox failure: its Python `-c` payload was malformed for the requested `cmd.exe` shell and generated repeated syntax/command errors before the elevated attempt.
+
+Corrective changes in PR #757:
+1. Use a shell-native `cmd.exe` create/read/delete probe (`echo`, `type`, `del`) so the smoke test validates the intended workspace operation without Python quoting ambiguity.
+2. Keep MXC as the first candidate and allow the restricted-token `unelevated` implementation as a separately smoke-tested fallback.
+3. Do not select the elevated helper for the non-admin Runner by default; it is incompatible with the observed mutex ACL contract. Do not make the Runner an administrator, change the upstream helper ACL, or fall back to unsandboxed execution.
+4. Bound the workflow smoke step independently at 15 minutes and classify this mutex error explicitly in sanitized diagnostics.
+
+**Acceptance boundary:** repository CI can validate argument construction, diagnostics, and process supervision. Only a successful real `codex exec` workspace create/read/delete smoke on the target Runner can establish which sandbox backend is operational. The target-host smoke remains pending while the durable autonomous-engineering pause is enabled. No pause setting, task/checkpoint data, host ACL, Runner identity, or production Codex installation was changed by this PR.
