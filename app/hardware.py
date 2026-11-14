@@ -413,19 +413,21 @@ def runtime_limits(
     thread_ceiling = max(1, int(cpu_count * cpu_limit / 100))
     requested_threads = configured_threads if configured_threads > 0 else thread_ceiling
     threads = min(thread_ceiling, requested_threads)
-    ram_budget = dynamic_ram_budget_gb(settings, hardware)
-    context = int(settings.get("ollama_num_ctx", 2048) or 2048)
-    if ram_budget is None or ram_budget < 4:
-        # Missing/low available-memory telemetry keeps a conservative context.
-        context = min(context, 2048)
-    elif ram_budget < 8:
-        context = min(context, 4096)
-    else:
-        # The model metadata, not a global constant, defines the hard ceiling.
-        context = min(context, 1048576)
-    if isinstance(maximum_context_tokens, int) and not isinstance(maximum_context_tokens, bool) and maximum_context_tokens >= 512:
+    configured_context = settings.get("ollama_num_ctx")
+    if isinstance(configured_context, bool) or not isinstance(configured_context, int) or configured_context <= 0:
+        if (
+            isinstance(maximum_context_tokens, bool)
+            or not isinstance(maximum_context_tokens, int)
+            or maximum_context_tokens <= 0
+        ):
+            raise ValueError("A positive configured or model-derived context is required.")
+        configured_context = maximum_context_tokens
+    context = configured_context
+    if isinstance(maximum_context_tokens, int) and not isinstance(maximum_context_tokens, bool) and maximum_context_tokens > 0:
         context = min(context, maximum_context_tokens)
-    return {"cpu_threads": max(1, threads), "num_ctx": max(512, context)}
+    # This is only the configured/model ceiling. The inference path separately
+    # clamps it to a fresh KV-cache and hardware-memory estimate before dispatch.
+    return {"cpu_threads": max(1, threads), "num_ctx": context}
 
 
 def model_keep_alive(

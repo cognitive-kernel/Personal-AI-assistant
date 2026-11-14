@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
 from .autonomous_engineering_progress import get_progress, storage_accessible
-from .ollama_context import MIN_CODEX_CONTEXT_TOKENS, maximum_context_tokens, supports_tool_calling
+from .ollama_context import maximum_context_tokens, supports_tool_calling
 
 _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
 
@@ -81,13 +81,26 @@ _NoRedirectHandler = _services.NoRedirectHandler
 
 
 def _ollama_status(model: str) -> dict[str, Any]:
+    from .ollama import _find_running_model_entry, _request as ollama_request, model_details
+
+    def _tool_probe(payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            running = ollama_request("/api/ps", timeout=4).get("models", [])
+            if isinstance(running, list) and _find_running_model_entry(running, str(payload.get("model") or "")) is None:
+                payload["keep_alive"] = "0"
+        except Exception:
+            # Unknown residency is not permission to unload a model.
+            pass
+        return ollama_request("/api/chat", payload, timeout=45)
+
     return _services.ollama_status(
         model,
         build_opener=urllib.request.build_opener,
-        min_context_tokens=MIN_CODEX_CONTEXT_TOKENS,
         maximum_context_fn=maximum_context_tokens,
         supports_tool_calling_fn=supports_tool_calling,
         is_context_variant=_is_codex_context_variant,
+        recommended_context_fn=lambda selected_model: model_details(selected_model).get("recommended_context_tokens"),
+        tool_probe_fn=_tool_probe,
     )
 
 
@@ -129,6 +142,7 @@ def collect_status() -> dict[str, Any]:
         "model_is_codex_context_variant": ollama.get("model_is_codex_context_variant") is True,
         "model_context_metadata_available": ollama.get("model_metadata_available") is True,
         "model_context_supported": ollama.get("model_context_supported") is True,
+        "model_tools_metadata_available": ollama.get("model_tools_metadata_available") is True,
         "model_supports_tools": ollama.get("model_supports_tools") is True,
         "codex_installed": codex["installed"],
         "runner_running": runner["running"],
@@ -139,7 +153,7 @@ def collect_status() -> dict[str, Any]:
     ready = all(
         value
         for key, value in checks.items()
-        if key not in {"codex_installed", "model_is_codex_context_variant"}
+        if key not in {"codex_installed", "model_is_codex_context_variant", "model_tools_metadata_available"}
     )
     active_runs = github.get("recent_runs", [])
     active = any(
@@ -163,9 +177,12 @@ def collect_status() -> dict[str, Any]:
         "selectable_models": ollama.get("selectable_models", ollama.get("models", [])),
         "model_is_codex_context_variant": ollama.get("model_is_codex_context_variant", False),
         "model_context_length": ollama.get("model_context_length"),
+        "model_recommended_context_length": ollama.get("model_recommended_context_length"),
         "model_context_supported": ollama.get("model_context_supported", False),
         "model_context_error": ollama.get("model_context_error"),
         "model_capabilities": ollama.get("model_capabilities", []),
+        "model_tools_metadata_available": ollama.get("model_tools_metadata_available", False),
+        "model_tools_verification_method": ollama.get("model_tools_verification_method", "unverified"),
         "model_supports_tools": ollama.get("model_supports_tools", False),
         "model_metadata_error": ollama.get("model_metadata_error"),
         "interval_hours": interval_hours,
@@ -295,10 +312,9 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
     if not local_model.get("model_metadata_available"):
         raise HTTPException(status_code=422, detail="حداکثر Context مدل از metadata معتبر Ollama قابل تأیید نیست؛ مدل ذخیره نشد.")
     if not local_model.get("model_context_supported"):
-        maximum = local_model.get("model_context_length")
         raise HTTPException(
             status_code=422,
-            detail=f"Codex به حداقل {MIN_CODEX_CONTEXT_TOKENS} توکن Context نیاز دارد؛ سقف مدل انتخاب‌شده {maximum} است و ذخیره نشد.",
+            detail="با توجه به metadata مدل و حافظهٔ آزاد فعلی، ظرفیت امن Context قابل محاسبه نیست؛ تنظیمات ذخیره نشد.",
         )
     if not local_model.get("model_supports_tools"):
         raise HTTPException(status_code=422, detail="مدل انتخاب‌شده قابلیت tools را اعلام نکرده و برای Codex قابل استفاده نیست.")

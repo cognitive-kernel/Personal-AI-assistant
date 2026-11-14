@@ -14,6 +14,7 @@ $ollamaOnline = $false
 $modelInstalled = $false
 $modelContextLength = $null
 $modelSupportsTools = $false
+$toolVerificationDetail = "Tool calling has not been verified."
 try {
     $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 4 -MaximumRedirection 0
     $ollamaOnline = $true
@@ -23,19 +24,36 @@ try {
         $architecture = [string]$modelInfo.details.family
         $contextKey = $architecture + ".context_length"
         $rawContext = $modelInfo.model_info.PSObject.Properties[$contextKey]
+        if (-not $rawContext) {
+            $declaredArchitecture = $modelInfo.model_info.PSObject.Properties["general.architecture"]
+            if ($declaredArchitecture) {
+                $architecture = [string]$declaredArchitecture.Value
+                $contextKey = $architecture + ".context_length"
+                $rawContext = $modelInfo.model_info.PSObject.Properties[$contextKey]
+            }
+        }
         $parsedContext = 0L
-        if ($rawContext -and [int64]::TryParse([string]$rawContext.Value, [ref]$parsedContext) -and $parsedContext -ge 512) {
+        if ($rawContext -and [int64]::TryParse([string]$rawContext.Value, [ref]$parsedContext) -and $parsedContext -gt 0) {
             $modelContextLength = $parsedContext
         }
-        $modelSupportsTools = @($modelInfo.capabilities | ForEach-Object { [string]$_ }) -contains "tools"
+        $capabilitiesProperty = $modelInfo.PSObject.Properties["capabilities"]
+        if ($capabilitiesProperty -and $null -ne $capabilitiesProperty.Value) {
+            $modelSupportsTools = @($capabilitiesProperty.Value | ForEach-Object { [string]$_ }) -contains "tools"
+            $toolVerificationDetail = if ($modelSupportsTools) { "Ollama model capabilities metadata confirms tools" } else { "Ollama model capabilities metadata explicitly omits tools" }
+        } else {
+            $toolProbeScript = Join-Path $PSScriptRoot "verify_ollama_tools.py"
+            & python $toolProbeScript --model $model 2>&1 | Out-Null
+            $modelSupportsTools = ($LASTEXITCODE -eq 0)
+            $toolVerificationDetail = if ($modelSupportsTools) { "Live Ollama tool-call probe passed" } else { "Live Ollama tool-call probe failed" }
+        }
     }
 } catch {}
 $checks += [pscustomobject]@{ Component = "Ollama server"; Ready = $ollamaOnline; Detail = if ($ollamaOnline) { "127.0.0.1:11434" } else { "Start the local Ollama service" } }
 $checks += [pscustomobject]@{ Component = "Saved model selection"; Ready = (-not [string]::IsNullOrWhiteSpace($model)); Detail = if ($model) { $model } else { "Select and save an installed Ollama model in /autonomous-engineering" } }
 $checks += [pscustomobject]@{ Component = "Base model selection"; Ready = -not $modelIsContextVariant; Detail = if ($modelIsContextVariant) { "Generated Codex context variants cannot be selected as base models" } else { "Original Ollama model selected" } }
 $checks += [pscustomobject]@{ Component = "Local model"; Ready = $modelInstalled; Detail = if ($modelInstalled) { $model } elseif (-not $model) { "No model has been selected and saved" } else { "Saved model is not installed in Ollama" } }
-$checks += [pscustomobject]@{ Component = "Model context metadata"; Ready = ($null -ne $modelContextLength -and $modelContextLength -ge 64000); Detail = if ($null -eq $modelContextLength) { "Ollama /api/show did not report a valid architecture context_length" } elseif ($modelContextLength -lt 64000) { "$modelContextLength tokens maximum; Codex requires at least 64000" } else { "$modelContextLength tokens maximum; Codex minimum satisfied" } }
-$checks += [pscustomobject]@{ Component = "Model tool calling"; Ready = $modelSupportsTools; Detail = if ($modelSupportsTools) { "Ollama advertises tools capability" } else { "Selected model does not advertise tools capability required by Codex" } }
+$checks += [pscustomobject]@{ Component = "Model context metadata"; Ready = ($null -ne $modelContextLength -and $modelContextLength -gt 0); Detail = if ($null -eq $modelContextLength) { "Ollama /api/show did not report a valid architecture context_length" } elseif ($modelContextLength -le 0) { "$modelContextLength tokens maximum; positive model context metadata verified" } else { "$modelContextLength tokens maximum; positive model context metadata verified" } }
+$checks += [pscustomobject]@{ Component = "Model tool calling"; Ready = $modelSupportsTools; Detail = $toolVerificationDetail }
 
 $ghCommand = Get-Command gh -ErrorAction SilentlyContinue
 $ghReady = $false

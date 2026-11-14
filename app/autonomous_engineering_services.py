@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 import psutil
 import urllib.error
 import urllib.request
@@ -10,7 +11,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from .ollama_context import OllamaModelMetadataError
+from .ollama_context import OllamaModelMetadataError, resolve_model_architecture
 
 
 class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -20,7 +21,56 @@ class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_context_fn, supports_tool_calling_fn, is_context_variant) -> dict[str, Any]:
+_TOOL_PROBE_CACHE: dict[tuple[str, str], tuple[float, bool]] = {}
+_TOOL_PROBE_TTL_SECONDS = 600
+
+
+def _probe_tool_calling(request_fn, model: str, digest: str) -> bool:
+    """Verify a real local tool-call response through Ollama's guarded inference path."""
+    key = (model, digest)
+    cached = _TOOL_PROBE_CACHE.get(key)
+    now = time.monotonic()
+    if cached and now - cached[0] < _TOOL_PROBE_TTL_SECONDS:
+        return cached[1]
+    payload = {
+        "model": model,
+        "stream": False,
+        "messages": [
+            {
+                "role": "system",
+                "content": "This is a local compatibility check. Call the provided function exactly once. Do not answer in plain text.",
+            },
+            {"role": "user", "content": "Call the compatibility probe function now."},
+        ],
+        "tools": [{
+            "type": "function",
+            "function": {
+                "name": "autonomous_engineering_capability_probe",
+                "description": "Confirms that the model can emit a structured tool call.",
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+        }],
+        "options": {"temperature": 0, "num_predict": 64},
+        "think": False,
+    }
+    supported = False
+    try:
+        result = request_fn(payload)
+        message = result.get("message") if isinstance(result, dict) else None
+        calls = message.get("tool_calls") if isinstance(message, dict) else None
+        supported = isinstance(calls, list) and any(
+            isinstance(call, dict)
+            and isinstance(call.get("function"), dict)
+            and call["function"].get("name") == "autonomous_engineering_capability_probe"
+            for call in calls
+        )
+    except Exception:
+        supported = False
+    _TOOL_PROBE_CACHE[key] = (now, supported)
+    return supported
+
+
+def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool_calling_fn, is_context_variant, recommended_context_fn=None, tool_probe_fn=None) -> dict[str, Any]:
     empty = {
         "online": False,
         "model": model,
@@ -30,11 +80,14 @@ def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_conte
         "models": [],
         "selectable_models": [],
         "model_context_length": None,
+        "model_recommended_context_length": None,
         "model_capabilities": [],
+        "model_tools_metadata_available": False,
+        "model_tools_verification_method": "unverified",
         "model_supports_tools": False,
         "model_metadata_available": False,
         "model_context_supported": False,
-        "model_context_error": f"Codex requires at least {min_context_tokens} context tokens.",
+        "model_context_error": "A hardware-safe context allocation has not been verified.",
         "model_metadata_error": "Ollama metadata is unavailable.",
     }
     # Local Ollama metadata must never be sent through an environment proxy.
@@ -101,6 +154,10 @@ def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_conte
         model_info = details_payload.get("model_info") if isinstance(details_payload.get("model_info"), dict) else {}
         architecture = details.get("family")
         try:
+            architecture = resolve_model_architecture(model_info, architecture)
+        except OllamaModelMetadataError:
+            architecture = architecture if isinstance(architecture, str) else None
+        try:
             context_length = maximum_context_fn(model_info, architecture)
         except OllamaModelMetadataError:
             context_length = None
@@ -109,18 +166,71 @@ def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_conte
             value for value in raw_capabilities
             if isinstance(value, str) and value
         }) if isinstance(raw_capabilities, list) else []
+        tools_metadata_available = isinstance(raw_capabilities, list)
+        model_entry = next(
+            (item for item in models if isinstance(item, dict) and item.get("name") == model),
+            {},
+        )
+        model_digest = str(model_entry.get("digest") or "")
+        if tools_metadata_available:
+            model_supports_tools = supports_tool_calling_fn(capabilities)
+            tools_verification_method = "ollama_model_capabilities"
+        else:
+            model_supports_tools = False
+            tools_verification_method = "unverified"
         metadata_available = context_length is not None
-        context_supported = metadata_available and context_length >= min_context_tokens
+        recommended_context = None
+        recommendation_error = None
+        if metadata_available and callable(recommended_context_fn):
+            prefix = f"{architecture}." if isinstance(architecture, str) and architecture else ""
+            kv_dimensions_present = bool(prefix) and all(
+                isinstance(model_info.get(key), int)
+                and not isinstance(model_info.get(key), bool)
+                and model_info.get(key) > 0
+                for key in (
+                    f"{prefix}block_count",
+                    f"{prefix}attention.key_length",
+                    f"{prefix}attention.value_length",
+                )
+            ) and any(
+                isinstance(model_info.get(f"{prefix}{suffix}"), int)
+                and not isinstance(model_info.get(f"{prefix}{suffix}"), bool)
+                and model_info.get(f"{prefix}{suffix}") > 0
+                for suffix in ("attention.head_count_kv", "attention.head_count")
+            )
+            if not kv_dimensions_present:
+                recommendation_error = "Ollama did not expose enough architecture-specific KV-cache metadata to calculate a hardware-safe context."
+            else:
+                try:
+                    candidate = recommended_context_fn(model)
+                    if isinstance(candidate, int) and not isinstance(candidate, bool) and candidate > 0:
+                        recommended_context = min(candidate, context_length)
+                    else:
+                        recommendation_error = "Current hardware and model metadata do not yield a safe context allocation."
+                except Exception as exc:
+                    recommendation_error = f"Hardware context calculation failed: {type(exc).__name__}"
+        context_supported = recommended_context is not None
+        # Probe only after the hardware estimate: a first probe may load the model,
+        # which changes free RAM and would otherwise cause the same weights to be
+        # subtracted twice on the next status refresh.
+        if not tools_metadata_available:
+            if context_supported and callable(tool_probe_fn):
+                model_supports_tools = _probe_tool_calling(tool_probe_fn, model, model_digest)
+                tools_verification_method = "live_tool_call_probe" if model_supports_tools else "unverified"
+            else:
+                tools_verification_method = "skipped_no_safe_context" if not context_supported else "probe_unavailable"
         result.update({
             "model_context_length": context_length,
+            "model_recommended_context_length": recommended_context,
             "model_capabilities": capabilities,
-            "model_supports_tools": supports_tool_calling_fn(capabilities),
+            "model_tools_metadata_available": tools_metadata_available,
+            "model_tools_verification_method": tools_verification_method,
+            "model_supports_tools": model_supports_tools,
             "model_metadata_available": metadata_available,
             "model_context_supported": context_supported,
             "model_context_error": (
                 None if context_supported else
-                f"Selected model context is below the Codex minimum of {min_context_tokens} tokens."
-                if metadata_available else
+                recommendation_error if metadata_available else
                 "Selected model context metadata is unavailable."
             ),
             "model_metadata_error": (

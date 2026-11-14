@@ -23,22 +23,22 @@ def test_runtime_limits_respect_configured_thread_limit():
     assert limits["cpu_threads"] == 2
 
 
-def test_runtime_limits_reduce_context_for_low_memory():
+def test_runtime_limits_do_not_apply_a_fixed_low_memory_context_cap():
     limits = runtime_limits(
         {"ollama_num_thread": 0, "ollama_num_ctx": 8192},
         {"logical_cpu_count": 2, "total_ram_gb": 8, "available_ram_gb": 4},
     )
 
-    assert limits == {"cpu_threads": 1, "num_ctx": 2048}
+    assert limits == {"cpu_threads": 1, "num_ctx": 8192}
 
 
-def test_runtime_limits_apply_middle_memory_cap():
+def test_runtime_limits_do_not_apply_a_fixed_middle_memory_context_cap():
     limits = runtime_limits(
         {"ollama_num_thread": 0, "ollama_num_ctx": 8192},
         {"logical_cpu_count": 6, "total_ram_gb": 16, "available_ram_gb": 10},
     )
 
-    assert limits == {"cpu_threads": 5, "num_ctx": 4096}
+    assert limits == {"cpu_threads": 5, "num_ctx": 8192}
 
 
 def test_runtime_limits_clamp_to_selected_model_maximum():
@@ -50,31 +50,31 @@ def test_runtime_limits_clamp_to_selected_model_maximum():
     assert limits["num_ctx"] == 32768
 
 
-def test_runtime_limits_enforce_minimum_context():
+def test_runtime_limits_preserve_positive_configured_context_without_a_fixed_floor():
     limits = runtime_limits(
         {"ollama_num_thread": 0, "ollama_num_ctx": 128},
         {"logical_cpu_count": 6, "total_ram_gb": 32, "available_ram_gb": 25},
     )
 
-    assert limits == {"cpu_threads": 5, "num_ctx": 512}
+    assert limits == {"cpu_threads": 5, "num_ctx": 128}
 
 
-def test_runtime_limits_use_conservative_context_when_ram_is_unknown():
+def test_runtime_limits_preserve_context_when_ram_is_unknown():
     limits = runtime_limits(
         {"ollama_num_thread": 0, "ollama_num_ctx": 8192},
         {"logical_cpu_count": 6, "total_ram_gb": None},
     )
 
-    assert limits == {"cpu_threads": 5, "num_ctx": 2048}
+    assert limits == {"cpu_threads": 5, "num_ctx": 8192}
 
 
-def test_runtime_limits_use_conservative_context_when_ram_field_is_missing():
+def test_runtime_limits_preserve_context_when_ram_field_is_missing():
     limits = runtime_limits(
         {"ollama_num_thread": 0, "ollama_num_ctx": 8192},
         {"logical_cpu_count": 6},
     )
 
-    assert limits == {"cpu_threads": 5, "num_ctx": 2048}
+    assert limits == {"cpu_threads": 5, "num_ctx": 8192}
 
 
 
@@ -455,3 +455,12 @@ def test_windows_gpu_shared_memory_is_capped_by_host_ram_available(monkeypatch):
     assert device["usable_shared_memory_free_mb"] == 1024
     assert device["usable_memory_free_mb"] == 1792
     assert device["usable_memory_scope"] == "dedicated+shared"
+
+
+
+def test_runtime_limits_fail_closed_when_no_context_is_configured_or_model_derived():
+    with pytest.raises(ValueError, match="positive configured or model-derived context"):
+        runtime_limits(
+            {"ollama_num_thread": 4},
+            {"logical_cpu_count": 8, "total_ram_gb": 32, "available_ram_gb": 25},
+        )

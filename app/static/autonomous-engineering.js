@@ -112,10 +112,24 @@
       const modelReady = checks.model_installed && checks.model_selectable && checks.model_context_metadata_available && checks.model_context_supported && checks.model_supports_tools;
       labels.model.textContent = stateText(modelReady);
       const contextLength = Number(data.model_context_length);
-      const contextText = Number.isSafeInteger(contextLength) && contextLength >= 512
-        ? "؛ حداکثر Context مدل: " + contextLength.toLocaleString() + " توکن" + (contextLength >= 64000 ? "؛ حداقل Codex تأمین است" : "؛ Codex حداقل ۶۴٬۰۰۰ توکن می‌خواهد")
+      const recommendedContext = Number(data.model_recommended_context_length);
+      const contextText = Number.isSafeInteger(contextLength) && contextLength > 0
+        ? "؛ حداکثر Context مدل: " + contextLength.toLocaleString() + " توکن" +
+          (Number.isSafeInteger(recommendedContext) && recommendedContext > 0
+            ? "؛ Context امن متناسب با سخت‌افزار: " + recommendedContext.toLocaleString() + " توکن"
+            : "؛ ظرفیت امن متناسب با سخت‌افزار قابل محاسبه نیست")
         : "؛ حداکثر Context از metadata مدل تأیید نشد";
-      const toolsText = checks.model_supports_tools ? "؛ قابلیت tools تأیید شد" : "؛ قابلیت tools تأیید نشد";
+      const toolsText = checks.model_supports_tools
+        ? (data.model_tools_verification_method === "live_tool_call_probe"
+          ? "؛ قابلیت tools با آزمون واقعی تأیید شد"
+          : "؛ قابلیت tools در metadata مدل تأیید شد")
+        : checks.model_tools_metadata_available
+          ? "؛ مدل قابلیت tools را اعلام نکرده است"
+          : data.model_tools_verification_method === "skipped_no_safe_context"
+            ? "؛ آزمون tools تا تأیید ظرفیت امن Context اجرا نشد"
+            : data.model_tools_verification_method === "probe_unavailable"
+              ? "؛ ابزار بررسی زنده قابلیت tools در دسترس نیست"
+              : "؛ metadata موجود نیست و آزمون واقعی tools نیز موفق نشد";
       const modelLabel = data.model ? "مدل ذخیره‌شده: " + String(data.model) : "هنوز مدلی ذخیره نشده است";
       const installationText = data.model && checks.model_is_codex_context_variant
         ? "؛ این نسخهٔ داخلی Context است؛ مدل اصلی را انتخاب و ذخیره کنید"

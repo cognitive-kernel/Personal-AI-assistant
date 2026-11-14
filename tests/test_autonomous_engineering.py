@@ -226,9 +226,9 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
         def open(self, request, timeout):
             captured.setdefault("requests", []).append((request.full_url, timeout))
             if request.full_url.endswith("/api/tags"):
-                return io.BytesIO(b'{"models":[{"name":"gpt-oss:20b"}]}')
+                return io.BytesIO(b'{"models":[{"name":"gpt-oss:20b","size":5368709120}]}')
             return io.BytesIO(
-                b'{"details":{"family":"llama"},"model_info":{"llama.context_length":65536},'
+                b'{"details":{"family":"llama"},"model_info":{"llama.context_length":65536,"llama.block_count":32,"llama.attention.head_count_kv":8,"llama.attention.key_length":128,"llama.attention.value_length":128},'
                 b'"capabilities":["completion","tools"]}'
             )
 
@@ -248,6 +248,8 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
     monkeypatch.setenv("HTTP_PROXY", "http://proxy.example:8080")
     monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example:8080")
     monkeypatch.setattr(agent.urllib.request, "build_opener", fake_build_opener)
+    from app import ollama
+    monkeypatch.setattr(ollama, "model_details", lambda model: {"recommended_context_tokens": 32768})
 
     result = agent._ollama_status("gpt-oss:20b")
 
@@ -263,8 +265,91 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
     assert result["online"] is True
     assert result["model_installed"] is True
     assert result["model_context_length"] == 65536
+    assert result["model_recommended_context_length"] == 32768
     assert result["model_supports_tools"] is True
     assert result["model_context_supported"] is True
+
+
+def test_standalone_ollama_tool_probe_uses_local_endpoint_and_structured_tool_call(monkeypatch):
+    from scripts import verify_ollama_tools
+
+    captured = {}
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            if request.full_url.endswith("/api/ps"):
+                return io.BytesIO(json.dumps({"models": []}).encode("utf-8"))
+            captured["url"] = request.full_url
+            captured["timeout"] = timeout
+            captured["payload"] = json.loads(request.data.decode("utf-8"))
+            return io.BytesIO(json.dumps({
+                "message": {"tool_calls": [{
+                    "function": {"name": "autonomous_engineering_capability_probe", "arguments": {}}
+                }]}
+            }).encode("utf-8"))
+
+    monkeypatch.setattr(verify_ollama_tools.urllib.request, "build_opener", lambda *args: FakeOpener())
+
+    assert verify_ollama_tools.verify_tool_calling("gpt-oss:20b") is True
+    assert captured["url"] == "http://127.0.0.1:11434/api/chat"
+    assert captured["timeout"] == 45
+    assert captured["payload"]["think"] is False
+    assert captured["payload"]["keep_alive"] == "0"
+    assert captured["payload"]["tools"][0]["function"]["name"] == "autonomous_engineering_capability_probe"
+
+
+def test_ollama_status_probes_tool_calling_when_capabilities_metadata_is_missing(monkeypatch):
+    from app import ollama
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            if request.full_url.endswith("/api/tags"):
+                return io.BytesIO(json.dumps({
+                    "models": [{"name": "gpt-oss:20b", "size": 5 * 1024**3, "digest": "sha256:model"}]
+                }).encode("utf-8"))
+            if request.full_url.endswith("/api/show"):
+                return io.BytesIO(json.dumps({
+                    "details": {"family": "incorrect-family"},
+                    "model_info": {
+                        "general.architecture": "gptoss",
+                        "gptoss.context_length": 131072,
+                        "gptoss.block_count": 24,
+                        "gptoss.attention.head_count_kv": 8,
+                        "gptoss.attention.key_length": 64,
+                        "gptoss.attention.value_length": 64,
+                    },
+                }).encode("utf-8"))
+            if request.full_url.endswith("/api/chat"):
+                return io.BytesIO(json.dumps({
+                    "message": {"tool_calls": [{
+                        "function": {"name": "autonomous_engineering_capability_probe", "arguments": {}}
+                    }]}
+                }).encode("utf-8"))
+            raise AssertionError(request.full_url)
+
+    agent._services._TOOL_PROBE_CACHE.clear()
+    monkeypatch.setattr(agent.urllib.request, "build_opener", lambda *args: FakeOpener())
+    monkeypatch.setattr(ollama, "model_details", lambda model: {"recommended_context_tokens": 32768})
+    probe_calls = []
+    def fake_probe_request(path, payload=None, timeout=None):
+        probe_calls.append((path, payload, timeout))
+        if path == "/api/ps":
+            return {"models": []}
+        return {"message": {"tool_calls": [{
+            "function": {"name": "autonomous_engineering_capability_probe", "arguments": {}}
+        }]}}
+    monkeypatch.setattr(ollama, "_request", fake_probe_request)
+
+    result = agent._ollama_status("gpt-oss:20b")
+
+    assert result["model_context_length"] == 131072
+    assert result["model_supports_tools"] is True
+    assert result["model_tools_metadata_available"] is False
+    assert result["model_tools_verification_method"] == "live_tool_call_probe"
+    assert [call[0] for call in probe_calls] == ["/api/ps", "/api/chat"]
+    assert probe_calls[1][2] == 45
+    assert probe_calls[1][1]["think"] is False
+    assert probe_calls[1][1]["keep_alive"] == "0"
 
 
 def test_ollama_status_lists_installed_models_without_selecting_one(monkeypatch):
@@ -1196,7 +1281,7 @@ def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_c
     assert context_gate.count("if ($VerifyOnly) {") == 1
     assert context_gate.count("OLLAMA_RUNTIME_CONTEXT_OK") == 1
     assert "if ($allocated -lt $selectedContext)" not in context_gate
-    assert "-lt 64000" in context_gate
+    assert "-le 0" in context_gate
     verify_only = context_gate.split("if ($VerifyOnly) {", 1)[1].split("} else {", 1)[0]
     assert "$modelInfo.modelfile" in verify_only
     assert "PARAMETER\\s+num_ctx" in verify_only
@@ -1252,7 +1337,7 @@ def test_ollama_status_returns_every_installed_model_without_inserting_defaults(
     assert result["model_installed"] is True
     assert result["model_metadata_available"] is True
     assert result["model_context_supported"] is False
-    assert "64000" in result["model_context_error"]
+    assert "hardware-safe context" in result["model_context_error"]
 
 
 def test_ollama_status_keeps_server_online_when_selected_model_metadata_fails(monkeypatch):
@@ -1313,13 +1398,13 @@ def test_app_and_runner_readiness_scripts_require_model_context_and_tool_capabil
         assert ".context_length" in script
         assert '"tools"' in script
         assert "Model context metadata" in script
-        assert "-ge 64000" in script
+        assert "-gt 0" in script
         assert "Model tool calling" in script
 
     provisioning = (root / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
     assert ".context_length" in provisioning
     assert all("-MaximumRedirection 0" in line for line in provisioning.splitlines() if "http://127.0.0.1:11434" in line and "Invoke-RestMethod" in line)
-    assert "-lt 64000" in provisioning
+    assert "-le 0" in provisioning
     assert '"tools"' in provisioning
 
 def test_master_engineering_prompt_requires_known_defect_closure_before_code_changes():

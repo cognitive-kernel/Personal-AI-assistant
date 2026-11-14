@@ -14,7 +14,7 @@ import urllib.request
 from typing import Any
 from .db import get_settings
 from .hardware import detect_hardware, ensure_resource_headroom, model_keep_alive, runtime_limits
-from .ollama_context import OllamaModelMetadataError, maximum_context_tokens
+from .ollama_context import OllamaModelMetadataError, maximum_context_tokens, resolve_model_architecture
 
 class OllamaError(RuntimeError):
     def __init__(self, message: str, *, retryable: bool = False) -> None:
@@ -262,7 +262,10 @@ def _model_memory_estimate(
     context_tokens: int | None = None,
 ) -> dict[str, Any] | None:
     """Build a conservative model-memory estimate from Ollama's measured metadata."""
-    architecture = str(details.get("family") or "").strip()
+    try:
+        architecture = resolve_model_architecture(model_info, details.get("family"))
+    except OllamaModelMetadataError:
+        architecture = str(details.get("family") or "").strip()
 
     def metadata_number(suffix: str) -> int | None:
         preferred = f"{architecture}{suffix}" if architecture else None
@@ -331,9 +334,12 @@ def _recommended_context_tokens(
     maximum_context: int | None,
     memory_estimate: dict[str, Any] | None,
     hardware: dict[str, Any],
+    *,
+    model_is_loaded: bool = False,
+    running_context_tokens: int | None = None,
 ) -> int | None:
     """Return a context only when model dimensions and current memory are measurable."""
-    if not isinstance(maximum_context, int) or isinstance(maximum_context, bool) or maximum_context < 512:
+    if not isinstance(maximum_context, int) or isinstance(maximum_context, bool) or maximum_context <= 0:
         return None
     from .hardware import dynamic_ram_budget_gb
     budget = dynamic_ram_budget_gb(get_settings(), hardware)
@@ -353,15 +359,27 @@ def _recommended_context_tokens(
     if get_settings().get("gpu_enabled") is True:
         gpu_budget = _dedicated_gpu_budget_gb(hardware)
         # Shared iGPU memory is already part of host RAM; never count it twice.
-        if gpu_budget is not None and gpu_budget > float(weights) + float(overhead):
+        required_loaded_budget = float(overhead) + (0.0 if model_is_loaded else float(weights))
+        if gpu_budget is not None and gpu_budget > required_loaded_budget:
             budget = gpu_budget
-    available_for_cache = budget - float(weights) - float(overhead)
+    if model_is_loaded:
+        if (
+            isinstance(running_context_tokens, bool)
+            or not isinstance(running_context_tokens, int)
+            or running_context_tokens <= 0
+        ):
+            return None
+        already_allocated_cache = float(cache_per_token) * running_context_tokens / (1024 ** 3)
+        # Free memory is measured after weights and the currently allocated KV
+        # cache are resident; add back only the known cache allocation.
+        available_for_cache = budget + already_allocated_cache - float(overhead)
+    else:
+        available_for_cache = budget - float(weights) - float(overhead)
     if not math.isfinite(available_for_cache) or available_for_cache <= 0:
         return None
     fit = int(available_for_cache * (1024 ** 3) / float(cache_per_token))
-    candidates = (512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576)
-    valid = [value for value in candidates if value <= maximum_context and value <= fit]
-    return max(valid) if valid else None
+    selected = min(maximum_context, fit)
+    return selected if selected > 0 else None
 
 
 
@@ -397,6 +415,24 @@ def model_identity(
     raise OllamaError(f"Unsupported {purpose} model identity provider.")
 
 
+def _find_running_model_entry(running_models: Any, model: str) -> dict[str, Any] | None:
+    if not isinstance(running_models, list):
+        return None
+    variant_prefix = f"{model}-codex-ctx"
+    return next((
+        item for item in running_models
+        if isinstance(item, dict)
+        and (
+            item.get("name") == model
+            or (
+                isinstance(item.get("name"), str)
+                and item["name"].startswith(variant_prefix)
+                and item["name"][len(variant_prefix):].isdigit()
+            )
+        )
+    ), None)
+
+
 def model_details(model: str, context_tokens: int | None = None) -> dict[str, Any]:
     """Return local Ollama model metadata and a conservative memory/context estimate."""
     name = str(model or "").strip()
@@ -405,7 +441,11 @@ def model_details(model: str, context_tokens: int | None = None) -> dict[str, An
     info = _request("/api/show", {"model": name}, timeout=8)
     model_info = info.get("model_info") if isinstance(info.get("model_info"), dict) else {}
     details = info.get("details") if isinstance(info.get("details"), dict) else {}
-    maximum_context = _model_context_metadata(model_info, details.get("family"))
+    try:
+        architecture = resolve_model_architecture(model_info, details.get("family"))
+    except OllamaModelMetadataError:
+        architecture = details.get("family")
+    maximum_context = _model_context_metadata(model_info, architecture)
     tag = next((item for item in list_models() if item.get("name") == name), None)
     weight_bytes = tag.get("size") if isinstance(tag, dict) else None
     estimate = _model_memory_estimate(
@@ -416,9 +456,16 @@ def model_details(model: str, context_tokens: int | None = None) -> dict[str, An
         context_tokens if context_tokens is not None else maximum_context,
     )
     running = _request("/api/ps", timeout=4).get("models", [])
-    running_item = next((item for item in running if isinstance(item, dict) and item.get("name") == name), None) if isinstance(running, list) else None
+    running_item = _find_running_model_entry(running, name)
     hardware = detect_hardware()
-    recommended_context = _recommended_context_tokens(maximum_context, estimate, hardware)
+    running_context = running_item.get("context_length") if isinstance(running_item, dict) else None
+    recommended_context = _recommended_context_tokens(
+        maximum_context,
+        estimate,
+        hardware,
+        model_is_loaded=running_item is not None,
+        running_context_tokens=running_context,
+    )
     raw_capabilities = info.get("capabilities")
     capabilities = sorted({
         value for value in raw_capabilities if isinstance(value, str) and value
@@ -431,7 +478,7 @@ def model_details(model: str, context_tokens: int | None = None) -> dict[str, An
         "recommended_context_tokens": recommended_context,
         "context_metadata_available": maximum_context is not None,
         "weight_size_bytes": weight_bytes,
-        "architecture": details.get("family"),
+        "architecture": architecture,
         "capabilities": capabilities,
         "memory_estimate": estimate,
         "memory_estimate_note": (
@@ -693,7 +740,7 @@ def chat(
             maximum_context is None
             or isinstance(num_ctx_override, bool)
             or not isinstance(num_ctx_override, int)
-            or not 512 <= num_ctx_override <= maximum_context
+            or not 0 < num_ctx_override <= maximum_context
         ):
             raise OllamaError("The selected model cannot provide the required learning context length.")
         configured_context = max(int(configured_context), num_ctx_override)
