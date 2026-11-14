@@ -142,7 +142,7 @@ def collect_status() -> dict[str, Any]:
     ready = all(
         value
         for key, value in checks.items()
-        if key not in {"codex_installed", "model_is_codex_context_variant"}
+        if key not in {"codex_installed", "model_is_codex_context_variant", "model_tools_metadata_available"}
     )
     active_runs = github.get("recent_runs", [])
     active = any(
