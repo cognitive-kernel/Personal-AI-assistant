@@ -86,7 +86,7 @@ def _ollama_status(model: str) -> dict[str, Any]:
     def _tool_probe(payload: dict[str, Any]) -> dict[str, Any]:
         try:
             running = ollama_request("/api/ps", timeout=4).get("models", [])
-            if _find_running_model_entry(running, str(payload.get("model") or "")) is None:
+            if isinstance(running, list) and _find_running_model_entry(running, str(payload.get("model") or "")) is None:
                 payload["keep_alive"] = "0"
         except Exception:
             # Unknown residency is not permission to unload a model.
