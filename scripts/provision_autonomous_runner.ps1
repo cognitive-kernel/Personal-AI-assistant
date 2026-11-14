@@ -182,7 +182,8 @@ $runnerIsAdministrator = @(
 if ($runnerIsAdministrator) { throw "Runner account is a direct member of the local Administrators group; use a least-privilege identity." }
 New-Item -ItemType Directory -Path $RunnerRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
-Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid
+$installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid
 Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -ReadOnlySid $appSid
 $token = (& $gh.Source api --method POST "repos/$Repository/actions/runners/registration-token" --jq ".token")
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($token)) { throw "Could not obtain registration token; verify Administration: write permission." }
@@ -201,8 +202,15 @@ try {
     if (-not (Test-Path -LiteralPath $config)) { throw "config.cmd missing from official Runner archive." }
     $configArgs = @("--url", "https://github.com/$Repository", "--token", $token, "--name", $RunnerName, "--labels", "ollama,autonomous-state-owner", "--work", "_work", "--runasservice", "--windowslogonaccount", $runnerIdentity)
     Write-Host "Runner configuration will prompt for the service-account password; it is not passed as a process argument."
-    & $config @configArgs
-    if ($LASTEXITCODE -ne 0) { throw "Runner registration failed with exit code $LASTEXITCODE." }
+    try {
+        & $config @configArgs
+        if ($LASTEXITCODE -ne 0) { throw "Runner registration failed with exit code $LASTEXITCODE." }
+    } finally {
+        # Keep the elevated installer principal temporary; the installed service
+        # retains access through its configured Runner SID.
+        Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid
+        Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -ReadOnlySid $appSid
+    }
     $services = @(Get-CimInstance Win32_Service | Where-Object { $_.PathName -like "*$RunnerRoot*" })
     if ($services.Count -ne 1) { throw "Could not locate exactly one Runner service." }
     $actualServiceSid = Get-AutonomousWindowsAccountSid -AccountName $services[0].StartName
