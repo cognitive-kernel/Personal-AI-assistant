@@ -159,6 +159,8 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     context_script = (root / "scripts" / "verify_ollama_context.ps1").read_text(encoding="utf-8")
     context_metadata = (root / "scripts" / "ollama_context" / "metadata.ps1").read_text(encoding="utf-8")
     context_api = (root / "scripts" / "ollama_context" / "api.ps1").read_text(encoding="utf-8")
+    context_module = (root / "scripts" / "ollama_context" / "OllamaContext.psm1").read_text(encoding="utf-8")
+    context_runtime = (root / "scripts" / "ollama_context" / "runtime.ps1").read_text(encoding="utf-8")
     diagnostic = (root / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml").read_text(encoding="utf-8")
     autonomous = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
 
@@ -173,6 +175,14 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert 'if ($allocated -lt $selectedContext)' not in context_script
     assert '-le 0' in context_script
     assert 'AUTONOMOUS_ENGINEERING_MODEL=$codexModel' in context_script
+    assert "[ollama-timing]" in context_api
+    assert "metadata.ps1" in context_module and "planning.ps1" in context_module
+    assert "--keep-alive 10m" in context_metadata
+    assert "statusCode -eq 404" in context_metadata
+    assert "num_predict = 1" in context_runtime
+    verify_only = context_script.split("if ($VerifyOnly) {", 1)[1].split("} else {", 1)[0]
+    assert "Assert-ToolCallingCapability" not in verify_only
+    assert "Start-OllamaModelWarmup" not in verify_only
     assert '-VerifyOnly' in diagnostic
     assert '-VerifyOnly' in autonomous
     assert 'Verify persistent Ollama context after Codex smoke' in diagnostic
