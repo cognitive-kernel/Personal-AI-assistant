@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 _MACHINE_ENVIRONMENT_KEY = (
-    r"SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment"
+    r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
 )
 
 
