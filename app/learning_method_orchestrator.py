@@ -376,7 +376,7 @@ def _queue_first_enabled_method(path_topic_id: int, *, attempt_number: int, sour
             path_topic_id, method, attempt_number, "unavailable",
             event_key=f"path-topic:{path_topic_id}:method:{method}:attempt:{attempt_number}:unavailable",
             diagnosis={"reason": "disabled_by_user_setting"},
-            evidence={"setting": f"{method}_enabled", "enabled": False},
+            evidence={"setting": f"{method}_enabled", "enabled": False, "disabled_by_user_setting": True},
         )
     return _block_topic(path_topic_id, reason="all_learning_methods_disabled")
 
@@ -444,15 +444,14 @@ def _queue_next(
         )
     if not _method_enabled(next_value):
         append_attempt_event(
-            path_topic_id, next_value, attempt_number, "queued",
-            event_key=f"path-topic:{path_topic_id}:method:{next_value}:attempt:{attempt_number}:queued",
-            evidence={"disabled_by_user_setting": True},
-        )
-        append_attempt_event(
             path_topic_id, next_value, attempt_number, "unavailable",
             event_key=f"path-topic:{path_topic_id}:method:{next_value}:attempt:{attempt_number}:unavailable",
             diagnosis={"reason": "disabled_by_user_setting"},
-            evidence={"setting": f"{next_value}_enabled", "enabled": False},
+            evidence={
+                "setting": f"{next_value}_enabled",
+                "enabled": False,
+                "disabled_by_user_setting": True,
+            },
         )
         return _queue_next(path_topic_id, next_value, attempt_number, source_job_id=source_job_id)
     return queue_method_attempt(
