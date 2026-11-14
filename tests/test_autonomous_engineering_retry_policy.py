@@ -27,7 +27,7 @@ def test_retry_policy_reports_the_exhausted_budget_without_ambiguity():
     [(True, 0), (-1, 0), (0, True), (0, float("nan")), (0, float("inf"))],
 )
 def test_retry_policy_rejects_invalid_runtime_observations(attempts, elapsed):
-    policy = RetryPolicy(max_attempts=3, max_elapsed_seconds=7200)
+    policy = RetryPolicy(max_attempts=2, max_elapsed_seconds=7200)
 
     with pytest.raises(ValueError):
         policy.allows_attempt(attempts, elapsed)
