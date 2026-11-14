@@ -30,7 +30,7 @@ The Manifest V3 extension connects the local learning module to the user's exist
 - Automation starts only after the user explicitly clicks the dashboard refresh button; it does not launch unsolicited prompts.
 - Only the visible ChatGPT UI is used; no private API or hidden endpoint is called.
 - DOM selectors may change, and automatic submission/capture cannot be guaranteed if ChatGPT changes its UI or requests additional user interaction.
-- The local API remains loopback-only and the module is disabled by default.
-- Browser integration is not yet a durable queue across browser crashes. If the tab closes or the browser crashes, the run remains in the local database, but automatic continuation after restart is not guaranteed.
+- The local API remains loopback-only. The knowledge module and browser provider are enabled by default and can be disabled explicitly in Settings.
+- The primary dashboard workflow uses the Playwright worker and its durable SQLite queue/lease for restart recovery. This extension is a compatibility fallback: persisted run records survive, but exact ChatGPT tab/session continuation after a browser crash is not guaranteed.
 - Lesson batches require explicit topic markers in ChatGPT's response. Ambiguous output is retained for recovery; no lesson is auto-published.
 - Do not submit confidential content unless the provider's data handling terms are understood.
