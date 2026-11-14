@@ -72,6 +72,13 @@ def parent_chain_is_alive(chain: list[dict[str, Any]]) -> bool:
     return True
 
 
+def _diagnostic(message: str) -> None:
+    try:
+        print(message, file=sys.stderr)
+    except OSError:
+        pass
+
+
 def _terminate_process(process: subprocess.Popen[bytes], job: WindowsProcessJob) -> None:
     if os.name == "nt":
         # Closing the kill-on-close job terminates Codex and every descendant.
@@ -105,7 +112,7 @@ def run(
     ):
         raise ValueError("A command and a positive integer timeout are required.")
     if not parent_chain_is_alive(parent_chain):
-        print("Codex launch refused: the owning controller process chain is no longer verifiable.", file=sys.stderr)
+        _diagnostic("Codex launch refused: the owning controller process chain is no longer verifiable.")
         return 125
 
     job = WindowsProcessJob()
@@ -151,7 +158,7 @@ def run(
         stream_closed = False
         while not stream_closed:
             if not parent_chain_is_alive(parent_chain):
-                print("Codex stopped because its owning controller exited or its PID identity changed.", file=sys.stderr)
+                _diagnostic("Codex stopped because its owning controller exited or its PID identity changed.")
                 if owner_bound_windows_job:
                     job.terminate(125)
                     os._exit(125)
@@ -168,7 +175,7 @@ def run(
                 return 125
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                print(f"Codex exceeded its {timeout_seconds}-second execution budget and was terminated.", file=sys.stderr)
+                _diagnostic(f"Codex exceeded its {timeout_seconds}-second execution budget and was terminated.")
                 if owner_bound_windows_job:
                     job.terminate(124)
                     os._exit(124)
@@ -190,7 +197,7 @@ def run(
                     sys.stdout.buffer.write(chunk)
                     sys.stdout.buffer.flush()
                 except OSError:
-                    print("Codex supervisor output owner disappeared; terminating the owned process tree.", file=sys.stderr)
+                    _diagnostic("Codex supervisor output owner disappeared; terminating the owned process tree.")
                     if owner_bound_windows_job:
                         job.terminate(125)
                         os._exit(125)
