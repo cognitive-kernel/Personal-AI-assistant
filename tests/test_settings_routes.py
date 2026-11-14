@@ -101,6 +101,13 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
     assert defaults["experience_system_enabled"] is True
     assert defaults["sandbox_enabled"] is True
     assert defaults["self_improvement_enabled"] is True
+    for key in (
+        "chat_enabled", "research_plan_enabled", "programming_enabled",
+        "factual_review_enabled", "embedding_enabled", "knowledge_base_enabled",
+        "knowledge_graph_enabled", "cloud_resources_enabled", "cloud_plan_enabled",
+        "kaggle_quota_enabled", "oci_quota_enabled", "autonomous_engineering_enabled",
+    ):
+        assert defaults[key] is True
     assert defaults["topic_learning_llm_provider"] == "ollama"
     assert defaults["topic_learning_source_max_chars"] == 100000
     assert defaults["research_plan_ollama_num_ctx"] >= 512
@@ -110,7 +117,7 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
     assert defaults["research_plan_source_max_chars"] == 16000
     assert defaults["research_plan_max_output_tokens"] == 700
     assert defaults["factual_review_ollama_num_ctx"] == 4096
-    assert defaults["factual_review_ollama_timeout_seconds"] == 120
+    assert defaults["factual_review_ollama_timeout_seconds"] == 45
     assert defaults["factual_review_source_max_chars"] == 16000
     assert defaults["factual_review_max_output_tokens"] == 500
     assert defaults["learning_model_pricing_json"] == ""
@@ -132,6 +139,18 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
         "ai_learning_browser_enabled": False,
         "sandbox_enabled": False,
         "self_improvement_enabled": False,
+        "chat_enabled": False,
+        "research_plan_enabled": False,
+        "programming_enabled": False,
+        "factual_review_enabled": False,
+        "embedding_enabled": False,
+        "knowledge_base_enabled": False,
+        "knowledge_graph_enabled": False,
+        "cloud_resources_enabled": False,
+        "cloud_plan_enabled": False,
+        "kaggle_quota_enabled": False,
+        "oci_quota_enabled": False,
+        "autonomous_engineering_enabled": False,
         "sandbox_docker_executable": "/opt/docker/bin/docker",
         "sandbox_python_image": "python:3.11-slim@sha256:" + "a" * 64,
         "sandbox_timeout_seconds": 90,
@@ -225,6 +244,18 @@ def test_ai_learning_modules_and_capacity_defaults_are_enabled_and_persistable(s
         {"learning_model_pricing_json": '{"model":{"input_usd_per_million_tokens":-1,"output_usd_per_million_tokens":2,"pricing_version":"v1"}}'},
         {"sandbox_enabled": "true"},
         {"self_improvement_enabled": 1},
+        {"chat_enabled": "false"},
+        {"research_plan_enabled": 0},
+        {"programming_enabled": None},
+        {"factual_review_enabled": "yes"},
+        {"embedding_enabled": 1},
+        {"knowledge_base_enabled": "off"},
+        {"knowledge_graph_enabled": 0},
+        {"cloud_resources_enabled": None},
+        {"cloud_plan_enabled": 1},
+        {"kaggle_quota_enabled": "false"},
+        {"oci_quota_enabled": 0},
+        {"autonomous_engineering_enabled": None},
         {"sandbox_docker_executable": "relative/docker"},
         {"sandbox_python_image": "python:latest"},
         {"sandbox_test_image": "sha256:bad"},
