@@ -78,7 +78,7 @@ def test_command_timeout_validation_rejects_boolean_and_non_positive_values(tmp_
 
 
 def test_binary_command_input_is_preserved_byte_for_byte(tmp_path: Path):
-    payload = b"checkpoint\\x00patch\\r\\nwith\\xffbytes\\n"
+    payload = b"checkpoint\x00patch\r\nwith\xffbytes\n"
     output_path = tmp_path / "received-patch.bin"
     script = (
         "import pathlib,sys; "
