@@ -131,3 +131,73 @@ run_command(
         if owner.poll() is None:
             owner.kill()
             owner.wait(timeout=5)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX process-group termination contract.")
+def test_posix_command_waits_for_descendant_termination_before_return(tmp_path: Path):
+    marker = tmp_path / "child-terminated.marker"
+    pid_file = tmp_path / "child.pid"
+    child_code = (
+        "import signal,time; from pathlib import Path; "
+        "signal.signal(signal.SIGTERM, lambda *_: Path("
+        + repr(str(marker))
+        + ").write_text('terminated')); time.sleep(60)"
+    )
+    parent_code = (
+        "import subprocess,sys; "
+        "child=subprocess.Popen([sys.executable,'-c'," + repr(child_code) + "]); "
+        "open(" + repr(str(pid_file)) + ",'w').write(str(child.pid))"
+    )
+
+    result = run_command(
+        [sys.executable, "-c", parent_code],
+        cwd=tmp_path,
+        env=None,
+        capture=False,
+        timeout_seconds=5,
+    )
+
+    assert result.returncode == 0
+    assert pid_file.is_file()
+    assert marker.read_text(encoding="utf-8") == "terminated"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Job Object drain contract.")
+def test_windows_command_waits_until_job_is_empty_before_return(tmp_path: Path):
+    pid_file = tmp_path / "windows-child.pid"
+    result = run_command(
+        _spawn_child_command(pid_file, parent_sleeps=False),
+        cwd=tmp_path,
+        env=None,
+        capture=False,
+        timeout_seconds=5,
+    )
+
+    assert result.returncode == 0
+    child_pid = int(pid_file.read_text(encoding="utf-8"))
+    assert not psutil.pid_exists(child_pid), "A Job Object descendant remained alive after run_command returned."
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows suspended-process cleanup contract.")
+def test_windows_assignment_failure_does_not_leave_suspended_process(monkeypatch, tmp_path: Path):
+    spawned: dict[str, int] = {}
+
+    def fail_assignment(self, process):
+        spawned["pid"] = int(process.pid)
+        raise OSError("simulated Job Object assignment failure")
+
+    monkeypatch.setattr(
+        "scripts.autonomous_engineering_command_runner.WindowsProcessJob.assign_and_resume",
+        fail_assignment,
+    )
+    with pytest.raises(OSError, match="assignment failure"):
+        run_command(
+            [sys.executable, "-c", "import time; time.sleep(60)"],
+            cwd=tmp_path,
+            env=None,
+            capture=False,
+            timeout_seconds=5,
+        )
+
+    assert "pid" in spawned
+    assert not psutil.pid_exists(spawned["pid"]), "An unassigned suspended process survived fail-closed cleanup."
