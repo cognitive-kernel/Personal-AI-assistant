@@ -438,7 +438,19 @@ def model_details(model: str, context_tokens: int | None = None) -> dict[str, An
         context_tokens if context_tokens is not None else maximum_context,
     )
     running = _request("/api/ps", timeout=4).get("models", [])
-    running_item = next((item for item in running if isinstance(item, dict) and item.get("name") == name), None) if isinstance(running, list) else None
+    context_variant_prefix = f"{name}-codex-ctx"
+    running_item = next((
+        item for item in running
+        if isinstance(item, dict)
+        and (
+            item.get("name") == name
+            or (
+                isinstance(item.get("name"), str)
+                and item["name"].startswith(context_variant_prefix)
+                and item["name"][len(context_variant_prefix):].isdigit()
+            )
+        )
+    ), None) if isinstance(running, list) else None
     hardware = detect_hardware()
     running_context = running_item.get("context_length") if isinstance(running_item, dict) else None
     recommended_context = _recommended_context_tokens(
