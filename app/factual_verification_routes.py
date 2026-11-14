@@ -14,11 +14,12 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 from . import factual_knowledge, factual_source_checks, factual_verification_tasks, sandbox_consent, sandbox_tasks, task_manager
 from .db import get_settings, learning_connection
 from .task_routes import require_loopback_client
+from .module_settings import require_module_enabled
 
 router = APIRouter(
     prefix="/api/factual-knowledge",
     tags=["factual-knowledge"],
-    dependencies=[Depends(require_loopback_client)],
+    dependencies=[Depends(require_loopback_client), Depends(require_module_enabled("factual_review"))],
 )
 
 
