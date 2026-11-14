@@ -124,9 +124,39 @@ function Ensure-AutonomousStateOwnerLabel {
 if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     $services = @(Get-CimInstance Win32_Service | Where-Object { $_.PathName -like "*$RunnerRoot*" })
     if ($services.Count -ne 1 -or (Get-AccountSidValue $services[0].StartName) -ne (Get-AccountSidValue $runnerIdentity)) { throw "Existing Runner configuration found; refusing to replace or reconfigure it." }
+
+    # Existing installations must receive the same least-privilege enforcement as
+    # newly provisioned ones. A service keeps its old access token until restarted.
+    $administratorsGroup = Get-LocalGroup -SID "S-1-5-32-544"
+    $runnerIsDirectAdministrator = @(
+        Get-LocalGroupMember -Group $administratorsGroup.Name -ErrorAction Stop |
+            Where-Object { $_.SID -and $_.SID.Value -eq (Get-AccountSidValue $runnerIdentity) }
+    ).Count -gt 0
+    if ($runnerIsDirectAdministrator) {
+        Write-Warning "Removing $runnerIdentity from the local Administrators group; autonomous execution requires least privilege."
+        if ($services[0].State -eq "Running") {
+            Stop-Service -Name $services[0].Name -ErrorAction Stop
+            $services[0] = Get-CimInstance Win32_Service -Filter "Name='$($services[0].Name)'"
+        }
+        Remove-LocalGroupMember -Group $administratorsGroup.Name -Member $runnerIdentity -ErrorAction Stop
+        $stillAdministrator = @(
+            Get-LocalGroupMember -Group $administratorsGroup.Name -ErrorAction Stop |
+                Where-Object { $_.SID -and $_.SID.Value -eq (Get-AccountSidValue $runnerIdentity) }
+        ).Count -gt 0
+        if ($stillAdministrator) {
+            throw "Could not remove $runnerIdentity from the local Administrators group."
+        }
+        Write-Host "Least-privilege membership corrected. The Runner service will be restarted to discard its previous administrator token."
+    }
+
     Ensure-AutonomousStateOwnerLabel
-    if ($services[0].State -ne "Running") { Start-Service -Name $services[0].Name }
-    Write-Host "Existing Runner configuration preserved, uniquely labelled, and service verified."
+    $serviceState = (Get-CimInstance Win32_Service | Where-Object { $_.Name -eq $services[0].Name }).State
+    if ($serviceState -ne "Running") { Start-Service -Name $services[0].Name -ErrorAction Stop }
+    $service = Get-CimInstance Win32_Service -Filter "Name='$($services[0].Name)'"
+    if ($service.State -ne "Running" -or (Get-AccountSidValue $service.StartName) -ne (Get-AccountSidValue $runnerIdentity)) {
+        throw "Runner service did not restart under the verified non-administrator identity."
+    }
+    Write-Host "Existing Runner configuration preserved, uniquely labelled, and verified under $runnerIdentity."
     exit 0
 }
 if ((Test-Path -LiteralPath $RunnerRoot) -and @(Get-ChildItem -LiteralPath $RunnerRoot -Force).Count -gt 0) { throw "RunnerRoot is non-empty but unconfigured; refusing to overwrite." }
