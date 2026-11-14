@@ -952,7 +952,7 @@ def test_checkpoint_watcher_uses_base_interpreter_with_venv_dependencies(
 
 
 
-def test_windows_codex_command_uses_call_without_nested_cmd_quoting(monkeypatch):
+def test_windows_codex_command_uses_call_without_nested_cmd_quoting(monkeypatch, tmp_path: Path):
     from scripts import autonomous_engineering_progress as progress
 
     monkeypatch.setenv("COMSPEC", r"C:\Windows\System32\cmd.exe")
