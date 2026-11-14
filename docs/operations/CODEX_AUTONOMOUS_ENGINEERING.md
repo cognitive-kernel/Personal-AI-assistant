@@ -152,7 +152,9 @@ rather than being silently substituted.
 The Runner installation root defaults to
 `%ProgramData%\GitHubActionsRunner`. The shared state root defaults to
 `%ProgramData%\PersonalAIAssistant\autonomous-engineering` and can be overridden
-with `AUTONOMOUS_ENGINEERING_PROGRESS_DIR`. The provisioning script resolves the
+with `AUTONOMOUS_ENGINEERING_PROGRESS_DIR`, which must be an absolute path. Windows
+fails closed rather than falling back to a per-user home directory if `PROGRAMDATA`
+is unavailable. The provisioning script resolves the
 configured application and Runner account names to their current machine SIDs and
 applies access to those selected identities; no account name or SID is embedded in
 the Python modules or workflow paths.
