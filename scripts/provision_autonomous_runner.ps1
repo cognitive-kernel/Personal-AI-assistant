@@ -14,19 +14,30 @@ $principal = [Security.Principal.WindowsPrincipal]::new($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw "Run from elevated PowerShell." }
 $RunnerAccount = $RunnerAccount.Trim()
 $AppAccount = $AppAccount.Trim()
-if ($RunnerAccount -notmatch "^[A-Za-z0-9_.-]{1,20}$" -or $AppAccount -notmatch "^[A-Za-z0-9_.-]{1,20}$" -or $RunnerAccount -ieq $AppAccount) { throw "Use two different local account names containing only letters, digits, dot, underscore, or hyphen (max 20 characters)." }
+if ([string]::IsNullOrWhiteSpace($RunnerAccount) -or [string]::IsNullOrWhiteSpace($AppAccount)) { throw "RunnerAccount and AppAccount must be non-empty Windows account identities." }
 if ($RunnerName -notmatch "^[A-Za-z0-9_.-]{1,64}$") { throw "Invalid RunnerName." }
-$runnerIdentity = "$env:COMPUTERNAME\$RunnerAccount"
-$appIdentity = "$env:COMPUTERNAME\$AppAccount"
+function ConvertTo-WindowsAccountName([string]$AccountName) {
+    $value = $AccountName.Trim()
+    if ($value.StartsWith(".\", [StringComparison]::Ordinal)) {
+        return "$env:COMPUTERNAME\" + $value.Substring(2)
+    }
+    if ($value.Contains("\") -or $value.Contains("@")) { return $value }
+    return "$env:COMPUTERNAME\$value"
+}
 function Get-AccountSidValue([string]$AccountName) {
     try {
         return ([Security.Principal.NTAccount]$AccountName).Translate([Security.Principal.SecurityIdentifier]).Value
     } catch {
-        throw "Could not resolve Windows account '$AccountName' to a SID."
+        throw "Could not resolve configured Windows principal '$AccountName' to a SID."
     }
 }
+$runnerIdentity = ConvertTo-WindowsAccountName $RunnerAccount
+$appIdentity = ConvertTo-WindowsAccountName $AppAccount
+$runnerIsLocal = $runnerIdentity.StartsWith("$env:COMPUTERNAME\", [StringComparison]::OrdinalIgnoreCase)
+$runnerLocalName = if ($runnerIsLocal) { $runnerIdentity.Substring($env:COMPUTERNAME.Length + 1) } else { $null }
+if ($runnerLocalName -and ($runnerLocalName.Length -gt 20 -or $runnerLocalName -notmatch "^[A-Za-z0-9_.-]+$")) { throw "Invalid local Runner account name." }
 $progressPath = Join-Path $env:ProgramData "PersonalAIAssistant\autonomous-engineering"
-try { $null = ([Security.Principal.NTAccount]$appIdentity).Translate([Security.Principal.SecurityIdentifier]) } catch { throw "Application account $appIdentity does not exist." }
+$appSid = Get-AccountSidValue $appIdentity
 $null = Get-Command ollama -ErrorAction Stop
 $node = Get-Command node -ErrorAction Stop
 $npm = Get-Command npm -ErrorAction Stop
@@ -164,25 +175,38 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     exit 0
 }
 if ((Test-Path -LiteralPath $RunnerRoot) -and @(Get-ChildItem -LiteralPath $RunnerRoot -Force).Count -gt 0) { throw "RunnerRoot is non-empty but unconfigured; refusing to overwrite." }
-$user = Get-LocalUser -Name $RunnerAccount -ErrorAction SilentlyContinue
-if (-not $user) {
-    $password = Read-Host "Set password for $runnerIdentity" -AsSecureString
-    if ($password.Length -lt 16) { $password.Dispose(); throw "Use at least 16 characters." }
-    New-LocalUser -Name $RunnerAccount -Password $password -PasswordNeverExpires -AccountNeverExpires -Description "Non-admin Ollama GitHub Actions Runner" | Out-Null
-    $password.Dispose()
+if ($runnerIsLocal) {
+    $user = Get-LocalUser -Name $runnerLocalName -ErrorAction SilentlyContinue
+    if (-not $user) {
+        $password = Read-Host "Set password for $runnerIdentity" -AsSecureString
+        if ($password.Length -lt 16) { $password.Dispose(); throw "Use at least 16 characters." }
+        New-LocalUser -Name $runnerLocalName -Password $password -PasswordNeverExpires -AccountNeverExpires -Description "Non-admin autonomous engineering Runner" | Out-Null
+        $password.Dispose()
+    }
+    $user = Get-LocalUser -Name $runnerLocalName
+    if (-not $user.Enabled) { Enable-LocalUser -Name $runnerLocalName }
+} else {
+    Write-Host "Using externally managed Runner identity $runnerIdentity; no local account is created or modified."
 }
-$user = Get-LocalUser -Name $RunnerAccount
-if (-not $user.Enabled) { Enable-LocalUser -Name $RunnerAccount }
-$adminMembers = @(Get-LocalGroupMember -Group "Administrators" -ErrorAction Stop | ForEach-Object { $_.Name })
-if ($adminMembers -contains $runnerIdentity) { throw "Runner account is a local administrator." }
-$usersGroup = Get-LocalGroup -SID "S-1-5-32-545"
-if (-not (Get-LocalGroupMember -Group $usersGroup.Name | Where-Object { $_.Name -ieq $runnerIdentity })) { Add-LocalGroupMember -Group $usersGroup.Name -Member $runnerIdentity }
+$runnerSid = Get-AccountSidValue $runnerIdentity
+$administratorsGroup = Get-LocalGroup -SID "S-1-5-32-544"
+$runnerIsAdministrator = @(
+    Get-LocalGroupMember -Group $administratorsGroup.Name -ErrorAction Stop |
+        Where-Object { $_.SID -and $_.SID.Value -eq $runnerSid }
+).Count -gt 0
+if ($runnerIsAdministrator) { throw "Runner account is a direct member of the local Administrators group; use a least-privilege identity." }
 New-Item -ItemType Directory -Path $RunnerRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
-& icacls.exe $RunnerRoot /inheritance:r /grant:r "$($runnerIdentity):(OI)(CI)M" "SYSTEM:(OI)(CI)F" "BUILTIN\Administrators:(OI)(CI)F" | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "Runner directory ACL configuration failed." }
-& icacls.exe $progressPath /inheritance:r /grant:r "$($runnerIdentity):(OI)(CI)M" "$($appIdentity):(OI)(CI)RX" "SYSTEM:(OI)(CI)F" "BUILTIN\Administrators:(OI)(CI)F" | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "Progress directory ACL configuration failed." }
+$runnerGrant = "*$($runnerSid):(OI)(CI)M"
+$icacls = Get-Command icacls.exe -ErrorAction Stop
+$runnerAclArgs = @($RunnerRoot, "/inheritance:r", "/grant:r", $runnerGrant)
+& $icacls.Source @runnerAclArgs | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "Runner directory ACL configuration failed for the configured Runner SID." }
+$progressGrants = @($runnerGrant)
+if ($appSid -ne $runnerSid) { $progressGrants += "*$($appSid):(OI)(CI)RX" }
+$progressAclArgs = @($progressPath, "/inheritance:r", "/grant:r") + $progressGrants
+& $icacls.Source @progressAclArgs | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "Progress directory ACL configuration failed for the configured account SIDs." }
 $token = (& $gh.Source api --method POST "repos/$Repository/actions/runners/registration-token" --jq ".token")
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($token)) { throw "Could not obtain registration token; verify Administration: write permission." }
 $archive = $null
