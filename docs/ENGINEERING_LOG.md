@@ -1,5 +1,30 @@
 # Engineering Continuity Log
 
+## 2026-11-14 — PR #757 follow-up: bounded task retries and command deadlines
+
+### Root cause
+
+- The Codex invocation had a 30-minute deadline, but `scripts/autonomous_engineering_cycle.py` restarted the same task inside an unconditional `while True` after Codex failure, a missing completion marker, local test failure, or exact-head CI failure.
+- The only total limit was the six-hour GitHub Actions job timeout. Three or more failed Codex sessions could therefore consume most of a runner window, and the task could repeat again in the next recovery run.
+- Controller subprocesses (including test and validation commands) also used `subprocess.run` without per-command timeouts.
+
+### Corrective changes
+
+- Added a small, pure `RetryPolicy` module with a maximum of three Codex attempts and a two-hour per-run task budget. The first exhausted limit stops the current run.
+- Budget exhaustion does not clear the task, branch, pending PR state, or checkpoint. The existing recovery workflow resumes the same task in a later run; no new task is selected.
+- Added explicit subprocess deadlines: five minutes by default, fifteen minutes for the full Python suite, twenty-five minutes for exact-head PR publication/validation, and a parent deadline 30 seconds beyond the Codex runner's 30-minute hard limit.
+- Added unit and controller-level regression tests for retry-budget boundaries, exhausted attempts, task preservation, command deadlines, and timeout diagnostics.
+- Added ADR-021. The process-tree ownership and sandbox security decisions in ADR-020 remain unchanged.
+
+### Validation status
+
+- An earlier exact-head run exposed one stale assertion: it expected only the prior `mxc`/`elevated` error text after the supported restricted `unelevated` backend was added. The assertion was aligned with the current contract and a positive unelevated argument-construction test was added; no assertion or safety check was removed.
+- Latest implementation commit: `5600779485920efd10831c6164efd61e48f3a87c` before documentation-only follow-ups. Exact-head CI for the final commit is pending and must be read from GitHub before claiming validation.
+- Target Windows Runner smoke, model-latency measurement, crash/restart soak, and independent security review remain pending. Durable Pause remains enabled; no dispatch, merge, Runner privilege, ACL, or user-data change was made.
+
+---
+
+
 ## 2026-11-14 — PR #757: owner-bound Codex process lifecycle
 
 ### Root-cause analysis
