@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 from .db import connection
 from .config import configured_int_setting as _configured_int_setting, configured_float_setting as _configured_float_setting
+from .embedding_identity import embedding_cache_identity
 from .embedding_service import (
     SEMANTIC_DUPLICATE_THRESHOLD,
     TITLE_SEMANTIC_DUPLICATE_THRESHOLD,
