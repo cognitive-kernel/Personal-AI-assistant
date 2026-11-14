@@ -182,7 +182,7 @@ def test_codex_runner_kills_inherited_group_when_output_owner_disappears(tmp_pat
     owner_script.write_text(
         "import json, subprocess, sys, time\n"
         "from pathlib import Path\n"
-        "sys.path.insert(0, " + repr(str(Path("scripts").resolve().parent)) + ")\n"
+        "sys.path.insert(0, " + repr(str(Path(__file__).resolve().parents[1])) + ")\n"
         "from scripts.autonomous_engineering_codex_runner import capture_parent_chain\n"
         "command = [sys.executable, " + repr(str(runner_path)) + ", "
         "'--timeout-seconds', '30', '--parent-chain', "
