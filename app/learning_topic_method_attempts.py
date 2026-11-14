@@ -140,12 +140,16 @@ def append_attempt_event(
             (path_topic_id, method, attempt_number),
         ).fetchone()
         previous_status = str(latest["status"]) if latest is not None else None
-        allowed = (
-            {"queued"} if previous_status is None
-            else {"running", "failed", "unavailable", "cancelled"} if previous_status == "queued"
-            else {"passed", "failed", "unavailable", "inconclusive", "cancelled"} if previous_status == "running"
-            else set()
-        )
+        if previous_status is None:
+            allowed = {"queued"}
+            if status == "unavailable" and evidence is not None and evidence.get("disabled_by_user_setting") is True:
+                allowed.add("unavailable")
+        elif previous_status == "queued":
+            allowed = {"running", "failed", "unavailable", "cancelled"}
+        elif previous_status == "running":
+            allowed = {"passed", "failed", "unavailable", "inconclusive", "cancelled"}
+        else:
+            allowed = set()
         if status not in allowed:
             raise MethodAttemptError(
                 f"Invalid method-attempt transition: {previous_status or 'new'} -> {status}."
