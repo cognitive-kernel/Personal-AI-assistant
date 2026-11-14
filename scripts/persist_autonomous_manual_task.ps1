@@ -193,7 +193,57 @@ try {
         if ($isAutonomousPendingPr) {
             if ($livePendingPr.state -eq "closed" -and $livePendingPr.merged -eq $true) {
                 $mergeSha = [string]$livePendingPr.merge_commit_sha
-                if ($mergeSha -notmatch '^[0-9a-f]{40}
+                if ($mergeSha -notmatch '^[0-9a-f]{40}$') {
+                    throw "GitHub reports the autonomous PR as merged but supplied no valid merge commit; preserving all pending state."
+                }
+                $comparison = Invoke-RestMethod -Method Get -Uri "https://api.github.com/repos/$env:GH_REPO/compare/$mergeSha...main" -Headers $headers -TimeoutSec 25
+                if ($comparison.status -notin @("ahead", "identical") -or [int]$comparison.behind_by -ne 0) {
+                    throw "The recorded PR merge commit is not verified as an ancestor of main; preserving all pending state."
+                }
+
+                $cleanupMarkerPath = Join-Path $stateDir "pending-state-cleanup.json"
+                $cleanupMarkerTemp = "$cleanupMarkerPath.$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT).tmp"
+                $cleanupMarker = [ordered]@{
+                    schema_version = 1
+                    operation = "clear_after_verified_post_merge"
+                    run_id = [string]$env:GITHUB_RUN_ID
+                    created_at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0
+                }
+                try {
+                    [System.IO.File]::WriteAllText(
+                        $cleanupMarkerTemp,
+                        ($cleanupMarker | ConvertTo-Json -Depth 4 -Compress),
+                        [System.Text.UTF8Encoding]::new($false)
+                    )
+                    Move-Item -LiteralPath $cleanupMarkerTemp -Destination $cleanupMarkerPath -Force
+                    $null = Repair-AutonomousPendingStateCleanup -StateDirectory $stateDir
+                } finally {
+                    if (Test-Path -LiteralPath $cleanupMarkerTemp) {
+                        Remove-Item -LiteralPath $cleanupMarkerTemp -Force
+                    }
+                }
+                $existingTaskFound = $false
+                $existingTask = ""
+                $pendingPrFound = $false
+                $verifiedMergedPendingPr = $true
+                Write-Host "Verified that autonomous PR #$localNumber was merged into main; retired its pending task state."
+            } elseif ($livePendingPr.state -eq "open") {
+                $pendingNumber = Write-RecoveredPendingPrRecord -PullRequest $livePendingPr
+                throw "Autonomous PR #$pendingNumber is still open and must be reviewed before another task can be accepted."
+            } elseif (-not $replacePendingTask) {
+                throw "The previous autonomous PR is closed but not merged. Set replace_pending_task=true only if you explicitly authorize abandoning its pending task."
+            }
+        }
+
+        if (-not $verifiedMergedPendingPr) {
+            $quarantinePath = "$pendingPrPath.quarantine-$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT)-$([guid]::NewGuid().ToString('N')).json"
+            try {
+                Move-Item -LiteralPath $pendingPrPath -Destination $quarantinePath -ErrorAction Stop
+                Write-Warning "Quarantined stale or explicitly superseded pending PR metadata: $quarantinePath"
+            } catch {
+                throw "Stale pending PR metadata could not be quarantined safely. $($_.Exception.Message)"
+            }
+        }
     }
 
     # Reconcile authoritative GitHub PR state before deciding whether a different task may replace the pending task.
@@ -279,109 +329,6 @@ try {
         }
     }
     throw
-} finally {
-    if ($stateMutexOwned) {
-        $stateMutex.ReleaseMutex()
-    }
-    $stateMutex.Dispose()
-}
-) {
-                    throw "GitHub reports the autonomous PR as merged but supplied no valid merge commit; preserving all pending state."
-                }
-                $comparison = Invoke-RestMethod -Method Get -Uri "https://api.github.com/repos/$env:GH_REPO/compare/$mergeSha...main" -Headers $headers -TimeoutSec 25
-                if ($comparison.status -notin @("ahead", "identical") -or [int]$comparison.behind_by -ne 0) {
-                    throw "The recorded PR merge commit is not verified as an ancestor of main; preserving all pending state."
-                }
-
-                $cleanupMarkerPath = Join-Path $stateDir "pending-state-cleanup.json"
-                $cleanupMarkerTemp = "$cleanupMarkerPath.$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT).tmp"
-                $cleanupMarker = [ordered]@{
-                    schema_version = 1
-                    operation = "clear_after_verified_post_merge"
-                    run_id = [string]$env:GITHUB_RUN_ID
-                    created_at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0
-                }
-                try {
-                    [System.IO.File]::WriteAllText(
-                        $cleanupMarkerTemp,
-                        ($cleanupMarker | ConvertTo-Json -Depth 4 -Compress),
-                        [System.Text.UTF8Encoding]::new($false)
-                    )
-                    Move-Item -LiteralPath $cleanupMarkerTemp -Destination $cleanupMarkerPath -Force
-                    $null = Repair-AutonomousPendingStateCleanup -StateDirectory $stateDir
-                } finally {
-                    if (Test-Path -LiteralPath $cleanupMarkerTemp) {
-                        Remove-Item -LiteralPath $cleanupMarkerTemp -Force
-                    }
-                }
-                $existingTaskFound = $false
-                $existingTask = ""
-                $pendingPrFound = $false
-                $verifiedMergedPendingPr = $true
-                Write-Host "Verified that autonomous PR #$localNumber was merged into main; retired its pending task state."
-            } elseif ($livePendingPr.state -eq "open") {
-                $pendingNumber = Write-RecoveredPendingPrRecord -PullRequest $livePendingPr
-                throw "Autonomous PR #$pendingNumber is still open and must be reviewed before another task can be accepted."
-            } elseif (-not $replacePendingTask) {
-                throw "The previous autonomous PR is closed but not merged. Set replace_pending_task=true only if you explicitly authorize abandoning its pending task."
-            }
-        }
-
-        if (-not $verifiedMergedPendingPr) {
-            $quarantinePath = "$pendingPrPath.quarantine-$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT)-$([guid]::NewGuid().ToString('N')).json"
-            try {
-                Move-Item -LiteralPath $pendingPrPath -Destination $quarantinePath -ErrorAction Stop
-                Write-Warning "Quarantined stale or explicitly superseded pending PR metadata: $quarantinePath"
-            } catch {
-                throw "Stale pending PR metadata could not be quarantined safely. $($_.Exception.Message)"
-            }
-        }
-    }
-
-    # Reconcile authoritative GitHub PR state before deciding whether a different task may replace the pending task.
-    if ($existingTask -and $existingTask -cne $manualTask) {
-        throw "Another manual task is still pending. It cannot be replaced before its verified merge."
-    }
-
-    $runAttempt = 0
-    if (-not [int]::TryParse([string]$env:GITHUB_RUN_ATTEMPT, [ref]$runAttempt) -or $runAttempt -lt 1) {
-        throw "Workflow run attempt is invalid; refusing to claim the pending task."
-    }
-    if ($existingTaskFound) {
-        $ownerRecord = Repair-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $existingTask -RunId ([string]$env:GITHUB_RUN_ID) -RunAttempt $runAttempt -Source "legacy_migration"
-    } else {
-        $ownerRecord = Get-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task ""
-        if ($null -ne $ownerRecord) {
-            throw "Pending task owner metadata exists without its task; preserving unknown state."
-        }
-    }
-
-    if (-not $existingTaskFound) {
-        $temporaryPath = Join-Path $stateDir ("pending-manual-task-" + $env:GITHUB_RUN_ID + "-" + $env:GITHUB_RUN_ATTEMPT + ".tmp")
-        try {
-            [System.IO.File]::WriteAllText(
-                $temporaryPath, $manualTask, [System.Text.UTF8Encoding]::new($false)
-            )
-            Move-Item -LiteralPath $temporaryPath -Destination $pendingPath -Force
-        } finally {
-            if (Test-Path -LiteralPath $temporaryPath) {
-                Remove-Item -LiteralPath $temporaryPath -Force
-            }
-        }
-    }
-
-    $ownerSource = if ($existingTaskFound) { "legacy_migration" } else { "manual_dispatch" }
-    $ownerArgs = @{
-        Path = $taskOwnerPath
-        Task = $manualTask
-        RunId = [string]$env:GITHUB_RUN_ID
-        RunAttempt = $runAttempt
-        Source = $ownerSource
-        Existing = $ownerRecord
-    }
-    $null = Write-AutonomousTaskOwnerRecord @ownerArgs
-
-    Write-Host "Manual task persisted to the durable runner state before prerequisite checks."
 } finally {
     if ($stateMutexOwned) {
         $stateMutex.ReleaseMutex()
