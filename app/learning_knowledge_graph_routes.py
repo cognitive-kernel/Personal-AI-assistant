@@ -13,7 +13,7 @@ from .module_settings import require_module_enabled
 router = APIRouter(
     prefix="/api/learning/knowledge-graph",
     tags=["learning-knowledge-graph"],
-    dependencies=[Depends(require_loopback_client), Depends(require_module_enabled("knowledge_graph"))],
+    dependencies=[Depends(require_loopback_client)],
 )
 
 
@@ -27,7 +27,7 @@ class EdgeProposalRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-@router.post("/edges", status_code=201)
+@router.post("/edges", status_code=201, dependencies=[Depends(require_module_enabled("knowledge_graph"))])
 def create_graph_edge_proposal(request: EdgeProposalRequest) -> dict[str, Any]:
     try:
         edge = learning_knowledge_graph.propose_edge(
@@ -56,7 +56,7 @@ def create_graph_edge_proposal(request: EdgeProposalRequest) -> dict[str, Any]:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-@router.post("/edges/{edge_id}/review", status_code=202)
+@router.post("/edges/{edge_id}/review", status_code=202, dependencies=[Depends(require_module_enabled("knowledge_graph"))])
 def enqueue_graph_edge_review(edge_id: int) -> dict[str, Any]:
     if isinstance(edge_id, bool) or edge_id < 1:
         raise HTTPException(status_code=422, detail="edge_id must be positive.")
