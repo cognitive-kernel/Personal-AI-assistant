@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -10,6 +11,7 @@ import psutil
 import pytest
 
 from scripts.autonomous_engineering_process_job import WindowsProcessJob
+from scripts import autonomous_engineering_codex_runner as codex_runner
 
 from scripts.autonomous_engineering_execution_lock import (
     execution_state_directory,
@@ -126,3 +128,56 @@ def test_windows_codex_job_kills_child_and_grandchild_when_owner_closes(tmp_path
         pass
     except psutil.TimeoutExpired:
         raise AssertionError("A Codex descendant survived closure of its owning Windows Job Object.")
+
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Job Object ownership is Windows-only")
+def test_windows_codex_supervisor_job_handle_is_pinned_in_owner(tmp_path: Path):
+    owner = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    child_pid_file = tmp_path / "codex-child.pid"
+    child_code = "import time; time.sleep(60)"
+    codex_code = (
+        "import subprocess,sys,time; "
+        "p=subprocess.Popen([sys.executable,'-c'," + repr(child_code) + "]); "
+        "open(" + repr(str(child_pid_file)) + ",'w').write(str(p.pid)); "
+        "time.sleep(60)"
+    )
+    owner_chain = [{
+        "pid": owner.pid,
+        "started_at": float(psutil.Process(owner.pid).create_time()),
+    }]
+    wrapper = subprocess.Popen(
+        [
+            sys.executable, str(Path(codex_runner.__file__).resolve()),
+            "--timeout-seconds", "30",
+            "--parent-chain", json.dumps(owner_chain),
+            "--", sys.executable, "-c", codex_code,
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and not child_pid_file.is_file():
+            if wrapper.poll() is not None:
+                raise AssertionError("Codex supervisor exited before launching its child.")
+            time.sleep(0.05)
+        assert child_pid_file.is_file(), "Codex child did not start under the owner-bound job."
+        owner.terminate()
+        owner.wait(timeout=5)
+        assert wrapper.wait(timeout=10) == 125
+        child_pid = int(child_pid_file.read_text(encoding="utf-8"))
+        try:
+            psutil.Process(child_pid).wait(timeout=5)
+        except psutil.NoSuchProcess:
+            pass
+        except psutil.TimeoutExpired:
+            raise AssertionError("Codex child survived owner loss despite the duplicated Job Object handle.")
+    finally:
+        if owner.poll() is None:
+            owner.kill()
+            owner.wait(timeout=5)
+        if wrapper.poll() is None:
+            wrapper.kill()
+            wrapper.wait(timeout=5)
