@@ -337,11 +337,19 @@ jobs:
                   raise SystemExit(f"Pending-state cleanup recovery failed: {exc}") from exc
               if manual_task:
                   try:
+                      def get_pending_pr(number):
+                          try:
+                              return api(f"pulls/{number}")
+                          except urllib.error.HTTPError as exc:
+                              if exc.code == 404:
+                                  return {}
+                              raise
+
                       pending_pr_state = reconcile_pending_pr_state_unlocked(
                           state_dir,
                           repo,
                           pulls,
-                          lambda number: api(f"pulls/{number}"),
+                          get_pending_pr,
                       )
                   except RuntimeError as exc:
                       raise SystemExit(f"Pending autonomous PR recovery failed: {exc}") from exc
