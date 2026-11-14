@@ -192,7 +192,7 @@ jobs:
             throw "Python is not resolvable through PATH under the Runner service identity."
           }
           (Get-Command python).Source | Write-Host
-          & $ollamaPath --version
+          & $ollama.Source --version
           if ($LASTEXITCODE -ne 0) {
             throw "Ollama CLI cannot execute under the Runner service identity."
           }
