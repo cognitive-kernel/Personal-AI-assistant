@@ -136,9 +136,10 @@ def test_configured_state_root_must_be_absolute(monkeypatch, tmp_path: Path):
 def test_windows_state_root_never_falls_back_to_a_user_profile(monkeypatch):
     from scripts import autonomous_engineering_state_paths as paths
 
-    monkeypatch.setattr(paths.os, "name", "nt")
+    monkeypatch.setattr(paths, "_is_windows", lambda: True)
     monkeypatch.delenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", raising=False)
     monkeypatch.delenv("PROGRAMDATA", raising=False)
+    _install_fake_machine_environment(monkeypatch, None)
     with pytest.raises(RuntimeError, match="PROGRAMDATA"):
         paths.execution_state_directory()
 
