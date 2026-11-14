@@ -74,6 +74,42 @@ function Get-AutonomousTaskOwnerRecord {
     return $record
 }
 
+
+function Repair-AutonomousTaskOwnerRecord {
+    param(
+        [Parameter(Mandatory=$true)][string]$Path,
+        [Parameter(Mandatory=$true)][string]$Task,
+        [Parameter(Mandatory=$true)][string]$RunId,
+        [Parameter(Mandatory=$true)][int]$RunAttempt,
+        [Parameter(Mandatory=$true)][ValidateSet("manual_dispatch", "recovery", "legacy_migration")][string]$Source
+    )
+
+    $existing = $null
+    try {
+        $existing = Get-AutonomousTaskOwnerRecord -Path $Path -Task $Task
+    } catch {
+        if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+            throw
+        }
+        $backupPath = "$Path.quarantine-$RunId-$RunAttempt-$([guid]::NewGuid().ToString('N')).json"
+        try {
+            Move-Item -LiteralPath $Path -Destination $backupPath -ErrorAction Stop
+        } catch {
+            throw "Stale task ownership metadata could not be quarantined; preserving the task. $($_.Exception.Message)"
+        }
+        try {
+            return Write-AutonomousTaskOwnerRecord -Path $Path -Task $Task -RunId $RunId -RunAttempt $RunAttempt -Source "recovery" -Existing $null
+        } catch {
+            if (-not (Test-Path -LiteralPath $Path) -and (Test-Path -LiteralPath $backupPath)) {
+                Move-Item -LiteralPath $backupPath -Destination $Path -ErrorAction SilentlyContinue
+            }
+            throw
+        }
+    }
+
+    return Write-AutonomousTaskOwnerRecord -Path $Path -Task $Task -RunId $RunId -RunAttempt $RunAttempt -Source $Source -Existing $existing
+}
+
 function Repair-AutonomousPendingStateCleanup {
     param([Parameter(Mandatory=$true)][string]$StateDirectory)
     $markerPath = Join-Path $StateDirectory "pending-state-cleanup.json"
@@ -185,4 +221,4 @@ function Write-AutonomousTaskOwnerRecord {
     return $record
 }
 
-Export-ModuleMember -Function Get-AutonomousTaskDigest, Get-AutonomousTaskOwnerRecord, Write-AutonomousTaskOwnerRecord, Repair-AutonomousPendingStateCleanup
+Export-ModuleMember -Function Get-AutonomousTaskDigest, Get-AutonomousTaskOwnerRecord, Repair-AutonomousTaskOwnerRecord, Write-AutonomousTaskOwnerRecord, Repair-AutonomousPendingStateCleanup

@@ -9,6 +9,7 @@ import pytest
 
 from scripts.autonomous_engineering_pending_task_state import (
     claim_pending_task_owner_unlocked,
+    reconcile_pending_task_owner_unlocked,
     pending_task_owner_path,
     task_digest,
     validate_pending_task_owner_unlocked,
@@ -108,3 +109,44 @@ def test_powershell_and_python_compute_identical_task_digest():
         timeout=10,
     )
     assert result.stdout.strip() == task_digest(task)
+
+def test_reconcile_quarantines_mismatched_owner_and_preserves_task(tmp_path: Path):
+    task_path = tmp_path / "pending-manual-task.txt"
+    task_path.write_text("Current durable task", encoding="utf-8")
+    owner_path = pending_task_owner_path(tmp_path)
+    with durable_state_lock(tmp_path):
+        claim_pending_task_owner_unlocked(
+            tmp_path, "Previous task", "old-run", 1, source="manual_dispatch",
+        )
+        previous_owner = owner_path.read_bytes()
+        recovered = reconcile_pending_task_owner_unlocked(
+            tmp_path, "Current durable task", "new-run", 2, source="recovery",
+        )
+        validated = validate_pending_task_owner_unlocked(
+            tmp_path, "Current durable task", "new-run", 2,
+        )
+
+    backups = list(tmp_path.glob("pending-manual-task-owner.json.quarantine-*.json"))
+    assert len(backups) == 1
+    assert backups[0].read_bytes() == previous_owner
+    assert recovered == validated
+    assert recovered["task_sha256"] == task_digest("Current durable task")
+    assert recovered["owner_run_id"] == "new-run"
+    assert recovered["source"] == "recovery"
+    assert task_path.read_text(encoding="utf-8") == "Current durable task"
+
+
+def test_reconcile_quarantines_malformed_owner_record(tmp_path: Path):
+    owner_path = pending_task_owner_path(tmp_path)
+    owner_path.write_text("{malformed", encoding="utf-8")
+
+    with durable_state_lock(tmp_path):
+        recovered = reconcile_pending_task_owner_unlocked(
+            tmp_path, "Durable task", "5002", 1, source="recovery",
+        )
+
+    backups = list(tmp_path.glob("pending-manual-task-owner.json.quarantine-*.json"))
+    assert len(backups) == 1
+    assert backups[0].read_text(encoding="utf-8") == "{malformed"
+    assert recovered["task_sha256"] == task_digest("Durable task")
+    assert json.loads(owner_path.read_text(encoding="utf-8")) == recovered

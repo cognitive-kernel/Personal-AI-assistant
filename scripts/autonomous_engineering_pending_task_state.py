@@ -126,6 +126,57 @@ def claim_pending_task_owner_unlocked(
     return record
 
 
+
+def reconcile_pending_task_owner_unlocked(
+    state_directory: Path,
+    task: str,
+    run_id: str,
+    run_attempt: int,
+    *,
+    source: str,
+) -> dict[str, Any]:
+    """Reconcile stale ownership metadata without changing the durable task.
+
+    The caller must hold the shared state lock and prove that no other run is
+    active. A mismatched or unsupported owner record is preserved under a
+    unique quarantine filename before a new owner lease is committed.
+    """
+    owner_path = pending_task_owner_path(state_directory)
+    try:
+        raw = owner_path.read_bytes()
+    except FileNotFoundError:
+        return claim_pending_task_owner_unlocked(
+            state_directory, task, run_id, run_attempt, source=source,
+        )
+    except OSError as exc:
+        raise RuntimeError("Pending task owner metadata is unreadable; preserving the task.") from exc
+
+    try:
+        existing = json.loads(raw.decode("utf-8"))
+        _validate_owner_record(existing, task)
+    except (UnicodeDecodeError, ValueError, RuntimeError):
+        stamp = f"{run_id}-{run_attempt}-{time.time_ns()}"
+        backup_path = owner_path.with_name(f"{owner_path.name}.quarantine-{stamp}.json")
+        try:
+            owner_path.replace(backup_path)
+        except OSError as exc:
+            raise RuntimeError(
+                "Stale task ownership metadata could not be quarantined; preserving the task."
+            ) from exc
+        try:
+            return claim_pending_task_owner_unlocked(
+                state_directory, task, run_id, run_attempt, source="recovery",
+            )
+        except Exception:
+            # Restore the old record if the replacement could not be committed.
+            if not owner_path.exists() and backup_path.exists():
+                backup_path.replace(owner_path)
+            raise
+
+    return claim_pending_task_owner_unlocked(
+        state_directory, task, run_id, run_attempt, source=source,
+    )
+
 def validate_pending_task_owner_unlocked(
     state_directory: Path,
     task: str,

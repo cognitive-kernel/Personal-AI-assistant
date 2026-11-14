@@ -136,7 +136,11 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
         Write-Warning "Removing $runnerIdentity from the local Administrators group; autonomous execution requires least privilege."
         if ($services[0].State -eq "Running") {
             Stop-Service -Name $services[0].Name -ErrorAction Stop
-            $services[0] = Get-CimInstance Win32_Service -Filter "Name='$($services[0].Name)'"
+            $stoppedService = Get-Service -Name $services[0].Name -ErrorAction Stop
+            $stoppedService.WaitForStatus(
+                [System.ServiceProcess.ServiceControllerStatus]::Stopped,
+                [TimeSpan]::FromSeconds(30)
+            )
         }
         Remove-LocalGroupMember -Group $administratorsGroup.Name -Member $runnerIdentity -ErrorAction Stop
         $stillAdministrator = @(

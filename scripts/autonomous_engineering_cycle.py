@@ -55,7 +55,9 @@ try:
         clear_pending_pr,
         clear_pending_task,
         clear_pending_state,
+        recover_pending_state_cleanup_unlocked,
     )
+    from .autonomous_engineering_pending_pr_recovery import reconcile_pending_pr_state_unlocked
 except ImportError:  # Direct script execution from the scripts directory.
     from autonomous_engineering_checkpoint_contract import metadata_confirms_watcher_ready
     from autonomous_engineering_checkpoint_process import process_start_time
@@ -72,7 +74,9 @@ except ImportError:  # Direct script execution from the scripts directory.
         clear_pending_pr,
         clear_pending_task,
         clear_pending_state,
+        recover_pending_state_cleanup_unlocked,
     )
+    from autonomous_engineering_pending_pr_recovery import reconcile_pending_pr_state_unlocked
 
 try:
     from . import autonomous_engineering_cycle_checkpoints as _cycle_checkpoints
@@ -276,7 +280,18 @@ def run_cycle(args: argparse.Namespace) -> int:
     if not token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
         raise RuntimeError("A valid workflow token and repository are required.")
 
-    saved_pending_pr = load_pending_pr()
+    state_dir = _autonomous_state_dir()
+    with durable_state_lock(state_dir):
+        recover_pending_state_cleanup_unlocked(state_dir)
+        open_pull_requests = api(token, repo, "GET", "pulls?state=open&per_page=100")
+        if not isinstance(open_pull_requests, list):
+            raise RuntimeError("GitHub returned an invalid open pull request listing.")
+        saved_pending_pr = reconcile_pending_pr_state_unlocked(
+            state_dir,
+            repo,
+            open_pull_requests,
+            lambda number: api(token, repo, "GET", f"pulls/{number}"),
+        )
     if saved_pending_pr is not None:
         current_pending = api(token, repo, "GET", f"pulls/{saved_pending_pr['number']}")
         if current_pending.get("merged") is True:
