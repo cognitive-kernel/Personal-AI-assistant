@@ -42,6 +42,7 @@ from .ai_learning import browser_automation as ai_learning_browser_automation
 from .ai_learning.ui import router as ai_learning_ui_router
 from .autonomous_engineering import router as autonomous_engineering_router
 from .schema_migrations import UntrackedSchemaError
+from .module_settings import require_module_enabled
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -728,7 +729,7 @@ def set_chat_message_feedback(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@app.post("/api/chat")
+@app.post("/api/chat", dependencies=[Depends(require_module_enabled("chat"))])
 def chat(request: ChatRequest) -> dict[str, str]:
     chat_limit = int(db.get_settings().get("chat_source_max_chars", 12000))
     if len(request.message) > chat_limit:
