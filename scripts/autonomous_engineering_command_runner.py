@@ -7,9 +7,7 @@ observable before releasing its repository lock or returning to its caller.
 from __future__ import annotations
 
 import os
-import signal
 import subprocess
-import time
 from pathlib import Path
 from typing import Mapping, Sequence
 
