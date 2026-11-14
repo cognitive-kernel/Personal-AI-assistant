@@ -26,7 +26,7 @@ _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
 router = APIRouter(
     prefix="/api/autonomous-engineering",
     tags=["autonomous-engineering"],
-    dependencies=[Depends(require_loopback_client), Depends(require_module_enabled("autonomous_engineering"))],
+    dependencies=[Depends(require_loopback_client)],
 )
 
 _DEFAULT_REPOSITORY = "cognitive-kernel/Personal-AI-assistant"
@@ -324,7 +324,7 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
     }
 
 
-@router.post("/dispatch", status_code=202)
+@router.post("/dispatch", status_code=202, dependencies=[Depends(require_module_enabled("autonomous_engineering"))])
 def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) -> dict[str, Any]:
     manual_task = payload.task.strip() if payload else ""
     if "\x00" in manual_task:
@@ -381,7 +381,7 @@ def pause_autonomous_engineering() -> dict[str, Any]:
     return {"accepted": True, "paused": True, "message": "توقف ایمن ثبت شد؛ وظیفهٔ جاری تا مرز امن ادامه می‌یابد و وظیفهٔ جدید آغاز نمی‌شود."}
 
 
-@router.post("/resume")
+@router.post("/resume", dependencies=[Depends(require_module_enabled("autonomous_engineering"))])
 def resume_autonomous_engineering() -> dict[str, Any]:
     gh = shutil.which("gh")
     if not gh:
