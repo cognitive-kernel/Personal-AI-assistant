@@ -277,6 +277,8 @@ def test_standalone_ollama_tool_probe_uses_local_endpoint_and_structured_tool_ca
 
     class FakeOpener:
         def open(self, request, timeout):
+            if request.full_url.endswith("/api/ps"):
+                return io.BytesIO(json.dumps({"models": []}).encode("utf-8"))
             captured["url"] = request.full_url
             captured["timeout"] = timeout
             captured["payload"] = json.loads(request.data.decode("utf-8"))
@@ -292,6 +294,7 @@ def test_standalone_ollama_tool_probe_uses_local_endpoint_and_structured_tool_ca
     assert captured["url"] == "http://127.0.0.1:11434/api/chat"
     assert captured["timeout"] == 45
     assert captured["payload"]["think"] is False
+    assert captured["payload"]["keep_alive"] == "0"
     assert captured["payload"]["tools"][0]["function"]["name"] == "autonomous_engineering_capability_probe"
 
 
