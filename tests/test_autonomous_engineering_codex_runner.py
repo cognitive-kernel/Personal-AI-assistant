@@ -169,6 +169,7 @@ def test_parent_managed_posix_group_is_inherited_and_drained_by_owner(tmp_path: 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX broken-pipe owner-loss contract.")
 def test_codex_runner_kills_inherited_group_when_output_owner_disappears(tmp_path: Path):
     child_pid_file = tmp_path / "broken-pipe-child.pid"
+    runner_exit_file = tmp_path / "runner-exit-code.txt"
     owner_script = tmp_path / "output-owner.py"
     runner_path = Path(runner.__file__).resolve()
     command_code = (
@@ -179,7 +180,7 @@ def test_codex_runner_kills_inherited_group_when_output_owner_disappears(tmp_pat
         "sys.stdout.write('x'*8000000); sys.stdout.flush()"
     )
     owner_script.write_text(
-        "import json, os, subprocess, sys, time\n"
+        "import json, subprocess, sys, time\n"
         "from pathlib import Path\n"
         "from scripts.autonomous_engineering_codex_runner import capture_parent_chain\n"
         "command = [sys.executable, " + repr(str(runner_path)) + ", "
@@ -191,8 +192,9 @@ def test_codex_runner_kills_inherited_group_when_output_owner_disappears(tmp_pat
         "while not Path(" + repr(str(child_pid_file)) + ").exists() and time.monotonic() < deadline:\n"
         "    time.sleep(0.01)\n"
         "assert Path(" + repr(str(child_pid_file)) + ").exists(), 'Codex child did not start'\n"
-        "time.sleep(0.2)\n"
-        "os._exit(0)\n",
+        "runner_process.stdout.close()\n"
+        "runner_exit = runner_process.wait(timeout=10)\n"
+        "Path(" + repr(str(runner_exit_file)) + ").write_text(str(runner_exit), encoding='utf-8')\n",
         encoding="utf-8",
     )
     owner = subprocess.Popen(
@@ -204,6 +206,9 @@ def test_codex_runner_kills_inherited_group_when_output_owner_disappears(tmp_pat
     owner_exit = owner.wait(timeout=15)
     owner_stderr = owner.stderr.read().decode("utf-8", errors="replace") if owner.stderr else ""
     assert owner_exit == 0, f"Owner harness failed: {owner_stderr}"
+    assert int(runner_exit_file.read_text(encoding="utf-8")) != 0, (
+        "The supervisor must fail closed when its output owner disconnects."
+    )
     child_pid = int(child_pid_file.read_text(encoding="utf-8"))
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
@@ -214,7 +219,7 @@ def test_codex_runner_kills_inherited_group_when_output_owner_disappears(tmp_pat
         except psutil.NoSuchProcess:
             return
         time.sleep(0.05)
-    raise AssertionError("Codex descendant survived after the output owner disappeared.")
+    raise AssertionError("Codex descendant survived after the output owner disconnected.")
 
 
 def test_codex_runner_rejects_conflicting_or_unowned_external_group_contracts():
