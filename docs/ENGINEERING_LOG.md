@@ -881,3 +881,8 @@ embedded in application code. The Runner remains non-administrator. No local Run
 service, process, or autonomous task was started as part of this repository change.
 Windows CI must validate the PowerShell/Python file-lock interoperability test before
 this portability change is accepted. Cross-account target-host acceptance remains pending.
+
+
+## 2026-11-14 — Prevent per-user state-root fallback
+
+The portability audit found one additional source of split-brain state: when PROGRAMDATA was absent on Windows, execution_state_directory() silently fell back to the current user's home directory. A relative AUTONOMOUS_ENGINEERING_PROGRESS_DIR could also resolve differently under different working directories. Windows now fails closed if PROGRAMDATA is unavailable, configured state roots must be absolute, and the existing POSIX default path is preserved to avoid stranding prior state. Regression tests cover both rejection cases.
