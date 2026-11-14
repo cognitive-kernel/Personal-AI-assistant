@@ -447,3 +447,8 @@
 - Moved the default Runner installation root under ProgramData.
 - Added regression coverage for shared runtime locking and account-independent tool discovery.
 - Pending: exact-head Windows CI, actual cross-account ACL verification on a separate Windows host, and target-host sandbox smoke/soak. The autonomous system remains paused/off; no local execution was started.
+
+
+## Windows state-root hardening
+
+Windows no longer falls back to a per-user home directory when PROGRAMDATA is missing. Configured state roots must be absolute, preventing different working directories from resolving separate locks/state stores. The existing POSIX state location is preserved.
