@@ -16,7 +16,7 @@ def test_windows_provisioning_accepts_resolvable_external_account_identities():
     script = (ROOT / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
 
     assert "function ConvertTo-WindowsAccountName" in script
-    assert '$value.Contains("\\\\") -or $value.Contains("@")' in script
+    assert '$value.Contains("\\") -or $value.Contains("@")' in script
     assert "Get-AccountSidValue $appIdentity" in script
     assert "Get-AccountSidValue $runnerIdentity" in script
     assert "Using externally managed Runner identity" in script
@@ -28,7 +28,7 @@ def test_windows_provisioning_does_not_require_a_fixed_users_group_or_grant_admi
 
     assert "Add-LocalGroupMember" not in script
     assert "S-1-5-32-545" not in script
-    assert "BUILTIN\\\\Administrators" not in script
+    assert "BUILTIN" not in script
     assert '"SYSTEM:(OI)(CI)F"' not in script
     assert '$runnerGrant = "*$($runnerSid):(OI)(CI)M"' in script
     assert '$progressGrants += "*$($appSid):(OI)(CI)RX"' in script
