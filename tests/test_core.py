@@ -760,7 +760,7 @@ def test_ollama_chat_uses_dedicated_profile_settings(tmp_path, monkeypatch):
     assert ollama.chat("سلام") == "سلام"
     assert captured["path"] == "/api/chat"
     assert captured["payload"]["model"] == "qwen2.5:7b"
-    assert captured["payload"]["options"]["num_ctx"] == 4096
+    assert captured["payload"]["options"]["num_ctx"] == 8192
     assert captured["payload"]["options"]["num_thread"] == 2
     assert captured["timeout"] == 17
 
@@ -845,7 +845,7 @@ def test_ollama_chat_sends_ram_aware_keep_alive_and_profile_options(monkeypatch)
     assert captured["payload"]["options"]["num_ctx"] == 4096
 
 
-def test_ollama_chat_respects_configured_ram_budget(monkeypatch):
+def test_ollama_chat_respects_configured_context_when_ram_budget_allows(monkeypatch):
     captured = {}
     monkeypatch.setattr(ollama, "get_settings", lambda: {
         "chat_ollama_model": "qwen2.5:7b",
