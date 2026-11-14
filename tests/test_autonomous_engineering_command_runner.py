@@ -136,16 +136,22 @@ run_command(
 @pytest.mark.skipif(os.name == "nt", reason="POSIX process-group termination contract.")
 def test_posix_command_waits_for_descendant_termination_before_return(tmp_path: Path):
     marker = tmp_path / "child-terminated.marker"
+    ready = tmp_path / "child-handler-ready.marker"
     pid_file = tmp_path / "child.pid"
     child_code = (
         "import signal,time; from pathlib import Path; "
         "signal.signal(signal.SIGTERM, lambda *_: Path("
         + repr(str(marker))
-        + ").write_text('terminated')); time.sleep(60)"
+        + ").write_text('terminated')); "
+        "Path(" + repr(str(ready)) + ").write_text('ready'); time.sleep(60)"
     )
     parent_code = (
-        "import subprocess,sys; "
+        "import subprocess,sys,time; "
         "child=subprocess.Popen([sys.executable,'-c'," + repr(child_code) + "]); "
+        "deadline=time.monotonic()+5; "
+        "ready=__import__('pathlib').Path(" + repr(str(ready)) + "); "
+        "while not ready.exists() and time.monotonic()<deadline: time.sleep(0.01); "
+        "assert ready.exists(), 'child signal handler did not initialize'; "
         "open(" + repr(str(pid_file)) + ",'w').write(str(child.pid))"
     )
 
