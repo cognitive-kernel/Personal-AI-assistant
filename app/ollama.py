@@ -334,6 +334,9 @@ def _recommended_context_tokens(
     maximum_context: int | None,
     memory_estimate: dict[str, Any] | None,
     hardware: dict[str, Any],
+    *,
+    model_is_loaded: bool = False,
+    running_context_tokens: int | None = None,
 ) -> int | None:
     """Return a context only when model dimensions and current memory are measurable."""
     if not isinstance(maximum_context, int) or isinstance(maximum_context, bool) or maximum_context <= 0:
@@ -356,9 +359,22 @@ def _recommended_context_tokens(
     if get_settings().get("gpu_enabled") is True:
         gpu_budget = _dedicated_gpu_budget_gb(hardware)
         # Shared iGPU memory is already part of host RAM; never count it twice.
-        if gpu_budget is not None and gpu_budget > float(weights) + float(overhead):
+        required_loaded_budget = float(overhead) + (0.0 if model_is_loaded else float(weights))
+        if gpu_budget is not None and gpu_budget > required_loaded_budget:
             budget = gpu_budget
-    available_for_cache = budget - float(weights) - float(overhead)
+    if model_is_loaded:
+        if (
+            isinstance(running_context_tokens, bool)
+            or not isinstance(running_context_tokens, int)
+            or running_context_tokens <= 0
+        ):
+            return None
+        already_allocated_cache = float(cache_per_token) * running_context_tokens / (1024 ** 3)
+        # Free memory is measured after weights and the currently allocated KV
+        # cache are resident; add back only the known cache allocation.
+        available_for_cache = budget + already_allocated_cache - float(overhead)
+    else:
+        available_for_cache = budget - float(weights) - float(overhead)
     if not math.isfinite(available_for_cache) or available_for_cache <= 0:
         return None
     fit = int(available_for_cache * (1024 ** 3) / float(cache_per_token))
@@ -424,7 +440,14 @@ def model_details(model: str, context_tokens: int | None = None) -> dict[str, An
     running = _request("/api/ps", timeout=4).get("models", [])
     running_item = next((item for item in running if isinstance(item, dict) and item.get("name") == name), None) if isinstance(running, list) else None
     hardware = detect_hardware()
-    recommended_context = _recommended_context_tokens(maximum_context, estimate, hardware)
+    running_context = running_item.get("context_length") if isinstance(running_item, dict) else None
+    recommended_context = _recommended_context_tokens(
+        maximum_context,
+        estimate,
+        hardware,
+        model_is_loaded=running_item is not None,
+        running_context_tokens=running_context,
+    )
     raw_capabilities = info.get("capabilities")
     capabilities = sorted({
         value for value in raw_capabilities if isinstance(value, str) and value
