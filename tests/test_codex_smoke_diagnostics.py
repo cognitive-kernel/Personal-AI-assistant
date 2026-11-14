@@ -381,7 +381,11 @@ def test_autonomous_codex_smoke_uses_only_non_admin_sandbox_modes_and_is_bounded
     )[1].split("      - name: Install project dependencies", 1)[0]
 
     assert "timeout-minutes: 15" in smoke
-    assert 'foreach ($backend in @("mxc", "unelevated"))' in smoke
+    assert '$sandboxBackends = @("mxc")' in smoke
+    assert '$env:AUTONOMOUS_ENGINEERING_ALLOW_UNELEVATED_SANDBOX -eq "true"' in smoke
+    assert '$sandboxBackends += "unelevated"' in smoke
+    assert "foreach ($backend in $sandboxBackends)" in smoke
+    assert 'foreach ($backend in @("mxc", "unelevated"))' not in smoke
     assert 'windows.sandbox="elevated"' not in smoke
     assert 'echo ok>$probeFileName && type $probeFileName && del $probeFileName' in smoke
     assert "--require-command-fragment \"echo\" --require-command-fragment \"type\" --require-command-fragment \"del\"" in smoke
