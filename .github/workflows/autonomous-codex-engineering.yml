@@ -510,7 +510,7 @@ jobs:
           "@
           Set-Content -LiteralPath $smokePrompt -Value $smokePromptText -Encoding utf8
           $selectedBackend = $null
-          foreach ($backend in @("mxc", "elevated", "unelevated")) {
+          foreach ($backend in @("mxc", "unelevated")) {
             $env:CODEX_WINDOWS_SANDBOX_BACKEND = $backend
             if ($backend -eq "mxc") {
               Write-Host "Running the official standalone MXC compatibility probe under the Runner service identity."
@@ -553,7 +553,7 @@ jobs:
             Write-Warning "Codex workspace-tool smoke test failed with '$backend'; trying the next supported sandbox backend."
           }
           if (-not $selectedBackend) {
-            throw "No supported Windows sandbox mode (MXC, elevated, or restricted-token unelevated) passed the verified Codex JSONL workspace create/read/delete test. Unsandboxed execution is prohibited."
+            throw "Neither supported non-admin Windows sandbox mode (MXC or restricted-token unelevated) passed the verified Codex JSONL workspace create/read/delete test. Unsandboxed execution is prohibited."
           }
           "CODEX_WINDOWS_SANDBOX_BACKEND=$selectedBackend" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Verified Windows Codex sandbox backend: $selectedBackend"
