@@ -25,7 +25,19 @@ $runnerIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $RunnerAcc
 $appIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $AppAccount
 $runnerLocalName = Get-AutonomousLocalAccountName -AccountName $runnerIdentity
 if ($runnerLocalName -and ($runnerLocalName.Length -gt 20 -or $runnerLocalName -notmatch "^[A-Za-z0-9_.-]+$")) { throw "Invalid local Runner account name." }
-$progressPath = Resolve-AutonomousStateDirectory -ConfiguredPath $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR -ProgramDataPath $env:ProgramData
+$machineStateDirectory = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")
+$processStateDirectory = $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR
+if (-not [string]::IsNullOrWhiteSpace($processStateDirectory)) {
+    if ([string]::IsNullOrWhiteSpace($machineStateDirectory)) {
+        throw "AUTONOMOUS_ENGINEERING_PROGRESS_DIR must be configured at machine scope so all Windows service and application identities share one state root."
+    }
+    $processStatePath = [Environment]::GetFullPath([Environment]::ExpandEnvironmentVariables($processStateDirectory.Trim()))
+    $machineStatePath = [Environment]::GetFullPath([Environment]::ExpandEnvironmentVariables($machineStateDirectory.Trim()))
+    if (-not $processStatePath.Equals($machineStatePath, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Process and machine AUTONOMOUS_ENGINEERING_PROGRESS_DIR values differ; refusing per-account state divergence."
+    }
+}
+$progressPath = Resolve-AutonomousStateDirectory -ConfiguredPath $machineStateDirectory -ProgramDataPath $env:ProgramData
 $runnerRootBoundary = $RunnerRoot.TrimEnd([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)) + [System.IO.Path]::DirectorySeparatorChar
 $statePathBoundary = $progressPath.TrimEnd([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)) + [System.IO.Path]::DirectorySeparatorChar
 if ($RunnerRoot.Equals($progressPath, [StringComparison]::OrdinalIgnoreCase) -or $progressPath.StartsWith($runnerRootBoundary, [StringComparison]::OrdinalIgnoreCase) -or $RunnerRoot.StartsWith($statePathBoundary, [StringComparison]::OrdinalIgnoreCase)) {
