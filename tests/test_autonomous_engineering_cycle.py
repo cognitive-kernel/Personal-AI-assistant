@@ -82,7 +82,7 @@ def test_failed_local_and_github_checks_retry_same_task_then_wait_for_owner_merg
     monkeypatch.setattr(cycle, "prepare_commit", fake_prepare_commit)
     published = []
 
-    def fake_publish(*args):
+    def fake_publish(*args, **kwargs):
         published.append(args)
         if len(published) == 1:
             raise RuntimeError("Per-task draft PR publication failed: Required workflow tests.yml failed for candidate SHA.")
