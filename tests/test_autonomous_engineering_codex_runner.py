@@ -56,6 +56,9 @@ def test_parent_chain_rejects_pid_reuse_or_missing_process(monkeypatch):
     assert not runner.parent_chain_is_alive([{"pid": 2_000_000_000, "started_at": 1.0}])
 
     class ReusedPid:
+        def is_running(self):
+            return True
+
         def create_time(self):
             return 9999.0
 
