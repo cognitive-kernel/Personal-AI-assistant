@@ -220,6 +220,15 @@ def queue_initial_method(
                    WHERE path_topic_id=?""",
                 (path_topic_id,),
             )
+            # Preserve every lesson/evidence column, but mark the previous cycle
+            # as historical so no old completed job is mistaken for the active run.
+            connection.execute(
+                """UPDATE learning_jobs
+                   SET status='superseded', updated_at=CURRENT_TIMESTAMP
+                   WHERE path_topic_id=?
+                     AND status IN ('completed', 'failed', 'rejected', 'cancelled')""",
+                (path_topic_id,),
+            )
             connection.execute(
                 "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP WHERE id=?",
                 (path_topic_id,),
