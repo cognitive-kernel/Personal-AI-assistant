@@ -324,6 +324,9 @@ def test_codex_command_uses_owner_aware_supervisor_and_distinct_budgets(monkeypa
     assert smoke_command[smoke_command.index("--timeout-seconds") + 1] == "300"
     assert task_command[task_command.index("--timeout-seconds") + 1] == "1800"
     assert smoke_command[smoke_command.index("--parent-chain") + 1]
+    managed_command = config.codex_command("codex", task_args, parent_job_managed=True)
+    assert "--parent-job-managed" in managed_command
+    assert managed_command.index("--parent-job-managed") < managed_command.index("--")
     assert "--" in smoke_command
     assert "codex" in smoke_command[smoke_command.index("--") + 1]
 
