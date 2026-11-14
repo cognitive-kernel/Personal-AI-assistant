@@ -22,6 +22,8 @@ def test_windows_provisioning_uses_the_shared_identity_module():
     assert "Get-AutonomousWindowsAccountSid" in module
     assert "Get-AutonomousWindowsAccountSid -AccountName $appIdentity" in script
     assert "Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity" in script
+    assert "$runnerIsLocal = -not [string]::IsNullOrWhiteSpace($runnerLocalName)" in script
+    assert script.index("$runnerIsLocal =") < script.index("if ($runnerIsLocal)")
     assert "if ($value.Contains(" in module
     assert 'if ($value.Contains("@"))' not in module
 
