@@ -366,3 +366,23 @@ def test_codex_arguments_accepts_restricted_token_unelevated_backend(monkeypatch
     monkeypatch.setenv("CODEX_WINDOWS_SANDBOX_BACKEND", "disabled")
     with pytest.raises(ValueError, match="CODEX_WINDOWS_SANDBOX_BACKEND"):
         config.codex_arguments("gpt-oss:20b-codex-ctx16384", "report.md")
+
+
+def test_autonomous_codex_smoke_uses_only_non_admin_sandbox_modes_and_is_bounded():
+    from pathlib import Path
+
+    workflow = (
+        Path(__file__).resolve().parents[1]
+        / ".github" / "workflows" / "autonomous-codex-engineering.yml"
+    ).read_text(encoding="utf-8")
+    smoke = workflow.split(
+        "      - name: Verify Ollama and a real workspace-confined Codex tool call",
+        1,
+    )[1].split("      - name: Install project dependencies", 1)[0]
+
+    assert "timeout-minutes: 15" in smoke
+    assert 'foreach ($backend in @("mxc", "unelevated"))' in smoke
+    assert 'windows.sandbox="elevated"' not in smoke
+    assert 'echo ok>$probeFileName && type $probeFileName && del $probeFileName' in smoke
+    assert "--require-command-fragment \"echo\" --require-command-fragment \"type\" --require-command-fragment \"del\"" in smoke
+    assert "Unsandboxed execution is prohibited" in smoke
