@@ -97,7 +97,7 @@ def test_failed_local_and_github_checks_stop_at_retry_budget_and_preserve_task(t
         if any("autonomous_engineering_progress.py" in str(part) for part in command):
             calls["codex"] += 1
             report = Path(command[command.index("--report") + 1])
-            report.write_text("TASK_COMPLETE\\n", encoding="utf-8")
+            report.write_text("TASK_COMPLETE\n", encoding="utf-8")
             return subprocess.CompletedProcess(command, 0, "", "")
         if "-m" in command and "pytest" in command:
             calls["pytest"] += 1
@@ -110,7 +110,7 @@ def test_failed_local_and_github_checks_stop_at_retry_budget_and_preserve_task(t
         "prompt": str(prompt), "mode": "continuous",
     })()
 
-    with pytest.raises(RuntimeError, match=r"attempt limit reached \\(2\\)"):
+    with pytest.raises(RuntimeError, match=r"attempt limit reached \(2\)"):
         cycle.run_cycle(args)
 
     assert calls == {"codex": 2, "pytest": 2}
