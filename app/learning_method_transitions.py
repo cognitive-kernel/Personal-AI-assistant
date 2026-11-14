@@ -22,12 +22,48 @@ from .learning_method_state import (
 from .learning_method_queue import _queue_next
 
 
+def _assert_persisted_evaluation(
+    connection,
+    *,
+    evaluation_id: int,
+    path_topic_id: int,
+    job_id: int,
+    content_sha256: str,
+    outcome: str,
+    score: float | None,
+) -> None:
+    """Require the immutable evaluator record to match the requested transition."""
+    row = connection.execute(
+        """SELECT path_topic_id, job_id, content_sha256, outcome, score
+           FROM learning_topic_quality_evaluations WHERE id=?""",
+        (evaluation_id,),
+    ).fetchone()
+    if (
+        row is None
+        or int(row["path_topic_id"]) != path_topic_id
+        or int(row["job_id"]) != job_id
+        or row["content_sha256"] != content_sha256
+        or row["outcome"] != outcome
+        or (score is None and row["score"] is not None)
+        or (score is not None and (
+            row["score"] is None or float(row["score"]) != float(score)
+        ))
+    ):
+        raise MethodAttemptError(
+            "The persisted independent evaluation does not authorize this method transition."
+        )
+
+
 def mark_method_running(
     job_id: int, *, execution_lease=None, task_context: Any | None = None
 ) -> None:
     """Append the running event only while this domain execution epoch is current."""
     from . import learning, learning_execution
 
+    if execution_lease is None and task_context is None:
+        raise learning_execution.LearningExecutionLeaseLostError(
+            "A current task context or domain execution lease is required."
+        )
     job = learning.get_job(job_id)
     identity = _method_attempt_identity(job)
     if identity is None:
@@ -124,6 +160,20 @@ def advance_after_failure(
                 "content_sha256": _content_hash(job),
             } if expected_task_type == TOPIC_QUALITY_TASK_TYPE else {"job_id": job_id},
         )
+        if expected_task_type == TOPIC_QUALITY_TASK_TYPE:
+            evidence_record = evidence or {}
+            evaluation_id = evidence_record.get("evaluation_id")
+            if isinstance(evaluation_id, bool) or not isinstance(evaluation_id, int) or evaluation_id < 1:
+                raise MethodAttemptError("A persisted evaluation ID is required for quality-gate failure.")
+            _assert_persisted_evaluation(
+                connection,
+                evaluation_id=evaluation_id,
+                path_topic_id=path_topic_id,
+                job_id=job_id,
+                content_sha256=str(_content_hash(job) or ""),
+                outcome=outcome,
+                score=score,
+            )
         gate = connection.execute(
             "SELECT state, current_job_id FROM learning_topic_quality_gates WHERE path_topic_id=?",
             (path_topic_id,),
@@ -184,6 +234,15 @@ def complete_method(
                 "path_topic_id": path_topic_id,
                 "content_sha256": content_sha256,
             },
+        )
+        _assert_persisted_evaluation(
+            connection,
+            evaluation_id=evaluation_id,
+            path_topic_id=path_topic_id,
+            job_id=job_id,
+            content_sha256=content_sha256,
+            outcome="passed",
+            score=score,
         )
         gate = connection.execute(
             "SELECT state, current_job_id FROM learning_topic_quality_gates WHERE path_topic_id=?",
@@ -262,6 +321,17 @@ def block_unavailable(
                 "path_topic_id": path_topic_id,
                 "content_sha256": _content_hash(job),
             },
+        )
+        if isinstance(evaluation_id, bool) or not isinstance(evaluation_id, int) or evaluation_id < 1:
+            raise MethodAttemptError("A persisted unavailable evaluation ID is required.")
+        _assert_persisted_evaluation(
+            connection,
+            evaluation_id=evaluation_id,
+            path_topic_id=path_topic_id,
+            job_id=job_id,
+            content_sha256=str(_content_hash(job) or ""),
+            outcome="unavailable",
+            score=None,
         )
         gate = connection.execute(
             "SELECT state, current_job_id FROM learning_topic_quality_gates WHERE path_topic_id=?",

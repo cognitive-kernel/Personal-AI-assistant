@@ -209,7 +209,9 @@ def test_generation_failure_advances_to_basic_once_and_is_replay_safe(method_job
     monkeypatch.setattr(learning, "_enqueue_learning_job", lambda job_id: {"id": f"task-{job_id}"})
     initial = learning_method_orchestrator.queue_initial_method(topic_id)
     job_id = int(initial["job"]["id"])
-    learning_method_orchestrator.mark_method_running(job_id)
+    execution_lease = learning_execution.claim_execution(job_id, "method-jobs-test")
+    assert execution_lease is not None
+    learning_method_orchestrator.mark_method_running(job_id, execution_lease=execution_lease)
     with db.learning_connection() as connection:
         connection.execute(
             "UPDATE learning_jobs SET status='failed', error='provider timeout' WHERE id=?",
@@ -246,7 +248,9 @@ def test_three_method_failures_block_topic_without_fourth_method(method_job_stor
     for expected_method in ("ai_learning", "basic_learning", "topic_learning"):
         assert transition["method"] == expected_method
         job_id = int(transition["job"]["id"])
-        learning_method_orchestrator.mark_method_running(job_id)
+        execution_lease = learning_execution.claim_execution(job_id, f"method-jobs-test-{job_id}")
+        assert execution_lease is not None
+        learning_method_orchestrator.mark_method_running(job_id, execution_lease=execution_lease)
         with db.learning_connection() as connection:
             connection.execute(
                 "UPDATE learning_jobs SET status='failed', error=? WHERE id=?",
