@@ -157,6 +157,8 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
 
     root = Path(__file__).resolve().parents[1]
     context_script = (root / "scripts" / "verify_ollama_context.ps1").read_text(encoding="utf-8")
+    context_metadata = (root / "scripts" / "ollama_context" / "metadata.ps1").read_text(encoding="utf-8")
+    context_api = (root / "scripts" / "ollama_context" / "api.ps1").read_text(encoding="utf-8")
     diagnostic = (root / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml").read_text(encoding="utf-8")
     autonomous = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
 
@@ -213,13 +215,14 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
 def test_context_preflight_uses_deterministic_variant_from_selected_base_model():
     from pathlib import Path
 
-    script = (
-        Path(__file__).resolve().parents[1] / "scripts" / "verify_ollama_context.ps1"
-    ).read_text(encoding="utf-8")
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "scripts" / "verify_ollama_context.ps1").read_text(encoding="utf-8")
+    metadata = (root / "scripts" / "ollama_context" / "metadata.ps1").read_text(encoding="utf-8")
+    planning = (root / "scripts" / "ollama_context" / "planning.ps1").read_text(encoding="utf-8")
 
     assert '$codexModel = "$baseModel-codex-ctx$selectedContext"' in script
-    assert "verify_ollama_tools.py" in script
-    assert 'model_is_loaded = $modelIsLoaded' in script
+    assert "verify_ollama_tools.py" in metadata
+    assert 'model_is_loaded = $modelIsLoaded' in planning
     assert 'from = $baseModel' in script
     assert '$existingContext.Success' in script
     assert "if ($Model -match '(?i)-codex-ctx[0-9]+" in script
