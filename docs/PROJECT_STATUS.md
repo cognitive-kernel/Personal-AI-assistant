@@ -11,7 +11,8 @@
 - طبق مستندات رسمی Codex، `unelevated` محدودیت شبکهٔ ضعیف‌تر و نبود deny-read-path دارد؛ بنابراین فقط با متغیر صریح `AUTONOMOUS_ENGINEERING_ALLOW_UNELEVATED_SANDBOX=true` قابل انتخاب است و پیش‌فرض آن غیرفعال است. MXC تنها backend خودکار است و در شکست آن، workflow به‌صورت امن متوقف می‌شود.
 - CI قبلی روی SHA `a54b02e1e2b148bd7c03cd3831c4eb606358fa85` شامل ۲۲۱۲ تست موفق و یک شکست ناشی از assertion قدیمی متن خطا بود؛ قرارداد تست اصلاح و تست مثبت backend محدود `unelevated` افزوده شد. **نتیجهٔ exact-head commit نهایی هنوز باید از GitHub خوانده شود.**
 - اجرای ناموفق [run 43592197032](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43592197032) روی main و SHA `1969bcc83294689efaad091ea5aaa7582c44f618` به‌علت `open sandbox setup mutex` شکست خورد؛ این اجرا از کد PR استفاده نمی‌کند و اثبات‌کنندهٔ اصلاح نیست.
-- آخرین CI سبز روی SHA قبلی `41aeb6af8fbae792d1bebc577f526d420fb86f8b` بود (tests، Windows storage regressions، Browser E2E، CodeQL و Dependency Audit). اصلاح جدیدِ انتظار برای پایان واقعی فرایندها هنوز نیازمند CI دقیق head جدید است.
+- آخرین CI سبز روی SHA قبلی `41aeb6af8fbae792d1bebc577f526d420fb86f8b` بود؛ این نتیجه برای اصلاحات جدید معتبر نیست. آخرین head فعلی PR #757 برابر `2f85c2bb6afde336f263d9d223bbb64411f85046` است و پنج بررسی exact-head (tests، Windows storage، CodeQL، pip-audit و dashboard smoke) در صف/در حال اجرا هستند؛ تا تکمیل آن‌ها هیچ نتیجه‌ای ادعا نمی‌شود.
+- inventory گیت‌های باز از Issues: #290 ردیاب پذیرش کل پروژه و UI؛ #52 نیازمند بازبینی امنیتی مستقل. پس از بستن گیت مالکیت پردازه و CI، این دو گیت در اولویت‌های بعدی باقی می‌مانند.
 - آخرین مقدار ثبت‌شدهٔ `AUTONOMOUS_ENGINEERING_PAUSED` برابر `true` است؛ این اصلاح آن را تغییر نداده است. تست محلی میزبان مقصد، soak، crash/restart واقعی و بازبینی امنیتی مستقل همچنان pending هستند.
 
 > تاریخ بازبینی: 2026-11-14. وضعیت جاری در ابتدای سند ثبت شده است؛ یادداشت‌های پایین‌تر snapshotهای تاریخی هستند.
