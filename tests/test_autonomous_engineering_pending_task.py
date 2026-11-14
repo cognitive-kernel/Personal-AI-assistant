@@ -144,7 +144,7 @@ def test_early_manual_task_persistence_script_is_protected_and_validated_in_ci()
     assert "persist_autonomous_manual_task.ps1" in workflow
     assert "pending-autonomous-pr.json" in script
     assert "AUTONOMOUS_ENGINEERING_PROGRESS_DIR" in script
-    assert "awaiting owner merge or post-merge validation" in script
+    assert "still open and must be reviewed before another task can be accepted" in script
     assert "Write-RecoveredPendingPrRecord" in script
     assert "Multiple open autonomous PRs exist" in script
     assert "quarantine-" in script
