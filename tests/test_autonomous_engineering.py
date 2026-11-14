@@ -270,6 +270,31 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
     assert result["model_context_supported"] is True
 
 
+def test_standalone_ollama_tool_probe_uses_local_endpoint_and_structured_tool_call(monkeypatch):
+    from scripts import verify_ollama_tools
+
+    captured = {}
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            captured["url"] = request.full_url
+            captured["timeout"] = timeout
+            captured["payload"] = json.loads(request.data.decode("utf-8"))
+            return io.BytesIO(json.dumps({
+                "message": {"tool_calls": [{
+                    "function": {"name": "autonomous_engineering_capability_probe", "arguments": {}}
+                }]}
+            }).encode("utf-8"))
+
+    monkeypatch.setattr(verify_ollama_tools.urllib.request, "build_opener", lambda *args: FakeOpener())
+
+    assert verify_ollama_tools.verify_tool_calling("gpt-oss:20b") is True
+    assert captured["url"] == "http://127.0.0.1:11434/api/chat"
+    assert captured["timeout"] == 45
+    assert captured["payload"]["think"] is False
+    assert captured["payload"]["tools"][0]["function"]["name"] == "autonomous_engineering_capability_probe"
+
+
 def test_ollama_status_probes_tool_calling_when_capabilities_metadata_is_missing(monkeypatch):
     from app import ollama
 
