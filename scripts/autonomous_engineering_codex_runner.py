@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import queue
 import signal
@@ -36,19 +37,29 @@ def capture_parent_chain(max_depth: int = 3) -> list[dict[str, float | int]]:
 
 
 def parent_chain_is_alive(chain: list[dict[str, Any]]) -> bool:
-    if not chain:
+    if not isinstance(chain, list) or not chain:
         return False
+    seen_pids: set[int] = set()
     for item in chain:
+        if not isinstance(item, dict):
+            return False
         try:
             pid = item.get("pid")
             started_at = item.get("started_at")
-            if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+            if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0 or pid in seen_pids:
                 return False
-            if isinstance(started_at, bool) or not isinstance(started_at, (int, float)):
+            if (
+                isinstance(started_at, bool)
+                or not isinstance(started_at, (int, float))
+                or not math.isfinite(float(started_at))
+                or started_at <= 0
+            ):
                 return False
             process = psutil.Process(pid)
-            if abs(float(process.create_time()) - float(started_at)) > 0.02:
+            actual_started_at = float(process.create_time())
+            if not math.isfinite(actual_started_at) or abs(actual_started_at - float(started_at)) > 0.02:
                 return False
+            seen_pids.add(pid)
         except (psutil.NoSuchProcess, psutil.AccessDenied, OSError, TypeError, ValueError):
             return False
     return True
@@ -82,8 +93,15 @@ def _terminate_process(process: subprocess.Popen[bytes], job: WindowsProcessJob)
 
 
 def run(command: list[str], timeout_seconds: int, parent_chain: list[dict[str, Any]]) -> int:
-    if not command or timeout_seconds < 1:
-        raise ValueError("A command and a positive timeout are required.")
+    if (
+        not isinstance(command, list)
+        or not command
+        or any(not isinstance(argument, str) or not argument for argument in command)
+        or isinstance(timeout_seconds, bool)
+        or not isinstance(timeout_seconds, int)
+        or timeout_seconds < 1
+    ):
+        raise ValueError("A command and a positive integer timeout are required.")
     if not parent_chain_is_alive(parent_chain):
         print("Codex launch refused: the owning controller process chain is no longer verifiable.", file=sys.stderr)
         return 125
