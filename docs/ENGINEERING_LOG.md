@@ -691,3 +691,13 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - No database, migration, stored lesson, course, task, or user data was modified by the implementation.
 - Exact-head GitHub Actions for PR #742 are pending; no local or human test is claimed.
 - Residual risk: the operation remains intentionally destructive after explicit confirmation and worker-quiescence checks. This fix does not replace backup/restore acceptance or independent security review.
+
+
+## 2026-11-14 — Windows Codex sandbox mutex diagnosis (PR #757)
+
+- Re-read target Runner logs and the upstream Codex Windows sandbox helper. The elevated helper opens `Global\\CodexSandboxSetup` using a protected DACL granting full access only to LocalSystem and Builtin Administrators; the helper source explicitly describes the lock as limited to those identities. The configured Runner is deliberately non-admin, so the elevated helper is not a valid execution backend for it. This matches the exact `open sandbox setup mutex` runtime failure and upstream Codex issue #50163.
+- The same run's standalone MXC probe passed. The subsequent MXC agent smoke was inconclusive because the prompt supplied Python `-c` syntax to `cmd.exe`; the log shows malformed quoting and command errors. The later elevated fallback produced the mutex error. These are separate failures and are no longer conflated.
+- Replaced the smoke command with a shell-native workspace create/read/delete sequence, removed elevated mode from the default non-admin backend candidates, retained MXC first and restricted-token unelevated only as a smoke-tested fallback, added a 15-minute workflow-step timeout, and classified the mutex error in sanitized diagnostics.
+- Added regression coverage for the explicit unelevated backend contract and mutex error classification.
+- No Runner elevation, ACL modification, Codex binary patch, unsandboxed execution, Pause change, dispatch, task/checkpoint mutation, or direct write to main was performed.
+- Validation is running on exact head `bace36d997d57a2063cc6123ca2902c6c8f5f967` and subsequent documentation commits will require a fresh exact-head CI pass. The target-host operational smoke remains pending while the durable Pause is enabled; this log does not claim the sandbox is operational yet.
