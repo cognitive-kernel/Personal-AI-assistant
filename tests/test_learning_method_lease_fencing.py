@@ -197,3 +197,27 @@ def test_current_task_cannot_mutate_another_learning_job(method_lease_store, mon
             diagnosis={"passed": True},
             task_context=context,
         )
+
+
+def test_wrong_task_type_cannot_complete_method(method_lease_store, monkeypatch):
+    topic_id = method_lease_store[0]
+    job_id = _queue_method(topic_id, monkeypatch)
+    lesson_hash = "c" * 64
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE learning_jobs SET status='completed', lesson='completed lesson' WHERE id=?",
+            (job_id,),
+        )
+    wrong_type_context, _ = _reclaimed_context(
+        monkeypatch, LEARNING_JOB_TASK_TYPE, {"job_id": job_id}
+    )
+
+    with pytest.raises(TaskManagerError, match="task type does not authorize"):
+        learning_method_orchestrator.complete_method(
+            job_id,
+            score=95,
+            evaluation_id=3,
+            content_sha256=lesson_hash,
+            diagnosis={"passed": True},
+            task_context=wrong_type_context,
+        )
