@@ -10,7 +10,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from .ollama_context import OllamaModelMetadataError
+from .ollama_context import OllamaModelMetadataError, resolve_model_architecture
 
 
 class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -102,6 +102,10 @@ def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool
         details = details_payload.get("details") if isinstance(details_payload.get("details"), dict) else {}
         model_info = details_payload.get("model_info") if isinstance(details_payload.get("model_info"), dict) else {}
         architecture = details.get("family")
+        try:
+            architecture = resolve_model_architecture(model_info, architecture)
+        except OllamaModelMetadataError:
+            architecture = architecture if isinstance(architecture, str) else None
         try:
             context_length = maximum_context_fn(model_info, architecture)
         except OllamaModelMetadataError:
