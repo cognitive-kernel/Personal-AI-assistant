@@ -146,13 +146,15 @@ def test_posix_command_waits_for_descendant_termination_before_return(tmp_path: 
         "Path(" + repr(str(ready)) + ").write_text('ready'); time.sleep(60)"
     )
     parent_code = (
-        "import subprocess,sys,time; "
-        "child=subprocess.Popen([sys.executable,'-c'," + repr(child_code) + "]); "
-        "deadline=time.monotonic()+5; "
-        "ready=__import__('pathlib').Path(" + repr(str(ready)) + "); "
-        "while not ready.exists() and time.monotonic()<deadline: time.sleep(0.01); "
-        "assert ready.exists(), 'child signal handler did not initialize'; "
-        "open(" + repr(str(pid_file)) + ",'w').write(str(child.pid))"
+        "import subprocess,sys,time\n"
+        "from pathlib import Path\n"
+        "child=subprocess.Popen([sys.executable,'-c'," + repr(child_code) + "])\n"
+        "deadline=time.monotonic()+5\n"
+        "ready=Path(" + repr(str(ready)) + ")\n"
+        "while not ready.exists() and time.monotonic()<deadline:\n"
+        "    time.sleep(0.01)\n"
+        "assert ready.exists(), 'child signal handler did not initialize'\n"
+        "open(" + repr(str(pid_file)) + ",'w').write(str(child.pid))\n"
     )
 
     result = run_command(
