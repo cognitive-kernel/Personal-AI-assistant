@@ -14,7 +14,7 @@ import urllib.request
 from typing import Any
 from .db import get_settings
 from .hardware import detect_hardware, ensure_resource_headroom, model_keep_alive, runtime_limits
-from .ollama_context import OllamaModelMetadataError, maximum_context_tokens
+from .ollama_context import OllamaModelMetadataError, maximum_context_tokens, resolve_model_architecture
 
 class OllamaError(RuntimeError):
     def __init__(self, message: str, *, retryable: bool = False) -> None:
@@ -262,7 +262,10 @@ def _model_memory_estimate(
     context_tokens: int | None = None,
 ) -> dict[str, Any] | None:
     """Build a conservative model-memory estimate from Ollama's measured metadata."""
-    architecture = str(details.get("family") or "").strip()
+    try:
+        architecture = resolve_model_architecture(model_info, details.get("family"))
+    except OllamaModelMetadataError:
+        architecture = str(details.get("family") or "").strip()
 
     def metadata_number(suffix: str) -> int | None:
         preferred = f"{architecture}{suffix}" if architecture else None
@@ -404,7 +407,11 @@ def model_details(model: str, context_tokens: int | None = None) -> dict[str, An
     info = _request("/api/show", {"model": name}, timeout=8)
     model_info = info.get("model_info") if isinstance(info.get("model_info"), dict) else {}
     details = info.get("details") if isinstance(info.get("details"), dict) else {}
-    maximum_context = _model_context_metadata(model_info, details.get("family"))
+    try:
+        architecture = resolve_model_architecture(model_info, details.get("family"))
+    except OllamaModelMetadataError:
+        architecture = details.get("family")
+    maximum_context = _model_context_metadata(model_info, architecture)
     tag = next((item for item in list_models() if item.get("name") == name), None)
     weight_bytes = tag.get("size") if isinstance(tag, dict) else None
     estimate = _model_memory_estimate(
@@ -430,7 +437,7 @@ def model_details(model: str, context_tokens: int | None = None) -> dict[str, An
         "recommended_context_tokens": recommended_context,
         "context_metadata_available": maximum_context is not None,
         "weight_size_bytes": weight_bytes,
-        "architecture": details.get("family"),
+        "architecture": architecture,
         "capabilities": capabilities,
         "memory_estimate": estimate,
         "memory_estimate_note": (
