@@ -213,9 +213,12 @@ def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool
         # Probe only after the hardware estimate: a first probe may load the model,
         # which changes free RAM and would otherwise cause the same weights to be
         # subtracted twice on the next status refresh.
-        if not tools_metadata_available and context_supported and callable(tool_probe_fn):
-            model_supports_tools = _probe_tool_calling(tool_probe_fn, model, model_digest)
-            tools_verification_method = "live_tool_call_probe" if model_supports_tools else "unverified"
+        if not tools_metadata_available:
+            if context_supported and callable(tool_probe_fn):
+                model_supports_tools = _probe_tool_calling(tool_probe_fn, model, model_digest)
+                tools_verification_method = "live_tool_call_probe" if model_supports_tools else "unverified"
+            else:
+                tools_verification_method = "skipped_no_safe_context" if not context_supported else "probe_unavailable"
         result.update({
             "model_context_length": context_length,
             "model_recommended_context_length": recommended_context,
