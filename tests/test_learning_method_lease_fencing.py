@@ -208,7 +208,7 @@ def test_wrong_task_type_cannot_complete_method(method_lease_store, monkeypatch)
             "UPDATE learning_jobs SET status='completed', lesson='completed lesson' WHERE id=?",
             (job_id,),
         )
-    wrong_type_context, _ = _reclaimed_context(
+    _, wrong_type_context = _reclaimed_context(
         monkeypatch, LEARNING_JOB_TASK_TYPE, {"job_id": job_id}
     )
 

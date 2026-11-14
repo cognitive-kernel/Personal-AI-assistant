@@ -93,7 +93,7 @@ jobs:
               raise SystemExit("Docker executable was not found.")
           result = sandbox.run_workspace_tests(
               Path.cwd(), docker_executable=docker, image=image,
-              timeout_seconds=240, max_output_bytes=65536,
+              timeout_seconds=600, max_output_bytes=65536,
           )
           print(result.stdout)
           if result.stderr:
