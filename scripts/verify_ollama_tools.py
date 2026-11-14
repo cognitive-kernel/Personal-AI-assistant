@@ -40,12 +40,6 @@ def verify_tool_calling(model: str, *, timeout: int = 45) -> bool:
         "options": {"temperature": 0, "num_predict": 64},
         "think": False,
     }
-    request = urllib.request.Request(
-        "http://127.0.0.1:11434/api/chat",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Accept": "application/json", "Content-Type": "application/json"},
-        method="POST",
-    )
     opener = urllib.request.build_opener(
         urllib.request.ProxyHandler({}),
         _NoRedirectHandler(),
