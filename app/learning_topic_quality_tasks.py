@@ -303,7 +303,7 @@ def handle_topic_quality_evaluation(
             )
             connection.execute(
                 "UPDATE learning_path_topics SET status='needs_review', updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                (path_topic_id),
+                (path_topic_id,),
             )
         return {
             "path_topic_id": path_topic_id, "job_id": job_id, "status": "blocked",
