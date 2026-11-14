@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import socket
 import urllib.request
 
@@ -48,6 +49,7 @@ def test_private_source_address_is_rejected_before_http_request(isolated_store, 
     [
         ("https://example.com/docs", PinnedHTTPSHandler, "93.184.216.34"),
         ("http://example.com/docs", PinnedHTTPHandler, "93.184.216.34"),
+        ("https://[2606:4700:4700::1111]/docs", PinnedHTTPSHandler, "2606:4700:4700::1111"),
     ],
 )
 def test_source_check_pins_validated_ip_and_disables_proxy(
@@ -70,7 +72,10 @@ def test_source_check_pins_validated_ip_and_disables_proxy(
 
     def resolve(*args, **kwargs):
         dns_calls.append((args, kwargs))
-        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (expected_ip, 443 if url.startswith("https:") else 80))]
+        port = 443 if url.startswith("https:") else 80
+        if ":" in expected_ip:
+            return [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", (expected_ip, port, 0, 0))]
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (expected_ip, port))]
 
     monkeypatch.setattr(service.socket, "getaddrinfo", resolve)
     captured = {}
@@ -110,6 +115,80 @@ def test_source_check_pins_validated_ip_and_disables_proxy(
     )
 
 
+
+@pytest.mark.parametrize(
+    "url,address",
+    [
+        ("https://[::1]/docs", "::1"),
+        ("https://[fc00::1]/docs", "fc00::1"),
+        ("https://[fe80::1]/docs", "fe80::1"),
+        ("https://[::ffff:127.0.0.1]/docs", "::ffff:127.0.0.1"),
+    ],
+)
+def test_source_check_rejects_private_ipv6_addresses_before_connecting(
+    isolated_store, monkeypatch, url, address
+):
+    course = service.create_course(title="IPv6 private address")
+    topic = service.add_topic(course["id"], "IPv6 network validation")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Private IPv6 source")
+    version = service.add_content_version(lesson["id"], "# Private IPv6 source\n\nA private IPv6 test source.")
+    with connection() as conn:
+        cursor = conn.execute(
+            """INSERT INTO sources(content_version_id,title,url,publisher,source_type,validation_status)
+               VALUES(?,?,?,?,?,'unverified')""",
+            (version["id"], "Private IPv6 source", url, "ipv6.example", "test"),
+        )
+        source_id = int(cursor.lastrowid)
+
+    monkeypatch.setattr(
+        service.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: [
+            (socket.AF_INET6, socket.SOCK_STREAM, 6, "", (address, 443, 0, 0))
+        ],
+    )
+    monkeypatch.setattr(
+        service, "build_opener",
+        lambda *_args, **_kwargs: pytest.fail("private IPv6 must be rejected before connecting"),
+    )
+    with pytest.raises(ValueError, match="خصوصی یا غیرعمومی"):
+        service.check_content_source(source_id)
+
+
+def test_source_check_rejects_mixed_public_and_private_ipv6_dns_before_connecting(
+    isolated_store, monkeypatch
+):
+    course = service.create_course(title="Mixed IPv6 DNS")
+    topic = service.add_topic(course["id"], "IPv6 network validation")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Mixed IPv6 source")
+    url = "https://mixed-ipv6.example/docs"
+    version = service.add_content_version(lesson["id"], "# Mixed IPv6 source\n\nA mixed DNS test source.")
+    with connection() as conn:
+        cursor = conn.execute(
+            """INSERT INTO sources(content_version_id,title,url,publisher,source_type,validation_status)
+               VALUES(?,?,?,?,?,'unverified')""",
+            (version["id"], "Mixed IPv6 source", url, "mixed-ipv6.example", "test"),
+        )
+        source_id = int(cursor.lastrowid)
+
+    monkeypatch.setattr(
+        service.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: [
+            (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2606:4700:4700::1111", 443, 0, 0)),
+            (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("fc00::7", 443, 0, 0)),
+        ],
+    )
+    monkeypatch.setattr(
+        service, "build_opener",
+        lambda *_args, **_kwargs: pytest.fail("mixed public/private IPv6 DNS must be rejected"),
+    )
+    with pytest.raises(ValueError, match="خصوصی یا غیرعمومی"):
+        service.check_content_source(source_id)
+
+
 def test_source_check_rejects_mixed_public_and_private_dns_before_connecting(
     isolated_store, monkeypatch
 ):
@@ -142,9 +221,26 @@ def test_source_check_rejects_mixed_public_and_private_dns_before_connecting(
         service.check_content_source(source_id)
 
 
-@pytest.mark.parametrize("url", ["https://example.com:8443/docs", "https://example.com:invalid/docs"])
-def test_source_check_rejects_nonstandard_or_malformed_ports(isolated_store, url):
-    course = service.create_course(title="Invalid source port")
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.com:8443/docs",
+        "https://example.com:invalid/docs",
+        "https://example.com:/docs",
+        "https://@example.com/docs",
+        "https://:secret@example.com/docs",
+        "https://user:@example.com/docs",
+        "https://[fe80::1%25eth0]/docs",
+        "https://[not-ipv6]/docs",
+    ],
+)
+def test_source_check_rejects_malformed_authority_before_dns(isolated_store, monkeypatch, url):
+    monkeypatch.setattr(
+        service.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: pytest.fail("malformed URL must be rejected before DNS"),
+    )
+    course = service.create_course(title="Invalid source authority")
     topic = service.add_topic(course["id"], "Network validation")
     service.decide_topics([topic["id"]], "approved")
     lesson = service.create_lesson(topic["id"], "Invalid source")
@@ -158,6 +254,73 @@ def test_source_check_rejects_nonstandard_or_malformed_ports(isolated_store, url
         source_id = int(cursor.lastrowid)
     with pytest.raises(ValueError, match="HTTP/HTTPS"):
         service.check_content_source(source_id)
+
+
+def test_source_check_redacts_malformed_http_response_details(isolated_store, monkeypatch):
+    course = service.create_course(title="Malformed response")
+    topic = service.add_topic(course["id"], "Network validation")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Malformed source")
+    url = "https://malformed.example/docs"
+    version = service.add_content_version(lesson["id"], "# Malformed source\n\nA source used for response-boundary tests.")
+    with connection() as conn:
+        cursor = conn.execute(
+            """INSERT INTO sources(content_version_id,title,url,publisher,source_type,validation_status)
+               VALUES(?,?,?,?,?,'unverified')""",
+            (version["id"], "Malformed source", url, "malformed.example", "test"),
+        )
+        source_id = int(cursor.lastrowid)
+
+    monkeypatch.setattr(
+        service.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))
+        ],
+    )
+    calls = []
+
+    class Opener:
+        def open(self, request, timeout):
+            calls.append(request.get_method())
+            if request.get_method() == "HEAD":
+                raise service.HTTPError(url, 405, "Method Not Allowed", {}, None)
+            raise http.client.BadStatusLine("SECRET-RAW-REMOTE-RESPONSE")
+
+    monkeypatch.setattr(service, "build_opener", lambda *_args, **_kwargs: Opener())
+    result = service.check_content_source(source_id)
+
+    assert result["validation_status"] == "rejected"
+    assert calls == ["HEAD", "GET"]
+    assert "BadStatusLine" in result["excerpt"]
+    assert "SECRET-RAW-REMOTE-RESPONSE" not in result["excerpt"]
+
+
+def test_source_check_redacts_dns_error_details(isolated_store, monkeypatch):
+    course = service.create_course(title="DNS error redaction")
+    topic = service.add_topic(course["id"], "Network validation")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "DNS error source")
+    url = "https://dns-error.example/docs"
+    version = service.add_content_version(lesson["id"], "# DNS error source\n\nA source used for DNS diagnostic tests.")
+    with connection() as conn:
+        cursor = conn.execute(
+            """INSERT INTO sources(content_version_id,title,url,publisher,source_type,validation_status)
+               VALUES(?,?,?,?,?,'unverified')""",
+            (version["id"], "DNS error source", url, "dns-error.example", "test"),
+        )
+        source_id = int(cursor.lastrowid)
+
+    monkeypatch.setattr(
+        service.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(socket.gaierror("SECRET-DNS-DETAIL")),
+    )
+    result = service.check_content_source(source_id)
+
+    assert result["validation_status"] == "rejected"
+    assert "gaierror" in result["excerpt"]
+    assert "SECRET-DNS-DETAIL" not in result["excerpt"]
 
 
 def test_source_links_remain_unverified_until_explicit_validation(isolated_store):

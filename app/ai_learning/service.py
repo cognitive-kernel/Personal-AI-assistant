@@ -1,6 +1,7 @@
 """Use cases for the isolated AI-learning knowledge store."""
 from __future__ import annotations
 import hashlib
+import http.client
 import ipaddress
 import json
 import math
@@ -1104,8 +1105,10 @@ def check_content_source(source_id: int) -> dict[str, Any]:
         len(url) > 2048
         or parsed.scheme not in {"http", "https"}
         or not host
-        or parsed.username
-        or parsed.password
+        or parsed.username is not None
+        or parsed.password is not None
+        or "%" in host
+        or parsed.netloc.endswith(":")
         or port not in {None, expected_port}
     ):
         raise ValueError("پیوند منبع معتبر HTTP/HTTPS نیست.")
@@ -1126,7 +1129,7 @@ def check_content_source(source_id: int) -> dict[str, Any]:
     except ValueError:
         raise
     except OSError as exc:
-        status, detail = "rejected", "نام دامنه قابل resolve نیست: " + str(exc)[:180]
+        status, detail = "rejected", "نام دامنه قابل resolve نیست: " + type(exc).__name__
     else:
         class _NoRedirect(HTTPRedirectHandler):
             def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -1180,14 +1183,14 @@ def check_content_source(source_id: int) -> dict[str, Any]:
                         status = "reviewed" if 200 <= code < 300 else "rejected"
                         detail = "HTTP " + str(code)
                 except Exception as retry_exc:
-                    detail = "بررسی GET ناموفق: " + str(retry_exc)[:180]
+                    detail = "بررسی GET ناموفق: " + type(retry_exc).__name__
             else:
                 detail = "HTTP " + str(exc.code) + (
                     "؛ پیوند تغییر مسیر می‌دهد و نیازمند جایگزینی است."
                     if 300 <= exc.code < 400 else ""
                 )
-        except (URLError, TimeoutError, OSError) as exc:
-            detail = "پیوند قابل دسترسی نیست: " + str(exc)[:180]
+        except (URLError, TimeoutError, OSError, http.client.HTTPException) as exc:
+            detail = "پیوند قابل دسترسی نیست: " + type(exc).__name__
 
     with connection() as conn:
         conn.execute(
