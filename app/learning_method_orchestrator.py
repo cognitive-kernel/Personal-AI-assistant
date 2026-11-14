@@ -364,11 +364,6 @@ def _queue_first_enabled_method(path_topic_id: int, *, attempt_number: int, sour
         if _method_enabled(method):
             return queue_method_attempt(path_topic_id, method, attempt_number=attempt_number, source_job_id=source_job_id, lesson_review=lesson_review)
         append_attempt_event(
-            path_topic_id, method, attempt_number, "queued",
-            event_key=f"path-topic:{path_topic_id}:method:{method}:attempt:{attempt_number}:queued",
-            evidence={"disabled_by_user_setting": True},
-        )
-        append_attempt_event(
             path_topic_id, method, attempt_number, "unavailable",
             event_key=f"path-topic:{path_topic_id}:method:{method}:attempt:{attempt_number}:unavailable",
             diagnosis={"reason": "disabled_by_user_setting"},
