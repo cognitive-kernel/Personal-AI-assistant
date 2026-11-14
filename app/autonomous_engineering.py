@@ -81,7 +81,17 @@ _NoRedirectHandler = _services.NoRedirectHandler
 
 
 def _ollama_status(model: str) -> dict[str, Any]:
-    from .ollama import _request as ollama_request, model_details
+    from .ollama import _find_running_model_entry, _request as ollama_request, model_details
+
+    def _tool_probe(payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            running = ollama_request("/api/ps", timeout=4).get("models", [])
+            if _find_running_model_entry(running, str(payload.get("model") or "")) is None:
+                payload["keep_alive"] = "0"
+        except Exception:
+            # Unknown residency is not permission to unload a model.
+            pass
+        return ollama_request("/api/chat", payload, timeout=45)
 
     return _services.ollama_status(
         model,
@@ -90,7 +100,7 @@ def _ollama_status(model: str) -> dict[str, Any]:
         supports_tool_calling_fn=supports_tool_calling,
         is_context_variant=_is_codex_context_variant,
         recommended_context_fn=lambda selected_model: model_details(selected_model).get("recommended_context_tokens"),
-        tool_probe_fn=lambda payload: ollama_request("/api/chat", payload, timeout=45),
+        tool_probe_fn=_tool_probe,
     )
 
 
