@@ -153,11 +153,12 @@ def test_parent_managed_posix_group_is_inherited_and_drained_by_owner(tmp_path: 
         from scripts.autonomous_engineering_process_group import terminate_process_group
         assert terminate_process_group(wrapper.pid)
         try:
-            psutil.Process(child_pid).wait(timeout=5)
+            child = psutil.Process(child_pid)
+            assert child.status() == psutil.STATUS_ZOMBIE or not child.is_running(), (
+                "The owner could not drain the inherited POSIX process group."
+            )
         except psutil.NoSuchProcess:
             pass
-        except psutil.TimeoutExpired:
-            raise AssertionError("The owner could not drain the inherited POSIX process group.")
     finally:
         if wrapper.poll() is None:
             wrapper.kill()
