@@ -23,6 +23,11 @@ try:
 except ImportError:  # Direct script execution from the scripts directory.
     from autonomous_engineering_process_job import WindowsProcessJob
 
+try:
+    from .autonomous_engineering_process_group import terminate_process_group
+except ImportError:  # Direct script execution from the scripts directory.
+    from autonomous_engineering_process_group import terminate_process_group
+
 ROOT = Path(__file__).resolve().parents[1]
 PLAN_FILE = ROOT / ".agent-progress.json"
 SCORECARD = ROOT / "docs" / "ACCEPTANCE_SCORECARD.md"
@@ -190,7 +195,11 @@ def run_codex(args: argparse.Namespace) -> int:
         print("Codex CLI executable was not found on PATH.", file=sys.stderr)
         return 127
     arguments = codex_arguments(args.model, args.report)
-    command = codex_command(executable, arguments, parent_job_managed=os.name == "nt")
+    command = codex_command(
+        executable, arguments,
+        parent_job_managed=os.name == "nt",
+        parent_group_managed=os.name != "nt",
+    )
     try:
         prompt = Path(args.prompt).read_text(encoding="utf-8")
     except OSError as exc:
@@ -204,6 +213,7 @@ def run_codex(args: argparse.Namespace) -> int:
             command, cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=None, text=True, encoding="utf-8", errors="replace", bufsize=1,
             creationflags=WindowsProcessJob.CREATE_SUSPENDED if os.name == "nt" else 0,
+            start_new_session=os.name != "nt",
         )
         if os.name == "nt":
             job.assign_and_resume(process)
@@ -277,9 +287,13 @@ def run_codex(args: argparse.Namespace) -> int:
                 })
                 last_signature = signature
         return_code = process.wait()
-        if os.name == "nt" and job.terminate_remaining_processes(125):
+        if os.name == "nt":
+            residual_processes = job.terminate_remaining_processes(125)
+        else:
+            residual_processes = terminate_process_group(process.pid)
+        if residual_processes:
             print(
-                "Codex supervisor exited while its Job Object still contained descendants; "
+                "Codex supervisor exited while its owned process tree still contained descendants; "
                 "the controller terminated and drained them.",
                 file=sys.stderr,
             )
@@ -329,13 +343,14 @@ def run_codex(args: argparse.Namespace) -> int:
                             # wrapper is outside the job and must be killed directly.
                             process.kill()
                             process.wait(timeout=5)
-                elif process.poll() is None:
-                    process.terminate()
-                    try:
-                        process.wait(timeout=10)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                        process.wait(timeout=5)
+                else:
+                    terminate_process_group(process.pid)
+                    if process.poll() is None:
+                        try:
+                            process.wait(timeout=1)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.wait(timeout=5)
         finally:
             try:
                 job.close()
