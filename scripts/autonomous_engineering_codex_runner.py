@@ -266,8 +266,9 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--timeout-seconds", type=int, required=True)
     parser.add_argument("--parent-chain", required=True)
-    parser.add_argument("--parent-job-managed", action="store_true")
-    parser.add_argument("--parent-group-managed", action="store_true")
+    ownership = parser.add_mutually_exclusive_group()
+    ownership.add_argument("--parent-job-managed", action="store_true")
+    ownership.add_argument("--parent-group-managed", action="store_true")
     known, command = parser.parse_known_args()
     if command and command[0] == "--":
         command = command[1:]
