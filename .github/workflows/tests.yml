@@ -129,6 +129,7 @@ jobs:
         shell: pwsh
         run: |
           Import-Module "$env:GITHUB_WORKSPACE\scripts\AutonomousWindowsIdentity.psm1" -Force
+          Import-Module "$env:GITHUB_WORKSPACE\scripts\AutonomousWindowsPaths.psm1" -Force
           $local = ConvertTo-AutonomousWindowsAccountName -AccountName "runner-example"
           $dotLocal = ConvertTo-AutonomousWindowsAccountName -AccountName ".\app-example"
           $domain = ConvertTo-AutonomousWindowsAccountName -AccountName "CONTOSO\runner-example"
@@ -140,6 +141,15 @@ jobs:
           if ((Get-AutonomousLocalAccountName -AccountName $local) -ne "runner-example") { throw "Local account detection failed." }
           if ($null -ne (Get-AutonomousLocalAccountName -AccountName $domain)) { throw "Domain accounts must not be classified as local." }
           Write-Host "Local, dot-local, domain-qualified, and UPN account identity normalization passed."
+          $defaultState = Resolve-AutonomousStateDirectory -ConfiguredPath $null -ProgramDataPath $env:ProgramData
+          $expectedDefault = [System.IO.Path]::GetFullPath((Join-Path $env:ProgramData "PersonalAIAssistant\autonomous-engineering"))
+          if ($defaultState -ne $expectedDefault) { throw "Default state directory does not match the shared ProgramData contract." }
+          $customState = Resolve-AutonomousStateDirectory -ConfiguredPath "%TEMP%\autonomous-state-probe" -ProgramDataPath $env:ProgramData
+          if ($customState -ne [System.IO.Path]::GetFullPath((Join-Path $env:TEMP "autonomous-state-probe"))) { throw "Configured shared state directory was not expanded consistently." }
+          $relativePathRejected = $false
+          try { $null = Resolve-AutonomousStateDirectory -ConfiguredPath "relative-state" -ProgramDataPath $env:ProgramData } catch { $relativePathRejected = $true }
+          if (-not $relativePathRejected) { throw "Relative shared state paths must fail closed." }
+          Write-Host "Default, configured, environment-expanded, and relative state path contracts passed."
           $aclProbe = Join-Path $env:TEMP ("autonomous-acl-" + [guid]::NewGuid().ToString("N"))
           New-Item -ItemType Directory -Path $aclProbe | Out-Null
           try {
