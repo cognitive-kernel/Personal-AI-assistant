@@ -30,6 +30,8 @@ def _ensure_resource_headroom() -> None:
 
 
 _MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+# Model metadata can be much larger than ordinary Ollama API responses.
+_MAX_SHOW_RESPONSE_BYTES = 32 * 1024 * 1024
 # Keep this process from running multiple model inferences at once across task lanes.
 _INFERENCE_LOCK = threading.Lock()
 _INFERENCE_PATHS = frozenset({"/api/chat", "/api/embed", "/api/generate"})
@@ -158,12 +160,16 @@ def _request(
             urllib.request.ProxyHandler({}),
             _NoRedirectHandler(),
         )
+        response_limit = (
+            _MAX_SHOW_RESPONSE_BYTES if path == "/api/show" else _MAX_RESPONSE_BYTES
+        )
         with opener.open(
             request, timeout=timeout or int(settings["ollama_timeout_seconds"])
         ) as response:
-            body = response.read(_MAX_RESPONSE_BYTES + 1)
-        if len(body) > _MAX_RESPONSE_BYTES:
-            raise OllamaError("Ollama response exceeded the 8 MiB limit.")
+            body = response.read(response_limit + 1)
+        if len(body) > response_limit:
+            limit_mib = response_limit // (1024 * 1024)
+            raise OllamaError(f"Ollama response exceeded the {limit_mib} MiB limit.")
         result = json.loads(body.decode("utf-8"))
         if not isinstance(result, dict):
             raise OllamaError("Unexpected Ollama response shape.")
@@ -418,7 +424,10 @@ def model_identity(
 def _find_running_model_entry(running_models: Any, model: str) -> dict[str, Any] | None:
     if not isinstance(running_models, list):
         return None
-    variant_prefix = f"{model}-codex-ctx"
+    variant_pattern = re.compile(
+        rf"^{re.escape(model)}-codex-(?:ctx[0-9]+|[0-9]+k)$",
+        re.IGNORECASE,
+    )
     return next((
         item for item in running_models
         if isinstance(item, dict)
@@ -426,8 +435,7 @@ def _find_running_model_entry(running_models: Any, model: str) -> dict[str, Any]
             item.get("name") == model
             or (
                 isinstance(item.get("name"), str)
-                and item["name"].startswith(variant_prefix)
-                and item["name"][len(variant_prefix):].isdigit()
+                and variant_pattern.fullmatch(item["name"]) is not None
             )
         )
     ), None)

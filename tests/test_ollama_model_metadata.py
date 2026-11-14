@@ -125,6 +125,17 @@ def test_model_details_accounts_for_model_and_kv_cache_already_loaded(monkeypatc
     assert result["recommended_context_tokens"] == 34816
 
 
+def test_running_legacy_codex_64k_variant_is_counted_as_the_base_model_resident(monkeypatch):
+    loaded = {
+        "name": "gpt-oss:20b-codex-64k",
+        "context_length": 64000,
+        "size": 13 * 1024**3,
+        "size_vram": 0,
+    }
+
+    assert ollama._find_running_model_entry([loaded], "gpt-oss:20b") is loaded
+
+
 def test_model_details_recommends_context_within_model_and_memory_limits(monkeypatch):
     monkeypatch.setattr(ollama, "_request", lambda path, payload=None, timeout=None: (
         {
