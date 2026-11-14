@@ -764,16 +764,7 @@ def chat(
         model_details_meta if isinstance(model_details_meta, dict) else {},
         weight_bytes,
     )
-    running_models = _request("/api/ps", timeout=4).get("models", [])
-    running_item = _find_running_model_entry(running_models, model)
-    running_context = running_item.get("context_length") if isinstance(running_item, dict) else None
-    hardware_safe_context = _recommended_context_tokens(
-        maximum_context,
-        memory_estimate,
-        hardware,
-        model_is_loaded=running_item is not None,
-        running_context_tokens=running_context,
-    )
+    hardware_safe_context = _recommended_context_tokens(maximum_context, memory_estimate, hardware)
     if hardware_safe_context is None:
         raise OllamaError(
             f"Cannot calculate a hardware-safe context for '{model}': verified model weights, "
