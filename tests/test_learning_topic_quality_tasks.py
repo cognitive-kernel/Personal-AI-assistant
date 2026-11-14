@@ -14,6 +14,9 @@ class RecordingContext:
     def __init__(self):
         self.checkpoints = []
 
+    def assert_current(self, connection=None):
+        return None
+
     def checkpoint(self, value):
         self.checkpoints.append(value)
         return {"status": "running", "checkpoint": value}

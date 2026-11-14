@@ -24,7 +24,9 @@ def _claimed_context(job_id):
     task = task_manager.create_task(LEARNING_TASK_TYPE, {"job_id": job_id}, max_attempts=2)
     claimed = task_manager.claim_next_task("worker-1")
     assert claimed["id"] == task["id"]
-    return TaskContext(task_id=task["id"], worker_id="worker-1"), task
+    return TaskContext(
+        task_id=task["id"], worker_id="worker-1", lease_epoch=claimed["lease_epoch"]
+    ), task
 
 
 def test_learning_task_missing_domain_record_is_permanent(learning_task_store):
