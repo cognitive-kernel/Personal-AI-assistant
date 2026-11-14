@@ -899,7 +899,11 @@ def test_windows_codex_command_uses_call_without_nested_cmd_quoting(monkeypatch)
     executable = r"C:\Users\runner-svc\AppData\Roaming\npm\codex.CMD"
     command = progress.codex_command(executable, ["exec", "--json", "-"])
 
-    assert command == [
+    assert command[0] == progress.sys.executable
+    assert command[1].endswith("autonomous_engineering_codex_runner.py")
+    assert command[command.index("--timeout-seconds") + 1] == "1800"
+    native_start = command.index("--") + 1
+    assert command[native_start:] == [
         r"C:\Windows\System32\cmd.exe", "/d", "/c", "call",
         executable, "exec", "--json", "-",
     ]

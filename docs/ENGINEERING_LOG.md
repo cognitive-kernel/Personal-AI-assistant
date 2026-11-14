@@ -1,5 +1,40 @@
 # Engineering Continuity Log
 
+## 2026-11-14 — PR #757: owner-bound Codex process lifecycle
+
+### Root-cause analysis
+
+- Main already had separate contracts for workflow concurrency, repository worktree locking, durable task/PR state serialization, and checkpoint-watcher ownership (PR #719). Those contracts protected state transitions, but the Codex child process was not bound to the lifetime of its controller.
+- If a controller process exited unexpectedly, the OS released its worktree lock. A Codex descendant could remain alive and continue writing, so a later recovery run could acquire the lock while the old model process was still active.
+- Codex provider settings amplified stalls: 900,000 ms stream-idle timeout, 10 stream retries, and 4 request retries. The smoke invocation had no separate hard process deadline.
+
+### Five-why root-cause chain
+
+1. Codex could outlive its Python owner because the child process was not tied to the owner's lifecycle.
+2. It was launched as a normal subprocess with streamed output and no process-tree kill boundary or hard deadline.
+3. The worktree lock correctly released when its controller exited, but it did not own or terminate descendants.
+4. Existing recovery tests covered state locks and checkpoint watchers, not an owner crash with a live Codex descendant.
+5. The smoke path inherited a 15-minute stream-idle timeout, 10 stream retries, 4 request retries, and no separate wall-clock limit.
+
+Evidence and the full blast-radius analysis are recorded in ADR-020 and the PR description.
+
+### Corrective changes
+
+- Added `scripts/autonomous_engineering_codex_runner.py` as a focused process-supervision boundary. It captures the owning process ancestry with PID and OS creation time, rejects missing/reused/unverifiable owners, streams JSONL without blocking deadline checks, and enforces a 300-second smoke or 1,800-second task deadline.
+- Added `scripts/autonomous_engineering_process_job.py`. On Windows, the supervisor joins a kill-on-close Job Object and duplicates a job handle into the owning progress process; Codex and descendants inherit membership. The supervisor monitors owner ancestry and uses TerminateJobObject on timeout/owner loss. If the supervisor crashes, the owner-held handle keeps the job alive until the progress owner exits, when the final handle close terminates surviving descendants. On POSIX, Codex runs in a new process group and timeout/owner loss terminates and reaps the group.
+- Smoke uses 120-second stream idle timeout with zero provider retries. Normal tasks use 300-second idle timeout, two stream retries, and one request retry.
+- Added ADR-020 and regression coverage for owner-chain loss/PID identity, hard timeout, descendant cleanup, smoke/task configuration profiles, and Windows supervisor-crash recovery using the owner-held Job Object handle. Existing durable state locks, checkpoint watcher lifecycle, task payloads, and merge policy remain unchanged.
+
+### Validation and residual risk
+
+- Draft PR: https://github.com/cognitive-kernel/Personal-AI-assistant/pull/757
+- Implementation head when the PR was opened: `858a724ff8e2c007f4fb4b2a6d2406ecee6dfcff`. GitHub tests, dependency audit, CodeQL, and browser E2E were queued at that time; no green exact-head result is claimed.
+- The existing autonomous run `43592197032` remained in the old Step 13 smoke on the pre-change main SHA. It does not validate this PR.
+- Windows Job Object behavior, target-host model latency, long-duration soak, and crash/restart acceptance require the actual Windows Runner and remain pending.
+- Safe pause remained enabled; no workflow, secret, repository variable, user data, or PR merge state was changed by this task.
+
+---
+
 ## 2026-11-11 — PR #709: research-first learning with gpt-oss:20b
 
 ### Root-cause analysis
@@ -656,3 +691,13 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - No database, migration, stored lesson, course, task, or user data was modified by the implementation.
 - Exact-head GitHub Actions for PR #742 are pending; no local or human test is claimed.
 - Residual risk: the operation remains intentionally destructive after explicit confirmation and worker-quiescence checks. This fix does not replace backup/restore acceptance or independent security review.
+
+
+## 2026-11-14 — Windows Codex sandbox mutex diagnosis (PR #757)
+
+- Re-read target Runner logs and the upstream Codex Windows sandbox helper. The elevated helper opens `Global\CodexSandboxSetup` using a protected DACL granting full access only to LocalSystem and Builtin Administrators; the helper source explicitly describes the lock as limited to those identities. The configured Runner is deliberately non-admin, so the elevated helper is not a valid execution backend for it. This matches the exact `open sandbox setup mutex` runtime failure and upstream Codex issue #50163.
+- The same run's standalone MXC probe passed. The subsequent MXC agent smoke was inconclusive because the prompt supplied Python `-c` syntax to `cmd.exe`; the log shows malformed quoting and command errors. The later elevated fallback produced the mutex error. These are separate failures and are no longer conflated.
+- Replaced the smoke command with a shell-native workspace create/read/delete sequence, removed elevated mode from the default non-admin backend candidates, retained MXC first and restricted-token unelevated only as a smoke-tested fallback, added a 15-minute workflow-step timeout, and classified the mutex error in sanitized diagnostics.
+- Added regression coverage for the explicit unelevated backend contract and mutex error classification.
+- No Runner elevation, ACL modification, Codex binary patch, unsandboxed execution, Pause change, dispatch, task/checkpoint mutation, or direct write to main was performed.
+- Validation is running on exact head `bace36d997d57a2063cc6123ca2902c6c8f5f967` and subsequent documentation commits will require a fresh exact-head CI pass. The target-host operational smoke remains pending while the durable Pause is enabled; this log does not claim the sandbox is operational yet.

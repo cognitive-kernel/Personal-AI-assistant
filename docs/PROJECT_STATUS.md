@@ -1,15 +1,18 @@
 # وضعیت یکپارچهٔ پروژه
 
-## وضعیت جاری — تکمیل Autonomous Engineering
+## وضعیت جاری — مالکیت پردازه و بازیابی Codex
 
-- مبنای زندهٔ `main`: `461c0a2b1deaf5f8af8486846f167da8185c580a`؛ تغییرات release-watch و یادگیری جدید main حفظ شده‌اند.
-- کار فعال: PR [#719](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/719)، شاخهٔ `feat/autonomous-engineering-complete-final-20261112`؛ SHA دقیق و وضعیت Checkها از وضعیت زندهٔ PR خوانده می‌شوند. PR باز است و به main هدف‌گذاری شده است.
-- معماری جدید، مالکیت worktree و checkpoint watcher، هویت process، قفل durable state، GitHub transport و چرخهٔ PR را در ماژول‌های مستقل نگه می‌دارد؛ بازیابی مبهم fail-closed است و دادهٔ task/checkpoint حفظ می‌شود.
-- CI دقیق SHA `1528b86cdc0c0f70a17be2434e374ec7ede2c61c` موفق شد: ۱۱ تست focused، ۲۱۳۵ تست کامل passed، ۲ skipped، ۵۱ deselected؛ Windows Storage، Browser E2E، dependency audit، lexical retrieval benchmark و fail-closed claim-to-test coverage benchmark همگی موفق شدند. اجرای واقعی Codex/Ollama روی Runner مقصد و پذیرش عملیاتی بلندمدت هنوز pending است.
-- مسیریابی Ollama و OpenAI-compatible، هویت مدل، سقف خروجی و provider سفارشی Codex `ollama-local` در follow-upهای PR حفظ/بازیابی شده‌اند؛ diagnostic واقعی Codex/Ollama روی Windows Runner هنوز باید تأیید شود.
+- مبنای زندهٔ `main` در آغاز این کار: `1969bcc83294689efaad091ea5aaa7582c44f618`.
+- PR [#719](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/719) در 2026-11-12 ادغام شد؛ commit ادغام `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`. تفکیک قفل worktree، watcher checkpoint، هویت پردازه، mutex وضعیت durable، GitHub transport و چرخهٔ PR در main موجود است.
+- PR [#757](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/757) به‌صورت Draft باز است: نظارت بر چرخهٔ عمر Codex، اعتبارسنجی زنجیرهٔ مالک با PID و زمان ایجاد پردازه، Windows Job Object با kill-on-close، خاتمه و reap گروه پردازه در POSIX، timeout مستقل برای smoke و task، و بودجهٔ retry محدود.
+- ریشهٔ نقص: قفل worktree با خروج پردازهٔ مالک آزاد می‌شد، اما childهای Codex الزاماً همراه مالک از بین نمی‌رفتند؛ در نتیجه یک Codex یتیم می‌توانست پس از آزادشدن قفل به worktree دسترسی نوشتن داشته باشد. timeout سخت و کنترل زنجیرهٔ مالک این شکاف را می‌بندند؛ دادهٔ task و checkpoint تغییر یا حذف نمی‌شود.
+- تنظیمات قبلی Codex شامل idle timeout پانزده‌دقیقه‌ای، ۱۰ retry جریان و ۴ retry درخواست بود. در PR #757 smoke به سقف ۵ دقیقه، idle دو دقیقه و بدون retry؛ task عادی به سقف ۳۰ دقیقه، idle پنج دقیقه، دو retry جریان و یک retry درخواست محدود شده است.
+- ADR-020 قرارداد process supervision را ثبت می‌کند. تست‌های جدید برای owner loss/PID reuse، deadline، خاتمهٔ descendantها و پروفایل‌های runtime اضافه شده‌اند.
+- **اعتبارسنجی PR #757 هنوز pending است:** در زمان ثبت، workflowهای exact-head روی SHA `858a724ff8e2c007f4fb4b2a6d2406ecee6dfcff` در صف بودند. نتیجهٔ سبز یا اجرای واقعی Codex روی Runner مقصد ادعا نمی‌شود.
+- اجرای خودکار قدیمی [run 43592197032](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43592197032) هنوز در Step 13 (Codex sandbox smoke) در حال اجرا بود؛ این run از کد قبلی و SHA `1969bcc83294689efaad091ea5aaa7582c44f618` استفاده می‌کند و شاهد اعتبارسنجی PR #757 نیست.
+- آخرین مقدار ثبت‌شدهٔ `AUTONOMOUS_ENGINEERING_PAUSED` برابر `true` است؛ این اصلاح آن را تغییر نداده است. تست محلی میزبان مقصد، soak، crash/restart واقعی و بازبینی امنیتی مستقل همچنان pending هستند.
 
-
-> تاریخ بازبینی: 2026-11-12. وضعیت جاری در ابتدای سند ثبت شده است؛ یادداشت‌های پایین‌تر snapshotهای تاریخی هستند.
+> تاریخ بازبینی: 2026-11-14. وضعیت جاری در ابتدای سند ثبت شده است؛ یادداشت‌های پایین‌تر snapshotهای تاریخی هستند.
 
 ## وضعیت تاریخی اتوماسیون — PR #702 (snapshot قدیمی)
 
