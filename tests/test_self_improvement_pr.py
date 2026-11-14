@@ -97,7 +97,7 @@ def _approved_proposal(proposal_repo, monkeypatch):
 
 def test_open_pr_requires_explicit_confirmation_and_configuration(proposal_repo, monkeypatch):
     proposal, _ = _approved_proposal(proposal_repo, monkeypatch)
-    monkeypatch.delenv("SELF_IMPROVEMENT_GITHUB_TOKEN", raising=False)
+    monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_TOKEN", "test-token")
     db.update_settings({"self_improvement_github_repository": ""})
 
     with pytest.raises(self_improvement.ProposalError, match="Explicit confirmation"):
