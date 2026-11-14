@@ -262,7 +262,7 @@ def test_settings_expose_visible_installed_model_selectors_and_manual_context_in
 
 
 def test_codex_uses_unique_custom_ollama_provider_without_redefining_reserved_provider(monkeypatch):
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "16384")
     arguments = progress.codex_arguments("gpt-oss:20b-codex-ctx16384", "report.md")
     overrides = [
         arguments[index + 1]
