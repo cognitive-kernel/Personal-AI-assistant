@@ -44,7 +44,7 @@ PURPOSE_MODULES: dict[str, str] = {
 }
 
 
-class ModuleDisabledError(RuntimeError):
+class ModuleDisabledError(ValueError):
     """Raised when a capability is explicitly disabled in persisted settings."""
 
     def __init__(self, module: str) -> None:
