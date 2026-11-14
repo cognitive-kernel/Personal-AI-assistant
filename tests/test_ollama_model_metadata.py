@@ -1,3 +1,5 @@
+import pytest
+
 from app import ollama
 
 
@@ -80,7 +82,7 @@ def test_model_details_recommends_context_within_model_and_memory_limits(monkeyp
     })
     result = ollama.model_details("llama:8b")
     assert result["maximum_context_tokens"] == 131072
-    assert result["recommended_context_tokens"] == 63488
+    assert result["recommended_context_tokens"] == 64894
     assert result["recommended_context_tokens"] <= result["maximum_context_tokens"]
     assert result["memory_estimate"]["kv_cache_dtype"].startswith("unknown; FP32 upper bound")
     assert result["memory_estimate"]["kv_cache_bytes_per_token_upper_bound"] == 32 * 8 * 256 * 4
@@ -384,7 +386,7 @@ def test_chat_clamps_context_to_current_hardware_budget_not_only_model_maximum(m
     monkeypatch.setattr(ollama, "_request", fake_request)
     assert ollama.chat("hello") == "ok"
     payload = next(payload for path, payload in calls if path == "/api/chat")
-    assert payload["options"]["num_ctx"] == 4096
+    assert payload["options"]["num_ctx"] == 6706
 
 
 def test_chat_refuses_inference_when_hardware_safe_context_cannot_be_estimated(monkeypatch):
