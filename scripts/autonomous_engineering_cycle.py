@@ -546,7 +546,7 @@ def run_cycle(args: argparse.Namespace) -> int:
                 raise RuntimeError("Task retry budget expired before PR validation; preserving the current task state.")
             published_pr = publish_pr_subprocess(
                 token, repo, branch, task, args.run_id, head_sha, base_sha,
-                min(PULL_REQUEST_VALIDATION_TIMEOUT_SECONDS, remaining),
+                timeout_seconds=min(PULL_REQUEST_VALIDATION_TIMEOUT_SECONDS, remaining),
             )
         except RuntimeError as exc:
             message = str(exc)
