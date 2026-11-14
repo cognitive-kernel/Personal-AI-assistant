@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import db, sandbox, sandbox_consent, task_manager
-from .task_worker import TaskContext
+from .task_worker import PermanentTaskError, TaskContext
 
 logger = logging.getLogger("personal_ai_assistant.sandbox_tasks")
 
@@ -50,32 +50,51 @@ def validate_settings(settings: dict[str, Any]) -> None:
         raise ValueError("sandbox_rust_image must be an official Rust image pinned by SHA-256 digest.")
 
 
+def _unavailable_handler(reason: str) -> Callable[
+    [dict[str, Any], dict[str, Any] | None, TaskContext], dict[str, Any]
+]:
+    def handle(
+        _payload: dict[str, Any],
+        _checkpoint: dict[str, Any] | None,
+        _context: TaskContext,
+    ) -> dict[str, Any]:
+        raise PermanentTaskError(reason)
+
+    return handle
+
+
 def handler_from_environment(*, allow_language_runners: bool = False) -> Callable[
     [dict[str, Any], dict[str, Any] | None, TaskContext], dict[str, Any]
-] | None:
-    """Compatibility name: read persistent Settings and require valid local configuration."""
-    settings = db.get_settings()
-    validate_settings(settings)
-    enabled = settings.get("sandbox_enabled", True)
-    if not enabled:
-        return None
+]:
+    """Always register the task type; invalid or disabled setup fails closed at execution."""
+    try:
+        settings = db.get_settings()
+        validate_settings(settings)
+    except Exception as exc:
+        return _unavailable_handler(
+            f"Sandbox configuration is unavailable: {type(exc).__name__}: {exc}"
+        )
+    if settings.get("sandbox_enabled", True) is not True:
+        return _unavailable_handler("Sandbox module is disabled in settings.")
 
     executable_value = str(settings.get("sandbox_docker_executable", "") or "").strip()
     image = str(settings.get("sandbox_python_image", "") or "").strip()
     if not executable_value or not image:
-        return None
+        return _unavailable_handler(
+            "Sandbox is enabled but Docker executable or Python image is not configured."
+        )
     executable = Path(executable_value).expanduser()
     if not executable.is_absolute() or not executable.is_file():
-        raise ValueError("sandbox_docker_executable must be an existing absolute file path.")
+        return _unavailable_handler("sandbox_docker_executable must be an existing absolute file path.")
     if not _IMAGE_REF.fullmatch(image):
-        raise ValueError("sandbox_python_image must be an official Python image pinned by SHA-256 digest.")
+        return _unavailable_handler("sandbox_python_image must be an official Python image pinned by SHA-256 digest.")
     node_image = str(settings.get("sandbox_node_image", "") or "").strip()
     rust_image = str(settings.get("sandbox_rust_image", "") or "").strip()
     if allow_language_runners:
         if node_image and not sandbox.is_valid_language_image_reference(node_image, "javascript"):
-            raise ValueError("SANDBOX_NODE_IMAGE must be an official Node image pinned by SHA-256 digest.")
+            return _unavailable_handler("sandbox_node_image must be an official Node image pinned by SHA-256 digest.")
         if rust_image and not sandbox.is_valid_language_image_reference(rust_image, "rust"):
-            raise ValueError("SANDBOX_RUST_IMAGE must be an official Rust image pinned by SHA-256 digest.")
+            return _unavailable_handler("sandbox_rust_image must be an official Rust image pinned by SHA-256 digest.")
 
     def handle(
         payload: dict[str, Any],
