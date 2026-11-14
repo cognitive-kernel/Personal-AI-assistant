@@ -56,6 +56,8 @@ def parent_chain_is_alive(chain: list[dict[str, Any]]) -> bool:
             ):
                 return False
             process = psutil.Process(pid)
+            if not process.is_running():
+                return False
             actual_started_at = float(process.create_time())
             if not math.isfinite(actual_started_at) or abs(actual_started_at - float(started_at)) > 0.02:
                 return False
