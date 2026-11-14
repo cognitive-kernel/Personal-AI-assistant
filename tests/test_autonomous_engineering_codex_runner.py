@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 import psutil
+import pytest
 
 from scripts import autonomous_engineering_codex_runner as runner
 
