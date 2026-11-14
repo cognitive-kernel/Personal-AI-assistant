@@ -333,7 +333,7 @@ def _recommended_context_tokens(
     hardware: dict[str, Any],
 ) -> int | None:
     """Return a context only when model dimensions and current memory are measurable."""
-    if not isinstance(maximum_context, int) or isinstance(maximum_context, bool) or maximum_context < 512:
+    if not isinstance(maximum_context, int) or isinstance(maximum_context, bool) or maximum_context <= 0:
         return None
     from .hardware import dynamic_ram_budget_gb
     budget = dynamic_ram_budget_gb(get_settings(), hardware)
@@ -359,9 +359,8 @@ def _recommended_context_tokens(
     if not math.isfinite(available_for_cache) or available_for_cache <= 0:
         return None
     fit = int(available_for_cache * (1024 ** 3) / float(cache_per_token))
-    candidates = (512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576)
-    valid = [value for value in candidates if value <= maximum_context and value <= fit]
-    return max(valid) if valid else None
+    selected = min(maximum_context, fit)
+    return selected if selected > 0 else None
 
 
 
