@@ -75,17 +75,12 @@ def _terminate_process(process: subprocess.Popen[bytes], job: WindowsProcessJob)
         try:
             os.killpg(process.pid, signal.SIGTERM)
         except ProcessLookupError:
-            pass
+            return
         time.sleep(0.25)
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=5)
     if process.poll() is None:
         try:
             process.wait(timeout=5)
@@ -117,6 +112,7 @@ def run(
     job = WindowsProcessJob()
     job.__enter__()
     process: subprocess.Popen[bytes] | None = None
+    process_tree_cleaned = False
     owner_bound_windows_job = os.name == "nt" and attach_current_process
     try:
         if owner_bound_windows_job:
@@ -158,6 +154,7 @@ def run(
                     job.terminate(125)
                     os._exit(125)
                 _terminate_process(process, job)
+                process_tree_cleaned = True
                 return 125
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -166,6 +163,7 @@ def run(
                     job.terminate(124)
                     os._exit(124)
                 _terminate_process(process, job)
+                process_tree_cleaned = True
                 return 124
             try:
                 chunk = events.get(timeout=min(0.05, remaining))
@@ -185,6 +183,7 @@ def run(
                     job.terminate(125)
                     os._exit(125)
                 _terminate_process(process, job)
+                process_tree_cleaned = True
                 return 125
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -193,15 +192,19 @@ def run(
                     job.terminate(124)
                     os._exit(124)
                 _terminate_process(process, job)
+                process_tree_cleaned = True
                 return 124
             time.sleep(min(0.05, remaining))
         exit_code = int(process.wait())
         if owner_bound_windows_job:
             job.terminate(exit_code)
             os._exit(exit_code)
+        if os.name != "nt":
+            _terminate_process(process, job)
+            process_tree_cleaned = True
         return exit_code
     finally:
-        if process is not None:
+        if process is not None and not process_tree_cleaned:
             if owner_bound_windows_job and process.poll() is None:
                 job.terminate(125)
                 os._exit(125)
@@ -210,7 +213,6 @@ def run(
             elif not owner_bound_windows_job and process.poll() is None:
                 _terminate_process(process, job)
         job.close()
-
 
 def main() -> int:
     parser = argparse.ArgumentParser()
