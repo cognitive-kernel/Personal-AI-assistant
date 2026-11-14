@@ -875,12 +875,22 @@ these account-specific paths from returning. Operational documentation now requi
 Python/Ollama to be visible in the Runner identity's PATH and explains the separate
 shared-state ACL contract.
 
-The configured Runner and application account names remain installation parameters and
-are resolved to machine-local SIDs at provisioning time; no specific username or SID is
-embedded in application code. The Runner remains non-administrator. No local Runner,
-service, process, or autonomous task was started as part of this repository change.
-Windows CI must validate the PowerShell/Python file-lock interoperability test before
-this portability change is accepted. Cross-account target-host acceptance remains pending.
+The configured Runner and application identities remain installation parameters and
+are resolved to SIDs on the target host at provisioning time. Unqualified names and
+dot-local names resolve to the current machine; DOMAIN\\name and UPN identities remain
+external identities and are not silently converted to local accounts. The application
+principal may be a user or group. ACLs are granted only to the configured SIDs; the
+built-in Administrators role is inspected solely to reject an elevated Runner, not
+granted access to the data directories. The Runner remains non-administrator.
+
+A follow-up source audit also found an undefined `$ollamaPath` reference in the Runner
+preflight after `Get-Command ollama` had already resolved `$ollama.Source`; this is now
+consistent. Windows identity normalization and ACL operations were extracted into
+`scripts/AutonomousWindowsIdentity.psm1`, and Windows CI now exercises local, dot-local,
+domain-qualified, and UPN normalization. No local Runner, service, process, or
+autonomous task was started. Actual domain-account resolution, service logon, ACL
+effective-access checks across two real accounts, and target-host crash/restart acceptance
+remain pending.
 
 
 ## 2026-11-14 — Prevent per-user state-root fallback
