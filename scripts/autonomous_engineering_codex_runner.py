@@ -61,13 +61,16 @@ def _terminate_process(process: subprocess.Popen[bytes], job: WindowsProcessJob)
             os.killpg(process.pid, signal.SIGTERM)
         except ProcessLookupError:
             pass
+        time.sleep(0.25)
         try:
-            process.wait(timeout=3)
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        try:
+            process.wait(timeout=5)
         except subprocess.TimeoutExpired:
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+            process.kill()
+            process.wait(timeout=5)
     if process.poll() is None:
         try:
             process.wait(timeout=5)
