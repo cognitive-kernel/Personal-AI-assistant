@@ -171,6 +171,7 @@ def collect_status() -> dict[str, Any]:
         "model_context_error": ollama.get("model_context_error"),
         "model_capabilities": ollama.get("model_capabilities", []),
         "model_tools_metadata_available": ollama.get("model_tools_metadata_available", False),
+        "model_tools_verification_method": ollama.get("model_tools_verification_method", "unverified"),
         "model_supports_tools": ollama.get("model_supports_tools", False),
         "model_metadata_error": ollama.get("model_metadata_error"),
         "interval_hours": interval_hours,
