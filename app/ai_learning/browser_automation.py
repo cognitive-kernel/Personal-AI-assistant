@@ -849,7 +849,7 @@ def _capture_lesson_until_complete(
     status = _lesson_completion_status(first_answer)
     continuation_count = 0
     minimum_complete_words = _configured_seconds(
-        "ai_learning_min_complete_lesson_words", minimum_complete_words, 100, 10000
+        "ai_learning_min_complete_lesson_words", _MIN_COMPLETE_LESSON_WORDS, 100, 10000
     )
 
     def checkpoint() -> None:
