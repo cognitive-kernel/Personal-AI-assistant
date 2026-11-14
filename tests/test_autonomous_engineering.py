@@ -248,6 +248,8 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
     monkeypatch.setenv("HTTP_PROXY", "http://proxy.example:8080")
     monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example:8080")
     monkeypatch.setattr(agent.urllib.request, "build_opener", fake_build_opener)
+    from app import ollama
+    monkeypatch.setattr(ollama, "model_details", lambda model: {"recommended_context_tokens": 32768})
 
     result = agent._ollama_status("gpt-oss:20b")
 
@@ -263,6 +265,7 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
     assert result["online"] is True
     assert result["model_installed"] is True
     assert result["model_context_length"] == 65536
+    assert result["model_recommended_context_length"] == 32768
     assert result["model_supports_tools"] is True
     assert result["model_context_supported"] is True
 
