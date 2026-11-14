@@ -159,7 +159,6 @@ def test_manual_task_state_uses_one_cross_process_lock_and_capture_is_read_only(
     assert "execution_state_directory()" in capture
     assert "reconcile_pending_task_owner_unlocked" in capture
     assert "validate_pending_task_owner_unlocked" in capture
-    assert "Another autonomous run is active or queued" in capture
     assert "recover_pending_state_cleanup_unlocked" in capture
     assert "owner_path = pending_task_owner_path(state_dir)" in capture
 

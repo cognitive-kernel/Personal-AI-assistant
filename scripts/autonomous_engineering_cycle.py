@@ -286,11 +286,19 @@ def run_cycle(args: argparse.Namespace) -> int:
         open_pull_requests = api(token, repo, "GET", "pulls?state=open&per_page=100")
         if not isinstance(open_pull_requests, list):
             raise RuntimeError("GitHub returned an invalid open pull request listing.")
+        def fetch_pending_pr(number: int) -> dict[str, Any]:
+            try:
+                return api(token, repo, "GET", f"pulls/{number}")
+            except RuntimeError as exc:
+                if "failed (404)" in str(exc):
+                    return {}
+                raise
+
         saved_pending_pr = reconcile_pending_pr_state_unlocked(
             state_dir,
             repo,
             open_pull_requests,
-            lambda number: api(token, repo, "GET", f"pulls/{number}"),
+            fetch_pending_pr,
         )
     if saved_pending_pr is not None:
         current_pending = api(token, repo, "GET", f"pulls/{saved_pending_pr['number']}")

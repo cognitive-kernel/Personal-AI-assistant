@@ -94,7 +94,7 @@ def test_invalid_pr_record_is_rebuilt_from_unique_open_controller_pr(tmp_path: P
 
 def test_closed_merged_pr_can_be_recovered_from_github_authority(tmp_path: Path):
     path = tmp_path / "pending-autonomous-pr.json"
-    path.write_text("{}", encoding="utf-8")
+    path.write_text('{"number": 77}', encoding="utf-8")
     live = _controller_pr(state="closed", merged=True)
 
     with durable_state_lock(tmp_path):

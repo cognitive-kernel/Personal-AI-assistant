@@ -318,7 +318,7 @@ jobs:
           from scripts.autonomous_engineering_state_lock import durable_state_lock
           from scripts.autonomous_engineering_pending_task import validate_manual_task_submission
           from scripts.autonomous_engineering_pending_task_state import (
-              claim_pending_task_owner_unlocked,
+              reconcile_pending_task_owner_unlocked,
               pending_task_owner_path,
               validate_pending_task_owner_unlocked,
           )
@@ -386,7 +386,7 @@ jobs:
                       else ("manual_dispatch" if manual_task_supplied else "recovery")
                   )
                   try:
-                      claim_pending_task_owner_unlocked(
+                      reconcile_pending_task_owner_unlocked(
                           state_dir, pending_task, run_id, run_attempt, source=owner_source,
                       )
                       validate_pending_task_owner_unlocked(

@@ -88,6 +88,10 @@ def reconcile_pending_pr_state_unlocked(
     path = state_directory / "pending-autonomous-pr.json"
     try:
         current = load_pending_pr_unlocked(state_directory)
+        if current is not None and current.get("url") != (
+            f"https://github.com/{repository}/pull/{current['number']}"
+        ):
+            raise RuntimeError("Pending PR metadata points to a different repository.")
     except RuntimeError:
         try:
             raw = path.read_text(encoding="utf-8")
