@@ -532,7 +532,7 @@ def complete_method(
             """UPDATE learning_path_topics
                SET status='completed', updated_at=CURRENT_TIMESTAMP
                WHERE id=?""",
-            (path_topic_id),
+            (path_topic_id,),
         )
     next_topic = learning.queue_next_researched_path_topic(path_topic_id)
     return {
