@@ -196,6 +196,12 @@ def run(
                     os._exit(125)
                 if external_job_managed:
                     return 125
+                if external_group_managed:
+                    try:
+                        os.killpg(os.getpgrp(), signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    os._exit(125)
                 _terminate_process(process, job)
                 process_tree_cleaned = True
                 return 125
@@ -205,7 +211,7 @@ def run(
                 if owner_bound_windows_job:
                     job.terminate(124)
                     os._exit(124)
-                if external_job_managed:
+                if external_job_managed or external_group_managed:
                     return 124
                 _terminate_process(process, job)
                 process_tree_cleaned = True
