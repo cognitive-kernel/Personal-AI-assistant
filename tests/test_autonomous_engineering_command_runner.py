@@ -211,6 +211,7 @@ def test_windows_assignment_failure_does_not_leave_suspended_process(monkeypatch
     assert not psutil.pid_exists(spawned["pid"]), "An unassigned suspended process survived fail-closed cleanup."
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX process-group API validation.")
 def test_posix_process_group_wait_rejects_invalid_budgets():
     from scripts.autonomous_engineering_process_group import (
         terminate_process_group,
