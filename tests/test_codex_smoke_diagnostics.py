@@ -280,7 +280,49 @@ def test_codex_uses_unique_custom_ollama_provider_without_redefining_reserved_pr
     assert 'model_providers.ollama-local.base_url="http://127.0.0.1:11434/v1/"' in overrides
     assert 'model_providers.ollama-local.wire_api="responses"' in overrides
     assert "model_providers.ollama-local.requires_openai_auth=false" in overrides
-    assert "model_providers.ollama-local.stream_idle_timeout_ms=900000" in overrides
+    assert "model_providers.ollama-local.stream_idle_timeout_ms=300000" in overrides
+    assert "model_providers.ollama-local.stream_max_retries=2" in overrides
+    assert "model_providers.ollama-local.request_max_retries=1" in overrides
     assert not any(value.startswith("model_providers.ollama.") for value in overrides)
     assert "--oss" not in arguments
     assert "--local-provider" not in arguments
+
+
+def test_codex_runtime_profiles_bound_smoke_and_task_retries(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "16384")
+    from scripts import autonomous_engineering_codex_config as config
+
+    def overrides_for(report: str) -> list[str]:
+        arguments = config.codex_arguments("gpt-oss:20b-codex-ctx16384", report)
+        return [
+            arguments[index + 1]
+            for index, value in enumerate(arguments[:-1])
+            if value == "-c"
+        ]
+
+    smoke = overrides_for("codex-sandbox-mxc-report.md")
+    task = overrides_for("codex-report-1.md")
+
+    assert "model_providers.ollama-local.stream_idle_timeout_ms=120000" in smoke
+    assert "model_providers.ollama-local.stream_max_retries=0" in smoke
+    assert "model_providers.ollama-local.request_max_retries=0" in smoke
+    assert "model_providers.ollama-local.stream_idle_timeout_ms=300000" in task
+    assert "model_providers.ollama-local.stream_max_retries=2" in task
+    assert "model_providers.ollama-local.request_max_retries=1" in task
+
+
+def test_codex_command_uses_owner_aware_supervisor_and_distinct_budgets(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "16384")
+    from scripts import autonomous_engineering_codex_config as config
+
+    smoke_args = config.codex_arguments("gpt-oss:20b-codex-ctx16384", "codex-sandbox-mxc-report.md")
+    task_args = config.codex_arguments("gpt-oss:20b-codex-ctx16384", "codex-report-1.md")
+    smoke_command = config.codex_command("codex", smoke_args)
+    task_command = config.codex_command("codex", task_args)
+
+    assert smoke_command[1].endswith("autonomous_engineering_codex_runner.py")
+    assert smoke_command[smoke_command.index("--timeout-seconds") + 1] == "300"
+    assert task_command[task_command.index("--timeout-seconds") + 1] == "1800"
+    assert smoke_command[smoke_command.index("--parent-chain") + 1]
+    assert "--" in smoke_command
+    assert "codex" in smoke_command[smoke_command.index("--") + 1]
