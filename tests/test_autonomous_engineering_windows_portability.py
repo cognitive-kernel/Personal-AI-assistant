@@ -22,7 +22,7 @@ def test_windows_provisioning_uses_the_shared_identity_module():
     assert "Get-AutonomousWindowsAccountSid" in module
     assert "Get-AutonomousWindowsAccountSid -AccountName $appIdentity" in script
     assert "Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity" in script
-    assert 'if ($value.Contains(' in module
+    assert "if ($value.Contains(" in module
     assert 'if ($value.Contains("@"))' not in module
 
 
@@ -36,15 +36,14 @@ def test_windows_provisioning_does_not_require_a_fixed_users_group_or_admin_acl_
     assert '"SYSTEM:(OI)(CI)F"' not in script + module
     assert "Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid" in script
     assert "Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -ReadOnlySid $appSid" in script
+    assert "$allowedSids = @($modifySids)" in module
+    assert '$Path /remove "*$sid"' in module
+    assert "$unexpectedSids" in module
     assert '$modifySids = @($RunnerSid)' in module
     assert '*$($_):(OI)(CI)M' in module
     assert '*$($ReadOnlySid):(OI)(CI)RX' in module
-    assert '$allowedSids = @($modifySids)' in module
-    assert '$Path /remove "*$sid"' in module
-    assert '$unexpectedSids' in module
     assert '$installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value' in script
-    assert 'Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid' in script
-
+    assert "Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid" in script
 
 
 def test_windows_provisioning_uses_the_runtime_shared_state_path_contract():
@@ -61,12 +60,12 @@ def test_windows_provisioning_uses_the_runtime_shared_state_path_contract():
     assert "per-user fallback is not supported on Windows" in paths_module
     assert "RunnerRoot and shared autonomous state directory must be separate" in script
 
+
 def test_windows_provisioning_keeps_runner_least_privilege_as_a_role_invariant():
     script = (ROOT / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
 
     assert 'Get-LocalGroup -SID "S-1-5-32-544"' in script
     assert "Runner account is a direct member of the local Administrators group" in script
     assert "RunnerAccount and AppAccount must be non-empty Windows account identities." in script
-    assert '^[A-Za-z0-9_.-]+
- not in script
+    assert "^[A-Za-z0-9_.-]+$" not in script
     assert "runnerLocalName.Length -gt 20" in script
