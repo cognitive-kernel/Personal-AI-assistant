@@ -14,6 +14,7 @@
 - Budget exhaustion does not clear the task, branch, pending PR state, or checkpoint. The existing recovery workflow resumes the same task in a later run; no new task is selected.
 - Added explicit subprocess deadlines: five minutes by default, fifteen minutes for the full Python suite, twenty-five minutes for exact-head PR publication/validation, and a parent deadline 30 seconds beyond the Codex runner's 30-minute hard limit.
 - Added unit and controller-level regression tests for retry-budget boundaries, exhausted attempts, task preservation, command deadlines, and timeout diagnostics.
+- The official Codex Windows sandbox documentation confirms that `unelevated` has weaker network isolation and lacks denied-read-path support. The workflow now tests MXC by default and requires the explicit `AUTONOMOUS_ENGINEERING_ALLOW_UNELEVATED_SANDBOX=true` repository variable before considering that weaker fallback; default remains false.
 - Added ADR-021. The process-tree ownership and sandbox security decisions in ADR-020 remain unchanged.
 
 ### Validation status
