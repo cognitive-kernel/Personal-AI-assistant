@@ -149,7 +149,17 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
         Write-Host "Least-privilege membership corrected. The Runner service will be restarted to discard its previous administrator token."
     }
 
-    Ensure-AutonomousStateOwnerLabel
+    $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
+    $installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
+    Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid
+    Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -ReadOnlySid $appSid -AdditionalModifySid $installerSid
+    try {
+        Ensure-AutonomousStateOwnerLabel
+    } finally {
+        Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid
+        Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -ReadOnlySid $appSid
+    }
     $serviceState = (Get-CimInstance Win32_Service | Where-Object { $_.Name -eq $services[0].Name }).State
     if ($serviceState -ne "Running") { Start-Service -Name $services[0].Name -ErrorAction Stop }
     $service = Get-CimInstance Win32_Service -Filter "Name='$($services[0].Name)'"
