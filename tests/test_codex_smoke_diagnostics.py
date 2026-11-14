@@ -227,6 +227,11 @@ def test_context_preflight_uses_deterministic_variant_from_selected_base_model()
     app_check = (root / "scripts" / "check_autonomous_agent.ps1").read_text(encoding="utf-8")
     runner_check = (root / "scripts" / "check_autonomous_runner.ps1").read_text(encoding="utf-8")
     assert "internal Codex context variant" in provision
+    assert "verify_ollama_tools.py" in provision
+    assert "verify_ollama_tools.py" in app_check
+    assert "verify_ollama_tools.py" in runner_check
+    assert "general.architecture" in app_check
+    assert "general.architecture" in runner_check
     assert "Base model selection" in app_check
     assert "Base model selection" in runner_check
 
