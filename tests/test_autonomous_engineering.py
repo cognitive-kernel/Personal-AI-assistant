@@ -1359,6 +1359,46 @@ def test_ollama_status_keeps_server_online_when_selected_model_metadata_fails(mo
     assert "OSError" in result["model_metadata_error"]
 
 
+def test_ollama_status_accepts_large_valid_show_metadata_response(monkeypatch):
+    from app import ollama
+
+    model_info = {
+        "llama.context_length": 131072,
+        "llama.block_count": 32,
+        "llama.attention.head_count_kv": 8,
+        "llama.attention.key_length": 128,
+        "llama.attention.value_length": 128,
+    }
+    large_payload = {
+        "license": "x" * (9 * 1024 * 1024),
+        "details": {"family": "llama"},
+        "model_info": model_info,
+        "capabilities": ["completion", "tools", "thinking"],
+    }
+    show_body = json.dumps(large_payload).encode("utf-8")
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            if request.full_url.endswith("/api/tags"):
+                return io.BytesIO(b'{"models":[{"name":"large-model:latest"}]}')
+            return io.BytesIO(show_body)
+
+    monkeypatch.setattr(agent.urllib.request, "build_opener", lambda *handlers: FakeOpener())
+    monkeypatch.setattr(ollama, "model_details", lambda model: {"recommended_context_tokens": 32768})
+
+    result = agent._ollama_status("large-model:latest")
+
+    assert len(show_body) > 8 * 1024 * 1024
+    assert len(show_body) < 32 * 1024 * 1024
+    assert result["model_metadata_available"] is True
+    assert result["model_context_length"] == 131072
+    assert result["model_capabilities"] == ["completion", "thinking", "tools"]
+    assert result["model_tools_metadata_available"] is True
+    assert result["model_supports_tools"] is True
+    assert result["model_context_supported"] is True
+    assert result["model_recommended_context_length"] == 32768
+
+
 def test_save_settings_rejects_model_without_explicit_tool_calling_support(monkeypatch):
     monkeypatch.setattr(agent, "_ollama_status", lambda model: {
         "online": True, "model_installed": True,

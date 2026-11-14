@@ -845,7 +845,7 @@ def test_ollama_chat_sends_ram_aware_keep_alive_and_profile_options(monkeypatch)
     assert captured["payload"]["options"]["num_ctx"] == 4096
 
 
-def test_ollama_chat_respects_configured_ram_budget(monkeypatch):
+def test_ollama_chat_respects_configured_context_when_ram_budget_allows(monkeypatch):
     captured = {}
     monkeypatch.setattr(ollama, "get_settings", lambda: {
         "chat_ollama_model": "qwen2.5:7b",
@@ -881,7 +881,7 @@ def test_ollama_chat_respects_configured_ram_budget(monkeypatch):
 
     assert ollama.chat("hello", purpose="chat") == "ok"
     assert captured["payload"]["keep_alive"] == "1m"
-    assert captured["payload"]["options"]["num_ctx"] == 4096
+    assert captured["payload"]["options"]["num_ctx"] == 8192
     assert captured["payload"]["options"]["num_thread"] == 4
 
 

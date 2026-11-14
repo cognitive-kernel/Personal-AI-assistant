@@ -23,6 +23,7 @@ class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
 
 _TOOL_PROBE_CACHE: dict[tuple[str, str], tuple[float, bool]] = {}
 _TOOL_PROBE_TTL_SECONDS = 600
+_MAX_OLLAMA_SHOW_RESPONSE_BYTES = 32 * 1024 * 1024
 
 
 def _probe_tool_calling(request_fn, model: str, digest: str) -> bool:
@@ -144,8 +145,8 @@ def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool
     )
     try:
         with opener.open(show_request, timeout=5) as response:
-            body = response.read(8_000_001)
-        if len(body) > 8_000_000:
+            body = response.read(_MAX_OLLAMA_SHOW_RESPONSE_BYTES + 1)
+        if len(body) > _MAX_OLLAMA_SHOW_RESPONSE_BYTES:
             raise ValueError("Ollama /api/show response exceeded the safety limit.")
         details_payload = json.loads(body.decode("utf-8"))
         if not isinstance(details_payload, dict):
