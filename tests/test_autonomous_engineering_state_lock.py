@@ -111,3 +111,15 @@ def test_python_and_powershell_share_the_same_durable_state_file_lock(tmp_path: 
 
     with durable_state_lock(state_dir, timeout_seconds=2):
         pass
+
+
+def test_durable_state_lock_uses_a_session_independent_file_contract():
+    root = Path(__file__).resolve().parents[1]
+    python_lock = (root / "scripts" / "autonomous_engineering_state_lock.py").read_text(encoding="utf-8")
+    powershell_persistence = (root / "scripts" / "persist_autonomous_manual_task.ps1").read_text(encoding="utf-8")
+    assert "Local\\" not in python_lock
+    assert "CreateMutexW" not in python_lock
+    assert "autonomous-durable-state.lock" in python_lock
+    assert "autonomous-durable-state.lock" in powershell_persistence
+    assert ".Lock(0, 1)" in powershell_persistence
+    assert ".Unlock(0, 1)" in powershell_persistence
