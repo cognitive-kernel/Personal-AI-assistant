@@ -162,9 +162,11 @@ def test_manual_task_state_uses_one_cross_process_lock_and_capture_is_read_only(
     capture_end = workflow.index("Ensure Codex CLI is installed", capture_start)
     capture = workflow[capture_start:capture_end]
 
-    assert 'Local\\PersonalAIAssistant.AutonomousEngineering.State.v1' in script
-    assert "$stateMutex.WaitOne" in script
-    assert "$stateMutex.ReleaseMutex()" in script
+    assert "autonomous-durable-state.lock" in script
+    assert "$stateLockStream.Lock(0, 1)" in script
+    assert "$stateLockStream.Unlock(0, 1)" in script
+    assert "$stateMutex" not in script
+    assert 'Local\\PersonalAIAssistant.AutonomousEngineering.State.v1' not in script
     assert "Another autonomous run is active or queued" in script
     assert "AutonomousEngineeringTaskState.psm1" in script
     assert "pending-manual-task-owner.json" in script
