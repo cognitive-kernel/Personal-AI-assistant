@@ -10,6 +10,16 @@ The autonomous controller already has distinct ownership boundaries for the GitH
 
 The Codex stream configuration also allowed a 15-minute idle interval, ten stream retries, and four request retries. The sandbox smoke invocation had no independent process deadline. This made a stalled provider stream expensive and allowed a diagnostic run to occupy the Runner far longer than the operation it was meant to verify.
 
+## Five-why analysis
+
+1. **Why could an old Codex process still write after a run owner failed?** Because the Codex child process could outlive the Python process that launched it.
+2. **Why could it outlive the owner?** The launch path used a normal subprocess and waited for streamed output; it had no OS-level process-tree ownership boundary or hard total deadline.
+3. **Why did the repository lock not prevent this?** The worktree lock is owned by the controller process. The operating system correctly releases that lock when the controller exits, but that lock does not automatically terminate unrelated child processes.
+4. **Why was this not caught by the existing recovery architecture?** Existing tests covered mutex exclusion, checkpoint recovery, and watcher identity, but did not inject a controller/supervisor crash while a Codex descendant remained alive.
+5. **Why could a smoke test consume so much Runner time?** Provider configuration allowed a 900,000 ms idle wait with 10 stream retries and 4 request retries, while the smoke subprocess had no independent wall-clock budget.
+
+**Evidence:** `scripts/autonomous_engineering_progress.py` starts the Codex command through `subprocess.Popen` and consumes its output stream; `scripts/autonomous_engineering_codex_config.py` supplied the long idle/retry values; the smoke call used the same Codex execution path without a per-process deadline. The worktree/state/checkpoint locks were already separate and tested; the missing invariant was ownership of the complete Codex process tree.
+
 ## Decision
 
 1. Keep the existing task-state mutex, worktree lock, checkpoint watcher, and PR-state ownership modules separate. Do not replace their contracts with one global lock.
