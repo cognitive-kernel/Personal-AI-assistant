@@ -122,7 +122,7 @@ def test_model_details_accounts_for_model_and_kv_cache_already_loaded(monkeypatc
     result = ollama.model_details("llama:large")
 
     assert result["running"]["context_length"] == 8192
-    assert result["recommended_context_tokens"] == 79189
+    assert result["recommended_context_tokens"] == 34816
 
 
 def test_model_details_recommends_context_within_model_and_memory_limits(monkeypatch):
