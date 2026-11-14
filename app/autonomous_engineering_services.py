@@ -20,7 +20,7 @@ class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_context_fn, supports_tool_calling_fn, is_context_variant) -> dict[str, Any]:
+def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool_calling_fn, is_context_variant, recommended_context_fn=None) -> dict[str, Any]:
     empty = {
         "online": False,
         "model": model,
@@ -30,11 +30,12 @@ def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_conte
         "models": [],
         "selectable_models": [],
         "model_context_length": None,
+        "model_recommended_context_length": None,
         "model_capabilities": [],
         "model_supports_tools": False,
         "model_metadata_available": False,
         "model_context_supported": False,
-        "model_context_error": f"Codex requires at least {min_context_tokens} context tokens.",
+        "model_context_error": "A hardware-safe context allocation has not been verified.",
         "model_metadata_error": "Ollama metadata is unavailable.",
     }
     # Local Ollama metadata must never be sent through an environment proxy.
@@ -110,17 +111,28 @@ def ollama_status(model: str, *, build_opener, min_context_tokens, maximum_conte
             if isinstance(value, str) and value
         }) if isinstance(raw_capabilities, list) else []
         metadata_available = context_length is not None
-        context_supported = metadata_available and context_length >= min_context_tokens
+        recommended_context = None
+        recommendation_error = None
+        if metadata_available and callable(recommended_context_fn):
+            try:
+                candidate = recommended_context_fn(model)
+                if isinstance(candidate, int) and not isinstance(candidate, bool) and candidate > 0:
+                    recommended_context = min(candidate, context_length)
+                else:
+                    recommendation_error = "Current hardware and model metadata do not yield a safe context allocation."
+            except Exception as exc:
+                recommendation_error = f"Hardware context calculation failed: {type(exc).__name__}"
+        context_supported = recommended_context is not None
         result.update({
             "model_context_length": context_length,
+            "model_recommended_context_length": recommended_context,
             "model_capabilities": capabilities,
             "model_supports_tools": supports_tool_calling_fn(capabilities),
             "model_metadata_available": metadata_available,
             "model_context_supported": context_supported,
             "model_context_error": (
                 None if context_supported else
-                f"Selected model context is below the Codex minimum of {min_context_tokens} tokens."
-                if metadata_available else
+                recommendation_error if metadata_available else
                 "Selected model context metadata is unavailable."
             ),
             "model_metadata_error": (
