@@ -10,10 +10,10 @@ import time
 import urllib.error
 import urllib.request
 import re
-from typing import Any
+from typing import Any, Literal
 
 import psutil
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
@@ -263,7 +263,9 @@ def _enrich_progress_from_github(current: dict[str, Any] | None) -> dict[str, An
 
 @router.get("/progress")
 def autonomous_engineering_progress(
-    period: str = "daily", start_date: str | None = None, end_date: str | None = None
+    period: Literal["daily", "weekly", "custom"] = "daily",
+    start_date: str | None = Query(default=None, min_length=8, max_length=10),
+    end_date: str | None = Query(default=None, min_length=8, max_length=10)
 ) -> dict[str, Any]:
     result = get_progress(period=period, start_date=start_date, end_date=end_date)
     result["current"] = _enrich_progress_from_github(result.get("current"))

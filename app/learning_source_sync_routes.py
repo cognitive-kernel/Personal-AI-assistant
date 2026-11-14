@@ -1,9 +1,9 @@
 """Loopback-only API for auditable lesson-source synchronization checks."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from . import learning_source_sync
@@ -40,7 +40,7 @@ def check_lesson_sources(request: SourceSyncCheckRequest) -> dict[str, Any]:
 
 
 @router.post("/events/{event_id}/regenerate")
-def regenerate_lesson_from_reviewed_source(event_id: int) -> dict[str, Any]:
+def regenerate_lesson_from_reviewed_source(event_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     try:
         return learning_source_sync.queue_lesson_regeneration(event_id)
     except KeyError as exc:
@@ -52,7 +52,7 @@ def regenerate_lesson_from_reviewed_source(event_id: int) -> dict[str, Any]:
 
 
 @router.post("/events/{event_id}/review")
-def review_source_change(event_id: int, request: SourceSyncReviewRequest) -> dict[str, Any]:
+def review_source_change(event_id: Annotated[int, Path(ge=1)], request: SourceSyncReviewRequest) -> dict[str, Any]:
     try:
         return learning_source_sync.record_review_decision(
             event_id,

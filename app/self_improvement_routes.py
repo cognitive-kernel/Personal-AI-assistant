@@ -1,9 +1,9 @@
 """Loopback-only API for governed self-improvement proposals."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, Field, StrictBool, ConfigDict
 
 from . import self_improvement
@@ -61,7 +61,7 @@ def create_proposal(request: ProposalCreateRequest) -> dict[str, Any]:
 
 
 @router.get("/proposals/{proposal_id}")
-def get_proposal(proposal_id: int) -> dict[str, Any]:
+def get_proposal(proposal_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     try:
         proposal = self_improvement.get_proposal(proposal_id)
         if proposal is None:
@@ -72,7 +72,7 @@ def get_proposal(proposal_id: int) -> dict[str, Any]:
 
 
 @router.get("/proposals/{proposal_id}/events")
-def get_proposal_events(proposal_id: int) -> dict[str, Any]:
+def get_proposal_events(proposal_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     try:
         return {"events": self_improvement.proposal_events(proposal_id)}
     except (ProposalError, KeyError) as exc:
@@ -80,7 +80,7 @@ def get_proposal_events(proposal_id: int) -> dict[str, Any]:
 
 
 @router.post("/proposals/{proposal_id}/validate")
-def validate_proposal(proposal_id: int) -> dict[str, Any]:
+def validate_proposal(proposal_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     try:
         return {"proposal": self_improvement.validate_proposal(proposal_id)}
     except (ProposalError, KeyError) as exc:
@@ -89,7 +89,7 @@ def validate_proposal(proposal_id: int) -> dict[str, Any]:
 
 @router.post("/proposals/{proposal_id}/static-check")
 def static_check_proposal(
-    proposal_id: int, request: ExplicitConfirmation
+    proposal_id: Annotated[int, Path(ge=1)], request: ExplicitConfirmation
 ) -> dict[str, Any]:
     try:
         return {
@@ -102,7 +102,7 @@ def static_check_proposal(
 
 
 @router.post("/proposals/{proposal_id}/approve")
-def approve_proposal(proposal_id: int, request: ExplicitConfirmation) -> dict[str, Any]:
+def approve_proposal(proposal_id: Annotated[int, Path(ge=1)], request: ExplicitConfirmation) -> dict[str, Any]:
     try:
         return {"proposal": self_improvement.approve_for_pr(proposal_id, confirm=request.confirm)}
     except (ProposalError, KeyError) as exc:
@@ -110,7 +110,7 @@ def approve_proposal(proposal_id: int, request: ExplicitConfirmation) -> dict[st
 
 
 @router.post("/proposals/{proposal_id}/open-pr")
-def open_proposal_pull_request(proposal_id: int, request: ExplicitConfirmation) -> dict[str, Any]:
+def open_proposal_pull_request(proposal_id: Annotated[int, Path(ge=1)], request: ExplicitConfirmation) -> dict[str, Any]:
     try:
         return {"pull_request": self_improvement.open_review_pull_request(
             proposal_id, confirm=request.confirm
@@ -120,7 +120,7 @@ def open_proposal_pull_request(proposal_id: int, request: ExplicitConfirmation) 
 
 
 @router.post("/proposals/{proposal_id}/rollback-pr")
-def open_proposal_rollback_pull_request(proposal_id: int, request: ExplicitConfirmation) -> dict[str, Any]:
+def open_proposal_rollback_pull_request(proposal_id: Annotated[int, Path(ge=1)], request: ExplicitConfirmation) -> dict[str, Any]:
     try:
         return {"rollback_pull_request": self_improvement.open_rollback_pull_request(
             proposal_id, confirm=request.confirm
@@ -130,7 +130,7 @@ def open_proposal_rollback_pull_request(proposal_id: int, request: ExplicitConfi
 
 
 @router.post("/proposals/{proposal_id}/reject")
-def reject_proposal(proposal_id: int, request: RejectProposalRequest) -> dict[str, Any]:
+def reject_proposal(proposal_id: Annotated[int, Path(ge=1)], request: RejectProposalRequest) -> dict[str, Any]:
     try:
         return {
             "proposal": self_improvement.reject_proposal(

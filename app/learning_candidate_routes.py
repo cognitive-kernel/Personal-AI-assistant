@@ -8,9 +8,9 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 from .db import learning_connection
@@ -122,7 +122,7 @@ def list_learning_oracles() -> dict[str, Any]:
 
 
 @router.get("/{candidate_id}/claims")
-def get_learning_candidate_claims(candidate_id: int) -> dict[str, Any]:
+def get_learning_candidate_claims(candidate_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     """Return stable, positional claim IDs for explicit test-plan coverage mapping."""
     from .claim_test_coverage import extract_candidate_claims
 
@@ -150,7 +150,7 @@ def get_learning_candidate_claims(candidate_id: int) -> dict[str, Any]:
 
 
 @router.get("/{candidate_id}")
-def get_learning_candidate(candidate_id: int) -> dict[str, Any]:
+def get_learning_candidate(candidate_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     try:
         with learning_connection() as connection:
             row = connection.execute(
@@ -168,7 +168,7 @@ def get_learning_candidate(candidate_id: int) -> dict[str, Any]:
 
 @router.post("/{candidate_id}/test-plan", status_code=201)
 def save_candidate_test_plan(
-    candidate_id: int,
+    candidate_id: Annotated[int, Path(ge=1)],
     request: CandidateTestPlanRequest,
 ) -> dict[str, Any]:
     if request.confirm is not True:

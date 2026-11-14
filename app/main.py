@@ -7,8 +7,8 @@ from contextlib import asynccontextmanager
 import logging
 from pathlib import Path
 from urllib.parse import urlsplit
-from typing import Any, Literal
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
+from typing import Annotated, Any, Literal
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Path as ApiPath, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
@@ -687,14 +687,14 @@ def create_chat_conversation() -> dict[str, Any]:
 
 
 @app.delete("/api/conversations/{conversation_id}")
-def delete_chat_conversation(conversation_id: int) -> dict[str, Any]:
+def delete_chat_conversation(conversation_id: Annotated[int, ApiPath(ge=1)]) -> dict[str, Any]:
     if not chat_history.delete_conversation(conversation_id):
         raise HTTPException(status_code=404, detail="Chat conversation not found.")
     return {"deleted": True, "conversation_id": conversation_id}
 
 
 @app.get("/api/conversations/{conversation_id}/messages")
-def list_chat_messages(conversation_id: int) -> dict[str, Any]:
+def list_chat_messages(conversation_id: Annotated[int, ApiPath(ge=1)]) -> dict[str, Any]:
     try:
         conversation = chat_history.get_conversation(conversation_id)
         if conversation is None:
@@ -706,8 +706,8 @@ def list_chat_messages(conversation_id: int) -> dict[str, Any]:
 
 @app.post("/api/conversations/{conversation_id}/messages/{message_id}/feedback")
 def set_chat_message_feedback(
-    conversation_id: int,
-    message_id: int,
+    conversation_id: Annotated[int, ApiPath(ge=1)],
+    message_id: Annotated[int, ApiPath(ge=1)],
     request: ChatMessageFeedbackRequest,
 ) -> dict[str, Any]:
     try:
@@ -1011,12 +1011,12 @@ def create_learning_job(request: LearningRequest) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 @app.get("/api/learning/jobs")
-def learning_jobs(limit: int = 50) -> dict[str, Any]:
+def learning_jobs(limit: int = Query(default=50, ge=1, le=200)) -> dict[str, Any]:
     return {"jobs": learning.list_jobs(limit)}
 
 
 @app.get("/api/learning/courses/tasks/{task_id}")
-def researched_learning_course_task(task_id: int) -> dict[str, Any]:
+def researched_learning_course_task(task_id: Annotated[int, ApiPath(ge=1)]) -> dict[str, Any]:
     task = task_manager.get_task(task_id)
     if task is None or task.get("task_type") != learning_curriculum_tasks.CURRICULUM_TASK_TYPE:
         raise HTTPException(status_code=404, detail="Researched learning course task not found.")
@@ -1055,7 +1055,7 @@ def list_browser_learning_courses(limit: int = Query(default=50, ge=1, le=200)) 
 
 
 @app.get("/api/learning/browser/courses/{course_id}")
-def get_browser_learning_course(course_id: int) -> dict[str, Any]:
+def get_browser_learning_course(course_id: Annotated[int, ApiPath(ge=1)]) -> dict[str, Any]:
     try:
         return browser_learning.get_course(course_id)
     except KeyError as exc:
@@ -1063,7 +1063,7 @@ def get_browser_learning_course(course_id: int) -> dict[str, Any]:
 
 
 @app.post("/api/learning/browser/courses/{course_id}/retry", status_code=202)
-def retry_browser_learning_course(course_id: int, background_tasks: BackgroundTasks) -> dict[str, Any]:
+def retry_browser_learning_course(course_id: Annotated[int, ApiPath(ge=1)], background_tasks: BackgroundTasks) -> dict[str, Any]:
     try:
         course = browser_learning.retry_course(course_id)
     except KeyError as exc:
@@ -1088,7 +1088,7 @@ def learning_escalations(
 
 @app.patch("/api/learning/escalations/{escalation_id}")
 def update_learning_escalation(
-    escalation_id: int,
+    escalation_id: Annotated[int, ApiPath(ge=1)],
     request: LearningEscalationResolveRequest,
 ) -> dict[str, Any]:
     try:
@@ -1153,7 +1153,7 @@ def legacy_scheduler_status() -> dict[str, Any]:
 
 
 @app.get("/api/knowledge")
-def knowledge_items(limit: int = 100) -> dict[str, Any]:
+def knowledge_items(limit: int = Query(default=100, ge=1, le=300)) -> dict[str, Any]:
     with db.learning_connection() as conn:
         rows = conn.execute(
             """SELECT id, topic, content, source_kind, version, status, job_id, created_at
@@ -1176,7 +1176,7 @@ def enroll_learning_path(request: CurriculumEnrollment) -> dict[str, Any]:
 
 
 @app.post("/api/learning/paths/{path_id}/sync")
-def sync_learning_path(path_id: int) -> dict[str, Any]:
+def sync_learning_path(path_id: Annotated[int, ApiPath(ge=1)]) -> dict[str, Any]:
     try:
         return learning.sync_curriculum_path(path_id)
     except KeyError as exc:
@@ -1184,7 +1184,7 @@ def sync_learning_path(path_id: int) -> dict[str, Any]:
 
 
 @app.post("/api/learning/paths/{path_id}/start")
-def start_learning_path(path_id: int) -> dict[str, Any]:
+def start_learning_path(path_id: Annotated[int, ApiPath(ge=1)]) -> dict[str, Any]:
     try:
         return learning.start_path_learning(path_id)
     except KeyError as exc:
@@ -1192,7 +1192,7 @@ def start_learning_path(path_id: int) -> dict[str, Any]:
 
 
 @app.post("/api/learning/paths/{path_id}/stop")
-def stop_learning_path(path_id: int) -> dict[str, Any]:
+def stop_learning_path(path_id: Annotated[int, ApiPath(ge=1)]) -> dict[str, Any]:
     try:
         return learning.stop_path_learning(path_id)
     except KeyError as exc:
@@ -1200,7 +1200,7 @@ def stop_learning_path(path_id: int) -> dict[str, Any]:
 
 
 @app.post("/api/learning/paths/{path_id}/topics/{topic_id}/start")
-def start_learning_path_topic(path_id: int, topic_id: int) -> dict[str, Any]:
+def start_learning_path_topic(path_id: Annotated[int, ApiPath(ge=1)], topic_id: Annotated[int, ApiPath(ge=1)]) -> dict[str, Any]:
     try:
         return learning.start_topic_learning(path_id, topic_id)
     except KeyError as exc:
@@ -1210,7 +1210,7 @@ def start_learning_path_topic(path_id: int, topic_id: int) -> dict[str, Any]:
 
 
 @app.post("/api/learning/paths/{path_id}/topics/{topic_id}/regenerate", status_code=202)
-def regenerate_learning_path_topic(path_id: int, topic_id: int) -> dict[str, Any]:
+def regenerate_learning_path_topic(path_id: Annotated[int, ApiPath(ge=1)], topic_id: Annotated[int, ApiPath(ge=1)]) -> dict[str, Any]:
     try:
         return learning.regenerate_topic_learning(path_id, topic_id)
     except KeyError as exc:
@@ -1220,7 +1220,7 @@ def regenerate_learning_path_topic(path_id: int, topic_id: int) -> dict[str, Any
 
 
 @app.post("/api/learning/paths/{path_id}/topics/{topic_id}/stop")
-def stop_learning_path_topic(path_id: int, topic_id: int) -> dict[str, Any]:
+def stop_learning_path_topic(path_id: Annotated[int, ApiPath(ge=1)], topic_id: Annotated[int, ApiPath(ge=1)]) -> dict[str, Any]:
     try:
         return learning.stop_topic_learning(path_id, topic_id)
     except KeyError as exc:
@@ -1228,7 +1228,7 @@ def stop_learning_path_topic(path_id: int, topic_id: int) -> dict[str, Any]:
 
 
 @app.patch("/api/learning/paths/{path_id}/topics/{topic_id}")
-def update_learning_path_topic(path_id: int, topic_id: int, request: PathTopicProgress) -> dict[str, Any]:
+def update_learning_path_topic(path_id: Annotated[int, ApiPath(ge=1)], topic_id: Annotated[int, ApiPath(ge=1)], request: PathTopicProgress) -> dict[str, Any]:
     try:
         return learning.update_path_topic(path_id, topic_id, request.status, request.latest_score)
     except KeyError as exc:
@@ -1238,7 +1238,7 @@ def update_learning_path_topic(path_id: int, topic_id: int, request: PathTopicPr
 
 
 @app.post("/api/learning/jobs/{job_id}/assessment")
-def submit_learning_assessment(job_id: int, request: AssessmentSubmission) -> dict[str, Any]:
+def submit_learning_assessment(job_id: Annotated[int, ApiPath(ge=1)], request: AssessmentSubmission) -> dict[str, Any]:
     try:
         return learning.submit_assessment(job_id, request.answers, request.idempotency_key)
     except KeyError as exc:
@@ -1252,8 +1252,8 @@ def submit_learning_assessment(job_id: int, request: AssessmentSubmission) -> di
     dependencies=[Depends(require_loopback_client)],
 )
 def review_learning_assessment(
-    job_id: int,
-    attempt_id: int,
+    job_id: Annotated[int, ApiPath(ge=1)],
+    attempt_id: Annotated[int, ApiPath(ge=1)],
     request: SemanticAssessmentReviewRequest,
 ) -> dict[str, Any]:
     if request.confirm is not True:
@@ -1272,7 +1272,7 @@ def review_learning_assessment(
     "/api/learning/jobs/{job_id}/assessment/{attempt_id}/semantic-review",
     dependencies=[Depends(require_loopback_client)],
 )
-def get_learning_assessment_review(job_id: int, attempt_id: int) -> dict[str, Any]:
+def get_learning_assessment_review(job_id: Annotated[int, ApiPath(ge=1)], attempt_id: Annotated[int, ApiPath(ge=1)]) -> dict[str, Any]:
     try:
         result = assessment_review.get_assessment_review(job_id, attempt_id)
     except ValueError as exc:
@@ -1314,8 +1314,8 @@ def list_due_learning_reviews(limit: int = Query(default=50, ge=1, le=100)) -> d
     dependencies=[Depends(require_loopback_client)],
 )
 def record_learning_topic_review(
-    path_id: int,
-    topic_id: int,
+    path_id: Annotated[int, ApiPath(ge=1)],
+    topic_id: Annotated[int, ApiPath(ge=1)],
     request: SpacedRepetitionRequest,
 ) -> dict[str, Any]:
     try:
@@ -1331,8 +1331,8 @@ def record_learning_topic_review(
     dependencies=[Depends(require_loopback_client)],
 )
 def get_learning_topic_review_history(
-    path_id: int,
-    topic_id: int,
+    path_id: Annotated[int, ApiPath(ge=1)],
+    topic_id: Annotated[int, ApiPath(ge=1)],
     limit: int = Query(default=30, ge=1, le=100),
 ) -> dict[str, Any]:
     try:
@@ -1345,7 +1345,7 @@ def get_learning_topic_review_history(
 
 @app.post("/api/learning/jobs/{job_id}/corrections", status_code=202)
 def submit_learning_issue_report(
-    job_id: int, request: LessonIssueReportRequest
+    job_id: Annotated[int, ApiPath(ge=1)], request: LessonIssueReportRequest
 ) -> dict[str, Any]:
     try:
         return learning.submit_lesson_issue(job_id, request.issue_report)
@@ -1356,7 +1356,7 @@ def submit_learning_issue_report(
 
 
 @app.post("/api/learning/jobs/{job_id}/review")
-def submit_learning_review(job_id: int, request: LessonReviewSubmission) -> dict[str, Any]:
+def submit_learning_review(job_id: Annotated[int, ApiPath(ge=1)], request: LessonReviewSubmission) -> dict[str, Any]:
     try:
         return learning.submit_lesson_review(
             job_id, request.outcomes, request.value_rating, request.takeaway, request.issues
@@ -1368,7 +1368,7 @@ def submit_learning_review(job_id: int, request: LessonReviewSubmission) -> dict
 
 
 @app.get("/api/learning/jobs/{job_id}")
-def learning_job(job_id: int) -> dict[str, Any]:
+def learning_job(job_id: Annotated[int, ApiPath(ge=1)]) -> dict[str, Any]:
     try:
         return learning.get_job(job_id)
     except KeyError as exc:

@@ -1,8 +1,8 @@
 """Loopback API for proposing, reviewing, and retrieving accepted knowledge graph edges."""
 from __future__ import annotations
 
-from typing import Any, Literal
-from fastapi import APIRouter, Depends, HTTPException, Query
+from typing import Annotated, Any, Literal
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from . import db, learning_knowledge_graph, task_manager
@@ -56,7 +56,7 @@ def create_graph_edge_proposal(request: EdgeProposalRequest) -> dict[str, Any]:
 
 
 @router.post("/edges/{edge_id}/review", status_code=202)
-def enqueue_graph_edge_review(edge_id: int) -> dict[str, Any]:
+def enqueue_graph_edge_review(edge_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     if isinstance(edge_id, bool) or edge_id < 1:
         raise HTTPException(status_code=422, detail="edge_id must be positive.")
     with db.learning_connection() as connection:

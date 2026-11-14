@@ -1,8 +1,8 @@
 """Loopback API for editing explicit learning prerequisite graphs."""
 from __future__ import annotations
 
-from typing import Any, Literal
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Annotated, Any, Literal
+from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from . import learning_prerequisites
@@ -26,7 +26,7 @@ class PrerequisiteListRequest(BaseModel):
 
 
 @router.patch("/{path_id}/prerequisite-mode")
-def update_prerequisite_mode(path_id: int, request: PrerequisiteModeRequest) -> dict[str, Any]:
+def update_prerequisite_mode(path_id: Annotated[int, Path(ge=1)], request: PrerequisiteModeRequest) -> dict[str, Any]:
     try:
         return learning_prerequisites.set_path_mode(path_id, request.mode)
     except KeyError as exc:
@@ -36,7 +36,7 @@ def update_prerequisite_mode(path_id: int, request: PrerequisiteModeRequest) -> 
 
 
 @router.get("/{path_id}/topics/{topic_id}/prerequisites")
-def read_topic_prerequisites(path_id: int, topic_id: int) -> dict[str, Any]:
+def read_topic_prerequisites(path_id: Annotated[int, Path(ge=1)], topic_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     try:
         return learning_prerequisites.get_topic_prerequisites(path_id, topic_id)
     except KeyError as exc:
@@ -45,7 +45,7 @@ def read_topic_prerequisites(path_id: int, topic_id: int) -> dict[str, Any]:
 
 @router.put("/{path_id}/topics/{topic_id}/prerequisites")
 def replace_topic_prerequisites(
-    path_id: int, topic_id: int, request: PrerequisiteListRequest
+    path_id: Annotated[int, Path(ge=1)], topic_id: Annotated[int, Path(ge=1)], request: PrerequisiteListRequest
 ) -> dict[str, Any]:
     try:
         return learning_prerequisites.set_topic_prerequisites(

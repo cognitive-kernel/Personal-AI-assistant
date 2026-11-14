@@ -1,8 +1,8 @@
 """Loopback-only API for the optional AI-learning module."""
 from __future__ import annotations
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 import sqlite3
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
 from . import config, service, browser_automation
 from .db import StoreSchemaError, initialize_store
@@ -171,23 +171,23 @@ def create_run(request: RunCreate) -> dict[str, Any]:
                  request_key=request.request_key)
 
 @router.get("/runs/{run_id}")
-def get_run(run_id: int) -> dict[str, Any]:
+def get_run(run_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     return _call(service.get_run, run_id)
 
 @router.post("/runs/{run_id}/cancel")
-def cancel_run(run_id: int) -> dict[str, Any]:
+def cancel_run(run_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     return _call(browser_automation.cancel_run, run_id)
 
 @router.post("/runs/{run_id}/start")
-def start_run(run_id: int) -> dict[str, Any]:
+def start_run(run_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     return _call(service.start_run, run_id)
 
 @router.post("/runs/{run_id}/complete")
-def complete_run(run_id: int, request: RunComplete) -> dict[str, Any]:
+def complete_run(run_id: Annotated[int, Path(ge=1)], request: RunComplete) -> dict[str, Any]:
     return _call(service.complete_run, run_id, request.response_text)
 
 @router.post("/runs/{run_id}/needs-user-action")
-def run_needs_user_action(run_id: int, request: RunNeedsAction) -> dict[str, Any]:
+def run_needs_user_action(run_id: Annotated[int, Path(ge=1)], request: RunNeedsAction) -> dict[str, Any]:
     return _call(service.mark_run_needs_user_action, run_id, request.error_code, request.error_message, request.response_text)
 
 @router.post("/courses", status_code=201)
@@ -200,12 +200,12 @@ def list_courses(limit: int = Query(default=50, ge=1, le=100)) -> dict[str, Any]
     return {"items": items, "count": len(items)}
 
 @router.delete("/courses/{course_id}")
-def delete_course(course_id: int) -> dict[str, Any]:
+def delete_course(course_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     # Archive to keep existing course/lesson history rather than destroying it.
     return _call(service.soft_delete_course, course_id)
 
 @router.get("/courses/{course_id}")
-def get_course(course_id: int) -> dict[str, Any]:
+def get_course(course_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     return _call(service.get_course, course_id)
 
 @router.post("/reset-learning-data")
@@ -214,32 +214,32 @@ def reset_learning_data() -> dict[str, Any]:
     return _call(browser_automation.reset_learning_data)
 
 @router.delete("/courses/{course_id}/runs")
-def delete_course_runs(course_id: int, request: RunHistoryDelete) -> dict[str, Any]:
+def delete_course_runs(course_id: Annotated[int, Path(ge=1)], request: RunHistoryDelete) -> dict[str, Any]:
     return _call(service.delete_course_runs, course_id, request.run_ids)
 
 @router.get("/courses/{course_id}/runs")
-def list_course_runs(course_id: int, limit: int = Query(default=10, ge=1, le=50)) -> dict[str, Any]:
+def list_course_runs(course_id: Annotated[int, Path(ge=1)], limit: int = Query(default=10, ge=1, le=50)) -> dict[str, Any]:
     items = _call(service.list_course_runs, course_id, limit)
     return {"items": items, "count": len(items)}
 
 @router.post("/courses/{course_id}/outline/import", status_code=201)
-def import_outline(course_id: int, request: OutlineImport) -> dict[str, Any]:
+def import_outline(course_id: Annotated[int, Path(ge=1)], request: OutlineImport) -> dict[str, Any]:
     return _call(service.import_outline, course_id, request.raw_response, provider=request.provider)
 
 @router.post("/courses/{course_id}/topics", status_code=201)
-def add_topic(course_id: int, request: TopicCreate) -> dict[str, Any]:
+def add_topic(course_id: Annotated[int, Path(ge=1)], request: TopicCreate) -> dict[str, Any]:
     return _call(service.add_topic, course_id, **request.model_dump())
 
 @router.patch("/topics/{topic_id}")
-def edit_topic(topic_id: int, request: TopicEdit) -> dict[str, Any]:
+def edit_topic(topic_id: Annotated[int, Path(ge=1)], request: TopicEdit) -> dict[str, Any]:
     return _call(service.edit_topic, topic_id, **request.model_dump(exclude_unset=True), update_parent="parent_topic_id" in request.model_fields_set)
 
 @router.post("/topics/{topic_id}/pause")
-def pause_topic(topic_id: int, request: PauseState) -> dict[str, Any]:
+def pause_topic(topic_id: Annotated[int, Path(ge=1)], request: PauseState) -> dict[str, Any]:
     return _call(browser_automation.set_topic_paused, topic_id, request.paused)
 
 @router.put("/courses/{course_id}/topic-order")
-def reorder_topics(course_id: int, request: TopicOrder) -> dict[str, Any]:
+def reorder_topics(course_id: Annotated[int, Path(ge=1)], request: TopicOrder) -> dict[str, Any]:
     return {"items": _call(service.reorder_topics, course_id, request.topic_ids)}
 
 @router.post("/topics/decision")
@@ -247,78 +247,78 @@ def decide_topics(request: TopicDecision) -> dict[str, Any]:
     return {"updated": _call(service.decide_topics, request.topic_ids, request.decision)}
 
 @router.get("/courses/{course_id}/deleted-lessons")
-def list_deleted_lessons(course_id: int) -> dict[str, Any]:
+def list_deleted_lessons(course_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     items = _call(service.list_deleted_lessons, course_id)
     return {"items": items, "count": len(items)}
 
 
 @router.post("/topics/{topic_id}/lessons", status_code=201)
-def create_lesson(topic_id: int, request: LessonCreate) -> dict[str, Any]:
+def create_lesson(topic_id: Annotated[int, Path(ge=1)], request: LessonCreate) -> dict[str, Any]:
     return _call(service.create_lesson, topic_id, request.title)
 
 @router.get("/topics/{topic_id}/lessons")
-def list_lessons(topic_id: int) -> dict[str, Any]:
+def list_lessons(topic_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     items = _call(service.list_lessons, topic_id)
     return {"items": items, "count": len(items)}
 
 @router.post("/lessons/{lesson_id}/pause")
-def pause_lesson(lesson_id: int, request: PauseState) -> dict[str, Any]:
+def pause_lesson(lesson_id: Annotated[int, Path(ge=1)], request: PauseState) -> dict[str, Any]:
     return _call(service.set_lesson_paused, lesson_id, request.paused)
 
 @router.delete("/topics/{topic_id}")
-def delete_topic(topic_id: int) -> dict[str, Any]:
+def delete_topic(topic_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     return _call(service.soft_delete_topic, topic_id)
 
 @router.delete("/lessons/{lesson_id}")
-def delete_lesson(lesson_id: int) -> dict[str, Any]:
+def delete_lesson(lesson_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     return _call(service.soft_delete_lesson, lesson_id)
 
 @router.post("/lessons/{lesson_id}/restore")
-def restore_lesson(lesson_id: int) -> dict[str, Any]:
+def restore_lesson(lesson_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     return _call(service.restore_soft_deleted_lesson, lesson_id)
 
 
 @router.get("/lessons/{lesson_id}/versions")
-def list_versions(lesson_id: int) -> dict[str, Any]:
+def list_versions(lesson_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     items = _call(service.list_versions, lesson_id)
     return {"items": items, "count": len(items)}
 
 @router.post("/lessons/{lesson_id}/versions", status_code=201)
-def add_content(lesson_id: int, request: ContentCreate) -> dict[str, Any]:
+def add_content(lesson_id: Annotated[int, Path(ge=1)], request: ContentCreate) -> dict[str, Any]:
     return _call(service.add_content_version, lesson_id, **request.model_dump())
 
 @router.get("/versions/{version_id}")
-def get_content_version(version_id: int) -> dict[str, Any]:
+def get_content_version(version_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     return _call(service.get_content_version, version_id)
 
 @router.get("/versions/{version_id}/sources")
-def get_content_sources(version_id: int) -> dict[str, Any]:
+def get_content_sources(version_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     items = _call(service.list_content_sources, version_id)
     return {"items": items, "count": len(items)}
 
 @router.post("/sources/{source_id}/check")
-def check_content_source(source_id: int) -> dict[str, Any]:
+def check_content_source(source_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     return _call(service.check_content_source, source_id)
 
 @router.patch("/lessons/{lesson_id}")
-def edit_lesson(lesson_id: int, request: LessonCreate) -> dict[str, Any]:
+def edit_lesson(lesson_id: Annotated[int, Path(ge=1)], request: LessonCreate) -> dict[str, Any]:
     return _call(service.edit_lesson, lesson_id, request.title)
 
 @router.post("/versions/{version_id}/review")
-def review_content(version_id: int, request: ReviewDecision) -> dict[str, Any]:
+def review_content(version_id: Annotated[int, Path(ge=1)], request: ReviewDecision) -> dict[str, Any]:
     return _call(service.review_content, version_id, request.decision)
 
 
 @router.delete("/versions/{version_id}")
-def delete_rejected_content_version(version_id: int) -> dict[str, Any]:
+def delete_rejected_content_version(version_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     return _call(service.delete_rejected_content_version, version_id)
 
 @router.post("/versions/{version_id}/publish")
-def publish_content(version_id: int) -> dict[str, Any]:
+def publish_content(version_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     return _call(service.publish_content, version_id)
 
 @router.post("/versions/{version_id}/unpublish")
-def unpublish_content(version_id: int) -> dict[str, Any]:
+def unpublish_content(version_id: Annotated[int, Path(ge=1)]) -> dict[str, Any]:
     return _call(service.unpublish_content, version_id)
 
 @router.get("/search")
