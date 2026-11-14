@@ -115,14 +115,33 @@ def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool
         recommended_context = None
         recommendation_error = None
         if metadata_available and callable(recommended_context_fn):
-            try:
-                candidate = recommended_context_fn(model)
-                if isinstance(candidate, int) and not isinstance(candidate, bool) and candidate > 0:
-                    recommended_context = min(candidate, context_length)
-                else:
-                    recommendation_error = "Current hardware and model metadata do not yield a safe context allocation."
-            except Exception as exc:
-                recommendation_error = f"Hardware context calculation failed: {type(exc).__name__}"
+            prefix = f"{architecture}." if isinstance(architecture, str) and architecture else ""
+            kv_dimensions_present = bool(prefix) and all(
+                isinstance(model_info.get(key), int)
+                and not isinstance(model_info.get(key), bool)
+                and model_info.get(key) > 0
+                for key in (
+                    f"{prefix}block_count",
+                    f"{prefix}attention.key_length",
+                    f"{prefix}attention.value_length",
+                )
+            ) and any(
+                isinstance(model_info.get(f"{prefix}{suffix}"), int)
+                and not isinstance(model_info.get(f"{prefix}{suffix}"), bool)
+                and model_info.get(f"{prefix}{suffix}") > 0
+                for suffix in ("attention.head_count_kv", "attention.head_count")
+            )
+            if not kv_dimensions_present:
+                recommendation_error = "Ollama did not expose enough architecture-specific KV-cache metadata to calculate a hardware-safe context."
+            else:
+                try:
+                    candidate = recommended_context_fn(model)
+                    if isinstance(candidate, int) and not isinstance(candidate, bool) and candidate > 0:
+                        recommended_context = min(candidate, context_length)
+                    else:
+                        recommendation_error = "Current hardware and model metadata do not yield a safe context allocation."
+                except Exception as exc:
+                    recommendation_error = f"Hardware context calculation failed: {type(exc).__name__}"
         context_supported = recommended_context is not None
         result.update({
             "model_context_length": context_length,
