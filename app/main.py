@@ -15,9 +15,9 @@ from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, StrictBool, StrictFloat, StrictInt, ConfigDict
 from . import backup_scheduler, assessment_review, browser_learning, knowledge_lifecycle_tasks, learning_knowledge_graph_tasks, learning_capabilities_routes, learning_recommendations, spaced_repetition, chat_feedback, chat_history, chat_research, cloud_resources, curricula, db, experience_tasks, factual_verification_tasks, learning, ollama, programming_tasks, research_planner, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, list_learning_escalations, reconcile_queued_learning_tasks, resolve_learning_escalation
-from . import learning_review_tasks, learning_curriculum_tasks
+from . import learning_review_tasks, learning_curriculum_tasks, learning_topic_quality_tasks
 from .learning_observability import collect_learning_operational_metrics
-from .task_runtime import TaskRuntime
+from .task_runtime import TaskRuntime, reject_unregistered_task
 from .config import defaults
 from .hardware import detect_hardware, runtime_limits
 from .task_routes import require_loopback_client, router as task_router
@@ -42,6 +42,7 @@ from .ai_learning import browser_automation as ai_learning_browser_automation
 from .ai_learning.ui import router as ai_learning_ui_router
 from .autonomous_engineering import router as autonomous_engineering_router
 from .schema_migrations import UntrackedSchemaError
+from .module_settings import require_module_enabled
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -311,7 +312,7 @@ def _maintain_learning_runtime() -> None:
         browser_learning.dispatch_next_course()
     except Exception:
         logger.exception("Browser-learning dispatch failed; it will retry next interval.")
-    if ai_learning_config.is_enabled():
+    if ai_learning_config.browser_is_enabled():
         try:
             ai_learning_browser_automation.recover_orphaned_runs()
         except Exception:
@@ -352,7 +353,7 @@ def startup() -> None:
         )
     # Recover only explicit, persisted AI-learning runs. This never auto-generates
     # new topics/lessons and respects the durable global pause flag.
-    if ai_learning_config.is_enabled():
+    if ai_learning_config.browser_is_enabled():
         try:
             ai_learning_browser_automation.recover_pending_runs()
         except Exception:
@@ -379,13 +380,16 @@ def startup() -> None:
             return
         _task_runtimes = []
     settings = db.get_settings()
-    chat_handlers = {
+    research_handlers = {
         research_tasks.RESEARCH_TASK_TYPE: research_tasks.handle_research_task,
+    }
+    research_plan_handlers = {
         research_planner.RESEARCH_PLAN_TASK_TYPE: research_planner.handle_research_plan_task,
     }
     learning_handlers = {
         LEARNING_TASK_TYPE: handle_learning_job,
         learning_curriculum_tasks.CURRICULUM_TASK_TYPE: learning_curriculum_tasks.handle_curriculum_task,
+        learning_topic_quality_tasks.TOPIC_QUALITY_TASK_TYPE: learning_topic_quality_tasks.handle_topic_quality_evaluation,
         learning_review_tasks.LEARNING_REVIEW_TASK_TYPE: learning_review_tasks.handle_candidate_review,
         learning_review_tasks.LEARNING_SANDBOX_REVIEW_TASK_TYPE: learning_review_tasks.handle_candidate_sandbox_review,
         knowledge_lifecycle_tasks.KNOWLEDGE_VALIDATE_TASK_TYPE: knowledge_lifecycle_tasks.handle_validate_candidate,
@@ -394,35 +398,49 @@ def startup() -> None:
     programming_handlers: dict[str, Any] = {
         programming_tasks.PROGRAMMING_TASK_TYPE: programming_tasks.handle_programming_task,
     }
-    system_handlers = {
+    cloud_handlers = {
         cloud_resources.CLOUD_DISCOVERY_TASK_TYPE: cloud_resources.handle_discovery_task,
     }
     sandbox_handler = sandbox_tasks.handler_from_environment()
-    if sandbox_handler is not None:
-        programming_handlers[sandbox_tasks.SANDBOX_TASK_TYPE] = sandbox_handler
     sandbox_language_handler = sandbox_tasks.handler_from_environment(allow_language_runners=True)
-    if sandbox_language_handler is not None:
-        programming_handlers[sandbox_tasks.SANDBOX_LANGUAGE_TASK_TYPE] = sandbox_language_handler
+    sandbox_handlers = {
+        sandbox_tasks.SANDBOX_TASK_TYPE: sandbox_handler,
+        sandbox_tasks.SANDBOX_LANGUAGE_TASK_TYPE: sandbox_language_handler,
+    }
     experience_test_handler = experience_tasks.handler_from_environment()
-    if experience_test_handler is not None:
-        programming_handlers[experience_tasks.EXPERIENCE_TEST_TASK_TYPE] = experience_test_handler
+    experience_handlers = (
+        {experience_tasks.EXPERIENCE_TEST_TASK_TYPE: experience_test_handler}
+        if experience_test_handler is not None else {}
+    )
     factual_verification_handler = factual_verification_tasks.handler_from_environment(sandbox_language_handler)
-    if factual_verification_handler is not None:
-        programming_handlers[factual_verification_tasks.FACTUAL_VERIFY_TASK_TYPE] = factual_verification_handler
+    factual_handlers = (
+        {factual_verification_tasks.FACTUAL_VERIFY_TASK_TYPE: factual_verification_handler}
+        if factual_verification_handler is not None else {}
+    )
 
-    # Each runtime claims only its own task types, so slow learning or code-test
-    # work cannot consume the chat lane's worker slots.
+    # Independent runtimes keep slow or disabled capabilities from consuming
+    # another module's worker slots. Every configured lane has its own lease owner.
     runtime_specs: list[tuple[dict[str, Any], int, str, Any]] = [
-        (chat_handlers, int(settings.get("chat_max_concurrent_jobs", 1)), "chat-worker", None),
+        (research_handlers, int(settings.get("research_max_concurrent_jobs", 1)), "research-worker", None),
+        (research_plan_handlers, int(settings.get("research_plan_max_concurrent_jobs", 1)), "research-plan-worker", None),
         (learning_handlers, int(settings.get("learning_max_concurrent_jobs", 1)), "learning-worker", _maintain_learning_runtime),
-        (system_handlers, 1, "system-worker", None),
+        (programming_handlers, int(settings.get("programming_max_concurrent_jobs", 1)), "programming-worker", None),
+        (sandbox_handlers, int(settings.get("sandbox_max_concurrent_jobs", 1)), "sandbox-worker", sandbox_tasks.cleanup_terminal_containers),
+        (cloud_handlers, int(settings.get("cloud_resources_max_concurrent_jobs", 1)), "cloud-resources-worker", None),
     ]
-    if programming_handlers:
+    if experience_handlers:
         runtime_specs.append((
-            programming_handlers,
-            int(settings.get("programming_max_concurrent_jobs", 1)),
-            "programming-worker",
-            sandbox_tasks.cleanup_terminal_containers if sandbox_handler is not None else None,
+            experience_handlers,
+            int(settings.get("experience_test_max_concurrent_jobs", 1)),
+            "experience-worker",
+            None,
+        ))
+    if factual_handlers:
+        runtime_specs.append((
+            factual_handlers,
+            int(settings.get("factual_review_max_concurrent_jobs", 1)),
+            "factual-review-worker",
+            None,
         ))
 
     _task_runtimes = []
@@ -448,7 +466,7 @@ def startup() -> None:
     )
     fallback_placeholder = "__unregistered_task_type__"
     fallback_runtime = TaskRuntime(
-        {fallback_placeholder: lambda *_args: {"ok": True}},
+        {fallback_placeholder: reject_unregistered_task},
         worker_count=1,
         worker_prefix="dead-letter-worker",
         poll_interval=0.5,
@@ -642,9 +660,11 @@ def api_storage_health() -> dict[str, Any]:
     return storage_health.check_storage_health()
 
 @app.get("/api/models")
-def models() -> dict[str, Any]:
+def models(
+    purpose: Literal["chat", "learning", "programming", "ai_learning", "topic_learning", "factual_review", "research_plan", "embedding"] = "chat",
+) -> dict[str, Any]:
     try:
-        return {"models": ollama.list_models()}
+        return ollama.list_provider_models(purpose)
     except ollama.OllamaError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -664,7 +684,7 @@ def model_details(
 def hardware_diagnostics(
     model: str | None = Query(default=None, max_length=200),
     context_tokens: int | None = Query(default=None, ge=512, le=1048576),
-    purpose: Literal["chat", "learning", "programming"] = "chat",
+    purpose: Literal["chat", "learning", "programming", "ai_learning", "topic_learning"] = "chat",
 ) -> dict[str, Any]:
     try:
         return ollama.runtime_diagnostics(
@@ -725,7 +745,7 @@ def set_chat_message_feedback(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@app.post("/api/chat")
+@app.post("/api/chat", dependencies=[Depends(require_module_enabled("chat"))])
 def chat(request: ChatRequest) -> dict[str, str]:
     chat_limit = int(db.get_settings().get("chat_source_max_chars", 12000))
     if len(request.message) > chat_limit:
@@ -760,12 +780,70 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     if "gpu_enabled" in values and not isinstance(values["gpu_enabled"], bool):
         raise HTTPException(status_code=422, detail="gpu_enabled must be a boolean.")
+    for key in ("ai_learning_enabled", "ai_learning_knowledge_enabled", "basic_learning_enabled", "topic_learning_enabled", "experience_system_enabled", "ai_learning_retrieval_enabled", "ai_learning_browser_enabled", "sandbox_enabled", "self_improvement_enabled", "chat_enabled", "research_plan_enabled", "programming_enabled", "factual_review_enabled", "embedding_enabled", "knowledge_base_enabled", "knowledge_graph_enabled", "cloud_resources_enabled", "cloud_plan_enabled", "kaggle_quota_enabled", "oci_quota_enabled", "autonomous_engineering_enabled"):
+        if key in values and type(values[key]) is not bool:
+            raise HTTPException(status_code=422, detail=f"{key} must be a boolean.")
+    bounded_text_settings = {
+        "ai_learning_chrome_path": 2048,
+        "ai_learning_browser_profile": 2048,
+        "sandbox_docker_executable": 2048,
+        "sandbox_python_image": 512,
+        "sandbox_test_image": 512,
+        "sandbox_node_image": 512,
+        "sandbox_rust_image": 512,
+        "self_improvement_repo_root": 2048,
+        "self_improvement_github_repository": 200,
+        "self_improvement_github_base_branch": 255,
+        "self_improvement_github_token_env": 128,
+    }
+    for key, maximum in bounded_text_settings.items():
+        if key in values and (
+            not isinstance(values[key], str)
+            or len(values[key]) > maximum
+            or chr(0) in values[key]
+        ):
+            raise HTTPException(status_code=422, detail=f"{key} must be text of at most {maximum} characters.")
+    if "ai_learning_chrome_path" in values and values["ai_learning_chrome_path"].strip():
+        if not Path(values["ai_learning_chrome_path"]).expanduser().is_absolute():
+            raise HTTPException(status_code=422, detail="ai_learning_chrome_path must be an absolute path.")
+    if "sandbox_docker_executable" in values and values["sandbox_docker_executable"].strip():
+        if not Path(values["sandbox_docker_executable"]).expanduser().is_absolute():
+            raise HTTPException(status_code=422, detail="sandbox_docker_executable must be an absolute path.")
+    if "self_improvement_repo_root" in values and values["self_improvement_repo_root"].strip():
+        if not Path(values["self_improvement_repo_root"]).expanduser().is_absolute():
+            raise HTTPException(status_code=422, detail="self_improvement_repo_root must be an absolute path.")
+    if "self_improvement_github_repository" in values and values["self_improvement_github_repository"].strip():
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", values["self_improvement_github_repository"].strip()):
+            raise HTTPException(status_code=422, detail="self_improvement_github_repository must use owner/repository format.")
+    if "self_improvement_github_base_branch" in values:
+        base_branch = values["self_improvement_github_base_branch"]
+        if base_branch and (
+            not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,254}", base_branch)
+            or ".." in base_branch
+            or "//" in base_branch
+            or "@{" in base_branch
+            or base_branch.endswith(("/", "."))
+        ):
+            raise HTTPException(status_code=422, detail="self_improvement_github_base_branch is not a valid branch name.")
+    if "self_improvement_github_token_env" in values:
+        token_env = values["self_improvement_github_token_env"]
+        if token_env and not re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", token_env):
+            raise HTTPException(status_code=422, detail="self_improvement_github_token_env must be an environment variable name.")
+    sandbox_keys = {
+        "sandbox_enabled", "sandbox_docker_executable", "sandbox_python_image",
+        "sandbox_test_image", "sandbox_node_image", "sandbox_rust_image",
+    }
+    if sandbox_keys.intersection(values):
+        try:
+            sandbox_tasks.validate_settings({**db.get_settings(), **values})
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     keep_alive_values = {"auto", "0", "1m", "5m", "10m", "30m"}
-    for purpose in ("chat", "learning", "programming"):
+    for purpose in ("chat", "research_plan", "learning", "programming", "ai_learning", "topic_learning", "factual_review"):
         key = f"{purpose}_model_keep_alive"
         if key in values and (not isinstance(values[key], str) or values[key] not in keep_alive_values):
             raise HTTPException(status_code=422, detail=f"{key} must be one of: auto, 0, 1m, 5m, 10m, 30m.")
-    for purpose in ("chat", "research_plan", "learning", "programming", "factual_review", "embedding"):
+    for purpose in ("chat", "research_plan", "learning", "programming", "ai_learning", "topic_learning", "factual_review", "embedding"):
         provider_key = f"{purpose}_llm_provider"
         base_url_key = f"{purpose}_llm_base_url"
         api_key_env_key = f"{purpose}_llm_api_key_env"
@@ -796,18 +874,62 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         ("gpu_resource_limit_percent", 10, 95),
         ("ram_budget_max_gb", 1, 25),
         ("ram_safety_reserve_gb", 1, 8),
+        ("ai_learning_lesson_batch_size", 1, 20),
+        ("ai_learning_chunk_target_chars", 256, 10000),
+        ("ai_learning_chunk_overlap_chars", 0, 2000),
+        ("ai_learning_embedding_batch_size", 1, 256),
+        ("ai_learning_embedding_input_max_chars", 256, 100000),
+        ("embedding_max_batch_size", 1, 256),
+        ("embedding_max_input_chars", 256, 100000),
+        ("embedding_timeout_seconds", 5, 600),
+        ("sandbox_timeout_seconds", 1, 120),
+        ("sandbox_test_timeout_seconds", 1, 1800),
+        ("sandbox_max_output_bytes", 1024, 65536),
+        ("ai_learning_browser_timeout_seconds", 10, 1800),
+        ("ai_learning_browser_poll_interval_ms", 100, 5000),
+        ("ai_learning_browser_control_poll_interval_ms", 10, 1000),
+        ("ai_learning_browser_lease_seconds", 30, 600),
+        ("ai_learning_browser_lease_heartbeat_seconds", 5, 30),
+        ("ai_learning_response_timeout_seconds", 30, 7200),
+        ("ai_learning_max_lesson_continuations", 0, 20),
+        ("ai_learning_stability_seconds", 1, 120),
+        ("ai_learning_stop_stability_seconds", 1, 180),
+        ("ai_learning_last_stop_stability_seconds", 1, 180),
+        ("ai_learning_min_complete_lesson_words", 100, 10000),
+        ("ai_learning_max_context_relaunches", 0, 3),
+        ("ai_learning_max_retries", 0, 5),
+        ("research_plan_max_output_tokens", 1, 8192),
+        ("factual_review_max_output_tokens", 1, 8192),
+        ("learning_max_output_tokens", 1, 8192),
+        ("ai_learning_max_output_tokens", 1, 8192),
+        ("topic_learning_max_output_tokens", 1, 8192),
+        ("ai_learning_source_max_chars", 1000, 256000),
+        ("topic_learning_source_max_chars", 1000, 256000),
+        ("research_plan_source_max_chars", 1000, 256000),
+        ("factual_review_source_max_chars", 1000, 256000),
     ]
-    for prefix in ("chat", "learning", "programming"):
+    for prefix in ("chat", "research_plan", "learning", "programming", "ai_learning", "topic_learning", "factual_review"):
         numeric_ranges.extend([
             (f"{prefix}_ollama_timeout_seconds", 5, 600),
             (f"{prefix}_ollama_num_ctx", 512, 1048576),
             (f"{prefix}_ollama_num_thread", 0, 64),
-            (f"{prefix}_max_concurrent_jobs", 1, 8),
         ])
+        if prefix in {"chat", "learning", "programming"}:
+            numeric_ranges.append((f"{prefix}_max_concurrent_jobs", 1, 8))
     numeric_ranges.extend([
         ("chat_source_max_chars", 1000, 12000),
         ("learning_source_max_chars", 1000, 100000),
         ("programming_source_max_chars", 1000, 65536),
+        ("research_max_concurrent_jobs", 1, 8),
+        ("research_plan_max_concurrent_jobs", 1, 8),
+        ("ai_learning_max_concurrent_jobs", 1, 8),
+        ("topic_learning_max_concurrent_jobs", 1, 8),
+        ("factual_review_max_concurrent_jobs", 1, 8),
+        ("experience_test_max_concurrent_jobs", 1, 8),
+        ("sandbox_max_concurrent_jobs", 1, 8),
+        ("cloud_resources_max_concurrent_jobs", 1, 8),
+        ("embedding_max_concurrent_jobs", 1, 8),
+        ("provider_queue_wait_timeout_seconds", 1, 3600),
     ])
     for key, low, high in numeric_ranges:
         if key in values:
@@ -819,10 +941,22 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
     # Context limits are model-specific. Context edits require verifiable metadata;
     # manual model-name changes remain compatible when the existing context is unchanged.
     current_settings = db.get_settings()
+    lease_seconds = values.get("ai_learning_browser_lease_seconds", current_settings.get("ai_learning_browser_lease_seconds", 90))
+    lease_heartbeat_seconds = values.get("ai_learning_browser_lease_heartbeat_seconds", current_settings.get("ai_learning_browser_lease_heartbeat_seconds", 15))
+    if lease_heartbeat_seconds * 3 > lease_seconds:
+        raise HTTPException(status_code=422, detail="AI Learning browser lease heartbeat must be no more than one third of the lease duration.")
+    chunk_target = values.get("ai_learning_chunk_target_chars", current_settings.get("ai_learning_chunk_target_chars", 1800))
+    chunk_overlap = values.get("ai_learning_chunk_overlap_chars", current_settings.get("ai_learning_chunk_overlap_chars", 180))
+    if chunk_overlap >= chunk_target:
+        raise HTTPException(status_code=422, detail="ai_learning_chunk_overlap_chars must be smaller than ai_learning_chunk_target_chars.")
     context_profiles = {
         "chat_ollama_num_ctx": "chat_ollama_model",
+        "research_plan_ollama_num_ctx": "research_plan_ollama_model",
+        "factual_review_ollama_num_ctx": "factual_review_ollama_model",
         "learning_ollama_num_ctx": "learning_ollama_model",
         "programming_ollama_num_ctx": "programming_ollama_model",
+        "ai_learning_ollama_num_ctx": "ai_learning_ollama_model",
+        "topic_learning_ollama_num_ctx": "topic_learning_ollama_model",
     }
     model_metadata_cache: dict[str, dict[str, Any]] = {}
     for context_key, model_key in context_profiles.items():
@@ -930,7 +1064,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
                 values[context_key] = context_value
                 if model_key == "chat_ollama_model":
                     values["ollama_num_ctx"] = context_value
-    for key in ("ollama_model", "ollama_embedding_model", "chat_ollama_model", "research_plan_ollama_model", "learning_ollama_model", "programming_ollama_model"):
+    for key in ("ollama_model", "ollama_embedding_model", "chat_ollama_model", "research_plan_ollama_model", "learning_ollama_model", "programming_ollama_model", "ai_learning_ollama_model", "topic_learning_ollama_model"):
         if key in values and (
             not isinstance(values[key], str) or not values[key].strip() or len(values[key]) > 200
         ):
@@ -939,6 +1073,12 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         values["learning_model_cost_profiles"], dict
     ):
         raise HTTPException(status_code=422, detail="learning_model_cost_profiles must be a JSON object.")
+    if "learning_model_pricing_json" in values:
+        from . import learning_costs
+        try:
+            learning_costs.validate_pricing_catalog_json(values["learning_model_pricing_json"])
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     if "learning_model_minimum_quality_score" in values:
         quality = values["learning_model_minimum_quality_score"]
         if (
@@ -952,6 +1092,20 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
                 detail="learning_model_minimum_quality_score must be a finite number between 0 and 1.",
             )
         values["learning_model_minimum_quality_score"] = float(quality)
+    for key, minimum, maximum in (
+        ("ai_learning_title_duplicate_threshold", 0.80, 1.0),
+        ("ai_learning_content_duplicate_threshold", 0.80, 1.0),
+    ):
+        if key in values:
+            threshold = values[key]
+            if (
+                isinstance(threshold, bool)
+                or not isinstance(threshold, (int, float))
+                or not math.isfinite(threshold)
+                or not minimum <= threshold <= maximum
+            ):
+                raise HTTPException(status_code=422, detail=f"{key} must be a finite number between {minimum} and {maximum}.")
+            values[key] = float(threshold)
     if "learning_task_budget_microusd" in values:
         budget = values["learning_task_budget_microusd"]
         if budget is not None and (

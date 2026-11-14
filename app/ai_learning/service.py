@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 import json
-import math
 import os
 import re
 import socket
@@ -13,13 +12,26 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 from .db import connection
+from .config import configured_int_setting as _configured_int_setting, configured_float_setting as _configured_float_setting
+from .embedding_identity import embedding_cache_identity
+from .embedding_service import (
+    SEMANTIC_DUPLICATE_THRESHOLD,
+    TITLE_SEMANTIC_DUPLICATE_THRESHOLD,
+    _dedupe_content_hash,
+    _dedupe_normalize,
+    _embedding_cosine,
+    _filter_duplicate_titles,
+    _find_semantic_duplicate_content,
+    _title_embeddings,
+    _title_tokens,
+)
 from ..db import get_settings
-from ..ollama import embed as ollama_embed
+from ..config import SETTING_DEFAULTS
 from ..pinned_http import PinnedHTTPHandler, PinnedHTTPSHandler
 
-CHUNK_TARGET_CHARS = 1_800
-CHUNK_OVERLAP_CHARS = 180
-MAX_SCHEDULED_RUN_RETRIES = 2
+CHUNK_TARGET_CHARS = int(SETTING_DEFAULTS["ai_learning_chunk_target_chars"])
+CHUNK_OVERLAP_CHARS = int(SETTING_DEFAULTS["ai_learning_chunk_overlap_chars"])
+MAX_SCHEDULED_RUN_RETRIES = int(SETTING_DEFAULTS["ai_learning_max_retries"])
 
 class NotFoundError(KeyError):
     """Requested learning resource does not exist."""
@@ -47,127 +59,6 @@ def _clean_required_text(value: str, field: str) -> str:
         raise ValueError(f"{field} must not be empty.")
     return value
 
-
-def _dedupe_normalize(value: str) -> str:
-    """Normalize titles across case, whitespace, punctuation, and Persian/Arabic letter variants."""
-    value = str(value).casefold().replace("ي", "ی").replace("ك", "ک").replace("ۀ", "ه").replace("ة", "ه")
-    value = value.replace("\u200c", "").replace("\u200f", "").replace("\u200e", "")
-    return re.sub(r"[\W_]+", " ", value, flags=re.UNICODE).strip()
-
-
-def _title_embeddings(texts: list[str]) -> list[list[float]]:
-    settings = get_settings()
-    model = str(settings.get("ollama_embedding_model") or os.getenv("OLLAMA_EMBEDDING_MODEL") or "nomic-embed-text").strip()
-    if not model:
-        raise RuntimeError("No local embedding model is configured for title duplicate checks.")
-    # Keep large outlines from becoming one oversized local-model request.
-    vectors: list[list[float]] = []
-    for offset in range(0, len(texts), 64):
-        batch = texts[offset:offset + 64]
-        batch_vectors = ollama_embed(batch, model=model)
-        if len(batch_vectors) != len(batch) or any(not vector for vector in batch_vectors):
-            raise RuntimeError("Embedding model returned incomplete title vectors.")
-        vectors.extend([[float(value) for value in vector] for vector in batch_vectors])
-    if vectors and any(len(vector) != len(vectors[0]) for vector in vectors):
-        raise RuntimeError("Embedding model returned title vectors with inconsistent dimensions.")
-    return vectors
-
-
-TITLE_SEMANTIC_DUPLICATE_THRESHOLD = 0.985
-
-
-def _title_tokens(value: str) -> set[str]:
-    """Extract meaningful normalized title tokens for a conservative semantic duplicate check."""
-    return {token for token in _dedupe_normalize(value).split()
-            if len(token) > 1 and token not in {"sql", "server", "2025", "آشنایی", "مقدمه", "معرفی", "بررسی", "کار", "با", "در", "و", "از", "برای"}}
-
-
-def _filter_duplicate_titles(candidates: list[str], existing_titles: list[str]) -> tuple[list[str], list[dict[str, Any]]]:
-    """Skip normalized and near-identical titles, comparing embeddings only for lexical candidates."""
-    accepted: list[str] = []
-    skipped: list[dict[str, Any]] = []
-    canonical_existing: list[str] = []
-    known_by_key: dict[str, str] = {}
-    for title in existing_titles:
-        key = _dedupe_normalize(title)
-        if key and key not in known_by_key:
-            known_by_key[key] = title
-            canonical_existing.append(title)
-
-    pending: list[str] = []
-    for title in candidates:
-        key = _dedupe_normalize(title)
-        duplicate_of = known_by_key.get(key) if key else None
-        if duplicate_of is not None or not key:
-            skipped.append({
-                "title": title, "duplicate_of": duplicate_of or title,
-                "score": 1.0, "method": "normalized",
-            })
-            continue
-        known_by_key[key] = title
-        pending.append(title)
-
-    if not pending:
-        return accepted, skipped
-
-    embedding_cache: dict[str, list[float]] = {}
-
-    def vector_for(title: str, related_titles: list[str]) -> list[float]:
-        key = _dedupe_normalize(title)
-        missing: list[str] = []
-        missing_keys: set[str] = set()
-        for candidate in [title, *related_titles]:
-            candidate_key = _dedupe_normalize(candidate)
-            if candidate_key not in embedding_cache and candidate_key not in missing_keys:
-                missing.append(candidate)
-                missing_keys.add(candidate_key)
-        if missing:
-            try:
-                vectors = _title_embeddings(missing)
-            except Exception as exc:
-                raise ValueError(
-                    "بررسی معنایی عنوان‌های تکراری در دسترس نیست؛ برای جلوگیری از ثبت موارد تکراری، عملیات انجام نشد. "
-                    f"بررسی کنید Ollama و مدل embedding فعال باشند ({type(exc).__name__})."
-                ) from exc
-            embedding_cache.update({
-                _dedupe_normalize(candidate): vector
-                for candidate, vector in zip(missing, vectors)
-            })
-        return embedding_cache[key]
-
-    accepted_vectors: list[tuple[str, set[str]]] = [
-        (title, _title_tokens(title)) for title in canonical_existing
-    ]
-    for title in pending:
-        candidate_tokens = _title_tokens(title)
-        relevant: list[str] = []
-        for existing, existing_tokens in accepted_vectors:
-            shared = len(candidate_tokens & existing_tokens)
-            union = candidate_tokens | existing_tokens
-            overlap = shared / len(union) if union else 0.0
-            if shared >= 3 and overlap >= 0.65:
-                relevant.append(existing)
-
-        best: tuple[str, float] | None = None
-        if relevant:
-            candidate_vector = vector_for(title, relevant)
-            for existing in relevant:
-                score = _embedding_cosine(
-                    candidate_vector,
-                    embedding_cache[_dedupe_normalize(existing)],
-                )
-                if score >= TITLE_SEMANTIC_DUPLICATE_THRESHOLD:
-                    if best is None or score > best[1]:
-                        best = (existing, score)
-        if best:
-            skipped.append({
-                "title": title, "duplicate_of": best[0],
-                "score": round(best[1], 4), "method": "embedding+token_overlap",
-            })
-        else:
-            accepted.append(title)
-            accepted_vectors.append((title, candidate_tokens))
-    return accepted, skipped
 
 def _ensure_unique_title(conn: sqlite3.Connection, *, table: str, title: str,
                          scope_column: str, scope_id: int, exclude_id: int | None = None) -> None:
@@ -652,7 +543,7 @@ def schedule_run_retry(
     *,
     delay_seconds: int,
     response_text: str | None = None,
-    max_attempts: int = MAX_SCHEDULED_RUN_RETRIES,
+    max_attempts: int | None = None,
     worker_lease_owner: str | None = None,
     worker_lease_epoch: int | None = None,
 ) -> dict[str, Any] | None:
@@ -661,8 +552,12 @@ def schedule_run_retry(
     error_message = _clean_text(error_message, "error_message", 1000)
     if isinstance(delay_seconds, bool) or not isinstance(delay_seconds, int) or not 1 <= delay_seconds <= 86_400:
         raise ValueError("delay_seconds must be an integer between 1 and 86400.")
-    if isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or not 1 <= max_attempts <= 10:
-        raise ValueError("max_attempts must be an integer between 1 and 10.")
+    if max_attempts is None:
+        max_attempts = _configured_int_setting("ai_learning_max_retries", MAX_SCHEDULED_RUN_RETRIES, 0, 5)
+    if isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or not 0 <= max_attempts <= 10:
+        raise ValueError("max_attempts must be an integer between 0 and 10.")
+    if max_attempts == 0:
+        return None
     if response_text is not None:
         response_text = _clean_required_text(response_text, "response_text")
     with connection() as conn:
@@ -1512,13 +1407,14 @@ def complete_run(
                     or os.getenv("OLLAMA_EMBEDDING_MODEL")
                     or "nomic-embed-text"
                 ).strip()
+                embedding_cache_model = embedding_cache_identity(embedding_settings, embedding_model)
                 seen_sections: list[tuple[int, str, list[float]]] = []
                 for topic_id, title, body in sections:
                     digest = _dedupe_content_hash(body)
                     cached = conn.execute(
                         "SELECT embedding_json FROM semantic_embedding_cache "
                         "WHERE content_sha256=? AND embedding_model=?",
-                        (digest, embedding_model),
+                        (digest, embedding_cache_model),
                     ).fetchone()
                     if cached is None:
                         conn.execute(
@@ -1553,7 +1449,7 @@ def complete_run(
                         return get_run(run_id)
                     for previous_topic_id, previous_title, previous_vector in seen_sections:
                         score = _embedding_cosine(vector, previous_vector)
-                        if score >= SEMANTIC_DUPLICATE_THRESHOLD and topic_id not in duplicate_sections:
+                        if score >= _configured_float_setting("ai_learning_content_duplicate_threshold", SEMANTIC_DUPLICATE_THRESHOLD, 0.80, 1.0) and topic_id not in duplicate_sections:
                             previous_topic = next(
                                 (str(item["title"]) for item in topics if int(item["id"]) == previous_topic_id),
                                 f"topic {previous_topic_id}",
@@ -2164,147 +2060,6 @@ def create_lesson(topic_id: int, title: str) -> dict[str, Any]:
 SEMANTIC_DUPLICATE_THRESHOLD = 0.90
 
 
-def _dedupe_content_hash(value: str) -> str:
-    return hashlib.sha256(_dedupe_normalize(value).encode("utf-8")).hexdigest()
-
-
-def _embedding_cosine(left: list[float], right: list[float]) -> float:
-    if not left or len(left) != len(right):
-        raise RuntimeError("Embedding vectors have inconsistent dimensions.")
-    dot = sum(a * b for a, b in zip(left, right))
-    left_norm = math.sqrt(sum(a * a for a in left))
-    right_norm = math.sqrt(sum(b * b for b in right))
-    if not left_norm or not right_norm:
-        return 0.0
-    return dot / (left_norm * right_norm)
-
-
-def _find_semantic_duplicate_content(
-    conn: sqlite3.Connection,
-    markdown: str,
-    *,
-    exclude_lesson_id: int | None = None,
-    exclude_topic_id: int | None = None,
-    ensure_candidate_embedding: bool = False,
-) -> dict[str, Any] | None:
-    """Find near-identical active lesson content using cached local embeddings.
-
-    Previous versions of the same lesson/topic are intentionally excluded so a
-    genuine lesson update can create a new version. If embeddings are unavailable,
-    the caller must not save unchecked content.
-    """
-    normalized = _dedupe_normalize(markdown)
-    if not normalized:
-        return None
-    rows = conn.execute(
-        """SELECT cv.id AS version_id, cv.lesson_id, cv.markdown, cv.content_sha256,
-                  l.title AS lesson_title, l.topic_id, t.title AS topic_title
-           FROM content_versions cv
-           JOIN lessons l ON l.id=cv.lesson_id
-           JOIN topics t ON t.id=l.topic_id
-           WHERE l.deleted_at IS NULL AND t.deleted_at IS NULL
-             AND cv.id=(SELECT MAX(cv2.id) FROM content_versions cv2 WHERE cv2.lesson_id=l.id)
-             AND cv.review_status NOT IN ('superseded','withdrawn','rejected')
-             AND length(trim(COALESCE(cv.markdown,'')))>0
-             AND (? IS NULL OR l.id<>?)
-             AND (? IS NULL OR l.topic_id<>?)
-           ORDER BY cv.id DESC""",
-        (exclude_lesson_id, exclude_lesson_id, exclude_topic_id, exclude_topic_id),
-    ).fetchall()
-    for row in rows:
-        if _dedupe_normalize(str(row["markdown"])) == normalized:
-            exact_match = {
-                "version_id": int(row["version_id"]),
-                "lesson_id": int(row["lesson_id"]),
-                "topic_id": int(row["topic_id"]),
-                "lesson_title": str(row["lesson_title"]),
-                "topic_title": str(row["topic_title"]),
-                "score": 1.0,
-                "method": "exact",
-            }
-            if not ensure_candidate_embedding:
-                return exact_match
-            break
-    if not rows and not ensure_candidate_embedding:
-        return None
-
-    try:
-        settings = get_settings()
-    except Exception:
-        settings = {}
-    model = str(
-        settings.get("ollama_embedding_model")
-        or os.getenv("OLLAMA_EMBEDDING_MODEL")
-        or "nomic-embed-text"
-    ).strip()
-    if not model:
-        raise RuntimeError("No local embedding model is configured.")
-
-    content_by_hash: dict[str, str] = {}
-    for row in rows:
-        text = str(row["markdown"]).strip()
-        if text:
-            content_by_hash.setdefault(_dedupe_content_hash(text), text[:6000])
-    candidate_hash = _dedupe_content_hash(markdown)
-    content_by_hash.setdefault(candidate_hash, markdown.strip()[:6000])
-
-    cached = conn.execute(
-        "SELECT content_sha256,embedding_json FROM semantic_embedding_cache WHERE embedding_model=?",
-        (model,),
-    ).fetchall()
-    vectors: dict[str, list[float]] = {}
-    for row in cached:
-        try:
-            vector = json.loads(row["embedding_json"])
-            if isinstance(vector, list) and vector and all(
-                isinstance(value, (int, float)) and not isinstance(value, bool)
-                and math.isfinite(float(value)) for value in vector
-            ):
-                vectors[str(row["content_sha256"])] = [float(value) for value in vector]
-        except (TypeError, ValueError, json.JSONDecodeError):
-            continue
-
-    missing = [(digest, text) for digest, text in content_by_hash.items() if digest not in vectors]
-    for offset in range(0, len(missing), 32):
-        batch = missing[offset:offset + 32]
-        batch_vectors = ollama_embed([text for _, text in batch], model=model)
-        if len(batch_vectors) != len(batch):
-            raise RuntimeError("Embedding model returned an incomplete batch.")
-        for (digest, _), vector in zip(batch, batch_vectors):
-            encoded = json.dumps(vector, separators=(",", ":"), allow_nan=False)
-            conn.execute(
-                """INSERT INTO semantic_embedding_cache(content_sha256,embedding_model,embedding_json)
-                   VALUES(?,?,?) ON CONFLICT(content_sha256,embedding_model)
-                   DO UPDATE SET embedding_json=excluded.embedding_json""",
-                (digest, model, encoded),
-            )
-            vectors[digest] = [float(value) for value in vector]
-
-    candidate_vector = vectors.get(candidate_hash)
-    if candidate_vector is None:
-        raise RuntimeError("Candidate embedding is missing after indexing.")
-    best: dict[str, Any] | None = None
-    for row in rows:
-        text = str(row["markdown"]).strip()
-        if not text:
-            continue
-        vector = vectors.get(_dedupe_content_hash(text))
-        if vector is None:
-            raise RuntimeError("Existing lesson embedding is missing after indexing.")
-        score = _embedding_cosine(candidate_vector, vector)
-        if best is None or score > float(best["score"]):
-            best = {
-                "version_id": int(row["version_id"]),
-                "lesson_id": int(row["lesson_id"]),
-                "topic_id": int(row["topic_id"]),
-                "lesson_title": str(row["lesson_title"]),
-                "topic_title": str(row["topic_title"]),
-                "score": score,
-                "method": "embedding",
-            }
-    return best if best is not None and float(best["score"]) >= SEMANTIC_DUPLICATE_THRESHOLD else None
-
-
 def add_content_version(lesson_id: int, markdown: str, *, raw_response: str | None = None,
                         source_kind: str = "manual", provider: str = "manual",
                         model_name: str | None = None) -> dict[str, Any]:
@@ -2615,18 +2370,22 @@ def soft_delete_lesson(lesson_id: int) -> dict[str, Any]:
         return {"id": lesson_id, "deleted": True, "remaining_lessons": remaining_lessons}
 
 def _chunk_text(markdown: str) -> list[tuple[str, str]]:
+    target_chars = _configured_int_setting("ai_learning_chunk_target_chars", CHUNK_TARGET_CHARS, 256, 10000)
+    overlap_chars = _configured_int_setting("ai_learning_chunk_overlap_chars", CHUNK_OVERLAP_CHARS, 0, 2000)
+    if overlap_chars >= target_chars:
+        raise RuntimeError("AI-learning chunk overlap must be smaller than the target size.")
     chunks: list[tuple[str, str]] = []
     heading = ""
     buffer = ""
     def flush() -> None:
         nonlocal buffer
         text = buffer.strip()
-        while len(text) > CHUNK_TARGET_CHARS:
-            cut = text.rfind("\n", 0, CHUNK_TARGET_CHARS)
-            if cut < CHUNK_TARGET_CHARS // 2:
-                cut = CHUNK_TARGET_CHARS
+        while len(text) > target_chars:
+            cut = text.rfind("\n", 0, target_chars)
+            if cut < target_chars // 2:
+                cut = target_chars
             chunks.append((heading, text[:cut].strip()))
-            text = text[max(0, cut - CHUNK_OVERLAP_CHARS):].strip()
+            text = text[max(0, cut - overlap_chars):].strip()
         if text:
             chunks.append((heading, text))
         buffer = ""
@@ -2636,10 +2395,10 @@ def _chunk_text(markdown: str) -> list[tuple[str, str]]:
             heading = line.strip()[:500]
         else:
             buffer += line + "\n"
-            if len(buffer) >= CHUNK_TARGET_CHARS:
+            if len(buffer) >= target_chars:
                 flush()
     flush()
-    return chunks or [("", markdown[:CHUNK_TARGET_CHARS])]
+    return chunks or [("", markdown[:target_chars])]
 
 def publish_content(version_id: int) -> dict[str, Any]:
     """Publish only reviewed content; replace active chunks atomically."""

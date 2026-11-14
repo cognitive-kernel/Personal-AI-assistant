@@ -46,13 +46,20 @@ def _hash_patch(patch: str) -> str:
     return hashlib.sha256(patch.encode("utf-8")).hexdigest()
 
 
+def _settings() -> dict[str, Any]:
+    return db.get_settings()
+
+
 def _repo_root() -> Path:
-    raw = os.getenv("SELF_IMPROVEMENT_REPO_ROOT", "").strip()
+    settings = _settings()
+    if settings.get("self_improvement_enabled", True) is not True:
+        raise ProposalError("Self-improvement is disabled in dashboard Settings.")
+    raw = str(settings.get("self_improvement_repo_root", "") or "").strip()
     if not raw:
-        raise ProposalError("Self-improvement is disabled: configure SELF_IMPROVEMENT_REPO_ROOT explicitly.")
+        raise ProposalError("Configure the local Git repository path in dashboard Settings before using self-improvement.")
     candidate = Path(raw).expanduser()
     if not candidate.is_absolute():
-        raise ProposalError("SELF_IMPROVEMENT_REPO_ROOT must be an absolute path.")
+        raise ProposalError("self_improvement_repo_root in Settings must be an absolute path.")
     try:
         root = candidate.resolve(strict=True)
     except OSError as exc:
@@ -111,14 +118,18 @@ def _git(root: Path, args: list[str], *, input_text: str | None = None) -> subpr
 
 def _github_api(method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     """Call the GitHub REST API without placing credentials in command arguments."""
-    token = os.getenv("SELF_IMPROVEMENT_GITHUB_TOKEN", "").strip()
-    repository = os.getenv("SELF_IMPROVEMENT_GITHUB_REPOSITORY", "").strip()
+    settings = _settings()
+    token_env = str(settings.get("self_improvement_github_token_env", "SELF_IMPROVEMENT_GITHUB_TOKEN") or "").strip()
+    if not re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", token_env):
+        raise ProposalError("Configured GitHub token environment-variable name is invalid.")
+    token = os.getenv(token_env, "").strip()
+    repository = str(settings.get("self_improvement_github_repository", "") or "").strip()
     if not token:
-        raise ProposalError("GitHub PR creation is disabled: SELF_IMPROVEMENT_GITHUB_TOKEN is not configured.")
+        raise ProposalError(f"GitHub PR creation requires the {token_env} environment variable.")
     if len(token) > 300 or any(ord(char) < 33 or ord(char) > 126 for char in token):
         raise ProposalError("Configured GitHub token has an invalid format.")
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
-        raise ProposalError("GitHub PR creation is disabled: configure SELF_IMPROVEMENT_GITHUB_REPOSITORY as owner/repository.")
+        raise ProposalError("Configure self_improvement_github_repository as owner/repository in dashboard Settings.")
     if not path.startswith("/"):
         raise ProposalError("GitHub API path is invalid.")
     request_body = None if payload is None else json.dumps(payload).encode("utf-8")
@@ -467,13 +478,17 @@ def static_check_proposal(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
         raise ProposalError("Sandbox configuration is invalid.") from exc
     if configured_handler is None:
         raise ProposalError("Sandbox is disabled or not configured.")
-    test_image = os.getenv("SANDBOX_TEST_IMAGE", "").strip()
+    settings = _settings()
+    test_image = str(settings.get("sandbox_test_image", "") or "").strip()
     if not sandbox.is_valid_test_image_reference(test_image):
         raise ProposalError(
-            "Configure SANDBOX_TEST_IMAGE as an immutable sha256 image ID/reference with pytest and project dependencies installed."
+            "Configure sandbox_test_image in dashboard Settings as an immutable sha256 image ID/reference with pytest and project dependencies installed."
         )
-    docker_executable = os.getenv("SANDBOX_DOCKER_EXECUTABLE", "").strip()
-    image = os.getenv("SANDBOX_PYTHON_IMAGE", "").strip()
+    docker_executable = str(settings.get("sandbox_docker_executable", "") or "").strip()
+    image = str(settings.get("sandbox_python_image", "") or "").strip()
+    timeout_seconds = int(settings.get("sandbox_timeout_seconds", 60))
+    test_timeout_seconds = int(settings.get("sandbox_test_timeout_seconds", 300))
+    max_output_bytes = int(settings.get("sandbox_max_output_bytes", 32768))
 
     meta = validate_patch_format(proposal["patch"])
     if meta["sha256"] != proposal["patch_sha256"]:
@@ -511,8 +526,8 @@ def static_check_proposal(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
                     workspace,
                     docker_executable=docker_executable,
                     image=image,
-                    timeout_seconds=60,
-                    max_output_bytes=16384,
+                    timeout_seconds=timeout_seconds,
+                    max_output_bytes=max_output_bytes,
                 )
                 report["sandbox_status"] = result.status
                 report["duration_ms"] = result.duration_ms
@@ -533,8 +548,8 @@ def static_check_proposal(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
                             workspace,
                             docker_executable=docker_executable,
                             image=test_image,
-                            timeout_seconds=120,
-                            max_output_bytes=65536,
+                            timeout_seconds=test_timeout_seconds,
+                            max_output_bytes=max_output_bytes,
                         )
                         report["behavioral_tests"] = {
                             "status": behavioral.status,
@@ -640,12 +655,14 @@ def open_review_pull_request(proposal_id: int, *, confirm: bool) -> dict[str, An
         if event["event_type"] == "approved_for_pr" and event["details"].get("publication") == "pr_opened":
             return {"proposal_id": proposal_id, **event["details"], "already_opened": True}
 
-    repository = os.getenv("SELF_IMPROVEMENT_GITHUB_REPOSITORY", "").strip()
+    settings = _settings()
+    repository = str(settings.get("self_improvement_github_repository", "") or "").strip()
+    token_env = str(settings.get("self_improvement_github_token_env", "SELF_IMPROVEMENT_GITHUB_TOKEN") or "").strip()
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
-        raise ProposalError("Configure SELF_IMPROVEMENT_GITHUB_REPOSITORY as owner/repository.")
-    if not os.getenv("SELF_IMPROVEMENT_GITHUB_TOKEN", "").strip():
-        raise ProposalError("Configure SELF_IMPROVEMENT_GITHUB_TOKEN with repository contents and pull-request permissions.")
-    base_branch = os.getenv("SELF_IMPROVEMENT_GITHUB_BASE_BRANCH", "main").strip()
+        raise ProposalError("Configure self_improvement_github_repository as owner/repository in dashboard Settings.")
+    if not re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", token_env) or not os.getenv(token_env, "").strip():
+        raise ProposalError(f"Configure {token_env} with repository contents and pull-request permissions.")
+    base_branch = str(settings.get("self_improvement_github_base_branch", "main") or "main").strip()
     if not re.fullmatch(r"[A-Za-z0-9._/-]{1,120}", base_branch) or base_branch.startswith("/") or ".." in base_branch:
         raise ProposalError("Configured GitHub base branch is invalid.")
 
@@ -823,12 +840,14 @@ def open_rollback_pull_request(proposal_id: int, *, confirm: bool) -> dict[str, 
         if event["event_type"] == "approved_for_pr" and event["details"].get("publication") == "rollback_pr_opened":
             return {"proposal_id": proposal_id, **event["details"], "already_opened": True}
 
-    repository = os.getenv("SELF_IMPROVEMENT_GITHUB_REPOSITORY", "").strip()
+    settings = _settings()
+    repository = str(settings.get("self_improvement_github_repository", "") or "").strip()
+    token_env = str(settings.get("self_improvement_github_token_env", "SELF_IMPROVEMENT_GITHUB_TOKEN") or "").strip()
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
-        raise ProposalError("Configure SELF_IMPROVEMENT_GITHUB_REPOSITORY as owner/repository.")
-    if not os.getenv("SELF_IMPROVEMENT_GITHUB_TOKEN", "").strip():
-        raise ProposalError("Configure SELF_IMPROVEMENT_GITHUB_TOKEN with repository contents and pull-request permissions.")
-    base_branch = os.getenv("SELF_IMPROVEMENT_GITHUB_BASE_BRANCH", "main").strip()
+        raise ProposalError("Configure self_improvement_github_repository as owner/repository in dashboard Settings.")
+    if not re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", token_env) or not os.getenv(token_env, "").strip():
+        raise ProposalError(f"Configure {token_env} with repository contents and pull-request permissions.")
+    base_branch = str(settings.get("self_improvement_github_base_branch", "main") or "main").strip()
     if not re.fullmatch(r"[A-Za-z0-9._/-]{1,120}", base_branch) or base_branch.startswith("/") or ".." in base_branch:
         raise ProposalError("Configured GitHub base branch is invalid.")
 

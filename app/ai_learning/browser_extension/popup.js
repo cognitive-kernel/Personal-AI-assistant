@@ -28,7 +28,7 @@ async function loadTopics(){
 }
 async function load(){
   const state=await api("/status");
-  if(!state.enabled){status("ماژول محلی خاموش است؛ AI_LEARNING_ENABLED=1 را تنظیم کنید.",true);el("prepare").disabled=true;return;}
+  if(!state.enabled){status("کتابخانهٔ دانش AI Learning در تنظیمات داشبورد غیرفعال است؛ آن را از بخش تنظیمات فعال کنید.",true);el("prepare").disabled=true;return;}
   const courses=await api("/courses");
   el("course").replaceChildren();
   courses.items.forEach(course=>{const option=document.createElement("option");option.value=String(course.id);option.textContent=course.title+" (شناسه "+course.id+")";el("course").append(option);});

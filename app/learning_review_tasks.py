@@ -9,7 +9,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from . import learning_review_channels as channels, sandbox, sandbox_consent, learning_candidate_experiences, learning_candidate_channels, learning_durable_budget
+from . import learning_review_channels as channels, sandbox, sandbox_consent, sandbox_tasks, db, learning_candidate_experiences, learning_candidate_channels, learning_durable_budget
 from .task_manager import create_task
 from .task_worker import PermanentTaskError, RetryableTaskError, TaskContext
 
@@ -422,16 +422,26 @@ def handle_candidate_sandbox_review(
     if not sandbox_consent.is_enabled():
         return skip_sandbox("consent_missing", "Sandbox execution was skipped because explicit consent is not active.")
 
-    enabled = os.getenv("SANDBOX_ENABLED", "").strip().lower()
-    executable_value = os.getenv("SANDBOX_DOCKER_EXECUTABLE", "").strip()
-    image = os.getenv("SANDBOX_PYTHON_IMAGE", "").strip()
-    if enabled not in {"1", "true", "yes", "on"} or not executable_value:
-        return skip_sandbox("runtime_unconfigured", "Sandbox runtime is not configured.")
+    settings = db.get_settings()
+    if settings.get("sandbox_enabled", True) is not True:
+        return skip_sandbox("module_disabled", "Sandbox execution is disabled in Settings.")
+    try:
+        sandbox_tasks.validate_settings(settings)
+    except (TypeError, ValueError) as exc:
+        return skip_sandbox("invalid_runtime_configuration", f"Sandbox settings are invalid ({type(exc).__name__}).")
+    executable_value = str(settings.get("sandbox_docker_executable", "") or "").strip()
+    image = str(settings.get("sandbox_python_image", "") or "").strip()
+    if not executable_value or not image:
+        return skip_sandbox("runtime_unconfigured", "Configure the Docker executable and pinned Python image in Settings.")
     executable = Path(executable_value).expanduser()
-    if not executable.is_absolute() or not executable.is_file() or re.fullmatch(
-        r"(?:python|docker\.io/library/python):[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}", image
-    ) is None:
-        return skip_sandbox("invalid_runtime_configuration", "Sandbox Docker path or pinned image configuration is invalid.")
+    if not executable.is_absolute() or not executable.is_file():
+        return skip_sandbox("invalid_runtime_configuration", "Configured Docker executable is not an existing absolute file.")
+    timeout_seconds = settings.get("sandbox_timeout_seconds", 60)
+    max_output_bytes = settings.get("sandbox_max_output_bytes", 32768)
+    if type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 120:
+        return skip_sandbox("invalid_runtime_configuration", "Sandbox timeout setting is outside its allowed range.")
+    if type(max_output_bytes) is not int or not 1024 <= max_output_bytes <= 65536:
+        return skip_sandbox("invalid_runtime_configuration", "Sandbox output limit setting is outside its allowed range.")
 
     outcomes: list[dict[str, Any]] = []
     for index, test in enumerate(plan["tests"], start=1):
@@ -449,8 +459,8 @@ def handle_candidate_sandbox_review(
                 return status
             return "running" if sandbox_consent.is_enabled() else "control_unavailable"
         result = sandbox.run_python(
-            source, docker_executable=executable, image=image, timeout_seconds=10,
-            max_output_bytes=8192, control_check=control_check, task_id=context.task_id,
+            source, docker_executable=executable, image=image, timeout_seconds=timeout_seconds,
+            max_output_bytes=max_output_bytes, control_check=control_check, task_id=context.task_id,
         )
         passed = result.status == "succeeded" and not result.stderr and result.stdout == expected_stdout
         outcomes.append({

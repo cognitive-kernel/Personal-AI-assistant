@@ -569,6 +569,87 @@ async function stopLesson(path, topic, stopButton, output) {
  }
 }
 
+function renderTopicApplicability(topic, container) {
+ let applicability = {};
+ let sourceUrls = [];
+ try {
+  applicability = typeof topic.applicability_json === "string"
+   ? JSON.parse(topic.applicability_json || "{}")
+   : (topic.applicability_json || {});
+  sourceUrls = typeof topic.source_urls_json === "string"
+   ? JSON.parse(topic.source_urls_json || "[]")
+   : (topic.source_urls_json || []);
+ } catch (_error) {
+  applicability = {status: "unverified", notes: "اطلاعات سازگاری ذخیره‌شده قابل‌خواندن نیست."};
+  sourceUrls = [];
+ }
+ if (!applicability || typeof applicability !== "object" || Array.isArray(applicability)) {
+  applicability = {status: "unverified", notes: "ساختار اطلاعات سازگاری معتبر نیست."};
+ }
+ if (!Array.isArray(sourceUrls)) sourceUrls = [];
+
+ const details = document.createElement("details");
+ details.className = "path-topic-applicability";
+ const summary = document.createElement("summary");
+ summary.textContent = "نسخه‌ها، سال انتشار و شرایط سازگاری";
+ details.append(summary);
+
+ const statusLabels = {
+  documented: "مستندشده",
+  partially_documented: "نیمه‌مستند",
+  conflicting: "دارای تعارض منابع",
+  unverified: "تأییدنشده"
+ };
+ const lines = [
+  ["محصول", applicability.product],
+  ["نسخه‌های قابل‌استفاده", applicability.versions],
+  ["سال‌های انتشار", applicability.release_years],
+  ["تاریخ‌های انتشار", applicability.release_dates],
+  ["Buildها", applicability.builds],
+  ["ویرایش‌ها", applicability.editions],
+  ["سطوح سازگاری", applicability.compatibility_levels],
+  ["سیستم‌عامل/پلتفرم", applicability.platforms],
+  ["حالت اجرا", applicability.execution_modes],
+  ["پیش‌نیازها", applicability.prerequisites],
+  ["مجوزهای لازم", applicability.permissions],
+  ["محدودیت‌ها", applicability.limitations],
+  ["توضیحات", applicability.notes]
+ ];
+ lines.forEach(([label, value]) => {
+  if (value == null || value === "" || (Array.isArray(value) && value.length === 0)) return;
+  const line = document.createElement("p");
+  line.textContent = label + ": " + (Array.isArray(value) ? value.join("، ") : String(value));
+  details.append(line);
+ });
+ const status = document.createElement("p");
+ status.textContent = "وضعیت مستندات سازگاری: " + (statusLabels[applicability.status] || "تأییدنشده");
+ details.append(status);
+
+ if (!lines.some(([, value]) => value != null && value !== "" && (!Array.isArray(value) || value.length))) {
+  const unknown = document.createElement("p");
+  unknown.textContent = "نسخه یا سال انتشار مستندی برای این سرفصل ثبت نشده است؛ سیستم نباید آن را حدس بزند.";
+  details.append(unknown);
+ }
+ if (sourceUrls.length) {
+  const heading = document.createElement("p");
+  heading.textContent = "منابع اختصاصی این سرفصل:";
+  const list = document.createElement("ul");
+  sourceUrls.forEach(url => {
+   if (typeof url !== "string" || !url.startsWith("https://")) return;
+   const item = document.createElement("li");
+   const link = document.createElement("a");
+   link.href = url;
+   link.target = "_blank";
+   link.rel = "noopener noreferrer";
+   link.textContent = url;
+   item.append(link);
+   list.append(item);
+  });
+  details.append(heading, list);
+ }
+ container.append(details);
+}
+
 async function loadLearningPaths() {
  try {
   const data = await learningApi("/api/learning/paths");
@@ -912,7 +993,9 @@ async function loadLearningPaths() {
     });
     start.addEventListener("click", () => startLesson(path, topic, start, stop, output));
     stop.addEventListener("click", () => stopLesson(path, topic, stop, output));
-    row.append(label, status, score, save, start, stop, reviewLabel, reviewButton, reviewOutput, historyOutput, output);
+    row.append(label);
+    renderTopicApplicability(topic, row);
+    row.append(status, score, save, start, stop, reviewLabel, reviewButton, reviewOutput, historyOutput, output);
     details.append(row);
    });
    pathCard.append(progressGroup, details);

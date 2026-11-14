@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from app.ai_learning import integration, service
+from app.ai_learning import embedding_service, integration, service
 from app.ai_learning.db import connection, initialize_store
 
 
@@ -19,15 +19,14 @@ def isolated_store(tmp_path, monkeypatch):
     initialize_store()
     # Keep this regression test deterministic and independent of Ollama.
     monkeypatch.setattr(
-        service,
+        embedding_service,
         "ollama_embed",
         lambda texts, model: [[1.0, 0.0] if "approved-chat-context-token" in text else [0.0, 1.0] for text in texts],
     )
 
 
 def test_chat_retrieval_gate_off_returns_no_learning_context(isolated_store, monkeypatch):
-    monkeypatch.setenv("AI_LEARNING_ENABLED", "0")
-    monkeypatch.setenv("AI_LEARNING_RETRIEVAL_ENABLED", "1")
+    monkeypatch.setattr(integration, "retrieval_is_enabled", lambda: False)
     assert integration.retrieve_context("approved context needle") == []
 
 
@@ -75,7 +74,7 @@ def test_published_knowledge_is_retrievable_after_a_new_process(
             ])
         return vectors
 
-    monkeypatch.setattr(service, "ollama_embed", distinct_embeddings)
+    monkeypatch.setattr(embedding_service, "ollama_embed", distinct_embeddings)
     monkeypatch.setenv("AI_LEARNING_ENABLED", "1")
     monkeypatch.setenv("AI_LEARNING_RETRIEVAL_ENABLED", "1")
 

@@ -228,7 +228,7 @@ def run_workspace_tests(
         "--memory=2g", "--memory-swap=2g", "--cpus=2",
         "--stop-timeout=1", "--user=65534:65534",
         "--workdir=/workspace",
-        "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=768m,uid=65534,gid=65534",
+        "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=1536m,uid=65534,gid=65534",
         "--env=HOME=/tmp", "--env=TMPDIR=/tmp",
         "--env=SETTINGS_DB_PATH=/tmp/settings.db", "--env=LEARNING_DB_PATH=/tmp/learning.db",
         "--env=PYTHONDONTWRITEBYTECODE=1",

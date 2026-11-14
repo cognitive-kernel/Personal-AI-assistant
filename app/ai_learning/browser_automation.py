@@ -17,7 +17,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable
 
-from . import service
+from . import config, service
+from ..config import SETTING_DEFAULTS
 
 _LOCK = threading.Lock()
 _WORKER_OWNER_PID = os.getpid()
@@ -30,14 +31,36 @@ _ACTIVE_RUN_ID: int | None = None
 _ACTIVE_COURSE_ID: int | None = None
 _CANCEL_EVENTS: dict[int, threading.Event] = {}
 _SHUTTING_DOWN = False
-_RESPONSE_TIMEOUT_SECONDS = 1800
-_STABLE_SECONDS = 20.0
-_MAX_LESSON_CONTINUATIONS = 8
-_MIN_COMPLETE_LESSON_WORDS = 1200
+_RESPONSE_TIMEOUT_SECONDS = int(SETTING_DEFAULTS["ai_learning_response_timeout_seconds"])
+_STABLE_SECONDS = float(SETTING_DEFAULTS["ai_learning_stability_seconds"])
+_MAX_LESSON_CONTINUATIONS = int(SETTING_DEFAULTS["ai_learning_max_lesson_continuations"])
+_MIN_COMPLETE_LESSON_WORDS = int(SETTING_DEFAULTS["ai_learning_min_complete_lesson_words"])
+_MAX_CONTEXT_RELAUNCHES = int(SETTING_DEFAULTS["ai_learning_max_context_relaunches"])
 _LOG_LOCK = threading.Lock()
 _LOGGER: logging.Logger | None = None
 _BROWSER_SESSION = threading.local()
-_MAX_CONTEXT_RELAUNCHES = 1
+
+def _claim_configured_worker_lease() -> int | None:
+    """Claim the shared browser lease using one validated settings snapshot."""
+    global _WORKER_LEASE_SECONDS, _WORKER_LEASE_HEARTBEAT_SECONDS
+    lease_seconds = _configured_seconds("ai_learning_browser_lease_seconds", 90, 30, 600)
+    heartbeat_seconds = _configured_seconds("ai_learning_browser_lease_heartbeat_seconds", 15, 5, 30)
+    if heartbeat_seconds * 3 > lease_seconds:
+        raise RuntimeError("Browser lease heartbeat must be no more than one third of the lease duration.")
+    _WORKER_LEASE_SECONDS = lease_seconds
+    _WORKER_LEASE_HEARTBEAT_SECONDS = float(heartbeat_seconds)
+    return service.claim_worker_lease(_WORKER_OWNER, lease_seconds=lease_seconds)
+
+
+def _configured_seconds(name: str, default: int, minimum: int, maximum: int) -> int:
+    """Read a validated runtime duration through the AI-learning settings contract."""
+    return config.configured_int_setting(name, default, minimum, maximum)
+
+
+def _configured_continuations() -> int:
+    return config.configured_int_setting(
+        "ai_learning_max_lesson_continuations", _MAX_LESSON_CONTINUATIONS, 0, 20
+    )
 def _reset_process_identity() -> None:
     """Reinitialize inherited locks and worker state in a forked child process."""
     global _LOCK, _LOG_LOCK, _WORKER_OWNER_PID, _WORKER_OWNER
@@ -184,7 +207,10 @@ def _browser_session(sync_playwright_factory: Any, chrome: str, profile: Path):
         if context is None:
             if context_lost:
                 relaunches = int(getattr(_BROWSER_SESSION, "context_relaunches", 0))
-                if relaunches >= _MAX_CONTEXT_RELAUNCHES:
+                max_relaunches = _configured_seconds(
+                    "ai_learning_max_context_relaunches", _MAX_CONTEXT_RELAUNCHES, 0, 3
+                )
+                if relaunches >= max_relaunches:
                     raise BrowserAutomationError(
                         "chatgpt_browser_closed",
                         "پنجرهٔ Chrome دوباره بسته شد؛ یک بار تلاش کنترل‌شده برای بازگشایی انجام شد و برای جلوگیری از چرخهٔ بازشدن پنجره‌ها، بازیابی دستی لازم است.",
@@ -375,7 +401,7 @@ def _provider_gate_error(url: str, visible_text: str) -> BrowserAutomationError 
 
 
 def _chrome_path() -> str | None:
-    configured = os.getenv("AI_LEARNING_CHROME_PATH", "").strip()
+    configured = str(service.get_settings().get("ai_learning_chrome_path", "") or "").strip()
     candidates = [configured] if configured else []
     if os.name == "nt":
         candidates += [
@@ -388,7 +414,7 @@ def _chrome_path() -> str | None:
 
 
 def _profile_path() -> Path:
-    configured = os.getenv("AI_LEARNING_BROWSER_PROFILE", "").strip()
+    configured = str(service.get_settings().get("ai_learning_browser_profile", "data/ai_learning_browser_profile") or "data/ai_learning_browser_profile").strip()
     path = Path(configured) if configured else Path("data/ai_learning_browser_profile")
     if not path.is_absolute():
         path = Path.cwd() / path
@@ -586,10 +612,11 @@ def _send_prompt(page: Any, prompt: str) -> None:
 
 def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: threading.Event | None = None, previous_message_count: int | None = None) -> str:
     started = time.monotonic()
-    deadline = started + _RESPONSE_TIMEOUT_SECONDS
+    response_timeout = _configured_seconds("ai_learning_response_timeout_seconds", _RESPONSE_TIMEOUT_SECONDS, 30, 7200)
+    deadline = started + response_timeout
     next_diagnostic_at = 0.0
     _log_event("response_wait_started", url=page.url, previous_message_count=previous_message_count,
-               previous_answer_chars=len(previous_answer), timeout_seconds=_RESPONSE_TIMEOUT_SECONDS,
+               previous_answer_chars=len(previous_answer), timeout_seconds=response_timeout,
                dom=_dom_diagnostics(page))
     last_text = ""
     stable_since: float | None = None
@@ -602,7 +629,7 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
         except Exception:
             paused = False
         if paused:
-            page.wait_for_timeout(1000)
+            page.wait_for_timeout(_configured_seconds("ai_learning_browser_poll_interval_ms", 1000, 100, 5000))
             deadline += 1.0
             continue
         if cancel_event is not None and cancel_event.is_set():
@@ -683,7 +710,7 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
                         stable_since = None
                         _log_event("response_continuation_clicked", elapsed_seconds=round(elapsed, 1),
                                    answer_chars=len(current), button_text=continue_button_text)
-                        page.wait_for_timeout(1000)
+                        page.wait_for_timeout(_configured_seconds("ai_learning_browser_poll_interval_ms", 1000, 100, 5000))
                         continue
                     except Exception as exc:
                         _log_event("response_continuation_click_failed", exception_type=type(exc).__name__,
@@ -694,7 +721,12 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
                 if stable_since is None:
                     stable_since = time.monotonic()
                 stable_for = time.monotonic() - stable_since
-                required_stability = 45.0 if stop_visible else _STABLE_SECONDS
+                required_stability = float(_configured_seconds(
+                    "ai_learning_stop_stability_seconds",
+                    int(SETTING_DEFAULTS["ai_learning_stop_stability_seconds"]), 1, 180
+                )) if stop_visible else float(_configured_seconds(
+                    "ai_learning_stability_seconds", int(_STABLE_SECONDS), 1, 120
+                ))
                 if continue_button is not None:
                     required_stability = max(required_stability, 45.0)
                 if continue_button is None and stable_for >= required_stability:
@@ -713,7 +745,7 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
             last_stop_visible = stop_visible
             # Keep the wait inside the guarded block: Playwright raises here if the
             # page/context/browser closes between polling iterations.
-            page.wait_for_timeout(1000)
+            page.wait_for_timeout(_configured_seconds("ai_learning_browser_poll_interval_ms", 1000, 100, 5000))
         except BrowserAutomationError:
             raise
         except Exception as exc:
@@ -728,7 +760,12 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
             )
             if last_text and (last_text != previous_answer or new_message_seen) and stable_since is not None:
                 stable_for = time.monotonic() - stable_since
-                required_stability = 25.0 if last_stop_visible else _STABLE_SECONDS
+                required_stability = float(_configured_seconds(
+                    "ai_learning_last_stop_stability_seconds",
+                    int(SETTING_DEFAULTS["ai_learning_last_stop_stability_seconds"]), 1, 180
+                )) if last_stop_visible else float(_configured_seconds(
+                    "ai_learning_stability_seconds", int(_STABLE_SECONDS), 1, 120
+                ))
                 if stable_for >= required_stability and len(last_text) >= 20:
                     return last_text
             _log_event("response_poll_exception", elapsed_seconds=round(time.monotonic() - started, 1),
@@ -804,6 +841,9 @@ def _capture_lesson_until_complete(
     parts = [first_answer]
     status = _lesson_completion_status(first_answer)
     continuation_count = 0
+    minimum_complete_words = _configured_seconds(
+        "ai_learning_min_complete_lesson_words", _MIN_COMPLETE_LESSON_WORDS, 100, 10000
+    )
 
     def checkpoint() -> None:
         combined = "\n\n".join(_strip_lesson_status_markers(part) for part in parts)
@@ -821,7 +861,7 @@ def _capture_lesson_until_complete(
     checkpoint()
     while status != "COMPLETE" or (
         _lesson_word_count("\n\n".join(_strip_lesson_status_markers(part) for part in parts))
-        < _MIN_COMPLETE_LESSON_WORDS
+        < minimum_complete_words
         and not _lesson_has_terminal_bibliography(
             "\n\n".join(_strip_lesson_status_markers(part) for part in parts)
         )
@@ -832,7 +872,7 @@ def _capture_lesson_until_complete(
                 "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.",
                 partial_response="\n\n".join(_strip_lesson_status_markers(part) for part in parts),
             )
-        if continuation_count >= _MAX_LESSON_CONTINUATIONS:
+        if continuation_count >= _configured_continuations():
             combined = "\n\n".join(_strip_lesson_status_markers(part) for part in parts)
             _log_event("lesson_continuation_limit", continuation_count=continuation_count,
                        answer_chars=len(combined), completion_status=status)
@@ -850,7 +890,7 @@ def _capture_lesson_until_complete(
         merged_word_count = _lesson_word_count(
             "\n\n".join(_strip_lesson_status_markers(part) for part in parts)
         )
-        if status == "COMPLETE" and merged_word_count < _MIN_COMPLETE_LESSON_WORDS:
+        if status == "COMPLETE" and merged_word_count < minimum_complete_words:
             continuation_instruction = (
                 "The previous response claimed COMPLETE prematurely, but the merged lesson has only "
                 + str(merged_word_count) + " words. This is not acceptable as a complete lesson. "
@@ -858,13 +898,13 @@ def _capture_lesson_until_complete(
                 "Add the missing instructional depth: explain underlying mechanisms, give step-by-step practical examples, "
                 "show expected outputs where relevant, cover edge cases and troubleshooting, discuss security/performance/reliability, "
                 "and finish with recap, exercises, and answer key where appropriate. The merged lesson must reach at least "
-                + str(_MIN_COMPLETE_LESSON_WORDS) + " words before you may use LESSON_STATUS: COMPLETE. "
+                + str(minimum_complete_words) + " words before you may use LESSON_STATUS: COMPLETE. "
             )
         else:
             continuation_instruction = (
                 "Continue with the next missing heading, examples, expected outputs, troubleshooting, recap, exercises/answer key, "
                 "and sources as applicable. The full merged lesson must contain at least "
-                + str(_MIN_COMPLETE_LESSON_WORDS) + " words before it may be marked COMPLETE. "
+                + str(minimum_complete_words) + " words before it may be marked COMPLETE. "
                 "If any planned teaching or the minimum length remains unfinished, use CONTINUE_REQUIRED. "
             )
         continuation_prompt = (
@@ -1053,7 +1093,7 @@ def _browser_capture(
     if not chrome:
         raise BrowserAutomationError(
             "chrome_not_found",
-            "Chrome پیدا نشد. مسیر آن را در AI_LEARNING_CHROME_PATH تنظیم کنید.",
+            "Chrome پیدا نشد. مسیر اجرایی آن را در بخش تنظیمات AI Learning مشخص کنید.",
         )
     profile = _profile_path()
     _log_event("browser_configured", chrome_path=chrome, profile_path=str(profile))
@@ -1091,17 +1131,18 @@ def _browser_capture(
                     page.on("console", lambda message: _log_event("page_console_error", message=message.text[:300]) if message.type == "error" else None)
                     page.on("requestfailed", lambda request: _log_event("browser_request_failed", url=request.url.split("?")[0][:300], error=request.failure or "unknown") if any(host in request.url for host in ("chatgpt.com", "openai.com")) else None)
                     _BROWSER_SESSION.instrumented_page = page
-                page.set_default_timeout(5000)
+                browser_timeout_ms = _configured_seconds("ai_learning_browser_timeout_seconds", 300, 10, 1800) * 1000
+                page.set_default_timeout(browser_timeout_ms)
                 if cancel_event is not None and cancel_event.is_set():
                     raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
                 _log_event("navigation_started", target="https://chatgpt.com/")
-                page.goto("https://chatgpt.com/", wait_until="domcontentloaded", timeout=60000)
+                page.goto("https://chatgpt.com/", wait_until="domcontentloaded", timeout=browser_timeout_ms)
                 _log_event("navigation_domcontentloaded", url=page.url)
                 try:
                     page.wait_for_load_state("networkidle", timeout=8000)
                 except Exception:
                     pass
-                page.wait_for_timeout(1200)
+                page.wait_for_timeout(_configured_seconds("ai_learning_browser_poll_interval_ms", 1000, 100, 5000))
                 _log_event("page_ready", url=page.url, assistant_message_count=_assistant_message_count(page), dom=_dom_diagnostics(page))
                 # On an empty landing page, classify explicit security/rate-limit gates
                 # before submitting. Existing conversations may legitimately discuss these terms.
@@ -1493,6 +1534,8 @@ def _dispatch_next_persisted_run() -> dict[str, Any]:
     """Claim the process-wide browser lease before dispatching one durable queued run."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID, _WORKER_LEASE_EPOCH
     _ensure_process_identity()
+    if not config.browser_is_enabled():
+        return {"status": "browser_provider_disabled", "active": False}
     with _LOCK:
         if _ACTIVE:
             return {"status": "already_active", "active": True, "run_id": _ACTIVE_RUN_ID}
@@ -1514,9 +1557,7 @@ def _dispatch_next_persisted_run() -> dict[str, Any]:
 
         # SQLite serializes this claim across independent application processes.
         # The lease covers the shared Chrome profile as well as the durable run.
-        epoch = service.claim_worker_lease(
-            _WORKER_OWNER, lease_seconds=_WORKER_LEASE_SECONDS
-        )
+        epoch = _claim_configured_worker_lease()
         if epoch is None:
             return {
                 "status": "worker_busy",
@@ -1626,7 +1667,7 @@ def stop_browser_automation() -> dict[str, Any]:
             still_active = _ACTIVE
         if not still_active:
             break
-        time.sleep(0.1)
+        time.sleep(_configured_seconds("ai_learning_browser_control_poll_interval_ms", 100, 10, 1000) / 1000)
     with _LOCK:
         worker_stopped = not _ACTIVE
     _log_event(
@@ -1676,6 +1717,8 @@ def recover_orphaned_runs() -> dict[str, Any]:
 
 
 def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
+    if not config.browser_is_enabled():
+        raise BrowserAutomationError("browser_provider_disabled", "ارائه‌دهندهٔ مرورگر AI Learning در تنظیمات غیرفعال است.")
     """Persist an outline request, then dispatch it under the shared browser lease."""
     _ensure_process_identity()
     control = service.get_learning_control()
@@ -1720,6 +1763,10 @@ def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
 
 
 def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, force_retry: bool = False) -> dict[str, Any]:
+    if not config.browser_is_enabled():
+        raise BrowserAutomationError("browser_provider_disabled", "ارائه‌دهندهٔ مرورگر AI Learning در تنظیمات غیرفعال است.")
+    if len(topic_ids) > config.max_topics_per_run():
+        raise ValueError(f"One browser run accepts at most {config.max_topics_per_run()} topics under the current settings.")
     """Persist every selected topic as its own FIFO run before dispatching browser work."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
     _ensure_process_identity()
@@ -1947,7 +1994,7 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
                 "message": "صف یادگیری تا زمان تلاش مجدد خودکار در مکث موقت است؛ کارهای باقی‌مانده پس از آن ادامه پیدا می‌کنند.",
             }
 
-        epoch = service.claim_worker_lease(_WORKER_OWNER, lease_seconds=_WORKER_LEASE_SECONDS)
+        epoch = _claim_configured_worker_lease()
         if epoch is None:
             return {
                 "status": "worker_busy",

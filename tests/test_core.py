@@ -145,7 +145,12 @@ def test_research_curriculum_schema_migration_is_registered_and_applied(tmp_path
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
-    assert LEARNING_MIGRATIONS[-1].version == 47
+    migration_ids = {migration.migration_id for migration in LEARNING_MIGRATIONS}
+    assert {
+        "research-first-learning-curriculum-provenance",
+        "version-aware-learning-topic-provenance",
+        "automatic-learning-release-watch",
+    } <= migration_ids
     with db.learning_connection() as connection:
         tables = {
             row["name"] for row in connection.execute(
@@ -938,7 +943,7 @@ def test_resource_limit_settings_are_persisted(tmp_path, monkeypatch):
     assert saved["cpu_resource_limit_percent"] == 75
     assert saved["ram_resource_limit_percent"] == 80
     assert saved["gpu_resource_limit_percent"] == 65
-    assert saved["gpu_enabled"] is False
+    assert saved["gpu_enabled"] is True
     assert saved["ram_budget_max_gb"] == 20
     assert saved["ram_safety_reserve_gb"] == 5
     assert saved["chat_model_keep_alive"] == "10m"

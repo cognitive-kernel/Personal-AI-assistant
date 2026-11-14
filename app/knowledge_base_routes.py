@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from . import knowledge_base
 from .task_routes import require_loopback_client
+from .module_settings import require_module_enabled
 
 router = APIRouter(
     prefix="/api/knowledge/sources",
@@ -31,7 +32,7 @@ class SourceSearchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-@router.post("")
+@router.post("", dependencies=[Depends(require_module_enabled("knowledge_base"))])
 def ingest_knowledge_source(request: SourceIngestRequest) -> dict[str, Any]:
     try:
         return knowledge_base.ingest_url(request.url, title=request.title)
@@ -51,7 +52,7 @@ def list_knowledge_sources() -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="The local source index is unavailable.") from exc
 
 
-@router.post("/search")
+@router.post("/search", dependencies=[Depends(require_module_enabled("knowledge_base"))])
 def search_knowledge_sources(request: SourceSearchRequest) -> dict[str, Any]:
     try:
         return {

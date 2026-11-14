@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 from . import factual_knowledge, factual_source_checks, factual_verification_tasks, sandbox_consent, sandbox_tasks, task_manager
 from .db import get_settings, learning_connection
 from .task_routes import require_loopback_client
+from .module_settings import require_module_enabled
 
 router = APIRouter(
     prefix="/api/factual-knowledge",
@@ -101,7 +102,7 @@ def list_factual_test_history(
         raise HTTPException(status_code=503, detail="Factual test history is unavailable.") from exc
 
 
-@router.post("/{knowledge_id}/run-test", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/{knowledge_id}/run-test", status_code=status.HTTP_202_ACCEPTED, dependencies=[Depends(require_module_enabled("factual_review"))])
 def queue_factual_claim_test(
     knowledge_id: int,
     request: FactualClaimTestRequest,
@@ -240,7 +241,7 @@ def list_factual_source_refresh_queue(
         raise HTTPException(status_code=503, detail="Factual source refresh queue is unavailable.") from exc
 
 
-@router.post("/{knowledge_id}/refresh-sources")
+@router.post("/{knowledge_id}/refresh-sources", dependencies=[Depends(require_module_enabled("factual_review"))])
 def refresh_factual_claim_sources(
     knowledge_id: int,
     request: FactualSourceRefreshRequest,
@@ -345,7 +346,7 @@ def list_factual_test_queue(
         raise HTTPException(status_code=503, detail="Factual test queue is unavailable.") from exc
 
 
-@router.post("/{knowledge_id}/approve-source")
+@router.post("/{knowledge_id}/approve-source", dependencies=[Depends(require_module_enabled("factual_review"))])
 def approve_factual_source(
     knowledge_id: int,
     request: FactualSourceReviewRequest,
@@ -430,7 +431,7 @@ def approve_factual_source(
         raise HTTPException(status_code=503, detail="Factual source review could not be saved.") from exc
 
 
-@router.post("/{knowledge_id}/reject-source")
+@router.post("/{knowledge_id}/reject-source", dependencies=[Depends(require_module_enabled("factual_review"))])
 def reject_factual_source(
     knowledge_id: int,
     request: FactualSourceReviewRequest,

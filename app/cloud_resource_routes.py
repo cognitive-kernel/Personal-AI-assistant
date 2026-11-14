@@ -11,6 +11,7 @@ from . import cloud_resource_planner, cloud_resources
 from .kaggle_quota_client import KaggleQuotaClientError, fetch_quota_snapshot
 from .oci_quota_client import OciQuotaClientError, fetch_service_limits
 from .task_routes import require_loopback_client
+from .module_settings import require_module_enabled
 
 router = APIRouter(
     prefix="/api/cloud-resources",
@@ -32,7 +33,7 @@ def list_cloud_resources(
         raise HTTPException(status_code=503, detail="Cloud resource discovery storage is unavailable.") from exc
 
 
-@router.post("/discover", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/discover", status_code=status.HTTP_202_ACCEPTED, dependencies=[Depends(require_module_enabled("cloud_resources"))])
 def request_cloud_discovery() -> dict[str, Any]:
     try:
         task = cloud_resources.enqueue_discovery_task(manual=True)
@@ -74,7 +75,7 @@ def get_resource_selection_plan(plan_id: int) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="Resource plan history is unavailable.") from exc
 
 
-@router.post("/plan")
+@router.post("/plan", dependencies=[Depends(require_module_enabled("cloud_plan"))])
 def plan_cloud_resource_selection(request: ResourcePlanningRequest) -> dict[str, Any]:
     """Return a loopback-only dry-run resource plan; never starts remote execution."""
     try:
@@ -102,7 +103,7 @@ class ManualCandidateRequest(BaseModel):
     description: StrictStr = Field(min_length=1, max_length=4000)
 
 
-@router.post("/manual", status_code=status.HTTP_201_CREATED)
+@router.post("/manual", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_module_enabled("cloud_resources"))])
 def add_manual_cloud_resource(request: ManualCandidateRequest) -> dict[str, Any]:
     try:
         candidate = cloud_resources.add_manual_candidate(
@@ -141,7 +142,7 @@ class CandidateReviewRequest(BaseModel):
     terms_url: str | None = Field(default=None, max_length=2048)
 
 
-@router.patch("/{candidate_id}/review")
+@router.patch("/{candidate_id}/review", dependencies=[Depends(require_module_enabled("cloud_resources"))])
 def review_cloud_resource(
     candidate_id: int,
     request: CandidateReviewRequest,
@@ -172,7 +173,7 @@ class ClaimReviewRequest(BaseModel):
     review_status: str = Field(min_length=1, max_length=20)
 
 
-@router.patch("/{candidate_id}/claims/{claim_id}/review")
+@router.patch("/{candidate_id}/claims/{claim_id}/review", dependencies=[Depends(require_module_enabled("cloud_resources"))])
 def review_cloud_resource_claim(
     candidate_id: int,
     claim_id: int,
@@ -233,7 +234,7 @@ def update_kaggle_quota_consent(request: ProviderQuotaConsentRequest) -> dict[st
         raise HTTPException(status_code=503, detail="Kaggle quota consent storage is unavailable.") from exc
 
 
-@router.post("/kaggle-quota/refresh")
+@router.post("/kaggle-quota/refresh", dependencies=[Depends(require_module_enabled("kaggle_quota"))])
 def refresh_kaggle_quota() -> dict[str, Any]:
     try:
         consent = cloud_resources.get_provider_consent()
@@ -315,7 +316,7 @@ def update_oci_limit_consent(request: OciLimitConsentRequest) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="OCI limit consent storage is unavailable.") from exc
 
 
-@router.post("/oci-limits/refresh")
+@router.post("/oci-limits/refresh", dependencies=[Depends(require_module_enabled("oci_quota"))])
 def refresh_oci_limits() -> dict[str, Any]:
     try:
         consent = cloud_resources.get_oci_limit_consent()

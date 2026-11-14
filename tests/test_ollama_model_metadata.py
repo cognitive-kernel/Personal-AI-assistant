@@ -465,3 +465,97 @@ def test_model_memory_estimate_rejects_fractional_architecture_dimensions():
     )
     assert estimate is None
 
+
+
+
+def test_provider_model_discovery_uses_selected_openai_compatible_endpoint(monkeypatch):
+    import json
+    import socket
+
+    monkeypatch.setattr(ollama, "get_settings", lambda: {
+        "chat_llm_provider": "openai_compatible",
+        "chat_llm_base_url": "https://api.example.test/v1",
+        "chat_llm_api_key_env": "CHAT_PROVIDER_KEY",
+    })
+    monkeypatch.setenv("CHAT_PROVIDER_KEY", "test-secret")
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *args, **kwargs: [
+        (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))
+    ])
+    captured = {}
+
+    class Response:
+        status = 200
+        def __enter__(self):
+            return self
+        def __exit__(self, *_args):
+            return None
+        def read(self, _limit):
+            return json.dumps({"data": [{"id": "gpt-test"}, {"id": "gpt-test"}, {"id": "gpt-mini"}]}).encode()
+
+    class Opener:
+        def open(self, request, timeout):
+            captured["url"] = request.full_url
+            captured["authorization"] = request.get_header("Authorization")
+            captured["timeout"] = timeout
+            return Response()
+
+    monkeypatch.setattr(ollama.urllib.request, "build_opener", lambda *handlers: Opener())
+    result = ollama.list_provider_models("chat")
+    assert result["provider"] == "openai_compatible"
+    assert [model["name"] for model in result["models"]] == ["gpt-test", "gpt-mini"]
+    assert captured == {
+        "url": "https://api.example.test/v1/models",
+        "authorization": "Bearer test-secret",
+        "timeout": 10,
+    }
+
+
+def test_provider_model_discovery_uses_ollama_for_ollama_profile(monkeypatch):
+    expected = [{"name": "local-model:latest", "size": 123}]
+    monkeypatch.setattr(ollama, "get_settings", lambda: {"learning_llm_provider": "ollama"})
+    monkeypatch.setattr(ollama, "list_models", lambda: expected)
+    assert ollama.list_provider_models("learning") == {
+        "provider": "ollama",
+        "models": expected,
+    }
+
+
+def test_provider_model_discovery_rejects_mixed_public_and_private_dns(monkeypatch):
+    import socket
+
+    monkeypatch.setattr(ollama, "get_settings", lambda: {
+        "chat_llm_provider": "openai_compatible",
+        "chat_llm_base_url": "https://api.example.test/v1",
+        "chat_llm_api_key_env": "",
+    })
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *args, **kwargs: [
+        (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443)),
+        (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443)),
+    ])
+    import pytest
+    with pytest.raises(ollama.OllamaError, match="private or non-public"):
+        ollama.list_provider_models("chat")
+
+
+def test_ai_learning_chat_uses_its_own_selected_provider_and_model(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(ollama, "get_settings", lambda: {
+        "ai_learning_llm_provider": "openai_compatible",
+        "ai_learning_llm_base_url": "https://api.openai.com/v1",
+        "ai_learning_llm_api_key_env": "OPENAI_API_KEY",
+        "ai_learning_ollama_model": "gpt-5-test",
+        "ai_learning_ollama_timeout_seconds": 90,
+        "ai_learning_source_max_chars": 12345,
+    })
+
+    def fake_chat(message, history, system_prompt, **kwargs):
+        captured.update(kwargs)
+        captured["message"] = message
+        return "AI-learning provider response"
+
+    monkeypatch.setattr(ollama, "_openai_compatible_chat", fake_chat)
+    result = ollama.chat("course outline", purpose="ai_learning")
+    assert result == "AI-learning provider response"
+    assert captured["purpose"] == "ai_learning"
+    assert captured["model"] == "gpt-5-test"
+    assert captured["timeout"] == 90

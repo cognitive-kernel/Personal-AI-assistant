@@ -2,12 +2,17 @@ from __future__ import annotations
 import hashlib
 import sqlite3
 import pytest
-from app.ai_learning import service
+from app.ai_learning import embedding_service, service
 from app.ai_learning import browser_automation
 from app.ai_learning.db import initialize_store, connection, StoreSchemaError
 
 @pytest.fixture
 def isolated_store(tmp_path, monkeypatch):
+    from app import db
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
     path = tmp_path / "ai_learning.db"
     monkeypatch.setenv("AI_LEARNING_DB_PATH", str(path))
     initialize_store()
@@ -315,12 +320,62 @@ def test_rejected_topic_is_removed_from_retrieval(isolated_store):
     assert service.search_knowledge("Parameterized injection")["count"] == 0
 
 
-def test_feature_flags_are_off_by_default(monkeypatch):
+def test_ai_learning_modules_are_enabled_by_default(monkeypatch):
     from app.ai_learning import config
-    monkeypatch.delenv("AI_LEARNING_ENABLED", raising=False)
-    monkeypatch.delenv("AI_LEARNING_RETRIEVAL_ENABLED", raising=False)
+    monkeypatch.setattr(config, "_setting", lambda name: config._DEFAULTS[name])
+    assert config.is_enabled() is True
+    assert config.retrieval_is_enabled() is True
+    assert config.browser_is_enabled() is True
+
+def test_ai_learning_method_and_knowledge_library_switches_are_independent(monkeypatch):
+    from app.ai_learning import config
+
+    settings = {
+        "ai_learning_enabled": False,
+        "ai_learning_knowledge_enabled": True,
+        "ai_learning_retrieval_enabled": True,
+        "ai_learning_browser_enabled": True,
+    }
+    monkeypatch.setattr(config, "_setting", lambda name: settings[name])
+    assert config.is_enabled() is True
+    assert config.retrieval_is_enabled() is True
+    assert config.browser_is_enabled() is True
+
+    settings["ai_learning_knowledge_enabled"] = False
+    settings["ai_learning_enabled"] = True
     assert config.is_enabled() is False
     assert config.retrieval_is_enabled() is False
+    assert config.browser_is_enabled() is False
+
+
+def test_ai_learning_chunk_sizes_come_from_persistent_settings(isolated_store):
+    from app import db
+
+    db.update_settings({
+        "ai_learning_chunk_target_chars": 256,
+        "ai_learning_chunk_overlap_chars": 64,
+    })
+    chunks = service._chunk_text("x" * 700)
+    assert len(chunks) > 1
+    assert all(len(body) <= 256 for _heading, body in chunks)
+    assert chunks[1][1].startswith("x" * 64)
+
+
+def test_ai_learning_embedding_batch_size_comes_from_settings(isolated_store, monkeypatch):
+    from app import db
+
+    calls = []
+    db.update_settings({"ai_learning_embedding_batch_size": 2})
+
+    def embed(texts, model=None):
+        calls.append(list(texts))
+        return [[float(index + 1)] for index, _text in enumerate(texts)]
+
+    monkeypatch.setattr(embedding_service, "ollama_embed", embed)
+    vectors = service._title_embeddings(["first", "second", "third"])
+    assert len(vectors) == 3
+    assert [len(batch) for batch in calls] == [2, 1]
+
 
 def test_outline_import_creates_pending_topics_and_preserves_raw_response(isolated_store, monkeypatch):
     course = service.create_course(title="SQL Server 2005")
@@ -404,7 +459,7 @@ def test_outline_import_rejects_unstructured_response(isolated_store):
 
 def test_run_lifecycle_imports_outline_without_auto_approval(isolated_store, monkeypatch):
     course = service.create_course(title="SQL Server")
-    monkeypatch.setattr(service, "ollama_embed", lambda texts, model: [[float(i + 1), 1.0] for i, _ in enumerate(texts)])
+    monkeypatch.setattr(embedding_service, "ollama_embed", lambda texts, model: [[float(i + 1), 1.0] for i, _ in enumerate(texts)])
     run = service.create_run(course["id"], run_type="outline", request_key="outline-test-1")
     assert run["status"] == "queued"
     assert "numbered topics" in run["prompt_text"]
@@ -453,7 +508,7 @@ def test_batch_run_requires_topic_markers_and_can_retry_mapping(isolated_store, 
             for text in texts
         ]
 
-    monkeypatch.setattr(service, "ollama_embed", fake_embed)
+    monkeypatch.setattr(embedding_service, "ollama_embed", fake_embed)
     completed = service.complete_run(run["id"], corrected)
     assert completed["status"] == "succeeded"
     assert len(service.list_lessons(a["id"])) == 1
@@ -704,9 +759,9 @@ def test_playwright_capture_uses_visible_ui_and_keeps_extension_permissions_narr
     assert "api.openai.com" not in automation
     assert "context.cookies(" not in automation
     assert "storage_state(" not in automation
-    assert "required_stability = 45.0 if stop_visible else _STABLE_SECONDS" in automation
+    assert '_configured_seconds("ai_learning_stability_seconds", int(_STABLE_SECONDS), 1, 120)' in automation
     assert "_capture_lesson_until_complete" in automation
-    assert "_MAX_LESSON_CONTINUATIONS = 8" in automation
+    assert '_MAX_LESSON_CONTINUATIONS = int(SETTING_DEFAULTS["ai_learning_max_lesson_continuations"])' in automation
     assert "lesson_continuation_limit" in automation
     assert "service.save_run_partial_response(" in automation
     assert "_worker_lease_kwargs" in automation
@@ -731,10 +786,9 @@ def test_playwright_capture_uses_visible_ui_and_keeps_extension_permissions_narr
     assert '"page_crashed_event"' in automation
     assert '"browser_request_failed"' in automation
 
-def test_opt_in_retrieval_adapter_returns_traceable_published_context(isolated_store, monkeypatch):
+def test_enabled_retrieval_adapter_returns_traceable_published_context(isolated_store, monkeypatch):
     from app.ai_learning import integration
-    monkeypatch.setenv("AI_LEARNING_ENABLED", "1")
-    monkeypatch.setenv("AI_LEARNING_RETRIEVAL_ENABLED", "1")
+    monkeypatch.setattr(integration, "retrieval_is_enabled", lambda: True)
     course = service.create_course(title="SQL Server")
     topic = service.add_topic(course["id"], "Indexes")
     service.decide_topics([topic["id"]], "approved")
@@ -755,10 +809,9 @@ def test_opt_in_retrieval_adapter_returns_traceable_published_context(isolated_s
     assert "indexes improve performance" not in trace["query_sha256"]
 
 
-def test_opt_in_retrieval_adapter_is_off_when_flag_is_disabled(isolated_store, monkeypatch):
+def test_retrieval_adapter_is_off_when_user_disables_it(isolated_store, monkeypatch):
     from app.ai_learning import integration
-    monkeypatch.setenv("AI_LEARNING_ENABLED", "0")
-    monkeypatch.setenv("AI_LEARNING_RETRIEVAL_ENABLED", "1")
+    monkeypatch.setattr(integration, "retrieval_is_enabled", lambda: False)
     assert integration.retrieve_context("anything") == []
 
 
@@ -1155,7 +1208,7 @@ def test_semantic_duplicate_content_is_rejected_across_different_lessons(
         }
         return [vectors[text] for text in texts]
 
-    monkeypatch.setattr(service, "ollama_embed", fake_embed)
+    monkeypatch.setattr(embedding_service, "ollama_embed", fake_embed)
     with pytest.raises(ValueError, match="بسیار مشابه"):
         service.add_content_version(lesson_b["id"], paraphrase)
 
@@ -1203,7 +1256,7 @@ def test_chatgpt_lesson_is_saved_when_embedding_model_is_unavailable(isolated_st
     def unavailable_embed(texts, model=None):
         raise RuntimeError("embedding model not installed")
 
-    monkeypatch.setattr(service, "ollama_embed", unavailable_embed)
+    monkeypatch.setattr(embedding_service, "ollama_embed", unavailable_embed)
     answer = (
         "# Transaction management in SQL Server 2025\n\n"
         "Transactions group database operations into a logical unit. SQL Server uses "
@@ -1250,7 +1303,7 @@ def test_chatgpt_capture_skips_semantically_duplicate_lesson(isolated_store, mon
         }
         return [vectors[text] for text in texts]
 
-    monkeypatch.setattr(service, "ollama_embed", fake_embed)
+    monkeypatch.setattr(embedding_service, "ollama_embed", fake_embed)
     completed = service.complete_run(run["id"], paraphrase)
     assert completed["status"] == "succeeded"
     with connection() as conn:
@@ -1299,7 +1352,7 @@ def test_semantic_duplicates_inside_one_batch_are_saved_only_once(isolated_store
         }
         return [vectors[next(key for key in vectors if key in text)] for text in texts]
 
-    monkeypatch.setattr(service, "ollama_embed", fake_embed)
+    monkeypatch.setattr(embedding_service, "ollama_embed", fake_embed)
     completed = service.complete_run(run["id"], response)
     assert completed["status"] == "succeeded"
 
@@ -1344,7 +1397,7 @@ def test_semantic_dedup_does_not_reject_a_different_lesson(isolated_store, monke
         }
         return [vectors[text] for text in texts]
 
-    monkeypatch.setattr(service, "ollama_embed", fake_embed)
+    monkeypatch.setattr(embedding_service, "ollama_embed", fake_embed)
     version = service.add_content_version(lesson_b["id"], different)
     assert version["version_no"] == 1
 
@@ -1453,9 +1506,9 @@ def test_non_rejected_lesson_version_cannot_be_deleted(isolated_store, monkeypat
 def test_response_capture_waits_longer_and_supports_continue_generation():
     from pathlib import Path
     source = Path(browser_automation.__file__).read_text(encoding="utf-8")
-    assert "_RESPONSE_TIMEOUT_SECONDS = 1800" in source
+    assert '_RESPONSE_TIMEOUT_SECONDS = int(SETTING_DEFAULTS["ai_learning_response_timeout_seconds"])' in source
     assert 'button:has-text("Continue generating")' in source
-    assert "_STABLE_SECONDS = 20.0" in source
+    assert '_STABLE_SECONDS = float(SETTING_DEFAULTS["ai_learning_stability_seconds"])' in source
     assert "partial_response=last_text or None" in source
     assert "service.mark_run_needs_user_action(" in source
     assert "**_worker_lease_kwargs" in source

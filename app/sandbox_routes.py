@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, StrictBool, StrictInt
 from . import sandbox_consent, sandbox_tasks, task_manager
 from .db import get_settings
 from .task_routes import require_loopback_client
+from .module_settings import require_module_enabled
 
 router = APIRouter(
     prefix="/api/sandbox",
@@ -56,7 +57,7 @@ def grant_sandbox_consent(request: ConsentGrantRequest) -> dict[str, Any]:
     if not _configured():
         raise HTTPException(
             status_code=409,
-            detail="Sandbox is not configured. Verify SANDBOX_ENABLED, Docker executable, and image digest first.",
+            detail="Sandbox is not configured. Enable it and configure an absolute Docker executable plus digest-pinned images in dashboard Settings.",
         )
     try:
         return {"consent": sandbox_consent.grant_consent()}
@@ -72,7 +73,7 @@ def revoke_sandbox_consent() -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="Sandbox consent could not be revoked.") from exc
 
 
-@router.post("/run", status_code=202)
+@router.post("/run", status_code=202, dependencies=[Depends(require_module_enabled("sandbox"))])
 def queue_sandbox_execution(request: SandboxRunRequest) -> dict[str, Any]:
     configured_source_limit = int(get_settings().get("programming_source_max_chars", 12000))
     if len(request.source_code) > configured_source_limit:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 import pytest
-from app.ai_learning import service, browser_automation
+from app.ai_learning import embedding_service, service, browser_automation
 from app.ai_learning.db import initialize_store
 
 @pytest.fixture
@@ -90,7 +90,7 @@ def test_outline_completion_skips_existing_topic_titles(isolated_store):
 
 def test_outline_import_skips_existing_topics(isolated_store, monkeypatch):
     course = service.create_course(title="SQL Server 2025")
-    monkeypatch.setattr(service, "ollama_embed", lambda texts, model: [[float(i + 1), 1.0] for i, _ in enumerate(texts)])
+    monkeypatch.setattr(embedding_service, "ollama_embed", lambda texts, model: [[float(i + 1), 1.0] for i, _ in enumerate(texts)])
     service.add_topic(course["id"], "Basics")
     imported = service.import_outline(course["id"], "1. Basics\n2. Indexes")
     titles = [topic["title"] for topic in service.get_course(course["id"])["topics"]]
