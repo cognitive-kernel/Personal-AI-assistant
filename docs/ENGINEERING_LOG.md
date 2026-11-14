@@ -8,11 +8,12 @@
 
 ### Corrective change
 - Added autonomous_engineering_process_group.py as the shared POSIX process-group termination/drain contract.
+- Treat a broken owner output pipe as an ownership-loss signal. The runner now kills its inherited group even if the pipe failure arrives before the next parent-ancestry poll; stderr diagnostics are best-effort so they cannot block cleanup.
 - The progress owner starts the Codex supervisor in a dedicated session/process group. Codex inherits the same group through --parent-group-managed.
 - When the supervisor exits, progress sends SIGTERM, waits, escalates to SIGKILL, and confirms no live non-zombie members remain before returning.
 - If the progress owner disappears, the Codex runner detects the missing owner ancestry and kills its complete inherited group.
 - The command runner and direct Codex runner reuse the shared process-group helper; cleanup behavior is no longer duplicated across modules.
-- Added regressions for supervisor crash while owner is alive and direct owner draining after runner exit.
+- Added regressions for supervisor crash while owner is alive, direct owner draining after runner exit, and owner exit while the runner is blocked forwarding a large output chunk.
 
 ### Validation boundary
 - Exact-head CI is required for the new POSIX and Windows owner-bound tests. No target host, Runner, Codex, Ollama, or autonomous service was started; durable Pause remains enabled.
