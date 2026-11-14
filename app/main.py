@@ -652,7 +652,7 @@ def models() -> dict[str, Any]:
 @app.get("/api/model-details")
 def model_details(
     name: str = Query(min_length=1, max_length=200),
-    context_tokens: int | None = Query(default=None, ge=512, le=1048576),
+    context_tokens: int | None = Query(default=None, gt=0),
 ) -> dict[str, Any]:
     try:
         return ollama.model_details(name, context_tokens)
@@ -789,7 +789,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
             if not isinstance(env_name, str) or (env_name and not re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", env_name)):
                 raise HTTPException(status_code=422, detail=f"{api_key_env_key} must be an environment variable name, not an API key.")
     numeric_ranges = [
-        ("ollama_timeout_seconds", 5, 600), ("ollama_num_ctx", 512, 1048576),
+        ("ollama_timeout_seconds", 5, 600), ("ollama_num_ctx", 1, None),
         ("ollama_num_thread", 0, 64),
         ("cpu_resource_limit_percent", 10, 95),
         ("ram_resource_limit_percent", 10, 95),
@@ -800,7 +800,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
     for prefix in ("chat", "learning", "programming"):
         numeric_ranges.extend([
             (f"{prefix}_ollama_timeout_seconds", 5, 600),
-            (f"{prefix}_ollama_num_ctx", 512, 1048576),
+            (f"{prefix}_ollama_num_ctx", 1, None),
             (f"{prefix}_ollama_num_thread", 0, 64),
             (f"{prefix}_max_concurrent_jobs", 1, 8),
         ])
@@ -814,8 +814,9 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
             raw_value = values[key]
             if isinstance(raw_value, bool) or not isinstance(raw_value, int):
                 raise HTTPException(status_code=422, detail=f"{key} must be an integer.")
-            if not low <= raw_value <= high:
-                raise HTTPException(status_code=422, detail=f"{key} must be between {low} and {high}.")
+            if raw_value < low or (high is not None and raw_value > high):
+                bound = f"at least {low}" if high is None else f"between {low} and {high}"
+                raise HTTPException(status_code=422, detail=f"{key} must be {bound}.")
     # Context limits are model-specific. Context edits require verifiable metadata;
     # manual model-name changes remain compatible when the existing context is unchanged.
     current_settings = db.get_settings()
@@ -882,7 +883,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
             continue
         maximum = metadata.get("maximum_context_tokens")
         explicit_context = context_key in values or (generic_chat_change and "ollama_num_ctx" in values)
-        if not isinstance(maximum, int) or isinstance(maximum, bool) or maximum < 512:
+        if not isinstance(maximum, int) or isinstance(maximum, bool) or maximum <= 0:
             if context_changed:
                 raise HTTPException(
                     status_code=422,
@@ -894,7 +895,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
             if (
                 isinstance(recommended, int)
                 and not isinstance(recommended, bool)
-                and 512 <= recommended <= maximum
+                and 0 < recommended <= maximum
             ):
                 context_value = recommended
                 values[context_key] = context_value
@@ -915,7 +916,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
             if (
                 not isinstance(hardware_safe_context, int)
                 or isinstance(hardware_safe_context, bool)
-                or hardware_safe_context < 512
+                or hardware_safe_context <= 0
                 or hardware_safe_context > maximum
             ):
                 raise HTTPException(
