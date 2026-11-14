@@ -30,6 +30,10 @@ def _ensure_resource_headroom() -> None:
 
 
 _MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+# Ollama model metadata can be substantially larger than ordinary API responses.
+# Keep the larger allowance scoped to /api/show; inference and other endpoints
+# retain the existing 8 MiB response ceiling.
+_MAX_SHOW_RESPONSE_BYTES = 32 * 1024 * 1024
 # Keep this process from running multiple model inferences at once across task lanes.
 _INFERENCE_LOCK = threading.Lock()
 _INFERENCE_PATHS = frozenset({"/api/chat", "/api/embed", "/api/generate"})
@@ -158,12 +162,16 @@ def _request(
             urllib.request.ProxyHandler({}),
             _NoRedirectHandler(),
         )
+        response_limit = (
+            _MAX_SHOW_RESPONSE_BYTES if path == "/api/show" else _MAX_RESPONSE_BYTES
+        )
         with opener.open(
             request, timeout=timeout or int(settings["ollama_timeout_seconds"])
         ) as response:
-            body = response.read(_MAX_RESPONSE_BYTES + 1)
-        if len(body) > _MAX_RESPONSE_BYTES:
-            raise OllamaError("Ollama response exceeded the 8 MiB limit.")
+            body = response.read(response_limit + 1)
+        if len(body) > response_limit:
+            limit_mib = response_limit // (1024 * 1024)
+            raise OllamaError(f"Ollama response exceeded the {limit_mib} MiB limit.")
         result = json.loads(body.decode("utf-8"))
         if not isinstance(result, dict):
             raise OllamaError("Unexpected Ollama response shape.")
