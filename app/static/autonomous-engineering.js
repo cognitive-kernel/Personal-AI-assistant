@@ -120,10 +120,12 @@
             : "؛ ظرفیت امن متناسب با سخت‌افزار قابل محاسبه نیست")
         : "؛ حداکثر Context از metadata مدل تأیید نشد";
       const toolsText = checks.model_supports_tools
-        ? "؛ قابلیت tools تأیید شد"
+        ? (data.model_tools_verification_method === "live_tool_call_probe"
+          ? "؛ قابلیت tools با آزمون واقعی تأیید شد"
+          : "؛ قابلیت tools در metadata مدل تأیید شد")
         : checks.model_tools_metadata_available
           ? "؛ مدل قابلیت tools را اعلام نکرده است"
-          : "؛ metadata قابلیت tools در دسترس نیست";
+          : "؛ metadata موجود نیست و آزمون واقعی tools نیز موفق نشد";
       const modelLabel = data.model ? "مدل ذخیره‌شده: " + String(data.model) : "هنوز مدلی ذخیره نشده است";
       const installationText = data.model && checks.model_is_codex_context_variant
         ? "؛ این نسخهٔ داخلی Context است؛ مدل اصلی را انتخاب و ذخیره کنید"
