@@ -190,6 +190,7 @@ def test_codex_runner_kills_inherited_group_when_output_owner_disappears(tmp_pat
         "while not Path(" + repr(str(child_pid_file)) + ").exists() and time.monotonic() < deadline:\n"
         "    time.sleep(0.01)\n"
         "assert Path(" + repr(str(child_pid_file)) + ").exists(), 'Codex child did not start'\n"
+        "time.sleep(0.2)\n"
         "os._exit(0)\n",
         encoding="utf-8",
     )
