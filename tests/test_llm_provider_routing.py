@@ -88,16 +88,6 @@ def test_openai_compatible_chat_supports_local_endpoint_without_api_key(monkeypa
     assert captured["authorization"] is None
 
 
-@pytest.mark.parametrize(
-    "url",
-    [
-        "http://example.com/v1",
-        "https://user:password@example.com/v1",
-        "https://example.com/v1?token=secret",
-        "https://example.com/../admin",
-        "http://127.0.0.1:0/v1",
-    ],
-)
 def test_model_discovery_uses_selected_ollama_provider(monkeypatch):
     monkeypatch.setattr(
         ollama,
@@ -152,6 +142,16 @@ def test_model_discovery_uses_selected_openai_compatible_provider(monkeypatch):
     assert captured["authorization"] == "Bearer secret-value"
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://example.com/v1",
+        "https://user:password@example.com/v1",
+        "https://example.com/v1?token=secret",
+        "https://example.com/../admin",
+        "http://127.0.0.1:0/v1",
+    ],
+)
 def test_openai_compatible_base_url_rejects_unsafe_urls(url):
     with pytest.raises(ollama.OllamaError):
         ollama.normalize_openai_compatible_base_url(url)
