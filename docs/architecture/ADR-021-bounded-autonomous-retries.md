@@ -23,7 +23,7 @@ The recovery workflow already preserves the pending task and checkpoint, and dis
 ## Decision
 
 1. Introduce a pure `RetryPolicy` contract in `scripts/autonomous_engineering_retry_policy.py`; keep policy separate from orchestration.
-2. Permit at most three Codex attempts and at most two hours of task/retry time per workflow run, whichever limit is reached first.
+2. Permit at most two Codex attempts and at most two hours of task/retry time per workflow run, whichever limit is reached first. The remaining budget also caps Codex, verification, and PR-validation subprocess deadlines; no long phase may start after the budget is exhausted.
 3. When the budget is exhausted, fail the current run without clearing pending task state, task branch, or any checkpoint. The existing recovery workflow can resume the same task in a later run.
 4. Give controller subprocesses explicit deadlines: five minutes by default, fifteen minutes for the full Python suite, twenty-five minutes for exact-head PR publication/validation, and thirty seconds beyond the Codex runner's own thirty-minute deadline for its parent wrapper.
 5. Convert command timeout into a named, bounded diagnostic error. Never interpret timeout as success.
@@ -31,7 +31,7 @@ The recovery workflow already preserves the pending task and checkpoint, and dis
 
 ## Consequences and acceptance
 
-- A single workflow run cannot repeatedly consume the full six-hour window on one failing task.
+- A single workflow run cannot repeatedly consume the full six-hour window on one failing task; the two-attempt ceiling leaves room for full verification and exact-head CI within the two-hour task budget.
 - The same task remains the only task in scope; recovery does not advance the task ledger or discard partial work.
 - Each command has a local deadline, and Codex retains its OS-level descendant ownership boundary from ADR-020.
 - Tests must cover policy boundaries, invalid policy inputs, controller retry exhaustion, checkpoint preservation, and subprocess timeout reporting.
