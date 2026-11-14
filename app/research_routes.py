@@ -13,7 +13,7 @@ from .module_settings import require_module_enabled
 router = APIRouter(
     prefix="/api/research",
     tags=["research-tasks"],
-    dependencies=[Depends(require_loopback_client), Depends(require_module_enabled("research_plan"))],
+    dependencies=[Depends(require_loopback_client)],
 )
 
 
@@ -32,7 +32,7 @@ class ResearchPlanRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-@router.post("/tasks", status_code=202)
+@router.post("/tasks", status_code=202, dependencies=[Depends(require_module_enabled("research_plan"))])
 def queue_research_task(request: ResearchTaskRequest) -> dict[str, Any]:
     chat_limit = int(db.get_settings().get("chat_source_max_chars", 12000))
     if len(request.message) > chat_limit:
@@ -70,7 +70,7 @@ def queue_research_task(request: ResearchTaskRequest) -> dict[str, Any]:
 
 
 
-@router.post("/plans", status_code=202)
+@router.post("/plans", status_code=202, dependencies=[Depends(require_module_enabled("research_plan"))])
 def queue_research_plan(request: ResearchPlanRequest) -> dict[str, Any]:
     chat_limit = int(db.get_settings().get("chat_source_max_chars", 12000))
     if len(request.goal) > chat_limit:
