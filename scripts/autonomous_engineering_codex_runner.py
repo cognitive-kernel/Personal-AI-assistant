@@ -22,7 +22,7 @@ except ImportError:
     from autonomous_engineering_process_job import WindowsProcessJob
 
 
-def capture_parent_chain(max_depth: int = 3) -> list[dict[str, float | int]]:
+def capture_parent_chain(max_depth: int = 4) -> list[dict[str, float | int]]:
     chain: list[dict[str, float | int]] = []
     process = psutil.Process(os.getpid())
     for index in range(max_depth):
