@@ -15,11 +15,12 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 from .db import learning_connection
 from .task_routes import require_loopback_client
+from .module_settings import require_module_enabled
 
 router = APIRouter(
     prefix="/api/learning/candidates",
     tags=["learning-candidates"],
-    dependencies=[Depends(require_loopback_client)],
+    dependencies=[Depends(require_loopback_client), Depends(require_module_enabled("knowledge_base"))],
 )
 
 
