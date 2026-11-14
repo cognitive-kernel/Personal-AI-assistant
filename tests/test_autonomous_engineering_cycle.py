@@ -121,7 +121,7 @@ def test_failed_local_and_github_checks_stop_at_retry_budget_and_preserve_task(t
     assert not (tmp_path / "codex-retry-prompt-1-3.md").exists()
     assert len(stopped) == 2
     assert cleared == []
-    assert not (tmp_path / "autonomous-state" / "pending-pr.json").exists()
+    assert cycle.load_pending_pr() is None
 
 
 def test_cycle_run_applies_default_command_deadline(monkeypatch: pytest.MonkeyPatch):
