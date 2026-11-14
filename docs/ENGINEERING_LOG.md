@@ -1,5 +1,25 @@
 # Engineering Continuity Log
 
+## 2026-11-14 — PR #757 follow-up: controller command process-tree ownership
+
+### Root cause
+- The first timeout implementation bounded `subprocess.run` but relied on its direct-child termination behavior. That does not guarantee termination of grandchildren on Windows or POSIX.
+- A child process could therefore continue writing after a test/validation command timed out and the controller unwound its repository lock. A command that exited successfully could also leave a background descendant alive.
+
+### Corrective change
+- Added `scripts/autonomous_engineering_command_runner.py` as a focused process-tree execution boundary for all controller commands.
+- Windows commands are created suspended and assigned to a kill-on-close Job Object before they can spawn children; failure to establish the Job Object is fail-closed.
+- POSIX commands run in a dedicated process group; the group is terminated on timeout and after the direct command exits, preventing background descendants from surviving the command.
+- Kept the existing default/test/PR-validation deadlines and timeout diagnostics. No command can silently fall back to direct, unowned subprocess execution.
+- Added regressions for descendant cleanup on timeout, descendant cleanup after a successful parent exit, and timeout argument validation.
+
+### Validation
+- Exact-head CI is required for this follow-up. No target-host command execution or Runner activation was performed.
+- Durable Pause remains enabled; no task/checkpoint data, host configuration, Runner identity, ACL, or merge state was changed.
+
+---
+
+
 ## 2026-11-14 — PR #757 follow-up: bounded task retries and command deadlines
 
 ### Root cause
