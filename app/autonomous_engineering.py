@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
+from .module_settings import require_module_enabled
 from .autonomous_engineering_progress import get_progress, storage_accessible
 from .ollama_context import MIN_CODEX_CONTEXT_TOKENS, maximum_context_tokens, supports_tool_calling
 
@@ -25,7 +26,7 @@ _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
 router = APIRouter(
     prefix="/api/autonomous-engineering",
     tags=["autonomous-engineering"],
-    dependencies=[Depends(require_loopback_client)],
+    dependencies=[Depends(require_loopback_client), Depends(require_module_enabled("autonomous_engineering"))],
 )
 
 _DEFAULT_REPOSITORY = "cognitive-kernel/Personal-AI-assistant"
