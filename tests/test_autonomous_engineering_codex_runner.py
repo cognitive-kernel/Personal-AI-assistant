@@ -120,3 +120,45 @@ def test_windows_process_job_is_a_noop_on_non_windows_hosts():
         return
     with runner.WindowsProcessJob() as job:
         assert job._handle is None
+
+
+def test_parent_managed_posix_group_is_inherited_and_drained_by_owner(tmp_path: Path):
+    child_pid_file = tmp_path / "managed-group-child.pid"
+    child_code = "import time; time.sleep(60)"
+    parent_code = (
+        "import subprocess,sys; "
+        "child=subprocess.Popen([sys.executable,'-c'," + repr(child_code) + "], "
+        "stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); "
+        "open(" + repr(str(child_pid_file)) + ",'w').write(str(child.pid))"
+    )
+    wrapper = subprocess.Popen(
+        [
+            sys.executable,
+            str(Path(runner.__file__).resolve()),
+            "--timeout-seconds", "10",
+            "--parent-chain", json.dumps(runner.capture_parent_chain()),
+            "--parent-group-managed",
+            "--", sys.executable, "-c", parent_code,
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    try:
+        assert wrapper.wait(timeout=10) == 0
+        assert child_pid_file.is_file()
+        child_pid = int(child_pid_file.read_text(encoding="utf-8"))
+        assert psutil.pid_exists(child_pid), "The external owner group was not retained for owner cleanup."
+        from scripts.autonomous_engineering_process_group import terminate_process_group
+        assert terminate_process_group(wrapper.pid)
+        try:
+            psutil.Process(child_pid).wait(timeout=5)
+        except psutil.NoSuchProcess:
+            pass
+        except psutil.TimeoutExpired:
+            raise AssertionError("The owner could not drain the inherited POSIX process group.")
+    finally:
+        if wrapper.poll() is None:
+            wrapper.kill()
+            wrapper.wait(timeout=5)
