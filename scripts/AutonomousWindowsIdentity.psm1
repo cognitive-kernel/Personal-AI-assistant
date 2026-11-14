@@ -61,10 +61,11 @@ function Set-AutonomousDirectoryAcl {
     $existingAcl = Get-Acl -LiteralPath $Path
     $existingSids = @(
         $existingAcl.Access | ForEach-Object {
+            $identityReference = $_.IdentityReference
             try {
-                $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+                $identityReference.Translate([Security.Principal.SecurityIdentifier]).Value
             } catch {
-                if ($_.IdentityReference.Value -match "^S-1-") { $_.IdentityReference.Value }
+                if ($identityReference.Value -match "^S-1-") { $identityReference.Value }
                 else { throw "Could not resolve an existing ACL principal on '$Path'." }
             }
         } | Select-Object -Unique
