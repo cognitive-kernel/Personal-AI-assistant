@@ -131,3 +131,17 @@ Regression coverage now verifies that an abruptly exited supervisor cannot leave
 A further failure-injection case covered the interval where the progress owner disappears while the Codex runner is blocked forwarding a large output chunk. In that state, the runner may receive a broken pipe before its next owner-ancestry poll. The output-forwarding boundary now treats a closed stdout/stderr owner channel as an ownership-loss event and terminates the inherited POSIX group (or returns to the Windows outer Job Object owner, which drains it). Diagnostic writes are best-effort and cannot prevent cleanup.
 
 Regression coverage fills the owner output pipe, exits the owner while the runner is blocked, and verifies that the sleeping Codex descendant does not survive.
+
+
+## 2026-11-14 addendum — checkpoint Git process ownership and deadlines
+
+A source review found that the checkpoint watcher still invoked `git`, `git apply --check`, and `git apply` directly through `subprocess.run`. Those calls had no command deadline and bypassed the shared process-tree cleanup contract. A stuck Git operation could therefore hold checkpoint recovery indefinitely; killing the watcher during such an operation could also leave the Git child outside the watcher's cleanup path.
+
+Decision:
+- Route every checkpoint Git operation through `autonomous_engineering_command_runner.run_command`.
+- Use a 120-second checkpoint-Git deadline; timeout is a failure and process-tree cleanup must be confirmed before returning.
+- Extend the shared runner with an explicit `input_data: str | bytes | None` contract. Byte input is passed without text-mode newline conversion, while captured output remains normalized to UTF-8 text.
+- Keep checkpoint patch bytes intact for both `git apply --check --binary` and `git apply --binary`; no decoding/re-encoding of the saved patch is permitted.
+- Add regressions for byte-exact stdin, checkpoint Git runner delegation, and the existing real checkpoint restore/recovery paths.
+
+This closes the unbounded subprocess path in the checkpoint module without changing checkpoint metadata, patch format, locking semantics, or user data. Exact-head CI must pass on the resulting commits. Target-host crash/restart acceptance remains pending while the durable Pause is enabled.
