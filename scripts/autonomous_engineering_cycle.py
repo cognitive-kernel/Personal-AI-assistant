@@ -113,7 +113,7 @@ CYCLE_LIMIT = 6 * 60 * 60
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 5 * 60
 TEST_SUITE_TIMEOUT_SECONDS = 15 * 60
 PULL_REQUEST_VALIDATION_TIMEOUT_SECONDS = 25 * 60
-TASK_RETRY_POLICY = RetryPolicy(max_attempts=3, max_elapsed_seconds=2 * 60 * 60)
+TASK_RETRY_POLICY = RetryPolicy(max_attempts=2, max_elapsed_seconds=2 * 60 * 60)
 
 
 def run(
@@ -277,6 +277,7 @@ def publish_pull_request(token: str, repo: str, branch: str, task_index: int, ru
 
 def publish_pr_subprocess(
     token: str, repo: str, branch: str, task: int, run_id: str, sha: str, base_sha: str,
+    timeout_seconds: int = PULL_REQUEST_VALIDATION_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
     env = os.environ.copy()
     env.update({"GH_TOKEN": token, "GH_REPO": repo})
@@ -284,7 +285,7 @@ def publish_pr_subprocess(
         sys.executable, str(Path(__file__).resolve()), "publish",
         "--branch", branch, "--task", str(task), "--run-id", run_id,
         "--sha", sha, "--base-sha", base_sha,
-    ], env=env, capture=True, timeout_seconds=PULL_REQUEST_VALIDATION_TIMEOUT_SECONDS)
+    ], env=env, capture=True, timeout_seconds=timeout_seconds)
     if result.returncode:
         raise RuntimeError(
             "Per-task PR publication failed: " + (result.stderr or result.stdout or "")[-4000:]
@@ -439,11 +440,14 @@ def run_cycle(args: argparse.Namespace) -> int:
         )
         watcher = start_checkpoint_watcher(base_sha, args.run_id, task)
         try:
+            remaining = TASK_RETRY_POLICY.remaining_seconds(elapsed)
+            if remaining <= 0:
+                raise RuntimeError("Task retry budget expired before Codex could start; preserving the current task state.")
             result = run([
                 sys.executable, "scripts/autonomous_engineering_progress.py", "codex",
                 "--run-id", args.run_id, "--run-attempt", args.run_attempt,
                 "--model", args.model, "--prompt", str(active_prompt), "--report", str(report),
-            ], timeout_seconds=CODEX_TASK_TIMEOUT_SECONDS + 30)
+            ], timeout_seconds=min(CODEX_TASK_TIMEOUT_SECONDS + 30, remaining))
         finally:
             stop_checkpoint_watcher(watcher, base_sha, args.run_id, task)
         if result.returncode:
@@ -490,7 +494,12 @@ def run_cycle(args: argparse.Namespace) -> int:
         ]
         failed = None
         for command, timeout_seconds in commands:
-            checked_result = run(command, capture=True, timeout_seconds=timeout_seconds)
+            remaining = TASK_RETRY_POLICY.remaining_seconds(time.monotonic() - started)
+            if remaining <= 0:
+                raise RuntimeError("Task retry budget expired during verification; preserving the current task state.")
+            checked_result = run(
+                command, capture=True, timeout_seconds=min(timeout_seconds, remaining),
+            )
             output = (checked_result.stdout or "") + (checked_result.stderr or "")
             if output:
                 print(output, end="" if output.endswith("\n") else "\n")
@@ -532,8 +541,12 @@ def run_cycle(args: argparse.Namespace) -> int:
             "تست‌های محلی موفق شدند؛ در حال انتشار PR و اجرای کنترل‌های مستقل پیش از ادغام خودکار",
         )
         try:
+            remaining = TASK_RETRY_POLICY.remaining_seconds(time.monotonic() - started)
+            if remaining <= 0:
+                raise RuntimeError("Task retry budget expired before PR validation; preserving the current task state.")
             published_pr = publish_pr_subprocess(
-                token, repo, branch, task, args.run_id, head_sha, base_sha
+                token, repo, branch, task, args.run_id, head_sha, base_sha,
+                min(PULL_REQUEST_VALIDATION_TIMEOUT_SECONDS, remaining),
             )
         except RuntimeError as exc:
             message = str(exc)
