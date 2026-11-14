@@ -39,6 +39,7 @@ def test_powershell_reconciles_github_pr_state_before_rejecting_a_replacement_ta
     replacement_guard = script.index("Another manual task is still pending")
     owner_validation = script.index("Repair-AutonomousTaskOwnerRecord")
 
+    workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
     assert pr_reconciliation < replacement_guard < owner_validation
     assert 'REPLACE_PENDING_TASK: ${{ inputs.replace_pending_task && \'true\' || \'false\' }}' in workflow
     assert 'replace_pending_task=true' in script
