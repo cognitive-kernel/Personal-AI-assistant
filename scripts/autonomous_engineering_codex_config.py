@@ -26,6 +26,7 @@ def codex_command(
     *,
     timeout_seconds: int | None = None,
     parent_job_managed: bool = False,
+    parent_group_managed: bool = False,
 ) -> list[str]:
     """Run Codex through an owner-aware supervisor, preserving the native CLI contract."""
     if timeout_seconds is None:
@@ -52,6 +53,8 @@ def codex_command(
     ]
     if parent_job_managed:
         command.append("--parent-job-managed")
+    if parent_group_managed:
+        command.append("--parent-group-managed")
     return [*command, "--", *native_command]
 
 
