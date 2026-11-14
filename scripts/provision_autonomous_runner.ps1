@@ -16,12 +16,21 @@ $RunnerAccount = $RunnerAccount.Trim()
 $AppAccount = $AppAccount.Trim()
 if ([string]::IsNullOrWhiteSpace($RunnerAccount) -or [string]::IsNullOrWhiteSpace($AppAccount)) { throw "RunnerAccount and AppAccount must be non-empty Windows account identities." }
 if ($RunnerName -notmatch "^[A-Za-z0-9_.-]{1,64}$") { throw "Invalid RunnerName." }
+if ([string]::IsNullOrWhiteSpace($env:ProgramData) -or -not [System.IO.Path]::IsPathRooted($env:ProgramData)) { throw "PROGRAMDATA must resolve to an absolute shared path." }
+if (-not [System.IO.Path]::IsPathRooted($RunnerRoot)) { throw "RunnerRoot must be an absolute path." }
+$RunnerRoot = [System.IO.Path]::GetFullPath($RunnerRoot)
 Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsIdentity.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsPaths.psm1") -Force
 $runnerIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $RunnerAccount
 $appIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $AppAccount
 $runnerLocalName = Get-AutonomousLocalAccountName -AccountName $runnerIdentity
 if ($runnerLocalName -and ($runnerLocalName.Length -gt 20 -or $runnerLocalName -notmatch "^[A-Za-z0-9_.-]+$")) { throw "Invalid local Runner account name." }
-$progressPath = Join-Path $env:ProgramData "PersonalAIAssistant\autonomous-engineering"
+$progressPath = Resolve-AutonomousStateDirectory -ConfiguredPath $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR -ProgramDataPath $env:ProgramData
+$runnerRootBoundary = $RunnerRoot.TrimEnd([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)) + [System.IO.Path]::DirectorySeparatorChar
+$statePathBoundary = $progressPath.TrimEnd([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)) + [System.IO.Path]::DirectorySeparatorChar
+if ($RunnerRoot.Equals($progressPath, [StringComparison]::OrdinalIgnoreCase) -or $progressPath.StartsWith($runnerRootBoundary, [StringComparison]::OrdinalIgnoreCase) -or $RunnerRoot.StartsWith($statePathBoundary, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "RunnerRoot and shared autonomous state directory must be separate, non-nested paths."
+}
 $appSid = Get-AutonomousWindowsAccountSid -AccountName $appIdentity
 $null = Get-Command ollama -ErrorAction Stop
 $node = Get-Command node -ErrorAction Stop
