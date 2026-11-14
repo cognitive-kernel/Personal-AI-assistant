@@ -91,9 +91,6 @@ try {
     if ($existingTaskFound -and [string]::IsNullOrWhiteSpace($existingTask)) {
         throw "Pending manual task state is empty; refusing to overwrite unknown task ownership."
     }
-    if ($existingTask -and $existingTask -cne $manualTask) {
-        throw "Another manual task is still pending. It cannot be replaced before its verified merge."
-    }
     $pullsUri = "https://api.github.com/repos/$env:GH_REPO/pulls?state=open&per_page=100"
     $pulls = @(Invoke-RestMethod -Method Get -Uri $pullsUri -Headers $headers -TimeoutSec 25)
     $pendingPr = @($pulls | Where-Object {
@@ -201,6 +198,11 @@ try {
         } catch {
             throw "Stale pending PR metadata could not be quarantined safely. $($_.Exception.Message)"
         }
+    }
+
+    # Reconcile authoritative GitHub PR state before deciding whether a different task may replace the pending task.
+    if ($existingTask -and $existingTask -cne $manualTask) {
+        throw "Another manual task is still pending. It cannot be replaced before its verified merge."
     }
 
     $runAttempt = 0
