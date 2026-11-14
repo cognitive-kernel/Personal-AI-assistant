@@ -4,7 +4,13 @@ import time
 import pytest
 
 from app import db, task_manager
-from app.task_runtime import TaskRuntime
+from app.task_runtime import TaskRuntime, reject_unregistered_task
+from app.task_worker import PermanentTaskError
+
+
+def test_unregistered_task_handler_fails_closed():
+    with pytest.raises(PermanentTaskError, match="No registered handler"):
+        reject_unregistered_task({}, None, None)
 
 
 @pytest.fixture
