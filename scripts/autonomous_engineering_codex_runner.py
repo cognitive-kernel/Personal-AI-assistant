@@ -137,6 +137,17 @@ def run(command: list[str], timeout_seconds: int, parent_chain: list[dict[str, A
             else:
                 sys.stdout.buffer.write(chunk)
                 sys.stdout.buffer.flush()
+        while process.poll() is None:
+            if not parent_chain_is_alive(parent_chain):
+                print("Codex stopped because its owning controller exited or its PID identity changed.", file=sys.stderr)
+                _terminate_process(process, job)
+                return 125
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                print(f"Codex exceeded its {timeout_seconds}-second execution budget and was terminated.", file=sys.stderr)
+                _terminate_process(process, job)
+                return 124
+            time.sleep(min(0.25, remaining))
         return int(process.wait())
     finally:
         if process is not None and process.poll() is None:
