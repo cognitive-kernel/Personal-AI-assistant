@@ -63,8 +63,7 @@ function Get-AutomaticContext {
             model_is_loaded = $modelIsLoaded
             running_context_tokens = $runningContextTokens
         } | ConvertTo-Json -Depth 30 -Compress
-        $helperPath = Join-Path (Split-Path -Parent $PSScriptRoot) "..\app\ollama_context.py"
-        $helperPath = [System.IO.Path]::GetFullPath($helperPath)
+        $helperPath = Join-Path (Split-Path -Parent $script:OllamaScriptsRoot) "app\ollama_context.py"
         if (-not (Test-Path -LiteralPath $helperPath -PathType Leaf)) {
             throw "The shared Ollama context-selection module is missing: $helperPath"
         }
