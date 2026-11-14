@@ -39,7 +39,6 @@ _MAX_CONTEXT_RELAUNCHES = int(SETTING_DEFAULTS["ai_learning_max_context_relaunch
 _LOG_LOCK = threading.Lock()
 _LOGGER: logging.Logger | None = None
 _BROWSER_SESSION = threading.local()
-_MAX_CONTEXT_RELAUNCHES = 1
 
 def _claim_configured_worker_lease() -> int | None:
     """Claim the shared browser lease using one validated settings snapshot."""
@@ -54,20 +53,14 @@ def _claim_configured_worker_lease() -> int | None:
 
 
 def _configured_seconds(name: str, default: int, minimum: int, maximum: int) -> int:
-    """Read a validated runtime duration from the shared settings store."""
-    settings = service.get_settings()
-    value = settings.get(name, default)
-    if type(value) is not int or not minimum <= value <= maximum:
-        raise RuntimeError(f"Persisted setting {name} is outside its validated range.")
-    return value
+    """Read a validated runtime duration through the AI-learning settings contract."""
+    return config.configured_int_setting(name, default, minimum, maximum)
 
 
 def _configured_continuations() -> int:
-    settings = service.get_settings()
-    value = settings.get("ai_learning_max_lesson_continuations", _MAX_LESSON_CONTINUATIONS)
-    if type(value) is not int or not 0 <= value <= 20:
-        raise RuntimeError("Persisted setting ai_learning_max_lesson_continuations is invalid.")
-    return value
+    return config.configured_int_setting(
+        "ai_learning_max_lesson_continuations", _MAX_LESSON_CONTINUATIONS, 0, 20
+    )
 def _reset_process_identity() -> None:
     """Reinitialize inherited locks and worker state in a forked child process."""
     global _LOCK, _LOG_LOCK, _WORKER_OWNER_PID, _WORKER_OWNER
