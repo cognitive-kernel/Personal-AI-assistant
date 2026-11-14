@@ -30,7 +30,9 @@ def _claimed_task(job_id, *, max_attempts=3):
     )
     claimed = task_manager.claim_next_task("escalation-worker")
     assert claimed["id"] == task["id"]
-    return task, TaskContext(task_id=task["id"], worker_id="escalation-worker")
+    return task, TaskContext(
+        task_id=task["id"], worker_id="escalation-worker", lease_epoch=claimed["lease_epoch"]
+    )
 
 
 def test_retry_exhaustion_creates_one_pending_learning_escalation(

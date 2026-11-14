@@ -224,14 +224,16 @@ def test_heartbeat_retries_transient_sqlite_operational_error(worker_store, monk
     context = TaskContext(
         task_id=1,
         worker_id="worker-heartbeat-retry",
+        lease_epoch=1,
         lease_seconds=1,
     )
     monkeypatch.setattr(context, "control_status", lambda: "running")
     calls = []
 
-    def renew(task_id, worker_id, *, lease_seconds):
+    def renew(task_id, worker_id, *, lease_epoch, lease_seconds):
         assert task_id == 1
         assert worker_id == "worker-heartbeat-retry"
+        assert lease_epoch == 1
         assert lease_seconds == 1
         calls.append(True)
         if len(calls) == 1:
@@ -269,6 +271,7 @@ def test_heartbeat_stops_at_lease_deadline_after_persistent_sqlite_errors(worker
     context = TaskContext(
         task_id=1,
         worker_id="worker-heartbeat-deadline",
+        lease_epoch=1,
         lease_seconds=1,
     )
     monkeypatch.setattr(context, "control_status", lambda: "running")
@@ -368,6 +371,7 @@ def test_heartbeat_stops_immediately_on_permanent_sqlite_operational_error(worke
     context = TaskContext(
         task_id=1,
         worker_id="worker-heartbeat-permanent-error",
+        lease_epoch=1,
         lease_seconds=30,
     )
     monkeypatch.setattr(context, "control_status", lambda: "running")
