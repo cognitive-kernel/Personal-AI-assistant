@@ -90,6 +90,11 @@ try:
 except ImportError:  # Direct script execution from the scripts directory.
     from autonomous_engineering_retry_policy import RetryPolicy
 
+try:
+    from .autonomous_engineering_codex_config import CODEX_TASK_TIMEOUT_SECONDS
+except ImportError:  # Direct script execution from the scripts directory.
+    from autonomous_engineering_codex_config import CODEX_TASK_TIMEOUT_SECONDS
+
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKPOINT_SCRIPT = Path(__file__).resolve().with_name("autonomous_engineering_checkpoint.py")
@@ -105,19 +110,41 @@ PROTECTED = {
 }
 MARKERS = re.compile(r"(?m)^(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)\s*$")
 CYCLE_LIMIT = 6 * 60 * 60
+DEFAULT_COMMAND_TIMEOUT_SECONDS = 5 * 60
+TEST_SUITE_TIMEOUT_SECONDS = 15 * 60
+PULL_REQUEST_VALIDATION_TIMEOUT_SECONDS = 25 * 60
 TASK_RETRY_POLICY = RetryPolicy(max_attempts=3, max_elapsed_seconds=2 * 60 * 60)
 
 
-def run(command: list[str], *, env: dict[str, str] | None = None, capture: bool = False) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        command, cwd=ROOT, env=env, text=True, encoding="utf-8", errors="replace",
-        check=False, stdout=subprocess.PIPE if capture else None,
-        stderr=subprocess.PIPE if capture else None,
-    )
+def run(
+    command: list[str],
+    *,
+    env: dict[str, str] | None = None,
+    capture: bool = False,
+    timeout_seconds: int = DEFAULT_COMMAND_TIMEOUT_SECONDS,
+) -> subprocess.CompletedProcess[str]:
+    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or timeout_seconds < 1:
+        raise ValueError("Command timeout must be a positive integer.")
+    try:
+        return subprocess.run(
+            command, cwd=ROOT, env=env, text=True, encoding="utf-8", errors="replace",
+            check=False, stdout=subprocess.PIPE if capture else None,
+            stderr=subprocess.PIPE if capture else None, timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        executable = Path(command[0]).name if command else "<empty-command>"
+        raise RuntimeError(
+            f"Autonomous command '{executable}' exceeded its {timeout_seconds}-second deadline."
+        ) from exc
 
 
-def checked(command: list[str], *, env: dict[str, str] | None = None) -> str:
-    result = run(command, env=env, capture=True)
+def checked(
+    command: list[str],
+    *,
+    env: dict[str, str] | None = None,
+    timeout_seconds: int = DEFAULT_COMMAND_TIMEOUT_SECONDS,
+) -> str:
+    result = run(command, env=env, capture=True, timeout_seconds=timeout_seconds)
     if result.returncode:
         raise RuntimeError(
             f"Command failed ({result.returncode}): {command[0]}\n"
@@ -257,7 +284,7 @@ def publish_pr_subprocess(
         sys.executable, str(Path(__file__).resolve()), "publish",
         "--branch", branch, "--task", str(task), "--run-id", run_id,
         "--sha", sha, "--base-sha", base_sha,
-    ], env=env, capture=True)
+    ], env=env, capture=True, timeout_seconds=PULL_REQUEST_VALIDATION_TIMEOUT_SECONDS)
     if result.returncode:
         raise RuntimeError(
             "Per-task PR publication failed: " + (result.stderr or result.stdout or "")[-4000:]
@@ -416,7 +443,7 @@ def run_cycle(args: argparse.Namespace) -> int:
                 sys.executable, "scripts/autonomous_engineering_progress.py", "codex",
                 "--run-id", args.run_id, "--run-attempt", args.run_attempt,
                 "--model", args.model, "--prompt", str(active_prompt), "--report", str(report),
-            ])
+            ], timeout_seconds=CODEX_TASK_TIMEOUT_SECONDS + 30)
         finally:
             stop_checkpoint_watcher(watcher, base_sha, args.run_id, task)
         if result.returncode:
@@ -454,16 +481,16 @@ def run_cycle(args: argparse.Namespace) -> int:
             "اجرای کامل آزمون‌ها پیش از انتشار PR",
         )
         commands = [
-            [sys.executable, "-m", "pytest", "-vv", "--durations=25", "-o", "faulthandler_timeout=60"],
-            [sys.executable, "scripts/generate_learning_artifacts.py", "--check"],
-            [sys.executable, "scripts/check_markdown_links.py"],
-            [sys.executable, "scripts/check_import_cycles.py", "--fail-on-cycle"],
-            [sys.executable, "scripts/evaluate_experience_retrieval.py", "--lexical-only"],
-            [sys.executable, "scripts/run_knowledge_acceptance_eval.py"],
+            ([sys.executable, "-m", "pytest", "-vv", "--durations=25", "-o", "faulthandler_timeout=60"], TEST_SUITE_TIMEOUT_SECONDS),
+            ([sys.executable, "scripts/generate_learning_artifacts.py", "--check"], DEFAULT_COMMAND_TIMEOUT_SECONDS),
+            ([sys.executable, "scripts/check_markdown_links.py"], DEFAULT_COMMAND_TIMEOUT_SECONDS),
+            ([sys.executable, "scripts/check_import_cycles.py", "--fail-on-cycle"], DEFAULT_COMMAND_TIMEOUT_SECONDS),
+            ([sys.executable, "scripts/evaluate_experience_retrieval.py", "--lexical-only"], DEFAULT_COMMAND_TIMEOUT_SECONDS),
+            ([sys.executable, "scripts/run_knowledge_acceptance_eval.py"], DEFAULT_COMMAND_TIMEOUT_SECONDS),
         ]
         failed = None
-        for command in commands:
-            checked_result = run(command, capture=True)
+        for command, timeout_seconds in commands:
+            checked_result = run(command, capture=True, timeout_seconds=timeout_seconds)
             output = (checked_result.stdout or "") + (checked_result.stderr or "")
             if output:
                 print(output, end="" if output.endswith("\n") else "\n")
