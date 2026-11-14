@@ -197,7 +197,7 @@ try {
     }
 
     # Reconcile authoritative GitHub PR state before deciding whether a different task may replace the pending task.
-    if ($existingTask -and $existingTask -cne $manualTask) {
+    if ($existingTask -and ($existingTask -cne $manualTask -or $replacePendingTask)) {
         if (-not $replacePendingTask) {
             throw "Another manual task is still pending. To explicitly abandon it while no autonomous PR is open, dispatch with replace_pending_task=true."
         }
