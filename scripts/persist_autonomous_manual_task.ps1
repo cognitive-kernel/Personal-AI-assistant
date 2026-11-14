@@ -76,33 +76,6 @@ try {
     } catch {
         throw "Pending autonomous PR state cannot be read; refusing to replace its task. $($_.Exception.Message)"
     }
-    if ($pendingPrFound) {
-        if ([string]::IsNullOrWhiteSpace($pendingPrRaw)) {
-            throw "Pending autonomous PR state is empty; refusing to replace its task."
-        }
-        try {
-            $pendingPrState = $pendingPrRaw | ConvertFrom-Json
-            $pendingNumber = 0
-            $pendingTaskNumber = 0
-            if (
-                -not [int]::TryParse([string]$pendingPrState.number, [ref]$pendingNumber) -or
-                $pendingNumber -lt 1 -or
-                [string]$pendingPrState.url -ne "https://github.com/$env:GH_REPO/pull/$pendingNumber" -or
-                [string]$pendingPrState.head_sha -notmatch '^[0-9a-f]{40}$' -or
-                [string]$pendingPrState.base_sha -notmatch '^[0-9a-f]{40}$' -or
-                [string]$pendingPrState.branch -notlike "codex/local-engineering-*" -or
-                [string]::IsNullOrWhiteSpace([string]$pendingPrState.run_id) -or
-                -not [int]::TryParse([string]$pendingPrState.task, [ref]$pendingTaskNumber) -or
-                $pendingTaskNumber -lt 1
-            ) {
-                throw "Pending PR metadata is incomplete or invalid."
-            }
-        } catch {
-            throw "A pending autonomous PR state exists but is invalid; refusing to replace its task. $($_.Exception.Message)"
-        }
-        throw "Autonomous PR #$pendingNumber is awaiting owner merge or post-merge validation. Resume that PR before submitting a new task."
-    }
-
     $existingTaskFound = $true
     try {
         $existingTask = [System.IO.File]::ReadAllText($pendingPath, [System.Text.Encoding]::UTF8)
@@ -121,15 +94,6 @@ try {
     if ($existingTask -and $existingTask -cne $manualTask) {
         throw "Another manual task is still pending. It cannot be replaced before its verified merge."
     }
-    if ($existingTaskFound) {
-        $ownerRecord = Get-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $existingTask
-    } else {
-        $ownerRecord = Get-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task ""
-        if ($null -ne $ownerRecord) {
-            throw "Pending task owner metadata exists without its task; preserving unknown state."
-        }
-    }
-
     $pullsUri = "https://api.github.com/repos/$env:GH_REPO/pulls?state=open&per_page=100"
     $pulls = @(Invoke-RestMethod -Method Get -Uri $pullsUri -Headers $headers -TimeoutSec 25)
     $pendingPr = @($pulls | Where-Object {
@@ -139,8 +103,117 @@ try {
         $_.head.ref -like "codex/local-engineering-*" -and
         $_.base.ref -eq "main"
     })
-    if ($pendingPr.Count -gt 0) {
-        throw "A previous autonomous task PR is still open. Recover and accept it before submitting another task."
+
+    function Write-RecoveredPendingPrRecord($PullRequest) {
+        $branch = [string]$PullRequest.head.ref
+        $branchMatch = [regex]::Match($branch, '^codex/local-engineering-(?<run>[0-9]+)-(?<attempt>[0-9]+)-task-(?<task>[0-9]+)$')
+        $number = 0
+        if (
+            -not $branchMatch.Success -or
+            -not [int]::TryParse([string]$PullRequest.number, [ref]$number) -or
+            $number -lt 1 -or
+            [string]$PullRequest.html_url -ne "https://github.com/$env:GH_REPO/pull/$number" -or
+            [string]$PullRequest.head.sha -notmatch '^[0-9a-f]{40}$' -or
+            [string]$PullRequest.base.sha -notmatch '^[0-9a-f]{40}$'
+        ) {
+            throw "GitHub autonomous PR metadata cannot be reconstructed safely; preserving local state."
+        }
+        $record = [ordered]@{
+            number = $number
+            url = [string]$PullRequest.html_url
+            head_sha = [string]$PullRequest.head.sha
+            base_sha = [string]$PullRequest.base.sha
+            branch = $branch
+            run_id = $branchMatch.Groups["run"].Value
+            task = [int]$branchMatch.Groups["task"].Value
+        }
+        $temporaryPath = Join-Path $stateDir ("pending-autonomous-pr-" + $env:GITHUB_RUN_ID + "-" + $env:GITHUB_RUN_ATTEMPT + ".tmp")
+        $backupPath = $null
+        if (Test-Path -LiteralPath $pendingPrPath -PathType Leaf) {
+            $backupPath = "$pendingPrPath.quarantine-$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT)-recovered-$([guid]::NewGuid().ToString('N')).json"
+            Move-Item -LiteralPath $pendingPrPath -Destination $backupPath -ErrorAction Stop
+        }
+        try {
+            [System.IO.File]::WriteAllText(
+                $temporaryPath,
+                ($record | ConvertTo-Json -Depth 5 -Compress),
+                [System.Text.UTF8Encoding]::new($false)
+            )
+            Move-Item -LiteralPath $temporaryPath -Destination $pendingPrPath -Force
+        } catch {
+            if ($backupPath -and (Test-Path -LiteralPath $backupPath) -and -not (Test-Path -LiteralPath $pendingPrPath)) {
+                Move-Item -LiteralPath $backupPath -Destination $pendingPrPath -ErrorAction SilentlyContinue
+            }
+            throw
+        } finally {
+            if (Test-Path -LiteralPath $temporaryPath) {
+                Remove-Item -LiteralPath $temporaryPath -Force
+            }
+        }
+        return $number
+    }
+
+    if ($pendingPr.Count -gt 1) {
+        throw "Multiple open autonomous PRs exist; refusing to guess which task owns durable state."
+    }
+    if ($pendingPr.Count -eq 1) {
+        $pendingNumber = Write-RecoveredPendingPrRecord -PullRequest $pendingPr[0]
+        throw "Autonomous PR #$pendingNumber is awaiting owner merge or post-merge validation."
+    }
+
+    if ($pendingPrFound) {
+        $localNumber = 0
+        $livePendingPr = $null
+        $localState = $null
+        try {
+            $localState = $pendingPrRaw | ConvertFrom-Json -ErrorAction Stop
+        } catch {
+            $localState = $null
+        }
+        if ($null -ne $localState -and [int]::TryParse([string]$localState.number, [ref]$localNumber) -and $localNumber -gt 0) {
+            try {
+                $livePendingPr = Invoke-RestMethod -Method Get -Uri "https://api.github.com/repos/$env:GH_REPO/pulls/$localNumber" -Headers $headers -TimeoutSec 25
+            } catch {
+                $statusCode = 0
+                if ($_.Exception.Response -and $_.Exception.Response.StatusCode) {
+                    $statusCode = [int]$_.Exception.Response.StatusCode
+                }
+                if ($statusCode -ne 404) {
+                    throw "Could not verify stale pending PR metadata against GitHub; preserving it. $($_.Exception.Message)"
+                }
+            }
+        }
+        if (
+            $null -ne $livePendingPr -and
+            $livePendingPr.user.login -eq "github-actions[bot]" -and
+            $livePendingPr.head.repo.full_name -eq $env:GH_REPO -and
+            $livePendingPr.head.ref -like "codex/local-engineering-*" -and
+            $livePendingPr.base.ref -eq "main"
+        ) {
+            $pendingNumber = Write-RecoveredPendingPrRecord -PullRequest $livePendingPr
+            throw "Autonomous PR #$pendingNumber is awaiting owner merge or post-merge validation."
+        }
+
+        $quarantinePath = "$pendingPrPath.quarantine-$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT)-$([guid]::NewGuid().ToString('N')).json"
+        try {
+            Move-Item -LiteralPath $pendingPrPath -Destination $quarantinePath -ErrorAction Stop
+            Write-Warning "Quarantined stale pending PR metadata after GitHub confirmed it is not an autonomous PR in this repository: $quarantinePath"
+        } catch {
+            throw "Stale pending PR metadata could not be quarantined safely. $($_.Exception.Message)"
+        }
+    }
+
+    $runAttempt = 0
+    if (-not [int]::TryParse([string]$env:GITHUB_RUN_ATTEMPT, [ref]$runAttempt) -or $runAttempt -lt 1) {
+        throw "Workflow run attempt is invalid; refusing to claim the pending task."
+    }
+    if ($existingTaskFound) {
+        $ownerRecord = Repair-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $existingTask -RunId ([string]$env:GITHUB_RUN_ID) -RunAttempt $runAttempt -Source "legacy_migration"
+    } else {
+        $ownerRecord = Get-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task ""
+        if ($null -ne $ownerRecord) {
+            throw "Pending task owner metadata exists without its task; preserving unknown state."
+        }
     }
 
     if (-not $existingTaskFound) {
@@ -157,10 +230,6 @@ try {
         }
     }
 
-    $runAttempt = 0
-    if (-not [int]::TryParse([string]$env:GITHUB_RUN_ATTEMPT, [ref]$runAttempt) -or $runAttempt -lt 1) {
-        throw "Workflow run attempt is invalid; refusing to claim the pending task."
-    }
     $ownerSource = if ($existingTaskFound) { "legacy_migration" } else { "manual_dispatch" }
     $ownerArgs = @{
         Path = $taskOwnerPath

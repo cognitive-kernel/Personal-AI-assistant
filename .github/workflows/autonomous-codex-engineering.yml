@@ -318,11 +318,12 @@ jobs:
           from scripts.autonomous_engineering_state_lock import durable_state_lock
           from scripts.autonomous_engineering_pending_task import validate_manual_task_submission
           from scripts.autonomous_engineering_pending_task_state import (
-              claim_pending_task_owner_unlocked,
+              reconcile_pending_task_owner_unlocked,
               pending_task_owner_path,
               validate_pending_task_owner_unlocked,
           )
           from scripts.autonomous_engineering_pending_pr_state import recover_pending_state_cleanup_unlocked
+          from scripts.autonomous_engineering_pending_pr_recovery import reconcile_pending_pr_state_unlocked
 
           state_dir = execution_state_directory()
           state_dir.mkdir(parents=True, exist_ok=True)
@@ -335,23 +336,24 @@ jobs:
               except RuntimeError as exc:
                   raise SystemExit(f"Pending-state cleanup recovery failed: {exc}") from exc
               if manual_task:
-                  pending_pr_found = True
                   try:
-                      pending_pr_raw = pending_pr_path.read_text(encoding="utf-8")
-                  except FileNotFoundError:
-                      pending_pr_found = False
-                      pending_pr_raw = ""
-                  except OSError as exc:
-                      raise SystemExit("Pending autonomous PR state cannot be read; refusing a new manual task.") from exc
-                  if pending_pr_found:
-                      if not pending_pr_raw.strip():
-                          raise SystemExit("Pending autonomous PR state is empty; refusing a new manual task.")
-                      try:
-                          pending_pr_state = json.loads(pending_pr_raw)
-                      except ValueError as exc:
-                          raise SystemExit("Pending autonomous PR state is malformed; refusing a new manual task.") from exc
-                      if not isinstance(pending_pr_state, dict) or not pending_pr_state.get("number"):
-                          raise SystemExit("Pending autonomous PR state is invalid; refusing a new manual task.")
+                      def get_pending_pr(number):
+                          try:
+                              return api(f"pulls/{number}")
+                          except urllib.error.HTTPError as exc:
+                              if exc.code == 404:
+                                  return {}
+                              raise
+
+                      pending_pr_state = reconcile_pending_pr_state_unlocked(
+                          state_dir,
+                          repo,
+                          pulls,
+                          get_pending_pr,
+                      )
+                  except RuntimeError as exc:
+                      raise SystemExit(f"Pending autonomous PR recovery failed: {exc}") from exc
+                  if pending_pr_state is not None:
                       raise SystemExit(
                           f"Autonomous PR #{pending_pr_state['number']} is awaiting owner merge or post-merge validation."
                       )
@@ -392,7 +394,7 @@ jobs:
                       else ("manual_dispatch" if manual_task_supplied else "recovery")
                   )
                   try:
-                      claim_pending_task_owner_unlocked(
+                      reconcile_pending_task_owner_unlocked(
                           state_dir, pending_task, run_id, run_attempt, source=owner_source,
                       )
                       validate_pending_task_owner_unlocked(

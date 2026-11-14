@@ -26,7 +26,7 @@ def pending_pr_path() -> Path:
     return autonomous_state_directory() / "pending-autonomous-pr.json"
 
 
-def save_pending_pr_unlocked(value: dict[str, Any], repo: str) -> None:
+def save_pending_pr_unlocked(value: dict[str, Any], repo: str, state_directory: Path | None = None) -> None:
     """Validate and atomically replace the pending PR record; caller owns the state lock."""
     string_fields = ("url", "head_sha", "base_sha", "branch", "run_id")
     if (
@@ -44,7 +44,7 @@ def save_pending_pr_unlocked(value: dict[str, Any], repo: str) -> None:
         or value["url"] != f"https://github.com/{repo}/pull/{value['number']}"
     ):
         raise RuntimeError("Refusing to persist invalid pending PR metadata.")
-    path = pending_pr_path()
+    path = (state_directory / "pending-autonomous-pr.json") if state_directory is not None else pending_pr_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + f".{os.getpid()}.tmp")
     try:
@@ -152,8 +152,8 @@ def _valid_pending_pr_url(url: Any, number: int) -> bool:
     )
 
 
-def load_pending_pr_unlocked() -> dict[str, Any] | None:
-    path = pending_pr_path()
+def load_pending_pr_unlocked(state_directory: Path | None = None) -> dict[str, Any] | None:
+    path = (state_directory / "pending-autonomous-pr.json") if state_directory is not None else pending_pr_path()
     try:
         raw = path.read_text(encoding="utf-8")
     except FileNotFoundError:

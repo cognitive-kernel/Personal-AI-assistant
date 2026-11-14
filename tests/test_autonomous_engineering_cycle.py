@@ -58,7 +58,10 @@ def test_failed_local_and_github_checks_retry_same_task_then_wait_for_owner_merg
     monkeypatch.setattr(cycle, "stop_checkpoint_watcher", lambda *args: None)
     monkeypatch.setattr(cycle, "record", lambda *args, **kwargs: None)
     monkeypatch.setattr(cycle, "snapshot", lambda *args: None)
-    monkeypatch.setattr(cycle, "api", lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        cycle, "api",
+        lambda token, repo, method, path, payload=None: [] if path == "pulls?state=open&per_page=100" else {},
+    )
     monkeypatch.setattr(cycle, "find_open_autonomous_pr", lambda *args: None)
     head = ["base-sha"]
 
@@ -212,10 +215,19 @@ def test_run_cycle_recovers_open_task_pr_and_waits_for_owner_merge(
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "autonomous-state"))
     monkeypatch.setenv("GH_TOKEN", "test-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
-    monkeypatch.setattr(cycle, "find_open_autonomous_pr", lambda *args: {
-        "number": 77, "url": "https://github.com/owner/repository/pull/77",
-        "head_sha": "a" * 40, "base_sha": "b" * 40, "branch": "codex/local-engineering-77-1-task-1",
-    })
+    live_pr = {
+        "number": 77,
+        "html_url": "https://github.com/owner/repository/pull/77",
+        "state": "open",
+        "merged": False,
+        "user": {"login": "github-actions[bot]"},
+        "head": {
+            "ref": "codex/local-engineering-77-1-task-1",
+            "sha": "a" * 40,
+            "repo": {"full_name": "owner/repository"},
+        },
+        "base": {"ref": "main", "sha": "b" * 40},
+    }
     monkeypatch.setattr(cycle, "complete_pending_pr", lambda *args: {
         "number": 77, "url": "https://github.com/owner/repository/pull/77",
         "head_sha": "a" * 40, "base_sha": "b" * 40,
@@ -223,7 +235,14 @@ def test_run_cycle_recovers_open_task_pr_and_waits_for_owner_merge(
     })
     monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: (_ for _ in ()).throw(AssertionError("checkpoint cleared before owner merge")))
     monkeypatch.setattr(cycle, "clear_pending_state", lambda: (_ for _ in ()).throw(AssertionError("pending state cleared before owner merge")))
-    monkeypatch.setattr(cycle, "api", lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        cycle, "api",
+        lambda token, repo, method, path, payload=None: (
+            [live_pr] if path == "pulls?state=open&per_page=100"
+            else live_pr if path == "pulls/77"
+            else {}
+        ),
+    )
     monkeypatch.setattr(cycle, "snapshot", lambda *args: None)
     monkeypatch.setattr(cycle, "record", lambda *args, **kwargs: records.append((args, kwargs)))
 

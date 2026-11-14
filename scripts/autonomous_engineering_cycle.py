@@ -55,7 +55,9 @@ try:
         clear_pending_pr,
         clear_pending_task,
         clear_pending_state,
+        recover_pending_state_cleanup_unlocked,
     )
+    from .autonomous_engineering_pending_pr_recovery import reconcile_pending_pr_state_unlocked
 except ImportError:  # Direct script execution from the scripts directory.
     from autonomous_engineering_checkpoint_contract import metadata_confirms_watcher_ready
     from autonomous_engineering_checkpoint_process import process_start_time
@@ -72,7 +74,9 @@ except ImportError:  # Direct script execution from the scripts directory.
         clear_pending_pr,
         clear_pending_task,
         clear_pending_state,
+        recover_pending_state_cleanup_unlocked,
     )
+    from autonomous_engineering_pending_pr_recovery import reconcile_pending_pr_state_unlocked
 
 try:
     from . import autonomous_engineering_cycle_checkpoints as _cycle_checkpoints
@@ -276,7 +280,26 @@ def run_cycle(args: argparse.Namespace) -> int:
     if not token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
         raise RuntimeError("A valid workflow token and repository are required.")
 
-    saved_pending_pr = load_pending_pr()
+    state_dir = _autonomous_state_dir()
+    with durable_state_lock(state_dir):
+        recover_pending_state_cleanup_unlocked(state_dir)
+        open_pull_requests = api(token, repo, "GET", "pulls?state=open&per_page=100")
+        if not isinstance(open_pull_requests, list):
+            raise RuntimeError("GitHub returned an invalid open pull request listing.")
+        def fetch_pending_pr(number: int) -> dict[str, Any]:
+            try:
+                return api(token, repo, "GET", f"pulls/{number}")
+            except RuntimeError as exc:
+                if "failed (404)" in str(exc):
+                    return {}
+                raise
+
+        saved_pending_pr = reconcile_pending_pr_state_unlocked(
+            state_dir,
+            repo,
+            open_pull_requests,
+            fetch_pending_pr,
+        )
     if saved_pending_pr is not None:
         current_pending = api(token, repo, "GET", f"pulls/{saved_pending_pr['number']}")
         if current_pending.get("merged") is True:
@@ -310,23 +333,6 @@ def run_cycle(args: argparse.Namespace) -> int:
             print(f"PR #{validated['number']} passed exact-head checks and is awaiting owner review: {validated['url']}")
             return 0
         raise RuntimeError("The saved autonomous PR was closed without a confirmed merge; pending task and checkpoint are preserved.")
-
-    pending_pr = find_open_autonomous_pr(token, repo)
-    if pending_pr:
-        record(
-            args.run_id, args.run_attempt, "recovery",
-            f"بازیابی PR #{pending_pr.get('number')}",
-            "اعتبارسنجی PR باز و ثبت وضعیت پایدار؛ منتظر بازبینی و ادغام دستی مالک",
-        )
-        validated = complete_pending_pr(token, repo, pending_pr, args.run_id, 1)
-        record(
-            args.run_id, args.run_attempt, "publication",
-            f"PR #{validated['number']} آمادهٔ بازبینی مالک است",
-            "CI دقیق موفق است؛ PR برای بازبینی مالک باز می‌ماند و هیچ ادغام یا وظیفهٔ بعدی به‌صورت خودکار انجام نمی‌شود",
-        )
-        snapshot(args.run_id, args.run_attempt)
-        print(f"PR #{validated['number']} passed exact-head checks and is awaiting owner review: {validated['url']}")
-        return 0
 
     started = time.monotonic()
     request_file = ROOT / ".agent-request.json"

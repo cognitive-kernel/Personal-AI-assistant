@@ -2,10 +2,11 @@ Set-StrictMode -Version Latest
 
 function Get-AutonomousTaskDigest {
     param([Parameter(Mandatory=$true)][string]$Task)
+    $normalizedTask = $Task.Replace("`r`n", "`n").Replace("`r", "`n")
     $shaProvider = [System.Security.Cryptography.SHA256]::Create()
     try {
         return [BitConverter]::ToString(
-            $shaProvider.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Task))
+            $shaProvider.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($normalizedTask))
         ).Replace("-", "").ToLowerInvariant()
     } finally {
         $shaProvider.Dispose()
@@ -46,7 +47,7 @@ function Get-AutonomousTaskOwnerRecord {
         -not ($record.schema_version -is [int] -or $record.schema_version -is [long]) -or
         [long]$record.schema_version -ne 1 -or
         -not ($record.task_sha256 -is [string]) -or
-        [string]$record.task_sha256 -cne $taskDigest -or
+        [string]$record.task_sha256 -notmatch '^[0-9a-f]{64}$' -or
         -not ($record.owner_run_id -is [string]) -or
         [string]::IsNullOrWhiteSpace([string]$record.owner_run_id) -or
         -not ($record.submitted_run_id -is [string]) -or
@@ -69,9 +70,51 @@ function Get-AutonomousTaskOwnerRecord {
         -not ($record.source -is [string]) -or
         [string]$record.source -notin @("manual_dispatch", "recovery", "legacy_migration")
     ) {
-        throw "Pending task owner metadata violates schema v1 or does not match the pending task."
+        throw "Pending task owner metadata violates schema v1; preserving it."
+    }
+    if ([string]$record.task_sha256 -cne $taskDigest) {
+        throw "Pending task owner digest does not match the durable task; preserving both records."
     }
     return $record
+}
+
+
+function Repair-AutonomousTaskOwnerRecord {
+    param(
+        [Parameter(Mandatory=$true)][string]$Path,
+        [Parameter(Mandatory=$true)][string]$Task,
+        [Parameter(Mandatory=$true)][string]$RunId,
+        [Parameter(Mandatory=$true)][int]$RunAttempt,
+        [Parameter(Mandatory=$true)][ValidateSet("manual_dispatch", "recovery", "legacy_migration")][string]$Source
+    )
+
+    $existing = $null
+    try {
+        $existing = Get-AutonomousTaskOwnerRecord -Path $Path -Task $Task
+    } catch {
+        if ($_.Exception.Message -like "*digest does not match the durable task*") {
+            throw
+        }
+        if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+            throw
+        }
+        $backupPath = "$Path.quarantine-$RunId-$RunAttempt-$([guid]::NewGuid().ToString('N')).json"
+        try {
+            Move-Item -LiteralPath $Path -Destination $backupPath -ErrorAction Stop
+        } catch {
+            throw "Stale task ownership metadata could not be quarantined; preserving the task. $($_.Exception.Message)"
+        }
+        try {
+            return Write-AutonomousTaskOwnerRecord -Path $Path -Task $Task -RunId $RunId -RunAttempt $RunAttempt -Source "recovery" -Existing $null
+        } catch {
+            if (-not (Test-Path -LiteralPath $Path) -and (Test-Path -LiteralPath $backupPath)) {
+                Move-Item -LiteralPath $backupPath -Destination $Path -ErrorAction SilentlyContinue
+            }
+            throw
+        }
+    }
+
+    return Write-AutonomousTaskOwnerRecord -Path $Path -Task $Task -RunId $RunId -RunAttempt $RunAttempt -Source $Source -Existing $existing
 }
 
 function Repair-AutonomousPendingStateCleanup {
@@ -185,4 +228,4 @@ function Write-AutonomousTaskOwnerRecord {
     return $record
 }
 
-Export-ModuleMember -Function Get-AutonomousTaskDigest, Get-AutonomousTaskOwnerRecord, Write-AutonomousTaskOwnerRecord, Repair-AutonomousPendingStateCleanup
+Export-ModuleMember -Function Get-AutonomousTaskDigest, Get-AutonomousTaskOwnerRecord, Repair-AutonomousTaskOwnerRecord, Write-AutonomousTaskOwnerRecord, Repair-AutonomousPendingStateCleanup

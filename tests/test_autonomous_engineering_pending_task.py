@@ -128,6 +128,9 @@ def test_early_manual_task_persistence_script_is_protected_and_validated_in_ci()
     assert "pending-autonomous-pr.json" in script
     assert "AUTONOMOUS_ENGINEERING_PROGRESS_DIR" in script
     assert "awaiting owner merge or post-merge validation" in script
+    assert "Write-RecoveredPendingPrRecord" in script
+    assert "Multiple open autonomous PRs exist" in script
+    assert "quarantine-" in script
 
 
 def test_manual_task_state_uses_one_cross_process_lock_and_capture_is_read_only():
@@ -148,6 +151,9 @@ def test_manual_task_state_uses_one_cross_process_lock_and_capture_is_read_only(
     assert "AutonomousEngineeringTaskState.psm1" in script
     assert "pending-manual-task-owner.json" in script
     assert "Get-AutonomousTaskDigest" in task_state_module
+    assert 'Replace("`r`n", "`n").Replace("`r", "`n")' in task_state_module
+    assert "digest does not match the durable task" in task_state_module
+    assert "Repair-AutonomousTaskOwnerRecord" in task_state_module
     assert "schema_version = 1" in task_state_module
     assert "claim_count" in task_state_module
     assert "Repair-AutonomousPendingStateCleanup" in task_state_module
@@ -156,7 +162,7 @@ def test_manual_task_state_uses_one_cross_process_lock_and_capture_is_read_only(
     assert "The manual task input was not durably persisted" in capture
     assert "temporary.replace(pending_path)" not in capture
     assert "execution_state_directory()" in capture
-    assert "claim_pending_task_owner_unlocked" in capture
+    assert "reconcile_pending_task_owner_unlocked" in capture
     assert "validate_pending_task_owner_unlocked" in capture
     assert "recover_pending_state_cleanup_unlocked" in capture
     assert "owner_path = pending_task_owner_path(state_dir)" in capture
