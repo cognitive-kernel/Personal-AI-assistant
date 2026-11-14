@@ -157,9 +157,6 @@ def run(
                 if owner_bound_windows_job:
                     job.terminate(125)
                     os._exit(125)
-                if owner_bound_windows_job:
-                    job.terminate(125)
-                    os._exit(125)
                 _terminate_process(process, job)
                 return 125
             remaining = deadline - time.monotonic()
@@ -168,13 +165,10 @@ def run(
                 if owner_bound_windows_job:
                     job.terminate(124)
                     os._exit(124)
-                if owner_bound_windows_job:
-                    job.terminate(124)
-                    os._exit(124)
                 _terminate_process(process, job)
                 return 124
             try:
-                chunk = events.get(timeout=min(0.25, remaining))
+                chunk = events.get(timeout=min(0.05, remaining))
             except queue.Empty:
                 if process.poll() is not None and reader.is_alive() is False:
                     break
@@ -187,14 +181,20 @@ def run(
         while process.poll() is None:
             if not parent_chain_is_alive(parent_chain):
                 print("Codex stopped because its owning controller exited or its PID identity changed.", file=sys.stderr)
+                if owner_bound_windows_job:
+                    job.terminate(125)
+                    os._exit(125)
                 _terminate_process(process, job)
                 return 125
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 print(f"Codex exceeded its {timeout_seconds}-second execution budget and was terminated.", file=sys.stderr)
+                if owner_bound_windows_job:
+                    job.terminate(124)
+                    os._exit(124)
                 _terminate_process(process, job)
                 return 124
-            time.sleep(min(0.25, remaining))
+            time.sleep(min(0.05, remaining))
         exit_code = int(process.wait())
         if owner_bound_windows_job:
             job.terminate(exit_code)
