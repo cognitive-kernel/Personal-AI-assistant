@@ -124,6 +124,24 @@ jobs:
             }
           }
           Write-Host "Parsed $($files.Count) PowerShell scripts/modules successfully."
+
+      - name: Verify Windows account identity portability
+        shell: pwsh
+        run: |
+          Import-Module "$env:GITHUB_WORKSPACE\scripts\AutonomousWindowsIdentity.psm1" -Force
+          $local = ConvertTo-AutonomousWindowsAccountName -AccountName "runner-example"
+          $dotLocal = ConvertTo-AutonomousWindowsAccountName -AccountName ".\app-example"
+          $domain = ConvertTo-AutonomousWindowsAccountName -AccountName "CONTOSO\runner-example"
+          $upn = ConvertTo-AutonomousWindowsAccountName -AccountName "runner@example.invalid"
+          if ($local -ne "$env:COMPUTERNAME\runner-example") { throw "Unqualified accounts must resolve to the current machine." }
+          if ($dotLocal -ne "$env:COMPUTERNAME\app-example") { throw "Dot-local accounts must resolve to the current machine." }
+          if ($domain -ne "CONTOSO\runner-example") { throw "Domain-qualified account names must be preserved." }
+          if ($upn -ne "runner@example.invalid") { throw "UPN account names must be preserved." }
+          if ((Get-AutonomousLocalAccountName -AccountName $local) -ne "runner-example") { throw "Local account detection failed." }
+          if ($null -ne (Get-AutonomousLocalAccountName -AccountName $domain)) { throw "Domain accounts must not be classified as local." }
+          Write-Host "Local, dot-local, domain-qualified, and UPN account identity normalization passed."
+          python -m pytest -q tests/test_autonomous_engineering_windows_portability.py
+
       - name: Test SQLite migration, restore, and staging cleanup on Windows
         run: >-
           python -m pytest -q
