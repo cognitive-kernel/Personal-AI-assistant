@@ -103,7 +103,7 @@ def test_model_details_accounts_for_model_and_kv_cache_already_loaded(monkeypatc
                 },
             }
         return {"models": [{
-            "name": "llama:large",
+            "name": "llama:large-codex-ctx8192",
             "context_length": 8192,
             "size": 5 * 1024**3,
             "size_vram": 0,
