@@ -466,7 +466,7 @@ def complete_task(
     with db.learning_connection() as conn:
         # A reclaiming worker must not interleave between validation and completion.
         conn.execute("BEGIN IMMEDIATE")
-        row = _owned_running_task(conn, task_id, worker_id)
+        row = _owned_running_task(conn, task_id, worker_id, lease_epoch)
         if row["status"] != "running":
             raise TaskManagerError(f"Cannot complete a task with status {row['status']}.")
         conn.execute(
@@ -489,7 +489,7 @@ def fail_task(
     with db.learning_connection() as conn:
         # Serialize retry scheduling with any competing lease reclamation.
         conn.execute("BEGIN IMMEDIATE")
-        row = _owned_running_task(conn, task_id, worker_id)
+        row = _owned_running_task(conn, task_id, worker_id, lease_epoch)
         # Explicit user control takes precedence over automatic retry. This also
         # covers failures before a handler reaches its next cooperative checkpoint.
         if row["status"] == "cancel_requested":
@@ -624,7 +624,7 @@ def resume_task(task_id: int, *, scheduled_at: datetime | None = None) -> dict[s
 def get_worker_control(task_id: int, worker_id: str, *, lease_epoch: int) -> str:
     """Return running/pause_requested/cancel_requested for cooperative worker polling."""
     with db.learning_connection() as conn:
-        row = _owned_running_task(conn, task_id, worker_id)
+        row = _owned_running_task(conn, task_id, worker_id, lease_epoch)
     return str(row["status"])
 
 
