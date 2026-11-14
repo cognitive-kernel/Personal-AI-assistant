@@ -207,11 +207,11 @@ def test_run_cycle_bounds_failed_codex_attempts_and_preserves_task(monkeypatch: 
         "prompt": str(prompt), "mode": "continuous",
     })()
 
-    with pytest.raises(RuntimeError, match="attempt limit reached \(3\)"):
+    with pytest.raises(RuntimeError, match=r"attempt limit reached \(2\)"):
         cycle.run_cycle(args)
 
-    assert calls["codex"] == 3
-    assert len(stopped) == 3
+    assert calls["codex"] == 2
+    assert len(stopped) == 2
     assert prompt.read_text(encoding="utf-8") == "Complete the selected task."
 
 
