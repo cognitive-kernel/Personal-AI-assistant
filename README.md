@@ -8,11 +8,7 @@
 - GPU: Intel Integrated Graphics، حافظه گزارش‌شده 128 MB
 - SystemRAM_GB : 31.78
 GPUs         : Intel(R) UHD Graphics 730 | VRAM: 2 GB
-Context      : 131072
-Layers       : 24
-KVHeads      : 8
-KeyLength    : 64
-ValueLength  : 64
+
 
 
 برنامه منابع واقعی را هنگام اجرا تشخیص می‌دهد، تعداد thread و context را محدود می‌کند و GPU را به‌صورت پیش‌فرض مجبور به استفاده نمی‌کند. اجرای کارهای سنگین باید بودجه منابع داشته باشد.
