@@ -209,3 +209,17 @@ def test_windows_assignment_failure_does_not_leave_suspended_process(monkeypatch
 
     assert "pid" in spawned
     assert not psutil.pid_exists(spawned["pid"]), "An unassigned suspended process survived fail-closed cleanup."
+
+
+def test_posix_process_group_wait_rejects_invalid_budgets():
+    from scripts.autonomous_engineering_process_group import (
+        terminate_process_group,
+        wait_for_process_group_exit,
+    )
+
+    for value in (True, -1, float("nan"), float("inf")):
+        with pytest.raises(ValueError):
+            wait_for_process_group_exit(os.getpgrp(), value)
+    for value in (True, -1, float("nan"), float("inf")):
+        with pytest.raises(ValueError):
+            terminate_process_group(os.getpgrp(), grace_seconds=value)
