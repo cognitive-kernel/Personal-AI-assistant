@@ -36,7 +36,8 @@ def test_windows_provisioning_does_not_require_a_fixed_users_group_or_admin_acl_
     assert '"SYSTEM:(OI)(CI)F"' not in script + module
     assert "Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid" in script
     assert "Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -ReadOnlySid $appSid" in script
-    assert '*$($RunnerSid):(OI)(CI)M' in module
+    assert '$modifySids = @($RunnerSid)' in module
+    assert '*$($_):(OI)(CI)M' in module
     assert '*$($ReadOnlySid):(OI)(CI)RX' in module
 
 
