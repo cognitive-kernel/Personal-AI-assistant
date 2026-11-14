@@ -1,5 +1,30 @@
 # Engineering Continuity Log
 
+## 2026-11-14 — PR #757: owner-bound Codex process lifecycle
+
+### Root-cause analysis
+
+- Main already had separate contracts for workflow concurrency, repository worktree locking, durable task/PR state serialization, and checkpoint-watcher ownership (PR #719). Those contracts protected state transitions, but the Codex child process was not bound to the lifetime of its controller.
+- If a controller process exited unexpectedly, the OS released its worktree lock. A Codex descendant could remain alive and continue writing, so a later recovery run could acquire the lock while the old model process was still active.
+- Codex provider settings amplified stalls: 900,000 ms stream-idle timeout, 10 stream retries, and 4 request retries. The smoke invocation had no separate hard process deadline.
+
+### Corrective changes
+
+- Added `scripts/autonomous_engineering_codex_runner.py` as a focused process-supervision boundary. It captures the owning process ancestry with PID and OS creation time, rejects missing/reused/unverifiable owners, streams JSONL without blocking deadline checks, and enforces a 300-second smoke or 1,800-second task deadline.
+- Added `scripts/autonomous_engineering_process_job.py`. On Windows, Codex starts suspended, is assigned to a kill-on-close Job Object, and is resumed only after assignment; this prevents descendants from escaping before the ownership boundary is established. On POSIX, the Codex process starts in a new process group and timeout/owner loss terminates and reaps the group.
+- Smoke uses 120-second stream idle timeout with zero provider retries. Normal tasks use 300-second idle timeout, two stream retries, and one request retry.
+- Added ADR-020 and regression coverage for owner-chain loss/PID identity, hard timeout, descendant cleanup, and smoke/task configuration profiles. Existing durable state locks, checkpoint watcher lifecycle, task payloads, and merge policy remain unchanged.
+
+### Validation and residual risk
+
+- Draft PR: https://github.com/cognitive-kernel/Personal-AI-assistant/pull/757
+- Implementation head when the PR was opened: `858a724ff8e2c007f4fb4b2a6d2406ecee6dfcff`. GitHub tests, dependency audit, CodeQL, and browser E2E were queued at that time; no green exact-head result is claimed.
+- The existing autonomous run `43592197032` remained in the old Step 13 smoke on the pre-change main SHA. It does not validate this PR.
+- Windows Job Object behavior, target-host model latency, long-duration soak, and crash/restart acceptance require the actual Windows Runner and remain pending.
+- Safe pause remained enabled; no workflow, secret, repository variable, user data, or PR merge state was changed by this task.
+
+---
+
 ## 2026-11-11 — PR #709: research-first learning with gpt-oss:20b
 
 ### Root-cause analysis
