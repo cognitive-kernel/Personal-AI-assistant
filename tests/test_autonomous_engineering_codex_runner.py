@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import psutil
@@ -77,7 +79,7 @@ def test_codex_runner_terminates_descendants_when_owner_process_exits(tmp_path: 
             sys.executable,
             str(Path(runner.__file__).resolve()),
             "--timeout-seconds", "30",
-            "--parent-chain", __import__("json").dumps(chain),
+            "--parent-chain", json.dumps(chain),
             "--", sys.executable, "-c", command_code,
         ],
         cwd=Path(__file__).resolve().parents[1],
@@ -85,11 +87,11 @@ def test_codex_runner_terminates_descendants_when_owner_process_exits(tmp_path: 
         stderr=subprocess.PIPE,
     )
     try:
-        deadline = __import__("time").monotonic() + 10
+        deadline = time.monotonic() + 10
         while __import__("time").monotonic() < deadline and not child_pid_file.is_file():
             if wrapper.poll() is not None:
                 raise AssertionError("Codex wrapper exited before launching the child.")
-            __import__("time").sleep(0.05)
+            time.sleep(0.05)
         assert child_pid_file.is_file(), "Codex child did not start."
         owner.terminate()
         owner.wait(timeout=5)
