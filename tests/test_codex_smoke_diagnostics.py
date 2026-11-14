@@ -1,3 +1,5 @@
+import pytest
+
 from scripts import autonomous_engineering_progress as progress
 
 
