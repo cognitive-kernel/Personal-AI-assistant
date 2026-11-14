@@ -21,6 +21,27 @@ def runtime_store(tmp_path, monkeypatch):
     task_manager.initialize_task_store()
 
 
+def test_unregistered_task_type_is_terminally_failed(runtime_store):
+    task = task_manager.create_task("runtime.unregistered", {})
+    runtime = TaskRuntime(
+        {"runtime.unregistered": reject_unregistered_task},
+        poll_interval=0.05,
+        lease_seconds=10,
+    )
+    runtime.start()
+    try:
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            saved = task_manager.get_task(task["id"])
+            if saved["status"] == "failed":
+                break
+            time.sleep(0.05)
+        assert saved["status"] == "failed"
+        assert "No registered handler" in (saved.get("error") or "")
+    finally:
+        assert runtime.stop(timeout=3) is True
+
+
 def test_runtime_processes_queued_task_and_stops_cleanly(runtime_store):
     finished = threading.Event()
     task = task_manager.create_task("runtime.echo", {"value": 42})
