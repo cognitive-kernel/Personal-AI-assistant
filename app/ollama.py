@@ -415,6 +415,24 @@ def model_identity(
     raise OllamaError(f"Unsupported {purpose} model identity provider.")
 
 
+def _find_running_model_entry(running_models: Any, model: str) -> dict[str, Any] | None:
+    if not isinstance(running_models, list):
+        return None
+    variant_prefix = f"{model}-codex-ctx"
+    return next((
+        item for item in running_models
+        if isinstance(item, dict)
+        and (
+            item.get("name") == model
+            or (
+                isinstance(item.get("name"), str)
+                and item["name"].startswith(variant_prefix)
+                and item["name"][len(variant_prefix):].isdigit()
+            )
+        )
+    ), None)
+
+
 def model_details(model: str, context_tokens: int | None = None) -> dict[str, Any]:
     """Return local Ollama model metadata and a conservative memory/context estimate."""
     name = str(model or "").strip()
@@ -438,19 +456,7 @@ def model_details(model: str, context_tokens: int | None = None) -> dict[str, An
         context_tokens if context_tokens is not None else maximum_context,
     )
     running = _request("/api/ps", timeout=4).get("models", [])
-    context_variant_prefix = f"{name}-codex-ctx"
-    running_item = next((
-        item for item in running
-        if isinstance(item, dict)
-        and (
-            item.get("name") == name
-            or (
-                isinstance(item.get("name"), str)
-                and item["name"].startswith(context_variant_prefix)
-                and item["name"][len(context_variant_prefix):].isdigit()
-            )
-        )
-    ), None) if isinstance(running, list) else None
+    running_item = _find_running_model_entry(running, name)
     hardware = detect_hardware()
     running_context = running_item.get("context_length") if isinstance(running_item, dict) else None
     recommended_context = _recommended_context_tokens(
@@ -758,7 +764,16 @@ def chat(
         model_details_meta if isinstance(model_details_meta, dict) else {},
         weight_bytes,
     )
-    hardware_safe_context = _recommended_context_tokens(maximum_context, memory_estimate, hardware)
+    running_models = _request("/api/ps", timeout=4).get("models", [])
+    running_item = _find_running_model_entry(running_models, model)
+    running_context = running_item.get("context_length") if isinstance(running_item, dict) else None
+    hardware_safe_context = _recommended_context_tokens(
+        maximum_context,
+        memory_estimate,
+        hardware,
+        model_is_loaded=running_item is not None,
+        running_context_tokens=running_context,
+    )
     if hardware_safe_context is None:
         raise OllamaError(
             f"Cannot calculate a hardware-safe context for '{model}': verified model weights, "
