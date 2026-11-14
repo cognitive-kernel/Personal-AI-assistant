@@ -1506,9 +1506,9 @@ def test_non_rejected_lesson_version_cannot_be_deleted(isolated_store, monkeypat
 def test_response_capture_waits_longer_and_supports_continue_generation():
     from pathlib import Path
     source = Path(browser_automation.__file__).read_text(encoding="utf-8")
-    assert "_RESPONSE_TIMEOUT_SECONDS = 1800" in source
+    assert '_RESPONSE_TIMEOUT_SECONDS = int(SETTING_DEFAULTS["ai_learning_response_timeout_seconds"])' in source
     assert 'button:has-text("Continue generating")' in source
-    assert "_STABLE_SECONDS = 20.0" in source
+    assert '_STABLE_SECONDS = float(SETTING_DEFAULTS["ai_learning_stability_seconds"])' in source
     assert "partial_response=last_text or None" in source
     assert "service.mark_run_needs_user_action(" in source
     assert "**_worker_lease_kwargs" in source
