@@ -956,7 +956,7 @@ def test_windows_codex_command_uses_call_without_nested_cmd_quoting(monkeypatch)
     from scripts import autonomous_engineering_progress as progress
 
     monkeypatch.setenv("COMSPEC", r"C:\Windows\System32\cmd.exe")
-    executable = r"C:\Users\runner-svc\AppData\Roaming\npm\codex.CMD"
+    executable = str(tmp_path / "profile" / "AppData" / "Roaming" / "npm" / "codex.CMD")
     command = progress.codex_command(executable, ["exec", "--json", "-"])
 
     assert command[0] == progress.sys.executable
@@ -1548,3 +1548,18 @@ def test_recovered_open_pr_is_persisted_before_exact_sha_ci(
 
     assert result["validated"] is True
     assert result["awaiting_review"] is True
+
+
+def test_autonomous_windows_workflows_do_not_pin_tools_to_a_specific_user_or_python_install():
+    root = Path(__file__).resolve().parents[1]
+    workflow_paths = (
+        root / ".github" / "workflows" / "autonomous-codex-engineering.yml",
+        root / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml",
+    )
+    for workflow_path in workflow_paths:
+        content = workflow_path.read_text(encoding="utf-8")
+        lowered = content.casefold()
+        assert r"c:\users\admin" not in lowered
+        assert r"c:\program files\python311" not in lowered
+        assert "get-command python" in lowered
+        assert "get-command ollama" in lowered
