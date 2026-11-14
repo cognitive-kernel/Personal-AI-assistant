@@ -89,7 +89,7 @@ function Get-AutomaticContext {
     $runningMatches = @($runtime.models | Where-Object {
         $_ -and $_.name -and (
             ([string]$_.name).Equals($ModelName, [System.StringComparison]::OrdinalIgnoreCase) -or
-            ([string]$_.name) -match ("(?i)^" + [regex]::Escape($ModelName) + "-codex-ctx[0-9]+$")
+            ([string]$_.name) -match ("(?i)^" + [regex]::Escape($ModelName) + "-codex-(?:ctx[0-9]+|[0-9]+k)$")
         )
     })
     if ($runningMatches.Count -gt 1) {
