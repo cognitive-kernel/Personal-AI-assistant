@@ -14,11 +14,12 @@ from .db import learning_connection
 from . import sandbox_consent, sandbox_tasks, learning_candidate_channels
 from .learning_review_tasks import enqueue_candidate_review, enqueue_candidate_sandbox_review
 from .task_routes import require_loopback_client
+from .module_settings import require_module_enabled
 
 router = APIRouter(
     prefix="/api/learning/candidates",
     tags=["learning-candidate-review"],
-    dependencies=[Depends(require_loopback_client)],
+    dependencies=[Depends(require_loopback_client), Depends(require_module_enabled("topic_learning"))],
 )
 
 
