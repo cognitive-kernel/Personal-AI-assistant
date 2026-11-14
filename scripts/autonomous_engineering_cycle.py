@@ -85,6 +85,11 @@ except ImportError:  # Direct script execution from the scripts directory.
     import autonomous_engineering_cycle_checkpoints as _cycle_checkpoints
     import autonomous_engineering_cycle_workspace as _cycle_workspace
 
+try:
+    from .autonomous_engineering_retry_policy import RetryPolicy
+except ImportError:  # Direct script execution from the scripts directory.
+    from autonomous_engineering_retry_policy import RetryPolicy
+
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKPOINT_SCRIPT = Path(__file__).resolve().with_name("autonomous_engineering_checkpoint.py")
@@ -100,6 +105,7 @@ PROTECTED = {
 }
 MARKERS = re.compile(r"(?m)^(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)\s*$")
 CYCLE_LIMIT = 6 * 60 * 60
+TASK_RETRY_POLICY = RetryPolicy(max_attempts=3, max_elapsed_seconds=2 * 60 * 60)
 
 
 def run(command: list[str], *, env: dict[str, str] | None = None, capture: bool = False) -> subprocess.CompletedProcess[str]:
@@ -362,10 +368,22 @@ def run_cycle(args: argparse.Namespace) -> int:
     published_pr: dict[str, Any] | None = None
 
     while True:
-        if time.monotonic() - started >= CYCLE_LIMIT - 60:
+        elapsed = time.monotonic() - started
+        if elapsed >= CYCLE_LIMIT - 60:
             raise RuntimeError(
                 f"Task {task} exhausted this runner window after {attempt} attempt(s); "
-                "it was not published as verified."
+                "its checkpoint is retained and it was not published as verified."
+            )
+        if not TASK_RETRY_POLICY.allows_attempt(attempt, elapsed):
+            reason = TASK_RETRY_POLICY.exhaustion_reason(attempt, elapsed)
+            record(
+                args.run_id, args.run_attempt, "retry",
+                f"وظیفهٔ {task} برای اجرای بعدی نگه داشته شد",
+                f"بودجهٔ تلاش این اجرا تمام شد: {reason} وضعیت پایدار و checkpoint موجود حفظ می‌شوند",
+            )
+            raise RuntimeError(
+                f"Task {task} reached its bounded retry budget ({reason}); "
+                "the task was not discarded or published as verified and will be resumed by recovery."
             )
         attempt += 1
         active_prompt = Path(args.prompt)
