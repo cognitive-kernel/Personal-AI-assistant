@@ -46,7 +46,7 @@ def test_validate_paths_rejects_protected_traversal_and_non_allowlisted_paths(pa
         cycle.validate_paths([path])
 
 
-def test_failed_local_and_github_checks_retry_same_task_then_wait_for_owner_merge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_failed_local_and_github_checks_stop_at_retry_budget_and_preserve_task(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     prompt = tmp_path / "prompt.md"
     prompt.write_text("Complete the selected task.", encoding="utf-8")
     monkeypatch.setattr(cycle, "ROOT", tmp_path)
@@ -55,7 +55,8 @@ def test_failed_local_and_github_checks_retry_same_task_then_wait_for_owner_merg
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "autonomous-state"))
     monkeypatch.setattr(cycle, "start_checkpoint_watcher", lambda *args: None)
-    monkeypatch.setattr(cycle, "stop_checkpoint_watcher", lambda *args: None)
+    stopped = []
+    monkeypatch.setattr(cycle, "stop_checkpoint_watcher", lambda *args: stopped.append(args))
     monkeypatch.setattr(cycle, "record", lambda *args, **kwargs: None)
     monkeypatch.setattr(cycle, "snapshot", lambda *args: None)
     monkeypatch.setattr(
@@ -84,36 +85,19 @@ def test_failed_local_and_github_checks_retry_same_task_then_wait_for_owner_merg
 
     def fake_publish(*args, **kwargs):
         published.append(args)
-        if len(published) == 1:
-            raise RuntimeError("Per-task draft PR publication failed: Required workflow tests.yml failed for candidate SHA.")
-        pending = {
-            "number": 42,
-            "url": "https://github.com/owner/repository/pull/42",
-            "head_sha": "c" * 40,
-            "base_sha": "b" * 40,
-            "branch": "codex/local-engineering-123-1-task-1",
-            "run_id": "123",
-            "task": 1,
-        }
-        cycle.save_pending_pr(pending, "owner/repository")
-        return {
-            **pending,
-            "validated": True,
-            "merged": False,
-            "awaiting_review": True,
-            "draft": False,
-        }
+        raise RuntimeError("Per-task draft PR publication failed: Required workflow tests.yml failed for candidate SHA.")
 
     monkeypatch.setattr(cycle, "publish_pr_subprocess", fake_publish)
-    monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: (_ for _ in ()).throw(AssertionError("checkpoint cleared before owner merge")))
-    monkeypatch.setattr(cycle, "clear_pending_state", lambda: (_ for _ in ()).throw(AssertionError("pending state cleared before owner merge")))
+    cleared = []
+    monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: cleared.append("checkpoint"))
+    monkeypatch.setattr(cycle, "clear_pending_state", lambda: cleared.append("pending-state"))
     calls = {"codex": 0, "pytest": 0}
 
     def fake_run(command, *, env=None, capture=False, timeout_seconds=None):
         if any("autonomous_engineering_progress.py" in str(part) for part in command):
             calls["codex"] += 1
             report = Path(command[command.index("--report") + 1])
-            report.write_text("TASK_COMPLETE\n", encoding="utf-8")
+            report.write_text("TASK_COMPLETE\\n", encoding="utf-8")
             return subprocess.CompletedProcess(command, 0, "", "")
         if "-m" in command and "pytest" in command:
             calls["pytest"] += 1
@@ -126,18 +110,18 @@ def test_failed_local_and_github_checks_retry_same_task_then_wait_for_owner_merg
         "prompt": str(prompt), "mode": "continuous",
     })()
 
-    assert cycle.run_cycle(args) == 0
-    assert calls == {"codex": 3, "pytest": 3}
-    assert len(published) == 2
-    assert published[1][-2:] == ("candidate-sha", "base-sha")
+    with pytest.raises(RuntimeError, match=r"attempt limit reached \\(2\\)"):
+        cycle.run_cycle(args)
+
+    assert calls == {"codex": 2, "pytest": 2}
+    assert len(published) == 1
+    assert published[0][-2:] == ("candidate-sha", "base-sha")
     local_retry_prompt = tmp_path / "codex-retry-prompt-1-2.md"
-    ci_retry_prompt = tmp_path / "codex-retry-prompt-1-3.md"
     assert "Exact failure output" in local_retry_prompt.read_text(encoding="utf-8")
-    assert "GitHub-hosted verification failed" in ci_retry_prompt.read_text(encoding="utf-8")
-    assert cycle.load_pending_pr()["number"] == 42
-
-
-
+    assert not (tmp_path / "codex-retry-prompt-1-3.md").exists()
+    assert len(stopped) == 2
+    assert cleared == []
+    assert not (tmp_path / "autonomous-state" / "pending-pr.json").exists()
 
 
 def test_cycle_run_applies_default_command_deadline(monkeypatch: pytest.MonkeyPatch):
