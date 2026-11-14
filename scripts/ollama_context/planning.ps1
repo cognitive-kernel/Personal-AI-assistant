@@ -5,6 +5,7 @@ function Get-AutomaticContext {
         [Nullable[long]]$RequestedContext
     )
 
+    Write-Host "[ollama-timing] start phase=hardware-context-planning"
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
     try {
         try {
