@@ -15,7 +15,7 @@ The Codex stream configuration also allowed a 15-minute idle interval, ten strea
 1. Keep the existing task-state mutex, worktree lock, checkpoint watcher, and PR-state ownership modules separate. Do not replace their contracts with one global lock.
 2. Route Codex through a small process-supervisor module. It records the PID and OS creation time of the owning controller ancestry and refuses to start if that identity cannot be verified.
 3. The supervisor enforces a hard wall-clock budget. A sandbox smoke is limited to 300 seconds; a normal engineering Codex session is limited to 1,800 seconds.
-4. On Windows, the Codex process is created suspended, assigned to a kill-on-job-close Job Object, and only then resumed. This closes the child-spawn race and ensures the Codex process tree is terminated if the supervisor exits or its ownership check fails.
+4. On Windows, the supervisor assigns itself to a kill-on-close Job Object and duplicates a handle into its owning progress process. Codex and all descendants inherit job membership automatically. The parent-held handle makes the OS close the job when the owner exits; the supervisor also uses TerminateJobObject for timeout, owner loss, and final descendant cleanup.
 5. On POSIX hosts, the Codex process starts in a new process group; timeout or owner loss terminates and reaps that group.
 6. Use a short smoke-specific stream idle timeout and no provider retries. Normal engineering sessions retain a larger but bounded retry budget.
 7. If parent identity, process termination, or process reaping cannot be established, fail closed. Do not treat a timeout as a successful smoke or task.
