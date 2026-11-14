@@ -15,7 +15,7 @@ def test_retry_policy_allows_attempts_only_within_both_budgets():
 
 
 def test_retry_policy_reports_the_exhausted_budget_without_ambiguity():
-    policy = RetryPolicy(max_attempts=3, max_elapsed_seconds=7200)
+    policy = RetryPolicy(max_attempts=2, max_elapsed_seconds=7200)
 
     assert policy.exhaustion_reason(2, 1) == "per-run attempt limit reached (2)."
     assert policy.exhaustion_reason(1, 7200) == "per-run task time budget reached (7200 seconds)."
