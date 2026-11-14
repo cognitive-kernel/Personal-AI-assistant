@@ -14,6 +14,7 @@ import urllib.request
 from typing import Any
 from .db import get_settings
 from .config import SETTING_DEFAULTS
+from .module_settings import PURPOSE_MODULES, is_module_enabled
 from .hardware import detect_hardware, ensure_resource_headroom, model_keep_alive, runtime_limits
 from .ollama_context import OllamaModelMetadataError, maximum_context_tokens
 from .pinned_http import PinnedHTTPHandler, PinnedHTTPSHandler
@@ -765,6 +766,9 @@ def chat(
     if purpose not in {"chat", "learning", "ai_learning", "topic_learning", "programming", "factual_review", "research_plan"}:
         raise ValueError("purpose must be chat, learning, ai_learning, topic_learning, programming, factual_review, or research_plan.")
     settings = get_settings()
+    module = PURPOSE_MODULES[purpose]
+    if not is_module_enabled(module, settings):
+        raise OllamaError(f"The {module} module is disabled in settings.")
     prefix = purpose
     provider_profile = purpose
     hardware = detect_hardware()
@@ -953,20 +957,37 @@ def _openai_compatible_embeddings(
 
 def embed(texts: list[str], model: str | None = None) -> list[list[float]]:
     """Generate bounded local embeddings; reject malformed vectors rather than caching them."""
-    if not isinstance(texts, list) or not texts or len(texts) > 32:
-        raise OllamaError("Embedding input must contain between 1 and 32 texts.")
+    settings = get_settings()
+    if not is_module_enabled("embedding", settings):
+        raise OllamaError("The embedding module is disabled in settings.")
+    max_batch = settings.get(
+        "embedding_max_batch_size", SETTING_DEFAULTS["embedding_max_batch_size"]
+    )
+    max_input_chars = settings.get(
+        "embedding_max_input_chars", SETTING_DEFAULTS["embedding_max_input_chars"]
+    )
+    timeout_seconds = settings.get(
+        "embedding_timeout_seconds", SETTING_DEFAULTS["embedding_timeout_seconds"]
+    )
+    if type(max_batch) is not int or not 1 <= max_batch <= 256:
+        raise OllamaError("Configured embedding batch size is invalid.")
+    if type(max_input_chars) is not int or not 256 <= max_input_chars <= 100000:
+        raise OllamaError("Configured embedding input limit is invalid.")
+    if type(timeout_seconds) is not int or not 5 <= timeout_seconds <= 600:
+        raise OllamaError("Configured embedding timeout is invalid.")
+    if not isinstance(texts, list) or not texts or len(texts) > max_batch:
+        raise OllamaError(f"Embedding input must contain between 1 and {max_batch} texts.")
     normalized: list[str] = []
     for text in texts:
-        if not isinstance(text, str) or not text.strip() or len(text) > 6000:
-            raise OllamaError("Each embedding input must contain 1–6000 characters.")
+        if not isinstance(text, str) or not text.strip() or len(text) > max_input_chars:
+            raise OllamaError(f"Each embedding input must contain 1–{max_input_chars} characters.")
         normalized.append(text.strip())
 
-    settings = get_settings()
     selected_model = str(model or settings.get("ollama_embedding_model", "nomic-embed-text")).strip()
     if not selected_model or len(selected_model) > 200:
         raise OllamaError("Embedding model name is invalid.")
 
-    configured_timeout = int(settings["ollama_timeout_seconds"])
+    configured_timeout = timeout_seconds
     if settings.get("embedding_llm_provider", "ollama") == "openai_compatible":
         embeddings = _openai_compatible_embeddings(
             normalized, model=selected_model, timeout=configured_timeout
@@ -975,7 +996,7 @@ def embed(texts: list[str], model: str | None = None) -> list[list[float]]:
         response = _request(
             "/api/embed",
             {"model": selected_model, "input": normalized},
-            timeout=max(1, min(configured_timeout, 8)),
+            timeout=configured_timeout,
         )
         embeddings = response.get("embeddings")
     else:
