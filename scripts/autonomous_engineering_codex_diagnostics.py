@@ -54,7 +54,7 @@ def diagnostic_failure_category(message: Any) -> str:
     text = _diagnostic_error_text(message).casefold()
     if not text.strip():
         return "no_error_detail"
-    if "open sandbox setup mutex" in text or "global\\\\codexsandboxsetup" in text:
+    if "open sandbox setup mutex" in text or "global\\codexsandboxsetup" in text:
         return "sandbox_setup_mutex_access_denied"
     if "blocked by policy" in text or ("createprocess" in text and "rejected" in text):
         return "process_launch_rejected"
