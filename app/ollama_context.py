@@ -53,7 +53,9 @@ def select_context_window(
     available_memory_bytes: int,
     requested_context_tokens: int | None = None,
     reserve_bytes: int | None = None,
-) -> dict[str, int | None]:
+    model_is_loaded: bool = False,
+    running_context_tokens: int | None = None,
+) -> dict[str, int | bool | None]:
     """Select the exact safe context from model metadata and current host capacity.
 
     No application-level token floor or ceiling is imposed. The model's declared
@@ -76,6 +78,16 @@ def select_context_window(
         or requested_context_tokens <= 0
     ):
         raise OllamaModelMetadataError("Requested context must be a positive integer.")
+    if not isinstance(model_is_loaded, bool):
+        raise OllamaModelMetadataError("model_is_loaded must be a boolean.")
+    if model_is_loaded and (
+        isinstance(running_context_tokens, bool)
+        or not isinstance(running_context_tokens, int)
+        or running_context_tokens <= 0
+    ):
+        raise OllamaModelMetadataError(
+            "A loaded model must expose its currently allocated positive context length."
+        )
 
     if reserve_bytes is None:
         effective_reserve = int(available_memory_bytes * DEFAULT_MEMORY_RESERVE_RATIO)
@@ -108,12 +120,24 @@ def select_context_window(
         raise OllamaModelMetadataError("KV-cache memory estimate is invalid.")
 
     overhead_bytes = int(model_weight_bytes * MODEL_OVERHEAD_RATIO)
-    cache_budget_bytes = (
-        available_memory_bytes
-        - effective_reserve
-        - model_weight_bytes
-        - overhead_bytes
-    )
+    if model_is_loaded:
+        # Current free memory already excludes the resident weights and KV cache.
+        # Add back only the measured current KV allocation to derive total cache
+        # capacity without subtracting resident weights a second time.
+        allocated_cache_bytes = bytes_per_token * int(running_context_tokens)
+        cache_budget_bytes = (
+            available_memory_bytes
+            - effective_reserve
+            - overhead_bytes
+            + allocated_cache_bytes
+        )
+    else:
+        cache_budget_bytes = (
+            available_memory_bytes
+            - effective_reserve
+            - model_weight_bytes
+            - overhead_bytes
+        )
     if cache_budget_bytes <= 0:
         raise OllamaModelMetadataError(
             "Available memory cannot hold model weights, overhead, and the dynamic safety reserve."
@@ -137,6 +161,8 @@ def select_context_window(
         "available_memory_bytes": available_memory_bytes,
         "reserve_bytes": effective_reserve,
         "overhead_bytes": overhead_bytes,
+        "model_is_loaded": model_is_loaded,
+        "running_context_tokens": running_context_tokens,
     }
 
 
@@ -158,6 +184,8 @@ def _main(argv: list[str] | None = None) -> int:
             available_memory_bytes=payload.get("available_memory_bytes"),
             requested_context_tokens=payload.get("requested_context_tokens"),
             reserve_bytes=payload.get("reserve_bytes"),
+            model_is_loaded=payload.get("model_is_loaded", False),
+            running_context_tokens=payload.get("running_context_tokens"),
         )
         json.dump(result, sys.stdout, separators=(",", ":"))
         sys.stdout.write("\n")
