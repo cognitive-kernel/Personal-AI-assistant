@@ -493,6 +493,7 @@ def test_workspace_syntax_check_fails_closed_without_project_workspace(tmp_path)
 
 def test_workspace_tests_run_only_in_pinned_no_network_container(tmp_path, monkeypatch):
     executable = _configured_docker(tmp_path)
+    monkeypatch.setattr(sandbox, "_workspace_head_sha", lambda workspace: "a" * 40)
     workspace = tmp_path / "candidate"
     (workspace / "app").mkdir(parents=True)
     (workspace / "tests").mkdir()
@@ -525,12 +526,43 @@ def test_workspace_tests_run_only_in_pinned_no_network_container(tmp_path, monke
     assert "--cpus=2" in args
     assert "--pids-limit=128" in args
     assert "--user=65534:65534" in args
+    assert "--env=AUTONOMOUS_ENGINEERING_TEST_BASE_SHA=" + "a" * 40 in args
+    assert not any(arg.startswith("--env=AUTONOMOUS_ENGINEERING_TEST_MODE=") for arg in args)
     assert "type=bind,source=" + str(workspace.resolve()) + ",target=/workspace,readonly" in args
     assert args[-5] == image
     assert args[-4:-1] == ["python", "-I", "-c"]
     assert "pytest.main" in args[-1]
     assert kwargs["shell"] is False
     assert kwargs["stdin"] == subprocess.DEVNULL
+
+
+def test_workspace_tests_supports_extended_bounded_suite_timeout(tmp_path, monkeypatch):
+    executable = _configured_docker(tmp_path)
+    monkeypatch.setattr(sandbox, "_workspace_head_sha", lambda workspace: "c" * 40)
+    workspace = tmp_path / "candidate"
+    (workspace / "app").mkdir(parents=True)
+    (workspace / "tests").mkdir()
+    monkeypatch.setattr(
+        sandbox.subprocess,
+        "Popen",
+        lambda *args, **kwargs: FakeProcess(args, stdout=b"2169 passed\\n"),
+    )
+
+    result = sandbox.run_workspace_tests(
+        workspace,
+        docker_executable=executable,
+        image="sha256:" + "a" * 64,
+        timeout_seconds=600,
+    )
+
+    assert result.status == "succeeded"
+    with pytest.raises(ValueError, match="timeout_seconds"):
+        sandbox.run_workspace_tests(
+            workspace,
+            docker_executable=executable,
+            image="sha256:" + "a" * 64,
+            timeout_seconds=601,
+        )
 
 
 def test_workspace_tests_reject_mutable_or_unavailable_test_images(tmp_path, monkeypatch):
@@ -554,6 +586,7 @@ def test_workspace_tests_reject_mutable_or_unavailable_test_images(tmp_path, mon
 
 def test_workspace_tests_report_failure_without_host_fallback(tmp_path, monkeypatch):
     executable = _configured_docker(tmp_path)
+    monkeypatch.setattr(sandbox, "_workspace_head_sha", lambda workspace: "b" * 40)
     workspace = tmp_path / "candidate"
     (workspace / "app").mkdir(parents=True)
     (workspace / "tests").mkdir()
@@ -672,3 +705,40 @@ def test_practical_submit_requires_explicit_sandbox_consent(tmp_path, monkeypatc
             learning_capabilities_routes.PracticalSubmission(job_id=job["id"], source_code="print(1)"),
         )
     assert getattr(exc.value, "status_code", None) == 409
+
+def test_workspace_tests_do_not_start_without_verified_host_git_head(tmp_path, monkeypatch):
+    executable = _configured_docker(tmp_path)
+    workspace = tmp_path / "candidate"
+    (workspace / "app").mkdir(parents=True)
+    (workspace / "tests").mkdir()
+    called = []
+    monkeypatch.setattr(sandbox, "_workspace_head_sha", lambda workspace: None)
+    monkeypatch.setattr(sandbox.subprocess, "Popen", lambda *args, **kwargs: called.append(args))
+
+    result = sandbox.run_workspace_tests(
+        workspace,
+        docker_executable=executable,
+        image="sha256:" + "f" * 64,
+    )
+
+    assert result.status == "unavailable"
+    assert "checkout HEAD could not be verified" in (result.reason or "")
+    assert called == []
+
+def test_workspace_head_sha_resolves_the_host_checkout_commit(tmp_path):
+    import subprocess
+
+    (tmp_path / "app").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "app" / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-b", "main"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Sandbox Test"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.email", "sandbox@example.invalid"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "test base"], cwd=tmp_path, check=True, capture_output=True)
+
+    sha = sandbox._workspace_head_sha(tmp_path)
+
+    assert sha is not None
+    assert len(sha) == 40
+    assert all(character in "0123456789abcdef" for character in sha)

@@ -2,12 +2,11 @@
 
 دستیار هوش مصنوعی شخصی با رویکرد **local-first**؛ هدف این مخزن ساخت تدریجی یک Agent قابل توسعه، قابل آزمون و سازگار با منابع سخت‌افزاری سیستم است.
 
-## سخت‌افزار هدف
-- RAM: 32 GB
-- CPU: Intel Core i5-12400 (12th Gen)
-- GPU: Intel Integrated Graphics، حافظه گزارش‌شده 128 MB
+## سازگاری سخت‌افزار و سیستم‌عامل
 
-برنامه منابع واقعی را هنگام اجرا تشخیص می‌دهد، تعداد thread و context را محدود می‌کند و GPU را به‌صورت پیش‌فرض مجبور به استفاده نمی‌کند. اجرای کارهای سنگین باید بودجه منابع داشته باشد.
+Owner-confirmed target host: Intel Core i5-12400 (6 physical cores / 12 logical threads), approximately 31.78 GiB physical RAM (32 GB class), Intel UHD Graphics 730, Windows 11 x64 build 10.0.26300. The self-hosted diagnostic records live telemetry and verifies this target profile (30–33 GiB RAM tolerance) before resource-dependent acceptance. Context sizing still uses live available memory, model metadata, KV-cache cost, parallel request count, and safety reserve.
+
+The Intel UHD 730 is an integrated GPU. WMI AdapterRAM alone does not prove dedicated VRAM; WDDM dedicated/shared memory and actual Ollama `/api/ps` allocation remain separate runtime measurements. GPU offload is not assumed; CPU inference on the i5-12400 remains a supported fallback.
 
 ## وضعیت فعلی
 
@@ -73,7 +72,7 @@ python run.py --check-only
 
 ## عامل مهندسی خودکار محلی
 
-صفحهٔ عملیاتی عامل در `/autonomous-engineering` قرار دارد. این قابلیت از Codex CLI با مدل محلی Ollama و یک GitHub self-hosted runner ویندوزی استفاده می‌کند؛ کلید پولی OpenAI API لازم نیست. داشبورد فهرست کامل مدل‌های نصب‌شده را از `/api/tags` می‌خواند و هیچ مدل پیش‌فرض یا نصب‌نشده‌ای را به‌جای انتخاب صریح کاربر قرار نمی‌دهد. مدل انتخاب‌شده فقط پس از تأیید نصب، حداقل سقف Context برابر ۶۴٬۰۰۰ توکن و قابلیت `tools` ذخیره می‌شود؛ Workflow نیز Context را با توجه به metadata مدل و ظرفیت امن RAM محاسبه می‌کند و اگر ظرفیت امن به ۶۴٬۰۰۰ توکن نرسد اجرا را متوقف می‌کند؛ مقدار تخصیص‌یافته باید دقیقاً با مقدار انتخاب‌شده در `/api/ps` برابر باشد. در نبود مدل ذخیره‌شده یا شواهد معتبر، اجرا متوقف می‌شود. راهنمای نصب، امنیت، زمان‌بندی و محدودیت‌ها در [راهنمای عامل مهندسی محلی](docs/operations/CODEX_AUTONOMOUS_ENGINEERING.md) است. اجرای شبانه‌روزی به روشن‌بودن رایانه، اینترنت، Ollama و سرویس Runner نیاز دارد و به معنی تولید پیوستهٔ کد نیست.
+صفحهٔ عملیاتی عامل در `/autonomous-engineering` قرار دارد. این قابلیت از Codex CLI با مدل محلی Ollama و یک GitHub self-hosted runner ویندوزی استفاده می‌کند؛ کلید پولی OpenAI API لازم نیست. داشبورد فهرست کامل مدل‌های نصب‌شده را از `/api/tags` می‌خواند و هیچ مدل پیش‌فرض یا نصب‌نشده‌ای را به‌جای انتخاب صریح کاربر قرار نمی‌دهد. مدل انتخاب‌شده فقط پس از تأیید نصب، قابلیت `tools` و metadata معتبر Context ذخیره می‌شود. هیچ حداقل ثابت ۶۴٬۰۰۰ یا ۵۱۲ توکنی وجود ندارد که برنامه برای Codex اعمال کند: Workflow ظرفیت سخت‌افزار، سقف معماری مدل و سقف کاتالوگ Codex را جداگانه محاسبه می‌کند، درخواست بزرگ‌تر را پیش از ذخیره و dispatch clamp می‌کند و مقدار ذخیره‌شده و تخصیص واقعی `/api/ps` را پیش و پس از Codex بررسی می‌کند؛ مقدار `context_window`، سقف `max_context_window` و تنظیم `model_context_window` نیز همگی به تخصیص واقعی Ollama قفل می‌شوند تا تنظیمات قدیمی Codex نتوانند Context بزرگ‌تری تحمیل کنند. بااین‌حال، [راهنمای رسمی Ollama برای Codex](https://docs.ollama.com/integrations/codex) حداقل ۶۴k را توصیه می‌کند؛ مقادیر پایین‌تر از این توصیه خارج‌اند و فقط با موفقیت آزمون واقعی فراخوانی ابزار Codex به‌صورت best-effort پذیرفته می‌شوند. مدل اصلی Ollama تغییر نمی‌کند و Context اختصاصی در variant جداگانه اعمال می‌شود. حداقل ۵۱۲ توکنِ مسیر inference عمومی Ollama مستقل است و Context Codex را محدود نمی‌کند. در نبود مدل ذخیره‌شده یا شواهد معتبر، اجرا متوقف می‌شود. راهنمای نصب، امنیت، زمان‌بندی و محدودیت‌ها در [راهنمای عامل مهندسی محلی](docs/operations/CODEX_AUTONOMOUS_ENGINEERING.md) است. اجرای شبانه‌روزی به روشن‌بودن رایانه، اینترنت، Ollama و سرویس Runner نیاز دارد و به معنی تولید پیوستهٔ کد نیست.
 
 ## ماژول مستقل یادگیری از هوش مصنوعی
 

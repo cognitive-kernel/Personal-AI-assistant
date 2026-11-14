@@ -235,8 +235,19 @@ def test_dynamic_ram_budget_rejects_non_finite_telemetry():
     assert hardware.dynamic_ram_budget_gb({}, {"available_ram_gb": float("nan")}) is None
 
 
-def test_resource_headroom_fails_closed_when_psutil_is_unavailable(monkeypatch):
+def test_native_cpu_ram_telemetry_works_without_psutil(monkeypatch):
     monkeypatch.setattr(hardware, "psutil", None)
+    metrics = hardware.get_system_metrics(cpu_interval=0.05)
+    assert metrics is not None
+    assert metrics["total_bytes"] > 0
+    assert metrics["available_bytes"] > 0
+    assert 0 <= metrics["cpu_percent"] <= 100
+    assert 0 <= metrics["memory_percent"] <= 100
+
+
+def test_resource_headroom_fails_closed_when_all_native_telemetry_is_unavailable(monkeypatch):
+    monkeypatch.setattr(hardware, "psutil", None)
+    monkeypatch.setattr(hardware, "_native_system_metrics", lambda interval=0.1: None)
     with pytest.raises(RuntimeError, match="CPU/RAM telemetry is unavailable"):
         hardware.ensure_resource_headroom()
 
@@ -254,9 +265,23 @@ def test_ram_ceiling_subtracts_safety_reserve_before_context_selection():
 
 
 
+def test_windows_powershell_resolution_prefers_system_install(monkeypatch, tmp_path):
+    system_root = tmp_path / "Windows"
+    executable = system_root / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"test executable placeholder")
+    monkeypatch.setenv("SystemRoot", str(system_root))
+    monkeypatch.delenv("WINDIR", raising=False)
+
+    assert hardware.windows_powershell_executable() == str(executable)
+
+
 def test_detect_gpu_uses_generic_windows_telemetry_for_single_adapter(monkeypatch):
     import json
-    monkeypatch.setattr(hardware.os, "name", "nt")
+    monkeypatch.setattr(hardware, "IS_WINDOWS", True)
+    monkeypatch.setattr(hardware, "psutil", SimpleNamespace(
+        virtual_memory=lambda: SimpleNamespace(available=16 * 1024**3)
+    ))
     payload = {
         "Adapters": [{"Name": "Intel(R) UHD Graphics 730", "PNPDeviceID": "PCI\\VEN_8086&DEV_4692", "AdapterRAM": 2147483648}],
         "Counters": [
@@ -267,19 +292,28 @@ def test_detect_gpu_uses_generic_windows_telemetry_for_single_adapter(monkeypatc
             {"Path": r"\\GPU Adapter Memory(*)\\Shared Limit", "InstanceName": "luid_0x00000000_0x0000_phys_0", "CookedValue": 4294967296},
         ],
     }
-    monkeypatch.setattr(hardware, "_run_gpu_command", lambda *args, **kwargs: json.dumps(payload))
+    calls = []
+    monkeypatch.setattr(hardware, "windows_powershell_executable", lambda: r"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+    monkeypatch.setattr(
+        hardware,
+        "_run_gpu_command",
+        lambda command, timeout: calls.append((command, timeout)) or json.dumps(payload),
+    )
     result = hardware._detect_windows_gpus()
+    assert calls[0][0][0].endswith("powershell.exe")
+    assert calls[0][1] == 20.0
     assert len(result) == 1
     assert result[0]["vendor"] == "Intel"
     assert result[0]["utilization_percent"] == 18.5
     assert result[0]["memory_used_mb"] == 256
+    assert result[0]["reported_adapter_ram_mb"] == 2048
     assert result[0]["shared_memory_used_mb"] == 512
     assert result[0]["shared_memory_total_mb"] == 4096
     assert result[0]["usable_memory_free_mb"] == 5376
 
 
 def test_detect_gpu_keeps_discovered_device_when_metrics_are_unknown(monkeypatch):
-    monkeypatch.setattr(hardware.os, "name", "nt")
+    monkeypatch.setattr(hardware, "IS_WINDOWS", True)
     monkeypatch.setattr(hardware, "_detect_nvidia_gpus", lambda: [])
     monkeypatch.setattr(hardware, "_detect_rocm_gpus", lambda: [])
     monkeypatch.setattr(hardware, "_detect_windows_gpus", lambda: [{
@@ -377,7 +411,7 @@ def test_runtime_limits_allow_large_model_context_when_ram_budget_is_ample():
     assert limits["num_ctx"] == 65536
 
 def test_detect_gpu_combines_devices_from_multiple_vendors(monkeypatch):
-    monkeypatch.setattr(hardware.os, "name", "nt")
+    monkeypatch.setattr(hardware, "IS_WINDOWS", True)
     monkeypatch.setattr(hardware, "_detect_nvidia_gpus", lambda: [{
         "index": 0, "name": "NVIDIA RTX", "vendor": "NVIDIA",
         "utilization_percent": 30, "memory_used_mb": 1024,
@@ -406,7 +440,7 @@ def test_detect_gpu_combines_devices_from_multiple_vendors(monkeypatch):
 
 
 def test_detect_gpu_merges_duplicate_provider_records_without_losing_metrics(monkeypatch):
-    monkeypatch.setattr(hardware.os, "name", "nt")
+    monkeypatch.setattr(hardware, "IS_WINDOWS", True)
     monkeypatch.setattr(hardware, "_detect_nvidia_gpus", lambda: [{
         "index": 0, "name": "NVIDIA GeForce RTX 4060", "vendor": "NVIDIA",
         "utilization_percent": 40, "memory_used_mb": 2048,
@@ -443,7 +477,7 @@ def test_windows_gpu_shared_memory_is_capped_by_host_ram_available(monkeypatch):
             {"Path": "GPU Adapter Memory Shared Limit", "InstanceName": "luid_0_phys_0", "CookedValue": 8589934592},
         ],
     }
-    monkeypatch.setattr(hardware.os, "name", "nt")
+    monkeypatch.setattr(hardware, "IS_WINDOWS", True)
     monkeypatch.setattr(hardware, "_run_gpu_command", lambda *args, **kwargs: json.dumps(payload))
     monkeypatch.setattr(hardware, "psutil", SimpleNamespace(
         virtual_memory=lambda: SimpleNamespace(available=1024 * 1024**2),
@@ -455,3 +489,38 @@ def test_windows_gpu_shared_memory_is_capped_by_host_ram_available(monkeypatch):
     assert device["usable_shared_memory_free_mb"] == 1024
     assert device["usable_memory_free_mb"] == 1792
     assert device["usable_memory_scope"] == "dedicated+shared"
+
+def test_integrated_intel_adapter_ram_is_not_misreported_as_dedicated_vram(monkeypatch):
+    import json
+
+    monkeypatch.setattr(hardware, "IS_WINDOWS", True)
+    monkeypatch.setattr(hardware, "psutil", None)
+    monkeypatch.setattr(hardware, "_windows_memory_info", lambda: (16 * 1024**3, 4 * 1024**3))
+    payload = {
+        "Adapters": [{
+            "Name": "Intel(R) UHD Graphics 730",
+            "PNPDeviceID": "PCI\\\\VEN_8086&DEV_4692",
+            "AdapterRAM": 2147483648,
+        }],
+        "Counters": [
+            {"Path": "GPU Engine Utilization Percentage", "InstanceName": "luid_0_phys_0", "CookedValue": 10},
+            {"Path": "GPU Adapter Memory Shared Usage", "InstanceName": "luid_0_phys_0", "CookedValue": 1073741824},
+            {"Path": "GPU Adapter Memory Shared Limit", "InstanceName": "luid_0_phys_0", "CookedValue": 8589934592},
+        ],
+    }
+    monkeypatch.setattr(hardware, "_run_gpu_command", lambda *args, **kwargs: json.dumps(payload))
+
+    device = hardware._detect_windows_gpus()[0]
+
+    assert device["reported_adapter_ram_mb"] == 2048
+    assert device["memory_total_mb"] is None
+    assert device["memory_percent"] is None
+    assert device["shared_memory_total_mb"] == 8192
+    assert device["usable_shared_memory_free_mb"] == 4096
+    assert device["usable_memory_scope"] == "shared-only"
+
+def test_resource_headroom_fails_closed_when_all_native_and_optional_telemetry_is_unavailable(monkeypatch):
+    monkeypatch.setattr(hardware, "psutil", None)
+    monkeypatch.setattr(hardware, "_native_system_metrics", lambda cpu_interval=0.1: None)
+    with pytest.raises(RuntimeError, match="CPU/RAM telemetry is unavailable"):
+        hardware.ensure_resource_headroom()

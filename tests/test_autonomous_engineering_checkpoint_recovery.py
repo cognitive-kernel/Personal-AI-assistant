@@ -109,14 +109,22 @@ def test_checkpoint_watcher_real_process_stops_before_restore(
     import time
 
     root = Path(__file__).resolve().parents[1]
-    base_sha = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=root, check=True,
-        capture_output=True, text=True,
-    ).stdout.strip()
+    base_sha = os.environ.get("AUTONOMOUS_ENGINEERING_TEST_BASE_SHA", "").strip().lower()
+    if base_sha:
+        if len(base_sha) != 40 or any(char not in "0123456789abcdef" for char in base_sha):
+            raise AssertionError("Injected isolated-test checkout SHA is invalid.")
+    else:
+        base_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=root, check=True,
+            capture_output=True, text=True,
+        ).stdout.strip()
     state = tmp_path / "real-process-checkpoint-state"
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(state))
     env = os.environ.copy()
     env["AUTONOMOUS_ENGINEERING_PROGRESS_DIR"] = str(state)
+    if os.environ.get("AUTONOMOUS_ENGINEERING_TEST_BASE_SHA"):
+        env["AUTONOMOUS_ENGINEERING_TEST_MODE"] = "1"
+        monkeypatch.setenv("AUTONOMOUS_ENGINEERING_TEST_MODE", "1")
     executable = getattr(sys, "_base_executable", sys.executable)
     process = subprocess.Popen(
         [
@@ -394,3 +402,27 @@ def test_read_metadata_rejects_unsupported_schema_before_mutation(
         checkpoint.read_metadata("run-9", 2)
 
     assert paths["patch"].read_bytes() == b"preserve this patch"
+
+def test_isolated_checkpoint_sha_requires_explicit_pytest_test_mode(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_TEST_BASE_SHA", "a" * 40)
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_TEST_MODE", "1")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    assert checkpoint._isolated_test_base_sha() is None
+
+    monkeypatch.setenv(
+        "PYTEST_CURRENT_TEST",
+        "tests/test_autonomous_engineering_checkpoint_recovery.py::test_checkpoint_watcher_real_process_stops_before_restore (call)",
+    )
+    assert checkpoint._isolated_test_base_sha() == "a" * 40
+
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "tests/test_other.py::test_case (call)")
+    assert checkpoint._isolated_test_base_sha() is None
+
+    monkeypatch.setenv(
+        "PYTEST_CURRENT_TEST",
+        "tests/test_autonomous_engineering_checkpoint_recovery.py::test_checkpoint_watcher_real_process_stops_before_restore (call)",
+    )
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_TEST_BASE_SHA", "invalid")
+    with pytest.raises(RuntimeError, match="host-verified checkout SHA"):
+        checkpoint._isolated_test_base_sha()

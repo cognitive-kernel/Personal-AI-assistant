@@ -8,24 +8,53 @@ $model = if (-not [string]::IsNullOrWhiteSpace($SelectedModel)) {
     ""
 }
 $checks = @()
-$modelIsContextVariant = $model -match '(?i)-codex-ctx[0-9]+$'
+$modelIsContextVariant = $model -match '(?i)-codex-(?:ctx[0-9]+|[0-9]+k)$'
 
 $ollamaOnline = $false
 $modelInstalled = $false
 $modelContextLength = $null
+$modelWeightSizeAvailable = $false
+$modelWeightSizeDetail = "Ollama /api/tags did not report a positive integer model size"
+$modelKvCacheMetadataAvailable = $false
+$modelKvCacheMetadataDetail = "Required architecture-specific KV-cache dimensions are unavailable"
 $modelSupportsTools = $false
 try {
     $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 4 -MaximumRedirection 0
     $ollamaOnline = $true
     $modelInstalled = @($tags.models | ForEach-Object { $_.name }) -contains $model
     if ($modelInstalled) {
-        $modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -ContentType "application/json" -Body (@{ model = $model; verbose = $true } | ConvertTo-Json -Compress) -TimeoutSec 8 -MaximumRedirection 0
+        $modelTag = @($tags.models | Where-Object { $_.name -eq $model }) | Select-Object -First 1
+        $parsedWeightSize = 0L
+        if ($modelTag -and ($modelTag.size -is [int] -or $modelTag.size -is [long]) -and [int64]::TryParse([string]$modelTag.size, [ref]$parsedWeightSize) -and $parsedWeightSize -gt 0) {
+            $modelWeightSizeAvailable = $true
+            $modelWeightSizeDetail = "$parsedWeightSize bytes"
+        }
+        $modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -ContentType "application/json" -Body (@{ model = $model; verbose = $false } | ConvertTo-Json -Compress) -TimeoutSec 8 -MaximumRedirection 0
         $architecture = [string]$modelInfo.details.family
         $contextKey = $architecture + ".context_length"
         $rawContext = $modelInfo.model_info.PSObject.Properties[$contextKey]
         $parsedContext = 0L
-        if ($rawContext -and [int64]::TryParse([string]$rawContext.Value, [ref]$parsedContext) -and $parsedContext -ge 512) {
+        if ($rawContext -and [int64]::TryParse([string]$rawContext.Value, [ref]$parsedContext) -and $parsedContext -ge 1) {
             $modelContextLength = $parsedContext
+        }
+        $kvCacheMetadataKeys = @(
+            ($architecture + ".block_count"),
+            ($architecture + ".attention.head_count_kv"),
+            ($architecture + ".attention.key_length"),
+            ($architecture + ".attention.value_length")
+        )
+        $modelKvCacheMetadataAvailable = -not [string]::IsNullOrWhiteSpace($architecture)
+        foreach ($kvKey in $kvCacheMetadataKeys) {
+            $kvProperty = $modelInfo.model_info.PSObject.Properties[$kvKey]
+            $kvDimension = 0L
+            if (-not $kvProperty -or -not [int64]::TryParse([string]$kvProperty.Value, [ref]$kvDimension) -or $kvDimension -lt 1) {
+                $modelKvCacheMetadataAvailable = $false
+                $modelKvCacheMetadataDetail = "Ollama /api/show is missing a positive KV-cache dimension: $kvKey"
+                break
+            }
+        }
+        if ($modelKvCacheMetadataAvailable) {
+            $modelKvCacheMetadataDetail = "All required architecture-specific KV-cache dimensions are valid"
         }
         $modelSupportsTools = @($modelInfo.capabilities | ForEach-Object { [string]$_ }) -contains "tools"
     }
@@ -34,18 +63,24 @@ $checks += [pscustomobject]@{ Component = "Ollama server"; Ready = $ollamaOnline
 $checks += [pscustomobject]@{ Component = "Saved model selection"; Ready = (-not [string]::IsNullOrWhiteSpace($model)); Detail = if ($model) { $model } else { "Select and save an installed Ollama model in /autonomous-engineering" } }
 $checks += [pscustomobject]@{ Component = "Base model selection"; Ready = -not $modelIsContextVariant; Detail = if ($modelIsContextVariant) { "Generated Codex context variants cannot be selected as base models" } else { "Original Ollama model selected" } }
 $checks += [pscustomobject]@{ Component = "Local model"; Ready = $modelInstalled; Detail = if ($modelInstalled) { $model } elseif (-not $model) { "No model has been selected and saved" } else { "Saved model is not installed in Ollama" } }
-$checks += [pscustomobject]@{ Component = "Model context metadata"; Ready = ($null -ne $modelContextLength -and $modelContextLength -ge 64000); Detail = if ($null -eq $modelContextLength) { "Ollama /api/show did not report a valid architecture context_length" } elseif ($modelContextLength -lt 64000) { "$modelContextLength tokens maximum; Codex requires at least 64000" } else { "$modelContextLength tokens maximum; Codex minimum satisfied" } }
+$checks += [pscustomobject]@{ Component = "Model weight size"; Ready = $modelWeightSizeAvailable; Detail = $modelWeightSizeDetail }
+$checks += [pscustomobject]@{ Component = "Model context metadata"; Ready = ($null -ne $modelContextLength -and $modelContextLength -ge 1); Detail = if ($null -eq $modelContextLength) { "Ollama /api/show did not report a valid architecture context_length" } elseif ($modelContextLength -lt 1) { "$modelContextLength tokens maximum; Codex can adapt to this context" } else { "$modelContextLength tokens maximum; runtime context metadata is valid" } }
+$checks += [pscustomobject]@{ Component = "Model KV-cache metadata"; Ready = $modelKvCacheMetadataAvailable; Detail = $modelKvCacheMetadataDetail }
 $checks += [pscustomobject]@{ Component = "Model tool calling"; Ready = $modelSupportsTools; Detail = if ($modelSupportsTools) { "Ollama advertises tools capability" } else { "Selected model does not advertise tools capability required by Codex" } }
 
-$ghCommand = Get-Command gh -ErrorAction SilentlyContinue
+$ghCommand = Get-Command gh.exe -ErrorAction SilentlyContinue
 $ghReady = $false
 if ($ghCommand) {
-    gh auth status --hostname github.com *> $null
+    & $ghCommand.Source auth status --hostname github.com *> $null
     $ghReady = ($LASTEXITCODE -eq 0)
 }
 $checks += [pscustomobject]@{ Component = "GitHub CLI"; Ready = $ghReady; Detail = if ($ghReady) { "Authenticated" } else { "Install gh and run gh auth login" } }
 
-$runner = Get-Process -Name "Runner.Listener" -ErrorAction SilentlyContinue | Select-Object -First 1
+$runner = $null
+try {
+    $runner = Get-CimInstance Win32_Process -Filter "Name='Runner.Listener.exe' OR Name='Runner.Listener'" -ErrorAction Stop |
+        Select-Object -First 1
+} catch {}
 $runnerReady = [bool]$runner
 $checks += [pscustomobject]@{ Component = "GitHub Runner"; Ready = $runnerReady; Detail = if ($runnerReady) { "Listener process active" } else { "Register and start the self-hosted runner with label ollama" } }
 
