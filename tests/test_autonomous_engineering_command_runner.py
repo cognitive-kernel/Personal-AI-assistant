@@ -108,7 +108,14 @@ run_command(
         encoding="utf-8",
     )
 
-    owner = subprocess.Popen([sys.executable, str(owner_script)], cwd=repository_root)
+    owner_env = os.environ.copy()
+    existing_pythonpath = owner_env.get("PYTHONPATH", "")
+    owner_env["PYTHONPATH"] = (
+        str(repository_root) + (os.pathsep + existing_pythonpath if existing_pythonpath else "")
+    )
+    owner = subprocess.Popen(
+        [sys.executable, str(owner_script)], cwd=repository_root, env=owner_env,
+    )
     try:
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline and not pid_file.is_file():
