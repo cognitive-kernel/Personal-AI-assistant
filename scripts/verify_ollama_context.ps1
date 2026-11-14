@@ -9,182 +9,31 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$baseUrl = "http://127.0.0.1:11434"
+Import-Module (Join-Path $PSScriptRoot "ollama_context\OllamaContext.psm1") -Force
 
-function Get-ModelInfo {
-    param([Parameter(Mandatory = $true)][string]$ModelName)
-    $body = @{ model = $ModelName; verbose = $true } | ConvertTo-Json -Compress
-    try {
-        Invoke-RestMethod -Uri "$baseUrl/api/show" -Method Post -Body $body -ContentType "application/json" -TimeoutSec 20 -MaximumRedirection 0
-    } catch {
-        throw "Could not inspect Ollama model '$ModelName'. $($_.Exception.Message)"
-    }
-}
-
-function Get-MaximumContext {
-    param([Parameter(Mandatory = $true)]$Info)
-    $architecture = [string]$Info.details.family
-    $key = if ([string]::IsNullOrWhiteSpace($architecture)) { "" } else { $architecture + ".context_length" }
-    $property = if ($key) { $Info.model_info.PSObject.Properties[$key] } else { $null }
-    $maximum = 0L
-    $validContext = $property -and [int64]::TryParse([string]$property.Value, [ref]$maximum) -and $maximum -gt 0
-    if (-not $validContext) {
-        $declaredArchitecture = $Info.model_info.PSObject.Properties["general.architecture"]
-        if ($declaredArchitecture) {
-            $architecture = [string]$declaredArchitecture.Value
-            $key = $architecture + ".context_length"
-            $property = $Info.model_info.PSObject.Properties[$key]
-            $maximum = 0L
-            $validContext = $property -and [int64]::TryParse([string]$property.Value, [ref]$maximum) -and $maximum -gt 0
-        }
-    }
-    if (-not $validContext) {
-        throw "Ollama did not publish a valid architecture-specific context limit ('$key')."
-    }
-    return $maximum
-}
-
-function Assert-ToolCallingCapability {
+function Assert-SelectedContext {
     param(
-        [Parameter(Mandatory = $true)]$Info,
-        [Parameter(Mandatory = $true)][string]$ModelName
+        [Parameter(Mandatory = $true)][long]$Selected,
+        [Parameter(Mandatory = $true)][long]$Maximum
     )
-    $capabilitiesProperty = $Info.PSObject.Properties["capabilities"]
-    if ($capabilitiesProperty -and $null -ne $capabilitiesProperty.Value) {
-        $capabilities = @($capabilitiesProperty.Value | ForEach-Object { [string]$_ })
-        if ($capabilities -notcontains "tools") {
-            throw "Selected Ollama model explicitly does not advertise the required 'tools' capability."
-        }
-        return
+    if ($Selected -le 0 -or $Selected -gt $Maximum) {
+        throw "Selected context $Selected is outside the supported Codex range for model maximum $Maximum."
     }
-    $toolProbeScript = Join-Path $PSScriptRoot "verify_ollama_tools.py"
-    & python $toolProbeScript --model $ModelName 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "Selected Ollama model failed the live structured tool-call probe."
-    }
-}
-
-function Get-AutomaticContext {
-    param(
-        [Parameter(Mandatory = $true)]$Info,
-        [Parameter(Mandatory = $true)][string]$ModelName,
-        [Nullable[long]]$RequestedContext
-    )
-
-    try {
-        $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
-    } catch {
-        throw "Windows physical-memory telemetry is unavailable; refusing to guess a Codex context. $($_.Exception.Message)"
-    }
-    if ($null -eq $os.FreePhysicalMemory -or [int64]$os.FreePhysicalMemory -le 0) {
-        throw "Windows did not report available physical memory; refusing to guess a Codex context."
-    }
-    $availableMemoryBytes = [int64]$os.FreePhysicalMemory * 1KB
-
-    try {
-        $runtime = Invoke-RestMethod -Uri "$baseUrl/api/ps" -Method Get -TimeoutSec 10 -MaximumRedirection 0
-    } catch {
-        throw "Could not inspect currently loaded Ollama model memory before context planning. $($_.Exception.Message)"
-    }
-    $runningMatches = @($runtime.models | Where-Object {
-        $_ -and $_.name -and (
-            ([string]$_.name).Equals($ModelName, [System.StringComparison]::OrdinalIgnoreCase) -or
-            ([string]$_.name) -match ("(?i)^" + [regex]::Escape($ModelName) + "-codex-ctx[0-9]+$")
-        )
-    })
-    if ($runningMatches.Count -gt 1) {
-        throw "Multiple instances of '$ModelName' are loaded; refusing to infer a single safe memory budget."
-    }
-    $modelIsLoaded = $runningMatches.Count -eq 1
-    $runningContextTokens = $null
-    if ($modelIsLoaded) {
-        $parsedRunningContext = 0L
-        if (-not [int64]::TryParse([string]$runningMatches[0].context_length, [ref]$parsedRunningContext) -or $parsedRunningContext -le 0) {
-            throw "The loaded model does not expose its allocated positive context length."
-        }
-        $runningContextTokens = $parsedRunningContext
-    }
-
-    try {
-        $tags = Invoke-RestMethod -Uri "$baseUrl/api/tags" -Method Get -TimeoutSec 10 -MaximumRedirection 0
-    } catch {
-        throw "Could not inspect installed Ollama model sizes for context planning. $($_.Exception.Message)"
-    }
-    $tag = @($tags.models | Where-Object { $_.name -eq $ModelName }) | Select-Object -First 1
-    $weightBytes = 0L
-    if (-not $tag -or -not [int64]::TryParse([string]$tag.size, [ref]$weightBytes) -or $weightBytes -le 0) {
-        throw "Ollama did not report a valid installed-model size for '$ModelName'."
-    }
-
-    $selectionInput = @{
-        model_info = $Info.model_info
-        architecture = [string]$Info.details.family
-        model_weight_bytes = $weightBytes
-        available_memory_bytes = $availableMemoryBytes
-        requested_context_tokens = $RequestedContext
-        model_is_loaded = $modelIsLoaded
-        running_context_tokens = $runningContextTokens
-    } | ConvertTo-Json -Depth 30 -Compress
-    $helperPath = Join-Path (Split-Path -Parent $PSScriptRoot) "app\ollama_context.py"
-    if (-not (Test-Path -LiteralPath $helperPath -PathType Leaf)) {
-        throw "The shared Ollama context-selection module is missing: $helperPath"
-    }
-    $selectionPath = Join-Path $env:TEMP ("ollama-context-selection-" + [guid]::NewGuid().ToString("N") + ".json")
-    try {
-        [System.IO.File]::WriteAllText($selectionPath, $selectionInput, [System.Text.UTF8Encoding]::new($false))
-        $selectionOutput = & python $helperPath --input-file $selectionPath
-        if ($LASTEXITCODE -ne 0) {
-            throw "Fail-closed Ollama context selection failed; see the metadata/host diagnostic above."
-        }
-        try {
-            $selection = ($selectionOutput -join [Environment]::NewLine) | ConvertFrom-Json -ErrorAction Stop
-        } catch {
-            throw "The Ollama context-selection module returned invalid JSON."
-        }
-    } finally {
-        if (Test-Path -LiteralPath $selectionPath) {
-            Remove-Item -LiteralPath $selectionPath -Force -ErrorAction SilentlyContinue
-        }
-    }
-    if ($null -eq $selection.selected_context_tokens -or [int64]$selection.selected_context_tokens -le 0) {
-        throw "The Ollama context-selection module did not return a positive hardware-safe Codex context."
-    }
-    return $selection
-}
-
-function Get-AllocatedContext {
-    param([Parameter(Mandatory = $true)][string]$ModelName)
-    try {
-        $runtime = Invoke-RestMethod -Uri "$baseUrl/api/ps" -Method Get -TimeoutSec 10 -MaximumRedirection 0
-    } catch {
-        throw "Could not read Ollama's loaded-model context from /api/ps. $($_.Exception.Message)"
-    }
-
-    $loaded = @($runtime.models | Where-Object {
-        $_ -and $_.name -and ([string]$_.name).Equals($ModelName, [System.StringComparison]::OrdinalIgnoreCase)
-    })
-    if ($loaded.Count -ne 1) {
-        throw "Ollama did not report exactly one loaded instance of '$ModelName' in /api/ps."
-    }
-    $allocated = 0L
-    if ($null -eq $loaded[0].context_length -or -not [int64]::TryParse([string]$loaded[0].context_length, [ref]$allocated)) {
-        throw "Ollama /api/ps did not report a valid allocated context length for '$ModelName'."
-    }
-    return $allocated
 }
 
 if ($VerifyOnly) {
+    # Verification is intentionally read-only: do not run another inference or capability probe.
     $codexModel = $Model
     $selectedContext = 0L
     if (-not [int64]::TryParse([string]$env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH, [ref]$selectedContext) -or $selectedContext -le 0) {
         throw "The selected Codex context was not persisted as a positive verified allocation for runtime verification."
     }
     $modelInfo = Get-ModelInfo -ModelName $codexModel
-    Assert-ToolCallingCapability -Info $modelInfo -ModelName $codexModel
-    $maximum = Get-MaximumContext -Info $modelInfo
-    if ($selectedContext -gt $maximum) {
-        throw "The persisted Codex context $selectedContext exceeds the model maximum $maximum."
+    if ($null -eq $modelInfo) {
+        throw "Persistent Codex model '$codexModel' is no longer installed."
     }
+    $maximum = Get-MaximumContext -Info $modelInfo
+    Assert-SelectedContext -Selected $selectedContext -Maximum $maximum
     $savedContext = [regex]::Match(
         [string]$modelInfo.modelfile,
         '(?im)^\s*PARAMETER\s+num_ctx\s+(\d+)\s*$'
@@ -201,9 +50,15 @@ if ($VerifyOnly) {
     }
 
     $baseModel = $Model
-    $modelInfo = Get-ModelInfo -ModelName $baseModel
-    Assert-ToolCallingCapability -Info $modelInfo -ModelName $baseModel
-    $maximum = Get-MaximumContext -Info $modelInfo
+    $baseInfo = Get-ModelInfo -ModelName $baseModel
+    if ($null -eq $baseInfo) {
+        throw "Selected Ollama model '$baseModel' is not installed."
+    }
+    # Metadata-only capability validation happens before model creation. If Ollama
+    # omits capability metadata, defer the one live probe until the persistent
+    # variant exists so that the probe also warms the exact model Codex will use.
+    $null = Assert-ToolCallingCapability -Info $baseInfo -ModelName $baseModel -DeferLiveProbe
+    $maximum = Get-MaximumContext -Info $baseInfo
     if ($maximum -le 0) {
         throw "Selected model maximum context is not a positive verified value."
     }
@@ -221,11 +76,9 @@ if ($VerifyOnly) {
         $selectionMode = "automatic"
     }
 
-    $contextSelection = Get-AutomaticContext -Info $modelInfo -ModelName $baseModel -RequestedContext $requestedContext
+    $contextSelection = Get-AutomaticContext -Info $baseInfo -ModelName $baseModel -RequestedContext $requestedContext
     $selectedContext = [int64]$contextSelection.selected_context_tokens
-    if ($selectedContext -le 0 -or $selectedContext -gt $maximum) {
-        throw "Selected context $selectedContext is outside the supported Codex range for model maximum $maximum."
-    }
+    Assert-SelectedContext -Selected $selectedContext -Maximum $maximum
 
     Write-Host "Model maximum context: $($contextSelection.maximum_context_tokens) tokens"
     Write-Host "Hardware-safe context ceiling: $($contextSelection.hardware_maximum_context_tokens) tokens"
@@ -240,10 +93,7 @@ if ($VerifyOnly) {
     Write-Host "Final context: min(requested, model maximum, safe hardware capacity, Codex catalog maximum) = $selectedContext tokens"
 
     $codexModel = "$baseModel-codex-ctx$selectedContext"
-    $existingInfo = $null
-    try {
-        $existingInfo = Get-ModelInfo -ModelName $codexModel
-    } catch { }
+    $existingInfo = Get-ModelInfo -ModelName $codexModel
     $existingContext = [regex]::Match(
         [string]$existingInfo.modelfile,
         '(?im)^\s*PARAMETER\s+num_ctx\s+(\d+)\s*$'
@@ -258,20 +108,29 @@ if ($VerifyOnly) {
             stream = $false
         } | ConvertTo-Json -Depth 5 -Compress
         try {
-            $null = Invoke-RestMethod -Uri "$baseUrl/api/create" -Method Post -ContentType "application/json" -Body $createBody -TimeoutSec $TimeoutSeconds -MaximumRedirection 0
+            $null = Invoke-OllamaApi -Path "/api/create" -Method Post -Body $createBody -TimeoutSec $TimeoutSeconds
         } catch {
             throw "Ollama could not create persistent Codex model '$codexModel' at context $selectedContext. $($_.Exception.Message)"
         }
     }
 
     $modelInfo = Get-ModelInfo -ModelName $codexModel
-    Assert-ToolCallingCapability -Info $modelInfo -ModelName $codexModel
+    if ($null -eq $modelInfo) {
+        throw "Persistent Codex model '$codexModel' was not found after creation."
+    }
     $savedContext = [regex]::Match(
         [string]$modelInfo.modelfile,
         '(?im)^\s*PARAMETER\s+num_ctx\s+(\d+)\s*$'
     )
     if (-not $savedContext.Success -or [int64]$savedContext.Groups[1].Value -ne $selectedContext) {
         throw "Persistent model '$codexModel' does not declare the selected num_ctx $selectedContext."
+    }
+
+    # The live structured-tool probe is also the single model warmup when
+    # capability metadata is absent. Do not unload and cold-load the same model.
+    $probePerformed = Assert-ToolCallingCapability -Info $modelInfo -ModelName $codexModel
+    if (-not $probePerformed) {
+        Start-OllamaModelWarmup -ModelName $codexModel -ContextTokens $selectedContext -TimeoutSeconds $TimeoutSeconds
     }
 
     if ($env:GITHUB_ENV) {
@@ -282,18 +141,6 @@ if ($VerifyOnly) {
         $env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH = [string]$selectedContext
     }
     Write-Host "Context selection mode: $selectionMode"
-}
-
-$warmupBody = @{
-    model = $codexModel
-    prompt = "Reply with OK."
-    stream = $false
-    keep_alive = "10m"
-} | ConvertTo-Json -Depth 4 -Compress
-try {
-    $null = Invoke-RestMethod -Uri "$baseUrl/api/generate" -Method Post -ContentType "application/json" -Body $warmupBody -TimeoutSec $TimeoutSeconds -MaximumRedirection 0
-} catch {
-    throw "Ollama could not load persistent Codex model '$codexModel' at context $selectedContext. $($_.Exception.Message)"
 }
 
 $allocated = Get-AllocatedContext -ModelName $codexModel
