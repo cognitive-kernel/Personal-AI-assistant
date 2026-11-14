@@ -265,7 +265,11 @@ def test_ai_learning_settings_reject_invalid_values_atomically(settings_client, 
     before = db.get_settings()
     response = settings_client.patch(
         "/api/settings",
-        json={"values": {**values, "chat_ollama_model": "must-not-save"}},
+        content=json.dumps(
+            {"values": {**values, "chat_ollama_model": "must-not-save"}},
+            allow_nan=True,
+        ),
+        headers={"content-type": "application/json"},
     )
     assert response.status_code == 422
     after = db.get_settings()
