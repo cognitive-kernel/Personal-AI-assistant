@@ -60,12 +60,29 @@ $modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Po
 $architecture = [string]$modelInfo.details.family
 $contextKey = $architecture + ".context_length"
 $rawContext = $modelInfo.model_info.PSObject.Properties[$contextKey]
+if (-not $rawContext) {
+    $declaredArchitecture = $modelInfo.model_info.PSObject.Properties["general.architecture"]
+    if ($declaredArchitecture) {
+        $architecture = [string]$declaredArchitecture.Value
+        $contextKey = $architecture + ".context_length"
+        $rawContext = $modelInfo.model_info.PSObject.Properties[$contextKey]
+    }
+}
 $parsedContext = 0L
 if ([string]::IsNullOrWhiteSpace($architecture) -or -not $rawContext -or -not [int64]::TryParse([string]$rawContext.Value, [ref]$parsedContext) -or $parsedContext -le 0) {
     throw "Saved model $Model must expose a positive architecture-specific context length for Codex."
 }
-if (@($modelInfo.capabilities | ForEach-Object { [string]$_ }) -notcontains "tools") {
-    throw "Saved model $Model does not advertise the required Ollama tools capability."
+$capabilitiesProperty = $modelInfo.PSObject.Properties["capabilities"]
+if ($capabilitiesProperty -and $null -ne $capabilitiesProperty.Value) {
+    if (@($capabilitiesProperty.Value | ForEach-Object { [string]$_ }) -notcontains "tools") {
+        throw "Saved model $Model explicitly does not advertise Ollama tools capability."
+    }
+} else {
+    $toolProbeScript = Join-Path $PSScriptRoot "verify_ollama_tools.py"
+    & $python.Source $toolProbeScript --model $Model
+    if ($LASTEXITCODE -ne 0) {
+        throw "Saved model $Model failed the live Ollama tool-call probe."
+    }
 }
 function Ensure-AutonomousStateOwnerLabel {
     $inventoryJson = & $gh.Source api "repos/$Repository/actions/runners?per_page=100"
