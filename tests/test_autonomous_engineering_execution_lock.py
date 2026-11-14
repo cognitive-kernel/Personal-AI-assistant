@@ -6,6 +6,11 @@ import sys
 import time
 from pathlib import Path
 
+import psutil
+import pytest
+
+from scripts.autonomous_engineering_process_job import WindowsProcessJob
+
 from scripts.autonomous_engineering_execution_lock import (
     execution_state_directory,
     repository_execution_lock,
