@@ -728,3 +728,11 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Added regression coverage for the explicit unelevated backend contract and mutex error classification.
 - No Runner elevation, ACL modification, Codex binary patch, unsandboxed execution, Pause change, dispatch, task/checkpoint mutation, or direct write to main was performed.
 - Validation is running on exact head `bace36d997d57a2063cc6123ca2902c6c8f5f967` and subsequent documentation commits will require a fresh exact-head CI pass. The target-host operational smoke remains pending while the durable Pause is enabled; this log does not claim the sandbox is operational yet.
+
+
+## 2026-11-14 — Autonomous recovery circuit breaker (PR #757)
+
+- Root cause: per-run retry limits alone did not bound repeated workflow-level recovery. A persistent runner/Codex failure could trigger another workflow after each bounded backoff indefinitely; the delay capped at 240 seconds but the retry count did not.
+- Change: the recovery workflow now opens a circuit breaker after three consecutive failed/timed-out autonomous runs and exits without dispatching another run. Existing Pause checks remain first. The pending task and checkpoint are left untouched; an owner must inspect the first failing run and explicitly resume after the cause is corrected.
+- Regression coverage: static workflow-contract tests verify the threshold, breaker-before-dispatch ordering, durable-state preservation, Pause gate, and bounded backoff.
+- Safety: no Pause setting, Runner identity, ACL, sandbox policy, secret, task/checkpoint data, or main-branch content was changed. No autonomous run was dispatched by this change.
