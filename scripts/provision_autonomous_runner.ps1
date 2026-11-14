@@ -31,8 +31,8 @@ if (-not [string]::IsNullOrWhiteSpace($processStateDirectory)) {
     if ([string]::IsNullOrWhiteSpace($machineStateDirectory)) {
         throw "AUTONOMOUS_ENGINEERING_PROGRESS_DIR must be configured at machine scope so all Windows service and application identities share one state root."
     }
-    $processStatePath = [Environment]::GetFullPath([Environment]::ExpandEnvironmentVariables($processStateDirectory.Trim()))
-    $machineStatePath = [Environment]::GetFullPath([Environment]::ExpandEnvironmentVariables($machineStateDirectory.Trim()))
+    $processStatePath = [System.IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($processStateDirectory.Trim()))
+    $machineStatePath = [System.IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($machineStateDirectory.Trim()))
     if (-not $processStatePath.Equals($machineStatePath, [StringComparison]::OrdinalIgnoreCase)) {
         throw "Process and machine AUTONOMOUS_ENGINEERING_PROGRESS_DIR values differ; refusing per-account state divergence."
     }
