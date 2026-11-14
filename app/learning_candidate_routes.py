@@ -20,7 +20,7 @@ from .module_settings import require_module_enabled
 router = APIRouter(
     prefix="/api/learning/candidates",
     tags=["learning-candidates"],
-    dependencies=[Depends(require_loopback_client), Depends(require_module_enabled("knowledge_base"))],
+    dependencies=[Depends(require_loopback_client)],
 )
 
 
@@ -199,7 +199,7 @@ def get_learning_candidate(candidate_id: int) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="Learning candidate is unavailable.") from exc
 
 
-@router.post("/{candidate_id}/test-plan", status_code=201)
+@router.post("/{candidate_id}/test-plan", status_code=201, dependencies=[Depends(require_module_enabled("knowledge_base"))])
 def save_candidate_test_plan(
     candidate_id: int,
     request: CandidateTestPlanRequest,
@@ -336,7 +336,7 @@ def save_candidate_test_plan(
         raise HTTPException(status_code=503, detail="Candidate test plan could not be saved.") from exc
 
 
-@router.post("/{candidate_id}/sources", status_code=201)
+@router.post("/{candidate_id}/sources", status_code=201, dependencies=[Depends(require_module_enabled("knowledge_base"))])
 def add_candidate_source(
     candidate_id: int,
     request: CandidateSourceRequest,
