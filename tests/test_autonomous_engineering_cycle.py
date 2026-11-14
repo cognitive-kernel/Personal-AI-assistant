@@ -606,10 +606,13 @@ def test_checkpoint_watcher_real_process_publishes_run_scoped_readiness(
         ["git", "rev-parse", "HEAD"], cwd=root, check=True,
         capture_output=True, text=True,
     ).stdout.strip()
-    state = tmp_path / "checkpoint-state"
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(state))
+    program_data = tmp_path / "ProgramData"
+    state = program_data / "PersonalAIAssistant" / "autonomous-engineering"
+    monkeypatch.setenv("PROGRAMDATA", str(program_data))
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", raising=False)
     env = os.environ.copy()
-    env["AUTONOMOUS_ENGINEERING_PROGRESS_DIR"] = str(state)
+    env.pop("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", None)
+    env["PROGRAMDATA"] = str(program_data)
     run_id = f"integration-{os.getpid()}"
     task = 91
     # Match the production launch path: on Windows, bypass the venv launcher
