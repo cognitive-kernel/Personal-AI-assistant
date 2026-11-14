@@ -97,7 +97,7 @@ def handle_learning_job(
                 raise PermanentTaskError(f"Learning job {job_id} disappeared during recovery.")
             if current["status"] == "running":
                 owner = str(current["execution_owner"] or "")
-                if not owner.startswith(f"task:{context.task_id}:"):
+                if owner and not owner.startswith(f"task:{context.task_id}:"):
                     old_task_id = None
                     if owner.startswith("task:"):
                         try:

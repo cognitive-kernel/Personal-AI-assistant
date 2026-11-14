@@ -2,7 +2,9 @@ import json
 
 import pytest
 
-from app import db, learning, task_manager
+from app import db, learning, task_manager, learning_execution
+from app.task_ownership import LEARNING_JOB_TASK_TYPE
+from app.task_worker import TaskContext
 from app.learning_topic_quality_tasks import (
     TOPIC_QUALITY_TASK_TYPE,
     enqueue_topic_quality_evaluation,
@@ -210,8 +212,16 @@ def test_failed_topic_is_diagnosed_and_repaired_without_advancing(
 
 def test_topic_evaluation_enqueue_is_idempotent(topic_quality_store):
     _path_id, topic_id, job_id, lesson = _completed_topic_job()
-    first = enqueue_topic_quality_evaluation(job_id)
-    second = enqueue_topic_quality_evaluation(job_id)
+    task = task_manager.create_task(LEARNING_JOB_TASK_TYPE, {"job_id": job_id})
+    claimed = task_manager.claim_next_task("quality-enqueue-test", lease_seconds=30)
+    assert claimed is not None and claimed["id"] == task["id"]
+    context = TaskContext(
+        task_id=task["id"],
+        worker_id=claimed["lease_owner"],
+        lease_epoch=claimed["lease_epoch"],
+    )
+    first = enqueue_topic_quality_evaluation(job_id, task_context=context)
+    second = enqueue_topic_quality_evaluation(job_id, task_context=context)
 
     assert first["status"] == "queued"
     assert second["status"] == "queued"
@@ -240,7 +250,9 @@ def _method_scoped_completed_job(monkeypatch):
     monkeypatch.setattr(learning, "_enqueue_learning_job", lambda job_id: {"id": f"task-{job_id}"})
     transition = learning_method_orchestrator.queue_initial_method(topic_id)
     job_id = int(transition["job"]["id"])
-    learning_method_orchestrator.mark_method_running(job_id)
+    execution_lease = learning_execution.claim_execution(job_id, "quality-test-worker")
+    assert execution_lease is not None
+    learning_method_orchestrator.mark_method_running(job_id, execution_lease=execution_lease)
     lesson = (
         "A complete lesson explains the concept, its prerequisites, a worked example, "
         "expected output, common errors, and a short practice task with a verified answer."

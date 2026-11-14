@@ -2540,14 +2540,11 @@ def queue_next_researched_path_topic(path_topic_id: int) -> dict[str, Any] | Non
         ).fetchone()
     if row is None:
         return None
-    with learning_connection() as connection:
-        path = connection.execute(
-            "SELECT research_json FROM learning_paths WHERE id=?",
-            (int(row["path_id"]),),
-        ).fetchone()
-    if path is not None and path["research_json"]:
-        return start_researched_path_learning(int(row["path_id"]), allow_retry=False)
-    return start_path_learning(int(row["path_id"]))
+    path_id = int(row["path_id"])
+    path = get_learning_path(path_id)
+    if path.get("research") is not None:
+        return start_researched_path_learning(path_id, allow_retry=False)
+    return start_path_learning(path_id)
 
 
 def start_path_learning(path_id: int) -> dict[str, Any]:

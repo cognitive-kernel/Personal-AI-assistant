@@ -193,7 +193,7 @@ SETTING_DEFAULTS: dict[str, object] = {
     "learning_model_minimum_quality_score": 0.0,
     "learning_task_budget_microusd": None,
     "learning_model_pricing_json": "",
-    "learning_source_max_chars": 100000,
+    "learning_source_max_chars": 12000,
     "programming_ollama_model": defaults.programming_ollama_model,
     "factual_review_ollama_model": defaults.factual_review_ollama_model,
     "programming_ollama_num_ctx": defaults.ollama_num_ctx,

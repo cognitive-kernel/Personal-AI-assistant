@@ -7,10 +7,12 @@ from typing import Any
 
 from .db import learning_connection
 from .learning_topic_method_attempts import (
+    METHOD_ORDER,
     MethodAttemptError,
     append_attempt_event,
     latest_attempt_event,
 )
+from .learning_method_evaluation_contracts import _assert_persisted_evaluation
 from .learning_method_state import (
     _assert_task_context,
     _content_hash,
@@ -145,32 +147,76 @@ def advance_after_failure(
             "SELECT state, current_job_id FROM learning_topic_quality_gates WHERE path_topic_id=?",
             (path_topic_id,),
         ).fetchone()
-        if gate is None or gate["current_job_id"] is None or int(gate["current_job_id"]) != job_id:
+        if gate is None or gate["current_job_id"] is None:
             return {"status": "stale_attempt", "path_topic_id": path_topic_id, "job_id": job_id}
         if gate["state"] in {"passed", "blocked"}:
             return {"status": str(gate["state"]), "path_topic_id": path_topic_id, "job_id": job_id}
-        append_attempt_event(
-            path_topic_id, method, attempt_number, outcome,
-            event_key=f"{job['method_attempt_key']}:{outcome}",
-            job_id=job_id,
-            content_sha256=_content_hash(job),
-            score=score,
-            diagnosis=details,
-            evidence=event_evidence,
-            _connection=connection,
-        )
-        updated = connection.execute(
-            """UPDATE learning_topic_quality_gates
-               SET state='pending', diagnosis_json=?, next_action='advance_method',
-                   updated_at=CURRENT_TIMESTAMP
-               WHERE path_topic_id=? AND current_job_id=? AND state NOT IN ('passed','blocked')""",
-            (
-                json.dumps(details, ensure_ascii=False, sort_keys=True),
-                path_topic_id, job_id,
-            ),
-        )
-        if updated.rowcount != 1:
+        if int(gate["current_job_id"]) != job_id:
+            prior_event = connection.execute(
+                """SELECT status, job_id FROM learning_topic_method_attempt_events
+                   WHERE path_topic_id=? AND method=? AND attempt_number=?
+                   ORDER BY event_sequence DESC LIMIT 1""",
+                (path_topic_id, method, attempt_number),
+            ).fetchone()
+            next_job_row = connection.execute(
+                "SELECT method_attempt_key FROM learning_jobs WHERE id=?",
+                (int(gate["current_job_id"]),),
+            ).fetchone()
+            next_identity = (
+                _method_attempt_identity({"method_attempt_key": next_job_row["method_attempt_key"]})
+                if next_job_row is not None else None
+            )
+            if (
+                prior_event is None
+                or prior_event["status"] != outcome
+                or prior_event["job_id"] is None
+                or int(prior_event["job_id"]) != job_id
+                or next_identity is None
+                or next_identity[0] != path_topic_id
+                or next_identity[2] != attempt_number
+                or next_identity[1] not in METHOD_ORDER
+                or METHOD_ORDER.index(next_identity[1]) <= METHOD_ORDER.index(method)
+            ):
+                return {"status": "stale_attempt", "path_topic_id": path_topic_id, "job_id": job_id}
+            replay_next_job_id = int(gate["current_job_id"])
+        else:
+            replay_next_job_id = None
+            append_attempt_event(
+                path_topic_id, method, attempt_number, outcome,
+                event_key=f"{job['method_attempt_key']}:{outcome}",
+                job_id=job_id,
+                content_sha256=_content_hash(job),
+                score=score,
+                diagnosis=details,
+                evidence=event_evidence,
+                _connection=connection,
+            )
+            updated = connection.execute(
+                """UPDATE learning_topic_quality_gates
+                   SET state='pending', diagnosis_json=?, next_action='advance_method',
+                       updated_at=CURRENT_TIMESTAMP
+                   WHERE path_topic_id=? AND current_job_id=? AND state NOT IN ('passed','blocked')""",
+                (
+                    json.dumps(details, ensure_ascii=False, sort_keys=True),
+                    path_topic_id, job_id,
+                ),
+            )
+            if updated.rowcount != 1:
+                return {"status": "stale_attempt", "path_topic_id": path_topic_id, "job_id": job_id}
+    if replay_next_job_id is not None:
+        next_job = learning.get_job(replay_next_job_id)
+        if next_job is None:
             return {"status": "stale_attempt", "path_topic_id": path_topic_id, "job_id": job_id}
+        task = learning._enqueue_learning_job(replay_next_job_id) if next_job.get("status") == "queued" else None
+        return {
+            "status": "already_advanced",
+            "path_topic_id": path_topic_id,
+            "method": next_job.get("learning_method"),
+            "attempt_number": attempt_number,
+            "job": next_job,
+            "task": task,
+            "method_attempt_key": next_job.get("method_attempt_key"),
+        }
     return _queue_next(path_topic_id, method, attempt_number, source_job_id=job_id)
 
 def block_without_quality_gate(
