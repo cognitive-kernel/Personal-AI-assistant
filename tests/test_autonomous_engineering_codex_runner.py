@@ -163,3 +163,51 @@ def test_parent_managed_posix_group_is_inherited_and_drained_by_owner(tmp_path: 
         if wrapper.poll() is None:
             wrapper.kill()
             wrapper.wait(timeout=5)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX broken-pipe owner-loss contract.")
+def test_codex_runner_kills_inherited_group_when_output_owner_disappears(tmp_path: Path):
+    child_pid_file = tmp_path / "broken-pipe-child.pid"
+    owner_script = tmp_path / "output-owner.py"
+    runner_path = Path(runner.__file__).resolve()
+    command_code = (
+        "import subprocess,sys; "
+        "child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)'], "
+        "stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); "
+        "open(" + repr(str(child_pid_file)) + ",'w').write(str(child.pid)); "
+        "sys.stdout.write('x'*8000000); sys.stdout.flush()"
+    )
+    owner_script.write_text(
+        "import json, os, subprocess, sys, time\n"
+        "from pathlib import Path\n"
+        "from scripts.autonomous_engineering_codex_runner import capture_parent_chain\n"
+        "command = [sys.executable, " + repr(str(runner_path)) + ", "
+        "'--timeout-seconds', '30', '--parent-chain', "
+        "json.dumps(capture_parent_chain()), '--parent-group-managed', '--', "
+        "sys.executable, '-c', " + repr(command_code) + "]\n"
+        "runner_process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)\n"
+        "deadline = time.monotonic() + 10\n"
+        "while not Path(" + repr(str(child_pid_file)) + ").exists() and time.monotonic() < deadline:\n"
+        "    time.sleep(0.01)\n"
+        "assert Path(" + repr(str(child_pid_file)) + ").exists(), 'Codex child did not start'\n"
+        "os._exit(0)\n",
+        encoding="utf-8",
+    )
+    owner = subprocess.Popen(
+        [sys.executable, str(owner_script)],
+        cwd=Path(__file__).resolve().parents[1],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    assert owner.wait(timeout=15) == 0
+    child_pid = int(child_pid_file.read_text(encoding="utf-8"))
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        try:
+            child = psutil.Process(child_pid)
+            if child.status() == psutil.STATUS_ZOMBIE or not child.is_running():
+                return
+        except psutil.NoSuchProcess:
+            return
+        time.sleep(0.05)
+    raise AssertionError("Codex descendant survived after the output owner disappeared.")
