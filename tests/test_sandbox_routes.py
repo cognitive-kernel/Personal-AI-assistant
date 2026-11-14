@@ -1,7 +1,13 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app import cloud_resources, db, sandbox_tasks
+from app import (
+    cloud_resources,
+    db,
+    main as app_main,
+    sandbox_tasks,
+    task_routes,
+)
 from app.main import app
 from app.sandbox import SandboxResult
 
@@ -73,13 +79,21 @@ def test_sandbox_run_requires_consent_then_queues_a_bounded_task(local_client):
     assert task["max_attempts"] == 1
 
 
-def test_generic_task_endpoint_cannot_bypass_sandbox_consent_route(local_client):
+@pytest.mark.parametrize("task_type", sorted(task_routes.FEATURE_MANAGED_TASK_TYPES))
+def test_generic_task_endpoint_rejects_feature_managed_task_types(local_client, task_type):
     response = local_client.post(
         "/api/tasks",
-        json={"task_type": "sandbox.run_python", "payload": {"source_code": "print('bypass')"}},
+        json={
+            "task_type": task_type,
+            "payload": {"source_code": "print('bypass')", "language": "javascript"},
+            "max_attempts": 20,
+        },
     )
     assert response.status_code == 422
-    assert "consent" in response.json()["detail"]
+    assert "owning feature workflow" in response.json()["detail"]
+    listed = local_client.get("/api/tasks")
+    assert listed.status_code == 200
+    assert all(task["task_type"] != task_type for task in listed.json()["tasks"])
 
 
 def test_sandbox_routes_are_loopback_only(tmp_path, monkeypatch):
@@ -97,3 +111,15 @@ def test_sandbox_routes_are_loopback_only(tmp_path, monkeypatch):
     with TestClient(app, client=("192.0.2.10", 12345)) as client:
         response = client.get("/api/sandbox/consent")
         assert response.status_code == 403
+
+
+
+def test_every_registered_runtime_handler_is_blocked_from_generic_submission(local_client):
+    registered = {
+        task_type
+        for runtime in app_main._task_runtimes
+        for task_type in runtime.handlers
+        if task_type != "__unregistered_task_type__"
+    }
+    assert registered
+    assert registered <= task_routes.FEATURE_MANAGED_TASK_TYPES
