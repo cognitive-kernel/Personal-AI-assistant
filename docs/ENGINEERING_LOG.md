@@ -1,5 +1,24 @@
 # Engineering Continuity Log
 
+## 2026-11-14 — PR #757 follow-up: controller owns the Windows Codex job
+
+### Root cause
+- The prior Windows design duplicated an inner Job Object handle into the progress owner so descendants would die when that owner exited. If the Codex supervisor crashed while the progress owner remained alive, the owner retained the handle but could not terminate the job before starting a retry.
+- This left a possible overlap between a crashed supervisor's descendants and the next Codex attempt.
+
+### Corrective change
+- Moved the production Windows Job Object to autonomous_engineering_progress.py, the process that directly owns the Codex supervisor.
+- The progress process starts the supervisor suspended, assigns it to the kill-on-close job, then resumes it. Codex and all descendants inherit job membership.
+- The runner receives --parent-job-managed and does not create a second job. When the supervisor exits, the progress owner drains the job; residual descendants are terminated and the owner waits for the Job Object to become signaled before returning.
+- If the progress owner crashes, its final Job Object handle closes and the OS terminates the complete tree. Assignment failure explicitly kills/reaps the suspended wrapper.
+- Added a Windows regression that crashes the supervisor after spawning a child and verifies the child is gone while the progress owner is still alive.
+
+### Validation boundary
+- Exact-head CI is required. No target Runner, Codex, Ollama, or autonomous service was started; durable Pause remains enabled.
+
+---
+
+
 ## 2026-11-14 — PR #757 follow-up: wait for process-tree drain
 
 ### Additional root cause
