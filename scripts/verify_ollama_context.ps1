@@ -24,21 +24,21 @@ function Get-ModelInfo {
 function Get-MaximumContext {
     param([Parameter(Mandatory = $true)]$Info)
     $architecture = [string]$Info.details.family
-    if ([string]::IsNullOrWhiteSpace($architecture)) {
-        throw "Ollama did not report the selected model architecture."
-    }
-    $key = $architecture + ".context_length"
-    $property = $Info.model_info.PSObject.Properties[$key]
-    if (-not $property) {
+    $key = if ([string]::IsNullOrWhiteSpace($architecture)) { "" } else { $architecture + ".context_length" }
+    $property = if ($key) { $Info.model_info.PSObject.Properties[$key] } else { $null }
+    $maximum = 0L
+    $validContext = $property -and [int64]::TryParse([string]$property.Value, [ref]$maximum) -and $maximum -gt 0
+    if (-not $validContext) {
         $declaredArchitecture = $Info.model_info.PSObject.Properties["general.architecture"]
         if ($declaredArchitecture) {
             $architecture = [string]$declaredArchitecture.Value
             $key = $architecture + ".context_length"
             $property = $Info.model_info.PSObject.Properties[$key]
+            $maximum = 0L
+            $validContext = $property -and [int64]::TryParse([string]$property.Value, [ref]$maximum) -and $maximum -gt 0
         }
     }
-    $maximum = 0L
-    if (-not $property -or -not [int64]::TryParse([string]$property.Value, [ref]$maximum) -or $maximum -le 0) {
+    if (-not $validContext) {
         throw "Ollama did not publish a valid architecture-specific context limit ('$key')."
     }
     return $maximum
