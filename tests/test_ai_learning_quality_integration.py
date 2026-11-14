@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.ai_learning import service
+from app.ai_learning import embedding_service, service
 from app.ai_learning.db import initialize_store
 from app.ai_learning.evaluation import evaluate_dataset
 
@@ -14,7 +14,7 @@ def isolated_store(tmp_path, monkeypatch):
     # Distinct deterministic vectors keep this test offline when adding the draft
     # lesson after a published lesson already exists.
     monkeypatch.setattr(
-        service,
+        embedding_service,
         "ollama_embed",
         lambda texts, model: [
             [1.0, 0.0] if "ایندکس" in text or "ایندكس" in text else [0.0, 1.0]
