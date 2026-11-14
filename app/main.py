@@ -920,6 +920,16 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         ("chat_source_max_chars", 1000, 12000),
         ("learning_source_max_chars", 1000, 100000),
         ("programming_source_max_chars", 1000, 65536),
+        ("research_max_concurrent_jobs", 1, 8),
+        ("research_plan_max_concurrent_jobs", 1, 8),
+        ("ai_learning_max_concurrent_jobs", 1, 8),
+        ("topic_learning_max_concurrent_jobs", 1, 8),
+        ("factual_review_max_concurrent_jobs", 1, 8),
+        ("experience_test_max_concurrent_jobs", 1, 8),
+        ("sandbox_max_concurrent_jobs", 1, 8),
+        ("cloud_resources_max_concurrent_jobs", 1, 8),
+        ("embedding_max_concurrent_jobs", 1, 8),
+        ("provider_queue_wait_timeout_seconds", 1, 3600),
     ])
     for key, low, high in numeric_ranges:
         if key in values:
