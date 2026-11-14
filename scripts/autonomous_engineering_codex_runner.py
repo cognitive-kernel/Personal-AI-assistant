@@ -94,7 +94,13 @@ def _terminate_process(process: subprocess.Popen[bytes], job: WindowsProcessJob)
             process.wait(timeout=5)
 
 
-def run(command: list[str], timeout_seconds: int, parent_chain: list[dict[str, Any]]) -> int:
+def run(
+    command: list[str],
+    timeout_seconds: int,
+    parent_chain: list[dict[str, Any]],
+    *,
+    attach_current_process: bool = False,
+) -> int:
     if (
         not isinstance(command, list)
         or not command
@@ -111,8 +117,15 @@ def run(command: list[str], timeout_seconds: int, parent_chain: list[dict[str, A
     job = WindowsProcessJob()
     job.__enter__()
     process: subprocess.Popen[bytes] | None = None
+    owner_bound_windows_job = os.name == "nt" and attach_current_process
     try:
-        creationflags = WindowsProcessJob.CREATE_SUSPENDED if os.name == "nt" else 0
+        if owner_bound_windows_job:
+            job.attach_current_process_to_owner(int(parent_chain[0]["pid"]))
+        creationflags = (
+            0 if owner_bound_windows_job
+            else WindowsProcessJob.CREATE_SUSPENDED if os.name == "nt"
+            else 0
+        )
         process = subprocess.Popen(
             command,
             stdin=None,
@@ -122,7 +135,7 @@ def run(command: list[str], timeout_seconds: int, parent_chain: list[dict[str, A
             creationflags=creationflags,
             start_new_session=os.name != "nt",
         )
-        if os.name == "nt":
+        if os.name == "nt" and not owner_bound_windows_job:
             job.assign_and_resume(process)
         assert process.stdout is not None
         events: queue.Queue[bytes | None] = queue.Queue()
@@ -141,11 +154,23 @@ def run(command: list[str], timeout_seconds: int, parent_chain: list[dict[str, A
         while not stream_closed:
             if not parent_chain_is_alive(parent_chain):
                 print("Codex stopped because its owning controller exited or its PID identity changed.", file=sys.stderr)
+                if owner_bound_windows_job:
+                    job.terminate(125)
+                    os._exit(125)
+                if owner_bound_windows_job:
+                    job.terminate(125)
+                    os._exit(125)
                 _terminate_process(process, job)
                 return 125
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 print(f"Codex exceeded its {timeout_seconds}-second execution budget and was terminated.", file=sys.stderr)
+                if owner_bound_windows_job:
+                    job.terminate(124)
+                    os._exit(124)
+                if owner_bound_windows_job:
+                    job.terminate(124)
+                    os._exit(124)
                 _terminate_process(process, job)
                 return 124
             try:
@@ -170,9 +195,16 @@ def run(command: list[str], timeout_seconds: int, parent_chain: list[dict[str, A
                 _terminate_process(process, job)
                 return 124
             time.sleep(min(0.25, remaining))
-        return int(process.wait())
+        exit_code = int(process.wait())
+        if owner_bound_windows_job:
+            job.terminate(exit_code)
+            os._exit(exit_code)
+        return exit_code
     finally:
         if process is not None and process.poll() is None:
+            if owner_bound_windows_job:
+                job.terminate(125)
+                os._exit(125)
             _terminate_process(process, job)
         job.close()
 
@@ -190,7 +222,7 @@ def main() -> int:
         raise SystemExit("Invalid Codex parent-process ownership metadata.")
     if not isinstance(chain, list):
         raise SystemExit("Invalid Codex parent-process ownership metadata.")
-    return run(command, known.timeout_seconds, chain)
+    return run(command, known.timeout_seconds, chain, attach_current_process=True)
 
 
 if __name__ == "__main__":
