@@ -14,6 +14,8 @@ class WindowsProcessJob:
     CREATE_SUSPENDED = 0x00000004
     PROCESS_SET_QUOTA = 0x0100
     PROCESS_TERMINATE = 0x0001
+    PROCESS_DUP_HANDLE = 0x0040
+    DUPLICATE_SAME_ACCESS = 0x00000002
 
     def __init__(self) -> None:
         self._handle: Any = None
@@ -80,6 +82,67 @@ class WindowsProcessJob:
             self.close()
             raise
         return self
+
+    def attach_current_process_to_owner(self, owner_pid: int) -> None:
+        """Place this supervisor in the job and pin a job handle in its owner."""
+        if os.name != "nt":
+            return
+        if not self._handle or not self._kernel32:
+            raise RuntimeError("The Windows process job has not been initialized.")
+        if isinstance(owner_pid, bool) or not isinstance(owner_pid, int) or owner_pid <= 0:
+            raise ValueError("A valid owning process ID is required.")
+
+        self._kernel32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+        self._kernel32.OpenProcess.restype = ctypes.c_void_p
+        self._kernel32.AssignProcessToJobObject.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        self._kernel32.AssignProcessToJobObject.restype = ctypes.c_int
+        self._kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        self._kernel32.CloseHandle.restype = ctypes.c_int
+
+        current_handle = self._kernel32.OpenProcess(
+            self.PROCESS_SET_QUOTA | self.PROCESS_TERMINATE, False, os.getpid(),
+        )
+        if not current_handle:
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            if not self._kernel32.AssignProcessToJobObject(self._handle, current_handle):
+                raise ctypes.WinError(ctypes.get_last_error())
+        finally:
+            self._kernel32.CloseHandle(current_handle)
+
+        owner_handle = self._kernel32.OpenProcess(
+            self.PROCESS_DUP_HANDLE, False, owner_pid,
+        )
+        if not owner_handle:
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            self._kernel32.GetCurrentProcess.argtypes = []
+            self._kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+            self._kernel32.DuplicateHandle.argtypes = [
+                ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+                ctypes.POINTER(ctypes.c_void_p), ctypes.c_uint32,
+                ctypes.c_int, ctypes.c_uint32,
+            ]
+            self._kernel32.DuplicateHandle.restype = ctypes.c_int
+            owner_job_handle = ctypes.c_void_p()
+            if not self._kernel32.DuplicateHandle(
+                self._kernel32.GetCurrentProcess(), self._handle, owner_handle,
+                ctypes.byref(owner_job_handle), 0, False, self.DUPLICATE_SAME_ACCESS,
+            ):
+                raise ctypes.WinError(ctypes.get_last_error())
+        finally:
+            self._kernel32.CloseHandle(owner_handle)
+
+    def terminate(self, exit_code: int) -> None:
+        """Terminate this supervisor and every descendant in the owned job."""
+        if os.name != "nt":
+            return
+        if not self._handle or not self._kernel32:
+            raise RuntimeError("The Windows process job has not been initialized.")
+        self._kernel32.TerminateJobObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        self._kernel32.TerminateJobObject.restype = ctypes.c_int
+        if not self._kernel32.TerminateJobObject(self._handle, int(exit_code) & 0xFFFFFFFF):
+            raise ctypes.WinError(ctypes.get_last_error())
 
     def assign_and_resume(self, process: Any) -> None:
         """Assign a CREATE_SUSPENDED child before it can spawn descendants."""
