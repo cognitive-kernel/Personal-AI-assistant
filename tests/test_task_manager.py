@@ -556,7 +556,7 @@ def test_create_task_bounds_serialized_utf8_payload_size_without_partial_persist
     accepted = task_manager.create_task("bounded.payload", payload)
     assert accepted["payload"] == payload
 
-    monkeypatch.setattr(task_manager, "MAX_TASK_PAYLOAD_BYTES", len(encoded) - 1)
+    monkeypatch.setattr(task_queue_store, "MAX_TASK_PAYLOAD_BYTES", len(encoded) - 1)
     with pytest.raises(ValueError, match="serialized limit"):
         task_manager.create_task("oversized.payload", payload)
 
@@ -589,7 +589,7 @@ def test_task_checkpoint_and_result_records_are_bounded_before_state_changes(
     claimed = task_manager.claim_next_task("bounded-worker")
     assert claimed["id"] == task["id"]
 
-    monkeypatch.setattr(task_manager, "MAX_TASK_RECORD_BYTES", 8)
+    monkeypatch.setattr(task_lease_manager, "MAX_TASK_RECORD_BYTES", 8)
     with pytest.raises(ValueError, match="Task checkpoint exceeds"):
         task_manager.save_checkpoint(
             task["id"], "bounded-worker", {"value": "checkpoint too large"},
@@ -606,7 +606,7 @@ def test_task_checkpoint_and_result_records_are_bounded_before_state_changes(
     assert unchanged["checkpoint"] is None
     assert unchanged["result"] is None
 
-    monkeypatch.setattr(task_manager, "MAX_TASK_RECORD_BYTES", 1024)
+    monkeypatch.setattr(task_lease_manager, "MAX_TASK_RECORD_BYTES", 1024)
     completed = task_manager.complete_task(
         task["id"], "bounded-worker", {"ok": True}, lease_epoch=claimed["lease_epoch"]
     )

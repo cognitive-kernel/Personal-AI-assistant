@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app import db, task_manager
+from app import db, task_manager, task_manager_core, task_lease_manager
 from app.schema_registry import LEARNING_MIGRATIONS
 from app.task_worker import PermanentTaskError, RetryableTaskError, TaskContext, TaskWorker
 
@@ -45,7 +45,7 @@ def test_worker_fails_unknown_task_type_without_executing_payload(worker_store):
 
 def test_worker_retries_handler_failure_with_backoff_then_marks_exhausted(worker_store, monkeypatch):
     current = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    monkeypatch.setattr(task_manager, "_now", lambda: current)
+    monkeypatch.setattr(task_manager_core, "_now", lambda: current)
     monkeypatch.setattr(task_lease_manager.random, "uniform", lambda low, high: 2.0)
     task = task_manager.create_task("test.flaky", {}, max_attempts=2)
 
@@ -69,8 +69,8 @@ def test_worker_retries_handler_failure_with_backoff_then_marks_exhausted(worker
 
 def test_retry_backoff_uses_jitter_within_bounded_window(worker_store, monkeypatch):
     current = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    monkeypatch.setattr(task_manager, "_now", lambda: current)
-    monkeypatch.setattr(task_manager.random, "uniform", lambda low, high: high)
+    monkeypatch.setattr(task_manager_core, "_now", lambda: current)
+    monkeypatch.setattr(task_lease_manager.random, "uniform", lambda low, high: high)
     task = task_manager.create_task("test.jitter", {}, max_attempts=2)
 
     worker = TaskWorker("worker-jitter", {
@@ -489,8 +489,8 @@ def test_cancel_requested_before_handler_failure_wins_over_retry(worker_store):
 
 def test_worker_retries_when_result_persistence_fails(worker_store, monkeypatch):
     current = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    monkeypatch.setattr(task_manager, "_now", lambda: current)
-    monkeypatch.setattr(task_manager.random, "uniform", lambda low, high: 2.0)
+    monkeypatch.setattr(task_manager_core, "_now", lambda: current)
+    monkeypatch.setattr(task_lease_manager.random, "uniform", lambda low, high: 2.0)
     task = task_manager.create_task("test.result-persistence", {}, max_attempts=2)
 
     complete = task_manager.complete_task
