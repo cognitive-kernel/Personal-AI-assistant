@@ -60,11 +60,14 @@ def _terminate_posix_group(process: subprocess.Popen[str]) -> None:
         process.wait(timeout=0.5)
     except subprocess.TimeoutExpired:
         pass
-    if not _wait_for_posix_group_exit(process_group_id, 0.5):
-        try:
-            os.killpg(process_group_id, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+    # Escalate unconditionally after the grace window. A process can fork
+    # between a process-table scan and its completion; SIGKILL closes that
+    # race because no remaining group member can create another descendant.
+    _wait_for_posix_group_exit(process_group_id, 0.5)
+    try:
+        os.killpg(process_group_id, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
     if not _wait_for_posix_group_exit(process_group_id, 5):
         raise RuntimeError(
             f"Could not confirm termination of every process in group {process_group_id}."
