@@ -25,8 +25,8 @@ _TOOL_PROBE_CACHE: dict[tuple[str, str], tuple[float, bool]] = {}
 _TOOL_PROBE_TTL_SECONDS = 600
 
 
-def _probe_tool_calling(opener, model: str, digest: str) -> bool:
-    """Verify a real local tool-call response when Ollama omits capabilities metadata."""
+def _probe_tool_calling(request_fn, model: str, digest: str) -> bool:
+    """Verify a real local tool-call response through Ollama's guarded inference path."""
     key = (model, digest)
     cached = _TOOL_PROBE_CACHE.get(key)
     now = time.monotonic()
@@ -53,33 +53,24 @@ def _probe_tool_calling(opener, model: str, digest: str) -> bool:
         "options": {"temperature": 0, "num_predict": 64},
         "think": False,
     }
-    request = urllib.request.Request(
-        "http://127.0.0.1:11434/api/chat",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Accept": "application/json", "Content-Type": "application/json"},
-        method="POST",
-    )
     supported = False
     try:
-        with opener.open(request, timeout=45) as response:
-            body = response.read(1_000_001)
-        if len(body) <= 1_000_000:
-            result = json.loads(body.decode("utf-8"))
-            message = result.get("message") if isinstance(result, dict) else None
-            calls = message.get("tool_calls") if isinstance(message, dict) else None
-            supported = isinstance(calls, list) and any(
-                isinstance(call, dict)
-                and isinstance(call.get("function"), dict)
-                and call["function"].get("name") == "autonomous_engineering_capability_probe"
-                for call in calls
-            )
-    except (OSError, ValueError, urllib.error.URLError, TimeoutError):
+        result = request_fn(payload)
+        message = result.get("message") if isinstance(result, dict) else None
+        calls = message.get("tool_calls") if isinstance(message, dict) else None
+        supported = isinstance(calls, list) and any(
+            isinstance(call, dict)
+            and isinstance(call.get("function"), dict)
+            and call["function"].get("name") == "autonomous_engineering_capability_probe"
+            for call in calls
+        )
+    except Exception:
         supported = False
     _TOOL_PROBE_CACHE[key] = (now, supported)
     return supported
 
 
-def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool_calling_fn, is_context_variant, recommended_context_fn=None) -> dict[str, Any]:
+def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool_calling_fn, is_context_variant, recommended_context_fn=None, tool_probe_fn=None) -> dict[str, Any]:
     empty = {
         "online": False,
         "model": model,
@@ -185,7 +176,7 @@ def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool
             model_supports_tools = supports_tool_calling_fn(capabilities)
             tools_verification_method = "ollama_model_capabilities"
         else:
-            model_supports_tools = _probe_tool_calling(opener, model, model_digest)
+            model_supports_tools = _probe_tool_calling(tool_probe_fn, model, model_digest) if callable(tool_probe_fn) else False
             tools_verification_method = "live_tool_call_probe" if model_supports_tools else "unverified"
         metadata_available = context_length is not None
         recommended_context = None
