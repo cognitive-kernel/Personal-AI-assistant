@@ -1041,6 +1041,20 @@ def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkey
     monkeypatch.setattr(progress.shutil, "which", lambda _: r"C:\\npm\\codex.CMD")
     monkeypatch.setattr(progress, "codex_command", lambda executable, arguments, **kwargs: ["cmd.exe", "/d", "/c", "call", executable, *arguments])
     monkeypatch.setattr(progress, "persist", lambda record: True)
+    class NoOpProcessJob:
+        def __enter__(self):
+            return self
+
+        def assign_and_resume(self, process):
+            return None
+
+        def terminate_remaining_processes(self, exit_code, timeout_seconds=5.0):
+            return False
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(progress, "WindowsProcessJob", NoOpProcessJob)
     monkeypatch.setattr(progress, "PLAN_FILE", tmp_path / ".agent-progress.json")
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "progress"))
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
