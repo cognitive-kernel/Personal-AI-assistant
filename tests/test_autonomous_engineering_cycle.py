@@ -944,8 +944,19 @@ def test_codex_arguments_reject_unverified_windows_sandbox_backend(monkeypatch):
 
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
     monkeypatch.setenv("CODEX_WINDOWS_SANDBOX_BACKEND", "danger-full-access")
-    with pytest.raises(ValueError, match="must be 'mxc' or 'elevated'"):
+    with pytest.raises(ValueError, match="must be 'mxc', 'elevated', or 'unelevated'"):
         progress.codex_arguments("gpt-oss:20b", "codex-report.md")
+
+
+def test_codex_arguments_allow_restricted_unelevated_backend(monkeypatch):
+    from scripts import autonomous_engineering_progress as progress
+
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
+    monkeypatch.setenv("CODEX_WINDOWS_SANDBOX_BACKEND", "unelevated")
+    arguments = progress.codex_arguments("gpt-oss:20b", "codex-report.md")
+
+    assert 'windows.sandbox="unelevated"' in arguments
+    assert arguments[arguments.index("--sandbox") + 1] == "workspace-write"
 
 
 def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkeypatch, tmp_path):
