@@ -141,3 +141,89 @@ def test_windows_state_root_never_falls_back_to_a_user_profile(monkeypatch):
     monkeypatch.delenv("PROGRAMDATA", raising=False)
     with pytest.raises(RuntimeError, match="PROGRAMDATA"):
         paths.execution_state_directory()
+
+
+
+def _install_fake_machine_environment(monkeypatch, value: str | None):
+    import sys
+    from types import SimpleNamespace
+
+    class _Key:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    def _open_key(_root, _path):
+        if value is None:
+            raise FileNotFoundError
+        return _Key()
+
+    def _query_value(_key, name):
+        assert name == "AUTONOMOUS_ENGINEERING_PROGRESS_DIR"
+        if value is None:
+            raise FileNotFoundError
+        return value, 1
+
+    monkeypatch.setitem(
+        sys.modules,
+        "winreg",
+        SimpleNamespace(
+            HKEY_LOCAL_MACHINE=object(),
+            OpenKey=_open_key,
+            QueryValueEx=_query_value,
+        ),
+    )
+
+
+def test_windows_state_root_uses_machine_scope_when_process_override_is_absent(
+    monkeypatch, tmp_path: Path
+):
+    from scripts import autonomous_engineering_state_paths as paths
+
+    machine_root = tmp_path / "machine-state"
+    monkeypatch.setattr(paths, "_is_windows", lambda: True)
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", raising=False)
+    monkeypatch.setenv("PROGRAMDATA", str(tmp_path / "program-data"))
+    _install_fake_machine_environment(monkeypatch, str(machine_root))
+
+    assert paths.execution_state_directory() == machine_root
+
+
+def test_windows_state_root_rejects_per_user_override_that_diverges_from_machine(
+    monkeypatch, tmp_path: Path
+):
+    from scripts import autonomous_engineering_state_paths as paths
+
+    machine_root = tmp_path / "machine-state"
+    user_root = tmp_path / "user-state"
+    monkeypatch.setattr(paths, "_is_windows", lambda: True)
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(user_root))
+    _install_fake_machine_environment(monkeypatch, str(machine_root))
+
+    with pytest.raises(RuntimeError, match="differs from the machine-scoped state root"):
+        paths.execution_state_directory()
+
+
+def test_windows_state_root_rejects_process_only_configuration(
+    monkeypatch, tmp_path: Path
+):
+    from scripts import autonomous_engineering_state_paths as paths
+
+    monkeypatch.setattr(paths, "_is_windows", lambda: True)
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "user-only"))
+    _install_fake_machine_environment(monkeypatch, None)
+
+    with pytest.raises(RuntimeError, match="process/user-scoped"):
+        paths.execution_state_directory()
+
+
+def test_powershell_manual_task_persistence_rejects_user_scoped_state_override():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "scripts" / "persist_autonomous_manual_task.ps1").read_text(encoding="utf-8")
+
+    assert '[Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")' in script
+    assert "process/user-scoped" in script
+    assert "differs from the machine-scoped state root" in script
+    assert "[System.IO.Path]::IsPathRooted($expandedStateDir)" in script
