@@ -837,3 +837,8 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Regression coverage: byte-for-byte stdin preservation and an assertion that checkpoint Git delegates to the bounded process-tree runner. Existing checkpoint restore/recovery integration tests remain enabled.
 - Operator documentation was corrected: recovery is no longer described as indefinite; it is bounded by two attempts/two hours per workflow run and a three-consecutive-failure circuit breaker. The pending task/checkpoint remain preserved while the breaker is open.
 - Exact-head CI for these follow-up changes is required. Durable Pause remains enabled; no Runner, service, local process, task dispatch, or autonomous execution was started. No task/checkpoint/user data was modified.
+
+
+### Binary stdin regression precision
+
+The binary-input regression was tightened to include actual NUL, CRLF, and non-UTF-8 bytes, ensuring the test detects text-mode conversion rather than merely exercising a byte-looking payload. The test remains byte-for-byte and the exact-head CI must include this final test fixture.
