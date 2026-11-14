@@ -12,7 +12,7 @@ from .module_settings import require_module_enabled
 router = APIRouter(
     prefix="/api/learning/paths",
     tags=["learning-prerequisites"],
-    dependencies=[Depends(require_loopback_client), Depends(require_module_enabled("topic_learning"))],
+    dependencies=[Depends(require_loopback_client)],
 )
 
 
@@ -26,7 +26,7 @@ class PrerequisiteListRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-@router.patch("/{path_id}/prerequisite-mode")
+@router.patch("/{path_id}/prerequisite-mode", dependencies=[Depends(require_module_enabled("topic_learning"))])
 def update_prerequisite_mode(path_id: int, request: PrerequisiteModeRequest) -> dict[str, Any]:
     try:
         return learning_prerequisites.set_path_mode(path_id, request.mode)
@@ -44,7 +44,7 @@ def read_topic_prerequisites(path_id: int, topic_id: int) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="Learning path or topic not found.") from exc
 
 
-@router.put("/{path_id}/topics/{topic_id}/prerequisites")
+@router.put("/{path_id}/topics/{topic_id}/prerequisites", dependencies=[Depends(require_module_enabled("topic_learning"))])
 def replace_topic_prerequisites(
     path_id: int, topic_id: int, request: PrerequisiteListRequest
 ) -> dict[str, Any]:
