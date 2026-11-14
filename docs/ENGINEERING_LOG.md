@@ -886,3 +886,18 @@ this portability change is accepted. Cross-account target-host acceptance remain
 ## 2026-11-14 — Prevent per-user state-root fallback
 
 The portability audit found one additional source of split-brain state: when PROGRAMDATA was absent on Windows, execution_state_directory() silently fell back to the current user's home directory. A relative AUTONOMOUS_ENGINEERING_PROGRESS_DIR could also resolve differently under different working directories. Windows now fails closed if PROGRAMDATA is unavailable, configured state roots must be absolute, and the existing POSIX default path is preserved to avoid stranding prior state. Regression tests cover both rejection cases.
+
+
+## Final exact-head CI evidence — 2026-11-14
+
+Exact tested code head: ab703a284752c80531e9f25e0b7ad53a04c453a0.
+
+- Full Python suite: 2,244 passed, 13 skipped, 51 deselected in 243.29 seconds.
+- Focused checkpoint ownership/concurrency regressions: passed.
+- Windows storage/process/checkpoint regressions: passed, including Python/PowerShell shared file-lock interoperability and PowerShell parser checks.
+- Browser E2E, dependency audit, and CodeQL: passed.
+- Generated learning artifacts, repository-local Markdown links, import-cycle guard, deterministic lexical retrieval benchmark, and fail-closed claim-to-test coverage benchmark: passed.
+
+Evidence: Tests/Windows regressions https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863471 ; Browser E2E https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863440 ; Dependency audit https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863452 ; CodeQL https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863507 .
+
+The subsequent documentation-only evidence update does not change runtime code and is followed by a fresh exact-head CI run. Target-host cross-account ACL verification, non-admin sandbox smoke/soak, crash/restart acceptance, and independent security review remain pending. Durable Pause remains enabled; no Runner, service, or autonomous process was started.
