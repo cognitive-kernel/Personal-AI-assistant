@@ -111,6 +111,14 @@ def run(
         or timeout_seconds < 1
     ):
         raise ValueError("A command and a positive integer timeout are required.")
+    if not isinstance(attach_current_process, bool):
+        raise ValueError("attach_current_process must be a boolean.")
+    if not isinstance(parent_job_managed, bool) or not isinstance(parent_group_managed, bool):
+        raise ValueError("Parent ownership flags must be booleans.")
+    if parent_job_managed and parent_group_managed:
+        raise ValueError("Windows Job Object and POSIX process-group ownership are mutually exclusive.")
+    if (parent_job_managed or parent_group_managed) and not attach_current_process:
+        raise ValueError("External process ownership requires an explicit parent-chain contract.")
     if not parent_chain_is_alive(parent_chain):
         _diagnostic("Codex launch refused: the owning controller process chain is no longer verifiable.")
         return 125
