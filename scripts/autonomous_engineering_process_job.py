@@ -170,6 +170,15 @@ class WindowsProcessJob:
             raise ctypes.WinError(ctypes.get_last_error())
         raise RuntimeError(f"Unexpected Job Object wait result: 0x{result:08x}.")
 
+    def terminate_remaining_processes(self, exit_code: int, timeout_seconds: float = 5.0) -> bool:
+        """Terminate and wait for residual job members after the direct child exits."""
+        if self.wait_for_empty(0):
+            return False
+        self.terminate(exit_code)
+        if not self.wait_for_empty(timeout_seconds):
+            raise RuntimeError("Could not confirm termination of every process in the Windows Job Object.")
+        return True
+
     def assign_and_resume(self, process: Any) -> None:
         """Assign a CREATE_SUSPENDED child before it can spawn descendants."""
         if os.name != "nt":
