@@ -815,3 +815,14 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Change: the recovery workflow now opens a circuit breaker after three consecutive failed/timed-out autonomous runs and exits without dispatching another run. Existing Pause checks remain first. The pending task and checkpoint are left untouched; an owner must inspect the first failing run and explicitly resume after the cause is corrected.
 - Regression coverage: static workflow-contract tests verify the threshold, breaker-before-dispatch ordering, durable-state preservation, Pause gate, and bounded backoff.
 - Safety: no Pause setting, Runner identity, ACL, sandbox policy, secret, task/checkpoint data, or main-branch content was changed. No autonomous run was dispatched by this change.
+
+
+## 2026-11-14 — POSIX owner-loss regression follow-up (PR #757)
+
+- Exact-head CI on `8f54402e4ef4bcb5041a9a890e78d841630b54ea` found two failures after 2,236 tests passed and 13 were skipped: the temporary owner harness could not import the repository's `scripts` package because Python placed the temporary script directory first on `sys.path`; and the early-child-exit test double had no `pid`, while the POSIX cleanup path dereferenced it unconditionally.
+- Root causes were distinct from the process ownership design: a test-harness import assumption and an undocumented optional-process-identity assumption at the cleanup boundary.
+- Corrective changes: the harness explicitly inserts the repository root derived from the test file's absolute path; POSIX cleanup now invokes process-group draining only when a valid positive PID is exposed. A missing PID cannot trigger cleanup against an unrelated process group.
+- The regression remains enabled; no tests were skipped, deleted, or weakened. The POSIX owner-loss test still verifies that a live descendant is terminated after the output owner disconnects.
+- Follow-up exact-head CI on commit `395e73df8d39449e77116e3a080deca770762e34` was started; dependency audit completed successfully, while full tests, Windows storage regressions, Browser E2E, and CodeQL were still running at the checkpoint. A further portability refinement changed the harness root derivation to use `Path(__file__).resolve().parents[1]`; its new exact-head matrix must be checked independently.
+- Runtime safety: durable Pause remains enabled. No Runner, service, local process, task dispatch, or autonomous execution was started. No task/checkpoint/user data was changed.
+- Residual acceptance: full exact-head CI, real target-host Codex sandbox smoke/soak, crash/restart acceptance, and independent security review remain open. The target-host gates are intentionally not run while the system is paused.
