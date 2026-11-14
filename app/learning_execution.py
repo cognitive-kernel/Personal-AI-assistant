@@ -51,13 +51,11 @@ def claim_execution(job_id: int, owner: str) -> LearningExecutionLease | None:
     return LearningExecutionLease(job_id, normalized_owner, epoch)
 
 
-def assert_current(lease: LearningExecutionLease) -> None:
-    """Reject any worker whose owner or monotonic execution epoch is stale."""
-    with learning_connection() as connection:
-        row = connection.execute(
-            "SELECT status, execution_owner, execution_epoch FROM learning_jobs WHERE id=?",
-            (lease.job_id,),
-        ).fetchone()
+def _assert_current_in_connection(connection, lease: LearningExecutionLease) -> None:
+    row = connection.execute(
+        "SELECT status, execution_owner, execution_epoch FROM learning_jobs WHERE id=?",
+        (lease.job_id,),
+    ).fetchone()
     if (
         row is None
         or row["status"] != "running"
@@ -67,6 +65,17 @@ def assert_current(lease: LearningExecutionLease) -> None:
         raise LearningExecutionLeaseLostError(
             f"Learning job {lease.job_id} execution lease is no longer current."
         )
+
+
+def assert_current(
+    lease: LearningExecutionLease, *, connection=None
+) -> None:
+    """Reject a stale owner, optionally inside the caller's state transaction."""
+    if connection is not None:
+        _assert_current_in_connection(connection, lease)
+        return
+    with learning_connection() as owned_connection:
+        _assert_current_in_connection(owned_connection, lease)
 
 
 def cancel_if_current(lease: LearningExecutionLease, reason: str = "user_cancelled") -> bool:

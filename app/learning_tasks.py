@@ -254,6 +254,7 @@ def _advance_failed_method(job_id: int, context: TaskContext, reason: str) -> di
         job_id,
         reason=reason,
         evidence={"failure_stage": "generation"},
+        task_context=context,
     )
     if result.get("status") == "blocked":
         _record_learning_escalation(
@@ -291,10 +292,10 @@ def handle_learning_job(
                 context.task_id, job_id, "quality_rejected", job.get("error") or "Lesson did not pass quality checks."
             )
         if status == "completed" and job.get("path_topic_id") is not None:
-            evaluation = learning_topic_quality_tasks.enqueue_topic_quality_evaluation(job_id)
+            evaluation = learning_topic_quality_tasks.enqueue_topic_quality_evaluation(job_id, task_context=context)
             if evaluation is None:
                 learning_method_orchestrator.block_without_quality_gate(
-                    int(job["path_topic_id"]), job_id=job_id
+                    int(job["path_topic_id"]), job_id=job_id, task_context=context
                 )
         return {"job_id": job_id, "learning_status": status, "already_terminal": True}
 
@@ -421,9 +422,9 @@ def handle_learning_job(
             f"Learning job {job_id} returned without a terminal result (status={status!r})"
         )
     if status == "completed" and result.get("path_topic_id") is not None:
-        evaluation = learning_topic_quality_tasks.enqueue_topic_quality_evaluation(job_id)
+        evaluation = learning_topic_quality_tasks.enqueue_topic_quality_evaluation(job_id, task_context=context)
         if evaluation is None:
             learning_method_orchestrator.block_without_quality_gate(
-                int(result["path_topic_id"]), job_id=job_id
+                int(result["path_topic_id"]), job_id=job_id, task_context=context
             )
     return {"job_id": job_id, "learning_status": status, "already_terminal": False}

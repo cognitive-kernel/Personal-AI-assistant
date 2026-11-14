@@ -17,7 +17,9 @@ def _content_hash(lesson: str) -> str:
     return hashlib.sha256(lesson.encode("utf-8")).hexdigest()
 
 
-def enqueue_topic_quality_evaluation(job_id: int) -> dict[str, Any] | None:
+def enqueue_topic_quality_evaluation(
+    job_id: int, *, task_context: TaskContext | None = None
+) -> dict[str, Any] | None:
     """Queue evaluation only for topics explicitly enrolled in the new quality gate."""
     job = learning.get_job(job_id)
     path_topic_id = job.get("path_topic_id")
@@ -29,6 +31,8 @@ def enqueue_topic_quality_evaluation(job_id: int) -> dict[str, Any] | None:
     digest = _content_hash(lesson)
     with learning_connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
+        if task_context is not None:
+            task_context.assert_current(connection)
         gate = connection.execute(
             "SELECT state, current_job_id FROM learning_topic_quality_gates WHERE path_topic_id=?",
             (path_topic_id,),
@@ -65,7 +69,10 @@ def enqueue_topic_quality_evaluation(job_id: int) -> dict[str, Any] | None:
     return {"status": "queued", "path_topic_id": int(path_topic_id), "task_id": task["id"]}
 
 
-def _append_evaluation(record: dict[str, Any], *, outcome: str, score: float | None) -> int:
+def _append_evaluation(
+    record: dict[str, Any], *, outcome: str, score: float | None,
+    task_context: TaskContext | None = None,
+) -> int:
     path_topic_id = record.get("path_topic_id")
     job_id = record.get("job_id")
     if isinstance(path_topic_id, bool) or not isinstance(path_topic_id, int):
@@ -76,6 +83,8 @@ def _append_evaluation(record: dict[str, Any], *, outcome: str, score: float | N
     digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     with learning_connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
+        if task_context is not None:
+            task_context.assert_current(connection)
         sequence = int(connection.execute(
             "SELECT COALESCE(MAX(evaluation_sequence), 0) + 1 FROM learning_topic_quality_evaluations WHERE path_topic_id=?",
             (path_topic_id,),
@@ -178,7 +187,15 @@ def handle_topic_quality_evaluation(
                 "error_type": type(exc).__name__,
                 "diagnosis": "Independent evaluator was unavailable; this topic cannot pass without an executed evaluation.",
             }
-            evaluation_id = _append_evaluation(unavailable, outcome="unavailable", score=None)
+            context.checkpoint({
+                "phase": "topic_quality_evaluation_unavailable",
+                "path_topic_id": path_topic_id,
+                "job_id": job_id,
+                "content_sha256": expected_hash,
+            })
+            evaluation_id = _append_evaluation(
+                unavailable, outcome="unavailable", score=None, task_context=context
+            )
             if job.get("method_attempt_key"):
                 from . import learning_method_orchestrator
                 blocked = learning_method_orchestrator.block_unavailable(
@@ -187,6 +204,7 @@ def handle_topic_quality_evaluation(
                     evaluation_id=evaluation_id,
                     diagnosis=unavailable,
                     evidence={"evaluator_version": learning_topic_evaluator.EVALUATOR_VERSION},
+                    task_context=context,
                 )
                 return {
                     "path_topic_id": path_topic_id, "job_id": job_id, "status": "blocked",
@@ -210,7 +228,15 @@ def handle_topic_quality_evaluation(
         outcome = "passed" if record.get("passed") is True else (
             "inconclusive" if record.get("evaluator_verdict") == "inconclusive" else "failed"
         )
-        evaluation_id = _append_evaluation(record, outcome=outcome, score=record.get("score"))
+        context.checkpoint({
+            "phase": "topic_quality_evaluation_result_ready",
+            "path_topic_id": path_topic_id,
+            "job_id": job_id,
+            "content_sha256": expected_hash,
+        })
+        evaluation_id = _append_evaluation(
+            record, outcome=outcome, score=record.get("score"), task_context=context
+        )
     if job.get("method_attempt_key"):
         from . import learning_method_orchestrator
         if outcome == "passed":
@@ -225,6 +251,7 @@ def handle_topic_quality_evaluation(
                     "evaluator_version": record.get("version"),
                     "independent_evaluator": record.get("independent_evaluator") is True,
                 },
+                task_context=context,
             )
         else:
             transition = learning_method_orchestrator.advance_after_failure(
@@ -239,6 +266,7 @@ def handle_topic_quality_evaluation(
                     "independent_evaluator": record.get("independent_evaluator") is True,
                 },
                 outcome="inconclusive" if outcome == "inconclusive" else "failed",
+                task_context=context,
             )
         return {
             "path_topic_id": path_topic_id, "job_id": job_id,
@@ -250,6 +278,7 @@ def handle_topic_quality_evaluation(
     if outcome == "passed":
         with learning_connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            context.assert_current(connection)
             updated = connection.execute(
                 """UPDATE learning_topic_quality_gates
                    SET state='passed', latest_score=?, latest_content_sha256=?,
@@ -293,6 +322,8 @@ def handle_topic_quality_evaluation(
         pass
     elif repair_count >= max_repairs:
         with learning_connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            context.assert_current(connection)
             connection.execute(
                 """UPDATE learning_topic_quality_gates
                    SET state='blocked', latest_score=?, latest_content_sha256=?,
@@ -327,6 +358,8 @@ def handle_topic_quality_evaluation(
     issue_report = json.dumps(diagnosis, ensure_ascii=False, sort_keys=True)
     request_key = f"topic-quality:{path_topic_id}:{expected_hash}:{evaluation_id}"
     with learning_connection() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        context.assert_current(connection)
         if not repair_already_counted:
             connection.execute(
                 """UPDATE learning_topic_quality_gates
@@ -337,18 +370,28 @@ def handle_topic_quality_evaluation(
                    WHERE path_topic_id=? AND current_job_id=? AND state!='passed'""",
                 (record["score"], expected_hash, evaluation_id, diagnosis_json, path_topic_id, job_id),
             )
+    context.checkpoint({
+        "phase": "topic_quality_repair_authorized",
+        "path_topic_id": path_topic_id,
+        "job_id": job_id,
+        "evaluation_id": evaluation_id,
+    })
     correction = learning.submit_lesson_issue(
         job_id, issue_report, request_key=request_key, enqueue=False
     )
     correction_job_id = int(correction["correction_job"]["id"])
     with learning_connection() as connection:
-        connection.execute(
+        connection.execute("BEGIN IMMEDIATE")
+        context.assert_current(connection)
+        updated = connection.execute(
             """UPDATE learning_topic_quality_gates
                SET current_job_id=?, state='repairing', next_action='evaluate_corrected_lesson',
                    updated_at=CURRENT_TIMESTAMP
                WHERE path_topic_id=? AND current_job_id=?""",
             (correction_job_id, path_topic_id, job_id),
         )
+        if updated.rowcount != 1:
+            raise PermanentTaskError("The current topic attempt changed before repair ownership was committed.")
     # Publish the correction only after durable gate ownership points at it. A
     # fast worker can therefore never finish before the gate recognizes its job.
     correction_task = learning._enqueue_learning_job(correction_job_id)

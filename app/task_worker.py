@@ -70,6 +70,18 @@ class TaskContext:
     checkpoint_data: dict[str, Any] | None = None
     lease_seconds: int = 300
 
+    def assert_current(self, connection=None) -> None:
+        """Verify this exact lease epoch and reject pending user control requests."""
+        if connection is None:
+            status = self.control_status()
+        else:
+            owned = task_manager.assert_task_owner(
+                connection, self.task_id, self.worker_id, self.lease_epoch
+            )
+            status = str(owned["status"])
+        if status != "running":
+            raise TaskInterrupted(f"Task ownership is active but control state is {status!r}.")
+
     def checkpoint(self, value: dict[str, Any]) -> dict[str, Any]:
         saved = task_manager.save_checkpoint(self.task_id, self.worker_id, value, lease_epoch=self.lease_epoch)
         self.checkpoint_data = saved["checkpoint"]

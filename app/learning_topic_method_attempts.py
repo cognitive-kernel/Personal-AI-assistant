@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import sqlite3
 from datetime import datetime, timezone
 from typing import Any
 
@@ -71,8 +72,13 @@ def append_attempt_event(
     score: float | None = None,
     diagnosis: dict[str, Any] | None = None,
     evidence: dict[str, Any] | None = None,
+    _connection: sqlite3.Connection | None = None,
 ) -> dict[str, Any]:
-    """Append one immutable transition, safely replaying an identical event key."""
+    """Append one immutable transition, safely replaying an identical event key.
+
+    A supplied connection must already hold the caller's write transaction so
+    the event and its owning state transition commit atomically.
+    """
     _positive_int(path_topic_id, "path_topic_id")
     _positive_int(attempt_number, "attempt_number", maximum=3)
     if method not in METHOD_ORDER:
@@ -119,8 +125,7 @@ def append_attempt_event(
     payload_sha256 = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     occurred_at = datetime.now(timezone.utc).isoformat(timespec="microseconds")
 
-    with learning_connection() as connection:
-        connection.execute("BEGIN IMMEDIATE")
+    def persist(connection: sqlite3.Connection) -> dict[str, Any]:
         existing = connection.execute(
             "SELECT * FROM learning_topic_method_attempt_events WHERE event_key=?",
             (event_key,),
@@ -171,9 +176,17 @@ def append_attempt_event(
             "SELECT * FROM learning_topic_method_attempt_events WHERE id=?",
             (cursor.lastrowid,),
         ).fetchone()
-    result = dict(row)
-    result["idempotent_replay"] = False
-    return result
+        result = dict(row)
+        result["idempotent_replay"] = False
+        return result
+
+    if _connection is not None:
+        if not _connection.in_transaction:
+            raise MethodAttemptError("A supplied event connection must already hold a transaction.")
+        return persist(_connection)
+    with learning_connection() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        return persist(connection)
 
 
 def list_attempt_events(path_topic_id: int) -> list[dict[str, Any]]:
