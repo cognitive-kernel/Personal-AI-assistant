@@ -25,6 +25,7 @@ def codex_command(
     arguments: list[str],
     *,
     timeout_seconds: int | None = None,
+    parent_job_managed: bool = False,
 ) -> list[str]:
     """Run Codex through an owner-aware supervisor, preserving the native CLI contract."""
     if timeout_seconds is None:
@@ -44,12 +45,14 @@ def codex_command(
     else:
         native_command = [executable, *arguments]
     runner = Path(__file__).with_name("autonomous_engineering_codex_runner.py")
-    return [
+    command = [
         sys.executable, str(runner),
         "--timeout-seconds", str(timeout_seconds),
         "--parent-chain", json.dumps(capture_parent_chain(), separators=(",", ":")),
-        "--", *native_command,
     ]
+    if parent_job_managed:
+        command.append("--parent-job-managed")
+    return [*command, "--", *native_command]
 
 
 def _verified_codex_context_window() -> int:
