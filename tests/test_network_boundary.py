@@ -188,3 +188,54 @@ def test_cross_origin_requests_cannot_dispatch_or_cancel_autonomous_agent(monkey
         assert response.status_code == 403
         assert response.json()["code"] == "cross_origin_api_request"
     assert calls == []
+
+
+
+def test_every_registered_api_route_rejects_non_loopback_and_cross_origin_requests():
+    """Apply the global local-only boundary to every current and future API route."""
+    api_routes = [
+        route
+        for route in app.routes
+        if isinstance(getattr(route, "path", None), str)
+        and route.path.startswith("/api/")
+        and getattr(route, "methods", None)
+    ]
+    assert api_routes, "The API route inventory must not be empty."
+
+    local_client = TestClient(
+        app,
+        client=("127.0.0.1", 54321),
+        base_url="http://127.0.0.1:8000",
+    )
+    remote_client = TestClient(
+        app,
+        client=("192.0.2.44", 54321),
+        base_url="http://127.0.0.1:8000",
+    )
+
+    checked = set()
+    for route in api_routes:
+        for method in sorted(route.methods):
+            if method not in {"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"}:
+                continue
+            key = (method, route.path)
+            if key in checked:
+                continue
+            checked.add(key)
+
+            cross_origin = local_client.request(
+                method,
+                route.path,
+                headers={
+                    "origin": "https://attacker.example",
+                    "sec-fetch-site": "cross-site",
+                },
+            )
+            assert cross_origin.status_code == 403, key
+            assert cross_origin.json()["code"] == "cross_origin_api_request", key
+
+            remote = remote_client.request(method, route.path)
+            assert remote.status_code == 403, key
+            assert remote.json()["detail"] == "This application is available from localhost only.", key
+
+    assert checked, "At least one concrete API method must be covered."
