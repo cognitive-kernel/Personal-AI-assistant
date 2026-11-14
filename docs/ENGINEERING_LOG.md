@@ -11,7 +11,7 @@
 ### Corrective changes
 
 - Added `scripts/autonomous_engineering_codex_runner.py` as a focused process-supervision boundary. It captures the owning process ancestry with PID and OS creation time, rejects missing/reused/unverifiable owners, streams JSONL without blocking deadline checks, and enforces a 300-second smoke or 1,800-second task deadline.
-- Added `scripts/autonomous_engineering_process_job.py`. On Windows, Codex starts suspended, is assigned to a kill-on-close Job Object, and is resumed only after assignment; this prevents descendants from escaping before the ownership boundary is established. On POSIX, the Codex process starts in a new process group and timeout/owner loss terminates and reaps the group.
+- Added `scripts/autonomous_engineering_process_job.py`. On Windows, the supervisor joins a kill-on-close Job Object and duplicates a job handle into the owning progress process. Codex and descendants inherit membership; owner exit closes the final handle and the OS terminates the process tree. Timeout/owner loss uses TerminateJobObject. On POSIX, Codex runs in a new process group and timeout/owner loss terminates and reaps the group.
 - Smoke uses 120-second stream idle timeout with zero provider retries. Normal tasks use 300-second idle timeout, two stream retries, and one request retry.
 - Added ADR-020 and regression coverage for owner-chain loss/PID identity, hard timeout, descendant cleanup, and smoke/task configuration profiles. Existing durable state locks, checkpoint watcher lifecycle, task payloads, and merge policy remain unchanged.
 
