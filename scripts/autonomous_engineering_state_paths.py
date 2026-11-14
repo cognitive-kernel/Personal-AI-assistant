@@ -28,10 +28,4 @@ def execution_state_directory() -> Path:
             raise RuntimeError("PROGRAMDATA must resolve to an absolute Windows path.")
         return shared_root / "PersonalAIAssistant" / "autonomous-engineering"
 
-    xdg_state_home = os.getenv("XDG_STATE_HOME", "").strip()
-    if xdg_state_home:
-        shared_root = Path(os.path.expandvars(xdg_state_home)).expanduser()
-        if not shared_root.is_absolute():
-            raise ValueError("XDG_STATE_HOME must be an absolute path.")
-        return shared_root / "personal-ai-assistant" / "autonomous-engineering"
-    return Path.home() / ".local" / "state" / "personal-ai-assistant" / "autonomous-engineering"
+    return Path.home() / ".personal-ai-assistant" / "autonomous-engineering"
