@@ -8,11 +8,12 @@ from pydantic import BaseModel, Field, StrictInt, ConfigDict
 
 from . import chat_history, db, research_planner, research_tasks, task_manager
 from .task_routes import require_loopback_client
+from .module_settings import require_module_enabled
 
 router = APIRouter(
     prefix="/api/research",
     tags=["research-tasks"],
-    dependencies=[Depends(require_loopback_client)],
+    dependencies=[Depends(require_loopback_client), Depends(require_module_enabled("research_plan"))],
 )
 
 
