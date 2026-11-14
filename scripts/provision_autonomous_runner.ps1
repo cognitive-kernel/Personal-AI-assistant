@@ -4,7 +4,7 @@ param(
     [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$RunnerAccount,
     [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$AppAccount,
     [string]$RunnerName = "$env:COMPUTERNAME-ollama",
-    [string]$RunnerRoot = "C:\actions-runner",
+    [string]$RunnerRoot = (Join-Path $env:ProgramData "GitHubActionsRunner"),
     [string]$Model = ""
 )
 $ErrorActionPreference = "Stop"
