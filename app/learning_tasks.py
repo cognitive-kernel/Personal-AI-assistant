@@ -380,6 +380,20 @@ def handle_learning_job(
         task = task_manager.get_task(context.task_id) or {}
         attempts = int(task.get("attempts", 0))
         max_attempts = int(task.get("max_attempts", 1))
+        permanent = isinstance(
+            exc, (ValueError, TypeError, KeyError, AssertionError, sqlite3.IntegrityError)
+        )
+        if permanent:
+            fallback = _advance_failed_method(
+                job_id, context, f"Non-retryable learning execution failure: {type(exc).__name__}"
+            )
+            if fallback is not None:
+                return {"job_id": job_id, "learning_status": "failed", "method_fallback": fallback}
+            _record_learning_escalation(
+                context.task_id, job_id, "permanent_failure",
+                f"Non-retryable learning execution failure: {type(exc).__name__}",
+            )
+            raise PermanentTaskError("Learning job failed because of invalid input or an internal invariant.") from exc
         if attempts >= max_attempts:
             fallback = _advance_failed_method(
                 job_id, context, f"Unexpected learning execution failure: {type(exc).__name__}"
@@ -387,7 +401,7 @@ def handle_learning_job(
             if fallback is not None:
                 return {"job_id": job_id, "learning_status": "failed", "method_fallback": fallback}
             _record_learning_escalation(
-                context.task_id, job_id, "unexpected_execution_failure",
+                context.task_id, job_id, "attempts_exhausted",
                 f"Unexpected learning execution failure after {attempts} attempt(s): {type(exc).__name__}",
             )
             raise PermanentTaskError("Learning execution failed after its bounded retry budget.") from exc
