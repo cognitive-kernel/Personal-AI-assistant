@@ -237,3 +237,49 @@ def test_windows_owner_handle_reaps_codex_descendants_after_supervisor_crash(tmp
         if wrapper.poll() is None:
             wrapper.kill()
             wrapper.wait(timeout=5)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows controller-owned Job Object contract.")
+def test_windows_progress_owner_kills_codex_descendants_after_supervisor_crash(monkeypatch, tmp_path: Path):
+    from types import SimpleNamespace
+    from scripts import autonomous_engineering_progress as progress
+
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("Run the task", encoding="utf-8")
+    pid_file = tmp_path / "orphaned-codex-child.pid"
+    supervisor = tmp_path / "fake-codex-supervisor.py"
+    supervisor.write_text(
+        "import os, subprocess, sys\n"
+        "from pathlib import Path\n"
+        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'], "
+        "stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n"
+        "Path(" + repr(str(pid_file)) + ").write_text(str(child.pid))\n"
+        "os._exit(7)\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(progress.shutil, "which", lambda _: "codex.exe")
+    monkeypatch.setattr(progress, "codex_arguments", lambda model, report: [])
+    monkeypatch.setattr(
+        progress,
+        "codex_command",
+        lambda executable, arguments, **kwargs: [sys.executable, str(supervisor)],
+    )
+    monkeypatch.setattr(progress, "persist", lambda record: True)
+    monkeypatch.setattr(progress, "plan_state", lambda: (0, 0, None))
+    monkeypatch.setattr(progress, "PLAN_FILE", tmp_path / ".agent-progress.json")
+
+    args = SimpleNamespace(
+        model="gpt-oss:20b",
+        prompt=str(prompt),
+        report=str(tmp_path / "report.md"),
+        run_id="run-owner-test",
+        run_attempt="1",
+    )
+
+    assert progress.run_codex(args) == 7
+    assert pid_file.is_file()
+    child_pid = int(pid_file.read_text(encoding="utf-8"))
+    assert not psutil.pid_exists(child_pid), (
+        "A Codex descendant survived supervisor exit while the progress owner was still alive."
+    )
