@@ -96,7 +96,7 @@ def test_semantically_duplicate_lesson_content_is_detected_without_saving_again(
             (lesson["id"], existing_body, existing_body, digest),
         )
         monkeypatch.setattr(
-            service,
+            embedding_service,
             "ollama_embed",
             lambda texts, model: [[1.0, 0.0] for _ in texts],
         )
