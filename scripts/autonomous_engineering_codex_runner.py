@@ -201,11 +201,14 @@ def run(
             os._exit(exit_code)
         return exit_code
     finally:
-        if process is not None and process.poll() is None:
-            if owner_bound_windows_job:
+        if process is not None:
+            if owner_bound_windows_job and process.poll() is None:
                 job.terminate(125)
                 os._exit(125)
-            _terminate_process(process, job)
+            if os.name != "nt":
+                _terminate_process(process, job)
+            elif not owner_bound_windows_job and process.poll() is None:
+                _terminate_process(process, job)
         job.close()
 
 
