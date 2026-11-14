@@ -9,7 +9,7 @@
 The autonomous workflow has one durable manual-task slot and one pending autonomous-PR record. Those files are accessed by different execution paths:
 
 - The PowerShell persistence step runs inside the `codex` job, after it enters the repository-wide GitHub Actions concurrency group.
-- The workflow's Python capture step reads the task under the same local durable-state mutex.
+- The workflow's Python capture step reads the task under the same local durable-state file lock.
 - The Python cycle controller loads, saves, and clears pending PR state.
 - PR publication occurs in a child process while the controller retains repository worktree ownership.
 - After owner merge and exact post-merge CI, the controller clears the task and pending PR.
@@ -50,7 +50,7 @@ Atomic file replacement protects an individual write from partial contents, but 
 - Unit tests for POSIX lock exclusion, bounded wait, and process-crash release.
 - Windows integration test proving PowerShell and Python contend on the same byte-range lock file.
 - Tests for pending task owner lease round-trip, claim/recovery reassignment, task digest mismatch, Python/PowerShell SHA-256 interoperability, pending PR round-trip/corruption rejection, publication owner record persistence before CI dispatch, and interrupted post-merge cleanup recovery.
-- Windows workflow tests for PowerShell parsing, durable-state mutex interoperability, checkpoint watcher lifecycle, and repository execution-lock contention.
+- Windows workflow tests for PowerShell parsing, durable-state file-lock interoperability, checkpoint watcher lifecycle, and repository execution-lock contention.
 - Exact-head full suite, browser E2E, dependency audit, and target Runner end-to-end acceptance remain required before merge.
 
 ## Runner affinity and deployment constraint
@@ -62,5 +62,5 @@ The Windows file lock and ProgramData state directory are host-local, not distri
 - PowerShell and Python now share one explicit state transaction boundary rather than relying on workflow ordering and atomic file replacement alone.
 - The single pending-task slot is safer but does not become a queue; callers receive a clear rejection while another run is active.
 - The task's current owner is explicit and recoverable, while the original submission identity remains auditable across retries. Multi-file post-merge cleanup is resumable through a durable intent record rather than relying on a sequence of untracked deletes.
-- The repository execution lock remains separate: it owns the mutable worktree, while this mutex owns durable task/PR state. The checkpoint-store lock separately owns watcher lifetime and checkpoint mutation.
+- The repository execution lock remains separate: it owns the mutable worktree, while the durable-state file lock owns durable task/PR state. The checkpoint-store lock separately owns watcher lifetime and checkpoint mutation.
 - Local state is deliberately pinned to one uniquely labelled Windows Runner; the file lock is not represented as a cross-machine distributed lock.
