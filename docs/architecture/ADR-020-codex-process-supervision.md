@@ -110,3 +110,17 @@ The production ownership boundary is now moved one level up:
 - The direct Codex-runner Windows Job Object path remains available for isolated/direct invocation tests; the production progress path uses the controller-owned contract.
 
 A Windows regression now simulates an abrupt supervisor exit while its owner remains alive and asserts that the descendant is already gone before run_codex returns. This is the required pre-retry no-overlap invariant.
+
+
+## 2026-11-14 addendum — controller-owned POSIX Codex process group
+
+The supervisor-crash overlap invariant also applies to POSIX. A process group created only by the Codex runner would survive if that runner crashed while its progress owner remained alive.
+
+The production POSIX boundary now mirrors the Windows ownership shape:
+- The progress controller launches the Codex supervisor with a dedicated session/process group.
+- The supervisor receives --parent-group-managed and launches Codex without creating a second session, so the full tree inherits the controller-owned group.
+- When the supervisor exits, the progress owner sends SIGTERM, waits for the grace period, escalates to SIGKILL, and confirms that no live non-zombie group members remain before returning.
+- If the progress owner disappears, the supervisor's owner-ancestry check kills its inherited process group.
+- The shared process-group primitives live in autonomous_engineering_process_group.py and are reused by the command runner, Codex runner, and progress owner. This avoids three subtly different implementations of POSIX cleanup.
+
+Regression coverage now verifies that an abruptly exited supervisor cannot leave a live descendant when its owner is still running, and that the owner can drain an inherited process group after the runner returns.
