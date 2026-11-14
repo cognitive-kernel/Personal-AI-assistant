@@ -842,3 +842,15 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 ### Binary stdin regression precision
 
 The binary-input regression was tightened to include actual NUL, CRLF, and non-UTF-8 bytes, ensuring the test detects text-mode conversion rather than merely exercising a byte-looking payload. The test remains byte-for-byte and the exact-head CI must include this final test fixture.
+
+
+## 2026-11-14 — exact-head repository validation passed (PR #757)
+
+- Exact tested code/documentation head before this evidence-only update: `5a8a405e0141be2978a9a92a596d82a32174c73b`.
+- Full Python suite: **2,240 passed, 13 skipped, 51 deselected in 176.72 seconds**. Focused checkpoint ownership/concurrency regressions: **11 passed in 5.61 seconds**.
+- Windows storage/process/checkpoint regression job: **passed**, including real checkpoint watcher startup/stop/recovery, ownership and recovery fault injection, and process/lock checks.
+- Browser E2E: **passed**. Dependency audit: **passed**. CodeQL: **passed**. Generated learning artifacts, repository-local Markdown links, module-time import-cycle guard, deterministic lexical retrieval benchmark, and fail-closed claim-to-test coverage benchmark: **passed**.
+- Exact workflow evidence: [tests run 43627292329](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43627292329), [Browser E2E run 43627292307](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43627292307), [dependency audit run 43627292331](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43627292331), [CodeQL run 43627292305](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43627292305).
+- This evidence covers GitHub-hosted CI and the configured Windows storage regression environment. It does not prove the actual user's non-admin Runner sandbox, live Codex/Ollama calls, long-duration soak, or target-host crash/restart acceptance.
+- PR #757 remains draft and unmerged. Durable Pause remains enabled; no Runner/service/process or autonomous dispatch was started. No task/checkpoint/user data was modified.
+- A status-document evidence update follows this tested head and therefore requires a fresh exact-head CI run; the prior green result is not attributed to the later SHA.
