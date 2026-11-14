@@ -8,11 +8,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from . import knowledge_lifecycle, task_manager, db
 from .knowledge_lifecycle_tasks import KNOWLEDGE_VALIDATE_TASK_TYPE
 from .task_routes import require_loopback_client
+from .module_settings import require_module_enabled
 
 router = APIRouter(
     prefix="/api/learning/candidates",
     tags=["knowledge-lifecycle"],
-    dependencies=[Depends(require_loopback_client)],
+    dependencies=[Depends(require_loopback_client), Depends(require_module_enabled("knowledge_base"))],
 )
 
 
