@@ -327,6 +327,9 @@ def test_codex_command_uses_owner_aware_supervisor_and_distinct_budgets(monkeypa
     managed_command = config.codex_command("codex", task_args, parent_job_managed=True)
     assert "--parent-job-managed" in managed_command
     assert managed_command.index("--parent-job-managed") < managed_command.index("--")
+    group_managed_command = config.codex_command("codex", task_args, parent_group_managed=True)
+    assert "--parent-group-managed" in group_managed_command
+    assert group_managed_command.index("--parent-group-managed") < group_managed_command.index("--")
     assert "--" in smoke_command
     assert "codex" in smoke_command[smoke_command.index("--") + 1]
 
