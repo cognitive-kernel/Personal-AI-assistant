@@ -50,6 +50,23 @@ def verify_tool_calling(model: str, *, timeout: int = 45) -> bool:
         urllib.request.ProxyHandler({}),
         _NoRedirectHandler(),
     )
+    # Avoid changing the residency of a model that the operator already has loaded.
+    try:
+        ps_request = urllib.request.Request("http://127.0.0.1:11434/api/ps")
+        with opener.open(ps_request, timeout=4) as ps_response:
+            running = json.loads(ps_response.read(1_000_001))
+        running_models = running.get("models", []) if isinstance(running, dict) else []
+        if not any(isinstance(item, dict) and item.get("name") == name for item in running_models):
+            payload["keep_alive"] = "0"
+    except (OSError, ValueError, urllib.error.URLError, TimeoutError):
+        # Unknown residency is not permission to unload the model.
+        pass
+    request = urllib.request.Request(
+        "http://127.0.0.1:11434/api/chat",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Accept": "application/json", "Content-Type": "application/json"},
+        method="POST",
+    )
     with opener.open(request, timeout=timeout) as response:
         body = response.read(1_000_001)
     if len(body) > 1_000_000:
