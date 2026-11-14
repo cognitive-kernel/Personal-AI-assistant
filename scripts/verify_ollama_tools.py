@@ -6,8 +6,8 @@ import sys
 import urllib.error
 import urllib.request
 
-
 _TOOL_NAME = "autonomous_engineering_capability_probe"
+_KEEP_ALIVE_CHOICES = ("0", "1m", "5m", "10m", "30m")
 
 
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -15,10 +15,18 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def verify_tool_calling(model: str, *, timeout: int = 45) -> bool:
+def verify_tool_calling(
+    model: str,
+    *,
+    timeout: int = 45,
+    keep_alive: str | None = None,
+) -> bool:
     name = str(model or "").strip()
     if not name or len(name) > 200:
         raise ValueError("A valid installed Ollama model name is required.")
+    if keep_alive is not None and keep_alive not in _KEEP_ALIVE_CHOICES:
+        raise ValueError("keep_alive must be one of the supported bounded Ollama durations.")
+
     payload = {
         "model": name,
         "stream": False,
@@ -40,21 +48,30 @@ def verify_tool_calling(model: str, *, timeout: int = 45) -> bool:
         "options": {"temperature": 0, "num_predict": 64},
         "think": False,
     }
+    if keep_alive is not None:
+        # A caller that owns model preparation may retain this exact model for
+        # the following Codex request; the default path remains residency-neutral.
+        payload["keep_alive"] = keep_alive
+
     opener = urllib.request.build_opener(
         urllib.request.ProxyHandler({}),
         _NoRedirectHandler(),
     )
-    # Avoid changing the residency of a model that the operator already has loaded.
-    try:
-        ps_request = urllib.request.Request("http://127.0.0.1:11434/api/ps")
-        with opener.open(ps_request, timeout=4) as ps_response:
-            running = json.loads(ps_response.read(1_000_001))
-        running_models = running.get("models", []) if isinstance(running, dict) else []
-        if isinstance(running_models, list) and not any(isinstance(item, dict) and item.get("name") == name for item in running_models):
-            payload["keep_alive"] = "0"
-    except (OSError, ValueError, urllib.error.URLError, TimeoutError):
-        # Unknown residency is not permission to unload the model.
-        pass
+    if keep_alive is None:
+        # Avoid changing the residency of a model that the operator already has loaded.
+        try:
+            ps_request = urllib.request.Request("http://127.0.0.1:11434/api/ps")
+            with opener.open(ps_request, timeout=4) as ps_response:
+                running = json.loads(ps_response.read(1_000_001))
+            running_models = running.get("models", []) if isinstance(running, dict) else []
+            if isinstance(running_models, list) and not any(
+                isinstance(item, dict) and item.get("name") == name for item in running_models
+            ):
+                payload["keep_alive"] = "0"
+        except (OSError, ValueError, urllib.error.URLError, TimeoutError):
+            # Unknown residency is not permission to unload the model.
+            pass
+
     request = urllib.request.Request(
         "http://127.0.0.1:11434/api/chat",
         data=json.dumps(payload).encode("utf-8"),
@@ -79,9 +96,10 @@ def verify_tool_calling(model: str, *, timeout: int = 45) -> bool:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Verify Ollama function/tool calling for a local model.")
     parser.add_argument("--model", required=True)
+    parser.add_argument("--keep-alive", choices=_KEEP_ALIVE_CHOICES, default=None)
     args = parser.parse_args(argv)
     try:
-        if not verify_tool_calling(args.model):
+        if not verify_tool_calling(args.model, keep_alive=args.keep_alive):
             print("The model did not return the required structured tool call.", file=sys.stderr)
             return 1
     except (OSError, ValueError, urllib.error.URLError, TimeoutError) as exc:
