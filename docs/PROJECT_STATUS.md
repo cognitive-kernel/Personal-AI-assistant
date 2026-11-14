@@ -438,3 +438,12 @@
 - Root-cause follow-ups from CI: repaired the temporary POSIX owner harness import path; guarded cleanup when a process test double has no PID; added byte-exact command input and checkpoint-runner delegation tests. Operator docs were corrected to the bounded retry/circuit-breaker policy.
 - PR [#757](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/757) remains draft and unmerged. Exact-head CI on `5a8a405e0141be2978a9a92a596d82a32174c73b` passed: 2,240 Python tests passed, 13 skipped, 51 deselected in 176.72 seconds; Windows storage/process/checkpoint regressions, Browser E2E, dependency audit, CodeQL, generated-artifact checks, Markdown-link validation, import-cycle checks, deterministic lexical benchmark, and fail-closed claim-to-test coverage benchmark all passed. The real non-admin Windows Runner sandbox smoke, long-duration soak, crash/restart acceptance, and independent security review remain open.
 - Durable Pause remains enabled. No Runner, service, local process, task dispatch, or autonomous execution was started; no task/checkpoint/user data was modified.
+
+
+## 2026-11-14 — Windows portability status
+
+- Removed the session-scoped named-mutex dependency from durable-state locking; Python and PowerShell now use one cross-session byte-range file lock.
+- Removed fixed user-profile and Python-version paths from both Windows autonomous workflows; runtime tools are resolved from the Runner service identity's PATH.
+- Moved the default Runner installation root under ProgramData.
+- Added regression coverage for shared runtime locking and account-independent tool discovery.
+- Pending: exact-head Windows CI, actual cross-account ACL verification on a separate Windows host, and target-host sandbox smoke/soak. The autonomous system remains paused/off; no local execution was started.
