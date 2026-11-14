@@ -1,5 +1,12 @@
 # Engineering Delivery Estimate — 2026-11-01
 
+## Change-control addendum — 2026-11-14
+
+- **Scope addition:** PR #757 adds owner-bound Codex process supervision and bounded runtime profiles to the autonomous engineering subsystem. This is a focused corrective work item discovered during live Runner diagnosis; it does not silently rewrite the original 22-working-day planning baseline above.
+- **Estimate status:** no additional hour estimate is asserted here. The Windows Job Object path and actual model latency must first be measured on the target Runner; CI completion alone does not establish operational timing.
+- **Acceptance evidence:** exact-head GitHub checks and target-host crash/restart/soak evidence are tracked in `docs/PROJECT_STATUS.md` and `docs/ENGINEERING_LOG.md`. Until those results exist, this addendum remains an open change-control item.
+- **Safety:** no automatic merge, deployment, workflow policy change, or mutation of task/checkpoint/user data is part of this work.
+
 ## Executive commitment
 
 - **Planning baseline:** 22 working days.
