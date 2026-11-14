@@ -380,8 +380,10 @@ def startup() -> None:
             return
         _task_runtimes = []
     settings = db.get_settings()
-    chat_handlers = {
+    research_handlers = {
         research_tasks.RESEARCH_TASK_TYPE: research_tasks.handle_research_task,
+    }
+    research_plan_handlers = {
         research_planner.RESEARCH_PLAN_TASK_TYPE: research_planner.handle_research_plan_task,
     }
     learning_handlers = {
@@ -396,35 +398,49 @@ def startup() -> None:
     programming_handlers: dict[str, Any] = {
         programming_tasks.PROGRAMMING_TASK_TYPE: programming_tasks.handle_programming_task,
     }
-    system_handlers = {
+    cloud_handlers = {
         cloud_resources.CLOUD_DISCOVERY_TASK_TYPE: cloud_resources.handle_discovery_task,
     }
     sandbox_handler = sandbox_tasks.handler_from_environment()
-    if sandbox_handler is not None:
-        programming_handlers[sandbox_tasks.SANDBOX_TASK_TYPE] = sandbox_handler
     sandbox_language_handler = sandbox_tasks.handler_from_environment(allow_language_runners=True)
-    if sandbox_language_handler is not None:
-        programming_handlers[sandbox_tasks.SANDBOX_LANGUAGE_TASK_TYPE] = sandbox_language_handler
+    sandbox_handlers = {
+        sandbox_tasks.SANDBOX_TASK_TYPE: sandbox_handler,
+        sandbox_tasks.SANDBOX_LANGUAGE_TASK_TYPE: sandbox_language_handler,
+    }
     experience_test_handler = experience_tasks.handler_from_environment()
-    if experience_test_handler is not None:
-        programming_handlers[experience_tasks.EXPERIENCE_TEST_TASK_TYPE] = experience_test_handler
+    experience_handlers = (
+        {experience_tasks.EXPERIENCE_TEST_TASK_TYPE: experience_test_handler}
+        if experience_test_handler is not None else {}
+    )
     factual_verification_handler = factual_verification_tasks.handler_from_environment(sandbox_language_handler)
-    if factual_verification_handler is not None:
-        programming_handlers[factual_verification_tasks.FACTUAL_VERIFY_TASK_TYPE] = factual_verification_handler
+    factual_handlers = (
+        {factual_verification_tasks.FACTUAL_VERIFY_TASK_TYPE: factual_verification_handler}
+        if factual_verification_handler is not None else {}
+    )
 
-    # Each runtime claims only its own task types, so slow learning or code-test
-    # work cannot consume the chat lane's worker slots.
+    # Independent runtimes keep slow or disabled capabilities from consuming
+    # another module's worker slots. Every configured lane has its own lease owner.
     runtime_specs: list[tuple[dict[str, Any], int, str, Any]] = [
-        (chat_handlers, int(settings.get("chat_max_concurrent_jobs", 1)), "chat-worker", None),
+        (research_handlers, int(settings.get("research_max_concurrent_jobs", 1)), "research-worker", None),
+        (research_plan_handlers, int(settings.get("research_plan_max_concurrent_jobs", 1)), "research-plan-worker", None),
         (learning_handlers, int(settings.get("learning_max_concurrent_jobs", 1)), "learning-worker", _maintain_learning_runtime),
-        (system_handlers, 1, "system-worker", None),
+        (programming_handlers, int(settings.get("programming_max_concurrent_jobs", 1)), "programming-worker", None),
+        (sandbox_handlers, int(settings.get("sandbox_max_concurrent_jobs", 1)), "sandbox-worker", sandbox_tasks.cleanup_terminal_containers),
+        (cloud_handlers, int(settings.get("cloud_resources_max_concurrent_jobs", 1)), "cloud-resources-worker", None),
     ]
-    if programming_handlers:
+    if experience_handlers:
         runtime_specs.append((
-            programming_handlers,
-            int(settings.get("programming_max_concurrent_jobs", 1)),
-            "programming-worker",
-            sandbox_tasks.cleanup_terminal_containers if sandbox_handler is not None else None,
+            experience_handlers,
+            int(settings.get("experience_test_max_concurrent_jobs", 1)),
+            "experience-worker",
+            None,
+        ))
+    if factual_handlers:
+        runtime_specs.append((
+            factual_handlers,
+            int(settings.get("factual_review_max_concurrent_jobs", 1)),
+            "factual-review-worker",
+            None,
         ))
 
     _task_runtimes = []
