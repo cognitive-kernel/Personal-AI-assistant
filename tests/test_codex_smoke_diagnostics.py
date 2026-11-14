@@ -326,3 +326,43 @@ def test_codex_command_uses_owner_aware_supervisor_and_distinct_budgets(monkeypa
     assert smoke_command[smoke_command.index("--parent-chain") + 1]
     assert "--" in smoke_command
     assert "codex" in smoke_command[smoke_command.index("--") + 1]
+
+
+def test_codex_sandbox_setup_mutex_failure_is_classified_without_raw_diagnostics():
+    events = [
+        {
+            "type": "item.completed",
+            "item": {
+                "type": "error",
+                "error": {
+                    "code": "exec_command_failed",
+                    "message": "Failed to create unified exec process: helper_unknown_error: open sandbox setup mutex",
+                },
+            },
+        },
+        {"type": "turn.completed"},
+    ]
+    evidence = progress.codex_smoke_evidence(events, "MARKER", "", [])
+    assert evidence["error_categories"] == ["sandbox_setup_mutex_access_denied"]
+    assert evidence["error_summaries"][0]["signature"].endswith("open sandbox setup mutex")
+
+
+def test_codex_arguments_accepts_restricted_token_unelevated_backend(monkeypatch):
+    import pytest
+    from scripts import autonomous_engineering_codex_config as config
+
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "16384")
+    monkeypatch.setenv("CODEX_WINDOWS_SANDBOX_BACKEND", "unelevated")
+    arguments = config.codex_arguments("gpt-oss:20b-codex-ctx16384", "report.md")
+    overrides = [
+        arguments[index + 1]
+        for index, value in enumerate(arguments[:-1])
+        if value == "-c"
+    ]
+    assert 'windows.sandbox="unelevated"' in overrides
+    assert "--sandbox" in arguments
+    assert arguments[arguments.index("--sandbox") + 1] == "workspace-write"
+
+    monkeypatch.setenv("CODEX_WINDOWS_SANDBOX_BACKEND", "disabled")
+    with pytest.raises(ValueError, match="CODEX_WINDOWS_SANDBOX_BACKEND"):
+        config.codex_arguments("gpt-oss:20b-codex-ctx16384", "report.md")
