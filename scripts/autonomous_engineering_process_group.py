@@ -5,6 +5,7 @@ This module only guarantees that no live member remains in the supplied group.
 """
 from __future__ import annotations
 
+import math
 import os
 import signal
 import time
@@ -36,6 +37,7 @@ def wait_for_process_group_exit(process_group_id: int, timeout_seconds: float) -
     if (
         isinstance(timeout_seconds, bool)
         or not isinstance(timeout_seconds, (int, float))
+        or not math.isfinite(float(timeout_seconds))
         or timeout_seconds < 0
     ):
         raise ValueError("Process-group wait timeout must be a non-negative number.")
@@ -54,6 +56,14 @@ def terminate_process_group(
     timeout_seconds: float = 5.0,
 ) -> bool:
     """Terminate a group, confirm no live members remain, and return whether it had members."""
+    for name, value in (("grace_seconds", grace_seconds), ("timeout_seconds", timeout_seconds)):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            or value < 0
+        ):
+            raise ValueError(f"{name} must be a non-negative finite number.")
     had_live_members = process_group_has_live_members(process_group_id)
     try:
         os.killpg(process_group_id, signal.SIGTERM)
