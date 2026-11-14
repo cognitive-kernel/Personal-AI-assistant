@@ -854,3 +854,30 @@ The binary-input regression was tightened to include actual NUL, CRLF, and non-U
 - This evidence covers GitHub-hosted CI and the configured Windows storage regression environment. It does not prove the actual user's non-admin Runner sandbox, live Codex/Ollama calls, long-duration soak, or target-host crash/restart acceptance.
 - PR #757 remains draft and unmerged. Durable Pause remains enabled; no Runner/service/process or autonomous dispatch was started. No task/checkpoint/user data was modified.
 - A status-document evidence update follows this tested head and therefore requires a fresh exact-head CI run; the prior green result is not attributed to the later SHA.
+
+
+## 2026-11-14 — Windows identity and session portability audit
+
+A portability audit after the process-ownership CI pass found that the durable-state lock
+still used a `Local\\` named mutex with the creator token's default object ACL. That
+contract was not suitable for cross-session/cross-account use. Python and PowerShell now
+share a byte-range lock on `autonomous-durable-state.lock` in the configured state
+directory (`msvcrt.locking` and `.NET FileStream.Lock`, byte 0, length 1). The lock file
+is persistent metadata only; ownership is the kernel lock and is released on process exit.
+A Windows PowerShell/Python interoperability regression and a static session-independence
+contract test were added.
+
+The main autonomous workflow and Windows sandbox diagnostic no longer pin Python to
+`C:\\Program Files\\Python311` or Ollama to an individual user's profile. They resolve
+both executables from the PATH of the actual Runner service identity. The default Runner
+root now derives from `%ProgramData%`, not a fixed drive path. A regression test prevents
+these account-specific paths from returning. Operational documentation now requires
+Python/Ollama to be visible in the Runner identity's PATH and explains the separate
+shared-state ACL contract.
+
+The configured Runner and application account names remain installation parameters and
+are resolved to machine-local SIDs at provisioning time; no specific username or SID is
+embedded in application code. The Runner remains non-administrator. No local Runner,
+service, process, or autonomous task was started as part of this repository change.
+Windows CI must validate the PowerShell/Python file-lock interoperability test before
+this portability change is accepted. Cross-account target-host acceptance remains pending.
