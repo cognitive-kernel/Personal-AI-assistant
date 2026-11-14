@@ -19,7 +19,7 @@ def isolated_store(tmp_path, monkeypatch):
     initialize_store()
     # Keep this regression test deterministic and independent of Ollama.
     monkeypatch.setattr(
-        service,
+        embedding_service,
         "ollama_embed",
         lambda texts, model: [[1.0, 0.0] if "approved-chat-context-token" in text else [0.0, 1.0] for text in texts],
     )
