@@ -21,6 +21,11 @@ try:
 except ImportError:
     from autonomous_engineering_process_job import WindowsProcessJob
 
+try:
+    from .autonomous_engineering_process_group import terminate_process_group
+except ImportError:
+    from autonomous_engineering_process_group import terminate_process_group
+
 
 def capture_parent_chain(max_depth: int = 4) -> list[dict[str, float | int]]:
     chain: list[dict[str, float | int]] = []
@@ -72,15 +77,7 @@ def _terminate_process(process: subprocess.Popen[bytes], job: WindowsProcessJob)
         # Closing the kill-on-close job terminates Codex and every descendant.
         job.close()
     else:
-        try:
-            os.killpg(process.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            return
-        time.sleep(0.25)
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+        terminate_process_group(process.pid)
     if process.poll() is None:
         try:
             process.wait(timeout=5)
@@ -96,6 +93,7 @@ def run(
     *,
     attach_current_process: bool = False,
     parent_job_managed: bool = False,
+    parent_group_managed: bool = False,
 ) -> int:
     if (
         not isinstance(command, list)
@@ -112,7 +110,8 @@ def run(
 
     job = WindowsProcessJob()
     external_job_managed = os.name == "nt" and parent_job_managed
-    if not external_job_managed:
+    external_group_managed = os.name != "nt" and parent_group_managed
+    if not external_job_managed and not external_group_managed:
         job.__enter__()
     process: subprocess.Popen[bytes] | None = None
     process_tree_cleaned = False
@@ -132,7 +131,7 @@ def run(
             stderr=None,
             bufsize=0,
             creationflags=creationflags,
-            start_new_session=os.name != "nt",
+            start_new_session=os.name != "nt" and not external_group_managed,
         )
         if os.name == "nt" and not owner_bound_windows_job and not external_job_managed:
             job.assign_and_resume(process)
@@ -158,6 +157,12 @@ def run(
                     os._exit(125)
                 if external_job_managed:
                     return 125
+                if external_group_managed:
+                    try:
+                        os.killpg(os.getpgrp(), signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    os._exit(125)
                 _terminate_process(process, job)
                 process_tree_cleaned = True
                 return 125
@@ -167,7 +172,7 @@ def run(
                 if owner_bound_windows_job:
                     job.terminate(124)
                     os._exit(124)
-                if external_job_managed:
+                if external_job_managed or external_group_managed:
                     return 124
                 _terminate_process(process, job)
                 process_tree_cleaned = True
@@ -210,14 +215,14 @@ def run(
         if owner_bound_windows_job:
             job.terminate(exit_code)
             os._exit(exit_code)
-        if external_job_managed:
+        if external_job_managed or external_group_managed:
             return exit_code
         if os.name != "nt":
             _terminate_process(process, job)
             process_tree_cleaned = True
         return exit_code
     finally:
-        if process is not None and not process_tree_cleaned and not external_job_managed:
+        if process is not None and not process_tree_cleaned and not external_job_managed and not external_group_managed:
             if owner_bound_windows_job and process.poll() is None:
                 job.terminate(125)
                 os._exit(125)
@@ -232,6 +237,7 @@ def main() -> int:
     parser.add_argument("--timeout-seconds", type=int, required=True)
     parser.add_argument("--parent-chain", required=True)
     parser.add_argument("--parent-job-managed", action="store_true")
+    parser.add_argument("--parent-group-managed", action="store_true")
     known, command = parser.parse_known_args()
     if command and command[0] == "--":
         command = command[1:]
@@ -245,6 +251,7 @@ def main() -> int:
         command, known.timeout_seconds, chain,
         attach_current_process=True,
         parent_job_managed=known.parent_job_managed,
+        parent_group_managed=known.parent_group_managed,
     )
 
 
