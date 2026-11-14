@@ -134,7 +134,7 @@ def run(
             creationflags=creationflags,
             start_new_session=os.name != "nt",
         )
-        if os.name == "nt" and not owner_bound_windows_job:
+        if os.name == "nt" and not owner_bound_windows_job and not external_job_managed:
             job.assign_and_resume(process)
         assert process.stdout is not None
         events: queue.Queue[bytes | None] = queue.Queue()
