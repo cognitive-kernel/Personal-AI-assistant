@@ -257,7 +257,7 @@ def test_settings_expose_visible_installed_model_selectors_and_manual_context_in
         assert f'id="{profile}-model"' in html
         assert f'id="{profile}-ctx" type="number"' in html
         assert f'id="{profile}-model-installed"' in html
-    assert 'const result=await api("/api/models")' in html
+    assert 'api("/api/models?purpose="+encodeURIComponent(purpose))' in html
     assert 'installedSelect?.addEventListener("change"' in html
 
 

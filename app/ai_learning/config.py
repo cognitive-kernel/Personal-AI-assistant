@@ -1,18 +1,95 @@
-"""Feature gates for the optional AI-learning subsystem."""
+"""Settings-backed feature controls for the isolated AI-learning subsystem."""
 from __future__ import annotations
-import os
 
-def _enabled(name: str, *, default: bool = False) -> bool:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    return value.strip().casefold() in {"1", "true", "yes", "on"}
+import os
+import sqlite3
+from typing import Any
+
+from ..config import SETTING_DEFAULTS
+
+_DEFAULTS: dict[str, bool] = {
+    "ai_learning_knowledge_enabled": True,
+    "ai_learning_retrieval_enabled": True,
+    "ai_learning_browser_enabled": True,
+}
+
+
+def _setting(name: str) -> bool:
+    """Read one validated persisted setting; use defaults only before settings DB bootstrap."""
+    try:
+        from ..db import get_settings
+
+        settings: dict[str, Any] = get_settings()
+    except sqlite3.OperationalError as exc:
+        # Unit-level callers may inspect configuration before app startup has
+        # initialized the settings schema. Do not hide corruption or other DB errors.
+        if "no such table: settings" not in str(exc).casefold():
+            raise
+        settings = {}
+    value = settings.get(name, _DEFAULTS[name])
+    if type(value) is not bool:
+        raise RuntimeError(f"Setting {name} must be a boolean.")
+    return value
+
 
 def is_enabled() -> bool:
-    return _enabled("AI_LEARNING_ENABLED", default=False)
+    """Whether the AI-learning subsystem is enabled (enabled in a fresh install)."""
+    return _setting("ai_learning_knowledge_enabled")
+
 
 def retrieval_is_enabled() -> bool:
-    return is_enabled() and _enabled("AI_LEARNING_RETRIEVAL_ENABLED", default=False)
+    """Whether published AI-learning knowledge may participate in retrieval."""
+    return is_enabled() and _setting("ai_learning_retrieval_enabled")
+
+
+def browser_is_enabled() -> bool:
+    """Whether the visible-browser provider adapter is enabled."""
+    return is_enabled() and _setting("ai_learning_browser_enabled")
+
+
+def _settings_snapshot() -> dict[str, Any]:
+    """Read settings, falling back only while the settings schema is not initialized."""
+    from ..db import get_settings
+
+    try:
+        return get_settings()
+    except sqlite3.OperationalError as exc:
+        if "no such table: settings" not in str(exc).casefold():
+            raise
+        return {}
+
+
+def max_topics_per_run() -> int:
+    """Return the configured upper bound for one browser lesson run."""
+    settings = _settings_snapshot()
+    value = settings.get("ai_learning_lesson_batch_size", SETTING_DEFAULTS["ai_learning_lesson_batch_size"])
+    if type(value) is not int or not 1 <= value <= 20:
+        raise RuntimeError("Setting ai_learning_lesson_batch_size is outside its validated range.")
+    return value
+
+
+def configured_int_setting(name: str, default: int, minimum: int, maximum: int) -> int:
+    """Read a validated integer from the shared persistent settings contract."""
+    value = _settings_snapshot().get(name, default)
+    if type(value) is not int or not minimum <= value <= maximum:
+        raise RuntimeError(f"Persisted setting {name} is outside its validated range.")
+    return value
+
+
+def configured_float_setting(name: str, default: float, minimum: float, maximum: float) -> float:
+    """Read a finite, range-checked numeric setting from the shared settings contract."""
+    import math
+    value = _settings_snapshot().get(name, default)
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or not minimum <= value <= maximum
+    ):
+        raise RuntimeError(f"Persisted setting {name} is outside its validated range.")
+    return float(value)
+
 
 def database_path() -> str:
+    """Return the isolated AI-learning database path."""
     return os.getenv("AI_LEARNING_DB_PATH", "data/ai_learning.db")

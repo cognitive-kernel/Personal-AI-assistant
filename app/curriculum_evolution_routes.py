@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from . import curriculum_evolution
 from .task_routes import require_loopback_client
+from .module_settings import require_module_enabled
 
 router = APIRouter(
     prefix="/api/learning",
@@ -23,7 +24,7 @@ class CurriculumProposalReviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-@router.post("/paths/{path_id}/curriculum-proposals/generate")
+@router.post("/paths/{path_id}/curriculum-proposals/generate", dependencies=[Depends(require_module_enabled("topic_learning"))])
 def generate_curriculum_proposals(path_id: int) -> dict[str, Any]:
     try:
         return curriculum_evolution.generate_proposals(path_id=path_id)
@@ -47,7 +48,7 @@ def get_curriculum_proposals(path_id: int, limit: int = Query(default=50, ge=1, 
         raise HTTPException(status_code=503, detail="Curriculum proposals could not be loaded.") from exc
 
 
-@router.post("/curriculum-proposals/{proposal_id}/review")
+@router.post("/curriculum-proposals/{proposal_id}/review", dependencies=[Depends(require_module_enabled("topic_learning"))])
 def review_curriculum_proposal(
     proposal_id: int, request: CurriculumProposalReviewRequest
 ) -> dict[str, Any]:

@@ -193,3 +193,56 @@ def test_feedback_api_requires_verified_record_and_can_be_cleared(tmp_path, monk
         cleared = client.delete(f"/api/experiences/{experience_id}/feedback")
         assert cleared.status_code == 200
         assert cleared.json()["deleted"] is True
+
+
+def test_experience_observes_learning_method_events_without_mutating_coordinator(tmp_path, monkeypatch):
+    from app.learning_topic_method_attempts import append_attempt_event
+
+    _isolate_app(tmp_path, monkeypatch)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        with db.learning_connection() as connection:
+            path_id = int(connection.execute(
+                "INSERT INTO learning_paths(curriculum_slug, title) VALUES ('observer-test', 'Observer test')"
+            ).lastrowid)
+            topic_id = int(connection.execute(
+                """INSERT INTO learning_path_topics(path_id, topic, position, status)
+                   VALUES (?, 'Observer topic', 1, 'in_progress')""",
+                (path_id,),
+            ).lastrowid)
+        append_attempt_event(
+            topic_id, "ai_learning", 1, "queued",
+            event_key="observer-test:ai:queued",
+            evidence={"provider": "ollama", "model": "configured-model"},
+        )
+        before = append_attempt_event(
+            topic_id, "ai_learning", 1, "running",
+            event_key="observer-test:ai:running",
+            evidence={"job_id": 123},
+        )
+        response = client.get(
+            "/api/experiences/learning-method-observations",
+            params={"path_topic_id": topic_id},
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["count"] == 2
+        assert payload["items"][0]["status"] == "running"
+        assert payload["items"][0]["method"] == "ai_learning"
+        assert payload["items"][0]["evidence"]["job_id"] == 123
+        assert payload["items"][0]["coordinator_state_mutated"] is False
+        after = append_attempt_event(
+            topic_id, "ai_learning", 1, "running",
+            event_key="observer-test:ai:running",
+            evidence={"job_id": 123},
+        )
+        assert after["id"] == before["id"]
+        assert after["idempotent_replay"] is True
+
+
+def test_experience_system_can_only_be_disabled_by_settings(tmp_path, monkeypatch):
+    _isolate_app(tmp_path, monkeypatch)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        db.update_settings({"experience_system_enabled": False})
+        response = client.get("/api/experiences")
+        assert response.status_code == 409
+        assert "disabled in settings" in response.json()["detail"]

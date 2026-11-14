@@ -4,6 +4,7 @@ import json
 import pytest
 
 from app import ollama
+from app.module_settings import ModuleDisabledError
 
 
 class _FakeOpener:
@@ -86,6 +87,72 @@ def test_openai_compatible_chat_supports_local_endpoint_without_api_key(monkeypa
     assert result == "ok"
     assert captured["url"] == "http://127.0.0.1:1234/v1/chat/completions"
     assert captured["authorization"] is None
+
+
+def test_chat_generation_respects_user_module_toggle(monkeypatch):
+    monkeypatch.setattr(ollama, "get_settings", lambda: {"chat_enabled": False})
+    with pytest.raises(ModuleDisabledError, match="chat"):
+        ollama.chat("must not be sent")
+
+
+def test_embedding_respects_user_module_toggle(monkeypatch):
+    monkeypatch.setattr(ollama, "get_settings", lambda: {"embedding_enabled": False})
+    with pytest.raises(ModuleDisabledError, match="embedding"):
+        ollama.embed(["must not be embedded"])
+
+
+def test_model_discovery_uses_selected_ollama_provider(monkeypatch):
+    monkeypatch.setattr(
+        ollama,
+        "get_settings",
+        lambda: {"chat_llm_provider": "ollama"},
+    )
+    installed = [{"name": "qwen3:14b", "size": 8_000_000_000}]
+    monkeypatch.setattr(ollama, "list_models", lambda: installed)
+
+    assert ollama.list_provider_models("chat") == {
+        "provider": "ollama",
+        "models": installed,
+    }
+
+
+def test_model_discovery_uses_selected_openai_compatible_provider(monkeypatch):
+    captured = {}
+    monkeypatch.setenv("TEST_MODEL_DISCOVERY_KEY", "secret-value")
+    monkeypatch.setattr(
+        ollama,
+        "get_settings",
+        lambda: {
+            "ai_learning_llm_provider": "openai_compatible",
+            "ai_learning_llm_base_url": "https://llm.example.test/v1",
+            "ai_learning_llm_api_key_env": "TEST_MODEL_DISCOVERY_KEY",
+        },
+    )
+    monkeypatch.setattr(
+        ollama.socket,
+        "getaddrinfo",
+        lambda host, port, **kwargs: [(None, None, None, None, ("93.184.216.34", port))],
+    )
+    monkeypatch.setattr(
+        ollama.urllib.request,
+        "build_opener",
+        lambda *_args, **_kwargs: _FakeOpener(
+            {"data": [{"id": "model-a"}, {"id": "model-b"}, {"id": "model-a"}]},
+            captured,
+        ),
+    )
+
+    result = ollama.list_provider_models("ai_learning")
+
+    assert result == {
+        "provider": "openai_compatible",
+        "models": [
+            {"name": "model-a", "size": None, "modified_at": None, "digest": None},
+            {"name": "model-b", "size": None, "modified_at": None, "digest": None},
+        ],
+    }
+    assert captured["url"] == "https://llm.example.test/v1/models"
+    assert captured["authorization"] == "Bearer secret-value"
 
 
 @pytest.mark.parametrize(
@@ -279,6 +346,7 @@ def test_research_planning_uses_its_own_provider_and_model_profile(monkeypatch):
             "research_plan_llm_provider": "openai_compatible",
             "research_plan_ollama_model": "research-local-model",
             "research_plan_ollama_timeout_seconds": 60,
+            "research_plan_max_output_tokens": 1200,
         },
     )
     monkeypatch.setattr(ollama, "detect_hardware", lambda: {})
@@ -290,6 +358,8 @@ def test_research_planning_uses_its_own_provider_and_model_profile(monkeypatch):
     assert ollama.chat("plan research", purpose="research_plan") == "plan"
     assert captured["purpose"] == "research_plan"
     assert captured["model"] == "research-local-model"
+    assert captured["timeout"] == 60
+    assert captured["num_predict"] == 1200
 
 
 def test_compatible_learning_provider_does_not_truncate_long_source_context(monkeypatch):
@@ -335,3 +405,28 @@ def test_compatible_provider_model_identity_is_endpoint_and_model_scoped(monkeyp
     assert first["identity"] == same["identity"]
     assert first["identity"] != other_model["identity"]
     assert first["identity"] != other_endpoint["identity"]
+
+
+def test_factual_review_uses_its_own_timeout_and_output_budget(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        ollama, "get_settings",
+        lambda: {
+            "factual_review_llm_provider": "openai_compatible",
+            "factual_review_ollama_model": "review-model",
+            "factual_review_ollama_timeout_seconds": 90,
+            "factual_review_max_output_tokens": 900,
+            "factual_review_source_max_chars": 24000,
+        },
+    )
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {})
+    monkeypatch.setattr(
+        ollama, "_openai_compatible_chat",
+        lambda *args, **kwargs: captured.update(kwargs) or "review",
+    )
+
+    assert ollama.chat("review lesson", purpose="factual_review") == "review"
+    assert captured["purpose"] == "factual_review"
+    assert captured["model"] == "review-model"
+    assert captured["timeout"] == 90
+    assert captured["num_predict"] == 900

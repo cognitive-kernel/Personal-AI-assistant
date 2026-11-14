@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
+from .module_settings import require_module_enabled
 from .autonomous_engineering_progress import get_progress, storage_accessible
 from .ollama_context import MIN_CODEX_CONTEXT_TOKENS, maximum_context_tokens, supports_tool_calling
 
@@ -323,7 +324,7 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
     }
 
 
-@router.post("/dispatch", status_code=202)
+@router.post("/dispatch", status_code=202, dependencies=[Depends(require_module_enabled("autonomous_engineering"))])
 def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) -> dict[str, Any]:
     manual_task = payload.task.strip() if payload else ""
     if "\x00" in manual_task:
@@ -380,7 +381,7 @@ def pause_autonomous_engineering() -> dict[str, Any]:
     return {"accepted": True, "paused": True, "message": "توقف ایمن ثبت شد؛ وظیفهٔ جاری تا مرز امن ادامه می‌یابد و وظیفهٔ جدید آغاز نمی‌شود."}
 
 
-@router.post("/resume")
+@router.post("/resume", dependencies=[Depends(require_module_enabled("autonomous_engineering"))])
 def resume_autonomous_engineering() -> dict[str, Any]:
     gh = shutil.which("gh")
     if not gh:

@@ -36,18 +36,21 @@ def proposal_repo(tmp_path, monkeypatch):
     _git(root, "config", "user.email", "test@example.invalid")
     _git(root, "add", "app", "tests", "docs")
     _git(root, "commit", "-qm", "baseline")
-    monkeypatch.setenv("SELF_IMPROVEMENT_REPO_ROOT", str(root))
+    # Repository location is configured after the isolated settings DB is initialized.
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
+    db.update_settings({"self_improvement_repo_root": str(root), "self_improvement_github_repository": "owner/repository"})
     return root
 
 
 def _enable_static_check(monkeypatch):
-    monkeypatch.setenv("SANDBOX_ENABLED", "1")
-    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", sys.executable)
-    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.11-slim@sha256:" + "b" * 64)
-    monkeypatch.setenv("SANDBOX_TEST_IMAGE", "sha256:" + "c" * 64)
+    db.update_settings({
+        "sandbox_enabled": True,
+        "sandbox_docker_executable": sys.executable,
+        "sandbox_python_image": "python:3.11-slim@sha256:" + "b" * 64,
+        "sandbox_test_image": "sha256:" + "c" * 64,
+    })
     monkeypatch.setattr(self_improvement.sandbox_consent, "is_enabled", lambda: True)
     monkeypatch.setattr(
         self_improvement.sandbox,
@@ -94,12 +97,12 @@ def _approved_proposal(proposal_repo, monkeypatch):
 
 def test_open_pr_requires_explicit_confirmation_and_configuration(proposal_repo, monkeypatch):
     proposal, _ = _approved_proposal(proposal_repo, monkeypatch)
-    monkeypatch.delenv("SELF_IMPROVEMENT_GITHUB_TOKEN", raising=False)
-    monkeypatch.delenv("SELF_IMPROVEMENT_GITHUB_REPOSITORY", raising=False)
+    monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_TOKEN", "test-token")
+    db.update_settings({"self_improvement_github_repository": ""})
 
     with pytest.raises(self_improvement.ProposalError, match="Explicit confirmation"):
         self_improvement.open_review_pull_request(proposal["id"], confirm=False)
-    with pytest.raises(self_improvement.ProposalError, match="SELF_IMPROVEMENT_GITHUB_REPOSITORY"):
+    with pytest.raises(self_improvement.ProposalError, match="dashboard Settings"):
         self_improvement.open_review_pull_request(proposal["id"], confirm=True)
 
 
@@ -108,7 +111,7 @@ def test_open_pr_creates_draft_branch_without_mutating_local_checkout(proposal_r
     source = proposal_repo / "app" / "sample.py"
     before = source.read_text(encoding="utf-8")
     monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_TOKEN", "test-token-never-sent-to-git")
-    monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_REPOSITORY", "owner/repository")
+    db.update_settings({"self_improvement_github_repository": "owner/repository"})
     calls = []
     created_commit = "a" * 40
     created_tree = "b" * 40
@@ -162,7 +165,7 @@ def test_open_pr_creates_draft_branch_without_mutating_local_checkout(proposal_r
 def test_open_pr_rejects_remote_base_drift(proposal_repo, monkeypatch):
     proposal, base_sha = _approved_proposal(proposal_repo, monkeypatch)
     monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_TOKEN", "test-token")
-    monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_REPOSITORY", "owner/repository")
+    db.update_settings({"self_improvement_github_repository": "owner/repository"})
     monkeypatch.setattr(
         self_improvement,
         "_github_api",
@@ -206,7 +209,7 @@ def test_rollback_pr_requires_original_pr_merged(proposal_repo, monkeypatch):
     proposal, base_sha = _approved_proposal(proposal_repo, monkeypatch)
     _record_published_pr(proposal, base_sha)
     monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_TOKEN", "test-token")
-    monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_REPOSITORY", "owner/repository")
+    db.update_settings({"self_improvement_github_repository": "owner/repository"})
     monkeypatch.setattr(
         self_improvement,
         "_github_api",
@@ -223,7 +226,7 @@ def test_rollback_pr_rejects_diverged_base_history(proposal_repo, monkeypatch):
     proposal, base_sha = _approved_proposal(proposal_repo, monkeypatch)
     _record_published_pr(proposal, base_sha)
     monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_TOKEN", "test-token")
-    monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_REPOSITORY", "owner/repository")
+    db.update_settings({"self_improvement_github_repository": "owner/repository"})
     merge_sha = "1" * 40
     current_sha = "2" * 40
 
@@ -245,7 +248,7 @@ def test_rollback_pr_restores_only_unchanged_merged_paths(proposal_repo, monkeyp
     proposal, base_sha = _approved_proposal(proposal_repo, monkeypatch)
     _record_published_pr(proposal, base_sha)
     monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_TOKEN", "test-token")
-    monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_REPOSITORY", "owner/repository")
+    db.update_settings({"self_improvement_github_repository": "owner/repository"})
     calls = []
     merge_sha = "1" * 40
     current_sha = "2" * 40
@@ -309,7 +312,7 @@ def test_rollback_pr_refuses_to_overwrite_later_changes(proposal_repo, monkeypat
     proposal, base_sha = _approved_proposal(proposal_repo, monkeypatch)
     _record_published_pr(proposal, base_sha)
     monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_TOKEN", "test-token")
-    monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_REPOSITORY", "owner/repository")
+    db.update_settings({"self_improvement_github_repository": "owner/repository"})
     merge_sha = "1" * 40
     current_sha = "2" * 40
     tree_before, tree_merged, tree_current = "3" * 40, "4" * 40, "5" * 40
@@ -347,7 +350,7 @@ def test_rollback_pr_ui_is_explicit_and_advisory():
 
 def test_github_api_disables_environment_proxies_and_redirects(monkeypatch):
     monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_TOKEN", "test-token")
-    monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_REPOSITORY", "owner/repository")
+    db.update_settings({"self_improvement_github_repository": "owner/repository"})
     captured = {}
 
     class Response:

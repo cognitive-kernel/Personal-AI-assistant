@@ -41,7 +41,7 @@ def test_retry_exhaustion_creates_one_pending_learning_escalation(
     with db.learning_connection() as conn:
         conn.execute("UPDATE task_queue SET attempts=2 WHERE id=?", (task["id"],))
 
-    def fail(_job_id):
+    def fail(_job_id, task_context=None):
         raise learning.LearningError("temporary source failure") from RuntimeError("network")
 
     monkeypatch.setattr(learning, "run_job", fail)
@@ -88,7 +88,7 @@ def test_quality_rejected_lesson_enters_human_review_queue(
     job = learning.create_job("Lesson rejected by quality gate")
     task, context = _claimed_task(job["id"])
 
-    def reject(job_id):
+    def reject(job_id, task_context=None):
         with db.learning_connection() as conn:
             conn.execute(
                 "UPDATE learning_jobs SET status='rejected', error='quality gate rejected lesson' WHERE id=?",

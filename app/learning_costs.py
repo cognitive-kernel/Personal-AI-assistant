@@ -5,6 +5,36 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 
+def validate_pricing_catalog_json(value: Any) -> None:
+    """Validate the optional exact-model price catalog stored in Settings."""
+    if not isinstance(value, str) or len(value) > 12000:
+        raise ValueError("learning_model_pricing_json must be text up to 12000 characters.")
+    if not value.strip():
+        return
+    try:
+        catalog = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValueError("learning_model_pricing_json must contain valid JSON.") from exc
+    if not isinstance(catalog, dict) or len(catalog) > 500:
+        raise ValueError("learning_model_pricing_json must be an object with at most 500 model entries.")
+    for model_id, entry in catalog.items():
+        if not isinstance(model_id, str) or not model_id.strip() or len(model_id) > 200 or not isinstance(entry, dict):
+            raise ValueError("Each pricing entry must use a valid model name and an object value.")
+        version = entry.get("pricing_version")
+        if not isinstance(version, str) or not version.strip() or len(version) > 100:
+            raise ValueError(f"Pricing version is required for model {model_id}.")
+        for rate_key in ("input_usd_per_million_tokens", "output_usd_per_million_tokens"):
+            raw = entry.get(rate_key)
+            if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):
+                raise ValueError(f"{rate_key} must be a non-negative finite number for model {model_id}.")
+            try:
+                rate = Decimal(str(raw))
+            except InvalidOperation as exc:
+                raise ValueError(f"{rate_key} is invalid for model {model_id}.") from exc
+            if not rate.is_finite() or rate < 0:
+                raise ValueError(f"{rate_key} must be a non-negative finite number for model {model_id}.")
+
+
 def estimate_usage_cost(model_id: str, usage_by_stage: dict[str, dict[str, Any]], pricing_json: str | None = None) -> dict[str, Any]:
     """Estimate USD from explicit exact-model rates; never treat estimates as invoices."""
     if not pricing_json:

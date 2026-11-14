@@ -4,7 +4,13 @@ import time
 import pytest
 
 from app import db, task_manager
-from app.task_runtime import TaskRuntime
+from app.task_runtime import TaskRuntime, reject_unregistered_task
+from app.task_worker import PermanentTaskError
+
+
+def test_unregistered_task_handler_fails_closed():
+    with pytest.raises(PermanentTaskError, match="No registered handler"):
+        reject_unregistered_task({}, None, None)
 
 
 @pytest.fixture
@@ -13,6 +19,27 @@ def runtime_store(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
     task_manager.initialize_task_store()
+
+
+def test_unregistered_task_type_is_terminally_failed(runtime_store):
+    task = task_manager.create_task("runtime.unregistered", {})
+    runtime = TaskRuntime(
+        {"runtime.unregistered": reject_unregistered_task},
+        poll_interval=0.05,
+        lease_seconds=10,
+    )
+    runtime.start()
+    try:
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            saved = task_manager.get_task(task["id"])
+            if saved["status"] == "failed":
+                break
+            time.sleep(0.05)
+        assert saved["status"] == "failed"
+        assert "No registered handler" in (saved.get("error") or "")
+    finally:
+        assert runtime.stop(timeout=3) is True
 
 
 def test_runtime_processes_queued_task_and_stops_cleanly(runtime_store):

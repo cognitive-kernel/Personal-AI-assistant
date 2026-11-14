@@ -39,7 +39,7 @@ def test_learning_task_classifies_model_failure_as_retryable(
 ):
     job = learning.create_job("Retry transient learning failure")
 
-    def fail(_job_id):
+    def fail(_job_id, *, task_context=None):
         raise learning.LearningError("temporary failure") from ollama.OllamaError(
             "connection timed out", retryable=True
         )
@@ -56,7 +56,7 @@ def test_learning_task_handler_persists_real_learning_outcome(
 ):
     job = learning.create_job("Task handler outcome")
 
-    def fake_run_job(job_id):
+    def fake_run_job(job_id, *, task_context=None):
         with db.learning_connection() as conn:
             conn.execute(
                 "UPDATE learning_jobs SET status='completed', updated_at=CURRENT_TIMESTAMP WHERE id=?",
@@ -75,7 +75,7 @@ def test_learning_task_handler_persists_real_learning_outcome(
     }
     assert task_manager.get_task(task["id"])["status"] == "running"
     assert task_manager.get_task(task["id"])["checkpoint"] == {
-        "phase": "learning_queued",
+        "phase": "learning_job_finished",
         "job_id": job["id"],
     }
 
@@ -91,7 +91,7 @@ def test_learning_task_handler_recovers_stale_job_for_queue_retry(
             (stale_status, job["id"]),
         )
 
-    def fake_run_job(job_id):
+    def fake_run_job(job_id, *, task_context=None):
         with db.learning_connection() as conn:
             conn.execute(
                 "UPDATE learning_jobs SET status='running' WHERE id=?", (job_id,)
@@ -123,7 +123,7 @@ def test_learning_task_handler_does_not_repeat_terminal_job(
             "UPDATE learning_jobs SET status='completed' WHERE id=?", (job["id"],)
         )
 
-    def unexpected_run(_job_id):
+    def unexpected_run(_job_id, **_kwargs):
         raise AssertionError("Terminal learning jobs must not run again")
 
     monkeypatch.setattr(learning, "run_job", unexpected_run)
@@ -277,7 +277,7 @@ def test_worker_recovers_when_lesson_commit_precedes_task_completion(
     task = enqueue_learning_task(job["id"])
     generation_calls = []
 
-    def persist_completed_lesson(job_id):
+    def persist_completed_lesson(job_id, *, task_context=None):
         generation_calls.append(job_id)
         with db.learning_connection() as conn:
             conn.execute(

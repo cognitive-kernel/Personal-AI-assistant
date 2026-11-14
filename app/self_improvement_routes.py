@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, StrictBool, ConfigDict
 from . import self_improvement
 from .self_improvement import ProposalError
 from .task_routes import require_loopback_client
+from .module_settings import require_module_enabled
 
 router = APIRouter(
     prefix="/api/self-improvement",
@@ -51,7 +52,7 @@ def list_proposals(limit: int = Query(default=50, ge=1, le=100)) -> dict[str, An
         _proposal_error(exc)
 
 
-@router.post("/proposals", status_code=201)
+@router.post("/proposals", status_code=201, dependencies=[Depends(require_module_enabled("self_improvement"))])
 def create_proposal(request: ProposalCreateRequest) -> dict[str, Any]:
     try:
         proposal = self_improvement.create_proposal(request.title, request.rationale, request.patch)
@@ -79,7 +80,7 @@ def get_proposal_events(proposal_id: int) -> dict[str, Any]:
         _proposal_error(exc)
 
 
-@router.post("/proposals/{proposal_id}/validate")
+@router.post("/proposals/{proposal_id}/validate", dependencies=[Depends(require_module_enabled("self_improvement"))])
 def validate_proposal(proposal_id: int) -> dict[str, Any]:
     try:
         return {"proposal": self_improvement.validate_proposal(proposal_id)}
@@ -87,7 +88,7 @@ def validate_proposal(proposal_id: int) -> dict[str, Any]:
         _proposal_error(exc)
 
 
-@router.post("/proposals/{proposal_id}/static-check")
+@router.post("/proposals/{proposal_id}/static-check", dependencies=[Depends(require_module_enabled("self_improvement"))])
 def static_check_proposal(
     proposal_id: int, request: ExplicitConfirmation
 ) -> dict[str, Any]:
@@ -101,7 +102,7 @@ def static_check_proposal(
         _proposal_error(exc)
 
 
-@router.post("/proposals/{proposal_id}/approve")
+@router.post("/proposals/{proposal_id}/approve", dependencies=[Depends(require_module_enabled("self_improvement"))])
 def approve_proposal(proposal_id: int, request: ExplicitConfirmation) -> dict[str, Any]:
     try:
         return {"proposal": self_improvement.approve_for_pr(proposal_id, confirm=request.confirm)}
@@ -109,7 +110,7 @@ def approve_proposal(proposal_id: int, request: ExplicitConfirmation) -> dict[st
         _proposal_error(exc)
 
 
-@router.post("/proposals/{proposal_id}/open-pr")
+@router.post("/proposals/{proposal_id}/open-pr", dependencies=[Depends(require_module_enabled("self_improvement"))])
 def open_proposal_pull_request(proposal_id: int, request: ExplicitConfirmation) -> dict[str, Any]:
     try:
         return {"pull_request": self_improvement.open_review_pull_request(

@@ -12,6 +12,8 @@ from urllib.parse import urlparse
 from typing import Any
 
 from .db import get_settings, init_databases, learning_connection
+from .learning_source_provenance import candidate_source_contract_status
+from .learning_accuracy_gate import get_aggregate_learning_accuracy
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _REVIEW_KINDS = {"source", "ai_review", "test_review"}
@@ -183,6 +185,8 @@ def candidate_readiness(candidate_id: int) -> dict[str, Any]:
             "SELECT COUNT(*) FROM knowledge_candidate_reviews WHERE candidate_id=?",
             (candidate_id,),
         ).fetchone()[0])
+        source_contract = candidate_source_contract_status(connection, candidate_id)
+    autonomy_gate = get_aggregate_learning_accuracy()
     sources = {
         _registrable_source_domain(str(item["source_host"])) for item in reviews
         if item["review_kind"] == "source" and item["verdict"] == "supports"
@@ -216,6 +220,9 @@ def candidate_readiness(candidate_id: int) -> dict[str, Any]:
     test_review_passed = any(item["review_kind"] == "test_review" and item["verdict"] == "supports" for item in reviews)
     checks = {
         "content_hash_valid": True,
+        "required_source_provenance_complete": source_contract["complete"],
+        "ai_reference_present": source_contract["ai_reference_present"],
+        "origin_source_present": source_contract["origin_source_present"],
         "two_supporting_source_hosts": len(sources) >= 2,  # Legacy key; now counts registrable domains.
         "two_supporting_source_domains": len(sources) >= 2,
         "two_distinct_independent_ai_reviewers": len(independent_models) >= 2,
@@ -223,7 +230,19 @@ def candidate_readiness(candidate_id: int) -> dict[str, Any]:
         "no_unresolved_contradictions": not contradictions,
         "not_already_promoted": candidate["promoted_knowledge_id"] is None,
     }
-    ready = all(checks.values())
+    standard_review_gate = (
+        checks["two_supporting_source_domains"]
+        and checks["two_distinct_independent_ai_reviewers"]
+    )
+    autonomous_review_gate = autonomy_gate["autonomous_acceptance_eligible"]
+    checks["aggregate_accuracy_gate"] = autonomous_review_gate
+    checks["review_gate_satisfied"] = standard_review_gate or autonomous_review_gate
+    ready = (
+        checks["required_source_provenance_complete"]
+        and checks["controlled_test_passed"]
+        and checks["no_unresolved_contradictions"]
+        and checks["review_gate_satisfied"]
+    )
     return {
         "candidate_id": candidate_id,
         "candidate_sha256": candidate["content_sha256"],
@@ -233,6 +252,9 @@ def candidate_readiness(candidate_id: int) -> dict[str, Any]:
         "ready_for_promotion": ready,
         "checks": checks,
         "evidence_counts": {
+            "source_records": source_contract["source_record_count"],
+            "aggregate_accuracy_samples": autonomy_gate["sample_count"],
+            "aggregate_accuracy": autonomy_gate["accuracy"],
             "current_hash_reviews": len(reviews),
             "historical_hash_reviews": all_reviews - len(reviews),
             "supporting_source_hosts": len(sources),  # Legacy key; now counts registrable domains.
@@ -244,8 +266,9 @@ def candidate_readiness(candidate_id: int) -> dict[str, Any]:
         },
         "contradictions": contradictions,
         "note": (
-            "Readiness is a policy gate, not a scientific guarantee. Review records must come "
-            "from trusted adapters; source-host diversity alone does not prove organizational independence."
+            "Readiness is a policy gate, not a scientific guarantee. The aggregate autonomy gate "
+            "uses independently evidenced records across all four learning paths; before it qualifies, "
+            "the existing multi-source and independent-review gate remains required."
         ),
     }
 
@@ -271,6 +294,7 @@ def promote_candidate(candidate_id: int, *, expected_candidate_sha256: str) -> d
                WHERE candidate_id=? AND candidate_sha256=? ORDER BY id""",
             (candidate_id, expected_candidate_sha256),
         ).fetchall()]
+        source_contract = candidate_source_contract_status(connection, candidate_id)
         sources = {
             _registrable_source_domain(str(item["source_host"])) for item in reviews
             if item["review_kind"] == "source" and item["verdict"] == "supports" and item["source_host"]
@@ -296,8 +320,19 @@ def promote_candidate(candidate_id: int, *, expected_candidate_sha256: str) -> d
             and any(isinstance(item, dict) and item.get("passed") is True for item in test_results)
             and test_review_passed
         )
-        if not (len(sources) >= 2 and len(independent_models) >= 2 and tested and not contradictions):
-            raise ValueError("Candidate has not met every multi-source, independent-review, and executed-test gate.")
+        autonomy_gate = get_aggregate_learning_accuracy()
+        if not source_contract["complete"]:
+            raise ValueError(
+                "Candidate is missing mandatory source provenance: an AI provider/model reference "
+                "and an identified origin source (web, book title/author, or other description) are required."
+            )
+        standard_review_gate = len(sources) >= 2 and len(independent_models) >= 2
+        autonomous_review_gate = autonomy_gate["autonomous_acceptance_eligible"]
+        if not (tested and not contradictions and (standard_review_gate or autonomous_review_gate)):
+            raise ValueError(
+                "Candidate has not met the executed-test, contradiction, and either independent-review "
+                "or aggregate >95% four-path autonomy gate."
+            )
         knowledge = connection.execute(
             "SELECT id, topic, version, status FROM knowledge_items WHERE job_id=?",
             (candidate["job_id"],),

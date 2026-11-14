@@ -286,3 +286,148 @@ def test_candidate_claim_coverage_is_exposed_and_incomplete_mapping_fails_closed
     assert plan["claim_coverage"]["covered_claim_count"] == 2
     assert saved.json()["executed"] is False
     assert saved.json()["promoted"] is False
+
+
+def test_candidate_source_api_enforces_web_ai_and_book_metadata(candidate_store):
+    job = learning.create_job("Candidate source metadata")
+    candidate_id = _candidate(job["id"])
+
+    invalid_ai = candidate_store.post(
+        f"/api/learning/candidates/{candidate_id}/sources",
+        json={"source_type": "ai", "provider": "OpenAI", "model_id": "model-x"},
+    )
+    assert invalid_ai.status_code == 422
+
+    ai = candidate_store.post(
+        f"/api/learning/candidates/{candidate_id}/sources",
+        json={
+            "source_type": "ai",
+            "provider": "OpenAI",
+            "model_id": "model-x",
+            "reference_url": "https://learn.microsoft.com/en-us/",
+            "metadata": {"response_id": "response-123"},
+        },
+    )
+    assert ai.status_code == 201
+    assert ai.json()["source"]["verification_status"] == "unverified"
+    assert ai.json()["promoted"] is False
+
+    invalid_book = candidate_store.post(
+        f"/api/learning/candidates/{candidate_id}/sources",
+        json={"source_type": "book", "book_title": "A reference book"},
+    )
+    assert invalid_book.status_code == 422
+
+    book = candidate_store.post(
+        f"/api/learning/candidates/{candidate_id}/sources",
+        json={
+            "source_type": "book",
+            "book_title": "Clean Architecture",
+            "book_author": "Robert C. Martin",
+            "edition": "1st",
+            "page": "35",
+        },
+    )
+    assert book.status_code == 201
+
+    detail = candidate_store.get(
+        f"/api/learning/candidates/{candidate_id}"
+    ).json()["candidate"]
+    assert {item["source_type"] for item in detail["source_provenance"]} == {"ai", "book"}
+    assert detail["status"] == "awaiting_test"
+
+
+def test_autonomous_test_plan_skips_human_attestation_only_after_four_path_accuracy_gate(candidate_store):
+    from app.learning_accuracy_gate import record_accuracy_evaluation
+
+    paths = ["ai_learning", "basic_learning", "curriculum_learning", "experience_system"]
+    for index in range(100):
+        record_accuracy_evaluation(
+            {
+                "sample_id": f"autonomous-plan-{index}",
+                "learning_path": paths[index % len(paths)],
+                "outcome": "correct" if index < 96 else "incorrect",
+                "verification_method": "deterministic_oracle",
+                "verifier_id": "trusted-oracle-v1",
+                "evidence_ref": f"oracle://learning-case/{index}",
+                "evaluated_at": "2026-11-13T10:00:00Z",
+            },
+            trusted_adapter=True,
+        )
+
+    gate_status = candidate_store.get("/api/learning/candidates/autonomy-gate")
+    assert gate_status.status_code == 200
+    assert gate_status.json()["autonomous_acceptance_eligible"] is True
+    assert gate_status.json()["accuracy"] == 0.96
+
+    canonical = "Python dict.get returns the default value when the key is absent."
+    job = learning.create_job("Autonomous oracle plan")
+    candidate_id = _candidate(job["id"], content=canonical)
+    response = candidate_store.post(
+        f"/api/learning/candidates/{candidate_id}/test-plan",
+        json={
+            "confirm": True,
+            "oracle_reviewed": False,
+            "review_note": "Accepted by the aggregate learning accuracy policy.",
+            "tests": [{
+                "name": "dict get default oracle",
+                "objective": "Check the exact Python dictionary default behavior.",
+                "expected_result": "The oracle must match the documented behavior.",
+                "oracle_id": "python.dict-get-default",
+                "oracle_version": 1,
+                "claim": canonical,
+            }],
+        },
+    )
+    assert response.status_code == 201, response.text
+    plan = response.json()["test_plan"]
+    assert plan["oracle_reviewed"] is False
+    assert plan["review_mode"] == "autonomous_accuracy_gate"
+    assert plan["autonomy_gate"]["accuracy"] == 0.96
+    assert plan["autonomy_gate"]["sample_count"] == 100
+
+
+def test_autonomous_test_plan_stays_blocked_at_exactly_95_percent(candidate_store):
+    from app.learning_accuracy_gate import record_accuracy_evaluation
+
+    paths = ["ai_learning", "basic_learning", "curriculum_learning", "experience_system"]
+    for index in range(100):
+        record_accuracy_evaluation(
+            {
+                "sample_id": f"blocked-plan-{index}",
+                "learning_path": paths[index % len(paths)],
+                "outcome": "correct" if index < 95 else "incorrect",
+                "verification_method": "deterministic_oracle",
+                "verifier_id": "trusted-oracle-v1",
+                "evidence_ref": f"oracle://learning-case/{index}",
+                "evaluated_at": "2026-11-13T10:00:00Z",
+            },
+            trusted_adapter=True,
+        )
+
+    job = learning.create_job("Blocked autonomous oracle plan")
+    candidate_id = _candidate(job["id"])
+    response = candidate_store.post(
+        f"/api/learning/candidates/{candidate_id}/test-plan",
+        json={
+            "confirm": True,
+            "oracle_reviewed": False,
+            "review_note": "This request must remain blocked at the exact threshold.",
+            "tests": [{
+                "name": "not yet eligible",
+                "objective": "Verify that exact 95 percent does not enable autonomous review.",
+                "expected_result": "Human oracle attestation remains required.",
+            }],
+        },
+    )
+    assert response.status_code == 422
+    assert "strictly above 95%" in response.json()["detail"]
+
+
+def test_autonomy_gate_endpoint_is_closed_without_independent_evidence(candidate_store):
+    response = candidate_store.get("/api/learning/candidates/autonomy-gate")
+    assert response.status_code == 200
+    report = response.json()
+    assert report["accuracy"] is None
+    assert report["sample_count"] == 0
+    assert report["autonomous_acceptance_eligible"] is False

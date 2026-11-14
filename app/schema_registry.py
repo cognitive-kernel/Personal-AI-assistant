@@ -1445,6 +1445,272 @@ LEARNING_MIGRATIONS = (
             )""",
         ),
     ),
+    Migration(
+        48,
+        "structured-learning-source-provenance",
+        (
+            """CREATE TABLE learning_candidate_sources (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL
+                    REFERENCES temporary_knowledge_candidates(id) ON DELETE RESTRICT,
+                source_type TEXT NOT NULL CHECK(source_type IN ('web','ai','book','other')),
+                source_url TEXT,
+                reference_url TEXT,
+                title TEXT,
+                book_title TEXT,
+                book_author TEXT,
+                provider TEXT,
+                model_id TEXT,
+                edition TEXT,
+                publisher TEXT,
+                isbn TEXT,
+                page TEXT,
+                chapter TEXT,
+                description TEXT,
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                verification_status TEXT NOT NULL DEFAULT 'unverified'
+                    CHECK(verification_status IN ('unverified','verified','inconclusive','contradicted','stale')),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CHECK(source_url IS NULL OR substr(source_url, 1, 8) = 'https://'),
+                CHECK(reference_url IS NULL OR substr(reference_url, 1, 8) = 'https://'),
+                CHECK(
+                    (source_type='web' AND source_url IS NOT NULL AND length(trim(source_url)) > 0)
+                    OR (source_type='ai' AND provider IS NOT NULL AND length(trim(provider)) > 0
+                        AND model_id IS NOT NULL AND length(trim(model_id)) > 0
+                        AND reference_url IS NOT NULL AND length(trim(reference_url)) > 0)
+                    OR (source_type='book' AND book_title IS NOT NULL AND length(trim(book_title)) > 0
+                        AND book_author IS NOT NULL AND length(trim(book_author)) > 0)
+                    OR (source_type='other' AND description IS NOT NULL AND length(trim(description)) > 0)
+                )
+            )""",
+            "CREATE INDEX idx_learning_candidate_sources_candidate ON learning_candidate_sources(candidate_id, source_type, id)",
+            "CREATE INDEX idx_learning_candidate_sources_reference ON learning_candidate_sources(reference_url, source_url)",
+            """CREATE TRIGGER prevent_learning_candidate_sources_update
+               BEFORE UPDATE ON learning_candidate_sources
+               BEGIN SELECT RAISE(ABORT, 'learning source provenance is append-only'); END""",
+            """CREATE TRIGGER prevent_learning_candidate_sources_delete
+               BEFORE DELETE ON learning_candidate_sources
+               BEGIN SELECT RAISE(ABORT, 'learning source provenance is append-only'); END""",
+        ),
+    ),
+    Migration(
+        49,
+        "immutable-cross-path-learning-accuracy-evaluations",
+        (
+            """CREATE TABLE learning_accuracy_evaluations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sample_id TEXT NOT NULL UNIQUE CHECK(length(trim(sample_id)) BETWEEN 1 AND 200),
+                learning_path TEXT NOT NULL
+                    CHECK(learning_path IN ('ai_learning','basic_learning','curriculum_learning','experience_system')),
+                outcome TEXT NOT NULL CHECK(outcome IN ('correct','incorrect')),
+                verification_method TEXT NOT NULL
+                    CHECK(verification_method IN ('official_source_comparison','deterministic_oracle',
+                        'sandbox_test','independent_model','human_adjudication')),
+                verifier_id TEXT NOT NULL CHECK(length(trim(verifier_id)) BETWEEN 1 AND 200),
+                generator_id TEXT,
+                evidence_ref TEXT NOT NULL CHECK(length(trim(evidence_ref)) BETWEEN 1 AND 2048),
+                evaluated_at TEXT NOT NULL,
+                record_json TEXT NOT NULL,
+                record_sha256 TEXT NOT NULL CHECK(length(record_sha256) = 64),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_learning_accuracy_path_outcome ON learning_accuracy_evaluations(learning_path, outcome, id)",
+            """CREATE TRIGGER prevent_learning_accuracy_evaluations_update
+               BEFORE UPDATE ON learning_accuracy_evaluations
+               BEGIN SELECT RAISE(ABORT, 'learning accuracy evaluations are immutable'); END""",
+            """CREATE TRIGGER prevent_learning_accuracy_evaluations_delete
+               BEFORE DELETE ON learning_accuracy_evaluations
+               BEGIN SELECT RAISE(ABORT, 'learning accuracy evaluations are immutable'); END""",
+        ),
+    ),
+
+    Migration(
+        50,
+        "sequential-per-topic-quality-gates",
+        (
+            "ALTER TABLE learning_jobs ADD COLUMN correction_request_key TEXT",
+            "CREATE UNIQUE INDEX idx_learning_jobs_correction_request ON learning_jobs(correction_request_key) WHERE correction_request_key IS NOT NULL",
+            """CREATE TABLE learning_topic_quality_gates (
+                path_topic_id INTEGER PRIMARY KEY REFERENCES learning_path_topics(id) ON DELETE CASCADE,
+                current_job_id INTEGER REFERENCES learning_jobs(id),
+                state TEXT NOT NULL DEFAULT 'pending'
+                    CHECK(state IN ('pending','evaluating','repairing','passed','blocked')),
+                repair_count INTEGER NOT NULL DEFAULT 0 CHECK(repair_count >= 0),
+                max_repairs INTEGER NOT NULL DEFAULT 3 CHECK(max_repairs BETWEEN 1 AND 10),
+                latest_score REAL CHECK(latest_score IS NULL OR (latest_score >= 0 AND latest_score <= 100)),
+                latest_content_sha256 TEXT CHECK(latest_content_sha256 IS NULL OR length(latest_content_sha256) = 64),
+                latest_evaluation_id INTEGER,
+                diagnosis_json TEXT NOT NULL DEFAULT '{}',
+                next_action TEXT NOT NULL DEFAULT 'await_first_lesson',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_learning_topic_quality_gates_state ON learning_topic_quality_gates(state, updated_at)",
+            """CREATE TABLE learning_topic_quality_evaluations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path_topic_id INTEGER NOT NULL REFERENCES learning_path_topics(id),
+                job_id INTEGER NOT NULL REFERENCES learning_jobs(id),
+                evaluation_sequence INTEGER NOT NULL CHECK(evaluation_sequence >= 1),
+                content_sha256 TEXT NOT NULL CHECK(length(content_sha256) = 64),
+                evaluator_id TEXT NOT NULL CHECK(length(trim(evaluator_id)) BETWEEN 1 AND 256),
+                evaluator_version TEXT NOT NULL CHECK(length(trim(evaluator_version)) BETWEEN 1 AND 120),
+                score REAL CHECK(score IS NULL OR (score >= 0 AND score <= 100)),
+                outcome TEXT NOT NULL CHECK(outcome IN ('passed','failed','unavailable','inconclusive')),
+                result_json TEXT NOT NULL,
+                result_sha256 TEXT NOT NULL CHECK(length(result_sha256) = 64),
+                evaluated_at TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(path_topic_id, content_sha256, evaluator_id, evaluator_version, evaluation_sequence)
+            )""",
+            "CREATE INDEX idx_learning_topic_quality_evaluations_topic ON learning_topic_quality_evaluations(path_topic_id, id)",
+            "CREATE INDEX idx_learning_topic_quality_evaluations_job ON learning_topic_quality_evaluations(job_id, id)",
+            """CREATE TRIGGER prevent_learning_topic_quality_evaluations_update
+               BEFORE UPDATE ON learning_topic_quality_evaluations
+               BEGIN SELECT RAISE(ABORT, 'topic quality evaluations are append-only'); END""",
+            """CREATE TRIGGER prevent_learning_topic_quality_evaluations_delete
+               BEFORE DELETE ON learning_topic_quality_evaluations
+               BEGIN SELECT RAISE(ABORT, 'topic quality evaluations are append-only'); END""",
+        ),
+    ),
+    Migration(
+        51,
+        "three-method-topic-learning-fallback",
+        (
+            "ALTER TABLE learning_topic_quality_gates ADD COLUMN current_method TEXT NOT NULL DEFAULT 'ai_learning' CHECK(current_method IN ('ai_learning','basic_learning','topic_learning'))",
+            "ALTER TABLE learning_topic_quality_gates ADD COLUMN latest_method_attempt_id INTEGER",
+            """UPDATE learning_topic_quality_gates
+               SET current_method='basic_learning',
+                   next_action=CASE WHEN state='passed' THEN 'queue_next_topic'
+                                    ELSE 'resume_existing_basic_learning_job' END
+               WHERE current_job_id IS NOT NULL""",
+            """CREATE TABLE learning_topic_method_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path_topic_id INTEGER NOT NULL REFERENCES learning_path_topics(id),
+                method TEXT NOT NULL CHECK(method IN ('ai_learning','basic_learning','topic_learning')),
+                attempt_number INTEGER NOT NULL CHECK(attempt_number BETWEEN 1 AND 3),
+                status TEXT NOT NULL CHECK(status IN ('queued','running','failed','passed','unavailable','inconclusive')),
+                job_id INTEGER REFERENCES learning_jobs(id),
+                external_run_ref TEXT,
+                content_sha256 TEXT CHECK(content_sha256 IS NULL OR length(content_sha256)=64),
+                score REAL CHECK(score IS NULL OR (score >= 0 AND score <= 100)),
+                diagnosis_json TEXT NOT NULL DEFAULT '{}',
+                evidence_json TEXT NOT NULL DEFAULT '{}',
+                started_at TEXT,
+                finished_at TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(path_topic_id, method, attempt_number)
+            )""",
+            "CREATE INDEX idx_learning_topic_method_attempts_topic ON learning_topic_method_attempts(path_topic_id, id)",
+            "CREATE INDEX idx_learning_topic_method_attempts_status ON learning_topic_method_attempts(status, created_at)",
+            """CREATE TRIGGER prevent_learning_topic_method_attempts_update
+               BEFORE UPDATE ON learning_topic_method_attempts
+               BEGIN SELECT RAISE(ABORT, 'topic learning method attempts are append-only'); END""",
+            """CREATE TRIGGER prevent_learning_topic_method_attempts_delete
+               BEFORE DELETE ON learning_topic_method_attempts
+               BEGIN SELECT RAISE(ABORT, 'topic learning method attempts are append-only'); END""",
+        ),
+    ),
+    Migration(
+        52,
+        "append-only-topic-method-attempt-events",
+        (
+            """CREATE TABLE learning_topic_method_attempt_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path_topic_id INTEGER NOT NULL REFERENCES learning_path_topics(id),
+                method TEXT NOT NULL CHECK(method IN ('ai_learning','basic_learning','topic_learning')),
+                attempt_number INTEGER NOT NULL CHECK(attempt_number BETWEEN 1 AND 3),
+                event_sequence INTEGER NOT NULL CHECK(event_sequence >= 1),
+                status TEXT NOT NULL CHECK(status IN ('queued','running','failed','passed','unavailable','inconclusive')),
+                event_key TEXT NOT NULL UNIQUE CHECK(length(trim(event_key)) BETWEEN 1 AND 200),
+                payload_sha256 TEXT NOT NULL CHECK(length(payload_sha256)=64),
+                job_id INTEGER REFERENCES learning_jobs(id),
+                external_run_ref TEXT,
+                content_sha256 TEXT CHECK(content_sha256 IS NULL OR length(content_sha256)=64),
+                score REAL CHECK(score IS NULL OR (score >= 0 AND score <= 100)),
+                diagnosis_json TEXT NOT NULL DEFAULT '{}',
+                evidence_json TEXT NOT NULL DEFAULT '{}',
+                occurred_at TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(path_topic_id, method, attempt_number, event_sequence)
+            )""",
+            "CREATE INDEX idx_learning_topic_method_events_topic ON learning_topic_method_attempt_events(path_topic_id, id)",
+            "CREATE INDEX idx_learning_topic_method_events_attempt ON learning_topic_method_attempt_events(path_topic_id, method, attempt_number, event_sequence)",
+            "CREATE INDEX idx_learning_topic_method_events_status ON learning_topic_method_attempt_events(status, created_at)",
+            """CREATE TRIGGER prevent_learning_topic_method_attempt_events_update
+               BEFORE UPDATE ON learning_topic_method_attempt_events
+               BEGIN SELECT RAISE(ABORT, 'topic method attempt events are append-only'); END""",
+            """CREATE TRIGGER prevent_learning_topic_method_attempt_events_delete
+               BEFORE DELETE ON learning_topic_method_attempt_events
+               BEGIN SELECT RAISE(ABORT, 'topic method attempt events are append-only'); END""",
+        ),
+    ),
+    Migration(
+        53,
+        "idempotent-learning-method-jobs",
+        (
+            """ALTER TABLE learning_jobs ADD COLUMN learning_method TEXT NOT NULL
+               DEFAULT 'basic_learning'
+               CHECK(learning_method IN ('ai_learning','basic_learning','topic_learning'))""",
+            "ALTER TABLE learning_jobs ADD COLUMN method_attempt_key TEXT",
+            "CREATE UNIQUE INDEX idx_learning_jobs_method_attempt_key ON learning_jobs(method_attempt_key) WHERE method_attempt_key IS NOT NULL",
+        ),
+    ),
+    Migration(
+        54,
+        "fenced-learning-job-execution-ownership",
+        (
+            "ALTER TABLE learning_jobs ADD COLUMN execution_owner TEXT",
+            "ALTER TABLE learning_jobs ADD COLUMN execution_epoch INTEGER NOT NULL DEFAULT 0 CHECK(execution_epoch >= 0)",
+            "CREATE INDEX idx_learning_jobs_execution_owner ON learning_jobs(execution_owner, execution_epoch)",
+        ),
+    ),
+    Migration(
+        55,
+        "explicit-cancelled-learning-method-events",
+        (
+            "DROP TRIGGER prevent_learning_topic_method_attempt_events_update",
+            "DROP TRIGGER prevent_learning_topic_method_attempt_events_delete",
+            "ALTER TABLE learning_topic_method_attempt_events RENAME TO learning_topic_method_attempt_events_v54",
+            """CREATE TABLE learning_topic_method_attempt_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path_topic_id INTEGER NOT NULL REFERENCES learning_path_topics(id),
+                method TEXT NOT NULL CHECK(method IN ('ai_learning','basic_learning','topic_learning')),
+                attempt_number INTEGER NOT NULL CHECK(attempt_number BETWEEN 1 AND 3),
+                event_sequence INTEGER NOT NULL CHECK(event_sequence >= 1),
+                status TEXT NOT NULL CHECK(status IN ('queued','running','failed','passed','unavailable','inconclusive','cancelled')),
+                event_key TEXT NOT NULL UNIQUE CHECK(length(trim(event_key)) BETWEEN 1 AND 200),
+                payload_sha256 TEXT NOT NULL CHECK(length(payload_sha256)=64),
+                job_id INTEGER REFERENCES learning_jobs(id),
+                external_run_ref TEXT,
+                content_sha256 TEXT CHECK(content_sha256 IS NULL OR length(content_sha256)=64),
+                score REAL CHECK(score IS NULL OR (score >= 0 AND score <= 100)),
+                diagnosis_json TEXT NOT NULL DEFAULT '{}',
+                evidence_json TEXT NOT NULL DEFAULT '{}',
+                occurred_at TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(path_topic_id, method, attempt_number, event_sequence)
+            )""",
+            """INSERT INTO learning_topic_method_attempt_events(
+                id, path_topic_id, method, attempt_number, event_sequence, status,
+                event_key, payload_sha256, job_id, external_run_ref, content_sha256,
+                score, diagnosis_json, evidence_json, occurred_at, created_at
+            )
+            SELECT id, path_topic_id, method, attempt_number, event_sequence, status,
+                   event_key, payload_sha256, job_id, external_run_ref, content_sha256,
+                   score, diagnosis_json, evidence_json, occurred_at, created_at
+            FROM learning_topic_method_attempt_events_v54""",
+            "DROP TABLE learning_topic_method_attempt_events_v54",
+            "CREATE INDEX idx_learning_topic_method_events_topic ON learning_topic_method_attempt_events(path_topic_id, id)",
+            "CREATE INDEX idx_learning_topic_method_events_attempt ON learning_topic_method_attempt_events(path_topic_id, method, attempt_number, event_sequence)",
+            "CREATE INDEX idx_learning_topic_method_events_status ON learning_topic_method_attempt_events(status, created_at)",
+            """CREATE TRIGGER prevent_learning_topic_method_attempt_events_update
+               BEFORE UPDATE ON learning_topic_method_attempt_events
+               BEGIN SELECT RAISE(ABORT, 'topic method attempt events are append-only'); END""",
+            """CREATE TRIGGER prevent_learning_topic_method_attempt_events_delete
+               BEFORE DELETE ON learning_topic_method_attempt_events
+               BEGIN SELECT RAISE(ABORT, 'topic method attempt events are append-only'); END""",
+        ),
+    ),
 )
 
 

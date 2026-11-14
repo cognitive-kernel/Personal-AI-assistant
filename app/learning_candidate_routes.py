@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 from .db import learning_connection
 from .task_routes import require_loopback_client
+from .module_settings import require_module_enabled
 
 router = APIRouter(
     prefix="/api/learning/candidates",
@@ -39,9 +40,28 @@ class CandidateTestPlanItem(BaseModel):
 
 class CandidateTestPlanRequest(BaseModel):
     confirm: StrictBool
-    oracle_reviewed: StrictBool
+    oracle_reviewed: StrictBool = False
     review_note: str = Field(min_length=20, max_length=1000)
     tests: list[CandidateTestPlanItem] = Field(min_length=1, max_length=10)
+
+    model_config = ConfigDict(extra="forbid")
+
+class CandidateSourceRequest(BaseModel):
+    source_type: Literal["web", "ai", "book", "other"]
+    source_url: str | None = Field(default=None, max_length=2048)
+    reference_url: str | None = Field(default=None, max_length=2048)
+    title: str | None = Field(default=None, max_length=500)
+    book_title: str | None = Field(default=None, max_length=500)
+    book_author: str | None = Field(default=None, max_length=500)
+    provider: str | None = Field(default=None, max_length=200)
+    model_id: str | None = Field(default=None, max_length=200)
+    edition: str | None = Field(default=None, max_length=500)
+    publisher: str | None = Field(default=None, max_length=500)
+    isbn: str | None = Field(default=None, max_length=100)
+    page: str | None = Field(default=None, max_length=100)
+    chapter: str | None = Field(default=None, max_length=500)
+    description: str | None = Field(default=None, max_length=2000)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -72,6 +92,8 @@ def _candidate(row: sqlite3.Row, *, include_content: bool = False) -> dict[str, 
     if include_content:
         if not result["integrity_valid"]:
             raise HTTPException(status_code=409, detail="Candidate content hash mismatch; review is blocked.")
+        from .learning_source_provenance import list_candidate_sources
+        result["source_provenance"] = list_candidate_sources(int(result["id"]))
         result["content"] = content
     else:
         result["content_preview"] = content[:600]
@@ -121,6 +143,17 @@ def list_learning_oracles() -> dict[str, Any]:
     }
 
 
+@router.get("/autonomy-gate")
+def get_learning_autonomy_gate() -> dict[str, Any]:
+    """Expose the current four-path accuracy gate without changing its state."""
+    from .learning_accuracy_gate import get_aggregate_learning_accuracy
+
+    try:
+        return get_aggregate_learning_accuracy()
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Learning autonomy gate is unavailable.") from exc
+
+
 @router.get("/{candidate_id}/claims")
 def get_learning_candidate_claims(candidate_id: int) -> dict[str, Any]:
     """Return stable, positional claim IDs for explicit test-plan coverage mapping."""
@@ -166,18 +199,32 @@ def get_learning_candidate(candidate_id: int) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="Learning candidate is unavailable.") from exc
 
 
-@router.post("/{candidate_id}/test-plan", status_code=201)
+@router.post("/{candidate_id}/test-plan", status_code=201, dependencies=[Depends(require_module_enabled("knowledge_base"))])
 def save_candidate_test_plan(
     candidate_id: int,
     request: CandidateTestPlanRequest,
 ) -> dict[str, Any]:
     if request.confirm is not True:
         raise HTTPException(status_code=422, detail="Explicit confirmation is required.")
+    autonomy_gate = None
     if request.oracle_reviewed is not True:
-        raise HTTPException(
-            status_code=422,
-            detail="A human must attest that the proposed tests use an independent oracle.",
-        )
+        from .learning_accuracy_gate import get_aggregate_learning_accuracy
+        autonomy_gate = get_aggregate_learning_accuracy()
+        if not autonomy_gate["autonomous_acceptance_eligible"]:
+            raise HTTPException(
+                status_code=422,
+                detail="Human oracle attestation remains required until independently verified accuracy across all four learning paths is strictly above 95%.",
+            )
+        for item in request.tests:
+            if not (
+                item.oracle_id is not None
+                and item.oracle_version is not None
+                and item.claim is not None
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Autonomous test plans must bind every test to a registered independent oracle and exact claim.",
+                )
     for item in request.tests:
         has_code = item.python_test_code is not None
         has_expected_stdout = item.expected_stdout is not None
@@ -201,10 +248,18 @@ def save_candidate_test_plan(
     coverage_request = bool(has_claim_mapping)
     plan = {
         "version": 4 if has_claim_mapping else (3 if has_oracle_reference else 2),
-        "oracle_reviewed": True,
+        "oracle_reviewed": request.oracle_reviewed,
+        "review_mode": "human" if request.oracle_reviewed else "autonomous_accuracy_gate",
         "review_note": request.review_note.strip(),
         "tests": plan_tests,
     }
+    if autonomy_gate is not None:
+        plan["autonomy_gate"] = {
+            "policy_version": autonomy_gate["policy_version"],
+            "accuracy": autonomy_gate["accuracy"],
+            "sample_count": autonomy_gate["sample_count"],
+            "threshold_exclusive": autonomy_gate["threshold_exclusive"],
+        }
     encoded = json.dumps(plan, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     try:
         with learning_connection() as connection:
@@ -279,3 +334,28 @@ def save_candidate_test_plan(
         raise
     except (OSError, sqlite3.Error) as exc:
         raise HTTPException(status_code=503, detail="Candidate test plan could not be saved.") from exc
+
+
+@router.post("/{candidate_id}/sources", status_code=201, dependencies=[Depends(require_module_enabled("knowledge_base"))])
+def add_candidate_source(
+    candidate_id: int,
+    request: CandidateSourceRequest,
+) -> dict[str, Any]:
+    """Append validated source provenance; this never verifies or promotes a candidate."""
+    from .learning_source_provenance import record_candidate_source
+
+    payload = request.model_dump(exclude_none=True)
+    try:
+        record = record_candidate_source(candidate_id, payload)
+        return {
+            "candidate_id": candidate_id,
+            "source": record,
+            "promoted": False,
+            "note": "Source metadata is recorded as unverified provenance; it is not proof of claim support.",
+        }
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if "does not exist" in message else 409 if "immutable" in message else 422
+        raise HTTPException(status_code=status_code, detail=message) from exc
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Learning source provenance could not be saved.") from exc
