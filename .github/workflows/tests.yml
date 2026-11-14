@@ -134,10 +134,15 @@ jobs:
           $dotLocal = ConvertTo-AutonomousWindowsAccountName -AccountName ".\app-example"
           $domain = ConvertTo-AutonomousWindowsAccountName -AccountName "CONTOSO\runner-example"
           $upn = ConvertTo-AutonomousWindowsAccountName -AccountName "runner@example.invalid"
+          $spacedLocal = ConvertTo-AutonomousWindowsAccountName -AccountName "runner service"
+          $unicodeLocal = ConvertTo-AutonomousWindowsAccountName -AccountName "runner-é"
+
           if ($local -ne "$env:COMPUTERNAME\runner-example") { throw "Unqualified accounts must resolve to the current machine." }
           if ($dotLocal -ne "$env:COMPUTERNAME\app-example") { throw "Dot-local accounts must resolve to the current machine." }
           if ($domain -ne "CONTOSO\runner-example") { throw "Domain-qualified account names must be preserved." }
           if ($upn -ne "runner@example.invalid") { throw "UPN account names must be preserved." }
+          if ($spacedLocal -ne "$env:COMPUTERNAME\runner service") { throw "Valid local names with spaces must be preserved." }
+          if ($unicodeLocal -ne "$env:COMPUTERNAME\runner-é") { throw "Valid Unicode local names must be preserved." }
           if ((Get-AutonomousLocalAccountName -AccountName $local) -ne "runner-example") { throw "Local account detection failed." }
           if ($null -ne (Get-AutonomousLocalAccountName -AccountName $domain)) { throw "Domain accounts must not be classified as local." }
           Write-Host "Local, dot-local, domain-qualified, and UPN account identity normalization passed."
