@@ -35,7 +35,7 @@ def validate_settings(settings: dict[str, Any]) -> None:
         raise ValueError("sandbox_enabled must be a boolean setting.")
     executable_value = str(settings.get("sandbox_docker_executable", "") or "").strip()
     if executable_value and not Path(executable_value).expanduser().is_absolute():
-        raise ValueError("sandbox_docker_executable must be an absolute path.")
+        raise ValueError("sandbox_docker_executable must be an absolute file path.")
     python_image = str(settings.get("sandbox_python_image", "") or "").strip()
     if python_image and not _IMAGE_REF.fullmatch(python_image):
         raise ValueError("sandbox_python_image must be an official Python image pinned by SHA-256 digest.")
