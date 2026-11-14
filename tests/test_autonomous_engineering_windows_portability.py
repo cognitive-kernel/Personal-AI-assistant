@@ -12,26 +12,32 @@ def test_runner_preflight_uses_the_resolved_ollama_executable_consistently():
     assert "$ollamaPath" not in workflow
 
 
-def test_windows_provisioning_accepts_resolvable_external_account_identities():
+def test_windows_provisioning_uses_the_shared_identity_module():
     script = (ROOT / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
+    module = (ROOT / "scripts" / "AutonomousWindowsIdentity.psm1").read_text(encoding="utf-8")
 
-    assert "function ConvertTo-WindowsAccountName" in script
-    assert '$value.Contains("\\") -or $value.Contains("@")' in script
-    assert "Get-AccountSidValue $appIdentity" in script
-    assert "Get-AccountSidValue $runnerIdentity" in script
-    assert "Using externally managed Runner identity" in script
-    assert "Get-LocalUser -Name $runnerLocalName" in script
+    assert 'Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsIdentity.psm1")' in script
+    assert "ConvertTo-AutonomousWindowsAccountName" in module
+    assert "Get-AutonomousLocalAccountName" in module
+    assert "Get-AutonomousWindowsAccountSid" in module
+    assert "Get-AutonomousWindowsAccountSid -AccountName $appIdentity" in script
+    assert "Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity" in script
+    assert 'if ($value.Contains(' in module
+    assert 'if ($value.Contains("@"))' not in module
 
 
-def test_windows_provisioning_does_not_require_a_fixed_users_group_or_grant_admin_acl():
+def test_windows_provisioning_does_not_require_a_fixed_users_group_or_admin_acl_grants():
     script = (ROOT / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
+    module = (ROOT / "scripts" / "AutonomousWindowsIdentity.psm1").read_text(encoding="utf-8")
 
     assert "Add-LocalGroupMember" not in script
     assert "S-1-5-32-545" not in script
-    assert "BUILTIN" not in script
-    assert '"SYSTEM:(OI)(CI)F"' not in script
-    assert '$runnerGrant = "*$($runnerSid):(OI)(CI)M"' in script
-    assert '$progressGrants += "*$($appSid):(OI)(CI)RX"' in script
+    assert "BUILTIN" not in script + module
+    assert '"SYSTEM:(OI)(CI)F"' not in script + module
+    assert "Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid" in script
+    assert "Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -ReadOnlySid $appSid" in script
+    assert '*$($RunnerSid):(OI)(CI)M' in module
+    assert '*$($ReadOnlySid):(OI)(CI)RX' in module
 
 
 def test_windows_provisioning_keeps_runner_least_privilege_as_a_role_invariant():
