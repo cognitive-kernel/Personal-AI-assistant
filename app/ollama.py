@@ -13,6 +13,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 from .db import get_settings
+from .config import SETTING_DEFAULTS
 from .hardware import detect_hardware, ensure_resource_headroom, model_keep_alive, runtime_limits
 from .ollama_context import OllamaModelMetadataError, maximum_context_tokens
 from .pinned_http import PinnedHTTPHandler, PinnedHTTPSHandler
@@ -678,11 +679,15 @@ def _openai_compatible_chat(
     for item in history or []:
         if item.get("role") in {"user", "assistant"} and isinstance(item.get("content"), str):
             messages.append({"role": item["role"], "content": item["content"][:12000]})
-    message_limit = (
-        min(256000, max(1000, int(settings.get(f"{purpose}_source_max_chars", 16000))))
-        if purpose in {"learning", "ai_learning", "topic_learning", "research_plan", "factual_review"}
-        else 72000 if purpose == "programming"
-        else 12000
+    default_source_limit = int(
+        SETTING_DEFAULTS.get(
+            f"{purpose}_source_max_chars",
+            72000 if purpose == "programming" else 12000,
+        )
+    )
+    message_limit = min(
+        256000,
+        max(1000, int(settings.get(f"{purpose}_source_max_chars", default_source_limit))),
     )
     messages.append({"role": "user", "content": message[:message_limit]})
     payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False}
@@ -763,10 +768,17 @@ def chat(
     prefix = purpose
     provider_profile = purpose
     hardware = detect_hardware()
-    request_timeout = int(settings.get(f"{prefix}_ollama_timeout_seconds", settings.get("ollama_timeout_seconds", 120)))
+    timeout_key = f"{prefix}_ollama_timeout_seconds"
+    timeout_default = int(
+        SETTING_DEFAULTS.get(timeout_key, settings.get("ollama_timeout_seconds", 120))
+    )
+    request_timeout = int(settings.get(timeout_key, timeout_default))
     effective_num_predict = num_predict
     if effective_num_predict is None and purpose in {"factual_review", "research_plan"}:
-        effective_num_predict = settings.get(f"{purpose}_max_output_tokens")
+        effective_num_predict = settings.get(
+            f"{purpose}_max_output_tokens",
+            SETTING_DEFAULTS.get(f"{purpose}_max_output_tokens"),
+        )
     if effective_num_predict is not None and (
         isinstance(effective_num_predict, bool)
         or not isinstance(effective_num_predict, int)
