@@ -8,6 +8,16 @@
 - If a controller process exited unexpectedly, the OS released its worktree lock. A Codex descendant could remain alive and continue writing, so a later recovery run could acquire the lock while the old model process was still active.
 - Codex provider settings amplified stalls: 900,000 ms stream-idle timeout, 10 stream retries, and 4 request retries. The smoke invocation had no separate hard process deadline.
 
+### Five-why root-cause chain
+
+1. Codex could outlive its Python owner because the child process was not tied to the owner's lifecycle.
+2. It was launched as a normal subprocess with streamed output and no process-tree kill boundary or hard deadline.
+3. The worktree lock correctly released when its controller exited, but it did not own or terminate descendants.
+4. Existing recovery tests covered state locks and checkpoint watchers, not an owner crash with a live Codex descendant.
+5. The smoke path inherited a 15-minute stream-idle timeout, 10 stream retries, 4 request retries, and no separate wall-clock limit.
+
+Evidence and the full blast-radius analysis are recorded in ADR-020 and the PR description.
+
 ### Corrective changes
 
 - Added `scripts/autonomous_engineering_codex_runner.py` as a focused process-supervision boundary. It captures the owning process ancestry with PID and OS creation time, rejects missing/reused/unverifiable owners, streams JSONL without blocking deadline checks, and enforces a 300-second smoke or 1,800-second task deadline.
