@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from scripts.autonomous_engineering_execution_lock import (
@@ -85,3 +86,38 @@ def test_progress_checkpoint_and_controller_share_expanded_state_root(
     assert progress.store_dir() == expected
     assert checkpoint.store_dir() == expected
     assert cycle._autonomous_state_dir() == expected
+
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Job Object ownership is Windows-only")
+def test_windows_codex_job_kills_child_and_grandchild_when_owner_closes(tmp_path: Path):
+    grandchild_pid_file = tmp_path / "grandchild.pid"
+    grandchild_code = "import time; time.sleep(60)"
+    child_code = (
+        "import subprocess,sys,time; "
+        "p=subprocess.Popen([sys.executable,'-c'," + repr(grandchild_code) + "]); "
+        "open(" + repr(str(grandchild_pid_file)) + ",'w').write(str(p.pid)); "
+        "time.sleep(60)"
+    )
+
+    with WindowsProcessJob() as job:
+        child = subprocess.Popen(
+            [sys.executable, "-c", child_code],
+            creationflags=WindowsProcessJob.CREATE_SUSPENDED,
+        )
+        job.assign_and_resume(child)
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and not grandchild_pid_file.is_file():
+            if child.poll() is not None:
+                raise AssertionError("Job-owned Codex child exited before spawning its descendant.")
+            time.sleep(0.05)
+        assert grandchild_pid_file.is_file(), "Job-owned Codex child did not create its descendant."
+
+    child.wait(timeout=5)
+    grandchild_pid = int(grandchild_pid_file.read_text(encoding="utf-8"))
+    try:
+        psutil.Process(grandchild_pid).wait(timeout=5)
+    except psutil.NoSuchProcess:
+        pass
+    except psutil.TimeoutExpired:
+        raise AssertionError("A Codex descendant survived closure of its owning Windows Job Object.")
