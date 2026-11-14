@@ -186,8 +186,25 @@ def run(
             if chunk is None:
                 stream_closed = True
             else:
-                sys.stdout.buffer.write(chunk)
-                sys.stdout.buffer.flush()
+                try:
+                    sys.stdout.buffer.write(chunk)
+                    sys.stdout.buffer.flush()
+                except OSError:
+                    print("Codex supervisor output owner disappeared; terminating the owned process tree.", file=sys.stderr)
+                    if owner_bound_windows_job:
+                        job.terminate(125)
+                        os._exit(125)
+                    if external_job_managed:
+                        return 125
+                    if external_group_managed:
+                        try:
+                            os.killpg(os.getpgrp(), signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                        os._exit(125)
+                    _terminate_process(process, job)
+                    process_tree_cleaned = True
+                    return 125
         while process.poll() is None:
             if not parent_chain_is_alive(parent_chain):
                 print("Codex stopped because its owning controller exited or its PID identity changed.", file=sys.stderr)
