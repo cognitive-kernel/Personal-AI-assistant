@@ -344,7 +344,9 @@ def run_codex(args: argparse.Namespace) -> int:
                             process.kill()
                             process.wait(timeout=5)
                 else:
-                    terminate_process_group(process.pid)
+                    process_pid = getattr(process, "pid", None)
+                    if isinstance(process_pid, int) and process_pid > 0:
+                        terminate_process_group(process_pid)
                     if process.poll() is None:
                         try:
                             process.wait(timeout=1)
