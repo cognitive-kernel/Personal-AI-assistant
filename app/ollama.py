@@ -426,7 +426,10 @@ def model_identity(
 def _find_running_model_entry(running_models: Any, model: str) -> dict[str, Any] | None:
     if not isinstance(running_models, list):
         return None
-    variant_prefix = f"{model}-codex-ctx"
+    variant_pattern = re.compile(
+        rf"^{re.escape(model)}-codex-(?:ctx[0-9]+|[0-9]+k)$",
+        re.IGNORECASE,
+    )
     return next((
         item for item in running_models
         if isinstance(item, dict)
@@ -434,8 +437,7 @@ def _find_running_model_entry(running_models: Any, model: str) -> dict[str, Any]
             item.get("name") == model
             or (
                 isinstance(item.get("name"), str)
-                and item["name"].startswith(variant_prefix)
-                and item["name"][len(variant_prefix):].isdigit()
+                and variant_pattern.fullmatch(item["name"]) is not None
             )
         )
     ), None)
