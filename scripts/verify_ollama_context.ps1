@@ -29,6 +29,14 @@ function Get-MaximumContext {
     }
     $key = $architecture + ".context_length"
     $property = $Info.model_info.PSObject.Properties[$key]
+    if (-not $property) {
+        $declaredArchitecture = $Info.model_info.PSObject.Properties["general.architecture"]
+        if ($declaredArchitecture) {
+            $architecture = [string]$declaredArchitecture.Value
+            $key = $architecture + ".context_length"
+            $property = $Info.model_info.PSObject.Properties[$key]
+        }
+    }
     $maximum = 0L
     if (-not $property -or -not [int64]::TryParse([string]$property.Value, [ref]$maximum) -or $maximum -le 0) {
         throw "Ollama did not publish a valid architecture-specific context limit ('$key')."
@@ -37,10 +45,22 @@ function Get-MaximumContext {
 }
 
 function Assert-ToolCallingCapability {
-    param([Parameter(Mandatory = $true)]$Info)
-    $capabilities = @($Info.capabilities | ForEach-Object { [string]$_ })
-    if ($capabilities -notcontains "tools") {
-        throw "Selected Ollama model does not explicitly advertise the required 'tools' capability."
+    param(
+        [Parameter(Mandatory = $true)]$Info,
+        [Parameter(Mandatory = $true)][string]$ModelName
+    )
+    $capabilitiesProperty = $Info.PSObject.Properties["capabilities"]
+    if ($capabilitiesProperty -and $null -ne $capabilitiesProperty.Value) {
+        $capabilities = @($capabilitiesProperty.Value | ForEach-Object { [string]$_ })
+        if ($capabilities -notcontains "tools") {
+            throw "Selected Ollama model explicitly does not advertise the required 'tools' capability."
+        }
+        return
+    }
+    $toolProbeScript = Join-Path $PSScriptRoot "verify_ollama_tools.py"
+    & python $toolProbeScript --model $ModelName 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Selected Ollama model failed the live structured tool-call probe."
     }
 }
 
@@ -62,6 +82,30 @@ function Get-AutomaticContext {
     $availableMemoryBytes = [int64]$os.FreePhysicalMemory * 1KB
 
     try {
+        $runtime = Invoke-RestMethod -Uri "$baseUrl/api/ps" -Method Get -TimeoutSec 10 -MaximumRedirection 0
+    } catch {
+        throw "Could not inspect currently loaded Ollama model memory before context planning. $($_.Exception.Message)"
+    }
+    $runningMatches = @($runtime.models | Where-Object {
+        $_ -and $_.name -and (
+            ([string]$_.name).Equals($ModelName, [System.StringComparison]::OrdinalIgnoreCase) -or
+            ([string]$_.name) -match ("(?i)^" + [regex]::Escape($ModelName) + "-codex-ctx[0-9]+$")
+        )
+    })
+    if ($runningMatches.Count -gt 1) {
+        throw "Multiple instances of '$ModelName' are loaded; refusing to infer a single safe memory budget."
+    }
+    $modelIsLoaded = $runningMatches.Count -eq 1
+    $runningContextTokens = $null
+    if ($modelIsLoaded) {
+        $parsedRunningContext = 0L
+        if (-not [int64]::TryParse([string]$runningMatches[0].context_length, [ref]$parsedRunningContext) -or $parsedRunningContext -le 0) {
+            throw "The loaded model does not expose its allocated positive context length."
+        }
+        $runningContextTokens = $parsedRunningContext
+    }
+
+    try {
         $tags = Invoke-RestMethod -Uri "$baseUrl/api/tags" -Method Get -TimeoutSec 10 -MaximumRedirection 0
     } catch {
         throw "Could not inspect installed Ollama model sizes for context planning. $($_.Exception.Message)"
@@ -78,6 +122,8 @@ function Get-AutomaticContext {
         model_weight_bytes = $weightBytes
         available_memory_bytes = $availableMemoryBytes
         requested_context_tokens = $RequestedContext
+        model_is_loaded = $modelIsLoaded
+        running_context_tokens = $runningContextTokens
     } | ConvertTo-Json -Depth 30 -Compress
     $helperPath = Join-Path (Split-Path -Parent $PSScriptRoot) "app\ollama_context.py"
     if (-not (Test-Path -LiteralPath $helperPath -PathType Leaf)) {
@@ -134,7 +180,7 @@ if ($VerifyOnly) {
         throw "The selected Codex context was not persisted as a positive verified allocation for runtime verification."
     }
     $modelInfo = Get-ModelInfo -ModelName $codexModel
-    Assert-ToolCallingCapability -Info $modelInfo
+    Assert-ToolCallingCapability -Info $modelInfo -ModelName $Model -ModelName $codexModel
     $maximum = Get-MaximumContext -Info $modelInfo
     if ($selectedContext -gt $maximum) {
         throw "The persisted Codex context $selectedContext exceeds the model maximum $maximum."
