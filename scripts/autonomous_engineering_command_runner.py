@@ -149,19 +149,23 @@ def run_command(
             _terminate_posix_group(process)
         return subprocess.CompletedProcess(list(command), process.returncode, stdout, stderr)
     finally:
-        if process is not None:
-            if os.name == "nt":
-                try:
-                    _terminate_windows_job(job, 125)
-                finally:
-                    if process.poll() is None:
-                        try:
-                            process.wait(timeout=1)
-                        except subprocess.TimeoutExpired:
-                            # Assignment itself can fail. A suspended process
-                            # that never entered the job must still be killed.
-                            process.kill()
-                            process.wait(timeout=5)
-            else:
-                _terminate_posix_group(process)
-        job.close()
+        try:
+            if process is not None:
+                if os.name == "nt":
+                    try:
+                        _terminate_windows_job(job, 125)
+                    finally:
+                        if process.poll() is None:
+                            try:
+                                process.wait(timeout=1)
+                            except subprocess.TimeoutExpired:
+                                # Assignment itself can fail. A suspended process
+                                # that never entered the job must still be killed.
+                                process.kill()
+                                process.wait(timeout=5)
+                else:
+                    _terminate_posix_group(process)
+        finally:
+            # Always close the Job Object, even if termination confirmation
+            # fails; KILL_ON_JOB_CLOSE is the last-resort containment boundary.
+            job.close()
