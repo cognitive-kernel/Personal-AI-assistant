@@ -213,3 +213,20 @@ def test_codex_runner_kills_inherited_group_when_output_owner_disappears(tmp_pat
             return
         time.sleep(0.05)
     raise AssertionError("Codex descendant survived after the output owner disappeared.")
+
+
+def test_codex_runner_rejects_conflicting_or_unowned_external_group_contracts():
+    command = [sys.executable, "--version"]
+    parent_chain = runner.capture_parent_chain()
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        runner.run(
+            command, 10, parent_chain,
+            attach_current_process=True,
+            parent_job_managed=True,
+            parent_group_managed=True,
+        )
+    with pytest.raises(ValueError, match="explicit parent-chain"):
+        runner.run(
+            command, 10, parent_chain,
+            parent_group_managed=True,
+        )
