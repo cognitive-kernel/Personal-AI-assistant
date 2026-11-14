@@ -1019,7 +1019,7 @@ def test_codex_arguments_reject_unverified_windows_sandbox_backend(monkeypatch):
 
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
     monkeypatch.setenv("CODEX_WINDOWS_SANDBOX_BACKEND", "danger-full-access")
-    with pytest.raises(ValueError, match="must be 'mxc', 'elevated', or 'unelevated'"):
+    with pytest.raises(ValueError, match=r"must be 'mxc', 'elevated', or 'unelevated'"):
         progress.codex_arguments("gpt-oss:20b", "codex-report.md")
 
 
@@ -1032,6 +1032,19 @@ def test_codex_arguments_allow_restricted_unelevated_backend(monkeypatch):
 
     assert 'windows.sandbox="unelevated"' in arguments
     assert arguments[arguments.index("--sandbox") + 1] == "workspace-write"
+
+
+def test_autonomous_workflow_gates_unelevated_sandbox_behind_explicit_opt_in():
+    workflow = (
+        Path(__file__).resolve().parents[1]
+        / ".github" / "workflows" / "autonomous-codex-engineering.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "AUTONOMOUS_ENGINEERING_ALLOW_UNELEVATED_SANDBOX" in workflow
+    assert "$sandboxBackends = @(\"mxc\")" in workflow
+    assert 'if ($env:AUTONOMOUS_ENGINEERING_ALLOW_UNELEVATED_SANDBOX -eq "true")' in workflow
+    assert "weaker network isolation" in workflow
+    assert "disabled by default" in workflow
 
 
 def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkeypatch, tmp_path):
