@@ -30,6 +30,18 @@ def test_manual_task_is_rejected_while_previous_autonomous_pr_is_open():
         raise AssertionError("A new manual task must not supersede an unaccepted PR.")
 
 
+def test_powershell_reconciles_github_pr_state_before_rejecting_a_replacement_task():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "scripts" / "persist_autonomous_manual_task.ps1").read_text(encoding="utf-8")
+    pr_reconciliation = script.index("if ($pendingPrFound)")
+    replacement_guard = script.index("Another manual task is still pending")
+    owner_validation = script.index("Repair-AutonomousTaskOwnerRecord")
+
+    assert pr_reconciliation < replacement_guard < owner_validation
+
+
 def test_different_manual_task_cannot_replace_existing_pending_task():
     try:
         validate_manual_task_submission(
