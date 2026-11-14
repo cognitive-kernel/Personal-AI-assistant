@@ -176,8 +176,8 @@ def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool
             model_supports_tools = supports_tool_calling_fn(capabilities)
             tools_verification_method = "ollama_model_capabilities"
         else:
-            model_supports_tools = _probe_tool_calling(tool_probe_fn, model, model_digest) if callable(tool_probe_fn) else False
-            tools_verification_method = "live_tool_call_probe" if model_supports_tools else "unverified"
+            model_supports_tools = False
+            tools_verification_method = "unverified"
         metadata_available = context_length is not None
         recommended_context = None
         recommendation_error = None
@@ -210,6 +210,12 @@ def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool
                 except Exception as exc:
                     recommendation_error = f"Hardware context calculation failed: {type(exc).__name__}"
         context_supported = recommended_context is not None
+        # Probe only after the hardware estimate: a first probe may load the model,
+        # which changes free RAM and would otherwise cause the same weights to be
+        # subtracted twice on the next status refresh.
+        if not tools_metadata_available and callable(tool_probe_fn):
+            model_supports_tools = _probe_tool_calling(tool_probe_fn, model, model_digest)
+            tools_verification_method = "live_tool_call_probe" if model_supports_tools else "unverified"
         result.update({
             "model_context_length": context_length,
             "model_recommended_context_length": recommended_context,
