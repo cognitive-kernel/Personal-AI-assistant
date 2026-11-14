@@ -168,27 +168,25 @@ jobs:
           $ErrorActionPreference = "Stop"
           Write-Host "Runner identity:"
           whoami
-          $pythonPath = "C:\Program Files\Python311\python.exe"
-          $pythonDirectory = Split-Path -Parent $pythonPath
+          $python = Get-Command python -ErrorAction Stop
+          $ollama = Get-Command ollama -ErrorAction Stop
+          $pythonDirectory = Split-Path -Parent $python.Source
           $scriptsPath = Join-Path $pythonDirectory "Scripts"
-          $ollamaPath = "C:\Users\Admin\AppData\Local\Programs\Ollama\ollama.exe"
-          $ollamaDirectory = Split-Path -Parent $ollamaPath
-          if (-not (Test-Path -LiteralPath $ollamaPath -PathType Leaf)) {
-            throw "Ollama executable was not found at: $ollamaPath"
-          }
-          if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) {
-            throw "System-wide Python was not found at: $pythonPath"
-          }
-          if (-not (Test-Path -LiteralPath $scriptsPath -PathType Container)) {
-            throw "Python Scripts directory was not found at: $scriptsPath"
-          }
-          & $pythonPath --version
+          $ollamaDirectory = Split-Path -Parent $ollama.Source
+          & $python.Source --version
           if ($LASTEXITCODE -ne 0) {
             throw "Python cannot execute under the Runner service identity."
           }
-          @($pythonDirectory, $scriptsPath, $ollamaDirectory) |
-            Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          $env:PATH = "$pythonDirectory;$scriptsPath;$ollamaDirectory;$env:PATH"
+          & $ollama.Source --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "Ollama CLI cannot execute under the Runner service identity."
+          }
+          $pathEntries = @($pythonDirectory, $ollamaDirectory)
+          if (Test-Path -LiteralPath $scriptsPath -PathType Container) {
+            $pathEntries += $scriptsPath
+          }
+          $pathEntries | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          $env:PATH = (($pathEntries -join ";") + ";" + $env:PATH)
           python --version
           if ($LASTEXITCODE -ne 0) {
             throw "Python is not resolvable through PATH under the Runner service identity."
