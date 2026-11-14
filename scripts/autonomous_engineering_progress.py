@@ -208,7 +208,15 @@ def run_codex(args: argparse.Namespace) -> int:
         if os.name == "nt":
             job.assign_and_resume(process)
     except BaseException:
-        job.close()
+        try:
+            job.terminate_remaining_processes(125)
+        finally:
+            try:
+                if process is not None and process.poll() is None:
+                    process.kill()
+                    process.wait(timeout=5)
+            finally:
+                job.close()
         raise
     assert process.stdin is not None and process.stdout is not None
     input_broken = False
