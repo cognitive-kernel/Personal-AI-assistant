@@ -58,4 +58,12 @@ Corrective changes in PR #757:
 3. Do not select the elevated helper for the non-admin Runner by default; it is incompatible with the observed mutex ACL contract. Do not make the Runner an administrator, change the upstream helper ACL, or fall back to unsandboxed execution.
 4. Bound the workflow smoke step independently at 15 minutes and classify this mutex error explicitly in sanitized diagnostics.
 
+## 2026-11-14 addendum — sandbox fallback security gate
+
+Current Codex Windows sandbox documentation distinguishes the implementations: MXC is recommended on compatible hosts; `elevated` is the preferred legacy fallback; `unelevated` is a secondary legacy fallback with weaker network isolation and no denied-read-path support. The unelevated mode is therefore not an equivalent security substitute.
+
+PR #757 keeps MXC as the only automatic candidate. The legacy `unelevated` candidate is added only when the repository variable `AUTONOMOUS_ENGINEERING_ALLOW_UNELEVATED_SANDBOX` is explicitly set to `true`. Its default is false. If MXC smoke fails and the opt-in is absent, the workflow fails closed and reports the required approval; it never silently selects a weaker mode or runs unsandboxed.
+
+Reference: https://learn.chatgpt.com/docs/windows/windows-sandbox
+
 **Acceptance boundary:** repository CI can validate argument construction, diagnostics, and process supervision. Only a successful real `codex exec` workspace create/read/delete smoke on the target Runner can establish which sandbox backend is operational. The target-host smoke remains pending while the durable autonomous-engineering pause is enabled. No pause setting, task/checkpoint data, host ACL, Runner identity, or production Codex installation was changed by this PR.
