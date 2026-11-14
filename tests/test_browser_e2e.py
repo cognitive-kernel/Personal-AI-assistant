@@ -2176,6 +2176,11 @@ def test_browser_settings_form_persists_values_and_surfaces_api_failure():
         )
         assert page.locator("#ollama-model-options option").count() == 1
         assert page.locator("#ollama-base-url").input_value() == "http://127.0.0.1:11434"
+        settings_payload = page.request.get(base_url.rstrip("/") + "/api/settings").json()
+        assert settings_payload["ai_learning_max_output_tokens"] == 3900
+        assert settings_payload["topic_learning_max_output_tokens"] == 3900
+        assert settings_payload["learning_max_output_tokens"] == 3900
+        assert settings_payload["gpu_enabled"] is True
         for select_id in ("chat-model-installed", "learning-model-installed", "programming-model-installed"):
             assert page.locator(f"#{select_id} option[value='ci-model']").count() == 1
         page.locator("#chat-model-installed").select_option("ci-model")
