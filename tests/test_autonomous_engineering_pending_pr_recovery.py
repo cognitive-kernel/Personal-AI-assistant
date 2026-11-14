@@ -90,6 +90,9 @@ def test_invalid_pr_record_is_rebuilt_from_unique_open_controller_pr(tmp_path: P
         "task": 3,
     }
     assert json.loads(path.read_text(encoding="utf-8")) == result
+    backups = list(tmp_path.glob("pending-autonomous-pr.json.quarantine-*.json"))
+    assert len(backups) == 1
+    assert backups[0].read_text(encoding="utf-8") == "{invalid"
 
 
 def test_closed_merged_pr_can_be_recovered_from_github_authority(tmp_path: Path):

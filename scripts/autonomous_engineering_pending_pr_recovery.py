@@ -133,6 +133,8 @@ def reconcile_pending_pr_state_unlocked(
 
     authoritative: dict[str, Any] | None = None
     number = parsed.get("number") if isinstance(parsed, dict) else None
+    if isinstance(number, str) and re.fullmatch(r"[1-9][0-9]*", number):
+        number = int(number)
     if isinstance(number, int) and not isinstance(number, bool) and number > 0:
         live = get_pull_request(number)
         if _is_controller_pr(live, repository):
@@ -148,7 +150,23 @@ def reconcile_pending_pr_state_unlocked(
 
     if authoritative is not None:
         recovered = _metadata_from_pr(authoritative, repository)
-        save_pending_pr_unlocked(recovered, repository, state_directory)
+        quarantine: Path | None = None
+        if invalid_local_state and path.exists():
+            quarantine = path.with_name(
+                f"{path.name}.quarantine-{os.getpid()}-{time.time_ns()}.json"
+            )
+            try:
+                path.replace(quarantine)
+            except OSError as exc:
+                raise RuntimeError(
+                    "Invalid pending PR metadata could not be preserved before recovery."
+                ) from exc
+        try:
+            save_pending_pr_unlocked(recovered, repository, state_directory)
+        except Exception:
+            if quarantine is not None and quarantine.exists() and not path.exists():
+                quarantine.replace(path)
+            raise
         return recovered
 
     quarantine = path.with_name(

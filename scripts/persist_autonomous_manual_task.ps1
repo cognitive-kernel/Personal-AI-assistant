@@ -128,6 +128,11 @@ try {
             task = [int]$branchMatch.Groups["task"].Value
         }
         $temporaryPath = Join-Path $stateDir ("pending-autonomous-pr-" + $env:GITHUB_RUN_ID + "-" + $env:GITHUB_RUN_ATTEMPT + ".tmp")
+        $backupPath = $null
+        if (Test-Path -LiteralPath $pendingPrPath -PathType Leaf) {
+            $backupPath = "$pendingPrPath.quarantine-$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT)-recovered-$([guid]::NewGuid().ToString('N')).json"
+            Move-Item -LiteralPath $pendingPrPath -Destination $backupPath -ErrorAction Stop
+        }
         try {
             [System.IO.File]::WriteAllText(
                 $temporaryPath,
@@ -135,6 +140,11 @@ try {
                 [System.Text.UTF8Encoding]::new($false)
             )
             Move-Item -LiteralPath $temporaryPath -Destination $pendingPrPath -Force
+        } catch {
+            if ($backupPath -and (Test-Path -LiteralPath $backupPath) -and -not (Test-Path -LiteralPath $pendingPrPath)) {
+                Move-Item -LiteralPath $backupPath -Destination $pendingPrPath -ErrorAction SilentlyContinue
+            }
+            throw
         } finally {
             if (Test-Path -LiteralPath $temporaryPath) {
                 Remove-Item -LiteralPath $temporaryPath -Force

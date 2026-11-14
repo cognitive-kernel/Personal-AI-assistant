@@ -128,6 +128,9 @@ def test_early_manual_task_persistence_script_is_protected_and_validated_in_ci()
     assert "pending-autonomous-pr.json" in script
     assert "AUTONOMOUS_ENGINEERING_PROGRESS_DIR" in script
     assert "awaiting owner merge or post-merge validation" in script
+    assert "Write-RecoveredPendingPrRecord" in script
+    assert "Multiple open autonomous PRs exist" in script
+    assert "quarantine-" in script
 
 
 def test_manual_task_state_uses_one_cross_process_lock_and_capture_is_read_only():
