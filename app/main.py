@@ -663,7 +663,7 @@ def model_details(
 @app.get("/api/hardware/diagnostics")
 def hardware_diagnostics(
     model: str | None = Query(default=None, max_length=200),
-    context_tokens: int | None = Query(default=None, ge=512, le=1048576),
+    context_tokens: int | None = Query(default=None, gt=0),
     purpose: Literal["chat", "learning", "programming"] = "chat",
 ) -> dict[str, Any]:
     try:
