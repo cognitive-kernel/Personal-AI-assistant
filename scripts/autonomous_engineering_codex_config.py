@@ -24,9 +24,16 @@ def codex_command(
     executable: str,
     arguments: list[str],
     *,
-    timeout_seconds: int = CODEX_TASK_TIMEOUT_SECONDS,
+    timeout_seconds: int | None = None,
 ) -> list[str]:
     """Run Codex through an owner-aware supervisor, preserving the native CLI contract."""
+    if timeout_seconds is None:
+        try:
+            report_index = arguments.index("--output-last-message")
+            report_name = Path(arguments[report_index + 1]).name
+        except (ValueError, IndexError):
+            report_name = ""
+        timeout_seconds = CODEX_SMOKE_TIMEOUT_SECONDS if report_name.startswith("codex-sandbox-") else CODEX_TASK_TIMEOUT_SECONDS
     if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or timeout_seconds < 1:
         raise ValueError("Codex timeout must be a positive integer.")
     if Path(executable).suffix.casefold() in {".cmd", ".bat"}:
@@ -113,7 +120,6 @@ def codex_arguments(model: str, report: str) -> list[str]:
     catalog_path = write_codex_model_catalog(model, context_window=context_window)
     print(f"Codex model catalog metadata: model={model}, context_window={context_window}")
     is_smoke = Path(report).name.startswith("codex-sandbox-")
-    timeout_seconds = CODEX_SMOKE_TIMEOUT_SECONDS if is_smoke else CODEX_TASK_TIMEOUT_SECONDS
     arguments = [
         "exec", "-c", 'model_provider="ollama-local"',
         "-c", f'windows.sandbox="{backend}"',
@@ -139,4 +145,4 @@ def codex_arguments(model: str, report: str) -> list[str]:
     if reasoning_effort:
         config_overrides.insert(0, f'model_reasoning_effort="{reasoning_effort}"')
     arguments[5:5] = [part for override in config_overrides for part in ("-c", override)]
-    return codex_command("codex", arguments, timeout_seconds=timeout_seconds)
+    return arguments
