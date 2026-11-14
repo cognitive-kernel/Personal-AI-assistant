@@ -1,4 +1,5 @@
 $script:OllamaBaseUrl = "http://127.0.0.1:11434"
+$script:OllamaScriptsRoot = Split-Path -Parent $PSScriptRoot
 
 . (Join-Path $PSScriptRoot "api.ps1")
 . (Join-Path $PSScriptRoot "metadata.ps1")
