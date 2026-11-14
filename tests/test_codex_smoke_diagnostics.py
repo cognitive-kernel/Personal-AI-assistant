@@ -330,6 +330,12 @@ def test_codex_command_uses_owner_aware_supervisor_and_distinct_budgets(monkeypa
     group_managed_command = config.codex_command("codex", task_args, parent_group_managed=True)
     assert "--parent-group-managed" in group_managed_command
     assert group_managed_command.index("--parent-group-managed") < group_managed_command.index("--")
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        config.codex_command(
+            "codex", task_args,
+            parent_job_managed=True,
+            parent_group_managed=True,
+        )
     assert "--" in smoke_command
     assert "codex" in smoke_command[smoke_command.index("--") + 1]
 
