@@ -763,7 +763,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     if "gpu_enabled" in values and not isinstance(values["gpu_enabled"], bool):
         raise HTTPException(status_code=422, detail="gpu_enabled must be a boolean.")
-    for key in ("ai_learning_enabled", "ai_learning_knowledge_enabled", "basic_learning_enabled", "topic_learning_enabled", "experience_system_enabled", "ai_learning_retrieval_enabled", "ai_learning_browser_enabled", "sandbox_enabled", "self_improvement_enabled"):
+    for key in ("ai_learning_enabled", "ai_learning_knowledge_enabled", "basic_learning_enabled", "topic_learning_enabled", "experience_system_enabled", "ai_learning_retrieval_enabled", "ai_learning_browser_enabled", "sandbox_enabled", "self_improvement_enabled", "chat_enabled", "research_plan_enabled", "programming_enabled", "factual_review_enabled", "embedding_enabled", "knowledge_base_enabled", "knowledge_graph_enabled", "cloud_resources_enabled", "cloud_plan_enabled", "kaggle_quota_enabled", "oci_quota_enabled", "autonomous_engineering_enabled"):
         if key in values and type(values[key]) is not bool:
             raise HTTPException(status_code=422, detail=f"{key} must be a boolean.")
     bounded_text_settings = {
