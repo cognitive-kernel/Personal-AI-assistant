@@ -492,6 +492,8 @@ jobs:
 
       - name: Verify Ollama and a real workspace-confined Codex tool call
         timeout-minutes: 15
+        env:
+          AUTONOMOUS_ENGINEERING_ALLOW_UNELEVATED_SANDBOX: ${{ vars.AUTONOMOUS_ENGINEERING_ALLOW_UNELEVATED_SANDBOX || 'false' }}
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
@@ -510,7 +512,12 @@ jobs:
           "@
           Set-Content -LiteralPath $smokePrompt -Value $smokePromptText -Encoding utf8
           $selectedBackend = $null
-          foreach ($backend in @("mxc", "unelevated")) {
+          $sandboxBackends = @("mxc")
+          if ($env:AUTONOMOUS_ENGINEERING_ALLOW_UNELEVATED_SANDBOX -eq "true") {
+            Write-Warning "The owner explicitly enabled the legacy unelevated sandbox fallback; it has weaker network isolation."
+            $sandboxBackends += "unelevated"
+          }
+          foreach ($backend in $sandboxBackends) {
             $env:CODEX_WINDOWS_SANDBOX_BACKEND = $backend
             if ($backend -eq "mxc") {
               Write-Host "Running the official standalone MXC compatibility probe under the Runner service identity."
@@ -519,7 +526,7 @@ jobs:
               $mxcProbeOutput | ForEach-Object { Write-Host $_ }
               Write-Host "MXC service-account probe exit code: $mxcProbeExitCode"
               if ($mxcProbeExitCode -ne 0 -or (($mxcProbeOutput | Out-String) -notmatch "MXC_SERVICE_OK")) {
-                Write-Warning "The standalone MXC compatibility probe failed; checking the next restricted sandbox mode."
+                Write-Warning "The standalone MXC compatibility probe failed; no weaker sandbox fallback will be selected unless explicitly enabled."
                 continue
               }
             }
@@ -553,7 +560,10 @@ jobs:
             Write-Warning "Codex workspace-tool smoke test failed with '$backend'; trying the next supported sandbox backend."
           }
           if (-not $selectedBackend) {
-            throw "Neither supported non-admin Windows sandbox mode (MXC or restricted-token unelevated) passed the verified Codex JSONL workspace create/read/delete test. Unsandboxed execution is prohibited."
+            if ($sandboxBackends -contains "unelevated") {
+              throw "Neither explicitly permitted restricted Windows sandbox backend passed the verified Codex JSONL workspace create/read/delete test. Unsandboxed execution is prohibited."
+            }
+            throw "The MXC workspace smoke failed. The legacy unelevated fallback is disabled by default because it has weaker network isolation; obtain explicit owner/security approval before setting AUTONOMOUS_ENGINEERING_ALLOW_UNELEVATED_SANDBOX=true. Unsandboxed execution is prohibited."
           }
           "CODEX_WINDOWS_SANDBOX_BACKEND=$selectedBackend" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Verified Windows Codex sandbox backend: $selectedBackend"
