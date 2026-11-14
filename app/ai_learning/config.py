@@ -8,7 +8,7 @@ from typing import Any
 from ..config import SETTING_DEFAULTS
 
 _DEFAULTS: dict[str, bool] = {
-    "ai_learning_knowledge_enabled": True,
+    "ai_learning_enabled": True,
     "ai_learning_retrieval_enabled": True,
     "ai_learning_browser_enabled": True,
 }
@@ -34,7 +34,7 @@ def _setting(name: str) -> bool:
 
 def is_enabled() -> bool:
     """Whether the AI-learning subsystem is enabled (enabled in a fresh install)."""
-    return _setting("ai_learning_knowledge_enabled")
+    return _setting("ai_learning_enabled")
 
 
 def retrieval_is_enabled() -> bool:
@@ -47,16 +47,21 @@ def browser_is_enabled() -> bool:
     return is_enabled() and _setting("ai_learning_browser_enabled")
 
 
-def max_topics_per_run() -> int:
-    """Return the configured upper bound for one browser lesson run."""
+def _settings_snapshot() -> dict[str, Any]:
+    """Read settings, falling back only while the settings schema is not initialized."""
     from ..db import get_settings
 
     try:
-        settings = get_settings()
+        return get_settings()
     except sqlite3.OperationalError as exc:
         if "no such table: settings" not in str(exc).casefold():
             raise
-        settings = {}
+        return {}
+
+
+def max_topics_per_run() -> int:
+    """Return the configured upper bound for one browser lesson run."""
+    settings = _settings_snapshot()
     value = settings.get("ai_learning_lesson_batch_size", SETTING_DEFAULTS["ai_learning_lesson_batch_size"])
     if type(value) is not int or not 1 <= value <= 20:
         raise RuntimeError("Setting ai_learning_lesson_batch_size is outside its validated range.")
@@ -65,9 +70,7 @@ def max_topics_per_run() -> int:
 
 def configured_int_setting(name: str, default: int, minimum: int, maximum: int) -> int:
     """Read a validated integer from the shared persistent settings contract."""
-    from ..db import get_settings
-
-    value = get_settings().get(name, default)
+    value = _settings_snapshot().get(name, default)
     if type(value) is not int or not minimum <= value <= maximum:
         raise RuntimeError(f"Persisted setting {name} is outside its validated range.")
     return value
@@ -76,9 +79,7 @@ def configured_int_setting(name: str, default: int, minimum: int, maximum: int) 
 def configured_float_setting(name: str, default: float, minimum: float, maximum: float) -> float:
     """Read a finite, range-checked numeric setting from the shared settings contract."""
     import math
-    from ..db import get_settings
-
-    value = get_settings().get(name, default)
+    value = _settings_snapshot().get(name, default)
     if (
         isinstance(value, bool)
         or not isinstance(value, (int, float))
