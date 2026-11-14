@@ -125,7 +125,9 @@
           : "؛ قابلیت tools در metadata مدل تأیید شد")
         : checks.model_tools_metadata_available
           ? "؛ مدل قابلیت tools را اعلام نکرده است"
-          : "؛ metadata موجود نیست و آزمون واقعی tools نیز موفق نشد";
+          : data.model_tools_verification_method === "skipped_no_safe_context"
+            ? "؛ آزمون tools تا تأیید ظرفیت امن Context اجرا نشد"
+            : "؛ metadata موجود نیست و آزمون واقعی tools نیز موفق نشد";
       const modelLabel = data.model ? "مدل ذخیره‌شده: " + String(data.model) : "هنوز مدلی ذخیره نشده است";
       const installationText = data.model && checks.model_is_codex_context_variant
         ? "؛ این نسخهٔ داخلی Context است؛ مدل اصلی را انتخاب و ذخیره کنید"
