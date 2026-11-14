@@ -15,10 +15,11 @@ from . import task_manager
 from . import ollama, learning_topic_quality_tasks, learning_method_orchestrator
 from . import learning_execution
 from .task_worker import PermanentTaskError, RetryableTaskError, TaskContext, TaskInterrupted
+from .task_ownership import LEARNING_JOB_TASK_TYPE
 
 logger = logging.getLogger(__name__)
 
-LEARNING_TASK_TYPE = "learning.run_job"
+LEARNING_TASK_TYPE = LEARNING_JOB_TASK_TYPE
 _TERMINAL_LEARNING_STATUSES = {"completed", "rejected", "cancelled"}
 
 
@@ -273,6 +274,10 @@ def handle_learning_job(
     job_id = payload.get("job_id")
     if isinstance(job_id, bool) or not isinstance(job_id, int) or job_id < 1:
         raise PermanentTaskError("learning task payload requires a positive integer job_id")
+    context.assert_current(
+        expected_task_type=LEARNING_JOB_TASK_TYPE,
+        expected_payload={"job_id": job_id},
+    )
 
     try:
         job = learning.get_job(job_id)
@@ -302,11 +307,50 @@ def handle_learning_job(
     # A task is reclaimed only after its previous lease expires. A stale learning
     # status must therefore be reset before this newly claimed attempt can resume it.
     if status in {"failed", "running"}:
-        context.control_status()  # Verify this worker still owns a live task lease.
         with learning_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            context.assert_current(
+                conn,
+                expected_task_type=LEARNING_JOB_TASK_TYPE,
+                expected_payload={"job_id": job_id},
+            )
+            current = conn.execute(
+                "SELECT status, execution_owner FROM learning_jobs WHERE id=?",
+                (job_id,),
+            ).fetchone()
+            if current is None:
+                raise PermanentTaskError(f"Learning job {job_id} disappeared during recovery.")
+            if current["status"] == "running":
+                owner = str(current["execution_owner"] or "")
+                if not owner.startswith(f"task:{context.task_id}:"):
+                    old_task_id = None
+                    if owner.startswith("task:"):
+                        try:
+                            old_task_id = int(owner.split(":", 2)[1])
+                        except (TypeError, ValueError):
+                            old_task_id = None
+                    if old_task_id is None:
+                        raise RetryableTaskError(
+                            "Learning job is owned by a non-recoverable execution; refusing to steal it."
+                        )
+                    old_task = conn.execute(
+                        "SELECT status, lease_expires_at FROM task_queue WHERE id=?",
+                        (old_task_id,),
+                    ).fetchone()
+                    now = task_manager._timestamp()
+                    if (
+                        old_task is not None
+                        and old_task["status"] in task_manager.ACTIVE_STATUSES
+                        and old_task["lease_expires_at"] is not None
+                        and old_task["lease_expires_at"] > now
+                    ):
+                        raise RetryableTaskError(
+                            "Learning job is still owned by another live task execution."
+                        )
             conn.execute(
                 """UPDATE learning_jobs
-                   SET status='queued', error=NULL, updated_at=CURRENT_TIMESTAMP
+                   SET status='queued', execution_owner=NULL, error=NULL,
+                       updated_at=CURRENT_TIMESTAMP
                    WHERE id=? AND status IN ('failed', 'running')""",
                 (job_id,),
             )

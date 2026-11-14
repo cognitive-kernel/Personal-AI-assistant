@@ -8,24 +8,26 @@ import re
 from typing import Any
 
 from .db import learning_connection
+from .task_manager import TaskManagerError
+from .task_ownership import LEARNING_JOB_TASK_TYPE, TOPIC_QUALITY_TASK_TYPE
 
 _ATTEMPT_KEY = re.compile(r"^path-topic:(\d+):method:([a-z_]+):attempt:(\d+)$")
 
 
-def _assert_task_context(connection, task_context: Any | None) -> None:
-    """Fence a domain transition with the exact durable task-queue lease."""
-    if task_context is None:
-        return
-    if callable(getattr(task_context, "assert_current", None)):
-        task_context.assert_current(connection)
-        return
-    from . import task_manager
-
-    task_manager.assert_task_owner(
+def _assert_task_context(
+    connection,
+    task_context: Any | None,
+    *,
+    task_type: str,
+    payload_fields: dict[str, Any],
+) -> None:
+    """Require the current lease to authorize this exact task and domain record."""
+    if task_context is None or not callable(getattr(task_context, "assert_current", None)):
+        raise TaskManagerError("A current task context is required for this state transition.")
+    task_context.assert_current(
         connection,
-        int(task_context.task_id),
-        str(task_context.worker_id),
-        int(task_context.lease_epoch),
+        expected_task_type=task_type,
+        expected_payload=payload_fields,
     )
 
 def _method_attempt_identity(job: dict[str, Any]) -> tuple[int, str, int] | None:

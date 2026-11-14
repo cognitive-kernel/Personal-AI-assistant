@@ -8,8 +8,8 @@ from typing import Any
 from . import learning, learning_topic_evaluator, task_manager
 from .db import learning_connection
 from .task_worker import PermanentTaskError, TaskContext
+from .task_ownership import LEARNING_JOB_TASK_TYPE, TOPIC_QUALITY_TASK_TYPE
 
-TOPIC_QUALITY_TASK_TYPE = "learning.evaluate_topic_quality"
 _ALLOWED_PAYLOAD_KEYS = {"job_id", "path_topic_id", "content_sha256"}
 
 
@@ -31,8 +31,13 @@ def enqueue_topic_quality_evaluation(
     digest = _content_hash(lesson)
     with learning_connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
-        if task_context is not None:
-            task_context.assert_current(connection)
+        if task_context is None:
+            raise task_manager.TaskManagerError("A current learning task context is required.")
+        task_context.assert_current(
+            connection,
+            expected_task_type=LEARNING_JOB_TASK_TYPE,
+            expected_payload={"job_id": job_id},
+        )
         gate = connection.execute(
             "SELECT state, current_job_id FROM learning_topic_quality_gates WHERE path_topic_id=?",
             (path_topic_id,),
@@ -83,8 +88,17 @@ def _append_evaluation(
     digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     with learning_connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
-        if task_context is not None:
-            task_context.assert_current(connection)
+        if task_context is None:
+            raise task_manager.TaskManagerError("A current topic-quality task context is required.")
+        task_context.assert_current(
+            connection,
+            expected_task_type=TOPIC_QUALITY_TASK_TYPE,
+            expected_payload={
+                "job_id": job_id,
+                "path_topic_id": path_topic_id,
+                "content_sha256": record.get("content_sha256"),
+            },
+        )
         sequence = int(connection.execute(
             "SELECT COALESCE(MAX(evaluation_sequence), 0) + 1 FROM learning_topic_quality_evaluations WHERE path_topic_id=?",
             (path_topic_id,),
@@ -119,6 +133,14 @@ def handle_topic_quality_evaluation(
         raise PermanentTaskError("Topic quality evaluation identifiers must be positive integers.")
     if not isinstance(expected_hash, str) or len(expected_hash) != 64:
         raise PermanentTaskError("Topic quality evaluation content hash is invalid.")
+    context.assert_current(
+        expected_task_type=TOPIC_QUALITY_TASK_TYPE,
+        expected_payload={
+            "job_id": job_id,
+            "path_topic_id": path_topic_id,
+            "content_sha256": expected_hash,
+        },
+    )
     job = learning.get_job(job_id)
     if job.get("status") != "completed" or job.get("path_topic_id") != path_topic_id:
         raise PermanentTaskError("Evaluation job does not own the requested completed curriculum topic.")
@@ -278,7 +300,15 @@ def handle_topic_quality_evaluation(
     if outcome == "passed":
         with learning_connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            context.assert_current(connection)
+            context.assert_current(
+                connection,
+                expected_task_type=TOPIC_QUALITY_TASK_TYPE,
+                expected_payload={
+                    "job_id": job_id,
+                    "path_topic_id": path_topic_id,
+                    "content_sha256": expected_hash,
+                },
+            )
             updated = connection.execute(
                 """UPDATE learning_topic_quality_gates
                    SET state='passed', latest_score=?, latest_content_sha256=?,
@@ -323,7 +353,15 @@ def handle_topic_quality_evaluation(
     elif repair_count >= max_repairs:
         with learning_connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            context.assert_current(connection)
+            context.assert_current(
+                connection,
+                expected_task_type=TOPIC_QUALITY_TASK_TYPE,
+                expected_payload={
+                    "job_id": job_id,
+                    "path_topic_id": path_topic_id,
+                    "content_sha256": expected_hash,
+                },
+            )
             connection.execute(
                 """UPDATE learning_topic_quality_gates
                    SET state='blocked', latest_score=?, latest_content_sha256=?,
@@ -359,7 +397,15 @@ def handle_topic_quality_evaluation(
     request_key = f"topic-quality:{path_topic_id}:{expected_hash}:{evaluation_id}"
     with learning_connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
-        context.assert_current(connection)
+        context.assert_current(
+                connection,
+                expected_task_type=TOPIC_QUALITY_TASK_TYPE,
+                expected_payload={
+                    "job_id": job_id,
+                    "path_topic_id": path_topic_id,
+                    "content_sha256": expected_hash,
+                },
+            )
         if not repair_already_counted:
             connection.execute(
                 """UPDATE learning_topic_quality_gates
@@ -382,7 +428,15 @@ def handle_topic_quality_evaluation(
     correction_job_id = int(correction["correction_job"]["id"])
     with learning_connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
-        context.assert_current(connection)
+        context.assert_current(
+                connection,
+                expected_task_type=TOPIC_QUALITY_TASK_TYPE,
+                expected_payload={
+                    "job_id": job_id,
+                    "path_topic_id": path_topic_id,
+                    "content_sha256": expected_hash,
+                },
+            )
         updated = connection.execute(
             """UPDATE learning_topic_quality_gates
                SET current_job_id=?, state='repairing', next_action='evaluate_corrected_lesson',

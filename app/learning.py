@@ -973,7 +973,9 @@ def run_job(job_id: int, *, task_context: Any | None = None) -> None:
     try:
         if row["method_attempt_key"]:
             from .learning_method_orchestrator import mark_method_running
-            mark_method_running(job_id, execution_lease=execution_lease)
+            mark_method_running(
+                job_id, execution_lease=execution_lease, task_context=task_context
+            )
         # These preparation steps run before model inference, but they can still fail
         # (for example, SQLite errors while persisting web evidence). Keep the job
         # terminally observable instead of leaving it stuck in "running" forever.

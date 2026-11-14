@@ -16,11 +16,15 @@ from .learning_method_state import (
     _block_topic,
     _content_hash,
     _method_attempt_identity,
+    LEARNING_JOB_TASK_TYPE,
+    TOPIC_QUALITY_TASK_TYPE,
 )
 from .learning_method_queue import _queue_next
 
 
-def mark_method_running(job_id: int, *, execution_lease=None) -> None:
+def mark_method_running(
+    job_id: int, *, execution_lease=None, task_context: Any | None = None
+) -> None:
     """Append the running event only while this domain execution epoch is current."""
     from . import learning, learning_execution
 
@@ -33,6 +37,11 @@ def mark_method_running(job_id: int, *, execution_lease=None) -> None:
         connection.execute("BEGIN IMMEDIATE")
         if execution_lease is not None:
             learning_execution.assert_current(execution_lease, connection=connection)
+        if task_context is not None:
+            _assert_task_context(
+                connection, task_context, task_type=LEARNING_JOB_TASK_TYPE,
+                payload_fields={"job_id": job_id},
+            )
         latest = connection.execute(
             """SELECT status FROM learning_topic_method_attempt_events
                WHERE path_topic_id=? AND method=? AND attempt_number=?
@@ -89,6 +98,7 @@ def advance_after_failure(
     diagnosis: dict[str, Any] | None = None,
     outcome: str = "failed",
     task_context: Any | None = None,
+    expected_task_type: str = TOPIC_QUALITY_TASK_TYPE,
 ) -> dict[str, Any]:
     """Commit a failure event only for the current task owner, then advance once."""
     from . import learning
@@ -106,7 +116,10 @@ def advance_after_failure(
     event_evidence = {"failure_stage": "generation"} if details.get("failure_stage") == "generation" else (evidence or {})
     with learning_connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
-        _assert_task_context(connection, task_context)
+        _assert_task_context(
+            connection, task_context, task_type=expected_task_type,
+            payload_fields={"job_id": job_id},
+        )
         gate = connection.execute(
             "SELECT state, current_job_id FROM learning_topic_quality_gates WHERE path_topic_id=?",
             (path_topic_id,),
@@ -160,7 +173,10 @@ def complete_method(
     already_passed = False
     with learning_connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
-        _assert_task_context(connection, task_context)
+        _assert_task_context(
+            connection, task_context, task_type=TOPIC_QUALITY_TASK_TYPE,
+            payload_fields={"job_id": job_id},
+        )
         gate = connection.execute(
             "SELECT state, current_job_id FROM learning_topic_quality_gates WHERE path_topic_id=?",
             (path_topic_id,),
@@ -231,7 +247,10 @@ def block_unavailable(
     event_evidence = {"evaluation_id": evaluation_id, **(evidence or {})}
     with learning_connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
-        _assert_task_context(connection, task_context)
+        _assert_task_context(
+            connection, task_context, task_type=TOPIC_QUALITY_TASK_TYPE,
+            payload_fields={"job_id": job_id},
+        )
         gate = connection.execute(
             "SELECT state, current_job_id FROM learning_topic_quality_gates WHERE path_topic_id=?",
             (path_topic_id,),
@@ -277,7 +296,10 @@ def block_without_quality_gate(
     """Fail closed when a completed curriculum job has no independent quality gate."""
     with learning_connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
-        _assert_task_context(connection, task_context)
+        _assert_task_context(
+            connection, task_context, task_type=LEARNING_JOB_TASK_TYPE,
+            payload_fields={"job_id": job_id},
+        )
         gate = connection.execute(
             "SELECT current_job_id, state FROM learning_topic_quality_gates WHERE path_topic_id=?",
             (path_topic_id,),
@@ -327,4 +349,5 @@ def record_generation_failure(
         evidence={"failure_stage": "generation"},
         diagnosis={"failure_stage": "generation"},
         task_context=task_context,
+        expected_task_type=LEARNING_JOB_TASK_TYPE,
     )

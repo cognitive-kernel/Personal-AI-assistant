@@ -70,14 +70,44 @@ class TaskContext:
     checkpoint_data: dict[str, Any] | None = None
     lease_seconds: int = 300
 
-    def assert_current(self, connection=None) -> None:
-        """Verify this exact lease epoch and reject pending user control requests."""
-        if connection is None:
-            status = self.control_status()
-        else:
-            owned = task_manager.assert_task_owner(
-                connection, self.task_id, self.worker_id, self.lease_epoch
+    def assert_current(
+        self,
+        connection=None,
+        *,
+        expected_task_type: str | None = None,
+        expected_payload: dict[str, Any] | None = None,
+    ) -> None:
+        """Verify the lease and, when requested, its exact task-type/payload authority."""
+        if (expected_task_type is None) != (expected_payload is None):
+            raise ValueError("expected_task_type and expected_payload must be supplied together.")
+        if expected_task_type is None:
+            status = self.control_status() if connection is None else str(
+                task_manager.assert_task_owner(
+                    connection, self.task_id, self.worker_id, self.lease_epoch
+                )["status"]
             )
+        else:
+            from .task_ownership import assert_task_contract
+            if connection is None:
+                from .db import learning_connection
+                with learning_connection() as owned_connection:
+                    owned = assert_task_contract(
+                        owned_connection,
+                        task_id=self.task_id,
+                        worker_id=self.worker_id,
+                        lease_epoch=self.lease_epoch,
+                        task_type=expected_task_type,
+                        payload_fields=expected_payload,
+                    )
+            else:
+                owned = assert_task_contract(
+                    connection,
+                    task_id=self.task_id,
+                    worker_id=self.worker_id,
+                    lease_epoch=self.lease_epoch,
+                    task_type=expected_task_type,
+                    payload_fields=expected_payload,
+                )
             status = str(owned["status"])
         if status != "running":
             raise TaskInterrupted(f"Task ownership is active but control state is {status!r}.")
