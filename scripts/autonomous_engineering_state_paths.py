@@ -16,16 +16,16 @@ def execution_state_directory() -> Path:
             )
         return expanded
 
-    if os.name == "nt":
-        program_data = os.getenv("PROGRAMDATA", "").strip()
-        if not program_data:
-            raise RuntimeError(
-                "PROGRAMDATA is unavailable; refusing to fall back to a per-user "
-                "autonomous-engineering state directory on Windows."
-            )
+    program_data = os.getenv("PROGRAMDATA", "").strip()
+    if program_data:
         shared_root = Path(os.path.expandvars(program_data)).expanduser()
         if not shared_root.is_absolute():
-            raise RuntimeError("PROGRAMDATA must resolve to an absolute Windows path.")
+            raise RuntimeError("PROGRAMDATA must resolve to an absolute shared path.")
         return shared_root / "PersonalAIAssistant" / "autonomous-engineering"
+    if os.name == "nt":
+        raise RuntimeError(
+            "PROGRAMDATA is unavailable; refusing to fall back to a per-user "
+            "autonomous-engineering state directory on Windows."
+        )
 
     return Path.home() / ".personal-ai-assistant" / "autonomous-engineering"
