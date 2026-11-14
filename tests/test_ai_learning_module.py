@@ -8,6 +8,11 @@ from app.ai_learning.db import initialize_store, connection, StoreSchemaError
 
 @pytest.fixture
 def isolated_store(tmp_path, monkeypatch):
+    from app import db
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
     path = tmp_path / "ai_learning.db"
     monkeypatch.setenv("AI_LEARNING_DB_PATH", str(path))
     initialize_store()
@@ -343,8 +348,10 @@ def test_ai_learning_method_and_knowledge_library_switches_are_independent(monke
     assert config.browser_is_enabled() is False
 
 
-def test_ai_learning_chunk_sizes_come_from_persistent_settings(isolated_store, monkeypatch):
-    monkeypatch.setattr(embedding_service, "get_settings", lambda: {
+def test_ai_learning_chunk_sizes_come_from_persistent_settings(isolated_store):
+    from app import db
+
+    db.update_settings({
         "ai_learning_chunk_target_chars": 256,
         "ai_learning_chunk_overlap_chars": 64,
     })
@@ -355,8 +362,10 @@ def test_ai_learning_chunk_sizes_come_from_persistent_settings(isolated_store, m
 
 
 def test_ai_learning_embedding_batch_size_comes_from_settings(isolated_store, monkeypatch):
+    from app import db
+
     calls = []
-    monkeypatch.setattr(embedding_service, "get_settings", lambda: {"ai_learning_embedding_batch_size": 2})
+    db.update_settings({"ai_learning_embedding_batch_size": 2})
 
     def embed(texts, model=None):
         calls.append(list(texts))
