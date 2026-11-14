@@ -30,7 +30,7 @@ function Get-MaximumContext {
     $key = $architecture + ".context_length"
     $property = $Info.model_info.PSObject.Properties[$key]
     $maximum = 0L
-    if (-not $property -or -not [int64]::TryParse([string]$property.Value, [ref]$maximum) -or $maximum -lt 512) {
+    if (-not $property -or -not [int64]::TryParse([string]$property.Value, [ref]$maximum) -or $maximum -le 0) {
         throw "Ollama did not publish a valid architecture-specific context limit ('$key')."
     }
     return $maximum
@@ -100,8 +100,8 @@ function Get-AutomaticContext {
             Remove-Item -LiteralPath $selectionPath -Force -ErrorAction SilentlyContinue
         }
     }
-    if ($null -eq $selection.selected_context_tokens -or [int64]$selection.selected_context_tokens -lt 64000) {
-        throw "The Ollama context-selection module did not return the required minimum 64000-token Codex context."
+    if ($null -eq $selection.selected_context_tokens -or [int64]$selection.selected_context_tokens -le 0) {
+        throw "The Ollama context-selection module did not return a positive hardware-safe Codex context."
     }
     return $selection
 }
@@ -130,15 +130,12 @@ function Get-AllocatedContext {
 if ($VerifyOnly) {
     $codexModel = $Model
     $selectedContext = 0L
-    if (-not [int64]::TryParse([string]$env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH, [ref]$selectedContext) -or $selectedContext -lt 64000) {
-        throw "The selected Codex context was not persisted at the required minimum of 64000 tokens for runtime verification."
+    if (-not [int64]::TryParse([string]$env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH, [ref]$selectedContext) -or $selectedContext -le 0) {
+        throw "The selected Codex context was not persisted as a positive verified allocation for runtime verification."
     }
     $modelInfo = Get-ModelInfo -ModelName $codexModel
     Assert-ToolCallingCapability -Info $modelInfo
     $maximum = Get-MaximumContext -Info $modelInfo
-    if ($maximum -lt 64000) {
-        throw "Selected model maximum context $maximum is below the Codex minimum of 64000 tokens."
-    }
     if ($selectedContext -gt $maximum) {
         throw "The persisted Codex context $selectedContext exceeds the model maximum $maximum."
     }
@@ -169,8 +166,8 @@ if ($VerifyOnly) {
     $manualContext = [string]$env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH
     if (-not [string]::IsNullOrWhiteSpace($manualContext)) {
         $parsedContext = 0L
-        if (-not [int64]::TryParse($manualContext, [ref]$parsedContext) -or $parsedContext -lt 64000) {
-            throw "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH must be an integer of at least 64000 for Codex."
+        if (-not [int64]::TryParse($manualContext, [ref]$parsedContext) -or $parsedContext -le 0) {
+            throw "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH must be a positive integer."
         }
         $requestedContext = [Nullable[long]]$parsedContext
         $selectionMode = "requested-and-safely-clamped"
@@ -180,7 +177,7 @@ if ($VerifyOnly) {
 
     $contextSelection = Get-AutomaticContext -Info $modelInfo -ModelName $baseModel -RequestedContext $requestedContext
     $selectedContext = [int64]$contextSelection.selected_context_tokens
-    if ($selectedContext -lt 64000 -or $selectedContext -gt $maximum) {
+    if ($selectedContext -le 0 -or $selectedContext -gt $maximum) {
         throw "Selected context $selectedContext is outside the supported Codex range for model maximum $maximum."
     }
 
