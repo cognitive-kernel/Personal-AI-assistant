@@ -97,3 +97,34 @@ The older `docs/ACCEPTANCE_SCORECARD.md` reports 60.47% engineering progress usi
 ## 2026-11-05 — Checkpoint Watcher remediation tracking
 
 The run-scoped checkpoint readiness and snapshot-index isolation defect is tracked as part of work package E-05 (durable tasks, fault injection, and resilience) in PR #689. The original 176-hour baseline, work-package allocations, and target forecast are unchanged. No actual engineering hours are entered in this note because elapsed chat/tool time is not a reliable labor-time measurement. Acceptance remains pending exact-head CI and target-runner operational verification.
+
+
+## 2026-11-13 — Continuity checkpoint and scope confirmation
+
+- Current reviewed `main` is `f87e15b9eb76f7395ea4380382d95f1bc64e21ed` after PR #719. The original planning baseline commit and 176-hour budget above remain immutable historical baselines.
+- E-01 (repository/module/data-ownership audit) and E-02 (endpoint-by-endpoint API and persistence contracts) remain in progress. The current API audit identified a generic task submission boundary defect; PR #736 adds a runtime-registry fitness test and fail-closed submission guard. PR #734 adds route-wide loopback/Cross-Origin middleware regression coverage.
+- These newly evidenced tasks fit the existing E-01/E-02/E-06 work-package scope; no additional hours are added until the remaining endpoint inventory and defect count are established. The original 32-hour contingency remains unallocated.
+- Actual engineering hours remain **not measured**; elapsed conversation/tool time is not substituted for labor accounting. The original 2026-12-01 forecast is retained as a planning target, not a guaranteed completion date. Reforecast only after task-level hours and newly discovered scope are measured.
+- Target-host, human adjudication, and independent-review time remain excluded from the engineering-hour baseline, but their acceptance evidence remains required and separately tracked.
+
+
+## 2026-11-13 — Continued audit checkpoint
+
+- The current audited main SHA remains `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`. PR #737 completed exact-head CI successfully with 2,142 passed, 2 skipped, and 51 deselected. PR #738 extends positive path-ID validation across task, curriculum, cloud-resource, AI-learning, experience, factual-verification, learning-candidate/review/lifecycle, knowledge-graph, prerequisite, source-sync, self-improvement, and main application routes; its current head is awaiting CI.
+- These findings remain within E-01 (repository/architecture audit) and E-02 (API/persistence contracts). The remaining route families and endpoint contracts have not yet been inventoried completely; no extra hours or contingency consumption are recorded.
+- The original 176-hour budget, 144-hour task estimate, 32-hour reserve, and 2026-12-01 planning target remain unchanged. Actual engineering labor hours are not measured; elapsed tool/chat time is not used as a proxy.
+- PR #737 and #738 have not completed exact-head CI at this checkpoint. No merge or completion claim is made.
+
+
+## 2026-11-13 — Additional task-runtime scope checkpoint
+
+- PR #739's durable task payload/checkpoint/result bounds and metadata validation are within E-02/E-05; PR #725's browser-learning worker exception and lease-cleanup correction is within E-05. PR #738 continues E-02 endpoint contract work.
+- The first PR #739 test run found a test-fixture error, corrected on the latest branch head. No additional engineering hours are recorded; actual labor time remains unmeasured.
+- Original 176-hour baseline, 144-hour task estimate, 32-hour contingency, and 2026-12-01 planning target remain unchanged pending measured scope and labor.
+
+
+## 2026-11-13 — Latest exact-head evidence
+
+- PR #738's API-wide path/query/pagination contract enforcement and PR #739's durable task record bounds passed exact-head CI; PR #741's browser-context cleanup precedence correction passed exact-head CI (2,137 passed, 2 skipped, 51 deselected).
+- PR #725 remains the authoritative browser-learning worker fix; duplicate PR #740 was closed as superseded. Issue #723 remains open until the owner merges PR #725.
+- These findings remain within the existing E-02/E-05 scope. The original 176-hour baseline, 144-hour task estimate, 32-hour contingency, and 2026-12-01 target remain unchanged; actual labor hours remain unmeasured.

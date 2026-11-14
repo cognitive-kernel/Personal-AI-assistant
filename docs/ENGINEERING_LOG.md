@@ -635,3 +635,77 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Issue #290 remains authoritative: no automatic PR merge, deployment, cloud provisioning, or remote execution. The controller never calls the merge API and accepts only a human merge actor; owner review and manual merge remain required.
 - This CI proves repository tests and the configured Windows storage regression job only. A real target-host Codex/Ollama tool-call smoke, long-duration soak, crash/restart acceptance, staging restore/rollback, and independent security review (Issue #52) remain pending and are not claimed.
 - No direct write to `main`, force-push, deployment, destructive state reset, or user-data deletion occurred. This verification snapshot is for the exact SHA above; any subsequent commit requires its own exact-head CI.
+
+
+## 2026-11-13 — API boundary audit and current GitHub acceptance snapshot
+
+### Baseline and continuity
+
+- Re-read `docs/MASTER_ENGINEERING_PROMPT.md`, `docs/ENGINEERING_DELIVERY_ESTIMATE.md`, `docs/PROJECT_STATUS.md`, and the open acceptance tracker. The authoritative `main` SHA is `f87e15b9eb76f7395ea4380382d95f1bc64e21ed` after PR #719; older `main` snapshots in historical sections are not current.
+- The approved delivery baseline remains 176 engineering hours (144 task hours + 32 contingency), 22 working days, target 2026-12-01. No actual engineering hours are recorded in this session because elapsed tool/chat time is not a reliable labor-time measure. No reforecast is made without a defensible task-hour measurement.
+- No direct write to `main`, force-push, merge, deployment, cloud provisioning, remote execution, destructive data operation, or local/human test was performed.
+
+### Root-cause findings
+
+- PR #734 addressed a test-coverage gap in the global HTTP boundary: loopback and same-origin protections were enforced centrally, but the regression suite covered only representative endpoints. The new test enumerates all registered `/api/` route/method pairs and verifies non-loopback and cross-origin requests are rejected before endpoint handlers execute.
+- Exact-head PR #734 commit `17bd893ded33cce8658498fd5453393efb059406`: **2,136 passed, 2 skipped, 51 deselected**; Windows storage regressions, dashboard smoke, dependency audit, 95-file Markdown validation, AST import-cycle check, and claim-to-test benchmark 10/10 passed. This is PR-head evidence only.
+- A deeper handler-registry audit for PR #736 found a broader API contract defect: `POST /api/tasks` could directly enqueue all internal feature task types. This bypassed the owning workflow's validation, deduplication/idempotency key, consent/evidence checks, and retry policy. The issue was not limited to sandbox tasks.
+- PR #736 now blocks every one of the 14 feature-managed task types registered by runtime handlers, while retaining generic extension/test task types. A parameterized regression verifies each blocked type cannot be persisted through the generic endpoint, and an architecture fitness test fails if a runtime handler is added without updating the blocklist. Exact-head CI is pending on the latest commit; no pass is claimed.
+
+### Documentation reconciliation
+
+- PR #735 updates the current project status snapshot and acceptance ledger to distinguish the live `main` baseline from exact-head PR evidence and to record branch-protection, CodeQL-alert-access, and independent-review limitations.
+- Exact-head PR #735 commit `e19c76362df4af79ed76e8b9f52491eed0314cd8`: **2,135 passed, 2 skipped, 51 deselected**; Windows storage regressions, dashboard smoke, dependency audit, 95-file Markdown validation, AST import-cycle check, and claim-to-test benchmark 10/10 passed. Subsequent documentation commits in this PR require fresh exact-head CI.
+
+### Repository-level blockers
+
+- GitHub reports `main.protected=false`. The connected integration exposes branch-protection/ruleset reads but no write action; enabling required checks and preventing direct pushes requires repository-admin action.
+- CodeQL v4 on PR #732 completed and uploaded SARIF, but alert retrieval is not exposed through the connected integration. A successful scan is not evidence of zero alerts.
+- Issue #52 still requires an independent security reviewer. The implementer cannot self-certify that independent review.
+- The endpoint-wide middleware regression does not complete the endpoint-by-endpoint API contract inventory. Crash/restart and multi-process operational acceptance, staging restore/rollback, pinned live-model evaluation, human adjudication, manual accessibility review, and target-host evidence remain separate gates.
+
+### Next engineering task
+
+Continue E-02/E-01 with the complete route and task-registry contract inventory, then trace each feature-owned submission path against the generic task boundary and add focused regressions. Keep all PRs unmerged until the repository's exact-head CI and target-host merge gates are satisfied.
+
+
+## 2026-11-13 — Continued API boundary audit
+
+- Rechecked the current main SHA and active PR heads. PR #737 exact-head CI completed successfully on `5bf13d05283daa2785a52bebfa9d8adf15f988b8`: 2,142 passed, 2 skipped, 51 deselected; Windows storage, dashboard smoke, dependency audit, 95-file Markdown validation, AST import-cycle check, and benchmarks passed.
+- A second route audit found integer resource path identifiers that lacked a consistent positive lower bound. PR #738 applies `Path(ge=1)` to task-control, curriculum-evolution, cloud-resource, and all integer IDs in the AI-learning router; tests assert HTTP 422 for zero IDs and published OpenAPI minimums.
+- PR #738 current head `d1190c83a3e2a413e7ee8b9f35c95f10e45a3985` is awaiting its full CI matrix. Additional route families remain in the audit queue; no global claim is made.
+- The earlier #737 OpenAPI test failure was traced to a nullable `anyOf(integer, null)` schema for optional `path_id`; the test helper now resolves refs and checks the integer branch. The current exact-head full test run has not yet completed.
+- No merge, deployment, local/target-host test, human test, or destructive data operation occurred. The independent Issue #52 review, branch-protection administration, CodeQL alert disposition, and external acceptance gates remain open.
+
+
+## 2026-11-13 — Durable task and browser-learning root-cause findings
+
+- The current route/API boundary PR #738 now includes a global OpenAPI fitness check for positive integer path IDs and bounded string query inputs, plus task-status list and practical-learning job-filter regressions. Exact head `5841e303916d0e4791724cde7ff5d53e131e772b`: Windows storage, dashboard smoke and dependency audit passed; full test suite remains in progress.
+- PR #739 adds service-level limits so direct internal callers cannot bypass HTTP bounds: task type, priority, retry count, dedupe key, serialized payload, checkpoint and result. The 512-character idempotency-key bound preserves the longest existing two-digest sandbox-review key plus request ID. First CI run: 1 failure in a newly added parameterized test because the fixture passed `task_type` twice; implementation was not implicated. Test corrected; fresh head `9edfdd38716b88708b53772aa93d75c3850b77b7` is running CI.
+- Issue #723 is already addressed by the stronger, earlier PR #725: both the original `run_course()` exception and a status-lookup failure propagate after lease cleanup, and queue advancement is prevented on failure. Exact head `0c576ed9530d5b08f3f2e016f7fa36fe7d83b9e4` passed all required CI (2,137 passed, 2 skipped, 51 deselected). Duplicate PR #740 was closed; Issue #723 stays open until PR #725 merges.
+- No PR merge, direct main write, local/target-host/human test, or destructive operation occurred. All exact-head results must be refreshed after further commits.
+
+
+## 2026-11-13 — Latest API/task evidence and browser cleanup audit
+
+- PR #738 exact-head CI passed on `cde0d1561118a07242c056758129030bd57dd8a6`: 2,170 passed, 2 skipped, 51 deselected; all required workflows and repository validation/benchmark checks passed. The API-wide fitness tests now enforce positive integer path IDs, bounded integer/string query inputs, and published pagination constraints across the inventoried routes.
+- PR #739 exact-head CI passed on `9edfdd38716b88708b53772aa93d75c3850b77b7`: 2,143 passed, 2 skipped, 51 deselected; all required workflows passed.
+- PR #741 identifies and fixes a separate cleanup-precedence issue in AI-learning browser automation: a failing `context.close()` could replace a provider/cancellation/Playwright error. Its helper preserves the primary exception and makes cleanup failures visible after successful capture. Exact head `f90c9dbafd46775048cece55dba7fb492a6fab3e` passed all required CI: 2,137 passed, 2 skipped, 51 deselected.
+- PR #725, not duplicate PR #740, is the authoritative fix for Issue #723 and has green exact-head CI. PR #740 is closed as superseded; Issue #723 remains open until PR #725 merges.
+- No merge, direct main write, local/target-host/human test, or destructive operation occurred.
+
+## 2026-11-13 — GitHub safety, data-retention, and exact-head reconciliation
+
+### New remediation PRs
+
+- PR #742 requires an exact server-side confirmation phrase before the broad AI-learning reset endpoint can delete data. Exact-head CI: 2,138 passed, 2 skipped, 51 deselected; Windows storage, Browser E2E, and Dependency Audit passed.
+- PR #743 hardens AI-learning source checks: rejects empty userinfo/ports and scoped IPv6 before DNS, verifies public IPv4/IPv6 pinning, and redacts raw DNS/malformed-HTTP exception text. Expanded exact-head CI: 2,149 passed, 2 skipped, 51 deselected; Windows storage, Browser E2E, and Dependency Audit passed.
+- PR #744 removes destructive cleanup from contradictory learning-candidate rejection. Candidate/source/assessment/quality/test/review evidence is retained, the durable knowledge row becomes `conflicting`, and promotion remains blocked. The UI now exposes rejected candidates and their evidence without offering terminal mutation actions.
+- PR #744 also adds a dry-run-by-default legacy recovery utility. It restores content only when the preserved job lesson exactly matches the original SHA-256, and restores source URLs/quality only from records still present. Deleted source text, assessment, test plan, and original knowledge-version metadata are never guessed. Exact-head CI: 2,139 passed, 2 skipped, 51 deselected; Windows storage, Browser E2E, and Dependency Audit passed.
+
+### Repository and release status
+
+- There are 15 open, unmerged PRs based on main `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`; see the current status block in `docs/PROJECT_STATUS.md`.
+- GitHub currently reports no workflow runs for the current main SHA, so no post-merge/current-main CI result is claimed.
+- Issue #52 remains open for independent security review; CodeQL SARIF upload is not proof of zero alerts.
+- Local/target-host, live-model, human adjudication, accessibility, staging restore/rollback, and Windows self-hosted diagnostic gates remain unrun or unverified. No PR is merged or auto-merged.

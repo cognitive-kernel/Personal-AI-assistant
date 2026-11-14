@@ -1,5 +1,7 @@
 # Weighted engineering and acceptance scorecard
 
+> **Historical snapshot warning (2026-11-13):** The weighted values below are the original 2026-11-01 snapshot, not a current score. The scored baseline SHA and evidence are historical. PRs #725–#744 now add further exact-head evidence, including API/security hardening, task bounds, and learning-data retention/recovery; the weights have not been recalculated against a complete current architecture and endpoint audit. There is no post-merge CI evidence for current `main` SHA `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`. Do not quote the old 60.47% / 57.45% values as current project progress.
+
 **Snapshot:** 2026-11-01  
 **Repository:** `cognitive-kernel/Personal-AI-assistant`  
 **Scored baseline:** `main` at `2a5c83bf0ba924f4a2c8f206338a04872562d72d`  
@@ -73,3 +75,30 @@ These are **provisional, evidence-based progress scores** using the fixed stage 
 - PR [#671](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/671) merged as exact `main` SHA `2a5c83bf0ba924f4a2c8f206338a04872562d72d`. Exact PR-head tests [#41221895391](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41221895391), browser E2E [#41221895422](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41221895422), and dependency audit [#41221895550](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41221895550) passed.
 - At the initial checkpoint, post-merge tests and dashboard smoke were still running. They subsequently completed successfully on the exact `main` SHA: tests [#41239355370](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355370) (including Windows storage regressions), dashboard smoke [#41239355374](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355374), and dependency audit [#41239355466](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355466).
 - Progress remains **60.47% engineering / 57.45% overall**; the change does not close an external gate.
+
+
+## 2026-11-13 — Recalculation deferred pending complete evidence
+
+- Current main SHA: `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`.
+- PRs #734 and #736 have exact-head CI evidence as recorded in the engineering log. PR #737 exact-head CI passed on `5bf13d05283daa2785a52bebfa9d8adf15f988b8` (2,142 passed, 2 skipped, 51 deselected); PR #738 CI is queued/running on `d1190c83a3e2a413e7ee8b9f35c95f10e45a3985`.
+- A defensible current weighted score is deferred until the API/module inventory and all current exact-head checks are complete. No score inflation or interpolation is applied.
+- External gates (independent security review, target-host operations, live-model/human adjudication) remain separately blocked and must never be counted as accepted based on repository CI.
+
+
+## 2026-11-13 — Latest evidence checkpoint
+
+- PR #737 is green on exact head `5bf13d05283daa2785a52bebfa9d8adf15f988b8`: 2,142 passed, 2 skipped, 51 deselected.
+- PR #738 head `5841e303916d0e4791724cde7ff5d53e131e772b`: three workflows passed; full test workflow remains in progress.
+- PR #739 head `9edfdd38716b88708b53772aa93d75c3850b77b7`: dependency audit passed; other checks are running after correction of a test-fixture defect.
+- PR #725 exact head `0c576ed9530d5b08f3f2e016f7fa36fe7d83b9e4` is fully green (2,137 passed, 2 skipped, 51 deselected); duplicate PR #740 was closed as superseded.
+- These are evidence notes, not a recalculated weighted score. The old score remains historical until all gates and the complete route/module audit are reconciled.
+
+
+## 2026-11-13 — Latest evidence reconciliation
+
+- PR #737: exact-head CI green, 2,142 passed, 2 skipped, 51 deselected.
+- PR #738: exact-head CI green, 2,170 passed, 2 skipped, 51 deselected.
+- PR #739: exact-head CI green, 2,143 passed, 2 skipped, 51 deselected.
+- PR #725: exact-head CI green, 2,137 passed, 2 skipped, 51 deselected; authoritative fix for Issue #723, which remains open until merge.
+- PR #741: exact-head CI green, 2,137 passed, 2 skipped, 51 deselected.
+- This is an evidence update only, not a recalculated weighted score. The 2026-11-01 score remains historical until all gates and module inventory are reconciled.

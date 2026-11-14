@@ -1,15 +1,31 @@
 # وضعیت یکپارچهٔ پروژه
 
-## وضعیت جاری — تکمیل Autonomous Engineering
+## وضعیت جاری — ممیزی GitHub در 2026-11-13
 
-- مبنای زندهٔ `main`: `461c0a2b1deaf5f8af8486846f167da8185c580a`؛ تغییرات release-watch و یادگیری جدید main حفظ شده‌اند.
-- کار فعال: PR [#719](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/719)، شاخهٔ `feat/autonomous-engineering-complete-final-20261112`؛ SHA دقیق و وضعیت Checkها از وضعیت زندهٔ PR خوانده می‌شوند. PR باز است و به main هدف‌گذاری شده است.
-- معماری جدید، مالکیت worktree و checkpoint watcher، هویت process، قفل durable state، GitHub transport و چرخهٔ PR را در ماژول‌های مستقل نگه می‌دارد؛ بازیابی مبهم fail-closed است و دادهٔ task/checkpoint حفظ می‌شود.
-- CI دقیق SHA `1528b86cdc0c0f70a17be2434e374ec7ede2c61c` موفق شد: ۱۱ تست focused، ۲۱۳۵ تست کامل passed، ۲ skipped، ۵۱ deselected؛ Windows Storage، Browser E2E، dependency audit، lexical retrieval benchmark و fail-closed claim-to-test coverage benchmark همگی موفق شدند. اجرای واقعی Codex/Ollama روی Runner مقصد و پذیرش عملیاتی بلندمدت هنوز pending است.
-- مسیریابی Ollama و OpenAI-compatible، هویت مدل، سقف خروجی و provider سفارشی Codex `ollama-local` در follow-upهای PR حفظ/بازیابی شده‌اند؛ diagnostic واقعی Codex/Ollama روی Windows Runner هنوز باید تأیید شود.
+- مبنای واقعی `main`: `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`؛ PR #719 در 2026-11-12 ادغام شده است.
+- اکنون **15 PR باز** وجود دارد؛ همه بر مبنای همین SHA و هنوز ادغام‌نشده‌اند. نتیجهٔ هر Workflow فقط به exact head همان PR مربوط است:
+  - [#725](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/725) حفظ Exception اصلی و آزادسازی lease در Browser Learning؛ Tests، Browser E2E و Dependency Audit موفق؛ 2,137 passed، 2 skipped، 51 deselected.
+  - [#727](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/727) محدودسازی سخت‌افزارمحور Context برای Ollama؛ سه Workflow اصلی موفق؛ 2,143 passed، 2 skipped، 51 deselected.
+  - [#730](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/730) Context تطبیقی Codex/Ollama و Windows preflight؛ Tests، Browser E2E، Dependency Audit و Sandbox integration موفق؛ 2,193 passed، 2 skipped، 51 deselected. diagnostic واقعی Windows به علت نبود Runner واجد شرایط skipped است و قبولی میزبان هدف محسوب نمی‌شود.
+  - [#732](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/732) CodeQL v4 برای Python و JavaScript؛ Tests، Browser E2E، Dependency Audit و CodeQL موفق؛ 2,135 passed، 2 skipped، 51 deselected. نتیجه اسکن به معنی صفر بودن alertها نیست.
+  - [#733](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/733) تطبیق inventory رابط کاربری با 46 تست مستقل؛ سه Workflow اصلی موفق؛ 2,135 passed، 2 skipped، 51 deselected.
+  - [#734](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/734) رگرسیون مرز loopback و Cross-Origin برای تمام API routeها؛ سه Workflow اصلی موفق؛ 2,136 passed، 2 skipped، 51 deselected.
+  - [#735](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/735) همگام‌سازی اسناد وضعیت و پذیرش؛ وضعیت exact-head CI هر revision در خود PR ثبت می‌شود و جایگزین CI پس از ادغام main نیست.
+  - [#736](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/736) جلوگیری از دور زدن workflowهای feature-owned از API عمومی؛ سه Workflow اصلی موفق؛ 2,149 passed، 2 skipped، 51 deselected.
+  - [#737](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/737) محدودیت Pagination در مرز HTTP/OpenAPI؛ سه Workflow اصلی موفق؛ 2,142 passed، 2 skipped، 51 deselected.
+  - [#738](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/738) اعتبارسنجی شناسه‌های مثبت در مسیرهای API؛ سه Workflow اصلی موفق؛ 2,170 passed، 2 skipped، 51 deselected.
+  - [#739](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/739) محدودسازی payload/checkpoint/result و metadata صف پایدار؛ سه Workflow اصلی موفق؛ 2,143 passed، 2 skipped، 51 deselected.
+  - [#741](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/741) حفظ خطای اصلی هنگام شکست cleanup در Browser Capture؛ سه Workflow اصلی موفق؛ 2,137 passed، 2 skipped، 51 deselected.
+  - [#742](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/742) تأیید server-side برای reset مخرب داده‌های یادگیری؛ سه Workflow اصلی موفق؛ 2,138 passed، 2 skipped، 51 deselected.
+  - [#743](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/743) سخت‌گیری authorityهای URL، رد scoped IPv6، pin کردن IPv4/IPv6 عمومی و حذف متن خام خطاهای DNS/HTTP از diagnostics؛ سه Workflow اصلی موفق؛ 2,149 passed، 2 skipped، 51 deselected.
+  - [#744](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/744) حفظ نامزدهای متعارض و شواهد یادگیری، نمایش آن‌ها در UI و ابزار بازیابی امن رکوردهای قدیمی؛ سه Workflow اصلی موفق؛ 2,139 passed، 2 skipped، 51 deselected. Browser E2E شامل نمایش شواهد و غیرفعال بودن عملیات روی نامزد terminal است.
+- Issue [#723](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/723) با PR #725 اصلاح شده و CI آن سبز است؛ تا تکمیل فرایند ادغام، issue باز می‌ماند.
+- Issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290) مرجع اصلی پذیرش کل پروژه است. Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) برای بازبینی مستقل امنیتی باز است.
+- گیت‌های GitHub باقیمانده شامل تکمیل ممیزی endpoint به endpoint، triage یافته‌های CodeQL، تأیید branch protection، بازبینی مستقل امنیتی و تأیید نهایی اسناد پذیرش است. سبز بودن CI جایگزین بازبینی مستقل امنیتی یا شواهد اجرای زنده نیست.
+- وضعیت خارج از GitHub: تست local/target-host، soak و crash/restart روی میزبان مقصد، staging restore/rollback، اجرای زنده مدل با digest ثابت، adjudication انسانی کیفیت فارسی/انگلیسی و بازبینی دستی accessibility انجام نشده‌اند و عمداً تا تکمیل کار GitHub اجرا نمی‌شوند.
+- هیچ PR ادغام نشده و هیچ نتیجهٔ exact-head به‌عنوان نتیجهٔ `main` گزارش نمی‌شود. طبق سند مرجع، تا تکمیل گیت‌های الزامی از ادغام یا دور زدن branch protection خودداری می‌شود.
 
-
-> تاریخ بازبینی: 2026-11-12. وضعیت جاری در ابتدای سند ثبت شده است؛ یادداشت‌های پایین‌تر snapshotهای تاریخی هستند.
+> تاریخ بازبینی: 2026-11-13. یادداشت‌های پایین‌تر snapshotهای تاریخی هستند و نباید جایگزین وضعیت جاری بالا شوند.
 
 ## وضعیت تاریخی اتوماسیون — PR #702 (snapshot قدیمی)
 
@@ -422,3 +438,33 @@
 - regression جدید تغییر release note در نتیجهٔ هفتم را شبیه‌سازی می‌کند؛ پایش باید آن را کشف و یک curriculum refresh نسخه‌دار صف‌بندی کند.
 - fingerprint دوره‌های قبلی ممکن است یک‌بار به‌دلیل گسترش نتایج تغییر کند؛ refresh افزایشی است و درس‌های تاریخی را بازنویسی نمی‌کند.
 - سقف ۳۰، اندازهٔ صفحهٔ هر query در adapter جست‌وجو است؛ این تغییر ادعای کشف تضمینی همهٔ منابع اینترنتی نیست.
+
+
+## 2026-11-13 — Continued GitHub engineering audit
+
+- Current audited `main` remains `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`; all changes below remain on draft PR branches and are not merged.
+- PR [#737](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/737) fixes four HTTP pagination contracts (curriculum proposals, learning capabilities, learning jobs, and knowledge items). Its latest head at this checkpoint is `5bf13d05283daa2785a52bebfa9d8adf15f988b8`. All required workflows passed: 2,142 passed, 2 skipped, 51 deselected; Windows storage regressions, dashboard smoke, dependency audit, Markdown validation (95 files), AST import-cycle check, and benchmark checks passed.
+- PR [#738](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/738) adds positive integer path-ID validation for task-control, curriculum-evolution, cloud-resource, and AI-learning endpoints, with HTTP and OpenAPI regressions. Latest head: `d1190c83a3e2a413e7ee8b9f35c95f10e45a3985`; CI has been queued and is not yet verified.
+- The path-ID audit is intentionally incremental. Other route families remain to be inspected and covered; PR #738 does not claim project-wide completion.
+- No PR was merged, no direct main write occurred, and no local/target-host/human testing was performed. No live-model, independent security-review, or target-host operational acceptance is claimed.
+- Remaining work includes full module/data-ownership inventory, API contract and identifier coverage beyond the above route families, UI workflow parity, task-type fault-injection coverage, code-scanning alert disposition, independent security review (Issue #52), and accurate final acceptance evidence (Issue #290).
+
+
+## 2026-11-13 — Task queue and browser-worker hardening
+
+- PR [#738](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/738) current head `5841e303916d0e4791724cde7ff5d53e131e772b`: Windows storage regressions, dashboard smoke, and dependency audit passed; full test workflow is still running. It covers positive integer IDs across the inventoried API routes, bounded task status filters, positive practical-learning job query validation, and OpenAPI fitness checks for path IDs and string query inputs.
+- PR [#739](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/739) current head `9edfdd38716b88708b53772aa93d75c3850b77b7`: dependency audit passed; tests, Windows storage, and dashboard smoke are running. It bounds durable task payload/checkpoint/result records and service-level queue metadata. The first CI run exposed a test-fixture argument duplication, corrected in this new head; fresh exact-head CI is required.
+- PR [#725](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/725) is the authoritative fix for Issue #723. Exact head `0c576ed9530d5b08f3f2e016f7fa36fe7d83b9e4` passed all required CI checks (2,137 passed, 2 skipped, 51 deselected). Duplicate PR #740 was closed as superseded; Issue #723 remains open until #725 is merged.
+- PR #735 documentation branch passed all four required workflows on `b9e11e474dc9f2c6b3ec9148577daf64c7b82844`; the new notes in this checkpoint require fresh exact-head CI.
+- No PR is merged. Local/target-host/human tests remain deferred. Issue #52 independent review, CodeQL alert disposition, branch protection administration, and target-host acceptance remain open.
+
+
+## 2026-11-13 — Latest exact-head CI reconciliation
+
+- PR #737: green on `5bf13d05283daa2785a52bebfa9d8adf15f988b8` — 2,142 passed, 2 skipped, 51 deselected.
+- PR #738: green on `cde0d1561118a07242c056758129030bd57dd8a6` — 2,170 passed, 2 skipped, 51 deselected; all four required workflows passed. This closes the currently inventoried API path-ID, integer/string query-bound, and pagination-bound test gaps.
+- PR #739: green on `9edfdd38716b88708b53772aa93d75c3850b77b7` — 2,143 passed, 2 skipped, 51 deselected; durable task payload/checkpoint/result and metadata bounds are validated.
+- PR #741: exact head `f90c9dbafd46775048cece55dba7fb492a6fab3e` is fully green — 2,137 passed, 2 skipped, 51 deselected; all four required workflows and repository validation/benchmark checks passed. It covers cleanup-error precedence in AI-learning browser capture.
+- PR #725 remains the authoritative browser-learning worker exception fix for Issue #723, green on exact head `0c576ed9530d5b08f3f2e016f7fa36fe7d83b9e4`. Duplicate PR #740 is closed as superseded. Issue #723 remains open until PR #725 is merged.
+- PR #735 documentation branch passed its previous exact-head CI; this reconciliation requires a fresh run on the new documentation commit.
+- No PR is merged. Local/target-host/human tests remain deferred. Issue #52 independent review, CodeQL alert disposition, branch-protection administration, target-host operations, and live-model evaluation remain open.
