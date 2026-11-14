@@ -180,7 +180,7 @@ if ($VerifyOnly) {
         throw "The selected Codex context was not persisted as a positive verified allocation for runtime verification."
     }
     $modelInfo = Get-ModelInfo -ModelName $codexModel
-    Assert-ToolCallingCapability -Info $modelInfo -ModelName $codexModel -ModelName $codexModel
+    Assert-ToolCallingCapability -Info $modelInfo -ModelName $codexModel
     $maximum = Get-MaximumContext -Info $modelInfo
     if ($selectedContext -gt $maximum) {
         throw "The persisted Codex context $selectedContext exceeds the model maximum $maximum."
@@ -265,7 +265,7 @@ if ($VerifyOnly) {
     }
 
     $modelInfo = Get-ModelInfo -ModelName $codexModel
-    Assert-ToolCallingCapability -Info $modelInfo
+    Assert-ToolCallingCapability -Info $modelInfo -ModelName $codexModel
     $savedContext = [regex]::Match(
         [string]$modelInfo.modelfile,
         '(?im)^\s*PARAMETER\s+num_ctx\s+(\d+)\s*$'
