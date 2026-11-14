@@ -39,6 +39,11 @@ def test_windows_provisioning_does_not_require_a_fixed_users_group_or_admin_acl_
     assert '$modifySids = @($RunnerSid)' in module
     assert '*$($_):(OI)(CI)M' in module
     assert '*$($ReadOnlySid):(OI)(CI)RX' in module
+    assert '$allowedSids = @($modifySids)' in module
+    assert '$Path /remove "*$sid"' in module
+    assert '$unexpectedSids' in module
+    assert '$installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value' in script
+    assert 'Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid' in script
 
 
 def test_windows_provisioning_keeps_runner_least_privilege_as_a_role_invariant():
