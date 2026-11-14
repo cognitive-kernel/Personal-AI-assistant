@@ -328,6 +328,23 @@ def test_model_catalog_endpoint_uses_requested_capability_provider(settings_clie
     assert response.json()["models"][0]["name"] == "ai_learning-model"
 
 
+def test_global_ollama_hardware_defaults_are_visible_and_persisted(settings_client):
+    defaults = settings_client.get("/api/settings").json()
+    assert defaults["ollama_timeout_seconds"] == 120
+    assert defaults["ollama_num_ctx"] == 8192
+    assert defaults["ollama_num_thread"] == 0
+
+    values = {
+        "ollama_timeout_seconds": 90,
+        "ollama_num_ctx": 16384,
+        "ollama_num_thread": 8,
+    }
+    response = settings_client.patch("/api/settings", json={"values": values})
+    assert response.status_code == 200
+    for key, value in values.items():
+        assert response.json()[key] == value
+
+
 def test_settings_api_seeds_and_persists_learning_cost_preferences(settings_client):
     defaults = settings_client.get("/api/settings")
     assert defaults.status_code == 200
