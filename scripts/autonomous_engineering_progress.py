@@ -290,7 +290,12 @@ def run_codex(args: argparse.Namespace) -> int:
         if os.name == "nt":
             residual_processes = job.terminate_remaining_processes(125)
         else:
-            residual_processes = terminate_process_group(process.pid)
+            process_pid = getattr(process, "pid", None)
+            residual_processes = (
+                terminate_process_group(process_pid)
+                if isinstance(process_pid, int) and process_pid > 0
+                else False
+            )
         if residual_processes:
             print(
                 "Codex supervisor exited while its owned process tree still contained descendants; "
