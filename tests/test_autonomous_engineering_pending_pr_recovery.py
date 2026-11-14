@@ -122,3 +122,18 @@ def test_multiple_open_controller_prs_fail_closed_and_preserve_state(tmp_path: P
             )
 
     assert path.read_text(encoding="utf-8") == original
+
+
+def test_missing_local_pr_record_is_rebuilt_from_unique_open_controller_pr(tmp_path: Path):
+    live = _controller_pr(88)
+
+    with durable_state_lock(tmp_path):
+        result = reconcile_pending_pr_state_unlocked(
+            tmp_path, REPOSITORY, [live], lambda number: live,
+        )
+
+    assert result is not None
+    assert result["number"] == 88
+    assert result["run_id"] == "123456"
+    assert result["task"] == 3
+    assert json.loads((tmp_path / "pending-autonomous-pr.json").read_text(encoding="utf-8")) == result
