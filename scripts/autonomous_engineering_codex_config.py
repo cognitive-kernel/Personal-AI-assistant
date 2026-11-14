@@ -1,24 +1,48 @@
-"""Codex CLI model catalog, context validation, and argument construction."""
+"""Codex CLI model catalog, context validation, and bounded runtime construction."""
 
 from __future__ import annotations
 
 import json
 import os
 import re
+import sys
 import tempfile
 from pathlib import Path
 
+try:
+    from .autonomous_engineering_codex_runner import capture_parent_chain
+except ImportError:
+    from autonomous_engineering_codex_runner import capture_parent_chain
+
 
 ROOT = Path(__file__).resolve().parents[1]
+CODEX_SMOKE_TIMEOUT_SECONDS = 300
+CODEX_TASK_TIMEOUT_SECONDS = 1800
 
 
-def codex_command(executable: str, arguments: list[str]) -> list[str]:
+def codex_command(
+    executable: str,
+    arguments: list[str],
+    *,
+    timeout_seconds: int = CODEX_TASK_TIMEOUT_SECONDS,
+) -> list[str]:
+    """Run Codex through an owner-aware supervisor, preserving the native CLI contract."""
+    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or timeout_seconds < 1:
+        raise ValueError("Codex timeout must be a positive integer.")
     if Path(executable).suffix.casefold() in {".cmd", ".bat"}:
-        return [
+        native_command = [
             os.getenv("COMSPEC", "cmd.exe"), "/d", "/c", "call",
             executable, *arguments,
         ]
-    return [executable, *arguments]
+    else:
+        native_command = [executable, *arguments]
+    runner = Path(__file__).with_name("autonomous_engineering_codex_runner.py")
+    return [
+        sys.executable, str(runner),
+        "--timeout-seconds", str(timeout_seconds),
+        "--parent-chain", json.dumps(capture_parent_chain(), separators=(",", ":")),
+        "--", *native_command,
+    ]
 
 
 def _verified_codex_context_window() -> int:
@@ -88,6 +112,8 @@ def codex_arguments(model: str, report: str) -> list[str]:
     context_window = _verified_codex_context_window()
     catalog_path = write_codex_model_catalog(model, context_window=context_window)
     print(f"Codex model catalog metadata: model={model}, context_window={context_window}")
+    is_smoke = Path(report).name.startswith("codex-sandbox-")
+    timeout_seconds = CODEX_SMOKE_TIMEOUT_SECONDS if is_smoke else CODEX_TASK_TIMEOUT_SECONDS
     arguments = [
         "exec", "-c", 'model_provider="ollama-local"',
         "-c", f'windows.sandbox="{backend}"',
@@ -106,11 +132,11 @@ def codex_arguments(model: str, report: str) -> list[str]:
         'model_providers.ollama-local.base_url="http://127.0.0.1:11434/v1/"',
         'model_providers.ollama-local.wire_api="responses"',
         "model_providers.ollama-local.requires_openai_auth=false",
-        "model_providers.ollama-local.stream_idle_timeout_ms=900000",
-        "model_providers.ollama-local.stream_max_retries=10",
-        "model_providers.ollama-local.request_max_retries=4",
+        "model_providers.ollama-local.stream_idle_timeout_ms=120000" if is_smoke else "model_providers.ollama-local.stream_idle_timeout_ms=300000",
+        "model_providers.ollama-local.stream_max_retries=0" if is_smoke else "model_providers.ollama-local.stream_max_retries=2",
+        "model_providers.ollama-local.request_max_retries=0" if is_smoke else "model_providers.ollama-local.request_max_retries=1",
     ]
     if reasoning_effort:
         config_overrides.insert(0, f'model_reasoning_effort="{reasoning_effort}"')
     arguments[5:5] = [part for override in config_overrides for part in ("-c", override)]
-    return arguments
+    return codex_command("codex", arguments, timeout_seconds=timeout_seconds)
