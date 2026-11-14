@@ -36,6 +36,16 @@ class RetryPolicy:
             raise ValueError("elapsed_seconds must be a non-negative finite number.")
         return attempts_completed < self.max_attempts and elapsed_seconds < self.max_elapsed_seconds
 
+    def remaining_seconds(self, elapsed_seconds: float) -> int:
+        if (
+            isinstance(elapsed_seconds, bool)
+            or not isinstance(elapsed_seconds, (int, float))
+            or not math.isfinite(float(elapsed_seconds))
+            or elapsed_seconds < 0
+        ):
+            raise ValueError("elapsed_seconds must be a non-negative finite number.")
+        return max(0, int(self.max_elapsed_seconds - elapsed_seconds))
+
     def exhaustion_reason(self, attempts_completed: int, elapsed_seconds: float) -> str:
         if attempts_completed >= self.max_attempts:
             return f"per-run attempt limit reached ({self.max_attempts})."
