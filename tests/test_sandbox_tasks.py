@@ -3,6 +3,7 @@ import hashlib
 import pytest
 
 from app import learning_practical, sandbox_tasks
+from app.task_worker import PermanentTaskError
 from app.sandbox import SandboxResult
 
 
@@ -35,16 +36,20 @@ def _configure(monkeypatch, tmp_path):
     return executable
 
 
-def test_sandbox_handler_is_unavailable_without_runtime_configuration(monkeypatch):
+def test_sandbox_handler_is_registered_but_fails_closed_without_runtime_configuration(monkeypatch):
     monkeypatch.setattr(sandbox_tasks.db, "get_settings", lambda: {"sandbox_enabled": True})
-    assert sandbox_tasks.handler_from_environment() is None
+    handler = sandbox_tasks.handler_from_environment()
+    assert handler is not None
+    with pytest.raises(PermanentTaskError, match="not configured"):
+        handler({}, None, FakeContext())
 
 
 @pytest.mark.parametrize("value", ["maybe", "enabled", "2"])
 def test_sandbox_handler_rejects_ambiguous_enable_setting(monkeypatch, value):
     monkeypatch.setattr(sandbox_tasks.db, "get_settings", lambda: {"sandbox_enabled": value})
-    with pytest.raises(ValueError, match="sandbox_enabled"):
-        sandbox_tasks.handler_from_environment()
+    handler = sandbox_tasks.handler_from_environment()
+    with pytest.raises(PermanentTaskError, match="sandbox_enabled"):
+        handler({}, None, FakeContext())
 
 
 def test_sandbox_handler_requires_absolute_existing_docker_and_digest_pinned_image(
@@ -56,13 +61,15 @@ def test_sandbox_handler_requires_absolute_existing_docker_and_digest_pinned_ima
         "sandbox_python_image": "python:latest",
     }
     monkeypatch.setattr(sandbox_tasks.db, "get_settings", lambda: settings)
-    with pytest.raises(ValueError, match="absolute file path"):
-        sandbox_tasks.handler_from_environment()
+    handler = sandbox_tasks.handler_from_environment()
+    with pytest.raises(PermanentTaskError, match="absolute file path"):
+        handler({}, None, FakeContext())
 
     executable = _configure(monkeypatch, tmp_path)
     settings["sandbox_docker_executable"] = str(executable)
-    with pytest.raises(ValueError, match="SHA-256 digest"):
-        sandbox_tasks.handler_from_environment()
+    handler = sandbox_tasks.handler_from_environment()
+    with pytest.raises(PermanentTaskError, match="SHA-256 digest"):
+        handler({}, None, FakeContext())
     settings["sandbox_python_image"] = "docker.io/library/python:3.12-slim@sha256:" + "a" * 64
     assert sandbox_tasks.handler_from_environment() is not None
     assert executable.is_file()
