@@ -59,6 +59,7 @@ function Assert-ToolCallingCapability {
         return $false
     }
 
+    Write-Host "[ollama-timing] start phase=structured-tool-probe timeout_sec=45"
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
     $toolProbeScript = Join-Path $script:OllamaScriptsRoot "verify_ollama_tools.py"
     & python $toolProbeScript --model $ModelName --keep-alive 10m 2>&1 | ForEach-Object { Write-Host $_ }
