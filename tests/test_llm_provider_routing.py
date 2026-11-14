@@ -4,6 +4,7 @@ import json
 import pytest
 
 from app import ollama
+from app.module_settings import ModuleDisabledError
 
 
 class _FakeOpener:
@@ -86,6 +87,18 @@ def test_openai_compatible_chat_supports_local_endpoint_without_api_key(monkeypa
     assert result == "ok"
     assert captured["url"] == "http://127.0.0.1:1234/v1/chat/completions"
     assert captured["authorization"] is None
+
+
+def test_chat_generation_respects_user_module_toggle(monkeypatch):
+    monkeypatch.setattr(ollama, "get_settings", lambda: {"chat_enabled": False})
+    with pytest.raises(ModuleDisabledError, match="chat"):
+        ollama.chat("must not be sent")
+
+
+def test_embedding_respects_user_module_toggle(monkeypatch):
+    monkeypatch.setattr(ollama, "get_settings", lambda: {"embedding_enabled": False})
+    with pytest.raises(ModuleDisabledError, match="embedding"):
+        ollama.embed(["must not be embedded"])
 
 
 def test_model_discovery_uses_selected_ollama_provider(monkeypatch):
