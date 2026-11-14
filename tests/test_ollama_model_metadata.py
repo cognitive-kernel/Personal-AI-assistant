@@ -89,6 +89,42 @@ def test_model_details_resolves_general_architecture_when_family_is_inconsistent
     assert result["recommended_context_tokens"] == 131072
 
 
+def test_model_details_accounts_for_model_and_kv_cache_already_loaded(monkeypatch):
+    def fake_request(path, payload=None, timeout=None):
+        if path == "/api/show":
+            return {
+                "details": {"family": "llama"},
+                "model_info": {
+                    "llama.context_length": 131072,
+                    "llama.block_count": 32,
+                    "llama.attention.head_count_kv": 8,
+                    "llama.attention.key_length": 128,
+                    "llama.attention.value_length": 128,
+                },
+            }
+        return {"models": [{
+            "name": "llama:large",
+            "context_length": 8192,
+            "size": 5 * 1024**3,
+            "size_vram": 0,
+        }]}
+
+    monkeypatch.setattr(ollama, "_request", fake_request)
+    monkeypatch.setattr(ollama, "list_models", lambda: [{"name": "llama:large", "size": 5 * 1024**3}])
+    monkeypatch.setattr(ollama, "get_settings", lambda: {
+        "ram_budget_max_gb": 8, "ram_safety_reserve_gb": 1, "gpu_enabled": False
+    })
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {
+        "logical_cpu_count": 8, "total_ram_gb": 16, "available_ram_gb": 8,
+        "gpu_devices": [], "gpu_available": False,
+    })
+
+    result = ollama.model_details("llama:large")
+
+    assert result["running"]["context_length"] == 8192
+    assert result["recommended_context_tokens"] == 79189
+
+
 def test_model_details_recommends_context_within_model_and_memory_limits(monkeypatch):
     monkeypatch.setattr(ollama, "_request", lambda path, payload=None, timeout=None: (
         {
