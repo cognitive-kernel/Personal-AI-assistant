@@ -81,3 +81,17 @@ Decision:
 - Test both timeout cleanup and successful-parent/background-child cleanup, in addition to existing controller deadline tests.
 
 This extends the process ownership invariant beyond Codex while keeping the Codex owner-ancestry supervisor, durable-state mutex, repository lock, and checkpoint-watcher contracts independently scoped.
+
+
+## 2026-11-14 addendum — synchronous process-tree drain
+
+A subsequent code-path review found that issuing termination was not itself proof that the process tree had stopped. `TerminateJobObject` and POSIX group signals initiate termination asynchronously. Returning immediately could let the controller release its repository lock while a child was still in its shutdown path.
+
+Decision:
+- Windows command execution waits on the Job Object's signaled state, which is reached only after all assigned processes have exited. On timeout or normal parent exit with remaining descendants, terminate the job and wait for that state before returning.
+- POSIX command execution sends SIGTERM, waits for live non-zombie members of its dedicated process group, escalates to SIGKILL when necessary, and waits for the group to contain no live members.
+- If termination cannot be confirmed within the bounded cleanup window, raise a cleanup error rather than release ownership as if cleanup succeeded.
+- If Windows Job Object assignment fails after a suspended child was created, explicitly kill and reap that child; closing an empty Job Object alone cannot terminate a process that was never assigned.
+- Add regression tests for a POSIX child termination handler completing before return, immediate Windows Job Object drain, and fail-closed cleanup of an unassigned suspended Windows child.
+
+The invariant is now: controller command return (and therefore release of the caller's repository lock) occurs only after every owned live process has exited. Zombie processes are treated as terminated because they cannot execute or mutate state.
