@@ -48,14 +48,54 @@ function Set-AutonomousDirectoryAcl {
     if ($AdditionalModifySid -and $AdditionalModifySid -notin $modifySids) {
         $modifySids += $AdditionalModifySid
     }
+    $allowedSids = @($modifySids)
+    if ($ReadOnlySid -and $ReadOnlySid -notin $allowedSids) {
+        $allowedSids += $ReadOnlySid
+    }
+
+    & $icacls.Source $Path /inheritance:r | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not disable inherited ACL entries on '$Path'."
+    }
+
+    $existingAcl = Get-Acl -LiteralPath $Path
+    $existingSids = @(
+        $existingAcl.Access | ForEach-Object {
+            try {
+                $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+            } catch {
+                if ($_.IdentityReference.Value -match "^S-1-") { $_.IdentityReference.Value }
+                else { throw "Could not resolve an existing ACL principal on '$Path'." }
+            }
+        } | Select-Object -Unique
+    )
+    foreach ($sid in $existingSids) {
+        if ($sid -notin $allowedSids) {
+            & $icacls.Source $Path /remove "*$sid" | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw "Could not remove an unconfigured principal from '$Path' ACL."
+            }
+        }
+    }
+
     $grants = @($modifySids | ForEach-Object { "*$($_):(OI)(CI)M" })
     if ($ReadOnlySid -and $ReadOnlySid -notin $modifySids) {
         $grants += "*$($ReadOnlySid):(OI)(CI)RX"
     }
-    $arguments = @($Path, "/inheritance:r", "/grant:r") + $grants
+    $arguments = @($Path, "/grant:r") + $grants
     & $icacls.Source @arguments | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "Could not apply least-privilege ACLs to '$Path' for the configured account SIDs."
+    }
+
+    $verifiedAcl = Get-Acl -LiteralPath $Path
+    $unexpectedSids = @(
+        $verifiedAcl.Access | ForEach-Object {
+            $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+        } | Where-Object { $_ -notin $allowedSids } | Select-Object -Unique
+    )
+    if ($unexpectedSids.Count -gt 0) {
+        throw "Unexpected principals remain on '$Path' ACL: $($unexpectedSids -join ', ')."
     }
 }
 
