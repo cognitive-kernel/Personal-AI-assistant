@@ -302,6 +302,13 @@ def test_ollama_status_probes_tool_calling_when_capabilities_metadata_is_missing
     agent._services._TOOL_PROBE_CACHE.clear()
     monkeypatch.setattr(agent.urllib.request, "build_opener", lambda *args: FakeOpener())
     monkeypatch.setattr(ollama, "model_details", lambda model: {"recommended_context_tokens": 32768})
+    probe_calls = []
+    monkeypatch.setattr(ollama, "_request", lambda path, payload=None, timeout=None: (
+        probe_calls.append((path, payload, timeout))
+        or {"message": {"tool_calls": [{
+            "function": {"name": "autonomous_engineering_capability_probe", "arguments": {}}
+        }]}}
+    ))
 
     result = agent._ollama_status("gpt-oss:20b")
 
@@ -309,6 +316,9 @@ def test_ollama_status_probes_tool_calling_when_capabilities_metadata_is_missing
     assert result["model_supports_tools"] is True
     assert result["model_tools_metadata_available"] is False
     assert result["model_tools_verification_method"] == "live_tool_call_probe"
+    assert probe_calls[0][0] == "/api/chat"
+    assert probe_calls[0][2] == 45
+    assert probe_calls[0][1]["think"] is False
 
 
 def test_ollama_status_lists_installed_models_without_selecting_one(monkeypatch):
