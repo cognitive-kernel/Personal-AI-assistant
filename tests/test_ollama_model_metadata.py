@@ -61,6 +61,34 @@ def test_model_details_does_not_invent_context_or_kv_estimate(monkeypatch):
 
 
 
+def test_model_details_resolves_general_architecture_when_family_is_inconsistent(monkeypatch):
+    monkeypatch.setattr(ollama, "_request", lambda path, payload=None, timeout=None: (
+        {
+            "details": {"parameter_size": "20B", "quantization_level": "MXFP4", "family": "stale-family"},
+            "model_info": {
+                "general.architecture": "gptoss",
+                "gptoss.context_length": 131072,
+                "gptoss.block_count": 24,
+                "gptoss.attention.head_count_kv": 8,
+                "gptoss.attention.key_length": 64,
+                "gptoss.attention.value_length": 64,
+            },
+        } if path == "/api/show" else {"models": []}
+    ))
+    monkeypatch.setattr(ollama, "list_models", lambda: [{"name": "gpt-oss:20b", "size": 5 * 1024**3}])
+    monkeypatch.setattr(ollama, "get_settings", lambda: {"ram_budget_max_gb": 25, "ram_safety_reserve_gb": 4, "gpu_enabled": False})
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {
+        "logical_cpu_count": 8, "total_ram_gb": 32, "available_ram_gb": 25,
+        "gpu_devices": [], "gpu_available": False,
+    })
+
+    result = ollama.model_details("gpt-oss:20b")
+
+    assert result["architecture"] == "gptoss"
+    assert result["maximum_context_tokens"] == 131072
+    assert result["recommended_context_tokens"] == 131072
+
+
 def test_model_details_recommends_context_within_model_and_memory_limits(monkeypatch):
     monkeypatch.setattr(ollama, "_request", lambda path, payload=None, timeout=None: (
         {
