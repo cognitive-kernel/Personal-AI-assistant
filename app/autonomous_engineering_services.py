@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 import psutil
 import urllib.error
 import urllib.request
@@ -20,6 +21,64 @@ class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
         return None
 
 
+_TOOL_PROBE_CACHE: dict[tuple[str, str], tuple[float, bool]] = {}
+_TOOL_PROBE_TTL_SECONDS = 600
+
+
+def _probe_tool_calling(opener, model: str, digest: str) -> bool:
+    """Verify a real local tool-call response when Ollama omits capabilities metadata."""
+    key = (model, digest)
+    cached = _TOOL_PROBE_CACHE.get(key)
+    now = time.monotonic()
+    if cached and now - cached[0] < _TOOL_PROBE_TTL_SECONDS:
+        return cached[1]
+    payload = {
+        "model": model,
+        "stream": False,
+        "messages": [
+            {
+                "role": "system",
+                "content": "This is a local compatibility check. Call the provided function exactly once. Do not answer in plain text.",
+            },
+            {"role": "user", "content": "Call the compatibility probe function now."},
+        ],
+        "tools": [{
+            "type": "function",
+            "function": {
+                "name": "autonomous_engineering_capability_probe",
+                "description": "Confirms that the model can emit a structured tool call.",
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+        }],
+        "options": {"temperature": 0, "num_predict": 64},
+        "keep_alive": "0",
+    }
+    request = urllib.request.Request(
+        "http://127.0.0.1:11434/api/chat",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Accept": "application/json", "Content-Type": "application/json"},
+        method="POST",
+    )
+    supported = False
+    try:
+        with opener.open(request, timeout=45) as response:
+            body = response.read(1_000_001)
+        if len(body) <= 1_000_000:
+            result = json.loads(body.decode("utf-8"))
+            message = result.get("message") if isinstance(result, dict) else None
+            calls = message.get("tool_calls") if isinstance(message, dict) else None
+            supported = isinstance(calls, list) and any(
+                isinstance(call, dict)
+                and isinstance(call.get("function"), dict)
+                and call["function"].get("name") == "autonomous_engineering_capability_probe"
+                for call in calls
+            )
+    except (OSError, ValueError, urllib.error.URLError, TimeoutError):
+        supported = False
+    _TOOL_PROBE_CACHE[key] = (now, supported)
+    return supported
+
+
 def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool_calling_fn, is_context_variant, recommended_context_fn=None) -> dict[str, Any]:
     empty = {
         "online": False,
@@ -33,6 +92,7 @@ def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool
         "model_recommended_context_length": None,
         "model_capabilities": [],
         "model_tools_metadata_available": False,
+        "model_tools_verification_method": "unverified",
         "model_supports_tools": False,
         "model_metadata_available": False,
         "model_context_supported": False,
@@ -115,6 +175,18 @@ def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool
             value for value in raw_capabilities
             if isinstance(value, str) and value
         }) if isinstance(raw_capabilities, list) else []
+        tools_metadata_available = isinstance(raw_capabilities, list)
+        model_entry = next(
+            (item for item in models if isinstance(item, dict) and item.get("name") == model),
+            {},
+        )
+        model_digest = str(model_entry.get("digest") or "")
+        if tools_metadata_available:
+            model_supports_tools = supports_tool_calling_fn(capabilities)
+            tools_verification_method = "ollama_model_capabilities"
+        else:
+            model_supports_tools = _probe_tool_calling(opener, model, model_digest)
+            tools_verification_method = "live_tool_call_probe" if model_supports_tools else "unverified"
         metadata_available = context_length is not None
         recommended_context = None
         recommendation_error = None
@@ -151,8 +223,9 @@ def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool
             "model_context_length": context_length,
             "model_recommended_context_length": recommended_context,
             "model_capabilities": capabilities,
-            "model_tools_metadata_available": isinstance(raw_capabilities, list),
-            "model_supports_tools": supports_tool_calling_fn(capabilities),
+            "model_tools_metadata_available": tools_metadata_available,
+            "model_tools_verification_method": tools_verification_method,
+            "model_supports_tools": model_supports_tools,
             "model_metadata_available": metadata_available,
             "model_context_supported": context_supported,
             "model_context_error": (
