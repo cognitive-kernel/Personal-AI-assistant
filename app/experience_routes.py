@@ -30,7 +30,7 @@ def require_experience_system_enabled() -> None:
 router = APIRouter(
     prefix="/api/experiences",
     tags=["experience-memory"],
-    dependencies=[Depends(require_loopback_client), Depends(require_experience_system_enabled)],
+    dependencies=[Depends(require_loopback_client)],
 )
 
 EditableStatus = Literal[
@@ -178,7 +178,7 @@ def search_experiences(
     return {"verified": verified, "warnings": warnings}
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_experience_system_enabled)])
 def create_experience(request: ExperienceCreateRequest) -> dict[str, Any]:
     try:
         item = experience.create_experience(request.topic, request.problem, request.hypothesis)
@@ -197,7 +197,7 @@ class ExperienceTestRunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-@router.post("/{experience_id}/run-test", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/{experience_id}/run-test", status_code=status.HTTP_202_ACCEPTED, dependencies=[Depends(require_experience_system_enabled)])
 def queue_experience_test(
     experience_id: int,
     request: ExperienceTestRunRequest,
@@ -256,7 +256,7 @@ def queue_experience_test(
     }
 
 
-@router.post("/{experience_id}/feedback")
+@router.post("/{experience_id}/feedback", dependencies=[Depends(require_experience_system_enabled)])
 def set_experience_feedback(
     experience_id: int,
     request: ExperienceFeedbackRequest,
@@ -289,7 +289,7 @@ def delete_experience_feedback(experience_id: int) -> dict[str, Any]:
     return {"experience_id": experience_id, "deleted": deleted}
 
 
-@router.post("/{experience_id}/refresh-sources")
+@router.post("/{experience_id}/refresh-sources", dependencies=[Depends(require_experience_system_enabled)])
 def refresh_experience_sources(
     experience_id: int,
     request: ExperienceSourceRefreshRequest,
@@ -339,7 +339,7 @@ def get_experience_versions(experience_id: int) -> dict[str, Any]:
     return {"experience_id": experience_id, "versions": versions}
 
 
-@router.post("/from-retained-knowledge/hypotheses", status_code=status.HTTP_201_CREATED)
+@router.post("/from-retained-knowledge/hypotheses", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_experience_system_enabled)])
 def propose_experience_hypotheses_from_retained_knowledge(
     request: RetainedKnowledgeHypothesisRequest,
 ) -> dict[str, Any]:
@@ -359,7 +359,7 @@ def propose_experience_hypotheses_from_retained_knowledge(
     }
 
 
-@router.post("/hypotheses/propose", status_code=status.HTTP_201_CREATED)
+@router.post("/hypotheses/propose", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_experience_system_enabled)])
 def propose_hypotheses(request: HypothesisProposalRequest) -> dict[str, Any]:
     """Create reviewable hypothesis drafts; generated output is never treated as evidence."""
     try:
@@ -389,7 +389,7 @@ def get_experience(experience_id: int) -> dict[str, Any]:
     return {"experience": item}
 
 
-@router.patch("/{experience_id}")
+@router.patch("/{experience_id}", dependencies=[Depends(require_experience_system_enabled)])
 def update_experience(
     experience_id: int,
     request: ExperienceUpdateRequest,
