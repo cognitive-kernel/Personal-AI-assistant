@@ -144,6 +144,7 @@ jobs:
       AUTONOMOUS_ENGINEERING_MODEL: ${{ vars.AUTONOMOUS_ENGINEERING_MODEL || '' }}
       AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH: ${{ inputs.context_length || vars.AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH || '' }}
       AUTONOMOUS_ENGINEERING_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE || 'continuous' }}
+      AUTONOMOUS_ENGINEERING_REQUIRE_MACHINE_STATE_DIR: 'true'
     steps:
       - name: Check out trusted main branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -168,33 +169,31 @@ jobs:
           $ErrorActionPreference = "Stop"
           Write-Host "Runner identity:"
           whoami
-          $pythonPath = "C:\Program Files\Python311\python.exe"
-          $pythonDirectory = Split-Path -Parent $pythonPath
+          $python = Get-Command python -ErrorAction Stop
+          $ollama = Get-Command ollama -ErrorAction Stop
+          $pythonDirectory = Split-Path -Parent $python.Source
           $scriptsPath = Join-Path $pythonDirectory "Scripts"
-          $ollamaPath = "C:\Users\Admin\AppData\Local\Programs\Ollama\ollama.exe"
-          $ollamaDirectory = Split-Path -Parent $ollamaPath
-          if (-not (Test-Path -LiteralPath $ollamaPath -PathType Leaf)) {
-            throw "Ollama executable was not found at: $ollamaPath"
-          }
-          if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) {
-            throw "System-wide Python was not found at: $pythonPath"
-          }
-          if (-not (Test-Path -LiteralPath $scriptsPath -PathType Container)) {
-            throw "Python Scripts directory was not found at: $scriptsPath"
-          }
-          & $pythonPath --version
+          $ollamaDirectory = Split-Path -Parent $ollama.Source
+          & $python.Source --version
           if ($LASTEXITCODE -ne 0) {
             throw "Python cannot execute under the Runner service identity."
           }
-          @($pythonDirectory, $scriptsPath, $ollamaDirectory) |
-            Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          $env:PATH = "$pythonDirectory;$scriptsPath;$ollamaDirectory;$env:PATH"
+          & $ollama.Source --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "Ollama CLI cannot execute under the Runner service identity."
+          }
+          $pathEntries = @($pythonDirectory, $ollamaDirectory)
+          if (Test-Path -LiteralPath $scriptsPath -PathType Container) {
+            $pathEntries += $scriptsPath
+          }
+          $pathEntries | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          $env:PATH = (($pathEntries -join ";") + ";" + $env:PATH)
           python --version
           if ($LASTEXITCODE -ne 0) {
             throw "Python is not resolvable through PATH under the Runner service identity."
           }
           (Get-Command python).Source | Write-Host
-          & $ollamaPath --version
+          & $ollama.Source --version
           if ($LASTEXITCODE -ne 0) {
             throw "Ollama CLI cannot execute under the Runner service identity."
           }
@@ -491,6 +490,9 @@ jobs:
           & "$env:GITHUB_WORKSPACE\scripts\verify_ollama_context.ps1" -Model "$env:AUTONOMOUS_ENGINEERING_MODEL"
 
       - name: Verify Ollama and a real workspace-confined Codex tool call
+        timeout-minutes: 15
+        env:
+          AUTONOMOUS_ENGINEERING_ALLOW_UNELEVATED_SANDBOX: ${{ vars.AUTONOMOUS_ENGINEERING_ALLOW_UNELEVATED_SANDBOX || 'false' }}
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
@@ -503,13 +505,18 @@ jobs:
           $smokePromptText = @"
           Use the exec_command tool with shell set to the absolute executable C:\Windows\System32\cmd.exe and login set to false. Do not use the default PowerShell shell.
           Execute this single self-contained command verbatim:
-          python -c "from pathlib import Path; p=Path('$probeFileName'); p.write_text('ok', encoding='utf-8'); assert p.read_text(encoding='utf-8') == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')"
+          echo ok>$probeFileName && type $probeFileName && del $probeFileName && echo CODEX_WORKSPACE_SANDBOX_OK
           For the exec_command arguments, set yield_time_ms to the integer 10000 (never null) and sandbox_permissions to "use_default". Never request escalation or additional permissions. Omit justification, prefix_rule, and additional_permissions. Do not inspect the repository or run unrelated commands. The command must run under the existing workspace-write sandbox.
           Do not use recursive directory listings, PowerShell directory traversal, or any other command. If and only if the command succeeds, reply with exactly: OLLAMA_PROVIDER_AND_SANDBOX_OK
           "@
           Set-Content -LiteralPath $smokePrompt -Value $smokePromptText -Encoding utf8
           $selectedBackend = $null
-          foreach ($backend in @("mxc", "elevated")) {
+          $sandboxBackends = @("mxc")
+          if ($env:AUTONOMOUS_ENGINEERING_ALLOW_UNELEVATED_SANDBOX -eq "true") {
+            Write-Warning "The owner explicitly enabled the legacy unelevated sandbox fallback; it has weaker network isolation."
+            $sandboxBackends += "unelevated"
+          }
+          foreach ($backend in $sandboxBackends) {
             $env:CODEX_WINDOWS_SANDBOX_BACKEND = $backend
             if ($backend -eq "mxc") {
               Write-Host "Running the official standalone MXC compatibility probe under the Runner service identity."
@@ -518,14 +525,14 @@ jobs:
               $mxcProbeOutput | ForEach-Object { Write-Host $_ }
               Write-Host "MXC service-account probe exit code: $mxcProbeExitCode"
               if ($mxcProbeExitCode -ne 0 -or (($mxcProbeOutput | Out-String) -notmatch "MXC_SERVICE_OK")) {
-                Write-Warning "The standalone MXC compatibility probe failed; checking only the pre-provisioned elevated sandbox next."
+                Write-Warning "The standalone MXC compatibility probe failed; no weaker sandbox fallback will be selected unless explicitly enabled."
                 continue
               }
             }
             $smokeReport = Join-Path $env:RUNNER_TEMP "codex-sandbox-$backend-report.md"
             $evidenceReport = Join-Path $env:RUNNER_TEMP "codex-sandbox-$backend-evidence.json"
             Write-Host "Testing Codex exec_command with the Windows '$backend' sandbox backend."
-            python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-$backend" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$smokePrompt" --report "$smokeReport" --require-command-output "CODEX_WORKSPACE_SANDBOX_OK" --expected-agent-message "OLLAMA_PROVIDER_AND_SANDBOX_OK" --events-report "$evidenceReport" --require-command-fragment "$probeFileName" --require-command-fragment "write_text" --require-command-fragment "read_text" --require-command-fragment "unlink"
+            python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-$backend" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$smokePrompt" --report "$smokeReport" --require-command-output "CODEX_WORKSPACE_SANDBOX_OK" --expected-agent-message "OLLAMA_PROVIDER_AND_SANDBOX_OK" --events-report "$evidenceReport" --require-command-fragment "$probeFileName" --require-command-fragment "echo" --require-command-fragment "type" --require-command-fragment "del"
             $smokeExitCode = $LASTEXITCODE
             Write-Host "Codex smoke exit code for '$backend': $smokeExitCode"
             if (Test-Path -LiteralPath $smokeReport -PathType Leaf) {
@@ -552,7 +559,10 @@ jobs:
             Write-Warning "Codex workspace-tool smoke test failed with '$backend'; trying the next supported sandbox backend."
           }
           if (-not $selectedBackend) {
-            throw "Neither MXC nor the pre-provisioned elevated Windows sandbox passed a verified Codex JSONL workspace create/read/delete test. No unsandboxed fallback is permitted."
+            if ($sandboxBackends -contains "unelevated") {
+              throw "Neither explicitly permitted restricted Windows sandbox backend passed the verified Codex JSONL workspace create/read/delete test. Unsandboxed execution is prohibited."
+            }
+            throw "The MXC workspace smoke failed. The legacy unelevated fallback is disabled by default because it has weaker network isolation; obtain explicit owner/security approval before setting AUTONOMOUS_ENGINEERING_ALLOW_UNELEVATED_SANDBOX=true. Unsandboxed execution is prohibited."
           }
           "CODEX_WINDOWS_SANDBOX_BACKEND=$selectedBackend" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Verified Windows Codex sandbox backend: $selectedBackend"

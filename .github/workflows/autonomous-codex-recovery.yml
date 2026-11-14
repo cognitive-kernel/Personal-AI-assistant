@@ -87,6 +87,16 @@ jobs:
               elif run.get("conclusion") == "success":
                   break
           streak = max(streak, 1)
+          max_consecutive_failures = 3
+          if streak >= max_consecutive_failures:
+              print(
+                  f"CIRCUIT BREAKER OPEN: {streak} consecutive autonomous-run failures "
+                  f"reached the limit ({max_consecutive_failures}). No recovery run will be dispatched. "
+                  "The durable task/checkpoint is preserved; inspect the first failing run and explicitly "
+                  "resume only after the root cause is corrected."
+              )
+              raise SystemExit(0)
+
           delay_seconds = min(240, 30 * (2 ** min(streak - 1, 3)))
           print(f"Cycle failed {streak} consecutive time(s); retrying after {delay_seconds} seconds.")
           time.sleep(delay_seconds)

@@ -13,32 +13,58 @@ if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN) -or [string]::IsNullOrWhiteSpace
     throw "GitHub repository, token, and run identity are required for safe task persistence."
 }
 
-$configuredStateDir = [string]$env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR
-if ([string]::IsNullOrWhiteSpace($configuredStateDir)) {
-    if ([string]::IsNullOrWhiteSpace($env:PROGRAMDATA)) {
-        throw "Neither AUTONOMOUS_ENGINEERING_PROGRESS_DIR nor PROGRAMDATA is available."
+$processConfiguredStateDir = [string]$env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR
+$machineConfiguredStateDir = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")
+if (-not [string]::IsNullOrWhiteSpace($processConfiguredStateDir) -and [string]::IsNullOrWhiteSpace($machineConfiguredStateDir)) {
+    throw "AUTONOMOUS_ENGINEERING_PROGRESS_DIR is process/user-scoped; configure it at machine scope to prevent per-account state divergence."
+}
+if (-not [string]::IsNullOrWhiteSpace($machineConfiguredStateDir)) {
+    $expandedStateDir = [Environment]::ExpandEnvironmentVariables($machineConfiguredStateDir.Trim())
+    if (-not [System.IO.Path]::IsPathRooted($expandedStateDir)) {
+        throw "Machine AUTONOMOUS_ENGINEERING_PROGRESS_DIR must be an absolute shared path."
+    }
+    $stateDir = [System.IO.Path]::GetFullPath($expandedStateDir)
+    if (-not [string]::IsNullOrWhiteSpace($processConfiguredStateDir)) {
+        $expandedProcessStateDir = [Environment]::ExpandEnvironmentVariables($processConfiguredStateDir.Trim())
+        if (-not [System.IO.Path]::IsPathRooted($expandedProcessStateDir) -or
+            -not [System.IO.Path]::GetFullPath($expandedProcessStateDir).Equals($stateDir, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Process AUTONOMOUS_ENGINEERING_PROGRESS_DIR differs from the machine-scoped state root; refusing per-account state divergence."
+        }
+    }
+} else {
+    if ([string]::IsNullOrWhiteSpace($env:PROGRAMDATA) -or -not [System.IO.Path]::IsPathRooted($env:PROGRAMDATA)) {
+        throw "PROGRAMDATA must resolve to an absolute shared path."
     }
     $stateDir = Join-Path $env:PROGRAMDATA "PersonalAIAssistant\autonomous-engineering"
-} else {
-    $expandedStateDir = [Environment]::ExpandEnvironmentVariables($configuredStateDir)
-    $stateDir = [System.IO.Path]::GetFullPath($expandedStateDir)
 }
 New-Item -ItemType Directory -Path $stateDir -Force | Out-Null
 
-# This exact Local mutex name is also used by Python's durable_state_lock().
-$mutexName = "Local\PersonalAIAssistant.AutonomousEngineering.State.v1"
-$stateMutex = [System.Threading.Mutex]::new($false, $mutexName)
-$stateMutexOwned = $false
+# Share the same byte-range lock contract as Python across Windows sessions and accounts.
+$stateLockPath = Join-Path $stateDir "autonomous-durable-state.lock"
+$stateLockStream = [System.IO.File]::Open(
+    $stateLockPath,
+    [System.IO.FileMode]::OpenOrCreate,
+    [System.IO.FileAccess]::ReadWrite,
+    [System.IO.FileShare]::ReadWrite
+)
+if ($stateLockStream.Length -eq 0) {
+    $stateLockStream.WriteByte(0)
+    $stateLockStream.Flush()
+}
+$stateLockOwned = $false
 $replacementBackups = $null
 try {
-    try {
-        $stateMutexOwned = $stateMutex.WaitOne([TimeSpan]::FromSeconds(60))
-    } catch [System.Threading.AbandonedMutexException] {
-        $stateMutexOwned = $true
-        Write-Warning "Recovered an abandoned durable-state mutex; validating persisted state before proceeding."
-    }
-    if (-not $stateMutexOwned) {
-        throw "Timed out waiting for the autonomous engineering durable-state mutex."
+    $lockDeadline = [DateTime]::UtcNow.AddSeconds(60)
+    while (-not $stateLockOwned) {
+        try {
+            $stateLockStream.Lock(0, 1)
+            $stateLockOwned = $true
+        } catch [System.IO.IOException] {
+            if ([DateTime]::UtcNow -ge $lockDeadline) {
+                throw "Timed out waiting for the shared autonomous engineering durable-state file lock."
+            }
+            Start-Sleep -Milliseconds 50
+        }
     }
     $null = Repair-AutonomousPendingStateCleanup -StateDirectory $stateDir
 
@@ -330,8 +356,8 @@ try {
     }
     throw
 } finally {
-    if ($stateMutexOwned) {
-        $stateMutex.ReleaseMutex()
+    if ($stateLockOwned) {
+        $stateLockStream.Unlock(0, 1)
     }
-    $stateMutex.Dispose()
+    $stateLockStream.Dispose()
 }

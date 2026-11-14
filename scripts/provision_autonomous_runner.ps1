@@ -4,7 +4,7 @@ param(
     [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$RunnerAccount,
     [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$AppAccount,
     [string]$RunnerName = "$env:COMPUTERNAME-ollama",
-    [string]$RunnerRoot = "C:\actions-runner",
+    [string]$RunnerRoot = (Join-Path $env:ProgramData "GitHubActionsRunner"),
     [string]$Model = ""
 )
 $ErrorActionPreference = "Stop"
@@ -14,19 +14,37 @@ $principal = [Security.Principal.WindowsPrincipal]::new($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw "Run from elevated PowerShell." }
 $RunnerAccount = $RunnerAccount.Trim()
 $AppAccount = $AppAccount.Trim()
-if ($RunnerAccount -notmatch "^[A-Za-z0-9_.-]{1,20}$" -or $AppAccount -notmatch "^[A-Za-z0-9_.-]{1,20}$" -or $RunnerAccount -ieq $AppAccount) { throw "Use two different local account names containing only letters, digits, dot, underscore, or hyphen (max 20 characters)." }
+if ([string]::IsNullOrWhiteSpace($RunnerAccount) -or [string]::IsNullOrWhiteSpace($AppAccount)) { throw "RunnerAccount and AppAccount must be non-empty Windows account identities." }
 if ($RunnerName -notmatch "^[A-Za-z0-9_.-]{1,64}$") { throw "Invalid RunnerName." }
-$runnerIdentity = "$env:COMPUTERNAME\$RunnerAccount"
-$appIdentity = "$env:COMPUTERNAME\$AppAccount"
-function Get-AccountSidValue([string]$AccountName) {
-    try {
-        return ([Security.Principal.NTAccount]$AccountName).Translate([Security.Principal.SecurityIdentifier]).Value
-    } catch {
-        throw "Could not resolve Windows account '$AccountName' to a SID."
+if ([string]::IsNullOrWhiteSpace($env:ProgramData) -or -not [System.IO.Path]::IsPathRooted($env:ProgramData)) { throw "PROGRAMDATA must resolve to an absolute shared path." }
+if (-not [System.IO.Path]::IsPathRooted($RunnerRoot)) { throw "RunnerRoot must be an absolute path." }
+$RunnerRoot = [System.IO.Path]::GetFullPath($RunnerRoot)
+Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsIdentity.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsPaths.psm1") -Force
+$runnerIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $RunnerAccount
+$appIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $AppAccount
+$runnerLocalName = Get-AutonomousLocalAccountName -AccountName $runnerIdentity
+$runnerIsLocal = -not [string]::IsNullOrWhiteSpace($runnerLocalName)
+if ($runnerLocalName -and ($runnerLocalName.Length -gt 20 -or $runnerLocalName -match '[\\/"\[\]:;|=,+*?<>]')) { throw "Invalid local Runner account name." }
+$machineStateDirectory = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")
+$processStateDirectory = $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR
+if (-not [string]::IsNullOrWhiteSpace($processStateDirectory)) {
+    if ([string]::IsNullOrWhiteSpace($machineStateDirectory)) {
+        throw "AUTONOMOUS_ENGINEERING_PROGRESS_DIR must be configured at machine scope so all Windows service and application identities share one state root."
+    }
+    $processStatePath = [System.IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($processStateDirectory.Trim()))
+    $machineStatePath = [System.IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($machineStateDirectory.Trim()))
+    if (-not $processStatePath.Equals($machineStatePath, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Process and machine AUTONOMOUS_ENGINEERING_PROGRESS_DIR values differ; refusing per-account state divergence."
     }
 }
-$progressPath = Join-Path $env:ProgramData "PersonalAIAssistant\autonomous-engineering"
-try { $null = ([Security.Principal.NTAccount]$appIdentity).Translate([Security.Principal.SecurityIdentifier]) } catch { throw "Application account $appIdentity does not exist." }
+$progressPath = Resolve-AutonomousStateDirectory -ConfiguredPath $machineStateDirectory -ProgramDataPath $env:ProgramData
+$runnerRootBoundary = $RunnerRoot.TrimEnd([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)) + [System.IO.Path]::DirectorySeparatorChar
+$statePathBoundary = $progressPath.TrimEnd([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)) + [System.IO.Path]::DirectorySeparatorChar
+if ($RunnerRoot.Equals($progressPath, [StringComparison]::OrdinalIgnoreCase) -or $progressPath.StartsWith($runnerRootBoundary, [StringComparison]::OrdinalIgnoreCase) -or $RunnerRoot.StartsWith($statePathBoundary, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "RunnerRoot and shared autonomous state directory must be separate, non-nested paths."
+}
+$appSid = Get-AutonomousWindowsAccountSid -AccountName $appIdentity
 $null = Get-Command ollama -ErrorAction Stop
 $node = Get-Command node -ErrorAction Stop
 $npm = Get-Command npm -ErrorAction Stop
@@ -123,14 +141,14 @@ function Ensure-AutonomousStateOwnerLabel {
 
 if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     $services = @(Get-CimInstance Win32_Service | Where-Object { $_.PathName -like "*$RunnerRoot*" })
-    if ($services.Count -ne 1 -or (Get-AccountSidValue $services[0].StartName) -ne (Get-AccountSidValue $runnerIdentity)) { throw "Existing Runner configuration found; refusing to replace or reconfigure it." }
+    if ($services.Count -ne 1 -or (Get-AutonomousWindowsAccountSid -AccountName $services[0].StartName) -ne (Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity)) { throw "Existing Runner configuration found; refusing to replace or reconfigure it." }
 
     # Existing installations must receive the same least-privilege enforcement as
     # newly provisioned ones. A service keeps its old access token until restarted.
     $administratorsGroup = Get-LocalGroup -SID "S-1-5-32-544"
     $runnerIsDirectAdministrator = @(
         Get-LocalGroupMember -Group $administratorsGroup.Name -ErrorAction Stop |
-            Where-Object { $_.SID -and $_.SID.Value -eq (Get-AccountSidValue $runnerIdentity) }
+            Where-Object { $_.SID -and $_.SID.Value -eq (Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity) }
     ).Count -gt 0
     if ($runnerIsDirectAdministrator) {
         Write-Warning "Removing $runnerIdentity from the local Administrators group; autonomous execution requires least privilege."
@@ -145,7 +163,7 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
         Remove-LocalGroupMember -Group $administratorsGroup.Name -Member $runnerIdentity -ErrorAction Stop
         $stillAdministrator = @(
             Get-LocalGroupMember -Group $administratorsGroup.Name -ErrorAction Stop |
-                Where-Object { $_.SID -and $_.SID.Value -eq (Get-AccountSidValue $runnerIdentity) }
+                Where-Object { $_.SID -and $_.SID.Value -eq (Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity) }
         ).Count -gt 0
         if ($stillAdministrator) {
             throw "Could not remove $runnerIdentity from the local Administrators group."
@@ -153,36 +171,52 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
         Write-Host "Least-privilege membership corrected. The Runner service will be restarted to discard its previous administrator token."
     }
 
-    Ensure-AutonomousStateOwnerLabel
+    $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
+    $installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
+    Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid
+    Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -ReadOnlySid $appSid -AdditionalModifySid $installerSid
+    try {
+        Ensure-AutonomousStateOwnerLabel
+    } finally {
+        Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid
+        Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -ReadOnlySid $appSid
+    }
     $serviceState = (Get-CimInstance Win32_Service | Where-Object { $_.Name -eq $services[0].Name }).State
     if ($serviceState -ne "Running") { Start-Service -Name $services[0].Name -ErrorAction Stop }
     $service = Get-CimInstance Win32_Service -Filter "Name='$($services[0].Name)'"
-    if ($service.State -ne "Running" -or (Get-AccountSidValue $service.StartName) -ne (Get-AccountSidValue $runnerIdentity)) {
+    if ($service.State -ne "Running" -or (Get-AutonomousWindowsAccountSid -AccountName $service.StartName) -ne (Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity)) {
         throw "Runner service did not restart under the verified non-administrator identity."
     }
     Write-Host "Existing Runner configuration preserved, uniquely labelled, and verified under $runnerIdentity."
     exit 0
 }
 if ((Test-Path -LiteralPath $RunnerRoot) -and @(Get-ChildItem -LiteralPath $RunnerRoot -Force).Count -gt 0) { throw "RunnerRoot is non-empty but unconfigured; refusing to overwrite." }
-$user = Get-LocalUser -Name $RunnerAccount -ErrorAction SilentlyContinue
-if (-not $user) {
-    $password = Read-Host "Set password for $runnerIdentity" -AsSecureString
-    if ($password.Length -lt 16) { $password.Dispose(); throw "Use at least 16 characters." }
-    New-LocalUser -Name $RunnerAccount -Password $password -PasswordNeverExpires -AccountNeverExpires -Description "Non-admin Ollama GitHub Actions Runner" | Out-Null
-    $password.Dispose()
+if ($runnerIsLocal) {
+    $user = Get-LocalUser -Name $runnerLocalName -ErrorAction SilentlyContinue
+    if (-not $user) {
+        $password = Read-Host "Set password for $runnerIdentity" -AsSecureString
+        if ($password.Length -lt 16) { $password.Dispose(); throw "Use at least 16 characters." }
+        New-LocalUser -Name $runnerLocalName -Password $password -PasswordNeverExpires -AccountNeverExpires -Description "Non-admin autonomous engineering Runner" | Out-Null
+        $password.Dispose()
+    }
+    $user = Get-LocalUser -Name $runnerLocalName
+    if (-not $user.Enabled) { Enable-LocalUser -Name $runnerLocalName }
+} else {
+    Write-Host "Using externally managed Runner identity $runnerIdentity; no local account is created or modified."
 }
-$user = Get-LocalUser -Name $RunnerAccount
-if (-not $user.Enabled) { Enable-LocalUser -Name $RunnerAccount }
-$adminMembers = @(Get-LocalGroupMember -Group "Administrators" -ErrorAction Stop | ForEach-Object { $_.Name })
-if ($adminMembers -contains $runnerIdentity) { throw "Runner account is a local administrator." }
-$usersGroup = Get-LocalGroup -SID "S-1-5-32-545"
-if (-not (Get-LocalGroupMember -Group $usersGroup.Name | Where-Object { $_.Name -ieq $runnerIdentity })) { Add-LocalGroupMember -Group $usersGroup.Name -Member $runnerIdentity }
+$runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
+$administratorsGroup = Get-LocalGroup -SID "S-1-5-32-544"
+$runnerIsAdministrator = @(
+    Get-LocalGroupMember -Group $administratorsGroup.Name -ErrorAction Stop |
+        Where-Object { $_.SID -and $_.SID.Value -eq $runnerSid }
+).Count -gt 0
+if ($runnerIsAdministrator) { throw "Runner account is a direct member of the local Administrators group; use a least-privilege identity." }
 New-Item -ItemType Directory -Path $RunnerRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
-& icacls.exe $RunnerRoot /inheritance:r /grant:r "$($runnerIdentity):(OI)(CI)M" "SYSTEM:(OI)(CI)F" "BUILTIN\Administrators:(OI)(CI)F" | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "Runner directory ACL configuration failed." }
-& icacls.exe $progressPath /inheritance:r /grant:r "$($runnerIdentity):(OI)(CI)M" "$($appIdentity):(OI)(CI)RX" "SYSTEM:(OI)(CI)F" "BUILTIN\Administrators:(OI)(CI)F" | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "Progress directory ACL configuration failed." }
+$installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid
+Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -ReadOnlySid $appSid
 $token = (& $gh.Source api --method POST "repos/$Repository/actions/runners/registration-token" --jq ".token")
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($token)) { throw "Could not obtain registration token; verify Administration: write permission." }
 $archive = $null
@@ -200,12 +234,19 @@ try {
     if (-not (Test-Path -LiteralPath $config)) { throw "config.cmd missing from official Runner archive." }
     $configArgs = @("--url", "https://github.com/$Repository", "--token", $token, "--name", $RunnerName, "--labels", "ollama,autonomous-state-owner", "--work", "_work", "--runasservice", "--windowslogonaccount", $runnerIdentity)
     Write-Host "Runner configuration will prompt for the service-account password; it is not passed as a process argument."
-    & $config @configArgs
-    if ($LASTEXITCODE -ne 0) { throw "Runner registration failed with exit code $LASTEXITCODE." }
+    try {
+        & $config @configArgs
+        if ($LASTEXITCODE -ne 0) { throw "Runner registration failed with exit code $LASTEXITCODE." }
+    } finally {
+        # Keep the elevated installer principal temporary; the installed service
+        # retains access through its configured Runner SID.
+        Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid
+        Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -ReadOnlySid $appSid
+    }
     $services = @(Get-CimInstance Win32_Service | Where-Object { $_.PathName -like "*$RunnerRoot*" })
     if ($services.Count -ne 1) { throw "Could not locate exactly one Runner service." }
-    $actualServiceSid = Get-AccountSidValue $services[0].StartName
-    $expectedRunnerSid = Get-AccountSidValue $runnerIdentity
+    $actualServiceSid = Get-AutonomousWindowsAccountSid -AccountName $services[0].StartName
+    $expectedRunnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
     if ($actualServiceSid -ne $expectedRunnerSid) { throw "Could not verify the Runner service identity." }
     if ($services[0].StartMode -eq "Disabled") { Set-Service -Name $services[0].Name -StartupType Automatic }
     Start-Service -Name $services[0].Name

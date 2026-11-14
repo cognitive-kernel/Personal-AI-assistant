@@ -18,6 +18,16 @@ try:
 except ImportError:  # Direct script execution from the scripts directory.
     from autonomous_engineering_state_paths import execution_state_directory
 
+try:
+    from .autonomous_engineering_process_job import WindowsProcessJob
+except ImportError:  # Direct script execution from the scripts directory.
+    from autonomous_engineering_process_job import WindowsProcessJob
+
+try:
+    from .autonomous_engineering_process_group import terminate_process_group
+except ImportError:  # Direct script execution from the scripts directory.
+    from autonomous_engineering_process_group import terminate_process_group
+
 ROOT = Path(__file__).resolve().parents[1]
 PLAN_FILE = ROOT / ".agent-progress.json"
 SCORECARD = ROOT / "docs" / "ACCEPTANCE_SCORECARD.md"
@@ -185,16 +195,39 @@ def run_codex(args: argparse.Namespace) -> int:
         print("Codex CLI executable was not found on PATH.", file=sys.stderr)
         return 127
     arguments = codex_arguments(args.model, args.report)
-    command = codex_command(executable, arguments)
+    command = codex_command(
+        executable, arguments,
+        parent_job_managed=os.name == "nt",
+        parent_group_managed=os.name != "nt",
+    )
     try:
         prompt = Path(args.prompt).read_text(encoding="utf-8")
     except OSError as exc:
         print(f"Cannot read Codex prompt: {exc}", file=sys.stderr)
         return 2
-    process = subprocess.Popen(
-        command, cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-        stderr=None, text=True, encoding="utf-8", errors="replace", bufsize=1,
-    )
+    job = WindowsProcessJob()
+    job.__enter__()
+    process: subprocess.Popen[str] | None = None
+    try:
+        process = subprocess.Popen(
+            command, cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=None, text=True, encoding="utf-8", errors="replace", bufsize=1,
+            creationflags=WindowsProcessJob.CREATE_SUSPENDED if os.name == "nt" else 0,
+            start_new_session=os.name != "nt",
+        )
+        if os.name == "nt":
+            job.assign_and_resume(process)
+    except BaseException:
+        try:
+            job.terminate_remaining_processes(125)
+        finally:
+            try:
+                if process is not None and process.poll() is None:
+                    process.kill()
+                    process.wait(timeout=5)
+            finally:
+                job.close()
+        raise
     assert process.stdin is not None and process.stdout is not None
     input_broken = False
     try:
@@ -254,6 +287,22 @@ def run_codex(args: argparse.Namespace) -> int:
                 })
                 last_signature = signature
         return_code = process.wait()
+        if os.name == "nt":
+            residual_processes = job.terminate_remaining_processes(125)
+        else:
+            process_pid = getattr(process, "pid", None)
+            residual_processes = (
+                terminate_process_group(process_pid)
+                if isinstance(process_pid, int) and process_pid > 0
+                else False
+            )
+        if residual_processes:
+            print(
+                "Codex supervisor exited while its owned process tree still contained descendants; "
+                "the controller terminated and drained them.",
+                file=sys.stderr,
+            )
+            return_code = return_code or 1
         if input_broken and return_code == 0:
             return_code = 1
         expected_output = getattr(args, "require_command_output", None)
@@ -287,13 +336,36 @@ def run_codex(args: argparse.Namespace) -> int:
         })
         return return_code
     finally:
-        if process.poll() is None:
-            process.terminate()
-            process.wait(timeout=10)
         try:
-            PLAN_FILE.unlink(missing_ok=True)
-        except OSError:
-            pass
+            if process is not None:
+                if os.name == "nt":
+                    job.terminate_remaining_processes(125)
+                    if process.poll() is None:
+                        try:
+                            process.wait(timeout=1)
+                        except subprocess.TimeoutExpired:
+                            # If Job Object assignment failed, the suspended
+                            # wrapper is outside the job and must be killed directly.
+                            process.kill()
+                            process.wait(timeout=5)
+                else:
+                    process_pid = getattr(process, "pid", None)
+                    if isinstance(process_pid, int) and process_pid > 0:
+                        terminate_process_group(process_pid)
+                    if process.poll() is None:
+                        try:
+                            process.wait(timeout=1)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.wait(timeout=5)
+        finally:
+            try:
+                job.close()
+            finally:
+                try:
+                    PLAN_FILE.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
 
 def snapshot_project(run_id: str, run_attempt: str) -> bool:

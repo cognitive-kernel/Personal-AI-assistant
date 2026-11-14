@@ -8,6 +8,30 @@ import pytest
 from scripts import autonomous_engineering_checkpoint as checkpoint
 
 
+def test_checkpoint_git_uses_bounded_process_tree_runner(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append((list(command), kwargs))
+        return checkpoint.subprocess.CompletedProcess(command, 0, "ok", "")
+
+    monkeypatch.setattr(checkpoint, "ROOT", tmp_path)
+    monkeypatch.setattr(checkpoint, "run_command", fake_run)
+
+    result = checkpoint.git("status", "--short", check=False, env={"GIT_OPTIONAL_LOCKS": "0"})
+
+    assert result.returncode == 0
+    assert calls == [(
+        ["git", "status", "--short"],
+        {
+            "cwd": tmp_path,
+            "env": {"GIT_OPTIONAL_LOCKS": "0"},
+            "capture": True,
+            "timeout_seconds": checkpoint.GIT_COMMAND_TIMEOUT_SECONDS,
+        },
+    )]
+
+
 def _state(tmp_path: Path) -> tuple[dict[str, object], dict[str, Path]]:
     paths = {
         "directory": tmp_path,
@@ -113,10 +137,13 @@ def test_checkpoint_watcher_real_process_stops_before_restore(
         ["git", "rev-parse", "HEAD"], cwd=root, check=True,
         capture_output=True, text=True,
     ).stdout.strip()
-    state = tmp_path / "real-process-checkpoint-state"
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(state))
+    program_data = tmp_path / "ProgramData"
+    state = program_data / "PersonalAIAssistant" / "autonomous-engineering"
+    monkeypatch.setenv("PROGRAMDATA", str(program_data))
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", raising=False)
     env = os.environ.copy()
-    env["AUTONOMOUS_ENGINEERING_PROGRESS_DIR"] = str(state)
+    env.pop("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", None)
+    env["PROGRAMDATA"] = str(program_data)
     executable = getattr(sys, "_base_executable", sys.executable)
     process = subprocess.Popen(
         [

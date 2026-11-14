@@ -56,7 +56,7 @@ The autonomous-engineering status API preserves the installed-model inventory fr
      -AppAccount "app-user"
    ```
 
-   Replace the two local account names with the existing Windows account used by the app and the desired dedicated Runner account. The script creates the Runner account as a standard user, verifies the selected Ollama model, obtains a short-lived registration token through the authenticated GitHub CLI, downloads the official latest Windows x64 Runner, verifies GitHub’s published SHA-256 digest, configures the Runner service under the dedicated account, assigns the unique `autonomous-state-owner` label, and applies least-privilege ACLs to the Runner and `%ProgramData%\PersonalAIAssistant\\autonomous-engineering` directories. If the Runner is already configured, rerunning the script preserves its registration and service identity while adding/verifying that label; the workflow schedules only onto the uniquely labelled state owner. The official Runner configuration tool prompts for the service-account password; the password is not passed as a process argument. The registration token is not written to a file or printed.
+   Pass any resolvable Windows account identity for the Runner and application principals: an unqualified name or `COMPUTER\\name`/`.\\name` for a local account, `DOMAIN\\name` for a domain account, or a UPN. A missing local Runner account is created as a standard user; externally managed identities must already exist and be permitted to log on as a service. The application principal may be a user or group. The installer resolves each configured principal to its SID on the target host; it does not assume a fixed username, local Users-group membership, or grant access to a fixed Administrators group. The Runner receives Modify on its own root and shared state; the configured application principal receives read/execute on shared state (or Modify when deliberately configured as the same identity). The local Administrators role is checked only to reject an elevated Runner identity, not used as a data ACL grant. The script verifies the selected Ollama model, obtains a short-lived registration token through the authenticated GitHub CLI, downloads the official latest Windows x64 Runner, verifies GitHub’s published SHA-256 digest, configures the Runner service, and assigns the unique `autonomous-state-owner` label. If the Runner is already configured, rerunning the script preserves its registration and service identity while adding/verifying that label; the workflow schedules only onto the uniquely labelled state owner. The official Runner configuration tool prompts for the service-account password; the password is not passed as a process argument. The registration token is not written to a file or printed. If using a custom shared state root, set `AUTONOMOUS_ENGINEERING_PROGRESS_DIR` as a machine-level environment variable to an absolute path before provisioning; a process-only or per-user override is rejected to prevent the app and service from resolving different state stores.
 
    The script requires an elevated shell and repository **Administration: write** permission. It refuses to overwrite an existing configured Runner or a non-empty unconfigured Runner directory. If a Runner is already configured, it verifies the service identity and starts it without re-registering.
 
@@ -98,7 +98,7 @@ The local page at `/autonomous-engineering` reports Ollama reachability, selecte
 
 During each Codex session, a detached Windows checkpoint watcher atomically saves the allowlisted worktree diff and agent plan to `%ProgramData%\PersonalAIAssistant\\autonomous-engineering` every 20 seconds. Before the next checkout cleanup, the workflow stops the previous watcher and captures a final snapshot. A retry restores the checkpoint only when its immutable base SHA still matches `main`; otherwise it preserves the checkpoint and fails closed instead of applying it to a different code base. Watcher ownership metadata binds run ID, task, base SHA, PID, and process creation time. Recovery must confirm the exact process has exited before changing checkpoint state; access denied, ambiguous identity, or an unresponsive process aborts recovery and preserves the checkpoint. The watcher process lifecycle is isolated from checkpoint serialization policy in `scripts/autonomous_engineering_checkpoint_process.py`. Checkpoint files stay outside the Git repository and never contain workflow credentials.
 
-The separate `autonomous-codex-recovery.yml` workflow retries failed or timed-out continuous cycles from the last accepted `main` checkpoint. A submitted manual task is persisted in the Runner's durable state only after the serialized job acquires its concurrency slot; paused or duplicate dispatches are rejected before the task is accepted or persisted. The controller clears that file only after it confirms the corresponding PR merge. Failed or timed-out cycles retry indefinitely with exponential backoff capped at 4 minutes; there is no automatic retry-count pause. The owner can always use the explicit durable Pause control; Resume clears the failure counter. A retry does not count a failed task as complete.
+The separate `autonomous-codex-recovery.yml` workflow retries failed or timed-out continuous cycles from the last accepted `main` checkpoint. A submitted manual task is persisted in the Runner's durable state only after the serialized job acquires its concurrency slot; paused or duplicate dispatches are rejected before the task is accepted or persisted. The controller clears that file only after it confirms the corresponding PR merge. Each workflow run permits at most two Codex attempts within a two-hour task budget, and controller commands have independent deadlines with process-tree cleanup. Recovery uses bounded exponential backoff capped at 4 minutes and opens a circuit breaker after three consecutive failed/timed-out runs; it does not dispatch again while the breaker is open. The pending task and checkpoint are preserved for owner inspection. Recovery resumes only after the root cause is corrected and the owner explicitly resumes the queue. A retry does not count a failed task as complete.
 
 The page provides durable pause/resume controls. The continuous queue starts automatically after a main-branch update or on the next hourly heartbeat, so no manual first dispatch is required. Pause sets `AUTONOMOUS_ENGINEERING_PAUSED=true`; the current task reaches its safe boundary, and no new task starts. Resume clears the flag and dispatches a new run from the latest persisted project state. Emergency cancel remains separate and terminates the active run.
 
@@ -137,3 +137,31 @@ The AI-learning page and autonomous-engineering page both include the primary na
 The autonomous workflow installs `@openai/codex` automatically on its first run under the dedicated Runner service account. Node.js LTS and npm must be installed system-wide and available in the Runner service PATH. The workflow uses that account's npm global prefix and does not require an OpenAI login or API key because it explicitly selects the local Ollama provider. No GitHub CLI credentials are stored in the Runner account.
 
 This automatic provisioning section supersedes the earlier step 5 instructions to sign in as the Runner account and install Codex CLI manually.
+
+
+## Windows identity and path portability
+
+The autonomous engineering components do not assume a particular Windows profile name,
+Python installation directory, or Ollama installation directory. Workflow steps resolve
+`python`, `ollama`, `node`, `npm`, and Git from the PATH visible to the actual
+Runner service identity. Install Python and Ollama in machine-accessible locations and
+ensure their executable directories are present in that service identity's PATH; a
+per-user installation that is invisible to the Runner must fail prerequisite checks
+rather than being silently substituted.
+
+The Runner installation root defaults to
+`%ProgramData%\GitHubActionsRunner`. The shared state root defaults to
+`%ProgramData%\PersonalAIAssistant\autonomous-engineering` and can be overridden
+with `AUTONOMOUS_ENGINEERING_PROGRESS_DIR`, which must be an absolute path. Windows
+fails closed rather than falling back to a per-user home directory if `PROGRAMDATA`
+is unavailable. The provisioning script resolves the
+configured application and Runner account names to their current machine SIDs and
+applies access to those selected identities; no account name or SID is embedded in
+the Python modules or workflow paths.
+
+Python and PowerShell serialize durable state through the same byte-range lock file
+inside the shared state directory. This lock works across Windows logon sessions;
+the directory ACL is a separate installation concern and must grant the participating
+application/Runner identities the access required by their roles. The lock is local
+to one host and is not a distributed lock. Keep the Runner service non-administrator;
+do not loosen upstream Codex sandbox ACLs or substitute unsandboxed execution.

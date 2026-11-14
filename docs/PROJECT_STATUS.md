@@ -1,15 +1,21 @@
 # وضعیت یکپارچهٔ پروژه
 
-## وضعیت جاری — تکمیل Autonomous Engineering
+## وضعیت جاری — مالکیت پردازه و بازیابی Codex
 
-- مبنای زندهٔ `main`: `461c0a2b1deaf5f8af8486846f167da8185c580a`؛ تغییرات release-watch و یادگیری جدید main حفظ شده‌اند.
-- کار فعال: PR [#719](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/719)، شاخهٔ `feat/autonomous-engineering-complete-final-20261112`؛ SHA دقیق و وضعیت Checkها از وضعیت زندهٔ PR خوانده می‌شوند. PR باز است و به main هدف‌گذاری شده است.
-- معماری جدید، مالکیت worktree و checkpoint watcher، هویت process، قفل durable state، GitHub transport و چرخهٔ PR را در ماژول‌های مستقل نگه می‌دارد؛ بازیابی مبهم fail-closed است و دادهٔ task/checkpoint حفظ می‌شود.
-- CI دقیق SHA `1528b86cdc0c0f70a17be2434e374ec7ede2c61c` موفق شد: ۱۱ تست focused، ۲۱۳۵ تست کامل passed، ۲ skipped، ۵۱ deselected؛ Windows Storage، Browser E2E، dependency audit، lexical retrieval benchmark و fail-closed claim-to-test coverage benchmark همگی موفق شدند. اجرای واقعی Codex/Ollama روی Runner مقصد و پذیرش عملیاتی بلندمدت هنوز pending است.
-- مسیریابی Ollama و OpenAI-compatible، هویت مدل، سقف خروجی و provider سفارشی Codex `ollama-local` در follow-upهای PR حفظ/بازیابی شده‌اند؛ diagnostic واقعی Codex/Ollama روی Windows Runner هنوز باید تأیید شود.
+- مبنای زندهٔ `main` در آغاز این کار: `1969bcc83294689efaad091ea5aaa7582c44f618`.
+- PR [#719](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/719) در 2026-11-12 ادغام شد؛ commit ادغام `f87e15b9eb76f7395ea4380382d95f1bc64e21ed`. تفکیک قفل worktree، watcher checkpoint، هویت پردازه، mutex وضعیت durable، GitHub transport و چرخهٔ PR در main موجود است.
+- PR [#757](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/757) به‌صورت Draft باز است: نظارت بر چرخهٔ عمر Codex، اعتبارسنجی زنجیرهٔ مالک با PID و زمان ایجاد پردازه، Job Object ویندوز و process group در POSIX تحت مالکیت progress controller (assignment پیش از resume یا session گروهی پیش از اجرا، پاک‌سازی فوری در خروج supervisor و kill-on-close/owner-chain cleanup هنگام خروج owner)، انتظار برای drain کامل پیش از شروع retry، timeout مستقل برای smoke و task، retry محدود و deadline مستقل برای فرمان‌های کنترل‌کننده.
+- دو ریشهٔ مستقلِ طولانی‌شدن اجرا ثبت شدند: Codex می‌توانست از مالک خود زنده بماند؛ و حلقهٔ `while True` کنترل‌کننده پس از هر شکست، نشست جدیدی برای همان task شروع می‌کرد تا سقف شش‌ساعتهٔ GitHub Actions. subprocessهای تست/اعتبارسنجی نیز timeout مستقل نداشتند.
+- پروفایل Codex در PR #757: smoke حداکثر ۵ دقیقه، idle دو دقیقه و بدون retry؛ task حداکثر ۳۰ دقیقه، idle پنج دقیقه، دو retry جریان و یک retry درخواست. سیاست جدید controller حداکثر ۲ تلاش و ۲ ساعت برای هر task در هر run است؛ پس از آن task/checkpoint حفظ و به recovery بعدی واگذار می‌شود.
+- فرمان‌های کنترل‌کننده به‌طور پیش‌فرض ۵ دقیقه، مجموعهٔ کامل pytest پانزده دقیقه و انتشار/اعتبارسنجی PR بیست‌وپنج دقیقه سقف دارند. همهٔ این فرمان‌ها اکنون از process-tree supervisor عبور می‌کنند: Windows Job Object با انتظار برای signaled/empty شدن کامل job، و POSIX process group با انتظار برای خروج همهٔ اعضای زنده و escalation از SIGTERM به SIGKILL؛ فرمان تا تأیید پایان فرزندان برنمی‌گردد و قفل مخزن زودتر آزاد نمی‌شود. شکست assignment پردازهٔ suspended نیز با kill و reap صریح بسته می‌شود. ADR-020 مالکیت پردازه و ADR-021 سیاست retry و deadlineها را تعریف می‌کنند.
+- طبق مستندات رسمی Codex، `unelevated` محدودیت شبکهٔ ضعیف‌تر و نبود deny-read-path دارد؛ بنابراین فقط با متغیر صریح `AUTONOMOUS_ENGINEERING_ALLOW_UNELEVATED_SANDBOX=true` قابل انتخاب است و پیش‌فرض آن غیرفعال است. MXC تنها backend خودکار است و در شکست آن، workflow به‌صورت امن متوقف می‌شود.
+- CI قبلی روی SHA `a54b02e1e2b148bd7c03cd3831c4eb606358fa85` شامل ۲۲۱۲ تست موفق و یک شکست ناشی از assertion قدیمی متن خطا بود؛ قرارداد تست اصلاح و تست مثبت backend محدود `unelevated` افزوده شد. **نتیجهٔ exact-head commit نهایی هنوز باید از GitHub خوانده شود.**
+- اجرای ناموفق [run 43592197032](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43592197032) روی main و SHA `1969bcc83294689efaad091ea5aaa7582c44f618` به‌علت `open sandbox setup mutex` شکست خورد؛ این اجرا از کد PR استفاده نمی‌کند و اثبات‌کنندهٔ اصلاح نیست.
+- آخرین CI سبز روی SHA قبلی `41aeb6af8fbae792d1bebc577f526d420fb86f8b` بود؛ این نتیجه برای اصلاحات جدید معتبر نیست. آخرین head فعلی PR #757 برابر `89121e7b7c7395da654225e7f6b35a0f4db0429e` است و پنج بررسی exact-head (tests، Windows storage، CodeQL، pip-audit و dashboard smoke) در صف/در حال اجرا هستند؛ تا تکمیل آن‌ها هیچ نتیجه‌ای ادعا نمی‌شود.
+- inventory گیت‌های باز از Issues: #290 ردیاب پذیرش کل پروژه و UI؛ #52 نیازمند بازبینی امنیتی مستقل. پس از بستن گیت مالکیت پردازه و CI، این دو گیت در اولویت‌های بعدی باقی می‌مانند.
+- آخرین مقدار ثبت‌شدهٔ `AUTONOMOUS_ENGINEERING_PAUSED` برابر `true` است؛ این اصلاح آن را تغییر نداده است. تست محلی میزبان مقصد، soak، crash/restart واقعی و بازبینی امنیتی مستقل همچنان pending هستند.
 
-
-> تاریخ بازبینی: 2026-11-12. وضعیت جاری در ابتدای سند ثبت شده است؛ یادداشت‌های پایین‌تر snapshotهای تاریخی هستند.
+> تاریخ بازبینی: 2026-11-14. وضعیت جاری در ابتدای سند ثبت شده است؛ یادداشت‌های پایین‌تر snapshotهای تاریخی هستند.
 
 ## وضعیت تاریخی اتوماسیون — PR #702 (snapshot قدیمی)
 
@@ -422,3 +428,42 @@
 - regression جدید تغییر release note در نتیجهٔ هفتم را شبیه‌سازی می‌کند؛ پایش باید آن را کشف و یک curriculum refresh نسخه‌دار صف‌بندی کند.
 - fingerprint دوره‌های قبلی ممکن است یک‌بار به‌دلیل گسترش نتایج تغییر کند؛ refresh افزایشی است و درس‌های تاریخی را بازنویسی نمی‌کند.
 - سقف ۳۰، اندازهٔ صفحهٔ هر query در adapter جست‌وجو است؛ این تغییر ادعای کشف تضمینی همهٔ منابع اینترنتی نیست.
+
+
+## 2026-11-14 — PR #757: execution ownership, locks, and bounded recovery
+
+- Root architectural defects addressed: Codex/controller descendants could outlive the owner and overlap a retry; durable-state and worktree locks did not themselves own OS process trees; task retry loops and helper commands lacked independent total deadlines; recovery workflow could repeat failures indefinitely.
+- Added separate process-tree command runner, Windows Job Object and POSIX process-group primitives, Codex owner-identity supervisor, durable state lock, validated retry policy, and workflow circuit breaker. Checkpoint Git operations are now routed through the same process-tree runner with a 120-second deadline; binary checkpoint patches remain byte-exact.
+- Regression coverage includes ownership loss, broken output pipe, supervisor crash with surviving descendants, timeout cleanup, Windows Job Object drain/assignment failure, POSIX process-group drain, checkpoint concurrency/recovery, and binary stdin preservation. Existing tests and assertions were retained.
+- Root-cause follow-ups from CI: repaired the temporary POSIX owner harness import path; guarded cleanup when a process test double has no PID; added byte-exact command input and checkpoint-runner delegation tests. Operator docs were corrected to the bounded retry/circuit-breaker policy.
+- PR [#757](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/757) remains draft and unmerged. Exact-head CI on `5a8a405e0141be2978a9a92a596d82a32174c73b` passed: 2,240 Python tests passed, 13 skipped, 51 deselected in 176.72 seconds; Windows storage/process/checkpoint regressions, Browser E2E, dependency audit, CodeQL, generated-artifact checks, Markdown-link validation, import-cycle checks, deterministic lexical benchmark, and fail-closed claim-to-test coverage benchmark all passed. The real non-admin Windows Runner sandbox smoke, long-duration soak, crash/restart acceptance, and independent security review remain open.
+- Durable Pause remains enabled. No Runner, service, local process, task dispatch, or autonomous execution was started; no task/checkpoint/user data was modified.
+
+
+## 2026-11-14 — Windows portability status
+
+- Removed the session-scoped named-mutex dependency from durable-state locking; Python and PowerShell now use one cross-session byte-range file lock.
+- Removed fixed user-profile and Python-version paths from both Windows autonomous workflows; runtime tools are resolved from the Runner service identity's PATH.
+- Moved the default Runner installation root under ProgramData.
+- Added regression coverage for shared runtime locking and account-independent tool discovery.
+- Pending: exact-head Windows CI, actual cross-account ACL verification on a separate Windows host, and target-host sandbox smoke/soak. The autonomous system remains paused/off; no local execution was started.
+
+
+## Windows state-root hardening
+
+Windows no longer falls back to a per-user home directory when PROGRAMDATA is missing. Configured state roots must be absolute, preventing different working directories from resolving separate locks/state stores. The existing POSIX state location is preserved.
+
+
+## Final exact-head CI evidence — 2026-11-14
+
+Exact tested code head: ab703a284752c80531e9f25e0b7ad53a04c453a0.
+
+- Full Python suite: 2,244 passed, 13 skipped, 51 deselected in 243.29 seconds.
+- Focused checkpoint ownership/concurrency regressions: passed.
+- Windows storage/process/checkpoint regressions: passed, including Python/PowerShell shared file-lock interoperability and PowerShell parser checks.
+- Browser E2E, dependency audit, and CodeQL: passed.
+- Generated learning artifacts, repository-local Markdown links, import-cycle guard, deterministic lexical retrieval benchmark, and fail-closed claim-to-test coverage benchmark: passed.
+
+Evidence: Tests/Windows regressions https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863471 ; Browser E2E https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863440 ; Dependency audit https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863452 ; CodeQL https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863507 .
+
+The subsequent documentation-only evidence update does not change runtime code and is followed by a fresh exact-head CI run. Target-host cross-account ACL verification, non-admin sandbox smoke/soak, crash/restart acceptance, and independent security review remain pending. Durable Pause remains enabled; no Runner, service, or autonomous process was started.

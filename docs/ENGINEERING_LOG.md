@@ -1,5 +1,146 @@
 # Engineering Continuity Log
 
+## 2026-11-14 — PR #757 follow-up: controller-owned POSIX Codex process group
+
+### Root cause
+- The original POSIX process group was created by the Codex runner itself. If that runner crashed while its progress owner remained alive, the owner did not know the group ID and could start a retry while descendants remained.
+- The owner-loss monitor was still necessary for the opposite failure: if the progress owner died, the runner had to terminate the inherited tree itself.
+
+### Corrective change
+- Added autonomous_engineering_process_group.py as the shared POSIX process-group termination/drain contract.
+- Treat a broken owner output pipe as an ownership-loss signal. The runner now kills its inherited group even if the pipe failure arrives before the next parent-ancestry poll; stderr diagnostics are best-effort so they cannot block cleanup.
+- The progress owner starts the Codex supervisor in a dedicated session/process group. Codex inherits the same group through --parent-group-managed.
+- When the supervisor exits, progress sends SIGTERM, waits, escalates to SIGKILL, and confirms no live non-zombie members remain before returning.
+- If the progress owner disappears, the Codex runner detects the missing owner ancestry and kills its complete inherited group.
+- The command runner and direct Codex runner reuse the shared process-group helper; cleanup behavior is no longer duplicated across modules.
+- Added regressions for supervisor crash while owner is alive, direct owner draining after runner exit, and owner exit while the runner is blocked forwarding a large output chunk.
+
+### Validation boundary
+- Exact-head CI is required for the new POSIX and Windows owner-bound tests. No target host, Runner, Codex, Ollama, or autonomous service was started; durable Pause remains enabled.
+
+---
+
+
+## 2026-11-14 — PR #757 follow-up: controller owns the Windows Codex job
+
+### Root cause
+- The prior Windows design duplicated an inner Job Object handle into the progress owner so descendants would die when that owner exited. If the Codex supervisor crashed while the progress owner remained alive, the owner retained the handle but could not terminate the job before starting a retry.
+- This left a possible overlap between a crashed supervisor's descendants and the next Codex attempt.
+
+### Corrective change
+- Moved the production Windows Job Object to autonomous_engineering_progress.py, the process that directly owns the Codex supervisor.
+- The progress process starts the supervisor suspended, assigns it to the kill-on-close job, then resumes it. Codex and all descendants inherit job membership.
+- The runner receives --parent-job-managed and does not create a second job. When the supervisor exits, the progress owner drains the job; residual descendants are terminated and the owner waits for the Job Object to become signaled before returning.
+- If the progress owner crashes, its final Job Object handle closes and the OS terminates the complete tree. Assignment failure explicitly kills/reaps the suspended wrapper.
+- Added a Windows regression that crashes the supervisor after spawning a child and verifies the child is gone while the progress owner is still alive.
+
+### Validation boundary
+- Exact-head CI is required. No target Runner, Codex, Ollama, or autonomous service was started; durable Pause remains enabled.
+
+---
+
+
+## 2026-11-14 — PR #757 follow-up: wait for process-tree drain
+
+### Additional root cause
+- The first process-tree supervisor sent termination signals and closed Job Objects, but those operations initiate asynchronous shutdown. The controller could return and release its repository lock before every descendant had actually exited.
+- On Windows, a process created suspended but not successfully assigned to the Job Object was outside the job's kill-on-close boundary; merely closing the job would leave that suspended process alive.
+
+### Corrective change
+- Added a bounded Windows Job Object wait using the Job Object's signaled state. The controller now terminates any remaining job members and waits for the object to become signaled before returning.
+- POSIX cleanup now waits for all live (non-zombie) members of the owned process group, escalates from SIGTERM to SIGKILL, and fails closed if live members remain after the cleanup deadline.
+- Windows assignment-failure cleanup explicitly kills and reaps a child that never entered the Job Object.
+- Added tests for synchronous POSIX descendant shutdown, Windows Job Object drain before return, and suspended-child cleanup after assignment failure.
+
+### Validation boundary
+- Exact-head CI is required for these changes; earlier green CI applies only to the preceding commit and is not evidence for this follow-up.
+- No target-host process, Runner, or autonomous service was started. Durable Pause remains enabled.
+
+---
+
+
+## 2026-11-14 — PR #757 follow-up: controller command process-tree ownership
+
+### Root cause
+- The first timeout implementation bounded `subprocess.run` but relied on its direct-child termination behavior. That does not guarantee termination of grandchildren on Windows or POSIX.
+- A child process could therefore continue writing after a test/validation command timed out and the controller unwound its repository lock. A command that exited successfully could also leave a background descendant alive.
+
+### Corrective change
+- Added `scripts/autonomous_engineering_command_runner.py` as a focused process-tree execution boundary for all controller commands.
+- Windows commands are created suspended and assigned to a kill-on-close Job Object before they can spawn children; failure to establish the Job Object is fail-closed.
+- POSIX commands run in a dedicated process group; the group is terminated on timeout and after the direct command exits, preventing background descendants from surviving the command.
+- Kept the existing default/test/PR-validation deadlines and timeout diagnostics. No command can silently fall back to direct, unowned subprocess execution.
+- Added regressions for descendant cleanup on timeout, descendant cleanup after a successful parent exit, and timeout argument validation.
+
+### Validation
+- Exact-head CI is required for this follow-up. No target-host command execution or Runner activation was performed.
+- Durable Pause remains enabled; no task/checkpoint data, host configuration, Runner identity, ACL, or merge state was changed.
+
+---
+
+
+## 2026-11-14 — PR #757 follow-up: bounded task retries and command deadlines
+
+### Root cause
+
+- The Codex invocation had a 30-minute deadline, but `scripts/autonomous_engineering_cycle.py` restarted the same task inside an unconditional `while True` after Codex failure, a missing completion marker, local test failure, or exact-head CI failure.
+- The only total limit was the six-hour GitHub Actions job timeout. Three or more failed Codex sessions could therefore consume most of a runner window, and the task could repeat again in the next recovery run.
+- Controller subprocesses (including test and validation commands) also used `subprocess.run` without per-command timeouts.
+
+### Corrective changes
+
+- Added a small, pure `RetryPolicy` module with a maximum of two Codex attempts and a two-hour per-run task budget. The first exhausted limit stops the current run.
+- Budget exhaustion does not clear the task, branch, pending PR state, or checkpoint. The existing recovery workflow resumes the same task in a later run; no new task is selected.
+- Added explicit subprocess deadlines: five minutes by default, fifteen minutes for the full Python suite, twenty-five minutes for exact-head PR publication/validation, and a parent deadline 30 seconds beyond the Codex runner's 30-minute hard limit.
+- Each Codex, verification, and PR-validation process is additionally capped by the remaining two-hour task budget; no new long phase starts after that budget expires.
+- Added unit and controller-level regression tests for retry-budget boundaries, exhausted attempts, task preservation, command deadlines, and timeout diagnostics.
+- The official Codex Windows sandbox documentation confirms that `unelevated` has weaker network isolation and lacks denied-read-path support. The workflow now tests MXC by default and requires the explicit `AUTONOMOUS_ENGINEERING_ALLOW_UNELEVATED_SANDBOX=true` repository variable before considering that weaker fallback; default remains false.
+- Added ADR-021. The process-tree ownership and sandbox security decisions in ADR-020 remain unchanged.
+
+### Validation status
+
+- An earlier exact-head run exposed one stale assertion: it expected only the prior `mxc`/`elevated` error text after the supported restricted `unelevated` backend was added. The assertion was aligned with the current contract and a positive unelevated argument-construction test was added; no assertion or safety check was removed.
+- Latest implementation commit: `5600779485920efd10831c6164efd61e48f3a87c` before documentation-only follow-ups. Exact-head CI for the final commit is pending and must be read from GitHub before claiming validation.
+- Target Windows Runner smoke, model-latency measurement, crash/restart soak, and independent security review remain pending. Durable Pause remains enabled; no dispatch, merge, Runner privilege, ACL, or user-data change was made.
+
+---
+
+
+## 2026-11-14 — PR #757: owner-bound Codex process lifecycle
+
+### Root-cause analysis
+
+- Main already had separate contracts for workflow concurrency, repository worktree locking, durable task/PR state serialization, and checkpoint-watcher ownership (PR #719). Those contracts protected state transitions, but the Codex child process was not bound to the lifetime of its controller.
+- If a controller process exited unexpectedly, the OS released its worktree lock. A Codex descendant could remain alive and continue writing, so a later recovery run could acquire the lock while the old model process was still active.
+- Codex provider settings amplified stalls: 900,000 ms stream-idle timeout, 10 stream retries, and 4 request retries. The smoke invocation had no separate hard process deadline.
+
+### Five-why root-cause chain
+
+1. Codex could outlive its Python owner because the child process was not tied to the owner's lifecycle.
+2. It was launched as a normal subprocess with streamed output and no process-tree kill boundary or hard deadline.
+3. The worktree lock correctly released when its controller exited, but it did not own or terminate descendants.
+4. Existing recovery tests covered state locks and checkpoint watchers, not an owner crash with a live Codex descendant.
+5. The smoke path inherited a 15-minute stream-idle timeout, 10 stream retries, 4 request retries, and no separate wall-clock limit.
+
+Evidence and the full blast-radius analysis are recorded in ADR-020 and the PR description.
+
+### Corrective changes
+
+- Added `scripts/autonomous_engineering_codex_runner.py` as a focused process-supervision boundary. It captures the owning process ancestry with PID and OS creation time, rejects missing/reused/unverifiable owners, streams JSONL without blocking deadline checks, and enforces a 300-second smoke or 1,800-second task deadline.
+- Added `scripts/autonomous_engineering_process_job.py`. On Windows, the supervisor joins a kill-on-close Job Object and duplicates a job handle into the owning progress process; Codex and descendants inherit membership. The supervisor monitors owner ancestry and uses TerminateJobObject on timeout/owner loss. If the supervisor crashes, the owner-held handle keeps the job alive until the progress owner exits, when the final handle close terminates surviving descendants. On POSIX, Codex runs in a new process group and timeout/owner loss terminates and reaps the group.
+- Smoke uses 120-second stream idle timeout with zero provider retries. Normal tasks use 300-second idle timeout, two stream retries, and one request retry.
+- Added ADR-020 and regression coverage for owner-chain loss/PID identity, hard timeout, descendant cleanup, smoke/task configuration profiles, and Windows supervisor-crash recovery using the owner-held Job Object handle. Existing durable state locks, checkpoint watcher lifecycle, task payloads, and merge policy remain unchanged.
+
+### Validation and residual risk
+
+- Draft PR: https://github.com/cognitive-kernel/Personal-AI-assistant/pull/757
+- Implementation head when the PR was opened: `858a724ff8e2c007f4fb4b2a6d2406ecee6dfcff`. GitHub tests, dependency audit, CodeQL, and browser E2E were queued at that time; no green exact-head result is claimed.
+- The existing autonomous run `43592197032` remained in the old Step 13 smoke on the pre-change main SHA. It does not validate this PR.
+- Windows Job Object behavior, target-host model latency, long-duration soak, and crash/restart acceptance require the actual Windows Runner and remain pending.
+- Safe pause remained enabled; no workflow, secret, repository variable, user data, or PR merge state was changed by this task.
+
+---
+
 ## 2026-11-11 — PR #709: research-first learning with gpt-oss:20b
 
 ### Root-cause analysis
@@ -656,3 +797,117 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - No database, migration, stored lesson, course, task, or user data was modified by the implementation.
 - Exact-head GitHub Actions for PR #742 are pending; no local or human test is claimed.
 - Residual risk: the operation remains intentionally destructive after explicit confirmation and worker-quiescence checks. This fix does not replace backup/restore acceptance or independent security review.
+
+
+## 2026-11-14 — Windows Codex sandbox mutex diagnosis (PR #757)
+
+- Re-read target Runner logs and the upstream Codex Windows sandbox helper. The elevated helper opens `Global\CodexSandboxSetup` using a protected DACL granting full access only to LocalSystem and Builtin Administrators; the helper source explicitly describes the lock as limited to those identities. The configured Runner is deliberately non-admin, so the elevated helper is not a valid execution backend for it. This matches the exact `open sandbox setup mutex` runtime failure and upstream Codex issue #50163.
+- The same run's standalone MXC probe passed. The subsequent MXC agent smoke was inconclusive because the prompt supplied Python `-c` syntax to `cmd.exe`; the log shows malformed quoting and command errors. The later elevated fallback produced the mutex error. These are separate failures and are no longer conflated.
+- Replaced the smoke command with a shell-native workspace create/read/delete sequence, removed elevated mode from the default non-admin backend candidates, retained MXC first and restricted-token unelevated only as a smoke-tested fallback, added a 15-minute workflow-step timeout, and classified the mutex error in sanitized diagnostics.
+- Added regression coverage for the explicit unelevated backend contract and mutex error classification.
+- No Runner elevation, ACL modification, Codex binary patch, unsandboxed execution, Pause change, dispatch, task/checkpoint mutation, or direct write to main was performed.
+- Validation is running on exact head `bace36d997d57a2063cc6123ca2902c6c8f5f967` and subsequent documentation commits will require a fresh exact-head CI pass. The target-host operational smoke remains pending while the durable Pause is enabled; this log does not claim the sandbox is operational yet.
+
+
+## 2026-11-14 — Autonomous recovery circuit breaker (PR #757)
+
+- Root cause: per-run retry limits alone did not bound repeated workflow-level recovery. A persistent runner/Codex failure could trigger another workflow after each bounded backoff indefinitely; the delay capped at 240 seconds but the retry count did not.
+- Change: the recovery workflow now opens a circuit breaker after three consecutive failed/timed-out autonomous runs and exits without dispatching another run. Existing Pause checks remain first. The pending task and checkpoint are left untouched; an owner must inspect the first failing run and explicitly resume after the cause is corrected.
+- Regression coverage: static workflow-contract tests verify the threshold, breaker-before-dispatch ordering, durable-state preservation, Pause gate, and bounded backoff.
+- Safety: no Pause setting, Runner identity, ACL, sandbox policy, secret, task/checkpoint data, or main-branch content was changed. No autonomous run was dispatched by this change.
+
+
+## 2026-11-14 — POSIX owner-loss regression follow-up (PR #757)
+
+- Exact-head CI on `8f54402e4ef4bcb5041a9a890e78d841630b54ea` found two failures after 2,236 tests passed and 13 were skipped: the temporary owner harness could not import the repository's `scripts` package because Python placed the temporary script directory first on `sys.path`; and the early-child-exit test double had no `pid`, while the POSIX cleanup path dereferenced it unconditionally.
+- Root causes were distinct from the process ownership design: a test-harness import assumption and an undocumented optional-process-identity assumption at the cleanup boundary.
+- Corrective changes: the harness explicitly inserts the repository root derived from the test file's absolute path; POSIX cleanup now invokes process-group draining only when a valid positive PID is exposed. A missing PID cannot trigger cleanup against an unrelated process group.
+- The regression remains enabled; no tests were skipped, deleted, or weakened. The POSIX owner-loss test still verifies that a live descendant is terminated after the output owner disconnects.
+- Follow-up exact-head CI on commit `395e73df8d39449e77116e3a080deca770762e34` was started; dependency audit completed successfully, while full tests, Windows storage regressions, Browser E2E, and CodeQL were still running at the checkpoint. A further portability refinement changed the harness root derivation to use `Path(__file__).resolve().parents[1]`; its new exact-head matrix must be checked independently.
+- Runtime safety: durable Pause remains enabled. No Runner, service, local process, task dispatch, or autonomous execution was started. No task/checkpoint/user data was changed.
+- Residual acceptance: full exact-head CI, real target-host Codex sandbox smoke/soak, crash/restart acceptance, and independent security review remain open. The target-host gates are intentionally not run while the system is paused.
+
+
+## 2026-11-14 — bounded checkpoint Git execution
+
+- Deep review found a remaining unbounded subprocess path in `autonomous_engineering_checkpoint.py`: watcher snapshots and checkpoint restore used direct `subprocess.run` calls for Git commands and binary `git apply`. These operations bypassed the shared process-tree owner and had no hard deadline.
+- Root cause: process ownership/deadline enforcement had been applied to controller and Codex commands, but the checkpoint module retained its older local subprocess helper.
+- Corrective change: route checkpoint Git status/diff and patch-check/apply operations through `autonomous_engineering_command_runner.run_command`, with a 120-second per-command deadline and the same Windows Job Object/POSIX process-group cleanup contract.
+- The command runner now accepts explicit text or byte stdin. Binary patch input is passed in byte mode and captured output is decoded only at the result boundary; the saved patch is never newline-translated or re-encoded.
+- Regression coverage: byte-for-byte stdin preservation and an assertion that checkpoint Git delegates to the bounded process-tree runner. Existing checkpoint restore/recovery integration tests remain enabled.
+- Operator documentation was corrected: recovery is no longer described as indefinite; it is bounded by two attempts/two hours per workflow run and a three-consecutive-failure circuit breaker. The pending task/checkpoint remain preserved while the breaker is open.
+- Exact-head CI for these follow-up changes is required. Durable Pause remains enabled; no Runner, service, local process, task dispatch, or autonomous execution was started. No task/checkpoint/user data was modified.
+
+
+### Binary stdin regression precision
+
+The binary-input regression was tightened to include actual NUL, CRLF, and non-UTF-8 bytes, ensuring the test detects text-mode conversion rather than merely exercising a byte-looking payload. The test remains byte-for-byte and the exact-head CI must include this final test fixture.
+
+
+## 2026-11-14 — exact-head repository validation passed (PR #757)
+
+- Exact tested code/documentation head before this evidence-only update: `5a8a405e0141be2978a9a92a596d82a32174c73b`.
+- Full Python suite: **2,240 passed, 13 skipped, 51 deselected in 176.72 seconds**. Focused checkpoint ownership/concurrency regressions: **11 passed in 5.61 seconds**.
+- Windows storage/process/checkpoint regression job: **passed**, including real checkpoint watcher startup/stop/recovery, ownership and recovery fault injection, and process/lock checks.
+- Browser E2E: **passed**. Dependency audit: **passed**. CodeQL: **passed**. Generated learning artifacts, repository-local Markdown links, module-time import-cycle guard, deterministic lexical retrieval benchmark, and fail-closed claim-to-test coverage benchmark: **passed**.
+- Exact workflow evidence: [tests run 43627292329](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43627292329), [Browser E2E run 43627292307](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43627292307), [dependency audit run 43627292331](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43627292331), [CodeQL run 43627292305](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43627292305).
+- This evidence covers GitHub-hosted CI and the configured Windows storage regression environment. It does not prove the actual user's non-admin Runner sandbox, live Codex/Ollama calls, long-duration soak, or target-host crash/restart acceptance.
+- PR #757 remains draft and unmerged. Durable Pause remains enabled; no Runner/service/process or autonomous dispatch was started. No task/checkpoint/user data was modified.
+- A status-document evidence update follows this tested head and therefore requires a fresh exact-head CI run; the prior green result is not attributed to the later SHA.
+
+
+## 2026-11-14 — Windows identity and session portability audit
+
+A portability audit after the process-ownership CI pass found that the durable-state lock
+still used a `Local\\` named mutex with the creator token's default object ACL. That
+contract was not suitable for cross-session/cross-account use. Python and PowerShell now
+share a byte-range lock on `autonomous-durable-state.lock` in the configured state
+directory (`msvcrt.locking` and `.NET FileStream.Lock`, byte 0, length 1). The lock file
+is persistent metadata only; ownership is the kernel lock and is released on process exit.
+A Windows PowerShell/Python interoperability regression and a static session-independence
+contract test were added.
+
+The main autonomous workflow and Windows sandbox diagnostic no longer pin Python to
+`C:\\Program Files\\Python311` or Ollama to an individual user's profile. They resolve
+both executables from the PATH of the actual Runner service identity. The default Runner
+root now derives from `%ProgramData%`, not a fixed drive path. A regression test prevents
+these account-specific paths from returning. Operational documentation now requires
+Python/Ollama to be visible in the Runner identity's PATH and explains the separate
+shared-state ACL contract.
+
+The configured Runner and application identities remain installation parameters and
+are resolved to SIDs on the target host at provisioning time. Unqualified names and
+dot-local names resolve to the current machine; DOMAIN\\name and UPN identities remain
+external identities and are not silently converted to local accounts. The application
+principal may be a user or group. ACLs are granted only to the configured SIDs; the
+built-in Administrators role is inspected solely to reject an elevated Runner, not
+granted access to the data directories. The Runner remains non-administrator.
+
+A follow-up source audit also found an undefined `$ollamaPath` reference in the Runner
+preflight after `Get-Command ollama` had already resolved `$ollama.Source`; this is now
+consistent. Windows identity normalization and ACL operations were extracted into
+`scripts/AutonomousWindowsIdentity.psm1`, and Windows CI now exercises local, dot-local,
+domain-qualified, and UPN normalization. No local Runner, service, process, or
+autonomous task was started. Actual domain-account resolution, service logon, ACL
+effective-access checks across two real accounts, and target-host crash/restart acceptance
+remain pending.
+
+
+## 2026-11-14 — Prevent per-user state-root fallback
+
+The portability audit found one additional source of split-brain state: when PROGRAMDATA was absent on Windows, execution_state_directory() silently fell back to the current user's home directory. A relative AUTONOMOUS_ENGINEERING_PROGRESS_DIR could also resolve differently under different working directories. Windows now fails closed if PROGRAMDATA is unavailable, configured state roots must be absolute, and the existing POSIX default path is preserved to avoid stranding prior state. Regression tests cover both rejection cases.
+
+
+## Final exact-head CI evidence — 2026-11-14
+
+Exact tested code head: ab703a284752c80531e9f25e0b7ad53a04c453a0.
+
+- Full Python suite: 2,244 passed, 13 skipped, 51 deselected in 243.29 seconds.
+- Focused checkpoint ownership/concurrency regressions: passed.
+- Windows storage/process/checkpoint regressions: passed, including Python/PowerShell shared file-lock interoperability and PowerShell parser checks.
+- Browser E2E, dependency audit, and CodeQL: passed.
+- Generated learning artifacts, repository-local Markdown links, import-cycle guard, deterministic lexical retrieval benchmark, and fail-closed claim-to-test coverage benchmark: passed.
+
+Evidence: Tests/Windows regressions https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863471 ; Browser E2E https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863440 ; Dependency audit https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863452 ; CodeQL https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863507 .
+
+The subsequent documentation-only evidence update does not change runtime code and is followed by a fresh exact-head CI run. Target-host cross-account ACL verification, non-admin sandbox smoke/soak, crash/restart acceptance, and independent security review remain pending. Durable Pause remains enabled; no Runner, service, or autonomous process was started.

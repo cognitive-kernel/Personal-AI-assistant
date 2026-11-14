@@ -1,0 +1,147 @@
+# ADR-020 — Owner-bound Codex process supervision
+
+- Status: Proposed
+- Date: 2026-11-14
+- Scope: Autonomous Engineering Codex/Ollama execution
+
+## Context
+
+The autonomous controller already has distinct ownership boundaries for the GitHub Actions concurrency group, repository worktree lock, durable task/PR state mutex, and checkpoint-watcher lifecycle. Those locks serialize state transitions and protect checkpoint mutation, but an operating-system lock held by a parent process is released when that process exits. A Codex child process that outlives its controller could therefore continue writing to the worktree after the repository lock becomes available to a recovery run.
+
+The Codex stream configuration also allowed a 15-minute idle interval, ten stream retries, and four request retries. The sandbox smoke invocation had no independent process deadline. This made a stalled provider stream expensive and allowed a diagnostic run to occupy the Runner far longer than the operation it was meant to verify.
+
+## Five-why analysis
+
+1. **Why could an old Codex process still write after a run owner failed?** Because the Codex child process could outlive the Python process that launched it.
+2. **Why could it outlive the owner?** The launch path used a normal subprocess and waited for streamed output; it had no OS-level process-tree ownership boundary or hard total deadline.
+3. **Why did the repository lock not prevent this?** The worktree lock is owned by the controller process. The operating system correctly releases that lock when the controller exits, but that lock does not automatically terminate unrelated child processes.
+4. **Why was this not caught by the existing recovery architecture?** Existing tests covered mutex exclusion, checkpoint recovery, and watcher identity, but did not inject a controller/supervisor crash while a Codex descendant remained alive.
+5. **Why could a smoke test consume so much Runner time?** Provider configuration allowed a 900,000 ms idle wait with 10 stream retries and 4 request retries, while the smoke subprocess had no independent wall-clock budget.
+
+**Evidence:** `scripts/autonomous_engineering_progress.py` starts the Codex command through `subprocess.Popen` and consumes its output stream; `scripts/autonomous_engineering_codex_config.py` supplied the long idle/retry values; the smoke call used the same Codex execution path without a per-process deadline. The worktree/state/checkpoint locks were already separate and tested; the missing invariant was ownership of the complete Codex process tree.
+
+## Decision
+
+1. Keep the existing task-state mutex, worktree lock, checkpoint watcher, and PR-state ownership modules separate. Do not replace their contracts with one global lock.
+2. Route Codex through a small process-supervisor module. It records the PID and OS creation time of the owning controller ancestry and refuses to start if that identity cannot be verified.
+3. The supervisor enforces a hard wall-clock budget. A sandbox smoke is limited to 300 seconds; a normal engineering Codex session is limited to 1,800 seconds.
+4. On Windows, the progress controller creates a kill-on-close Job Object, starts the Codex supervisor suspended, assigns it to the job, and only then resumes it. The supervisor and all Codex descendants inherit the controller-owned job. The supervisor receives an explicit --parent-job-managed contract and does not create a competing nested job. If the supervisor exits unexpectedly while descendants remain, the progress controller terminates the residual job members and waits for the Job Object to become signaled before returning or starting a retry. If the progress controller itself exits, closing its final Job Object handle terminates the entire tree.
+5. On POSIX hosts, the progress controller starts the Codex supervisor in a dedicated session/process group; Codex inherits the group. The progress owner drains residual group members after supervisor exit, and owner-ancestry loss or a broken output pipe causes the supervisor to kill its inherited group.
+6. Use a short smoke-specific stream idle timeout and no provider retries. Normal engineering sessions retain a larger but bounded retry budget.
+7. If parent identity, process termination, or process reaping cannot be established, fail closed. Do not treat a timeout as a successful smoke or task.
+
+## Consequences
+
+- A controller crash cannot leave an unowned Codex process writing after its supervisor detects owner loss; the OS process job is the final descendant cleanup boundary.
+- Checkpoint-watcher ownership remains independent. The watcher is not placed in the Codex Job Object and retains its existing run/task/base-SHA/process-start identity contract.
+- Smoke failures become bounded and diagnosable instead of waiting through repeated long stream retries.
+- The supervisor adds a process boundary and a focused test surface; it does not alter task payloads, checkpoint contents, Git history, user data, or PR merge policy.
+- CI must verify timeout behavior, descendant cleanup, PID-reuse rejection, existing lock exclusion, and existing checkpoint recovery. A real target-Windows Runner soak remains an external acceptance gate.
+
+
+## 2026-11-14 addendum — Windows sandbox setup mutex and non-admin Runner
+
+A target-Runner smoke exposed a second, independent failure below the Codex process supervisor:
+
+`Failed to create unified exec process: helper_unknown_error: open sandbox setup mutex`.
+
+The Runner is intentionally a non-administrator service identity. The pinned Codex CLI's upstream Windows sandbox helper creates the machine-wide mutex `Global\CodexSandboxSetup` with the protected security descriptor `D:P(A;;GA;;;SY)(A;;GA;;;BA)`; the upstream source documents that this lock is for LocalSystem or an elevated administrator. A normal non-admin Runner identity is not granted access by that descriptor. This is an upstream helper authorization contract, not a stale application mutex, a Python worktree-lock conflict, or a reason to elevate the Runner.
+
+Primary evidence:
+- [Codex setup_mutex.rs at rust-v0.160.0](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/windows-sandbox-rs/src/setup_mutex.rs) defines the mutex name, descriptor, and identity contract.
+- [Codex issue #50163](https://github.com/openai/codex/issues/50163) records the same failure under a non-administrator service identity after successful provisioning.
+- Run 43592197032 confirms the exact helper error in the elevated backend. Its standalone MXC compatibility probe passed. The earlier MXC agent smoke did not prove sandbox failure: its Python `-c` payload was malformed for the requested `cmd.exe` shell and generated repeated syntax/command errors before the elevated attempt.
+
+Corrective changes in PR #757:
+1. Use a shell-native `cmd.exe` create/read/delete probe (`echo`, `type`, `del`) so the smoke test validates the intended workspace operation without Python quoting ambiguity.
+2. Keep MXC as the first candidate and allow the restricted-token `unelevated` implementation as a separately smoke-tested fallback.
+3. Do not select the elevated helper for the non-admin Runner by default; it is incompatible with the observed mutex ACL contract. Do not make the Runner an administrator, change the upstream helper ACL, or fall back to unsandboxed execution.
+4. Bound the workflow smoke step independently at 15 minutes and classify this mutex error explicitly in sanitized diagnostics.
+
+## 2026-11-14 addendum — sandbox fallback security gate
+
+Current Codex Windows sandbox documentation distinguishes the implementations: MXC is recommended on compatible hosts; `elevated` is the preferred legacy fallback; `unelevated` is a secondary legacy fallback with weaker network isolation and no denied-read-path support. The unelevated mode is therefore not an equivalent security substitute.
+
+PR #757 keeps MXC as the only automatic candidate. The legacy `unelevated` candidate is added only when the repository variable `AUTONOMOUS_ENGINEERING_ALLOW_UNELEVATED_SANDBOX` is explicitly set to `true`. Its default is false. If MXC smoke fails and the opt-in is absent, the workflow fails closed and reports the required approval; it never silently selects a weaker mode or runs unsandboxed.
+
+Reference: https://learn.chatgpt.com/docs/windows/windows-sandbox
+
+**Acceptance boundary:** repository CI can validate argument construction, diagnostics, and process supervision. Only a successful real `codex exec` workspace create/read/delete smoke on the target Runner can establish which sandbox backend is operational. The target-host smoke remains pending while the durable autonomous-engineering pause is enabled. No pause setting, task/checkpoint data, host ACL, Runner identity, or production Codex installation was changed by this PR.
+
+
+## 2026-11-14 addendum — controller command process-tree ownership
+
+A follow-up review found that adding a timeout to `subprocess.run` bounded the direct command process but did not establish ownership of descendants. A timed-out test, Git helper, or validation command could therefore leave a child process alive after the controller released its repository lock. A normally exiting command could also leave a deliberately detached background child.
+
+Decision:
+- Route every controller command through `scripts/autonomous_engineering_command_runner.py`.
+- On Windows, create the command suspended, assign it to a kill-on-close Job Object before resuming it, and close the Job Object after command completion. Assignment failure is fatal; there is no unowned fallback.
+- On POSIX, start the command in a dedicated process group and terminate the group on timeout and after the command's direct process exits, so background descendants cannot outlive the command contract.
+- Preserve the existing per-command deadlines and diagnostic timeout exception. Process-tree cleanup is part of the command contract, not an optional timeout behavior.
+- Test both timeout cleanup and successful-parent/background-child cleanup, in addition to existing controller deadline tests.
+
+This extends the process ownership invariant beyond Codex while keeping the Codex owner-ancestry supervisor, durable-state mutex, repository lock, and checkpoint-watcher contracts independently scoped.
+
+
+## 2026-11-14 addendum — synchronous process-tree drain
+
+A subsequent code-path review found that issuing termination was not itself proof that the process tree had stopped. `TerminateJobObject` and POSIX group signals initiate termination asynchronously. Returning immediately could let the controller release its repository lock while a child was still in its shutdown path.
+
+Decision:
+- Windows command execution waits on the Job Object's signaled state, which is reached only after all assigned processes have exited. On timeout or normal parent exit with remaining descendants, terminate the job and wait for that state before returning.
+- POSIX command execution sends SIGTERM, waits for live non-zombie members of its dedicated process group, escalates to SIGKILL when necessary, and waits for the group to contain no live members.
+- If termination cannot be confirmed within the bounded cleanup window, raise a cleanup error rather than release ownership as if cleanup succeeded.
+- If Windows Job Object assignment fails after a suspended child was created, explicitly kill and reap that child; closing an empty Job Object alone cannot terminate a process that was never assigned.
+- Add regression tests for a POSIX child termination handler completing before return, immediate Windows Job Object drain, and fail-closed cleanup of an unassigned suspended Windows child.
+
+The invariant is now: controller command return (and therefore release of the caller's repository lock) occurs only after every owned live process has exited. Zombie processes are treated as terminated because they cannot execute or mutate state.
+
+
+## 2026-11-14 addendum — controller-owned Codex Job Object
+
+A failure-injection review found that the previous owner-pinned inner Job Object only guaranteed descendant cleanup when the progress owner itself exited. If the Codex supervisor crashed while the progress owner remained alive, the inner Job Object handle stayed pinned in that owner, but the owner had no handle value with which to terminate residual descendants before a retry.
+
+The production ownership boundary is now moved one level up:
+- autonomous_engineering_progress.py owns the Windows Job Object and creates the Codex supervisor suspended.
+- The supervisor is assigned to that Job Object before resume. All Codex processes and descendants inherit job membership.
+- codex_command passes --parent-job-managed; the Codex supervisor does not create a second Job Object or duplicate a hidden handle into its parent.
+- When the supervisor exits for any reason, the progress owner waits for the wrapper, checks whether the job is empty, terminates remaining descendants, and waits for the job's signaled state before returning. A leftover descendant makes the attempt fail rather than appear successful.
+- If the progress owner itself crashes, Windows closes its job handle and KILL_ON_JOB_CLOSE terminates the complete process tree.
+- The direct Codex-runner Windows Job Object path remains available for isolated/direct invocation tests; the production progress path uses the controller-owned contract.
+
+A Windows regression now simulates an abrupt supervisor exit while its owner remains alive and asserts that the descendant is already gone before run_codex returns. This is the required pre-retry no-overlap invariant.
+
+
+## 2026-11-14 addendum — controller-owned POSIX Codex process group
+
+The supervisor-crash overlap invariant also applies to POSIX. A process group created only by the Codex runner would survive if that runner crashed while its progress owner remained alive.
+
+The production POSIX boundary now mirrors the Windows ownership shape:
+- The progress controller launches the Codex supervisor with a dedicated session/process group.
+- The supervisor receives --parent-group-managed and launches Codex without creating a second session, so the full tree inherits the controller-owned group.
+- When the supervisor exits, the progress owner sends SIGTERM, waits for the grace period, escalates to SIGKILL, and confirms that no live non-zombie group members remain before returning.
+- If the progress owner disappears, the supervisor's owner-ancestry check kills its inherited process group.
+- The shared process-group primitives live in autonomous_engineering_process_group.py and are reused by the command runner, Codex runner, and progress owner. This avoids three subtly different implementations of POSIX cleanup.
+
+Regression coverage now verifies that an abruptly exited supervisor cannot leave a live descendant when its owner is still running, and that the owner can drain an inherited process group after the runner returns.
+
+
+## 2026-11-14 addendum — output-owner disconnect failure path
+
+A further failure-injection case covered the interval where the progress owner disappears while the Codex runner is blocked forwarding a large output chunk. In that state, the runner may receive a broken pipe before its next owner-ancestry poll. The output-forwarding boundary now treats a closed stdout/stderr owner channel as an ownership-loss event and terminates the inherited POSIX group (or returns to the Windows outer Job Object owner, which drains it). Diagnostic writes are best-effort and cannot prevent cleanup.
+
+Regression coverage fills the owner output pipe, exits the owner while the runner is blocked, and verifies that the sleeping Codex descendant does not survive.
+
+
+## 2026-11-14 addendum — checkpoint Git process ownership and deadlines
+
+A source review found that the checkpoint watcher still invoked `git`, `git apply --check`, and `git apply` directly through `subprocess.run`. Those calls had no command deadline and bypassed the shared process-tree cleanup contract. A stuck Git operation could therefore hold checkpoint recovery indefinitely; killing the watcher during such an operation could also leave the Git child outside the watcher's cleanup path.
+
+Decision:
+- Route every checkpoint Git operation through `autonomous_engineering_command_runner.run_command`.
+- Use a 120-second checkpoint-Git deadline; timeout is a failure and process-tree cleanup must be confirmed before returning.
+- Extend the shared runner with an explicit `input_data: str | bytes | None` contract. Byte input is passed without text-mode newline conversion, while captured output remains normalized to UTF-8 text.
+- Keep checkpoint patch bytes intact for both `git apply --check --binary` and `git apply --binary`; no decoding/re-encoding of the saved patch is permitted.
+- Add regressions for byte-exact stdin, checkpoint Git runner delegation, and the existing real checkpoint restore/recovery paths.
+
+This closes the unbounded subprocess path in the checkpoint module without changing checkpoint metadata, patch format, locking semantics, or user data. Exact-head CI must pass on the resulting commits. Target-host crash/restart acceptance remains pending while the durable Pause is enabled.

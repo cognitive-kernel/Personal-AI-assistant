@@ -46,7 +46,7 @@ def test_validate_paths_rejects_protected_traversal_and_non_allowlisted_paths(pa
         cycle.validate_paths([path])
 
 
-def test_failed_local_and_github_checks_retry_same_task_then_wait_for_owner_merge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_failed_local_and_github_checks_stop_at_retry_budget_and_preserve_task(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     prompt = tmp_path / "prompt.md"
     prompt.write_text("Complete the selected task.", encoding="utf-8")
     monkeypatch.setattr(cycle, "ROOT", tmp_path)
@@ -55,7 +55,8 @@ def test_failed_local_and_github_checks_retry_same_task_then_wait_for_owner_merg
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "autonomous-state"))
     monkeypatch.setattr(cycle, "start_checkpoint_watcher", lambda *args: None)
-    monkeypatch.setattr(cycle, "stop_checkpoint_watcher", lambda *args: None)
+    stopped = []
+    monkeypatch.setattr(cycle, "stop_checkpoint_watcher", lambda *args: stopped.append(args))
     monkeypatch.setattr(cycle, "record", lambda *args, **kwargs: None)
     monkeypatch.setattr(cycle, "snapshot", lambda *args: None)
     monkeypatch.setattr(
@@ -82,34 +83,17 @@ def test_failed_local_and_github_checks_retry_same_task_then_wait_for_owner_merg
     monkeypatch.setattr(cycle, "prepare_commit", fake_prepare_commit)
     published = []
 
-    def fake_publish(*args):
+    def fake_publish(*args, **kwargs):
         published.append(args)
-        if len(published) == 1:
-            raise RuntimeError("Per-task draft PR publication failed: Required workflow tests.yml failed for candidate SHA.")
-        pending = {
-            "number": 42,
-            "url": "https://github.com/owner/repository/pull/42",
-            "head_sha": "c" * 40,
-            "base_sha": "b" * 40,
-            "branch": "codex/local-engineering-123-1-task-1",
-            "run_id": "123",
-            "task": 1,
-        }
-        cycle.save_pending_pr(pending, "owner/repository")
-        return {
-            **pending,
-            "validated": True,
-            "merged": False,
-            "awaiting_review": True,
-            "draft": False,
-        }
+        raise RuntimeError("Per-task draft PR publication failed: Required workflow tests.yml failed for candidate SHA.")
 
     monkeypatch.setattr(cycle, "publish_pr_subprocess", fake_publish)
-    monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: (_ for _ in ()).throw(AssertionError("checkpoint cleared before owner merge")))
-    monkeypatch.setattr(cycle, "clear_pending_state", lambda: (_ for _ in ()).throw(AssertionError("pending state cleared before owner merge")))
+    cleared = []
+    monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: cleared.append("checkpoint"))
+    monkeypatch.setattr(cycle, "clear_pending_state", lambda: cleared.append("pending-state"))
     calls = {"codex": 0, "pytest": 0}
 
-    def fake_run(command, *, env=None, capture=False):
+    def fake_run(command, *, env=None, capture=False, timeout_seconds=None):
         if any("autonomous_engineering_progress.py" in str(part) for part in command):
             calls["codex"] += 1
             report = Path(command[command.index("--report") + 1])
@@ -126,18 +110,94 @@ def test_failed_local_and_github_checks_retry_same_task_then_wait_for_owner_merg
         "prompt": str(prompt), "mode": "continuous",
     })()
 
-    assert cycle.run_cycle(args) == 0
-    assert calls == {"codex": 3, "pytest": 3}
-    assert len(published) == 2
-    assert published[1][-2:] == ("candidate-sha", "base-sha")
+    with pytest.raises(RuntimeError, match=r"attempt limit reached \(2\)"):
+        cycle.run_cycle(args)
+
+    assert calls == {"codex": 2, "pytest": 2}
+    assert len(published) == 1
+    assert published[0][-2:] == ("candidate-sha", "base-sha")
     local_retry_prompt = tmp_path / "codex-retry-prompt-1-2.md"
-    ci_retry_prompt = tmp_path / "codex-retry-prompt-1-3.md"
     assert "Exact failure output" in local_retry_prompt.read_text(encoding="utf-8")
-    assert "GitHub-hosted verification failed" in ci_retry_prompt.read_text(encoding="utf-8")
-    assert cycle.load_pending_pr()["number"] == 42
+    assert not (tmp_path / "codex-retry-prompt-1-3.md").exists()
+    assert len(stopped) == 2
+    assert cleared == []
+    assert cycle.load_pending_pr() is None
 
 
+def test_cycle_run_applies_default_command_deadline(monkeypatch: pytest.MonkeyPatch):
+    captured = {}
 
+    def fake_run_command(command, **kwargs):
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(cycle, "_run_command", fake_run_command)
+
+    result = cycle.run(["python", "--version"])
+
+    assert result.returncode == 0
+    assert captured["timeout_seconds"] == cycle.DEFAULT_COMMAND_TIMEOUT_SECONDS
+    assert captured["cwd"] == cycle.ROOT
+
+
+def test_cycle_run_converts_timeout_to_a_diagnostic_error(monkeypatch: pytest.MonkeyPatch):
+    def fake_run_command(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, kwargs["timeout_seconds"])
+
+    monkeypatch.setattr(cycle, "_run_command", fake_run_command)
+
+    with pytest.raises(RuntimeError, match="exceeded its 17-second deadline"):
+        cycle.run(["python", "--version"], timeout_seconds=17)
+
+
+def test_run_cycle_bounds_failed_codex_attempts_and_preserves_task(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("Complete the selected task.", encoding="utf-8")
+    monkeypatch.setattr(cycle, "ROOT", tmp_path)
+    monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("GH_REPO", "owner/repository")
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "autonomous-state"))
+    monkeypatch.setattr(cycle, "start_checkpoint_watcher", lambda *args: None)
+    stopped = []
+    monkeypatch.setattr(cycle, "stop_checkpoint_watcher", lambda *args: stopped.append(args))
+    monkeypatch.setattr(cycle, "record", lambda *args, **kwargs: None)
+    monkeypatch.setattr(cycle, "snapshot", lambda *args: None)
+    monkeypatch.setattr(cycle, "api", lambda *args, **kwargs: [])
+    monkeypatch.setattr(cycle, "find_open_autonomous_pr", lambda *args: None)
+    monkeypatch.setattr(cycle, "restore_checkpoint", lambda *args: False)
+    monkeypatch.setattr(
+        cycle, "checked",
+        lambda command, **kwargs: (
+            "base-sha" if command[:3] == ["git", "rev-parse", "HEAD"]
+            else "codex/local-engineering-123-1-task-1" if command[1:3] == ["branch", "--show-current"]
+            else ""
+        ),
+    )
+    monkeypatch.setattr(
+        cycle, "clear_checkpoint",
+        lambda *args: (_ for _ in ()).throw(AssertionError("failed task checkpoint must not be cleared")),
+    )
+    calls = {"codex": 0}
+
+    def fake_run(command, *, env=None, capture=False, timeout_seconds=None):
+        assert any("autonomous_engineering_progress.py" in str(part) for part in command)
+        assert timeout_seconds == cycle.CODEX_TASK_TIMEOUT_SECONDS + 30
+        calls["codex"] += 1
+        return subprocess.CompletedProcess(command, 1, "", "simulated Codex failure")
+
+    monkeypatch.setattr(cycle, "run", fake_run)
+    args = type("Args", (), {
+        "run_id": "123", "run_attempt": "1", "model": "test-model",
+        "prompt": str(prompt), "mode": "continuous",
+    })()
+
+    with pytest.raises(RuntimeError, match=r"attempt limit reached \(2\)"):
+        cycle.run_cycle(args)
+
+    assert calls["codex"] == 2
+    assert len(stopped) == 2
+    assert prompt.read_text(encoding="utf-8") == "Complete the selected task."
 
 
 def test_find_open_autonomous_pr_detects_pending_generated_review(monkeypatch: pytest.MonkeyPatch):
@@ -546,10 +606,13 @@ def test_checkpoint_watcher_real_process_publishes_run_scoped_readiness(
         ["git", "rev-parse", "HEAD"], cwd=root, check=True,
         capture_output=True, text=True,
     ).stdout.strip()
-    state = tmp_path / "checkpoint-state"
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(state))
+    program_data = tmp_path / "ProgramData"
+    state = program_data / "PersonalAIAssistant" / "autonomous-engineering"
+    monkeypatch.setenv("PROGRAMDATA", str(program_data))
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", raising=False)
     env = os.environ.copy()
-    env["AUTONOMOUS_ENGINEERING_PROGRESS_DIR"] = str(state)
+    env.pop("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", None)
+    env["PROGRAMDATA"] = str(program_data)
     run_id = f"integration-{os.getpid()}"
     task = 91
     # Match the production launch path: on Windows, bypass the venv launcher
@@ -892,14 +955,18 @@ def test_checkpoint_watcher_uses_base_interpreter_with_venv_dependencies(
 
 
 
-def test_windows_codex_command_uses_call_without_nested_cmd_quoting(monkeypatch):
+def test_windows_codex_command_uses_call_without_nested_cmd_quoting(monkeypatch, tmp_path: Path):
     from scripts import autonomous_engineering_progress as progress
 
     monkeypatch.setenv("COMSPEC", r"C:\Windows\System32\cmd.exe")
-    executable = r"C:\Users\runner-svc\AppData\Roaming\npm\codex.CMD"
+    executable = str(tmp_path / "profile" / "AppData" / "Roaming" / "npm" / "codex.CMD")
     command = progress.codex_command(executable, ["exec", "--json", "-"])
 
-    assert command == [
+    assert command[0] == progress.sys.executable
+    assert command[1].endswith("autonomous_engineering_codex_runner.py")
+    assert command[command.index("--timeout-seconds") + 1] == "1800"
+    native_start = command.index("--") + 1
+    assert command[native_start:] == [
         r"C:\Windows\System32\cmd.exe", "/d", "/c", "call",
         executable, "exec", "--json", "-",
     ]
@@ -940,8 +1007,32 @@ def test_codex_arguments_reject_unverified_windows_sandbox_backend(monkeypatch):
 
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
     monkeypatch.setenv("CODEX_WINDOWS_SANDBOX_BACKEND", "danger-full-access")
-    with pytest.raises(ValueError, match="must be 'mxc' or 'elevated'"):
+    with pytest.raises(ValueError, match=r"must be 'mxc', 'elevated', or 'unelevated'"):
         progress.codex_arguments("gpt-oss:20b", "codex-report.md")
+
+
+def test_codex_arguments_allow_restricted_unelevated_backend(monkeypatch):
+    from scripts import autonomous_engineering_progress as progress
+
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
+    monkeypatch.setenv("CODEX_WINDOWS_SANDBOX_BACKEND", "unelevated")
+    arguments = progress.codex_arguments("gpt-oss:20b", "codex-report.md")
+
+    assert 'windows.sandbox="unelevated"' in arguments
+    assert arguments[arguments.index("--sandbox") + 1] == "workspace-write"
+
+
+def test_autonomous_workflow_gates_unelevated_sandbox_behind_explicit_opt_in():
+    workflow = (
+        Path(__file__).resolve().parents[1]
+        / ".github" / "workflows" / "autonomous-codex-engineering.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "AUTONOMOUS_ENGINEERING_ALLOW_UNELEVATED_SANDBOX" in workflow
+    assert "$sandboxBackends = @(\"mxc\")" in workflow
+    assert 'if ($env:AUTONOMOUS_ENGINEERING_ALLOW_UNELEVATED_SANDBOX -eq "true")' in workflow
+    assert "weaker network isolation" in workflow
+    assert "disabled by default" in workflow
 
 
 def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkeypatch, tmp_path):
@@ -951,8 +1042,22 @@ def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkey
     prompt = tmp_path / "prompt.md"
     prompt.write_text("Do the task", encoding="utf-8")
     monkeypatch.setattr(progress.shutil, "which", lambda _: r"C:\\npm\\codex.CMD")
-    monkeypatch.setattr(progress, "codex_command", lambda executable, arguments: ["cmd.exe", "/d", "/c", "call", executable, *arguments])
+    monkeypatch.setattr(progress, "codex_command", lambda executable, arguments, **kwargs: ["cmd.exe", "/d", "/c", "call", executable, *arguments])
     monkeypatch.setattr(progress, "persist", lambda record: True)
+    class NoOpProcessJob:
+        def __enter__(self):
+            return self
+
+        def assign_and_resume(self, process):
+            return None
+
+        def terminate_remaining_processes(self, exit_code, timeout_seconds=5.0):
+            return False
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(progress, "WindowsProcessJob", NoOpProcessJob)
     monkeypatch.setattr(progress, "PLAN_FILE", tmp_path / ".agent-progress.json")
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "progress"))
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
@@ -1446,3 +1551,18 @@ def test_recovered_open_pr_is_persisted_before_exact_sha_ci(
 
     assert result["validated"] is True
     assert result["awaiting_review"] is True
+
+
+def test_autonomous_windows_workflows_do_not_pin_tools_to_a_specific_user_or_python_install():
+    root = Path(__file__).resolve().parents[1]
+    workflow_paths = (
+        root / ".github" / "workflows" / "autonomous-codex-engineering.yml",
+        root / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml",
+    )
+    for workflow_path in workflow_paths:
+        content = workflow_path.read_text(encoding="utf-8")
+        lowered = content.casefold()
+        assert r"c:\users\admin" not in lowered
+        assert r"c:\program files\python311" not in lowered
+        assert "get-command python" in lowered
+        assert "get-command ollama" in lowered
