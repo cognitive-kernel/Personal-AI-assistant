@@ -19,6 +19,12 @@ ACTIVE_STATUSES = {"running", "pause_requested", "cancel_requested"}
 TERMINAL_STATUSES = {"cancelled", "succeeded", "failed"}
 RETRY_BASE_DELAY_SECONDS = 2
 RETRY_MAX_DELAY_SECONDS = 300
+MAX_TASK_TYPE_CHARS = 100
+MAX_TASK_PAYLOAD_BYTES = 1024 * 1024
+MAX_TASK_RECORD_BYTES = 4 * 1024 * 1024
+MAX_TASK_PRIORITY = 100_000
+MAX_TASK_ATTEMPTS = 20
+MAX_TASK_DEDUPE_KEY_CHARS = 512
 
 
 class TaskManagerError(RuntimeError):
@@ -40,11 +46,24 @@ def _timestamp(value: datetime | None = None) -> str:
     return current.astimezone(timezone.utc).isoformat(timespec="microseconds")
 
 
-def _json(value: Any) -> str:
+def _json(
+    value: Any,
+    *,
+    max_bytes: int | None = None,
+    field_name: str = "Task data",
+) -> str:
+    if max_bytes is None:
+        max_bytes = MAX_TASK_RECORD_BYTES
     try:
-        return json.dumps(value, ensure_ascii=False, allow_nan=False)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("Task data must be JSON-serializable and contain no NaN/Infinity.") from exc
+        encoded = json.dumps(value, ensure_ascii=False, allow_nan=False)
+        size = len(encoded.encode("utf-8"))
+    except (TypeError, ValueError, UnicodeEncodeError) as exc:
+        raise ValueError(
+            f"{field_name} must be JSON-serializable UTF-8 and contain no NaN/Infinity."
+        ) from exc
+    if size > max_bytes:
+        raise ValueError(f"{field_name} exceeds the {max_bytes}-byte serialized limit.")
+    return encoded
 
 
 def _task(row: sqlite3.Row | None) -> dict[str, Any] | None:
@@ -78,19 +97,22 @@ def create_task(
     scheduled_at: datetime | None = None,
     dedupe_key: str | None = None,
 ) -> dict[str, Any]:
-    if not isinstance(task_type, str) or not task_type.strip():
-        raise ValueError("task_type must be a non-empty string.")
+    if not isinstance(task_type, str) or not task_type.strip() or len(task_type.strip()) > MAX_TASK_TYPE_CHARS:
+        raise ValueError(f"task_type must be a non-empty string of at most {MAX_TASK_TYPE_CHARS} characters.")
     if not isinstance(payload, dict):
         raise ValueError("payload must be a JSON object.")
-    if isinstance(priority, bool) or not isinstance(priority, int):
-        raise ValueError("priority must be an integer.")
-    if isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or max_attempts < 1:
-        raise ValueError("max_attempts must be an integer greater than zero.")
+    if isinstance(priority, bool) or not isinstance(priority, int) or not -MAX_TASK_PRIORITY <= priority <= MAX_TASK_PRIORITY:
+        raise ValueError(f"priority must be an integer between {-MAX_TASK_PRIORITY} and {MAX_TASK_PRIORITY}.")
+    if isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or not 1 <= max_attempts <= MAX_TASK_ATTEMPTS:
+        raise ValueError(f"max_attempts must be an integer between 1 and {MAX_TASK_ATTEMPTS}.")
     if dedupe_key is not None and (
         not isinstance(dedupe_key, str) or not dedupe_key.strip()
+        or len(dedupe_key.strip()) > MAX_TASK_DEDUPE_KEY_CHARS
     ):
-        raise ValueError("dedupe_key must be a non-empty string when provided.")
-    encoded_payload = _json(payload)
+        raise ValueError(f"dedupe_key must be a non-empty string of at most {MAX_TASK_DEDUPE_KEY_CHARS} characters when provided.")
+    encoded_payload = _json(
+        payload, max_bytes=MAX_TASK_PAYLOAD_BYTES, field_name="Task payload"
+    )
     normalized_type = task_type.strip()
     normalized_key = dedupe_key.strip() if dedupe_key is not None else None
     due = _timestamp(scheduled_at)
@@ -393,7 +415,7 @@ def renew_lease(task_id: int, worker_id: str, *, lease_seconds: int = 300) -> di
 
 
 def save_checkpoint(task_id: int, worker_id: str, checkpoint: dict[str, Any]) -> dict[str, Any]:
-    encoded = _json(checkpoint)
+    encoded = _json(checkpoint, field_name="Task checkpoint")
     now = _timestamp()
     with db.learning_connection() as conn:
         # Hold the write reservation across the ownership check and checkpoint write.
@@ -419,7 +441,7 @@ def save_checkpoint(task_id: int, worker_id: str, checkpoint: dict[str, Any]) ->
 
 
 def complete_task(task_id: int, worker_id: str, result: dict[str, Any]) -> dict[str, Any]:
-    encoded = _json(result)
+    encoded = _json(result, field_name="Task result")
     now = _timestamp()
     with db.learning_connection() as conn:
         # A reclaiming worker must not interleave between validation and completion.

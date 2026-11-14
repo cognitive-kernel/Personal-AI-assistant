@@ -350,3 +350,18 @@ def test_task_api_refuses_to_delete_running_tasks(tmp_path, monkeypatch):
         assert response.status_code == 409
         assert client.get(f"/api/tasks/{created['id']}").status_code == 200
 
+
+
+def test_task_api_rejects_oversized_payload_before_persistence(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    monkeypatch.setattr(task_manager, "MAX_TASK_PAYLOAD_BYTES", 64)
+
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        response = client.post(
+            "/api/tasks",
+            json={"task_type": "test.payload", "payload": {"value": "x" * 100}},
+        )
+        assert response.status_code == 422
+        assert "serialized limit" in response.json()["detail"]
+        assert client.get("/api/tasks").json()["tasks"] == []

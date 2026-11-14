@@ -542,3 +542,67 @@ def test_fail_task_honors_pending_control_before_retry(task_store, control, expe
         assert reclaimed["id"] == task["id"]
         assert reclaimed["attempts"] == 2
 
+
+
+def test_create_task_bounds_serialized_utf8_payload_size_without_partial_persistence(
+    task_store, monkeypatch
+):
+    payload = {"value": "é"}
+    encoded = task_manager._json(payload).encode("utf-8")
+    monkeypatch.setattr(task_manager, "MAX_TASK_PAYLOAD_BYTES", len(encoded))
+    accepted = task_manager.create_task("bounded.payload", payload)
+    assert accepted["payload"] == payload
+
+    monkeypatch.setattr(task_manager, "MAX_TASK_PAYLOAD_BYTES", len(encoded) - 1)
+    with pytest.raises(ValueError, match="serialized limit"):
+        task_manager.create_task("oversized.payload", payload)
+
+    stored = task_manager.list_tasks(limit=10)
+    assert [item["task_type"] for item in stored] == ["bounded.payload"]
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"task_type": "x" * 101}, "task_type"),
+        ({"priority": 100_001}, "priority"),
+        ({"priority": -100_001}, "priority"),
+        ({"max_attempts": 21}, "max_attempts"),
+        ({"dedupe_key": "x" * 513}, "dedupe_key"),
+    ],
+)
+def test_create_task_rejects_out_of_contract_queue_metadata(task_store, kwargs, message):
+    task_type = kwargs.get("task_type", "bounded.metadata")
+    options = {key: value for key, value in kwargs.items() if key != "task_type"}
+    with pytest.raises(ValueError, match=message):
+        task_manager.create_task(task_type, {}, **options)
+    assert task_manager.list_tasks(limit=10) == []
+
+
+def test_task_checkpoint_and_result_records_are_bounded_before_state_changes(
+    task_store, monkeypatch
+):
+    task = task_manager.create_task("bounded.records", {})
+    claimed = task_manager.claim_next_task("bounded-worker")
+    assert claimed["id"] == task["id"]
+
+    monkeypatch.setattr(task_manager, "MAX_TASK_RECORD_BYTES", 8)
+    with pytest.raises(ValueError, match="Task checkpoint exceeds"):
+        task_manager.save_checkpoint(
+            task["id"], "bounded-worker", {"value": "checkpoint too large"}
+        )
+    with pytest.raises(ValueError, match="Task result exceeds"):
+        task_manager.complete_task(
+            task["id"], "bounded-worker", {"value": "result too large"}
+        )
+
+    unchanged = task_manager.get_task(task["id"])
+    assert unchanged["status"] == "running"
+    assert unchanged["checkpoint"] is None
+    assert unchanged["result"] is None
+
+    monkeypatch.setattr(task_manager, "MAX_TASK_RECORD_BYTES", 1024)
+    completed = task_manager.complete_task(
+        task["id"], "bounded-worker", {"ok": True}
+    )
+    assert completed["status"] == "succeeded"
