@@ -75,7 +75,7 @@ def parent_chain_is_alive(chain: list[dict[str, Any]]) -> bool:
 def _diagnostic(message: str) -> None:
     try:
         print(message, file=sys.stderr)
-    except OSError:
+    except (OSError, ValueError):
         pass
 
 
