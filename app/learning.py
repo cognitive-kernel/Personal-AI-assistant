@@ -2348,6 +2348,13 @@ def start_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
         ).fetchone()
         if topic is None:
             raise KeyError(topic_id)
+        blocked = learning_prerequisites.blocked_prerequisites(conn, topic_id)
+        if blocked:
+            first_blocked = blocked[0]
+            raise ValueError(
+                "Prerequisite topic is not completed: "
+                + str(first_blocked["topic"]) + " (" + str(first_blocked["status"]) + ")."
+            )
     from .learning_method_orchestrator import queue_initial_method
 
     transition = queue_initial_method(topic_id)
@@ -2531,6 +2538,13 @@ def queue_next_researched_path_topic(path_topic_id: int) -> dict[str, Any] | Non
         ).fetchone()
     if row is None:
         return None
+    with learning_connection() as connection:
+        path = connection.execute(
+            "SELECT research_json FROM learning_paths WHERE id=?",
+            (int(row["path_id"]),),
+        ).fetchone()
+    if path is not None and path["research_json"]:
+        return start_researched_path_learning(int(row["path_id"]), allow_retry=False)
     return start_path_learning(int(row["path_id"]))
 
 
