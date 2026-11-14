@@ -479,11 +479,11 @@ byId("fetch-selected-lessons").addEventListener("click", async () => {
   } catch (error) { message(error.message, true); }
 });
 byId("reset-learning-data").addEventListener("click", async () => {
-  const confirmation = window.prompt("این عملیات همهٔ سرفصل‌ها، درس‌ها، نسخه‌ها، منابع و سوابق اجرا را حذف می‌کند؛ نام دوره‌ها باقی می‌ماند. برای تأیید دقیقاً RESET را وارد کنید.");
-  if (confirmation !== "RESET") { message("پاک‌سازی لغو شد."); return; }
+  const confirmation = window.prompt("این عملیات همهٔ سرفصل‌ها، درس‌ها، نسخه‌ها، منابع و سوابق اجرا را حذف می‌کند؛ نام دوره‌ها باقی می‌ماند. برای تأیید دقیقاً RESET AI LEARNING DATA را وارد کنید.");
+  if (confirmation !== "RESET AI LEARNING DATA") { message("پاک‌سازی لغو شد."); return; }
   try {
     await api("/api/ai-learning/pause", {method:"POST"});
-    const result = await api("/api/ai-learning/reset-learning-data", {method:"POST"});
+    const result = await api("/api/ai-learning/reset-learning-data", jsonOptions("POST", {confirmation:"RESET AI LEARNING DATA"}));
     selectedTopicIds.clear();
     byId("lessons-panel").replaceChildren(node("p","داده‌های یادگیری پاک شدند."));
     await loadCourses(selectedCourse);
