@@ -376,17 +376,24 @@ def claim_next_task(
         task_id = int(row["id"])
         conn.execute(
             """UPDATE task_queue SET status='running', attempts=attempts+1,
-               lease_owner=?, lease_expires_at=?, error=NULL, updated_at=? WHERE id=?""",
+               lease_owner=?, lease_expires_at=?, lease_epoch=lease_epoch+1,
+               error=NULL, updated_at=? WHERE id=?""",
             (worker_id.strip(), expires, now_text, task_id),
         )
         claimed = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
     return _task(claimed)
 
 
-def _owned_running_task(conn: sqlite3.Connection, task_id: int, worker_id: str) -> sqlite3.Row:
+def _owned_running_task(
+    conn: sqlite3.Connection, task_id: int, worker_id: str, lease_epoch: int
+) -> sqlite3.Row:
+    if isinstance(lease_epoch, bool) or not isinstance(lease_epoch, int) or lease_epoch < 1:
+        raise ValueError("lease_epoch must be a positive integer.")
     row = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
     if row is None:
         raise TaskNotFoundError(f"Task {task_id} does not exist.")
+    if int(row["lease_epoch"]) != lease_epoch:
+        raise TaskManagerError("Worker lease epoch is stale; task ownership was reclaimed.")
     if row["lease_owner"] != worker_id or row["status"] not in ACTIVE_STATUSES:
         raise TaskManagerError("Task is not owned by this worker or is no longer active.")
     if row["lease_expires_at"] is None or row["lease_expires_at"] <= _timestamp():
@@ -394,7 +401,16 @@ def _owned_running_task(conn: sqlite3.Connection, task_id: int, worker_id: str) 
     return row
 
 
-def renew_lease(task_id: int, worker_id: str, *, lease_seconds: int = 300) -> dict[str, Any]:
+def assert_task_owner(
+    conn: sqlite3.Connection, task_id: int, worker_id: str, lease_epoch: int
+) -> sqlite3.Row:
+    """Validate a task lease and fencing epoch inside the caller's transaction."""
+    return _owned_running_task(conn, task_id, worker_id, lease_epoch)
+
+
+def renew_lease(
+    task_id: int, worker_id: str, *, lease_epoch: int, lease_seconds: int = 300
+) -> dict[str, Any]:
     """Extend a worker lease while the task remains cooperatively active."""
     if isinstance(lease_seconds, bool) or not isinstance(lease_seconds, int) or lease_seconds < 1:
         raise ValueError("lease_seconds must be a positive integer.")
@@ -403,7 +419,7 @@ def renew_lease(task_id: int, worker_id: str, *, lease_seconds: int = 300) -> di
     with db.learning_connection() as conn:
         # Serialize ownership validation with lease reclamation by other workers.
         conn.execute("BEGIN IMMEDIATE")
-        row = _owned_running_task(conn, task_id, worker_id)
+        row = _owned_running_task(conn, task_id, worker_id, lease_epoch)
         if row["status"] != "running":
             raise TaskManagerError(f"Cannot renew a task with status {row['status']}.")
         conn.execute(
@@ -414,13 +430,15 @@ def renew_lease(task_id: int, worker_id: str, *, lease_seconds: int = 300) -> di
     return _task(updated)  # type: ignore[return-value]
 
 
-def save_checkpoint(task_id: int, worker_id: str, checkpoint: dict[str, Any]) -> dict[str, Any]:
+def save_checkpoint(
+    task_id: int, worker_id: str, checkpoint: dict[str, Any], *, lease_epoch: int
+) -> dict[str, Any]:
     encoded = _json(checkpoint, field_name="Task checkpoint")
     now = _timestamp()
     with db.learning_connection() as conn:
         # Hold the write reservation across the ownership check and checkpoint write.
         conn.execute("BEGIN IMMEDIATE")
-        row = _owned_running_task(conn, task_id, worker_id)
+        row = _owned_running_task(conn, task_id, worker_id, lease_epoch)
         if row["status"] == "cancel_requested":
             conn.execute(
                 """UPDATE task_queue SET status='cancelled', checkpoint_json=?, lease_owner=NULL,
@@ -440,7 +458,9 @@ def save_checkpoint(task_id: int, worker_id: str, checkpoint: dict[str, Any]) ->
     return _task(updated)  # type: ignore[return-value]
 
 
-def complete_task(task_id: int, worker_id: str, result: dict[str, Any]) -> dict[str, Any]:
+def complete_task(
+    task_id: int, worker_id: str, result: dict[str, Any], *, lease_epoch: int
+) -> dict[str, Any]:
     encoded = _json(result, field_name="Task result")
     now = _timestamp()
     with db.learning_connection() as conn:
@@ -459,7 +479,7 @@ def complete_task(task_id: int, worker_id: str, result: dict[str, Any]) -> dict[
 
 
 def fail_task(
-    task_id: int, worker_id: str, error: str, *, retry: bool = True
+    task_id: int, worker_id: str, error: str, *, lease_epoch: int, retry: bool = True
 ) -> dict[str, Any]:
     """Honor pending pause/cancel controls before scheduling bounded retry backoff."""
     if not isinstance(error, str) or not error.strip():
@@ -601,7 +621,7 @@ def resume_task(task_id: int, *, scheduled_at: datetime | None = None) -> dict[s
     return _task(updated)  # type: ignore[return-value]
 
 
-def get_worker_control(task_id: int, worker_id: str) -> str:
+def get_worker_control(task_id: int, worker_id: str, *, lease_epoch: int) -> str:
     """Return running/pause_requested/cancel_requested for cooperative worker polling."""
     with db.learning_connection() as conn:
         row = _owned_running_task(conn, task_id, worker_id)

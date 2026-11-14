@@ -94,7 +94,8 @@ def test_new_runtime_reclaims_expired_lease_and_resumes_from_checkpoint(runtime_
     claimed = task_manager.claim_next_task("previous-process", lease_seconds=30)
     assert claimed["id"] == task["id"]
     task_manager.save_checkpoint(
-        task["id"], "previous-process", {"phase": "before_restart", "cursor": 17}
+        task["id"], "previous-process", {"phase": "before_restart", "cursor": 17},
+        lease_epoch=claimed["lease_epoch"],
     )
     with db.learning_connection() as conn:
         conn.execute(
@@ -230,6 +231,7 @@ def test_expired_sandbox_lease_is_reconciled_before_cleanup_callback(runtime_sto
     task_manager.save_checkpoint(
         task["id"], "crashed-worker",
         {"phase": "sandbox_started", "source_sha256": "a" * 64},
+        lease_epoch=claimed["lease_epoch"],
     )
     with db.learning_connection() as conn:
         conn.execute(

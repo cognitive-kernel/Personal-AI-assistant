@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import logging
 import sqlite3
 import threading
+import uuid
 import time
 from typing import Any, Callable
 
@@ -65,11 +66,12 @@ class TaskInterrupted(RuntimeError):
 class TaskContext:
     task_id: int
     worker_id: str
+    lease_epoch: int
     checkpoint_data: dict[str, Any] | None = None
     lease_seconds: int = 300
 
     def checkpoint(self, value: dict[str, Any]) -> dict[str, Any]:
-        saved = task_manager.save_checkpoint(self.task_id, self.worker_id, value)
+        saved = task_manager.save_checkpoint(self.task_id, self.worker_id, value, lease_epoch=self.lease_epoch)
         self.checkpoint_data = saved["checkpoint"]
         if saved["status"] == "paused":
             raise TaskInterrupted("Task paused at checkpoint.")
@@ -78,14 +80,14 @@ class TaskContext:
         return saved
 
     def control_status(self) -> str:
-        return task_manager.get_worker_control(self.task_id, self.worker_id)
+        return task_manager.get_worker_control(self.task_id, self.worker_id, lease_epoch=self.lease_epoch)
 
     def heartbeat(self) -> dict[str, Any]:
         status = self.control_status()
         if status != "running":
             self.checkpoint(self.checkpoint_data or {})
         return task_manager.renew_lease(
-            self.task_id, self.worker_id, lease_seconds=self.lease_seconds
+            self.task_id, self.worker_id, lease_epoch=self.lease_epoch, lease_seconds=self.lease_seconds
         )
 
 
@@ -110,7 +112,8 @@ class TaskWorker:
             for key, value in handlers.items()
         ):
             raise ValueError("handlers must map non-empty task types to callable handlers.")
-        self.worker_id = worker_id.strip()
+        self.worker_label = worker_id.strip()
+        self.worker_id = f"{self.worker_label}:{uuid.uuid4().hex}"
         if exclude_task_types is not None and (
             not isinstance(exclude_task_types, tuple) or not exclude_task_types
             or any(not isinstance(item, str) or not item.strip() for item in exclude_task_types)
@@ -162,7 +165,8 @@ class TaskWorker:
                     return
                 renewal_started_at = time.monotonic()
                 task_manager.renew_lease(
-                    context.task_id, context.worker_id, lease_seconds=self.lease_seconds
+                    context.task_id, context.worker_id,
+                    lease_epoch=context.lease_epoch, lease_seconds=self.lease_seconds
                 )
                 # Start the local deadline before the DB call so slow commits do
                 # not make the in-memory lease window more generous than SQLite's.
@@ -205,6 +209,7 @@ class TaskWorker:
                 task["id"],
                 self.worker_id,
                 f"No registered handler for task type: {task['task_type']}",
+                lease_epoch=int(task["lease_epoch"]),
                 retry=False,
             )
             return True
@@ -212,6 +217,7 @@ class TaskWorker:
         context = TaskContext(
             task_id=task["id"],
             worker_id=self.worker_id,
+            lease_epoch=int(task["lease_epoch"]),
             checkpoint_data=task["checkpoint"],
             lease_seconds=self.lease_seconds,
         )
@@ -229,6 +235,7 @@ class TaskWorker:
                     task["id"],
                     self.worker_id,
                     f"HeartbeatStartupError: {type(exc).__name__}: {exc}",
+                    lease_epoch=int(task["lease_epoch"]),
                     retry=True,
                 )
             except Exception:
@@ -248,7 +255,7 @@ class TaskWorker:
             if control != "running":
                 context.checkpoint(context.checkpoint_data or {})
                 return True
-            task_manager.complete_task(task["id"], self.worker_id, result)
+            task_manager.complete_task(task["id"], self.worker_id, result, lease_epoch=context.lease_epoch)
         except TaskInterrupted:
             # Checkpoint settled a pause/cancel request; do not overwrite that state.
             return True
@@ -272,6 +279,7 @@ class TaskWorker:
                         task["id"],
                         self.worker_id,
                         f"{type(exc).__name__}: {exc}",
+                        lease_epoch=context.lease_epoch,
                         retry=is_retryable_task_error(exc),
                     )
             except (TaskInterrupted, TaskManagerError):

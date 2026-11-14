@@ -492,12 +492,12 @@ def test_worker_retries_when_result_persistence_fails(worker_store, monkeypatch)
     complete = task_manager.complete_task
     calls = 0
 
-    def fail_first_persist(task_id, worker_id, result):
+    def fail_first_persist(task_id, worker_id, result, *, lease_epoch):
         nonlocal calls
         calls += 1
         if calls == 1:
             raise RuntimeError("simulated result persistence failure")
-        return complete(task_id, worker_id, result)
+        return complete(task_id, worker_id, result, lease_epoch=lease_epoch)
 
     monkeypatch.setattr(task_manager, "complete_task", fail_first_persist)
     worker = TaskWorker(
