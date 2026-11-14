@@ -15,7 +15,7 @@ from .module_settings import require_module_enabled
 router = APIRouter(
     prefix="/api/sandbox",
     tags=["sandbox"],
-    dependencies=[Depends(require_loopback_client), Depends(require_module_enabled("sandbox"))],
+    dependencies=[Depends(require_loopback_client)],
 )
 
 
@@ -73,7 +73,7 @@ def revoke_sandbox_consent() -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="Sandbox consent could not be revoked.") from exc
 
 
-@router.post("/run", status_code=202)
+@router.post("/run", status_code=202, dependencies=[Depends(require_module_enabled("sandbox"))])
 def queue_sandbox_execution(request: SandboxRunRequest) -> dict[str, Any]:
     configured_source_limit = int(get_settings().get("programming_source_max_chars", 12000))
     if len(request.source_code) > configured_source_limit:
