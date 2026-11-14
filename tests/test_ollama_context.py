@@ -38,6 +38,24 @@ def test_context_selection_uses_model_and_live_memory_without_fixed_token_floor(
     assert result["selected_context_tokens"] <= result["requested_context_tokens"]
 
 
+def test_context_selection_accounts_for_loaded_weights_and_kv_cache():
+    data = payload()
+    data["available_memory_bytes"] = 10 * GIB
+    data["model_is_loaded"] = True
+    data["running_context_tokens"] = 8192
+    result = select_context_window(**data)
+    assert result["model_is_loaded"] is True
+    assert result["hardware_maximum_context_tokens"] == 40960
+    assert result["selected_context_tokens"] == 40960
+
+
+def test_context_selection_fails_closed_when_loaded_context_is_unknown():
+    data = payload()
+    data["model_is_loaded"] = True
+    with pytest.raises(OllamaModelMetadataError, match="currently allocated positive context"):
+        select_context_window(**data)
+
+
 def test_context_selection_accepts_model_context_below_former_codex_minimum():
     data = payload()
     data["model_info"]["llama.context_length"] = 8192
