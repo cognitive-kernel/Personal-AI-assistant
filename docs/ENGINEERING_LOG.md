@@ -1,5 +1,24 @@
 # Engineering Continuity Log
 
+## 2026-11-14 — PR #757 follow-up: wait for process-tree drain
+
+### Additional root cause
+- The first process-tree supervisor sent termination signals and closed Job Objects, but those operations initiate asynchronous shutdown. The controller could return and release its repository lock before every descendant had actually exited.
+- On Windows, a process created suspended but not successfully assigned to the Job Object was outside the job's kill-on-close boundary; merely closing the job would leave that suspended process alive.
+
+### Corrective change
+- Added a bounded Windows Job Object wait using the Job Object's signaled state. The controller now terminates any remaining job members and waits for the object to become signaled before returning.
+- POSIX cleanup now waits for all live (non-zombie) members of the owned process group, escalates from SIGTERM to SIGKILL, and fails closed if live members remain after the cleanup deadline.
+- Windows assignment-failure cleanup explicitly kills and reaps a child that never entered the Job Object.
+- Added tests for synchronous POSIX descendant shutdown, Windows Job Object drain before return, and suspended-child cleanup after assignment failure.
+
+### Validation boundary
+- Exact-head CI is required for these changes; earlier green CI applies only to the preceding commit and is not evidence for this follow-up.
+- No target-host process, Runner, or autonomous service was started. Durable Pause remains enabled.
+
+---
+
+
 ## 2026-11-14 — PR #757 follow-up: controller command process-tree ownership
 
 ### Root cause
