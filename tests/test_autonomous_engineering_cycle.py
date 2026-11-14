@@ -140,6 +140,55 @@ def test_failed_local_and_github_checks_retry_same_task_then_wait_for_owner_merg
 
 
 
+def test_run_cycle_bounds_failed_codex_attempts_and_preserves_task(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("Complete the selected task.", encoding="utf-8")
+    monkeypatch.setattr(cycle, "ROOT", tmp_path)
+    monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("GH_REPO", "owner/repository")
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "autonomous-state"))
+    monkeypatch.setattr(cycle, "start_checkpoint_watcher", lambda *args: None)
+    stopped = []
+    monkeypatch.setattr(cycle, "stop_checkpoint_watcher", lambda *args: stopped.append(args))
+    monkeypatch.setattr(cycle, "record", lambda *args, **kwargs: None)
+    monkeypatch.setattr(cycle, "snapshot", lambda *args: None)
+    monkeypatch.setattr(cycle, "api", lambda *args, **kwargs: [])
+    monkeypatch.setattr(cycle, "find_open_autonomous_pr", lambda *args: None)
+    monkeypatch.setattr(cycle, "restore_checkpoint", lambda *args: False)
+    monkeypatch.setattr(
+        cycle, "checked",
+        lambda command, **kwargs: (
+            "base-sha" if command[:3] == ["git", "rev-parse", "HEAD"]
+            else "codex/local-engineering-123-1-task-1" if command[1:3] == ["branch", "--show-current"]
+            else ""
+        ),
+    )
+    monkeypatch.setattr(
+        cycle, "clear_checkpoint",
+        lambda *args: (_ for _ in ()).throw(AssertionError("failed task checkpoint must not be cleared")),
+    )
+    calls = {"codex": 0}
+
+    def fake_run(command, *, env=None, capture=False):
+        assert any("autonomous_engineering_progress.py" in str(part) for part in command)
+        calls["codex"] += 1
+        return subprocess.CompletedProcess(command, 1, "", "simulated Codex failure")
+
+    monkeypatch.setattr(cycle, "run", fake_run)
+    args = type("Args", (), {
+        "run_id": "123", "run_attempt": "1", "model": "test-model",
+        "prompt": str(prompt), "mode": "continuous",
+    })()
+
+    with pytest.raises(RuntimeError, match="attempt limit reached \(3\)"):
+        cycle.run_cycle(args)
+
+    assert calls["codex"] == 3
+    assert len(stopped) == 3
+    assert prompt.read_text(encoding="utf-8") == "Complete the selected task."
+
+
 def test_find_open_autonomous_pr_detects_pending_generated_review(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(cycle, "api", lambda *args: [{
         "number": 77,
