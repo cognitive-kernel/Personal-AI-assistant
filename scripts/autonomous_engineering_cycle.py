@@ -95,6 +95,11 @@ try:
 except ImportError:  # Direct script execution from the scripts directory.
     from autonomous_engineering_codex_config import CODEX_TASK_TIMEOUT_SECONDS
 
+try:
+    from .autonomous_engineering_command_runner import run_command as _run_command
+except ImportError:  # Direct script execution from the scripts directory.
+    from autonomous_engineering_command_runner import run_command as _run_command
+
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKPOINT_SCRIPT = Path(__file__).resolve().with_name("autonomous_engineering_checkpoint.py")
@@ -126,10 +131,9 @@ def run(
     if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or timeout_seconds < 1:
         raise ValueError("Command timeout must be a positive integer.")
     try:
-        return subprocess.run(
-            command, cwd=ROOT, env=env, text=True, encoding="utf-8", errors="replace",
-            check=False, stdout=subprocess.PIPE if capture else None,
-            stderr=subprocess.PIPE if capture else None, timeout=timeout_seconds,
+        return _run_command(
+            command, cwd=ROOT, env=env, capture=capture,
+            timeout_seconds=timeout_seconds,
         )
     except subprocess.TimeoutExpired as exc:
         executable = Path(command[0]).name if command else "<empty-command>"
