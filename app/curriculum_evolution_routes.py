@@ -8,11 +8,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from . import curriculum_evolution
 from .task_routes import require_loopback_client
+from .module_settings import require_module_enabled
 
 router = APIRouter(
     prefix="/api/learning",
     tags=["curriculum-evolution"],
-    dependencies=[Depends(require_loopback_client)],
+    dependencies=[Depends(require_loopback_client), Depends(require_module_enabled("topic_learning"))],
 )
 
 
