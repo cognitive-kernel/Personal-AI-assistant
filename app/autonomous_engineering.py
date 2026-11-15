@@ -52,7 +52,7 @@ class ManualTaskRequest(BaseModel):
 
 
 class RunControlRequest(BaseModel):
-    run_id: StrictStr = Field(min_length=1, max_length=24, pattern=r"^[0-9]+$")
+    run_id: StrictStr = Field(min_length=1, max_length=24)
 
 
 def _repository() -> str:
@@ -507,6 +507,8 @@ def resume_autonomous_engineering() -> dict[str, Any]:
 
 @router.post("/cancel")
 def cancel_autonomous_engineering(payload: RunControlRequest) -> dict[str, Any]:
+    if not payload.run_id.isdigit():
+        raise HTTPException(status_code=422, detail="شناسهٔ اجرای انتخاب‌شده معتبر نیست.")
     gh = shutil.which("gh")
     if not gh:
         raise HTTPException(status_code=503, detail="GitHub CLI نصب نشده است.")
