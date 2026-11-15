@@ -19,6 +19,11 @@ on:
         required: false
         type: boolean
         default: false
+      repair_pending_task_owner:
+        description: "Explicitly rebind only mismatched owner metadata after GitHub verifies its previous run failed; preserves task text and archives the old owner record"
+        required: false
+        type: boolean
+        default: false
       context_length:
         description: "Optional manual Ollama context token count; blank selects a safe value automatically"
         required: false
@@ -153,12 +158,13 @@ jobs:
           persist-credentials: false
 
       - name: Persist manual task under the controller's runner and concurrency ownership
-        if: github.event_name == 'workflow_dispatch' && inputs.manual_task != ''
+        if: github.event_name == 'workflow_dispatch' && (inputs.manual_task != '' || inputs.repair_pending_task_owner)
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           MANUAL_TASK: ${{ inputs.manual_task || '' }}
           REPLACE_PENDING_TASK: ${{ inputs.replace_pending_task && 'true' || 'false' }}
+          REPAIR_PENDING_TASK_OWNER: ${{ inputs.repair_pending_task_owner && 'true' || 'false' }}
         shell: powershell
         run: |
           & "$env:GITHUB_WORKSPACE\scripts\persist_autonomous_manual_task.ps1"
