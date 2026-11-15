@@ -85,6 +85,9 @@ function Get-AutonomousTaskOwnerRecord {
             [string]$record.rebind_reason -cne "owner_authorized_task_content_reconciliation" -or
             -not ($record.rebind_authorization_run_id -is [string]) -or
             [string]$record.rebind_authorization_run_id -notmatch '^[0-9]{1,20}\z' -or
+            -not ($record.rebind_authorization_run_attempt -is [int] -or $record.rebind_authorization_run_attempt -is [long]) -or
+            -not [int]::TryParse([string]$record.rebind_authorization_run_attempt, [ref]$authorizationAttempt) -or
+            $authorizationAttempt -lt 1 -or
             -not [double]::TryParse([string]$record.rebound_at, [ref]$reboundAt) -or
             [double]::IsNaN($reboundAt) -or [double]::IsInfinity($reboundAt) -or $reboundAt -le 0
         ) {
