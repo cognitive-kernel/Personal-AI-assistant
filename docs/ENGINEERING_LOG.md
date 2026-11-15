@@ -9,7 +9,7 @@
 ### Corrective change
 - Move isolated project virtual-environment creation and `.[dev]` installation to immediately after Ollama context preflight and before the real Codex sandbox smoke.
 - Verify imports of `psutil` and `fastapi` under the exact virtual-environment interpreter before proceeding.
-- Add the virtual-environment Scripts directory to the subsequent-step PATH and invoke the Codex progress controller explicitly with `.venv\\Scripts\\python.exe`, preventing a system-Python/venv split.
+- Add the virtual-environment Scripts directory to the subsequent-step PATH and export the verified interpreter path through `AUTONOMOUS_ENGINEERING_PYTHON` and invoke the Codex progress controller through that variable, preventing a system-Python/venv split.
 - Remove the obsolete post-smoke dependency-install step; do not add a duplicate dependency declaration or a fallback that bypasses MXC.
 - Add a static workflow regression asserting dependency setup and interpreter selection occur before the Codex smoke.
 
