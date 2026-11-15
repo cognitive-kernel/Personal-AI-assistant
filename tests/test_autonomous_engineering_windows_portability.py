@@ -8,6 +8,7 @@ def test_autonomous_runner_uses_the_loopback_api_not_a_user_scoped_ollama_cli():
     workflow = (ROOT / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
     provision = (ROOT / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
     runner_check = (ROOT / "scripts" / "check_autonomous_runner.ps1").read_text(encoding="utf-8")
+    agent_check = (ROOT / "scripts" / "check_autonomous_agent.ps1").read_text(encoding="utf-8")
     diagnostic = (ROOT / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml").read_text(encoding="utf-8")
     runtime = (ROOT / "scripts" / "AutonomousOllamaRuntime.psm1").read_text(encoding="utf-8")
 
@@ -15,6 +16,7 @@ def test_autonomous_runner_uses_the_loopback_api_not_a_user_scoped_ollama_cli():
     assert "ollama --version" not in workflow
     assert "Get-Command ollama" not in provision
     assert "Get-Command ollama" not in runner_check
+    assert "Get-Command ollama" not in agent_check
     assert "Get-Command ollama" not in diagnostic
     assert "ollama --version" not in diagnostic
     assert "AutonomousOllamaRuntime.psm1" in diagnostic
