@@ -165,3 +165,12 @@ the directory ACL is a separate installation concern and must grant the particip
 application/Runner identities the access required by their roles. The lock is local
 to one host and is not a distributed lock. Keep the Runner service non-administrator;
 do not loosen upstream Codex sandbox ACLs or substitute unsandboxed execution.
+
+### Dashboard admission and pending-work safety
+
+The dashboard and Windows Runner resolve the durable state directory through the same machine-aware `execution_state_directory()` contract. The dashboard checks durable task, task-owner, pending-PR, and interrupted-cleanup markers while holding the shared cross-process file lock before accepting a **new non-empty manual task**. It does not read or return the task text. If state cannot be inspected or the lock cannot be acquired, manual admission fails closed. It also checks GitHub for an open controller-owned PR before submitting a new manual task.
+
+A non-empty manual task is rejected while prior work is pending; the dashboard does not offer a replacement or delete/quarantine existing state. An empty dispatch remains available to resume/reconcile the already-persisted task or pending PR. The workflow's own serialized persistence and capture checks remain authoritative and are not bypassed by the dashboard preflight.
+
+The recovery circuit breaker counts only a failure of the exact `Execute one isolated task, validate, and publish for owner review` workflow step. Admission rejection, schedule gating, prerequisite/setup/sandbox/dependency failures, post-execution checks, and job-level timeouts without a failed-step identity do not count as a task-execution failure. Unknown or malformed GitHub job/step evidence fails closed. This prevents an infrastructure/readiness failure from consuming the coding-task retry budget or dispatching a duplicate task.
+
