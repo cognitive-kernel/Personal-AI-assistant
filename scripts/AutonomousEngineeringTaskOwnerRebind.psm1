@@ -62,7 +62,7 @@ function Rebind-AutonomousTaskOwnerRecord {
 
     $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0
     $record = [ordered]@{
-        schema_version = 1
+        schema_version = 2
         task_sha256 = $newDigest
         submitted_run_id = [string]$existing.submitted_run_id
         submitted_attempt = $submittedAttempt
