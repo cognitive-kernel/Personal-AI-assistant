@@ -60,6 +60,7 @@ def _validate_owner_record(record: Any, task: str) -> dict[str, Any]:
         rebound_at = record.get("rebound_at")
         previous_digest = record.get("previous_task_sha256")
         authorization_run_id = record.get("rebind_authorization_run_id")
+        authorization_attempt = record.get("rebind_authorization_run_attempt")
         if (
             not isinstance(previous_digest, str)
             or not re.fullmatch(r"[0-9a-f]{64}", previous_digest)
