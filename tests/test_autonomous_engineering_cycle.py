@@ -713,7 +713,7 @@ def test_checkpoint_readiness_is_committed_without_a_secondary_marker(
     assert metadata["watcher_ready"] is True
     assert metadata["watcher_pid"] == __import__("os").getpid()
     assert not (state_root / "worktree-checkpoint-106-1.ready").exists()
-    assert not (state / "worktree-checkpoint-106-1.error").exists()
+    assert not (state_root / "worktree-checkpoint-106-1.error").exists()
 
 def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     import json
