@@ -136,7 +136,6 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'href="/ai-learning"' in page
     assert 'href="/autonomous-engineering" aria-current="page"' in page
     assert 'id="dispatch-agent"' in page
-    assert 'id="cancel-agent"' in page
     assert 'id="pause-agent"' in page
     assert 'id="resume-agent"' in page
     assert "OPENAI_API_KEY" not in page
@@ -153,6 +152,14 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="send-agent-task"' in page
     assert 'id="save-agent-settings"' in page
     assert 'id="storage-state"' in page
+    assert 'id="refresh-storage"' in page
+    assert 'id="cleanup-storage"' in page
+    assert 'id="run-diagnostic"' in page
+    assert 'id="diagnostic-location"' in page
+    assert "لغو همین اجرا" in agent_script
+    assert "diagnostic.source_file" in agent_script
+    assert "cleanup_eligible" in agent_script
+    assert 'runs/" + encodeURIComponent' in agent_script
     assert "checks.progress_storage_accessible" in agent_script
     assert "gpt-oss:20b" not in page
     assert 'هیچ مدل اصلی قابل انتخابی از Ollama شناسایی نشد' in agent_script
@@ -176,6 +183,9 @@ def test_autonomous_engineering_routes_are_registered():
     assert "/api/autonomous-engineering/cancel" in api_paths
     assert "/api/autonomous-engineering/pause" in api_paths
     assert "/api/autonomous-engineering/resume" in api_paths
+    assert "/api/autonomous-engineering/storage" in api_paths
+    assert "/api/autonomous-engineering/storage/cleanup" in api_paths
+    assert "/api/autonomous-engineering/runs/{run_id}" in api_paths
 
 def test_pause_sets_durable_repository_variable(monkeypatch):
     calls = []
@@ -1231,7 +1241,7 @@ def test_github_snapshot_inspects_same_run_window_as_schedule_gate(monkeypatch):
 
     run_command = next(command for command in calls if command[1:3] == ["run", "list"])
     assert run_command[run_command.index("--limit") + 1] == "30"
-    assert len(result["recent_runs"]) == 6
+    assert len(result["recent_runs"]) == 30
     assert result["recent_runs"][-1]["status"] == "queued"
 
 
@@ -1256,9 +1266,9 @@ def test_cancel_finds_active_run_after_ten_newer_completed_runs(monkeypatch):
 
     monkeypatch.setattr(agent, "_run", fake_run)
 
-    result = agent.cancel_autonomous_engineering()
+    result = agent.cancel_autonomous_engineering(agent.RunControlRequest(run_id="999"))
 
-    assert result["run_id"] == 999
+    assert result["run_id"] == "999"
     list_command = next(command for command in calls if command[1:3] == ["run", "list"])
     assert list_command[list_command.index("--limit") + 1] == "30"
     assert calls[-1][1:3] == ["run", "cancel"]
