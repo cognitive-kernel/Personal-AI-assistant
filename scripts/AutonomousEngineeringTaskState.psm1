@@ -112,6 +112,29 @@ function Repair-AutonomousTaskOwnerRecord {
     )
 
     $existing = $null
+    $rawOwnerRecord = $null
+    try {
+        $rawOwnerText = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+        $rawOwnerRecord = $rawOwnerText | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        $rawOwnerRecord = $null
+    }
+    if (
+        $null -ne $rawOwnerRecord -and
+        $rawOwnerRecord.task_sha256 -is [string] -and
+        [string]$rawOwnerRecord.task_sha256 -cmatch '^[0-9a-fA-F]{64}\z'
+    ) {
+        $storedDigest = [string]$rawOwnerRecord.task_sha256
+        $expectedDigest = Get-AutonomousTaskDigest -Task $Task
+        if (-not [string]::Equals(
+            $storedDigest,
+            $expectedDigest,
+            [System.StringComparison]::OrdinalIgnoreCase
+        )) {
+            throw "Pending task owner digest does not match the durable task; preserving both records."
+        }
+    }
+
     try {
         $existing = Get-AutonomousTaskOwnerRecord -Path $Path -Task $Task
     } catch {
