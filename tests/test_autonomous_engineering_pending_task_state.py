@@ -97,6 +97,36 @@ def test_task_owner_replace_failure_preserves_previous_record_and_cleans_temp(
     assert not list(tmp_path.glob("pending-manual-task-owner.json.*.tmp"))
 
 
+def test_task_owner_temp_create_collision_preserves_other_process_file(tmp_path: Path, monkeypatch):
+    import types
+    import scripts.autonomous_engineering_pending_task_state as owner_state
+
+    task = "A colliding temporary path must never be removed by this process."
+    with durable_state_lock(tmp_path):
+        claim_pending_task_owner_unlocked(
+            tmp_path, task, "5201", 1, source="manual_dispatch",
+        )
+
+    owner_path = pending_task_owner_path(tmp_path)
+    fixed_time = 123456789
+    fixed_uuid = "f" * 32
+    temporary = owner_path.with_name(
+        f"{owner_path.name}.{os.getpid()}.{fixed_time}.{fixed_uuid}.tmp"
+    )
+    sentinel = b"owned by a different process"
+    temporary.write_bytes(sentinel)
+    monkeypatch.setattr(owner_state.time, "time_ns", lambda: fixed_time)
+    monkeypatch.setattr(owner_state.uuid, "uuid4", lambda: types.SimpleNamespace(hex=fixed_uuid))
+
+    with durable_state_lock(tmp_path):
+        with pytest.raises(FileExistsError):
+            claim_pending_task_owner_unlocked(
+                tmp_path, task, "5202", 1, source="recovery",
+            )
+
+    assert temporary.read_bytes() == sentinel
+
+
 def test_task_owner_rejects_corrupt_or_unsupported_records(tmp_path: Path):
     owner_path = pending_task_owner_path(tmp_path)
     owner_path.parent.mkdir(parents=True, exist_ok=True)
