@@ -1047,6 +1047,8 @@ def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkey
     monkeypatch.setattr(progress, "codex_command", lambda executable, arguments, **kwargs: ["cmd.exe", "/d", "/c", "call", executable, *arguments])
     monkeypatch.setattr(progress, "persist", lambda record: True)
     class NoOpProcessJob:
+        CREATE_SUSPENDED = progress.WindowsProcessJob.CREATE_SUSPENDED
+
         def __enter__(self):
             return self
 
