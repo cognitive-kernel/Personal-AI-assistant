@@ -175,6 +175,10 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     $installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
     Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid
+    $runnerTempPath = Join-Path $RunnerRoot "_work\_temp"
+    New-Item -ItemType Directory -Path $runnerTempPath -Force | Out-Null
+    Set-AutonomousDirectoryAcl -Path $runnerTempPath -RunnerSid $runnerSid -AdditionalModifySid $appSid
+    [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_TEMP", $runnerTempPath, "Machine")
     Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -ReadOnlySid $appSid -AdditionalModifySid $installerSid
     try {
         Ensure-AutonomousStateOwnerLabel
@@ -214,8 +218,12 @@ $runnerIsAdministrator = @(
 if ($runnerIsAdministrator) { throw "Runner account is a direct member of the local Administrators group; use a least-privilege identity." }
 New-Item -ItemType Directory -Path $RunnerRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
+$runnerTempPath = Join-Path $RunnerRoot "_work\_temp"
+New-Item -ItemType Directory -Path $runnerTempPath -Force | Out-Null
 $installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid
+Set-AutonomousDirectoryAcl -Path $runnerTempPath -RunnerSid $runnerSid -AdditionalModifySid $appSid
+[Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_TEMP", $runnerTempPath, "Machine")
 Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -ReadOnlySid $appSid
 $token = (& $gh.Source api --method POST "repos/$Repository/actions/runners/registration-token" --jq ".token")
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($token)) { throw "Could not obtain registration token; verify Administration: write permission." }
