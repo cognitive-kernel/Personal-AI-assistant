@@ -95,3 +95,14 @@ def test_unknown_historical_failure_blocks_recovery():
 def test_triggering_run_must_exist_in_main_history():
     with pytest.raises(ValueError, match="missing from history"):
         retryable_failure_streak([], {}, failed_run_id=123)
+
+
+def test_classifier_names_match_the_autonomous_workflow_contract():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+
+    assert "  schedule-gate:" in workflow
+    assert "  codex:" in workflow
+    assert MANUAL_TASK_PERSIST_STEP in workflow
