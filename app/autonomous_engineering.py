@@ -466,13 +466,13 @@ def autonomous_engineering_storage() -> dict[str, Any]:
 
 @router.post("/storage/cleanup")
 def cleanup_autonomous_engineering_storage() -> dict[str, Any]:
-    status = collect_status()
-    runs = status.get("github", {}).get("recent_runs", [])
+    status = _github_snapshot()
+    runs = status.get("recent_runs", [])
     active = any(
         isinstance(item, dict) and item.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"}
         for item in runs
     )
-    if not status.get("github", {}).get("runs_available", False):
+    if not status.get("runs_available", False):
         raise HTTPException(status_code=503, detail="وضعیت اجراهای GitHub قابل تأیید نیست؛ پاک‌سازی برای حفظ فایل‌های اجرای فعال متوقف شد.")
     return cleanup_storage(active_run=active)
 
