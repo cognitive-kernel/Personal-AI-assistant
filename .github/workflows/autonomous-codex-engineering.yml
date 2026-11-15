@@ -170,19 +170,13 @@ jobs:
           Write-Host "Runner identity:"
           whoami
           $python = Get-Command python -ErrorAction Stop
-          $ollama = Get-Command ollama -ErrorAction Stop
           $pythonDirectory = Split-Path -Parent $python.Source
           $scriptsPath = Join-Path $pythonDirectory "Scripts"
-          $ollamaDirectory = Split-Path -Parent $ollama.Source
           & $python.Source --version
           if ($LASTEXITCODE -ne 0) {
             throw "Python cannot execute under the Runner service identity."
           }
-          & $ollama.Source --version
-          if ($LASTEXITCODE -ne 0) {
-            throw "Ollama CLI cannot execute under the Runner service identity."
-          }
-          $pathEntries = @($pythonDirectory, $ollamaDirectory)
+          $pathEntries = @($pythonDirectory)
           if (Test-Path -LiteralPath $scriptsPath -PathType Container) {
             $pathEntries += $scriptsPath
           }
@@ -193,11 +187,7 @@ jobs:
             throw "Python is not resolvable through PATH under the Runner service identity."
           }
           (Get-Command python).Source | Write-Host
-          & $ollama.Source --version
-          if ($LASTEXITCODE -ne 0) {
-            throw "Ollama CLI cannot execute under the Runner service identity."
-          }
-          Write-Host "System-wide Python and Ollama are accessible and configured for all subsequent workflow steps."
+          Write-Host "Python is accessible. Ollama is validated independently through its loopback API."
 
       - name: Recover only the latest owned checkpoint through the run-scoped controller
         shell: powershell
@@ -466,21 +456,19 @@ jobs:
           if ($principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {
             throw "The autonomous Runner must use a non-administrator service account"
           }
-          $ollama = Get-Command ollama -ErrorAction Stop
+          Import-Module "$env:GITHUB_WORKSPACE\scripts\AutonomousOllamaRuntime.psm1" -Force
           $codex = Get-Command codex -ErrorAction Stop
-          $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 5 -MaximumRedirection 0
+          $tags = @(Get-AutonomousOllamaModelCatalog -TimeoutSeconds 5)
           $model = [string]$env:AUTONOMOUS_ENGINEERING_MODEL
           if ([string]::IsNullOrWhiteSpace($model)) {
             throw "No model is saved in repository variable AUTONOMOUS_ENGINEERING_MODEL. Select and save an installed model in /autonomous-engineering first."
           }
-          $installed = @($tags.models | ForEach-Object { $_.name }) -contains $model
+          $installed = Test-AutonomousOllamaModelInstalled -Model $model -Catalog $tags
           if (-not $installed) {
-            throw "Required local model '$model' is not installed. Run: ollama pull $model"
+            throw "Required local model '$model' is not installed in the local Ollama API."
           }
           codex --version
           if ($LASTEXITCODE -ne 0) { throw "Codex CLI is not executable in the Runner service account" }
-          ollama --version
-          if ($LASTEXITCODE -ne 0) { throw "Ollama CLI is not executable in the Runner service account" }
 
       - name: Verify the selected model's allocated Ollama context
         id: context_preflight

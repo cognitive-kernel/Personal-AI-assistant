@@ -125,6 +125,30 @@ jobs:
           }
           Write-Host "Parsed $($files.Count) PowerShell scripts/modules successfully."
 
+      - name: Test shared Ollama runtime API contract
+        shell: pwsh
+        run: |
+          Import-Module "$env:GITHUB_WORKSPACE\scripts\AutonomousOllamaRuntime.psm1" -Force
+          $catalog = @(ConvertFrom-AutonomousOllamaTagsResponse -Response ([pscustomobject]@{
+            models = @(
+              [pscustomobject]@{ name = "gpt-oss:20b" },
+              [pscustomobject]@{ name = "qwen2.5:7b" }
+            )
+          }))
+          if ($catalog.Count -ne 2) { throw "Ollama model catalog normalization failed." }
+          if (-not (Test-AutonomousOllamaModelInstalled -Model "gpt-oss:20b" -Catalog $catalog)) {
+            throw "Installed model lookup failed."
+          }
+          foreach ($invalid in @(
+            [pscustomobject]@{},
+            [pscustomobject]@{ models = @([pscustomobject]@{ name = "" }) }
+          )) {
+            $rejected = $false
+            try { $null = ConvertFrom-AutonomousOllamaTagsResponse -Response $invalid } catch { $rejected = $true }
+            if (-not $rejected) { throw "Malformed Ollama catalog was accepted." }
+          }
+          Write-Host "Ollama API catalog contract passed."
+
       - name: Verify Windows account identity portability
         shell: pwsh
         run: |

@@ -1565,4 +1565,5 @@ def test_autonomous_windows_workflows_do_not_pin_tools_to_a_specific_user_or_pyt
         assert r"c:\users\admin" not in lowered
         assert r"c:\program files\python311" not in lowered
         assert "get-command python" in lowered
-        assert "get-command ollama" in lowered
+        assert "get-command ollama" not in lowered
+        assert "autonomousollamaruntime.psm1" in lowered

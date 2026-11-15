@@ -21,6 +21,7 @@ if (-not [System.IO.Path]::IsPathRooted($RunnerRoot)) { throw "RunnerRoot must b
 $RunnerRoot = [System.IO.Path]::GetFullPath($RunnerRoot)
 Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsIdentity.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsPaths.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "AutonomousOllamaRuntime.psm1") -Force
 $runnerIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $RunnerAccount
 $appIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $AppAccount
 $runnerLocalName = Get-AutonomousLocalAccountName -AccountName $runnerIdentity
@@ -45,7 +46,6 @@ if ($RunnerRoot.Equals($progressPath, [StringComparison]::OrdinalIgnoreCase) -or
     throw "RunnerRoot and shared autonomous state directory must be separate, non-nested paths."
 }
 $appSid = Get-AutonomousWindowsAccountSid -AccountName $appIdentity
-$null = Get-Command ollama -ErrorAction Stop
 $node = Get-Command node -ErrorAction Stop
 $npm = Get-Command npm -ErrorAction Stop
 $git = Get-Command git -ErrorAction Stop
@@ -70,9 +70,9 @@ if ([string]::IsNullOrWhiteSpace($Model)) {
 if ($Model -match "(?i)-codex-ctx[0-9]+$") {
     throw "The saved model is an internal Codex context variant. Save the original Ollama model in the dashboard."
 }
-$tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 8 -MaximumRedirection 0
-if (@($tags.models | ForEach-Object { $_.name }) -notcontains $Model) {
-    throw "Saved model $Model is not installed. Install it with ollama pull $Model, then save it in the dashboard."
+$ollamaModels = @(Get-AutonomousOllamaModelCatalog -TimeoutSeconds 8)
+if (-not (Test-AutonomousOllamaModelInstalled -Model $Model -Catalog $ollamaModels)) {
+    throw "Saved model $Model is not installed in the local Ollama API. Install it through the configured Ollama server, then save it in the dashboard."
 }
 $modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -ContentType "application/json" -Body (@{ model = $Model; verbose = $true } | ConvertTo-Json -Compress) -TimeoutSec 15 -MaximumRedirection 0
 $architecture = [string]$modelInfo.details.family
