@@ -142,11 +142,8 @@ def report(title: str, message: str, *, error: bool = False) -> None:
     print(f"::{'error' if error else 'notice'} title={title}::{message.replace(chr(10), ' ')}")
     summary_path = os.getenv("GITHUB_STEP_SUMMARY")
     if summary_path:
-        Path(summary_path).write_text(
-            f"## {title}\n\n{message}\n",
-            encoding="utf-8",
-            errors="strict",
-        )
+        with Path(summary_path).open("a", encoding="utf-8") as summary:
+            summary.write(f"## {title}\n\n{message}\n")
 
 
 def main() -> int:
