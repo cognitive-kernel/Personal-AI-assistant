@@ -21,7 +21,7 @@ function ConvertFrom-AutonomousOllamaTagsResponse {
             throw "Ollama /api/tags returned a model entry without a valid name."
         }
     }
-    return ,$models
+    return $models
 }
 
 function Get-AutonomousOllamaModelCatalog {
@@ -33,7 +33,7 @@ function Get-AutonomousOllamaModelCatalog {
     } catch {
         throw "Ollama API is unavailable at 127.0.0.1:11434. $($_.Exception.Message)"
     }
-    return ,(ConvertFrom-AutonomousOllamaTagsResponse -Response $response)
+    return (ConvertFrom-AutonomousOllamaTagsResponse -Response $response)
 }
 
 function Test-AutonomousOllamaModelInstalled {
