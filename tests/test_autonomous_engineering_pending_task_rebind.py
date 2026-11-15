@@ -15,7 +15,6 @@ from scripts.autonomous_engineering_pending_task_state import (
 )
 
 
-REPOSITORY = "cognitive-kernel/Personal-AI-assistant"
 WORKFLOW_PATH = ".github/workflows/autonomous-codex-engineering.yml"
 
 
