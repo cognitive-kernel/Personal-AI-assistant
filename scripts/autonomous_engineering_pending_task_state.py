@@ -195,6 +195,18 @@ def reconcile_pending_task_owner_unlocked(
 
     try:
         existing = json.loads(raw.decode("utf-8"))
+        # A valid stored digest is an integrity boundary even when another
+        # schema field is malformed. Never quarantine/reassign across drift.
+        if isinstance(existing, dict):
+            stored_digest = existing.get("task_sha256")
+            if (
+                isinstance(stored_digest, str)
+                and re.fullmatch(r"[0-9a-fA-F]{64}", stored_digest)
+                and stored_digest.lower() != task_digest(task)
+            ):
+                raise RuntimeError(
+                    "Pending task owner digest does not match task content; preserving both records."
+                )
         _validate_owner_record(existing, task)
     except RuntimeError as exc:
         if "digest does not match task content" in str(exc):
