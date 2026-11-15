@@ -18,7 +18,7 @@
 - Keep the explicit owner-repair path narrowly scoped to a real task/owner digest mismatch. When the digest already matches, ordinary recovery claims the owner lease; the repair operation must reject an unnecessary rebind. Schema v2 therefore requires a changed previous/current digest and the single matching reconciliation reason.
 - Align Python and PowerShell schema-v2 validation: numeric GitHub run identifiers, recovery-only source, immutable authorization run ID plus positive attempt, valid previous digest, finite timestamp, and a reason consistent with whether the digest changed. Later recovery claims may advance the current owner without rewriting this audit identity.
 - Stage the replacement owner record with an exclusive temporary file, flush it to disk, validate the exact staged record through the shared PowerShell validator, then atomically replace the live sidecar while preserving the original bytes in a unique quarantine file.
-- Add regression cases for valid unchanged-digest recovery, digest reconciliation, mismatched authorization IDs, malformed run IDs, wrong recovery source, equal/unequal digest-reason contradictions, and PowerShell interoperability.
+- Add regression cases for valid unchanged-digest recovery, digest reconciliation, malformed authorization IDs/attempts, malformed run IDs, wrong recovery source, equal/unequal digest-reason contradictions, and PowerShell interoperability.
 
 ### Validation boundary
 - PR #762 remains Draft and stacked on PR #761. The exact head after these changes must complete the full CI matrix before implementation is considered GitHub-validated.
