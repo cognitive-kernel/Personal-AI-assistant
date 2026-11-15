@@ -106,3 +106,13 @@ def test_classifier_names_match_the_autonomous_workflow_contract():
     assert "  schedule-gate:" in workflow
     assert "  codex:" in workflow
     assert MANUAL_TASK_PERSIST_STEP in workflow
+
+
+def test_malformed_job_or_step_records_are_not_silently_ignored():
+    assert classify_failed_run([
+        {"name": "codex", "conclusion": "failure", "steps": []},
+        None,
+    ]) == UNKNOWN
+    assert classify_failed_run([
+        {"name": "codex", "conclusion": "failure", "steps": [None]},
+    ]) == UNKNOWN
