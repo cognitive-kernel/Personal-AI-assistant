@@ -56,6 +56,54 @@ def test_schema_v2_owner_requires_and_accepts_rebind_audit_fields(tmp_path: Path
     assert validated == record
 
 
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda record, task: record.update(previous_task_sha256=record["task_sha256"]),
+        lambda record, task: record.update(source="manual_dispatch"),
+        lambda record, task: record.update(rebind_authorization_run_id="999"),
+        lambda record, task: record.update(rebind_authorization_run_id="not-a-run-id"),
+        lambda record, task: record.update(owner_run_id="not-a-run-id"),
+        lambda record, task: record.update(schema_version=2.0),
+    ],
+    ids=[
+        "previous-digest-must-differ",
+        "schema-v2-is-recovery-only",
+        "authorization-must-match-owner",
+        "authorization-id-must-be-numeric",
+        "owner-id-must-be-numeric",
+        "schema-version-must-be-integer",
+    ],
+)
+def test_schema_v2_owner_rejects_inconsistent_audit_fields(
+    tmp_path: Path, mutation,
+):
+    task = "The durable task text remains unchanged."
+    now = time.time()
+    record = {
+        "schema_version": 2,
+        "task_sha256": task_digest(task),
+        "submitted_run_id": "100",
+        "submitted_attempt": 1,
+        "owner_run_id": "200",
+        "owner_attempt": 1,
+        "created_at": now,
+        "claimed_at": now,
+        "claim_count": 2,
+        "source": "recovery",
+        "previous_task_sha256": "a" * 64,
+        "rebind_reason": "owner_authorized_task_content_reconciliation",
+        "rebind_authorization_run_id": "200",
+        "rebound_at": now,
+    }
+    mutation(record, task)
+    owner_path = tmp_path / "pending-manual-task-owner.json"
+    owner_path.write_text(json.dumps(record), encoding="utf-8")
+
+    with pytest.raises(RuntimeError):
+        validate_pending_task_owner_unlocked(tmp_path, task, "200", 1)
+
+
 def test_schema_v2_owner_rejects_missing_reconciliation_audit(tmp_path: Path):
     task = "The durable task text remains unchanged."
     now = time.time()
