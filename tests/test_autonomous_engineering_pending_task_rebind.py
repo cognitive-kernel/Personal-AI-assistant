@@ -60,7 +60,7 @@ def test_schema_v2_owner_requires_and_accepts_rebind_audit_fields(tmp_path: Path
     assert validated == record
     claimed = claim_pending_task_owner_unlocked(tmp_path, task, "300", 2, source="recovery")
     assert claimed["schema_version"] == 2
-    assert claimed["owner_run_id"] == "next-run"
+    assert claimed["owner_run_id"] == "300"
     assert claimed["rebind_authorization_run_id"] == "200"
     assert claimed["previous_task_sha256"] == record["previous_task_sha256"]
     assert claimed["claim_count"] == 3
