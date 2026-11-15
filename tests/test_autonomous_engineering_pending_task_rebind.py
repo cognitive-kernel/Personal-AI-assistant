@@ -227,6 +227,30 @@ def test_powershell_validator_rejects_inconsistent_schema_v2_audit(
 
 
 @pytest.mark.skipif(os.name != "nt", reason="PowerShell task-owner interoperability is Windows-only")
+def test_powershell_repair_never_quarantines_malformed_owner_when_digest_drifted(tmp_path: Path):
+    root = Path(__file__).resolve().parents[1]
+    module = root / "scripts" / "AutonomousEngineeringTaskState.psm1"
+    owner_path = tmp_path / "pending-manual-task-owner.json"
+    raw = json.dumps({
+        "schema_version": 99,
+        "task_sha256": task_digest("Previous durable task"),
+        "owner_run_id": "5001",
+    }).encode("utf-8")
+    owner_path.write_bytes(raw)
+    script = (
+        "$ErrorActionPreference='Stop'; "
+        f"Import-Module {_ps_quote(str(module))} -Force; "
+        f"Repair-AutonomousTaskOwnerRecord -Path {_ps_quote(str(owner_path))} "
+        "-Task 'Changed durable task' -RunId '5002' -RunAttempt 1 -Source recovery | Out-Null"
+    )
+    result = _powershell(script)
+
+    assert result.returncode != 0
+    assert owner_path.read_bytes() == raw
+    assert not list(tmp_path.glob("pending-manual-task-owner.json.quarantine-*.json"))
+
+
+@pytest.mark.skipif(os.name != "nt", reason="PowerShell task-owner interoperability is Windows-only")
 def test_powershell_owner_rebind_archives_old_record_and_preserves_submission(tmp_path: Path):
     root = Path(__file__).resolve().parents[1]
     module = root / "scripts" / "AutonomousEngineeringTaskOwnerRebind.psm1"
