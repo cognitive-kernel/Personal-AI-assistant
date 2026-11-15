@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import time
 import urllib.error
 import urllib.request
@@ -16,7 +15,6 @@ try:
         ADMISSION_REJECTED,
         NON_EXECUTION,
         RETRYABLE,
-        UNKNOWN,
         classify_failed_run,
         increment_retryable_failure_streak,
     )
@@ -25,8 +23,8 @@ except ImportError:  # Direct script execution from the scripts directory.
         ADMISSION_REJECTED,
         NON_EXECUTION,
         RETRYABLE,
-        UNKNOWN,
         classify_failed_run,
+        increment_retryable_failure_streak,
     )
 
 
