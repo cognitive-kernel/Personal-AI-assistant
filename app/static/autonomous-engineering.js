@@ -418,6 +418,7 @@
             : "محل کد: برای این نوع شکست، GitHub فقط نام مرحله را گزارش کرده است.";
           $("diagnostic-location").textContent = location;
           $("diagnostic-message").textContent = (diagnostic.error_type ? String(diagnostic.error_type) + ": " : "") +
+            (diagnostic.category ? "دستهٔ خطا: " + String(diagnostic.category) + " · " : "") +
             String(diagnostic.message || "گزارش خطا موجود نیست.");
           const link = $("diagnostic-link");
           if (typeof diagnostic.job_url === "string" && diagnostic.job_url.startsWith("https://github.com/")) {
