@@ -100,4 +100,52 @@ function Set-AutonomousDirectoryAcl {
     }
 }
 
-Export-ModuleMember -Function ConvertTo-AutonomousWindowsAccountName, Get-AutonomousLocalAccountName, Get-AutonomousWindowsAccountSid, Set-AutonomousDirectoryAcl
+
+function Set-AutonomousStateLockAcl {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$Path,
+        [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string]$AppSid
+    )
+
+    $lockPath = [System.IO.Path]::GetFullPath($Path)
+    $parent = [System.IO.Path]::GetDirectoryName($lockPath)
+    if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
+        throw "The shared autonomous state directory must exist before its lock ACL is provisioned."
+    }
+
+    # Provision only the coordination file. The app identity remains read-only
+    # on task, owner, PR, checkpoint, and progress data in the parent directory.
+    $stream = [System.IO.File]::Open(
+        $lockPath,
+        [System.IO.FileMode]::OpenOrCreate,
+        [System.IO.FileAccess]::ReadWrite,
+        [System.IO.FileShare]::ReadWrite
+    )
+    $stream.Dispose()
+
+    $icacls = Get-Command icacls.exe -ErrorAction Stop
+    & $icacls.Source $lockPath /grant:r "*$($AppSid):M" | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not grant the application identity read/write access to the durable-state lock file."
+    }
+
+    $acl = Get-Acl -LiteralPath $lockPath
+    $requiredRights = [Security.AccessControl.FileSystemRights]::ReadData -bor
+        [Security.AccessControl.FileSystemRights]::WriteData
+    $rules = $acl.GetAccessRules(
+        $true,
+        $false,
+        [Security.Principal.SecurityIdentifier]
+    )
+    $verified = @($rules | Where-Object {
+        $_.IdentityReference.Value -eq $AppSid -and
+        $_.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow -and
+        (($_.FileSystemRights -band $requiredRights) -eq $requiredRights)
+    })
+    if ($verified.Count -eq 0) {
+        throw "The application identity does not have verified explicit read/write access to the durable-state lock file."
+    }
+}
+
+Export-ModuleMember -Function ConvertTo-AutonomousWindowsAccountName, Get-AutonomousLocalAccountName, Get-AutonomousWindowsAccountSid, Set-AutonomousDirectoryAcl, Set-AutonomousStateLockAcl
