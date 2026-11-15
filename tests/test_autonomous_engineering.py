@@ -1081,10 +1081,15 @@ def test_dispatch_forwards_manual_task_as_a_single_untrusted_field(monkeypatch):
     monkeypatch.setattr(agent, "collect_status", lambda: {
         "ready": True, "github": {"runs_available": True, "recent_runs": []}
     })
+    monkeypatch.setattr(agent, "pending_work_status", lambda: {
+        "available": True, "blocked": False, "markers": {},
+    })
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
 
     def fake_run(command, timeout=8):
         calls.append(command)
+        if command[1:2] == ["api"]:
+            return subprocess.CompletedProcess(command, 0, "[]", "")
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(agent, "_run", fake_run)
