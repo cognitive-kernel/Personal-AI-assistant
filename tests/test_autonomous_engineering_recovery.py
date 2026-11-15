@@ -206,3 +206,46 @@ def test_current_admission_rejection_does_not_hide_an_already_open_breaker(monke
     assert recovery.main() == 1
     assert reports[0][1]["error"] is True
     assert "CIRCUIT BREAKER OPEN" in reports[0][0][1]
+
+
+def test_stale_recovery_event_is_superseded_by_a_newer_main_run():
+    class FakeClient(recovery.GitHubActionsClient):
+        def __init__(self):
+            pass
+
+        def request(self, method, path, payload=None):
+            return {
+                "workflow_runs": [
+                    {"id": 124, "run_number": 11, "head_branch": "main", "conclusion": "in_progress"},
+                    {"id": 123, "run_number": 10, "head_branch": "main", "conclusion": "failure"},
+                ]
+            }
+
+    client = FakeClient()
+    import pytest
+    with pytest.raises(recovery.RecoverySuperseded, match="newer main-branch workflow run"):
+        client.retryable_failure_streak(123, _failed_execution_jobs())
+
+
+def test_main_does_not_dispatch_for_a_superseded_recovery_event(monkeypatch):
+    _configure_environment(monkeypatch)
+    reports = []
+
+    class FakeClient:
+        def __init__(self, repository, token):
+            pass
+
+        def jobs(self, run_id):
+            return _failed_execution_jobs()
+
+        def retryable_failure_streak(self, run_id, jobs):
+            raise recovery.RecoverySuperseded("A newer main-branch workflow run exists.")
+
+        def request(self, *args, **kwargs):
+            raise AssertionError("A superseded event must not dispatch.")
+
+    monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
+    monkeypatch.setattr(recovery, "report", lambda *args, **kwargs: reports.append((args, kwargs)))
+
+    assert recovery.main() == 0
+    assert "Recovery superseded" == reports[0][0][0]
