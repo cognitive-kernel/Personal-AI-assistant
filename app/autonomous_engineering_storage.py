@@ -94,7 +94,7 @@ def inspect_storage() -> dict[str, Any]:
         if runner_temp.is_dir():
             try:
                 for path in runner_temp.iterdir():
-                    if path.is_file() and (path.name in _RUNNER_TEMP_EXACT or path.name.startswith(_RUNNER_TEMP_PREFIXES)):
+                    if path.is_file():
                         candidates.append((path, runner_temp, "runner_temporary"))
             except OSError:
                 pass
@@ -116,6 +116,11 @@ def inspect_storage() -> dict[str, Any]:
         if item is None:
             continue
         item["category"] = category
+        known_owned = category == "state_temporary" or (
+            category == "runner_temporary"
+            and (path.name in _RUNNER_TEMP_EXACT or path.name.startswith(_RUNNER_TEMP_PREFIXES))
+        )
+        item["cleanup_eligible"] = bool(known_owned and item["age_seconds"] >= _RETENTION_SECONDS)
         files.append(item)
         total += item["size_bytes"]
     files.sort(key=lambda item: item["size_bytes"], reverse=True)
