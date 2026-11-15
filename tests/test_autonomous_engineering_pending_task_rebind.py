@@ -56,6 +56,32 @@ def test_schema_v2_owner_requires_and_accepts_rebind_audit_fields(tmp_path: Path
     assert validated == record
 
 
+def test_schema_v2_owner_rejects_missing_reconciliation_audit(tmp_path: Path):
+    task = "The durable task text remains unchanged."
+    now = time.time()
+    record = {
+        "schema_version": 2,
+        "task_sha256": task_digest(task),
+        "submitted_run_id": "100",
+        "submitted_attempt": 1,
+        "owner_run_id": "200",
+        "owner_attempt": 1,
+        "created_at": now,
+        "claimed_at": now,
+        "claim_count": 2,
+        "source": "recovery",
+        "previous_task_sha256": "not-a-sha256",
+        "rebind_reason": "owner_authorized_task_content_reconciliation",
+        "rebind_authorization_run_id": "200",
+        "rebound_at": now,
+    }
+    owner_path = tmp_path / "pending-manual-task-owner.json"
+    owner_path.write_text(json.dumps(record), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="schema v2"):
+        validate_pending_task_owner_unlocked(tmp_path, task, "200", 1)
+
+
 @pytest.mark.skipif(os.name != "nt", reason="PowerShell task-owner interoperability is Windows-only")
 def test_powershell_owner_rebind_archives_old_record_and_preserves_submission(tmp_path: Path):
     root = Path(__file__).resolve().parents[1]
@@ -165,6 +191,7 @@ def test_workflow_exposes_owner_rebind_as_separate_explicit_operation():
     assert "Get-AutonomousWorkflowRun" in script
     assert "Assert-AutonomousWorkflowRunRebindable" in script
     assert "Rebind-AutonomousTaskOwnerRecord" in script
+    assert "requires no pending PR record and no open autonomous PR" in script
     assert "replace_pending_task" in script
     assert "conclusion" in run_state and "completed" in run_state
     assert "timed_out" in run_state
