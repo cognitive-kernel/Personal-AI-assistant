@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -9,6 +10,41 @@ from pathlib import Path
 import pytest
 
 from scripts.autonomous_engineering_state_lock import durable_state_lock
+
+
+def test_windows_app_identity_lock_acl_is_explicit_and_read_write(tmp_path: Path):
+    if os.name != "nt" or not shutil.which("pwsh"):
+        pytest.skip("Windows PowerShell ACL integration is only available on Windows.")
+
+    module = Path(__file__).resolve().parents[1] / "scripts" / "AutonomousWindowsIdentity.psm1"
+    lock_path = tmp_path / "autonomous-durable-state.lock"
+    escaped_module = str(module).replace("'", "''")
+    escaped_lock = str(lock_path).replace("'", "''")
+    command = f"""
+$ErrorActionPreference = 'Stop'
+Import-Module '{escaped_module}' -Force
+$sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+Set-AutonomousStateLockAcl -Path '{escaped_lock}' -AppSid $sid
+$acl = Get-Acl -LiteralPath '{escaped_lock}'
+$required = [Security.AccessControl.FileSystemRights]::ReadData -bor [Security.AccessControl.FileSystemRights]::WriteData
+$rules = $acl.GetAccessRules($true, $false, [Security.Principal.SecurityIdentifier])
+$allowed = @($rules | Where-Object {{
+    $_.IdentityReference.Value -eq $sid -and
+    $_.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow -and
+    (($_.FileSystemRights -band $required) -eq $required)
+}})
+if ($allowed.Count -eq 0) {{ throw 'The app SID has no explicit read/write lock-file ACL.' }}
+$stream = [System.IO.File]::Open('{escaped_lock}', [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::ReadWrite)
+$stream.Dispose()
+"""
+    result = subprocess.run(
+        ["pwsh", "-NoProfile", "-NonInteractive", "-Command", command],
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
 
 
 def test_durable_state_lock_excludes_other_processes_and_releases_after_scope(
