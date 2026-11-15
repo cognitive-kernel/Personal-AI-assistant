@@ -61,7 +61,6 @@ def test_restore_preserves_checkpoint_when_watcher_ownership_cannot_be_verified(
 ):
     metadata, paths = _state(tmp_path)
     monkeypatch.setattr(checkpoint, "_latest_checkpoint", lambda: (metadata, paths))
-    monkeypatch.setattr(checkpoint, "store_dir", lambda: tmp_path)
 
     def refuse_stop(_metadata):
         raise RuntimeError("access denied; watcher may still be writing")
