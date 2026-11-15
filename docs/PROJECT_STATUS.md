@@ -2,15 +2,15 @@
 
 ## 2026-11-15 — اصلاح طبقه‌بندی شکست و بازیابی چرخهٔ خودکار
 
-- وضعیت: **در حال پیاده‌سازی و اعتبارسنجی؛ ادغام‌نشده**.
+- وضعیت: **پیاده‌سازی کامل در PRهای باز؛ CI دقیق هر دو PR سبز؛ ادغام‌نشده؛ تست محلی مالک و پذیرش زنده pending**.
 - مبنای main هنگام شروع این اصلاح: `f5cfa837e788ccfa84e13203fb33ac1b1937927a`.
 - اجرای [43695676192](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43695676192) در `schedule-gate` موفق بود، اما در مرحلهٔ `Persist manual task under the controller's runner and concurrency ownership` با پیام `Another manual task is still pending` متوقف شد. مرحلهٔ اجرای کنترل‌کننده اصلاً اجرا نشد؛ بنابراین این رخداد شکست اجرای task نبود.
 - recovery قبلی همهٔ شکست‌های Workflow را بدون بررسی job/step در streak جمع می‌کرد و شکست پذیرش task را به‌اشتباه شکست اجرای autonomous محسوب کرد. همچنین Circuit Breaker با exit code صفر بسته می‌شد و GitHub آن را سبز نشان می‌داد، درحالی‌که dispatch انجام نشده بود: [run 43695720003](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43695720003).
-- شاخهٔ `fix/autonomous-recovery-failure-classification-20261115` سیاست طبقه‌بندی را به ماژول مستقل و تست‌پذیر منتقل می‌کند. فقط شکست‌های واقعی job کنترل‌کننده در شمارندهٔ سه‌تایی لحاظ می‌شوند؛ رد مرحلهٔ پذیرش task و schedule gate شمرده نمی‌شوند. وضعیت ناشناخته fail-closed است.
+- PR [#761](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/761)، شاخهٔ `fix/autonomous-recovery-failure-classification-20261115`، سیاست طبقه‌بندی را به ماژول مستقل و تست‌پذیر منتقل می‌کند. head دقیق `aadb11fa6297d30e1c3c86505a2445132968873a` است. فقط شکست‌های واقعی job کنترل‌کننده در شمارندهٔ سه‌تایی لحاظ می‌شوند؛ رد مرحلهٔ پذیرش task و schedule gate شمرده نمی‌شوند. وضعیت ناشناخته fail-closed است.
 - Circuit Breaker باز یا recovery مسدود اکنون در Job Summary و annotation ثبت می‌شود و با exit code غیرصفر خاتمه می‌یابد؛ دیگر موفقیت ظاهری گزارش نمی‌شود.
 - وضعیت پایدار تک‌وظیفه‌ای، فایل task، owner metadata، checkpoint، مقدار Pause، ACL و هویت Runner دست‌نخورده باقی مانده‌اند. هیچ dispatch بازیابی صادر نشده است.
-- PR #760 نیز اصلاح مستقل هم‌ریشه‌ای دارد: ریشهٔ قفل‌های ProgramData در تست‌های انتشار PR رفع شده و مسیر state برای قفل و ذخیرهٔ owner record یک‌بار resolve می‌شود. head فعلی آن باید با تست‌های Windows محلی و CI دقیق همان SHA تأیید شود.
-- تست‌های سیاست بازیابی، تست‌های workflow، full Python suite، CI دقیق شاخه و تکرار full Windows suite روی میزبان مالک هنوز **در انتظار** هستند. هیچ‌یک موفق اعلام نشده‌اند.
+- PR [#760](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/760) نیز اصلاح مستقل هم‌ریشه‌ای دارد: مسیر state برای قفل و ذخیرهٔ owner record یک‌بار resolve می‌شود. head دقیق `fb52bd4f99d7f38c200b021afe8247d373844484` و هر چهار Workflow آن سبز هستند؛ تکرار تست محلی Windows هنوز pending است.
+- اعتبارسنجی exact-head PR #761: **۲۲۷۷ passed، ۱۳ skipped، ۵۱ deselected**؛ Windows storage، Browser E2E، Dependency Audit و CodeQL همگی موفق‌اند. چهار Workflow دقیق PR #760 نیز موفق‌اند. تست کامل محلی Windows، اجرای زندهٔ recovery روی Runner و تأیید مالک هنوز **pending** هستند؛ هیچ‌کدام موفق فرض نشده‌اند.
 
 
 ## وضعیت جاری — مالکیت پردازه و بازیابی Codex
