@@ -484,7 +484,15 @@
           String(data.state_directory || "—") + ((data.runner_temp_directories || []).join(" · ") || "");
         host.append(empty);
       }
-      if (data.truncated) $("storage-message").textContent = "فهرست برای جلوگیری از اسکن سنگین محدود شده است.";
+      if (Array.isArray(data.access_errors) && data.access_errors.length) {
+        $("storage-message").textContent = "دسترسی به بعضی مسیرها ممکن نیست: " +
+          data.access_errors.map(item => String(item.path) + " (" + String(item.error) + ")").join(" · ") +
+          ". اسکریپت provision را با دسترسی Administrator دوباره اجرا کنید.";
+      } else if (data.truncated) {
+        $("storage-message").textContent = "فهرست برای جلوگیری از اسکن سنگین محدود شده است.";
+      } else {
+        $("storage-message").textContent = "";
+      }
     } catch (error) {
       $("storage-message").textContent = error.message || "بررسی فضای موقت ناموفق بود.";
     } finally { if (button) button.disabled = false; }
