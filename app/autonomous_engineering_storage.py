@@ -104,8 +104,9 @@ def inspect_storage() -> dict[str, Any]:
     try:
         if state_root.is_dir():
             for path in state_root.iterdir():
-                if path.is_file() and path.name.endswith(_STATE_TEMP_SUFFIXES):
-                    candidates.append((path, state_root, "state_temporary"))
+                if path.is_file():
+                    category = "state_temporary" if path.name.endswith(_STATE_TEMP_SUFFIXES) else "state_data_read_only"
+                    candidates.append((path, state_root, category))
     except OSError:
         pass
 
@@ -138,8 +139,10 @@ def inspect_storage() -> dict[str, Any]:
         item["category"] = category
         if category == "runner_diagnostic_read_only":
             item["cleanup_eligible"] = item["age_seconds"] >= _DIAGNOSTIC_RETENTION_SECONDS
-        else:
+        elif category in {"state_temporary", "runner_temporary"}:
             item["cleanup_eligible"] = item["age_seconds"] >= _RETENTION_SECONDS
+        else:
+            item["cleanup_eligible"] = False
         files.append(item)
         total += item["size_bytes"]
     files.sort(key=lambda item: item["size_bytes"], reverse=True)
