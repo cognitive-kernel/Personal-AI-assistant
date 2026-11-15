@@ -177,13 +177,12 @@ jobs:
           Write-Host "Runner identity:"
           whoami
           $python = Get-Command python -ErrorAction Stop
-          $ollama = Get-Command ollama -ErrorAction Stop
           $pythonDirectory = Split-Path -Parent $python.Source
           $scriptsPath = Join-Path $pythonDirectory "Scripts"
           $npm = Get-Command npm -ErrorAction Stop
           $npmPrefix = (npm config get prefix).Trim()
           if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($npmPrefix)) { throw "Could not determine npm global prefix." }
-          $pathEntries = @($pythonDirectory, $npmPrefix, (Split-Path -Parent $ollama.Source))
+          $pathEntries = @($pythonDirectory, $npmPrefix)
           if (Test-Path -LiteralPath $scriptsPath -PathType Container) { $pathEntries += $scriptsPath }
           $env:PATH = (($pathEntries -join ";") + ";" + $env:PATH)
           $pathEntries | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
@@ -197,18 +196,19 @@ jobs:
           Write-Host "Codex version: $version"
           if ($LASTEXITCODE -ne 0 -or $version -notmatch [regex]::Escape($requiredVersion)) { throw "Unexpected Codex CLI version: $version" }
           python --version
-          ollama --version
-          $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 5 -MaximumRedirection 0
-          if (@($tags.models | ForEach-Object { $_.name }) -notcontains $env:AUTONOMOUS_ENGINEERING_MODEL) {
-            throw "Ollama model '$env:AUTONOMOUS_ENGINEERING_MODEL' is not installed."
+          Import-Module "$env:GITHUB_WORKSPACE\scripts\AutonomousOllamaRuntime.psm1" -Force
+          $tags = @(Get-AutonomousOllamaModelCatalog -TimeoutSeconds 5)
+          if (-not (Test-AutonomousOllamaModelInstalled -Model $env:AUTONOMOUS_ENGINEERING_MODEL -Catalog $tags)) {
+            throw "Ollama model '$env:AUTONOMOUS_ENGINEERING_MODEL' is not installed in the local API."
           }
 
       - name: Inventory installed Ollama models and capabilities
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 10 -MaximumRedirection 0
-          $inventory = foreach ($model in @($tags.models)) {
+          Import-Module "$env:GITHUB_WORKSPACE\scripts\AutonomousOllamaRuntime.psm1" -Force
+          $tags = @(Get-AutonomousOllamaModelCatalog -TimeoutSeconds 10)
+          $inventory = foreach ($model in $tags) {
             if (-not $model.name) { continue }
             $details = $null
             $metadataError = $null
