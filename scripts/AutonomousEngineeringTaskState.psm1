@@ -77,10 +77,14 @@ function Get-AutonomousTaskOwnerRecord {
         if (
             -not ($record.previous_task_sha256 -is [string]) -or
             [string]$record.previous_task_sha256 -notmatch '^[0-9a-f]{64}$' -or
+            [string]$record.previous_task_sha256 -ceq [string]$record.task_sha256 -or
+            -not ($record.source -is [string]) -or
+            [string]$record.source -cne "recovery" -or
             -not ($record.rebind_reason -is [string]) -or
             [string]$record.rebind_reason -cne "owner_authorized_task_content_reconciliation" -or
             -not ($record.rebind_authorization_run_id -is [string]) -or
-            [string]::IsNullOrWhiteSpace([string]$record.rebind_authorization_run_id) -or
+            [string]$record.rebind_authorization_run_id -notmatch '^[0-9]+$' -or
+            [string]$record.rebind_authorization_run_id -cne [string]$record.owner_run_id -or
             -not [double]::TryParse([string]$record.rebound_at, [ref]$reboundAt) -or
             [double]::IsNaN($reboundAt) -or [double]::IsInfinity($reboundAt) -or $reboundAt -le 0
         ) {
