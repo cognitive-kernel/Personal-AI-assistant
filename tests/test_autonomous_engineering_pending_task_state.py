@@ -70,13 +70,72 @@ def test_task_owner_rejects_task_mutation_and_preserves_owner_file(tmp_path: Pat
         assert owner_path.read_bytes() == before
 
 
+def test_task_owner_replace_failure_preserves_previous_record_and_cleans_temp(
+    tmp_path: Path, monkeypatch,
+):
+    import scripts.autonomous_engineering_pending_task_state as owner_state
+
+    task = "The prior owner record must survive a failed atomic replace."
+    with durable_state_lock(tmp_path):
+        claim_pending_task_owner_unlocked(
+            tmp_path, task, "5101", 1, source="manual_dispatch",
+        )
+    owner_path = pending_task_owner_path(tmp_path)
+    previous_bytes = owner_path.read_bytes()
+
+    def fail_replace(source, destination):
+        raise OSError("simulated atomic replace failure")
+
+    monkeypatch.setattr(owner_state.os, "replace", fail_replace)
+    with durable_state_lock(tmp_path):
+        with pytest.raises(OSError, match="simulated atomic replace failure"):
+            claim_pending_task_owner_unlocked(
+                tmp_path, task, "5102", 1, source="recovery",
+            )
+
+    assert owner_path.read_bytes() == previous_bytes
+    assert not list(tmp_path.glob("pending-manual-task-owner.json.*.tmp"))
+
+
+def test_task_owner_temp_create_collision_preserves_other_process_file(tmp_path: Path, monkeypatch):
+    import types
+    import scripts.autonomous_engineering_pending_task_state as owner_state
+
+    task = "A colliding temporary path must never be removed by this process."
+    with durable_state_lock(tmp_path):
+        claim_pending_task_owner_unlocked(
+            tmp_path, task, "5201", 1, source="manual_dispatch",
+        )
+
+    owner_path = pending_task_owner_path(tmp_path)
+    previous_owner_bytes = owner_path.read_bytes()
+    fixed_time = 123456789
+    fixed_uuid = "f" * 32
+    temporary = owner_path.with_name(
+        f"{owner_path.name}.{os.getpid()}.{fixed_time}.{fixed_uuid}.tmp"
+    )
+    sentinel = b"owned by a different process"
+    temporary.write_bytes(sentinel)
+    monkeypatch.setattr(owner_state.time, "time_ns", lambda: fixed_time)
+    monkeypatch.setattr(owner_state.uuid, "uuid4", lambda: types.SimpleNamespace(hex=fixed_uuid))
+
+    with durable_state_lock(tmp_path):
+        with pytest.raises(FileExistsError):
+            claim_pending_task_owner_unlocked(
+                tmp_path, task, "5202", 1, source="recovery",
+            )
+
+    assert temporary.read_bytes() == sentinel
+    assert owner_path.read_bytes() == previous_owner_bytes
+
+
 def test_task_owner_rejects_corrupt_or_unsupported_records(tmp_path: Path):
     owner_path = pending_task_owner_path(tmp_path)
     owner_path.parent.mkdir(parents=True, exist_ok=True)
     owner_path.write_text(json.dumps({"schema_version": 99}), encoding="utf-8")
 
     with durable_state_lock(tmp_path):
-        with pytest.raises(RuntimeError, match="schema v1"):
+        with pytest.raises(RuntimeError, match="declared schema"):
             claim_pending_task_owner_unlocked(
                 tmp_path, "Task", "4001", 1, source="recovery",
             )
@@ -85,11 +144,15 @@ def test_task_owner_rejects_corrupt_or_unsupported_records(tmp_path: Path):
 def test_task_owner_requires_valid_run_identity_and_attempt(tmp_path: Path):
     with pytest.raises(ValueError, match="run ID"):
         claim_pending_task_owner_unlocked(
-            tmp_path, "Task", "../invalid", 1, source="recovery",
+            tmp_path, "Task", "not-a-run-id", 1, source="recovery",
         )
     with pytest.raises(ValueError, match="attempt"):
         claim_pending_task_owner_unlocked(
             tmp_path, "Task", "4002", 0, source="recovery",
+        )
+    with pytest.raises(ValueError, match="attempt"):
+        claim_pending_task_owner_unlocked(
+            tmp_path, "Task", "4003", 2_147_483_648, source="recovery",
         )
 
 
@@ -144,16 +207,35 @@ def test_reconcile_refuses_changed_task_and_preserves_owner(tmp_path: Path):
     owner_path = pending_task_owner_path(tmp_path)
     with durable_state_lock(tmp_path):
         claim_pending_task_owner_unlocked(
-            tmp_path, "Previous task", "old-run", 1, source="manual_dispatch",
+            tmp_path, "Previous task", "5001", 1, source="manual_dispatch",
         )
         previous_owner = owner_path.read_bytes()
 
         with pytest.raises(RuntimeError, match="does not match task content"):
             reconcile_pending_task_owner_unlocked(
-                tmp_path, "Changed task", "new-run", 2, source="recovery",
+                tmp_path, "Changed task", "5002", 2, source="recovery",
             )
 
     assert owner_path.read_bytes() == previous_owner
+    assert not list(tmp_path.glob("pending-manual-task-owner.json.quarantine-*.json"))
+
+
+def test_reconcile_never_quarantines_malformed_owner_when_digest_drifted(tmp_path: Path):
+    owner_path = pending_task_owner_path(tmp_path)
+    raw = json.dumps({
+        "schema_version": 99,
+        "task_sha256": task_digest("Previous durable task"),
+        "owner_run_id": "5001",
+    }).encode("utf-8")
+    owner_path.write_bytes(raw)
+
+    with durable_state_lock(tmp_path):
+        with pytest.raises(RuntimeError, match="digest does not match task content"):
+            reconcile_pending_task_owner_unlocked(
+                tmp_path, "Changed durable task", "5002", 1, source="recovery",
+            )
+
+    assert owner_path.read_bytes() == raw
     assert not list(tmp_path.glob("pending-manual-task-owner.json.quarantine-*.json"))
 
 

@@ -6,6 +6,7 @@ import math
 import os
 import re
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -28,19 +29,24 @@ def task_digest(task: str) -> str:
 def _validate_owner_record(record: Any, task: str) -> dict[str, Any]:
     if not isinstance(record, dict):
         raise RuntimeError("Pending task owner metadata must be a JSON object.")
+    schema_version = record.get("schema_version")
     integer_fields = ("owner_attempt", "submitted_attempt", "claim_count")
     timestamp_fields = ("created_at", "claimed_at")
     if (
-        isinstance(record.get("schema_version"), bool)
-        or record.get("schema_version") != SCHEMA_VERSION
+        isinstance(schema_version, bool)
+        or not isinstance(schema_version, int)
+        or schema_version not in (1, 2)
         or any(not isinstance(record.get(key), str) or not record[key] for key in (
             "task_sha256", "owner_run_id", "submitted_run_id", "source"
         ))
-        or not re.fullmatch(r"[0-9a-f]{64}", str(record.get("task_sha256", "")))
+        or not re.fullmatch(r"[0-9]{1,20}", record["owner_run_id"])
+        or not re.fullmatch(r"[0-9]{1,20}", record["submitted_run_id"])
+        or not re.fullmatch(r"[0-9a-f]{64}", record["task_sha256"])
         or any(
             isinstance(record.get(key), bool)
             or not isinstance(record.get(key), int)
             or record[key] < 1
+            or record[key] > 2_147_483_647
             for key in integer_fields
         )
         or any(
@@ -53,8 +59,31 @@ def _validate_owner_record(record: Any, task: str) -> dict[str, Any]:
         or record["source"] not in _ALLOWED_SOURCES
     ):
         raise RuntimeError(
-            "Pending task owner metadata violates schema v1; preserving it."
+            "Pending task owner metadata violates its declared schema; preserving it."
         )
+    if schema_version == 2:
+        rebound_at = record.get("rebound_at")
+        previous_digest = record.get("previous_task_sha256")
+        authorization_run_id = record.get("rebind_authorization_run_id")
+        authorization_attempt = record.get("rebind_authorization_run_attempt")
+        if (
+            not isinstance(previous_digest, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", previous_digest)
+            or previous_digest == record["task_sha256"]
+            or record["source"] != "recovery"
+            or record.get("rebind_reason") != "owner_authorized_task_content_reconciliation"
+            or not isinstance(authorization_run_id, str)
+            or not re.fullmatch(r"[0-9]{1,20}", authorization_run_id)
+            or isinstance(authorization_attempt, bool)
+            or not isinstance(authorization_attempt, int)
+            or authorization_attempt < 1
+            or authorization_attempt > 2_147_483_647
+            or isinstance(rebound_at, bool)
+            or not isinstance(rebound_at, (int, float))
+            or not math.isfinite(float(rebound_at))
+            or rebound_at <= 0
+        ):
+            raise RuntimeError("Pending task owner metadata violates schema v2; preserving it.")
     if record["task_sha256"] != task_digest(task):
         raise RuntimeError(
             "Pending task owner digest does not match task content; preserving both records."
@@ -77,9 +106,14 @@ def claim_pending_task_owner_unlocked(
     """
     if not isinstance(task, str) or not task.strip() or len(task) > 2000 or "\0" in task:
         raise ValueError("Pending manual task is empty or violates the 2,000-character/NUL contract.")
-    if not isinstance(run_id, str) or not run_id.strip() or not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", run_id):
+    if not isinstance(run_id, str) or not run_id.strip() or not re.fullmatch(r"[0-9]{1,20}", run_id):
         raise ValueError("A valid workflow run ID is required to claim a pending task.")
-    if isinstance(run_attempt, bool) or not isinstance(run_attempt, int) or run_attempt < 1:
+    if (
+        isinstance(run_attempt, bool)
+        or not isinstance(run_attempt, int)
+        or run_attempt < 1
+        or run_attempt > 2_147_483_647
+    ):
         raise ValueError("A positive workflow run attempt is required to claim a pending task.")
     if source not in _ALLOWED_SOURCES:
         raise ValueError("Unsupported pending task ownership source.")
@@ -119,15 +153,20 @@ def claim_pending_task_owner_unlocked(
             }
 
     _validate_owner_record(record, task)
-    temporary = owner_path.with_name(owner_path.name + f".{os.getpid()}.tmp")
+    temporary = owner_path.with_name(
+        f"{owner_path.name}.{os.getpid()}.{time.time_ns()}.{uuid.uuid4().hex}.tmp"
+    )
+    temporary_created = False
     try:
-        temporary.write_text(
-            json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
-        temporary.replace(owner_path)
+        with temporary.open("x", encoding="utf-8", newline="\n") as stream:
+            temporary_created = True
+            stream.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, owner_path)
     finally:
-        temporary.unlink(missing_ok=True)
+        if temporary_created:
+            temporary.unlink(missing_ok=True)
     return record
 
 
@@ -159,6 +198,18 @@ def reconcile_pending_task_owner_unlocked(
 
     try:
         existing = json.loads(raw.decode("utf-8"))
+        # A valid stored digest is an integrity boundary even when another
+        # schema field is malformed. Never quarantine/reassign across drift.
+        if isinstance(existing, dict):
+            stored_digest = existing.get("task_sha256")
+            if (
+                isinstance(stored_digest, str)
+                and re.fullmatch(r"[0-9a-fA-F]{64}", stored_digest)
+                and stored_digest.lower() != task_digest(task)
+            ):
+                raise RuntimeError(
+                    "Pending task owner digest does not match task content; preserving both records."
+                )
         _validate_owner_record(existing, task)
     except RuntimeError as exc:
         if "digest does not match task content" in str(exc):

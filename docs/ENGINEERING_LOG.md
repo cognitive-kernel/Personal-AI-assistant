@@ -1,3 +1,70 @@
+# Engineering Continuity Log
+
+## 2026-11-15 — Exact-head validation and regression iteration
+
+### CI failures corrected
+- An earlier Windows storage run failed because a test still expected the old schema-specific error text after the validator moved to a schema-neutral error. The assertion was updated to the new contract.
+- A subsequent test run failed during collection because a parameterized schema-v2 audit test had eight cases but only seven IDs. The missing case ID was added; no production behavior was changed to hide the failure.
+
+### Exact-head evidence
+- Validated code head: `90d4e16757bfe79d5333058b991c4c5e20b2f009`.
+- Tests workflow [43713036347](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43713036347): success; `2316 passed, 27 skipped, 51 deselected`. The focused checkpoint ownership/concurrency regressions, full test suite, generated-artifact check, repository Markdown links, import-cycle guard, deterministic retrieval benchmark, and fail-closed claim-to-test coverage benchmark all passed.
+- Windows storage regression job `132808568217` within that workflow: success. This includes the PowerShell owner-rebind, exact prior-run-attempt validation, schema-v2 audit preservation across later claims, digest-first fail-closed behavior, and atomic owner-record write tests.
+- Browser E2E [43713036335](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43713036335): success.
+- Dependency audit [43713036329](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43713036329): success.
+- The deterministic claim-to-test benchmark explicitly states that it measures structural coverage only; it does not establish semantic adequacy or target-host acceptance.
+
+### Remaining validation
+- CodeQL did not run for PR #762 because the current CodeQL workflow restricts `pull_request` to base branch `main`, while #762 is stacked on #761. The exact-head CodeQL scan remains required and is not claimed as passed.
+- Actual target-host Windows acceptance (cross-account ACL, non-admin sandbox, and crash/restart recovery) remains pending.
+- No live task/owner/checkpoint/Pause/ACL/Runner state was changed, no repair dispatch was issued, and no PR was merged.
+
+## 2026-11-15 — Trace the original Windows sandbox mutex failure to the retired elevated fallback
+
+- Inspected the exact failed step and full job log for owner run [43592197032](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43592197032). The run was on old main SHA `1969bcc83294689efaad091ea5aaa7582c44f618`; the standalone `mxc` probe failed, after which the old workflow tried the `elevated` backend. Codex repeatedly failed to open the Windows sandbox setup mutex in that fallback.
+- Compared the workflow at that historical SHA with current main `f5cfa837e788ccfa84e13203fb33ac1b1937927a`. Current main no longer includes `elevated` in the backend list: `mxc` is the only default backend, and `unelevated` is available only with the explicit repository opt-in because it has weaker isolation.
+- Therefore the mutex failure is historical evidence explaining why the old owner run terminated before task execution; it is not proof that current main still attempts elevated sandboxing. Current mxc/optional-unelevated behavior still requires real Windows Runner acceptance.
+- This historical infrastructure failure is separate from run [43710320186](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43710320186), which failed task admission because a different task was submitted while a durable task already existed.
+
+## 2026-11-15 — Correct task-admission diagnosis and harden owner-recovery schema
+
+### Root-cause clarification
+- Run 43710320186 failed in the manual-task persistence/admission step with `Another manual task is still pending`. The rejected dispatch supplied task text that differed from the already durable task. The workflow correctly refused to replace the existing task; this log does not treat that message as proof of an owner-sidecar digest mismatch.
+- The recorded owner run 43592197032 failed earlier, before Codex task execution, because the Windows sandbox setup mutex could not be opened. A new task dispatch is not a safe substitute for resuming that durable task.
+
+### Corrective changes
+- Keep task admission, explicit task replacement, ordinary same-digest recovery, and owner-authorized recovery as separate operations. No task replacement is enabled by this change.
+- Keep the explicit owner-repair path narrowly scoped to a real task/owner digest mismatch. When the digest already matches, ordinary recovery claims the owner lease; the repair operation must reject an unnecessary rebind. Schema v2 therefore requires a changed previous/current digest and the single matching reconciliation reason.
+- Align Python and PowerShell schema-v2 validation: numeric GitHub run identifiers, recovery-only source, immutable authorization run ID plus positive attempt, valid previous digest, finite timestamp, and a reason consistent with whether the digest changed. Later recovery claims may advance the current owner without rewriting this audit identity.
+- Stage the replacement owner record with an exclusive temporary file, flush it to disk, validate the exact staged record through the shared PowerShell validator, then atomically replace the live sidecar while preserving the original bytes in a unique quarantine file.
+- Add regression cases for valid unchanged-digest recovery, digest reconciliation, malformed authorization IDs/attempts, malformed run IDs, wrong recovery source, equal/unequal digest-reason contradictions, and PowerShell interoperability.
+
+### Validation boundary
+- PR #762 remains Draft and stacked on PR #761. The exact head after these changes must complete the full CI matrix before implementation is considered GitHub-validated.
+- PR #760 and #761 checks are green on their recorded exact heads, but target-host Windows acceptance and crash/restart tests remain pending.
+- No live owner rebind, workflow dispatch, task/checkpoint/Pause mutation, ACL or Runner change, or merge was performed.
+
+## 2026-11-15 — Explicit recovery for task-owner digest conflicts
+
+### Root-cause analysis
+- The durable task file and its owner sidecar are separate records. The owner sidecar binds a normalized task digest to the original submission run and current owner run.
+- When those digests differ, the existing implementation correctly fails closed, but it offers no owner-authorized reconciliation path that preserves the task and proves the prior owner run is terminal.
+- The recorded owner run 43592197032 completed with failure before task execution: Codex could not create its unified execution process because the sandbox setup mutex could not be opened. The latest task-submission rejection was therefore not evidence that the prior task had completed or could be discarded.
+- A digest mismatch must not be treated as a routine stale-owner repair. It is an integrity conflict and needs explicit authorization plus authoritative GitHub evidence.
+
+### Corrective change
+- Add a separate workflow_dispatch input, repair_pending_task_owner, which is mutually exclusive with a new manual task and replace_pending_task.
+- Require the shared durable-state lock and existing workflow admission checks. Verify the exact recorded owner run through GitHub and allow reconciliation only for a completed failure, cancellation, or timeout from the autonomous workflow on main.
+- Preserve pending-manual-task.txt byte-for-byte. Archive the exact old owner-sidecar bytes under a unique quarantine name and write schema-v2 metadata containing the new digest, previous digest, authorization run ID, reason, and timestamp.
+- Restore the original owner record if the replacement write fails. Preserve original submission identity and creation time; advance only the owner identity and claim count.
+- Keep ordinary recovery, owner reconciliation, and task replacement as distinct paths. Scheduled recovery never opts into digest reconciliation.
+- Add Python/PowerShell schema-v2 validation, PowerShell integration coverage, rejection tests for active/successful owner runs, an ADR, and operator documentation.
+
+### Validation boundary
+- The change is on a dedicated branch stacked on PR #761. It is not merged and no live state has been modified.
+- Exact-head CI, PowerShell execution on the Windows Runner, and target-host acceptance remain pending. No task, owner record, checkpoint, Pause value, ACL, secret, or Runner identity was changed.
+
+
 ## 2026-11-15 — Remove the remaining module-time psutil dependency from the Windows controller import graph
 
 ### Root cause
@@ -17,8 +84,6 @@
 - The durable pending-task record and owner metadata remain untouched. No local Windows Runner, Ollama, Codex sandbox, or human UI test is claimed.
 
 ---
-
-# Engineering Continuity Log
 
 ## 2026-11-14 — PR #757 follow-up: controller-owned POSIX Codex process group
 

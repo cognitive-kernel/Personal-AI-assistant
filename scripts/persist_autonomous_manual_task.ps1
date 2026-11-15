@@ -1,12 +1,18 @@
 $ErrorActionPreference = "Stop"
 Import-Module (Join-Path $PSScriptRoot "AutonomousEngineeringTaskState.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "AutonomousEngineeringRunState.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "AutonomousEngineeringTaskOwnerRebind.psm1") -Force
 
 $manualTask = [string]$env:MANUAL_TASK
 $replacePendingTask = ([string]$env:REPLACE_PENDING_TASK -ceq "true")
-if ([string]::IsNullOrWhiteSpace($manualTask)) {
-    throw "Manual engineering task must not be empty or whitespace."
+$repairPendingTaskOwner = ([string]$env:REPAIR_PENDING_TASK_OWNER -ceq "true")
+if ([string]::IsNullOrWhiteSpace($manualTask) -and -not $repairPendingTaskOwner) {
+    throw "Manual engineering task must not be empty unless an explicit owner-record reconciliation was requested."
 }
-if ($manualTask.Length -gt 2000 -or $manualTask.IndexOf([char]0) -ge 0) {
+if ($repairPendingTaskOwner -and (-not [string]::IsNullOrWhiteSpace($manualTask) -or $replacePendingTask)) {
+    throw "Owner-record reconciliation must not be combined with a new task or task replacement."
+}
+if (-not [string]::IsNullOrWhiteSpace($manualTask) -and ($manualTask.Length -gt 2000 -or $manualTask.IndexOf([char]0) -ge 0)) {
     throw "Manual engineering task must be at most 2000 characters and contain no NUL bytes."
 }
 if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN) -or [string]::IsNullOrWhiteSpace($env:GH_REPO) -or [string]::IsNullOrWhiteSpace($env:GITHUB_RUN_ID)) {
@@ -178,6 +184,10 @@ try {
         return $number
     }
 
+    if ($repairPendingTaskOwner -and ($pendingPrFound -or $pendingPr.Count -gt 0)) {
+        throw "Owner-record reconciliation requires no pending PR record and no open autonomous PR; preserving all state."
+    }
+
     if ($pendingPr.Count -gt 1) {
         throw "Multiple open autonomous PRs exist; refusing to guess which task owns durable state."
     }
@@ -272,10 +282,56 @@ try {
         }
     }
 
+    # Rebind only owner metadata after explicit authorization and authoritative terminal-run verification.
+    $reboundOwnerRecord = $null
+    if ($repairPendingTaskOwner) {
+        if (-not $existingTaskFound -or [string]::IsNullOrWhiteSpace($existingTask)) {
+            throw "Owner-record reconciliation requires an existing non-empty durable task; preserving all state."
+        }
+        if (-not (Test-Path -LiteralPath $taskOwnerPath -PathType Leaf)) {
+            throw "Owner-record reconciliation requires the existing owner record; preserving the task."
+        }
+        $manualTask = $existingTask
+        $rebindRunAttempt = 0
+        if (-not [int]::TryParse([string]$env:GITHUB_RUN_ATTEMPT, [ref]$rebindRunAttempt) -or $rebindRunAttempt -lt 1) {
+            throw "Workflow run attempt is invalid; refusing to reconcile task ownership."
+        }
+        try {
+            $ownerRaw = [System.IO.File]::ReadAllText($taskOwnerPath, [System.Text.Encoding]::UTF8)
+            $ownerMetadata = $ownerRaw | ConvertFrom-Json -ErrorAction Stop
+        } catch {
+            throw "The existing task-owner record cannot be read safely; preserving all state."
+        }
+        $recordedOwnerRunId = [string]$ownerMetadata.owner_run_id
+        $recordedOwnerAttempt = 0
+        if (
+            $recordedOwnerRunId -cnotmatch '^[0-9]{1,20}\z' -or
+            -not [int]::TryParse([string]$ownerMetadata.owner_attempt, [ref]$recordedOwnerAttempt) -or
+            $recordedOwnerAttempt -lt 1
+        ) {
+            throw "The recorded owner run ID or attempt is invalid; preserving all state."
+        }
+        if (
+            $recordedOwnerRunId -ceq [string]$env:GITHUB_RUN_ID -and
+            $recordedOwnerAttempt -ge $rebindRunAttempt
+        ) {
+            throw "The current workflow run attempt already owns this task or is older than its recorded owner attempt."
+        }
+        $verifiedOwnerRun = Get-AutonomousWorkflowRun -Repository $env:GH_REPO -RunId $recordedOwnerRunId -RunAttempt $recordedOwnerAttempt -Headers $headers
+        Assert-AutonomousWorkflowRunRebindable -Run $verifiedOwnerRun -ExpectedRunId $recordedOwnerRunId -ExpectedRunAttempt $recordedOwnerAttempt
+        if ([long]$ownerMetadata.schema_version -eq 2) {
+            $reboundOwnerRecord = Resume-AutonomousTaskOwnerRebindAttempt -Path $taskOwnerPath -Task $existingTask -RunId ([string]$env:GITHUB_RUN_ID) -RunAttempt $rebindRunAttempt -VerifiedOwnerRun $verifiedOwnerRun
+            Write-Warning "The existing task text and original rebind audit were preserved. A later attempt of the same verified repair run resumed ownership."
+        } else {
+            $reboundOwnerRecord = Rebind-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $existingTask -RunId ([string]$env:GITHUB_RUN_ID) -RunAttempt $rebindRunAttempt -VerifiedOwnerRun $verifiedOwnerRun
+            Write-Warning "The existing task text was preserved. Its mismatched owner record was archived and explicitly rebound after GitHub verified the previous owner run had failed."
+        }
+    }
+
     # Reconcile authoritative GitHub PR state before deciding whether a different task may replace the pending task.
-    if ($existingTask -and ($existingTask -cne $manualTask -or $replacePendingTask)) {
+    if (-not $repairPendingTaskOwner -and $existingTask -and ($existingTask -cne $manualTask -or $replacePendingTask)) {
         if (-not $replacePendingTask) {
-            throw "Another manual task is still pending. To explicitly abandon it while no autonomous PR is open, dispatch with replace_pending_task=true."
+            throw "A different manual task is already pending; the durable task was preserved. To resume it, dispatch with manual_task empty and replace_pending_task=false when the Pause gate permits execution. If its owner sidecar has a verified digest conflict, use repair_pending_task_owner=true with manual_task empty. Use replace_pending_task=true only for explicitly approved abandonment after confirming no autonomous PR is open."
         }
         $replacementStamp = "$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT)-$([guid]::NewGuid().ToString('N'))"
         $taskBackupPath = "$pendingPath.quarantine-$replacementStamp.txt"
@@ -304,7 +360,11 @@ try {
         throw "Workflow run attempt is invalid; refusing to claim the pending task."
     }
     if ($existingTaskFound) {
-        $ownerRecord = Repair-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $existingTask -RunId ([string]$env:GITHUB_RUN_ID) -RunAttempt $runAttempt -Source "legacy_migration"
+        if ($repairPendingTaskOwner) {
+            $ownerRecord = $reboundOwnerRecord
+        } else {
+            $ownerRecord = Repair-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $existingTask -RunId ([string]$env:GITHUB_RUN_ID) -RunAttempt $runAttempt -Source "legacy_migration"
+        }
     } else {
         $ownerRecord = Get-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task ""
         if ($null -ne $ownerRecord) {
@@ -326,18 +386,24 @@ try {
         }
     }
 
-    $ownerSource = if ($existingTaskFound) { "legacy_migration" } else { "manual_dispatch" }
-    $ownerArgs = @{
-        Path = $taskOwnerPath
-        Task = $manualTask
-        RunId = [string]$env:GITHUB_RUN_ID
-        RunAttempt = $runAttempt
-        Source = $ownerSource
-        Existing = $ownerRecord
+    if (-not $repairPendingTaskOwner) {
+        $ownerSource = if ($existingTaskFound) { "legacy_migration" } else { "manual_dispatch" }
+        $ownerArgs = @{
+            Path = $taskOwnerPath
+            Task = $manualTask
+            RunId = [string]$env:GITHUB_RUN_ID
+            RunAttempt = $runAttempt
+            Source = $ownerSource
+            Existing = $ownerRecord
+        }
+        $null = Write-AutonomousTaskOwnerRecord @ownerArgs
     }
-    $null = Write-AutonomousTaskOwnerRecord @ownerArgs
 
-    Write-Host "Manual task persisted to the durable runner state before prerequisite checks."
+    if ($repairPendingTaskOwner) {
+        Write-Host "Existing task-owner metadata was reconciled; durable task text was not changed."
+    } else {
+        Write-Host "Manual task persisted to the durable runner state before prerequisite checks."
+    }
     $replacementBackups = $null
 } catch {
     if ($null -ne $replacementBackups) {

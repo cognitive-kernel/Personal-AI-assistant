@@ -45,13 +45,13 @@ function Get-AutonomousTaskOwnerRecord {
     if (
         $record.schema_version -is [bool] -or
         -not ($record.schema_version -is [int] -or $record.schema_version -is [long]) -or
-        [long]$record.schema_version -ne 1 -or
+        [long]$record.schema_version -notin @(1, 2) -or
         -not ($record.task_sha256 -is [string]) -or
-        [string]$record.task_sha256 -notmatch '^[0-9a-f]{64}$' -or
+        [string]$record.task_sha256 -cnotmatch '^[0-9a-f]{64}\z' -or
         -not ($record.owner_run_id -is [string]) -or
-        [string]::IsNullOrWhiteSpace([string]$record.owner_run_id) -or
+        [string]$record.owner_run_id -cnotmatch '^[0-9]{1,20}\z' -or
         -not ($record.submitted_run_id -is [string]) -or
-        [string]::IsNullOrWhiteSpace([string]$record.submitted_run_id) -or
+        [string]$record.submitted_run_id -cnotmatch '^[0-9]{1,20}\z' -or
         -not ($record.owner_attempt -is [int] -or $record.owner_attempt -is [long]) -or
         -not [int]::TryParse([string]$record.owner_attempt, [ref]$ownerAttempt) -or
         $ownerAttempt -lt 1 -or
@@ -68,9 +68,32 @@ function Get-AutonomousTaskOwnerRecord {
         -not [double]::TryParse([string]$record.claimed_at, [ref]$claimedAt) -or
         [double]::IsNaN($claimedAt) -or [double]::IsInfinity($claimedAt) -or $claimedAt -le 0 -or
         -not ($record.source -is [string]) -or
-        [string]$record.source -notin @("manual_dispatch", "recovery", "legacy_migration")
+        [string]$record.source -cnotin @("manual_dispatch", "recovery", "legacy_migration")
     ) {
-        throw "Pending task owner metadata violates schema v1; preserving it."
+        throw "Pending task owner metadata violates its declared schema; preserving it."
+    }
+    if ([long]$record.schema_version -eq 2) {
+        $reboundAt = 0.0
+        $authorizationAttempt = 0
+        if (
+            -not ($record.previous_task_sha256 -is [string]) -or
+            [string]$record.previous_task_sha256 -cnotmatch '^[0-9a-f]{64}\z' -or
+            [string]$record.previous_task_sha256 -ceq [string]$record.task_sha256 -or
+            -not ($record.source -is [string]) -or
+            [string]$record.source -cne "recovery" -or
+            -not ($record.rebind_reason -is [string]) -or
+            [string]$record.rebind_reason -cne "owner_authorized_task_content_reconciliation" -or
+            -not ($record.rebind_authorization_run_id -is [string]) -or
+            [string]$record.rebind_authorization_run_id -cnotmatch '^[0-9]{1,20}\z' -or
+            -not ($record.rebind_authorization_run_attempt -is [int] -or $record.rebind_authorization_run_attempt -is [long]) -or
+            -not [int]::TryParse([string]$record.rebind_authorization_run_attempt, [ref]$authorizationAttempt) -or
+            $authorizationAttempt -lt 1 -or $authorizationAttempt -gt 2147483647 -or
+            -not ($record.rebound_at -is [double] -or $record.rebound_at -is [int] -or $record.rebound_at -is [long]) -or
+            -not [double]::TryParse([string]$record.rebound_at, [ref]$reboundAt) -or
+            [double]::IsNaN($reboundAt) -or [double]::IsInfinity($reboundAt) -or $reboundAt -le 0
+        ) {
+            throw "Pending task owner metadata violates schema v2; preserving it."
+        }
     }
     if ([string]$record.task_sha256 -cne $taskDigest) {
         throw "Pending task owner digest does not match the durable task; preserving both records."
@@ -89,6 +112,29 @@ function Repair-AutonomousTaskOwnerRecord {
     )
 
     $existing = $null
+    $rawOwnerRecord = $null
+    try {
+        $rawOwnerText = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+        $rawOwnerRecord = $rawOwnerText | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        $rawOwnerRecord = $null
+    }
+    if (
+        $null -ne $rawOwnerRecord -and
+        $rawOwnerRecord.task_sha256 -is [string] -and
+        [string]$rawOwnerRecord.task_sha256 -cmatch '^[0-9a-fA-F]{64}\z'
+    ) {
+        $storedDigest = [string]$rawOwnerRecord.task_sha256
+        $expectedDigest = Get-AutonomousTaskDigest -Task $Task
+        if (-not [string]::Equals(
+            $storedDigest,
+            $expectedDigest,
+            [System.StringComparison]::OrdinalIgnoreCase
+        )) {
+            throw "Pending task owner digest does not match the durable task; preserving both records."
+        }
+    }
+
     try {
         $existing = Get-AutonomousTaskOwnerRecord -Path $Path -Task $Task
     } catch {
@@ -182,11 +228,15 @@ function Write-AutonomousTaskOwnerRecord {
     if ([string]::IsNullOrWhiteSpace($Task) -or $Task.Length -gt 2000 -or $Task.IndexOf([char]0) -ge 0) {
         throw "Pending task violates the task text contract."
     }
-    if ($RunId -notmatch '^[A-Za-z0-9_.-]{1,128}$' -or $RunAttempt -lt 1) {
+    if ($RunId -cnotmatch '^[0-9]{1,20}\z' -or $RunAttempt -lt 1) {
         throw "A valid workflow run ID and positive attempt are required."
     }
+
     $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0
     if ($null -eq $Existing) {
+        if (Test-Path -LiteralPath $Path) {
+            throw "An owner record already exists; refusing to overwrite it as a new submission."
+        }
         $record = [ordered]@{
             schema_version = 1
             task_sha256 = Get-AutonomousTaskDigest -Task $Task
@@ -200,28 +250,57 @@ function Write-AutonomousTaskOwnerRecord {
             source = $Source
         }
     } else {
-        $record = $Existing
+        if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+            throw "The existing owner record disappeared before its claim; preserving the task."
+        }
+        # Read and validate the authoritative on-disk record under the shared lock.
+        $record = Get-AutonomousTaskOwnerRecord -Path $Path -Task $Task
         if (
-            [string]$record.owner_run_id -ne $RunId -or
+            [string]$record.owner_run_id -cne $RunId -or
             [int]$record.owner_attempt -ne $RunAttempt
         ) {
+            $claimCount = 0
+            if (
+                -not [int]::TryParse([string]$record.claim_count, [ref]$claimCount) -or
+                $claimCount -ge [int]::MaxValue
+            ) {
+                throw "The pending task owner claim counter cannot be advanced safely."
+            }
             $record.owner_run_id = $RunId
             $record.owner_attempt = $RunAttempt
             $record.claimed_at = $now
-            $record.claim_count = [int]$record.claim_count + 1
+            $record.claim_count = $claimCount + 1
         }
     }
 
     $directory = Split-Path -Parent $Path
-    $temporary = Join-Path $directory ("pending-manual-task-owner-" + $RunId + "-" + $RunAttempt + ".tmp")
+    $temporary = Join-Path $directory ("pending-manual-task-owner-" + $RunId + "-" + $RunAttempt + "-" + [guid]::NewGuid().ToString('N') + ".tmp")
+    $temporaryCreated = $false
     try {
         $json = $record | ConvertTo-Json -Depth 5 -Compress
-        [System.IO.File]::WriteAllText(
-            $temporary, $json, [System.Text.UTF8Encoding]::new($false)
+        $bytes = [System.Text.UTF8Encoding]::new($false).GetBytes($json)
+        $stream = [System.IO.File]::Open(
+            $temporary,
+            [System.IO.FileMode]::CreateNew,
+            [System.IO.FileAccess]::Write,
+            [System.IO.FileShare]::None
         )
-        Move-Item -LiteralPath $temporary -Destination $Path -Force
+        $temporaryCreated = $true
+        try {
+            $stream.Write($bytes, 0, $bytes.Length)
+            $stream.Flush($true)
+        } finally {
+            $stream.Dispose()
+        }
+
+        $null = Get-AutonomousTaskOwnerRecord -Path $temporary -Task $Task
+        if (Test-Path -LiteralPath $Path -PathType Leaf) {
+            [System.IO.File]::Replace($temporary, $Path, $null, $true)
+        } else {
+            [System.IO.File]::Move($temporary, $Path)
+        }
     } finally {
-        if (Test-Path -LiteralPath $temporary) {
+        if ($temporaryCreated -and (Test-Path -LiteralPath $temporary)) {
             Remove-Item -LiteralPath $temporary -Force
         }
     }
