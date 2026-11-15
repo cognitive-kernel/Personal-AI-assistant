@@ -260,18 +260,21 @@ def _enrich_progress_from_github(current: dict[str, Any] | None) -> dict[str, An
         failed_steps = failed_job.get("steps", [])
         failed_steps = failed_steps if isinstance(failed_steps, list) else []
         failed_step = next((step for step in failed_steps if isinstance(step, dict) and step.get("conclusion") in {"failure", "timed_out", "cancelled", "action_required"}), None)
+        diagnostic = dict(updated.get("diagnostic")) if isinstance(updated.get("diagnostic"), dict) else {}
+        diagnostic.update({
+            "run_id": run_id,
+            "job": str(failed_job.get("name", "نامشخص"))[:180],
+            "job_url": failed_job.get("html_url") if isinstance(failed_job.get("html_url"), str) else None,
+            "step": str(failed_step.get("name", "مرحلهٔ دقیق از GitHub قابل تشخیص نیست"))[:240] if failed_step else None,
+            "step_conclusion": failed_step.get("conclusion") if failed_step else None,
+            "job_message": "گزارش کامل مرحله در GitHub Actions در دسترس است.",
+        })
+        diagnostic.setdefault("message", "GitHub نام Job و مرحلهٔ ناموفق را مشخص کرده است؛ برای خروجی کامل، گزارش همان Job را باز کنید.")
         updated.update({
             "status": "failed",
             "phase_label": "چرخه با خطا پایان یافت",
             "activity": str(failed_job.get("name", "مرحلهٔ ناموفق")) + ": " + str(failed_job.get("conclusion", "failed")),
-            "diagnostic": {
-                "run_id": run_id,
-                "job": str(failed_job.get("name", "نامشخص"))[:180],
-                "job_url": failed_job.get("html_url") if isinstance(failed_job.get("html_url"), str) else None,
-                "step": str(failed_step.get("name", "مرحلهٔ دقیق از GitHub قابل تشخیص نیست"))[:240] if failed_step else None,
-                "step_conclusion": failed_step.get("conclusion") if failed_step else None,
-                "message": "GitHub نام Job و مرحلهٔ ناموفق را مشخص کرده است؛ برای traceback و خروجی کامل، گزارش اجرای همان Job را باز کنید.",
-            },
+            "diagnostic": diagnostic,
         })
     elif queued_job and queued_job.get("name") == "codex":
         updated.update({
