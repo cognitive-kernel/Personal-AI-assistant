@@ -1,3 +1,25 @@
+## 2026-11-15 — Install the project Python runtime before the Codex sandbox smoke
+
+### Root cause
+- Autonomous workflow run 43718207794 (run #213) passed the standalone MXC service-account probe, then failed during the actual Codex smoke because `capture_parent_chain()` required `psutil` and the interpreter running the smoke did not have it installed.
+- `psutil>=5.9,<8.0` is already declared in `pyproject.toml`; the defect was workflow ordering and interpreter selection, not a missing project dependency declaration.
+- The workflow installed `.[dev]` only after the Codex sandbox smoke. The smoke therefore ran under the preinstalled system Python and failed before reaching the Codex workspace tool call. The later dependency-install step was skipped as a consequence.
+- The failure is separate from the standalone MXC compatibility probe: MXC returned `MXC_SERVICE_OK` with exit code 0. No evidence justifies weakening sandbox isolation or enabling the unelevated fallback.
+
+### Corrective change
+- Move isolated project virtual-environment creation and `.[dev]` installation to immediately after Ollama context preflight and before the real Codex sandbox smoke.
+- Verify imports of `psutil` and `fastapi` under the exact virtual-environment interpreter before proceeding.
+- Add the virtual-environment Scripts directory to the subsequent-step PATH and invoke the Codex progress controller explicitly with `.venv\\Scripts\\python.exe`, preventing a system-Python/venv split.
+- Remove the obsolete post-smoke dependency-install step; do not add a duplicate dependency declaration or a fallback that bypasses MXC.
+- Add a static workflow regression asserting dependency setup and interpreter selection occur before the Codex smoke.
+
+### Validation boundary
+- The reported run failed at the Codex sandbox smoke; the task-execution and publication steps were skipped. No autonomous task changes were made by that run.
+- The branch changes require exact-head GitHub CI and review before merge. The actual non-admin Windows Runner, MXC, Codex, and Ollama smoke must be rerun after the PR is merged and the workflow is checked out from the updated main.
+- No local Runner configuration, service identity, ACL, sandbox policy, durable pending task, owner metadata, checkpoint, or Pause state was changed. No new workflow dispatch was triggered.
+
+---
+
 ## 2026-11-15 — Remove the remaining module-time psutil dependency from the Windows controller import graph
 
 ### Root cause
