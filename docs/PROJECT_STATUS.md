@@ -1,13 +1,14 @@
 # وضعیت یکپارچهٔ پروژه
 
-## 2026-11-15 — بازیابی کنترل‌شدهٔ ناسازگاری هش مالکیت وظیفه
+## 2026-11-15 — بازیابی کنترل‌شدهٔ مالکیت وظیفهٔ پایدار
 
-- یک مسیر مستقل و صریح برای اصلاح owner digest mismatch در شاخهٔ وابسته به PR #761 اضافه شده است؛ این مسیر نه task را تغییر می‌دهد و نه با replace_pending_task ترکیب می‌شود.
-- اجرای owner ثبت‌شده، 43592197032، با خطای sandbox setup mutex پیش از شروع اجرای واقعی Codex شکست خورده است. اجرای 43706565440 نیز به‌دلیل import زودهنگام psutil روی main متوقف شده؛ اصلاح import در PR #760 قرار دارد. اجرای 43707246093 به‌درستی ثبت task جدید را به‌دلیل وجود task پایدار قبلی رد کرده است.
-- مسیر جدید فقط با انتخاب صریح repair_pending_task_owner، نبود اجرای هم‌زمان و PR خودکار باز، و تأیید GitHub مبنی بر شکست/لغو/timeout اجرای مالک قبلی روی workflow اصلی مجاز است.
-- متن task دست‌نخورده می‌ماند؛ owner record قبلی با حفظ دقیق بایت‌ها quarantine می‌شود و owner record نسخهٔ ۲ با digest قبلی و شناسهٔ اجرای مجازکننده ثبت می‌شود. در صورت شکست نوشتن، owner record قبلی بازیابی می‌شود.
-- وضعیت: پیاده‌سازی اولیه و تست‌های رگرسیون در branch؛ CI دقیق، بررسی PowerShell روی Runner ویندوز و پذیرش عملیاتی هنوز pending هستند. هیچ state زنده‌ای تغییر نکرده و هیچ PR ادغام نشده است.
-
+- اجرای مالک ثبت‌شده [43592197032](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43592197032) روی main با خطای بازکردن Windows sandbox setup mutex، پیش از اجرای task توسط Codex، شکست خورد.
+- اجرای [43710320186](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43710320186) نیز در مرحلهٔ پذیرش وظیفه متوقف شد؛ پیام `Another manual task is still pending` نشان می‌دهد ورودی جدید با task پایدار موجود یکسان نبوده است. این اجرا به Codex نرسید و به‌تنهایی هیچ ناسازگاری digest در owner sidecar را اثبات نمی‌کند. رد کردن task متفاوت، رفتار حفاظتی مورد انتظار است و نباید با replace کردن task دور زده شود.
+- PR [#762](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/762) مسیر مستقل و صریح `repair_pending_task_owner` را برای بازیابی مالکیت پس از تأیید شکست اجرای مالک قبلی اضافه می‌کند. این مسیر هم حالت digest drift و هم حالت digest سالم را با reason مجزا ثبت می‌کند؛ در هر دو حالت متن task تغییر نمی‌کند.
+- پیش‌شرط‌ها: workflow اصلی روی `main`، اجرای مالک دقیقاً مطابق GitHub API، وضعیت `completed` با نتیجهٔ `failure`، `cancelled` یا `timed_out`، نبود اجرای فعال، نبود pending PR و نبود PR خودکار باز، و انتخاب صریح ورودی repair. ورودی با task جدید یا `replace_pending_task` ترکیب نمی‌شود.
+- owner sidecar قبلی با بایت‌های دقیق در quarantine نگهداری می‌شود. schema-v2، digest قبلی/فعلی، علت مشخص انتقال، اجرای مجازکننده و زمان را ثبت می‌کند. اعتبارسنجی Python و PowerShell اکنون یک قرارداد واحد برای شناسه‌های run و سازگاری reason با تغییر/عدم‌تغییر digest اعمال می‌کنند.
+- PRهای #760 و #761 هنوز Draft و ادغام‌نشده‌اند؛ CI آن‌ها روی SHAهای فعلی موفق بوده، اما پذیرش Windows میزبان هدف، ACL دو حساب، sandbox غیرادمین و crash/restart هنوز pending است. PR #762 روی #761 سوار است و CI exact-head آن پس از آخرین تغییرات باید کامل شود.
+- هیچ recovery dispatch، repair زنده، تغییر task/owner/checkpoint/Pause/ACL/secret یا merge انجام نشده است. وضعیت Pause و داده‌های durable دست‌نخورده باقی مانده‌اند.
 
 ## 2026-11-15 — اصلاح طبقه‌بندی شکست و بازیابی چرخهٔ خودکار
 
