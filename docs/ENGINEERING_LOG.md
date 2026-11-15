@@ -1,5 +1,46 @@
 # Engineering Continuity Log
 
+## 2026-11-15 — Explicit recovery for task-owner digest conflicts
+
+### Root-cause analysis
+- The durable task file and its owner sidecar are separate records. The owner sidecar binds a normalized task digest to the original submission run and current owner run.
+- When those digests differ, the existing implementation correctly fails closed, but it offers no owner-authorized reconciliation path that preserves the task and proves the prior owner run is terminal.
+- The recorded owner run 43592197032 completed with failure before task execution: Codex could not create its unified execution process because the sandbox setup mutex could not be opened. The latest task-submission rejection was therefore not evidence that the prior task had completed or could be discarded.
+- A digest mismatch must not be treated as a routine stale-owner repair. It is an integrity conflict and needs explicit authorization plus authoritative GitHub evidence.
+
+### Corrective change
+- Add a separate workflow_dispatch input, repair_pending_task_owner, which is mutually exclusive with a new manual task and replace_pending_task.
+- Require the shared durable-state lock and existing workflow admission checks. Verify the exact recorded owner run through GitHub and allow reconciliation only for a completed failure, cancellation, or timeout from the autonomous workflow on main.
+- Preserve pending-manual-task.txt byte-for-byte. Archive the exact old owner-sidecar bytes under a unique quarantine name and write schema-v2 metadata containing the new digest, previous digest, authorization run ID, reason, and timestamp.
+- Restore the original owner record if the replacement write fails. Preserve original submission identity and creation time; advance only the owner identity and claim count.
+- Keep ordinary recovery, owner reconciliation, and task replacement as distinct paths. Scheduled recovery never opts into digest reconciliation.
+- Add Python/PowerShell schema-v2 validation, PowerShell integration coverage, rejection tests for active/successful owner runs, an ADR, and operator documentation.
+
+### Validation boundary
+- The change is on a dedicated branch stacked on PR #761. It is not merged and no live state has been modified.
+- Exact-head CI, PowerShell execution on the Windows Runner, and target-host acceptance remain pending. No task, owner record, checkpoint, Pause value, ACL, secret, or Runner identity was changed.
+
+
+## 2026-11-15 — Remove the remaining module-time psutil dependency from the Windows controller import graph
+
+### Root cause
+- The first import-isolation fix deferred `psutil` in `autonomous_engineering_process_group.py`, but exact-head CI exposed a second eager import in `autonomous_engineering_codex_runner.py`.
+- `autonomous_engineering_progress.py` imports `autonomous_engineering_codex_config.py`, which imports `capture_parent_chain` from the Codex runner at module load time. The runner's top-level `import psutil` therefore still blocked controller startup before project dependencies were installed.
+- The failing regression provided direct evidence: the import chain reached `autonomous_engineering_codex_runner.py:17` and failed while importing `psutil`. The later absolute-import fallback then obscured the original dependency failure with a secondary module-resolution error.
+
+### Corrective change
+- Defer `psutil` loading in the Codex runner until `capture_parent_chain()` or `parent_chain_is_alive()` actually performs process-identity inspection.
+- Preserve process identity, PID-reuse, timeout, and descendant-cleanup behavior; missing runtime dependency now produces an actionable error at the operation that requires it.
+- Extend the subprocess import-isolation regression to import the Codex runner as well as the process-group helper and progress controller.
+- Update runner tests to patch the lazily loaded psutil module rather than depend on a module-level import.
+
+### Validation boundary
+- The prior exact-head run had 2,254 passing tests and one failure in the new import-isolation regression. The Windows storage regressions, dependency audit, Browser E2E, and CodeQL passed.
+- This follow-up is not verified until focused tests and all exact-head GitHub checks pass.
+- The durable pending-task record and owner metadata remain untouched. No local Windows Runner, Ollama, Codex sandbox, or human UI test is claimed.
+
+---
+
 ## 2026-11-14 — PR #757 follow-up: controller-owned POSIX Codex process group
 
 ### Root cause
