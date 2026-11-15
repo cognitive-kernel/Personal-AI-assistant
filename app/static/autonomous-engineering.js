@@ -89,6 +89,37 @@
         link.textContent = "جزئیات اجرا";
         item.append(link);
       }
+      if (["queued", "in_progress", "waiting", "requested", "pending"].includes(run.status)) {
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.className = "secondary";
+        cancel.textContent = "لغو همین اجرا";
+        cancel.addEventListener("click", async () => {
+          if (!window.confirm("فقط اجرای #" + String(run.id) + " لغو شود؟")) return;
+          cancel.disabled = true;
+          try {
+            const result = await request("cancel", {method: "POST", body: JSON.stringify({run_id: String(run.id)})});
+            setMessage(result.message || "درخواست لغو ثبت شد.", "success");
+            await refresh();
+          } catch (error) { setMessage(error.message, "error"); cancel.disabled = false; }
+        });
+        item.append(cancel);
+      } else if (run.status === "completed" && run.id) {
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "secondary";
+        remove.textContent = "حذف سابقه";
+        remove.addEventListener("click", async () => {
+          if (!window.confirm("سابقهٔ اجرای #" + String(run.id) + " از GitHub Actions حذف شود؟ این کار قابل بازگشت نیست.")) return;
+          remove.disabled = true;
+          try {
+            const result = await request("runs/" + encodeURIComponent(String(run.id)), {method: "DELETE"});
+            setMessage(result.message || "سابقه حذف شد.", "success");
+            await refresh();
+          } catch (error) { setMessage(error.message, "error"); remove.disabled = false; }
+        });
+        item.append(remove);
+      }
       host.append(item);
     }
   }
@@ -390,6 +421,17 @@
         const status = statusLabels[current.status] || String(current.status || "");
         $("current-phase").textContent = String(current.phase_label || "مرحلهٔ جاری") + (status ? " · " + status : "");
         $("current-activity").textContent = String(current.activity || "فعالیت جاری ثبت نشده است.");
+        const diagnostic = current.diagnostic;
+        $("run-diagnostic").hidden = !(current.status === "failed" && diagnostic);
+        if (diagnostic) {
+          $("diagnostic-job").textContent = "Job: " + String(diagnostic.job || "نامشخص") + " · Run: #" + String(diagnostic.run_id || current.run_id || "—");
+          $("diagnostic-step").textContent = "مرحله: " + String(diagnostic.step || "جزئیات مرحله در دسترس نیست");
+          $("diagnostic-message").textContent = String(diagnostic.message || "گزارش خطا موجود نیست.");
+          const link = $("diagnostic-link");
+          if (typeof diagnostic.job_url === "string" && diagnostic.job_url.startsWith("https://github.com/")) {
+            link.href = diagnostic.job_url; link.hidden = false;
+          } else { link.hidden = true; }
+        }
         $("plan-progress").textContent = Number(current.plan_total) > 0
           ? "پیشرفت برنامه: " + Number(current.plan_completed || 0) + " از " + Number(current.plan_total) + " گام"
           : "درصد دقیق برنامه تا زمان ثبت گام‌های عامل در دسترس نیست.";
@@ -398,6 +440,7 @@
         $("cycle-progress").value = 0;
         $("current-phase").textContent = "چرخهٔ فعالی گزارش نشده است.";
         $("current-activity").textContent = "با شروع اجرای عامل، فعالیت جاری در این قسمت نمایش داده می‌شود.";
+        $("run-diagnostic").hidden = true;
         $("plan-progress").textContent = "";
       }
       const snapshots = data.history || [];
@@ -419,6 +462,49 @@
       progressBusy = false;
     }
   }
+
+  async function refreshStorage() {
+    const button = $("refresh-storage");
+    if (button) button.disabled = true;
+    try {
+      const data = await request("storage");
+      const summary = $("storage-summary");
+      summary.textContent = "مجموع فایل‌های موقت شناسایی‌شده: " + Number(data.file_count || 0) +
+        " · حجم: " + (Number(data.total_bytes || 0) / 1024 / 1024).toFixed(2) + " MiB" +
+        " · ماندگاری پاک‌سازی: " + Number(data.retention_hours || 24) + " ساعت";
+      const host = $("storage-files");
+      host.replaceChildren();
+      for (const file of (data.files || [])) {
+        const row = document.createElement("div");
+        row.className = "run-item";
+        const label = document.createElement("span");
+        label.textContent = String(file.name) + " · " + (Number(file.size_bytes || 0) / 1024).toFixed(1) +
+          " KiB · " + String(file.category || "");
+        row.append(label);
+        host.append(row);
+      }
+      if (!host.children.length) {
+        const empty = document.createElement("p"); empty.className = "muted";
+        empty.textContent = "فایل موقت شناخته‌شده‌ای پیدا نشد. مسیرهای اسکن‌شده: " +
+          String(data.state_directory || "—") + (data.runner_temp_directory ? " · " + data.runner_temp_directory : "");
+        host.append(empty);
+      }
+      if (data.truncated) $("storage-message").textContent = "فهرست برای جلوگیری از اسکن سنگین محدود شده است.";
+    } catch (error) {
+      $("storage-message").textContent = error.message || "بررسی فضای موقت ناموفق بود.";
+    } finally { if (button) button.disabled = false; }
+  }
+  $("refresh-storage").addEventListener("click", refreshStorage);
+  $("cleanup-storage").addEventListener("click", async () => {
+    if (!window.confirm("فقط فایل‌های موقت شناخته‌شده و قدیمی‌تر از ۲۴ ساعت حذف شوند؟ داده‌ها و checkpointها حفظ می‌شوند.")) return;
+    const button = $("cleanup-storage"); button.disabled = true;
+    try {
+      const result = await request("storage/cleanup", {method: "POST"});
+      $("storage-message").textContent = result.message || "پاک‌سازی انجام شد.";
+      await refreshStorage();
+    } catch (error) { $("storage-message").textContent = error.message || "پاک‌سازی ناموفق بود."; }
+    finally { button.disabled = false; }
+  });
   $("progress-period").addEventListener("change", () => {
     const custom = $("progress-period").value === "custom";
     $("progress-start-wrap").hidden = !custom;
@@ -429,6 +515,7 @@
   $("refresh-agent").addEventListener("click", refresh);
   refresh();
   refreshProgress();
+  refreshStorage();
   window.setInterval(refresh, 30000);
   window.setInterval(refreshProgress, 5000);
 })();
