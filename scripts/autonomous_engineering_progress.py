@@ -142,6 +142,36 @@ def record_phase(
     })
 
 
+def record_failure(
+    run_id: str, run_attempt: str, error_type: str, message: str,
+    source_file: str, line: int, function: str,
+) -> bool:
+    previous: dict[str, Any] = {}
+    try:
+        value = json.loads((store_dir() / "current.json").read_text(encoding="utf-8"))
+        if isinstance(value, dict) and str(value.get("run_id")) == str(run_id):
+            previous = value
+    except (OSError, ValueError):
+        pass
+    return persist({
+        **{key: previous.get(key) for key in ("phase", "phase_label", "plan_completed", "plan_total", "plan_percent")},
+        "run_id": run_id,
+        "run_attempt": run_attempt,
+        "status": "failed",
+        "phase": previous.get("phase") or "failed",
+        "phase_label": "چرخه با خطای فنی متوقف شد",
+        "activity": f"{error_type}: {message[:240]}",
+        "diagnostic": {
+            "source": "python_exception",
+            "error_type": error_type[:120],
+            "message": message[:500],
+            "source_file": source_file[:240],
+            "line": max(0, int(line)),
+            "function": function[:160],
+        },
+    })
+
+
 def plan_percentage(completed: int, total: int) -> float | None:
     if total <= 0:
         return None
@@ -472,6 +502,14 @@ def main() -> int:
     record.add_argument("--label", required=True)
     record.add_argument("--activity", required=True)
     record.add_argument("--status", default="running")
+    failure = sub.add_parser("failure")
+    failure.add_argument("--run-id", required=True)
+    failure.add_argument("--run-attempt", default="1")
+    failure.add_argument("--error-type", required=True)
+    failure.add_argument("--message", required=True)
+    failure.add_argument("--source-file", required=True)
+    failure.add_argument("--line", required=True, type=int)
+    failure.add_argument("--function", default="")
     codex = sub.add_parser("codex")
     codex.add_argument("--run-id", required=True)
     codex.add_argument("--run-attempt", default="1")
@@ -490,6 +528,11 @@ def main() -> int:
         return 0 if record_phase(
             args.run_id, args.run_attempt, args.phase, args.label,
             args.activity, status=args.status,
+        ) else 1
+    if args.action == "failure":
+        return 0 if record_failure(
+            args.run_id, args.run_attempt, args.error_type, args.message,
+            args.source_file, args.line, args.function,
         ) else 1
     if args.action == "codex":
         return run_codex(args)
