@@ -1256,9 +1256,9 @@ def test_cancel_finds_active_run_after_ten_newer_completed_runs(monkeypatch):
 
     monkeypatch.setattr(agent, "_run", fake_run)
 
-    result = agent.cancel_autonomous_engineering()
+    result = agent.cancel_autonomous_engineering(agent.RunControlRequest(run_id="999"))
 
-    assert result["run_id"] == 999
+    assert result["run_id"] == "999"
     list_command = next(command for command in calls if command[1:3] == ["run", "list"])
     assert list_command[list_command.index("--limit") + 1] == "30"
     assert calls[-1][1:3] == ["run", "cancel"]
