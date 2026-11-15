@@ -41,6 +41,12 @@ except ImportError:  # Direct script execution from the scripts directory.
 
 
 try:
+    from .autonomous_engineering_codex_diagnostics import _sanitize_error_signature
+except ImportError:  # Direct script execution from the scripts directory.
+    from autonomous_engineering_codex_diagnostics import _sanitize_error_signature
+
+
+try:
     from .autonomous_engineering_checkpoint_contract import metadata_confirms_watcher_ready
     from .autonomous_engineering_checkpoint_process import process_start_time
     from .autonomous_engineering_execution_lock import repository_execution_lock
@@ -645,9 +651,7 @@ if __name__ == "__main__":
                     source_file = Path(frame.filename).resolve().relative_to(repository_root).as_posix()
                 except (OSError, ValueError):
                     source_file = Path(frame.filename).name
-                safe_message = str(exc)[:500]
-                safe_message = re.sub(r"(?i)(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})", "[REDACTED]", safe_message)
-                safe_message = re.sub(r"(?i)(authorization:\s*bearer\s+)\S+", r"\1[REDACTED]", safe_message)
+                safe_message = _sanitize_error_signature({"message": str(exc)}) or type(exc).__name__
                 command = [
                     sys.executable, str(repository_root / "scripts" / "autonomous_engineering_progress.py"),
                     "failure", "--run-id", run_id,
