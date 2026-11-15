@@ -305,13 +305,7 @@ def github_snapshot(*, run_command, which, repository, workflow, default_interva
                         for item in parsed
                         if isinstance(item, dict)
                     ]
-                    recent_runs = mapped_runs[:5]
-                    visible_ids = {item["id"] for item in recent_runs}
-                    active_states = {"queued", "in_progress", "waiting", "requested", "pending"}
-                    recent_runs.extend(
-                        item for item in mapped_runs[5:]
-                        if item.get("status") in active_states and item.get("id") not in visible_ids
-                    )
+                    recent_runs = mapped_runs[:30]
                     runs_available = True
             except ValueError:
                 recent_runs = []
