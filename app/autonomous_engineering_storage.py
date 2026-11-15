@@ -134,13 +134,12 @@ def inspect_storage() -> dict[str, Any]:
     runner_roots = [path.parent.parent for path in runner_temp_dirs if path.name.casefold() == "_temp" and path.parent.name.casefold() == "_work"]
     for runner_root in runner_roots:
         diagnostic_dir = runner_root / "_diag"
-        if diagnostic_dir.is_dir():
-            try:
-                for path in diagnostic_dir.iterdir():
-                    if path.is_file() and path.suffix.casefold() in {".log", ".txt"}:
-                        candidates.append((path, diagnostic_dir, "runner_diagnostic"))
-            except OSError as exc:
-                access_errors.append({"path": str(diagnostic_dir), "error": type(exc).__name__})
+        try:
+            for path in diagnostic_dir.iterdir():
+                if path.is_file() and path.suffix.casefold() in {".log", ".txt"}:
+                    candidates.append((path, diagnostic_dir, "runner_diagnostic"))
+        except OSError as exc:
+            access_errors.append({"path": str(diagnostic_dir), "error": type(exc).__name__})
 
     files: list[dict[str, Any]] = []
     total = 0
