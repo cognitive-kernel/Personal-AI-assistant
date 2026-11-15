@@ -275,6 +275,7 @@ def run_codex(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
     last_signature: tuple[Any, ...] | None = None
+    last_codex_error: str | None = None
     smoke_events: list[dict[str, Any]] = []
     if not input_broken:
         persist({
@@ -291,6 +292,10 @@ def run_codex(args: argparse.Namespace) -> int:
                 continue
             if not isinstance(event, dict):
                 continue
+            if event.get("type") in {"turn.failed", "error"}:
+                sanitized_error = _sanitize_error_signature(event)
+                if sanitized_error:
+                    last_codex_error = sanitized_error
             if getattr(args, "require_command_output", None) or getattr(args, "expected_agent_message", None):
                 if (
                     event.get("type") in {"item.started", "item.completed", "turn.completed", "turn.failed", "error"}
@@ -363,6 +368,12 @@ def run_codex(args: argparse.Namespace) -> int:
             "activity": "مرحلهٔ کدنویسی پایان یافت" if return_code == 0 else "مرحلهٔ کدنویسی با خطا متوقف شد",
             "plan_completed": completed, "plan_total": total,
             "plan_percent": plan_percentage(completed, total),
+            "diagnostic": ({
+                "source": "codex_cli",
+                "error_type": "CodexExecutionError",
+                "message": last_codex_error or f"Codex CLI exited with code {return_code}.",
+                "category": diagnostic_failure_category(last_codex_error or f"Codex CLI exited with code {return_code}."),
+            } if return_code else None),
         })
         return return_code
     finally:
