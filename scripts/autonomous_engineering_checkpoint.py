@@ -71,8 +71,10 @@ def paths(run_id: str, task: int) -> dict[str, Path]:
     }
 
 
-def watcher_marker_paths(run_id: str, task: int) -> tuple[Path, Path]:
-    state = paths(run_id, task)
+def watcher_marker_paths(
+    run_id: str, task: int, *, state: dict[str, Path] | None = None,
+) -> tuple[Path, Path]:
+    state = state if state is not None else paths(run_id, task)
     stem = state["metadata"].stem
     return (state["directory"] / f"{stem}.ready", state["directory"] / f"{stem}.error")
 
@@ -264,7 +266,7 @@ def write_snapshot(
 
 def watch(base_sha: str, run_id: str, task: int, interval: int) -> int:
     state = paths(run_id, task)
-    ready_path, error_path = watcher_marker_paths(run_id, task)
+    ready_path, error_path = watcher_marker_paths(run_id, task, state=state)
     state["directory"].mkdir(parents=True, exist_ok=True)
     # The watcher owns the checkpoint store for its full lifetime. A second
     # watcher fails immediately instead of stopping or overwriting this owner.
@@ -501,7 +503,7 @@ def clear_latest() -> None:
         _atomic_write(state["stop"], "stop\n")
         for key in ("patch", "metadata", "plan", "stop"):
             state[key].unlink(missing_ok=True)
-        ready, error = watcher_marker_paths(str(metadata["run_id"]), int(metadata["task"]))
+        ready, error = watcher_marker_paths(str(metadata["run_id"]), int(metadata["task"]), state=state)
         ready.unlink(missing_ok=True)
         error.unlink(missing_ok=True)
 
