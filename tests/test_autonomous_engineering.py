@@ -891,6 +891,23 @@ def test_progress_reader_rejects_invalid_custom_date_range():
     assert result["error"] == "بازهٔ تاریخ معتبر نیست."
 
 
+def test_autonomous_workflow_installs_project_runtime_before_codex_sandbox_smoke():
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+
+    runtime_setup = workflow.index("Install project runtime before the Codex sandbox smoke")
+    context_preflight = workflow.index("Verify the selected model's allocated Ollama context")
+    sandbox_smoke = workflow.index("Verify Ollama and a real workspace-confined Codex tool call")
+
+    assert context_preflight < runtime_setup < sandbox_smoke
+    assert '$systemPython.Source -m venv .venv' in workflow
+    assert '-e ".[dev]"' in workflow
+    assert 'import psutil, fastapi' in workflow
+    assert '$venvScripts | Out-File -FilePath $env:GITHUB_PATH' in workflow
+    assert '& .\\.venv\\Scripts\\python.exe scripts/autonomous_engineering_progress.py codex' in workflow
+    assert "Install project dependencies for local test execution" not in workflow
+
+
 def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     root = Path(__file__).resolve().parents[1]
     page = (root / "app" / "static" / "autonomous-engineering.html").read_text(encoding="utf-8")
