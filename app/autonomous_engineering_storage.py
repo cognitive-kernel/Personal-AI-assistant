@@ -101,14 +101,15 @@ def inspect_storage() -> dict[str, Any]:
     """Inspect app-owned state and known Runner temp/diagnostic folders; never traverse arbitrary temp trees."""
     state_root = execution_state_directory()
     candidates: list[tuple[Path, Path, str]] = []
+    access_errors: list[dict[str, str]] = []
     try:
         if state_root.is_dir():
             for path in state_root.iterdir():
                 if path.is_file():
                     category = "state_temporary" if path.name.endswith(_STATE_TEMP_SUFFIXES) else "state_data_read_only"
                     candidates.append((path, state_root, category))
-    except OSError:
-        pass
+    except OSError as exc:
+        access_errors.append({"path": str(state_root), "error": type(exc).__name__})
 
     runner_temp_dirs = _runner_temp_directories()
     for runner_temp in runner_temp_dirs:
@@ -117,8 +118,10 @@ def inspect_storage() -> dict[str, Any]:
                 for path in runner_temp.iterdir():
                     if path.is_file():
                         candidates.append((path, runner_temp, "runner_temporary"))
-            except OSError:
-                pass
+            except OSError as exc:
+                access_errors.append({"path": str(runner_temp), "error": type(exc).__name__})
+        else:
+            access_errors.append({"path": str(runner_temp), "error": "directory_missing_or_inaccessible"})
     runner_roots = [path.parent.parent for path in runner_temp_dirs if len(path.parents) >= 3]
     for runner_root in runner_roots:
         diagnostic_dir = runner_root / "_diag"
@@ -127,8 +130,8 @@ def inspect_storage() -> dict[str, Any]:
                 for path in diagnostic_dir.iterdir():
                     if path.is_file() and path.suffix.casefold() in {".log", ".txt"}:
                         candidates.append((path, diagnostic_dir, "runner_diagnostic_read_only"))
-            except OSError:
-                pass
+            except OSError as exc:
+                access_errors.append({"path": str(diagnostic_dir), "error": type(exc).__name__})
 
     files: list[dict[str, Any]] = []
     total = 0
@@ -150,6 +153,7 @@ def inspect_storage() -> dict[str, Any]:
         "available": True,
         "state_directory": str(state_root),
         "runner_temp_directories": [str(path) for path in runner_temp_dirs],
+        "access_errors": access_errors,
         "files": files[:100],
         "file_count": len(files),
         "total_bytes": total,
