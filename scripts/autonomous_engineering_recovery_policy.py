@@ -37,28 +37,25 @@ def classify_failed_run(jobs: Sequence[Mapping[str, Any]]) -> str:
         return UNKNOWN
 
     codex_job = codex_jobs[0]
+    steps = codex_job.get("steps")
+    if isinstance(steps, list):
+        failed_steps = [
+            step for step in steps
+            if isinstance(step, Mapping)
+            and step.get("conclusion") in {"failure", "timed_out"}
+        ]
+        admission_failures = [
+            step for step in failed_steps
+            if step.get("name") == MANUAL_TASK_PERSIST_STEP
+        ]
+        if admission_failures:
+            return ADMISSION_REJECTED if len(failed_steps) == 1 else UNKNOWN
+        if failed_steps:
+            return RETRYABLE
+
     if codex_job.get("conclusion") == "timed_out":
         return RETRYABLE
-
-    steps = codex_job.get("steps")
-    if not isinstance(steps, list):
-        return UNKNOWN
-    failed_steps = [
-        step for step in steps
-        if isinstance(step, Mapping)
-        and step.get("conclusion") in {"failure", "timed_out"}
-    ]
-    if not failed_steps:
-        return UNKNOWN
-
-    admission_failures = [
-        step for step in failed_steps
-        if step.get("name") == MANUAL_TASK_PERSIST_STEP
-    ]
-    if admission_failures:
-        return ADMISSION_REJECTED if len(failed_steps) == 1 else UNKNOWN
-
-    return RETRYABLE
+    return UNKNOWN
 
 
 def retryable_failure_streak(
