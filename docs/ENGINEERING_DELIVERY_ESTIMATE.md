@@ -112,3 +112,10 @@ The older `docs/ACCEPTANCE_SCORECARD.md` reports 60.47% engineering progress usi
 ## 2026-11-05 — Checkpoint Watcher remediation tracking
 
 The run-scoped checkpoint readiness and snapshot-index isolation defect is tracked as part of work package E-05 (durable tasks, fault injection, and resilience) in PR #689. The original 176-hour baseline, work-package allocations, and target forecast are unchanged. No actual engineering hours are entered in this note because elapsed chat/tool time is not a reliable labor-time measurement. Acceptance remains pending exact-head CI and target-runner operational verification.
+
+## 2026-11-15 — Autonomous Engineering recovery and dashboard admission follow-up
+
+The recovery failure-classification, dashboard pending-work admission, machine-aware state-root, and shared lock work is tracked within the existing Autonomous Engineering resilience work package (E-05). It does not change the approved 22-day baseline or contingency allocation. No actual engineering hours are entered because elapsed tool/chat time is not a reliable labor-time measurement.
+
+Exact-head hosted CI has passed for the current code heads recorded in `docs/ENGINEERING_LOG.md`: PR #761 (2,302 passed, 13 skipped, 51 deselected plus all required workflow gates) and dependent PR #760 (2,257 passed, 13 skipped, 51 deselected plus all required workflow gates). Documentation-only status updates are followed by exact-head CI. Target-host Windows full-suite, cross-account ACL/effective-access verification, non-admin sandbox smoke/soak, crash/restart, real Ollama/Codex execution, and owner acceptance remain external operational gates; they are not treated as completed engineering work or human waiting time.
+
