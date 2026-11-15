@@ -1,5 +1,24 @@
 # Engineering Continuity Log
 
+## 2026-11-15 — Exact-head validation and regression iteration
+
+### CI failures corrected
+- An earlier Windows storage run failed because a test still expected the old schema-specific error text after the validator moved to a schema-neutral error. The assertion was updated to the new contract.
+- A subsequent test run failed during collection because a parameterized schema-v2 audit test had eight cases but only seven IDs. The missing case ID was added; no production behavior was changed to hide the failure.
+
+### Exact-head evidence
+- Validated code head: `90d4e16757bfe79d5333058b991c4c5e20b2f009`.
+- Tests workflow [43713036347](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43713036347): success; `2316 passed, 27 skipped, 51 deselected`. The focused checkpoint ownership/concurrency regressions, full test suite, generated-artifact check, repository Markdown links, import-cycle guard, deterministic retrieval benchmark, and fail-closed claim-to-test coverage benchmark all passed.
+- Windows storage regression job `132808568217` within that workflow: success. This includes the PowerShell owner-rebind, exact prior-run-attempt validation, schema-v2 audit preservation across later claims, digest-first fail-closed behavior, and atomic owner-record write tests.
+- Browser E2E [43713036335](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43713036335): success.
+- Dependency audit [43713036329](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43713036329): success.
+- The deterministic claim-to-test benchmark explicitly states that it measures structural coverage only; it does not establish semantic adequacy or target-host acceptance.
+
+### Remaining validation
+- CodeQL did not run for PR #762 because the current CodeQL workflow restricts `pull_request` to base branch `main`, while #762 is stacked on #761. The exact-head CodeQL scan remains required and is not claimed as passed.
+- Actual target-host Windows acceptance (cross-account ACL, non-admin sandbox, and crash/restart recovery) remains pending.
+- No live task/owner/checkpoint/Pause/ACL/Runner state was changed, no repair dispatch was issued, and no PR was merged.
+
 ## 2026-11-15 — Trace the original Windows sandbox mutex failure to the retired elevated fallback
 
 - Inspected the exact failed step and full job log for owner run [43592197032](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43592197032). The run was on old main SHA `1969bcc83294689efaad091ea5aaa7582c44f618`; the standalone `mxc` probe failed, after which the old workflow tried the `elevated` backend. Codex repeatedly failed to open the Windows sandbox setup mutex in that fallback.
