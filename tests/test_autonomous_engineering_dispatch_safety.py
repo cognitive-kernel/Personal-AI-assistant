@@ -65,6 +65,24 @@ def test_pending_work_status_fails_closed_when_shared_lock_cannot_be_acquired(mo
     assert result["markers"] == {}
 
 
+
+def test_pending_work_status_fails_closed_on_lock_permission_error(monkeypatch, tmp_path):
+    monkeypatch.setattr(progress, "_progress_dir", lambda: tmp_path)
+
+    class LockPermissionDenied:
+        def __init__(self, *args, **kwargs):
+            raise PermissionError("access denied")
+
+    monkeypatch.setattr(progress, "durable_state_lock", LockPermissionDenied)
+
+    result = progress.pending_work_status()
+
+    assert result["available"] is False
+    assert result["blocked"] is True
+    assert result["markers"] == {}
+    assert result["reason"] == "Durable task state cannot be verified safely: PermissionError"
+
+
 def test_manual_dispatch_is_rejected_when_a_durable_task_is_pending(monkeypatch):
     _ready(monkeypatch)
     monkeypatch.setattr(agent, "pending_work_status", lambda: {
