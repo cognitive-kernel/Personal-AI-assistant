@@ -30,9 +30,12 @@ def _validate_owner_record(record: Any, task: str) -> dict[str, Any]:
         raise RuntimeError("Pending task owner metadata must be a JSON object.")
     integer_fields = ("owner_attempt", "submitted_attempt", "claim_count")
     timestamp_fields = ("created_at", "claimed_at")
+    schema_version = record.get("schema_version")
+    integer_fields = ("owner_attempt", "submitted_attempt", "claim_count")
+    timestamp_fields = ("created_at", "claimed_at")
     if (
-        isinstance(record.get("schema_version"), bool)
-        or record.get("schema_version") != SCHEMA_VERSION
+        isinstance(schema_version, bool)
+        or schema_version not in (1, 2)
         or any(not isinstance(record.get(key), str) or not record[key] for key in (
             "task_sha256", "owner_run_id", "submitted_run_id", "source"
         ))
@@ -53,8 +56,27 @@ def _validate_owner_record(record: Any, task: str) -> dict[str, Any]:
         or record["source"] not in _ALLOWED_SOURCES
     ):
         raise RuntimeError(
-            "Pending task owner metadata violates schema v1; preserving it."
+            "Pending task owner metadata violates its declared schema; preserving it."
         )
+    if schema_version == 2:
+        rebound_at = record.get("rebound_at")
+        previous_digest = record.get("previous_task_sha256")
+        authorization_run_id = record.get("rebind_authorization_run_id")
+        if (
+            not isinstance(previous_digest, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", previous_digest)
+            or previous_digest == record["task_sha256"]
+            or record["source"] != "recovery"
+            or record.get("rebind_reason") != "owner_authorized_task_content_reconciliation"
+            or not isinstance(authorization_run_id, str)
+            or not re.fullmatch(r"[0-9]{1,20}", authorization_run_id)
+            or authorization_run_id != record["owner_run_id"]
+            or isinstance(rebound_at, bool)
+            or not isinstance(rebound_at, (int, float))
+            or not math.isfinite(float(rebound_at))
+            or rebound_at <= 0
+        ):
+            raise RuntimeError("Pending task owner metadata violates schema v2; preserving it.")
     if record["task_sha256"] != task_digest(task):
         raise RuntimeError(
             "Pending task owner digest does not match task content; preserving both records."
