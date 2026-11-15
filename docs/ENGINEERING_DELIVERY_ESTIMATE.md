@@ -7,6 +7,14 @@
 - **Acceptance evidence:** exact-head GitHub checks and target-host crash/restart/soak evidence are tracked in `docs/PROJECT_STATUS.md` and `docs/ENGINEERING_LOG.md`. Until those results exist, this addendum remains an open change-control item.
 - **Safety:** no automatic merge, deployment, workflow policy change, or mutation of task/checkpoint/user data is part of this work.
 
+## Change-control addendum — 2026-11-15
+
+- **Scope addition:** autonomous recovery now distinguishes task-admission/schedule-gate failures from actual controller execution failures. The previous history counter treated every failed workflow as an execution failure, and the circuit-breaker path reported a green conclusion despite dispatching nothing.
+- **Implementation:** a dedicated, testable recovery policy and coordinator classify structured job/step results, paginate workflow history, preserve the existing three-execution-failure threshold and bounded backoff, and fail closed on unknown classifications. Recovery workflow wiring and operational/architecture documentation are updated.
+- **Estimate status:** no additional hours are asserted. This is corrective reliability work within E-05 (durable tasks and resilience); the original 176-hour baseline and allocations are not silently rewritten.
+- **Automated acceptance:** exact head `aadb11fa6297d30e1c3c86505a2445132968873a` passed 2,277 Python tests (13 skipped, 51 deselected), Windows storage regressions, Browser E2E, dependency audit, and CodeQL. PR #760's exact head also passed all four required workflows.
+- **Remaining acceptance:** local Windows full-suite rerun and live recovery execution on the target Runner remain pending. The pending task, owner metadata, checkpoint, Pause setting, Runner identity, and ACL were not changed; no recovery dispatch was issued.
+
 ## Executive commitment
 
 - **Planning baseline:** 22 working days.
@@ -104,3 +112,10 @@ The older `docs/ACCEPTANCE_SCORECARD.md` reports 60.47% engineering progress usi
 ## 2026-11-05 — Checkpoint Watcher remediation tracking
 
 The run-scoped checkpoint readiness and snapshot-index isolation defect is tracked as part of work package E-05 (durable tasks, fault injection, and resilience) in PR #689. The original 176-hour baseline, work-package allocations, and target forecast are unchanged. No actual engineering hours are entered in this note because elapsed chat/tool time is not a reliable labor-time measurement. Acceptance remains pending exact-head CI and target-runner operational verification.
+
+## 2026-11-15 — Autonomous Engineering recovery and dashboard admission follow-up
+
+The recovery failure-classification, dashboard pending-work admission, machine-aware state-root, and shared lock work is tracked within the existing Autonomous Engineering resilience work package (E-05). It does not change the approved 22-day baseline or contingency allocation. No actual engineering hours are entered because elapsed tool/chat time is not a reliable labor-time measurement.
+
+Exact-head hosted CI has passed for the current code heads recorded in `docs/ENGINEERING_LOG.md`: PR #761 (2,302 passed, 13 skipped, 51 deselected plus all required workflow gates) and dependent PR #760 (2,257 passed, 13 skipped, 51 deselected plus all required workflow gates). Documentation-only status updates are followed by exact-head CI. Target-host Windows full-suite, cross-account ACL/effective-access verification, non-admin sandbox smoke/soak, crash/restart, real Ollama/Codex execution, and owner acceptance remain external operational gates; they are not treated as completed engineering work or human waiting time.
+

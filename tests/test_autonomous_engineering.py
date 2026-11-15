@@ -205,18 +205,20 @@ def test_resume_clears_pause_and_dispatches_without_legacy_failure_counter(monke
     assert all("AUTONOMOUS_ENGINEERING_FAILURE_STREAK" not in call for call in calls)
 
 
-def test_autonomous_recovery_workflow_retries_continuous_failures_without_an_automatic_retry_limit():
+def test_autonomous_recovery_uses_the_durable_policy_module():
     root = Path(__file__).resolve().parents[1]
     recovery = (root / ".github" / "workflows" / "autonomous-codex-recovery.yml").read_text(encoding="utf-8")
+    policy = (root / "scripts" / "autonomous_engineering_recovery.py").read_text(encoding="utf-8")
 
     assert "workflow_run:" in recovery
-    assert "AUTONOMOUS_ENGINEERING_FAILURE_STREAK" in recovery
-    assert "AUTONOMOUS_ENGINEERING_PENDING_TASK" in recovery
     assert "AUTONOMOUS_ENGINEERING_PAUSED" in recovery
-    assert "continuous" in recovery
-    assert "/dispatches" in recovery
-    assert "delay_seconds = min(240, 30 * (2 ** min(streak - 1, 3)))" in recovery
-    assert "streak >= 4" not in recovery
+    assert "scripts/autonomous_engineering_recovery.py" in recovery
+    assert "EXECUTION_MODE:" in recovery
+    assert "FAILED_RUN_ID:" in recovery
+    assert "AUTONOMOUS_ENGINEERING_FAILURE_STREAK" not in policy
+    assert "manual_task" in policy
+    assert "retryable_failure_streak" in policy
+    assert "classify_failed_run" in policy
 
 
 def test_ollama_status_bypasses_environment_proxies(monkeypatch):
@@ -1079,10 +1081,15 @@ def test_dispatch_forwards_manual_task_as_a_single_untrusted_field(monkeypatch):
     monkeypatch.setattr(agent, "collect_status", lambda: {
         "ready": True, "github": {"runs_available": True, "recent_runs": []}
     })
+    monkeypatch.setattr(agent, "pending_work_status", lambda: {
+        "available": True, "blocked": False, "markers": {},
+    })
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
 
     def fake_run(command, timeout=8):
         calls.append(command)
+        if command[1:2] == ["api"]:
+            return subprocess.CompletedProcess(command, 0, "[]", "")
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(agent, "_run", fake_run)

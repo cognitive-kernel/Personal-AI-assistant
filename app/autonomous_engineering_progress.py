@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 import os
 import re
+
+from .autonomous_engineering_state import durable_state_lock, execution_state_directory
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -14,22 +16,51 @@ _MAX_EVENTS = 20000
 
 
 def _progress_dir() -> Path:
-    configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
-    if configured:
-        return Path(configured).expanduser()
-    program_data = os.getenv("PROGRAMDATA")
-    if program_data:
-        return Path(program_data) / "PersonalAIAssistant" / "autonomous-engineering"
-    return Path.home() / ".personal-ai-assistant" / "autonomous-engineering"
+    """Use the same machine-aware state-root contract as the Windows Runner."""
+    return execution_state_directory()
 
 
 def storage_accessible() -> bool:
-    directory = _progress_dir()
     try:
-        with os.scandir(directory):
+        with os.scandir(_progress_dir()):
             return True
-    except OSError:
+    except (OSError, RuntimeError, ValueError):
         return False
+
+
+def pending_work_status() -> dict[str, Any]:
+    """Inspect durable ownership markers without reading or changing task data."""
+    state_files = {
+        "pending_task": "pending-manual-task.txt",
+        "pending_owner": "pending-manual-task-owner.json",
+        "pending_pr": "pending-autonomous-pr.json",
+        "cleanup_in_progress": "pending-state-cleanup.json",
+    }
+    try:
+        directory = _progress_dir()
+        with durable_state_lock(directory, timeout_seconds=2):
+            present: dict[str, bool] = {}
+            for key, filename in state_files.items():
+                path = directory / filename
+                try:
+                    path.stat()
+                    present[key] = True
+                except FileNotFoundError:
+                    present[key] = False
+        blockers = [key for key, exists in present.items() if exists]
+        return {
+            "available": True,
+            "blocked": bool(blockers),
+            "markers": present,
+            "reason": ", ".join(blockers) if blockers else None,
+        }
+    except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
+        return {
+            "available": False,
+            "blocked": True,
+            "markers": {},
+            "reason": f"Durable task state cannot be verified safely: {type(exc).__name__}",
+        }
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:

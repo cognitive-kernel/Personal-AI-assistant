@@ -1,5 +1,20 @@
 # وضعیت یکپارچهٔ پروژه
 
+## 2026-11-15 — اصلاح طبقه‌بندی شکست و بازیابی چرخهٔ خودکار
+
+- وضعیت: **پیاده‌سازی کامل در PRهای باز؛ CI دقیق هر دو PR سبز؛ ادغام‌نشده؛ تست محلی مالک و پذیرش زنده pending**.
+- مبنای main هنگام شروع این اصلاح: `f5cfa837e788ccfa84e13203fb33ac1b1937927a`.
+- اجرای [43695676192](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43695676192) در `schedule-gate` موفق بود، اما در مرحلهٔ `Persist manual task under the controller's runner and concurrency ownership` با پیام `Another manual task is still pending` متوقف شد. مرحلهٔ اجرای کنترل‌کننده اصلاً اجرا نشد؛ بنابراین این رخداد شکست اجرای task نبود.
+- recovery قبلی همهٔ شکست‌های Workflow را بدون بررسی job/step در streak جمع می‌کرد و شکست پذیرش task را به‌اشتباه شکست اجرای autonomous محسوب کرد. همچنین Circuit Breaker با exit code صفر بسته می‌شد و GitHub آن را سبز نشان می‌داد، درحالی‌که dispatch انجام نشده بود: [run 43695720003](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43695720003).
+- PR [#761](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/761)، شاخهٔ `fix/autonomous-recovery-failure-classification-20261115`: مرز شکست واقعی اجرای task اکنون فقط step دقیق `Execute one isolated task, validate, and publish for owner review` است. شکست‌های admission، schedule gate، پیش‌نیاز، نصب، sandbox، pause و postcondition شمارندهٔ اجرای task را افزایش نمی‌دهند و dispatch تکراری ایجاد نمی‌کنند؛ دادهٔ ناشناخته fail-closed است.
+- نقص داشبورد نیز رفع شده است: ارسال task دستی جدید در صورت وجود task/owner/PR/cleanup پایدار یا عدم امکان تأیید state و GitHub رد می‌شود. مسیر dispatch خالی برای resume/reconcile کار پایدار قبلی باز است. متن task خوانده یا بازگردانده نمی‌شود.
+- مسیر state و قفل اکنون در بستهٔ نصب‌شدهٔ `app/autonomous_engineering_state.py` متمرکز است. داشبورد و Runner از همان resolver ماشین‌محور و primitive قفل استفاده می‌کنند؛ چهار فایل مشترک در PR #760 و #761 یکسان هستند و ترتیب ادغام آن‌ها رفتار قفل را تغییر نمی‌دهد.
+- PR #761 روی کد head `d976b639314bfe1bd4da74d8f316e30ba274eacc`: **۲۳۰۲ passed، ۱۳ skipped، ۵۱ deselected**؛ Windows storage، Browser E2E، Dependency Audit، CodeQL، تولید artifact، Markdown links، import-cycle، retrieval و claim-to-test benchmark همگی موفق شدند. اجراها: tests/Windows [43703252064](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43703252064)، Browser [43703252121](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43703252121)، CodeQL [43703252128](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43703252128)، Dependency [43703252113](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43703252113).
+- PR [#760](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/760)، head `82d02119191b99d0ba071e8fd6f08841db2c7d7b): **۲۲۵۷ passed، ۱۳ skipped، ۵۱ deselected**؛ Windows storage، Browser E2E، Dependency Audit و CodeQL همگی موفق شدند.
+- هر دو PR هنوز Draft و ادغام‌نشده‌اند. هیچ recovery dispatch یا اجرای autonomous زنده انجام نشده و فایل task، owner metadata، checkpoint، Pause، ACL و هویت Runner دست‌نخورده باقی مانده‌اند.
+- گیت‌های عملیاتی هدف هنوز pending هستند: اجرای کامل suite روی Windows هدف، بررسی دسترسی مؤثر دو حساب، sandbox غیرادمین، crash/restart، اجرای واقعی Ollama/Codex و پذیرش مالک. چون task پایدار قبلی هنوز وجود دارد، تست زندهٔ بعدی باید با dispatch خالی برای resume همان task انجام شود؛ task دستی جدید تا تعیین‌تکلیف قبلی به‌درستی پذیرفته نمی‌شود.
+- بازاعتبارسنجی snapshot مستندات PR #761 در head `e61f3053f074f46cc920ac2c75e0c877b6785928`: ۲۳۰۲ تست موفق و تمام گیت‌های GitHub سبز؛ PR #760 در head `72146234785a34a6e11c15177a17a088a615e0c3`: ۲۲۵۷ تست موفق و تمام گیت‌های GitHub سبز. Engineering Log، Project Status و Delivery Estimate سپس فقط برای ثبت شواهد نهایی به‌روزرسانی شدند؛ این تغییرات هیچ کد اجرایی یا state عملیاتی را تغییر نداده‌اند.
+
 ## وضعیت جاری — مالکیت پردازه و بازیابی Codex
 
 - مبنای زندهٔ `main` در آغاز این کار: `1969bcc83294689efaad091ea5aaa7582c44f618`.
