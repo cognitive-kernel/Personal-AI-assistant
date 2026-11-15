@@ -38,18 +38,23 @@ function Rebind-AutonomousTaskOwnerRecord {
     $submittedAttempt = 0
     $claimCount = 0
     $createdAt = 0.0
+    $claimedAt = 0.0
     $oldDigest = [string]$existing.task_sha256
     if (
         $existing.schema_version -is [bool] -or
-        [int]$existing.schema_version -ne 1 -or
+        -not ($existing.schema_version -is [int] -or $existing.schema_version -is [long]) -or
+        [long]$existing.schema_version -ne 1 -or
         $oldDigest -notmatch '^[0-9a-f]{64}$' -or
         [string]$existing.owner_run_id -cne [string]$VerifiedOwnerRun.id -or
+        [string]$existing.owner_run_id -notmatch '^[0-9]+$' -or
         -not [int]::TryParse([string]$existing.owner_attempt, [ref]$ownerAttempt) -or $ownerAttempt -lt 1 -or
         -not [int]::TryParse([string]$existing.submitted_attempt, [ref]$submittedAttempt) -or $submittedAttempt -lt 1 -or
-        [string]::IsNullOrWhiteSpace([string]$existing.submitted_run_id) -or
+        [string]$existing.submitted_run_id -notmatch '^[0-9]+$' -or
         -not [int]::TryParse([string]$existing.claim_count, [ref]$claimCount) -or $claimCount -lt 1 -or
         -not [double]::TryParse([string]$existing.created_at, [ref]$createdAt) -or
         [double]::IsNaN($createdAt) -or [double]::IsInfinity($createdAt) -or $createdAt -le 0 -or
+        -not [double]::TryParse([string]$existing.claimed_at, [ref]$claimedAt) -or
+        [double]::IsNaN($claimedAt) -or [double]::IsInfinity($claimedAt) -or $claimedAt -le 0 -or
         [string]$existing.source -notin @("manual_dispatch", "recovery", "legacy_migration")
     ) {
         throw "Pending task owner metadata is not structurally valid schema v1; preserving it."
@@ -78,23 +83,16 @@ function Rebind-AutonomousTaskOwnerRecord {
         rebound_at = $now
     }
 
-    $backupPath = "$Path.quarantine-rebound-$RunId-$RunAttempt-$([guid]::NewGuid().ToString('N')).json"
-    $temporaryPath = "$Path.$RunId-$RunAttempt.rebind.tmp"
+    $nonce = [guid]::NewGuid().ToString('N')
+    $backupPath = "$Path.quarantine-rebound-$RunId-$RunAttempt-$nonce.json"
+    $temporaryPath = "$Path.$RunId-$RunAttempt-$nonce.rebind.tmp"
     try {
-        Move-Item -LiteralPath $Path -Destination $backupPath -ErrorAction Stop
-        try {
-            [System.IO.File]::WriteAllText(
-                $temporaryPath,
-                ($record | ConvertTo-Json -Depth 5 -Compress),
-                [System.Text.UTF8Encoding]::new($false)
-            )
-            Move-Item -LiteralPath $temporaryPath -Destination $Path -Force -ErrorAction Stop
-        } catch {
-            if (-not (Test-Path -LiteralPath $Path) -and (Test-Path -LiteralPath $backupPath)) {
-                Move-Item -LiteralPath $backupPath -Destination $Path -ErrorAction SilentlyContinue
-            }
-            throw
-        }
+        [System.IO.File]::WriteAllText(
+            $temporaryPath,
+            ($record | ConvertTo-Json -Depth 5 -Compress),
+            [System.Text.UTF8Encoding]::new($false)
+        )
+        [System.IO.File]::Replace($temporaryPath, $Path, $backupPath, $true)
     } catch {
         throw "Explicit owner reconciliation failed; the original owner record remains preserved. $($_.Exception.Message)"
     } finally {
