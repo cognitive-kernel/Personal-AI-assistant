@@ -29,11 +29,11 @@ def _ps_quote(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
-def test_schema_v1_owner_accepts_additive_rebind_audit_fields(tmp_path: Path):
+def test_schema_v2_owner_requires_and_accepts_rebind_audit_fields(tmp_path: Path):
     task = "The durable task text remains unchanged."
     now = time.time()
     record = {
-        "schema_version": 1,
+        "schema_version": 2,
         "task_sha256": task_digest(task),
         "submitted_run_id": "100",
         "submitted_attempt": 1,
@@ -85,7 +85,8 @@ def test_powershell_owner_rebind_archives_old_record_and_preserves_submission(tm
         "head_branch='main';status='completed';conclusion='failure'}; "
         f"$result=Rebind-AutonomousTaskOwnerRecord -Path {_ps_quote(str(owner_path))} "
         f"-Task {_ps_quote(current_task)} -RunId '300' -RunAttempt 2 -VerifiedOwnerRun $run; "
-        "$result | ConvertTo-Json -Compress -Depth 5"
+        f"$validated=Get-AutonomousTaskOwnerRecord -Path {_ps_quote(str(owner_path))} -Task {_ps_quote(current_task)}; "
+        "$validated | ConvertTo-Json -Compress -Depth 5"
     )
     result = _powershell(script)
     assert result.returncode == 0, result.stderr
@@ -94,7 +95,7 @@ def test_powershell_owner_rebind_archives_old_record_and_preserves_submission(tm
     backups = list(tmp_path.glob("pending-manual-task-owner.json.quarantine-rebound-*.json"))
     assert len(backups) == 1
     assert backups[0].read_bytes() == old_bytes
-    assert updated["schema_version"] == 1
+    assert updated["schema_version"] == 2
     assert updated["task_sha256"] == task_digest(current_task)
     assert updated["previous_task_sha256"] == old_record["task_sha256"]
     assert updated["rebind_reason"] == "owner_authorized_task_content_reconciliation"
