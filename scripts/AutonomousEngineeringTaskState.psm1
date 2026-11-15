@@ -74,6 +74,7 @@ function Get-AutonomousTaskOwnerRecord {
     }
     if ([long]$record.schema_version -eq 2) {
         $reboundAt = 0.0
+        $authorizationAttempt = 0
         if (
             -not ($record.previous_task_sha256 -is [string]) -or
             [string]$record.previous_task_sha256 -notmatch '^[0-9a-f]{64}\z' -or
