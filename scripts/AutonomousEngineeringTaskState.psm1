@@ -45,7 +45,7 @@ function Get-AutonomousTaskOwnerRecord {
     if (
         $record.schema_version -is [bool] -or
         -not ($record.schema_version -is [int] -or $record.schema_version -is [long]) -or
-        [long]$record.schema_version -ne 1 -or
+        [long]$record.schema_version -notin @(1, 2) -or
         -not ($record.task_sha256 -is [string]) -or
         [string]$record.task_sha256 -notmatch '^[0-9a-f]{64}$' -or
         -not ($record.owner_run_id -is [string]) -or
@@ -71,6 +71,21 @@ function Get-AutonomousTaskOwnerRecord {
         [string]$record.source -notin @("manual_dispatch", "recovery", "legacy_migration")
     ) {
         throw "Pending task owner metadata violates schema v1; preserving it."
+    }
+    if ([long]$record.schema_version -eq 2) {
+        $reboundAt = 0.0
+        if (
+            -not ($record.previous_task_sha256 -is [string]) -or
+            [string]$record.previous_task_sha256 -notmatch '^[0-9a-f]{64}$' -or
+            -not ($record.rebind_reason -is [string]) -or
+            [string]$record.rebind_reason -cne "owner_authorized_task_content_reconciliation" -or
+            -not ($record.rebind_authorization_run_id -is [string]) -or
+            [string]::IsNullOrWhiteSpace([string]$record.rebind_authorization_run_id) -or
+            -not [double]::TryParse([string]$record.rebound_at, [ref]$reboundAt) -or
+            [double]::IsNaN($reboundAt) -or [double]::IsInfinity($reboundAt) -or $reboundAt -le 0
+        ) {
+            throw "Pending task owner metadata violates schema v2; preserving it."
+        }
     }
     if ([string]$record.task_sha256 -cne $taskDigest) {
         throw "Pending task owner digest does not match the durable task; preserving both records."
