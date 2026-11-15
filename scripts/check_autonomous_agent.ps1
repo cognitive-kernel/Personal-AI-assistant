@@ -1,5 +1,6 @@
 param([string]$SelectedModel)
 $ErrorActionPreference = "Stop"
+Import-Module (Join-Path $PSScriptRoot "AutonomousOllamaRuntime.psm1") -Force
 $model = if (-not [string]::IsNullOrWhiteSpace($SelectedModel)) {
     $SelectedModel
 } elseif ($env:AUTONOMOUS_ENGINEERING_MODEL) {
@@ -16,9 +17,9 @@ $modelContextLength = $null
 $modelSupportsTools = $false
 $toolVerificationDetail = "Tool calling has not been verified."
 try {
-    $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 4 -MaximumRedirection 0
+    $tags = @(Get-AutonomousOllamaModelCatalog -TimeoutSeconds 4)
     $ollamaOnline = $true
-    $modelInstalled = @($tags.models | ForEach-Object { $_.name }) -contains $model
+    $modelInstalled = Test-AutonomousOllamaModelInstalled -Model $model -Catalog $tags
     if ($modelInstalled) {
         $modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -ContentType "application/json" -Body (@{ model = $model; verbose = $true } | ConvertTo-Json -Compress) -TimeoutSec 8 -MaximumRedirection 0
         $architecture = [string]$modelInfo.details.family
