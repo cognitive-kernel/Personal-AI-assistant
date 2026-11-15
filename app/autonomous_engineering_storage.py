@@ -98,7 +98,7 @@ def _runner_worker_active() -> bool:
 
 
 def inspect_storage() -> dict[str, Any]:
-    """Inspect app-owned state and known Runner temp/diagnostic folders; never traverse arbitrary temp trees."""
+    """Inventory state files, the dedicated Runner temp directory, and Runner diagnostics without recursive traversal."""
     state_root = execution_state_directory()
     candidates: list[tuple[Path, Path, str]] = []
     access_errors: list[dict[str, str]] = []
@@ -131,7 +131,7 @@ def inspect_storage() -> dict[str, Any]:
             try:
                 for path in diagnostic_dir.iterdir():
                     if path.is_file() and path.suffix.casefold() in {".log", ".txt"}:
-                        candidates.append((path, diagnostic_dir, "runner_diagnostic_read_only"))
+                        candidates.append((path, diagnostic_dir, "runner_diagnostic"))
             except OSError as exc:
                 access_errors.append({"path": str(diagnostic_dir), "error": type(exc).__name__})
 
@@ -142,7 +142,7 @@ def inspect_storage() -> dict[str, Any]:
         if item is None:
             continue
         item["category"] = category
-        if category == "runner_diagnostic_read_only":
+        if category == "runner_diagnostic":
             item["cleanup_eligible"] = item["age_seconds"] >= _DIAGNOSTIC_RETENTION_SECONDS
         elif category in {"state_temporary", "runner_temporary"}:
             item["cleanup_eligible"] = item["age_seconds"] >= _RETENTION_SECONDS
@@ -167,7 +167,7 @@ def inspect_storage() -> dict[str, Any]:
 
 
 def cleanup_storage(*, active_run: bool) -> dict[str, Any]:
-    """Delete only known stale temporary artifacts, and refuse while any workflow is active."""
+    """Delete expired files only from dedicated Runner temp/state temp and old Runner diagnostic logs."""
     if active_run or _runner_worker_active():
         return {"deleted": [], "deleted_count": 0, "blocked": True, "message": "اجرای فعال یا فرایند Runner.Worker شناسایی شد؛ پاک‌سازی تا پایان اجرای همهٔ Jobها انجام نشد."}
 
