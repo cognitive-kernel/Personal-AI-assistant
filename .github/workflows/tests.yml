@@ -128,7 +128,7 @@ jobs:
       - name: Test shared Ollama runtime API contract
         shell: pwsh
         run: |
-          Import-Module "$env:GITHUB_WORKSPACE\\scripts\\AutonomousOllamaRuntime.psm1" -Force
+          Import-Module "$env:GITHUB_WORKSPACE\scripts\AutonomousOllamaRuntime.psm1" -Force
           $catalog = @(ConvertFrom-AutonomousOllamaTagsResponse -Response ([pscustomobject]@{
             models = @(
               [pscustomobject]@{ name = "gpt-oss:20b" },
