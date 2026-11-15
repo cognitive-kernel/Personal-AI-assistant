@@ -98,7 +98,7 @@ def inspect_storage() -> dict[str, Any]:
                         candidates.append((path, runner_temp, "runner_temporary"))
             except OSError:
                 pass
-    runner_roots = [path.parent.parent.parent for path in runner_temp_dirs if len(path.parents) >= 3]
+    runner_roots = [path.parent.parent for path in runner_temp_dirs if len(path.parents) >= 3]
     for runner_root in runner_roots:
         diagnostic_dir = runner_root / "_diag"
         if diagnostic_dir.is_dir():
