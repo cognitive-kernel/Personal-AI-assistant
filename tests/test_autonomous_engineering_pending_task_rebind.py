@@ -131,6 +131,52 @@ def test_schema_v2_owner_rejects_missing_reconciliation_audit(tmp_path: Path):
 
 
 @pytest.mark.skipif(os.name != "nt", reason="PowerShell task-owner interoperability is Windows-only")
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda record: record.update(previous_task_sha256=record["task_sha256"]),
+        lambda record: record.update(source="manual_dispatch"),
+        lambda record: record.update(rebind_authorization_run_id="999"),
+        lambda record: record.update(rebind_authorization_run_id="invalid"),
+    ],
+)
+def test_powershell_validator_rejects_inconsistent_schema_v2_audit(
+    tmp_path: Path, mutation,
+):
+    root = Path(__file__).resolve().parents[1]
+    module = root / "scripts" / "AutonomousEngineeringTaskState.psm1"
+    task = "Schema-v2 validator must reject incomplete audit records."
+    now = time.time()
+    record = {
+        "schema_version": 2,
+        "task_sha256": task_digest(task),
+        "submitted_run_id": "100",
+        "submitted_attempt": 1,
+        "owner_run_id": "200",
+        "owner_attempt": 1,
+        "created_at": now,
+        "claimed_at": now,
+        "claim_count": 2,
+        "source": "recovery",
+        "previous_task_sha256": "a" * 64,
+        "rebind_reason": "owner_authorized_task_content_reconciliation",
+        "rebind_authorization_run_id": "200",
+        "rebound_at": now,
+    }
+    mutation(record)
+    owner_path = tmp_path / "pending-manual-task-owner.json"
+    owner_path.write_text(json.dumps(record), encoding="utf-8")
+    script = (
+        "$ErrorActionPreference='Stop'; "
+        f"Import-Module {_ps_quote(str(module))} -Force; "
+        f"Get-AutonomousTaskOwnerRecord -Path {_ps_quote(str(owner_path))} -Task {_ps_quote(task)} | Out-Null"
+    )
+    result = _powershell(script)
+    assert result.returncode != 0
+    assert owner_path.exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="PowerShell task-owner interoperability is Windows-only")
 def test_powershell_owner_rebind_archives_old_record_and_preserves_submission(tmp_path: Path):
     root = Path(__file__).resolve().parents[1]
     module = root / "scripts" / "AutonomousEngineeringTaskOwnerRebind.psm1"
