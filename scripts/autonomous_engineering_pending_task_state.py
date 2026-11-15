@@ -28,15 +28,19 @@ def task_digest(task: str) -> str:
 def _validate_owner_record(record: Any, task: str) -> dict[str, Any]:
     if not isinstance(record, dict):
         raise RuntimeError("Pending task owner metadata must be a JSON object.")
+    schema_version = record.get("schema_version")
     integer_fields = ("owner_attempt", "submitted_attempt", "claim_count")
     timestamp_fields = ("created_at", "claimed_at")
     if (
-        isinstance(record.get("schema_version"), bool)
-        or record.get("schema_version") not in (1, 2)
+        isinstance(schema_version, bool)
+        or not isinstance(schema_version, int)
+        or schema_version not in (1, 2)
         or any(not isinstance(record.get(key), str) or not record[key] for key in (
             "task_sha256", "owner_run_id", "submitted_run_id", "source"
         ))
-        or not re.fullmatch(r"[0-9a-f]{64}", str(record.get("task_sha256", "")))
+        or not re.fullmatch(r"[0-9]{1,20}", record["owner_run_id"])
+        or not re.fullmatch(r"[0-9]{1,20}", record["submitted_run_id"])
+        or not re.fullmatch(r"[0-9a-f]{64}", record["task_sha256"])
         or any(
             isinstance(record.get(key), bool)
             or not isinstance(record.get(key), int)
@@ -53,16 +57,21 @@ def _validate_owner_record(record: Any, task: str) -> dict[str, Any]:
         or record["source"] not in _ALLOWED_SOURCES
     ):
         raise RuntimeError(
-            "Pending task owner metadata violates schema v1; preserving it."
+            "Pending task owner metadata violates its declared schema; preserving it."
         )
-    if record["schema_version"] == 2:
+    if schema_version == 2:
         rebound_at = record.get("rebound_at")
+        previous_digest = record.get("previous_task_sha256")
+        authorization_run_id = record.get("rebind_authorization_run_id")
         if (
-            not isinstance(record.get("previous_task_sha256"), str)
-            or not re.fullmatch(r"[0-9a-f]{64}", record["previous_task_sha256"])
+            not isinstance(previous_digest, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", previous_digest)
+            or previous_digest == record["task_sha256"]
+            or record["source"] != "recovery"
             or record.get("rebind_reason") != "owner_authorized_task_content_reconciliation"
-            or not isinstance(record.get("rebind_authorization_run_id"), str)
-            or not record["rebind_authorization_run_id"]
+            or not isinstance(authorization_run_id, str)
+            or not re.fullmatch(r"[0-9]{1,20}", authorization_run_id)
+            or authorization_run_id != record["owner_run_id"]
             or isinstance(rebound_at, bool)
             or not isinstance(rebound_at, (int, float))
             or not math.isfinite(float(rebound_at))
