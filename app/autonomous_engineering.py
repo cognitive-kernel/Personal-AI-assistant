@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
-from .autonomous_engineering_progress import get_progress, storage_accessible
+from .autonomous_engineering_progress import get_progress, pending_work_status, storage_accessible
 from .ollama_context import maximum_context_tokens, supports_tool_calling
 
 _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
@@ -339,6 +339,47 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
     }
 
 
+def _has_open_autonomous_pr(gh: str) -> bool:
+    """Fail closed unless GitHub confirms there is no controller-owned open PR."""
+    result = _run(
+        [gh, "api", f"repos/{_repository()}/pulls?state=open&per_page=100"],
+        timeout=12,
+    )
+    if not result or result.returncode != 0:
+        raise HTTPException(
+            status_code=503,
+            detail="وضعیت PRهای باز مخزن قابل تأیید نیست؛ وظیفهٔ جدید ارسال نشد.",
+        )
+    try:
+        pulls = json.loads(result.stdout)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="پاسخ GitHub برای PRهای باز معتبر نیست؛ وظیفهٔ جدید ارسال نشد.",
+        ) from exc
+    if not isinstance(pulls, list) or any(not isinstance(item, dict) for item in pulls):
+        raise HTTPException(
+            status_code=502,
+            detail="ساختار فهرست PRهای GitHub معتبر نیست؛ وظیفهٔ جدید ارسال نشد.",
+        )
+    for item in pulls:
+        user = item.get("user") if isinstance(item.get("user"), dict) else {}
+        head = item.get("head") if isinstance(item.get("head"), dict) else {}
+        base = item.get("base") if isinstance(item.get("base"), dict) else {}
+        head_repo = head.get("repo") if isinstance(head.get("repo"), dict) else {}
+        branch = head.get("ref")
+        if (
+            user.get("login") == "github-actions[bot]"
+            and head_repo.get("full_name") == _repository()
+            and isinstance(branch, str)
+            and branch.startswith("codex/local-engineering-")
+            and base.get("ref") == "main"
+            and item.get("state", "open") == "open"
+        ):
+            return True
+    return False
+
+
 @router.post("/dispatch", status_code=202)
 def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) -> dict[str, Any]:
     manual_task = payload.task.strip() if payload else ""
@@ -351,6 +392,18 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) ->
         raise HTTPException(status_code=409, detail="صف مهندسی در وضعیت توقف ایمن است؛ ابتدا ادامه را فعال کنید.")
     if not readiness["ready"]:
         raise HTTPException(status_code=409, detail="پیش‌نیازهای عامل کامل نیست؛ ابتدا وضعیت محلی را بررسی کنید.")
+    if manual_task:
+        pending = pending_work_status()
+        if not pending.get("available"):
+            raise HTTPException(
+                status_code=503,
+                detail="وضعیت تسک پایدار قابل بررسی نیست؛ برای جلوگیری از تداخل، وظیفهٔ جدید ارسال نشد.",
+            )
+        if pending.get("blocked"):
+            raise HTTPException(
+                status_code=409,
+                detail="یک تسک، PR یا عملیات پاک‌سازی قبلی هنوز تعیین‌تکلیف نشده است؛ متن جدید پذیرفته نشد. برای ادامهٔ همان کار، اجرای بدون متن وظیفه را ارسال کنید.",
+            )
     active_runs = readiness.get("github", {}).get("recent_runs", [])
     if any(item.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"} for item in active_runs):
         raise HTTPException(status_code=409, detail="یک اجرای عامل در حال انجام است؛ ابتدا وضعیت آن را بررسی کنید.")
@@ -360,6 +413,11 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) ->
     auth = _run([gh, "auth", "status", "--hostname", "github.com"], timeout=8)
     if not auth or auth.returncode != 0:
         raise HTTPException(status_code=503, detail="GitHub CLI احراز هویت نشده است.")
+    if manual_task and _has_open_autonomous_pr(gh):
+        raise HTTPException(
+            status_code=409,
+            detail="یک PR مهندسی خودکار هنوز باز است؛ ابتدا همان PR را بازبینی و تعیین‌تکلیف کنید.",
+        )
     result = _run(
         [
             gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main",
