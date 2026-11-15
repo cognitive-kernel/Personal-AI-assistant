@@ -20,6 +20,7 @@ def reject_psutil(name, *args, **kwargs):
 builtins.__import__ = reject_psutil
 
 import scripts.autonomous_engineering_process_group
+import scripts.autonomous_engineering_codex_runner
 import scripts.autonomous_engineering_progress
 """
 
