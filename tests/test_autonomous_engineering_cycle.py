@@ -388,7 +388,7 @@ def test_publish_pull_request_leaves_exact_sha_validated_pr_open_for_owner_merge
 def test_publish_pull_request_rejects_non_controller_authored_pr(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     base_sha = "b" * 40
     head_sha = "c" * 40
-    monkeypatch.setattr(cycle, "execution_state_directory", lambda: tmp_path / "state")
+    monkeypatch.setattr(cycle, "_autonomous_state_dir", lambda: tmp_path / "state")
     pr = {
         "number": 14,
         "draft": False,
@@ -420,7 +420,7 @@ def test_publish_pull_request_rejects_head_changed_after_exact_sha_checks(
     base_sha = "b" * 40
     head_sha = "c" * 40
     changed_sha = "d" * 40
-    monkeypatch.setattr(cycle, "execution_state_directory", lambda: tmp_path / "state")
+    monkeypatch.setattr(cycle, "_autonomous_state_dir", lambda: tmp_path / "state")
     pr = {
         "number": 13,
         "draft": False,
@@ -451,6 +451,13 @@ def test_publish_pull_request_rejects_head_changed_after_exact_sha_checks(
             "token", "owner/repository", "codex/local-engineering-1-1-task-1",
             1, "123", head_sha, base_sha,
         )
+
+    # The durable owner record must be written under the exact same root whose
+    # lock protected publication, even when later exact-SHA validation fails.
+    import json
+    saved = json.loads((tmp_path / "state" / "pending-autonomous-pr.json").read_text(encoding="utf-8"))
+    assert saved["number"] == 13
+    assert saved["head_sha"] == head_sha
 
 
 def test_git_auth_environment_keeps_token_out_of_child_environment(monkeypatch: pytest.MonkeyPatch):
