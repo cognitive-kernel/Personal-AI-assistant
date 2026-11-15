@@ -1,4 +1,7 @@
 from pathlib import Path
+import os
+import shutil
+import subprocess
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -89,6 +92,42 @@ def test_windows_app_identity_can_lock_shared_state_without_write_access_to_task
     assert '[Security.AccessControl.FileSystemRights]::WriteData' in module
     assert "GetAccessRules(" in module
     assert "Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -ReadOnlySid $appSid" in script
+
+
+
+def test_windows_state_lock_acl_helper_creates_a_read_write_lock_handle(tmp_path):
+    if os.name != "nt" or not shutil.which("pwsh"):
+        import pytest
+        pytest.skip("Windows PowerShell ACL integration is only available on Windows.")
+
+    module = ROOT / "scripts" / "AutonomousWindowsIdentity.psm1"
+    lock_path = tmp_path / "autonomous-durable-state.lock"
+    escaped_module = str(module).replace("'", "''")
+    escaped_lock = str(lock_path).replace("'", "''")
+    command = f"""
+$ErrorActionPreference = 'Stop'
+Import-Module '{escaped_module}' -Force
+$sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+Set-AutonomousStateLockAcl -Path '{escaped_lock}' -AppSid $sid
+$acl = Get-Acl -LiteralPath '{escaped_lock}'
+$required = [Security.AccessControl.FileSystemRights]::ReadData -bor [Security.AccessControl.FileSystemRights]::WriteData
+$rules = $acl.GetAccessRules($true, $false, [Security.Principal.SecurityIdentifier])
+$allowed = @($rules | Where-Object {{
+    $_.IdentityReference.Value -eq $sid -and
+    $_.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow -and
+    (($_.FileSystemRights -band $required) -eq $required)
+}})
+if ($allowed.Count -eq 0) {{ throw 'The app SID has no explicit read/write lock-file ACL.' }}
+$stream = [System.IO.File]::Open('{escaped_lock}', [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::ReadWrite)
+$stream.Dispose()
+"""
+    result = subprocess.run(
+        ["pwsh", "-NoProfile", "-NonInteractive", "-Command", command],
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_windows_provisioning_uses_the_runtime_shared_state_path_contract():
