@@ -46,6 +46,7 @@ function Rebind-AutonomousTaskOwnerRecord {
         [long]$existing.schema_version -ne 1 -or
         $oldDigest -notmatch '^[0-9a-f]{64}\z' -or
         [string]$existing.owner_run_id -cne [string]$VerifiedOwnerRun.id -or
+        [int]$VerifiedOwnerRun.run_attempt -ne $ownerAttempt -or
         [string]$existing.owner_run_id -notmatch '^[0-9]{1,20}\z' -or
         -not [int]::TryParse([string]$existing.owner_attempt, [ref]$ownerAttempt) -or $ownerAttempt -lt 1 -or
         -not [int]::TryParse([string]$existing.submitted_attempt, [ref]$submittedAttempt) -or $submittedAttempt -lt 1 -or
