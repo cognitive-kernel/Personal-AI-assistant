@@ -212,26 +212,34 @@ def _enrich_progress_from_github(current: dict[str, Any] | None) -> dict[str, An
     run_id = str(current.get("run_id", ""))
     if not run_id.isdigit():
         return current
+    updated = dict(current)
+    if updated.get("status") == "failed" and not isinstance(updated.get("diagnostic"), dict):
+        updated["diagnostic"] = {
+            "run_id": run_id,
+            "job": "جزئیات Job در دسترس نیست",
+            "step": "مرحلهٔ دقیق شکست هنوز دریافت نشده است",
+            "job_url": updated.get("run_url"),
+            "message": "GitHub اجرای ناموفق را گزارش کرده است؛ جزئیات Job از API قابل دریافت نبود.",
+        }
     now = time.monotonic()
     if _RUN_PROGRESS_CACHE.get("run_id") == run_id and now - float(_RUN_PROGRESS_CACHE.get("at", 0)) < 12:
         cached = _RUN_PROGRESS_CACHE.get("value")
         return dict(cached) if isinstance(cached, dict) else current
     gh = shutil.which("gh")
     if not gh:
-        return current
+        return updated
     result = _run(
         [gh, "api", f"repos/{_repository()}/actions/runs/{run_id}/jobs?per_page=100"],
         timeout=8,
     )
     if not result or result.returncode != 0:
-        return current
+        return updated
     try:
         jobs = json.loads(result.stdout).get("jobs", [])
     except (ValueError, AttributeError):
-        return current
+        return updated
     if not isinstance(jobs, list) or not jobs:
-        return current
-    updated = dict(current)
+        return updated
     active_job = next(
         (job for job in jobs if isinstance(job, dict) and job.get("status") == "in_progress"),
         None,
@@ -348,6 +356,7 @@ def autonomous_engineering_progress(
                     "phase_label": "اجرای عامل با خطا پایان یافت",
                     "activity": "در حال دریافت مرحلهٔ دقیق شکست از GitHub Actions",
                     "updated_at": failed_run.get("created_at"),
+                    "run_url": failed_run.get("url"),
                 }
     result["current"] = _enrich_progress_from_github(current)
     return result
