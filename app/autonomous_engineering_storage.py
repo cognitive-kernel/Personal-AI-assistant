@@ -11,6 +11,7 @@ import psutil
 from .autonomous_engineering_state import execution_state_directory
 
 _RETENTION_SECONDS = 24 * 60 * 60
+_DIAGNOSTIC_RETENTION_SECONDS = 30 * 24 * 60 * 60
 _MAX_ITEMS = 500
 _STATE_TEMP_SUFFIXES = (".tmp",)
 
@@ -45,23 +46,26 @@ def _runner_temp_directories() -> list[Path]:
     configured = os.environ.get("RUNNER_TEMP") or os.environ.get("AUTONOMOUS_ENGINEERING_RUNNER_TEMP")
     if configured:
         roots.append(Path(configured))
-    for process in psutil.process_iter(["name", "exe", "cmdline"]):
-        try:
-            name = str(process.info.get("name") or "").casefold()
-            command = process.info.get("cmdline") or []
-            executable = process.info.get("exe")
-            if "runner.listener" not in name and not any("runner.listener" in str(part).casefold() for part in command):
+    try:
+        for process in psutil.process_iter(["name", "exe", "cmdline"]):
+            try:
+                name = str(process.info.get("name") or "").casefold()
+                command = process.info.get("cmdline") or []
+                executable = process.info.get("exe")
+                if "runner.listener" not in name and not any("runner.listener" in str(part).casefold() for part in command):
+                    continue
+                candidate = Path(executable) if executable else next(
+                    (Path(part) for part in command if "runner.listener" in str(part).casefold() and Path(part).is_absolute()),
+                    None,
+                )
+                if candidate is None:
+                    continue
+                runner_root = candidate.parent.parent if candidate.parent.name.casefold() == "bin" else candidate.parent
+                roots.append(runner_root / "_work" / "_temp")
+            except (OSError, psutil.Error, TypeError, ValueError):
                 continue
-            candidate = Path(executable) if executable else next(
-                (Path(part) for part in command if "runner.listener" in str(part).casefold() and Path(part).is_absolute()),
-                None,
-            )
-            if candidate is None:
-                continue
-            runner_root = candidate.parent.parent if candidate.parent.name.casefold() == "bin" else candidate.parent
-            roots.append(runner_root / "_work" / "_temp")
-        except (OSError, psutil.Error, TypeError, ValueError):
-            continue
+    except (OSError, psutil.Error):
+        pass
     unique: list[Path] = []
     seen: set[str] = set()
     for root in roots:
@@ -125,8 +129,10 @@ def inspect_storage() -> dict[str, Any]:
         if item is None:
             continue
         item["category"] = category
-        known_owned = category in {"state_temporary", "runner_temporary"}
-        item["cleanup_eligible"] = bool(known_owned and item["age_seconds"] >= _RETENTION_SECONDS)
+        if category == "runner_diagnostic_read_only":
+            item["cleanup_eligible"] = item["age_seconds"] >= _DIAGNOSTIC_RETENTION_SECONDS
+        else:
+            item["cleanup_eligible"] = item["age_seconds"] >= _RETENTION_SECONDS
         files.append(item)
         total += item["size_bytes"]
     files.sort(key=lambda item: item["size_bytes"], reverse=True)
@@ -139,7 +145,8 @@ def inspect_storage() -> dict[str, Any]:
         "total_bytes": total,
         "truncated": len(candidates) > _MAX_ITEMS,
         "retention_hours": 24,
-        "cleanup_policy": "Only app-owned *.tmp files and known Codex temporary artifacts older than 24 hours are eligible. Active runs block cleanup.",
+        "diagnostic_retention_days": 30,
+        "cleanup_policy": "Runner temp files and state-root *.tmp files older than 24 hours; Runner _diag .log/.txt files older than 30 days. Active runs block cleanup.",
     }
 
 
