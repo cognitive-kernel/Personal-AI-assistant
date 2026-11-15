@@ -279,3 +279,18 @@ def test_main_rechecks_ownership_after_backoff_before_dispatch(monkeypatch):
     assert recovery.main() == 0
     assert calls == []
     assert reports[-1][0][0] == "Recovery superseded"
+
+
+def test_report_appends_summaries_and_emits_truthful_annotations(monkeypatch, tmp_path, capsys):
+    summary = tmp_path / "step-summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+
+    recovery.report("Recovery scheduled", "No task state was changed.")
+    recovery.report("Circuit breaker OPEN", "No dispatch occurred.", error=True)
+
+    output = capsys.readouterr().out
+    saved = summary.read_text(encoding="utf-8")
+    assert "::notice title=Recovery scheduled::" in output
+    assert "::error title=Circuit breaker OPEN::" in output
+    assert "## Recovery scheduled" in saved
+    assert "## Circuit breaker OPEN" in saved
