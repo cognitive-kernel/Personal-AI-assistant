@@ -153,3 +153,26 @@ def test_manual_dispatch_fails_closed_when_github_cannot_confirm_open_pr_state(m
         agent.dispatch_autonomous_engineering(agent.ManualTaskRequest(task="new task"))
 
     assert error.value.status_code == 503
+
+
+def test_packaged_state_resolver_prefers_machine_scope(monkeypatch, tmp_path):
+    from app import autonomous_engineering_state as state
+
+    machine_root = tmp_path / "machine-state"
+    monkeypatch.setattr(state, "_is_windows", lambda: True)
+    monkeypatch.setattr(state, "_machine_configured_state_directory", lambda: str(machine_root))
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", raising=False)
+    monkeypatch.delenv("PROGRAMDATA", raising=False)
+
+    assert state.execution_state_directory() == machine_root
+
+
+def test_packaged_state_resolver_rejects_a_divergent_process_override(monkeypatch, tmp_path):
+    from app import autonomous_engineering_state as state
+
+    monkeypatch.setattr(state, "_is_windows", lambda: True)
+    monkeypatch.setattr(state, "_machine_configured_state_directory", lambda: str(tmp_path / "machine"))
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "user"))
+
+    with pytest.raises(RuntimeError, match="differs from the machine-scoped state root"):
+        state.execution_state_directory()
