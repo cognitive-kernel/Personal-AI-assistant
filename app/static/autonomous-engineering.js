@@ -493,7 +493,7 @@
       if (!host.children.length) {
         const empty = document.createElement("p"); empty.className = "muted";
         empty.textContent = "فایل موقت شناخته‌شده‌ای پیدا نشد. مسیرهای اسکن‌شده: " +
-          String(data.state_directory || "—") + (data.runner_temp_directory ? " · " + data.runner_temp_directory : "");
+          String(data.state_directory || "—") + ((data.runner_temp_directories || []).join(" · ") || "");
         host.append(empty);
       }
       if (data.truncated) $("storage-message").textContent = "فهرست برای جلوگیری از اسکن سنگین محدود شده است.";
