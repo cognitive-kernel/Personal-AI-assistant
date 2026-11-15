@@ -202,7 +202,7 @@ def test_powershell_owner_rebind_archives_old_record_and_preserves_submission(tm
         "$ErrorActionPreference='Stop'; "
         f"Import-Module {_ps_quote(str(root / 'scripts' / 'AutonomousEngineeringTaskState.psm1'))} -Force; "
         f"Import-Module {_ps_quote(str(module))} -Force; "
-        "$run=[pscustomobject]@{id='200';path='.github/workflows/autonomous-codex-engineering.yml';"
+        "$run=[pscustomobject]@{id='200';run_attempt=3;path='.github/workflows/autonomous-codex-engineering.yml';"
         "head_branch='main';status='completed';conclusion='failure'}; "
         f"$result=Rebind-AutonomousTaskOwnerRecord -Path {_ps_quote(str(owner_path))} "
         f"-Task {_ps_quote(current_task)} -RunId '300' -RunAttempt 2 -VerifiedOwnerRun $run; "
@@ -291,7 +291,9 @@ def test_workflow_exposes_owner_rebind_as_separate_explicit_operation():
     assert 'TASK_OPERATION_REQUESTED" == "true"' in workflow
     assert "inputs.manual_task != '' || inputs.repair_pending_task_owner" in workflow
     assert "Get-AutonomousWorkflowRun" in script
+    assert "-RunAttempt $recordedOwnerAttempt" in script
     assert "Assert-AutonomousWorkflowRunRebindable" in script
+    assert "ExpectedRunAttempt $recordedOwnerAttempt" in script
     assert "Rebind-AutonomousTaskOwnerRecord" in script
     assert "requires no pending PR record and no open autonomous PR" in script
     assert "replace_pending_task" in script
