@@ -57,11 +57,12 @@ jobs:
           GH_REPO: ${{ github.repository }}
           CURRENT_RUN_ID: ${{ github.run_id }}
           MANUAL_TASK: ${{ inputs.manual_task || '' }}
+          TASK_OPERATION_REQUESTED: ${{ (inputs.manual_task != '' || inputs.repair_pending_task_owner) && 'true' || 'false' }}
         shell: bash
         run: |
           set -euo pipefail
           if [[ "$PAUSED" == "true" ]]; then
-            if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$MANUAL_TASK" ]]; then
+            if [[ "$EVENT_NAME" == "workflow_dispatch" && "$TASK_OPERATION_REQUESTED" == "true" ]]; then
               echo "A manual task was not accepted because autonomous engineering is paused; no durable state was changed." >&2
               exit 1
             fi
@@ -90,7 +91,7 @@ jobs:
           PY
           )
           if [[ "$active_state" == "active" ]]; then
-            if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$MANUAL_TASK" ]]; then
+            if [[ "$EVENT_NAME" == "workflow_dispatch" && "$TASK_OPERATION_REQUESTED" == "true" ]]; then
               echo "A manual task was not accepted because another run is active or queued; no durable state was changed. Retry after that run finishes." >&2
               exit 1
             fi
