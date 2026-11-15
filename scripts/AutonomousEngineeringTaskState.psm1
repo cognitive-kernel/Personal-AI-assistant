@@ -275,6 +275,7 @@ function Write-AutonomousTaskOwnerRecord {
 
     $directory = Split-Path -Parent $Path
     $temporary = Join-Path $directory ("pending-manual-task-owner-" + $RunId + "-" + $RunAttempt + "-" + [guid]::NewGuid().ToString('N') + ".tmp")
+    $temporaryCreated = $false
     try {
         $json = $record | ConvertTo-Json -Depth 5 -Compress
         $bytes = [System.Text.UTF8Encoding]::new($false).GetBytes($json)
@@ -284,6 +285,7 @@ function Write-AutonomousTaskOwnerRecord {
             [System.IO.FileAccess]::Write,
             [System.IO.FileShare]::None
         )
+        $temporaryCreated = $true
         try {
             $stream.Write($bytes, 0, $bytes.Length)
             $stream.Flush($true)
@@ -298,7 +300,7 @@ function Write-AutonomousTaskOwnerRecord {
             [System.IO.File]::Move($temporary, $Path)
         }
     } finally {
-        if (Test-Path -LiteralPath $temporary) {
+        if ($temporaryCreated -and (Test-Path -LiteralPath $temporary)) {
             Remove-Item -LiteralPath $temporary -Force
         }
     }
