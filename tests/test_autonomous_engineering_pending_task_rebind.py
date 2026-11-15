@@ -106,6 +106,7 @@ def test_powershell_owner_rebind_archives_old_record_and_preserves_submission(tm
     owner_path.write_bytes(old_bytes)
     script = (
         "$ErrorActionPreference='Stop'; "
+        f"Import-Module {_ps_quote(str(root / 'scripts' / 'AutonomousEngineeringTaskState.psm1'))} -Force; "
         f"Import-Module {_ps_quote(str(module))} -Force; "
         "$run=[pscustomobject]@{id='200';path='.github/workflows/autonomous-codex-engineering.yml';"
         "head_branch='main';status='completed';conclusion='failure'}; "
