@@ -23,7 +23,8 @@ def test_autonomous_runner_uses_the_loopback_api_not_a_user_scoped_ollama_cli():
     assert 'Import-Module "$env:GITHUB_WORKSPACE\\scripts\\AutonomousOllamaRuntime.psm1" -Force' in workflow
     assert 'Import-Module (Join-Path $PSScriptRoot "AutonomousOllamaRuntime.psm1") -Force' in provision
     assert 'Import-Module (Join-Path $PSScriptRoot "AutonomousOllamaRuntime.psm1") -Force' in runner_check
-    assert 'http://127.0.0.1:11434/api/tags' in runtime
+    assert '$script:AutonomousOllamaApiBaseUrl = "http://127.0.0.1:11434"' in runtime
+    assert '/api/tags' in runtime
     assert "ConvertFrom-AutonomousOllamaTagsResponse" in runtime
     assert "Test-AutonomousOllamaModelInstalled" in runtime
     assert "Ollama API is unavailable" in runtime
