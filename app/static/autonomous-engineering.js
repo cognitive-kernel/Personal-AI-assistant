@@ -503,8 +503,9 @@
     const button = $("cleanup-storage"); button.disabled = true;
     try {
       const result = await request("storage/cleanup", {method: "POST"});
-      $("storage-message").textContent = result.message || "پاک‌سازی انجام شد.";
       await refreshStorage();
+      const warning = $("storage-message").textContent;
+      $("storage-message").textContent = [result.message || "پاک‌سازی انجام شد.", warning].filter(Boolean).join(" · ");
     } catch (error) { $("storage-message").textContent = error.message || "پاک‌سازی ناموفق بود."; }
     finally { button.disabled = false; }
   });
