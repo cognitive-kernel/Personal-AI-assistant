@@ -1083,7 +1083,7 @@ def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkey
 
     class FakeProcess:
         stdin = BrokenInput()
-        stdout = iter(())
+        stdout = iter((json.dumps({"type": "turn.failed", "error": {"message": "Access is denied token=secretvalue"}}),))
         returncode = 1
 
         def wait(self):
@@ -1101,6 +1101,9 @@ def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkey
     assert progress.run_codex(args) == 1
     assert persisted_records[-1]["diagnostic"]["source"] == "codex_cli"
     assert persisted_records[-1]["diagnostic"]["error_type"] == "CodexExecutionError"
+    assert "Access is denied" in persisted_records[-1]["diagnostic"]["message"]
+    assert "secretvalue" not in persisted_records[-1]["diagnostic"]["message"]
+    assert persisted_records[-1]["diagnostic"]["category"] == "permission_denied"
 
 
 def test_codex_smoke_evidence_requires_a_real_successful_command_and_final_turn():
