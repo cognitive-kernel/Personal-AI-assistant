@@ -200,6 +200,7 @@ def test_malformed_metadata_blocks_watcher_start_without_overwriting_files(
     ready.write_text("existing-ready", encoding="utf-8")
     error.write_text("existing-error", encoding="utf-8")
     monkeypatch.setattr(checkpoint, "paths", lambda run_id, task: paths)
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: tmp_path)
     monkeypatch.setattr(checkpoint, "watcher_marker_paths", lambda run_id, task: (ready, error))
 
     with pytest.raises(RuntimeError, match="metadata is malformed"):
