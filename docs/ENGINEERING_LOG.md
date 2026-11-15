@@ -944,3 +944,5 @@ A small shared primitive, `autonomous_engineering_file_lock.py`, now owns OS-spe
 No production ACL, Runner identity, user/task/checkpoint data, pause state, workflow security setting, or sandbox setting was changed. Exact-head GitHub CI and a repeat of the full Windows target-host suite are still required; the earlier local result remains failed and is not reclassified as passed.
 
 The first focused CI pass on this change set caught one additional stale test double: the readiness test replaced `_write_snapshot_unlocked` with a function that did not accept the newly explicit `state` argument. The test double now consumes the resolved state mapping, so its fixture validates the same state/lock-root invariant as production. The failed focused run is retained as failed evidence; a new exact-head run is required.
+
+The next focused CI attempt exercised the updated mock successfully but exposed one remaining assertion using the old local variable name after the fixture was renamed to `state_root`. The assertion now checks the same injected root. The focused run again remains failed evidence; the next exact-head run must verify the complete set.
