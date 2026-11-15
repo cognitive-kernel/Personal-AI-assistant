@@ -1,12 +1,18 @@
 $ErrorActionPreference = "Stop"
 Import-Module (Join-Path $PSScriptRoot "AutonomousEngineeringTaskState.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "AutonomousEngineeringRunState.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "AutonomousEngineeringTaskOwnerRebind.psm1") -Force
 
 $manualTask = [string]$env:MANUAL_TASK
 $replacePendingTask = ([string]$env:REPLACE_PENDING_TASK -ceq "true")
-if ([string]::IsNullOrWhiteSpace($manualTask)) {
-    throw "Manual engineering task must not be empty or whitespace."
+$repairPendingTaskOwner = ([string]$env:REPAIR_PENDING_TASK_OWNER -ceq "true")
+if ([string]::IsNullOrWhiteSpace($manualTask) -and -not $repairPendingTaskOwner) {
+    throw "Manual engineering task must not be empty unless an explicit owner-record reconciliation was requested."
 }
-if ($manualTask.Length -gt 2000 -or $manualTask.IndexOf([char]0) -ge 0) {
+if ($repairPendingTaskOwner -and (-not [string]::IsNullOrWhiteSpace($manualTask) -or $replacePendingTask)) {
+    throw "Owner-record reconciliation must not be combined with a new task or task replacement."
+}
+if (-not [string]::IsNullOrWhiteSpace($manualTask) -and ($manualTask.Length -gt 2000 -or $manualTask.IndexOf([char]0) -ge 0)) {
     throw "Manual engineering task must be at most 2000 characters and contain no NUL bytes."
 }
 if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN) -or [string]::IsNullOrWhiteSpace($env:GH_REPO) -or [string]::IsNullOrWhiteSpace($env:GITHUB_RUN_ID)) {
@@ -272,8 +278,38 @@ try {
         }
     }
 
+    # Rebind only owner metadata after explicit authorization and authoritative terminal-run verification.
+    $reboundOwnerRecord = $null
+    if ($repairPendingTaskOwner) {
+        if (-not $existingTaskFound -or [string]::IsNullOrWhiteSpace($existingTask)) {
+            throw "Owner-record reconciliation requires an existing non-empty durable task; preserving all state."
+        }
+        if (-not (Test-Path -LiteralPath $taskOwnerPath -PathType Leaf)) {
+            throw "Owner-record reconciliation requires the existing owner record; preserving the task."
+        }
+        $manualTask = $existingTask
+        $rebindRunAttempt = 0
+        if (-not [int]::TryParse([string]$env:GITHUB_RUN_ATTEMPT, [ref]$rebindRunAttempt) -or $rebindRunAttempt -lt 1) {
+            throw "Workflow run attempt is invalid; refusing to reconcile task ownership."
+        }
+        try {
+            $ownerRaw = [System.IO.File]::ReadAllText($taskOwnerPath, [System.Text.Encoding]::UTF8)
+            $ownerMetadata = $ownerRaw | ConvertFrom-Json -ErrorAction Stop
+        } catch {
+            throw "The existing task-owner record cannot be read safely; preserving all state."
+        }
+        $recordedOwnerRunId = [string]$ownerMetadata.owner_run_id
+        if ($recordedOwnerRunId -notmatch '^[0-9]+$' -or $recordedOwnerRunId -ceq [string]$env:GITHUB_RUN_ID) {
+            throw "The recorded owner run ID is invalid or refers to the current run; preserving all state."
+        }
+        $verifiedOwnerRun = Get-AutonomousWorkflowRun -Repository $env:GH_REPO -RunId $recordedOwnerRunId -Headers $headers
+        Assert-AutonomousWorkflowRunRebindable -Run $verifiedOwnerRun -ExpectedRunId $recordedOwnerRunId
+        $reboundOwnerRecord = Rebind-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $existingTask -RunId ([string]$env:GITHUB_RUN_ID) -RunAttempt $rebindRunAttempt -VerifiedOwnerRun $verifiedOwnerRun
+        Write-Warning "The existing task text was preserved. Its mismatched owner record was archived and explicitly rebound after GitHub verified the previous owner run had failed."
+    }
+
     # Reconcile authoritative GitHub PR state before deciding whether a different task may replace the pending task.
-    if ($existingTask -and ($existingTask -cne $manualTask -or $replacePendingTask)) {
+    if (-not $repairPendingTaskOwner -and $existingTask -and ($existingTask -cne $manualTask -or $replacePendingTask)) {
         if (-not $replacePendingTask) {
             throw "Another manual task is still pending. To explicitly abandon it while no autonomous PR is open, dispatch with replace_pending_task=true."
         }
@@ -304,7 +340,11 @@ try {
         throw "Workflow run attempt is invalid; refusing to claim the pending task."
     }
     if ($existingTaskFound) {
-        $ownerRecord = Repair-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $existingTask -RunId ([string]$env:GITHUB_RUN_ID) -RunAttempt $runAttempt -Source "legacy_migration"
+        if ($repairPendingTaskOwner) {
+            $ownerRecord = $reboundOwnerRecord
+        } else {
+            $ownerRecord = Repair-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $existingTask -RunId ([string]$env:GITHUB_RUN_ID) -RunAttempt $runAttempt -Source "legacy_migration"
+        }
     } else {
         $ownerRecord = Get-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task ""
         if ($null -ne $ownerRecord) {
@@ -326,7 +366,7 @@ try {
         }
     }
 
-    $ownerSource = if ($existingTaskFound) { "legacy_migration" } else { "manual_dispatch" }
+    $ownerSource = if ($repairPendingTaskOwner) { "recovery" } elseif ($existingTaskFound) { "legacy_migration" } else { "manual_dispatch" }
     $ownerArgs = @{
         Path = $taskOwnerPath
         Task = $manualTask
