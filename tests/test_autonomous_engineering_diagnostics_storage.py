@@ -1,0 +1,110 @@
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import time
+from pathlib import Path
+
+import pytest
+
+from app import autonomous_engineering as agent
+from app import autonomous_engineering_storage as storage
+
+
+def test_storage_inventory_finds_owned_state_and_runner_temp_files(monkeypatch, tmp_path):
+    state = tmp_path / "state"
+    runner_temp = tmp_path / "runner" / "_work" / "_temp"
+    state.mkdir()
+    runner_temp.mkdir(parents=True)
+    (state / "current.json.tmp").write_text("state", encoding="utf-8")
+    (runner_temp / "codex-report-7.md").write_text("report", encoding="utf-8")
+    (runner_temp / "unrelated-user-file.tmp").write_text("keep", encoding="utf-8")
+    monkeypatch.setattr(storage, "execution_state_directory", lambda: state)
+    monkeypatch.setattr(storage, "_runner_temp_directories", lambda: [runner_temp])
+
+    result = storage.inspect_storage()
+
+    names = {item["name"] for item in result["files"]}
+    assert "current.json.tmp" in names
+    assert "codex-report-7.md" in names
+    assert "unrelated-user-file.tmp" not in names
+    assert result["file_count"] == 2
+
+
+def test_cleanup_removes_only_stale_allowlisted_temp_files(monkeypatch, tmp_path):
+    state = tmp_path / "state"
+    runner_temp = tmp_path / "runner" / "_work" / "_temp"
+    state.mkdir()
+    runner_temp.mkdir(parents=True)
+    stale_state = state / "stale.tmp"
+    stale_codex = runner_temp / "codex-report-9.md"
+    protected_checkpoint = state / "checkpoint.json"
+    unrelated = runner_temp / "unrelated.tmp"
+    for path in (stale_state, stale_codex, protected_checkpoint, unrelated):
+        path.write_text("keep-or-delete", encoding="utf-8")
+        os.utime(path, (time.time() - 48 * 3600, time.time() - 48 * 3600))
+    monkeypatch.setattr(storage, "execution_state_directory", lambda: state)
+    monkeypatch.setattr(storage, "_runner_temp_directories", lambda: [runner_temp])
+
+    result = storage.cleanup_storage(active_run=False)
+
+    assert result["deleted_count"] == 2
+    assert not stale_state.exists()
+    assert not stale_codex.exists()
+    assert protected_checkpoint.exists()
+    assert unrelated.exists()
+
+
+def test_cleanup_is_blocked_while_a_run_is_active(tmp_path):
+    result = storage.cleanup_storage(active_run=True)
+    assert result["blocked"] is True
+    assert result["deleted"] == []
+
+
+def test_cancel_targets_the_selected_active_run(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    def fake_run(command, timeout=8):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "list"]:
+            return subprocess.CompletedProcess(command, 0, json.dumps([
+                {"databaseId": 101, "status": "in_progress"},
+                {"databaseId": 202, "status": "queued"},
+            ]), "")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    result = agent.cancel_autonomous_engineering(agent.RunControlRequest(run_id="202"))
+
+    assert result["run_id"] == "202"
+    assert calls[-1][1:4] == ["run", "cancel", "202"]
+
+
+def test_failed_github_job_exposes_failed_step_in_progress(monkeypatch):
+    agent._RUN_PROGRESS_CACHE.update({"run_id": None, "at": 0.0, "value": None})
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    jobs = {"jobs": [{
+        "name": "codex",
+        "status": "completed",
+        "conclusion": "failure",
+        "html_url": "https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/123/job/456",
+        "steps": [
+            {"name": "Checkout", "status": "completed", "conclusion": "success"},
+            {"name": "Execute autonomous task", "status": "completed", "conclusion": "failure"},
+        ],
+    }]}
+    monkeypatch.setattr(
+        agent, "_run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, json.dumps(jobs), ""),
+    )
+
+    result = agent._enrich_progress_from_github({"run_id": "123", "status": "running"})
+
+    assert result["status"] == "failed"
+    assert result["diagnostic"]["job"] == "codex"
+    assert result["diagnostic"]["step"] == "Execute autonomous task"
+    assert result["diagnostic"]["job_url"].endswith("/job/456")
