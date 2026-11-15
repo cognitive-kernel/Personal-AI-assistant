@@ -227,6 +227,8 @@ def main() -> int:
             f"Observed {streak} consecutive task-execution failure(s); retrying after {delay_seconds} seconds.",
         )
         time.sleep(delay_seconds)
+        # Re-check ownership after backoff; a newer run may have superseded this event.
+        client.retryable_failure_streak(failed_run_id, current_jobs)
         client.request(
             "POST",
             f"/actions/workflows/{WORKFLOW_FILE}/dispatches",
