@@ -49,9 +49,9 @@ function Get-AutonomousTaskOwnerRecord {
         -not ($record.task_sha256 -is [string]) -or
         [string]$record.task_sha256 -cnotmatch '^[0-9a-f]{64}\z' -or
         -not ($record.owner_run_id -is [string]) -or
-        [string]::IsNullOrWhiteSpace([string]$record.owner_run_id) -or
+        [string]$record.owner_run_id -cnotmatch '^[0-9]{1,20}\z' -or
         -not ($record.submitted_run_id -is [string]) -or
-        [string]::IsNullOrWhiteSpace([string]$record.submitted_run_id) -or
+        [string]$record.submitted_run_id -cnotmatch '^[0-9]{1,20}\z' -or
         -not ($record.owner_attempt -is [int] -or $record.owner_attempt -is [long]) -or
         -not [int]::TryParse([string]$record.owner_attempt, [ref]$ownerAttempt) -or
         $ownerAttempt -lt 1 -or
