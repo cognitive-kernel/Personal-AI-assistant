@@ -227,12 +227,12 @@ def test_dashboard_and_runner_use_the_same_durable_state_lock(tmp_path):
     root = Path(__file__).resolve().parents[1]
     ready = tmp_path / "app-lock-ready.txt"
     code = (
-        "import time; "
-        "from pathlib import Path; "
-        "from app.autonomous_engineering_state import durable_state_lock; "
-        f"with durable_state_lock(Path({str(tmp_path)!r})): "
-        f"Path({str(ready)!r}).write_text('ready', encoding='utf-8'); "
-        "time.sleep(1.0)"
+        "import time\n"
+        "from pathlib import Path\n"
+        "from app.autonomous_engineering_state import durable_state_lock\n"
+        f"with durable_state_lock(Path({str(tmp_path)!r})):\n"
+        f"    Path({str(ready)!r}).write_text('ready', encoding='utf-8')\n"
+        "    time.sleep(1.0)\n"
     )
     child = subprocess.Popen(
         [sys.executable, "-c", code],
