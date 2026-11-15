@@ -287,6 +287,10 @@ try {
             throw "Owner-record reconciliation requires the existing owner record; preserving the task."
         }
         $manualTask = $existingTask
+        $runAttempt = 0
+        if (-not [int]::TryParse([string]$env:GITHUB_RUN_ATTEMPT, [ref]$runAttempt) -or $runAttempt -lt 1) {
+            throw "Workflow run attempt is invalid; refusing to reconcile task ownership."
+        }
         try {
             $ownerRaw = [System.IO.File]::ReadAllText($taskOwnerPath, [System.Text.Encoding]::UTF8)
             $ownerMetadata = $ownerRaw | ConvertFrom-Json -ErrorAction Stop
@@ -294,7 +298,17 @@ try {
             throw "The existing task-owner record cannot be read safely; preserving all state."
         }
         $recordedOwnerRunId = [string]$ownerMetadata.owner_run_id
-        if ($recordedOwnerRunId -notmatch '^[0-9]{1,20}
+        if ($recordedOwnerRunId -notmatch '^[0-9]+$' -or $recordedOwnerRunId -ceq [string]$env:GITHUB_RUN_ID) {
+            throw "The recorded owner run ID is invalid or refers to the current run; preserving all state."
+        }
+        $verifiedOwnerRun = Get-AutonomousWorkflowRun -Repository $env:GH_REPO -RunId $recordedOwnerRunId -Headers $headers
+        Assert-AutonomousWorkflowRunRebindable -Run $verifiedOwnerRun -ExpectedRunId $recordedOwnerRunId
+        $reboundOwnerRecord = Rebind-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $existingTask -RunId ([string]$env:GITHUB_RUN_ID) -RunAttempt $runAttempt -VerifiedOwnerRun $verifiedOwnerRun
+        Write-Warning "The existing task text was preserved. Its mismatched owner record was archived and explicitly rebound after GitHub verified the previous owner run had failed."
+    }
+
+    # Reconcile authoritative GitHub PR state before deciding whether a different task may replace the pending task.
+    if (-not $repairPendingTaskOwner -and $existingTask -and ($existingTask -cne $manualTask -or $replacePendingTask)) {
         if (-not $replacePendingTask) {
             throw "Another manual task is still pending. To explicitly abandon it while no autonomous PR is open, dispatch with replace_pending_task=true."
         }
@@ -449,7 +463,7 @@ try {
         }
     }
 
-    $ownerSource = if ($existingTaskFound) { "legacy_migration" } else { "manual_dispatch" }
+    $ownerSource = if ($repairPendingTaskOwner) { "recovery" } elseif ($existingTaskFound) { "legacy_migration" } else { "manual_dispatch" }
     $ownerArgs = @{
         Path = $taskOwnerPath
         Task = $manualTask
