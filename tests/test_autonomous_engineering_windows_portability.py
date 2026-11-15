@@ -77,6 +77,8 @@ def test_windows_provisioning_does_not_require_a_fixed_users_group_or_admin_acl_
     assert '$runnerTempPath = Join-Path $RunnerRoot "_work\\_temp"' in script
     assert 'Set-AutonomousDirectoryAcl -Path $runnerTempPath -RunnerSid $runnerSid -AdditionalModifySid $appSid' in script
     assert '[Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_TEMP", $runnerTempPath, "Machine")' in script
+    assert '$runnerDiagnosticPath = Join-Path $RunnerRoot "_diag"' in script
+    assert 'Set-AutonomousDirectoryAcl -Path $runnerDiagnosticPath -RunnerSid $runnerSid -AdditionalModifySid $appSid' in script
 
 
 def test_windows_provisioning_uses_the_runtime_shared_state_path_contract():
