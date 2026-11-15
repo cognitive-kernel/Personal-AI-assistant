@@ -477,6 +477,32 @@ jobs:
         run: |
           & "$env:GITHUB_WORKSPACE\scripts\verify_ollama_context.ps1" -Model "$env:AUTONOMOUS_ENGINEERING_MODEL"
 
+      - name: Install project runtime before the Codex sandbox smoke
+        env:
+          PIP_TIMEOUT: "120"
+          PIP_RETRIES: "10"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $systemPython = Get-Command python -ErrorAction Stop
+          & $systemPython.Source --version
+          if ($LASTEXITCODE -ne 0) { throw "System Python is not executable under the Runner service identity." }
+          & $systemPython.Source -c "import sys; assert sys.version_info >= (3, 11)"
+          if ($LASTEXITCODE -ne 0) { throw "Python 3.11 or newer is required." }
+          & $systemPython.Source -m venv .venv
+          if ($LASTEXITCODE -ne 0) { throw "Could not create the isolated project virtual environment." }
+          $venvPython = Join-Path $env:GITHUB_WORKSPACE ".venv\\Scripts\\python.exe"
+          if (-not (Test-Path -LiteralPath $venvPython -PathType Leaf)) {
+            throw "The project virtual-environment interpreter was not created."
+          }
+          & $venvPython -m pip install --disable-pip-version-check --retries 10 --timeout 120 -e ".[dev]"
+          if ($LASTEXITCODE -ne 0) { throw "Could not install project runtime and development dependencies." }
+          & $venvPython -c "import psutil, fastapi; print('PROJECT_RUNTIME_OK psutil=' + psutil.__version__)"
+          if ($LASTEXITCODE -ne 0) { throw "The isolated project runtime is missing required imports." }
+          $venvScripts = Split-Path -Parent $venvPython
+          $venvScripts | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          Write-Host "Codex controller interpreter: $venvPython"
+
       - name: Verify Ollama and a real workspace-confined Codex tool call
         timeout-minutes: 15
         env:
@@ -520,7 +546,7 @@ jobs:
             $smokeReport = Join-Path $env:RUNNER_TEMP "codex-sandbox-$backend-report.md"
             $evidenceReport = Join-Path $env:RUNNER_TEMP "codex-sandbox-$backend-evidence.json"
             Write-Host "Testing Codex exec_command with the Windows '$backend' sandbox backend."
-            python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-$backend" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$smokePrompt" --report "$smokeReport" --require-command-output "CODEX_WORKSPACE_SANDBOX_OK" --expected-agent-message "OLLAMA_PROVIDER_AND_SANDBOX_OK" --events-report "$evidenceReport" --require-command-fragment "$probeFileName" --require-command-fragment "echo" --require-command-fragment "type" --require-command-fragment "del"
+            & .\\.venv\\Scripts\\python.exe scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-$backend" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$smokePrompt" --report "$smokeReport" --require-command-output "CODEX_WORKSPACE_SANDBOX_OK" --expected-agent-message "OLLAMA_PROVIDER_AND_SANDBOX_OK" --events-report "$evidenceReport" --require-command-fragment "$probeFileName" --require-command-fragment "echo" --require-command-fragment "type" --require-command-fragment "del"
             $smokeExitCode = $LASTEXITCODE
             Write-Host "Codex smoke exit code for '$backend': $smokeExitCode"
             if (Test-Path -LiteralPath $smokeReport -PathType Leaf) {
@@ -554,18 +580,6 @@ jobs:
           }
           "CODEX_WINDOWS_SANDBOX_BACKEND=$selectedBackend" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Verified Windows Codex sandbox backend: $selectedBackend"
-
-      - name: Install project dependencies for local test execution
-        env:
-          PIP_TIMEOUT: "120"
-          PIP_RETRIES: "10"
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-          python --version
-          python -c "import sys; assert sys.version_info >= (3, 11)"
-          python -m venv .venv
-          .\\.venv\\Scripts\\python.exe -m pip install --disable-pip-version-check --retries 10 --timeout 120 -e ".[dev]"
 
       - name: Prepare bounded engineering instructions
         shell: powershell
