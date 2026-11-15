@@ -80,7 +80,7 @@ def test_clear_preserves_all_checkpoint_files_when_watcher_stop_fails(
 ):
     metadata, paths = _state(tmp_path)
     monkeypatch.setattr(checkpoint, "paths", lambda run_id, task: paths)
-    monkeypatch.setattr(checkpoint, "read_metadata", lambda run_id, task: metadata)
+    monkeypatch.setattr(checkpoint, "read_metadata", lambda run_id, task, **kwargs: metadata)
 
     def refuse_stop(_metadata):
         raise RuntimeError("watcher ownership is ambiguous")
@@ -105,7 +105,7 @@ def test_watcher_start_does_not_replace_state_when_previous_owner_is_ambiguous(
     error.write_text("old error", encoding="utf-8")
     monkeypatch.setattr(checkpoint, "paths", lambda run_id, task: paths)
     monkeypatch.setattr(checkpoint, "watcher_marker_paths", lambda run_id, task: (ready, error))
-    monkeypatch.setattr(checkpoint, "read_metadata", lambda run_id, task: metadata)
+    monkeypatch.setattr(checkpoint, "read_metadata", lambda run_id, task, **kwargs: metadata)
 
     def refuse_stop(_metadata):
         raise RuntimeError("previous watcher is not verifiably stopped")
@@ -197,7 +197,6 @@ def test_malformed_metadata_blocks_watcher_start_without_overwriting_files(
     ready.write_text("existing-ready", encoding="utf-8")
     error.write_text("existing-error", encoding="utf-8")
     monkeypatch.setattr(checkpoint, "paths", lambda run_id, task: paths)
-    monkeypatch.setattr(checkpoint, "store_dir", lambda: tmp_path)
     monkeypatch.setattr(checkpoint, "watcher_marker_paths", lambda run_id, task: (ready, error))
 
     with pytest.raises(RuntimeError, match="metadata is malformed"):
