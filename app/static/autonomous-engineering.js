@@ -477,7 +477,8 @@
       const summary = $("storage-summary");
       summary.textContent = "مجموع فایل‌های موقت شناسایی‌شده: " + Number(data.file_count || 0) +
         " · حجم: " + (Number(data.total_bytes || 0) / 1024 / 1024).toFixed(2) + " MiB" +
-        " · ماندگاری پاک‌سازی: " + Number(data.retention_hours || 24) + " ساعت";
+        " · موقت: " + Number(data.retention_hours || 24) + " ساعت" +
+        " · لاگ تشخیصی: " + Number(data.diagnostic_retention_days || 30) + " روز";
       const host = $("storage-files");
       host.replaceChildren();
       for (const file of (data.files || [])) {
