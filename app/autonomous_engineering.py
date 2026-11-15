@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
 from .autonomous_engineering_progress import get_progress, pending_work_status, storage_accessible
+from .autonomous_engineering_storage import cleanup_storage, inspect_storage
 from .ollama_context import maximum_context_tokens, supports_tool_calling
 
 _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
@@ -48,6 +49,10 @@ class EngineeringSettings(BaseModel):
 
 class ManualTaskRequest(BaseModel):
     task: StrictStr = Field(default="", max_length=2000)
+
+
+class RunControlRequest(BaseModel):
+    run_id: StrictStr = Field(min_length=1, max_length=24, pattern=r"^[0-9]+$")
 
 
 def _repository() -> str:
@@ -252,10 +257,21 @@ def _enrich_progress_from_github(current: dict[str, Any] | None) -> dict[str, An
             updated.setdefault("phase", "coding")
             updated.setdefault("phase_label", "اجرای چرخهٔ مهندسی")
     elif failed_job:
+        failed_steps = failed_job.get("steps", [])
+        failed_steps = failed_steps if isinstance(failed_steps, list) else []
+        failed_step = next((step for step in failed_steps if isinstance(step, dict) and step.get("conclusion") in {"failure", "timed_out", "cancelled", "action_required"}), None)
         updated.update({
             "status": "failed",
             "phase_label": "چرخه با خطا پایان یافت",
             "activity": str(failed_job.get("name", "مرحلهٔ ناموفق")) + ": " + str(failed_job.get("conclusion", "failed")),
+            "diagnostic": {
+                "run_id": run_id,
+                "job": str(failed_job.get("name", "نامشخص"))[:180],
+                "job_url": failed_job.get("html_url") if isinstance(failed_job.get("html_url"), str) else None,
+                "step": str(failed_step.get("name", "مرحلهٔ دقیق از GitHub قابل تشخیص نیست"))[:240] if failed_step else None,
+                "step_conclusion": failed_step.get("conclusion") if failed_step else None,
+                "message": "GitHub نام Job و مرحلهٔ ناموفق را مشخص کرده است؛ برای traceback و خروجی کامل، گزارش اجرای همان Job را باز کنید.",
+            },
         })
     elif queued_job and queued_job.get("name") == "codex":
         updated.update({
@@ -440,6 +456,24 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) ->
     }
 
 
+@router.get("/storage")
+def autonomous_engineering_storage() -> dict[str, Any]:
+    return inspect_storage()
+
+
+@router.post("/storage/cleanup")
+def cleanup_autonomous_engineering_storage() -> dict[str, Any]:
+    status = collect_status()
+    runs = status.get("github", {}).get("recent_runs", [])
+    active = any(
+        isinstance(item, dict) and item.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"}
+        for item in runs
+    )
+    if not status.get("github", {}).get("runs_available", False):
+        raise HTTPException(status_code=503, detail="وضعیت اجراهای GitHub قابل تأیید نیست؛ پاک‌سازی برای حفظ فایل‌های اجرای فعال متوقف شد.")
+    return cleanup_storage(active_run=active)
+
+
 @router.post("/pause")
 def pause_autonomous_engineering() -> dict[str, Any]:
     gh = shutil.which("gh")
@@ -472,7 +506,7 @@ def resume_autonomous_engineering() -> dict[str, Any]:
 
 
 @router.post("/cancel")
-def cancel_autonomous_engineering() -> dict[str, Any]:
+def cancel_autonomous_engineering(payload: RunControlRequest) -> dict[str, Any]:
     gh = shutil.which("gh")
     if not gh:
         raise HTTPException(status_code=503, detail="GitHub CLI نصب نشده است.")
@@ -496,16 +530,42 @@ def cancel_autonomous_engineering() -> dict[str, Any]:
         (
             item for item in runs
             if isinstance(item, dict)
+            and str(item.get("databaseId", "")) == payload.run_id
             and item.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"}
         ),
         None,
     )
-    if not active or not isinstance(active.get("databaseId"), int):
-        raise HTTPException(status_code=409, detail="اجرای فعالی برای لغو وجود ندارد.")
+    if not active:
+        raise HTTPException(status_code=409, detail="اجرای انتخاب‌شده فعال نیست یا در فهرست اجراهای اخیر وجود ندارد؛ وضعیت را بازخوانی کنید.")
     cancelled = _run(
-        [gh, "run", "cancel", str(active["databaseId"]), "--repo", _repository()],
+        [gh, "run", "cancel", payload.run_id, "--repo", _repository()],
         timeout=12,
     )
     if not cancelled or cancelled.returncode != 0:
         raise HTTPException(status_code=502, detail="لغو اجرا توسط GitHub تأیید نشد.")
-    return {"accepted": True, "run_id": active["databaseId"], "message": "درخواست لغو به GitHub ارسال شد."}
+    return {"accepted": True, "run_id": payload.run_id, "message": f"درخواست لغو اجرای {payload.run_id} به GitHub ارسال شد."}
+
+ 
+@router.delete("/runs/{run_id}")
+def delete_autonomous_engineering_run(run_id: str) -> dict[str, Any]:
+    if not run_id.isdigit() or len(run_id) > 24:
+        raise HTTPException(status_code=422, detail="شناسهٔ اجرا معتبر نیست.")
+    gh = shutil.which("gh")
+    if not gh:
+        raise HTTPException(status_code=503, detail="GitHub CLI نصب نشده است.")
+    auth = _run([gh, "auth", "status", "--hostname", "github.com"], timeout=8)
+    if not auth or auth.returncode != 0:
+        raise HTTPException(status_code=503, detail="GitHub CLI احراز هویت نشده است.")
+    viewed = _run([gh, "run", "view", run_id, "--repo", _repository(), "--json", "status,conclusion"], timeout=12)
+    if not viewed or viewed.returncode != 0:
+        raise HTTPException(status_code=502, detail="وضعیت اجرای انتخاب‌شده قابل دریافت نیست؛ سابقه حذف نشد.")
+    try:
+        state = json.loads(viewed.stdout)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail="پاسخ وضعیت اجرا معتبر نیست؛ سابقه حذف نشد.") from exc
+    if not isinstance(state, dict) or state.get("status") != "completed":
+        raise HTTPException(status_code=409, detail="فقط اجرای پایان‌یافته قابل حذف است؛ اجرای فعال یا در صف حفظ شد.")
+    deleted = _run([gh, "run", "delete", run_id, "--repo", _repository()], timeout=15)
+    if not deleted or deleted.returncode != 0:
+        raise HTTPException(status_code=502, detail="GitHub حذف سابقهٔ اجرا را تأیید نکرد.")
+    return {"deleted": True, "run_id": run_id, "message": f"سابقهٔ اجرای {run_id} از GitHub Actions حذف شد؛ فایل‌های کاری و checkpoint محلی تغییر نکردند."}
