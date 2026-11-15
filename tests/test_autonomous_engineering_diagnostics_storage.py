@@ -46,14 +46,15 @@ def test_cleanup_removes_only_stale_allowlisted_temp_files(monkeypatch, tmp_path
         os.utime(path, (time.time() - 48 * 3600, time.time() - 48 * 3600))
     monkeypatch.setattr(storage, "execution_state_directory", lambda: state)
     monkeypatch.setattr(storage, "_runner_temp_directories", lambda: [runner_temp])
+    monkeypatch.setattr(storage, "_runner_worker_active", lambda: False)
 
     result = storage.cleanup_storage(active_run=False)
 
-    assert result["deleted_count"] == 2
+    assert result["deleted_count"] == 3
     assert not stale_state.exists()
     assert not stale_codex.exists()
     assert protected_checkpoint.exists()
-    assert unrelated.exists()
+    assert not unrelated.exists()
 
 
 def test_cleanup_is_blocked_while_a_run_is_active(tmp_path):
