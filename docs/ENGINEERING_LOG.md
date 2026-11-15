@@ -1,19 +1,20 @@
-## 2026-11-15 — Keep Windows engineering-controller imports independent of POSIX psutil
+## 2026-11-15 — Remove the remaining module-time psutil dependency from the Windows controller import graph
 
 ### Root cause
-- `autonomous_engineering_progress.py` imports the shared process-group helper at module load time on every platform.
-- `autonomous_engineering_process_group.py` imported `psutil` at module scope even though its process enumeration is only used by the POSIX process-group cleanup path.
-- The Windows Runner invokes progress initialization before project dependencies are installed. The unnecessary import therefore prevented the controller from starting, although Windows uses the Job Object implementation and never needs POSIX process-group inspection.
+- The first import-isolation fix deferred `psutil` in `autonomous_engineering_process_group.py`, but exact-head CI exposed a second eager import in `autonomous_engineering_codex_runner.py`.
+- `autonomous_engineering_progress.py` imports `autonomous_engineering_codex_config.py`, which imports `capture_parent_chain` from the Codex runner at module load time. The runner's top-level `import psutil` therefore still blocked controller startup before project dependencies were installed.
+- The failing regression provided direct evidence: the import chain reached `autonomous_engineering_codex_runner.py:17` and failed while importing `psutil`. The later absolute-import fallback then obscured the original dependency failure with a secondary module-resolution error.
 
 ### Corrective change
-- Move the `psutil` import into `process_group_has_live_members()`, the only function that needs it.
-- Keep the Windows import graph usable without `psutil`; POSIX calls still fail explicitly with an actionable dependency error if the runtime dependency is absent.
-- Add a subprocess import-isolation regression that blocks `psutil` and imports both the process-group helper and progress controller.
+- Defer `psutil` loading in the Codex runner until `capture_parent_chain()` or `parent_chain_is_alive()` actually performs process-identity inspection.
+- Preserve process identity, PID-reuse, timeout, and descendant-cleanup behavior; missing runtime dependency now produces an actionable error at the operation that requires it.
+- Extend the subprocess import-isolation regression to import the Codex runner as well as the process-group helper and progress controller.
+- Update runner tests to patch the lazily loaded psutil module rather than depend on a module-level import.
 
 ### Validation boundary
-- Focused regression and full GitHub CI must pass on the exact PR head before this fix is considered verified.
-- The durable pending-task record and owner metadata were not changed. The separate pending-task rejection remains a state-ownership issue and must be reconciled read-only against its owning run/PR before any recovery or replacement.
-- No local Windows Runner, Ollama, Codex, or human UI test is claimed.
+- The prior exact-head run had 2,254 passing tests and one failure in the new import-isolation regression. The Windows storage regressions, dependency audit, Browser E2E, and CodeQL passed.
+- This follow-up is not verified until focused tests and all exact-head GitHub checks pass.
+- The durable pending-task record and owner metadata remain untouched. No local Windows Runner, Ollama, Codex sandbox, or human UI test is claimed.
 
 ---
 
