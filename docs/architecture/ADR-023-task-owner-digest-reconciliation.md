@@ -8,7 +8,7 @@
 
 The durable task is stored separately from its owner sidecar. The sidecar binds the exact normalized task digest to the original submission run and current owner run. A digest mismatch means the two records no longer describe the same task. Automatically claiming the task or replacing the sidecar would erase evidence about that mismatch and could transfer work whose identity is uncertain.
 
-The existing fail-closed behavior is correct, but the owner has no explicit recovery operation that distinguishes a failed execution owner from a changed task. A dispatch containing different task text must remain rejected; it is not evidence of a digest mismatch. After GitHub proves the recorded owner run has terminated unsuccessfully and no autonomous PR is awaiting review, an owner-authorized operation may transfer ownership of the unchanged task or reconcile a verified task/owner digest mismatch.
+The existing fail-closed behavior is correct, but the owner has no explicit recovery operation that distinguishes a failed execution owner from a changed task. A dispatch containing different task text must remain rejected; it is not evidence of a digest mismatch. After GitHub proves the recorded owner run has terminated unsuccessfully and no autonomous PR is awaiting review, ordinary recovery may claim a valid same-digest owner record. The separate owner-authorized repair operation is reserved only for a verified task/owner digest mismatch.
 
 ## Decision
 
@@ -22,7 +22,7 @@ The existing fail-closed behavior is correct, but the owner has no explicit reco
 
 ## Consequences
 
-- A verified failed owner can be replaced without abandoning the durable task, whether or not the task digest drifted. A changed task digest is explicitly distinguished from a same-digest owner transfer.
+- A verified digest mismatch can be reconciled without abandoning the durable task. Same-digest recovery remains in the ordinary claim path and does not create unnecessary schema-v2 audit metadata.
 - The old owner record remains byte-for-byte recoverable in quarantine.
 - A completed successful owner run cannot be silently rebound.
 - The original task identity remains auditable through the previous digest and quarantine record.
