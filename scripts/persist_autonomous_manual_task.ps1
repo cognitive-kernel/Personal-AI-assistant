@@ -321,7 +321,7 @@ try {
     # Reconcile authoritative GitHub PR state before deciding whether a different task may replace the pending task.
     if (-not $repairPendingTaskOwner -and $existingTask -and ($existingTask -cne $manualTask -or $replacePendingTask)) {
         if (-not $replacePendingTask) {
-            throw "Another manual task is still pending. To explicitly abandon it while no autonomous PR is open, dispatch with replace_pending_task=true."
+            throw "A different manual task is already pending; the durable task was preserved. To resume it, dispatch with manual_task empty and replace_pending_task=false when the Pause gate permits execution. If its owner sidecar has a verified digest conflict, use repair_pending_task_owner=true with manual_task empty. Use replace_pending_task=true only for explicitly approved abandonment after confirming no autonomous PR is open."
         }
         $replacementStamp = "$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT)-$([guid]::NewGuid().ToString('N'))"
         $taskBackupPath = "$pendingPath.quarantine-$replacementStamp.txt"
