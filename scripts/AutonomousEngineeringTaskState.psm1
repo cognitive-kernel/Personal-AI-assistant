@@ -70,7 +70,7 @@ function Get-AutonomousTaskOwnerRecord {
         -not ($record.source -is [string]) -or
         [string]$record.source -cnotin @("manual_dispatch", "recovery", "legacy_migration")
     ) {
-        throw "Pending task owner metadata violates schema v1; preserving it."
+        throw "Pending task owner metadata violates its declared schema; preserving it."
     }
     if ([long]$record.schema_version -eq 2) {
         $reboundAt = 0.0
