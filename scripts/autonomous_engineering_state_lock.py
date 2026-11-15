@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import sys
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
-_ROOT = Path(__file__).resolve().parents[1]
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
-
-from app.autonomous_engineering_state import (
-    durable_state_lock as _shared_durable_state_lock,
-)
+try:
+    from .autonomous_engineering_file_lock import exclusive_file_lock
+except ImportError:  # Direct script execution from the scripts directory.
+    from autonomous_engineering_file_lock import exclusive_file_lock
 
 
 def _default_state_dir() -> Path:
@@ -20,18 +18,18 @@ def _default_state_dir() -> Path:
     return execution_state_directory()
 
 
+@contextmanager
 def durable_state_lock(
     state_dir: Path | None = None,
     *,
     timeout_seconds: float = 30.0,
-):
-    """Compatibility facade for the shared byte-range lock.
-
-    The OS lock is held on autonomous-durable-state.lock and is shared with
-    PowerShell through the same byte offset and length.
-    """
-    return _shared_durable_state_lock(
-        state_dir,
+) -> Iterator[None]:
+    """Cross-process, cross-session lock shared by Python and PowerShell."""
+    directory = Path(state_dir) if state_dir is not None else _default_state_dir()
+    lock_path = directory / "autonomous-durable-state.lock"
+    with exclusive_file_lock(
+        lock_path,
         timeout_seconds=timeout_seconds,
-        default_state_dir_fn=_default_state_dir,
-    )
+        timeout_message="Timed out waiting for the shared durable-state file lock.",
+    ):
+        yield
