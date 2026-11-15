@@ -74,6 +74,7 @@ def test_schema_v2_owner_requires_and_accepts_rebind_audit_fields(tmp_path: Path
         lambda record, task: record.update(rebind_authorization_run_id="not-a-run-id"),
         lambda record, task: record.update(rebind_authorization_run_attempt=0),
         lambda record, task: record.update(owner_run_id="not-a-run-id"),
+        lambda record, task: record.update(submitted_run_id="not-a-run-id"),
         lambda record, task: record.update(schema_version=2.0),
         lambda record, task: record.update(claim_count=2_147_483_648),
     ],
