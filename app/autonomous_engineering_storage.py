@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import os
 import time
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
 import psutil
 
 from .autonomous_engineering_state import execution_state_directory
+from scripts.autonomous_engineering_state_lock import durable_state_lock
 
 _RETENTION_SECONDS = 24 * 60 * 60
 _DIAGNOSTIC_RETENTION_SECONDS = 30 * 24 * 60 * 60
@@ -189,26 +191,28 @@ def cleanup_storage(*, active_run: bool) -> dict[str, Any]:
         try:
             if not root.is_dir():
                 continue
-            for path in root.iterdir():
-                if category == "state_temporary":
-                    eligible = path.name.endswith(_STATE_TEMP_SUFFIXES)
-                    retention = _RETENTION_SECONDS
-                elif category == "runner_temporary":
-                    eligible = True
-                    retention = _RETENTION_SECONDS
-                else:
-                    eligible = path.is_file() and path.suffix.casefold() in {".log", ".txt"}
-                    retention = _DIAGNOSTIC_RETENTION_SECONDS
-                if not eligible or not _safe_file(path, root):
-                    continue
-                try:
-                    if path.stat().st_mtime >= time.time() - retention:
+            lock = durable_state_lock(root, timeout_seconds=2) if category == "state_temporary" else nullcontext()
+            with lock:
+                for path in root.iterdir():
+                    if category == "state_temporary":
+                        eligible = path.name.endswith(_STATE_TEMP_SUFFIXES)
+                        retention = _RETENTION_SECONDS
+                    elif category == "runner_temporary":
+                        eligible = True
+                        retention = _RETENTION_SECONDS
+                    else:
+                        eligible = path.is_file() and path.suffix.casefold() in {".log", ".txt"}
+                        retention = _DIAGNOSTIC_RETENTION_SECONDS
+                    if not eligible or not _safe_file(path, root):
                         continue
-                    path.unlink()
-                    deleted.append(str(path))
-                except OSError:
-                    failures.append(path.name)
-        except OSError:
+                    try:
+                        if path.stat().st_mtime >= time.time() - retention:
+                            continue
+                        path.unlink()
+                        deleted.append(str(path))
+                    except OSError:
+                        failures.append(path.name)
+        except (OSError, RuntimeError):
             failures.append(str(root))
     return {
         "deleted": deleted,
