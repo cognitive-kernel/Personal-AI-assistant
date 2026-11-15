@@ -214,10 +214,13 @@ def cleanup_storage(*, active_run: bool) -> dict[str, Any]:
                         failures.append(path.name)
         except (OSError, RuntimeError):
             failures.append(str(root))
+    message = f"{len(deleted)} فایل موقت یا گزارش قدیمی حذف شد؛ فایل‌های داده و checkpoint دست‌نخورده ماندند."
+    if failures:
+        message += f"؛ {len(failures)} مورد به علت قفل یا محدودیت دسترسی حذف نشد."
     return {
         "deleted": deleted,
         "deleted_count": len(deleted),
         "blocked": False,
         "failures": failures,
-        "message": f"{len(deleted)} فایل موقت یا گزارش قدیمی حذف شد؛ فایل‌های داده و checkpoint دست‌نخورده ماندند.",
+        "message": message,
     }
