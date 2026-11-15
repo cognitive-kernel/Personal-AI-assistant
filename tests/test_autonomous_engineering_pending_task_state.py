@@ -118,6 +118,10 @@ def test_task_owner_requires_valid_run_identity_and_attempt(tmp_path: Path):
         claim_pending_task_owner_unlocked(
             tmp_path, "Task", "4002", 0, source="recovery",
         )
+    with pytest.raises(ValueError, match="attempt"):
+        claim_pending_task_owner_unlocked(
+            tmp_path, "Task", "4003", 2_147_483_648, source="recovery",
+        )
 
 
 def test_task_digest_normalizes_all_supported_newline_styles():
