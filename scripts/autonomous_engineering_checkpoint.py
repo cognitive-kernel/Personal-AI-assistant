@@ -113,8 +113,10 @@ def stop_existing_watcher(metadata: dict[str, Any] | None) -> None:
 
 
 
-def read_metadata(run_id: str, task: int) -> dict[str, Any] | None:
-    metadata_path = paths(run_id, task)["metadata"]
+def read_metadata(
+    run_id: str, task: int, *, state: dict[str, Path] | None = None,
+) -> dict[str, Any] | None:
+    metadata_path = (state if state is not None else paths(run_id, task))["metadata"]
     try:
         raw = metadata_path.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -188,8 +190,10 @@ def _write_snapshot_unlocked(
     task: int,
     watcher_pid: int | None = None,
     watcher_started_at: float | None = None,
+    *,
+    state: dict[str, Path] | None = None,
 ) -> None:
-    state = paths(run_id, task)
+    state = state if state is not None else paths(run_id, task)
     state["directory"].mkdir(parents=True, exist_ok=True)
     # The watcher runs concurrently with Codex. Never use the repository's
     # shared .git/index: even intent-to-add entries can race with Codex staging.
@@ -215,7 +219,7 @@ def _write_snapshot_unlocked(
     finally:
         index_path.unlink(missing_ok=True)
         index_path.with_name(index_path.name + ".lock").unlink(missing_ok=True)
-    previous = read_metadata(run_id, task)
+    previous = read_metadata(run_id, task, state=state)
     preserve_existing_patch = (
         not result.stdout
         and state["patch"].is_file()
@@ -254,7 +258,7 @@ def write_snapshot(
     state = paths(run_id, task)
     with checkpoint_store_lock(state["directory"]):
         _write_snapshot_unlocked(
-            base_sha, run_id, task, watcher_pid, watcher_started_at,
+            base_sha, run_id, task, watcher_pid, watcher_started_at, state=state,
         )
 
 
@@ -267,13 +271,13 @@ def watch(base_sha: str, run_id: str, task: int, interval: int) -> int:
     with checkpoint_store_lock(state["directory"], timeout_seconds=0):
         # Reconcile legacy watchers that predate the lifetime lock. A current
         # watcher cannot reach this point while holding the same OS lock.
-        stop_existing_watcher(read_metadata(run_id, task))
+        stop_existing_watcher(read_metadata(run_id, task, state=state))
         state["stop"].unlink(missing_ok=True)
         ready_path.unlink(missing_ok=True)
         error_path.unlink(missing_ok=True)
         watcher_started_at = process_start_time(os.getpid())
         try:
-            _write_snapshot_unlocked(base_sha, run_id, task, os.getpid(), watcher_started_at)
+            _write_snapshot_unlocked(base_sha, run_id, task, os.getpid(), watcher_started_at, state=state)
             # Atomic metadata replacement is the readiness commit point.
         except Exception as exc:
             try:
@@ -412,7 +416,7 @@ def restore(base_sha: str) -> bool:
     stop_existing_watcher(metadata)
     _atomic_write(state["stop"], "stop\n")
     with checkpoint_store_lock(state["directory"]):
-        current_metadata = read_metadata(str(metadata["run_id"]), int(metadata["task"]))
+        current_metadata = read_metadata(str(metadata["run_id"]), int(metadata["task"]), state=state)
         if current_metadata is None or current_metadata.get("base_sha") != metadata.get("base_sha"):
             raise RuntimeError("Checkpoint ownership changed during recovery; preserving all checkpoint data.")
         current_head = git("rev-parse", "HEAD").stdout.strip()
@@ -465,7 +469,7 @@ def snapshot(base_sha: str, run_id: str, task: int) -> None:
 
 def stop(run_id: str, task: int) -> None:
     state = paths(run_id, task)
-    metadata = read_metadata(run_id, task)
+    metadata = read_metadata(run_id, task, state=state)
     stop_existing_watcher(metadata)
     with checkpoint_store_lock(state["directory"]):
         _atomic_write(state["stop"], "stop\n")
