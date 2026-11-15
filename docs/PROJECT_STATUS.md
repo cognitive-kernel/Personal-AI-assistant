@@ -13,7 +13,7 @@
 - PR [#760](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/760)، head `82d02119191b99d0ba071e8fd6f08841db2c7d7b): **۲۲۵۷ passed، ۱۳ skipped، ۵۱ deselected**؛ Windows storage، Browser E2E، Dependency Audit و CodeQL همگی موفق شدند.
 - هر دو PR هنوز Draft و ادغام‌نشده‌اند. هیچ recovery dispatch یا اجرای autonomous زنده انجام نشده و فایل task، owner metadata، checkpoint، Pause، ACL و هویت Runner دست‌نخورده باقی مانده‌اند.
 - گیت‌های عملیاتی هدف هنوز pending هستند: اجرای کامل suite روی Windows هدف، بررسی دسترسی مؤثر دو حساب، sandbox غیرادمین، crash/restart، اجرای واقعی Ollama/Codex و پذیرش مالک. چون task پایدار قبلی هنوز وجود دارد، تست زندهٔ بعدی باید با dispatch خالی برای resume همان task انجام شود؛ task دستی جدید تا تعیین‌تکلیف قبلی به‌درستی پذیرفته نمی‌شود.
-- commit مستندسازی پس از این نتایج: `dbfe785989dc9a943133825665530c035349b11c`؛ فقط Engineering Log تغییر کرده و CI دقیق این commit در حال اجراست.
+- بازاعتبارسنجی snapshot مستندات PR #761 در head `e61f3053f074f46cc920ac2c75e0c877b6785928`: ۲۳۰۲ تست موفق و تمام گیت‌های GitHub سبز؛ PR #760 در head `72146234785a34a6e11c15177a17a088a615e0c3`: ۲۲۵۷ تست موفق و تمام گیت‌های GitHub سبز. Engineering Log، Project Status و Delivery Estimate سپس فقط برای ثبت شواهد نهایی به‌روزرسانی شدند؛ این تغییرات هیچ کد اجرایی یا state عملیاتی را تغییر نداده‌اند.
 
 ## وضعیت جاری — مالکیت پردازه و بازیابی Codex
 
