@@ -85,7 +85,7 @@ def test_task_owner_rejects_corrupt_or_unsupported_records(tmp_path: Path):
 def test_task_owner_requires_valid_run_identity_and_attempt(tmp_path: Path):
     with pytest.raises(ValueError, match="run ID"):
         claim_pending_task_owner_unlocked(
-            tmp_path, "Task", "../invalid", 1, source="recovery",
+            tmp_path, "Task", "not-a-run-id", 1, source="recovery",
         )
     with pytest.raises(ValueError, match="attempt"):
         claim_pending_task_owner_unlocked(
@@ -144,13 +144,13 @@ def test_reconcile_refuses_changed_task_and_preserves_owner(tmp_path: Path):
     owner_path = pending_task_owner_path(tmp_path)
     with durable_state_lock(tmp_path):
         claim_pending_task_owner_unlocked(
-            tmp_path, "Previous task", "old-run", 1, source="manual_dispatch",
+            tmp_path, "Previous task", "5001", 1, source="manual_dispatch",
         )
         previous_owner = owner_path.read_bytes()
 
         with pytest.raises(RuntimeError, match="does not match task content"):
             reconcile_pending_task_owner_unlocked(
-                tmp_path, "Changed task", "new-run", 2, source="recovery",
+                tmp_path, "Changed task", "5002", 2, source="recovery",
             )
 
     assert owner_path.read_bytes() == previous_owner
