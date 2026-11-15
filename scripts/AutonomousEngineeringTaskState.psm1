@@ -47,7 +47,7 @@ function Get-AutonomousTaskOwnerRecord {
         -not ($record.schema_version -is [int] -or $record.schema_version -is [long]) -or
         [long]$record.schema_version -notin @(1, 2) -or
         -not ($record.task_sha256 -is [string]) -or
-        [string]$record.task_sha256 -notmatch '^[0-9a-f]{64}$' -or
+        [string]$record.task_sha256 -cnotmatch '^[0-9a-f]{64}\z' -or
         -not ($record.owner_run_id -is [string]) -or
         [string]::IsNullOrWhiteSpace([string]$record.owner_run_id) -or
         -not ($record.submitted_run_id -is [string]) -or
@@ -68,7 +68,7 @@ function Get-AutonomousTaskOwnerRecord {
         -not [double]::TryParse([string]$record.claimed_at, [ref]$claimedAt) -or
         [double]::IsNaN($claimedAt) -or [double]::IsInfinity($claimedAt) -or $claimedAt -le 0 -or
         -not ($record.source -is [string]) -or
-        [string]$record.source -notin @("manual_dispatch", "recovery", "legacy_migration")
+        [string]$record.source -cnotin @("manual_dispatch", "recovery", "legacy_migration")
     ) {
         throw "Pending task owner metadata violates schema v1; preserving it."
     }
@@ -77,17 +77,18 @@ function Get-AutonomousTaskOwnerRecord {
         $authorizationAttempt = 0
         if (
             -not ($record.previous_task_sha256 -is [string]) -or
-            [string]$record.previous_task_sha256 -notmatch '^[0-9a-f]{64}\z' -or
+            [string]$record.previous_task_sha256 -cnotmatch '^[0-9a-f]{64}\z' -or
             [string]$record.previous_task_sha256 -ceq [string]$record.task_sha256 -or
             -not ($record.source -is [string]) -or
             [string]$record.source -cne "recovery" -or
             -not ($record.rebind_reason -is [string]) -or
             [string]$record.rebind_reason -cne "owner_authorized_task_content_reconciliation" -or
             -not ($record.rebind_authorization_run_id -is [string]) -or
-            [string]$record.rebind_authorization_run_id -notmatch '^[0-9]{1,20}\z' -or
+            [string]$record.rebind_authorization_run_id -cnotmatch '^[0-9]{1,20}\z' -or
             -not ($record.rebind_authorization_run_attempt -is [int] -or $record.rebind_authorization_run_attempt -is [long]) -or
             -not [int]::TryParse([string]$record.rebind_authorization_run_attempt, [ref]$authorizationAttempt) -or
-            $authorizationAttempt -lt 1 -or
+            $authorizationAttempt -lt 1 -or $authorizationAttempt -gt 2147483647 -or
+            -not ($record.rebound_at -is [double] -or $record.rebound_at -is [int] -or $record.rebound_at -is [long]) -or
             -not [double]::TryParse([string]$record.rebound_at, [ref]$reboundAt) -or
             [double]::IsNaN($reboundAt) -or [double]::IsInfinity($reboundAt) -or $reboundAt -le 0
         ) {
