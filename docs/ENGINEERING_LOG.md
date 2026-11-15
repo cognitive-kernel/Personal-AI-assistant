@@ -1,5 +1,26 @@
 # Engineering Continuity Log
 
+## 2026-11-15 — Autonomous recovery failure classification
+
+### Evidence and root cause
+- Run [43695676192](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43695676192) completed its `schedule-gate` successfully but failed in `codex` step `Persist manual task under the controller's runner and concurrency ownership`. Its exact error was `Another manual task is still pending`; all later setup and controller steps were skipped. This was a rejected new task submission, not a failed task execution.
+- The recovery workflow counted every `failure`/`timed_out` run without inspecting job/step outcomes. It therefore included admission failures in the execution streak. Its circuit-breaker branch used exit code 0, so GitHub displayed a green recovery run even though no recovery was dispatched ([run 43695720003](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43695720003)).
+- The pending task and owner record are intentionally single-slot durable state. Replacing them or enabling `replace_pending_task` would discard the original accepted task's ownership semantics; no such change is made.
+
+### Corrective implementation
+- Extracted GitHub workflow failure classification and streak policy into `scripts/autonomous_engineering_recovery_policy.py`; the policy counts only failed/timed-out controller executions, excludes schedule-gate and manual-task admission rejections, and blocks on unknown job/step shapes.
+- Extracted API pagination, history traversal, bounded backoff, dispatch, and visible reporting into `scripts/autonomous_engineering_recovery.py`.
+- Simplified `.github/workflows/autonomous-codex-recovery.yml` to check out trusted `main` without persisting credentials and invoke the testable recovery coordinator.
+- An open circuit breaker or blocked/unknown recovery now writes a job summary and error annotation and exits non-zero. Admission failures are not misreported as task-execution failures and do not trigger an automatic replacement dispatch.
+- Added policy tests for admission rejection, schedule-gate failure, retryable execution failure, timeout, unknown classification, streak exclusion, success reset, and missing trigger history. Updated workflow wiring tests.
+- Updated ADR-021 and the operational runbook. No pending task, owner metadata, checkpoint, Pause value, Runner identity, ACL, or user data was changed; no recovery dispatch was issued.
+
+### Validation
+- Implementation branch: `fix/autonomous-recovery-failure-classification-20261115`.
+- Latest change SHA at log entry time: pending exact-head CI.
+- Automated tests and all exact-head CI checks: pending.
+- Target-host Windows full suite and live recovery acceptance: pending; no result is claimed.
+
 ## 2026-11-14 — PR #757 follow-up: controller-owned POSIX Codex process group
 
 ### Root cause
@@ -911,25 +932,3 @@ Exact tested code head: ab703a284752c80531e9f25e0b7ad53a04c453a0.
 Evidence: Tests/Windows regressions https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863471 ; Browser E2E https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863440 ; Dependency audit https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863452 ; CodeQL https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863507 .
 
 The subsequent documentation-only evidence update does not change runtime code and is followed by a fresh exact-head CI run. Target-host cross-account ACL verification, non-admin sandbox smoke/soak, crash/restart acceptance, and independent security review remain pending. Durable Pause remains enabled; no Runner, service, or autonomous process was started.
-
-
-## 2026-11-15 — Autonomous recovery failure classification
-
-### Evidence and root cause
-- Run [43695676192](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43695676192) completed its `schedule-gate` successfully but failed in `codex` step `Persist manual task under the controller's runner and concurrency ownership`. Its exact error was `Another manual task is still pending`; all later setup and controller steps were skipped. This was a rejected new task submission, not a failed task execution.
-- The recovery workflow counted every `failure`/`timed_out` run without inspecting job/step outcomes. It therefore included admission failures in the execution streak. Its circuit-breaker branch used exit code 0, so GitHub displayed a green recovery run even though no recovery was dispatched ([run 43695720003](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43695720003)).
-- The pending task and owner record are intentionally single-slot durable state. Replacing them or enabling `replace_pending_task` would discard the original accepted task's ownership semantics; no such change is made.
-
-### Corrective implementation
-- Extracted GitHub workflow failure classification and streak policy into `scripts/autonomous_engineering_recovery_policy.py`; the policy counts only failed/timed-out controller executions, excludes schedule-gate and manual-task admission rejections, and blocks on unknown job/step shapes.
-- Extracted API pagination, history traversal, bounded backoff, dispatch, and visible reporting into `scripts/autonomous_engineering_recovery.py`.
-- Simplified `.github/workflows/autonomous-codex-recovery.yml` to check out trusted `main` without persisting credentials and invoke the testable recovery coordinator.
-- An open circuit breaker or blocked/unknown recovery now writes a job summary and error annotation and exits non-zero. Admission failures are not misreported as task-execution failures and do not trigger an automatic replacement dispatch.
-- Added policy tests for admission rejection, schedule-gate failure, retryable execution failure, timeout, unknown classification, streak exclusion, success reset, and missing trigger history. Updated workflow wiring tests.
-- Updated ADR-021 and the operational runbook. No pending task, owner metadata, checkpoint, Pause value, Runner identity, ACL, or user data was changed; no recovery dispatch was issued.
-
-### Validation
-- Implementation branch: `fix/autonomous-recovery-failure-classification-20261115`.
-- Latest change SHA at log entry time: pending exact-head CI.
-- Automated tests and all exact-head CI checks: pending.
-- Target-host Windows full suite and live recovery acceptance: pending; no result is claimed.
