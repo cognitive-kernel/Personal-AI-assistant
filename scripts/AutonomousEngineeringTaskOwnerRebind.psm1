@@ -131,7 +131,7 @@ function Rebind-AutonomousTaskOwnerRecord {
     } catch {
         throw "Explicit owner reconciliation failed; the original owner record remains preserved. $($_.Exception.Message)"
     } finally {
-        if (Test-Path -LiteralPath $temporaryPath) {
+        if ($temporaryCreated -and (Test-Path -LiteralPath $temporaryPath)) {
             Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
         }
     }
@@ -139,4 +139,49 @@ function Rebind-AutonomousTaskOwnerRecord {
     return [pscustomobject]$record
 }
 
-Export-ModuleMember -Function Rebind-AutonomousTaskOwnerRecord
+function Resume-AutonomousTaskOwnerRebindAttempt {
+    param(
+        [Parameter(Mandatory=$true)][string]$Path,
+        [Parameter(Mandatory=$true)][string]$Task,
+        [Parameter(Mandatory=$true)][string]$RunId,
+        [Parameter(Mandatory=$true)][int]$RunAttempt,
+        [Parameter(Mandatory=$true)][object]$VerifiedOwnerRun
+    )
+
+    if (
+        [string]::IsNullOrWhiteSpace($Task) -or $Task.Length -gt 2000 -or $Task.IndexOf([char]0) -ge 0 -or
+        $RunId -cnotmatch '^[0-9]{1,20}\z' -or $RunAttempt -lt 1
+    ) {
+        throw "A valid durable task, numeric run ID, and positive current attempt are required."
+    }
+
+    $existing = Get-AutonomousTaskOwnerRecord -Path $Path -Task $Task
+    $ownerAttempt = 0
+    $authorizationAttempt = 0
+    if (
+        [long]$existing.schema_version -ne 2 -or
+        -not [int]::TryParse([string]$existing.owner_attempt, [ref]$ownerAttempt) -or
+        -not [int]::TryParse([string]$existing.rebind_authorization_run_attempt, [ref]$authorizationAttempt) -or
+        [string]$existing.owner_run_id -cne $RunId -or
+        [string]$existing.rebind_authorization_run_id -cne $RunId -or
+        $authorizationAttempt -gt $ownerAttempt -or
+        $ownerAttempt -ge $RunAttempt
+    ) {
+        throw "This schema-v2 owner record is not a retry of the workflow run that authorized its original rebind."
+    }
+
+    if (
+        [string]$VerifiedOwnerRun.id -cne $RunId -or
+        [int]$VerifiedOwnerRun.run_attempt -ne $ownerAttempt -or
+        [string]$VerifiedOwnerRun.path -cne ".github/workflows/autonomous-codex-engineering.yml" -or
+        [string]$VerifiedOwnerRun.head_branch -cne "main" -or
+        [string]$VerifiedOwnerRun.status -cne "completed" -or
+        [string]$VerifiedOwnerRun.conclusion -cnotin @("failure", "cancelled", "timed_out")
+    ) {
+        throw "The previous attempt of the original repair run is not verified as a terminal unsuccessful main-branch execution."
+    }
+
+    return Write-AutonomousTaskOwnerRecord -Path $Path -Task $Task -RunId $RunId -RunAttempt $RunAttempt -Source recovery -Existing $existing
+}
+
+Export-ModuleMember -Function Rebind-AutonomousTaskOwnerRecord, Resume-AutonomousTaskOwnerRebindAttempt
