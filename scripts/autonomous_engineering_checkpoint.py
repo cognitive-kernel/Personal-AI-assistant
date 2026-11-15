@@ -291,7 +291,7 @@ def watch(base_sha: str, run_id: str, task: int, interval: int) -> int:
             raise
         while not state["stop"].exists():
             try:
-                _write_snapshot_unlocked(base_sha, run_id, task, os.getpid(), watcher_started_at)
+                _write_snapshot_unlocked(base_sha, run_id, task, os.getpid(), watcher_started_at, state=state)
             except (OSError, RuntimeError) as exc:
                 print(f"Checkpoint snapshot skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
             time.sleep(max(5, min(interval, 120)))
@@ -477,7 +477,7 @@ def stop(run_id: str, task: int) -> None:
 
 def clear(run_id: str, task: int) -> None:
     state = paths(run_id, task)
-    metadata = read_metadata(run_id, task)
+    metadata = read_metadata(run_id, task, state=state)
     stop_existing_watcher(metadata)
     with checkpoint_store_lock(state["directory"]):
         _atomic_write(state["stop"], "stop\n")
@@ -495,7 +495,7 @@ def clear_latest() -> None:
     metadata, state = latest
     stop_existing_watcher(metadata)
     with checkpoint_store_lock(state["directory"]):
-        current_metadata = read_metadata(str(metadata["run_id"]), int(metadata["task"]))
+        current_metadata = read_metadata(str(metadata["run_id"]), int(metadata["task"]), state=state)
         if current_metadata is None:
             raise RuntimeError("Checkpoint disappeared during cleanup; preserving unknown ownership state.")
         _atomic_write(state["stop"], "stop\n")
