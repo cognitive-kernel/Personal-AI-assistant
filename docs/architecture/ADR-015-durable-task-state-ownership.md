@@ -27,8 +27,12 @@ Atomic file replacement protects an individual write from partial contents, but 
    process exits; a stale lock file is harmless and is never treated as ownership.
 3. On POSIX, the same Python API uses a non-blocking `flock` loop with a bounded
    timeout on the same state file. Directory ACLs are provisioned separately
-   from the lock protocol and must grant the participating application/Runner
-   identities the required access; no account name or SID is embedded in code.
+   from the lock protocol. The Runner identity has Modify access to the state
+   directory; the application identity has Read/Execute access to state records
+   and Modify access only to `autonomous-durable-state.lock`, because the OS
+   byte-range lock requires a read/write file handle. Provisioning creates and
+   verifies that one-file exception without granting write access to task, owner,
+   PR, checkpoint, or progress data. No account name or SID is embedded in code.
 4. Resolve the state root through `app.autonomous_engineering_state.execution_state_directory()` for checkpoint, execution, progress telemetry, and task/PR state. Script compatibility facades delegate to the same resolver. Configured roots must be absolute. On Windows, missing `PROGRAMDATA` is a hard error rather than a fallback to a per-user home directory. Expand environment variables consistently across Python and PowerShell.
 5. PowerShell manual-task persistence runs inside the `codex` job's GitHub concurrency group and holds the shared lock across active-run detection, pending-task/pending-PR validation, open-PR checks, and atomic task write. It rejects a new single-slot task while another autonomous run is queued or active; the schedule gate fails the manual dispatch visibly when paused or occupied. It never silently queues a task that a currently running cycle could later erase.
 6. The workflow capture step is read-only for the durable task file. It acquires the shared lock, verifies any supplied task exactly matches the task already persisted by the earlier step in the same serialized job, and reads the persisted task for the request.
