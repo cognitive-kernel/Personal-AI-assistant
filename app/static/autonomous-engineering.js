@@ -490,7 +490,7 @@
   }
   $("refresh-storage").addEventListener("click", refreshStorage);
   $("cleanup-storage").addEventListener("click", async () => {
-    if (!window.confirm("فقط فایل‌های موقت شناخته‌شده و قدیمی‌تر از ۲۴ ساعت حذف شوند؟ داده‌ها و checkpointها حفظ می‌شوند.")) return;
+    if (!window.confirm("فایل‌های موقت Runner و *.tmp قدیمی‌تر از ۲۴ ساعت و لاگ‌های Runner قدیمی‌تر از ۳۰ روز حذف شوند؟ داده‌ها و checkpointها حفظ می‌شوند.")) return;
     const button = $("cleanup-storage"); button.disabled = true;
     try {
       const result = await request("storage/cleanup", {method: "POST"});
