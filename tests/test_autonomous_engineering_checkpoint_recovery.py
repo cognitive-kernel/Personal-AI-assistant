@@ -104,7 +104,6 @@ def test_watcher_start_does_not_replace_state_when_previous_owner_is_ambiguous(
     ready.write_text("old readiness", encoding="utf-8")
     error.write_text("old error", encoding="utf-8")
     monkeypatch.setattr(checkpoint, "paths", lambda run_id, task: paths)
-    monkeypatch.setattr(checkpoint, "store_dir", lambda: tmp_path)
     monkeypatch.setattr(checkpoint, "watcher_marker_paths", lambda run_id, task: (ready, error))
     monkeypatch.setattr(checkpoint, "read_metadata", lambda run_id, task: metadata)
 
