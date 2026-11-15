@@ -53,14 +53,22 @@ function Rebind-AutonomousTaskOwnerRecord {
         $existing.schema_version -is [bool] -or
         -not ($existing.schema_version -is [int] -or $existing.schema_version -is [long]) -or
         [long]$existing.schema_version -ne 1 -or
+        -not ($existing.task_sha256 -is [string]) -or
         $oldDigest -cnotmatch '^[0-9a-f]{64}\z' -or
+        -not ($existing.owner_run_id -is [string]) -or
         [string]$existing.owner_run_id -cne [string]$VerifiedOwnerRun.id -or
         [string]$existing.owner_run_id -notmatch '^[0-9]{1,20}\z' -or
+        -not ($existing.owner_attempt -is [int] -or $existing.owner_attempt -is [long]) -or
+        -not ($existing.submitted_attempt -is [int] -or $existing.submitted_attempt -is [long]) -or
         -not [int]::TryParse([string]$existing.submitted_attempt, [ref]$submittedAttempt) -or $submittedAttempt -lt 1 -or
+        -not ($existing.submitted_run_id -is [string]) -or
         [string]$existing.submitted_run_id -notmatch '^[0-9]{1,20}\z' -or
+        -not ($existing.claim_count -is [int] -or $existing.claim_count -is [long]) -or
         -not [int]::TryParse([string]$existing.claim_count, [ref]$claimCount) -or $claimCount -lt 1 -or
+        -not ($existing.created_at -is [double] -or $existing.created_at -is [int] -or $existing.created_at -is [long]) -or
         -not [double]::TryParse([string]$existing.created_at, [ref]$createdAt) -or
         [double]::IsNaN($createdAt) -or [double]::IsInfinity($createdAt) -or $createdAt -le 0 -or
+        -not ($existing.claimed_at -is [double] -or $existing.claimed_at -is [int] -or $existing.claimed_at -is [long]) -or
         -not [double]::TryParse([string]$existing.claimed_at, [ref]$claimedAt) -or
         [double]::IsNaN($claimedAt) -or [double]::IsInfinity($claimedAt) -or $claimedAt -le 0 -or
         [string]$existing.source -cnotin @("manual_dispatch", "recovery", "legacy_migration")
