@@ -11,8 +11,9 @@
 
 - **Scope addition:** autonomous recovery now distinguishes task-admission/schedule-gate failures from actual controller execution failures. The previous history counter treated every failed workflow as an execution failure, and the circuit-breaker path reported a green conclusion despite dispatching nothing.
 - **Implementation:** a dedicated, testable recovery policy and coordinator classify structured job/step results, paginate workflow history, preserve the existing three-execution-failure threshold and bounded backoff, and fail closed on unknown classifications. Recovery workflow wiring and operational/architecture documentation are updated.
-- **Estimate status:** no additional hours are asserted until focused tests and exact-head CI complete. This is corrective reliability work within E-05 (durable tasks and resilience); the original 176-hour baseline and allocations are not silently rewritten.
-- **Acceptance:** policy unit tests, workflow contract tests, exact-head GitHub checks, and local Windows full-suite evidence are pending. The pending task, owner metadata, checkpoint, Pause setting, Runner identity, and ACL were not changed; no recovery dispatch was issued.
+- **Estimate status:** no additional hours are asserted. This is corrective reliability work within E-05 (durable tasks and resilience); the original 176-hour baseline and allocations are not silently rewritten.
+- **Automated acceptance:** exact head `aadb11fa6297d30e1c3c86505a2445132968873a` passed 2,277 Python tests (13 skipped, 51 deselected), Windows storage regressions, Browser E2E, dependency audit, and CodeQL. PR #760's exact head also passed all four required workflows.
+- **Remaining acceptance:** local Windows full-suite rerun and live recovery execution on the target Runner remain pending. The pending task, owner metadata, checkpoint, Pause setting, Runner identity, and ACL were not changed; no recovery dispatch was issued.
 
 ## Executive commitment
 
