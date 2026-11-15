@@ -48,6 +48,9 @@ function Rebind-AutonomousTaskOwnerRecord {
     if ([int]$VerifiedOwnerRun.run_attempt -ne $ownerAttempt) {
         throw "GitHub verified a different attempt than the recorded task owner; preserving the owner record."
     }
+    if ([string]$existing.owner_run_id -ceq $RunId -and $ownerAttempt -ge $RunAttempt) {
+        throw "The current workflow run attempt already owns this task or is older than its recorded owner attempt."
+    }
     $oldDigest = [string]$existing.task_sha256
     if (
         $existing.schema_version -is [bool] -or
