@@ -70,6 +70,33 @@ def test_task_owner_rejects_task_mutation_and_preserves_owner_file(tmp_path: Pat
         assert owner_path.read_bytes() == before
 
 
+def test_task_owner_replace_failure_preserves_previous_record_and_cleans_temp(
+    tmp_path: Path, monkeypatch,
+):
+    import scripts.autonomous_engineering_pending_task_state as owner_state
+
+    task = "The prior owner record must survive a failed atomic replace."
+    with durable_state_lock(tmp_path):
+        original = claim_pending_task_owner_unlocked(
+            tmp_path, task, "5101", 1, source="manual_dispatch",
+        )
+    owner_path = pending_task_owner_path(tmp_path)
+    previous_bytes = owner_path.read_bytes()
+
+    def fail_replace(source, destination):
+        raise OSError("simulated atomic replace failure")
+
+    monkeypatch.setattr(owner_state.os, "replace", fail_replace)
+    with durable_state_lock(tmp_path):
+        with pytest.raises(OSError, match="simulated atomic replace failure"):
+            claim_pending_task_owner_unlocked(
+                tmp_path, task, "5102", 1, source="recovery",
+            )
+
+    assert owner_path.read_bytes() == previous_bytes
+    assert not list(tmp_path.glob("pending-manual-task-owner.json.*.tmp"))
+
+
 def test_task_owner_rejects_corrupt_or_unsupported_records(tmp_path: Path):
     owner_path = pending_task_owner_path(tmp_path)
     owner_path.parent.mkdir(parents=True, exist_ok=True)
