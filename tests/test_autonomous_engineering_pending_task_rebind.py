@@ -231,15 +231,22 @@ def test_powershell_owner_rebind_archives_old_record_and_preserves_submission(tm
 
 @pytest.mark.skipif(os.name != "nt", reason="PowerShell task-owner interoperability is Windows-only")
 @pytest.mark.parametrize(
-    ("status", "conclusion"),
-    [("in_progress", "failure"), ("completed", "success"), ("completed", "neutral")],
+    ("run_id", "path", "branch", "status", "conclusion"),
+    [
+        ("200", WORKFLOW_PATH, "main", "in_progress", "failure"),
+        ("200", WORKFLOW_PATH, "main", "completed", "success"),
+        ("200", WORKFLOW_PATH, "main", "completed", "neutral"),
+        ("201", WORKFLOW_PATH, "main", "completed", "failure"),
+        ("200", ".github/workflows/untrusted.yml", "main", "completed", "failure"),
+        ("200", WORKFLOW_PATH, "feature/branch", "completed", "failure"),
+    ],
 )
 def test_powershell_owner_rebind_rejects_unverified_or_successful_owner_run(
-    tmp_path: Path, status: str, conclusion: str,
+    tmp_path: Path, run_id: str, path: str, branch: str, status: str, conclusion: str,
 ):
     root = Path(__file__).resolve().parents[1]
     module = root / "scripts" / "AutonomousEngineeringTaskOwnerRebind.psm1"
-    owner_path = tmp_path / f"owner-{status}-{conclusion}.json"
+    owner_path = tmp_path / f"owner-{run_id}-{status}-{conclusion}.json"
     old_task = "Old task identity"
     current_task = "Current task identity"
     now = time.time()
@@ -260,7 +267,7 @@ def test_powershell_owner_rebind_rejects_unverified_or_successful_owner_run(
     script = (
         "$ErrorActionPreference='Stop'; "
         f"Import-Module {_ps_quote(str(module))} -Force; "
-        f"$run=[pscustomobject]@{{id='200';path='{WORKFLOW_PATH}';head_branch='main';"
+        f"$run=[pscustomobject]@{{id='{run_id}';path='{path}';head_branch='{branch}';"
         f"status='{status}';conclusion='{conclusion}'}}; "
         f"try {{ Rebind-AutonomousTaskOwnerRecord -Path {_ps_quote(str(owner_path))} "
         f"-Task {_ps_quote(current_task)} -RunId '300' -RunAttempt 1 -VerifiedOwnerRun $run | Out-Null; "
