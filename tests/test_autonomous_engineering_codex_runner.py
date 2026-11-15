@@ -63,7 +63,8 @@ def test_parent_chain_rejects_pid_reuse_or_missing_process(monkeypatch):
         def create_time(self):
             return 9999.0
 
-    monkeypatch.setattr(runner.psutil, "Process", lambda pid: ReusedPid())
+    psutil = runner._load_psutil()
+    monkeypatch.setattr(psutil, "Process", lambda pid: ReusedPid())
     assert not runner.parent_chain_is_alive([{"pid": 42, "started_at": 1.0}])
 
 
