@@ -561,7 +561,7 @@ def delete_autonomous_engineering_run(run_id: str) -> dict[str, Any]:
     auth = _run([gh, "auth", "status", "--hostname", "github.com"], timeout=8)
     if not auth or auth.returncode != 0:
         raise HTTPException(status_code=503, detail="GitHub CLI احراز هویت نشده است.")
-    viewed = _run([gh, "run", "view", run_id, "--repo", _repository(), "--json", "status,conclusion"], timeout=12)
+    viewed = _run([gh, "api", f"repos/{_repository()}/actions/runs/{run_id}"], timeout=12)
     if not viewed or viewed.returncode != 0:
         raise HTTPException(status_code=502, detail="وضعیت اجرای انتخاب‌شده قابل دریافت نیست؛ سابقه حذف نشد.")
     try:
@@ -570,6 +570,8 @@ def delete_autonomous_engineering_run(run_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=502, detail="پاسخ وضعیت اجرا معتبر نیست؛ سابقه حذف نشد.") from exc
     if not isinstance(state, dict) or state.get("status") != "completed":
         raise HTTPException(status_code=409, detail="فقط اجرای پایان‌یافته قابل حذف است؛ اجرای فعال یا در صف حفظ شد.")
+    if state.get("path") != f".github/workflows/{_WORKFLOW}":
+        raise HTTPException(status_code=403, detail="فقط سوابق گردش‌کار عامل مهندسی خودکار از این صفحه قابل حذف است.")
     deleted = _run([gh, "run", "delete", run_id, "--repo", _repository()], timeout=15)
     if not deleted or deleted.returncode != 0:
         raise HTTPException(status_code=502, detail="GitHub حذف سابقهٔ اجرا را تأیید نکرد.")
