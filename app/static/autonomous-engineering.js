@@ -474,7 +474,7 @@
         const label = document.createElement("span");
         label.textContent = String(file.path || file.name) + " · " + (Number(file.size_bytes || 0) / 1024).toFixed(1) +
           " KiB · " + String(file.category || "") +
-          (file.cleanup_eligible ? " · قابل پاک‌سازی" : " · حفظ می‌شود");
+          (file.cleanup_eligible ? " · منقضی؛ حذف مشروط به نبود اجرای فعال" : " · حفظ می‌شود");
         row.append(label);
         host.append(row);
       }
