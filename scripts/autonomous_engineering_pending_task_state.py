@@ -42,6 +42,7 @@ def _validate_owner_record(record: Any, task: str) -> dict[str, Any]:
             isinstance(record.get(key), bool)
             or not isinstance(record.get(key), int)
             or record[key] < 1
+            or record[key] > 2_147_483_647
             for key in integer_fields
         )
         or any(
@@ -72,6 +73,7 @@ def _validate_owner_record(record: Any, task: str) -> dict[str, Any]:
             or isinstance(authorization_attempt, bool)
             or not isinstance(authorization_attempt, int)
             or authorization_attempt < 1
+            or authorization_attempt > 2_147_483_647
             or isinstance(rebound_at, bool)
             or not isinstance(rebound_at, (int, float))
             or not math.isfinite(float(rebound_at))
