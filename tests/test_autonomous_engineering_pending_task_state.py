@@ -108,6 +108,7 @@ def test_task_owner_temp_create_collision_preserves_other_process_file(tmp_path:
         )
 
     owner_path = pending_task_owner_path(tmp_path)
+    previous_owner_bytes = owner_path.read_bytes()
     fixed_time = 123456789
     fixed_uuid = "f" * 32
     temporary = owner_path.with_name(
@@ -125,6 +126,7 @@ def test_task_owner_temp_create_collision_preserves_other_process_file(tmp_path:
             )
 
     assert temporary.read_bytes() == sentinel
+    assert owner_path.read_bytes() == previous_owner_bytes
 
 
 def test_task_owner_rejects_corrupt_or_unsupported_records(tmp_path: Path):
