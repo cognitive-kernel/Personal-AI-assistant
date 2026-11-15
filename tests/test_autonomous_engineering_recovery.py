@@ -48,6 +48,9 @@ def test_main_blocks_admission_rejection_without_dispatch(monkeypatch):
         def jobs(self, run_id):
             return _failed_admission_jobs()
 
+        def retryable_failure_streak(self, run_id, jobs):
+            return 0
+
         def request(self, *args, **kwargs):
             calls.append((args, kwargs))
 
@@ -178,3 +181,28 @@ def test_history_counter_fails_closed_on_unknown_previous_failure():
     import pytest
     with pytest.raises(RuntimeError, match="Cannot safely classify failed workflow run 122"):
         client.retryable_failure_streak(123, _failed_execution_jobs())
+
+
+def test_current_admission_rejection_does_not_hide_an_already_open_breaker(monkeypatch):
+    _configure_environment(monkeypatch)
+    reports = []
+
+    class FakeClient:
+        def __init__(self, repository, token):
+            pass
+
+        def jobs(self, run_id):
+            return _failed_admission_jobs()
+
+        def retryable_failure_streak(self, run_id, jobs):
+            return 3
+
+        def request(self, *args, **kwargs):
+            raise AssertionError("An open breaker must not dispatch.")
+
+    monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
+    monkeypatch.setattr(recovery, "report", lambda *args, **kwargs: reports.append((args, kwargs)))
+
+    assert recovery.main() == 1
+    assert reports[0][1]["error"] is True
+    assert "CIRCUIT BREAKER OPEN" in reports[0][0][1]
