@@ -36,7 +36,7 @@ def test_powershell_reconciles_github_pr_state_before_rejecting_a_replacement_ta
     root = Path(__file__).resolve().parents[1]
     script = (root / "scripts" / "persist_autonomous_manual_task.ps1").read_text(encoding="utf-8")
     pr_reconciliation = script.index("if ($pendingPrFound)")
-    replacement_guard = script.index("Another manual task is still pending")
+    replacement_guard = script.index("A different manual task is already pending")
     owner_validation = script.index("Repair-AutonomousTaskOwnerRecord")
 
     workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
