@@ -6,7 +6,6 @@ import subprocess
 import time
 from pathlib import Path
 
-import pytest
 
 from app import autonomous_engineering as agent
 from app import autonomous_engineering_storage as storage
@@ -30,6 +29,7 @@ def test_storage_inventory_finds_owned_state_and_runner_temp_files(monkeypatch, 
     assert "codex-report-7.md" in names
     assert "unrelated-user-file.tmp" not in names
     assert result["file_count"] == 2
+    assert next(item for item in result["files"] if item["name"] == "codex-report-7.md")["cleanup_eligible"] is False
 
 
 def test_cleanup_removes_only_stale_allowlisted_temp_files(monkeypatch, tmp_path):
@@ -108,3 +108,19 @@ def test_failed_github_job_exposes_failed_step_in_progress(monkeypatch):
     assert result["diagnostic"]["job"] == "codex"
     assert result["diagnostic"]["step"] == "Execute autonomous task"
     assert result["diagnostic"]["job_url"].endswith("/job/456")
+
+
+
+def test_record_failure_persists_relative_source_location(monkeypatch, tmp_path):
+    from scripts import autonomous_engineering_progress as progress
+
+    monkeypatch.setattr(progress, "store_dir", lambda: tmp_path)
+    assert progress.record_failure(
+        "987", "1", "RuntimeError", "test failure",
+        "scripts/autonomous_engineering_cycle.py", 321, "run_cycle",
+    )
+    current = json.loads((tmp_path / "current.json").read_text(encoding="utf-8"))
+    assert current["status"] == "failed"
+    assert current["diagnostic"]["source_file"] == "scripts/autonomous_engineering_cycle.py"
+    assert current["diagnostic"]["line"] == 321
+    assert current["diagnostic"]["function"] == "run_cycle"
