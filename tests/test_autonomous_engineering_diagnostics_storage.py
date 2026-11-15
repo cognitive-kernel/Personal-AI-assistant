@@ -180,3 +180,30 @@ def test_delete_run_removes_only_a_confirmed_completed_run(monkeypatch):
 
     assert result["deleted"] is True
     assert calls[-1][1:4] == ["run", "delete", "789"]
+
+
+def test_early_workflow_failure_is_visible_without_local_progress_record(monkeypatch):
+    monkeypatch.setattr(agent, "get_progress", lambda **kwargs: {
+        "current": None, "history": [], "events": [], "available": False,
+    })
+    monkeypatch.setattr(agent, "_recent_github_runs", lambda: [{
+        "id": 321, "status": "completed", "conclusion": "failure",
+        "created_at": "2026-11-15T12:00:00Z",
+    }])
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    jobs = {"jobs": [{
+        "name": "codex",
+        "status": "completed",
+        "conclusion": "failure",
+        "html_url": "https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/321/job/654",
+        "steps": [{"name": "Install dependencies", "status": "completed", "conclusion": "failure"}],
+    }]}
+    monkeypatch.setattr(
+        agent, "_run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, json.dumps(jobs), ""),
+    )
+
+    result = agent.autonomous_engineering_progress()
+
+    assert result["current"]["run_id"] == "321"
+    assert result["current"]["diagnostic"]["step"] == "Install dependencies"
