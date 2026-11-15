@@ -43,6 +43,8 @@ def test_powershell_reconciles_github_pr_state_before_rejecting_a_replacement_ta
     assert pr_reconciliation < replacement_guard < owner_validation
     assert 'REPLACE_PENDING_TASK: ${{ inputs.replace_pending_task && \'true\' || \'false\' }}' in workflow
     assert 'replace_pending_task=true' in script
+    assert 'manual_task empty' in script
+    assert 'repair_pending_task_owner=true' in script
     assert 'quarantine-$replacementStamp' in script
     assert 'compare/$mergeSha...main' in script
     assert 'Repair-AutonomousPendingStateCleanup -StateDirectory $stateDir' in script
