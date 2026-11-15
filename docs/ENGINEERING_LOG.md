@@ -18,9 +18,12 @@
 
 ### Validation
 - Implementation branch: `fix/autonomous-recovery-failure-classification-20261115`.
-- Latest change SHA at log entry time: pending exact-head CI.
-- Automated tests and all exact-head CI checks: pending.
-- Target-host Windows full suite and live recovery acceptance: pending; no result is claimed.
+- Exact tested head: `aadb11fa6297d30e1c3c86505a2445132968873a`.
+- Full Python suite: **2,277 passed, 13 skipped, 51 deselected** in 188.34 seconds.
+- Windows storage regressions: success. Browser E2E: success. Dependency audit: success. CodeQL: success.
+- Exact-head evidence: tests/Windows [run 43698926554](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43698926554); Browser E2E [run 43698926541](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43698926541); CodeQL [run 43698926543](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43698926543); dependency audit [run 43698926524](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43698926524).
+- PR #760 exact head `fb52bd4f99d7f38c200b021afe8247d373844484`: tests/Windows [run 43697193784](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43697193784), Browser E2E [run 43697193839](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43697193839), CodeQL [run 43697193801](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43697193801), dependency audit [run 43697193774](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43697193774): all successful.
+- Target-host Windows full-suite rerun, real recovery execution, and owner acceptance remain pending; no result is claimed.
 
 ## 2026-11-14 — PR #757 follow-up: controller-owned POSIX Codex process group
 
