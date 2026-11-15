@@ -1,5 +1,6 @@
 param([string]$SelectedModel)
 $ErrorActionPreference = "Stop"
+Import-Module (Join-Path $PSScriptRoot "AutonomousOllamaRuntime.psm1") -Force
 $model = if (-not [string]::IsNullOrWhiteSpace($SelectedModel)) {
     $SelectedModel
 } elseif ($env:AUTONOMOUS_ENGINEERING_MODEL) {
@@ -56,22 +57,15 @@ $checks += [pscustomobject]@{
     Detail = if ($codexReady) { $codexVersion } elseif ($npmReady) { $codexVersion } else { "Install Node.js/npm; the workflow installs Codex under this service account." }
 }
 
-$ollamaCommand = Get-Command ollama -ErrorAction SilentlyContinue
-$ollamaCliReady = [bool]$ollamaCommand
-$ollamaVersion = "Ollama CLI not found in Runner account PATH"
-if ($ollamaCliReady) {
-    $ollamaVersion = (& ollama --version 2>$null | Select-Object -First 1)
-    $ollamaCliReady = ($LASTEXITCODE -eq 0 -and [bool]$ollamaVersion)
-}
 $ollamaOnline = $false
 $modelInstalled = $false
 $modelContextLength = $null
 $modelSupportsTools = $false
 $toolVerificationDetail = "Tool calling has not been verified."
 try {
-    $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 4 -MaximumRedirection 0
+    $tags = @(Get-AutonomousOllamaModelCatalog -TimeoutSeconds 4)
     $ollamaOnline = $true
-    $modelInstalled = @($tags.models | ForEach-Object { $_.name }) -contains $model
+    $modelInstalled = Test-AutonomousOllamaModelInstalled -Model $model -Catalog $tags
     if ($modelInstalled) {
         $modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -ContentType "application/json" -Body (@{ model = $model; verbose = $true } | ConvertTo-Json -Compress) -TimeoutSec 8 -MaximumRedirection 0
         $architecture = [string]$modelInfo.details.family
@@ -101,7 +95,6 @@ try {
         }
     }
 } catch {}
-$checks += [pscustomobject]@{ Component = "Ollama CLI"; Ready = $ollamaCliReady; Detail = if ($ollamaCliReady) { $ollamaVersion } else { "Install Ollama CLI or add it to the Runner service PATH" } }
 $checks += [pscustomobject]@{ Component = "Ollama server"; Ready = $ollamaOnline; Detail = if ($ollamaOnline) { "127.0.0.1:11434" } else { "Local Ollama endpoint is unavailable" } }
 $checks += [pscustomobject]@{ Component = "Saved model selection"; Ready = (-not [string]::IsNullOrWhiteSpace($model)); Detail = if ($model) { $model } else { "Select and save an installed Ollama model in /autonomous-engineering" } }
 $checks += [pscustomobject]@{ Component = "Base model selection"; Ready = -not $modelIsContextVariant; Detail = if ($modelIsContextVariant) { "Generated Codex context variants cannot be selected as base models" } else { "Original Ollama model selected" } }
