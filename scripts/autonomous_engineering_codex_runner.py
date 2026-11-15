@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import math
 import os
@@ -14,7 +15,6 @@ import threading
 import time
 from typing import Any
 
-import psutil
 
 try:
     from .autonomous_engineering_process_job import WindowsProcessJob
@@ -27,7 +27,19 @@ except ImportError:
     from autonomous_engineering_process_group import terminate_process_group
 
 
+
+def _load_psutil():
+    """Load process inspection only when a process-identity operation is invoked."""
+    try:
+        return importlib.import_module("psutil")
+    except ImportError as exc:
+        raise RuntimeError(
+            "psutil is required for Codex process identity verification; install project runtime dependencies."
+        ) from exc
+
+
 def capture_parent_chain(max_depth: int = 4) -> list[dict[str, float | int]]:
+    psutil = _load_psutil()
     chain: list[dict[str, float | int]] = []
     process = psutil.Process(os.getpid())
     for index in range(max_depth):
@@ -44,6 +56,7 @@ def capture_parent_chain(max_depth: int = 4) -> list[dict[str, float | int]]:
 def parent_chain_is_alive(chain: list[dict[str, Any]]) -> bool:
     if not isinstance(chain, list) or not chain:
         return False
+    psutil = _load_psutil()
     seen_pids: set[int] = set()
     for item in chain:
         if not isinstance(item, dict):

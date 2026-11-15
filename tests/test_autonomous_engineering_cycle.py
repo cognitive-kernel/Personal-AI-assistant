@@ -385,9 +385,10 @@ def test_publish_pull_request_leaves_exact_sha_validated_pr_open_for_owner_merge
     assert "\\n" not in created_payload["body"]
     assert cycle.load_pending_pr()["number"] == 12
 
-def test_publish_pull_request_rejects_non_controller_authored_pr(monkeypatch: pytest.MonkeyPatch):
+def test_publish_pull_request_rejects_non_controller_authored_pr(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     base_sha = "b" * 40
     head_sha = "c" * 40
+    monkeypatch.setattr(cycle, "_autonomous_state_dir", lambda: tmp_path / "state")
     pr = {
         "number": 14,
         "draft": False,
@@ -414,11 +415,12 @@ def test_publish_pull_request_rejects_non_controller_authored_pr(monkeypatch: py
 
 
 def test_publish_pull_request_rejects_head_changed_after_exact_sha_checks(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ):
     base_sha = "b" * 40
     head_sha = "c" * 40
     changed_sha = "d" * 40
+    monkeypatch.setattr(cycle, "_autonomous_state_dir", lambda: tmp_path / "state")
     pr = {
         "number": 13,
         "draft": False,
@@ -449,6 +451,13 @@ def test_publish_pull_request_rejects_head_changed_after_exact_sha_checks(
             "token", "owner/repository", "codex/local-engineering-1-1-task-1",
             1, "123", head_sha, base_sha,
         )
+
+    # The durable owner record must be written under the exact same root whose
+    # lock protected publication, even when later exact-SHA validation fails.
+    import json
+    saved = json.loads((tmp_path / "state" / "pending-autonomous-pr.json").read_text(encoding="utf-8"))
+    assert saved["number"] == 13
+    assert saved["head_sha"] == head_sha
 
 
 def test_git_auth_environment_keeps_token_out_of_child_environment(monkeypatch: pytest.MonkeyPatch):
@@ -682,12 +691,12 @@ def test_checkpoint_readiness_is_committed_without_a_secondary_marker(
     from scripts import autonomous_engineering_checkpoint as checkpoint
     from scripts.autonomous_engineering_checkpoint_contract import build_checkpoint_metadata
 
-    state = tmp_path / "ProgramData"
-    monkeypatch.setattr(checkpoint, "store_dir", lambda: state)
+    state_root = tmp_path / "ProgramData"
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: state_root)
 
-    def prepare_snapshot(base_sha, run_id, task, watcher_pid, watcher_started_at):
-        paths = checkpoint.paths(run_id, task)
-        state.mkdir(parents=True, exist_ok=True)
+    def prepare_snapshot(base_sha, run_id, task, watcher_pid, watcher_started_at, *, state=None):
+        paths = state if state is not None else checkpoint.paths(run_id, task)
+        state_root.mkdir(parents=True, exist_ok=True)
         metadata = build_checkpoint_metadata(
             base_sha=base_sha,
             run_id=run_id,
@@ -706,12 +715,12 @@ def test_checkpoint_readiness_is_committed_without_a_secondary_marker(
     assert checkpoint.watch("a" * 40, "106", 1, 5) == 0
 
     metadata = json.loads(
-        (state / "worktree-checkpoint-106-1.json").read_text(encoding="utf-8")
+        (state_root / "worktree-checkpoint-106-1.json").read_text(encoding="utf-8")
     )
     assert metadata["watcher_ready"] is True
     assert metadata["watcher_pid"] == __import__("os").getpid()
-    assert not (state / "worktree-checkpoint-106-1.ready").exists()
-    assert not (state / "worktree-checkpoint-106-1.error").exists()
+    assert not (state_root / "worktree-checkpoint-106-1.ready").exists()
+    assert not (state_root / "worktree-checkpoint-106-1.error").exists()
 
 def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     import json
@@ -1045,6 +1054,8 @@ def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkey
     monkeypatch.setattr(progress, "codex_command", lambda executable, arguments, **kwargs: ["cmd.exe", "/d", "/c", "call", executable, *arguments])
     monkeypatch.setattr(progress, "persist", lambda record: True)
     class NoOpProcessJob:
+        CREATE_SUSPENDED = progress.WindowsProcessJob.CREATE_SUSPENDED
+
         def __enter__(self):
             return self
 
