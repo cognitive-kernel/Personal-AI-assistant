@@ -7,6 +7,7 @@ import platform
 import shutil
 import subprocess
 import time
+from datetime import datetime
 import urllib.error
 import urllib.request
 import re
@@ -22,6 +23,7 @@ from .autonomous_engineering_storage import cleanup_storage, inspect_storage
 from .ollama_context import maximum_context_tokens, supports_tool_calling
 
 _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
+_RUN_LIST_CACHE: dict[str, Any] = {"at": 0.0, "value": None}
 
 router = APIRouter(
     prefix="/api/autonomous-engineering",
@@ -297,12 +299,57 @@ def _enrich_progress_from_github(current: dict[str, Any] | None) -> dict[str, An
     return updated
 
 
+def _recent_github_runs() -> list[dict[str, Any]]:
+    now = time.monotonic()
+    cached = _RUN_LIST_CACHE.get("value")
+    if isinstance(cached, list) and now - float(_RUN_LIST_CACHE.get("at", 0)) < 15:
+        return cached
+    snapshot = _github_snapshot()
+    runs = snapshot.get("recent_runs", []) if snapshot.get("runs_available") else []
+    runs = runs if isinstance(runs, list) else []
+    _RUN_LIST_CACHE.update({"at": now, "value": runs})
+    return runs
+
+
+def _timestamp(value: Any) -> float:
+    if not isinstance(value, str) or not value:
+        return 0.0
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0.0
+
+
 @router.get("/progress")
 def autonomous_engineering_progress(
     period: str = "daily", start_date: str | None = None, end_date: str | None = None
 ) -> dict[str, Any]:
     result = get_progress(period=period, start_date=start_date, end_date=end_date)
-    result["current"] = _enrich_progress_from_github(result.get("current"))
+    current = result.get("current")
+    if not isinstance(current, dict) or current.get("status") not in {"running", "queued"}:
+        failed_run = next(
+            (
+                run for run in _recent_github_runs()
+                if isinstance(run, dict)
+                and run.get("status") == "completed"
+                and run.get("conclusion") in {"failure", "timed_out", "action_required"}
+            ),
+            None,
+        )
+        if failed_run:
+            current_time = _timestamp(current.get("updated_at")) if isinstance(current, dict) else 0.0
+            failed_time = _timestamp(failed_run.get("created_at"))
+            same_run = isinstance(current, dict) and str(current.get("run_id")) == str(failed_run.get("id"))
+            if same_run or failed_time > current_time:
+                current = {
+                    "run_id": str(failed_run.get("id")),
+                    "status": "failed",
+                    "phase": "failed",
+                    "phase_label": "اجرای عامل با خطا پایان یافت",
+                    "activity": "در حال دریافت مرحلهٔ دقیق شکست از GitHub Actions",
+                    "updated_at": failed_run.get("created_at"),
+                }
+    result["current"] = _enrich_progress_from_github(current)
     return result
 
 
