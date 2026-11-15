@@ -1,3 +1,22 @@
+## 2026-11-15 — Keep Windows engineering-controller imports independent of POSIX psutil
+
+### Root cause
+- `autonomous_engineering_progress.py` imports the shared process-group helper at module load time on every platform.
+- `autonomous_engineering_process_group.py` imported `psutil` at module scope even though its process enumeration is only used by the POSIX process-group cleanup path.
+- The Windows Runner invokes progress initialization before project dependencies are installed. The unnecessary import therefore prevented the controller from starting, although Windows uses the Job Object implementation and never needs POSIX process-group inspection.
+
+### Corrective change
+- Move the `psutil` import into `process_group_has_live_members()`, the only function that needs it.
+- Keep the Windows import graph usable without `psutil`; POSIX calls still fail explicitly with an actionable dependency error if the runtime dependency is absent.
+- Add a subprocess import-isolation regression that blocks `psutil` and imports both the process-group helper and progress controller.
+
+### Validation boundary
+- Focused regression and full GitHub CI must pass on the exact PR head before this fix is considered verified.
+- The durable pending-task record and owner metadata were not changed. The separate pending-task rejection remains a state-ownership issue and must be reconciled read-only against its owning run/PR before any recovery or replacement.
+- No local Windows Runner, Ollama, Codex, or human UI test is claimed.
+
+---
+
 # Engineering Continuity Log
 
 ## 2026-11-14 — PR #757 follow-up: controller-owned POSIX Codex process group
