@@ -124,6 +124,7 @@ def test_windows_process_job_is_a_noop_on_non_windows_hosts():
         assert job._handle is None
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX process-group ownership is not available on Windows.")
 def test_parent_managed_posix_group_is_inherited_and_drained_by_owner(tmp_path: Path):
     child_pid_file = tmp_path / "managed-group-child.pid"
     child_code = "import time; time.sleep(60)"
