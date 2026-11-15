@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 
 from scripts.autonomous_engineering_state_lock import durable_state_lock
