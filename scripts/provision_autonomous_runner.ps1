@@ -177,6 +177,7 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid
     Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -ReadOnlySid $appSid -AdditionalModifySid $installerSid
     try {
+        Set-AutonomousStateLockAcl -Path (Join-Path $progressPath "autonomous-durable-state.lock") -AppSid $appSid
         Ensure-AutonomousStateOwnerLabel
     } finally {
         Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid
@@ -216,6 +217,8 @@ New-Item -ItemType Directory -Path $RunnerRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
 $installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid
+Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -ReadOnlySid $appSid -AdditionalModifySid $installerSid
+Set-AutonomousStateLockAcl -Path (Join-Path $progressPath "autonomous-durable-state.lock") -AppSid $appSid
 Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -ReadOnlySid $appSid
 $token = (& $gh.Source api --method POST "repos/$Repository/actions/runners/registration-token" --jq ".token")
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($token)) { throw "Could not obtain registration token; verify Administration: write permission." }
