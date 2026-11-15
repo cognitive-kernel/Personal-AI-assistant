@@ -49,6 +49,7 @@ def test_schema_v2_owner_requires_and_accepts_rebind_audit_fields(tmp_path: Path
         "previous_task_sha256": "a" * 64,
         "rebind_reason": "owner_authorized_task_content_reconciliation",
         "rebind_authorization_run_id": "200",
+        "rebind_authorization_run_attempt": 1,
         "rebound_at": now,
     }
     owner_path = tmp_path / "pending-manual-task-owner.json"
@@ -70,16 +71,16 @@ def test_schema_v2_owner_requires_and_accepts_rebind_audit_fields(tmp_path: Path
     [
         lambda record, task: record.update(previous_task_sha256=record["task_sha256"]),
         lambda record, task: record.update(source="manual_dispatch"),
-        lambda record, task: record.update(rebind_authorization_run_id="999"),
         lambda record, task: record.update(rebind_authorization_run_id="not-a-run-id"),
+        lambda record, task: record.update(rebind_authorization_run_attempt=0),
         lambda record, task: record.update(owner_run_id="not-a-run-id"),
         lambda record, task: record.update(schema_version=2.0),
     ],
     ids=[
         "previous-digest-must-differ",
         "schema-v2-is-recovery-only",
-        "authorization-must-match-owner",
         "authorization-id-must-be-numeric",
+        "authorization-attempt-must-be-positive",
         "owner-id-must-be-numeric",
         "schema-version-must-be-integer",
     ],
@@ -111,6 +112,41 @@ def test_schema_v2_owner_rejects_inconsistent_audit_fields(
 
     with pytest.raises(RuntimeError):
         validate_pending_task_owner_unlocked(tmp_path, task, "200", 1)
+
+
+def test_schema_v2_owner_claim_can_advance_without_rewriting_rebind_audit(tmp_path: Path):
+    task = "The task is still the same after a recovery claim."
+    now = time.time()
+    digest = task_digest(task)
+    record = {
+        "schema_version": 2,
+        "task_sha256": digest,
+        "submitted_run_id": "100",
+        "submitted_attempt": 1,
+        "owner_run_id": "200",
+        "owner_attempt": 2,
+        "created_at": now,
+        "claimed_at": now,
+        "claim_count": 2,
+        "source": "recovery",
+        "previous_task_sha256": "a" * 64,
+        "rebind_reason": "owner_authorized_task_content_reconciliation",
+        "rebind_authorization_run_id": "200",
+        "rebind_authorization_run_attempt": 1,
+        "rebound_at": now,
+    }
+    owner_path = tmp_path / "pending-manual-task-owner.json"
+    owner_path.write_text(json.dumps(record), encoding="utf-8")
+
+    claimed = claim_pending_task_owner_unlocked(
+        tmp_path, task, "300", 1, source="recovery",
+    )
+
+    assert claimed["owner_run_id"] == "300"
+    assert claimed["owner_attempt"] == 1
+    assert claimed["rebind_authorization_run_id"] == "200"
+    assert claimed["rebind_authorization_run_attempt"] == 1
+    assert validate_pending_task_owner_unlocked(tmp_path, task, "300", 1) == claimed
 
 
 def test_schema_v2_owner_rejects_missing_reconciliation_audit(tmp_path: Path):
@@ -145,8 +181,8 @@ def test_schema_v2_owner_rejects_missing_reconciliation_audit(tmp_path: Path):
     [
         lambda record: record.update(previous_task_sha256=record["task_sha256"]),
         lambda record: record.update(source="manual_dispatch"),
-        lambda record: record.update(rebind_authorization_run_id="999"),
         lambda record: record.update(rebind_authorization_run_id="invalid"),
+        lambda record: record.update(rebind_authorization_run_attempt=0),
     ],
 )
 def test_powershell_validator_rejects_inconsistent_schema_v2_audit(
@@ -232,6 +268,7 @@ def test_powershell_owner_rebind_archives_old_record_and_preserves_submission(tm
     assert updated["previous_task_sha256"] == old_record["task_sha256"]
     assert updated["rebind_reason"] == "owner_authorized_task_content_reconciliation"
     assert updated["rebind_authorization_run_id"] == "300"
+    assert updated["rebind_authorization_run_attempt"] == 2
     assert updated["submitted_run_id"] == "100"
     assert updated["submitted_attempt"] == 1
     assert updated["created_at"] == old_record["created_at"]
