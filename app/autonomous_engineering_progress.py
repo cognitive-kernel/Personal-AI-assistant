@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 
 from .autonomous_engineering_state import durable_state_lock, execution_state_directory
