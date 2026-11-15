@@ -249,3 +249,33 @@ def test_main_does_not_dispatch_for_a_superseded_recovery_event(monkeypatch):
 
     assert recovery.main() == 0
     assert "Recovery superseded" == reports[0][0][0]
+
+
+def test_main_rechecks_ownership_after_backoff_before_dispatch(monkeypatch):
+    _configure_environment(monkeypatch)
+    calls = []
+    reports = []
+
+    class FakeClient:
+        def __init__(self, repository, token):
+            self.checks = 0
+
+        def jobs(self, run_id):
+            return _failed_execution_jobs()
+
+        def retryable_failure_streak(self, run_id, jobs):
+            self.checks += 1
+            if self.checks == 1:
+                return 1
+            raise recovery.RecoverySuperseded("A newer main-branch workflow run appeared during backoff.")
+
+        def request(self, *args, **kwargs):
+            calls.append((args, kwargs))
+
+    monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
+    monkeypatch.setattr(recovery.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(recovery, "report", lambda *args, **kwargs: reports.append((args, kwargs)))
+
+    assert recovery.main() == 0
+    assert calls == []
+    assert reports[-1][0][0] == "Recovery superseded"
