@@ -112,6 +112,8 @@ def inspect_storage() -> dict[str, Any]:
         access_errors.append({"path": str(state_root), "error": type(exc).__name__})
 
     runner_temp_dirs = _runner_temp_directories()
+    if not runner_temp_dirs:
+        access_errors.append({"path": "Runner temp", "error": "runner_temp_path_not_configured_or_detected"})
     for runner_temp in runner_temp_dirs:
         if runner_temp.is_dir():
             try:
