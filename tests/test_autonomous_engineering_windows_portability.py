@@ -76,6 +76,21 @@ def test_windows_provisioning_does_not_require_a_fixed_users_group_or_admin_acl_
     assert "Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid" in script
 
 
+
+def test_windows_app_identity_can_lock_shared_state_without_write_access_to_task_data():
+    script = (ROOT / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
+    module = (ROOT / "scripts" / "AutonomousWindowsIdentity.psm1").read_text(encoding="utf-8")
+
+    assert script.count('Set-AutonomousStateLockAcl -Path (Join-Path $progressPath "autonomous-durable-state.lock") -AppSid $appSid') == 2
+    assert "function Set-AutonomousStateLockAcl" in module
+    assert '[System.IO.FileAccess]::ReadWrite' in module
+    assert '& $icacls.Source $lockPath /grant:r "*$($AppSid):M"' in module
+    assert '[Security.AccessControl.FileSystemRights]::ReadData' in module
+    assert '[Security.AccessControl.FileSystemRights]::WriteData' in module
+    assert "GetAccessRules(" in module
+    assert "Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -ReadOnlySid $appSid" in script
+
+
 def test_windows_provisioning_uses_the_runtime_shared_state_path_contract():
     script = (ROOT / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
     paths_module = (ROOT / "scripts" / "AutonomousWindowsPaths.psm1").read_text(encoding="utf-8")
