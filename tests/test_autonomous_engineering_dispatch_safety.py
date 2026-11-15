@@ -269,3 +269,30 @@ def test_shared_file_lock_rejects_non_finite_timeout(tmp_path):
             timeout_message="unreachable",
         ):
             pytest.fail("A non-finite lock timeout must be rejected before acquisition.")
+
+
+def test_empty_dispatch_remains_available_to_resume_persisted_work(monkeypatch):
+    _ready(monkeypatch)
+
+    def unexpected_pending_check():
+        pytest.fail("An empty resume dispatch must not be treated as a new manual task.")
+
+    monkeypatch.setattr(agent, "pending_work_status", unexpected_pending_check)
+    calls = []
+
+    def fake_run(command, timeout=8):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["workflow", "run"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        raise AssertionError(f"Unexpected command: {command!r}")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    result = agent.dispatch_autonomous_engineering()
+
+    assert result["accepted"] is True
+    workflow_call = next(command for command in calls if command[1:3] == ["workflow", "run"])
+    assert "--field" in workflow_call
+    assert "manual_task=" in workflow_call
