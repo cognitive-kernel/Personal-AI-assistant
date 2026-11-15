@@ -59,8 +59,10 @@ function Rebind-AutonomousTaskOwnerRecord {
     }
 
     $newDigest = Get-AutonomousTaskDigest -Task $Task
-    if ($oldDigest -ceq $newDigest) {
-        throw "Pending task owner digest already matches; explicit rebind is unnecessary."
+    $rebindReason = if ($oldDigest -ceq $newDigest) {
+        "owner_authorized_failed_run_recovery"
+    } else {
+        "owner_authorized_task_content_reconciliation"
     }
 
     $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0
@@ -76,7 +78,7 @@ function Rebind-AutonomousTaskOwnerRecord {
         claim_count = $claimCount + 1
         source = "recovery"
         previous_task_sha256 = $oldDigest
-        rebind_reason = "owner_authorized_task_content_reconciliation"
+        rebind_reason = $rebindReason
         rebind_authorization_run_id = $RunId
         rebound_at = $now
     }
