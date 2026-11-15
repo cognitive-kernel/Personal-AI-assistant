@@ -1,3 +1,23 @@
+## 2026-11-15 — Dashboard diagnostics, run controls, and bounded Runner-temp cleanup
+
+### Reported failure
+- The owner cannot identify the failed UI execution stage quickly, cannot select a particular active run to cancel, cannot remove completed GitHub Actions run records, and has no UI visibility into temporary files accumulating on the Windows Runner.
+- The existing dashboard only exposed a global cancel action and a short recent-run list. Progress enrichment identified a failed job but did not retain the failed step or Python source location.
+
+### Changes on branch `fix/autonomous-ui-diagnostics-storage-20261115`
+- Enrich failed progress with GitHub job, failed step, and a direct job-log link.
+- Persist bounded Python exception metadata (exception type/message, repository-relative source file, line, and function) in the existing durable progress state. Secret-like GitHub tokens and bearer values are redacted before persistence; full tracebacks are not copied into the dashboard state.
+- Add selected-run cancellation and allow deletion only for GitHub Actions runs confirmed as completed.
+- Add a bounded storage inventory for state temporary files, Runner `_work/_temp` files, and Runner `_diag` log files.
+- Add opt-in cleanup for files directly inside Runner temp and state-root `*.tmp` files older than 24 hours, plus Runner `_diag` `.log`/`.txt` files older than 30 days. Cleanup is blocked while the target workflow is active or a `Runner.Worker` process is detected. Checkpoints, task data, settings, and user data are never deleted by this operation.
+- Add focused regression tests for inventory, retention, worker guard, selected cancellation, structured failure persistence, and UI/API registration.
+
+### Safety and validation boundary
+- Cleanup is intentionally non-recursive. Unknown files directly inside the dedicated Runner temp directory are inventoried and become eligible after 24 hours; diagnostic logs are retained for 30 days. No arbitrary system temp directory is traversed.
+- GitHub Actions CI and target-Windows acceptance have not yet been observed for this branch. This entry records implementation intent, not a verified release or a claim that the UI is operational on the owner's machine.
+
+---
+
 ## 2026-11-15 — Remove the remaining module-time psutil dependency from the Windows controller import graph
 
 ### Root cause
