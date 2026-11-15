@@ -184,6 +184,10 @@ try {
         return $number
     }
 
+    if ($repairPendingTaskOwner -and ($pendingPrFound -or $pendingPr.Count -gt 0)) {
+        throw "Owner-record reconciliation requires no pending PR record and no open autonomous PR; preserving all state."
+    }
+
     if ($pendingPr.Count -gt 1) {
         throw "Multiple open autonomous PRs exist; refusing to guess which task owns durable state."
     }
