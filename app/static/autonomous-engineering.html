@@ -114,6 +114,17 @@
 </div>
 <p class="hint">در حالت زمان‌بندی‌شده، عامل طبق فاصلهٔ انتخابی اجرا می‌شود. در حالت پیوسته، پس از شروع اولیه، هر وظیفه پس از موفقیت آزمون‌های محلی و سه گردش‌کار مستقل GitHub با تطبیق SHA دقیق، به‌صورت PR برای بازبینی مالک منتشر می‌شود. کنترلر آن را ادغام نمی‌کند؛ پس از ادغام دستی و موفقیت کنترل‌های پس از ادغام، چرخهٔ بعدی از main تازه آغاز می‌شود. تعداد کل وظایف محدود نیست. اجرای دستی وقتی فعال می‌شود که Ollama، مدل، Runner، احراز هویت GitHub و فضای ثبت پیشرفت آماده باشند. شروع واقعی را در فهرست اجراها مشاهده کنید.</p>
 <div id="recent-runs" class="run-list" aria-live="polite"><p class="muted">سوابق اجرا هنوز دریافت نشده‌اند.</p></div>
+<div class="settings-form" aria-labelledby="storage-tools-title">
+  <div class="section-heading">
+    <div><p class="eyebrow">STORAGE & CLEANUP</p><h3 id="storage-tools-title">مدیریت فایل‌های موقت و سوابق اجرا</h3></div>
+    <button id="refresh-storage" type="button" class="secondary">بررسی فضا</button>
+  </div>
+  <p id="storage-summary" class="hint">در انتظار بررسی فایل‌های موقت شناخته‌شده…</p>
+  <div id="storage-files" class="run-list" aria-live="polite"></div>
+  <div class="toolbar"><button id="cleanup-storage" type="button" class="secondary">پاک‌سازی فایل‌های موقت قدیمی‌تر از ۲۴ ساعت</button></div>
+  <p class="hint">پاک‌سازی فقط فایل‌های موقت متعلق به عامل را هدف می‌گیرد؛ فایل‌های task، checkpoint، تنظیمات، لاگ‌های اصلی و داده‌های کاربر حذف نمی‌شوند. هنگام وجود اجرای فعال، پاک‌سازی مسدود است. حذف سابقهٔ GitHub از دکمهٔ همان اجرای پایان‌یافته انجام می‌شود.</p>
+  <p id="storage-message" role="status" aria-live="polite"></p>
+</div>
 </section>
 
 <section aria-labelledby="progress-title" class="progress-section">
@@ -127,6 +138,13 @@
       <progress id="cycle-progress" max="100" value="0"></progress>
       <p id="current-phase" class="progress-meta">هنوز چرخه‌ای گزارش نشده است.</p>
       <p id="current-activity" class="progress-activity">با شروع اجرا، مرحله و فعالیت جاری نمایش داده می‌شود.</p>
+      <div id="run-diagnostic" class="notice" hidden>
+        <strong>علت و محل شکست</strong>
+        <p id="diagnostic-job"></p>
+        <p id="diagnostic-step"></p>
+        <p id="diagnostic-message"></p>
+        <a id="diagnostic-link" href="#" target="_blank" rel="noopener noreferrer" hidden>مشاهدهٔ گزارش کامل Job در GitHub</a>
+      </div>
       <p id="plan-progress" class="progress-meta"></p>
     </article>
     <article class="progress-card">
