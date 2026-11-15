@@ -35,6 +35,10 @@ MAX_CONSECUTIVE_FAILURES = 3
 PAGE_SIZE = 100
 
 
+class RecoverySuperseded(RuntimeError):
+    """A newer main-branch run owns the next recovery decision."""
+
+
 class GitHubActionsClient:
     def __init__(self, repository: str, token: str) -> None:
         self.base_url = f"https://api.github.com/repos/{repository}"
@@ -105,7 +109,9 @@ class GitHubActionsClient:
                 run_id = int(run.get("id", 0))
                 if not found_trigger:
                     if run_id != failed_run_id:
-                        continue
+                        raise RecoverySuperseded(
+                            "A newer main-branch workflow run exists; this recovery event is stale."
+                        )
                     found_trigger = True
 
                 conclusion = run.get("conclusion")
@@ -232,6 +238,9 @@ def main() -> int:
             "Recovery dispatched",
             f"Dispatched recovery attempt {streak} from the last accepted main checkpoint.",
         )
+        return 0
+    except RecoverySuperseded as exc:
+        report("Recovery superseded", f"{exc} No duplicate recovery was dispatched.")
         return 0
     except (RuntimeError, ValueError, OSError) as exc:
         report(
