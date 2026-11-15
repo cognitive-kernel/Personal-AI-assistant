@@ -355,8 +355,6 @@ def test_powershell_owner_rebind_allows_same_run_id_with_newer_attempt(tmp_path:
 
 
 @pytest.mark.skipif(os.name != "nt", reason="PowerShell task-owner interoperability is Windows-only")
-@pytest.mark.parametrize(("current_attempt", "recorded_attempt"), [(1, 1), (1, 2)])
-@pytest.mark.skipif(os.name != "nt", reason="PowerShell task-owner interoperability is Windows-only")
 def test_powershell_owner_rebind_retry_preserves_original_audit(tmp_path: Path):
     root = Path(__file__).resolve().parents[1]
     module = root / "scripts" / "AutonomousEngineeringTaskOwnerRebind.psm1"
@@ -405,6 +403,8 @@ def test_powershell_owner_rebind_retry_preserves_original_audit(tmp_path: Path):
     assert updated["task_sha256"] == digest
 
 
+@pytest.mark.skipif(os.name != "nt", reason="PowerShell task-owner interoperability is Windows-only")
+@pytest.mark.parametrize(("current_attempt", "recorded_attempt"), [(1, 1), (1, 2)])
 def test_powershell_owner_rebind_rejects_same_or_older_run_attempt(
     tmp_path: Path, current_attempt: int, recorded_attempt: int,
 ):
