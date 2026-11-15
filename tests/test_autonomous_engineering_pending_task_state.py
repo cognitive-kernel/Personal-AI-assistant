@@ -77,7 +77,7 @@ def test_task_owner_replace_failure_preserves_previous_record_and_cleans_temp(
 
     task = "The prior owner record must survive a failed atomic replace."
     with durable_state_lock(tmp_path):
-        original = claim_pending_task_owner_unlocked(
+        claim_pending_task_owner_unlocked(
             tmp_path, task, "5101", 1, source="manual_dispatch",
         )
     owner_path = pending_task_owner_path(tmp_path)
