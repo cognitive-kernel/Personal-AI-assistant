@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import time
+from contextlib import contextmanager
 
 import pytest
 from fastapi import HTTPException
@@ -242,3 +243,26 @@ def test_runner_discovery_uses_explicit_provisioned_path(monkeypatch, tmp_path):
     monkeypatch.setattr(storage.psutil, "process_iter", lambda *args, **kwargs: [])
 
     assert storage._runner_temp_directories() == [runner_temp]
+
+
+def test_cleanup_preserves_state_temp_when_durable_lock_is_busy(monkeypatch, tmp_path):
+    state = tmp_path / "state"
+    state.mkdir()
+    stale = state / "orphan.tmp"
+    stale.write_text("keep", encoding="utf-8")
+    os.utime(stale, (time.time() - 48 * 3600, time.time() - 48 * 3600))
+    monkeypatch.setattr(storage, "execution_state_directory", lambda: state)
+    monkeypatch.setattr(storage, "_runner_temp_directories", lambda: [])
+    monkeypatch.setattr(storage, "_runner_worker_active", lambda: False)
+
+    @contextmanager
+    def busy_lock(*args, **kwargs):
+        raise RuntimeError("state is busy")
+        yield
+
+    monkeypatch.setattr(storage, "durable_state_lock", busy_lock)
+    result = storage.cleanup_storage(active_run=False)
+
+    assert stale.exists()
+    assert result["deleted_count"] == 0
+    assert result["failures"]
