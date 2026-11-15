@@ -8,7 +8,7 @@
 
 The durable task is stored separately from its owner sidecar. The sidecar binds the exact normalized task digest to the original submission run and current owner run. A digest mismatch means the two records no longer describe the same task. Automatically claiming the task or replacing the sidecar would erase evidence about that mismatch and could transfer work whose identity is uncertain.
 
-The existing fail-closed behavior is correct, but it leaves no owner-authorized path to reconcile a known task/owner mismatch after GitHub proves the prior owner run has terminated unsuccessfully and no autonomous PR is awaiting review.
+The existing fail-closed behavior is correct, but the owner has no explicit recovery operation that distinguishes a failed execution owner from a changed task. A dispatch containing different task text must remain rejected; it is not evidence of a digest mismatch. After GitHub proves the recorded owner run has terminated unsuccessfully and no autonomous PR is awaiting review, an owner-authorized operation may transfer ownership of the unchanged task or reconcile a verified task/owner digest mismatch.
 
 ## Decision
 
@@ -17,12 +17,12 @@ The existing fail-closed behavior is correct, but it leaves no owner-authorized 
 3. Fetch the exact owner_run_id from GitHub. Rebind only when GitHub confirms the same run ID, the autonomous workflow path, main as its head branch, completed status, and a terminal unsuccessful conclusion (failure, cancelled, or timed_out). Unknown, active, successful, inaccessible, or mismatched run metadata fails closed.
 4. Never rewrite or replace pending-manual-task.txt during owner reconciliation. Require the existing task and owner sidecar to be present and structurally valid.
 5. Archive the exact previous owner-sidecar bytes under a unique quarantine filename before writing the new record. If the replacement write fails, restore the original sidecar. Keep the original submission run and timestamp, increment the claim count, and bind the current workflow run as the new owner.
-6. Write schema v2 with the new task digest and explicit audit fields: previous digest, authorization run ID, reconciliation reason, and reconciliation timestamp. Update both PowerShell and Python validators to accept v1 and validate the additional v2 contract.
+6. Write schema v2 with the current and previous task digests, authorization run ID, reason, and timestamp. Use `owner_authorized_failed_run_recovery` only when the digest is unchanged; use `owner_authorized_task_content_reconciliation` only when it changes. Both PowerShell and Python validators enforce this relationship, numeric run IDs, recovery-only source, and authorization-run/current-owner equality.
 7. Do not perform this operation automatically during scheduled recovery. The repository owner must explicitly select the workflow input. The operation does not clear checkpoints, task text, Pause state, ACLs, secrets, or pending PR records.
 
 ## Consequences
 
-- A known digest mismatch can be reconciled without abandoning the durable task.
+- A verified failed owner can be replaced without abandoning the durable task, whether or not the task digest drifted. A changed task digest is explicitly distinguished from a same-digest owner transfer.
 - The old owner record remains byte-for-byte recoverable in quarantine.
 - A completed successful owner run cannot be silently rebound.
 - The original task identity remains auditable through the previous digest and quarantine record.
