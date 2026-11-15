@@ -68,7 +68,6 @@ def _validate_owner_record(record: Any, task: str) -> dict[str, Any]:
             or record.get("rebind_reason") != "owner_authorized_task_content_reconciliation"
             or not isinstance(authorization_run_id, str)
             or not re.fullmatch(r"[0-9]{1,20}", authorization_run_id)
-            or authorization_run_id != record["owner_run_id"]
             or isinstance(rebound_at, bool)
             or not isinstance(rebound_at, (int, float))
             or not math.isfinite(float(rebound_at))
