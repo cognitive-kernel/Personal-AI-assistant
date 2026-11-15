@@ -76,7 +76,7 @@ def test_task_owner_rejects_corrupt_or_unsupported_records(tmp_path: Path):
     owner_path.write_text(json.dumps({"schema_version": 99}), encoding="utf-8")
 
     with durable_state_lock(tmp_path):
-        with pytest.raises(RuntimeError, match="schema v1"):
+        with pytest.raises(RuntimeError, match="declared schema"):
             claim_pending_task_owner_unlocked(
                 tmp_path, "Task", "4001", 1, source="recovery",
             )
