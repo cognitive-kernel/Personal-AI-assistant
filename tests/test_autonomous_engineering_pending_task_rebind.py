@@ -104,6 +104,32 @@ def test_schema_v2_owner_rejects_inconsistent_audit_fields(
         validate_pending_task_owner_unlocked(tmp_path, task, "200", 1)
 
 
+def test_schema_v2_owner_accepts_verified_failed_run_recovery_without_digest_drift(tmp_path: Path):
+    task = "The durable task text remains unchanged."
+    now = time.time()
+    digest = task_digest(task)
+    record = {
+        "schema_version": 2,
+        "task_sha256": digest,
+        "submitted_run_id": "100",
+        "submitted_attempt": 1,
+        "owner_run_id": "200",
+        "owner_attempt": 1,
+        "created_at": now,
+        "claimed_at": now,
+        "claim_count": 2,
+        "source": "recovery",
+        "previous_task_sha256": digest,
+        "rebind_reason": "owner_authorized_failed_run_recovery",
+        "rebind_authorization_run_id": "200",
+        "rebound_at": now,
+    }
+    owner_path = tmp_path / "pending-manual-task-owner.json"
+    owner_path.write_text(json.dumps(record), encoding="utf-8")
+
+    assert validate_pending_task_owner_unlocked(tmp_path, task, "200", 1) == record
+
+
 def test_schema_v2_owner_rejects_missing_reconciliation_audit(tmp_path: Path):
     task = "The durable task text remains unchanged."
     now = time.time()
@@ -174,6 +200,50 @@ def test_powershell_validator_rejects_inconsistent_schema_v2_audit(
     result = _powershell(script)
     assert result.returncode != 0
     assert owner_path.exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="PowerShell task-owner interoperability is Windows-only")
+def test_powershell_owner_rebind_accepts_matching_digest_after_verified_failure(tmp_path: Path):
+    root = Path(__file__).resolve().parents[1]
+    module = root / "scripts" / "AutonomousEngineeringTaskOwnerRebind.psm1"
+    task = "The task text is intact; only its failed execution owner changes."
+    owner_path = tmp_path / "pending-manual-task-owner.json"
+    now = time.time()
+    record = {
+        "schema_version": 1,
+        "task_sha256": task_digest(task),
+        "submitted_run_id": "100",
+        "submitted_attempt": 1,
+        "owner_run_id": "200",
+        "owner_attempt": 1,
+        "created_at": now,
+        "claimed_at": now,
+        "claim_count": 1,
+        "source": "manual_dispatch",
+    }
+    old_bytes = json.dumps(record, separators=(",", ":")).encode("utf-8")
+    owner_path.write_bytes(old_bytes)
+    script = (
+        "$ErrorActionPreference='Stop'; "
+        f"Import-Module {_ps_quote(str(module))} -Force; "
+        "$run=[pscustomobject]@{id='200';path='.github/workflows/autonomous-codex-engineering.yml';"
+        "head_branch='main';status='completed';conclusion='failure'}; "
+        f"$null=Rebind-AutonomousTaskOwnerRecord -Path {_ps_quote(str(owner_path))} "
+        f"-Task {_ps_quote(task)} -RunId '300' -RunAttempt 1 -VerifiedOwnerRun $run; "
+        f"$null=Get-AutonomousTaskOwnerRecord -Path {_ps_quote(str(owner_path))} -Task {_ps_quote(task)}"
+    )
+    result = _powershell(script)
+    assert result.returncode == 0, result.stderr
+
+    updated = json.loads(owner_path.read_text(encoding="utf-8"))
+    backups = list(tmp_path.glob("pending-manual-task-owner.json.quarantine-rebound-*.json"))
+    assert len(backups) == 1
+    assert backups[0].read_bytes() == old_bytes
+    assert updated["schema_version"] == 2
+    assert updated["task_sha256"] == record["task_sha256"]
+    assert updated["previous_task_sha256"] == record["task_sha256"]
+    assert updated["rebind_reason"] == "owner_authorized_failed_run_recovery"
+    assert updated["rebind_authorization_run_id"] == "300"
 
 
 @pytest.mark.skipif(os.name != "nt", reason="PowerShell task-owner interoperability is Windows-only")
