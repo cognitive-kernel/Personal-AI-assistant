@@ -88,6 +88,7 @@ function Rebind-AutonomousTaskOwnerRecord {
         previous_task_sha256 = $oldDigest
         rebind_reason = "owner_authorized_task_content_reconciliation"
         rebind_authorization_run_id = $RunId
+        rebind_authorization_run_attempt = $RunAttempt
         rebound_at = $now
     }
 
