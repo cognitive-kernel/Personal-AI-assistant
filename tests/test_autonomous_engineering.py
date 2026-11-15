@@ -904,7 +904,8 @@ def test_autonomous_workflow_installs_project_runtime_before_codex_sandbox_smoke
     assert '-e ".[dev]"' in workflow
     assert 'import psutil, fastapi' in workflow
     assert '$venvScripts | Out-File -FilePath $env:GITHUB_PATH' in workflow
-    assert '& .\\.venv\\Scripts\\python.exe scripts/autonomous_engineering_progress.py codex' in workflow
+    assert '"AUTONOMOUS_ENGINEERING_PYTHON=$venvPython" | Out-File -FilePath $env:GITHUB_ENV' in workflow
+    assert '& $env:AUTONOMOUS_ENGINEERING_PYTHON scripts/autonomous_engineering_progress.py codex' in workflow
     assert "Install project dependencies for local test execution" not in workflow
 
 
