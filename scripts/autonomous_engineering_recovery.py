@@ -81,7 +81,9 @@ class GitHubActionsClient:
             batch = result.get("jobs") if isinstance(result, dict) else None
             if not isinstance(batch, list):
                 raise RuntimeError(f"GitHub returned an invalid job list for run {run_id}.")
-            jobs.extend(item for item in batch if isinstance(item, dict))
+            if any(not isinstance(item, dict) for item in batch):
+                raise RuntimeError(f"GitHub returned malformed job metadata for run {run_id}.")
+            jobs.extend(batch)
             if len(batch) < PAGE_SIZE:
                 return jobs
             page += 1
@@ -98,8 +100,10 @@ class GitHubActionsClient:
             batch = result.get("workflow_runs") if isinstance(result, dict) else None
             if not isinstance(batch, list):
                 raise RuntimeError("GitHub returned an invalid autonomous workflow-run history.")
+            if any(not isinstance(run, dict) for run in batch):
+                raise RuntimeError("GitHub returned malformed autonomous workflow-run metadata.")
             ordered = sorted(
-                (run for run in batch if isinstance(run, dict)),
+                batch,
                 key=lambda run: int(run.get("run_number", 0)),
                 reverse=True,
             )
