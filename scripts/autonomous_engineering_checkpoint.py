@@ -467,7 +467,7 @@ def stop(run_id: str, task: int) -> None:
     state = paths(run_id, task)
     metadata = read_metadata(run_id, task)
     stop_existing_watcher(metadata)
-    with checkpoint_store_lock(store_dir()):
+    with checkpoint_store_lock(state["directory"]):
         _atomic_write(state["stop"], "stop\n")
 
 
@@ -475,7 +475,7 @@ def clear(run_id: str, task: int) -> None:
     state = paths(run_id, task)
     metadata = read_metadata(run_id, task)
     stop_existing_watcher(metadata)
-    with checkpoint_store_lock(store_dir()):
+    with checkpoint_store_lock(state["directory"]):
         _atomic_write(state["stop"], "stop\n")
         for key in ("patch", "metadata", "plan", "stop"):
             state[key].unlink(missing_ok=True)
@@ -490,7 +490,7 @@ def clear_latest() -> None:
         return
     metadata, state = latest
     stop_existing_watcher(metadata)
-    with checkpoint_store_lock(store_dir()):
+    with checkpoint_store_lock(state["directory"]):
         current_metadata = read_metadata(str(metadata["run_id"]), int(metadata["task"]))
         if current_metadata is None:
             raise RuntimeError("Checkpoint disappeared during cleanup; preserving unknown ownership state.")
