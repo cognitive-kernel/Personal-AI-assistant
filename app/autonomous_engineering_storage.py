@@ -12,11 +12,6 @@ from .autonomous_engineering_state import execution_state_directory
 
 _RETENTION_SECONDS = 24 * 60 * 60
 _MAX_ITEMS = 500
-_RUNNER_TEMP_PREFIXES = (
-    "codex-report-",
-    "codex-sandbox-",
-)
-_RUNNER_TEMP_EXACT = {"codex-windows-sandbox-smoke.md", "capture_state.py"}
 _STATE_TEMP_SUFFIXES = (".tmp",)
 
 
