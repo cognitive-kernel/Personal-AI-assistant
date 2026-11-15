@@ -9,6 +9,7 @@ from typing import Any
 MANUAL_TASK_PERSIST_STEP = (
     "Persist manual task under the controller's runner and concurrency ownership"
 )
+TASK_EXECUTION_STEP = "Execute one isolated task, validate, and publish for owner review"
 RETRYABLE = "retryable"
 ADMISSION_REJECTED = "admission_rejected"
 NON_EXECUTION = "non_execution"
@@ -16,11 +17,13 @@ UNKNOWN = "unknown"
 
 
 def classify_failed_run(jobs: Sequence[Mapping[str, Any]]) -> str:
-    """Classify a failed workflow from GitHub's structured job/step results.
+    """Classify a failed workflow using its exact job/step execution boundary.
 
-    Only failures after the serialized task has entered the autonomous controller
-    contribute to the retry circuit breaker. Admission and schedule-gate failures
-    are not task-execution failures. Unknown shapes fail closed.
+    Only a failure reported by the controller's task-execution step contributes
+    to the execution-failure circuit breaker. Admission, schedule-gate,
+    prerequisite, sandbox-smoke, dependency-install, and post-execution failures
+    do not prove that a task execution failed and therefore do not increment it.
+    Unknown or malformed GitHub response shapes fail closed.
     """
     if not isinstance(jobs, Sequence) or isinstance(jobs, (str, bytes)):
         return UNKNOWN
@@ -41,26 +44,43 @@ def classify_failed_run(jobs: Sequence[Mapping[str, Any]]) -> str:
     if len(codex_jobs) != 1 or len(failed_jobs) != 1:
         return UNKNOWN
 
-    codex_job = codex_jobs[0]
-    steps = codex_job.get("steps")
-    if isinstance(steps, list):
-        if any(not isinstance(step, Mapping) for step in steps):
-            return UNKNOWN
-        failed_steps = [
-            step for step in steps
-            if step.get("conclusion") in {"failure", "timed_out"}
-        ]
-        admission_failures = [
-            step for step in failed_steps
-            if step.get("name") == MANUAL_TASK_PERSIST_STEP
-        ]
-        if admission_failures:
-            return ADMISSION_REJECTED if len(failed_steps) == 1 else UNKNOWN
-        if failed_steps:
-            return RETRYABLE
+    steps = codex_jobs[0].get("steps")
+    if not isinstance(steps, list):
+        return UNKNOWN
+    if any(
+        not isinstance(step, Mapping)
+        or not isinstance(step.get("name"), str)
+        or not step.get("name")
+        for step in steps
+    ):
+        return UNKNOWN
 
-    if codex_job.get("conclusion") == "timed_out":
-        return RETRYABLE
+    failed_steps = [
+        step for step in steps
+        if step.get("conclusion") in {"failure", "timed_out"}
+    ]
+    admission_failures = [
+        step for step in failed_steps
+        if step.get("name") == MANUAL_TASK_PERSIST_STEP
+    ]
+    if admission_failures:
+        return ADMISSION_REJECTED if len(failed_steps) == 1 else UNKNOWN
+
+    execution_failures = [
+        step for step in failed_steps
+        if step.get("name") == TASK_EXECUTION_STEP
+    ]
+    if execution_failures:
+        return RETRYABLE if len(execution_failures) == 1 and len(failed_steps) == 1 else UNKNOWN
+
+    # A failed preflight or postcondition is operationally important, but it
+    # is not evidence that the coding task itself started and failed. Do not
+    # consume the task-execution retry budget or dispatch a duplicate task.
+    if failed_steps:
+        return NON_EXECUTION
+
+    # A job-level timeout without a failed step cannot establish which phase
+    # owned the timeout. Treat it as unknown rather than guessing.
     return UNKNOWN
 
 
