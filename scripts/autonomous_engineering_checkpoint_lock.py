@@ -23,7 +23,7 @@ def checkpoint_store_lock(
     lock_path = Path(state_directory) / LOCK_FILE_NAME
     with exclusive_file_lock(
         lock_path,
-        timeout_seconds=max(0.0, timeout_seconds),
+        timeout_seconds=0.0 if timeout_seconds < 0 else timeout_seconds,
         timeout_message="Timed out waiting for exclusive autonomous checkpoint-store ownership.",
     ):
         yield
