@@ -10,10 +10,18 @@ import os
 import signal
 import time
 
-import psutil
 
 
 def process_group_has_live_members(process_group_id: int) -> bool:
+    # psutil is a POSIX-only runtime dependency for this code path. Keep it
+    # lazy so Windows progress/controller imports remain usable before project
+    # dependencies are installed and never require POSIX process inspection.
+    try:
+        import psutil
+    except ImportError as exc:
+        raise RuntimeError(
+            "psutil is required for POSIX process-group inspection; install project runtime dependencies."
+        ) from exc
     if isinstance(process_group_id, bool) or not isinstance(process_group_id, int) or process_group_id <= 0:
         raise ValueError("A positive process-group ID is required.")
     for process in psutil.process_iter(["pid", "status"]):
