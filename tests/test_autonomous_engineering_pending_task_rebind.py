@@ -159,6 +159,8 @@ def test_workflow_exposes_owner_rebind_as_separate_explicit_operation():
 
     assert "repair_pending_task_owner:" in workflow
     assert "REPAIR_PENDING_TASK_OWNER:" in workflow
+    assert "TASK_OPERATION_REQUESTED:" in workflow
+    assert 'TASK_OPERATION_REQUESTED" == "true"' in workflow
     assert "inputs.manual_task != '' || inputs.repair_pending_task_owner" in workflow
     assert "Get-AutonomousWorkflowRun" in script
     assert "Assert-AutonomousWorkflowRunRebindable" in script
