@@ -383,7 +383,11 @@ try {
         $null = Write-AutonomousTaskOwnerRecord @ownerArgs
     }
 
-    Write-Host "Manual task persisted to the durable runner state before prerequisite checks."
+    if ($repairPendingTaskOwner) {
+        Write-Host "Existing task-owner metadata was reconciled; durable task text was not changed."
+    } else {
+        Write-Host "Manual task persisted to the durable runner state before prerequisite checks."
+    }
     $replacementBackups = $null
 } catch {
     if ($null -ne $replacementBackups) {
