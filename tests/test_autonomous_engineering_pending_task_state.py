@@ -188,6 +188,25 @@ def test_reconcile_refuses_changed_task_and_preserves_owner(tmp_path: Path):
     assert not list(tmp_path.glob("pending-manual-task-owner.json.quarantine-*.json"))
 
 
+def test_reconcile_never_quarantines_malformed_owner_when_digest_drifted(tmp_path: Path):
+    owner_path = pending_task_owner_path(tmp_path)
+    raw = json.dumps({
+        "schema_version": 99,
+        "task_sha256": task_digest("Previous durable task"),
+        "owner_run_id": "5001",
+    }).encode("utf-8")
+    owner_path.write_bytes(raw)
+
+    with durable_state_lock(tmp_path):
+        with pytest.raises(RuntimeError, match="digest does not match task content"):
+            reconcile_pending_task_owner_unlocked(
+                tmp_path, "Changed durable task", "5002", 1, source="recovery",
+            )
+
+    assert owner_path.read_bytes() == raw
+    assert not list(tmp_path.glob("pending-manual-task-owner.json.quarantine-*.json"))
+
+
 def test_reconcile_quarantines_malformed_owner_record(tmp_path: Path):
     owner_path = pending_task_owner_path(tmp_path)
     owner_path.write_text("{malformed", encoding="utf-8")
