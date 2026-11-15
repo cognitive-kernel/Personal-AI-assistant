@@ -305,12 +305,17 @@ try {
         $recordedOwnerRunId = [string]$ownerMetadata.owner_run_id
         $recordedOwnerAttempt = 0
         if (
-            $recordedOwnerRunId -notmatch '^[0-9]+$' -or
-            $recordedOwnerRunId -ceq [string]$env:GITHUB_RUN_ID -or
+            $recordedOwnerRunId -cnotmatch '^[0-9]{1,20}\z' -or
             -not [int]::TryParse([string]$ownerMetadata.owner_attempt, [ref]$recordedOwnerAttempt) -or
             $recordedOwnerAttempt -lt 1
         ) {
             throw "The recorded owner run ID or attempt is invalid; preserving all state."
+        }
+        if (
+            $recordedOwnerRunId -ceq [string]$env:GITHUB_RUN_ID -and
+            $recordedOwnerAttempt -ge $rebindRunAttempt
+        ) {
+            throw "The current workflow run attempt already owns this task or is older than its recorded owner attempt."
         }
         $verifiedOwnerRun = Get-AutonomousWorkflowRun -Repository $env:GH_REPO -RunId $recordedOwnerRunId -RunAttempt $recordedOwnerAttempt -Headers $headers
         Assert-AutonomousWorkflowRunRebindable -Run $verifiedOwnerRun -ExpectedRunId $recordedOwnerRunId -ExpectedRunAttempt $recordedOwnerAttempt
