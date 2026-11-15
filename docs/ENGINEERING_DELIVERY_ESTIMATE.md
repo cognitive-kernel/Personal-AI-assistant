@@ -7,6 +7,13 @@
 - **Acceptance evidence:** exact-head GitHub checks and target-host crash/restart/soak evidence are tracked in `docs/PROJECT_STATUS.md` and `docs/ENGINEERING_LOG.md`. Until those results exist, this addendum remains an open change-control item.
 - **Safety:** no automatic merge, deployment, workflow policy change, or mutation of task/checkpoint/user data is part of this work.
 
+## Change-control addendum — 2026-11-15
+
+- **Scope addition:** autonomous recovery now distinguishes task-admission/schedule-gate failures from actual controller execution failures. The previous history counter treated every failed workflow as an execution failure, and the circuit-breaker path reported a green conclusion despite dispatching nothing.
+- **Implementation:** a dedicated, testable recovery policy and coordinator classify structured job/step results, paginate workflow history, preserve the existing three-execution-failure threshold and bounded backoff, and fail closed on unknown classifications. Recovery workflow wiring and operational/architecture documentation are updated.
+- **Estimate status:** no additional hours are asserted until focused tests and exact-head CI complete. This is corrective reliability work within E-05 (durable tasks and resilience); the original 176-hour baseline and allocations are not silently rewritten.
+- **Acceptance:** policy unit tests, workflow contract tests, exact-head GitHub checks, and local Windows full-suite evidence are pending. The pending task, owner metadata, checkpoint, Pause setting, Runner identity, and ACL were not changed; no recovery dispatch was issued.
+
 ## Executive commitment
 
 - **Planning baseline:** 22 working days.
