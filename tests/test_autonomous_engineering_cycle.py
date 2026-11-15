@@ -1052,7 +1052,8 @@ def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkey
     prompt.write_text("Do the task", encoding="utf-8")
     monkeypatch.setattr(progress.shutil, "which", lambda _: r"C:\\npm\\codex.CMD")
     monkeypatch.setattr(progress, "codex_command", lambda executable, arguments, **kwargs: ["cmd.exe", "/d", "/c", "call", executable, *arguments])
-    monkeypatch.setattr(progress, "persist", lambda record: True)
+    persisted_records = []
+    monkeypatch.setattr(progress, "persist", lambda record: persisted_records.append(record) or True)
     class NoOpProcessJob:
         CREATE_SUSPENDED = progress.WindowsProcessJob.CREATE_SUSPENDED
 
@@ -1098,6 +1099,8 @@ def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkey
     )
 
     assert progress.run_codex(args) == 1
+    assert persisted_records[-1]["diagnostic"]["source"] == "codex_cli"
+    assert persisted_records[-1]["diagnostic"]["error_type"] == "CodexExecutionError"
 
 
 def test_codex_smoke_evidence_requires_a_real_successful_command_and_final_turn():
