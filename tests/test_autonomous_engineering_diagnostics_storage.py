@@ -223,3 +223,22 @@ def test_early_failure_still_has_visible_reason_when_github_job_api_is_unavailab
     assert result["current"]["status"] == "failed"
     assert result["current"]["diagnostic"]["run_id"] == "654"
     assert result["current"]["diagnostic"]["job_url"].endswith("/runs/654")
+
+
+def test_runner_discovery_never_treats_arbitrary_system_temp_as_runner_temp(monkeypatch, tmp_path):
+    system_temp = tmp_path / "user-temp"
+    system_temp.mkdir()
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_RUNNER_TEMP", raising=False)
+    monkeypatch.setenv("RUNNER_TEMP", str(system_temp))
+    monkeypatch.setattr(storage.psutil, "process_iter", lambda *args, **kwargs: [])
+
+    assert storage._runner_temp_directories() == []
+
+
+def test_runner_discovery_uses_explicit_provisioned_path(monkeypatch, tmp_path):
+    runner_temp = tmp_path / "runner" / "_work" / "_temp"
+    runner_temp.mkdir(parents=True)
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_RUNNER_TEMP", str(runner_temp))
+    monkeypatch.setattr(storage.psutil, "process_iter", lambda *args, **kwargs: [])
+
+    assert storage._runner_temp_directories() == [runner_temp]
