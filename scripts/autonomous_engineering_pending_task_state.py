@@ -34,11 +34,14 @@ def _validate_owner_record(record: Any, task: str) -> dict[str, Any]:
     timestamp_fields = ("created_at", "claimed_at")
     if (
         isinstance(schema_version, bool)
+        or not isinstance(schema_version, int)
         or schema_version not in (1, 2)
         or any(not isinstance(record.get(key), str) or not record[key] for key in (
             "task_sha256", "owner_run_id", "submitted_run_id", "source"
         ))
-        or not re.fullmatch(r"[0-9a-f]{64}", str(record.get("task_sha256", "")))
+        or not re.fullmatch(r"[0-9]{1,20}", record["owner_run_id"])
+        or not re.fullmatch(r"[0-9]{1,20}", record["submitted_run_id"])
+        or not re.fullmatch(r"[0-9a-f]{64}", record["task_sha256"])
         or any(
             isinstance(record.get(key), bool)
             or not isinstance(record.get(key), int)
@@ -105,7 +108,12 @@ def claim_pending_task_owner_unlocked(
         raise ValueError("Pending manual task is empty or violates the 2,000-character/NUL contract.")
     if not isinstance(run_id, str) or not run_id.strip() or not re.fullmatch(r"[0-9]{1,20}", run_id):
         raise ValueError("A valid workflow run ID is required to claim a pending task.")
-    if isinstance(run_attempt, bool) or not isinstance(run_attempt, int) or run_attempt < 1:
+    if (
+        isinstance(run_attempt, bool)
+        or not isinstance(run_attempt, int)
+        or run_attempt < 1
+        or run_attempt > 2_147_483_647
+    ):
         raise ValueError("A positive workflow run attempt is required to claim a pending task.")
     if source not in _ALLOWED_SOURCES:
         raise ValueError("Unsupported pending task ownership source.")
