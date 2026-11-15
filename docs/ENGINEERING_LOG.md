@@ -13,7 +13,7 @@
 - Simplified `.github/workflows/autonomous-codex-recovery.yml` to check out trusted `main` without persisting credentials and invoke the testable recovery coordinator.
 - An open circuit breaker or blocked/unknown recovery now writes a job summary and error annotation and exits non-zero. Admission failures are not misreported as task-execution failures and do not trigger an automatic replacement dispatch.
 - Recovery history traversal detects a newer `main` workflow run and suppresses stale events both before and after backoff, preventing duplicate dispatch if another run takes ownership during the delay.
-- Added policy tests for admission rejection, schedule-gate failure, retryable execution failure, timeout, unknown classification, streak exclusion, success reset, and missing trigger history. Updated workflow wiring tests.
+- Added policy tests for admission rejection, schedule-gate failure, retryable execution failure, timeout, malformed/unknown classification, streak exclusion, success reset, and missing trigger history. Added coordinator tests for admission blocking, breaker exit status, dispatch payload, pause/scheduled mode, stale-event suppression, post-backoff ownership revalidation, and append-only Job Summary reporting; updated workflow wiring tests.
 - Updated ADR-021 and the operational runbook. No pending task, owner metadata, checkpoint, Pause value, Runner identity, ACL, or user data was changed; no recovery dispatch was issued.
 
 ### Validation
