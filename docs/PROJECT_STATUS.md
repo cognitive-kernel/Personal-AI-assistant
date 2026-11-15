@@ -1,5 +1,18 @@
 # وضعیت یکپارچهٔ پروژه
 
+## 2026-11-15 — اصلاح طبقه‌بندی شکست و بازیابی چرخهٔ خودکار
+
+- وضعیت: **در حال پیاده‌سازی و اعتبارسنجی؛ ادغام‌نشده**.
+- مبنای main هنگام شروع این اصلاح: `f5cfa837e788ccfa84e13203fb33ac1b1937927a`.
+- اجرای [43695676192](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43695676192) در `schedule-gate` موفق بود، اما در مرحلهٔ `Persist manual task under the controller's runner and concurrency ownership` با پیام `Another manual task is still pending` متوقف شد. مرحلهٔ اجرای کنترل‌کننده اصلاً اجرا نشد؛ بنابراین این رخداد شکست اجرای task نبود.
+- recovery قبلی همهٔ شکست‌های Workflow را بدون بررسی job/step در streak جمع می‌کرد و شکست پذیرش task را به‌اشتباه شکست اجرای autonomous محسوب کرد. همچنین Circuit Breaker با exit code صفر بسته می‌شد و GitHub آن را سبز نشان می‌داد، درحالی‌که dispatch انجام نشده بود: [run 43695720003](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43695720003).
+- شاخهٔ `fix/autonomous-recovery-failure-classification-20261115` سیاست طبقه‌بندی را به ماژول مستقل و تست‌پذیر منتقل می‌کند. فقط شکست‌های واقعی job کنترل‌کننده در شمارندهٔ سه‌تایی لحاظ می‌شوند؛ رد مرحلهٔ پذیرش task و schedule gate شمرده نمی‌شوند. وضعیت ناشناخته fail-closed است.
+- Circuit Breaker باز یا recovery مسدود اکنون در Job Summary و annotation ثبت می‌شود و با exit code غیرصفر خاتمه می‌یابد؛ دیگر موفقیت ظاهری گزارش نمی‌شود.
+- وضعیت پایدار تک‌وظیفه‌ای، فایل task، owner metadata، checkpoint، مقدار Pause، ACL و هویت Runner دست‌نخورده باقی مانده‌اند. هیچ dispatch بازیابی صادر نشده است.
+- PR #760 نیز اصلاح مستقل هم‌ریشه‌ای دارد: ریشهٔ قفل‌های ProgramData در تست‌های انتشار PR رفع شده و مسیر state برای قفل و ذخیرهٔ owner record یک‌بار resolve می‌شود. head فعلی آن باید با تست‌های Windows محلی و CI دقیق همان SHA تأیید شود.
+- تست‌های سیاست بازیابی، تست‌های workflow، full Python suite، CI دقیق شاخه و تکرار full Windows suite روی میزبان مالک هنوز **در انتظار** هستند. هیچ‌یک موفق اعلام نشده‌اند.
+
+
 ## وضعیت جاری — مالکیت پردازه و بازیابی Codex
 
 - مبنای زندهٔ `main` در آغاز این کار: `1969bcc83294689efaad091ea5aaa7582c44f618`.
