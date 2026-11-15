@@ -232,13 +232,16 @@ def test_powershell_manual_task_persistence_rejects_user_scoped_state_override()
 
 
 def test_durable_and_checkpoint_locks_share_one_platform_primitive():
-    root = Path(__file__).resolve().parents[1] / "scripts"
-    state_lock = (root / "autonomous_engineering_state_lock.py").read_text(encoding="utf-8")
-    checkpoint_lock = (root / "autonomous_engineering_checkpoint_lock.py").read_text(encoding="utf-8")
-    primitive = (root / "autonomous_engineering_file_lock.py").read_text(encoding="utf-8")
+    root = Path(__file__).resolve().parents[1]
+    scripts = root / "scripts"
+    state_lock = (scripts / "autonomous_engineering_state_lock.py").read_text(encoding="utf-8")
+    checkpoint_lock = (scripts / "autonomous_engineering_checkpoint_lock.py").read_text(encoding="utf-8")
+    primitive_facade = (scripts / "autonomous_engineering_file_lock.py").read_text(encoding="utf-8")
+    primitive = (root / "app" / "autonomous_engineering_state.py").read_text(encoding="utf-8")
 
     assert "exclusive_file_lock" in state_lock
     assert "exclusive_file_lock" in checkpoint_lock
+    assert "exclusive_file_lock" in primitive_facade
     assert "msvcrt" not in state_lock + checkpoint_lock
     assert "fcntl" not in state_lock + checkpoint_lock
     assert "msvcrt.locking" in primitive
