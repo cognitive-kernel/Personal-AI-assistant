@@ -161,7 +161,6 @@ def cleanup_storage(*, active_run: bool) -> dict[str, Any]:
     roots.extend((path, "runner_temporary") for path in runner_temp_dirs)
     roots.extend((path.parent.parent / "_diag", "runner_diagnostic") for path in runner_temp_dirs if len(path.parents) >= 3)
 
-    cutoff = time.time() - _RETENTION_SECONDS
     deleted: list[str] = []
     failures: list[str] = []
     for root, category in roots:
@@ -183,6 +182,7 @@ def cleanup_storage(*, active_run: bool) -> dict[str, Any]:
                 try:
                     if path.stat().st_mtime >= time.time() - retention:
                         continue
+                    path.unlink()
                     deleted.append(str(path))
                 except OSError:
                     failures.append(path.name)
