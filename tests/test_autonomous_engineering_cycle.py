@@ -684,12 +684,12 @@ def test_checkpoint_readiness_is_committed_without_a_secondary_marker(
     from scripts import autonomous_engineering_checkpoint as checkpoint
     from scripts.autonomous_engineering_checkpoint_contract import build_checkpoint_metadata
 
-    state = tmp_path / "ProgramData"
-    monkeypatch.setattr(checkpoint, "store_dir", lambda: state)
+    state_root = tmp_path / "ProgramData"
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: state_root)
 
-    def prepare_snapshot(base_sha, run_id, task, watcher_pid, watcher_started_at):
-        paths = checkpoint.paths(run_id, task)
-        state.mkdir(parents=True, exist_ok=True)
+    def prepare_snapshot(base_sha, run_id, task, watcher_pid, watcher_started_at, *, state=None):
+        paths = state if state is not None else checkpoint.paths(run_id, task)
+        state_root.mkdir(parents=True, exist_ok=True)
         metadata = build_checkpoint_metadata(
             base_sha=base_sha,
             run_id=run_id,
@@ -708,11 +708,11 @@ def test_checkpoint_readiness_is_committed_without_a_secondary_marker(
     assert checkpoint.watch("a" * 40, "106", 1, 5) == 0
 
     metadata = json.loads(
-        (state / "worktree-checkpoint-106-1.json").read_text(encoding="utf-8")
+        (state_root / "worktree-checkpoint-106-1.json").read_text(encoding="utf-8")
     )
     assert metadata["watcher_ready"] is True
     assert metadata["watcher_pid"] == __import__("os").getpid()
-    assert not (state / "worktree-checkpoint-106-1.ready").exists()
+    assert not (state_root / "worktree-checkpoint-106-1.ready").exists()
     assert not (state / "worktree-checkpoint-106-1.error").exists()
 
 def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
