@@ -485,7 +485,8 @@
         row.className = "run-item";
         const label = document.createElement("span");
         label.textContent = String(file.name) + " · " + (Number(file.size_bytes || 0) / 1024).toFixed(1) +
-          " KiB · " + String(file.category || "");
+          " KiB · " + String(file.category || "") +
+          (file.cleanup_eligible ? " · قابل پاک‌سازی" : " · حفظ می‌شود");
         row.append(label);
         host.append(row);
       }
