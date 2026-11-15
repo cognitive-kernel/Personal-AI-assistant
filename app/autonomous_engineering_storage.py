@@ -77,6 +77,21 @@ def _runner_temp_directories() -> list[Path]:
     return unique
 
 
+def _runner_worker_active() -> bool:
+    try:
+        for process in psutil.process_iter(["name", "cmdline"]):
+            try:
+                name = str(process.info.get("name") or "").casefold()
+                command = " ".join(str(part) for part in (process.info.get("cmdline") or [])).casefold()
+                if "runner.worker" in name or "runner.worker" in command:
+                    return True
+            except (OSError, psutil.Error):
+                return True
+    except (OSError, psutil.Error):
+        return True
+    return False
+
+
 def inspect_storage() -> dict[str, Any]:
     """Inspect app-owned state and known Runner temp/diagnostic folders; never traverse arbitrary temp trees."""
     state_root = execution_state_directory()
@@ -116,10 +131,7 @@ def inspect_storage() -> dict[str, Any]:
         if item is None:
             continue
         item["category"] = category
-        known_owned = category == "state_temporary" or (
-            category == "runner_temporary"
-            and (path.name in _RUNNER_TEMP_EXACT or path.name.startswith(_RUNNER_TEMP_PREFIXES))
-        )
+        known_owned = category in {"state_temporary", "runner_temporary"}
         item["cleanup_eligible"] = bool(known_owned and item["age_seconds"] >= _RETENTION_SECONDS)
         files.append(item)
         total += item["size_bytes"]
@@ -139,8 +151,8 @@ def inspect_storage() -> dict[str, Any]:
 
 def cleanup_storage(*, active_run: bool) -> dict[str, Any]:
     """Delete only known stale temporary artifacts, and refuse while any workflow is active."""
-    if active_run:
-        return {"deleted": [], "deleted_count": 0, "blocked": True, "message": "اجرای فعال وجود دارد؛ پاک‌سازی تا پایان اجرا انجام نشد."}
+    if active_run or _runner_worker_active():
+        return {"deleted": [], "deleted_count": 0, "blocked": True, "message": "اجرای فعال یا فرایند Runner.Worker شناسایی شد؛ پاک‌سازی تا پایان اجرای همهٔ Jobها انجام نشد."}
 
     state_root = execution_state_directory()
     roots: list[tuple[Path, str]] = [(state_root, "state_temporary")]
@@ -157,10 +169,7 @@ def cleanup_storage(*, active_run: bool) -> dict[str, Any]:
                 if category == "state_temporary":
                     eligible = path.name.endswith(_STATE_TEMP_SUFFIXES)
                 else:
-                    eligible = (
-                        path.name in _RUNNER_TEMP_EXACT
-                        or path.name.startswith(_RUNNER_TEMP_PREFIXES)
-                    )
+                    eligible = True
                 if not eligible or not _safe_file(path, root):
                     continue
                 try:
