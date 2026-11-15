@@ -24,21 +24,9 @@ def durable_state_lock(
     *,
     timeout_seconds: float = 30.0,
 ) -> Iterator[None]:
-    """Cross-process, cross-session lock shared by Python and PowerShell.
-
-    The lock is a byte-range lock on a file inside the configured shared state
-    directory. Unlike a named Windows mutex, it has no session namespace and
-    does not inherit an ACL from the identity that first creates a kernel object.
-    The directory ACL is provisioned independently by the installer.
-    """
-    if (
-        isinstance(timeout_seconds, bool)
-        or not isinstance(timeout_seconds, (int, float))
-        or timeout_seconds < 0
-    ):
-        raise ValueError("Lock timeout must be a non-negative number.")
-    state_dir = Path(state_dir) if state_dir is not None else _default_state_dir()
-    lock_path = state_dir / "autonomous-durable-state.lock"
+    """Cross-process, cross-session lock shared by Python and PowerShell."""
+    directory = Path(state_dir) if state_dir is not None else _default_state_dir()
+    lock_path = directory / "autonomous-durable-state.lock"
     with exclusive_file_lock(
         lock_path,
         timeout_seconds=timeout_seconds,
