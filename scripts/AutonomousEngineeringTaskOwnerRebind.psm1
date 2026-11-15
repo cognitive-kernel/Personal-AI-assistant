@@ -39,6 +39,15 @@ function Rebind-AutonomousTaskOwnerRecord {
     $claimCount = 0
     $createdAt = 0.0
     $claimedAt = 0.0
+    if (
+        -not [int]::TryParse([string]$existing.owner_attempt, [ref]$ownerAttempt) -or
+        $ownerAttempt -lt 1
+    ) {
+        throw "The recorded owner attempt is invalid; preserving the owner record."
+    }
+    if ([int]$VerifiedOwnerRun.run_attempt -ne $ownerAttempt) {
+        throw "GitHub verified a different attempt than the recorded task owner; preserving the owner record."
+    }
     $oldDigest = [string]$existing.task_sha256
     if (
         $existing.schema_version -is [bool] -or
@@ -46,9 +55,7 @@ function Rebind-AutonomousTaskOwnerRecord {
         [long]$existing.schema_version -ne 1 -or
         $oldDigest -notmatch '^[0-9a-f]{64}\z' -or
         [string]$existing.owner_run_id -cne [string]$VerifiedOwnerRun.id -or
-        [int]$VerifiedOwnerRun.run_attempt -ne $ownerAttempt -or
         [string]$existing.owner_run_id -notmatch '^[0-9]{1,20}\z' -or
-        -not [int]::TryParse([string]$existing.owner_attempt, [ref]$ownerAttempt) -or $ownerAttempt -lt 1 -or
         -not [int]::TryParse([string]$existing.submitted_attempt, [ref]$submittedAttempt) -or $submittedAttempt -lt 1 -or
         [string]$existing.submitted_run_id -notmatch '^[0-9]{1,20}\z' -or
         -not [int]::TryParse([string]$existing.claim_count, [ref]$claimCount) -or $claimCount -lt 1 -or
