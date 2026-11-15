@@ -44,8 +44,15 @@ def _entry(path: Path, root: Path) -> dict[str, Any] | None:
 def _runner_temp_directories() -> list[Path]:
     roots: list[Path] = []
     configured = os.environ.get("RUNNER_TEMP") or os.environ.get("AUTONOMOUS_ENGINEERING_RUNNER_TEMP")
+    if not configured and os.name == "nt":
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment") as key:
+                configured, _ = winreg.QueryValueEx(key, "AUTONOMOUS_ENGINEERING_RUNNER_TEMP")
+        except (OSError, ImportError):
+            configured = None
     if configured:
-        roots.append(Path(configured))
+        roots.append(Path(os.path.expandvars(configured)))
     try:
         for process in psutil.process_iter(["name", "exe", "cmdline"]):
             try:
