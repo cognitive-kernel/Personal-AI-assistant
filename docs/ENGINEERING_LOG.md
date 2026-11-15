@@ -4,7 +4,7 @@
 - The owner cannot identify the failed UI execution stage quickly, cannot select a particular active run to cancel, cannot remove completed GitHub Actions run records, and has no UI visibility into temporary files accumulating on the Windows Runner.
 - The existing dashboard only exposed a global cancel action and a short recent-run list. Progress enrichment identified a failed job but did not retain the failed step or Python source location.
 
-### Changes on branch `fix/autonomous-ui-diagnostics-storage-20261115`
+### Changes on branch `fix/autonomous-ui-diagnostics-storage-20261115-v2`
 - Enrich failed progress with GitHub job, failed step, and a direct job-log link.
 - Persist bounded Python exception metadata (exception type/message, repository-relative source file, line, and function) in the existing durable progress state. Secret-like GitHub tokens and bearer values are redacted before persistence; full tracebacks are not copied into the dashboard state.
 - Add selected-run cancellation and allow deletion only for GitHub Actions runs confirmed as completed.
