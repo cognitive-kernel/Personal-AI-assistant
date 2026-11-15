@@ -321,6 +321,93 @@ def test_powershell_owner_rebind_archives_old_record_and_preserves_submission(tm
         ("200", 1, WORKFLOW_PATH, "feature/branch", "completed", "failure"),
     ],
 )
+@pytest.mark.skipif(os.name != "nt", reason="PowerShell task-owner interoperability is Windows-only")
+def test_powershell_owner_rebind_allows_same_run_id_with_newer_attempt(tmp_path: Path):
+    root = Path(__file__).resolve().parents[1]
+    module = root / "scripts" / "AutonomousEngineeringTaskOwnerRebind.psm1"
+    owner_path = tmp_path / "pending-manual-task-owner.json"
+    old_task = "The previous attempt owned this durable task."
+    current_task = "The same run's newer attempt must take ownership."
+    now = time.time()
+    record = {
+        "schema_version": 1,
+        "task_sha256": task_digest(old_task),
+        "submitted_run_id": "100",
+        "submitted_attempt": 1,
+        "owner_run_id": "200",
+        "owner_attempt": 1,
+        "created_at": now,
+        "claimed_at": now,
+        "claim_count": 1,
+        "source": "manual_dispatch",
+    }
+    old_bytes = json.dumps(record, separators=(",", ":")).encode("utf-8")
+    owner_path.write_bytes(old_bytes)
+    script = (
+        "$ErrorActionPreference='Stop'; "
+        f"Import-Module {_ps_quote(str(root / 'scripts' / 'AutonomousEngineeringTaskState.psm1'))} -Force; "
+        f"Import-Module {_ps_quote(str(module))} -Force; "
+        "$run=[pscustomobject]@{id='200';run_attempt=1;path='.github/workflows/autonomous-codex-engineering.yml';"
+        "head_branch='main';status='completed';conclusion='failure'}; "
+        f"$null=Rebind-AutonomousTaskOwnerRecord -Path {_ps_quote(str(owner_path))} "
+        f"-Task {_ps_quote(current_task)} -RunId '200' -RunAttempt 2 -VerifiedOwnerRun $run; "
+        f"$null=Get-AutonomousTaskOwnerRecord -Path {_ps_quote(str(owner_path))} -Task {_ps_quote(current_task)}"
+    )
+    result = _powershell(script)
+    assert result.returncode == 0, result.stderr
+
+    updated = json.loads(owner_path.read_text(encoding="utf-8"))
+    backups = list(tmp_path.glob("pending-manual-task-owner.json.quarantine-rebound-*.json"))
+    assert len(backups) == 1
+    assert backups[0].read_bytes() == old_bytes
+    assert updated["owner_run_id"] == "200"
+    assert updated["owner_attempt"] == 2
+    assert updated["rebind_authorization_run_id"] == "200"
+    assert updated["rebind_authorization_run_attempt"] == 2
+
+
+@pytest.mark.skipif(os.name != "nt", reason="PowerShell task-owner interoperability is Windows-only")
+@pytest.mark.parametrize(("current_attempt", "recorded_attempt"), [(1, 1), (1, 2)])
+def test_powershell_owner_rebind_rejects_same_or_older_run_attempt(
+    tmp_path: Path, current_attempt: int, recorded_attempt: int,
+):
+    root = Path(__file__).resolve().parents[1]
+    module = root / "scripts" / "AutonomousEngineeringTaskOwnerRebind.psm1"
+    owner_path = tmp_path / "pending-manual-task-owner.json"
+    old_task = "The recorded attempt remains the owner."
+    current_task = "A stale or identical attempt cannot rebind itself."
+    now = time.time()
+    record = {
+        "schema_version": 1,
+        "task_sha256": task_digest(old_task),
+        "submitted_run_id": "100",
+        "submitted_attempt": 1,
+        "owner_run_id": "200",
+        "owner_attempt": recorded_attempt,
+        "created_at": now,
+        "claimed_at": now,
+        "claim_count": 1,
+        "source": "manual_dispatch",
+    }
+    old_bytes = json.dumps(record, separators=(",", ":")).encode("utf-8")
+    owner_path.write_bytes(old_bytes)
+    script = (
+        "$ErrorActionPreference='Stop'; "
+        f"Import-Module {_ps_quote(str(module))} -Force; "
+        "$run=[pscustomobject]@{id='200';"
+        f"run_attempt={recorded_attempt};"
+        "path='.github/workflows/autonomous-codex-engineering.yml';"
+        "head_branch='main';status='completed';conclusion='failure'}; "
+        f"Rebind-AutonomousTaskOwnerRecord -Path {_ps_quote(str(owner_path))} "
+        f"-Task {_ps_quote(current_task)} -RunId '200' -RunAttempt {current_attempt} -VerifiedOwnerRun $run"
+    )
+    result = _powershell(script)
+
+    assert result.returncode != 0
+    assert owner_path.read_bytes() == old_bytes
+    assert not list(tmp_path.glob("pending-manual-task-owner.json.quarantine-rebound-*.json"))
+
+
 def test_powershell_owner_rebind_rejects_unverified_or_successful_owner_run(
     tmp_path: Path, run_id: str, run_attempt: int, path: str, branch: str, status: str, conclusion: str,
 ):
