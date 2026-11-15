@@ -157,7 +157,9 @@ def cleanup_storage(*, active_run: bool) -> dict[str, Any]:
 
     state_root = execution_state_directory()
     roots: list[tuple[Path, str]] = [(state_root, "state_temporary")]
-    roots.extend((path, "runner_temporary") for path in _runner_temp_directories())
+    runner_temp_dirs = _runner_temp_directories()
+    roots.extend((path, "runner_temporary") for path in runner_temp_dirs)
+    roots.extend((path.parent.parent / "_diag", "runner_diagnostic") for path in runner_temp_dirs if len(path.parents) >= 3)
 
     cutoff = time.time() - _RETENTION_SECONDS
     deleted: list[str] = []
@@ -169,14 +171,18 @@ def cleanup_storage(*, active_run: bool) -> dict[str, Any]:
             for path in root.iterdir():
                 if category == "state_temporary":
                     eligible = path.name.endswith(_STATE_TEMP_SUFFIXES)
-                else:
+                    retention = _RETENTION_SECONDS
+                elif category == "runner_temporary":
                     eligible = True
+                    retention = _RETENTION_SECONDS
+                else:
+                    eligible = path.is_file() and path.suffix.casefold() in {".log", ".txt"}
+                    retention = _DIAGNOSTIC_RETENTION_SECONDS
                 if not eligible or not _safe_file(path, root):
                     continue
                 try:
-                    if path.stat().st_mtime >= cutoff:
+                    if path.stat().st_mtime >= time.time() - retention:
                         continue
-                    path.unlink()
                     deleted.append(str(path))
                 except OSError:
                     failures.append(path.name)
