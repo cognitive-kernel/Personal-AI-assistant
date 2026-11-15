@@ -1,5 +1,12 @@
 # Engineering Continuity Log
 
+## 2026-11-15 — Trace the original Windows sandbox mutex failure to the retired elevated fallback
+
+- Inspected the exact failed step and full job log for owner run [43592197032](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43592197032). The run was on old main SHA `1969bcc83294689efaad091ea5aaa7582c44f618`; the standalone `mxc` probe failed, after which the old workflow tried the `elevated` backend. Codex repeatedly failed to open the Windows sandbox setup mutex in that fallback.
+- Compared the workflow at that historical SHA with current main `f5cfa837e788ccfa84e13203fb33ac1b1937927a`. Current main no longer includes `elevated` in the backend list: `mxc` is the only default backend, and `unelevated` is available only with the explicit repository opt-in because it has weaker isolation.
+- Therefore the mutex failure is historical evidence explaining why the old owner run terminated before task execution; it is not proof that current main still attempts elevated sandboxing. Current mxc/optional-unelevated behavior still requires real Windows Runner acceptance.
+- This historical infrastructure failure is separate from run [43710320186](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43710320186), which failed task admission because a different task was submitted while a durable task already existed.
+
 ## 2026-11-15 — Correct task-admission diagnosis and harden owner-recovery schema
 
 ### Root-cause clarification
