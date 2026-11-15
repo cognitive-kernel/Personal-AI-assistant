@@ -8,12 +8,12 @@
 - Enrich failed progress with GitHub job, failed step, and a direct job-log link.
 - Persist bounded Python exception metadata (exception type/message, repository-relative source file, line, and function) in the existing durable progress state. Secret-like GitHub tokens and bearer values are redacted before persistence; full tracebacks are not copied into the dashboard state.
 - Add selected-run cancellation and allow deletion only for GitHub Actions runs confirmed as completed.
-- Add a bounded storage inventory for state temporary files, Runner `_work/_temp` files, and read-only Runner `_diag` log files.
-- Add opt-in cleanup for files directly inside Runner temp and state-root `*.tmp` files older than 24 hours. Cleanup is blocked while the target workflow is active or a `Runner.Worker` process is detected. Runner `_diag`, checkpoints, task data, settings, and user data are never deleted by this operation.
+- Add a bounded storage inventory for state temporary files, Runner `_work/_temp` files, and Runner `_diag` log files.
+- Add opt-in cleanup for files directly inside Runner temp and state-root `*.tmp` files older than 24 hours, plus Runner `_diag` `.log`/`.txt` files older than 30 days. Cleanup is blocked while the target workflow is active or a `Runner.Worker` process is detected. Checkpoints, task data, settings, and user data are never deleted by this operation.
 - Add focused regression tests for inventory, retention, worker guard, selected cancellation, structured failure persistence, and UI/API registration.
 
 ### Safety and validation boundary
-- Cleanup is intentionally non-recursive and does not delete Runner diagnostic logs. Unknown files in Runner temp are inventoried and can be cleaned only under the explicit stale-file policy; no arbitrary system temp directory is traversed.
+- Cleanup is intentionally non-recursive. Unknown files directly inside the dedicated Runner temp directory are inventoried and become eligible after 24 hours; diagnostic logs are retained for 30 days. No arbitrary system temp directory is traversed.
 - GitHub Actions CI and target-Windows acceptance have not yet been observed for this branch. This entry records implementation intent, not a verified release or a claim that the UI is operational on the owner's machine.
 
 ---
