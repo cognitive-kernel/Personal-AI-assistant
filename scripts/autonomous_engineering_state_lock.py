@@ -1,18 +1,23 @@
 from __future__ import annotations
 
+import sys
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
 try:
-    from .autonomous_engineering_file_lock import exclusive_file_lock
+    from scripts.autonomous_engineering_file_lock import exclusive_file_lock
 except ImportError:  # Direct script execution from the scripts directory.
     from autonomous_engineering_file_lock import exclusive_file_lock
 
 
 def _default_state_dir() -> Path:
     try:
-        from .autonomous_engineering_state_paths import execution_state_directory
+        from scripts.autonomous_engineering_state_paths import execution_state_directory
     except ImportError:  # Direct script execution from the scripts directory.
         from autonomous_engineering_state_paths import execution_state_directory
     return execution_state_directory()
