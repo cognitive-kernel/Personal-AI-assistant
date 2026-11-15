@@ -176,6 +176,9 @@ def test_autonomous_engineering_routes_are_registered():
     assert "/api/autonomous-engineering/cancel" in api_paths
     assert "/api/autonomous-engineering/pause" in api_paths
     assert "/api/autonomous-engineering/resume" in api_paths
+    assert "/api/autonomous-engineering/storage" in api_paths
+    assert "/api/autonomous-engineering/storage/cleanup" in api_paths
+    assert "/api/autonomous-engineering/runs/{run_id}" in api_paths
 
 def test_pause_sets_durable_repository_variable(monkeypatch):
     calls = []
