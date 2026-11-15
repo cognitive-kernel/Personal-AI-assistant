@@ -79,14 +79,13 @@ def _runner_temp_directories() -> list[Path]:
 
 def _runner_worker_active() -> bool:
     try:
-        for process in psutil.process_iter(["name", "cmdline"]):
+        for process in psutil.process_iter(["name"]):
             try:
                 name = str(process.info.get("name") or "").casefold()
-                command = " ".join(str(part) for part in (process.info.get("cmdline") or [])).casefold()
-                if "runner.worker" in name or "runner.worker" in command:
+                if "runner.worker" in name:
                     return True
             except (OSError, psutil.Error):
-                return True
+                continue
     except (OSError, psutil.Error):
         return True
     return False
