@@ -196,10 +196,12 @@ def test_script_state_facades_import_before_project_install_and_outside_reposito
     root = Path(__file__).resolve().parents[1]
     paths_script = root / "scripts" / "autonomous_engineering_state_paths.py"
     lock_script = root / "scripts" / "autonomous_engineering_state_lock.py"
+    file_lock_script = root / "scripts" / "autonomous_engineering_file_lock.py"
     code = (
         "import runpy; "
         f"runpy.run_path({str(paths_script)!r}); "
         f"runpy.run_path({str(lock_script)!r}); "
+        f"runpy.run_path({str(file_lock_script)!r}); "
         "print('shared-state-facades-imported')"
     )
     result = subprocess.run(
@@ -213,3 +215,25 @@ def test_script_state_facades_import_before_project_install_and_outside_reposito
 
     assert result.returncode == 0, result.stderr
     assert "shared-state-facades-imported" in result.stdout
+
+
+def test_dashboard_and_runner_use_the_same_durable_state_lock(tmp_path):
+    from app.autonomous_engineering_state import durable_state_lock as app_lock
+    from scripts.autonomous_engineering_state_lock import durable_state_lock as runner_lock
+
+    with app_lock(tmp_path):
+        with pytest.raises(TimeoutError):
+            with runner_lock(tmp_path, timeout_seconds=0.05):
+                pytest.fail("The Runner must contend on the app's exact durable-state lock.")
+
+
+def test_shared_file_lock_rejects_non_finite_timeout(tmp_path):
+    from app.autonomous_engineering_state import exclusive_file_lock
+
+    with pytest.raises(ValueError, match="finite non-negative"):
+        with exclusive_file_lock(
+            tmp_path / "invalid-timeout.lock",
+            timeout_seconds=float("nan"),
+            timeout_message="unreachable",
+        ):
+            pytest.fail("A non-finite lock timeout must be rejected before acquisition.")
