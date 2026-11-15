@@ -74,16 +74,22 @@ function Get-AutonomousTaskOwnerRecord {
     }
     if ([long]$record.schema_version -eq 2) {
         $reboundAt = 0.0
+        $previousDigest = [string]$record.previous_task_sha256
+        $digestChanged = ($previousDigest -cne [string]$record.task_sha256)
+        $reasonMatchesDigestTransition = (
+            [string]$record.rebind_reason -ceq "owner_authorized_task_content_reconciliation" -and $digestChanged
+        ) -or (
+            [string]$record.rebind_reason -ceq "owner_authorized_failed_run_recovery" -and -not $digestChanged
+        )
         if (
             -not ($record.previous_task_sha256 -is [string]) -or
-            [string]$record.previous_task_sha256 -notmatch '^[0-9a-f]{64}$' -or
-            [string]$record.previous_task_sha256 -ceq [string]$record.task_sha256 -or
+            $previousDigest -notmatch '^[0-9a-f]{64}$' -or
             -not ($record.source -is [string]) -or
             [string]$record.source -cne "recovery" -or
             -not ($record.rebind_reason -is [string]) -or
-            [string]$record.rebind_reason -cne "owner_authorized_task_content_reconciliation" -or
+            -not $reasonMatchesDigestTransition -or
             -not ($record.rebind_authorization_run_id -is [string]) -or
-            [string]$record.rebind_authorization_run_id -notmatch '^[0-9]+$' -or
+            [string]$record.rebind_authorization_run_id -notmatch '^[0-9]{1,20}$' -or
             [string]$record.rebind_authorization_run_id -cne [string]$record.owner_run_id -or
             -not [double]::TryParse([string]$record.rebound_at, [ref]$reboundAt) -or
             [double]::IsNaN($reboundAt) -or [double]::IsInfinity($reboundAt) -or $reboundAt -le 0
