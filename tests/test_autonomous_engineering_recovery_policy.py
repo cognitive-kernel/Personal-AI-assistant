@@ -88,7 +88,7 @@ def test_unknown_historical_failure_blocks_recovery():
         9: [_job("unexpected", "failure", "unknown")],
     }
 
-    with pytest.raises(ValueError, match="Cannot safely classify"):
+    with pytest.raises(ValueError, match="Unknown workflow failure"):
         retryable_failure_streak(runs, jobs, failed_run_id=10)
 
 
