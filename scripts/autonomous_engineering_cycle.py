@@ -647,7 +647,7 @@ if __name__ == "__main__":
                     source_file = Path(frame.filename).name
                 safe_message = str(exc)[:500]
                 safe_message = re.sub(r"(?i)(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})", "[REDACTED]", safe_message)
-                safe_message = re.sub(r"(?i)(authorization:\\s*bearer\\s+)\\S+", r"\\1[REDACTED]", safe_message)
+                safe_message = re.sub(r"(?i)(authorization:\s*bearer\s+)\S+", r"\1[REDACTED]", safe_message)
                 command = [
                     sys.executable, str(repository_root / "scripts" / "autonomous_engineering_progress.py"),
                     "failure", "--run-id", run_id,
