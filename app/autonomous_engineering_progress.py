@@ -4,8 +4,7 @@ from __future__ import annotations
 import json
 import re
 
-from scripts.autonomous_engineering_state_lock import durable_state_lock
-from scripts.autonomous_engineering_state_paths import execution_state_directory
+from .autonomous_engineering_state import durable_state_lock, execution_state_directory
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
