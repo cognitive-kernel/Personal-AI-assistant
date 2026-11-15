@@ -136,7 +136,6 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'href="/ai-learning"' in page
     assert 'href="/autonomous-engineering" aria-current="page"' in page
     assert 'id="dispatch-agent"' in page
-    assert 'id="cancel-agent"' in page
     assert 'id="pause-agent"' in page
     assert 'id="resume-agent"' in page
     assert "OPENAI_API_KEY" not in page
@@ -157,6 +156,7 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="cleanup-storage"' in page
     assert 'id="run-diagnostic"' in page
     assert 'id="diagnostic-location"' in page
+    assert "لغو همین اجرا" in agent_script
     assert "diagnostic.source_file" in agent_script
     assert "cleanup_eligible" in agent_script
     assert 'runs/" + encodeURIComponent' in agent_script
