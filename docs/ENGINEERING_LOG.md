@@ -1910,3 +1910,9 @@ After the operational status and delivery-estimate documentation was synchronize
 
 These are hosted CI results only. Target-host Windows/ACL/sandbox/restart and live Ollama/Codex acceptance remain outstanding.
 
+## 2026-11-15 — Durable task-state lock ACL mismatch
+
+- **Symptom:** The dashboard's pending-work preflight returned `available=false` with `PermissionError`, while the configured `%ProgramData%\PersonalAIAssistant\autonomous-engineering` directory existed and was listable.
+- **Root cause:** Windows provisioning granted the application identity only inherited Read/Execute access on the shared state directory. The Python lock primitive opens `autonomous-durable-state.lock` with `a+b` (read/write) before acquiring the byte-range lock. The directory and marker read checks therefore succeeded, but opening the lock file failed.
+- **Fix:** Provision a narrowly scoped explicit Modify ACL on the lock file for the configured application SID only. Task, owner, pending-PR, cleanup, checkpoint, and progress files remain read-only to that identity. The provisioning helper creates/verifies the lock file ACL for both new and existing Runner installations; no account names or fixed SIDs are embedded.
+- **Regression coverage:** Added Windows provisioning ACL contract coverage and a dispatch-safety regression for lock `PermissionError`. Exact-head CI and Windows target-host acceptance are pending; no persistent task/owner/checkpoint data was read, modified, removed, or reset during this repair.
