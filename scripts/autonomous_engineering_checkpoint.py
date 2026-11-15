@@ -251,7 +251,8 @@ def write_snapshot(
     watcher_pid: int | None = None,
     watcher_started_at: float | None = None,
 ) -> None:
-    with checkpoint_store_lock(store_dir()):
+    state = paths(run_id, task)
+    with checkpoint_store_lock(state["directory"]):
         _write_snapshot_unlocked(
             base_sha, run_id, task, watcher_pid, watcher_started_at,
         )
@@ -263,7 +264,7 @@ def watch(base_sha: str, run_id: str, task: int, interval: int) -> int:
     state["directory"].mkdir(parents=True, exist_ok=True)
     # The watcher owns the checkpoint store for its full lifetime. A second
     # watcher fails immediately instead of stopping or overwriting this owner.
-    with checkpoint_store_lock(store_dir(), timeout_seconds=0):
+    with checkpoint_store_lock(state["directory"], timeout_seconds=0):
         # Reconcile legacy watchers that predate the lifetime lock. A current
         # watcher cannot reach this point while holding the same OS lock.
         stop_existing_watcher(read_metadata(run_id, task))
@@ -410,7 +411,7 @@ def restore(base_sha: str) -> bool:
     metadata, state = latest
     stop_existing_watcher(metadata)
     _atomic_write(state["stop"], "stop\n")
-    with checkpoint_store_lock(store_dir()):
+    with checkpoint_store_lock(state["directory"]):
         current_metadata = read_metadata(str(metadata["run_id"]), int(metadata["task"]))
         if current_metadata is None or current_metadata.get("base_sha") != metadata.get("base_sha"):
             raise RuntimeError("Checkpoint ownership changed during recovery; preserving all checkpoint data.")
