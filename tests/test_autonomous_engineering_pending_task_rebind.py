@@ -309,18 +309,6 @@ def test_powershell_owner_rebind_archives_old_record_and_preserves_submission(tm
 
 
 @pytest.mark.skipif(os.name != "nt", reason="PowerShell task-owner interoperability is Windows-only")
-@pytest.mark.parametrize(
-    ("run_id", "run_attempt", "path", "branch", "status", "conclusion"),
-    [
-        ("200", 1, WORKFLOW_PATH, "main", "in_progress", "failure"),
-        ("200", 1, WORKFLOW_PATH, "main", "completed", "success"),
-        ("200", 1, WORKFLOW_PATH, "main", "completed", "neutral"),
-        ("201", 1, WORKFLOW_PATH, "main", "completed", "failure"),
-        ("200", 2, WORKFLOW_PATH, "main", "completed", "failure"),
-        ("200", 1, ".github/workflows/untrusted.yml", "main", "completed", "failure"),
-        ("200", 1, WORKFLOW_PATH, "feature/branch", "completed", "failure"),
-    ],
-)
 @pytest.mark.skipif(os.name != "nt", reason="PowerShell task-owner interoperability is Windows-only")
 def test_powershell_owner_rebind_allows_same_run_id_with_newer_attempt(tmp_path: Path):
     root = Path(__file__).resolve().parents[1]
@@ -457,6 +445,18 @@ def test_powershell_owner_rebind_rejects_same_or_older_run_attempt(
     assert not list(tmp_path.glob("pending-manual-task-owner.json.quarantine-rebound-*.json"))
 
 
+@pytest.mark.parametrize(
+    ("run_id", "run_attempt", "path", "branch", "status", "conclusion"),
+    [
+        ("200", 1, WORKFLOW_PATH, "main", "in_progress", "failure"),
+        ("200", 1, WORKFLOW_PATH, "main", "completed", "success"),
+        ("200", 1, WORKFLOW_PATH, "main", "completed", "neutral"),
+        ("201", 1, WORKFLOW_PATH, "main", "completed", "failure"),
+        ("200", 2, WORKFLOW_PATH, "main", "completed", "failure"),
+        ("200", 1, ".github/workflows/untrusted.yml", "main", "completed", "failure"),
+        ("200", 1, WORKFLOW_PATH, "feature/branch", "completed", "failure"),
+    ],
+)
 def test_powershell_owner_rebind_rejects_unverified_or_successful_owner_run(
     tmp_path: Path, run_id: str, run_attempt: int, path: str, branch: str, status: str, conclusion: str,
 ):
