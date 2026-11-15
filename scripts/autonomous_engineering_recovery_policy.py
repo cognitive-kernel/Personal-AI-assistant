@@ -58,45 +58,12 @@ def classify_failed_run(jobs: Sequence[Mapping[str, Any]]) -> str:
     return UNKNOWN
 
 
-def retryable_failure_streak(
-    runs: Sequence[Mapping[str, Any]],
-    jobs_by_run: Mapping[int, Sequence[Mapping[str, Any]]],
-    *,
-    failed_run_id: int,
-) -> int:
-    """Count consecutive controller execution failures, ignoring admission rejects.
-
-    Runs must contain the triggering failed run and be ordered newest first.
-    A successful or intentionally cancelled run resets the streak. An unknown
-    failed-run shape raises rather than dispatching recovery on weak evidence.
-    """
-    ordered = sorted(
-        (run for run in runs if run.get("head_branch") == "main"),
-        key=lambda run: int(run.get("run_number", 0)),
-        reverse=True,
-    )
-    start = next(
-        (index for index, run in enumerate(ordered)
-         if int(run.get("id", 0)) == failed_run_id),
-        None,
-    )
-    if start is None:
-        raise ValueError("The triggering failed workflow run is missing from history.")
-
-    streak = 0
-    for run in ordered[start:]:
-        conclusion = run.get("conclusion")
-        if conclusion == "success" or conclusion == "cancelled":
-            break
-        if conclusion not in {"failure", "timed_out"}:
-            continue
-        run_id = int(run.get("id", 0))
-        classification = classify_failed_run(jobs_by_run.get(run_id, ()))
-        if classification in {ADMISSION_REJECTED, NON_EXECUTION}:
-            continue
-        if classification != RETRYABLE:
-            raise ValueError(
-                f"Cannot safely classify failed workflow run {run_id}; recovery is blocked."
-            )
-        streak += 1
-    return streak
+def increment_retryable_failure_streak(streak: int, classification: str) -> int:
+    """Advance the circuit-breaker counter using one classified failed run."""
+    if isinstance(streak, bool) or not isinstance(streak, int) or streak < 0:
+        raise ValueError("Failure streak must be a non-negative integer.")
+    if classification in {ADMISSION_REJECTED, NON_EXECUTION}:
+        return streak
+    if classification == RETRYABLE:
+        return streak + 1
+    raise ValueError("Unknown workflow failure classification; recovery must fail closed.")
