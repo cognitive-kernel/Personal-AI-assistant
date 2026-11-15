@@ -187,3 +187,29 @@ def test_storage_accessible_checks_the_shared_state_directory(monkeypatch, tmp_p
     missing = tmp_path / "missing"
     monkeypatch.setattr(progress, "_progress_dir", lambda: missing)
     assert progress.storage_accessible() is False
+
+
+def test_script_state_facades_import_before_project_install_and_outside_repository_cwd(tmp_path):
+    from pathlib import Path
+    import sys
+
+    root = Path(__file__).resolve().parents[1]
+    paths_script = root / "scripts" / "autonomous_engineering_state_paths.py"
+    lock_script = root / "scripts" / "autonomous_engineering_state_lock.py"
+    code = (
+        "import runpy; "
+        f"runpy.run_path({str(paths_script)!r}); "
+        f"runpy.run_path({str(lock_script)!r}); "
+        "print('shared-state-facades-imported')"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "shared-state-facades-imported" in result.stdout
