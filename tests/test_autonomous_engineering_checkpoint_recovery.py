@@ -80,7 +80,6 @@ def test_clear_preserves_all_checkpoint_files_when_watcher_stop_fails(
 ):
     metadata, paths = _state(tmp_path)
     monkeypatch.setattr(checkpoint, "paths", lambda run_id, task: paths)
-    monkeypatch.setattr(checkpoint, "store_dir", lambda: tmp_path)
     monkeypatch.setattr(checkpoint, "read_metadata", lambda run_id, task: metadata)
 
     def refuse_stop(_metadata):
