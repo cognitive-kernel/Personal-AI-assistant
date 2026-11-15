@@ -129,3 +129,52 @@ def test_main_honors_scheduled_mode_and_durable_pause_before_api_access(monkeypa
     monkeypatch.setenv("EXECUTION_MODE", "continuous")
     monkeypatch.setenv("PAUSED", "true")
     assert recovery.main() == 0
+
+
+def test_history_counter_uses_job_contracts_and_ignores_admission_failures():
+    class FakeClient(recovery.GitHubActionsClient):
+        def __init__(self):
+            pass
+
+        def request(self, method, path, payload=None):
+            assert method == "GET"
+            return {
+                "workflow_runs": [
+                    {"id": 123, "run_number": 10, "head_branch": "main", "conclusion": "failure"},
+                    {"id": 122, "run_number": 9, "head_branch": "main", "conclusion": "failure"},
+                    {"id": 121, "run_number": 8, "head_branch": "main", "conclusion": "success"},
+                ]
+            }
+
+        def jobs(self, run_id):
+            if run_id == 122:
+                return _failed_admission_jobs()
+            raise AssertionError("Current jobs are supplied by the caller.")
+
+    client = FakeClient()
+    assert client.retryable_failure_streak(
+        123,
+        _failed_execution_jobs(),
+    ) == 1
+
+
+def test_history_counter_fails_closed_on_unknown_previous_failure():
+    class FakeClient(recovery.GitHubActionsClient):
+        def __init__(self):
+            pass
+
+        def request(self, method, path, payload=None):
+            return {
+                "workflow_runs": [
+                    {"id": 123, "run_number": 10, "head_branch": "main", "conclusion": "failure"},
+                    {"id": 122, "run_number": 9, "head_branch": "main", "conclusion": "failure"},
+                ]
+            }
+
+        def jobs(self, run_id):
+            return [{"name": "unknown-job", "conclusion": "failure", "steps": []}]
+
+    client = FakeClient()
+    import pytest
+    with pytest.raises(RuntimeError, match="Cannot safely classify failed workflow run 122"):
+        client.retryable_failure_streak(123, _failed_execution_jobs())
