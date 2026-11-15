@@ -153,6 +153,13 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="send-agent-task"' in page
     assert 'id="save-agent-settings"' in page
     assert 'id="storage-state"' in page
+    assert 'id="refresh-storage"' in page
+    assert 'id="cleanup-storage"' in page
+    assert 'id="run-diagnostic"' in page
+    assert 'id="diagnostic-location"' in page
+    assert "diagnostic.source_file" in agent_script
+    assert "cleanup_eligible" in agent_script
+    assert 'runs/" + encodeURIComponent' in agent_script
     assert "checks.progress_storage_accessible" in agent_script
     assert "gpt-oss:20b" not in page
     assert 'هیچ مدل اصلی قابل انتخابی از Ollama شناسایی نشد' in agent_script
