@@ -1,3 +1,23 @@
+## 2026-11-15 — Explicit recovery for task-owner digest conflicts
+
+### Root-cause analysis
+- The durable task file and its owner sidecar are separate records. The owner sidecar binds a normalized task digest to the original submission run and current owner run.
+- When those digests differ, the existing implementation correctly fails closed, but it offers no owner-authorized reconciliation path that preserves the task and proves the prior owner run is terminal.
+- The recorded owner run 43592197032 completed with failure before task execution: Codex could not create its unified execution process because the sandbox setup mutex could not be opened. The latest task-submission rejection was therefore not evidence that the prior task had completed or could be discarded.
+- A digest mismatch must not be treated as a routine stale-owner repair. It is an integrity conflict and needs explicit authorization plus authoritative GitHub evidence.
+
+### Corrective change
+- Add a separate workflow_dispatch input, repair_pending_task_owner, which is mutually exclusive with a new manual task and replace_pending_task.
+- Require the shared durable-state lock and existing workflow admission checks. Verify the exact recorded owner run through GitHub and allow reconciliation only for a completed failure, cancellation, or timeout from the autonomous workflow on main.
+- Preserve pending-manual-task.txt byte-for-byte. Archive the exact old owner-sidecar bytes under a unique quarantine name and write schema-v2 metadata containing the new digest, previous digest, authorization run ID, reason, and timestamp.
+- Restore the original owner record if the replacement write fails. Preserve original submission identity and creation time; advance only the owner identity and claim count.
+- Keep ordinary recovery, owner reconciliation, and task replacement as distinct paths. Scheduled recovery never opts into digest reconciliation.
+- Add Python/PowerShell schema-v2 validation, PowerShell integration coverage, rejection tests for active/successful owner runs, an ADR, and operator documentation.
+
+### Validation boundary
+- The change is on a dedicated branch stacked on PR #761. It is not merged and no live state has been modified.
+- Exact-head CI, PowerShell execution on the Windows Runner, and target-host acceptance remain pending. No task, owner record, checkpoint, Pause value, ACL, secret, or Runner identity was changed.
+
 ## 2026-11-15 — Remove the remaining module-time psutil dependency from the Windows controller import graph
 
 ### Root cause
