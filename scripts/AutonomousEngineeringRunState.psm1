@@ -8,8 +8,8 @@ function Get-AutonomousWorkflowRun {
         [Parameter(Mandatory=$true)][hashtable]$Headers
     )
     if (
-        $Repository -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' -or
-        $RunId -notmatch '^[0-9]{1,20}$' -or
+        $Repository -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\z' -or
+        $RunId -notmatch '^[0-9]{1,20}\z' -or
         $RunAttempt -lt 1
     ) {
         throw "A valid repository, numeric workflow run ID, and positive run attempt are required."
