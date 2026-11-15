@@ -504,8 +504,6 @@ jobs:
           $venvScripts | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
           "AUTONOMOUS_ENGINEERING_PYTHON=$venvPython" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Codex controller interpreter: $venvPython"
-          $venvScripts | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          Write-Host "Codex controller interpreter: $venvPython"
 
       - name: Verify Ollama and a real workspace-confined Codex tool call
         timeout-minutes: 15
