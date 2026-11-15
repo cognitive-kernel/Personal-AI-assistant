@@ -156,14 +156,17 @@ def claim_pending_task_owner_unlocked(
     temporary = owner_path.with_name(
         f"{owner_path.name}.{os.getpid()}.{time.time_ns()}.{uuid.uuid4().hex}.tmp"
     )
+    temporary_created = False
     try:
         with temporary.open("x", encoding="utf-8", newline="\n") as stream:
+            temporary_created = True
             stream.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, owner_path)
     finally:
-        temporary.unlink(missing_ok=True)
+        if temporary_created:
+            temporary.unlink(missing_ok=True)
     return record
 
 
