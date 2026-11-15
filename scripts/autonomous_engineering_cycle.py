@@ -8,6 +8,7 @@ import subprocess
 import sys
 import sysconfig
 import time
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -634,4 +635,33 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except Exception as exc:
         print(f"Autonomous engineering cycle failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        run_id = os.environ.get("GITHUB_RUN_ID", "")
+        if run_id.isdigit():
+            frames = traceback.extract_tb(exc.__traceback__)
+            frame = frames[-1] if frames else None
+            if frame:
+                repository_root = Path(__file__).resolve().parents[1]
+                try:
+                    source_file = Path(frame.filename).resolve().relative_to(repository_root).as_posix()
+                except (OSError, ValueError):
+                    source_file = Path(frame.filename).name
+                safe_message = str(exc)[:500]
+                safe_message = re.sub(r"(?i)(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})", "[REDACTED]", safe_message)
+                safe_message = re.sub(r"(?i)(authorization:\\s*bearer\\s+)\\S+", r"\\1[REDACTED]", safe_message)
+                command = [
+                    sys.executable, str(repository_root / "scripts" / "autonomous_engineering_progress.py"),
+                    "failure", "--run-id", run_id,
+                    "--run-attempt", os.environ.get("GITHUB_RUN_ATTEMPT", "1"),
+                    "--error-type", type(exc).__name__,
+                    "--message", safe_message,
+                    "--source-file", source_file,
+                    "--line", str(frame.lineno),
+                    "--function", frame.name,
+                ]
+                try:
+                    persisted = subprocess.run(command, cwd=repository_root, capture_output=True, text=True, timeout=8, check=False)
+                    if persisted.returncode != 0:
+                        print("Could not persist structured failure location to dashboard telemetry.", file=sys.stderr)
+                except (OSError, subprocess.TimeoutExpired):
+                    print("Could not persist structured failure location to dashboard telemetry.", file=sys.stderr)
         raise SystemExit(1)
