@@ -8,6 +8,8 @@ def test_recovery_workflow_checks_out_trusted_policy_and_invokes_it():
     ).read_text(encoding="utf-8")
 
     assert "workflow_run:" in workflow
+    assert "jobs:\n  recover:" in workflow
+    assert "    steps:\n      - name: Check out trusted main recovery policy" in workflow
     assert "actions: write" in workflow
     assert "contents: read" in workflow
     assert "actions/checkout@" in workflow
