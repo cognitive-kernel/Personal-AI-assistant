@@ -205,7 +205,7 @@ function Write-AutonomousTaskOwnerRecord {
     if ([string]::IsNullOrWhiteSpace($Task) -or $Task.Length -gt 2000 -or $Task.IndexOf([char]0) -ge 0) {
         throw "Pending task violates the task text contract."
     }
-    if ($RunId -notmatch '^[A-Za-z0-9_.-]{1,128}$' -or $RunAttempt -lt 1) {
+    if ($RunId -cnotmatch '^[0-9]{1,20}\z' -or $RunAttempt -lt 1) {
         throw "A valid workflow run ID and positive attempt are required."
     }
     $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0
