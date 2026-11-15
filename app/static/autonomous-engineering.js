@@ -426,7 +426,13 @@
         if (diagnostic) {
           $("diagnostic-job").textContent = "Job: " + String(diagnostic.job || "نامشخص") + " · Run: #" + String(diagnostic.run_id || current.run_id || "—");
           $("diagnostic-step").textContent = "مرحله: " + String(diagnostic.step || "جزئیات مرحله در دسترس نیست");
-          $("diagnostic-message").textContent = String(diagnostic.message || "گزارش خطا موجود نیست.");
+          const location = diagnostic.source_file
+            ? "محل کد: " + String(diagnostic.source_file) + (Number(diagnostic.line) > 0 ? ":" + Number(diagnostic.line) : "") +
+              (diagnostic.function ? " · تابع: " + String(diagnostic.function) : "")
+            : "محل کد: برای این نوع شکست، GitHub فقط نام مرحله را گزارش کرده است.";
+          $("diagnostic-location").textContent = location;
+          $("diagnostic-message").textContent = (diagnostic.error_type ? String(diagnostic.error_type) + ": " : "") +
+            String(diagnostic.message || "گزارش خطا موجود نیست.");
           const link = $("diagnostic-link");
           if (typeof diagnostic.job_url === "string" && diagnostic.job_url.startsWith("https://github.com/")) {
             link.href = diagnostic.job_url; link.hidden = false;
