@@ -121,8 +121,8 @@
   </div>
   <p id="storage-summary" class="hint">در انتظار بررسی فایل‌های موقت شناخته‌شده…</p>
   <div id="storage-files" class="run-list" aria-live="polite"></div>
-  <div class="toolbar"><button id="cleanup-storage" type="button" class="secondary">پاک‌سازی فایل‌های موقت قدیمی‌تر از ۲۴ ساعت</button></div>
-  <p class="hint">پاک‌سازی فقط فایل‌های موقت متعلق به عامل را هدف می‌گیرد؛ فایل‌های task، checkpoint، تنظیمات، لاگ‌های اصلی و داده‌های کاربر حذف نمی‌شوند. هنگام وجود اجرای فعال، پاک‌سازی مسدود است. حذف سابقهٔ GitHub از دکمهٔ همان اجرای پایان‌یافته انجام می‌شود.</p>
+  <div class="toolbar"><button id="cleanup-storage" type="button" class="secondary">پاک‌سازی فایل‌های موقت Runner و *.tmp قدیمی‌تر از ۲۴ ساعت</button></div>
+  <p class="hint">پاک‌سازی فایل‌های مستقیم پوشهٔ موقت اختصاصی Runner و فایل‌های *.tmp قدیمی‌تر از ۲۴ ساعت را حذف می‌کند؛ پوشهٔ _diag فقط برای مشاهده است. فایل‌های task، checkpoint، تنظیمات و داده‌های کاربر حذف نمی‌شوند. تا وقتی هر Job یا فرایند Runner.Worker فعال باشد، پاک‌سازی مسدود است. حذف سابقهٔ GitHub از دکمهٔ همان اجرای پایان‌یافته انجام می‌شود.</p>
   <p id="storage-message" role="status" aria-live="polite"></p>
 </div>
 </section>
