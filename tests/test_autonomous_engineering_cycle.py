@@ -385,9 +385,10 @@ def test_publish_pull_request_leaves_exact_sha_validated_pr_open_for_owner_merge
     assert "\\n" not in created_payload["body"]
     assert cycle.load_pending_pr()["number"] == 12
 
-def test_publish_pull_request_rejects_non_controller_authored_pr(monkeypatch: pytest.MonkeyPatch):
+def test_publish_pull_request_rejects_non_controller_authored_pr(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     base_sha = "b" * 40
     head_sha = "c" * 40
+    monkeypatch.setattr(cycle, "execution_state_directory", lambda: tmp_path / "state")
     pr = {
         "number": 14,
         "draft": False,
@@ -414,11 +415,12 @@ def test_publish_pull_request_rejects_non_controller_authored_pr(monkeypatch: py
 
 
 def test_publish_pull_request_rejects_head_changed_after_exact_sha_checks(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ):
     base_sha = "b" * 40
     head_sha = "c" * 40
     changed_sha = "d" * 40
+    monkeypatch.setattr(cycle, "execution_state_directory", lambda: tmp_path / "state")
     pr = {
         "number": 13,
         "draft": False,
