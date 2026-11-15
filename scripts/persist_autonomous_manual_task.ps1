@@ -319,8 +319,13 @@ try {
         }
         $verifiedOwnerRun = Get-AutonomousWorkflowRun -Repository $env:GH_REPO -RunId $recordedOwnerRunId -RunAttempt $recordedOwnerAttempt -Headers $headers
         Assert-AutonomousWorkflowRunRebindable -Run $verifiedOwnerRun -ExpectedRunId $recordedOwnerRunId -ExpectedRunAttempt $recordedOwnerAttempt
-        $reboundOwnerRecord = Rebind-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $existingTask -RunId ([string]$env:GITHUB_RUN_ID) -RunAttempt $rebindRunAttempt -VerifiedOwnerRun $verifiedOwnerRun
-        Write-Warning "The existing task text was preserved. Its mismatched owner record was archived and explicitly rebound after GitHub verified the previous owner run had failed."
+        if ([long]$ownerMetadata.schema_version -eq 2) {
+            $reboundOwnerRecord = Resume-AutonomousTaskOwnerRebindAttempt -Path $taskOwnerPath -Task $existingTask -RunId ([string]$env:GITHUB_RUN_ID) -RunAttempt $rebindRunAttempt -VerifiedOwnerRun $verifiedOwnerRun
+            Write-Warning "The existing task text and original rebind audit were preserved. A later attempt of the same verified repair run resumed ownership."
+        } else {
+            $reboundOwnerRecord = Rebind-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $existingTask -RunId ([string]$env:GITHUB_RUN_ID) -RunAttempt $rebindRunAttempt -VerifiedOwnerRun $verifiedOwnerRun
+            Write-Warning "The existing task text was preserved. Its mismatched owner record was archived and explicitly rebound after GitHub verified the previous owner run had failed."
+        }
     }
 
     # Reconcile authoritative GitHub PR state before deciding whether a different task may replace the pending task.
