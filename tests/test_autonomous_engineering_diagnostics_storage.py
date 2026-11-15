@@ -149,8 +149,8 @@ def test_delete_run_refuses_active_runs(monkeypatch):
         calls.append(command)
         if command[1:3] == ["auth", "status"]:
             return subprocess.CompletedProcess(command, 0, "", "")
-        if command[1:3] == ["run", "view"]:
-            return subprocess.CompletedProcess(command, 0, json.dumps({"status": "in_progress"}), "")
+        if command[1:3] == ["api", "repos/cognitive-kernel/Personal-AI-assistant/actions/runs/456"]:
+            return subprocess.CompletedProcess(command, 0, json.dumps({"status": "in_progress", "path": ".github/workflows/autonomous-codex-engineering.yml"}), "")
         raise AssertionError("Active run must never be deleted.")
 
     monkeypatch.setattr(agent, "_run", fake_run)
@@ -169,8 +169,8 @@ def test_delete_run_removes_only_a_confirmed_completed_run(monkeypatch):
         calls.append(command)
         if command[1:3] == ["auth", "status"]:
             return subprocess.CompletedProcess(command, 0, "", "")
-        if command[1:3] == ["run", "view"]:
-            return subprocess.CompletedProcess(command, 0, json.dumps({"status": "completed", "conclusion": "success"}), "")
+        if command[1:3] == ["api", "repos/cognitive-kernel/Personal-AI-assistant/actions/runs/789"]:
+            return subprocess.CompletedProcess(command, 0, json.dumps({"status": "completed", "conclusion": "success", "path": ".github/workflows/autonomous-codex-engineering.yml"}), "")
         if command[1:3] == ["run", "delete"]:
             return subprocess.CompletedProcess(command, 0, "", "")
         raise AssertionError(command)
