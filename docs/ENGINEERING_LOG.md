@@ -8,7 +8,7 @@
 
 ### Corrective changes
 - Keep task admission, explicit task replacement, ordinary same-digest recovery, and owner-authorized recovery as separate operations. No task replacement is enabled by this change.
-- Extend the opt-in owner recovery path to support both a verified failed-owner transfer with an unchanged digest and a verified task/owner digest reconciliation. Each schema-v2 reason is bound to the corresponding digest transition; ambiguous or contradictory audit metadata is rejected.
+- Keep the explicit owner-repair path narrowly scoped to a real task/owner digest mismatch. When the digest already matches, ordinary recovery claims the owner lease; the repair operation must reject an unnecessary rebind. Schema v2 therefore requires a changed previous/current digest and the single matching reconciliation reason.
 - Align Python and PowerShell schema-v2 validation: numeric GitHub run identifiers, recovery-only source, authorization run equal to the new owner, valid previous digest, finite timestamp, and a reason consistent with whether the digest changed.
 - Stage the replacement owner record with an exclusive temporary file, flush it to disk, validate the exact staged record through the shared PowerShell validator, then atomically replace the live sidecar while preserving the original bytes in a unique quarantine file.
 - Add regression cases for valid unchanged-digest recovery, digest reconciliation, mismatched authorization IDs, malformed run IDs, wrong recovery source, equal/unequal digest-reason contradictions, and PowerShell interoperability.
