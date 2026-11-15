@@ -68,7 +68,7 @@ def test_job_timeout_without_failed_step_is_unknown_not_guessed_as_execution():
 
 def test_ambiguous_failed_job_shape_fails_closed():
     assert classify_failed_run([_job("unknown-job", "failure", "some step")]) == UNKNOWN
-    assert classify_failed_run([_job("codex", "failure")]) == NON_EXECUTION
+    assert classify_failed_run([_job("codex", "failure")]) == UNKNOWN
 
 
 def test_failure_streak_ignores_admission_and_preflight_failures():
