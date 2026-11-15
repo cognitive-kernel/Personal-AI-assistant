@@ -38,7 +38,7 @@ function Assert-AutonomousWorkflowRunRebindable {
         [string]$Run.path -cne ".github/workflows/autonomous-codex-engineering.yml" -or
         [string]$Run.head_branch -cne "main" -or
         [string]$Run.status -cne "completed" -or
-        [string]$Run.conclusion -notin @("failure", "cancelled", "timed_out")
+        [string]$Run.conclusion -cnotin @("failure", "cancelled", "timed_out")
     ) {
         throw "Task ownership cannot be rebound: GitHub has not verified the exact owner run attempt as a terminal unsuccessful main-branch execution."
     }
