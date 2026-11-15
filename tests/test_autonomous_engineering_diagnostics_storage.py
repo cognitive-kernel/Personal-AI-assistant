@@ -5,6 +5,9 @@ import os
 import subprocess
 import time
 
+import pytest
+from fastapi import HTTPException
+
 from app import autonomous_engineering as agent
 from app import autonomous_engineering_storage as storage
 
@@ -136,3 +139,44 @@ def test_record_failure_persists_relative_source_location(monkeypatch, tmp_path)
     assert current["diagnostic"]["source_file"] == "scripts/autonomous_engineering_cycle.py"
     assert current["diagnostic"]["line"] == 321
     assert current["diagnostic"]["function"] == "run_cycle"
+
+
+def test_delete_run_refuses_active_runs(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    def fake_run(command, timeout=8):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "view"]:
+            return subprocess.CompletedProcess(command, 0, json.dumps({"status": "in_progress"}), "")
+        raise AssertionError("Active run must never be deleted.")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    with pytest.raises(HTTPException) as error:
+        agent.delete_autonomous_engineering_run("456")
+
+    assert error.value.status_code == 409
+    assert all(command[1:3] != ["run", "delete"] for command in calls)
+
+
+def test_delete_run_removes_only_a_confirmed_completed_run(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    def fake_run(command, timeout=8):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "view"]:
+            return subprocess.CompletedProcess(command, 0, json.dumps({"status": "completed", "conclusion": "success"}), "")
+        if command[1:3] == ["run", "delete"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    result = agent.delete_autonomous_engineering_run("789")
+
+    assert result["deleted"] is True
+    assert calls[-1][1:4] == ["run", "delete", "789"]
