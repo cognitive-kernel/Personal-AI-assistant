@@ -370,16 +370,18 @@ try {
         }
     }
 
-    $ownerSource = if ($repairPendingTaskOwner) { "recovery" } elseif ($existingTaskFound) { "legacy_migration" } else { "manual_dispatch" }
-    $ownerArgs = @{
-        Path = $taskOwnerPath
-        Task = $manualTask
-        RunId = [string]$env:GITHUB_RUN_ID
-        RunAttempt = $runAttempt
-        Source = $ownerSource
-        Existing = $ownerRecord
+    if (-not $repairPendingTaskOwner) {
+        $ownerSource = if ($existingTaskFound) { "legacy_migration" } else { "manual_dispatch" }
+        $ownerArgs = @{
+            Path = $taskOwnerPath
+            Task = $manualTask
+            RunId = [string]$env:GITHUB_RUN_ID
+            RunAttempt = $runAttempt
+            Source = $ownerSource
+            Existing = $ownerRecord
+        }
+        $null = Write-AutonomousTaskOwnerRecord @ownerArgs
     }
-    $null = Write-AutonomousTaskOwnerRecord @ownerArgs
 
     Write-Host "Manual task persisted to the durable runner state before prerequisite checks."
     $replacementBackups = $null
