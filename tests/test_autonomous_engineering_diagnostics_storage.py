@@ -16,6 +16,7 @@ def test_storage_inventory_lists_runner_temp_files_and_state_temps(monkeypatch, 
     state.mkdir()
     runner_temp.mkdir(parents=True)
     (state / "current.json.tmp").write_text("state", encoding="utf-8")
+    (state / "events.jsonl").write_text("event", encoding="utf-8")
     (runner_temp / "codex-report-7.md").write_text("report", encoding="utf-8")
     (runner_temp / "unrelated-user-file.tmp").write_text("keep", encoding="utf-8")
     monkeypatch.setattr(storage, "execution_state_directory", lambda: state)
@@ -25,10 +26,12 @@ def test_storage_inventory_lists_runner_temp_files_and_state_temps(monkeypatch, 
 
     names = {item["name"] for item in result["files"]}
     assert "current.json.tmp" in names
+    assert "events.jsonl" in names
     assert "codex-report-7.md" in names
     assert "unrelated-user-file.tmp" in names
-    assert result["file_count"] == 3
+    assert result["file_count"] == 4
     assert next(item for item in result["files"] if item["name"] == "codex-report-7.md")["cleanup_eligible"] is False
+    assert next(item for item in result["files"] if item["name"] == "events.jsonl")["cleanup_eligible"] is False
 
 
 def test_cleanup_removes_stale_temp_and_only_old_runner_diagnostic_logs(monkeypatch, tmp_path):
