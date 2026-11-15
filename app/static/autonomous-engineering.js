@@ -3,7 +3,6 @@
   const $ = (id) => document.getElementById(id);
   const message = $("agent-message");
   const dispatchButton = $("dispatch-agent");
-  const cancelButton = $("cancel-agent");
   const pauseButton = $("pause-agent");
   const resumeButton = $("resume-agent");
   const saveButton = $("save-agent-settings");
@@ -204,7 +203,6 @@
         ["queued", "in_progress", "waiting", "requested", "pending"].includes(run.status));
       dispatchButton.disabled = !canDispatch || active;
       taskButton.disabled = !canDispatch || active;
-      cancelButton.disabled = !active;
       pauseButton.disabled = Boolean(data.paused);
       resumeButton.disabled = !data.paused;
       renderRuns(data.github && data.github.recent_runs);
@@ -213,7 +211,6 @@
       setMessage(error.message || "دریافت وضعیت با خطا مواجه شد.", "error");
       dispatchButton.disabled = true;
       taskButton.disabled = true;
-      cancelButton.disabled = true;
       pauseButton.disabled = true;
       resumeButton.disabled = true;
     } finally {
@@ -302,17 +299,6 @@
     } catch (error) {
       setMessage(error.message, "error");
       resumeButton.disabled = false;
-    }
-  });
-  cancelButton.addEventListener("click", async () => {
-    if (!window.confirm("اجرای فعال عامل در GitHub Actions لغو شود؟")) return;
-    cancelButton.disabled = true;
-    try {
-      const result = await request("cancel", {method: "POST"});
-      setMessage(result.message || "درخواست لغو ارسال شد.", "success");
-      window.setTimeout(refresh, 1500);
-    } catch (error) {
-      setMessage(error.message, "error");
     }
   });
 
