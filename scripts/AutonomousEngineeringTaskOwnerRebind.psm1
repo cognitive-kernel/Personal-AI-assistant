@@ -22,7 +22,7 @@ function Rebind-AutonomousTaskOwnerRecord {
         [string]$VerifiedOwnerRun.path -cne ".github/workflows/autonomous-codex-engineering.yml" -or
         [string]$VerifiedOwnerRun.head_branch -cne "main" -or
         [string]$VerifiedOwnerRun.status -cne "completed" -or
-        [string]$VerifiedOwnerRun.conclusion -notin @("failure", "cancelled", "timed_out")
+        [string]$VerifiedOwnerRun.conclusion -cnotin @("failure", "cancelled", "timed_out")
     ) {
         throw "The previous owner run is not verified as a terminal unsuccessful main-branch execution."
     }
@@ -53,7 +53,7 @@ function Rebind-AutonomousTaskOwnerRecord {
         $existing.schema_version -is [bool] -or
         -not ($existing.schema_version -is [int] -or $existing.schema_version -is [long]) -or
         [long]$existing.schema_version -ne 1 -or
-        $oldDigest -notmatch '^[0-9a-f]{64}\z' -or
+        $oldDigest -cnotmatch '^[0-9a-f]{64}\z' -or
         [string]$existing.owner_run_id -cne [string]$VerifiedOwnerRun.id -or
         [string]$existing.owner_run_id -notmatch '^[0-9]{1,20}\z' -or
         -not [int]::TryParse([string]$existing.submitted_attempt, [ref]$submittedAttempt) -or $submittedAttempt -lt 1 -or
@@ -63,7 +63,7 @@ function Rebind-AutonomousTaskOwnerRecord {
         [double]::IsNaN($createdAt) -or [double]::IsInfinity($createdAt) -or $createdAt -le 0 -or
         -not [double]::TryParse([string]$existing.claimed_at, [ref]$claimedAt) -or
         [double]::IsNaN($claimedAt) -or [double]::IsInfinity($claimedAt) -or $claimedAt -le 0 -or
-        [string]$existing.source -notin @("manual_dispatch", "recovery", "legacy_migration")
+        [string]$existing.source -cnotin @("manual_dispatch", "recovery", "legacy_migration")
     ) {
         throw "Pending task owner metadata is not structurally valid schema v1; preserving it."
     }
