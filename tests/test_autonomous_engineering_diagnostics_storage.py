@@ -10,7 +10,7 @@ from app import autonomous_engineering as agent
 from app import autonomous_engineering_storage as storage
 
 
-def test_storage_inventory_finds_owned_state_and_runner_temp_files(monkeypatch, tmp_path):
+def test_storage_inventory_lists_runner_temp_files_and_state_temps(monkeypatch, tmp_path):
     state = tmp_path / "state"
     runner_temp = tmp_path / "runner" / "_work" / "_temp"
     state.mkdir()
@@ -26,8 +26,8 @@ def test_storage_inventory_finds_owned_state_and_runner_temp_files(monkeypatch, 
     names = {item["name"] for item in result["files"]}
     assert "current.json.tmp" in names
     assert "codex-report-7.md" in names
-    assert "unrelated-user-file.tmp" not in names
-    assert result["file_count"] == 2
+    assert "unrelated-user-file.tmp" in names
+    assert result["file_count"] == 3
     assert next(item for item in result["files"] if item["name"] == "codex-report-7.md")["cleanup_eligible"] is False
 
 
