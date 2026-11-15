@@ -207,3 +207,19 @@ def test_early_workflow_failure_is_visible_without_local_progress_record(monkeyp
 
     assert result["current"]["run_id"] == "321"
     assert result["current"]["diagnostic"]["step"] == "Install dependencies"
+
+
+def test_early_failure_still_has_visible_reason_when_github_job_api_is_unavailable(monkeypatch):
+    monkeypatch.setattr(agent, "get_progress", lambda **kwargs: {"current": None})
+    monkeypatch.setattr(agent, "_recent_github_runs", lambda: [{
+        "id": 654, "status": "completed", "conclusion": "failure",
+        "created_at": "2026-11-15T12:00:00Z",
+        "url": "https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/654",
+    }])
+    monkeypatch.setattr(agent.shutil, "which", lambda _: None)
+
+    result = agent.autonomous_engineering_progress()
+
+    assert result["current"]["status"] == "failed"
+    assert result["current"]["diagnostic"]["run_id"] == "654"
+    assert result["current"]["diagnostic"]["job_url"].endswith("/runs/654")
