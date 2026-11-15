@@ -28,8 +28,6 @@ def task_digest(task: str) -> str:
 def _validate_owner_record(record: Any, task: str) -> dict[str, Any]:
     if not isinstance(record, dict):
         raise RuntimeError("Pending task owner metadata must be a JSON object.")
-    integer_fields = ("owner_attempt", "submitted_attempt", "claim_count")
-    timestamp_fields = ("created_at", "claimed_at")
     schema_version = record.get("schema_version")
     integer_fields = ("owner_attempt", "submitted_attempt", "claim_count")
     timestamp_fields = ("created_at", "claimed_at")
