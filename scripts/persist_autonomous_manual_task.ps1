@@ -303,11 +303,17 @@ try {
             throw "The existing task-owner record cannot be read safely; preserving all state."
         }
         $recordedOwnerRunId = [string]$ownerMetadata.owner_run_id
-        if ($recordedOwnerRunId -notmatch '^[0-9]+$' -or $recordedOwnerRunId -ceq [string]$env:GITHUB_RUN_ID) {
-            throw "The recorded owner run ID is invalid or refers to the current run; preserving all state."
+        $recordedOwnerAttempt = 0
+        if (
+            $recordedOwnerRunId -notmatch '^[0-9]+$' -or
+            $recordedOwnerRunId -ceq [string]$env:GITHUB_RUN_ID -or
+            -not [int]::TryParse([string]$ownerMetadata.owner_attempt, [ref]$recordedOwnerAttempt) -or
+            $recordedOwnerAttempt -lt 1
+        ) {
+            throw "The recorded owner run ID or attempt is invalid; preserving all state."
         }
-        $verifiedOwnerRun = Get-AutonomousWorkflowRun -Repository $env:GH_REPO -RunId $recordedOwnerRunId -Headers $headers
-        Assert-AutonomousWorkflowRunRebindable -Run $verifiedOwnerRun -ExpectedRunId $recordedOwnerRunId
+        $verifiedOwnerRun = Get-AutonomousWorkflowRun -Repository $env:GH_REPO -RunId $recordedOwnerRunId -RunAttempt $recordedOwnerAttempt -Headers $headers
+        Assert-AutonomousWorkflowRunRebindable -Run $verifiedOwnerRun -ExpectedRunId $recordedOwnerRunId -ExpectedRunAttempt $recordedOwnerAttempt
         $reboundOwnerRecord = Rebind-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $existingTask -RunId ([string]$env:GITHUB_RUN_ID) -RunAttempt $rebindRunAttempt -VerifiedOwnerRun $verifiedOwnerRun
         Write-Warning "The existing task text was preserved. Its mismatched owner record was archived and explicitly rebound after GitHub verified the previous owner run had failed."
     }
