@@ -1,12 +1,17 @@
 $ErrorActionPreference = "Stop"
 Import-Module (Join-Path $PSScriptRoot "AutonomousEngineeringTaskState.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "AutonomousEngineeringRunState.psm1") -Force
 
 $manualTask = [string]$env:MANUAL_TASK
 $replacePendingTask = ([string]$env:REPLACE_PENDING_TASK -ceq "true")
-if ([string]::IsNullOrWhiteSpace($manualTask)) {
-    throw "Manual engineering task must not be empty or whitespace."
+$repairPendingTaskOwner = ([string]$env:REPAIR_PENDING_TASK_OWNER -ceq "true")
+if ([string]::IsNullOrWhiteSpace($manualTask) -and -not $repairPendingTaskOwner) {
+    throw "Manual engineering task must not be empty unless an explicit owner-record reconciliation was requested."
 }
-if ($manualTask.Length -gt 2000 -or $manualTask.IndexOf([char]0) -ge 0) {
+if ($repairPendingTaskOwner -and (-not [string]::IsNullOrWhiteSpace($manualTask) -or $replacePendingTask)) {
+    throw "Owner-record reconciliation must not be combined with a new task or task replacement."
+}
+if (-not [string]::IsNullOrWhiteSpace($manualTask) -and ($manualTask.Length -gt 2000 -or $manualTask.IndexOf([char]0) -ge 0)) {
     throw "Manual engineering task must be at most 2000 characters and contain no NUL bytes."
 }
 if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN) -or [string]::IsNullOrWhiteSpace($env:GH_REPO) -or [string]::IsNullOrWhiteSpace($env:GITHUB_RUN_ID)) {
@@ -272,8 +277,126 @@ try {
         }
     }
 
+    # Rebind only owner metadata after explicit authorization and authoritative terminal-run verification.
+    $reboundOwnerRecord = $null
+    if ($repairPendingTaskOwner) {
+        if (-not $existingTaskFound -or [string]::IsNullOrWhiteSpace($existingTask)) {
+            throw "Owner-record reconciliation requires an existing non-empty durable task; preserving all state."
+        }
+        if (-not (Test-Path -LiteralPath $taskOwnerPath -PathType Leaf)) {
+            throw "Owner-record reconciliation requires the existing owner record; preserving the task."
+        }
+        $manualTask = $existingTask
+        try {
+            $ownerRaw = [System.IO.File]::ReadAllText($taskOwnerPath, [System.Text.Encoding]::UTF8)
+            $ownerMetadata = $ownerRaw | ConvertFrom-Json -ErrorAction Stop
+        } catch {
+            throw "The existing task-owner record cannot be read safely; preserving all state."
+        }
+        $recordedOwnerRunId = [string]$ownerMetadata.owner_run_id
+        if ($recordedOwnerRunId -notmatch '^[0-9]{1,20}
+        if (-not $replacePendingTask) {
+            throw "Another manual task is still pending. To explicitly abandon it while no autonomous PR is open, dispatch with replace_pending_task=true."
+        }
+        $replacementStamp = "$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT)-$([guid]::NewGuid().ToString('N'))"
+        $taskBackupPath = "$pendingPath.quarantine-$replacementStamp.txt"
+        $ownerBackupPath = "$taskOwnerPath.quarantine-$replacementStamp.json"
+        $replacementBackups = @{ Task = $null; Owner = $null }
+        try {
+            Move-Item -LiteralPath $pendingPath -Destination $taskBackupPath -ErrorAction Stop
+            $replacementBackups.Task = $taskBackupPath
+            if (Test-Path -LiteralPath $taskOwnerPath -PathType Leaf) {
+                Move-Item -LiteralPath $taskOwnerPath -Destination $ownerBackupPath -ErrorAction Stop
+                $replacementBackups.Owner = $ownerBackupPath
+            }
+        } catch {
+            if ($replacementBackups.Task -and (Test-Path -LiteralPath $replacementBackups.Task)) {
+                Move-Item -LiteralPath $replacementBackups.Task -Destination $pendingPath -ErrorAction SilentlyContinue
+            }
+            throw "The previous pending task could not be quarantined atomically; its original state was preserved. $($_.Exception.Message)"
+        }
+        $existingTaskFound = $false
+        $existingTask = ""
+        Write-Warning "The previous pending task and owner metadata were preserved in quarantine by explicit owner authorization."
+    }
+
+    $runAttempt = 0
+    if (-not [int]::TryParse([string]$env:GITHUB_RUN_ATTEMPT, [ref]$runAttempt) -or $runAttempt -lt 1) {
+        throw "Workflow run attempt is invalid; refusing to claim the pending task."
+    }
+    if ($existingTaskFound) {
+        if ($repairPendingTaskOwner) {
+            $ownerRecord = $reboundOwnerRecord
+        } else {
+            $ownerRecord = Repair-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $existingTask -RunId ([string]$env:GITHUB_RUN_ID) -RunAttempt $runAttempt -Source "legacy_migration"
+        }
+    } else {
+        $ownerRecord = Get-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task ""
+        if ($null -ne $ownerRecord) {
+            throw "Pending task owner metadata exists without its task; preserving unknown state."
+        }
+    }
+
+    if (-not $existingTaskFound) {
+        $temporaryPath = Join-Path $stateDir ("pending-manual-task-" + $env:GITHUB_RUN_ID + "-" + $env:GITHUB_RUN_ATTEMPT + ".tmp")
+        try {
+            [System.IO.File]::WriteAllText(
+                $temporaryPath, $manualTask, [System.Text.UTF8Encoding]::new($false)
+            )
+            Move-Item -LiteralPath $temporaryPath -Destination $pendingPath -Force
+        } finally {
+            if (Test-Path -LiteralPath $temporaryPath) {
+                Remove-Item -LiteralPath $temporaryPath -Force
+            }
+        }
+    }
+
+    $ownerSource = if ($repairPendingTaskOwner) { "recovery" } elseif ($existingTaskFound) { "legacy_migration" } else { "manual_dispatch" }
+    $ownerArgs = @{
+        Path = $taskOwnerPath
+        Task = $manualTask
+        RunId = [string]$env:GITHUB_RUN_ID
+        RunAttempt = $runAttempt
+        Source = $ownerSource
+        Existing = $ownerRecord
+    }
+    $null = Write-AutonomousTaskOwnerRecord @ownerArgs
+
+    Write-Host "Manual task persisted to the durable runner state before prerequisite checks."
+    $replacementBackups = $null
+} catch {
+    if ($null -ne $replacementBackups) {
+        if ($replacementBackups.Task -and (Test-Path -LiteralPath $replacementBackups.Task)) {
+            if (Test-Path -LiteralPath $pendingPath) {
+                Remove-Item -LiteralPath $pendingPath -Force -ErrorAction SilentlyContinue
+            }
+            Move-Item -LiteralPath $replacementBackups.Task -Destination $pendingPath -ErrorAction SilentlyContinue
+        }
+        if ($replacementBackups.Owner -and (Test-Path -LiteralPath $replacementBackups.Owner)) {
+            if (Test-Path -LiteralPath $taskOwnerPath) {
+                Remove-Item -LiteralPath $taskOwnerPath -Force -ErrorAction SilentlyContinue
+            }
+            Move-Item -LiteralPath $replacementBackups.Owner -Destination $taskOwnerPath -ErrorAction SilentlyContinue
+        }
+    }
+    throw
+} finally {
+    if ($stateLockOwned) {
+        $stateLockStream.Unlock(0, 1)
+    }
+    $stateLockStream.Dispose()
+}
+ -or $recordedOwnerRunId -ceq [string]$env:GITHUB_RUN_ID) {
+            throw "The recorded owner run ID is invalid or refers to the current run; preserving all state."
+        }
+        $verifiedOwnerRun = Get-AutonomousWorkflowRun -Repository $env:GH_REPO -RunId $recordedOwnerRunId -Headers $headers
+        Assert-AutonomousWorkflowRunRebindable -Run $verifiedOwnerRun -ExpectedRunId $recordedOwnerRunId
+        $reboundOwnerRecord = Rebind-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $existingTask -RunId ([string]$env:GITHUB_RUN_ID) -RunAttempt $runAttempt -VerifiedOwnerRun $verifiedOwnerRun
+        Write-Warning "The existing task text was preserved. Its mismatched owner record was archived and explicitly rebound after GitHub verified the previous owner run had failed."
+    }
+
     # Reconcile authoritative GitHub PR state before deciding whether a different task may replace the pending task.
-    if ($existingTask -and ($existingTask -cne $manualTask -or $replacePendingTask)) {
+    if (-not $repairPendingTaskOwner -and $existingTask -and ($existingTask -cne $manualTask -or $replacePendingTask)) {
         if (-not $replacePendingTask) {
             throw "Another manual task is still pending. To explicitly abandon it while no autonomous PR is open, dispatch with replace_pending_task=true."
         }
