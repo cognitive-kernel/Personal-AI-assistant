@@ -209,6 +209,7 @@ def test_powershell_validator_rejects_inconsistent_schema_v2_audit(
         "previous_task_sha256": "a" * 64,
         "rebind_reason": "owner_authorized_task_content_reconciliation",
         "rebind_authorization_run_id": "200",
+        "rebind_authorization_run_attempt": 1,
         "rebound_at": now,
     }
     mutation(record)
