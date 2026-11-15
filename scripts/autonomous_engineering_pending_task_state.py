@@ -63,12 +63,20 @@ def _validate_owner_record(record: Any, task: str) -> dict[str, Any]:
         rebound_at = record.get("rebound_at")
         previous_digest = record.get("previous_task_sha256")
         authorization_run_id = record.get("rebind_authorization_run_id")
+        rebind_reason = record.get("rebind_reason")
+        digest_changed = previous_digest != record["task_sha256"]
+        reason_matches_digest_transition = (
+            rebind_reason == "owner_authorized_task_content_reconciliation"
+            and digest_changed
+        ) or (
+            rebind_reason == "owner_authorized_failed_run_recovery"
+            and not digest_changed
+        )
         if (
             not isinstance(previous_digest, str)
             or not re.fullmatch(r"[0-9a-f]{64}", previous_digest)
-            or previous_digest == record["task_sha256"]
             or record["source"] != "recovery"
-            or record.get("rebind_reason") != "owner_authorized_task_content_reconciliation"
+            or not reason_matches_digest_transition
             or not isinstance(authorization_run_id, str)
             or not re.fullmatch(r"[0-9]{1,20}", authorization_run_id)
             or authorization_run_id != record["owner_run_id"]
