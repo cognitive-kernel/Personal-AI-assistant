@@ -102,7 +102,7 @@ def claim_pending_task_owner_unlocked(
     """
     if not isinstance(task, str) or not task.strip() or len(task) > 2000 or "\0" in task:
         raise ValueError("Pending manual task is empty or violates the 2,000-character/NUL contract.")
-    if not isinstance(run_id, str) or not run_id.strip() or not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", run_id):
+    if not isinstance(run_id, str) or not run_id.strip() or not re.fullmatch(r"[0-9]{1,20}", run_id):
         raise ValueError("A valid workflow run ID is required to claim a pending task.")
     if isinstance(run_attempt, bool) or not isinstance(run_attempt, int) or run_attempt < 1:
         raise ValueError("A positive workflow run attempt is required to claim a pending task.")
