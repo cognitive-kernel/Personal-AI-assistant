@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import time
 from contextlib import contextmanager
@@ -94,38 +95,37 @@ def execution_state_directory(
     return Path.home() / ".personal-ai-assistant" / "autonomous-engineering"
 
 
-@contextmanager
-def durable_state_lock(
-    state_dir: Path | None = None,
-    *,
-    timeout_seconds: float = 30.0,
-    default_state_dir_fn: Callable[[], Path] | None = None,
-) -> Iterator[None]:
-    """Cross-process, cross-session lock shared by Python and PowerShell.
+def _validate_lock_timeout(timeout_seconds: float) -> float:
+    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)):
+        raise ValueError("File-lock timeout must be a finite non-negative number.")
+    try:
+        timeout = float(timeout_seconds)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError("File-lock timeout must be a finite non-negative number.") from exc
+    if not math.isfinite(timeout) or timeout < 0:
+        raise ValueError("File-lock timeout must be a finite non-negative number.")
+    return timeout
 
-    The lock is a byte-range lock on autonomous-durable-state.lock in the
-    configured shared state directory. The directory ACL is provisioned
-    independently by the installer.
-    """
-    if (
-        isinstance(timeout_seconds, bool)
-        or not isinstance(timeout_seconds, (int, float))
-        or timeout_seconds < 0
-    ):
-        raise ValueError("Lock timeout must be a non-negative number.")
-    timeout = float(timeout_seconds)
-    if state_dir is None:
-        state_dir = default_state_dir_fn() if default_state_dir_fn else execution_state_directory()
-    state_dir = Path(state_dir)
-    state_dir.mkdir(parents=True, exist_ok=True)
-    lock_path = state_dir / "autonomous-durable-state.lock"
+
+@contextmanager
+def exclusive_file_lock(
+    lock_path: Path,
+    *,
+    timeout_seconds: float,
+    timeout_message: str,
+) -> Iterator[None]:
+    """Acquire an OS-managed exclusive byte-zero lock, released on process exit."""
+    timeout = _validate_lock_timeout(timeout_seconds)
+    path = Path(lock_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     deadline = time.monotonic() + timeout
 
-    with lock_path.open("a+b") as handle:
+    with path.open("a+b") as handle:
         handle.seek(0, os.SEEK_END)
         if handle.tell() == 0:
             handle.write(b"\\0")
             handle.flush()
+
         if os.name == "nt":
             import msvcrt
 
@@ -135,11 +135,10 @@ def durable_state_lock(
                     msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
                     break
                 except OSError as exc:
-                    if time.monotonic() >= deadline:
-                        raise TimeoutError(
-                            "Timed out waiting for the shared durable-state file lock."
-                        ) from exc
-                    time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError(timeout_message) from exc
+                    time.sleep(min(0.05, remaining))
             try:
                 yield
             finally:
@@ -154,12 +153,30 @@ def durable_state_lock(
                 fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
             except BlockingIOError as exc:
-                if time.monotonic() >= deadline:
-                    raise TimeoutError(
-                        "Timed out waiting for the shared durable-state file lock."
-                    ) from exc
-                time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError(timeout_message) from exc
+                time.sleep(min(0.05, remaining))
         try:
             yield
         finally:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+@contextmanager
+def durable_state_lock(
+    state_dir: Path | None = None,
+    *,
+    timeout_seconds: float = 30.0,
+    default_state_dir_fn: Callable[[], Path] | None = None,
+) -> Iterator[None]:
+    """Cross-process, cross-session lock shared by Python and PowerShell."""
+    if state_dir is None:
+        state_dir = default_state_dir_fn() if default_state_dir_fn else execution_state_directory()
+    lock_path = Path(state_dir) / "autonomous-durable-state.lock"
+    with exclusive_file_lock(
+        lock_path,
+        timeout_seconds=timeout_seconds,
+        timeout_message="Timed out waiting for the shared durable-state file lock.",
+    ):
+        yield
