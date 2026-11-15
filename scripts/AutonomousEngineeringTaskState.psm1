@@ -42,7 +42,7 @@ function Get-AutonomousTaskOwnerRecord {
     $createdAt = 0.0
     $claimedAt = 0.0
     $taskDigest = Get-AutonomousTaskDigest -Task $Task
-    $schemaVersion = 0
+    [long]$schemaVersion = 0
     if (
         $record.schema_version -is [bool] -or
         -not ($record.schema_version -is [int] -or $record.schema_version -is [long]) -or
@@ -94,173 +94,87 @@ function Rebind-AutonomousTaskOwnerRecord {
     if ([string]::IsNullOrWhiteSpace($Task) -or $Task.Length -gt 2000 -or $Task.IndexOf([char]0) -ge 0) {
         throw "Pending task violates the task text contract."
     }
-    if ($RunId -notmatch '^[A-Za-z0-9_.-]{1,128}
-    param(
-        [Parameter(Mandatory=$true)][string]$Path,
-        [Parameter(Mandatory=$true)][string]$Task,
-        [Parameter(Mandatory=$true)][string]$RunId,
-        [Parameter(Mandatory=$true)][int]$RunAttempt,
-        [Parameter(Mandatory=$true)][ValidateSet("manual_dispatch", "recovery", "legacy_migration")][string]$Source
-    )
+    if ($RunId -notmatch '^[A-Za-z0-9_.-]+$' -or $RunId.Length -gt 128 -or $RunAttempt -lt 1) {
+        throw "A valid current workflow run ID and positive attempt are required."
+    }
 
-    $existing = $null
     try {
-        $existing = Get-AutonomousTaskOwnerRecord -Path $Path -Task $Task
+        $raw = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+        $existing = $raw | ConvertFrom-Json -ErrorAction Stop
     } catch {
-        if ($_.Exception.Message -like "*digest does not match the durable task*") {
-            throw
-        }
-        if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-            throw
-        }
-        $backupPath = "$Path.quarantine-$RunId-$RunAttempt-$([guid]::NewGuid().ToString('N')).json"
+        throw "Pending task owner metadata cannot be read safely; preserving all state."
+    }
+
+    $ownerAttempt = 0
+    $submittedAttempt = 0
+    $claimCount = 0
+    $createdAt = 0.0
+    $oldDigest = [string]$existing.task_sha256
+    if (
+        $existing.schema_version -is [bool] -or
+        [int]$existing.schema_version -ne 1 -or
+        $oldDigest -notmatch '^[0-9a-f]{64}$' -or
+        [string]$existing.owner_run_id -cne [string]$VerifiedOwnerRun.id -or
+        -not [int]::TryParse([string]$existing.owner_attempt, [ref]$ownerAttempt) -or $ownerAttempt -lt 1 -or
+        -not [int]::TryParse([string]$existing.submitted_attempt, [ref]$submittedAttempt) -or $submittedAttempt -lt 1 -or
+        [string]::IsNullOrWhiteSpace([string]$existing.submitted_run_id) -or
+        -not [int]::TryParse([string]$existing.claim_count, [ref]$claimCount) -or $claimCount -lt 1 -or
+        -not [double]::TryParse([string]$existing.created_at, [ref]$createdAt) -or
+        [double]::IsNaN($createdAt) -or [double]::IsInfinity($createdAt) -or $createdAt -le 0 -or
+        [string]$existing.source -notin @("manual_dispatch", "recovery", "legacy_migration")
+    ) {
+        throw "Pending task owner metadata is not structurally valid schema v1; preserving it."
+    }
+
+    $newDigest = Get-AutonomousTaskDigest -Task $Task
+    if ($oldDigest -ceq $newDigest) {
+        throw "Pending task owner digest already matches; explicit rebind is unnecessary."
+    }
+
+    $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0
+    $record = [ordered]@{
+        schema_version = 2
+        task_sha256 = $newDigest
+        submitted_run_id = [string]$existing.submitted_run_id
+        submitted_attempt = $submittedAttempt
+        owner_run_id = $RunId
+        owner_attempt = $RunAttempt
+        created_at = $createdAt
+        claimed_at = $now
+        claim_count = $claimCount + 1
+        source = "recovery"
+        previous_task_sha256 = $oldDigest
+        rebind_reason = "owner_authorized_task_content_reconciliation"
+        rebind_authorization_run_id = $RunId
+        rebound_at = $now
+    }
+
+    $backupPath = "$Path.quarantine-rebound-$RunId-$RunAttempt-$([guid]::NewGuid().ToString('N')).json"
+    $temporaryPath = "$Path.$RunId-$RunAttempt.rebind.tmp"
+    try {
+        Move-Item -LiteralPath $Path -Destination $backupPath -ErrorAction Stop
         try {
-            Move-Item -LiteralPath $Path -Destination $backupPath -ErrorAction Stop
-        } catch {
-            throw "Stale task ownership metadata could not be quarantined; preserving the task. $($_.Exception.Message)"
-        }
-        try {
-            return Write-AutonomousTaskOwnerRecord -Path $Path -Task $Task -RunId $RunId -RunAttempt $RunAttempt -Source "recovery" -Existing $null
+            [System.IO.File]::WriteAllText(
+                $temporaryPath,
+                ($record | ConvertTo-Json -Depth 5 -Compress),
+                [System.Text.UTF8Encoding]::new($false)
+            )
+            Move-Item -LiteralPath $temporaryPath -Destination $Path -Force -ErrorAction Stop
         } catch {
             if (-not (Test-Path -LiteralPath $Path) -and (Test-Path -LiteralPath $backupPath)) {
                 Move-Item -LiteralPath $backupPath -Destination $Path -ErrorAction SilentlyContinue
             }
             throw
         }
-    }
-
-    return Write-AutonomousTaskOwnerRecord -Path $Path -Task $Task -RunId $RunId -RunAttempt $RunAttempt -Source $Source -Existing $existing
-}
-
-function Repair-AutonomousPendingStateCleanup {
-    param([Parameter(Mandatory=$true)][string]$StateDirectory)
-    $markerPath = Join-Path $StateDirectory "pending-state-cleanup.json"
-    try {
-        $raw = [System.IO.File]::ReadAllText($markerPath, [System.Text.Encoding]::UTF8)
-    } catch [System.IO.FileNotFoundException] {
-        return $false
-    } catch [System.IO.DirectoryNotFoundException] {
-        return $false
     } catch {
-        throw "Pending-state cleanup marker cannot be read safely. $($_.Exception.Message)"
-    }
-    if ([string]::IsNullOrWhiteSpace($raw)) {
-        throw "Pending-state cleanup marker is empty; preserving all durable state."
-    }
-    try {
-        $marker = $raw | ConvertFrom-Json
-    } catch {
-        throw "Pending-state cleanup marker is malformed; preserving all durable state."
-    }
-    $createdAt = 0.0
-    if (
-        $marker.schema_version -is [bool] -or
-        -not ($marker.schema_version -is [int] -or $marker.schema_version -is [long]) -or
-        [long]$marker.schema_version -ne 1 -or
-        [string]$marker.operation -cne "clear_after_verified_post_merge" -or
-        -not ($marker.run_id -is [string]) -or
-        [string]::IsNullOrWhiteSpace([string]$marker.run_id) -or
-        -not ($marker.created_at -is [double] -or $marker.created_at -is [int] -or $marker.created_at -is [long]) -or
-        -not [double]::TryParse([string]$marker.created_at, [ref]$createdAt) -or
-        [double]::IsNaN($createdAt) -or [double]::IsInfinity($createdAt) -or $createdAt -le 0
-    ) {
-        throw "Pending-state cleanup marker violates schema v1; preserving all durable state."
-    }
-
-    foreach ($name in @(
-        "pending-autonomous-pr.json",
-        "pending-manual-task.txt",
-        "pending-manual-task-owner.json"
-    )) {
-        $path = Join-Path $StateDirectory $name
-        if (Test-Path -LiteralPath $path) {
-            $item = Get-Item -LiteralPath $path -Force -ErrorAction Stop
-            if ($item.PSIsContainer) {
-                throw "Pending-state path '$name' is a directory; preserving the cleanup marker."
-            }
-            Remove-Item -LiteralPath $path -Force -ErrorAction Stop
-        }
-    }
-    Remove-Item -LiteralPath $markerPath -Force -ErrorAction Stop
-    return $true
-}
-
-function Write-AutonomousTaskOwnerRecord {
-    param(
-        [Parameter(Mandatory=$true)][string]$Path,
-        [Parameter(Mandatory=$true)][string]$Task,
-        [Parameter(Mandatory=$true)][string]$RunId,
-        [Parameter(Mandatory=$true)][int]$RunAttempt,
-        [Parameter(Mandatory=$true)][ValidateSet("manual_dispatch", "recovery", "legacy_migration")][string]$Source,
-        [AllowNull()][object]$Existing
-    )
-    if ([string]::IsNullOrWhiteSpace($Task) -or $Task.Length -gt 2000 -or $Task.IndexOf([char]0) -ge 0) {
-        throw "Pending task violates the task text contract."
-    }
-    if ($RunId -notmatch '^[A-Za-z0-9_.-]{1,128}$' -or $RunAttempt -lt 1) {
-        throw "A valid workflow run ID and positive attempt are required."
-    }
-    $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0
-    if ($null -eq $Existing) {
-        $record = [ordered]@{
-            schema_version = 1
-            task_sha256 = Get-AutonomousTaskDigest -Task $Task
-            submitted_run_id = $RunId
-            submitted_attempt = $RunAttempt
-            owner_run_id = $RunId
-            owner_attempt = $RunAttempt
-            created_at = $now
-            claimed_at = $now
-            claim_count = 1
-            source = $Source
-        }
-    } else {
-        $record = $Existing
-        if (
-            [string]$record.owner_run_id -ne $RunId -or
-            [int]$record.owner_attempt -ne $RunAttempt
-        ) {
-            $record.owner_run_id = $RunId
-            $record.owner_attempt = $RunAttempt
-            $record.claimed_at = $now
-            $record.claim_count = [int]$record.claim_count + 1
-        }
-    }
-
-    $directory = Split-Path -Parent $Path
-    $temporary = Join-Path $directory ("pending-manual-task-owner-" + $RunId + "-" + $RunAttempt + ".tmp")
-    try {
-        $json = $record | ConvertTo-Json -Depth 5 -Compress
-        [System.IO.File]::WriteAllText(
-            $temporary, $json, [System.Text.UTF8Encoding]::new($false)
-        )
-        Move-Item -LiteralPath $temporary -Destination $Path -Force
+        throw "Explicit owner reconciliation failed; the original owner record remains preserved. $($_.Exception.Message)"
     } finally {
-        if (Test-Path -LiteralPath $temporary) {
-            Remove-Item -LiteralPath $temporary -Force
+        if (Test-Path -LiteralPath $temporaryPath) {
+            Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
         }
     }
-    return $record
+    return [pscustomobject]$record
 }
-
-Export-ModuleMember -Function Get-AutonomousTaskDigest, Get-AutonomousTaskOwnerRecord, Rebind-AutonomousTaskOwnerRecord, Repair-AutonomousTaskOwnerRecord, Write-AutonomousTaskOwnerRecord, Repair-AutonomousPendingStateCleanup
- -or
-            -not ($record.rebind_reason -is [string]) -or
-            [string]$record.rebind_reason -cne "owner_authorized_task_content_reconciliation" -or
-            -not ($record.rebind_authorization_run_id -is [string]) -or
-            [string]::IsNullOrWhiteSpace([string]$record.rebind_authorization_run_id) -or
-            -not [double]::TryParse([string]$record.rebound_at, [ref]$reboundAt) -or
-            [double]::IsNaN($reboundAt) -or [double]::IsInfinity($reboundAt) -or $reboundAt -le 0
-        ) {
-            throw "Pending task owner metadata violates schema v2; preserving it."
-        }
-    }
-    if ([string]$record.task_sha256 -cne $taskDigest) {
-        throw "Pending task owner digest does not match the durable task; preserving both records."
-    }
-    return $record
-}
-
 
 function Repair-AutonomousTaskOwnerRecord {
     param(
