@@ -931,3 +931,14 @@ Exact tested code head: ab703a284752c80531e9f25e0b7ad53a04c453a0.
 Evidence: Tests/Windows regressions https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863471 ; Browser E2E https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863440 ; Dependency audit https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863452 ; CodeQL https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863507 .
 
 The subsequent documentation-only evidence update does not change runtime code and is followed by a fresh exact-head CI run. Target-host cross-account ACL verification, non-admin sandbox smoke/soak, crash/restart acceptance, and independent security review remain pending. Durable Pause remains enabled; no Runner, service, or autonomous process was started.
+
+
+## 2026-11-15 — Windows local test isolation and shared lock ownership
+
+The target-host full suite exposed five failures (2,255 passed, 8 skipped, 51 deselected). Root-cause review showed three state-lock failures were test isolation defects, not evidence that the production ACL should be weakened: checkpoint watcher tests replaced checkpoint data paths but independently resolved the lock under machine-scoped `%ProgramData%`; two PR-publication tests likewise used the production durable-state root instead of an injected temporary root. The production shared root and its role-specific ACL contract remain unchanged.
+
+Checkpoint operations now derive the lock path from the exact `state["directory"]` returned with their data paths, preventing one operation from resolving data and lock roots independently. PR-publication tests inject a temporary execution-state directory. The POSIX process-group ownership integration test is now explicitly platform-gated on Windows; it remains active on POSIX. The Windows Codex early-exit test double now exposes the `CREATE_SUSPENDED` constant required by the real process-job interface rather than failing before the behavior under test.
+
+A small shared primitive, `autonomous_engineering_file_lock.py`, now owns OS-specific byte-zero locking, bounded acquisition, release, and finite-timeout validation. The durable-state and checkpoint-store adapters retain separate filenames and lock domains while delegating platform mechanics to this one implementation. The PowerShell durable-state byte-range contract is unchanged. Architecture regression coverage enforces this dependency boundary.
+
+No production ACL, Runner identity, user/task/checkpoint data, pause state, workflow security setting, or sandbox setting was changed. Exact-head GitHub CI and a repeat of the full Windows target-host suite are still required; the earlier local result remains failed and is not reclassified as passed.
