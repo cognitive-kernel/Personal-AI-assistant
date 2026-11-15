@@ -58,6 +58,8 @@ def _runner_temp_directories() -> list[Path]:
                 configured, _ = winreg.QueryValueEx(key, "AUTONOMOUS_ENGINEERING_RUNNER_TEMP")
         except (OSError, ImportError):
             configured = None
+        if configured and not roots:
+            roots.append(Path(os.path.expandvars(configured)))
     try:
         for process in psutil.process_iter(["name", "exe", "cmdline"]):
             try:
