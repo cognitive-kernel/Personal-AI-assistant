@@ -179,9 +179,8 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     New-Item -ItemType Directory -Path $runnerTempPath -Force | Out-Null
     Set-AutonomousDirectoryAcl -Path $runnerTempPath -RunnerSid $runnerSid -AdditionalModifySid $appSid
     $runnerDiagnosticPath = Join-Path $RunnerRoot "_diag"
-    if (Test-Path -LiteralPath $runnerDiagnosticPath) {
-        Set-AutonomousDirectoryAcl -Path $runnerDiagnosticPath -RunnerSid $runnerSid -AdditionalModifySid $appSid
-    }
+    New-Item -ItemType Directory -Path $runnerDiagnosticPath -Force | Out-Null
+    Set-AutonomousDirectoryAcl -Path $runnerDiagnosticPath -RunnerSid $runnerSid -AdditionalModifySid $appSid
     [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_TEMP", $runnerTempPath, "Machine")
     Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -ReadOnlySid $appSid -AdditionalModifySid $installerSid
     try {
