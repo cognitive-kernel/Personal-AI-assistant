@@ -18,6 +18,7 @@ try:
         RETRYABLE,
         UNKNOWN,
         classify_failed_run,
+        increment_retryable_failure_streak,
     )
 except ImportError:  # Direct script execution from the scripts directory.
     from autonomous_engineering_recovery_policy import (
@@ -115,15 +116,13 @@ class GitHubActionsClient:
 
                 run_jobs = current_jobs if run_id == failed_run_id else self.jobs(run_id)
                 classification = classify_failed_run(run_jobs)
-                if classification in {ADMISSION_REJECTED, NON_EXECUTION}:
-                    # These runs never entered the autonomous task controller.
-                    continue
-                if classification != RETRYABLE:
+                try:
+                    streak = increment_retryable_failure_streak(streak, classification)
+                except ValueError as exc:
                     raise RuntimeError(
                         f"Cannot safely classify failed workflow run {run_id}; "
                         "recovery is blocked without changing durable state."
-                    )
-                streak += 1
+                    ) from exc
                 if streak >= MAX_CONSECUTIVE_FAILURES:
                     return streak
 
