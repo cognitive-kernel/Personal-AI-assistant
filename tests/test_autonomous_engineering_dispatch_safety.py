@@ -176,3 +176,14 @@ def test_packaged_state_resolver_rejects_a_divergent_process_override(monkeypatc
 
     with pytest.raises(RuntimeError, match="differs from the machine-scoped state root"):
         state.execution_state_directory()
+
+
+def test_storage_accessible_checks_the_shared_state_directory(monkeypatch, tmp_path):
+    from app import autonomous_engineering_progress as progress
+
+    monkeypatch.setattr(progress, "_progress_dir", lambda: tmp_path)
+    assert progress.storage_accessible() is True
+
+    missing = tmp_path / "missing"
+    monkeypatch.setattr(progress, "_progress_dir", lambda: missing)
+    assert progress.storage_accessible() is False
