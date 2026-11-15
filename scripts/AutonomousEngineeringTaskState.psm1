@@ -208,8 +208,12 @@ function Write-AutonomousTaskOwnerRecord {
     if ($RunId -cnotmatch '^[0-9]{1,20}\z' -or $RunAttempt -lt 1) {
         throw "A valid workflow run ID and positive attempt are required."
     }
+
     $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0
     if ($null -eq $Existing) {
+        if (Test-Path -LiteralPath $Path) {
+            throw "An owner record already exists; refusing to overwrite it as a new submission."
+        }
         $record = [ordered]@{
             schema_version = 1
             task_sha256 = Get-AutonomousTaskDigest -Task $Task
@@ -223,26 +227,53 @@ function Write-AutonomousTaskOwnerRecord {
             source = $Source
         }
     } else {
-        $record = $Existing
+        if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+            throw "The existing owner record disappeared before its claim; preserving the task."
+        }
+        # Read and validate the authoritative on-disk record under the shared lock.
+        $record = Get-AutonomousTaskOwnerRecord -Path $Path -Task $Task
         if (
-            [string]$record.owner_run_id -ne $RunId -or
+            [string]$record.owner_run_id -cne $RunId -or
             [int]$record.owner_attempt -ne $RunAttempt
         ) {
+            $claimCount = 0
+            if (
+                -not [int]::TryParse([string]$record.claim_count, [ref]$claimCount) -or
+                $claimCount -ge [int]::MaxValue
+            ) {
+                throw "The pending task owner claim counter cannot be advanced safely."
+            }
             $record.owner_run_id = $RunId
             $record.owner_attempt = $RunAttempt
             $record.claimed_at = $now
-            $record.claim_count = [int]$record.claim_count + 1
+            $record.claim_count = $claimCount + 1
         }
     }
 
     $directory = Split-Path -Parent $Path
-    $temporary = Join-Path $directory ("pending-manual-task-owner-" + $RunId + "-" + $RunAttempt + ".tmp")
+    $temporary = Join-Path $directory ("pending-manual-task-owner-" + $RunId + "-" + $RunAttempt + "-" + [guid]::NewGuid().ToString('N') + ".tmp")
     try {
         $json = $record | ConvertTo-Json -Depth 5 -Compress
-        [System.IO.File]::WriteAllText(
-            $temporary, $json, [System.Text.UTF8Encoding]::new($false)
+        $bytes = [System.Text.UTF8Encoding]::new($false).GetBytes($json)
+        $stream = [System.IO.File]::Open(
+            $temporary,
+            [System.IO.FileMode]::CreateNew,
+            [System.IO.FileAccess]::Write,
+            [System.IO.FileShare]::None
         )
-        Move-Item -LiteralPath $temporary -Destination $Path -Force
+        try {
+            $stream.Write($bytes, 0, $bytes.Length)
+            $stream.Flush($true)
+        } finally {
+            $stream.Dispose()
+        }
+
+        $null = Get-AutonomousTaskOwnerRecord -Path $temporary -Task $Task
+        if (Test-Path -LiteralPath $Path -PathType Leaf) {
+            [System.IO.File]::Replace($temporary, $Path, $null, $true)
+        } else {
+            [System.IO.File]::Move($temporary, $Path)
+        }
     } finally {
         if (Test-Path -LiteralPath $temporary) {
             Remove-Item -LiteralPath $temporary -Force
