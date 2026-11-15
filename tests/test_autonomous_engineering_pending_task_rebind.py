@@ -84,6 +84,7 @@ def test_schema_v2_owner_requires_and_accepts_rebind_audit_fields(tmp_path: Path
         "authorization-id-must-be-numeric",
         "authorization-attempt-must-be-positive",
         "owner-id-must-be-numeric",
+        "submitted-id-must-be-numeric",
         "schema-version-must-be-integer",
         "claim-count-must-fit-powershell-int32",
     ],
