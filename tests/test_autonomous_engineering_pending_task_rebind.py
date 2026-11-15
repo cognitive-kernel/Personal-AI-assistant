@@ -75,6 +75,7 @@ def test_schema_v2_owner_requires_and_accepts_rebind_audit_fields(tmp_path: Path
         lambda record, task: record.update(rebind_authorization_run_attempt=0),
         lambda record, task: record.update(owner_run_id="not-a-run-id"),
         lambda record, task: record.update(schema_version=2.0),
+        lambda record, task: record.update(claim_count=2_147_483_648),
     ],
     ids=[
         "previous-digest-must-differ",
@@ -83,6 +84,7 @@ def test_schema_v2_owner_requires_and_accepts_rebind_audit_fields(tmp_path: Path
         "authorization-attempt-must-be-positive",
         "owner-id-must-be-numeric",
         "schema-version-must-be-integer",
+        "claim-count-must-fit-powershell-int32",
     ],
 )
 def test_schema_v2_owner_rejects_inconsistent_audit_fields(
@@ -183,6 +185,7 @@ def test_schema_v2_owner_rejects_missing_reconciliation_audit(tmp_path: Path):
         lambda record: record.update(source="manual_dispatch"),
         lambda record: record.update(rebind_authorization_run_id="invalid"),
         lambda record: record.update(rebind_authorization_run_attempt=0),
+        lambda record: record.update(claim_count=2_147_483_648),
     ],
 )
 def test_powershell_validator_rejects_inconsistent_schema_v2_audit(
