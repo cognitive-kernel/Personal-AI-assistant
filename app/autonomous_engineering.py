@@ -340,7 +340,7 @@ def autonomous_engineering_progress(
             current_time = _timestamp(current.get("updated_at")) if isinstance(current, dict) else 0.0
             failed_time = _timestamp(failed_run.get("created_at"))
             same_run = isinstance(current, dict) and str(current.get("run_id")) == str(failed_run.get("id"))
-            if same_run or failed_time > current_time:
+            if not same_run and failed_time > current_time:
                 current = {
                     "run_id": str(failed_run.get("id")),
                     "status": "failed",
