@@ -174,3 +174,12 @@ A non-empty manual task is rejected while prior work is pending; the dashboard d
 
 The recovery circuit breaker counts only a failure of the exact `Execute one isolated task, validate, and publish for owner review` workflow step. Admission rejection, schedule gating, prerequisite/setup/sandbox/dependency failures, post-execution checks, and job-level timeouts without a failed-step identity do not count as a task-execution failure. Unknown or malformed GitHub job/step evidence fails closed. This prevents an infrastructure/readiness failure from consuming the coding-task retry budget or dispatching a duplicate task.
 
+
+
+### Explicit task-owner metadata reconciliation
+
+A task/owner digest mismatch is an integrity conflict, not permission to replace the task. The default recovery path preserves both files and fails closed. When the repository owner has independently confirmed that the durable task text is the intended task, the workflow supports a separate, explicit repair_pending_task_owner dispatch input. Leave manual_task empty and keep replace_pending_task false.
+
+This operation is allowed only when the shared state lock is held, no other autonomous run is active, no controller-owned autonomous PR is open, and GitHub confirms that the exact recorded owner run belongs to this workflow on main and ended with failure, cancelled, or timed_out. Unknown, active, successful, inaccessible, or differently scoped runs are rejected.
+
+The operation does not rewrite the pending task. It archives the exact previous owner-record bytes in a unique quarantine file and writes a schema-v2 owner record containing the current task digest, the previous digest, the authorization run ID, and the reconciliation reason. If the write fails, it restores the previous owner record. The ordinary replace_pending_task path remains separate and must never be used as a shortcut for owner metadata repair.
