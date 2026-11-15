@@ -22,6 +22,11 @@ def classify_failed_run(jobs: Sequence[Mapping[str, Any]]) -> str:
     contribute to the retry circuit breaker. Admission and schedule-gate failures
     are not task-execution failures. Unknown shapes fail closed.
     """
+    if not isinstance(jobs, Sequence) or isinstance(jobs, (str, bytes)):
+        return UNKNOWN
+    if any(not isinstance(job, Mapping) for job in jobs):
+        return UNKNOWN
+
     failed_jobs = [
         job for job in jobs
         if job.get("conclusion") in {"failure", "timed_out"}
@@ -39,10 +44,11 @@ def classify_failed_run(jobs: Sequence[Mapping[str, Any]]) -> str:
     codex_job = codex_jobs[0]
     steps = codex_job.get("steps")
     if isinstance(steps, list):
+        if any(not isinstance(step, Mapping) for step in steps):
+            return UNKNOWN
         failed_steps = [
             step for step in steps
-            if isinstance(step, Mapping)
-            and step.get("conclusion") in {"failure", "timed_out"}
+            if step.get("conclusion") in {"failure", "timed_out"}
         ]
         admission_failures = [
             step for step in failed_steps
