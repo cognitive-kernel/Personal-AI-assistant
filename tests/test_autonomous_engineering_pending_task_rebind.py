@@ -368,6 +368,55 @@ def test_powershell_owner_rebind_allows_same_run_id_with_newer_attempt(tmp_path:
 
 @pytest.mark.skipif(os.name != "nt", reason="PowerShell task-owner interoperability is Windows-only")
 @pytest.mark.parametrize(("current_attempt", "recorded_attempt"), [(1, 1), (1, 2)])
+@pytest.mark.skipif(os.name != "nt", reason="PowerShell task-owner interoperability is Windows-only")
+def test_powershell_owner_rebind_retry_preserves_original_audit(tmp_path: Path):
+    root = Path(__file__).resolve().parents[1]
+    module = root / "scripts" / "AutonomousEngineeringTaskOwnerRebind.psm1"
+    owner_path = tmp_path / "pending-manual-task-owner.json"
+    task = "The task remains unchanged after the first repair attempt."
+    now = time.time()
+    digest = task_digest(task)
+    record = {
+        "schema_version": 2,
+        "task_sha256": digest,
+        "submitted_run_id": "100",
+        "submitted_attempt": 1,
+        "owner_run_id": "200",
+        "owner_attempt": 1,
+        "created_at": now,
+        "claimed_at": now,
+        "claim_count": 2,
+        "source": "recovery",
+        "previous_task_sha256": "a" * 64,
+        "rebind_reason": "owner_authorized_task_content_reconciliation",
+        "rebind_authorization_run_id": "200",
+        "rebind_authorization_run_attempt": 1,
+        "rebound_at": now,
+    }
+    owner_path.write_text(json.dumps(record), encoding="utf-8")
+    script = (
+        "$ErrorActionPreference='Stop'; "
+        f"Import-Module {_ps_quote(str(root / 'scripts' / 'AutonomousEngineeringTaskState.psm1'))} -Force; "
+        f"Import-Module {_ps_quote(str(module))} -Force; "
+        "$run=[pscustomobject]@{id='200';run_attempt=1;path='.github/workflows/autonomous-codex-engineering.yml';"
+        "head_branch='main';status='completed';conclusion='failure'}; "
+        f"$null=Resume-AutonomousTaskOwnerRebindAttempt -Path {_ps_quote(str(owner_path))} "
+        f"-Task {_ps_quote(task)} -RunId '200' -RunAttempt 2 -VerifiedOwnerRun $run; "
+        f"$null=Get-AutonomousTaskOwnerRecord -Path {_ps_quote(str(owner_path))} -Task {_ps_quote(task)}"
+    )
+    result = _powershell(script)
+    assert result.returncode == 0, result.stderr
+
+    updated = json.loads(owner_path.read_text(encoding="utf-8"))
+    assert updated["owner_run_id"] == "200"
+    assert updated["owner_attempt"] == 2
+    assert updated["claim_count"] == 3
+    assert updated["rebind_authorization_run_id"] == "200"
+    assert updated["rebind_authorization_run_attempt"] == 1
+    assert updated["previous_task_sha256"] == "a" * 64
+    assert updated["task_sha256"] == digest
+
+
 def test_powershell_owner_rebind_rejects_same_or_older_run_attempt(
     tmp_path: Path, current_attempt: int, recorded_attempt: int,
 ):
