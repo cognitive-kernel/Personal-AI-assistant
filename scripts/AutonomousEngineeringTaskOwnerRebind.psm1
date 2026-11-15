@@ -71,6 +71,7 @@ function Rebind-AutonomousTaskOwnerRecord {
         -not ($existing.claimed_at -is [double] -or $existing.claimed_at -is [int] -or $existing.claimed_at -is [long]) -or
         -not [double]::TryParse([string]$existing.claimed_at, [ref]$claimedAt) -or
         [double]::IsNaN($claimedAt) -or [double]::IsInfinity($claimedAt) -or $claimedAt -le 0 -or
+        -not ($existing.source -is [string]) -or
         [string]$existing.source -cnotin @("manual_dispatch", "recovery", "legacy_migration")
     ) {
         throw "Pending task owner metadata is not structurally valid schema v1; preserving it."
