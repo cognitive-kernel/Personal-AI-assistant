@@ -104,7 +104,7 @@ def test_watcher_start_does_not_replace_state_when_previous_owner_is_ambiguous(
     ready.write_text("old readiness", encoding="utf-8")
     error.write_text("old error", encoding="utf-8")
     monkeypatch.setattr(checkpoint, "paths", lambda run_id, task: paths)
-    monkeypatch.setattr(checkpoint, "watcher_marker_paths", lambda run_id, task: (ready, error))
+    monkeypatch.setattr(checkpoint, "watcher_marker_paths", lambda run_id, task, **kwargs: (ready, error))
     monkeypatch.setattr(checkpoint, "read_metadata", lambda run_id, task, **kwargs: metadata)
 
     def refuse_stop(_metadata):
@@ -197,7 +197,7 @@ def test_malformed_metadata_blocks_watcher_start_without_overwriting_files(
     ready.write_text("existing-ready", encoding="utf-8")
     error.write_text("existing-error", encoding="utf-8")
     monkeypatch.setattr(checkpoint, "paths", lambda run_id, task: paths)
-    monkeypatch.setattr(checkpoint, "watcher_marker_paths", lambda run_id, task: (ready, error))
+    monkeypatch.setattr(checkpoint, "watcher_marker_paths", lambda run_id, task, **kwargs: (ready, error))
 
     with pytest.raises(RuntimeError, match="metadata is malformed"):
         checkpoint.watch("a" * 40, "run-9", 2, 5)
