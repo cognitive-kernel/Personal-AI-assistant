@@ -9,14 +9,15 @@ from typing import Iterator
 
 
 def _validate_timeout(timeout_seconds: float) -> float:
-    if (
-        isinstance(timeout_seconds, bool)
-        or not isinstance(timeout_seconds, (int, float))
-        or not math.isfinite(float(timeout_seconds))
-        or timeout_seconds < 0
-    ):
+    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)):
         raise ValueError("File-lock timeout must be a finite non-negative number.")
-    return float(timeout_seconds)
+    try:
+        timeout = float(timeout_seconds)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError("File-lock timeout must be a finite non-negative number.") from exc
+    if not math.isfinite(timeout) or timeout < 0:
+        raise ValueError("File-lock timeout must be a finite non-negative number.")
+    return timeout
 
 
 @contextmanager
@@ -40,7 +41,7 @@ def exclusive_file_lock(
     with path.open("a+b") as handle:
         handle.seek(0, os.SEEK_END)
         if handle.tell() == 0:
-            handle.write(b"\\0")
+            handle.write(b"\0")
             handle.flush()
 
         if os.name == "nt":
