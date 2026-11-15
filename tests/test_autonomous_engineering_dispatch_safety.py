@@ -218,13 +218,45 @@ def test_script_state_facades_import_before_project_install_and_outside_reposito
 
 
 def test_dashboard_and_runner_use_the_same_durable_state_lock(tmp_path):
-    from app.autonomous_engineering_state import durable_state_lock as app_lock
+    import sys
+    import time
+    from pathlib import Path
+
     from scripts.autonomous_engineering_state_lock import durable_state_lock as runner_lock
 
-    with app_lock(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    ready = tmp_path / "app-lock-ready.txt"
+    code = (
+        "import time; "
+        "from pathlib import Path; "
+        "from app.autonomous_engineering_state import durable_state_lock; "
+        f"with durable_state_lock(Path({str(tmp_path)!r})): "
+        f"Path({str(ready)!r}).write_text('ready', encoding='utf-8'); "
+        "time.sleep(1.0)"
+    )
+    child = subprocess.Popen(
+        [sys.executable, "-c", code],
+        cwd=root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and not ready.is_file():
+            if child.poll() is not None:
+                output = child.stdout.read() if child.stdout else ""
+                pytest.fail(f"Dashboard lock owner exited early: {output}")
+            time.sleep(0.02)
+        assert ready.is_file(), "Dashboard did not acquire the shared durable-state lock."
         with pytest.raises(TimeoutError):
             with runner_lock(tmp_path, timeout_seconds=0.05):
-                pytest.fail("The Runner must contend on the app's exact durable-state lock.")
+                pytest.fail("The Runner must contend on the dashboard's exact durable-state lock.")
+    finally:
+        child.wait(timeout=10)
+
+    with runner_lock(tmp_path, timeout_seconds=1):
+        pass
 
 
 def test_shared_file_lock_rejects_non_finite_timeout(tmp_path):
