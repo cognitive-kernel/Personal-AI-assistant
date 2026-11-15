@@ -1901,3 +1901,12 @@ Recovery classification now uses the exact controller task-execution step as the
 
 Both PRs remain Draft and unmerged. No live recovery dispatch or autonomous task was started. The existing Runner pending task/owner/checkpoint/Pause/ACL state remains untouched. Target-host full Windows suite, cross-account ACL/effective-access verification, non-admin sandbox smoke/soak, crash/restart, real Ollama/Codex execution, and owner acceptance remain pending. The next live verification must resume the existing durable task with an empty dispatch; a new non-empty manual task is correctly rejected until that state is owner-approved and cleared by the verified post-merge lifecycle.
 
+### Documentation-snapshot exact-head revalidation
+
+After the operational status and delivery-estimate documentation was synchronized, both documentation snapshots were revalidated at their exact heads:
+
+- PR #761 documentation head `e61f3053f074f46cc920ac2c75e0c877b6785928`: **2,302 passed, 13 skipped, 51 deselected** in 261.39 seconds; Windows storage, Browser E2E, Dependency Audit, CodeQL, artifact/link/import-cycle checks, and both benchmarks passed. Runs: tests/Windows 43703825228, Browser 43703825221, Dependency 43703825269, CodeQL 43703825225.
+- PR #760 documentation head `72146234785a34a6e11c15177a17a088a615e0c3`: **2,257 passed, 13 skipped, 51 deselected** in 257.92 seconds; Windows storage, Browser E2E, Dependency Audit, and CodeQL passed. Runs: tests/Windows 43703785105, Browser 43703785108, Dependency 43703785127, CodeQL 43703785100.
+
+These are hosted CI results only. Target-host Windows/ACL/sandbox/restart and live Ollama/Codex acceptance remain outstanding.
+
