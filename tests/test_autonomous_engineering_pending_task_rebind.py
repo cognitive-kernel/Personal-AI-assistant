@@ -217,7 +217,9 @@ def test_powershell_owner_rebind_archives_old_record_and_preserves_submission(tm
         f"$result=Rebind-AutonomousTaskOwnerRecord -Path {_ps_quote(str(owner_path))} "
         f"-Task {_ps_quote(current_task)} -RunId '300' -RunAttempt 2 -VerifiedOwnerRun $run; "
         f"$validated=Get-AutonomousTaskOwnerRecord -Path {_ps_quote(str(owner_path))} -Task {_ps_quote(current_task)}; "
-        "$validated | ConvertTo-Json -Compress -Depth 5"
+        f"$null=Write-AutonomousTaskOwnerRecord -Path {_ps_quote(str(owner_path))} -Task {_ps_quote(current_task)} -RunId '400' -RunAttempt 1 -Source 'recovery' -Existing $validated; "
+        f"$validatedAgain=Get-AutonomousTaskOwnerRecord -Path {_ps_quote(str(owner_path))} -Task {_ps_quote(current_task)}; "
+        "$validatedAgain | ConvertTo-Json -Compress -Depth 5"
     )
     result = _powershell(script)
     assert result.returncode == 0, result.stderr
@@ -234,9 +236,10 @@ def test_powershell_owner_rebind_archives_old_record_and_preserves_submission(tm
     assert updated["submitted_run_id"] == "100"
     assert updated["submitted_attempt"] == 1
     assert updated["created_at"] == old_record["created_at"]
-    assert updated["owner_run_id"] == "300"
-    assert updated["owner_attempt"] == 2
-    assert updated["claim_count"] == 5
+    assert updated["owner_run_id"] == "400"
+    assert updated["owner_attempt"] == 1
+    assert updated["claim_count"] == 6
+    assert updated["rebind_authorization_run_id"] == "300"
 
 
 @pytest.mark.skipif(os.name != "nt", reason="PowerShell task-owner interoperability is Windows-only")
