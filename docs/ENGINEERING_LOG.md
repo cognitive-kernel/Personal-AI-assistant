@@ -1,5 +1,23 @@
 # Engineering Continuity Log
 
+## 2026-11-15 — Correct task-admission diagnosis and harden owner-recovery schema
+
+### Root-cause clarification
+- Run 43710320186 failed in the manual-task persistence/admission step with `Another manual task is still pending`. The rejected dispatch supplied task text that differed from the already durable task. The workflow correctly refused to replace the existing task; this log does not treat that message as proof of an owner-sidecar digest mismatch.
+- The recorded owner run 43592197032 failed earlier, before Codex task execution, because the Windows sandbox setup mutex could not be opened. A new task dispatch is not a safe substitute for resuming that durable task.
+
+### Corrective changes
+- Keep task admission, explicit task replacement, ordinary same-digest recovery, and owner-authorized recovery as separate operations. No task replacement is enabled by this change.
+- Extend the opt-in owner recovery path to support both a verified failed-owner transfer with an unchanged digest and a verified task/owner digest reconciliation. Each schema-v2 reason is bound to the corresponding digest transition; ambiguous or contradictory audit metadata is rejected.
+- Align Python and PowerShell schema-v2 validation: numeric GitHub run identifiers, recovery-only source, authorization run equal to the new owner, valid previous digest, finite timestamp, and a reason consistent with whether the digest changed.
+- Stage the replacement owner record with an exclusive temporary file, flush it to disk, validate the exact staged record through the shared PowerShell validator, then atomically replace the live sidecar while preserving the original bytes in a unique quarantine file.
+- Add regression cases for valid unchanged-digest recovery, digest reconciliation, mismatched authorization IDs, malformed run IDs, wrong recovery source, equal/unequal digest-reason contradictions, and PowerShell interoperability.
+
+### Validation boundary
+- PR #762 remains Draft and stacked on PR #761. The exact head after these changes must complete the full CI matrix before implementation is considered GitHub-validated.
+- PR #760 and #761 checks are green on their recorded exact heads, but target-host Windows acceptance and crash/restart tests remain pending.
+- No live owner rebind, workflow dispatch, task/checkpoint/Pause mutation, ACL or Runner change, or merge was performed.
+
 ## 2026-11-15 — Explicit recovery for task-owner digest conflicts
 
 ### Root-cause analysis
