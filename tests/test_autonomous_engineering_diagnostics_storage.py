@@ -31,29 +31,39 @@ def test_storage_inventory_lists_runner_temp_files_and_state_temps(monkeypatch, 
     assert next(item for item in result["files"] if item["name"] == "codex-report-7.md")["cleanup_eligible"] is False
 
 
-def test_cleanup_removes_only_stale_allowlisted_temp_files(monkeypatch, tmp_path):
+def test_cleanup_removes_stale_temp_and_only_old_runner_diagnostic_logs(monkeypatch, tmp_path):
     state = tmp_path / "state"
     runner_temp = tmp_path / "runner" / "_work" / "_temp"
     state.mkdir()
     runner_temp.mkdir(parents=True)
+    diagnostic_dir = tmp_path / "runner" / "_diag"
+    diagnostic_dir.mkdir()
     stale_state = state / "stale.tmp"
     stale_codex = runner_temp / "codex-report-9.md"
     protected_checkpoint = state / "checkpoint.json"
     unrelated = runner_temp / "unrelated.tmp"
+    old_diagnostic = diagnostic_dir / "Runner_2020-01-01.log"
+    recent_diagnostic = diagnostic_dir / "Runner_recent.log"
     for path in (stale_state, stale_codex, protected_checkpoint, unrelated):
         path.write_text("keep-or-delete", encoding="utf-8")
         os.utime(path, (time.time() - 48 * 3600, time.time() - 48 * 3600))
+    old_diagnostic.write_text("old log", encoding="utf-8")
+    os.utime(old_diagnostic, (time.time() - 40 * 24 * 3600, time.time() - 40 * 24 * 3600))
+    recent_diagnostic.write_text("recent log", encoding="utf-8")
+    os.utime(recent_diagnostic, (time.time() - 10 * 24 * 3600, time.time() - 10 * 24 * 3600))
     monkeypatch.setattr(storage, "execution_state_directory", lambda: state)
     monkeypatch.setattr(storage, "_runner_temp_directories", lambda: [runner_temp])
     monkeypatch.setattr(storage, "_runner_worker_active", lambda: False)
 
     result = storage.cleanup_storage(active_run=False)
 
-    assert result["deleted_count"] == 3
+    assert result["deleted_count"] == 4
     assert not stale_state.exists()
     assert not stale_codex.exists()
     assert protected_checkpoint.exists()
     assert not unrelated.exists()
+    assert not old_diagnostic.exists()
+    assert recent_diagnostic.exists()
 
 
 def test_cleanup_is_blocked_while_a_run_is_active(tmp_path):
