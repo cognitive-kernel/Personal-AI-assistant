@@ -167,27 +167,38 @@ def main() -> int:
         client = GitHubActionsClient(repository, token)
         current_jobs = client.jobs(failed_run_id)
         current_classification = classify_failed_run(current_jobs)
-        if current_classification != RETRYABLE:
+        if current_classification == UNKNOWN:
+            message = (
+                "The failed run could not be classified from its job/step contract. "
+                "Recovery is blocked fail-closed; durable state was not changed."
+            )
+            report("Recovery blocked by unknown failure", message, error=True)
+            return 1
+
+        streak = client.retryable_failure_streak(failed_run_id, current_jobs)
+        if current_classification in {ADMISSION_REJECTED, NON_EXECUTION}:
+            if streak >= MAX_CONSECUTIVE_FAILURES:
+                message = (
+                    f"CIRCUIT BREAKER OPEN: {streak} consecutive autonomous task-execution failures "
+                    f"reached the limit ({MAX_CONSECUTIVE_FAILURES}). No recovery run was dispatched. "
+                    "The durable task/checkpoint is preserved; inspect the first failing execution and "
+                    "explicitly resume only after its root cause is corrected."
+                )
+                report("Circuit breaker OPEN", message, error=True)
+                return 1
             if current_classification == ADMISSION_REJECTED:
                 message = (
                     "The triggering run failed while persisting a new manual task. "
                     "This is a task-admission rejection, not an autonomous execution failure. "
                     "No retry was dispatched and the existing pending task/owner/checkpoint were left untouched."
                 )
-            elif current_classification == NON_EXECUTION:
+            else:
                 message = (
                     "The triggering run failed in the schedule gate before task execution. "
                     "It is excluded from the execution-failure streak; no retry was dispatched."
                 )
-            else:
-                message = (
-                    "The failed run could not be classified from its job/step contract. "
-                    "Recovery is blocked fail-closed; durable state was not changed."
-                )
             report("Recovery blocked before task execution", message, error=True)
             return 1
-
-        streak = client.retryable_failure_streak(failed_run_id, current_jobs)
         if streak >= MAX_CONSECUTIVE_FAILURES:
             message = (
                 f"CIRCUIT BREAKER OPEN: {streak} consecutive autonomous task-execution failures "
