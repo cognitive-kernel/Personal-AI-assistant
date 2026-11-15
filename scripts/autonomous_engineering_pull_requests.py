@@ -194,7 +194,10 @@ def publish_pull_request(
 
     # Serialize remote PR creation with manual-task persistence. Persist the
     # durable PR owner record immediately, before independent CI dispatch.
-    with durable_state_lock(state_directory()):
+    # Resolve the ownership root once so the lock and durable record cannot
+    # accidentally target different roots if configuration changes mid-operation.
+    state_dir = state_directory()
+    with durable_state_lock(state_dir):
         existing = api(
             token, repo, "GET",
             f"pulls?state=open&head={quote(owner + ':' + branch, safe='')}&base=main&per_page=5",
@@ -249,7 +252,7 @@ def publish_pull_request(
             "run_id": run_id,
             "task": task_index,
         }
-        save_pending_pr_unlocked(pending_state, repo)
+        save_pending_pr_unlocked(pending_state, repo, state_dir)
 
     dispatch_and_wait_all(
         token, repo, ("tests.yml", "browser-e2e.yml", "dependency-audit.yml"), branch, pr_head
