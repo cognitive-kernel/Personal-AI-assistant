@@ -209,5 +209,5 @@ def cleanup_storage(*, active_run: bool) -> dict[str, Any]:
         "deleted_count": len(deleted),
         "blocked": False,
         "failures": failures,
-        "message": f"{len(deleted)} فایل موقت قدیمی حذف شد؛ فایل‌های داده و checkpoint دست‌نخورده ماندند.",
+        "message": f"{len(deleted)} فایل موقت یا گزارش قدیمی حذف شد؛ فایل‌های داده و checkpoint دست‌نخورده ماندند.",
     }
