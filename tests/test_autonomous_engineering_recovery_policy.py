@@ -8,6 +8,7 @@ from scripts.autonomous_engineering_recovery_policy import (
     RETRYABLE,
     UNKNOWN,
     MANUAL_TASK_PERSIST_STEP,
+    TASK_EXECUTION_STEP,
     classify_failed_run,
     retryable_failure_streak,
 )
@@ -32,24 +33,45 @@ def test_schedule_gate_failure_is_not_an_execution_failure():
     assert classify_failed_run(jobs) == NON_EXECUTION
 
 
-def test_failure_after_controller_task_execution_starts_is_retryable():
-    jobs = [_job("schedule-gate", "success"), _job("codex", "failure", "Execute one isolated task, validate, and publish for owner review")]
+@pytest.mark.parametrize(
+    "failed_step",
+    [
+        "Use preinstalled system Python under the Runner service identity",
+        "Capture live GitHub state with the read-only workflow token",
+        "Ensure Codex CLI is installed for the Runner service account",
+        "Verify local Ollama and Codex prerequisites",
+        "Verify the selected model's allocated Ollama context",
+        "Verify Ollama and a real workspace-confined Codex tool call",
+        "Install project dependencies for local test execution",
+        "Prepare bounded engineering instructions",
+        "Recheck durable pause state immediately before task start",
+        "Verify persistent Ollama context after autonomous Codex task",
+    ],
+)
+def test_preflight_and_postcondition_failures_do_not_count_as_task_execution(failed_step):
+    jobs = [_job("schedule-gate", "success"), _job("codex", "failure", failed_step)]
+
+    assert classify_failed_run(jobs) == NON_EXECUTION
+
+
+def test_failure_of_the_exact_task_execution_step_is_retryable():
+    jobs = [_job("schedule-gate", "success"), _job("codex", "failure", TASK_EXECUTION_STEP)]
 
     assert classify_failed_run(jobs) == RETRYABLE
 
 
-def test_codex_job_timeout_is_retryable_even_without_a_failed_step():
+def test_job_timeout_without_failed_step_is_unknown_not_guessed_as_execution():
     jobs = [_job("codex", "timed_out")]
 
-    assert classify_failed_run(jobs) == RETRYABLE
+    assert classify_failed_run(jobs) == UNKNOWN
 
 
 def test_ambiguous_failed_job_shape_fails_closed():
     assert classify_failed_run([_job("unknown-job", "failure", "some step")]) == UNKNOWN
-    assert classify_failed_run([_job("codex", "failure")]) == UNKNOWN
+    assert classify_failed_run([_job("codex", "failure")]) == NON_EXECUTION
 
 
-def test_failure_streak_ignores_admission_rejections_but_counts_execution_failures():
+def test_failure_streak_ignores_admission_and_preflight_failures():
     runs = [
         {"id": 10, "run_number": 10, "head_branch": "main", "conclusion": "failure"},
         {"id": 9, "run_number": 9, "head_branch": "main", "conclusion": "failure"},
@@ -57,12 +79,12 @@ def test_failure_streak_ignores_admission_rejections_but_counts_execution_failur
         {"id": 7, "run_number": 7, "head_branch": "main", "conclusion": "success"},
     ]
     jobs = {
-        10: [_job("codex", "failure", "Execute one isolated task, validate, and publish for owner review")],
+        10: [_job("codex", "failure", TASK_EXECUTION_STEP)],
         9: [_job("codex", "failure", MANUAL_TASK_PERSIST_STEP)],
         8: [_job("codex", "failure", "Verify local Ollama and Codex prerequisites")],
     }
 
-    assert retryable_failure_streak(runs, jobs, failed_run_id=10) == 2
+    assert retryable_failure_streak(runs, jobs, failed_run_id=10) == 1
 
 
 def test_success_resets_execution_failure_streak():
@@ -72,7 +94,7 @@ def test_success_resets_execution_failure_streak():
         {"id": 10, "run_number": 10, "head_branch": "main", "conclusion": "failure"},
     ]
     jobs = {
-        12: [_job("codex", "failure", "Execute one isolated task, validate, and publish for owner review")],
+        12: [_job("codex", "failure", TASK_EXECUTION_STEP)],
     }
 
     assert retryable_failure_streak(runs, jobs, failed_run_id=12) == 1
@@ -84,7 +106,7 @@ def test_unknown_historical_failure_blocks_recovery():
         {"id": 9, "run_number": 9, "head_branch": "main", "conclusion": "failure"},
     ]
     jobs = {
-        10: [_job("codex", "failure", "Execute one isolated task, validate, and publish for owner review")],
+        10: [_job("codex", "failure", TASK_EXECUTION_STEP)],
         9: [_job("unexpected", "failure", "unknown")],
     }
 
@@ -106,6 +128,7 @@ def test_classifier_names_match_the_autonomous_workflow_contract():
     assert "  schedule-gate:" in workflow
     assert "  codex:" in workflow
     assert MANUAL_TASK_PERSIST_STEP in workflow
+    assert TASK_EXECUTION_STEP in workflow
 
 
 def test_malformed_job_or_step_records_are_not_silently_ignored():
