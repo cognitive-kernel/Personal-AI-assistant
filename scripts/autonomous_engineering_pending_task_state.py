@@ -6,6 +6,7 @@ import math
 import os
 import re
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -144,13 +145,15 @@ def claim_pending_task_owner_unlocked(
             }
 
     _validate_owner_record(record, task)
-    temporary = owner_path.with_name(owner_path.name + f".{os.getpid()}.tmp")
+    temporary = owner_path.with_name(
+        f"{owner_path.name}.{os.getpid()}.{time.time_ns()}.{uuid.uuid4().hex}.tmp"
+    )
     try:
-        temporary.write_text(
-            json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
-        temporary.replace(owner_path)
+        with temporary.open("x", encoding="utf-8", newline="\n") as stream:
+            stream.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, owner_path)
     finally:
         temporary.unlink(missing_ok=True)
     return record
