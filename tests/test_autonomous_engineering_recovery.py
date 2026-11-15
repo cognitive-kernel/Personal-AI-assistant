@@ -62,6 +62,39 @@ def test_main_blocks_admission_rejection_without_dispatch(monkeypatch):
     assert "task-admission rejection" in reports[0][0][1]
 
 
+def test_main_does_not_dispatch_for_a_preflight_failure(monkeypatch):
+    _configure_environment(monkeypatch)
+    calls = []
+    reports = []
+
+    class FakeClient:
+        def __init__(self, repository, token):
+            pass
+
+        def jobs(self, run_id):
+            return [
+                {"name": "schedule-gate", "conclusion": "success", "steps": []},
+                {
+                    "name": "codex",
+                    "conclusion": "failure",
+                    "steps": [{"name": "Verify local Ollama and Codex prerequisites", "conclusion": "failure"}],
+                },
+            ]
+
+        def retryable_failure_streak(self, run_id, jobs):
+            return 0
+
+        def request(self, *args, **kwargs):
+            calls.append((args, kwargs))
+
+    monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
+    monkeypatch.setattr(recovery, "report", lambda *args, **kwargs: reports.append((args, kwargs)))
+
+    assert recovery.main() == 1
+    assert calls == []
+    assert "before task execution" in reports[0][0][1]
+
+
 def test_main_opens_breaker_as_a_failed_recovery_result(monkeypatch):
     _configure_environment(monkeypatch)
     calls = []
