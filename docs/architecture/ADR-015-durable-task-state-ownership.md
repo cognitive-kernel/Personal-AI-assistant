@@ -18,9 +18,9 @@ Atomic file replacement protects an individual write from partial contents, but 
 
 ## Decision
 
-1. Introduce `scripts/autonomous_engineering_state_lock.py` as the shared durable-state synchronization contract.
-2. On Windows, Python and PowerShell acquire the same byte-range lock on
-   `autonomous-durable-state.lock` in the configured shared state directory.
+1. Keep the canonical machine-aware state-root resolver and OS byte-range lock primitive in the installed `app/autonomous_engineering_state.py` package. The `scripts/autonomous_engineering_state_paths.py`, `scripts/autonomous_engineering_file_lock.py`, and `scripts/autonomous_engineering_state_lock.py` modules are compatibility facades for Runner entry points and preserve the existing script import seams.
+2. On Windows, app Python, Runner Python, and PowerShell acquire the same byte-range lock on
+   `autonomous-durable-state.lock` in the configured shared state directory. The app package owns the Python platform implementation; the script facades delegate to that exact implementation.
    Python uses `msvcrt.locking`; PowerShell uses `.NET FileStream.Lock`.
    Both use byte offset 0 and length 1, so they contend on the same OS file lock
    across logon sessions and Windows accounts. The OS releases the lock when a
@@ -29,7 +29,7 @@ Atomic file replacement protects an individual write from partial contents, but 
    timeout on the same state file. Directory ACLs are provisioned separately
    from the lock protocol and must grant the participating application/Runner
    identities the required access; no account name or SID is embedded in code.
-4. Resolve the state root through `autonomous_engineering_state_paths.py` for checkpoint, execution, progress telemetry, and task/PR state. Configured roots must be absolute. On Windows, missing `PROGRAMDATA` is a hard error rather than a fallback to a per-user home directory. Expand environment variables consistently across Python and PowerShell.
+4. Resolve the state root through `app.autonomous_engineering_state.execution_state_directory()` for checkpoint, execution, progress telemetry, and task/PR state. Script compatibility facades delegate to the same resolver. Configured roots must be absolute. On Windows, missing `PROGRAMDATA` is a hard error rather than a fallback to a per-user home directory. Expand environment variables consistently across Python and PowerShell.
 5. PowerShell manual-task persistence runs inside the `codex` job's GitHub concurrency group and holds the shared lock across active-run detection, pending-task/pending-PR validation, open-PR checks, and atomic task write. It rejects a new single-slot task while another autonomous run is queued or active; the schedule gate fails the manual dispatch visibly when paused or occupied. It never silently queues a task that a currently running cycle could later erase.
 6. The workflow capture step is read-only for the durable task file. It acquires the shared lock, verifies any supplied task exactly matches the task already persisted by the earlier step in the same serialized job, and reads the persisted task for the request.
 7. Python pending-PR load/save/clear operations use the same file lock. PR publication acquires it around remote PR creation and local owner-record persistence, and writes the pending-PR record before dispatching long-running CI. Recovery also persists a discovered PR owner record before CI revalidation.
@@ -51,7 +51,7 @@ Atomic file replacement protects an individual write from partial contents, but 
 
 - Unit tests for the shared file-lock primitive, POSIX lock exclusion, bounded wait, finite timeout validation, and process-crash release.
 - Architecture fitness test requires both ownership adapters to delegate OS-specific locking to the shared primitive while retaining separate lock names.
-- Windows integration test proving PowerShell and Python contend on the same byte-range lock file.
+- Windows integration test proving PowerShell, app Python, and Runner Python contend on the same byte-range lock file.
 - Tests for pending task owner lease round-trip, claim/recovery reassignment, task digest mismatch, Python/PowerShell SHA-256 interoperability, pending PR round-trip/corruption rejection, publication owner record persistence before CI dispatch, and interrupted post-merge cleanup recovery.
 - Windows workflow tests for PowerShell parsing, durable-state file-lock interoperability, checkpoint watcher lifecycle, and repository execution-lock contention.
 - Exact-head full suite, browser E2E, dependency audit, and target Runner end-to-end acceptance remain required before merge.
