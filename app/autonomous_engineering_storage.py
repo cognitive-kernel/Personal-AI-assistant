@@ -43,7 +43,7 @@ def _entry(path: Path, root: Path) -> dict[str, Any] | None:
 
 def _runner_temp_directories() -> list[Path]:
     roots: list[Path] = []
-    configured = os.environ.get("RUNNER_TEMP") or os.environ.get("AUTONOMOUS_ENGINEERING_RUNNER_TEMP")
+    configured = os.environ.get("AUTONOMOUS_ENGINEERING_RUNNER_TEMP") or os.environ.get("RUNNER_TEMP")
     if not configured and os.name == "nt":
         try:
             import winreg
@@ -124,7 +124,7 @@ def inspect_storage() -> dict[str, Any]:
                 access_errors.append({"path": str(runner_temp), "error": type(exc).__name__})
         else:
             access_errors.append({"path": str(runner_temp), "error": "directory_missing_or_inaccessible"})
-    runner_roots = [path.parent.parent for path in runner_temp_dirs if len(path.parents) >= 3]
+    runner_roots = [path.parent.parent for path in runner_temp_dirs if path.name.casefold() == "_temp" and path.parent.name.casefold() == "_work"]
     for runner_root in runner_roots:
         diagnostic_dir = runner_root / "_diag"
         if diagnostic_dir.is_dir():
@@ -175,7 +175,7 @@ def cleanup_storage(*, active_run: bool) -> dict[str, Any]:
     roots: list[tuple[Path, str]] = [(state_root, "state_temporary")]
     runner_temp_dirs = _runner_temp_directories()
     roots.extend((path, "runner_temporary") for path in runner_temp_dirs)
-    roots.extend((path.parent.parent / "_diag", "runner_diagnostic") for path in runner_temp_dirs if len(path.parents) >= 3)
+    roots.extend((path.parent.parent / "_diag", "runner_diagnostic") for path in runner_temp_dirs if path.name.casefold() == "_temp" and path.parent.name.casefold() == "_work")
 
     deleted: list[str] = []
     failures: list[str] = []
