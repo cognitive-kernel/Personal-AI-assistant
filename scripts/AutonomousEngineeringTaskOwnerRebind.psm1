@@ -104,6 +104,7 @@ function Rebind-AutonomousTaskOwnerRecord {
     $nonce = [guid]::NewGuid().ToString('N')
     $backupPath = "$Path.quarantine-rebound-$RunId-$RunAttempt-$nonce.json"
     $temporaryPath = "$Path.$RunId-$RunAttempt-$nonce.rebind.tmp"
+    $temporaryCreated = $false
     try {
         $json = $record | ConvertTo-Json -Depth 5 -Compress
         $bytes = [System.Text.UTF8Encoding]::new($false).GetBytes($json)
@@ -113,6 +114,7 @@ function Rebind-AutonomousTaskOwnerRecord {
             [System.IO.FileAccess]::Write,
             [System.IO.FileShare]::None
         )
+        $temporaryCreated = $true
         try {
             $stream.Write($bytes, 0, $bytes.Length)
             $stream.Flush($true)
