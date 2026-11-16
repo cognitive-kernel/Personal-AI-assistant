@@ -108,12 +108,19 @@
       });
       let payload = {};
       try { payload = await response.json(); } catch (_) {}
-      if (!response.ok) throw new Error(payload.detail || "درخواست ناموفق بود.");
+      if (!response.ok) {
+        const failure = new Error(payload.detail || "درخواست ناموفق بود.");
+        failure.status = response.status;
+        throw failure;
+      }
       return payload;
     } catch (error) {
       if (error && error.name === "AbortError") {
-        throw new Error("پاسخ سرویس در مهلت " + (timeoutMs / 1000) + " ثانیه دریافت نشد؛ وضعیت سرور و لاگ‌ها را بررسی کنید.");
+        const timeoutError = new Error("پاسخ سرویس در مهلت " + (timeoutMs / 1000) + " ثانیه دریافت نشد؛ وضعیت سرور و لاگ‌ها را بررسی کنید.");
+        timeoutError.ambiguous = true;
+        throw timeoutError;
       }
+      if (error && !Number.isInteger(error.status)) error.ambiguous = true;
       throw error;
     } finally {
       window.clearTimeout(timeoutId);
@@ -132,6 +139,10 @@
     const allowed = canStartDispatch();
     dispatchButton.disabled = !allowed;
     taskButton.disabled = !allowed;
+  }
+  function lockDispatchVisibilityWindow() {
+    dispatchPendingUntil = Date.now() + 30000;
+    window.setTimeout(syncDispatchControls, 30000);
   }
   function refresh(force = false) {
     if (statusRefreshPromise) {
@@ -294,12 +305,12 @@
         method: "POST",
         body: JSON.stringify({task})
       });
-      dispatchPendingUntil = Date.now() + 30000;
-      window.setTimeout(syncDispatchControls, 30000);
+      lockDispatchVisibilityWindow();
       $("manual-task").value = "";
       setMessage(result.message || "وظیفه برای عامل ارسال شد.", "success");
       await refresh(true);
     } catch (error) {
+      if (error.ambiguous || error.status >= 500) lockDispatchVisibilityWindow();
       const detail = error.message || "ارسال وظیفه ناموفق بود.";
       await refresh(true);
       setMessage(detail, "error");
@@ -316,10 +327,10 @@
     setMessage("در حال ارسال درخواست اجرای Workflow به GitHub…");
     try {
       const result = await request("dispatch", {method: "POST"});
-      dispatchPendingUntil = Date.now() + 30000;
-      window.setTimeout(syncDispatchControls, 30000);
+      lockDispatchVisibilityWindow();
       setMessage(result.message || "درخواست ارسال شد.", "success");
     } catch (error) {
+      if (error.ambiguous || error.status >= 500) lockDispatchVisibilityWindow();
       setMessage(error.message || "ارسال درخواست ناموفق بود.", "error");
     } finally {
       await refresh(true);
@@ -343,11 +354,11 @@
     resumeButton.disabled = true;
     try {
       const result = await request("resume", {method: "POST"});
-      dispatchPendingUntil = Date.now() + 30000;
-      window.setTimeout(syncDispatchControls, 30000);
+      lockDispatchVisibilityWindow();
       setMessage(result.message || "ادامهٔ صف درخواست شد.", "success");
       await refresh(true);
     } catch (error) {
+      if (error.ambiguous || error.status >= 500) lockDispatchVisibilityWindow();
       const detail = error.message || "ادامهٔ صف ثبت نشد.";
       await refresh(true);
       setMessage(detail, "error");
