@@ -117,6 +117,8 @@ def test_runner_identity_is_discovered_or_generated_without_fixed_account_names(
     assert "Application identity discovery accepts only an HTTP loopback status URL." in identity
     assert "Get-AutonomousApplicationIdentity" in provision
     assert "Get-AutonomousApplicationIdentity" in configure
+    assert "installer identity will not be guessed" in provision
+    assert "installer identity will not be guessed" in configure
     assert "AUTONOMOUS_ENGINEERING_APP_STATUS_URL" in identity
     assert "AUTONOMOUS_ENGINEERING_RUNNER_ROOT" in provision
     assert '[Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ROOT", "Machine")' in provision
