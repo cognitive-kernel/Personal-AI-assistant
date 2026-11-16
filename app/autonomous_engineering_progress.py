@@ -20,12 +20,30 @@ def _progress_dir() -> Path:
     return execution_state_directory()
 
 
-def storage_accessible() -> bool:
+def storage_access_status() -> dict[str, Any]:
+    """Verify durable-state write access and the shared OS lock, not directory listing alone."""
+    directory: Path | None = None
     try:
-        with os.scandir(_progress_dir()):
-            return True
-    except (OSError, RuntimeError, ValueError):
-        return False
+        directory = _progress_dir()
+        lock_path = directory / "autonomous-durable-state.lock"
+        with durable_state_lock(directory, timeout_seconds=2):
+            return {
+                "available": True,
+                "state_directory": str(directory),
+                "lock_file": str(lock_path),
+                "error": None,
+            }
+    except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
+        return {
+            "available": False,
+            "state_directory": str(directory) if directory is not None else None,
+            "lock_file": str(directory / "autonomous-durable-state.lock") if directory is not None else None,
+            "error": f"{type(exc).__name__}: {str(exc)[:240]}",
+        }
+
+
+def storage_accessible() -> bool:
+    return storage_access_status()["available"]
 
 
 def pending_work_status() -> dict[str, Any]:
