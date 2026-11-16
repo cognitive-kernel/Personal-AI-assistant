@@ -44,11 +44,7 @@ def execution_state_directory(
     process_configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
     if is_windows():
         machine_configured = machine_state()
-        require_machine_scope = (
-            os.getenv("AUTONOMOUS_ENGINEERING_REQUIRE_MACHINE_STATE_DIR", "").strip().lower()
-            == "true"
-        )
-        if process_configured and not machine_configured and require_machine_scope:
+        if process_configured and not machine_configured:
             raise RuntimeError(
                 "AUTONOMOUS_ENGINEERING_PROGRESS_DIR is process/user-scoped; configure it "
                 "at machine scope so all Windows accounts share one state root."
