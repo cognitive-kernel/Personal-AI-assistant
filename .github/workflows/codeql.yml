@@ -40,3 +40,12 @@ jobs:
         uses: github/codeql-action/analyze@v4
         with:
           category: "/language:python-javascript"
+
+      - name: Preserve SARIF for security-alert triage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeql-sarif-${{ github.run_id }}
+          path: results/*.sarif
+          if-no-files-found: warn
+          retention-days: 7
