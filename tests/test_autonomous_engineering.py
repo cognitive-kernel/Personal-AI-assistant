@@ -718,6 +718,7 @@ def test_autonomous_workflow_requires_saved_model_without_a_hardcoded_fallback()
     for relative_path in (
         "scripts/check_autonomous_agent.ps1",
         "scripts/check_autonomous_runner.ps1",
+        "scripts/check_autonomous_storage.ps1",
         "scripts/provision_autonomous_runner.ps1",
     ):
         script = (root / relative_path).read_text(encoding="utf-8")
