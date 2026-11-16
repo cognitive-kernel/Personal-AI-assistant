@@ -3677,7 +3677,10 @@ def test_autonomous_dashboard_keeps_dispatch_disabled_after_accepted_run():
         assert state["dispatches"] == 1
         assert state["active"] is False
         assert page.locator("#send-agent-task").is_disabled()
-        page.wait_for_function("async () => await window.getAutonomousStatusReads() >= 2", timeout=5000)
+        for _ in range(100):
+            if state["status_reads"] >= 2:
+                break
+            page.wait_for_timeout(50)
         assert state["status_reads"] >= 2
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
