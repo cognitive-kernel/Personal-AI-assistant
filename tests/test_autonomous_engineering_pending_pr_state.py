@@ -14,6 +14,16 @@ from scripts.autonomous_engineering_pending_pr_state import (
 from scripts.autonomous_engineering_state_lock import durable_state_lock
 
 
+def _simulate_machine_state_setting(monkeypatch: pytest.MonkeyPatch, state_dir: Path) -> None:
+    from scripts import autonomous_engineering_state_paths
+
+    monkeypatch.setattr(
+        autonomous_engineering_state_paths,
+        "_machine_configured_state_directory",
+        lambda: str(state_dir),
+    )
+
+
 def _seed_pending_state(state_dir: Path) -> None:
     state_dir.mkdir(parents=True, exist_ok=True)
     (state_dir / "pending-autonomous-pr.json").write_text("{}", encoding="utf-8")
@@ -59,6 +69,7 @@ def test_clear_pending_state_commits_and_completes_cleanup_intent(
 ):
     _seed_pending_state(tmp_path)
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path))
+    _simulate_machine_state_setting(monkeypatch, tmp_path)
 
     clear_pending_state()
 
@@ -81,6 +92,7 @@ def test_pending_pr_loader_rejects_noncanonical_or_mismatched_urls(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, url: str,
 ):
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path))
+    _simulate_machine_state_setting(monkeypatch, tmp_path)
     record = {
         "number": 42,
         "url": url,
