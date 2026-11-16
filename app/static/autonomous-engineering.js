@@ -147,17 +147,26 @@
   function refresh(force = false) {
     if (statusRefreshPromise) {
       if (!force) return statusRefreshPromise;
-      // A post-mutation refresh must not reuse a status response that began
-      // before the mutation (for example, before GitHub exposes a new run).
-      return statusRefreshPromise.then(
-        () => refresh(),
-        () => refresh()
-      );
+      // Reserve the single-flight slot for the post-mutation refresh before
+      // the previous request settles. Otherwise a timer poll can start in the
+      // gap and be mistaken for the required fresh status snapshot.
+      const previous = statusRefreshPromise;
+      let followUp;
+      followUp = previous.then(
+        () => refreshStatus(),
+        () => refreshStatus()
+      ).finally(() => {
+        if (statusRefreshPromise === followUp) statusRefreshPromise = null;
+      });
+      statusRefreshPromise = followUp;
+      return followUp;
     }
-    statusRefreshPromise = refreshStatus().finally(() => {
-      statusRefreshPromise = null;
+    let current;
+    current = refreshStatus().finally(() => {
+      if (statusRefreshPromise === current) statusRefreshPromise = null;
     });
-    return statusRefreshPromise;
+    statusRefreshPromise = current;
+    return current;
   }
   async function refreshStatus() {
     $("refresh-agent").disabled = true;
