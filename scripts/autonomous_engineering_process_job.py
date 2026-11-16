@@ -150,9 +150,9 @@ class WindowsProcessJob:
             raise ctypes.WinError(ctypes.get_last_error())
 
     SYNCHRONIZE = 0x00100000
+    PROCESS_TERMINATE = 0x0001
+    PROCESS_QUERY_INFORMATION = 0x0400
     ERROR_INVALID_PARAMETER = 87
-    ERROR_INSUFFICIENT_BUFFER = 122
-    ERROR_MORE_DATA = 234
     WAIT_OBJECT_0 = 0x00000000
     WAIT_TIMEOUT = 0x00000102
     WAIT_FAILED = 0xFFFFFFFF
@@ -194,7 +194,7 @@ class WindowsProcessJob:
                 return [int(pids[index]) for index in range(count) if pids[index]]
 
             error = ctypes.get_last_error()
-            if error not in {self.ERROR_INSUFFICIENT_BUFFER, self.ERROR_MORE_DATA}:
+            if error not in {122, 234}:  # ERROR_INSUFFICIENT_BUFFER / ERROR_MORE_DATA
                 raise ctypes.WinError(error)
             required = int(returned_length.value)
             required_capacity = (
@@ -203,28 +203,55 @@ class WindowsProcessJob:
             )
             capacity = max(capacity * 2, required_capacity)
 
-    def _open_process_sync_handle(self, pid: int) -> int | None:
-        """Open a process handle used only to wait for that process to terminate."""
+    def _open_job_process_handle(self, pid: int) -> int | None:
+        """Pin a PID only after verifying that its process object belongs to this job."""
+        access = self.SYNCHRONIZE | self.PROCESS_TERMINATE | self.PROCESS_QUERY_INFORMATION
         self._kernel32.OpenProcess.argtypes = [
             ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32,
         ]
         self._kernel32.OpenProcess.restype = ctypes.c_void_p
-        handle = self._kernel32.OpenProcess(self.SYNCHRONIZE, False, pid)
-        if handle:
-            return int(handle)
-        error = ctypes.get_last_error()
-        if error == self.ERROR_INVALID_PARAMETER:
-            # The PID may have exited between the Job Object query and OpenProcess.
+        process_handle = self._kernel32.OpenProcess(access, False, pid)
+        if not process_handle:
+            error = ctypes.get_last_error()
+            if error == self.ERROR_INVALID_PARAMETER:
+                # The process may have exited between the PID-list snapshot and OpenProcess.
+                return None
+            raise ctypes.WinError(error)
+
+        self._kernel32.IsProcessInJob.argtypes = [
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_int),
+        ]
+        self._kernel32.IsProcessInJob.restype = ctypes.c_int
+        belongs_to_job = ctypes.c_int()
+        if not self._kernel32.IsProcessInJob(
+            process_handle, self._handle, ctypes.byref(belongs_to_job),
+        ):
+            error = ctypes.get_last_error()
+            self._kernel32.CloseHandle(process_handle)
+            raise ctypes.WinError(error)
+        if not belongs_to_job.value:
+            self._kernel32.CloseHandle(process_handle)
             return None
-        raise ctypes.WinError(error)
+        return int(process_handle)
+
+    def _track_job_processes(self, current_pids: set[int]) -> None:
+        for pid in current_pids:
+            if pid in self._process_handles:
+                continue
+            process_handle = self._open_job_process_handle(pid)
+            if process_handle is not None:
+                self._process_handles[pid] = process_handle
+
+    def _close_tracked_process_handle(self, pid: int) -> None:
+        process_handle = self._process_handles.pop(pid)
+        if not self._kernel32.CloseHandle(process_handle):
+            raise ctypes.WinError(ctypes.get_last_error())
 
     def wait_for_empty(self, timeout_seconds: float) -> bool:
-        """Wait until every process handle observed in this Job Object is signaled.
+        """Wait for all observed job members to leave the job and signal process exit.
 
-        A Job Object itself is not a general completion barrier. Querying its PID
-        list discovers members; waiting on each process handle confirms actual
-        process termination without relying on Job Object signaling or accounting
-        counters alone.
+        Job PID-list removal alone is not proof that the process object is signaled.
+        Keep identity-bound handles for observed members and wait on each process.
         """
         if os.name != "nt":
             return True
@@ -240,25 +267,15 @@ class WindowsProcessJob:
 
         self._kernel32.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
         self._kernel32.WaitForSingleObject.restype = ctypes.c_uint32
-        self._kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
-        self._kernel32.CloseHandle.restype = ctypes.c_int
-
         deadline = time.monotonic() + float(timeout_seconds)
         while True:
             current_pids = set(self._job_process_ids())
-            for pid in current_pids:
-                if pid in self._process_handles:
-                    continue
-                process_handle = self._open_process_sync_handle(pid)
-                if process_handle is not None:
-                    self._process_handles[pid] = process_handle
+            self._track_job_processes(current_pids)
 
             for pid, process_handle in list(self._process_handles.items()):
                 result = self._kernel32.WaitForSingleObject(process_handle, 0)
                 if result == self.WAIT_OBJECT_0 and pid not in current_pids:
-                    if not self._kernel32.CloseHandle(process_handle):
-                        raise ctypes.WinError(ctypes.get_last_error())
-                    del self._process_handles[pid]
+                    self._close_tracked_process_handle(pid)
                 elif result == self.WAIT_TIMEOUT:
                     continue
                 elif result == self.WAIT_FAILED:
@@ -271,7 +288,65 @@ class WindowsProcessJob:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return False
-            time.sleep(min(0.05, remaining))
+            time.sleep(min(0.01, remaining))
+
+    def _terminate_and_drain_job(self, exit_code: int, timeout_seconds: float) -> None:
+        """Terminate observed members individually, then use job termination as a safety net."""
+        deadline = time.monotonic() + float(timeout_seconds)
+        termination_requested: set[int] = set()
+        self._kernel32.TerminateProcess.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        self._kernel32.TerminateProcess.restype = ctypes.c_int
+
+        while True:
+            current_pids = set(self._job_process_ids())
+            self._track_job_processes(current_pids)
+
+            for pid, process_handle in list(self._process_handles.items()):
+                result = self._kernel32.WaitForSingleObject(process_handle, 0)
+                if result == self.WAIT_FAILED:
+                    raise ctypes.WinError(ctypes.get_last_error())
+                if result == self.WAIT_OBJECT_0 or pid in termination_requested:
+                    continue
+                if result != self.WAIT_TIMEOUT:
+                    raise RuntimeError(f"Unexpected process wait result: 0x{result:08x}.")
+                if not self._kernel32.TerminateProcess(
+                    process_handle, int(exit_code) & 0xFFFFFFFF,
+                ):
+                    error = ctypes.get_last_error()
+                    if self._kernel32.WaitForSingleObject(process_handle, 0) != self.WAIT_OBJECT_0:
+                        raise ctypes.WinError(error)
+                termination_requested.add(pid)
+
+            # Re-query after requesting termination. New descendants created just
+            # before a parent was stopped must be captured and stopped as well.
+            remaining_pids = set(self._job_process_ids())
+            if not remaining_pids:
+                # PID-list removal can precede process-object signaling. Wait for
+                # every retained process handle before returning.
+                all_signaled = True
+                for pid, process_handle in list(self._process_handles.items()):
+                    result = self._kernel32.WaitForSingleObject(process_handle, 0)
+                    if result == self.WAIT_OBJECT_0:
+                        self._close_tracked_process_handle(pid)
+                    elif result == self.WAIT_TIMEOUT:
+                        all_signaled = False
+                    elif result == self.WAIT_FAILED:
+                        raise ctypes.WinError(ctypes.get_last_error())
+                    else:
+                        raise RuntimeError(f"Unexpected process wait result: 0x{result:08x}.")
+                if all_signaled and not self._process_handles:
+                    # Final safety net after the observed job tree has drained.
+                    self.terminate(exit_code)
+                    return
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                # Do not claim a successful drain when process handles remain unsignaled.
+                self.terminate(exit_code)
+                raise RuntimeError(
+                    "Could not confirm termination of every observed process in the Windows Job Object."
+                )
+            time.sleep(min(0.01, remaining))
 
     def terminate_remaining_processes(
         self,
@@ -282,14 +357,12 @@ class WindowsProcessJob:
         """Allow natural descendant exit briefly, then terminate and drain leftovers.
 
         Returns True only when a remaining job member had to be terminated.
-        The caller can therefore distinguish an ordinary process-shutdown race
-        from descendants that outlived the bounded grace period.
+        A forced stop tracks each member by process handle, terminates observed
+        members individually, and confirms each process object is signaled.
         """
         if self.wait_for_empty(grace_seconds):
             return False
-        self.terminate(exit_code)
-        if not self.wait_for_empty(timeout_seconds):
-            raise RuntimeError("Could not confirm termination of every process in the Windows Job Object.")
+        self._terminate_and_drain_job(exit_code, timeout_seconds)
         return True
 
     def assign_and_resume(self, process: Any) -> None:
@@ -322,15 +395,18 @@ class WindowsProcessJob:
             raise OSError(f"NtResumeProcess failed with NTSTATUS 0x{status & 0xffffffff:08x}.")
 
     def close(self) -> None:
+        first_error: OSError | None = None
         if self._handle and self._kernel32:
             handle, self._handle = self._handle, None
             if not self._kernel32.CloseHandle(handle):
-                raise ctypes.WinError(ctypes.get_last_error())
+                first_error = ctypes.WinError(ctypes.get_last_error())
         if self._kernel32:
             for process_handle in self._process_handles.values():
-                if not self._kernel32.CloseHandle(process_handle):
-                    raise ctypes.WinError(ctypes.get_last_error())
+                if not self._kernel32.CloseHandle(process_handle) and first_error is None:
+                    first_error = ctypes.WinError(ctypes.get_last_error())
         self._process_handles.clear()
+        if first_error is not None:
+            raise first_error
 
     def __exit__(self, exc_type, exc, traceback) -> None:
         self.close()
