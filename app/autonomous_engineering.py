@@ -1,6 +1,7 @@
 """Local diagnostics and explicit controls for the Ollama-backed GitHub engineering agent."""
 from __future__ import annotations
 
+import csv
 import json
 import os
 import platform
@@ -131,6 +132,26 @@ def _github_snapshot() -> dict[str, Any]:
     )
 
 
+def _application_windows_identity() -> dict[str, str] | None:
+    """Return the current app process identity without relying on a configured username."""
+    if os.name != "nt":
+        return None
+    try:
+        result = subprocess.run(
+            ["whoami", "/user", "/fo", "csv", "/nh"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
+        )
+        row = next(csv.reader(result.stdout.splitlines()), [])
+        if len(row) < 2 or not row[0].strip() or not re.fullmatch(r"S-1-[0-9-]+", row[1].strip()):
+            return None
+        return {"name": row[0].strip(), "sid": row[1].strip()}
+    except (OSError, subprocess.SubprocessError, csv.Error, ValueError):
+        return None
+
+
 def collect_status() -> dict[str, Any]:
     github = _github_snapshot()
     settings = github.get("settings", {})
@@ -198,6 +219,7 @@ def collect_status() -> dict[str, Any]:
         "paused": paused,
         "progress_storage_accessible": progress_storage,
         "storage": storage_status,
+        "application_identity": _application_windows_identity(),
         "platform": platform.platform(),
         "local_only_inference": True,
     }
