@@ -1930,3 +1930,19 @@ After the operational status and delivery-estimate documentation was synchronize
 
 These are hosted CI results only. Target-host Windows/ACL/sandbox/restart and live Ollama/Codex acceptance remain outstanding.
 
+
+
+## 2026-11-16 — PR #766: portable durable storage and first-install identity discovery
+
+Status: implementation updated; exact-head CI and live Windows acceptance are pending.
+
+- Root cause of the 503: the application process could read the shared state directory and lock but lacked Modify access. The prior ACL helper also disabled inheritance, removed unrelated principals, and replaced existing grants, so it was unsafe for a generic first install.
+- Replaced ACL rewriting with additive FileSystemAccessRule updates. Existing explicit and inherited entries and the inheritance-protection state are preserved. Both the actual application SID and actual Runner service SID receive Modify on the shared state directory and durable lock.
+- The installer now discovers the running application's name/SID through a loopback-only /api/autonomous-engineering/identity endpoint. It fails closed if that identity cannot be discovered; it does not silently assume the elevated installer is the application.
+- Existing Runner installation root, name, and StartName are discovered from Windows service configuration. Fresh installs generate a random local non-administrator account. Its name and a validated provisioning marker allow safe retries without fixed usernames.
+- State and Runner roots use machine-scoped configuration and ProgramData defaults, not a user profile or machine-specific absolute path. The Runner service account is not removed from or added to any group; direct local Administrators membership is rejected.
+- Storage readiness now creates/deletes a real temporary probe and acquires the same durable lock used by Python and PowerShell. The dashboard shows the resolved state path, app SID, configured Runner identity, and exact storage error.
+- Added scripts/check_autonomous_storage.ps1 so both identities can be checked without requiring Ollama. Ollama/model validation is optional during infrastructure provisioning.
+- Updated Windows test fixtures to simulate machine-scope configuration without weakening production checks. Updated sandbox Docker invocation to mark only /workspace as Git-safe for the unprivileged container user.
+- No account or ACL changes were executed on the owner's Windows machine; these are code and installer changes only.
+- CI runs for the current PR head were triggered. Do not mark complete until Python tests, Windows PowerShell/ACL tests, sandbox integration, and the two-identity storage acceptance pass.
