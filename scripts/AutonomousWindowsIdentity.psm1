@@ -200,11 +200,8 @@ function Set-AutonomousStateDirectoryAcl {
         [System.IO.FileAccess]::ReadWrite,
         [System.IO.FileShare]::ReadWrite
     )
-    try {
-        # Opening with ReadWrite verifies the file exists without modifying its bytes.
-    } finally {
-        $stream.Dispose()
-    }
+    # Opening with ReadWrite verifies the file exists without modifying its bytes.
+    $stream.Dispose()
 
     Set-AutonomousDirectoryAcl -Path $Path -RunnerSid $RunnerSid -AdditionalModifySids $AdditionalModifySids
     Set-AutonomousDirectoryAcl -Path $lockPath -RunnerSid $RunnerSid -AdditionalModifySids $AdditionalModifySids -File
