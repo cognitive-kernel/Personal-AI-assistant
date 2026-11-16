@@ -1602,6 +1602,8 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
 
     assert "new AbortController()" in script
     assert "statusRefreshPromise" in script
+    assert "function refresh(force = false)" in script
+    assert "await refresh(true)" in script
     assert "dispatchPendingUntil" in script
     assert "if (settingsSaving) return" in script
     assert "if (taskSubmitting) return" in script
