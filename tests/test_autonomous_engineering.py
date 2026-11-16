@@ -1652,24 +1652,60 @@ def test_workflow_log_sanitizer_redacts_common_credentials():
     assert "[REDACTED]" in result
 
 
+def test_workflow_run_list_uses_fixed_server_selected_limit(monkeypatch):
+    calls = []
+
+    def api_json(gh, path, timeout=15):
+        calls.append((gh, path, timeout))
+        return {"workflow_runs": [{
+            "id": 456,
+            "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main",
+            "status": "completed",
+            "html_url": "https://github.com/example/run/456",
+        }]}
+
+    monkeypatch.setattr(agent, "_github_api_json", api_json)
+
+    runs = agent._workflow_runs("gh")
+
+    assert calls == [(
+        "gh",
+        "actions/workflows/autonomous-codex-engineering.yml/runs?per_page=100",
+        20,
+    )]
+    assert runs[0]["id"] == 456
+    assert runs[0]["workflow_path"] == ".github/workflows/autonomous-codex-engineering.yml"
+
+
 def test_run_logs_include_failed_job_and_step_reasons(monkeypatch):
     monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
-    monkeypatch.setattr(agent, "_verified_workflow_run", lambda gh, run_id: {
-        "id": run_id, "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main",
-        "status": "completed", "conclusion": "failure", "html_url": "https://github.com/example/run/123",
-    })
-    monkeypatch.setattr(agent, "_github_api_json", lambda gh, path, timeout=15: {
-        "jobs": [{
-            "name": "codex", "status": "completed", "conclusion": "failure",
-            "steps": [{"name": "Install dependencies", "conclusion": "failure"}],
-        }]
-    })
-    monkeypatch.setattr(agent, "_run", lambda command, timeout=8: subprocess.CompletedProcess(
-        command, 0, "Traceback: Authorization: Bearer hidden-token\\n", ""
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [{
+        "id": 123, "workflow_path": ".github/workflows/autonomous-codex-engineering.yml",
+        "status": "completed", "conclusion": "failure", "url": "https://github.com/example/run/123",
+    }])
+    api_paths = []
+
+    def api_json(gh, path, timeout=15):
+        api_paths.append(path)
+        return {
+            "jobs": [{
+                "name": "codex", "status": "completed", "conclusion": "failure",
+                "steps": [{"name": "Install dependencies", "conclusion": "failure"}],
+            }]
+        }
+
+    commands = []
+    monkeypatch.setattr(agent, "_github_api_json", api_json)
+    monkeypatch.setattr(agent, "_run", lambda command, timeout=8: (
+        commands.append(command) or subprocess.CompletedProcess(
+            command, 0, "Traceback: Authorization: Bearer hidden-token\\n", ""
+        )
     ))
 
     result = agent.autonomous_engineering_run_logs(123)
 
+    assert api_paths == ["actions/runs/123/jobs?per_page=100"]
+    assert commands[0][1:] == ["run", "view", "123", "--log", "--repo", agent._repository()]
     assert result["run"]["id"] == 123
     assert result["failures"] == [{
         "name": "codex", "status": "completed", "conclusion": "failure",
@@ -1680,10 +1716,9 @@ def test_run_logs_include_failed_job_and_step_reasons(monkeypatch):
 
 
 def test_run_logs_reject_non_agent_workflow(monkeypatch):
-    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
-    monkeypatch.setattr(agent, "_github_api_json", lambda gh, path, timeout=15: {
-        "id": 123, "path": ".github/workflows/another.yml@refs/heads/main",
-    })
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [{
+        "id": 123, "workflow_path": ".github/workflows/another.yml",
+    }])
     with pytest.raises(HTTPException) as error:
         agent._verified_workflow_run("gh", 123)
     assert error.value.status_code == 404
@@ -1691,9 +1726,10 @@ def test_run_logs_reject_non_agent_workflow(monkeypatch):
 
 def test_delete_run_refuses_active_workflow_run(monkeypatch):
     monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
-    monkeypatch.setattr(agent, "_verified_workflow_run", lambda gh, run_id: {
-        "id": run_id, "status": "in_progress",
-    })
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [{
+        "id": 123, "workflow_path": ".github/workflows/autonomous-codex-engineering.yml",
+        "status": "in_progress",
+    }])
     calls = []
     monkeypatch.setattr(agent, "_run", lambda *args, **kwargs: calls.append(args) or None)
 
@@ -1706,9 +1742,10 @@ def test_delete_run_refuses_active_workflow_run(monkeypatch):
 
 def test_delete_completed_run_calls_workflow_run_delete_api(monkeypatch):
     monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
-    monkeypatch.setattr(agent, "_verified_workflow_run", lambda gh, run_id: {
-        "id": run_id, "status": "completed",
-    })
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [{
+        "id": 123, "workflow_path": ".github/workflows/autonomous-codex-engineering.yml",
+        "status": "completed",
+    }])
     calls = []
     monkeypatch.setattr(agent, "_run", lambda command, timeout=8: calls.append(command) or subprocess.CompletedProcess(
         command, 0, "", ""
@@ -1725,7 +1762,7 @@ def test_delete_completed_run_calls_workflow_run_delete_api(monkeypatch):
 
 def test_cleanup_removes_only_ephemeral_progress_files_and_preserves_durable_state(monkeypatch, tmp_path):
     monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
-    monkeypatch.setattr(agent, "_workflow_runs", lambda gh, limit=30: [])
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [])
     runtime_dir = tmp_path / "worktree"
     runtime_dir.mkdir()
     monkeypatch.setattr(agent, "execution_state_directory", lambda: tmp_path)
@@ -1753,13 +1790,13 @@ def test_cleanup_refuses_active_run_or_pending_task(monkeypatch, tmp_path):
     monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
     monkeypatch.setattr(agent, "execution_state_directory", lambda: tmp_path)
     (tmp_path / "events.jsonl").write_text("keep", encoding="utf-8")
-    monkeypatch.setattr(agent, "_workflow_runs", lambda gh, limit=30: [{"status": "in_progress"}])
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [{"status": "in_progress"}])
     with pytest.raises(HTTPException) as active_error:
         agent.cleanup_autonomous_engineering_temporary_data()
     assert active_error.value.status_code == 409
     assert (tmp_path / "events.jsonl").exists()
 
-    monkeypatch.setattr(agent, "_workflow_runs", lambda gh, limit=30: [])
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [])
     (tmp_path / "pending-manual-task.txt").write_text("pending", encoding="utf-8")
     with pytest.raises(HTTPException) as pending_error:
         agent.cleanup_autonomous_engineering_temporary_data()
