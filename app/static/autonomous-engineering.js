@@ -269,21 +269,26 @@
     window.setTimeout(syncDispatchControls, 30000);
   }
   function refresh(force = false) {
-    if (statusRefreshPromise) {
-      if (!force) return statusRefreshPromise;
-      // Reserve the single-flight slot for the post-mutation refresh before
-      // the previous request settles. Otherwise a timer poll can start in the
-      // gap and be mistaken for the required fresh status snapshot.
-      const previous = statusRefreshPromise;
-      let followUp;
-      followUp = previous.then(
-        () => refreshStatus(),
-        () => refreshStatus()
-      ).finally(() => {
-        if (statusRefreshPromise === followUp) statusRefreshPromise = null;
-      });
-      statusRefreshPromise = followUp;
-      return followUp;
+    if (force) return refreshAfterMutation();
+    if (statusRefreshPromise) return statusRefreshPromise;
+    let current;
+    current = refreshStatus().finally(() => {
+      if (statusRefreshPromise === current) statusRefreshPromise = null;
+    });
+    statusRefreshPromise = current;
+    return current;
+  }
+  async function refreshAfterMutation() {
+    // Wait for any status request that began before the mutation to settle.
+    // Only then reserve a new single-flight request, so stale snapshots can
+    // never satisfy the post-mutation refresh.
+    const previous = statusRefreshPromise;
+    if (previous) {
+      try {
+        await previous;
+      } catch (_) {
+        // A failed pre-mutation poll must not prevent authoritative re-reading.
+      }
     }
     let current;
     current = refreshStatus().finally(() => {
