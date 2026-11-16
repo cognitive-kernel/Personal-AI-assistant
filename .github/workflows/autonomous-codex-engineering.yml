@@ -197,12 +197,12 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           python -m venv .venv
-          $venvPython = Join-Path $env:GITHUB_WORKSPACE ".venv\\Scripts\\python.exe"
+          $venvPython = Join-Path $env:GITHUB_WORKSPACE ".venv\Scripts\python.exe"
           & $venvPython -m pip install --disable-pip-version-check --retries 10 --timeout 120 -e .
           if ($LASTEXITCODE -ne 0) { throw "Could not install project runtime dependencies for the Runner service identity." }
           & $venvPython -c "import psutil, fastapi, uvicorn; print('RUNNER_RUNTIME_DEPENDENCIES_OK')"
           if ($LASTEXITCODE -ne 0) { throw "Required Runner runtime dependencies are unavailable in the isolated environment." }
-          $venvScripts = Join-Path $env:GITHUB_WORKSPACE ".venv\\Scripts"
+          $venvScripts = Join-Path $env:GITHUB_WORKSPACE ".venv\Scripts"
           $venvScripts | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
           $env:PATH = "$venvScripts;$env:PATH"
           python -c "import sys, psutil; print(sys.executable); print('psutil', psutil.__version__)"
@@ -581,7 +581,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          $venvPython = Join-Path $env:GITHUB_WORKSPACE ".venv\\Scripts\\python.exe"
+          $venvPython = Join-Path $env:GITHUB_WORKSPACE ".venv\Scripts\python.exe"
           & $venvPython --version
           & $venvPython -c "import sys; assert sys.version_info >= (3, 11)"
           & $venvPython -m pip install --disable-pip-version-check --retries 10 --timeout 120 -e ".[dev]"
