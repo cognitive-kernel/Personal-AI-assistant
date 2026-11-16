@@ -92,7 +92,11 @@ function Set-AutonomousDirectoryAcl {
         @($modifySids | ForEach-Object { "*$($_):(OI)(CI)M" })
     }
     if ($ReadOnlySid -and $ReadOnlySid -notin $modifySids) {
-        $grants += if ($File) { "*$($ReadOnlySid):R" } else { "*$($ReadOnlySid):(OI)(CI)RX" }
+        if ($File) {
+            $grants += "*$($ReadOnlySid):R"
+        } else {
+            $grants += "*$($ReadOnlySid):(OI)(CI)RX"
+        }
     }
     $arguments = @($Path, "/grant:r") + $grants
     & $icacls.Source @arguments | Out-Null
