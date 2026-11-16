@@ -219,7 +219,6 @@
       const active = (data.github && data.github.recent_runs || []).some(run =>
         ["queued", "in_progress", "waiting", "requested", "pending"].includes(run.status));
       if (active) dispatchPendingUntil = 0;
-      const awaitingDispatchVisibility = Date.now() < dispatchPendingUntil;
       lastCanDispatch = canDispatch;
       lastActiveRun = active;
       syncDispatchControls();
@@ -292,6 +291,7 @@
         body: JSON.stringify({task})
       });
       dispatchPendingUntil = Date.now() + 30000;
+      window.setTimeout(syncDispatchControls, 30000);
       $("manual-task").value = "";
       setMessage(result.message || "وظیفه برای عامل ارسال شد.", "success");
       await refresh(true);
@@ -313,6 +313,7 @@
     try {
       const result = await request("dispatch", {method: "POST"});
       dispatchPendingUntil = Date.now() + 30000;
+      window.setTimeout(syncDispatchControls, 30000);
       setMessage(result.message || "درخواست ارسال شد.", "success");
     } catch (error) {
       setMessage(error.message || "ارسال درخواست ناموفق بود.", "error");
@@ -339,6 +340,7 @@
     try {
       const result = await request("resume", {method: "POST"});
       dispatchPendingUntil = Date.now() + 30000;
+      window.setTimeout(syncDispatchControls, 30000);
       setMessage(result.message || "ادامهٔ صف درخواست شد.", "success");
       await refresh(true);
     } catch (error) {
