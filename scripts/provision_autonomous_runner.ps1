@@ -93,8 +93,6 @@ if ($RunnerRoot.Equals($progressPath, [StringComparison]::OrdinalIgnoreCase) -or
     throw "RunnerRoot and shared autonomous state directory must be separate, non-nested paths."
 }
 $appSid = if ($AppAccount -eq $identity.Name) { $identity.User.Value } else { Get-AutonomousWindowsAccountSid -AccountName $appIdentity }
-$runnerSidForComparison = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
-if ($appSid -eq $runnerSidForComparison) { throw "The application and Runner must resolve to different Windows identities." }
 $node = Get-Command node -ErrorAction Stop
 $npm = Get-Command npm -ErrorAction Stop
 $git = Get-Command git -ErrorAction Stop
@@ -156,6 +154,24 @@ if ($shouldVerifyModel) {
     
 } else {
     Write-Host "Ollama validation is decoupled from infrastructure provisioning. Runner and shared storage will be prepared without requiring a running server or selected model."
+}
+
+if ($runnerIsLocal) {
+    $user = Get-LocalUser -Name $runnerLocalName -ErrorAction SilentlyContinue
+    if (-not $user) {
+        $password = Read-Host "Set password for the generated or selected Runner service identity $runnerIdentity" -AsSecureString
+        if ($password.Length -lt 16) { $password.Dispose(); throw "Use at least 16 characters." }
+        New-LocalUser -Name $runnerLocalName -Password $password -PasswordNeverExpires -AccountNeverExpires -Description "Non-admin autonomous engineering Runner" | Out-Null
+        $password.Dispose()
+    }
+    $user = Get-LocalUser -Name $runnerLocalName
+    if (-not $user.Enabled) { Enable-LocalUser -Name $runnerLocalName }
+} else {
+    Write-Host "Using externally managed Runner identity $runnerIdentity; no local account is created or modified."
+}
+$runnerSidForComparison = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
+if ($appSid -eq $runnerSidForComparison) {
+    throw "The application and Runner must resolve to different Windows identities."
 }
 
 function Ensure-AutonomousStateOwnerLabel {
@@ -244,19 +260,6 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     exit 0
 }
 if ((Test-Path -LiteralPath $RunnerRoot) -and @(Get-ChildItem -LiteralPath $RunnerRoot -Force).Count -gt 0) { throw "RunnerRoot is non-empty but unconfigured; refusing to overwrite." }
-if ($runnerIsLocal) {
-    $user = Get-LocalUser -Name $runnerLocalName -ErrorAction SilentlyContinue
-    if (-not $user) {
-        $password = Read-Host "Set password for $runnerIdentity" -AsSecureString
-        if ($password.Length -lt 16) { $password.Dispose(); throw "Use at least 16 characters." }
-        New-LocalUser -Name $runnerLocalName -Password $password -PasswordNeverExpires -AccountNeverExpires -Description "Non-admin autonomous engineering Runner" | Out-Null
-        $password.Dispose()
-    }
-    $user = Get-LocalUser -Name $runnerLocalName
-    if (-not $user.Enabled) { Enable-LocalUser -Name $runnerLocalName }
-} else {
-    Write-Host "Using externally managed Runner identity $runnerIdentity; no local account is created or modified."
-}
 $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
 $administratorsSid = [Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)
     $administratorsGroup = Get-LocalGroup -SID $administratorsSid
