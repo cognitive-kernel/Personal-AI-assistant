@@ -119,6 +119,7 @@
     }
   }
   let statusRefreshPromise = null;
+  let dispatchPendingUntil = 0;
   function refresh() {
     if (statusRefreshPromise) return statusRefreshPromise;
     statusRefreshPromise = refreshStatus().finally(() => {
@@ -197,8 +198,10 @@
       pill.className = "status-pill " + (paused ? "status-blocked" : (ready ? "status-ready" : "status-blocked"));
       const active = (data.github && data.github.recent_runs || []).some(run =>
         ["queued", "in_progress", "waiting", "requested", "pending"].includes(run.status));
-      dispatchButton.disabled = !canDispatch || active;
-      taskButton.disabled = !canDispatch || active;
+      if (active) dispatchPendingUntil = 0;
+      const awaitingDispatchVisibility = Date.now() < dispatchPendingUntil;
+      dispatchButton.disabled = !canDispatch || active || awaitingDispatchVisibility;
+      taskButton.disabled = !canDispatch || active || awaitingDispatchVisibility;
       cancelButton.disabled = !active;
       pauseButton.disabled = Boolean(data.paused);
       resumeButton.disabled = !data.paused;
@@ -256,6 +259,7 @@
         method: "POST",
         body: JSON.stringify({task})
       });
+      dispatchPendingUntil = Date.now() + 30000;
       $("manual-task").value = "";
       setMessage(result.message || "وظیفه برای عامل ارسال شد.", "success");
       await refresh();
@@ -270,6 +274,7 @@
     setMessage("در حال ارسال درخواست اجرای Workflow به GitHub…");
     try {
       const result = await request("dispatch", {method: "POST"});
+      dispatchPendingUntil = Date.now() + 30000;
       setMessage(result.message || "درخواست ارسال شد.", "success");
     } catch (error) {
       setMessage(error.message || "ارسال درخواست ناموفق بود.", "error");
@@ -292,6 +297,7 @@
     resumeButton.disabled = true;
     try {
       const result = await request("resume", {method: "POST"});
+      dispatchPendingUntil = Date.now() + 30000;
       setMessage(result.message || "ادامهٔ صف درخواست شد.", "success");
       await refresh();
     } catch (error) {
