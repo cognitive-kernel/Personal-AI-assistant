@@ -969,7 +969,8 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "pytest" in cycle_controller and "tests.yml" in pr_lifecycle
     assert "workflow_dispatch:" in tests_workflow and "workflow_dispatch:" in browser_workflow
     assert "pyproject.toml" not in workflow
-    assert "WriteAllText" in runner_check
+    assert "Test-AutonomousStateStorageAccess" in runner_check
+    assert "AutonomousWindowsPaths.psm1" in runner_check
     assert "gh auth login" not in runner_check
     assert "WindowsBuiltInRole]::Administrator" in runner_check
     assert "non-administrator service account" in workflow
