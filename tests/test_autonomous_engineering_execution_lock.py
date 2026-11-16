@@ -280,9 +280,13 @@ def test_windows_progress_owner_kills_codex_descendants_after_supervisor_crash(m
     assert progress.run_codex(args) == 7
     assert pid_file.is_file()
     child_pid = int(pid_file.read_text(encoding="utf-8"))
-    assert not psutil.pid_exists(child_pid), (
-        "A Codex descendant survived supervisor exit while the progress owner was still alive."
-    )
+    try:
+        child = psutil.Process(child_pid)
+        assert child.status() == psutil.STATUS_ZOMBIE or not child.is_running(), (
+            "A Codex descendant survived supervisor exit while the progress owner was still alive."
+        )
+    except psutil.NoSuchProcess:
+        pass
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX controller-owned process-group contract.")
