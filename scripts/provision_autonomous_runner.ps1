@@ -395,3 +395,4 @@ try {
 } finally {
     $token = $null
     if ($archive -and (Test-Path -LiteralPath $archive)) { Remove-Item -LiteralPath $archive -Force -ErrorAction SilentlyContinue }
+}
