@@ -1617,7 +1617,7 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     assert "let dispatchSubmitting = false" in script
     assert script.count("if (dispatchSubmitting) return") == 2
     assert "function syncDispatchControls()" in script
-    assert "taskButton.disabled = !lastCanDispatch || lastActiveRun || locked" in script
+    assert "taskButton.disabled = !allowed" in script
     assert "function canStartDispatch()" in script
     assert "item.point[line.key] !== null" in script
     assert "engineeringPercent !== null" in script
