@@ -56,12 +56,13 @@ def test_windows_provisioning_uses_the_shared_identity_module():
     assert 'if ($value.Contains("@"))' not in module
 
 
-def test_windows_provisioning_does_not_require_a_fixed_users_group_or_admin_acl_grants():
+def test_windows_provisioning_adds_modify_access_without_replacing_existing_acl_entries():
     script = (ROOT / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
     module = (ROOT / "scripts" / "AutonomousWindowsIdentity.psm1").read_text(encoding="utf-8")
 
     assert "Add-LocalGroupMember" not in script
-    assert "S-1-5-32-545" not in script
+    assert "Remove-LocalGroupMember" not in script
+    assert "S-1-5-32-545" not in script + module
     assert "BUILTIN" not in script + module
     assert '"SYSTEM:(OI)(CI)F"' not in script + module
     assert "Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid" in script
@@ -69,12 +70,13 @@ def test_windows_provisioning_does_not_require_a_fixed_users_group_or_admin_acl_
     assert "Set-AutonomousStateDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -AdditionalModifySids @($appSid, $installerSid)" in script
     assert "[string[]]$AdditionalModifySids" in module
     assert "foreach ($sid in $additionalSids)" in module
-    assert "$allowedSids = @($modifySids)" in module
-    assert '$Path /remove "*$sid"' in module
-    assert "$unexpectedSids" in module
-    assert '$modifySids = @($RunnerSid)' in module
-    assert '*$($_):(OI)(CI)M' in module
-    assert '*$($ReadOnlySid):(OI)(CI)RX' in module
+    assert "$modifySids = @($RunnerSid)" in module
+    assert "$acl.AddAccessRule($rule)" in module
+    assert "Set-Acl -LiteralPath $Path -AclObject $acl" in module
+    assert "/inheritance:r" not in module
+    assert "/remove" not in module
+    assert "/grant:r" not in module
+    assert "$unexpectedSids" not in module
     assert '$installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value' in script
     assert "Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid" in script
     assert '$runnerTempPath = Join-Path $RunnerRoot "_work\\_temp"' in script
@@ -82,6 +84,21 @@ def test_windows_provisioning_does_not_require_a_fixed_users_group_or_admin_acl_
     assert '[Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_TEMP", $runnerTempPath, "Machine")' in script
     assert '$runnerDiagnosticPath = Join-Path $RunnerRoot "_diag"' in script
     assert 'Set-AutonomousDirectoryAcl -Path $runnerDiagnosticPath -RunnerSid $runnerSid -AdditionalModifySid $appSid' in script
+
+
+def test_runner_identity_is_discovered_or_generated_without_fixed_account_names():
+    provision = (ROOT / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
+    configure = (ROOT / "scripts" / "configure_autonomous_engineering_progress.ps1").read_text(encoding="utf-8")
+    identity = (ROOT / "scripts" / "AutonomousWindowsIdentity.psm1").read_text(encoding="utf-8")
+
+    assert "[Parameter()][ValidateNotNullOrEmpty()][string]$RunnerAccount" in provision
+    assert '[guid]::NewGuid().ToString("N").Substring(0, 19)' in provision
+    assert "Get-AutonomousRunnerService -RunnerRoot $RunnerRoot" in provision
+    assert "$RunnerAccount = $discoveredService.StartName" in provision
+    assert "Get-AutonomousRunnerService -RunnerRoot $resolvedRunnerRoot" in configure
+    assert "Get-AutonomousRunnerService" in identity
+    assert "AUTONOMOUS_ENGINEERING_RUNNER_ROOT" in provision
+    assert "AUTONOMOUS_ENGINEERING_PROGRESS_DIR" in provision
 
 
 def test_windows_provisioning_uses_the_runtime_shared_state_path_contract():
@@ -140,6 +157,8 @@ def test_existing_durable_lock_file_receives_explicit_dynamic_modify_acl():
     assert "function Set-AutonomousStateDirectoryAcl" in identity_module
     assert '"autonomous-durable-state.lock"' in identity_module
     assert "-File" in identity_module
-    assert '"*$($_):M"' in identity_module
+    assert "[System.Security.AccessControl.FileSystemRights]::Modify" in identity_module
+    assert "$acl.AddAccessRule($rule)" in identity_module
+    assert "[System.IO.FileMode]::OpenOrCreate" in identity_module
     assert "Set-AutonomousStateDirectoryAcl -Path $progressPath" in provision
     assert "Set-AutonomousStateDirectoryAcl -Path $progressPath" in configure
