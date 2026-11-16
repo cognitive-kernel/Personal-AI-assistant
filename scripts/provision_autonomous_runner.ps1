@@ -292,7 +292,7 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     New-Item -ItemType Directory -Path $runnerDiagnosticPath -Force | Out-Null
     Set-AutonomousDirectoryAcl -Path $runnerDiagnosticPath -RunnerSid $runnerSid -AdditionalModifySid $appSid
     [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_TEMP", $runnerTempPath, "Machine")
-    Set-AutonomousStateDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -AdditionalModifySids @($appSid, $installerSid)
+    Set-AutonomousStateDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -AdditionalModifySids $appSid
     try {
         Ensure-AutonomousStateOwnerLabel
     } finally {
