@@ -139,7 +139,8 @@ def test_windows_provisioning_uses_the_runtime_shared_state_path_contract():
 def test_windows_provisioning_keeps_runner_least_privilege_as_a_role_invariant():
     script = (ROOT / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
 
-    assert 'Get-LocalGroup -SID "S-1-5-32-544"' in script
+    assert "[Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid" in script
+    assert '"S-1-5-32-544"' not in script
     assert "Runner account is a direct member of the local Administrators group" in script
     assert "[Parameter()][ValidateNotNullOrEmpty()][string]$AppAccount" in script
     assert "$AppAccount = if ([string]::IsNullOrWhiteSpace($AppAccount)) { $identity.Name } else { $AppAccount.Trim() }" in script
