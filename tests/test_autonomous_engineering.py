@@ -1524,3 +1524,21 @@ def test_dashboard_exposes_storage_write_and_lock_diagnostics():
     assert 'storage.error' in script
     assert 'storage.state_directory' in script
     assert '"storage_access": storage_access' in storage
+
+
+def test_storage_access_status_reports_directory_write_failure(tmp_path, monkeypatch):
+    from app import autonomous_engineering_progress as progress
+
+    monkeypatch.setattr(progress, "_progress_dir", lambda: tmp_path)
+
+    def deny_write(*args, **kwargs):
+        raise PermissionError("directory write denied")
+
+    monkeypatch.setattr(progress.tempfile, "NamedTemporaryFile", deny_write)
+    result = progress.storage_access_status()
+
+    assert result["available"] is False
+    assert result["error"].startswith("PermissionError:")
+    assert result["state_directory"] == str(tmp_path)
+
+
