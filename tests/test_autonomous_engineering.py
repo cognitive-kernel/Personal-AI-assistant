@@ -1524,6 +1524,8 @@ def test_dashboard_exposes_storage_write_and_lock_diagnostics():
     storage = (root / "app" / "autonomous_engineering_storage.py").read_text(encoding="utf-8")
 
     assert 'const storage = data.storage || {}' in script
+    assert 'data.runner_identity' in script
+    assert 'AUTONOMOUS_ENGINEERING_RUNNER_ACCOUNT' in (root / "app" / "autonomous_engineering.py").read_text(encoding="utf-8")
     assert 'storage.error' in script
     assert 'storage.state_directory' in script
     assert '"storage_access": storage_access' in storage
