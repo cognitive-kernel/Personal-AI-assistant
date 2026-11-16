@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import tempfile
 
 from .autonomous_engineering_state import durable_state_lock, execution_state_directory
 from datetime import date, datetime, timezone
@@ -22,9 +23,23 @@ def _progress_dir() -> Path:
 def storage_access_status() -> dict[str, Any]:
     """Verify durable-state write access and the shared OS lock, not directory listing alone."""
     directory: Path | None = None
+    probe_path: Path | None = None
     try:
         directory = _progress_dir()
+        directory.mkdir(parents=True, exist_ok=True)
         lock_path = directory / "autonomous-durable-state.lock"
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            prefix=".storage-access-check-",
+            suffix=".tmp",
+            dir=directory,
+            delete=False,
+        ) as probe:
+            probe_path = Path(probe.name)
+            probe.write(b"ok")
+            probe.flush()
+        probe_path.unlink()
+        probe_path = None
         with durable_state_lock(directory, timeout_seconds=2):
             return {
                 "available": True,
@@ -39,6 +54,12 @@ def storage_access_status() -> dict[str, Any]:
             "lock_file": str(directory / "autonomous-durable-state.lock") if directory is not None else None,
             "error": f"{type(exc).__name__}: {str(exc)[:240]}",
         }
+    finally:
+        if probe_path is not None:
+            try:
+                probe_path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def storage_accessible() -> bool:
