@@ -1614,3 +1614,7 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     assert 'window.setInterval(refreshProgress, 5000)' in script
     assert 'window.setTimeout(refresh, 2500)' not in script
     assert 'finally {\n      dispatchButton.disabled = false;' not in script
+    assert "let dispatchSubmitting = false" in script
+    assert script.count("if (dispatchSubmitting) return") == 2
+    assert "function syncDispatchControls()" in script
+    assert "taskButton.disabled = !lastCanDispatch || lastActiveRun || locked" in script
