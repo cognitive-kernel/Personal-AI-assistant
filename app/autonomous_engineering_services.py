@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 import psutil
 import urllib.error
 import urllib.request
@@ -289,14 +290,26 @@ def github_snapshot(*, run_command, which, repository, workflow, default_interva
     runs_available = False
     settings = {"model": "", "interval_hours": default_interval_hours, "execution_mode": "continuous", "paused": False}
     if authenticated:
-        result = run_command(
-            [
-                gh, "run", "list", "--repo", repository, "--workflow", workflow,
-                "--limit", "30", "--json",
-                "databaseId,status,conclusion,createdAt,url,headBranch",
-            ],
-            timeout=12,
-        )
+        # The run inventory and repository settings are independent reads.
+        # Fetch them concurrently so one slow GitHub CLI call does not add its
+        # full timeout to the other call on every dashboard refresh.
+        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="autonomous-status-gh") as pool:
+            runs_future = pool.submit(
+                run_command,
+                [
+                    gh, "run", "list", "--repo", repository, "--workflow", workflow,
+                    "--limit", "30", "--json",
+                    "databaseId,status,conclusion,createdAt,url,headBranch",
+                ],
+                timeout=12,
+            )
+            variables_future = pool.submit(
+                run_command,
+                [gh, "variable", "list", "--repo", repository, "--json", "name,value"],
+                timeout=12,
+            )
+            result = runs_future.result()
+            variables = variables_future.result()
         if result and result.returncode == 0:
             try:
                 parsed = json.loads(result.stdout)
@@ -323,10 +336,6 @@ def github_snapshot(*, run_command, which, repository, workflow, default_interva
                     runs_available = True
             except ValueError:
                 recent_runs = []
-        variables = run_command(
-            [gh, "variable", "list", "--repo", repository, "--json", "name,value"],
-            timeout=12,
-        )
         if variables and variables.returncode == 0:
             try:
                 values = json.loads(variables.stdout)
