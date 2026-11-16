@@ -121,7 +121,9 @@ def test_runner_identity_is_discovered_or_generated_without_fixed_account_names(
     assert "installer identity will not be guessed" in configure
     assert "AUTONOMOUS_ENGINEERING_APP_STATUS_URL" in identity
     assert "AUTONOMOUS_ENGINEERING_RUNNER_ROOT" in provision
+    assert "AUTONOMOUS_ENGINEERING_RUNNER_ACCOUNT" in provision
     assert '[Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ROOT", "Machine")' in provision
+    assert '[Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ACCOUNT", $runnerIdentity, "Machine")' in configure
     assert "RunnerService\\.exe" in provision
     assert '$runnerConfig.agentName' in provision
     assert "[string]$RunnerRoot = \"\"" in provision
