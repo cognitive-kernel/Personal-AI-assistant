@@ -1474,3 +1474,137 @@ def test_ollama_context_powershell_bridge_uses_explicit_file_not_native_stdin():
     assert "--input-file" in script
     assert "$selectionInput | & python" not in script
     assert 'parser.add_argument("--input-file"' in helper
+
+
+def test_dashboard_status_does_not_start_an_uncached_live_ollama_probe(monkeypatch):
+    from app import autonomous_engineering_services as services
+
+    services._TOOL_PROBE_CACHE.clear()
+    probe_calls = []
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            if request.full_url.endswith("/api/tags"):
+                return io.BytesIO(json.dumps({
+                    "models": [{
+                        "name": "model:latest",
+                        "digest": "sha256:dashboard-status",
+                        "size": 1024,
+                    }]
+                }).encode("utf-8"))
+            return io.BytesIO(json.dumps({
+                "details": {"family": "llama"},
+                "model_info": {
+                    "llama.context_length": 65536,
+                    "llama.block_count": 32,
+                    "llama.attention.head_count_kv": 8,
+                    "llama.attention.key_length": 128,
+                    "llama.attention.value_length": 128,
+                },
+            }).encode("utf-8"))
+
+    result = services.ollama_status(
+        "model:latest",
+        build_opener=lambda *args: FakeOpener(),
+        maximum_context_fn=lambda info, architecture: info["llama.context_length"],
+        supports_tool_calling_fn=lambda capabilities: "tools" in capabilities,
+        is_context_variant=lambda model: False,
+        recommended_context_fn=lambda model: 32768,
+        tool_probe_fn=lambda payload: probe_calls.append(payload) or True,
+        allow_live_tool_probe=False,
+    )
+
+    assert probe_calls == []
+    assert result["model_context_supported"] is True
+    assert result["model_supports_tools"] is False
+    assert result["model_tools_verification_method"] == "probe_required"
+
+
+def test_dashboard_status_reuses_recent_tool_probe_evidence_without_inference():
+    from app import autonomous_engineering_services as services
+
+    services._TOOL_PROBE_CACHE.clear()
+    services._TOOL_PROBE_CACHE[("model:latest", "sha256:cached")] = (
+        __import__("time").monotonic(),
+        True,
+    )
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            if request.full_url.endswith("/api/tags"):
+                return io.BytesIO(json.dumps({
+                    "models": [{
+                        "name": "model:latest",
+                        "digest": "sha256:cached",
+                        "size": 1024,
+                    }]
+                }).encode("utf-8"))
+            return io.BytesIO(json.dumps({
+                "details": {"family": "llama"},
+                "model_info": {
+                    "llama.context_length": 65536,
+                    "llama.block_count": 32,
+                    "llama.attention.head_count_kv": 8,
+                    "llama.attention.key_length": 128,
+                    "llama.attention.value_length": 128,
+                },
+            }).encode("utf-8"))
+
+    result = services.ollama_status(
+        "model:latest",
+        build_opener=lambda *args: FakeOpener(),
+        maximum_context_fn=lambda info, architecture: info["llama.context_length"],
+        supports_tool_calling_fn=lambda capabilities: "tools" in capabilities,
+        is_context_variant=lambda model: False,
+        recommended_context_fn=lambda model: 32768,
+        tool_probe_fn=lambda payload: pytest.fail("Dashboard status must not run inference."),
+        allow_live_tool_probe=False,
+    )
+
+    assert result["model_supports_tools"] is True
+    assert result["model_tools_verification_method"] == "live_tool_call_probe"
+
+
+def test_collect_status_disables_live_tool_probe_for_status_polling(monkeypatch):
+    observed = {}
+
+    def fake_ollama_status(model):
+        observed["allow_live_tool_probe"] = getattr(
+            agent._STATUS_PROBE_CONTEXT, "allow_live_tool_probe", None
+        )
+        return {
+            "online": True, "model": model, "model_installed": True,
+            "models": [model], "model_context_length": 65536,
+            "model_capabilities": ["completion", "tools"],
+            "model_supports_tools": True, "model_metadata_available": True,
+            "model_tools_metadata_available": True, "model_context_supported": True,
+            "model_selectable": True, "model_is_codex_context_variant": False,
+        }
+
+    monkeypatch.setattr(agent, "_ollama_status", fake_ollama_status)
+    monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
+    monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
+    monkeypatch.setattr(agent, "storage_accessible", lambda: True)
+    monkeypatch.setattr(agent, "_github_snapshot", lambda: {
+        "authenticated": True, "runs_available": True, "recent_runs": [],
+        "settings": {"model": "model:latest"},
+    })
+
+    agent.collect_status()
+
+    assert observed["allow_live_tool_probe"] is False
+    assert not hasattr(agent._STATUS_PROBE_CONTEXT, "allow_live_tool_probe")
+
+
+def test_dashboard_script_bounds_and_coalesces_status_refreshes():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
+
+    assert "new AbortController()" in script
+    assert "statusRefreshPromise" in script
+    assert "if (statusRefreshPromise) return statusRefreshPromise" in script
+    assert "پاسخ سرویس در مهلت ۴۰ ثانیه دریافت نشد" in script
+    assert 'window.setInterval(refresh, 30000)' in script
+    assert 'window.setInterval(refreshProgress, 5000)' in script
+    assert 'window.setTimeout(refresh, 2500)' not in script
+    assert 'finally {\n      dispatchButton.disabled = false;' not in script
