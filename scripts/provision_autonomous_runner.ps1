@@ -5,7 +5,8 @@ param(
     [Parameter()][ValidateNotNullOrEmpty()][string]$AppAccount,
     [string]$RunnerName = "$env:COMPUTERNAME-ollama",
     [string]$RunnerRoot = (Join-Path $env:ProgramData "GitHubActionsRunner"),
-    [string]$Model = ""
+    [string]$Model = "",
+    [switch]$VerifyModel
 )
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
@@ -82,10 +83,14 @@ if ($LASTEXITCODE -ne 0 -or [version]$pythonVersion -lt [version]"3.11") { throw
 $gh = Get-Command gh -ErrorAction Stop
 & $gh.Source auth status --hostname github.com
 if ($LASTEXITCODE -ne 0) { throw "Authenticate gh as an account with repository Administration: write permission." }
-if ([string]::IsNullOrWhiteSpace($Model)) {
-    $Model = (& $gh.Source variable get AUTONOMOUS_ENGINEERING_MODEL --repo $Repository 2>$null | Out-String).Trim()
-}
-if (-not [string]::IsNullOrWhiteSpace($Model)) {
+$shouldVerifyModel = $VerifyModel -or -not [string]::IsNullOrWhiteSpace($Model)
+if ($shouldVerifyModel) {
+    if ([string]::IsNullOrWhiteSpace($Model)) {
+        $Model = (& $gh.Source variable get AUTONOMOUS_ENGINEERING_MODEL --repo $Repository 2>$null | Out-String).Trim()
+    }
+    if ([string]::IsNullOrWhiteSpace($Model)) {
+        throw "Model verification was requested, but no saved AUTONOMOUS_ENGINEERING_MODEL exists."
+    }
     if ($Model -match "(?i)-codex-ctx[0-9]+$") {
         throw "The saved model is an internal Codex context variant. Save the original Ollama model in the dashboard."
     }
@@ -123,7 +128,7 @@ if (-not [string]::IsNullOrWhiteSpace($Model)) {
     }
     
 } else {
-    Write-Warning "No Ollama model is configured yet. Runner and shared storage will still be provisioned; select and verify the model later in the dashboard."
+    Write-Host "Ollama validation is decoupled from infrastructure provisioning. Runner and shared storage will be prepared without requiring a running server or selected model."
 }
 
 function Ensure-AutonomousStateOwnerLabel {
