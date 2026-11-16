@@ -179,6 +179,10 @@ jobs:
           try { $null = Resolve-AutonomousStateDirectory -ConfiguredPath "relative-state" -ProgramDataPath $env:ProgramData } catch { $relativePathRejected = $true }
           if (-not $relativePathRejected) { throw "Relative shared state paths must fail closed." }
           Write-Host "Default, configured, environment-expanded, and relative state path contracts passed."
+          $systemIdentity = Resolve-AutonomousWindowsServiceAccountName -AccountName "LocalSystem"
+          $systemSid = Get-AutonomousWindowsAccountSid -AccountName $systemIdentity
+          $expectedSystemSid = [Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::LocalSystemSid, $null).Value
+          if ($systemSid -ne $expectedSystemSid) { throw "The service-account resolver did not preserve the LocalSystem identity." }
           $aclProbe = Join-Path $env:TEMP ("autonomous-acl-" + [guid]::NewGuid().ToString("N"))
           New-Item -ItemType Directory -Path $aclProbe | Out-Null
           try {
