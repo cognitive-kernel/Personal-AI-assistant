@@ -170,7 +170,7 @@
     const button = event.target.closest("button[data-run-action]");
     if (!button || button.disabled) return;
     const runId = button.dataset.runId;
-    if (!/^\\d+$/.test(runId || "")) return;
+    if (!Number.isSafeInteger(Number(runId)) || Number(runId) <= 0) return;
     if (button.dataset.runAction === "logs") {
       const item = button.closest(".run-item");
       if (!item) return;
