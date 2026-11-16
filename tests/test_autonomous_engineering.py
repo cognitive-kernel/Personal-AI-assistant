@@ -1484,3 +1484,43 @@ def test_ollama_context_powershell_bridge_uses_explicit_file_not_native_stdin():
     assert "--input-file" in script
     assert "$selectionInput | & python" not in script
     assert 'parser.add_argument("--input-file"' in helper
+
+
+def test_storage_access_status_verifies_writable_directory_and_lock(tmp_path, monkeypatch):
+    from app import autonomous_engineering_progress as progress
+
+    monkeypatch.setattr(progress, "_progress_dir", lambda: tmp_path)
+
+    result = progress.storage_access_status()
+
+    assert result["available"] is True
+    assert result["state_directory"] == str(tmp_path)
+    assert result["lock_file"] == str(tmp_path / "autonomous-durable-state.lock")
+    assert (tmp_path / "autonomous-durable-state.lock").is_file()
+
+
+def test_storage_access_status_reports_permission_failure(tmp_path, monkeypatch):
+    from app import autonomous_engineering_progress as progress
+
+    monkeypatch.setattr(progress, "_progress_dir", lambda: tmp_path)
+
+    def deny_lock(*args, **kwargs):
+        raise PermissionError("write denied")
+
+    monkeypatch.setattr(progress, "durable_state_lock", deny_lock)
+    result = progress.storage_access_status()
+
+    assert result["available"] is False
+    assert result["error"].startswith("PermissionError:")
+    assert result["state_directory"] == str(tmp_path)
+
+
+def test_dashboard_exposes_storage_write_and_lock_diagnostics():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
+    storage = (root / "app" / "autonomous_engineering_storage.py").read_text(encoding="utf-8")
+
+    assert 'const storage = data.storage || {}' in script
+    assert 'storage.error' in script
+    assert 'storage.state_directory' in script
+    assert '"storage_access": storage_access' in storage
