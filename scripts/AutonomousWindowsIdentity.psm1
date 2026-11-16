@@ -34,6 +34,26 @@ function Get-AutonomousWindowsAccountSid {
     }
 }
 
+function Resolve-AutonomousWindowsServiceAccountName {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$AccountName
+    )
+
+    $value = $AccountName.Trim()
+    if ($value.Contains("\") -or $value.Contains("@")) {
+        return ConvertTo-AutonomousWindowsAccountName -AccountName $value
+    }
+    try {
+        $null = ([Security.Principal.NTAccount]::new($value)).Translate([Security.Principal.SecurityIdentifier])
+        return $value
+    } catch {
+        return ConvertTo-AutonomousWindowsAccountName -AccountName $value
+    }
+}
+
 function Get-AutonomousRunnerService {
     [CmdletBinding()]
     param(
@@ -207,4 +227,4 @@ function Set-AutonomousStateDirectoryAcl {
     Set-AutonomousDirectoryAcl -Path $lockPath -RunnerSid $RunnerSid -AdditionalModifySids $AdditionalModifySids -File
 }
 
-Export-ModuleMember -Function ConvertTo-AutonomousWindowsAccountName, Get-AutonomousLocalAccountName, Get-AutonomousWindowsAccountSid, Get-AutonomousRunnerService, Get-AutonomousApplicationIdentity, Set-AutonomousDirectoryAcl, Set-AutonomousStateDirectoryAcl
+Export-ModuleMember -Function ConvertTo-AutonomousWindowsAccountName, Get-AutonomousLocalAccountName, Get-AutonomousWindowsAccountSid, Resolve-AutonomousWindowsServiceAccountName, Get-AutonomousRunnerService, Get-AutonomousApplicationIdentity, Set-AutonomousDirectoryAcl, Set-AutonomousStateDirectoryAcl
