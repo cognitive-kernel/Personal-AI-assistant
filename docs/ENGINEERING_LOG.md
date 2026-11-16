@@ -1954,3 +1954,14 @@ A second pass over the dashboard found additional client-side edge cases adjacen
 
 
 A final dispatch-path review covered the ambiguous-outcome case as well: if the browser times out or loses the connection after the server may have accepted a workflow dispatch, the client cannot safely assume that nothing started. The request layer now retains HTTP status information and marks transport/timeout failures as ambiguous. Dispatch and resume handlers apply the same bounded visibility lock after ambiguous or server-side failures, while definitive client-side rejections remain immediately retryable. This closes the retry window where a user could unknowingly submit a duplicate after a lost response.
+
+## 2026-11-16 — Checkpoint watcher support for read-only sandbox workspaces
+
+The first isolated Docker suite after the Runner dependency-ordering fix exposed a separate checkpoint-watcher defect. The test container intentionally mounts the repository read-only and runs as an unprivileged UID. Although the watcher already used a separate temporary Git index, `git add -N` still writes the empty-blob object to the repository's normal `.git/objects` directory. That made real watcher startup fail with `Read-only file system` before it could publish readiness.
+
+The watcher now resolves the repository's actual object directory, creates a per-snapshot temporary object database under its writable checkpoint-state directory, and passes that directory through `GIT_OBJECT_DIRECTORY`. The original repository object database is configured only as `GIT_ALTERNATE_OBJECT_DIRECTORIES` for reads. The temporary index and object database are removed after each snapshot. This preserves the read-only checkout contract and avoids modifying the shared Git index or object database.
+
+A regression test creates an uncommitted project file, verifies that the checkpoint diff is captured using the temporary index/object database, and confirms that the source repository's object counts remain unchanged. The real process tests also execute in the read-only Docker workspace.
+
+Validation on the PR head before this log-only update: **2,321 passed, 13 skipped, 55 deselected** in the complete standard test suite; full isolated Docker sandbox suite passed; Windows storage regressions, browser dashboard smoke, CodeQL, and dependency audit passed. These results apply to the source/test commit that introduced this fix; the final documentation commit is being revalidated separately.
+
