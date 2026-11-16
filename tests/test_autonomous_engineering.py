@@ -1756,3 +1756,16 @@ def test_cleanup_refuses_active_run_or_pending_task(monkeypatch, tmp_path):
         agent.cleanup_autonomous_engineering_temporary_data()
     assert pending_error.value.status_code == 409
     assert (tmp_path / "events.jsonl").exists()
+
+def test_run_management_controls_are_present_and_wired():
+    root = Path(__file__).resolve().parents[1]
+    page = (root / "app" / "static" / "autonomous-engineering.html").read_text(encoding="utf-8")
+    script = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
+    assert 'id="refresh-runs"' in page
+    assert 'id="cleanup-agent-temp"' in page
+    assert 'id="cleanup-agent-status"' in page
+    assert 'data-run-action = "logs"' in script
+    assert 'data-run-action = "delete"' in script
+    assert 'request("cleanup", {method: "POST"})' in script
+    assert 'request("runs/" + runId + "/logs")' in script
+    assert 'request("runs/" + runId, {method: "DELETE"})' in script
