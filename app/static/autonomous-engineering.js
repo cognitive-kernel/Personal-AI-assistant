@@ -247,7 +247,9 @@
       setMessage(result.message || "تنظیمات ذخیره شد.", "success");
       await refresh(true);
     } catch (error) {
-      setMessage(error.message, "error");
+      const detail = error.message || "ذخیرهٔ تنظیمات ناموفق بود.";
+      await refresh(true);
+      setMessage(detail, "error");
     } finally {
       saveButton.disabled = false;
       settingsSaving = false;
@@ -307,8 +309,9 @@
       setMessage(result.message || "توقف ایمن ثبت شد.", "success");
       await refresh(true);
     } catch (error) {
-      setMessage(error.message, "error");
-      pauseButton.disabled = false;
+      const detail = error.message || "توقف ایمن ثبت نشد.";
+      await refresh(true);
+      setMessage(detail, "error");
     }
   });
   resumeButton.addEventListener("click", async () => {
@@ -319,8 +322,9 @@
       setMessage(result.message || "ادامهٔ صف درخواست شد.", "success");
       await refresh(true);
     } catch (error) {
-      setMessage(error.message, "error");
-      resumeButton.disabled = false;
+      const detail = error.message || "ادامهٔ صف ثبت نشد.";
+      await refresh(true);
+      setMessage(detail, "error");
     }
   });
   cancelButton.addEventListener("click", async () => {
@@ -331,7 +335,9 @@
       setMessage(result.message || "درخواست لغو ارسال شد.", "success");
       await refresh(true);
     } catch (error) {
-      setMessage(error.message, "error");
+      const detail = error.message || "لغو اجرای فعال ناموفق بود.";
+      await refresh(true);
+      setMessage(detail, "error");
     }
   });
 
