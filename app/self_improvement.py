@@ -93,17 +93,23 @@ def _git(root: Path, args: list[str], *, input_text: str | None = None) -> subpr
         "GIT_OPTIONAL_LOCKS": "0",
     }
     try:
-        return subprocess.run(
+        result = subprocess.run(
             ["git", "-C", str(root), *args],
-            input=input_text,
+            # Keep unified-diff bytes unchanged. Windows text mode translates LF
+            # to CRLF on stdin, which can make a valid patch fail git apply --check.
+            input=input_text.encode("utf-8") if input_text is not None else None,
             capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
+            text=False,
             timeout=8,
             check=False,
             shell=False,
             env=environment,
+        )
+        return subprocess.CompletedProcess(
+            result.args,
+            result.returncode,
+            stdout=(result.stdout or b"").decode("utf-8", errors="replace"),
+            stderr=(result.stderr or b"").decode("utf-8", errors="replace"),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise ProposalError("Git validation could not complete safely.") from exc
