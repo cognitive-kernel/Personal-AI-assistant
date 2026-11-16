@@ -285,6 +285,7 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     $runnerIdentity = Resolve-AutonomousWindowsServiceAccountName -AccountName $service.StartName
     $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
     [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ACCOUNT", $runnerIdentity, "Machine")
+    [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_SID", $runnerSid, "Machine")
     $installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
     Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid
@@ -635,6 +636,7 @@ $runnerIsAdministrator = @(
 ).Count -gt 0
 if ($runnerIsAdministrator) { throw "Runner account is a direct member of the local Administrators group; use a least-privilege identity." }
 [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ACCOUNT", $runnerIdentity, "Machine")
+[Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_SID", $runnerSid, "Machine")
 New-Item -ItemType Directory -Path $RunnerRoot -Force | Out-Null
 if (-not (Test-Path -LiteralPath $provisioningMarkerPath)) {
     $markerPayload = [ordered]@{
