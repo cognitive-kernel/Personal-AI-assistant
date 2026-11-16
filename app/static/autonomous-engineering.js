@@ -181,7 +181,13 @@
         ? data.codex.version + "؛ این بررسی فقط حساب برنامه را پوشش می‌دهد."
         : "حساب Runner جداگانه و هنگام اجرای Workflow بررسی می‌شود.";
       labels.runner.textContent = stateText(checks.runner_running);
-      $("runner-detail").textContent = checks.runner_running ? "فرایند Runner.Listener فعال است." : "Runner محلی فعال نیست.";
+      const runnerIdentity = data.runner_identity || {};
+      const runnerIdentityText = runnerIdentity.name
+        ? " حساب سرویس پیکربندی‌شده: " + String(runnerIdentity.name) + "."
+        : " حساب سرویس Runner هنوز در پیکربندی ماشین ثبت نشده است.";
+      $("runner-detail").textContent = (checks.runner_running
+        ? "فرایند Runner.Listener فعال است."
+        : "Runner محلی فعال نیست.") + runnerIdentityText;
       const githubReady = checks.github_cli_authenticated && checks.github_runs_available;
       labels.github.textContent = stateText(githubReady);
       $("github-detail").textContent = !checks.github_cli_authenticated
