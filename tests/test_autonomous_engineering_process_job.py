@@ -85,5 +85,5 @@ def test_windows_job_allows_short_lived_descendant_to_exit_after_wrapper():
             assert job.terminate_remaining_processes(125, grace_seconds=3.0) is False
         finally:
             if wrapper.poll() is None:
-                job.terminate(125)
+                wrapper.kill()
                 wrapper.wait(timeout=5)
