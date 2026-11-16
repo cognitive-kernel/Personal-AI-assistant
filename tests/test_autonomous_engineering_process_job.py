@@ -107,14 +107,15 @@ def test_windows_job_allows_short_lived_descendant_to_exit_after_wrapper(tmp_pat
         "Path(" + repr(str(child_pid_file)) + ").write_text(str(os.getpid())); "
         "time.sleep(1.0)"
     )
-    wrapper_code = (
-        "import pathlib,subprocess,sys,time; "
+    wrapper_code = "\\n".join([
+        "import pathlib,subprocess,sys,time",
         "subprocess.Popen([sys.executable,'-c'," + repr(child_code) + "], "
-        "stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); "
-        "deadline=time.monotonic()+10; "
-        "path=pathlib.Path(" + repr(str(child_pid_file)) + "); "
-        "while not path.exists() and time.monotonic()<deadline: time.sleep(0.01)"
-    )
+        "stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)",
+        "deadline=time.monotonic()+10",
+        "path=pathlib.Path(" + repr(str(child_pid_file)) + ")",
+        "while not path.exists() and time.monotonic()<deadline:",
+        "    time.sleep(0.01)",
+    ])
 
     with WindowsProcessJob() as job:
         wrapper = subprocess.Popen(
