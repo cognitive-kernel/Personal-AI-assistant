@@ -59,10 +59,10 @@ function Get-AutonomousApplicationIdentity {
     param([Parameter()][AllowNull()][string]$StatusUrl)
 
     if ([string]::IsNullOrWhiteSpace($StatusUrl)) {
-        $StatusUrl = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_APP_STATUS_URL", "Machine")
+        $StatusUrl = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_APP_IDENTITY_URL", "Machine")
     }
     if ([string]::IsNullOrWhiteSpace($StatusUrl)) {
-        $StatusUrl = $env:AUTONOMOUS_ENGINEERING_APP_STATUS_URL
+        $StatusUrl = $env:AUTONOMOUS_ENGINEERING_APP_IDENTITY_URL
     }
     if ([string]::IsNullOrWhiteSpace($StatusUrl)) {
         $StatusUrl = "http://127.0.0.1:8000/api/autonomous-engineering/identity"
