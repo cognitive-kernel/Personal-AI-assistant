@@ -2615,9 +2615,24 @@ async function refreshSelfImprovement() {
     validate.textContent="بررسی سازگاری diff";
     validate.addEventListener("click",async()=>{
      validate.disabled=true;
-     try { await api("/api/self-improvement/proposals/"+item.id+"/validate",{method:"POST"}); output.textContent="بررسی سازگاری انجام شد؛ این مرحله آزمون کد اجرا نمی‌کند."; await refreshSelfImprovement(); }
-     catch(error){output.textContent=error.message;}
-     finally{validate.disabled=false;}
+     try {
+      await api("/api/self-improvement/proposals/"+item.id+"/validate",{method:"POST"});
+      output.textContent="بررسی سازگاری انجام شد؛ این مرحله آزمون کد اجرا نمی‌کند.";
+      await refreshSelfImprovement();
+     } catch(error) {
+      const message="اعتبارسنجی ناموفق بود: "+error.message;
+      output.textContent=message;
+      let errorNode=card.querySelector(".self-improvement-validation-error");
+      if(!errorNode) {
+       errorNode=document.createElement("p");
+       errorNode.className="self-improvement-validation-error";
+       errorNode.setAttribute("role","alert");
+       card.append(errorNode);
+      }
+      errorNode.textContent=message;
+     } finally {
+      validate.disabled=false;
+     }
     });
     card.append(validate);
    }
