@@ -1040,6 +1040,69 @@ def test_browser_validates_and_rejects_self_improvement_proposal_without_applyin
         assert not proposed_doc.exists()
         browser.close()
 
+def test_self_improvement_ui_displays_validation_api_errors():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    proposal_id = 7654321
+    proposals = []
+    validation_detail = "Patch does not apply cleanly to the recorded base; no files were changed."
+
+    def mock_proposals(route):
+        request = route.request
+        suffix = request.url.split("/api/self-improvement/proposals", 1)[1]
+        if suffix == "" and request.method == "GET":
+            route.fulfill(status=200, json={"proposals": proposals})
+            return
+        if suffix == "" and request.method == "POST":
+            body = request.post_data_json
+            proposal = {
+                "id": proposal_id,
+                "title": body["title"],
+                "rationale": body["rationale"],
+                "patch_sha256": "a" * 64,
+                "base_commit_sha": "b" * 40,
+                "status": "proposed",
+                "static_check": None,
+            }
+            proposals[:] = [proposal]
+            route.fulfill(status=201, json={"proposal": proposal})
+            return
+        if suffix == f"/{proposal_id}/validate" and request.method == "POST":
+            route.fulfill(status=409, json={"detail": validation_detail})
+            return
+        route.continue_()
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        browser_errors = []
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/api/self-improvement/proposals**", mock_proposals)
+        response = _goto_section(page, base_url, "self-improvement-section")
+        assert response is not None and response.status == 200
+
+        title = "Browser E2E validation error visibility"
+        page.locator("#self-improvement-title").fill(title)
+        page.locator("#self-improvement-rationale").fill("Verify validation errors are visible and actionable.")
+        page.locator("#self-improvement-patch").fill("not a valid patch; API is mocked for this UI regression.")
+        page.locator("#self-improvement-form button[type=submit]").click()
+
+        card = page.locator("#self-improvement-list article").filter(has_text=title)
+        card.wait_for(state="visible", timeout=5000)
+        validate = card.get_by_role("button", name="بررسی سازگاری diff")
+        validate.click()
+        error = card.locator(".self-improvement-validation-error")
+        error.wait_for(state="visible", timeout=5000)
+
+        assert validation_detail in error.inner_text()
+        assert "(proposed)" in card.locator("h3").inner_text()
+        assert validate.is_enabled()
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
 def test_browser_requires_confirmation_for_draft_pr_and_rollback_requests():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
