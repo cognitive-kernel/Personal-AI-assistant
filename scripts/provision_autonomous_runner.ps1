@@ -62,9 +62,15 @@ if ([string]::IsNullOrWhiteSpace($RunnerAccount)) {
         $RunnerAccount = $discoveredService.StartName
         Write-Host "Discovered existing Runner service identity: $RunnerAccount"
     } else {
-        $generatedLocalName = [guid]::NewGuid().ToString("N").Substring(0, 19)
-        $RunnerAccount = "$env:COMPUTERNAME\$generatedLocalName"
-        Write-Host "Generated a unique non-administrator Runner service identity: $RunnerAccount"
+        $storedRunnerAccount = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ACCOUNT", "Machine")
+        if (-not [string]::IsNullOrWhiteSpace($storedRunnerAccount)) {
+            $RunnerAccount = $storedRunnerAccount
+            Write-Host "Reusing the previously generated Runner identity for this host: $RunnerAccount"
+        } else {
+            $generatedLocalName = [guid]::NewGuid().ToString("N").Substring(0, 19)
+            $RunnerAccount = "$env:COMPUTERNAME\$generatedLocalName"
+            Write-Host "Generated a unique non-administrator Runner service identity: $RunnerAccount"
+        }
     }
 } else {
     $RunnerAccount = $RunnerAccount.Trim()
@@ -227,6 +233,7 @@ function Ensure-AutonomousStateOwnerLabel {
 }
 [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", $machineStateDirectory, "Machine")
 [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ROOT", $RunnerRoot, "Machine")
+[Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ACCOUNT", $runnerIdentity, "Machine")
 
 
 if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
