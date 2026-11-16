@@ -533,6 +533,15 @@ _PROGRESS_CLEANUP_FILES = (
     "scorecard-baseline.json.tmp",
 )
 _MAX_DASHBOARD_LOG_CHARS = 120_000
+_RUNTIME_CLEANUP_FILES = (
+    ".agent-request.json",
+    ".agent-github-state.json",
+    ".agent-progress.json",
+)
+
+
+def _agent_runtime_directory():
+    return Path(__file__).resolve().parents[1]
 
 
 def _authenticated_gh() -> str:
@@ -703,46 +712,71 @@ def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
             detail="عامل هنوز اجرای فعال یا در صف دارد؛ پاک‌سازی داده‌های موقت تا پایان اجرا مجاز نیست.",
         )
     directory = execution_state_directory()
-    if not directory.is_dir():
-        return {"cleaned": True, "files_removed": 0, "bytes_removed": 0}
     marker_names = (
         "pending-manual-task.txt",
         "pending-manual-task-owner.json",
         "pending-autonomous-pr.json",
         "pending-state-cleanup.json",
     )
+    removed = 0
+    removed_bytes = 0
+    failed_files: list[str] = []
     try:
-        with durable_state_lock(directory, timeout_seconds=2):
-            blockers = [name for name in marker_names if (directory / name).exists()]
-            if blockers:
-                raise HTTPException(
-                    status_code=409,
-                    detail="وضعیت پایدار عامل هنوز تعیین‌تکلیف نشده است؛ پاک‌سازی انجام نشد: " + ", ".join(blockers),
-                )
-            removed = 0
-            removed_bytes = 0
-            for name in _PROGRESS_CLEANUP_FILES:
-                path = directory / name
-                try:
-                    if not path.is_file() or path.is_symlink():
+        if directory.is_dir():
+            with durable_state_lock(directory, timeout_seconds=2):
+                blockers = [name for name in marker_names if (directory / name).exists()]
+                if blockers:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="وضعیت پایدار عامل هنوز تعیین‌تکلیف نشده است؛ پاک‌سازی انجام نشد: " + ", ".join(blockers),
+                    )
+                for name in _PROGRESS_CLEANUP_FILES:
+                    path = directory / name
+                    try:
+                        if not path.is_file() or path.is_symlink():
+                            continue
+                        size = path.stat().st_size
+                        path.unlink()
+                        removed += 1
+                        removed_bytes += size
+                    except FileNotFoundError:
                         continue
-                    size = path.stat().st_size
-                    path.unlink()
-                    removed += 1
-                    removed_bytes += size
-                except FileNotFoundError:
-                    continue
+                    except OSError:
+                        failed_files.append(str(path))
     except HTTPException:
         raise
     except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
         raise HTTPException(
             status_code=503,
-            detail=f"پاک‌سازی امن فضای موقت ممکن نشد؛ هیچ checkpoint یا وضعیت پایداری حذف نشد ({type(exc).__name__}).",
+            detail=f"پاک‌سازی امن فضای موقت ممکن نشد؛ checkpointها و وضعیت پایدار عامل حفظ شدند ({type(exc).__name__}).",
         ) from exc
+
+    # These three names are the controller's declared worktree runtime files;
+    # durable checkpoints and all pending task/PR ownership files are excluded.
+    runtime_directory = _agent_runtime_directory()
+    for name in _RUNTIME_CLEANUP_FILES:
+        path = runtime_directory / name
+        try:
+            if not path.is_file() or path.is_symlink():
+                continue
+            size = path.stat().st_size
+            path.unlink()
+            removed += 1
+            removed_bytes += size
+        except FileNotFoundError:
+            continue
+        except OSError:
+            failed_files.append(str(path))
+
     return {
-        "cleaned": True,
+        "cleaned": not failed_files,
         "files_removed": removed,
         "bytes_removed": removed_bytes,
+        "failed_files": failed_files,
         "preserved": ["history.jsonl", "scorecard-baseline.json", "checkpoint files", "pending task/PR markers"],
-        "message": "داده‌های موقت پیشرفت پاک شدند؛ تاریخچه و وضعیت پایدار عامل حفظ شدند.",
+        "message": (
+            "پاک‌سازی کامل شد؛ تاریخچه، checkpointها و وضعیت پایدار عامل حفظ شدند."
+            if not failed_files
+            else "پاک‌سازی ناقص بود؛ بعضی فایل‌های موقت به‌دلیل خطای دسترسی حذف نشدند."
+        ),
     }
