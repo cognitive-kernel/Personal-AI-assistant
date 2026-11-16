@@ -30,6 +30,13 @@ $resolvedRunnerRoot = if (-not [string]::IsNullOrWhiteSpace($RunnerRoot)) {
     [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ROOT", "Machine")
 }
 $runnerService = Get-AutonomousRunnerService -RunnerRoot $resolvedRunnerRoot
+if ([string]::IsNullOrWhiteSpace($resolvedRunnerRoot)) {
+    $exeMatch = [regex]::Match([string]$runnerService.PathName, '(?i)^"?(?<exe>.*?RunnerService\.exe)"?(?:\s|$)')
+    if (-not $exeMatch.Success) { throw "Could not safely resolve the actual Runner service root." }
+    $serviceBin = Split-Path -Parent $exeMatch.Groups["exe"].Value
+    $resolvedRunnerRoot = if ((Split-Path -Leaf $serviceBin) -ieq "bin") { Split-Path -Parent $serviceBin } else { $serviceBin }
+}
+[Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ROOT", $resolvedRunnerRoot, "Machine")
 $runnerIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $runnerService.StartName
 $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
 if (-not [string]::IsNullOrWhiteSpace($RunnerAccount)) {
