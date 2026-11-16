@@ -10,6 +10,7 @@ import time
 import urllib.error
 import urllib.request
 import re
+import threading
 from typing import Any
 
 import psutil
@@ -21,6 +22,7 @@ from .autonomous_engineering_progress import get_progress, pending_work_status, 
 from .ollama_context import maximum_context_tokens, supports_tool_calling
 
 _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
+_STATUS_PROBE_CONTEXT = threading.local()
 
 router = APIRouter(
     prefix="/api/autonomous-engineering",
@@ -101,6 +103,7 @@ def _ollama_status(model: str) -> dict[str, Any]:
         is_context_variant=_is_codex_context_variant,
         recommended_context_fn=lambda selected_model: model_details(selected_model).get("recommended_context_tokens"),
         tool_probe_fn=_tool_probe,
+        allow_live_tool_probe=getattr(_STATUS_PROBE_CONTEXT, "allow_live_tool_probe", True),
     )
 
 
@@ -131,7 +134,14 @@ def collect_status() -> dict[str, Any]:
     interval_hours = settings.get("interval_hours", _DEFAULT_INTERVAL_HOURS)
     execution_mode = settings.get("execution_mode", "continuous")
     paused = bool(settings.get("paused", False))
-    ollama = _ollama_status(model)
+    # Status polling must never start model inference. A missing tools capability
+    # is verified only by the explicit settings-save action; cached probe evidence
+    # remains visible without repeating a potentially long model load.
+    _STATUS_PROBE_CONTEXT.allow_live_tool_probe = False
+    try:
+        ollama = _ollama_status(model)
+    finally:
+        del _STATUS_PROBE_CONTEXT.allow_live_tool_probe
     codex = _codex_status()
     runner = _runner_status()
     progress_storage = storage_accessible()
