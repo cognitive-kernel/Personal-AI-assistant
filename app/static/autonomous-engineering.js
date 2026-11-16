@@ -219,8 +219,11 @@
       $("refresh-agent").disabled = false;
     }
   }
+  let settingsSaving = false;
   settingsForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (settingsSaving) return;
+    settingsSaving = true;
     saveButton.disabled = true;
     const customModel = $("custom-model").value.trim();
     const model = customModel || $("ollama-model").value;
@@ -239,10 +242,13 @@
       setMessage(error.message, "error");
     } finally {
       saveButton.disabled = false;
+      settingsSaving = false;
     }
   });
+  let taskSubmitting = false;
   taskForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (taskSubmitting) return;
     const task = $("manual-task").value.trim();
     if (!task) {
       setMessage("ابتدا متن وظیفه را وارد کنید.", "error");
@@ -252,6 +258,7 @@
       setMessage("متن وظیفه نامعتبر یا طولانی است.", "error");
       return;
     }
+    taskSubmitting = true;
     taskButton.disabled = true;
     dispatchButton.disabled = true;
     setMessage("در حال ارسال وظیفه به عامل محلی و درخواست شروع چرخه…");
@@ -268,6 +275,8 @@
       const detail = error.message || "ارسال وظیفه ناموفق بود.";
       await refresh();
       setMessage(detail, "error");
+    } finally {
+      taskSubmitting = false;
     }
   });
   dispatchButton.addEventListener("click", async () => {
