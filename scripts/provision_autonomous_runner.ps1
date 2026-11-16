@@ -3,8 +3,8 @@ param(
     [Parameter(Mandatory=$true)][ValidatePattern("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")][string]$Repository,
     [Parameter()][ValidateNotNullOrEmpty()][string]$RunnerAccount,
     [Parameter()][ValidateNotNullOrEmpty()][string]$AppAccount,
-    [string]$RunnerName = "$env:COMPUTERNAME-ollama",
-    [string]$RunnerRoot = (Join-Path $env:ProgramData "GitHubActionsRunner"),
+    [string]$RunnerName = "",
+    [string]$RunnerRoot = "",
     [string]$Model = "",
     [switch]$VerifyModel
 )
@@ -17,13 +17,43 @@ $AppAccount = if ([string]::IsNullOrWhiteSpace($AppAccount)) { $identity.Name } 
 if ([string]::IsNullOrWhiteSpace($AppAccount)) { throw "The application identity could not be resolved from the installer process." }
 if ($RunnerName -notmatch "^[A-Za-z0-9_.-]{1,64}$") { throw "Invalid RunnerName." }
 if ([string]::IsNullOrWhiteSpace($env:ProgramData) -or -not [System.IO.Path]::IsPathRooted($env:ProgramData)) { throw "PROGRAMDATA must resolve to an absolute shared path." }
-if (-not [System.IO.Path]::IsPathRooted($RunnerRoot)) { throw "RunnerRoot must be an absolute path." }
-$RunnerRoot = [System.IO.Path]::GetFullPath($RunnerRoot)
 Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsIdentity.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsPaths.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "AutonomousOllamaRuntime.psm1") -Force
 
+if ([string]::IsNullOrWhiteSpace($RunnerRoot)) {
+    $RunnerRoot = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ROOT", "Machine")
+}
+if ([string]::IsNullOrWhiteSpace($RunnerRoot)) {
+    $installedServices = @(Get-CimInstance Win32_Service -ErrorAction Stop | Where-Object {
+        $_.PathName -match '(?i)(^|[\\/])RunnerService\\.exe(?:\\s|$|")'
+    })
+    if ($installedServices.Count -gt 1) {
+        throw "Multiple GitHub Runner services were found. Supply -RunnerRoot to select the intended installation without changing any service."
+    }
+    if ($installedServices.Count -eq 1) {
+        $exeMatch = [regex]::Match([string]$installedServices[0].PathName, '(?i)^"?(?<exe>.*?RunnerService\\.exe)"?(?:\\s|$)')
+        if (-not $exeMatch.Success) { throw "Could not safely resolve the installed Runner service executable path." }
+        $serviceBin = Split-Path -Parent $exeMatch.Groups["exe"].Value
+        $RunnerRoot = if ((Split-Path -Leaf $serviceBin) -ieq "bin") { Split-Path -Parent $serviceBin } else { $serviceBin }
+    } else {
+        $RunnerRoot = Join-Path $env:ProgramData "GitHubActionsRunner"
+    }
+}
+if (-not [System.IO.Path]::IsPathRooted($RunnerRoot)) { throw "RunnerRoot must be an absolute path." }
+$RunnerRoot = [System.IO.Path]::GetFullPath($RunnerRoot)
+
 $existingRunnerConfiguration = Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")
+if ([string]::IsNullOrWhiteSpace($RunnerName)) {
+    if ($existingRunnerConfiguration) {
+        $runnerConfig = Get-Content -LiteralPath (Join-Path $RunnerRoot ".runner") -Raw | ConvertFrom-Json
+        $RunnerName = [string]$runnerConfig.agentName
+        if ([string]::IsNullOrWhiteSpace($RunnerName)) { throw "The existing Runner name could not be resolved from its configuration." }
+    } else {
+        $RunnerName = "$env:COMPUTERNAME-ollama"
+    }
+}
+if ($RunnerName -notmatch "^[A-Za-z0-9_.-]{1,64}$") { throw "Invalid RunnerName." }
 if ([string]::IsNullOrWhiteSpace($RunnerAccount)) {
     if ($existingRunnerConfiguration) {
         $discoveredService = Get-AutonomousRunnerService -RunnerRoot $RunnerRoot
