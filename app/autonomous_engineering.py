@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
-from .autonomous_engineering_progress import get_progress, pending_work_status, storage_accessible
+from .autonomous_engineering_progress import get_progress, pending_work_status, storage_access_status
 from .autonomous_engineering_storage import cleanup_storage, inspect_storage
 from .ollama_context import maximum_context_tokens, supports_tool_calling
 
@@ -141,7 +141,8 @@ def collect_status() -> dict[str, Any]:
     ollama = _ollama_status(model)
     codex = _codex_status()
     runner = _runner_status()
-    progress_storage = storage_accessible()
+    storage_status = storage_access_status()
+    progress_storage = storage_status["available"]
     checks = {
         "ollama_online": ollama["online"],
         "model_installed": ollama["model_installed"],
@@ -196,6 +197,7 @@ def collect_status() -> dict[str, Any]:
         "execution_mode": execution_mode,
         "paused": paused,
         "progress_storage_accessible": progress_storage,
+        "storage": storage_status,
         "platform": platform.platform(),
         "local_only_inference": True,
     }
