@@ -65,7 +65,10 @@ def test_windows_provisioning_does_not_require_a_fixed_users_group_or_admin_acl_
     assert "BUILTIN" not in script + module
     assert '"SYSTEM:(OI)(CI)F"' not in script + module
     assert "Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid" in script
-    assert "Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -ReadOnlySid $appSid" in script
+    assert "Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -AdditionalModifySids $appSid" in script
+    assert "Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -AdditionalModifySids @($appSid, $installerSid)" in script
+    assert "[string[]]$AdditionalModifySids" in module
+    assert "foreach ($sid in $additionalSids)" in module
     assert "$allowedSids = @($modifySids)" in module
     assert '$Path /remove "*$sid"' in module
     assert "$unexpectedSids" in module
