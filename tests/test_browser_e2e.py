@@ -3580,3 +3580,100 @@ def test_autonomous_engineering_model_picker_requires_explicit_selection_and_sav
         assert model_picker.input_value() == "gpt-oss:20b"
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_autonomous_dashboard_keeps_dispatch_disabled_after_accepted_run():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    state = {"active": False, "dispatches": 0, "status_reads": 0}
+    browser_errors = []
+
+    def status_payload():
+        state["status_reads"] += 1
+        active_runs = [{
+            "id": 987654,
+            "status": "in_progress",
+            "conclusion": None,
+            "created_at": "2026-11-16T08:00:00Z",
+            "url": "https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/987654",
+        }] if state["active"] else []
+        return {
+            "ready": True,
+            "can_dispatch": not state["active"],
+            "checks": {
+                "ollama_online": True,
+                "model_installed": True,
+                "model_selectable": True,
+                "model_context_metadata_available": True,
+                "model_context_supported": True,
+                "model_supports_tools": True,
+                "model_tools_metadata_available": True,
+                "model_is_codex_context_variant": False,
+                "codex_installed": False,
+                "runner_running": True,
+                "github_cli_authenticated": True,
+                "github_runs_available": True,
+                "progress_storage_accessible": True,
+            },
+            "model": "model:latest",
+            "models": ["model:latest"],
+            "selectable_models": ["model:latest"],
+            "model_context_length": 65536,
+            "model_recommended_context_length": 32768,
+            "model_tools_verification_method": "ollama_model_capabilities",
+            "interval_hours": 24,
+            "execution_mode": "continuous",
+            "paused": False,
+            "github": {"recent_runs": active_runs, "settings": {"model": "model:latest"}},
+            "codex": {"installed": False, "version": None},
+            "local_only_inference": True,
+        }
+
+    def mock_status(route):
+        route.fulfill(status=200, json=status_payload())
+
+    def mock_dispatch(route):
+        state["dispatches"] += 1
+        state["active"] = True
+        route.fulfill(status=202, json={
+            "accepted": True,
+            "manual_task_submitted": False,
+            "message": "درخواست اجرای چرخهٔ خودکار ارسال شد.",
+        })
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/api/autonomous-engineering/status", mock_status)
+        page.route("**/api/autonomous-engineering/progress**", lambda route: route.fulfill(
+            status=200,
+            json={
+                "current": None, "history": [], "latest_snapshot": None,
+                "events": [], "storage_configured": True,
+            },
+        ))
+        page.route("**/api/autonomous-engineering/dispatch", mock_dispatch)
+
+        response = page.goto(
+            base_url.rstrip("/") + "/autonomous-engineering",
+            wait_until="domcontentloaded",
+        )
+        assert response is not None and response.status == 200
+        dispatch = page.locator("#dispatch-agent")
+        page.wait_for_function(
+            "() => document.querySelector('#dispatch-agent')?.disabled === false",
+            timeout=10000,
+        )
+        dispatch.click()
+        page.wait_for_function(
+            "() => document.querySelector('#dispatch-agent')?.disabled === true",
+            timeout=10000,
+        )
+        assert state["dispatches"] == 1
+        assert page.locator("#send-agent-task").is_disabled()
+        assert state["status_reads"] >= 2
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
