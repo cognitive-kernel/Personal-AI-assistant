@@ -123,14 +123,11 @@ function Set-AutonomousStateDirectoryAcl {
     if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
         New-Item -ItemType Directory -Path $Path -Force | Out-Null
     }
-    Set-AutonomousDirectoryAcl -Path $Path -RunnerSid $RunnerSid -AdditionalModifySids $AdditionalModifySids
     $lockPath = Join-Path $Path "autonomous-durable-state.lock"
-    $lockStream = [System.IO.File]::Open($lockPath, [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::ReadWrite)
-    try {
-        if ($lockStream.Length -eq 0) { $lockStream.WriteByte(0); $lockStream.Flush() }
-    } finally {
-        $lockStream.Dispose()
+    if (-not (Test-Path -LiteralPath $lockPath -PathType Leaf)) {
+        [System.IO.File]::WriteAllBytes($lockPath, [byte[]]@(0))
     }
+    Set-AutonomousDirectoryAcl -Path $Path -RunnerSid $RunnerSid -AdditionalModifySids $AdditionalModifySids
     Set-AutonomousDirectoryAcl -Path $lockPath -RunnerSid $RunnerSid -AdditionalModifySids $AdditionalModifySids -File
 }
 
