@@ -68,19 +68,17 @@ $runner = Get-Process -Name "Runner.Listener" -ErrorAction SilentlyContinue | Se
 $runnerReady = [bool]$runner
 $checks += [pscustomobject]@{ Component = "GitHub Runner"; Ready = $runnerReady; Detail = if ($runnerReady) { "Listener process active" } else { "Register and start the self-hosted runner with label ollama" } }
 
-$progressPath = Join-Path $env:ProgramData "PersonalAIAssistant\autonomous-engineering"
+$progressPath = ""
 $progressReady = $false
-if (Test-Path -LiteralPath $progressPath -PathType Container) {
-    try {
-        Get-ChildItem -LiteralPath $progressPath -ErrorAction Stop | Select-Object -First 1 | Out-Null
-        $progressReady = $true
-    } catch {}
+try {
+    $machineStateDirectory = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")
+    Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsPaths.psm1") -Force
+    $progressPath = Test-AutonomousStateStorageAccess -ConfiguredPath $machineStateDirectory -ProcessPath $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR -ProgramDataPath $env:ProgramData
+    $progressReady = $true
+} catch {
+    $progressPath = $_.Exception.Message
 }
-$checks += [pscustomobject]@{
-    Component = "Shared progress storage"
-    Ready = $progressReady
-    Detail = if ($progressReady) { $progressPath } else { "Run configure_autonomous_engineering_progress.ps1 for the app and runner accounts" }
-}
+$checks += [pscustomobject]@{ Component = "Shared progress storage and durable lock"; Ready = $progressReady; Detail = if ($progressReady) { "Read/write and lock access verified: $progressPath" } else { $progressPath } }
 
 $checks | Format-Table -AutoSize
 if (@($checks | Where-Object { -not $_.Ready }).Count -gt 0) {
