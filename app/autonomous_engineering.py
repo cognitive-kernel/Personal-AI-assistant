@@ -5,13 +5,13 @@ import csv
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import time
-from datetime import datetime
 import urllib.error
 import urllib.request
-import re
+from datetime import datetime
 from typing import Any
 
 import psutil
