@@ -112,6 +112,20 @@ def inspect_storage() -> dict[str, Any]:
     candidates: list[tuple[Path, Path, str]] = []
     access_errors: list[dict[str, str]] = []
     try:
+        with durable_state_lock(state_root, timeout_seconds=2):
+            storage_access = {
+                "available": True,
+                "lock_file": str(state_root / "autonomous-durable-state.lock"),
+                "error": None,
+            }
+    except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
+        storage_access = {
+            "available": False,
+            "lock_file": str(state_root / "autonomous-durable-state.lock"),
+            "error": f"{type(exc).__name__}: {str(exc)[:240]}",
+        }
+        access_errors.append({"path": str(state_root), "error": type(exc).__name__})
+    try:
         if state_root.is_dir():
             for path in state_root.iterdir():
                 if path.is_file():
@@ -160,8 +174,9 @@ def inspect_storage() -> dict[str, Any]:
         total += item["size_bytes"]
     files.sort(key=lambda item: item["size_bytes"], reverse=True)
     return {
-        "available": True,
+        "available": storage_access["available"],
         "state_directory": str(state_root),
+        "storage_access": storage_access,
         "runner_temp_directories": [str(path) for path in runner_temp_dirs],
         "access_errors": access_errors,
         "files": files[:100],
