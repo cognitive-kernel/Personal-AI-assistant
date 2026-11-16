@@ -121,8 +121,16 @@
   }
   let statusRefreshPromise = null;
   let dispatchPendingUntil = 0;
-  function refresh() {
-    if (statusRefreshPromise) return statusRefreshPromise;
+  function refresh(force = false) {
+    if (statusRefreshPromise) {
+      if (!force) return statusRefreshPromise;
+      // A post-mutation refresh must not reuse a status response that began
+      // before the mutation (for example, before GitHub exposes a new run).
+      return statusRefreshPromise.then(
+        () => refresh(),
+        () => refresh()
+      );
+    }
     statusRefreshPromise = refreshStatus().finally(() => {
       statusRefreshPromise = null;
     });
@@ -237,7 +245,7 @@
       });
       $("custom-model").value = "";
       setMessage(result.message || "تنظیمات ذخیره شد.", "success");
-      await refresh();
+      await refresh(true);
     } catch (error) {
       setMessage(error.message, "error");
     } finally {
@@ -270,10 +278,10 @@
       dispatchPendingUntil = Date.now() + 30000;
       $("manual-task").value = "";
       setMessage(result.message || "وظیفه برای عامل ارسال شد.", "success");
-      await refresh();
+      await refresh(true);
     } catch (error) {
       const detail = error.message || "ارسال وظیفه ناموفق بود.";
-      await refresh();
+      await refresh(true);
       setMessage(detail, "error");
     } finally {
       taskSubmitting = false;
@@ -289,7 +297,7 @@
     } catch (error) {
       setMessage(error.message || "ارسال درخواست ناموفق بود.", "error");
     } finally {
-      await refresh();
+      await refresh(true);
     }
   });
   pauseButton.addEventListener("click", async () => {
@@ -297,7 +305,7 @@
     try {
       const result = await request("pause", {method: "POST"});
       setMessage(result.message || "توقف ایمن ثبت شد.", "success");
-      await refresh();
+      await refresh(true);
     } catch (error) {
       setMessage(error.message, "error");
       pauseButton.disabled = false;
@@ -309,7 +317,7 @@
       const result = await request("resume", {method: "POST"});
       dispatchPendingUntil = Date.now() + 30000;
       setMessage(result.message || "ادامهٔ صف درخواست شد.", "success");
-      await refresh();
+      await refresh(true);
     } catch (error) {
       setMessage(error.message, "error");
       resumeButton.disabled = false;
@@ -321,7 +329,7 @@
     try {
       const result = await request("cancel", {method: "POST"});
       setMessage(result.message || "درخواست لغو ارسال شد.", "success");
-      await refresh();
+      await refresh(true);
     } catch (error) {
       setMessage(error.message, "error");
     }
