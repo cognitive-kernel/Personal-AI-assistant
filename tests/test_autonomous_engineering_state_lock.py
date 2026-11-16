@@ -260,3 +260,17 @@ def test_shared_file_lock_rejects_non_finite_timeout(tmp_path: Path):
             timeout_message="unreachable",
         ):
             pytest.fail("A non-finite lock timeout must be rejected before acquisition.")
+
+
+def test_windows_state_root_rejects_process_only_configuration_without_feature_flag(
+    monkeypatch, tmp_path: Path
+):
+    from scripts import autonomous_engineering_state_paths as paths
+
+    monkeypatch.setattr(paths, "_is_windows", lambda: True)
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "user-only"))
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_REQUIRE_MACHINE_STATE_DIR", raising=False)
+    _install_fake_machine_environment(monkeypatch, None)
+
+    with pytest.raises(RuntimeError, match="process/user-scoped"):
+        paths.execution_state_directory()
