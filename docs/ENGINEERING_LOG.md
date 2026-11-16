@@ -1910,3 +1910,23 @@ After the operational status and delivery-estimate documentation was synchronize
 
 These are hosted CI results only. Target-host Windows/ACL/sandbox/restart and live Ollama/Codex acceptance remain outstanding.
 
+## 2026-11-16 — Autonomous Engineering dashboard status and dispatch responsiveness
+
+A review of the Windows report and the dashboard/API path identified several coupled UI responsiveness defects:
+
+- The status endpoint called the normal Ollama readiness path. When model capabilities metadata was absent, that path could perform a real /api/chat tool-call inference with a 45-second timeout during an ordinary status refresh. This made the initial dashboard status request unexpectedly expensive.
+- GitHub run inventory and repository-variable reads were sequential even though they are independent, adding both CLI timeouts to one status request.
+- The browser had no single-flight guard for status refreshes and no request deadline. Manual refreshes and the 30-second poll could overlap while the backend was still checking local components.
+- After a successful dispatch response, the UI could re-enable dispatch before GitHub's workflow-run list exposed the new run, creating a duplicate-submission window.
+
+Corrections on this branch:
+
+- Dashboard status checks never start live model inference. They reuse a still-valid cached tool-capability probe; when no evidence exists, the UI reports that explicit model verification is required. Saving model settings remains the explicit path that performs the real tool-call probe.
+- GitHub run and repository-variable reads now execute concurrently.
+- Browser requests use an abort deadline; status refreshes share one in-flight promise instead of creating overlapping requests.
+- Accepted dispatch/resume actions hold the dispatch controls for a bounded visibility window, and action handlers refresh the authoritative server state before releasing controls.
+- Added unit and browser regressions for non-inference status checks, cached probe reuse, single-flight refresh, and the delay before a dispatched Actions run becomes visible.
+
+The shutdown trace supplied during diagnosis contains CancelledError while Uvicorn was shutting down. That trace is consistent with in-flight requests being cancelled by the operator's Ctrl+C; it does not by itself establish an independent application exception or explain the original long status request.
+
+**Validation boundary:** source changes and regression tests are committed on the dedicated branch. Exact-head GitHub CI and live acceptance on the owner's Windows machine are pending. No local Runner, autonomous workflow, account, ACL, durable task, checkpoint, or user data was started, reset, or modified by this change.
