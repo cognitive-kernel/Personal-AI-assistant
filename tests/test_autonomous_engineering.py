@@ -1621,3 +1621,4 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     assert "function canStartDispatch()" in script
     assert "item.point[line.key] !== null" in script
     assert "engineeringPercent !== null" in script
+    assert "window.setTimeout(syncDispatchControls, 30000)" in script
