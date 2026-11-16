@@ -5,18 +5,18 @@ function ConvertTo-AutonomousWindowsAccountName {
     param([Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$AccountName)
 
     $value = $AccountName.Trim()
-    if ($value.StartsWith(".\\", [StringComparison]::Ordinal)) {
-        return "$env:COMPUTERNAME\\" + $value.Substring(2)
+    if ($value.StartsWith(".\", [StringComparison]::Ordinal)) {
+        return "$env:COMPUTERNAME\" + $value.Substring(2)
     }
-    if ($value.Contains("\\") -or $value.Contains("@")) { return $value }
-    return "$env:COMPUTERNAME\\" + $value
+    if ($value.Contains("\") -or $value.Contains("@")) { return $value }
+    return "$env:COMPUTERNAME\" + $value
 }
 
 function Get-AutonomousLocalAccountName {
     [CmdletBinding()]
     param([Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$AccountName)
 
-    $prefix = "$env:COMPUTERNAME\\"
+    $prefix = "$env:COMPUTERNAME\"
     if ($AccountName.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
         return $AccountName.Substring($prefix.Length)
     }
@@ -42,7 +42,7 @@ function Get-AutonomousRunnerService {
     )
 
     $services = @(Get-CimInstance Win32_Service -ErrorAction Stop | Where-Object {
-        $isRunnerService = $_.PathName -match '(?i)(^|[\\/])RunnerService\\.exe(?:\s|$)'
+        $isRunnerService = $_.PathName -match '(?i)(^|[\\/])RunnerService\.exe(?:\s|$)'
         $matchesRoot = [string]::IsNullOrWhiteSpace($RunnerRoot) -or
             $_.PathName.IndexOf([System.IO.Path]::GetFullPath($RunnerRoot), [StringComparison]::OrdinalIgnoreCase) -ge 0
         $matchesName = [string]::IsNullOrWhiteSpace($ServiceName) -or $_.Name -eq $ServiceName
