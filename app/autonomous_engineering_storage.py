@@ -10,6 +10,7 @@ from typing import Any
 import psutil
 
 from .autonomous_engineering_state import execution_state_directory
+from .autonomous_engineering_progress import storage_access_status
 from scripts.autonomous_engineering_state_lock import durable_state_lock
 
 _RETENTION_SECONDS = 24 * 60 * 60
@@ -111,20 +112,12 @@ def inspect_storage() -> dict[str, Any]:
     state_root = execution_state_directory()
     candidates: list[tuple[Path, Path, str]] = []
     access_errors: list[dict[str, str]] = []
-    try:
-        with durable_state_lock(state_root, timeout_seconds=2):
-            storage_access = {
-                "available": True,
-                "lock_file": str(state_root / "autonomous-durable-state.lock"),
-                "error": None,
-            }
-    except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
-        storage_access = {
-            "available": False,
-            "lock_file": str(state_root / "autonomous-durable-state.lock"),
-            "error": f"{type(exc).__name__}: {str(exc)[:240]}",
-        }
-        access_errors.append({"path": str(state_root), "error": type(exc).__name__})
+    storage_access = storage_access_status()
+    if not storage_access["available"]:
+        access_errors.append({
+            "path": str(state_root),
+            "error": str(storage_access.get("error") or "storage_access_failed"),
+        })
     try:
         if state_root.is_dir():
             for path in state_root.iterdir():
