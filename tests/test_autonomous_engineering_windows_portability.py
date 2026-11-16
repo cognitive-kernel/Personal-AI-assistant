@@ -122,6 +122,9 @@ def test_runner_identity_is_discovered_or_generated_without_fixed_account_names(
     assert "AUTONOMOUS_ENGINEERING_APP_IDENTITY_URL" in identity
     assert "AUTONOMOUS_ENGINEERING_RUNNER_ROOT" in provision
     assert "AUTONOMOUS_ENGINEERING_RUNNER_ACCOUNT" in provision
+    assert '".autonomous-provisioning.json"' in provision
+    assert "runner_account = $runnerIdentity" in provision
+    assert "Remove-Item -LiteralPath $provisioningMarkerPath -Force" in provision
     assert '[Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ROOT", "Machine")' in provision
     assert '[Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ACCOUNT", $runnerIdentity, "Machine")' in configure
     assert "RunnerService\\.exe" in provision
