@@ -197,30 +197,48 @@ def _write_snapshot_unlocked(
 ) -> None:
     state = state if state is not None else paths(run_id, task)
     state["directory"].mkdir(parents=True, exist_ok=True)
-    # The watcher runs concurrently with Codex. Never use the repository's
-    # shared .git/index: even intent-to-add entries can race with Codex staging.
-    descriptor, index_name = tempfile.mkstemp(
-        prefix="checkpoint-index-", suffix=".tmp", dir=state["directory"],
-    )
-    os.close(descriptor)
-    index_path = Path(index_name)
-    index_env = os.environ.copy()
-    index_env["GIT_INDEX_FILE"] = str(index_path)
-    try:
-        git("read-tree", base_sha, env=index_env)
-        git("add", "-N", "-A", "--", "app", "tests", "docs", "scripts", env=index_env)
-        result = git(
-            "diff", "--binary", base_sha, "--",
-            "app", "tests", "docs", "scripts",
-            ":!scripts/autonomous_engineering_cycle.py",
-            ":!scripts/autonomous_engineering_checkpoint.py",
-            ":!scripts/autonomous_engineering_progress.py",
-            ":!scripts/autonomous_engineering_state.py",
-            env=index_env,
+    # The watcher runs concurrently with Codex. Keep both its index and any
+    # intent-to-add objects outside the repository: CI and some managed
+    # workspaces mount the checkout read-only. Existing objects are read only
+    # through Git's alternate-object mechanism.
+    object_result = git("rev-parse", "--git-path", "objects")
+    object_path = Path((object_result.stdout or "").strip())
+    if not object_path.is_absolute():
+        object_path = ROOT / object_path
+    source_objects = object_path.resolve()
+    if not source_objects.is_dir():
+        raise RuntimeError("The repository Git object directory is unavailable.")
+
+    with tempfile.TemporaryDirectory(
+        prefix="checkpoint-git-", dir=state["directory"],
+    ) as temporary_directory:
+        temporary_root = Path(temporary_directory)
+        object_directory = temporary_root / "objects"
+        object_directory.mkdir()
+        descriptor, index_name = tempfile.mkstemp(
+            prefix="checkpoint-index-", suffix=".tmp", dir=temporary_root,
         )
-    finally:
-        index_path.unlink(missing_ok=True)
-        index_path.with_name(index_path.name + ".lock").unlink(missing_ok=True)
+        os.close(descriptor)
+        index_path = Path(index_name)
+        index_env = os.environ.copy()
+        index_env["GIT_INDEX_FILE"] = str(index_path)
+        index_env["GIT_OBJECT_DIRECTORY"] = str(object_directory)
+        index_env["GIT_ALTERNATE_OBJECT_DIRECTORIES"] = str(source_objects)
+        try:
+            git("read-tree", base_sha, env=index_env)
+            git("add", "-N", "-A", "--", "app", "tests", "docs", "scripts", env=index_env)
+            result = git(
+                "diff", "--binary", base_sha, "--",
+                "app", "tests", "docs", "scripts",
+                ":!scripts/autonomous_engineering_cycle.py",
+                ":!scripts/autonomous_engineering_checkpoint.py",
+                ":!scripts/autonomous_engineering_progress.py",
+                ":!scripts/autonomous_engineering_state.py",
+                env=index_env,
+            )
+        finally:
+            index_path.unlink(missing_ok=True)
+            index_path.with_name(index_path.name + ".lock").unlink(missing_ok=True)
     previous = read_metadata(run_id, task, state=state)
     preserve_existing_patch = (
         not result.stdout
