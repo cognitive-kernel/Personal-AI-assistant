@@ -183,13 +183,21 @@ jobs:
           New-Item -ItemType Directory -Path $aclProbe | Out-Null
           try {
             $runnerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+            $beforeAcl = Get-Acl -LiteralPath $aclProbe
+            $beforeSids = @($beforeAcl.Access | ForEach-Object { $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value } | Select-Object -Unique)
             Set-AutonomousDirectoryAcl -Path $aclProbe -RunnerSid $runnerSid -AdditionalModifySids @("S-1-5-19", "S-1-5-20") -ReadOnlySid "S-1-5-18"
-            $allowedSids = @($runnerSid, "S-1-5-19", "S-1-5-20", "S-1-5-18")
-            $actualSids = @((Get-Acl -LiteralPath $aclProbe).Access | ForEach-Object { $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value } | Select-Object -Unique)
-            if ($actualSids.Count -ne $allowedSids.Count -or @($actualSids | Where-Object { $_ -notin $allowedSids }).Count -gt 0) {
-              throw "The generated ACL contains missing or unexpected principals: $($actualSids -join ', ')."
+            $afterAcl = Get-Acl -LiteralPath $aclProbe
+            $afterSids = @($afterAcl.Access | ForEach-Object { $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value } | Select-Object -Unique)
+            $requiredSids = @($runnerSid, "S-1-5-19", "S-1-5-20", "S-1-5-18")
+            $missingRequired = @($requiredSids | Where-Object { $_ -notin $afterSids })
+            $removedExisting = @($beforeSids | Where-Object { $_ -notin $afterSids })
+            if ($missingRequired.Count -gt 0 -or $removedExisting.Count -gt 0) {
+              throw "ACL verification failed. Missing required SIDs: $($missingRequired -join ', '); removed existing SIDs: $($removedExisting -join ', ')."
             }
-            Write-Host "SID-scoped directory ACL grants passed without fixed user/group names."
+            if ($afterAcl.AreAccessRulesProtected -ne $beforeAcl.AreAccessRulesProtected) {
+              throw "ACL provisioning changed the directory's inheritance-protection state."
+            }
+            Write-Host "Additive SID-scoped ACL grants passed; existing principals and inheritance were preserved."
           } finally {
             Remove-Item -LiteralPath $aclProbe -Recurse -Force -ErrorAction SilentlyContinue
           }
