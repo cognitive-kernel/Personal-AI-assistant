@@ -43,6 +43,9 @@ if (-not [System.IO.Path]::IsPathRooted($RunnerRoot)) { throw "RunnerRoot must b
 $RunnerRoot = [System.IO.Path]::GetFullPath($RunnerRoot)
 
 $existingRunnerConfiguration = Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")
+if (-not $existingRunnerConfiguration -and (Test-Path -LiteralPath $RunnerRoot) -and @(Get-ChildItem -LiteralPath $RunnerRoot -Force).Count -gt 0) {
+    throw "RunnerRoot is non-empty but unconfigured; refusing to overwrite or create a service account for it."
+}
 if ([string]::IsNullOrWhiteSpace($RunnerName)) {
     if ($existingRunnerConfiguration) {
         $runnerConfig = Get-Content -LiteralPath (Join-Path $RunnerRoot ".runner") -Raw | ConvertFrom-Json
@@ -259,7 +262,6 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     Write-Host "Existing Runner configuration preserved, uniquely labelled, and verified under $runnerIdentity."
     exit 0
 }
-if ((Test-Path -LiteralPath $RunnerRoot) -and @(Get-ChildItem -LiteralPath $RunnerRoot -Force).Count -gt 0) { throw "RunnerRoot is non-empty but unconfigured; refusing to overwrite." }
 $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
 $administratorsSid = [Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)
     $administratorsGroup = Get-LocalGroup -SID $administratorsSid
