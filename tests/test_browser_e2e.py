@@ -3648,6 +3648,7 @@ def test_autonomous_dashboard_keeps_dispatch_disabled_after_accepted_run():
         browser = playwright.chromium.launch()
         page = browser.new_page()
         page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.expose_function("getAutonomousStatusReads", lambda: state["status_reads"])
         page.route("**/api/autonomous-engineering/status", mock_status)
         page.route("**/api/autonomous-engineering/progress**", lambda route: route.fulfill(
             status=200,
@@ -3676,6 +3677,7 @@ def test_autonomous_dashboard_keeps_dispatch_disabled_after_accepted_run():
         assert state["dispatches"] == 1
         assert state["active"] is False
         assert page.locator("#send-agent-task").is_disabled()
+        page.wait_for_function("async () => await window.getAutonomousStatusReads() >= 2", timeout=5000)
         assert state["status_reads"] >= 2
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
