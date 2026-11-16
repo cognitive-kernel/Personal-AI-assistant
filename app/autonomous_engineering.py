@@ -14,7 +14,7 @@ import threading
 from typing import Any
 
 import psutil
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
@@ -630,7 +630,7 @@ def _sanitize_workflow_log(value: str) -> str:
 
 
 @router.get("/runs")
-def autonomous_engineering_runs(limit: int = 30) -> dict[str, Any]:
+def autonomous_engineering_runs(limit: int = Query(default=30, ge=1, le=100)) -> dict[str, Any]:
     gh = _authenticated_gh()
     return {"runs": _workflow_runs(gh, limit=limit), "repository": _repository(), "workflow": _WORKFLOW}
 
