@@ -7,7 +7,7 @@ def test_existing_runner_provisioning_discovers_service_and_preserves_account_me
     workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
 
     existing_branch = script.split('if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {', 1)[1].split(
-        "\n$runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity", 1
+        "\n$runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity\n$administratorsSid", 1
     )[0]
     assert "Get-AutonomousRunnerService -RunnerRoot $RunnerRoot" in existing_branch
     assert "$service.StartName" in existing_branch
