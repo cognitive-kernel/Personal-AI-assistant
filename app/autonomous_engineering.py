@@ -681,7 +681,7 @@ def autonomous_engineering_run_logs(run_id: int) -> dict[str, Any]:
             "id": trusted_run_id,
             "status": run.get("status"),
             "conclusion": run.get("conclusion"),
-            "url": run.get("html_url"),
+            "url": run.get("url"),
         },
         "failures": failures,
         "logs": _sanitize_workflow_log(raw_log),
