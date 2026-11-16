@@ -1602,6 +1602,7 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
 
     assert "new AbortController()" in script
     assert "statusRefreshPromise" in script
+    assert "dispatchPendingUntil" in script
     assert "if (statusRefreshPromise) return statusRefreshPromise" in script
     assert "پاسخ سرویس در مهلت ۴۰ ثانیه دریافت نشد" in script
     assert 'window.setInterval(refresh, 30000)' in script
