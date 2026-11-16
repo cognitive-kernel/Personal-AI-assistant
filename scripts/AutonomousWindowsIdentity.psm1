@@ -41,7 +41,8 @@ function Set-AutonomousDirectoryAcl {
         [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string]$RunnerSid,
         [Parameter()][ValidatePattern("^S-1-")][string]$ReadOnlySid,
         [Parameter()][ValidatePattern("^S-1-")][string]$AdditionalModifySid,
-        [Parameter()][ValidatePattern("^S-1-")][string[]]$AdditionalModifySids
+        [Parameter()][ValidatePattern("^S-1-")][string[]]$AdditionalModifySids,
+        [Parameter()][switch]$File
     )
 
     $icacls = Get-Command icacls.exe -ErrorAction Stop
@@ -85,9 +86,13 @@ function Set-AutonomousDirectoryAcl {
         }
     }
 
-    $grants = @($modifySids | ForEach-Object { "*$($_):(OI)(CI)M" })
+    $grants = if ($File) {
+        @($modifySids | ForEach-Object { "*$($_):M" })
+    } else {
+        @($modifySids | ForEach-Object { "*$($_):(OI)(CI)M" })
+    }
     if ($ReadOnlySid -and $ReadOnlySid -notin $modifySids) {
-        $grants += "*$($ReadOnlySid):(OI)(CI)RX"
+        $grants += if ($File) { "*$($ReadOnlySid):R" } else { "*$($ReadOnlySid):(OI)(CI)RX" }
     }
     $arguments = @($Path, "/grant:r") + $grants
     & $icacls.Source @arguments | Out-Null
@@ -106,4 +111,27 @@ function Set-AutonomousDirectoryAcl {
     }
 }
 
-Export-ModuleMember -Function ConvertTo-AutonomousWindowsAccountName, Get-AutonomousLocalAccountName, Get-AutonomousWindowsAccountSid, Set-AutonomousDirectoryAcl
+
+function Set-AutonomousStateDirectoryAcl {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$Path,
+        [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string]$RunnerSid,
+        [Parameter()][ValidatePattern("^S-1-")][string[]]$AdditionalModifySids
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
+        New-Item -ItemType Directory -Path $Path -Force | Out-Null
+    }
+    Set-AutonomousDirectoryAcl -Path $Path -RunnerSid $RunnerSid -AdditionalModifySids $AdditionalModifySids
+    $lockPath = Join-Path $Path "autonomous-durable-state.lock"
+    $lockStream = [System.IO.File]::Open($lockPath, [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::ReadWrite)
+    try {
+        if ($lockStream.Length -eq 0) { $lockStream.WriteByte(0); $lockStream.Flush() }
+    } finally {
+        $lockStream.Dispose()
+    }
+    Set-AutonomousDirectoryAcl -Path $lockPath -RunnerSid $RunnerSid -AdditionalModifySids $AdditionalModifySids -File
+}
+
+Export-ModuleMember -Function ConvertTo-AutonomousWindowsAccountName, Get-AutonomousLocalAccountName, Get-AutonomousWindowsAccountSid, Set-AutonomousDirectoryAcl, Set-AutonomousStateDirectoryAcl
