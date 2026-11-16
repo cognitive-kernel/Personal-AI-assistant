@@ -65,7 +65,7 @@ function Get-AutonomousApplicationIdentity {
         $StatusUrl = $env:AUTONOMOUS_ENGINEERING_APP_STATUS_URL
     }
     if ([string]::IsNullOrWhiteSpace($StatusUrl)) {
-        $StatusUrl = "http://127.0.0.1:8000/api/autonomous-engineering/status"
+        $StatusUrl = "http://127.0.0.1:8000/api/autonomous-engineering/identity"
     }
 
     $uri = $null
