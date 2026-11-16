@@ -113,6 +113,8 @@ def test_runner_identity_is_discovered_or_generated_without_fixed_account_names(
     assert '[Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ROOT", $resolvedRunnerRoot, "Machine")' in configure
     assert "Get-AutonomousRunnerService" in identity
     assert "Get-AutonomousApplicationIdentity" in identity
+    assert "/api/autonomous-engineering/identity" in identity
+    assert "Application identity discovery accepts only an HTTP loopback status URL." in identity
     assert "Get-AutonomousApplicationIdentity" in provision
     assert "Get-AutonomousApplicationIdentity" in configure
     assert "AUTONOMOUS_ENGINEERING_APP_STATUS_URL" in identity
