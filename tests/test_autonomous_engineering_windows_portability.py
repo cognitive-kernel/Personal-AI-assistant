@@ -112,7 +112,13 @@ def test_runner_identity_is_discovered_or_generated_without_fixed_account_names(
     assert "Get-AutonomousRunnerService -RunnerRoot $resolvedRunnerRoot" in configure
     assert "Get-AutonomousRunnerService" in identity
     assert "AUTONOMOUS_ENGINEERING_RUNNER_ROOT" in provision
+    assert '[Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ROOT", "Machine")' in provision
+    assert "RunnerService\\.exe" in provision
+    assert '$runnerConfig.agentName' in provision
+    assert "[string]$RunnerRoot = \"\"" in provision
     assert "AUTONOMOUS_ENGINEERING_PROGRESS_DIR" in provision
+    assert "[switch]$VerifyModel" in provision
+    assert "$shouldVerifyModel = $VerifyModel -or -not [string]::IsNullOrWhiteSpace($Model)" in provision
 
 
 def test_windows_provisioning_uses_the_runtime_shared_state_path_contract():
