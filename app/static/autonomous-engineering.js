@@ -124,10 +124,13 @@
   let dispatchSubmitting = false;
   let lastCanDispatch = false;
   let lastActiveRun = false;
+  function canStartDispatch() {
+    return lastCanDispatch && !lastActiveRun && !dispatchSubmitting && Date.now() >= dispatchPendingUntil;
+  }
   function syncDispatchControls() {
-    const locked = dispatchSubmitting || Date.now() < dispatchPendingUntil;
-    dispatchButton.disabled = !lastCanDispatch || lastActiveRun || locked;
-    taskButton.disabled = !lastCanDispatch || lastActiveRun || locked;
+    const allowed = canStartDispatch();
+    dispatchButton.disabled = !allowed;
+    taskButton.disabled = !allowed;
   }
   function refresh(force = false) {
     if (statusRefreshPromise) {
@@ -266,7 +269,10 @@
   });
   taskForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (dispatchSubmitting) return;
+    if (!canStartDispatch()) {
+      setMessage("عامل در حال اجرا، ارسال یا انتظار برای ثبت اجرای قبلی است؛ پس از به‌روزرسانی وضعیت دوباره تلاش کنید.", "error");
+      return;
+    }
     const task = $("manual-task").value.trim();
     if (!task) {
       setMessage("ابتدا متن وظیفه را وارد کنید.", "error");
@@ -299,7 +305,7 @@
     }
   });
   dispatchButton.addEventListener("click", async () => {
-    if (dispatchSubmitting) return;
+    if (!canStartDispatch()) return;
     dispatchSubmitting = true;
     dispatchButton.disabled = true;
     taskButton.disabled = true;
@@ -384,7 +390,9 @@
       {key:"overall_percent", className:"chart-overall"}
     ];
     for (const line of series) {
-      const valid = points.map((point,index) => ({point,index,value:Number(point[line.key])})).filter(item => Number.isFinite(item.value));
+      const valid = points.map((point,index) => ({point,index,value:Number(point[line.key])}))
+        .filter(item => item.point[line.key] !== null && item.point[line.key] !== undefined &&
+          Number.isFinite(item.value) && item.value >= 0 && item.value <= 100);
       if (!valid.length) continue;
       const d = valid.map((item,index) => (index ? "L" : "M") + xAt(item.index) + " " + yAt(item.value)).join(" ");
       chart.append(svgNode("path",{d,class:line.className,fill:"none"}));
@@ -472,10 +480,14 @@
       }
       const snapshots = data.history || [];
       const latest = data.latest_snapshot || (snapshots.length ? snapshots[snapshots.length - 1] : null);
-      $("engineering-progress").textContent = latest && Number.isFinite(Number(latest.engineering_percent))
-        ? Number(latest.engineering_percent).toFixed(2) + "%" : "—";
-      $("overall-progress").textContent = latest && Number.isFinite(Number(latest.overall_percent))
-        ? Number(latest.overall_percent).toFixed(2) + "%" : "—";
+      const engineeringPercent = latest && latest.engineering_percent;
+      const overallPercent = latest && latest.overall_percent;
+      $("engineering-progress").textContent = engineeringPercent !== null && engineeringPercent !== undefined &&
+        Number.isFinite(Number(engineeringPercent)) && Number(engineeringPercent) >= 0 && Number(engineeringPercent) <= 100
+        ? Number(engineeringPercent).toFixed(2) + "%" : "—";
+      $("overall-progress").textContent = overallPercent !== null && overallPercent !== undefined &&
+        Number.isFinite(Number(overallPercent)) && Number(overallPercent) >= 0 && Number(overallPercent) <= 100
+        ? Number(overallPercent).toFixed(2) + "%" : "—";
       $("progress-updated").textContent = current && current.updated_at
         ? "آخرین رویداد: " + new Date(current.updated_at).toLocaleTimeString()
         : data.storage_configured
