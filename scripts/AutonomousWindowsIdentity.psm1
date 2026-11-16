@@ -42,7 +42,7 @@ function Get-AutonomousRunnerService {
     )
 
     $services = @(Get-CimInstance Win32_Service -ErrorAction Stop | Where-Object {
-        $isRunnerService = $_.PathName -match '(?i)(^|[\\/])RunnerService\.exe(?:\s|$)'
+        $isRunnerService = $_.PathName -match '(?i)(^|[\\/])RunnerService\.exe(?:\s|$|")'
         $matchesRoot = [string]::IsNullOrWhiteSpace($RunnerRoot) -or
             $_.PathName.IndexOf([System.IO.Path]::GetFullPath($RunnerRoot), [StringComparison]::OrdinalIgnoreCase) -ge 0
         $matchesName = [string]::IsNullOrWhiteSpace($ServiceName) -or $_.Name -eq $ServiceName
