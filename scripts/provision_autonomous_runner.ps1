@@ -274,6 +274,7 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
         throw "Runner service did not restart under the verified non-administrator identity."
     }
     Write-Host "Existing Runner configuration preserved, uniquely labelled, and verified under $runnerIdentity."
+    Write-Host "Application identity: $appIdentity ($appSid)"
     exit 0
 }
 $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
@@ -317,8 +318,8 @@ try {
         & $config @configArgs
         if ($LASTEXITCODE -ne 0) { throw "Runner registration failed with exit code $LASTEXITCODE." }
     } finally {
-        # Keep the elevated installer principal temporary; the installed service
-        # retains access through its configured Runner SID.
+        # ACL updates are additive and idempotent; existing installer and inherited
+        # grants remain intact while the actual app and Runner identities are ensured.
         Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid
         Set-AutonomousStateDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -AdditionalModifySids $appSid
     }
@@ -330,7 +331,9 @@ try {
     if ($services[0].StartMode -eq "Disabled") { Set-Service -Name $services[0].Name -StartupType Automatic }
     Start-Service -Name $services[0].Name
     if ((Get-Service -Name $services[0].Name).Status -ne "Running") { throw "Runner service did not start." }
-    Write-Host "Runner registered and running as $runnerIdentity. Shared storage and service identity were configured; model readiness is reported separately by the dashboard."
+    Write-Host "Runner registered and running as $runnerIdentity."
+    Write-Host "Application identity: $appIdentity ($appSid)"
+    Write-Host "Shared storage and service identity were configured; model readiness is reported separately by the dashboard."
 } finally {
     $token = $null
     if ($archive -and (Test-Path -LiteralPath $archive)) { Remove-Item -LiteralPath $archive -Force -ErrorAction SilentlyContinue }
