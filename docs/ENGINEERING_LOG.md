@@ -1930,3 +1930,11 @@ Corrections on this branch:
 The shutdown trace supplied during diagnosis contains CancelledError while Uvicorn was shutting down. That trace is consistent with in-flight requests being cancelled by the operator's Ctrl+C; it does not by itself establish an independent application exception or explain the original long status request.
 
 **Validation boundary:** source changes and regression tests are committed on the dedicated branch. Exact-head GitHub CI and live acceptance on the owner's Windows machine are pending. No local Runner, autonomous workflow, account, ACL, durable task, checkpoint, or user data was started, reset, or modified by this change.
+
+## 2026-11-16 — Runner dependency preflight ordering
+
+The owner's live Run #43818491529 exposed a separate prerequisite-ordering defect after the dashboard changes: the workflow invoked the real Codex workspace smoke test with the system Python before creating the project virtual environment. The smoke test's process-identity guard imports `psutil`, which is a declared project runtime dependency, but the workflow installed project dependencies only after the smoke test. The result was a deterministic `ModuleNotFoundError: psutil`; Ollama context verification itself succeeded.
+
+The workflow now creates the isolated `.venv` immediately after resolving system Python, installs the project's runtime dependencies there, verifies `psutil`, FastAPI, and Uvicorn imports, and prepends that environment to subsequent step PATH resolution before any Codex smoke test. The later development-dependency step reuses the same environment instead of recreating it. This keeps runtime dependencies isolated from system Python and preserves the existing fail-closed sandbox policy; no weaker or unsandboxed fallback was enabled.
+
+Validation: workflow change committed for exact-head CI. The owner-run failure is confirmed by the captured Job log; successful live Codex workspace smoke and target-host acceptance remain pending.
