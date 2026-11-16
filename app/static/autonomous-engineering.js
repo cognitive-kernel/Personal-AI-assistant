@@ -69,26 +69,53 @@
     if (!Array.isArray(runs) || !runs.length) {
       const empty = document.createElement("p");
       empty.className = "muted";
-      empty.textContent = "اجرایی در سوابق اخیر پیدا نشد یا GitHub CLI دسترسی ندارد.";
+      empty.textContent = "اجرای ثبت‌شده‌ای پیدا نشد یا GitHub CLI دسترسی ندارد.";
       host.append(empty);
       return;
     }
     for (const run of runs) {
-      const item = document.createElement("div");
+      const item = document.createElement("article");
       item.className = "run-item";
-      const summary = document.createElement("span");
-      summary.textContent = "#" + String(run.id || "—") + " · " + String(run.status || "نامشخص") +
+      const summary = document.createElement("div");
+      summary.className = "run-summary";
+      const heading = document.createElement("strong");
+      heading.textContent = "#" + String(run.id || "—") + " · " +
+        String(run.display_title || run.name || "اجرای عامل مهندسی");
+      const metadata = document.createElement("span");
+      metadata.textContent = String(run.status || "نامشخص") +
         (run.conclusion ? " · " + String(run.conclusion) : "") +
         (run.created_at ? " · " + String(run.created_at) : "");
+      summary.append(heading, metadata);
       item.append(summary);
+      const controls = document.createElement("div");
+      controls.className = "run-controls";
       if (typeof run.url === "string" && run.url.startsWith("https://github.com/")) {
         const link = document.createElement("a");
         link.href = run.url;
         link.target = "_blank";
         link.rel = "noopener noreferrer";
-        link.textContent = "جزئیات اجرا";
-        item.append(link);
+        link.textContent = "GitHub";
+        controls.append(link);
       }
+      if (Number.isSafeInteger(Number(run.id)) && Number(run.id) > 0) {
+        const logsButton = document.createElement("button");
+        logsButton.type = "button";
+        logsButton.className = "secondary";
+        logsButton.dataset.runAction = "logs";
+        logsButton.dataset.runId = String(run.id);
+        logsButton.textContent = "گزارش اجرا و علت خطا";
+        controls.append(logsButton);
+        if (run.status === "completed") {
+          const deleteButton = document.createElement("button");
+          deleteButton.type = "button";
+          deleteButton.className = "danger-button";
+          deleteButton.dataset.runAction = "delete";
+          deleteButton.dataset.runId = String(run.id);
+          deleteButton.textContent = "حذف اجرای قدیمی";
+          controls.append(deleteButton);
+        }
+      }
+      item.append(controls);
       host.append(item);
     }
   }
@@ -126,6 +153,103 @@
       window.clearTimeout(timeoutId);
     }
   }
+  async function refreshRuns() {
+    try {
+      const data = await request("runs?limit=30");
+      renderRuns(data.runs);
+    } catch (error) {
+      const host = $("recent-runs");
+      const note = document.createElement("p");
+      note.className = "muted";
+      note.textContent = "دریافت تاریخچهٔ کامل اجراها ناموفق بود: " + (error.message || "خطای نامشخص");
+      host.append(note);
+    }
+  }
+
+  $("recent-runs").addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-run-action]");
+    if (!button || button.disabled) return;
+    const runId = button.dataset.runId;
+    if (!/^\\d+$/.test(runId || "")) return;
+    if (button.dataset.runAction === "logs") {
+      const item = button.closest(".run-item");
+      if (!item) return;
+      let panel = item.querySelector(".run-log-panel");
+      if (!panel) {
+        panel = document.createElement("section");
+        panel.className = "run-log-panel";
+        const failures = document.createElement("ul");
+        failures.className = "run-failures";
+        const pre = document.createElement("pre");
+        pre.className = "run-log-text";
+        panel.append(failures, pre);
+        item.append(panel);
+      }
+      panel.hidden = false;
+      const pre = panel.querySelector(".run-log-text");
+      const failures = panel.querySelector(".run-failures");
+      pre.textContent = "در حال دریافت گزارش از GitHub…";
+      failures.replaceChildren();
+      button.disabled = true;
+      try {
+        const data = await request("runs/" + runId + "/logs");
+        for (const job of data.failures || []) {
+          const entry = document.createElement("li");
+          const failedSteps = Array.isArray(job.failed_steps)
+            ? job.failed_steps.map(step => step.name + " (" + step.conclusion + ")").join("، ")
+            : "";
+          entry.textContent = job.name + " · " + String(job.conclusion || job.status || "نامشخص") +
+            (failedSteps ? " · مراحل ناموفق: " + failedSteps : "");
+          failures.append(entry);
+        }
+        if (!failures.childElementCount) {
+          const entry = document.createElement("li");
+          entry.textContent = "برای این اجرا مرحلهٔ ناموفقی در گزارش GitHub ثبت نشده است.";
+          failures.append(entry);
+        }
+        pre.textContent = data.logs || "گزارشی برای نمایش وجود ندارد.";
+      } catch (error) {
+        pre.textContent = error.message || "دریافت گزارش اجرا ناموفق بود.";
+      } finally {
+        button.disabled = false;
+      }
+      return;
+    }
+    if (button.dataset.runAction === "delete") {
+      if (!window.confirm("اجرای پایان‌یافتهٔ #" + runId + " از تاریخچهٔ GitHub حذف شود؟ این عملیات قابل بازگشت نیست.")) return;
+      button.disabled = true;
+      try {
+        const result = await request("runs/" + runId, {method: "DELETE"});
+        setMessage(result.message || "اجرای قدیمی حذف شد.", "success");
+        await refreshRuns();
+      } catch (error) {
+        setMessage(error.message || "حذف اجرای قدیمی ناموفق بود.", "error");
+        button.disabled = false;
+      }
+    }
+  });
+
+  $("refresh-runs").addEventListener("click", refreshRuns);
+
+  $("cleanup-agent-temp").addEventListener("click", async () => {
+    const button = $("cleanup-agent-temp");
+    const status = $("cleanup-agent-status");
+    if (!window.confirm("داده‌های موقت پیشرفت عامل پاک شوند؟ تاریخچه، checkpointها و وظایف/PRهای پایدار حفظ می‌شوند؛ هنگام اجرای فعال پاک‌سازی انجام نمی‌شود.")) return;
+    button.disabled = true;
+    status.textContent = "در حال بررسی اجرای فعال و وضعیت پایدار…";
+    try {
+      const result = await request("cleanup", {method: "POST"});
+      status.textContent = result.message || ("پاک‌سازی انجام شد؛ " + result.files_removed + " فایل حذف شد.");
+      setMessage(status.textContent, "success");
+      await refreshProgress();
+    } catch (error) {
+      status.textContent = error.message || "پاک‌سازی ناموفق بود.";
+      setMessage(status.textContent, "error");
+    } finally {
+      button.disabled = false;
+    }
+  });
+
   let statusRefreshPromise = null;
   let dispatchPendingUntil = 0;
   let dispatchSubmitting = false;
@@ -247,7 +371,7 @@
       cancelButton.disabled = !active;
       pauseButton.disabled = Boolean(data.paused);
       resumeButton.disabled = !data.paused;
-      renderRuns(data.github && data.github.recent_runs);
+      renderRuns(data.github && data.github.recent_runs);\n      void refreshRuns();
       setMessage(data.paused ? "صف مهندسی متوقف است؛ برای ادامه از آخرین وضعیت، دکمهٔ ادامه را بزنید." : (ready ? "پیش‌نیازهای حساب برنامه آماده‌اند؛ Workflow پیش‌نیازهای حساب Runner را جداگانه بررسی می‌کند." : "برای فعال‌شدن اجرا، موارد ناقص را در راهنمای راه‌اندازی تکمیل کنید."), data.paused || ready ? "success" : "");
     } catch (error) {
       statusKnown = false;
