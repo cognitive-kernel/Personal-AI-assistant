@@ -56,10 +56,8 @@ if (-not [string]::IsNullOrWhiteSpace($processStateDirectory)) {
 }
 $progressPath = Resolve-AutonomousStateDirectory -ConfiguredPath $machineStateDirectory -ProgramDataPath $env:ProgramData
 if ([string]::IsNullOrWhiteSpace($machineStateDirectory)) {
-    [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", $progressPath, "Machine")
     $machineStateDirectory = $progressPath
 }
-[Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ROOT", $RunnerRoot, "Machine")
 $runnerRootBoundary = $RunnerRoot.TrimEnd([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)) + [System.IO.Path]::DirectorySeparatorChar
 $statePathBoundary = $progressPath.TrimEnd([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)) + [System.IO.Path]::DirectorySeparatorChar
 if ($RunnerRoot.Equals($progressPath, [StringComparison]::OrdinalIgnoreCase) -or $progressPath.StartsWith($runnerRootBoundary, [StringComparison]::OrdinalIgnoreCase) -or $RunnerRoot.StartsWith($statePathBoundary, [StringComparison]::OrdinalIgnoreCase)) {
@@ -167,6 +165,9 @@ function Ensure-AutonomousStateOwnerLabel {
         throw "autonomous-state-owner must identify exactly the configured Runner and no other host."
     }
 }
+[Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", $machineStateDirectory, "Machine")
+[Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ROOT", $RunnerRoot, "Machine")
+
 
 if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     $service = Get-AutonomousRunnerService -RunnerRoot $RunnerRoot
