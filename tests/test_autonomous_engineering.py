@@ -1606,7 +1606,7 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     assert "await refresh(true)" in script
     assert "dispatchPendingUntil" in script
     assert "if (settingsSaving) return" in script
-    assert "if (taskSubmitting) return" in script
+    assert "if (!canStartDispatch())" in script
     assert "if (!force) return statusRefreshPromise" in script
     assert "const timeoutMs = path === \"status\" ? 40000" in script
     assert "path.startsWith(\"progress\") ? 20000 : 120000" in script
@@ -1618,3 +1618,6 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     assert script.count("if (dispatchSubmitting) return") == 2
     assert "function syncDispatchControls()" in script
     assert "taskButton.disabled = !lastCanDispatch || lastActiveRun || locked" in script
+    assert "function canStartDispatch()" in script
+    assert "item.point[line.key] !== null" in script
+    assert "engineeringPercent !== null" in script
