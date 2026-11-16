@@ -22,6 +22,7 @@ class WindowsProcessJob:
     def __init__(self) -> None:
         self._handle: Any = None
         self._kernel32: Any = None
+        self._process_handles: dict[int, int] = {}
 
     def __enter__(self) -> "WindowsProcessJob":
         if os.name != "nt":
@@ -148,47 +149,82 @@ class WindowsProcessJob:
         if not self._kernel32.TerminateJobObject(self._handle, int(exit_code) & 0xFFFFFFFF):
             raise ctypes.WinError(ctypes.get_last_error())
 
-    def active_process_count(self) -> int:
-        """Return the current number of processes assigned to this Job Object."""
+    SYNCHRONIZE = 0x00100000
+    ERROR_INVALID_PARAMETER = 87
+    ERROR_INSUFFICIENT_BUFFER = 122
+    ERROR_MORE_DATA = 234
+    WAIT_OBJECT_0 = 0x00000000
+    WAIT_TIMEOUT = 0x00000102
+    WAIT_FAILED = 0xFFFFFFFF
+
+    def _job_process_ids(self) -> list[int]:
+        """Return the PIDs currently assigned to this Job Object."""
         if os.name != "nt":
-            return 0
+            return []
         if not self._handle or not self._kernel32:
             raise RuntimeError("The Windows process job has not been initialized.")
-
-        class BasicAccountingInformation(ctypes.Structure):
-            _fields_ = [
-                ("TotalUserTime", ctypes.c_longlong),
-                ("TotalKernelTime", ctypes.c_longlong),
-                ("ThisPeriodTotalUserTime", ctypes.c_longlong),
-                ("ThisPeriodTotalKernelTime", ctypes.c_longlong),
-                ("TotalPageFaultCount", ctypes.c_uint32),
-                ("TotalProcesses", ctypes.c_uint32),
-                ("ActiveProcesses", ctypes.c_uint32),
-                ("TotalTerminatedProcesses", ctypes.c_uint32),
-            ]
 
         self._kernel32.QueryInformationJobObject.argtypes = [
             ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p,
             ctypes.c_uint32, ctypes.POINTER(ctypes.c_uint32),
         ]
         self._kernel32.QueryInformationJobObject.restype = ctypes.c_int
-        information = BasicAccountingInformation()
-        returned_length = ctypes.c_uint32()
-        if not self._kernel32.QueryInformationJobObject(
-            self._handle,
-            1,  # JobObjectBasicAccountingInformation
-            ctypes.byref(information),
-            ctypes.sizeof(information),
-            ctypes.byref(returned_length),
-        ):
-            raise ctypes.WinError(ctypes.get_last_error())
-        return int(information.ActiveProcesses)
+
+        pointer_size = ctypes.sizeof(ctypes.c_size_t)
+        capacity = 16
+        while True:
+            buffer_size = 8 + (capacity * pointer_size)
+            buffer = ctypes.create_string_buffer(buffer_size)
+            returned_length = ctypes.c_uint32()
+            if self._kernel32.QueryInformationJobObject(
+                self._handle,
+                3,  # JobObjectBasicProcessIdList
+                ctypes.byref(buffer),
+                buffer_size,
+                ctypes.byref(returned_length),
+            ):
+                count = int(ctypes.c_uint32.from_buffer(buffer, 4).value)
+                if count > capacity:
+                    capacity = count
+                    continue
+                pids = ctypes.cast(
+                    ctypes.addressof(buffer) + 8,
+                    ctypes.POINTER(ctypes.c_size_t),
+                )
+                return [int(pids[index]) for index in range(count) if pids[index]]
+
+            error = ctypes.get_last_error()
+            if error not in {self.ERROR_INSUFFICIENT_BUFFER, self.ERROR_MORE_DATA}:
+                raise ctypes.WinError(error)
+            required = int(returned_length.value)
+            required_capacity = (
+                max(1, (required - 8 + pointer_size - 1) // pointer_size)
+                if required > 8 else capacity * 2
+            )
+            capacity = max(capacity * 2, required_capacity)
+
+    def _open_process_sync_handle(self, pid: int) -> int | None:
+        """Open a process handle used only to wait for that process to terminate."""
+        self._kernel32.OpenProcess.argtypes = [
+            ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32,
+        ]
+        self._kernel32.OpenProcess.restype = ctypes.c_void_p
+        handle = self._kernel32.OpenProcess(self.SYNCHRONIZE, False, pid)
+        if handle:
+            return int(handle)
+        error = ctypes.get_last_error()
+        if error == self.ERROR_INVALID_PARAMETER:
+            # The PID may have exited between the Job Object query and OpenProcess.
+            return None
+        raise ctypes.WinError(error)
 
     def wait_for_empty(self, timeout_seconds: float) -> bool:
-        """Poll Job Object accounting until every assigned process has exited.
+        """Wait until every process handle observed in this Job Object is signaled.
 
-        A Windows Job Object is not signaled on ordinary successful process exit;
-        WaitForSingleObject is therefore not a valid empty-job completion check.
+        A Job Object itself is not a general completion barrier. Querying its PID
+        list discovers members; waiting on each process handle confirms actual
+        process termination without relying on Job Object signaling or accounting
+        counters alone.
         """
         if os.name != "nt":
             return True
@@ -202,9 +238,35 @@ class WindowsProcessJob:
         ):
             raise ValueError("Job wait timeout must be a non-negative number.")
 
+        self._kernel32.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        self._kernel32.WaitForSingleObject.restype = ctypes.c_uint32
+        self._kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        self._kernel32.CloseHandle.restype = ctypes.c_int
+
         deadline = time.monotonic() + float(timeout_seconds)
         while True:
-            if self.active_process_count() == 0:
+            current_pids = set(self._job_process_ids())
+            for pid in current_pids:
+                if pid in self._process_handles:
+                    continue
+                process_handle = self._open_process_sync_handle(pid)
+                if process_handle is not None:
+                    self._process_handles[pid] = process_handle
+
+            for pid, process_handle in list(self._process_handles.items()):
+                result = self._kernel32.WaitForSingleObject(process_handle, 0)
+                if result == self.WAIT_OBJECT_0 and pid not in current_pids:
+                    if not self._kernel32.CloseHandle(process_handle):
+                        raise ctypes.WinError(ctypes.get_last_error())
+                    del self._process_handles[pid]
+                elif result == self.WAIT_TIMEOUT:
+                    continue
+                elif result == self.WAIT_FAILED:
+                    raise ctypes.WinError(ctypes.get_last_error())
+                elif result != self.WAIT_OBJECT_0:
+                    raise RuntimeError(f"Unexpected process wait result: 0x{result:08x}.")
+
+            if not current_pids and not self._process_handles:
                 return True
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -264,6 +326,11 @@ class WindowsProcessJob:
             handle, self._handle = self._handle, None
             if not self._kernel32.CloseHandle(handle):
                 raise ctypes.WinError(ctypes.get_last_error())
+        if self._kernel32:
+            for process_handle in self._process_handles.values():
+                if not self._kernel32.CloseHandle(process_handle):
+                    raise ctypes.WinError(ctypes.get_last_error())
+        self._process_handles.clear()
 
     def __exit__(self, exc_type, exc, traceback) -> None:
         self.close()
