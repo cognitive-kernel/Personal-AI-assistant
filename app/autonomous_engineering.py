@@ -152,6 +152,24 @@ def _application_windows_identity() -> dict[str, str] | None:
         return None
 
 
+def _configured_runner_identity() -> dict[str, str] | None:
+    """Read the dynamically provisioned Runner account from machine-wide configuration."""
+    if platform.system().casefold() != "windows":
+        return None
+    try:
+        import winreg
+
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+        ) as key:
+            name, _ = winreg.QueryValueEx(key, "AUTONOMOUS_ENGINEERING_RUNNER_ACCOUNT")
+        value = str(name).strip()
+        return {"name": value, "source": "machine_environment"} if value else None
+    except (OSError, ImportError, ValueError):
+        return None
+
+
 def collect_status() -> dict[str, Any]:
     github = _github_snapshot()
     settings = github.get("settings", {})
@@ -220,6 +238,7 @@ def collect_status() -> dict[str, Any]:
         "progress_storage_accessible": progress_storage,
         "storage": storage_status,
         "application_identity": _application_windows_identity(),
+        "runner_identity": _configured_runner_identity(),
         "platform": platform.platform(),
         "local_only_inference": True,
     }
