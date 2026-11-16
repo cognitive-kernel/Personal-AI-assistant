@@ -65,8 +65,8 @@ def test_windows_provisioning_does_not_require_a_fixed_users_group_or_admin_acl_
     assert "BUILTIN" not in script + module
     assert '"SYSTEM:(OI)(CI)F"' not in script + module
     assert "Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid" in script
-    assert "Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -AdditionalModifySids $appSid" in script
-    assert "Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -AdditionalModifySids @($appSid, $installerSid)" in script
+    assert "Set-AutonomousStateDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -AdditionalModifySids $appSid" in script
+    assert "Set-AutonomousStateDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -AdditionalModifySids @($appSid, $installerSid)" in script
     assert "[string[]]$AdditionalModifySids" in module
     assert "foreach ($sid in $additionalSids)" in module
     assert "$allowedSids = @($modifySids)" in module
@@ -128,5 +128,18 @@ def test_windows_state_readiness_uses_the_shared_configured_path_and_lock_probe(
     assert runner_check.count("Test-AutonomousStateStorageAccess") == 1
     assert "BUILTIN\\Administrators" not in configure
     assert '"SYSTEM:(OI)(CI)F"' not in configure
-    assert "Set-AutonomousDirectoryAcl" in configure
+    assert "Set-AutonomousStateDirectoryAcl" in configure
     assert "Test-AutonomousStateStorageAccess" in configure
+
+
+def test_existing_durable_lock_file_receives_explicit_dynamic_modify_acl():
+    identity_module = (ROOT / "scripts" / "AutonomousWindowsIdentity.psm1").read_text(encoding="utf-8")
+    provision = (ROOT / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
+    configure = (ROOT / "scripts" / "configure_autonomous_engineering_progress.ps1").read_text(encoding="utf-8")
+
+    assert "function Set-AutonomousStateDirectoryAcl" in identity_module
+    assert '"autonomous-durable-state.lock"' in identity_module
+    assert "-File" in identity_module
+    assert '"*$($_):M"' in identity_module
+    assert "Set-AutonomousStateDirectoryAcl -Path $progressPath" in provision
+    assert "Set-AutonomousStateDirectoryAcl -Path $progressPath" in configure
