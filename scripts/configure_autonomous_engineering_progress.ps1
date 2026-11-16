@@ -44,7 +44,7 @@ if ($runnerSid -eq $localSystemSid) {
 }
 if (-not [string]::IsNullOrWhiteSpace($RunnerAccount)) {
     $requestedRunnerSid = Get-AutonomousWindowsAccountSid -AccountName (
-        ConvertTo-AutonomousWindowsAccountName -AccountName $RunnerAccount.Trim()
+        Resolve-AutonomousWindowsServiceAccountName -AccountName $RunnerAccount.Trim()
     )
     if ($requestedRunnerSid -ne $runnerSid) {
         throw "The supplied RunnerAccount does not match the actual Windows service identity '$($runnerService.StartName)'."
