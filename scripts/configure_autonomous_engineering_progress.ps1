@@ -36,7 +36,7 @@ if ([string]::IsNullOrWhiteSpace($resolvedRunnerRoot)) {
     $serviceBin = Split-Path -Parent $exeMatch.Groups["exe"].Value
     $resolvedRunnerRoot = if ((Split-Path -Leaf $serviceBin) -ieq "bin") { Split-Path -Parent $serviceBin } else { $serviceBin }
 }
-$runnerIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $runnerService.StartName
+$runnerIdentity = Resolve-AutonomousWindowsServiceAccountName -AccountName $runnerService.StartName
 $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
 if (-not [string]::IsNullOrWhiteSpace($RunnerAccount)) {
     $requestedRunnerSid = Get-AutonomousWindowsAccountSid -AccountName (
