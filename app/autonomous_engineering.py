@@ -230,6 +230,11 @@ def autonomous_engineering_status() -> dict[str, Any]:
     return collect_status()
 
 
+@router.get("/identity")
+def autonomous_engineering_identity() -> dict[str, Any]:
+    return {"application_identity": _application_windows_identity()}
+
+
 def _enrich_progress_from_github(current: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(current, dict):
         return current
