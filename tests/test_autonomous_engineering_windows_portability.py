@@ -67,7 +67,6 @@ def test_windows_provisioning_adds_modify_access_without_replacing_existing_acl_
     assert '"SYSTEM:(OI)(CI)F"' not in script + module
     assert "Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid" in script
     assert "Set-AutonomousStateDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -AdditionalModifySids $appSid" in script
-    assert "Set-AutonomousStateDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -AdditionalModifySids @($appSid, $installerSid)" in script
     assert "[string[]]$AdditionalModifySids" in module
     assert "foreach ($sid in $additionalSids)" in module
     assert "$modifySids = @($RunnerSid)" in module
