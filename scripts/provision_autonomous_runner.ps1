@@ -98,7 +98,11 @@ if ([string]::IsNullOrWhiteSpace($RunnerAccount)) {
 } else {
     $RunnerAccount = $RunnerAccount.Trim()
 }
-$runnerIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $RunnerAccount
+$runnerIdentity = if ($existingRunnerConfiguration) {
+    Resolve-AutonomousWindowsServiceAccountName -AccountName $RunnerAccount
+} else {
+    ConvertTo-AutonomousWindowsAccountName -AccountName $RunnerAccount
+}
 $appIdentity = $null
 $runnerLocalName = Get-AutonomousLocalAccountName -AccountName $runnerIdentity
 $runnerIsLocal = -not [string]::IsNullOrWhiteSpace($runnerLocalName)
