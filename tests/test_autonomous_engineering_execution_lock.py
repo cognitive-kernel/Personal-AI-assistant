@@ -19,10 +19,21 @@ from scripts.autonomous_engineering_execution_lock import (
 )
 
 
+def _simulate_machine_state_setting(monkeypatch: pytest.MonkeyPatch) -> None:
+    from scripts import autonomous_engineering_state_paths
+
+    monkeypatch.setattr(
+        autonomous_engineering_state_paths,
+        "_machine_configured_state_directory",
+        lambda: os.environ.get("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", ""),
+    )
+
+
 def test_execution_lock_records_owner_metadata_and_releases_after_scope(
     monkeypatch, tmp_path: Path,
 ):
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path))
+    _simulate_machine_state_setting(monkeypatch)
     with repository_execution_lock("run-1", "attempt-2"):
         pass
 
@@ -45,8 +56,11 @@ def test_execution_lock_is_released_by_operating_system_after_process_crash(
     monkeypatch, tmp_path: Path,
 ):
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path))
+    _simulate_machine_state_setting(monkeypatch)
     code = (
         "import os; "
+        "from scripts import autonomous_engineering_state_paths as state_paths; "
+        "state_paths._machine_configured_state_directory = lambda: os.environ.get('AUTONOMOUS_ENGINEERING_PROGRESS_DIR', ''); "
         "from scripts.autonomous_engineering_execution_lock import repository_execution_lock; "
         "lock=repository_execution_lock('crashed-run','1'); "
         "lock.__enter__(); os._exit(23)"
@@ -69,6 +83,7 @@ def test_execution_lock_is_released_by_operating_system_after_process_crash(
 def test_execution_state_directory_uses_configured_shared_root(monkeypatch, tmp_path: Path):
     configured = tmp_path / "shared-state"
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(configured))
+    _simulate_machine_state_setting(monkeypatch)
     assert execution_state_directory() == configured
 
 
@@ -87,6 +102,7 @@ def test_progress_checkpoint_and_controller_share_expanded_state_root(
 
     monkeypatch.setenv("AUTONOMOUS_STATE_TEST_ROOT", str(tmp_path / "resolved-state"))
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "$AUTONOMOUS_STATE_TEST_ROOT")
+    _simulate_machine_state_setting(monkeypatch)
 
     expected = tmp_path / "resolved-state"
     assert execution_state_directory() == expected
