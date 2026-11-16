@@ -69,6 +69,7 @@ if ($runnerSid -eq $appSid) {
 }
 [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ROOT", $resolvedRunnerRoot, "Machine")
 [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ACCOUNT", $runnerIdentity, "Machine")
+[Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_SID", $runnerSid, "Machine")
 
 $machineStateDirectory = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")
 $processStateDirectory = $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR
