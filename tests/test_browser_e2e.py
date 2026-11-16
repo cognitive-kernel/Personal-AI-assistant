@@ -3636,7 +3636,8 @@ def test_autonomous_dashboard_keeps_dispatch_disabled_after_accepted_run():
 
     def mock_dispatch(route):
         state["dispatches"] += 1
-        state["active"] = True
+        # GitHub's workflow list can lag behind a successful dispatch response.
+        state["active"] = False
         route.fulfill(status=202, json={
             "accepted": True,
             "manual_task_submitted": False,
@@ -3673,6 +3674,7 @@ def test_autonomous_dashboard_keeps_dispatch_disabled_after_accepted_run():
             timeout=10000,
         )
         assert state["dispatches"] == 1
+        assert state["active"] is False
         assert page.locator("#send-agent-task").is_disabled()
         assert state["status_reads"] >= 2
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
