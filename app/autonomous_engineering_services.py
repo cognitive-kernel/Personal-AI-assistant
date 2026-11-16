@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 import psutil
 import urllib.error
 import urllib.request
@@ -71,7 +72,7 @@ def _probe_tool_calling(request_fn, model: str, digest: str) -> bool:
     return supported
 
 
-def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool_calling_fn, is_context_variant, recommended_context_fn=None, tool_probe_fn=None) -> dict[str, Any]:
+def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool_calling_fn, is_context_variant, recommended_context_fn=None, tool_probe_fn=None, allow_live_tool_probe: bool = True) -> dict[str, Any]:
     empty = {
         "online": False,
         "model": model,
@@ -216,8 +217,16 @@ def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool
         # subtracted twice on the next status refresh.
         if not tools_metadata_available:
             if context_supported and callable(tool_probe_fn):
-                model_supports_tools = _probe_tool_calling(tool_probe_fn, model, model_digest)
-                tools_verification_method = "live_tool_call_probe" if model_supports_tools else "unverified"
+                if allow_live_tool_probe:
+                    model_supports_tools = _probe_tool_calling(tool_probe_fn, model, model_digest)
+                    tools_verification_method = "live_tool_call_probe" if model_supports_tools else "unverified"
+                else:
+                    cached_probe = _TOOL_PROBE_CACHE.get((model, model_digest))
+                    if cached_probe and time.monotonic() - cached_probe[0] < _TOOL_PROBE_TTL_SECONDS:
+                        model_supports_tools = cached_probe[1]
+                        tools_verification_method = "live_tool_call_probe" if model_supports_tools else "unverified"
+                    else:
+                        tools_verification_method = "probe_required"
             else:
                 tools_verification_method = "skipped_no_safe_context" if not context_supported else "probe_unavailable"
         result.update({
@@ -281,14 +290,26 @@ def github_snapshot(*, run_command, which, repository, workflow, default_interva
     runs_available = False
     settings = {"model": "", "interval_hours": default_interval_hours, "execution_mode": "continuous", "paused": False}
     if authenticated:
-        result = run_command(
-            [
-                gh, "run", "list", "--repo", repository, "--workflow", workflow,
-                "--limit", "30", "--json",
-                "databaseId,status,conclusion,createdAt,url,headBranch",
-            ],
-            timeout=12,
-        )
+        # The run inventory and repository settings are independent reads.
+        # Fetch them concurrently so one slow GitHub CLI call does not add its
+        # full timeout to the other call on every dashboard refresh.
+        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="autonomous-status-gh") as pool:
+            runs_future = pool.submit(
+                run_command,
+                [
+                    gh, "run", "list", "--repo", repository, "--workflow", workflow,
+                    "--limit", "30", "--json",
+                    "databaseId,status,conclusion,createdAt,url,headBranch",
+                ],
+                timeout=12,
+            )
+            variables_future = pool.submit(
+                run_command,
+                [gh, "variable", "list", "--repo", repository, "--json", "name,value"],
+                timeout=12,
+            )
+            result = runs_future.result()
+            variables = variables_future.result()
         if result and result.returncode == 0:
             try:
                 parsed = json.loads(result.stdout)
@@ -315,10 +336,6 @@ def github_snapshot(*, run_command, which, repository, workflow, default_interva
                     runs_available = True
             except ValueError:
                 recent_runs = []
-        variables = run_command(
-            [gh, "variable", "list", "--repo", repository, "--json", "name,value"],
-            timeout=12,
-        )
         if variables and variables.returncode == 0:
             try:
                 values = json.loads(variables.stdout)

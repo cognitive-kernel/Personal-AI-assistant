@@ -418,3 +418,86 @@ def test_read_metadata_rejects_unsupported_schema_before_mutation(
         checkpoint.read_metadata("run-9", 2)
 
     assert paths["patch"].read_bytes() == b"preserve this patch"
+
+
+def test_snapshot_uses_temporary_git_objects_when_checkout_is_read_only(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    import subprocess
+
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    state_directory = tmp_path / "checkpoint-state"
+    state_directory.mkdir()
+    subprocess.run(["git", "init", str(repository)], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(repository), "config", "user.name", "Checkpoint Test"],
+        check=True, capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repository), "config", "user.email", "checkpoint@example.invalid"],
+        check=True, capture_output=True,
+    )
+    for folder in ("app", "tests", "docs", "scripts"):
+        (repository / folder).mkdir()
+    (repository / "app" / "tracked.py").write_text("BASE = True\\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "-C", str(repository), "add", "."], check=True, capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repository), "commit", "-m", "base"],
+        check=True, capture_output=True,
+    )
+    base_sha = subprocess.run(
+        ["git", "-C", str(repository), "rev-parse", "HEAD"],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    (repository / "app" / "new.py").write_text("NEW = True\\n", encoding="utf-8")
+    source_objects = subprocess.run(
+        ["git", "-C", str(repository), "rev-parse", "--git-path", "objects"],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    source_objects_path = Path(source_objects)
+    if not source_objects_path.is_absolute():
+        source_objects_path = repository / source_objects_path
+    source_objects_path = source_objects_path.resolve()
+    before_objects = subprocess.run(
+        ["git", "-C", str(repository), "count-objects", "-v"],
+        check=True, capture_output=True, text=True,
+    ).stdout
+
+    monkeypatch.setattr(checkpoint, "ROOT", repository)
+    observed_environments = []
+    original_git = checkpoint.git
+
+    def recording_git(*args, env=None, **kwargs):
+        if args and args[0] in {"read-tree", "add", "diff"}:
+            observed_environments.append(dict(env or {}))
+        return original_git(*args, env=env, **kwargs)
+
+    monkeypatch.setattr(checkpoint, "git", recording_git)
+    state = {
+        "directory": state_directory,
+        "patch": state_directory / "checkpoint.patch",
+        "metadata": state_directory / "checkpoint.json",
+        "plan": state_directory / "plan.json",
+        "stop": state_directory / "checkpoint.stop",
+    }
+
+    checkpoint._write_snapshot_unlocked(base_sha, "readonly-test", 1, state=state)
+
+    assert len(observed_environments) == 3
+    for environment in observed_environments:
+        object_directory = Path(environment["GIT_OBJECT_DIRECTORY"])
+        assert object_directory.parent.parent == state_directory
+        assert environment["GIT_ALTERNATE_OBJECT_DIRECTORIES"] == str(source_objects_path)
+        assert Path(environment["GIT_INDEX_FILE"]).parent == object_directory.parent
+    assert state["patch"].is_file()
+    assert b"app/new.py" in state["patch"].read_bytes()
+    after_objects = subprocess.run(
+        ["git", "-C", str(repository), "count-objects", "-v"],
+        check=True, capture_output=True, text=True,
+    ).stdout
+    assert after_objects == before_objects
+    assert not list(state_directory.glob("checkpoint-git-*"))
+

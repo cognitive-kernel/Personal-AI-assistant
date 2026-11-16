@@ -94,6 +94,29 @@ def test_patch_format_allows_only_reviewable_source_paths():
     assert len(meta["sha256"]) == 64
 
 
+def test_git_helper_preserves_patch_bytes_when_passing_patch_on_stdin(proposal_repo, monkeypatch):
+    patch = _patch()
+    original_run = subprocess.run
+    captured = {}
+
+    def recording_run(command, **kwargs):
+        if command[-1:] == ["-"]:
+            captured["input"] = kwargs.get("input")
+            captured["text"] = kwargs.get("text", False)
+        return original_run(command, **kwargs)
+
+    monkeypatch.setattr(self_improvement.subprocess, "run", recording_run)
+    checked = self_improvement._git(
+        proposal_repo,
+        ["apply", "--check", "--whitespace=error-all", "-"],
+        input_text=patch,
+    )
+
+    assert checked.returncode == 0, checked.stderr
+    assert captured["input"] == patch.encode("utf-8")
+    assert captured["text"] is False
+
+
 @pytest.mark.parametrize(
     "patch",
     [

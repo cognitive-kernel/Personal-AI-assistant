@@ -189,6 +189,25 @@ jobs:
           (Get-Command python).Source | Write-Host
           Write-Host "Python is accessible. Ollama is validated independently through its loopback API."
 
+      - name: Prepare Runner virtual environment and install runtime dependencies
+        env:
+          PIP_TIMEOUT: "120"
+          PIP_RETRIES: "10"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m venv .venv
+          $venvPython = Join-Path $env:GITHUB_WORKSPACE ".venv\Scripts\python.exe"
+          & $venvPython -m pip install --disable-pip-version-check --retries 10 --timeout 120 -e .
+          if ($LASTEXITCODE -ne 0) { throw "Could not install project runtime dependencies for the Runner service identity." }
+          & $venvPython -c "import psutil, fastapi, uvicorn; print('RUNNER_RUNTIME_DEPENDENCIES_OK')"
+          if ($LASTEXITCODE -ne 0) { throw "Required Runner runtime dependencies are unavailable in the isolated environment." }
+          $venvScripts = Join-Path $env:GITHUB_WORKSPACE ".venv\Scripts"
+          $venvScripts | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          $env:PATH = "$venvScripts;$env:PATH"
+          python -c "import sys, psutil; print(sys.executable); print('psutil', psutil.__version__)"
+          if ($LASTEXITCODE -ne 0) { throw "The Runner virtual environment is not active." }
+
       - name: Recover only the latest owned checkpoint through the run-scoped controller
         shell: powershell
         run: |
@@ -562,10 +581,11 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          python --version
-          python -c "import sys; assert sys.version_info >= (3, 11)"
-          python -m venv .venv
-          .\\.venv\\Scripts\\python.exe -m pip install --disable-pip-version-check --retries 10 --timeout 120 -e ".[dev]"
+          $venvPython = Join-Path $env:GITHUB_WORKSPACE ".venv\Scripts\python.exe"
+          & $venvPython --version
+          & $venvPython -c "import sys; assert sys.version_info >= (3, 11)"
+          & $venvPython -m pip install --disable-pip-version-check --retries 10 --timeout 120 -e ".[dev]"
+          if ($LASTEXITCODE -ne 0) { throw "Could not install development dependencies into the prepared Runner environment." }
 
       - name: Prepare bounded engineering instructions
         shell: powershell

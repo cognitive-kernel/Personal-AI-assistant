@@ -1474,3 +1474,357 @@ def test_ollama_context_powershell_bridge_uses_explicit_file_not_native_stdin():
     assert "--input-file" in script
     assert "$selectionInput | & python" not in script
     assert 'parser.add_argument("--input-file"' in helper
+
+
+def test_dashboard_status_does_not_start_an_uncached_live_ollama_probe(monkeypatch):
+    from app import autonomous_engineering_services as services
+
+    services._TOOL_PROBE_CACHE.clear()
+    probe_calls = []
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            if request.full_url.endswith("/api/tags"):
+                return io.BytesIO(json.dumps({
+                    "models": [{
+                        "name": "model:latest",
+                        "digest": "sha256:dashboard-status",
+                        "size": 1024,
+                    }]
+                }).encode("utf-8"))
+            return io.BytesIO(json.dumps({
+                "details": {"family": "llama"},
+                "model_info": {
+                    "llama.context_length": 65536,
+                    "llama.block_count": 32,
+                    "llama.attention.head_count_kv": 8,
+                    "llama.attention.key_length": 128,
+                    "llama.attention.value_length": 128,
+                },
+            }).encode("utf-8"))
+
+    result = services.ollama_status(
+        "model:latest",
+        build_opener=lambda *args: FakeOpener(),
+        maximum_context_fn=lambda info, architecture: info["llama.context_length"],
+        supports_tool_calling_fn=lambda capabilities: "tools" in capabilities,
+        is_context_variant=lambda model: False,
+        recommended_context_fn=lambda model: 32768,
+        tool_probe_fn=lambda payload: probe_calls.append(payload) or True,
+        allow_live_tool_probe=False,
+    )
+
+    assert probe_calls == []
+    assert result["model_context_supported"] is True
+    assert result["model_supports_tools"] is False
+    assert result["model_tools_verification_method"] == "probe_required"
+
+
+def test_dashboard_status_reuses_recent_tool_probe_evidence_without_inference():
+    from app import autonomous_engineering_services as services
+
+    services._TOOL_PROBE_CACHE.clear()
+    services._TOOL_PROBE_CACHE[("model:latest", "sha256:cached")] = (
+        __import__("time").monotonic(),
+        True,
+    )
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            if request.full_url.endswith("/api/tags"):
+                return io.BytesIO(json.dumps({
+                    "models": [{
+                        "name": "model:latest",
+                        "digest": "sha256:cached",
+                        "size": 1024,
+                    }]
+                }).encode("utf-8"))
+            return io.BytesIO(json.dumps({
+                "details": {"family": "llama"},
+                "model_info": {
+                    "llama.context_length": 65536,
+                    "llama.block_count": 32,
+                    "llama.attention.head_count_kv": 8,
+                    "llama.attention.key_length": 128,
+                    "llama.attention.value_length": 128,
+                },
+            }).encode("utf-8"))
+
+    result = services.ollama_status(
+        "model:latest",
+        build_opener=lambda *args: FakeOpener(),
+        maximum_context_fn=lambda info, architecture: info["llama.context_length"],
+        supports_tool_calling_fn=lambda capabilities: "tools" in capabilities,
+        is_context_variant=lambda model: False,
+        recommended_context_fn=lambda model: 32768,
+        tool_probe_fn=lambda payload: pytest.fail("Dashboard status must not run inference."),
+        allow_live_tool_probe=False,
+    )
+
+    assert result["model_supports_tools"] is True
+    assert result["model_tools_verification_method"] == "live_tool_call_probe"
+
+
+def test_collect_status_disables_live_tool_probe_for_status_polling(monkeypatch):
+    observed = {}
+
+    def fake_ollama_status(model):
+        observed["allow_live_tool_probe"] = getattr(
+            agent._STATUS_PROBE_CONTEXT, "allow_live_tool_probe", None
+        )
+        return {
+            "online": True, "model": model, "model_installed": True,
+            "models": [model], "model_context_length": 65536,
+            "model_capabilities": ["completion", "tools"],
+            "model_supports_tools": True, "model_metadata_available": True,
+            "model_tools_metadata_available": True, "model_context_supported": True,
+            "model_selectable": True, "model_is_codex_context_variant": False,
+        }
+
+    monkeypatch.setattr(agent, "_ollama_status", fake_ollama_status)
+    monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
+    monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
+    monkeypatch.setattr(agent, "storage_accessible", lambda: True)
+    monkeypatch.setattr(agent, "_github_snapshot", lambda: {
+        "authenticated": True, "runs_available": True, "recent_runs": [],
+        "settings": {"model": "model:latest"},
+    })
+
+    agent.collect_status()
+
+    assert observed["allow_live_tool_probe"] is False
+    assert not hasattr(agent._STATUS_PROBE_CONTEXT, "allow_live_tool_probe")
+
+
+def test_dashboard_script_bounds_and_coalesces_status_refreshes():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
+
+    assert "new AbortController()" in script
+    assert "statusRefreshPromise" in script
+    assert "function refresh(force = false)" in script
+    assert "await refresh(true)" in script
+    assert "dispatchPendingUntil" in script
+    assert "if (settingsSaving) return" in script
+    assert "if (!canStartDispatch())" in script
+    assert "if (statusRefreshPromise) return statusRefreshPromise" in script
+    assert "async function refreshAfterMutation()" in script
+    assert "const timeoutMs = path === \"status\" ? 40000" in script
+    assert "path.startsWith(\"progress\") ? 20000 : 120000" in script
+    assert 'window.setInterval(refresh, 30000)' in script
+    assert 'window.setInterval(refreshProgress, 5000)' in script
+    assert 'window.setTimeout(refresh, 2500)' not in script
+    assert 'finally {\n      dispatchButton.disabled = false;' not in script
+    assert "let dispatchSubmitting = false" in script
+    assert script.count("dispatchSubmitting = true") == 2
+    assert "function syncDispatchControls()" in script
+    assert "taskButton.disabled = !allowed" in script
+    assert "function canStartDispatch()" in script
+    assert "let statusKnown = false" in script
+    assert "statusKnown && lastCanDispatch" in script
+    assert "statusKnown = false;" in script
+    assert "item.point[line.key] !== null" in script
+    assert "engineeringPercent !== null" in script
+    assert "window.setTimeout(syncDispatchControls, 30000)" in script
+    assert "timeoutError.ambiguous = true" in script
+    assert "error.ambiguous || error.status >= 500" in script
+    assert "function lockDispatchVisibilityWindow()" in script
+
+def test_autonomous_run_administration_routes_are_registered():
+    paths = {route.path for route in agent.router.routes}
+    assert "/api/autonomous-engineering/runs" in paths
+    assert "/api/autonomous-engineering/runs/{run_id}/logs" in paths
+    assert "/api/autonomous-engineering/runs/{run_id}" in paths
+    assert "/api/autonomous-engineering/cleanup" in paths
+
+
+def test_workflow_log_sanitizer_redacts_common_credentials():
+    source = (
+        "Authorization: Bearer bearer-secret-value\\n"
+        "github_pat_0123456789abcdefghijklmnopqrstuvwxyz\\n"
+        "password=hunter2 api_key=secret-value\\n"
+    )
+    result = agent._sanitize_workflow_log(source)
+    assert "bearer-secret-value" not in result
+    assert "github_pat_0123456789abcdefghijklmnopqrstuvwxyz" not in result
+    assert "hunter2" not in result
+    assert "secret-value" not in result
+    assert "[REDACTED]" in result
+
+
+def test_workflow_run_list_uses_fixed_server_selected_limit(monkeypatch):
+    calls = []
+
+    def api_json(gh, path, timeout=15):
+        calls.append((gh, path, timeout))
+        return {"workflow_runs": [{
+            "id": 456,
+            "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main",
+            "status": "completed",
+            "html_url": "https://github.com/example/run/456",
+        }]}
+
+    monkeypatch.setattr(agent, "_github_api_json", api_json)
+
+    runs = agent._workflow_runs("gh")
+
+    assert calls == [(
+        "gh",
+        "actions/workflows/autonomous-codex-engineering.yml/runs?per_page=100",
+        20,
+    )]
+    assert runs[0]["id"] == 456
+    assert runs[0]["workflow_path"] == ".github/workflows/autonomous-codex-engineering.yml"
+
+
+def test_run_logs_include_failed_job_and_step_reasons(monkeypatch):
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [{
+        "id": 123, "workflow_path": ".github/workflows/autonomous-codex-engineering.yml",
+        "status": "completed", "conclusion": "failure", "url": "https://github.com/example/run/123",
+    }])
+    api_paths = []
+
+    def api_json(gh, path, timeout=15):
+        api_paths.append(path)
+        return {
+            "jobs": [{
+                "name": "codex", "status": "completed", "conclusion": "failure",
+                "steps": [{"name": "Install dependencies", "conclusion": "failure"}],
+            }]
+        }
+
+    commands = []
+    monkeypatch.setattr(agent, "_github_api_json", api_json)
+    monkeypatch.setattr(agent, "_run", lambda command, timeout=8: (
+        commands.append(command) or subprocess.CompletedProcess(
+            command, 0, "Traceback: Authorization: Bearer hidden-token\\n", ""
+        )
+    ))
+
+    result = agent.autonomous_engineering_run_logs(123)
+
+    assert api_paths == ["actions/runs/123/jobs?per_page=100"]
+    assert commands[0][1:] == ["run", "view", "123", "--log", "--repo", agent._repository()]
+    assert result["run"]["id"] == 123
+    assert result["run"]["url"] == "https://github.com/example/run/123"
+    assert result["failures"] == [{
+        "name": "codex", "status": "completed", "conclusion": "failure",
+        "failed_steps": [{"name": "Install dependencies", "conclusion": "failure"}],
+    }]
+    assert "hidden-token" not in result["logs"]
+    assert "[REDACTED]" in result["logs"]
+
+
+def test_verified_workflow_run_rejects_invalid_ids_before_lookup(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: calls.append(gh) or [])
+
+    for invalid_id in (0, -1, True):
+        with pytest.raises(HTTPException) as error:
+            agent._verified_workflow_run("gh", invalid_id)
+        assert error.value.status_code == 422
+
+    assert calls == []
+
+
+def test_run_logs_reject_non_agent_workflow(monkeypatch):
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [{
+        "id": 123, "workflow_path": ".github/workflows/another.yml",
+    }])
+    with pytest.raises(HTTPException) as error:
+        agent._verified_workflow_run("gh", 123)
+    assert error.value.status_code == 404
+
+
+def test_delete_run_refuses_active_workflow_run(monkeypatch):
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [{
+        "id": 123, "workflow_path": ".github/workflows/autonomous-codex-engineering.yml",
+        "status": "in_progress",
+    }])
+    calls = []
+    monkeypatch.setattr(agent, "_run", lambda *args, **kwargs: calls.append(args) or None)
+
+    with pytest.raises(HTTPException) as error:
+        agent.delete_autonomous_engineering_run(123)
+
+    assert error.value.status_code == 409
+    assert calls == []
+
+
+def test_delete_completed_run_calls_workflow_run_delete_api(monkeypatch):
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [{
+        "id": 123, "workflow_path": ".github/workflows/autonomous-codex-engineering.yml",
+        "status": "completed",
+    }])
+    calls = []
+    monkeypatch.setattr(agent, "_run", lambda command, timeout=8: calls.append(command) or subprocess.CompletedProcess(
+        command, 0, "", ""
+    ))
+
+    result = agent.delete_autonomous_engineering_run(123)
+
+    assert result["deleted"] is True
+    assert calls[0][1:] == [
+        "api", "--method", "DELETE",
+        "repos/cognitive-kernel/Personal-AI-assistant/actions/runs/123",
+    ]
+
+
+def test_cleanup_removes_only_ephemeral_progress_files_and_preserves_durable_state(monkeypatch, tmp_path):
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [])
+    runtime_dir = tmp_path / "worktree"
+    runtime_dir.mkdir()
+    monkeypatch.setattr(agent, "execution_state_directory", lambda: tmp_path)
+    monkeypatch.setattr(agent, "_agent_runtime_directory", lambda: runtime_dir)
+    for name in ("events.jsonl", "current.json", "history.jsonl", "scorecard-baseline.json", "worktree-checkpoint-123-1.patch"):
+        (tmp_path / name).write_text("preserve-or-remove", encoding="utf-8")
+    for name in (".agent-request.json", ".agent-github-state.json", ".agent-progress.json"):
+        (runtime_dir / name).write_text("temporary", encoding="utf-8")
+
+    result = agent.cleanup_autonomous_engineering_temporary_data()
+
+    assert result["cleaned"] is True
+    assert result["files_removed"] == 5
+    assert not (tmp_path / "events.jsonl").exists()
+    assert not (tmp_path / "current.json").exists()
+    assert not (runtime_dir / ".agent-request.json").exists()
+    assert not (runtime_dir / ".agent-github-state.json").exists()
+    assert not (runtime_dir / ".agent-progress.json").exists()
+    assert (tmp_path / "history.jsonl").is_file()
+    assert (tmp_path / "scorecard-baseline.json").is_file()
+    assert (tmp_path / "worktree-checkpoint-123-1.patch").is_file()
+
+
+def test_cleanup_refuses_active_run_or_pending_task(monkeypatch, tmp_path):
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "execution_state_directory", lambda: tmp_path)
+    (tmp_path / "events.jsonl").write_text("keep", encoding="utf-8")
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [{"status": "in_progress"}])
+    with pytest.raises(HTTPException) as active_error:
+        agent.cleanup_autonomous_engineering_temporary_data()
+    assert active_error.value.status_code == 409
+    assert (tmp_path / "events.jsonl").exists()
+
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [])
+    (tmp_path / "pending-manual-task.txt").write_text("pending", encoding="utf-8")
+    with pytest.raises(HTTPException) as pending_error:
+        agent.cleanup_autonomous_engineering_temporary_data()
+    assert pending_error.value.status_code == 409
+    assert (tmp_path / "events.jsonl").exists()
+
+def test_run_management_controls_are_present_and_wired():
+    root = Path(__file__).resolve().parents[1]
+    page = (root / "app" / "static" / "autonomous-engineering.html").read_text(encoding="utf-8")
+    script = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
+    assert 'id="refresh-runs"' in page
+    assert 'id="cleanup-agent-temp"' in page
+    assert 'id="cleanup-agent-status"' in page
+    assert 'dataset.runAction = "logs"' in script
+    assert 'dataset.runAction = "delete"' in script
+    assert 'request("cleanup", {method: "POST"})' in script
+    assert 'request("runs/" + runId + "/logs")' in script
+    assert 'request("runs/" + runId, {method: "DELETE"})' in script

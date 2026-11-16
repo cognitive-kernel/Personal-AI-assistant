@@ -69,40 +69,235 @@
     if (!Array.isArray(runs) || !runs.length) {
       const empty = document.createElement("p");
       empty.className = "muted";
-      empty.textContent = "اجرایی در سوابق اخیر پیدا نشد یا GitHub CLI دسترسی ندارد.";
+      empty.textContent = "اجرای ثبت‌شده‌ای پیدا نشد یا GitHub CLI دسترسی ندارد.";
       host.append(empty);
       return;
     }
     for (const run of runs) {
-      const item = document.createElement("div");
+      const item = document.createElement("article");
       item.className = "run-item";
-      const summary = document.createElement("span");
-      summary.textContent = "#" + String(run.id || "—") + " · " + String(run.status || "نامشخص") +
+      const summary = document.createElement("div");
+      summary.className = "run-summary";
+      const heading = document.createElement("strong");
+      heading.textContent = "#" + String(run.id || "—") + " · " +
+        String(run.display_title || run.name || "اجرای عامل مهندسی");
+      const metadata = document.createElement("span");
+      metadata.textContent = String(run.status || "نامشخص") +
         (run.conclusion ? " · " + String(run.conclusion) : "") +
         (run.created_at ? " · " + String(run.created_at) : "");
+      summary.append(heading, metadata);
       item.append(summary);
+      const controls = document.createElement("div");
+      controls.className = "run-controls";
       if (typeof run.url === "string" && run.url.startsWith("https://github.com/")) {
         const link = document.createElement("a");
         link.href = run.url;
         link.target = "_blank";
         link.rel = "noopener noreferrer";
-        link.textContent = "جزئیات اجرا";
-        item.append(link);
+        link.textContent = "GitHub";
+        controls.append(link);
       }
+      if (Number.isSafeInteger(Number(run.id)) && Number(run.id) > 0) {
+        const logsButton = document.createElement("button");
+        logsButton.type = "button";
+        logsButton.className = "secondary";
+        logsButton.dataset.runAction = "logs";
+        logsButton.dataset.runId = String(run.id);
+        logsButton.textContent = "گزارش اجرا و علت خطا";
+        controls.append(logsButton);
+        if (run.status === "completed") {
+          const deleteButton = document.createElement("button");
+          deleteButton.type = "button";
+          deleteButton.className = "danger-button";
+          deleteButton.dataset.runAction = "delete";
+          deleteButton.dataset.runId = String(run.id);
+          deleteButton.textContent = "حذف اجرای قدیمی";
+          controls.append(deleteButton);
+        }
+      }
+      item.append(controls);
       host.append(item);
     }
   }
   async function request(path, options) {
-    const response = await fetch("/api/autonomous-engineering/" + path, {
-      headers: {"Accept": "application/json", ...(options && options.body ? {"Content-Type": "application/json"} : {}), ...(options && options.headers || {})},
-      ...(options || {})
-    });
-    let payload = {};
-    try { payload = await response.json(); } catch (_) {}
-    if (!response.ok) throw new Error(payload.detail || "درخواست ناموفق بود.");
-    return payload;
+    const controller = new AbortController();
+    const timeoutMs = path === "status" ? 40000 : path.startsWith("progress") ? 20000 : 120000;
+    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch("/api/autonomous-engineering/" + path, {
+        ...(options || {}),
+        headers: {
+          "Accept": "application/json",
+          ...(options && options.body ? {"Content-Type": "application/json"} : {}),
+          ...(options && options.headers || {})
+        },
+        signal: controller.signal
+      });
+      let payload = {};
+      try { payload = await response.json(); } catch (_) {}
+      if (!response.ok) {
+        const failure = new Error(payload.detail || "درخواست ناموفق بود.");
+        failure.status = response.status;
+        throw failure;
+      }
+      return payload;
+    } catch (error) {
+      if (error && error.name === "AbortError") {
+        const timeoutError = new Error("پاسخ سرویس در مهلت " + (timeoutMs / 1000) + " ثانیه دریافت نشد؛ وضعیت سرور و لاگ‌ها را بررسی کنید.");
+        timeoutError.ambiguous = true;
+        throw timeoutError;
+      }
+      if (error && !Number.isInteger(error.status)) error.ambiguous = true;
+      throw error;
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
   }
-  async function refresh() {
+  async function refreshRuns() {
+    try {
+      const data = await request("runs");
+      renderRuns(data.runs);
+    } catch (error) {
+      const host = $("recent-runs");
+      const note = document.createElement("p");
+      note.className = "muted";
+      note.textContent = "دریافت تاریخچهٔ کامل اجراها ناموفق بود: " + (error.message || "خطای نامشخص");
+      host.append(note);
+    }
+  }
+
+  $("recent-runs").addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-run-action]");
+    if (!button || button.disabled) return;
+    const runId = button.dataset.runId;
+    if (!Number.isSafeInteger(Number(runId)) || Number(runId) <= 0) return;
+    if (button.dataset.runAction === "logs") {
+      const item = button.closest(".run-item");
+      if (!item) return;
+      let panel = item.querySelector(".run-log-panel");
+      if (!panel) {
+        panel = document.createElement("section");
+        panel.className = "run-log-panel";
+        const failures = document.createElement("ul");
+        failures.className = "run-failures";
+        const pre = document.createElement("pre");
+        pre.className = "run-log-text";
+        panel.append(failures, pre);
+        item.append(panel);
+      }
+      panel.hidden = false;
+      const pre = panel.querySelector(".run-log-text");
+      const failures = panel.querySelector(".run-failures");
+      pre.textContent = "در حال دریافت گزارش از GitHub…";
+      failures.replaceChildren();
+      button.disabled = true;
+      try {
+        const data = await request("runs/" + runId + "/logs");
+        for (const job of data.failures || []) {
+          const entry = document.createElement("li");
+          const failedSteps = Array.isArray(job.failed_steps)
+            ? job.failed_steps.map(step => step.name + " (" + step.conclusion + ")").join("، ")
+            : "";
+          entry.textContent = job.name + " · " + String(job.conclusion || job.status || "نامشخص") +
+            (failedSteps ? " · مراحل ناموفق: " + failedSteps : "");
+          failures.append(entry);
+        }
+        if (!failures.childElementCount) {
+          const entry = document.createElement("li");
+          entry.textContent = "برای این اجرا مرحلهٔ ناموفقی در گزارش GitHub ثبت نشده است.";
+          failures.append(entry);
+        }
+        pre.textContent = data.logs || "گزارشی برای نمایش وجود ندارد.";
+      } catch (error) {
+        pre.textContent = error.message || "دریافت گزارش اجرا ناموفق بود.";
+      } finally {
+        button.disabled = false;
+      }
+      return;
+    }
+    if (button.dataset.runAction === "delete") {
+      if (!window.confirm("اجرای پایان‌یافتهٔ #" + runId + " از تاریخچهٔ GitHub حذف شود؟ این عملیات قابل بازگشت نیست.")) return;
+      button.disabled = true;
+      try {
+        const result = await request("runs/" + runId, {method: "DELETE"});
+        setMessage(result.message || "اجرای قدیمی حذف شد.", "success");
+        await refreshRuns();
+      } catch (error) {
+        setMessage(error.message || "حذف اجرای قدیمی ناموفق بود.", "error");
+        button.disabled = false;
+      }
+    }
+  });
+
+  $("refresh-runs").addEventListener("click", refreshRuns);
+
+  $("cleanup-agent-temp").addEventListener("click", async () => {
+    const button = $("cleanup-agent-temp");
+    const status = $("cleanup-agent-status");
+    if (!window.confirm("داده‌های موقت پیشرفت عامل پاک شوند؟ تاریخچه، checkpointها و وظایف/PRهای پایدار حفظ می‌شوند؛ هنگام اجرای فعال پاک‌سازی انجام نمی‌شود.")) return;
+    button.disabled = true;
+    status.textContent = "در حال بررسی اجرای فعال و وضعیت پایدار…";
+    try {
+      const result = await request("cleanup", {method: "POST"});
+      status.textContent = result.message || ("پاک‌سازی انجام شد؛ " + result.files_removed + " فایل حذف شد.");
+      setMessage(status.textContent, "success");
+      await refreshProgress();
+    } catch (error) {
+      status.textContent = error.message || "پاک‌سازی ناموفق بود.";
+      setMessage(status.textContent, "error");
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  let statusRefreshPromise = null;
+  let dispatchPendingUntil = 0;
+  let dispatchSubmitting = false;
+  let lastCanDispatch = false;
+  let lastActiveRun = false;
+  let statusKnown = false;
+  function canStartDispatch() {
+    return statusKnown && lastCanDispatch && !lastActiveRun && !dispatchSubmitting && Date.now() >= dispatchPendingUntil;
+  }
+  function syncDispatchControls() {
+    const allowed = canStartDispatch();
+    dispatchButton.disabled = !allowed;
+    taskButton.disabled = !allowed;
+  }
+  function lockDispatchVisibilityWindow() {
+    dispatchPendingUntil = Date.now() + 30000;
+    window.setTimeout(syncDispatchControls, 30000);
+  }
+  function refresh(force = false) {
+    if (force) return refreshAfterMutation();
+    if (statusRefreshPromise) return statusRefreshPromise;
+    let current;
+    current = refreshStatus().finally(() => {
+      if (statusRefreshPromise === current) statusRefreshPromise = null;
+    });
+    statusRefreshPromise = current;
+    return current;
+  }
+  async function refreshAfterMutation() {
+    // Wait for any status request that began before the mutation to settle.
+    // Only then reserve a new single-flight request, so stale snapshots can
+    // never satisfy the post-mutation refresh.
+    const previous = statusRefreshPromise;
+    if (previous) {
+      try {
+        await previous;
+      } catch (_) {
+        // A failed pre-mutation poll must not prevent authoritative re-reading.
+      }
+    }
+    let current;
+    current = refreshStatus().finally(() => {
+      if (statusRefreshPromise === current) statusRefreshPromise = null;
+    });
+    statusRefreshPromise = current;
+    return current;
+  }
+  async function refreshStatus() {
     $("refresh-agent").disabled = true;
     try {
       const data = await request("status");
@@ -127,9 +322,11 @@
           ? "؛ مدل قابلیت tools را اعلام نکرده است"
           : data.model_tools_verification_method === "skipped_no_safe_context"
             ? "؛ آزمون tools تا تأیید ظرفیت امن Context اجرا نشد"
-            : data.model_tools_verification_method === "probe_unavailable"
-              ? "؛ ابزار بررسی زنده قابلیت tools در دسترس نیست"
-              : "؛ metadata موجود نیست و آزمون واقعی tools نیز موفق نشد";
+            : data.model_tools_verification_method === "probe_required"
+              ? "؛ برای تأیید واقعی قابلیت tools، مدل را از بخش تنظیمات ذخیره/آزمایش کنید"
+              : data.model_tools_verification_method === "probe_unavailable"
+                ? "؛ ابزار بررسی زنده قابلیت tools در دسترس نیست"
+                : "؛ metadata موجود نیست و آزمون واقعی tools نیز موفق نشد";
       const modelLabel = data.model ? "مدل ذخیره‌شده: " + String(data.model) : "هنوز مدلی ذخیره نشده است";
       const installationText = data.model && checks.model_is_codex_context_variant
         ? "؛ این نسخهٔ داخلی Context است؛ مدل اصلی را انتخاب و ذخیره کنید"
@@ -171,15 +368,21 @@
       pill.className = "status-pill " + (paused ? "status-blocked" : (ready ? "status-ready" : "status-blocked"));
       const active = (data.github && data.github.recent_runs || []).some(run =>
         ["queued", "in_progress", "waiting", "requested", "pending"].includes(run.status));
-      dispatchButton.disabled = !canDispatch || active;
-      taskButton.disabled = !canDispatch || active;
+      if (active) dispatchPendingUntil = 0;
+      lastCanDispatch = canDispatch;
+      lastActiveRun = active;
+      statusKnown = true;
+      syncDispatchControls();
       cancelButton.disabled = !active;
       pauseButton.disabled = Boolean(data.paused);
       resumeButton.disabled = !data.paused;
       renderRuns(data.github && data.github.recent_runs);
+      void refreshRuns();
       setMessage(data.paused ? "صف مهندسی متوقف است؛ برای ادامه از آخرین وضعیت، دکمهٔ ادامه را بزنید." : (ready ? "پیش‌نیازهای حساب برنامه آماده‌اند؛ Workflow پیش‌نیازهای حساب Runner را جداگانه بررسی می‌کند." : "برای فعال‌شدن اجرا، موارد ناقص را در راهنمای راه‌اندازی تکمیل کنید."), data.paused || ready ? "success" : "");
     } catch (error) {
+      statusKnown = false;
       setMessage(error.message || "دریافت وضعیت با خطا مواجه شد.", "error");
+      syncDispatchControls();
       dispatchButton.disabled = true;
       taskButton.disabled = true;
       cancelButton.disabled = true;
@@ -189,8 +392,11 @@
       $("refresh-agent").disabled = false;
     }
   }
+  let settingsSaving = false;
   settingsForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (settingsSaving) return;
+    settingsSaving = true;
     saveButton.disabled = true;
     const customModel = $("custom-model").value.trim();
     const model = customModel || $("ollama-model").value;
@@ -204,15 +410,22 @@
       });
       $("custom-model").value = "";
       setMessage(result.message || "تنظیمات ذخیره شد.", "success");
-      await refresh();
+      await refresh(true);
     } catch (error) {
-      setMessage(error.message, "error");
+      const detail = error.message || "ذخیرهٔ تنظیمات ناموفق بود.";
+      await refresh(true);
+      setMessage(detail, "error");
     } finally {
       saveButton.disabled = false;
+      settingsSaving = false;
     }
   });
   taskForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (!canStartDispatch()) {
+      setMessage("عامل در حال اجرا، ارسال یا انتظار برای ثبت اجرای قبلی است؛ پس از به‌روزرسانی وضعیت دوباره تلاش کنید.", "error");
+      return;
+    }
     const task = $("manual-task").value.trim();
     if (!task) {
       setMessage("ابتدا متن وظیفه را وارد کنید.", "error");
@@ -222,6 +435,7 @@
       setMessage("متن وظیفه نامعتبر یا طولانی است.", "error");
       return;
     }
+    dispatchSubmitting = true;
     taskButton.disabled = true;
     dispatchButton.disabled = true;
     setMessage("در حال ارسال وظیفه به عامل محلی و درخواست شروع چرخه…");
@@ -230,25 +444,37 @@
         method: "POST",
         body: JSON.stringify({task})
       });
+      lockDispatchVisibilityWindow();
       $("manual-task").value = "";
       setMessage(result.message || "وظیفه برای عامل ارسال شد.", "success");
-      window.setTimeout(refresh, 2500);
+      await refresh(true);
     } catch (error) {
-      setMessage(error.message, "error");
-      await refresh();
+      if (error.ambiguous || error.status >= 500) lockDispatchVisibilityWindow();
+      const detail = error.message || "ارسال وظیفه ناموفق بود.";
+      await refresh(true);
+      setMessage(detail, "error");
+    } finally {
+      dispatchSubmitting = false;
+      syncDispatchControls();
     }
   });
   dispatchButton.addEventListener("click", async () => {
+    if (!canStartDispatch()) return;
+    dispatchSubmitting = true;
     dispatchButton.disabled = true;
+    taskButton.disabled = true;
     setMessage("در حال ارسال درخواست اجرای Workflow به GitHub…");
     try {
       const result = await request("dispatch", {method: "POST"});
+      lockDispatchVisibilityWindow();
       setMessage(result.message || "درخواست ارسال شد.", "success");
-      window.setTimeout(refresh, 2500);
     } catch (error) {
-      setMessage(error.message, "error");
+      if (error.ambiguous || error.status >= 500) lockDispatchVisibilityWindow();
+      setMessage(error.message || "ارسال درخواست ناموفق بود.", "error");
     } finally {
-      dispatchButton.disabled = false;
+      await refresh(true);
+      dispatchSubmitting = false;
+      syncDispatchControls();
     }
   });
   pauseButton.addEventListener("click", async () => {
@@ -256,21 +482,25 @@
     try {
       const result = await request("pause", {method: "POST"});
       setMessage(result.message || "توقف ایمن ثبت شد.", "success");
-      await refresh();
+      await refresh(true);
     } catch (error) {
-      setMessage(error.message, "error");
-      pauseButton.disabled = false;
+      const detail = error.message || "توقف ایمن ثبت نشد.";
+      await refresh(true);
+      setMessage(detail, "error");
     }
   });
   resumeButton.addEventListener("click", async () => {
     resumeButton.disabled = true;
     try {
       const result = await request("resume", {method: "POST"});
+      lockDispatchVisibilityWindow();
       setMessage(result.message || "ادامهٔ صف درخواست شد.", "success");
-      window.setTimeout(refresh, 1500);
+      await refresh(true);
     } catch (error) {
-      setMessage(error.message, "error");
-      resumeButton.disabled = false;
+      if (error.ambiguous || error.status >= 500) lockDispatchVisibilityWindow();
+      const detail = error.message || "ادامهٔ صف ثبت نشد.";
+      await refresh(true);
+      setMessage(detail, "error");
     }
   });
   cancelButton.addEventListener("click", async () => {
@@ -279,9 +509,11 @@
     try {
       const result = await request("cancel", {method: "POST"});
       setMessage(result.message || "درخواست لغو ارسال شد.", "success");
-      window.setTimeout(refresh, 1500);
+      await refresh(true);
     } catch (error) {
-      setMessage(error.message, "error");
+      const detail = error.message || "لغو اجرای فعال ناموفق بود.";
+      await refresh(true);
+      setMessage(detail, "error");
     }
   });
 
@@ -314,7 +546,9 @@
       {key:"overall_percent", className:"chart-overall"}
     ];
     for (const line of series) {
-      const valid = points.map((point,index) => ({point,index,value:Number(point[line.key])})).filter(item => Number.isFinite(item.value));
+      const valid = points.map((point,index) => ({point,index,value:Number(point[line.key])}))
+        .filter(item => item.point[line.key] !== null && item.point[line.key] !== undefined &&
+          Number.isFinite(item.value) && item.value >= 0 && item.value <= 100);
       if (!valid.length) continue;
       const d = valid.map((item,index) => (index ? "L" : "M") + xAt(item.index) + " " + yAt(item.value)).join(" ");
       chart.append(svgNode("path",{d,class:line.className,fill:"none"}));
@@ -402,10 +636,14 @@
       }
       const snapshots = data.history || [];
       const latest = data.latest_snapshot || (snapshots.length ? snapshots[snapshots.length - 1] : null);
-      $("engineering-progress").textContent = latest && Number.isFinite(Number(latest.engineering_percent))
-        ? Number(latest.engineering_percent).toFixed(2) + "%" : "—";
-      $("overall-progress").textContent = latest && Number.isFinite(Number(latest.overall_percent))
-        ? Number(latest.overall_percent).toFixed(2) + "%" : "—";
+      const engineeringPercent = latest && latest.engineering_percent;
+      const overallPercent = latest && latest.overall_percent;
+      $("engineering-progress").textContent = engineeringPercent !== null && engineeringPercent !== undefined &&
+        Number.isFinite(Number(engineeringPercent)) && Number(engineeringPercent) >= 0 && Number(engineeringPercent) <= 100
+        ? Number(engineeringPercent).toFixed(2) + "%" : "—";
+      $("overall-progress").textContent = overallPercent !== null && overallPercent !== undefined &&
+        Number.isFinite(Number(overallPercent)) && Number(overallPercent) >= 0 && Number(overallPercent) <= 100
+        ? Number(overallPercent).toFixed(2) + "%" : "—";
       $("progress-updated").textContent = current && current.updated_at
         ? "آخرین رویداد: " + new Date(current.updated_at).toLocaleTimeString()
         : data.storage_configured

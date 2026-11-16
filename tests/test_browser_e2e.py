@@ -1040,6 +1040,69 @@ def test_browser_validates_and_rejects_self_improvement_proposal_without_applyin
         assert not proposed_doc.exists()
         browser.close()
 
+def test_self_improvement_ui_displays_validation_api_errors():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    proposal_id = 7654321
+    proposals = []
+    validation_detail = "Patch does not apply cleanly to the recorded base; no files were changed."
+
+    def mock_proposals(route):
+        request = route.request
+        suffix = request.url.split("/api/self-improvement/proposals", 1)[1]
+        if suffix == "" and request.method == "GET":
+            route.fulfill(status=200, json={"proposals": proposals})
+            return
+        if suffix == "" and request.method == "POST":
+            body = request.post_data_json
+            proposal = {
+                "id": proposal_id,
+                "title": body["title"],
+                "rationale": body["rationale"],
+                "patch_sha256": "a" * 64,
+                "base_commit_sha": "b" * 40,
+                "status": "proposed",
+                "static_check": None,
+            }
+            proposals[:] = [proposal]
+            route.fulfill(status=201, json={"proposal": proposal})
+            return
+        if suffix == f"/{proposal_id}/validate" and request.method == "POST":
+            route.fulfill(status=409, json={"detail": validation_detail})
+            return
+        route.continue_()
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        browser_errors = []
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/api/self-improvement/proposals**", mock_proposals)
+        response = _goto_section(page, base_url, "self-improvement-section")
+        assert response is not None and response.status == 200
+
+        title = "Browser E2E validation error visibility"
+        page.locator("#self-improvement-title").fill(title)
+        page.locator("#self-improvement-rationale").fill("Verify validation errors are visible and actionable.")
+        page.locator("#self-improvement-patch").fill("not a valid patch; API is mocked for this UI regression.")
+        page.locator("#self-improvement-form button[type=submit]").click()
+
+        card = page.locator("#self-improvement-list article").filter(has_text=title)
+        card.wait_for(state="visible", timeout=5000)
+        validate = card.get_by_role("button", name="بررسی سازگاری diff")
+        validate.click()
+        error = card.locator(".self-improvement-validation-error")
+        error.wait_for(state="visible", timeout=5000)
+
+        assert validation_detail in error.inner_text()
+        assert "(proposed)" in card.locator("h3").inner_text()
+        assert validate.is_enabled()
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
 def test_browser_requires_confirmation_for_draft_pr_and_rollback_requests():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
@@ -3578,5 +3641,326 @@ def test_autonomous_engineering_model_picker_requires_explicit_selection_and_sav
             "execution_mode": "continuous",
         }
         assert model_picker.input_value() == "gpt-oss:20b"
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+def test_autonomous_dashboard_keeps_dispatch_disabled_after_accepted_run():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    state = {"active": False, "dispatches": 0, "status_reads": 0}
+    browser_errors = []
+
+    def status_payload():
+        state["status_reads"] += 1
+        active_runs = [{
+            "id": 987654,
+            "status": "in_progress",
+            "conclusion": None,
+            "created_at": "2026-11-16T08:00:00Z",
+            "url": "https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/987654",
+        }] if state["active"] else []
+        return {
+            "ready": True,
+            "can_dispatch": not state["active"],
+            "checks": {
+                "ollama_online": True,
+                "model_installed": True,
+                "model_selectable": True,
+                "model_context_metadata_available": True,
+                "model_context_supported": True,
+                "model_supports_tools": True,
+                "model_tools_metadata_available": True,
+                "model_is_codex_context_variant": False,
+                "codex_installed": False,
+                "runner_running": True,
+                "github_cli_authenticated": True,
+                "github_runs_available": True,
+                "progress_storage_accessible": True,
+            },
+            "model": "model:latest",
+            "models": ["model:latest"],
+            "selectable_models": ["model:latest"],
+            "model_context_length": 65536,
+            "model_recommended_context_length": 32768,
+            "model_tools_verification_method": "ollama_model_capabilities",
+            "interval_hours": 24,
+            "execution_mode": "continuous",
+            "paused": False,
+            "github": {"recent_runs": active_runs, "settings": {"model": "model:latest"}},
+            "codex": {"installed": False, "version": None},
+            "local_only_inference": True,
+        }
+
+    def mock_status(route):
+        route.fulfill(status=200, json=status_payload())
+
+    def mock_dispatch(route):
+        state["dispatches"] += 1
+        # GitHub's workflow list can lag behind a successful dispatch response.
+        state["active"] = False
+        route.fulfill(status=202, json={
+            "accepted": True,
+            "manual_task_submitted": False,
+            "message": "درخواست اجرای چرخهٔ خودکار ارسال شد.",
+        })
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.expose_function("getAutonomousStatusReads", lambda: state["status_reads"])
+        page.route("**/api/autonomous-engineering/status", mock_status)
+        page.route("**/api/autonomous-engineering/progress**", lambda route: route.fulfill(
+            status=200,
+            json={
+                "current": None, "history": [], "latest_snapshot": None,
+                "events": [], "storage_configured": True,
+            },
+        ))
+        page.route("**/api/autonomous-engineering/dispatch", mock_dispatch)
+
+        response = page.goto(
+            base_url.rstrip("/") + "/autonomous-engineering",
+            wait_until="domcontentloaded",
+        )
+        assert response is not None and response.status == 200
+        dispatch = page.locator("#dispatch-agent")
+        page.wait_for_function(
+            "() => document.querySelector('#dispatch-agent')?.disabled === false",
+            timeout=10000,
+        )
+        dispatch.click()
+        page.wait_for_function(
+            "() => document.querySelector('#dispatch-agent')?.disabled === true && document.querySelector('#send-agent-task')?.disabled === true",
+            timeout=10000,
+        )
+        assert state["dispatches"] == 1
+        assert state["active"] is False
+        assert page.locator("#send-agent-task").is_disabled()
+        for _ in range(100):
+            if state["status_reads"] >= 2:
+                break
+            page.wait_for_timeout(50)
+        assert state["status_reads"] >= 2
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+def test_autonomous_dashboard_reenables_cancel_after_server_rejection():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    state = {"cancel_calls": 0, "status_reads": 0}
+    browser_errors = []
+
+    def status_payload():
+        state["status_reads"] += 1
+        return {
+            "ready": True,
+            "can_dispatch": False,
+            "checks": {
+                "ollama_online": True,
+                "model_installed": True,
+                "model_selectable": True,
+                "model_context_metadata_available": True,
+                "model_context_supported": True,
+                "model_supports_tools": True,
+                "model_tools_metadata_available": True,
+                "model_is_codex_context_variant": False,
+                "codex_installed": False,
+                "runner_running": True,
+                "github_cli_authenticated": True,
+                "github_runs_available": True,
+                "progress_storage_accessible": True,
+            },
+            "model": "model:latest",
+            "models": ["model:latest"],
+            "selectable_models": ["model:latest"],
+            "model_context_length": 65536,
+            "model_recommended_context_length": 32768,
+            "model_tools_verification_method": "ollama_model_capabilities",
+            "interval_hours": 24,
+            "execution_mode": "continuous",
+            "paused": False,
+            "github": {
+                "recent_runs": [{
+                    "id": 987655, "status": "in_progress", "conclusion": None,
+                    "created_at": "2026-11-16T08:00:00Z",
+                    "url": "https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/987655",
+                }],
+                "settings": {"model": "model:latest"},
+            },
+            "codex": {"installed": False, "version": None},
+            "local_only_inference": True,
+        }
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.on("dialog", lambda dialog: dialog.accept())
+        page.route("**/api/autonomous-engineering/status", lambda route: route.fulfill(
+            status=200, json=status_payload()
+        ))
+        page.route("**/api/autonomous-engineering/progress**", lambda route: route.fulfill(
+            status=200,
+            json={
+                "current": None, "history": [], "latest_snapshot": None,
+                "events": [], "storage_configured": True,
+            },
+        ))
+
+        def reject_cancel(route):
+            state["cancel_calls"] += 1
+            route.fulfill(status=503, json={"detail": "temporary cancel failure"})
+
+        page.route("**/api/autonomous-engineering/cancel", reject_cancel)
+        response = page.goto(
+            base_url.rstrip("/") + "/autonomous-engineering",
+            wait_until="domcontentloaded",
+        )
+        assert response is not None and response.status == 200
+        cancel = page.locator("#cancel-agent")
+        page.wait_for_function(
+            "() => document.querySelector('#cancel-agent')?.disabled === false",
+            timeout=10000,
+        )
+        cancel.click()
+        page.wait_for_function(
+            """() => {
+                const button = document.querySelector('#cancel-agent');
+                const message = document.querySelector('#agent-message');
+                return button && !button.disabled && message &&
+                    message.textContent.includes('temporary cancel failure');
+            }""",
+            timeout=10000,
+        )
+        assert state["cancel_calls"] == 1
+        assert state["status_reads"] >= 2
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+def test_autonomous_dashboard_run_logs_delete_and_cleanup_controls():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    runs = [
+        {
+            "id": 701,
+            "status": "completed",
+            "conclusion": "failure",
+            "display_title": "Failed engineering run",
+            "created_at": "2026-11-16T08:00:00Z",
+            "url": "https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/701",
+        },
+        {
+            "id": 702,
+            "status": "in_progress",
+            "conclusion": None,
+            "display_title": "Active engineering run",
+            "created_at": "2026-11-16T08:05:00Z",
+            "url": "https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/702",
+        },
+    ]
+    requests = []
+    browser_errors = []
+
+    def mock_status(route):
+        route.fulfill(status=200, json={
+            "ready": False,
+            "can_dispatch": False,
+            "checks": {},
+            "github": {"recent_runs": [], "settings": {}},
+            "codex": {},
+            "runner": {},
+            "models": [],
+            "selectable_models": [],
+            "paused": False,
+            "execution_mode": "continuous",
+            "interval_hours": 24,
+        })
+
+    def mock_runs(route):
+        route.fulfill(status=200, json={"runs": list(runs)})
+
+    def mock_logs(route):
+        requests.append(("logs", route.request.method))
+        route.fulfill(status=200, json={
+            "run": {"id": 701, "status": "completed", "conclusion": "failure"},
+            "failures": [{
+                "name": "codex",
+                "status": "completed",
+                "conclusion": "failure",
+                "failed_steps": [{"name": "Install dependencies", "conclusion": "failure"}],
+            }],
+            "logs": "Traceback: ImportError: dependency missing",
+            "truncated": False,
+        })
+
+    def mock_delete(route):
+        requests.append(("delete", route.request.method))
+        runs[:] = [run for run in runs if run["id"] != 701]
+        route.fulfill(status=200, json={"deleted": True, "run_id": 701, "message": "deleted"})
+
+    def mock_cleanup(route):
+        requests.append(("cleanup", route.request.method))
+        route.fulfill(status=200, json={
+            "cleaned": True,
+            "files_removed": 3,
+            "bytes_removed": 128,
+            "message": "temporary data cleaned",
+        })
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.on("dialog", lambda dialog: dialog.accept())
+        page.route("**/api/autonomous-engineering/status", mock_status)
+        page.route("**/api/autonomous-engineering/progress**", lambda route: route.fulfill(
+            status=200,
+            json={"current": None, "history": [], "latest_snapshot": None, "events": [], "storage_configured": True},
+        ))
+        page.route("**/api/autonomous-engineering/runs", mock_runs)
+        page.route("**/api/autonomous-engineering/runs/701/logs", mock_logs)
+        page.route("**/api/autonomous-engineering/runs/701", mock_delete)
+        page.route("**/api/autonomous-engineering/cleanup", mock_cleanup)
+
+        response = page.goto(
+            base_url.rstrip("/") + "/autonomous-engineering",
+            wait_until="domcontentloaded",
+        )
+        assert response is not None and response.status == 200
+        page.wait_for_function(
+            "() => document.querySelector('#recent-runs button[data-run-action=logs]') !== null",
+            timeout=10000,
+        )
+        page.locator('#recent-runs button[data-run-action="logs"]').first.click()
+        page.wait_for_function(
+            "() => document.querySelector('.run-log-text')?.textContent.includes('ImportError')",
+            timeout=10000,
+        )
+        assert "Install dependencies" in page.locator(".run-failures").inner_text()
+        assert page.locator('#recent-runs button[data-run-action="delete"]').count() == 1
+
+        page.locator('#recent-runs button[data-run-action="delete"]').click()
+        page.wait_for_function(
+            "() => !document.querySelector('#recent-runs')?.textContent.includes('Failed engineering run')",
+            timeout=10000,
+        )
+        page.locator("#cleanup-agent-temp").click()
+        page.wait_for_function(
+            "() => document.querySelector('#cleanup-agent-status')?.textContent.includes('temporary data cleaned')",
+            timeout=10000,
+        )
+
+        assert ("logs", "GET") in requests
+        assert ("delete", "DELETE") in requests
+        assert ("cleanup", "POST") in requests
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()

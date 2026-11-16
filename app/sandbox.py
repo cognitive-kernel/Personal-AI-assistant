@@ -234,6 +234,11 @@ def run_workspace_tests(
         "--env=PYTHONDONTWRITEBYTECODE=1",
         "--env=PYTEST_DISABLE_PLUGIN_AUTOLOAD=1",
         "--env=PYTEST_ADDOPTS=",
+        # The read-only bind mount is owned by the host runner, while tests run
+        # as UID 65534. Mark only this exact mount as safe for Git read commands.
+        "--env=GIT_CONFIG_COUNT=1",
+        "--env=GIT_CONFIG_KEY_0=safe.directory",
+        "--env=GIT_CONFIG_VALUE_0=/workspace",
         "--mount", f"type=bind,source={str(workspace)},target=/workspace,readonly",
         image, "python", "-I", "-c", runner,
     ]

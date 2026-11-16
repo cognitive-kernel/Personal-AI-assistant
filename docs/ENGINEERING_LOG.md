@@ -1910,3 +1910,58 @@ After the operational status and delivery-estimate documentation was synchronize
 
 These are hosted CI results only. Target-host Windows/ACL/sandbox/restart and live Ollama/Codex acceptance remain outstanding.
 
+## 2026-11-16 — Autonomous Engineering dashboard status and dispatch responsiveness
+
+A review of the Windows report and the dashboard/API path identified several coupled UI responsiveness defects:
+
+- The status endpoint called the normal Ollama readiness path. When model capabilities metadata was absent, that path could perform a real /api/chat tool-call inference with a 45-second timeout during an ordinary status refresh. This made the initial dashboard status request unexpectedly expensive.
+- GitHub run inventory and repository-variable reads were sequential even though they are independent, adding both CLI timeouts to one status request.
+- The browser had no single-flight guard for status refreshes and no request deadline. Manual refreshes and the 30-second poll could overlap while the backend was still checking local components.
+- After a successful dispatch response, the UI could re-enable dispatch before GitHub's workflow-run list exposed the new run, creating a duplicate-submission window.
+
+Corrections on this branch:
+
+- Dashboard status checks never start live model inference. They reuse a still-valid cached tool-capability probe; when no evidence exists, the UI reports that explicit model verification is required. Saving model settings remains the explicit path that performs the real tool-call probe.
+- GitHub run and repository-variable reads now execute concurrently.
+- Browser requests use an abort deadline; status refreshes share one in-flight promise instead of creating overlapping requests.
+- Accepted dispatch/resume actions hold the dispatch controls for a bounded visibility window, and action handlers refresh the authoritative server state before releasing controls.
+- Added unit and browser regressions for non-inference status checks, cached probe reuse, single-flight refresh, and the delay before a dispatched Actions run becomes visible.
+
+The shutdown trace supplied during diagnosis contains CancelledError while Uvicorn was shutting down. That trace is consistent with in-flight requests being cancelled by the operator's Ctrl+C; it does not by itself establish an independent application exception or explain the original long status request.
+
+**Validation boundary:** source changes and regression tests are committed on the dedicated branch. Exact-head GitHub CI and live acceptance on the owner's Windows machine are pending. No local Runner, autonomous workflow, account, ACL, durable task, checkpoint, or user data was started, reset, or modified by this change.
+
+## 2026-11-16 — Runner dependency preflight ordering
+
+The owner's live Run #43818491529 exposed a separate prerequisite-ordering defect after the dashboard changes: the workflow invoked the real Codex workspace smoke test with the system Python before creating the project virtual environment. The smoke test's process-identity guard imports `psutil`, which is a declared project runtime dependency, but the workflow installed project dependencies only after the smoke test. The result was a deterministic `ModuleNotFoundError: psutil`; Ollama context verification itself succeeded.
+
+The workflow now creates the isolated `.venv` immediately after resolving system Python, installs the project's runtime dependencies there, verifies `psutil`, FastAPI, and Uvicorn imports, and prepends that environment to subsequent step PATH resolution before any Codex smoke test. The later development-dependency step reuses the same environment instead of recreating it. This keeps runtime dependencies isolated from system Python and preserves the existing fail-closed sandbox policy; no weaker or unsandboxed fallback was enabled.
+
+Validation: workflow change committed for exact-head CI. The owner-run failure is confirmed by the captured Job log; successful live Codex workspace smoke and target-host acceptance remain pending.
+
+
+## 2026-11-16 — Follow-up UI audit: dispatch admission and progress rendering
+
+A second pass over the dashboard found additional client-side edge cases adjacent to the original duplicate-dispatch defect:
+
+- The manual-task form's submit handler relied on the submit button's disabled state. Keyboard/form submission can invoke the form handler independently of a normal button click, so the handler now rechecks the same authoritative dispatch admission predicate as the workflow button: a successful status snapshot must exist, the server must permit dispatch, no active run may be present, no dispatch may be in flight, and the post-acceptance visibility window must have expired.
+- The shared dispatch lock now covers both manual-task and empty dispatch paths. A timer synchronizes the controls when the bounded visibility window expires instead of waiting for the next 30-second poll. A successful dispatch remains locked until an active run appears or the bounded window expires.
+- A failed status refresh now invalidates the cached UI admission snapshot. The finalizer of an in-flight action can no longer re-enable dispatch based on stale readiness data after the authoritative refresh failed; the UI stays fail-closed until a later successful status response.
+- Progress chart conversion previously treated a JSON `null` percentage as numeric zero because JavaScript converts `Number(null)` to `0`. Missing and out-of-range values are now omitted from chart series and displayed as unavailable, not as 0%.
+- The browser regression now waits for the post-dispatch status request before asserting that the authoritative refresh occurred. The earlier CI failure was a test synchronization issue: the assertion ran immediately after the buttons were disabled, before the dispatch response/finalizer had necessarily completed. The full Python suite also exposed a stale static assertion after the handler was consolidated; that assertion has been updated to the new shared guard contract.
+
+**Validation boundary:** the prior exact-head run identified one stale source assertion and one premature browser-test assertion; both were corrected on this branch. The subsequent UI follow-up commits have not yet received exact-head CI evidence. No merge, live dispatch, Runner operation, durable task/checkpoint mutation, or user-data change was performed.
+
+
+A final dispatch-path review covered the ambiguous-outcome case as well: if the browser times out or loses the connection after the server may have accepted a workflow dispatch, the client cannot safely assume that nothing started. The request layer now retains HTTP status information and marks transport/timeout failures as ambiguous. Dispatch and resume handlers apply the same bounded visibility lock after ambiguous or server-side failures, while definitive client-side rejections remain immediately retryable. This closes the retry window where a user could unknowingly submit a duplicate after a lost response.
+
+## 2026-11-16 — Checkpoint watcher support for read-only sandbox workspaces
+
+The first isolated Docker suite after the Runner dependency-ordering fix exposed a separate checkpoint-watcher defect. The test container intentionally mounts the repository read-only and runs as an unprivileged UID. Although the watcher already used a separate temporary Git index, `git add -N` still writes the empty-blob object to the repository's normal `.git/objects` directory. That made real watcher startup fail with `Read-only file system` before it could publish readiness.
+
+The watcher now resolves the repository's actual object directory, creates a per-snapshot temporary object database under its writable checkpoint-state directory, and passes that directory through `GIT_OBJECT_DIRECTORY`. The original repository object database is configured only as `GIT_ALTERNATE_OBJECT_DIRECTORIES` for reads. The temporary index and object database are removed after each snapshot. This preserves the read-only checkout contract and avoids modifying the shared Git index or object database.
+
+A regression test creates an uncommitted project file, verifies that the checkpoint diff is captured using the temporary index/object database, and confirms that the source repository's object counts remain unchanged. The real process tests also execute in the read-only Docker workspace.
+
+Validation on the PR head before this log-only update: **2,321 passed, 13 skipped, 55 deselected** in the complete standard test suite; full isolated Docker sandbox suite passed; Windows storage regressions, browser dashboard smoke, CodeQL, and dependency audit passed. These results apply to the source/test commit that introduced this fix; the final documentation commit is being revalidated separately.
+
