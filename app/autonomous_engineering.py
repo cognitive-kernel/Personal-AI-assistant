@@ -599,24 +599,24 @@ def _verified_workflow_run(gh: str, run_id: int) -> dict[str, Any]:
 
 
 def _sanitize_workflow_log(value: str) -> str:
-    value = re.sub(r"\x1b\\[[0-?]*[ -/]*[@-~]", "", value)
+    value = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", value)
     value = re.sub(
-        r"(?i)(authorization\\s*:\\s*bearer\\s+)\\S+",
-        r"\\1[REDACTED]",
+        r"(?i)(authorization\s*:\s*bearer\s+)\S+",
+        r"\1[REDACTED]",
         value,
     )
     value = re.sub(
-        r"(?i)\\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\\b",
+        r"(?i)\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b",
         "[REDACTED]",
         value,
     )
     value = re.sub(
-        r"(?i)\\b(password|passwd|secret|api[_-]?key|access[_-]?token)(\\s*[=:]\\s*)([^\\s\"']+)",
-        r"\\1\\2[REDACTED]",
+        r"(?i)\b(password|passwd|secret|api[_-]?key|access[_-]?token)(\s*[=:]\s*)([^\s\"']+)",
+        r"\1\2[REDACTED]",
         value,
     )
     if len(value) > _MAX_DASHBOARD_LOG_CHARS:
-        value = "[ابتدای گزارش به‌دلیل محدودیت حجم حذف شده است.]\\n" + value[-_MAX_DASHBOARD_LOG_CHARS:]
+        value = "[ابتدای گزارش به‌دلیل محدودیت حجم حذف شده است.]\n" + value[-_MAX_DASHBOARD_LOG_CHARS:]
     return value
 
 
