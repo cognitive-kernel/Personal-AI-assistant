@@ -9,8 +9,8 @@ from typing import Any
 
 import psutil
 
-from .autonomous_engineering_state import execution_state_directory
 from .autonomous_engineering_progress import storage_access_status
+from .autonomous_engineering_state import execution_state_directory
 from scripts.autonomous_engineering_state_lock import durable_state_lock
 
 _RETENTION_SECONDS = 24 * 60 * 60
