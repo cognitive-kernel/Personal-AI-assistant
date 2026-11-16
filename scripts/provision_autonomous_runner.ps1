@@ -205,7 +205,7 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
         throw "Existing Runner configuration found, but its actual Windows service identity differs from the requested identity; no service or account membership was changed."
     }
 
-    $administratorsGroup = $administratorsSid = [Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)
+    $administratorsSid = [Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)
     $administratorsGroup = Get-LocalGroup -SID $administratorsSid
     $runnerIsDirectAdministrator = @(
         Get-LocalGroupMember -Group $administratorsGroup.Name -ErrorAction Stop |
@@ -258,7 +258,7 @@ if ($runnerIsLocal) {
     Write-Host "Using externally managed Runner identity $runnerIdentity; no local account is created or modified."
 }
 $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
-$administratorsGroup = $administratorsSid = [Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)
+$administratorsSid = [Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)
     $administratorsGroup = Get-LocalGroup -SID $administratorsSid
 $runnerIsAdministrator = @(
     Get-LocalGroupMember -Group $administratorsGroup.Name -ErrorAction Stop |
