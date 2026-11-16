@@ -129,8 +129,9 @@ def test_configured_state_root_must_be_absolute(monkeypatch, tmp_path: Path):
     from scripts import autonomous_engineering_state_paths as paths
 
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "relative-state")
+    monkeypatch.setattr(paths, "_is_windows", lambda: False)
     with pytest.raises(ValueError, match="absolute path"):
-        paths.execution_state_directory(is_windows_fn=lambda: False)
+        paths.execution_state_directory()
 
 
 def test_windows_state_root_never_falls_back_to_a_user_profile(monkeypatch):
