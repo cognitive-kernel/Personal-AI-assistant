@@ -3926,7 +3926,7 @@ def test_autonomous_dashboard_run_logs_delete_and_cleanup_controls():
             status=200,
             json={"current": None, "history": [], "latest_snapshot": None, "events": [], "storage_configured": True},
         ))
-        page.route("**/api/autonomous-engineering/runs?limit=30", mock_runs)
+        page.route("**/api/autonomous-engineering/runs", mock_runs)
         page.route("**/api/autonomous-engineering/runs/701/logs", mock_logs)
         page.route("**/api/autonomous-engineering/runs/701", mock_delete)
         page.route("**/api/autonomous-engineering/cleanup", mock_cleanup)
