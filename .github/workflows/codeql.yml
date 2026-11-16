@@ -46,6 +46,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: codeql-sarif-${{ github.run_id }}
-          path: results/*.sarif
+          path: ../results/*.sarif
           if-no-files-found: warn
           retention-days: 7
