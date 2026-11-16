@@ -47,16 +47,20 @@ if (-not [string]::IsNullOrWhiteSpace($RunnerAccount)) {
     }
 }
 
-$resolvedAppAccount = if ([string]::IsNullOrWhiteSpace($AppAccount)) {
-    $installerIdentity.Name
+if ([string]::IsNullOrWhiteSpace($AppAccount)) {
+    $applicationIdentity = Get-AutonomousApplicationIdentity
+    if ($applicationIdentity) {
+        $appIdentity = $applicationIdentity.Name
+        $appSid = $applicationIdentity.Sid
+        Write-Output "Discovered running application identity: $appIdentity ($appSid)"
+    } else {
+        $appIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $installerIdentity.Name
+        $appSid = $installerIdentity.User.Value
+        Write-Warning "The application status endpoint was unavailable; using the elevated installer identity. Run the application during configuration or pass -AppAccount if it runs under another identity."
+    }
 } else {
-    $AppAccount.Trim()
-}
-$appIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $resolvedAppAccount
-$appSid = if ($resolvedAppAccount -eq $installerIdentity.Name) {
-    $installerIdentity.User.Value
-} else {
-    Get-AutonomousWindowsAccountSid -AccountName $appIdentity
+    $appIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $AppAccount.Trim()
+    $appSid = Get-AutonomousWindowsAccountSid -AccountName $appIdentity
 }
 if ($runnerSid -eq $appSid) {
     throw "The application and Runner resolve to the same Windows identity; configure separate identities."
