@@ -19,7 +19,7 @@ def test_status_readiness_requires_every_local_dependency(monkeypatch):
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
-    monkeypatch.setattr(agent, "storage_accessible", lambda: True)
+    monkeypatch.setattr(agent, "storage_access_status", lambda: {"available": True, "state_directory": "test-state", "lock_file": "test-state/autonomous-durable-state.lock", "error": None})
     monkeypatch.setattr(agent, "_github_snapshot", lambda: {
         "cli_installed": True, "authenticated": True, "recent_runs": [], "runs_available": True, "settings": {"model": "gpt-oss:20b"}
     })
@@ -42,7 +42,7 @@ def test_status_is_not_ready_when_local_model_is_missing(monkeypatch):
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
-    monkeypatch.setattr(agent, "storage_accessible", lambda: True)
+    monkeypatch.setattr(agent, "storage_access_status", lambda: {"available": True, "state_directory": "test-state", "lock_file": "test-state/autonomous-durable-state.lock", "error": None})
     monkeypatch.setattr(agent, "_github_snapshot", lambda: {
         "cli_installed": True, "authenticated": True, "recent_runs": [], "runs_available": True
     })
@@ -60,7 +60,7 @@ def test_app_readiness_does_not_require_codex_in_the_app_account(monkeypatch):
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": False, "version": None})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
-    monkeypatch.setattr(agent, "storage_accessible", lambda: True)
+    monkeypatch.setattr(agent, "storage_access_status", lambda: {"available": True, "state_directory": "test-state", "lock_file": "test-state/autonomous-durable-state.lock", "error": None})
     monkeypatch.setattr(agent, "_github_snapshot", lambda: {
         "cli_installed": True, "authenticated": True, "recent_runs": [], "runs_available": True, "settings": {"model": "gpt-oss:20b"}
     })
@@ -77,7 +77,7 @@ def test_status_is_not_ready_when_shared_progress_storage_is_unavailable(monkeyp
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
-    monkeypatch.setattr(agent, "storage_accessible", lambda: False)
+    monkeypatch.setattr(agent, "storage_access_status", lambda: {"available": False, "state_directory": "test-state", "lock_file": "test-state/autonomous-durable-state.lock", "error": "PermissionError: access denied"})
     monkeypatch.setattr(agent, "_github_snapshot", lambda: {
         "cli_installed": True, "authenticated": True, "recent_runs": [], "runs_available": True
     })
@@ -403,7 +403,7 @@ def test_status_is_not_ready_when_saved_model_is_a_generated_context_variant(mon
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
-    monkeypatch.setattr(agent, "storage_accessible", lambda: True)
+    monkeypatch.setattr(agent, "storage_access_status", lambda: {"available": True, "state_directory": "test-state", "lock_file": "test-state/autonomous-durable-state.lock", "error": None})
 
     result = agent.collect_status()
 
@@ -680,7 +680,7 @@ def test_collect_status_never_uses_process_environment_as_model_fallback(monkeyp
     monkeypatch.setattr(agent, "_ollama_status", fake_ollama_status)
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": False, "version": None})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": False, "process_detected": False})
-    monkeypatch.setattr(agent, "storage_accessible", lambda: False)
+    monkeypatch.setattr(agent, "storage_access_status", lambda: {"available": False, "state_directory": "test-state", "lock_file": "test-state/autonomous-durable-state.lock", "error": "PermissionError: access denied"})
 
     result = agent.collect_status()
 
@@ -1176,7 +1176,7 @@ def test_status_distinguishes_prerequisite_readiness_from_paused_dispatch(monkey
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
-    monkeypatch.setattr(agent, "storage_accessible", lambda: True)
+    monkeypatch.setattr(agent, "storage_access_status", lambda: {"available": True, "state_directory": "test-state", "lock_file": "test-state/autonomous-durable-state.lock", "error": None})
     monkeypatch.setattr(agent, "_github_snapshot", lambda: {
         "cli_installed": True, "authenticated": True, "runs_available": True,
         "recent_runs": [], "settings": {"model": "gpt-oss:20b", "paused": True},
