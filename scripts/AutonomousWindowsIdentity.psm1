@@ -54,6 +54,49 @@ function Get-AutonomousRunnerService {
     return $services[0]
 }
 
+function Get-AutonomousApplicationIdentity {
+    [CmdletBinding()]
+    param([Parameter()][AllowNull()][string]$StatusUrl)
+
+    if ([string]::IsNullOrWhiteSpace($StatusUrl)) {
+        $StatusUrl = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_APP_STATUS_URL", "Machine")
+    }
+    if ([string]::IsNullOrWhiteSpace($StatusUrl)) {
+        $StatusUrl = $env:AUTONOMOUS_ENGINEERING_APP_STATUS_URL
+    }
+    if ([string]::IsNullOrWhiteSpace($StatusUrl)) {
+        $StatusUrl = "http://127.0.0.1:8000/api/autonomous-engineering/status"
+    }
+
+    $uri = $null
+    if (-not [Uri]::TryCreate($StatusUrl, [UriKind]::Absolute, [ref]$uri) -or
+        $uri.Scheme -ne "http" -or $uri.Host -notin @("127.0.0.1", "localhost", "::1")) {
+        throw "Application identity discovery accepts only an HTTP loopback status URL."
+    }
+
+    try {
+        $status = Invoke-RestMethod -Uri $uri.AbsoluteUri -Method Get -TimeoutSec 3 -MaximumRedirection 0 -ErrorAction Stop
+    } catch {
+        return $null
+    }
+    $reported = $status.application_identity
+    $name = [string]$reported.name
+    $sid = [string]$reported.sid
+    if ([string]::IsNullOrWhiteSpace($name) -or $sid -notmatch "^S-1-") {
+        throw "The running application did not report a valid Windows account name and SID."
+    }
+    $resolvedName = ConvertTo-AutonomousWindowsAccountName -AccountName $name
+    $resolvedSid = Get-AutonomousWindowsAccountSid -AccountName $resolvedName
+    if ($resolvedSid -ne $sid) {
+        throw "The running application's reported SID does not match its resolved Windows account."
+    }
+    return [pscustomobject]@{
+        Name = $resolvedName
+        Sid = $sid
+        Source = "running_application"
+    }
+}
+
 function Set-AutonomousDirectoryAcl {
     [CmdletBinding()]
     param(
@@ -170,4 +213,4 @@ function Set-AutonomousStateDirectoryAcl {
     Set-AutonomousDirectoryAcl -Path $lockPath -RunnerSid $RunnerSid -AdditionalModifySids $AdditionalModifySids -File
 }
 
-Export-ModuleMember -Function ConvertTo-AutonomousWindowsAccountName, Get-AutonomousLocalAccountName, Get-AutonomousWindowsAccountSid, Get-AutonomousRunnerService, Set-AutonomousDirectoryAcl, Set-AutonomousStateDirectoryAcl
+Export-ModuleMember -Function ConvertTo-AutonomousWindowsAccountName, Get-AutonomousLocalAccountName, Get-AutonomousWindowsAccountSid, Get-AutonomousRunnerService, Get-AutonomousApplicationIdentity, Set-AutonomousDirectoryAcl, Set-AutonomousStateDirectoryAcl
