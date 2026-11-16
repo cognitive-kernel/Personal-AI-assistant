@@ -36,7 +36,6 @@ if ([string]::IsNullOrWhiteSpace($resolvedRunnerRoot)) {
     $serviceBin = Split-Path -Parent $exeMatch.Groups["exe"].Value
     $resolvedRunnerRoot = if ((Split-Path -Leaf $serviceBin) -ieq "bin") { Split-Path -Parent $serviceBin } else { $serviceBin }
 }
-[Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ROOT", $resolvedRunnerRoot, "Machine")
 $runnerIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $runnerService.StartName
 $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
 if (-not [string]::IsNullOrWhiteSpace($RunnerAccount)) {
@@ -62,6 +61,7 @@ $appSid = if ($resolvedAppAccount -eq $installerIdentity.Name) {
 if ($runnerSid -eq $appSid) {
     throw "The application and Runner resolve to the same Windows identity; configure separate identities."
 }
+[Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ROOT", $resolvedRunnerRoot, "Machine")
 
 $machineStateDirectory = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")
 $processStateDirectory = $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR
