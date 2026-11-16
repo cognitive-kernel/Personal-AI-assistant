@@ -232,7 +232,6 @@ function Ensure-AutonomousStateOwnerLabel {
 }
 [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", $machineStateDirectory, "Machine")
 [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ROOT", $RunnerRoot, "Machine")
-[Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ACCOUNT", $runnerIdentity, "Machine")
 
 
 if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
@@ -254,6 +253,7 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
 
     $runnerIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $service.StartName
     $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
+    [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ACCOUNT", $runnerIdentity, "Machine")
     $installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
     Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid
@@ -289,6 +289,7 @@ $runnerIsAdministrator = @(
         Where-Object { $_.SID -and $_.SID.Value -eq $runnerSid }
 ).Count -gt 0
 if ($runnerIsAdministrator) { throw "Runner account is a direct member of the local Administrators group; use a least-privilege identity." }
+[Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ACCOUNT", $runnerIdentity, "Machine")
 New-Item -ItemType Directory -Path $RunnerRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
 $runnerTempPath = Join-Path $RunnerRoot "_work\_temp"
