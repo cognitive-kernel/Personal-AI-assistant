@@ -104,6 +104,29 @@ def test_windows_provisioning_keeps_runner_least_privilege_as_a_role_invariant()
 
     assert 'Get-LocalGroup -SID "S-1-5-32-544"' in script
     assert "Runner account is a direct member of the local Administrators group" in script
-    assert "RunnerAccount and AppAccount must be non-empty Windows account identities." in script
+    assert "[Parameter()][ValidateNotNullOrEmpty()][string]$AppAccount" in script
+    assert "$AppAccount = if ([string]::IsNullOrWhiteSpace($AppAccount)) { $identity.Name } else { $AppAccount.Trim() }" in script
+    assert "$appSid = if ($AppAccount -eq $identity.Name) { $identity.User.Value } else {" in script
     assert "^[A-Za-z0-9_.-]+$" not in script
     assert "runnerLocalName.Length -gt 20" in script
+
+
+def test_windows_state_readiness_uses_the_shared_configured_path_and_lock_probe():
+    paths_module = (ROOT / "scripts" / "AutonomousWindowsPaths.psm1").read_text(encoding="utf-8")
+    agent_check = (ROOT / "scripts" / "check_autonomous_agent.ps1").read_text(encoding="utf-8")
+    runner_check = (ROOT / "scripts" / "check_autonomous_runner.ps1").read_text(encoding="utf-8")
+    configure = (ROOT / "scripts" / "configure_autonomous_engineering_progress.ps1").read_text(encoding="utf-8")
+
+    assert "Test-AutonomousStateStorageAccess" in paths_module
+    assert '"autonomous-durable-state.lock"' in paths_module
+    assert '$stream.Lock(0, 1)' in paths_module
+    assert '$stream.Unlock(0, 1)' in paths_module
+    assert "AUTONOMOUS_ENGINEERING_PROGRESS_DIR" in paths_module
+    assert "Join-Path $env:ProgramData \"PersonalAIAssistant\\autonomous-engineering\"" not in agent_check
+    assert "Join-Path $env:ProgramData \"PersonalAIAssistant\\autonomous-engineering\"" not in runner_check
+    assert agent_check.count("Test-AutonomousStateStorageAccess") == 1
+    assert runner_check.count("Test-AutonomousStateStorageAccess") == 1
+    assert "BUILTIN\\Administrators" not in configure
+    assert '"SYSTEM:(OI)(CI)F"' not in configure
+    assert "Set-AutonomousDirectoryAcl" in configure
+    assert "Test-AutonomousStateStorageAccess" in configure
