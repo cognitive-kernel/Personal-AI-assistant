@@ -164,37 +164,22 @@ function Ensure-AutonomousStateOwnerLabel {
 }
 
 if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
-    $services = @(Get-CimInstance Win32_Service | Where-Object { $_.PathName -like "*$RunnerRoot*" })
-    if ($services.Count -ne 1 -or (Get-AutonomousWindowsAccountSid -AccountName $services[0].StartName) -ne (Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity)) { throw "Existing Runner configuration found; refusing to replace or reconfigure it." }
+    $service = Get-AutonomousRunnerService -RunnerRoot $RunnerRoot
+    $services = @($service)
+    if ((Get-AutonomousWindowsAccountSid -AccountName $service.StartName) -ne (Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity)) {
+        throw "Existing Runner configuration found, but its actual Windows service identity differs from the requested identity; no service or account membership was changed."
+    }
 
-    # Existing installations must receive the same least-privilege enforcement as
-    # newly provisioned ones. A service keeps its old access token until restarted.
     $administratorsGroup = Get-LocalGroup -SID "S-1-5-32-544"
     $runnerIsDirectAdministrator = @(
         Get-LocalGroupMember -Group $administratorsGroup.Name -ErrorAction Stop |
-            Where-Object { $_.SID -and $_.SID.Value -eq (Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity) }
+            Where-Object { $_.SID -and $_.SID.Value -eq (Get-AutonomousWindowsAccountSid -AccountName $service.StartName) }
     ).Count -gt 0
     if ($runnerIsDirectAdministrator) {
-        Write-Warning "Removing $runnerIdentity from the local Administrators group; autonomous execution requires least privilege."
-        if ($services[0].State -eq "Running") {
-            Stop-Service -Name $services[0].Name -ErrorAction Stop
-            $stoppedService = Get-Service -Name $services[0].Name -ErrorAction Stop
-            $stoppedService.WaitForStatus(
-                [System.ServiceProcess.ServiceControllerStatus]::Stopped,
-                [TimeSpan]::FromSeconds(30)
-            )
-        }
-        Remove-LocalGroupMember -Group $administratorsGroup.Name -Member $runnerIdentity -ErrorAction Stop
-        $stillAdministrator = @(
-            Get-LocalGroupMember -Group $administratorsGroup.Name -ErrorAction Stop |
-                Where-Object { $_.SID -and $_.SID.Value -eq (Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity) }
-        ).Count -gt 0
-        if ($stillAdministrator) {
-            throw "Could not remove $runnerIdentity from the local Administrators group."
-        }
-        Write-Host "Least-privilege membership corrected. The Runner service will be restarted to discard its previous administrator token."
+        throw "The existing Runner service identity is a local administrator. The provisioner will not change account or group membership; configure a dedicated non-administrator service identity."
     }
 
+    $runnerIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $service.StartName
     $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
     $installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
