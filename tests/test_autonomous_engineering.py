@@ -1625,3 +1625,6 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     assert "item.point[line.key] !== null" in script
     assert "engineeringPercent !== null" in script
     assert "window.setTimeout(syncDispatchControls, 30000)" in script
+    assert "timeoutError.ambiguous = true" in script
+    assert "error.ambiguous || error.status >= 500" in script
+    assert "function lockDispatchVisibilityWindow()" in script
