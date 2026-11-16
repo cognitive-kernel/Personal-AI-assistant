@@ -124,8 +124,9 @@
   let dispatchSubmitting = false;
   let lastCanDispatch = false;
   let lastActiveRun = false;
+  let statusKnown = false;
   function canStartDispatch() {
-    return lastCanDispatch && !lastActiveRun && !dispatchSubmitting && Date.now() >= dispatchPendingUntil;
+    return statusKnown && lastCanDispatch && !lastActiveRun && !dispatchSubmitting && Date.now() >= dispatchPendingUntil;
   }
   function syncDispatchControls() {
     const allowed = canStartDispatch();
@@ -221,6 +222,7 @@
       if (active) dispatchPendingUntil = 0;
       lastCanDispatch = canDispatch;
       lastActiveRun = active;
+      statusKnown = true;
       syncDispatchControls();
       cancelButton.disabled = !active;
       pauseButton.disabled = Boolean(data.paused);
@@ -228,7 +230,9 @@
       renderRuns(data.github && data.github.recent_runs);
       setMessage(data.paused ? "صف مهندسی متوقف است؛ برای ادامه از آخرین وضعیت، دکمهٔ ادامه را بزنید." : (ready ? "پیش‌نیازهای حساب برنامه آماده‌اند؛ Workflow پیش‌نیازهای حساب Runner را جداگانه بررسی می‌کند." : "برای فعال‌شدن اجرا، موارد ناقص را در راهنمای راه‌اندازی تکمیل کنید."), data.paused || ready ? "success" : "");
     } catch (error) {
+      statusKnown = false;
       setMessage(error.message || "دریافت وضعیت با خطا مواجه شد.", "error");
+      syncDispatchControls();
       dispatchButton.disabled = true;
       taskButton.disabled = true;
       cancelButton.disabled = true;
