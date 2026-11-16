@@ -297,6 +297,9 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     if ($service.State -ne "Running" -or (Get-AutonomousWindowsAccountSid -AccountName $service.StartName) -ne (Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity)) {
         throw "Runner service did not restart under the verified non-administrator identity."
     }
+    if (Test-Path -LiteralPath $provisioningMarkerPath) {
+        Remove-Item -LiteralPath $provisioningMarkerPath -Force
+    }
     Write-Host "Existing Runner configuration preserved, uniquely labelled, and verified under $runnerIdentity."
     Write-Host "Application identity: $appIdentity ($appSid)"
     exit 0
@@ -311,6 +314,16 @@ $runnerIsAdministrator = @(
 if ($runnerIsAdministrator) { throw "Runner account is a direct member of the local Administrators group; use a least-privilege identity." }
 [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ACCOUNT", $runnerIdentity, "Machine")
 New-Item -ItemType Directory -Path $RunnerRoot -Force | Out-Null
+if (-not (Test-Path -LiteralPath $provisioningMarkerPath)) {
+    $markerPayload = [ordered]@{
+        schema_version = 1
+        repository = $Repository
+        runner_account = $runnerIdentity
+        runner_name = $RunnerName
+        created_at = [DateTime]::UtcNow.ToString("o")
+    } | ConvertTo-Json -Compress
+    [System.IO.File]::WriteAllText($provisioningMarkerPath, $markerPayload, [System.Text.UTF8Encoding]::new($false))
+}
 New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
 $runnerTempPath = Join-Path $RunnerRoot "_work\_temp"
 New-Item -ItemType Directory -Path $runnerTempPath -Force | Out-Null
@@ -356,6 +369,9 @@ try {
     if ($services[0].StartMode -eq "Disabled") { Set-Service -Name $services[0].Name -StartupType Automatic }
     Start-Service -Name $services[0].Name
     if ((Get-Service -Name $services[0].Name).Status -ne "Running") { throw "Runner service did not start." }
+    if (Test-Path -LiteralPath $provisioningMarkerPath) {
+        Remove-Item -LiteralPath $provisioningMarkerPath -Force
+    }
     Write-Host "Runner registered and running as $runnerIdentity."
     Write-Host "Application identity: $appIdentity ($appSid)"
     Write-Host "Shared storage and service identity were configured; model readiness is reported separately by the dashboard."
