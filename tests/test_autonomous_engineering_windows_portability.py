@@ -110,6 +110,7 @@ def test_runner_identity_is_discovered_or_generated_without_fixed_account_names(
     assert "Get-AutonomousRunnerService -RunnerRoot $RunnerRoot" in provision
     assert "$RunnerAccount = $discoveredService.StartName" in provision
     assert "Get-AutonomousRunnerService -RunnerRoot $resolvedRunnerRoot" in configure
+    assert '[Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ROOT", $resolvedRunnerRoot, "Machine")' in configure
     assert "Get-AutonomousRunnerService" in identity
     assert "AUTONOMOUS_ENGINEERING_RUNNER_ROOT" in provision
     assert '[Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ROOT", "Machine")' in provision
