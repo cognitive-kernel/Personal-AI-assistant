@@ -106,21 +106,17 @@ $runner = Get-Process -Name "Runner.Listener" -ErrorAction SilentlyContinue | Se
 $runnerReady = [bool]$runner
 $checks += [pscustomobject]@{ Component = "GitHub Runner"; Ready = $runnerReady; Detail = if ($runnerReady) { "Listener process active" } else { "Runner.Listener is not running in this account" } }
 
-$progressPath = Join-Path $env:ProgramData "PersonalAIAssistant\autonomous-engineering"
+$progressPath = ""
 $progressReady = $false
-$probe = Join-Path $progressPath ".runner-write-check-$PID.tmp"
 try {
-    if (Test-Path -LiteralPath $progressPath -PathType Container) {
-        [System.IO.File]::WriteAllText($probe, "ok")
-        Remove-Item -LiteralPath $probe -Force
-        $progressReady = $true
-    }
+    $machineStateDirectory = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")
+    Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsPaths.psm1") -Force
+    $progressPath = Test-AutonomousStateStorageAccess -ConfiguredPath $machineStateDirectory -ProcessPath $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR -ProgramDataPath $env:ProgramData
+    $progressReady = $true
 } catch {
-    if (Test-Path -LiteralPath $probe) {
-        Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
-    }
+    $progressPath = $_.Exception.Message
 }
-$checks += [pscustomobject]@{ Component = "Shared progress storage"; Ready = $progressReady; Detail = if ($progressReady) { "Runner account can write to $progressPath" } else { "Run configure_autonomous_engineering_progress.ps1 with the exact Runner service account" } }
+$checks += [pscustomobject]@{ Component = "Shared progress storage and durable lock"; Ready = $progressReady; Detail = if ($progressReady) { "Read/write and lock access verified: $progressPath" } else { $progressPath } }
 
 $checks | Format-Table -AutoSize
 if (@($checks | Where-Object { -not $_.Ready }).Count -gt 0) {
