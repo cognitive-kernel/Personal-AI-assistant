@@ -102,9 +102,7 @@ if ([string]::IsNullOrWhiteSpace($AppAccount)) {
         $appSid = $applicationIdentity.Sid
         Write-Host "Discovered running application identity: $appIdentity ($appSid)"
     } else {
-        $appIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $identity.Name
-        $appSid = $identity.User.Value
-        Write-Warning "The application status endpoint was unavailable; using the elevated installer identity. Run the application during provisioning or pass -AppAccount if it runs under another identity."
+        throw "Could not discover the running application identity. Keep the local dashboard running during provisioning or supply -AppAccount explicitly; the installer identity will not be guessed."
     }
 } else {
     $appIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $AppAccount
