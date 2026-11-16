@@ -1607,7 +1607,8 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     assert "dispatchPendingUntil" in script
     assert "if (settingsSaving) return" in script
     assert "if (!canStartDispatch())" in script
-    assert "if (statusRefreshPromise) return statusRefreshPromise" in script\n    assert "async function refreshAfterMutation()" in script
+    assert "if (statusRefreshPromise) return statusRefreshPromise" in script
+    assert "async function refreshAfterMutation()" in script
     assert "const timeoutMs = path === \"status\" ? 40000" in script
     assert "path.startsWith(\"progress\") ? 20000 : 120000" in script
     assert 'window.setInterval(refresh, 30000)' in script
