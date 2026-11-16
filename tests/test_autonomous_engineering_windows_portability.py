@@ -86,6 +86,20 @@ def test_windows_provisioning_adds_modify_access_without_replacing_existing_acl_
     assert 'Set-AutonomousDirectoryAcl -Path $runnerDiagnosticPath -RunnerSid $runnerSid -AdditionalModifySid $appSid' in script
 
 
+def test_storage_acceptance_script_is_independent_of_ollama_and_account_names():
+    script = (ROOT / "scripts" / "check_autonomous_storage.ps1").read_text(encoding="utf-8")
+    paths = (ROOT / "scripts" / "AutonomousWindowsPaths.psm1").read_text(encoding="utf-8")
+
+    assert "WindowsIdentity]::GetCurrent()" in script
+    assert "AUTONOMOUS_ENGINEERING_PROGRESS_DIR" in script
+    assert "Test-AutonomousStateStorageAccess" in script
+    assert "autonomous-durable-state.lock" in script
+    assert "ollama" not in script.lower()
+    assert "RunnerAccount" not in script
+    assert "AppAccount" not in script
+    assert "Test-AutonomousStateStorageAccess" in paths
+
+
 def test_runner_identity_is_discovered_or_generated_without_fixed_account_names():
     provision = (ROOT / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
     configure = (ROOT / "scripts" / "configure_autonomous_engineering_progress.ps1").read_text(encoding="utf-8")
