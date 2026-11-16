@@ -42,8 +42,28 @@ if (-not [System.IO.Path]::IsPathRooted($RunnerRoot)) { throw "RunnerRoot must b
 $RunnerRoot = [System.IO.Path]::GetFullPath($RunnerRoot)
 
 $existingRunnerConfiguration = Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")
-if (-not $existingRunnerConfiguration -and (Test-Path -LiteralPath $RunnerRoot) -and @(Get-ChildItem -LiteralPath $RunnerRoot -Force).Count -gt 0) {
-    throw "RunnerRoot is non-empty but unconfigured; refusing to overwrite or create a service account for it."
+$provisioningMarkerPath = Join-Path $RunnerRoot ".autonomous-provisioning.json"
+$provisioningMarker = $null
+if (-not $existingRunnerConfiguration -and (Test-Path -LiteralPath $provisioningMarkerPath)) {
+    try {
+        $provisioningMarker = Get-Content -LiteralPath $provisioningMarkerPath -Raw | ConvertFrom-Json
+    } catch {
+        throw "The existing Runner provisioning marker is unreadable; refusing to overwrite partial installation state."
+    }
+    if ($provisioningMarker.schema_version -ne 1 -or $provisioningMarker.repository -ne $Repository) {
+        throw "The existing Runner provisioning marker belongs to another configuration; refusing to reuse it."
+    }
+    if (-not [string]::IsNullOrWhiteSpace($RunnerAccount) -and $RunnerAccount.Trim() -ne [string]$provisioningMarker.runner_account) {
+        throw "The supplied RunnerAccount differs from the saved first-install identity."
+    }
+    if (-not [string]::IsNullOrWhiteSpace($RunnerName) -and $RunnerName.Trim() -ne [string]$provisioningMarker.runner_name) {
+        throw "The supplied RunnerName differs from the saved first-install name."
+    }
+    if ([string]::IsNullOrWhiteSpace($RunnerAccount)) { $RunnerAccount = [string]$provisioningMarker.runner_account }
+    if ([string]::IsNullOrWhiteSpace($RunnerName)) { $RunnerName = [string]$provisioningMarker.runner_name }
+}
+if (-not $existingRunnerConfiguration -and -not $provisioningMarker -and (Test-Path -LiteralPath $RunnerRoot) -and @(Get-ChildItem -LiteralPath $RunnerRoot -Force).Count -gt 0) {
+    throw "RunnerRoot is non-empty and has no matching provisioning marker; refusing to overwrite it."
 }
 if ([string]::IsNullOrWhiteSpace($RunnerName)) {
     if ($existingRunnerConfiguration) {
@@ -51,7 +71,7 @@ if ([string]::IsNullOrWhiteSpace($RunnerName)) {
         $RunnerName = [string]$runnerConfig.agentName
         if ([string]::IsNullOrWhiteSpace($RunnerName)) { throw "The existing Runner name could not be resolved from its configuration." }
     } else {
-        $RunnerName = "$env:COMPUTERNAME-ollama"
+        $RunnerName = "$env:COMPUTERNAME-autonomous"
     }
 }
 if ($RunnerName -notmatch "^[A-Za-z0-9_.-]{1,64}$") { throw "Invalid RunnerName." }
