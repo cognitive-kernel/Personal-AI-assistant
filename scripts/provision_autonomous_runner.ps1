@@ -13,7 +13,7 @@ Set-StrictMode -Version Latest
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw "Run from elevated PowerShell." }
-$AppAccount = if ([string]::IsNullOrWhiteSpace($AppAccount)) { $identity.Name } else { $AppAccount.Trim() }
+$AppAccount = if ([string]::IsNullOrWhiteSpace($AppAccount)) { "" } else { $AppAccount.Trim() }
 if ([string]::IsNullOrWhiteSpace($AppAccount)) { throw "The application identity could not be resolved from the installer process." }
 if ([string]::IsNullOrWhiteSpace($env:ProgramData) -or -not [System.IO.Path]::IsPathRooted($env:ProgramData)) { throw "PROGRAMDATA must resolve to an absolute shared path." }
 Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsIdentity.psm1") -Force
@@ -70,7 +70,7 @@ if ([string]::IsNullOrWhiteSpace($RunnerAccount)) {
     $RunnerAccount = $RunnerAccount.Trim()
 }
 $runnerIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $RunnerAccount
-$appIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $AppAccount
+$appIdentity = $null
 $runnerLocalName = Get-AutonomousLocalAccountName -AccountName $runnerIdentity
 $runnerIsLocal = -not [string]::IsNullOrWhiteSpace($runnerLocalName)
 if ($runnerLocalName -and ($runnerLocalName.Length -gt 20 -or $runnerLocalName -match '[\\/"\[\]:;|=,+*?<>]')) { throw "Invalid local Runner account name." }
@@ -95,7 +95,21 @@ $statePathBoundary = $progressPath.TrimEnd([char[]]@([System.IO.Path]::Directory
 if ($RunnerRoot.Equals($progressPath, [StringComparison]::OrdinalIgnoreCase) -or $progressPath.StartsWith($runnerRootBoundary, [StringComparison]::OrdinalIgnoreCase) -or $RunnerRoot.StartsWith($statePathBoundary, [StringComparison]::OrdinalIgnoreCase)) {
     throw "RunnerRoot and shared autonomous state directory must be separate, non-nested paths."
 }
-$appSid = if ($AppAccount -eq $identity.Name) { $identity.User.Value } else { Get-AutonomousWindowsAccountSid -AccountName $appIdentity }
+if ([string]::IsNullOrWhiteSpace($AppAccount)) {
+    $applicationIdentity = Get-AutonomousApplicationIdentity
+    if ($applicationIdentity) {
+        $appIdentity = $applicationIdentity.Name
+        $appSid = $applicationIdentity.Sid
+        Write-Host "Discovered running application identity: $appIdentity ($appSid)"
+    } else {
+        $appIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $identity.Name
+        $appSid = $identity.User.Value
+        Write-Warning "The application status endpoint was unavailable; using the elevated installer identity. Run the application during provisioning or pass -AppAccount if it runs under another identity."
+    }
+} else {
+    $appIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $AppAccount
+    $appSid = Get-AutonomousWindowsAccountSid -AccountName $appIdentity
+}
 $node = Get-Command node -ErrorAction Stop
 $npm = Get-Command npm -ErrorAction Stop
 $git = Get-Command git -ErrorAction Stop
