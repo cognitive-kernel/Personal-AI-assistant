@@ -116,6 +116,8 @@ def test_runner_identity_is_discovered_or_generated_without_fixed_account_names(
     assert "Resolve-AutonomousWindowsServiceAccountName" in configure
     assert "[Security.Principal.WellKnownSidType]::LocalSystemSid" in provision
     assert "[Security.Principal.WellKnownSidType]::LocalSystemSid" in configure
+    assert "Get-LocalGroupMember" in configure
+    assert "[Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid" in configure
     assert "Get-AutonomousApplicationIdentity" in identity
     assert "/api/autonomous-engineering/identity" in identity
     assert "Application identity discovery accepts only an HTTP loopback status URL." in identity
