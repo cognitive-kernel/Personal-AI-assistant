@@ -145,9 +145,9 @@ def _application_windows_identity() -> dict[str, str] | None:
             check=True,
         )
         row = next(csv.reader(result.stdout.splitlines()), [])
-        if len(row) < 2 or not row[0].strip() or not re.fullmatch(r"S-1-[0-9-]+", row[1].strip()):
+        if len(row) < 2 or not row[0].strip().lstrip("\ufeff") or not re.fullmatch(r"S-1-[0-9-]+", row[1].strip()):
             return None
-        return {"name": row[0].strip(), "sid": row[1].strip()}
+        return {"name": row[0].strip().lstrip("\ufeff"), "sid": row[1].strip()}
     except (OSError, subprocess.SubprocessError, csv.Error, ValueError):
         return None
 
