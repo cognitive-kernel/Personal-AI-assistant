@@ -172,9 +172,19 @@ class WindowsProcessJob:
             raise ctypes.WinError(ctypes.get_last_error())
         raise RuntimeError(f"Unexpected Job Object wait result: 0x{result:08x}.")
 
-    def terminate_remaining_processes(self, exit_code: int, timeout_seconds: float = 5.0) -> bool:
-        """Terminate and wait for residual job members after the direct child exits."""
-        if self.wait_for_empty(0):
+    def terminate_remaining_processes(
+        self,
+        exit_code: int,
+        timeout_seconds: float = 5.0,
+        grace_seconds: float = 2.0,
+    ) -> bool:
+        """Allow natural descendant exit briefly, then terminate and drain leftovers.
+
+        Returns True only when a remaining job member had to be terminated.
+        The caller can therefore distinguish an ordinary process-shutdown race
+        from descendants that outlived the bounded grace period.
+        """
+        if self.wait_for_empty(grace_seconds):
             return False
         self.terminate(exit_code)
         if not self.wait_for_empty(timeout_seconds):
