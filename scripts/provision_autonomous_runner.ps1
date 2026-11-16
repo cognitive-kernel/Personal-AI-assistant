@@ -15,7 +15,6 @@ $principal = [Security.Principal.WindowsPrincipal]::new($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw "Run from elevated PowerShell." }
 $AppAccount = if ([string]::IsNullOrWhiteSpace($AppAccount)) { $identity.Name } else { $AppAccount.Trim() }
 if ([string]::IsNullOrWhiteSpace($AppAccount)) { throw "The application identity could not be resolved from the installer process." }
-if ($RunnerName -notmatch "^[A-Za-z0-9_.-]{1,64}$") { throw "Invalid RunnerName." }
 if ([string]::IsNullOrWhiteSpace($env:ProgramData) -or -not [System.IO.Path]::IsPathRooted($env:ProgramData)) { throw "PROGRAMDATA must resolve to an absolute shared path." }
 Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsIdentity.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsPaths.psm1") -Force
@@ -26,7 +25,7 @@ if ([string]::IsNullOrWhiteSpace($RunnerRoot)) {
 }
 if ([string]::IsNullOrWhiteSpace($RunnerRoot)) {
     $installedServices = @(Get-CimInstance Win32_Service -ErrorAction Stop | Where-Object {
-        $_.PathName -match '(?i)(^|[\\/])RunnerService\\.exe(?:\\s|$|")'
+        $_.PathName -match '(?i)(^|[\\/])RunnerService\.exe(?:\s|$|")'
     })
     if ($installedServices.Count -gt 1) {
         throw "Multiple GitHub Runner services were found. Supply -RunnerRoot to select the intended installation without changing any service."
