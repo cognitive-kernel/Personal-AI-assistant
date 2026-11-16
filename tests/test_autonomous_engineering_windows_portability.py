@@ -112,6 +112,10 @@ def test_runner_identity_is_discovered_or_generated_without_fixed_account_names(
     assert "Get-AutonomousRunnerService -RunnerRoot $resolvedRunnerRoot" in configure
     assert '[Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ROOT", $resolvedRunnerRoot, "Machine")' in configure
     assert "Get-AutonomousRunnerService" in identity
+    assert "Get-AutonomousApplicationIdentity" in identity
+    assert "Get-AutonomousApplicationIdentity" in provision
+    assert "Get-AutonomousApplicationIdentity" in configure
+    assert "AUTONOMOUS_ENGINEERING_APP_STATUS_URL" in identity
     assert "AUTONOMOUS_ENGINEERING_RUNNER_ROOT" in provision
     assert '[Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ROOT", "Machine")' in provision
     assert "RunnerService\\.exe" in provision
@@ -144,8 +148,9 @@ def test_windows_provisioning_keeps_runner_least_privilege_as_a_role_invariant()
     assert '"S-1-5-32-544"' not in script
     assert "Runner account is a direct member of the local Administrators group" in script
     assert "[Parameter()][ValidateNotNullOrEmpty()][string]$AppAccount" in script
-    assert "$AppAccount = if ([string]::IsNullOrWhiteSpace($AppAccount)) { $identity.Name } else { $AppAccount.Trim() }" in script
-    assert "$appSid = if ($AppAccount -eq $identity.Name) { $identity.User.Value } else {" in script
+    assert '$AppAccount = if ([string]::IsNullOrWhiteSpace($AppAccount)) { "" } else { $AppAccount.Trim() }' in script
+    assert "Get-AutonomousApplicationIdentity" in script
+    assert "$appSid = $applicationIdentity.Sid" in script
     assert "^[A-Za-z0-9_.-]+$" not in script
     assert "runnerLocalName.Length -gt 20" in script
 
