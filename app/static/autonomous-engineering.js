@@ -190,9 +190,13 @@
           ? "دریافت وضعیت اجراهای GitHub ناموفق است؛ دسترسی Actions را بررسی کنید."
           : "GitHub CLI احراز هویت شده و وضعیت اجراها قابل دریافت است.";
       labels.storage.textContent = stateText(checks.progress_storage_accessible);
+      const storage = data.storage || {};
+      const storagePath = storage.state_directory ? " مسیر: " + String(storage.state_directory) : "";
       $("storage-detail").textContent = checks.progress_storage_accessible
-        ? "پوشهٔ مشترک پیشرفت برای برنامه قابل خواندن است."
-        : "پوشهٔ مشترک را با scripts/configure_autonomous_engineering_progress.ps1 پیکربندی کنید.";
+        ? "نوشتن فایل و دسترسی به قفل پایدار برای برنامه تأیید شد." + storagePath
+        : "بررسی نوشتن یا قفل پایدار ناموفق است: " +
+          String(storage.error || "علت دقیق دریافت نشد.") + storagePath +
+          "؛ اسکریپت provision را برای کشف هویت سرویس و اصلاح مجوزها اجرا کنید.";
       const ready = data.ready === true;
       const paused = data.paused === true;
       const canDispatch = data.can_dispatch === undefined ? (ready && !paused) : data.can_dispatch === true;
@@ -462,10 +466,14 @@
     try {
       const data = await request("storage");
       const summary = $("storage-summary");
+      const access = data.storage_access || {};
       summary.textContent = "مجموع فایل‌های موقت شناسایی‌شده: " + Number(data.file_count || 0) +
         " · حجم: " + (Number(data.total_bytes || 0) / 1024 / 1024).toFixed(2) + " MiB" +
         " · موقت: " + Number(data.retention_hours || 24) + " ساعت" +
-        " · لاگ تشخیصی: " + Number(data.diagnostic_retention_days || 30) + " روز";
+        " · لاگ تشخیصی: " + Number(data.diagnostic_retention_days || 30) + " روز" +
+        " · فضای پایدار: " + (access.available ? "قابل نوشتن و قفل‌پذیر" : "غیرقابل تأیید") +
+        " · مسیر: " + String(data.state_directory || "—") +
+        (access.error ? " · خطا: " + String(access.error) : "");
       const host = $("storage-files");
       host.replaceChildren();
       for (const file of (data.files || [])) {
