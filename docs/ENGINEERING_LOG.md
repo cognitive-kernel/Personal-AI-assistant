@@ -1938,3 +1938,16 @@ The owner's live Run #43818491529 exposed a separate prerequisite-ordering defec
 The workflow now creates the isolated `.venv` immediately after resolving system Python, installs the project's runtime dependencies there, verifies `psutil`, FastAPI, and Uvicorn imports, and prepends that environment to subsequent step PATH resolution before any Codex smoke test. The later development-dependency step reuses the same environment instead of recreating it. This keeps runtime dependencies isolated from system Python and preserves the existing fail-closed sandbox policy; no weaker or unsandboxed fallback was enabled.
 
 Validation: workflow change committed for exact-head CI. The owner-run failure is confirmed by the captured Job log; successful live Codex workspace smoke and target-host acceptance remain pending.
+
+
+## 2026-11-16 — Follow-up UI audit: dispatch admission and progress rendering
+
+A second pass over the dashboard found additional client-side edge cases adjacent to the original duplicate-dispatch defect:
+
+- The manual-task form's submit handler relied on the submit button's disabled state. Keyboard/form submission can invoke the form handler independently of a normal button click, so the handler now rechecks the same authoritative dispatch admission predicate as the workflow button: a successful status snapshot must exist, the server must permit dispatch, no active run may be present, no dispatch may be in flight, and the post-acceptance visibility window must have expired.
+- The shared dispatch lock now covers both manual-task and empty dispatch paths. A timer synchronizes the controls when the bounded visibility window expires instead of waiting for the next 30-second poll. A successful dispatch remains locked until an active run appears or the bounded window expires.
+- A failed status refresh now invalidates the cached UI admission snapshot. The finalizer of an in-flight action can no longer re-enable dispatch based on stale readiness data after the authoritative refresh failed; the UI stays fail-closed until a later successful status response.
+- Progress chart conversion previously treated a JSON `null` percentage as numeric zero because JavaScript converts `Number(null)` to `0`. Missing and out-of-range values are now omitted from chart series and displayed as unavailable, not as 0%.
+- The browser regression now waits for the post-dispatch status request before asserting that the authoritative refresh occurred. The earlier CI failure was a test synchronization issue: the assertion ran immediately after the buttons were disabled, before the dispatch response/finalizer had necessarily completed. The full Python suite also exposed a stale static assertion after the handler was consolidated; that assertion has been updated to the new shared guard contract.
+
+**Validation boundary:** the prior exact-head run identified one stale source assertion and one premature browser-test assertion; both were corrected on this branch. The subsequent UI follow-up commits have not yet received exact-head CI evidence. No merge, live dispatch, Runner operation, durable task/checkpoint mutation, or user-data change was performed.
