@@ -164,8 +164,16 @@ def _configured_runner_identity() -> dict[str, str] | None:
             r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
         ) as key:
             name, _ = winreg.QueryValueEx(key, "AUTONOMOUS_ENGINEERING_RUNNER_ACCOUNT")
+            try:
+                sid, _ = winreg.QueryValueEx(key, "AUTONOMOUS_ENGINEERING_RUNNER_SID")
+            except FileNotFoundError:
+                sid = ""
         value = str(name).strip()
-        return {"name": value, "source": "machine_environment"} if value else None
+        sid_value = str(sid).strip()
+        result = {"name": value, "source": "machine_environment"} if value else None
+        if result and re.fullmatch(r"S-1-[0-9-]+", sid_value):
+            result["sid"] = sid_value
+        return result
     except (OSError, ImportError, ValueError):
         return None
 
