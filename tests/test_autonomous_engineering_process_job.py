@@ -131,12 +131,16 @@ def test_windows_job_allows_short_lived_descendant_to_exit_after_wrapper(tmp_pat
             assert child_pid in [
                 int(description.split(":", 1)[0]) for description in members_before_drain
             ], f"The child was not retained in the owning Job Object: {members_before_drain!r}"
-            forced_termination = job.terminate_remaining_processes(
-                125, grace_seconds=3.0
-            )
-            assert forced_termination is False, (
-                "A short-lived child did not exit naturally during the grace window; "
-                f"Job Object members before drain: {members_before_drain!r}"
+            try:
+                psutil.Process(child_pid).wait(timeout=3.0)
+            except psutil.TimeoutExpired as exc:
+                raise AssertionError(
+                    "The short-lived child did not exit naturally; "
+                    f"Job Object members: {_windows_job_process_details(job)!r}"
+                ) from exc
+            assert job.terminate_remaining_processes(125, grace_seconds=3.0) is False, (
+                "The Job Object did not become empty after its child exited; "
+                f"members: {_windows_job_process_details(job)!r}"
             )
         finally:
             if wrapper.poll() is None:
