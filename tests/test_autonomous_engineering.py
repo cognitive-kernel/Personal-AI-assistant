@@ -1764,8 +1764,8 @@ def test_run_management_controls_are_present_and_wired():
     assert 'id="refresh-runs"' in page
     assert 'id="cleanup-agent-temp"' in page
     assert 'id="cleanup-agent-status"' in page
-    assert 'data-run-action = "logs"' in script
-    assert 'data-run-action = "delete"' in script
+    assert 'dataset.runAction = "logs"' in script
+    assert 'dataset.runAction = "delete"' in script
     assert 'request("cleanup", {method: "POST"})' in script
     assert 'request("runs/" + runId + "/logs")' in script
     assert 'request("runs/" + runId, {method: "DELETE"})' in script
