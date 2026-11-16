@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes
 import math
 import os
+import time
 from typing import Any
 
 
@@ -147,8 +148,48 @@ class WindowsProcessJob:
         if not self._kernel32.TerminateJobObject(self._handle, int(exit_code) & 0xFFFFFFFF):
             raise ctypes.WinError(ctypes.get_last_error())
 
+    def active_process_count(self) -> int:
+        """Return the current number of processes assigned to this Job Object."""
+        if os.name != "nt":
+            return 0
+        if not self._handle or not self._kernel32:
+            raise RuntimeError("The Windows process job has not been initialized.")
+
+        class BasicAccountingInformation(ctypes.Structure):
+            _fields_ = [
+                ("TotalUserTime", ctypes.c_longlong),
+                ("TotalKernelTime", ctypes.c_longlong),
+                ("ThisPeriodTotalUserTime", ctypes.c_longlong),
+                ("ThisPeriodTotalKernelTime", ctypes.c_longlong),
+                ("TotalPageFaultCount", ctypes.c_uint32),
+                ("TotalProcesses", ctypes.c_uint32),
+                ("ActiveProcesses", ctypes.c_uint32),
+                ("TotalTerminatedProcesses", ctypes.c_uint32),
+            ]
+
+        self._kernel32.QueryInformationJobObject.argtypes = [
+            ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p,
+            ctypes.c_uint32, ctypes.POINTER(ctypes.c_uint32),
+        ]
+        self._kernel32.QueryInformationJobObject.restype = ctypes.c_int
+        information = BasicAccountingInformation()
+        returned_length = ctypes.c_uint32()
+        if not self._kernel32.QueryInformationJobObject(
+            self._handle,
+            1,  # JobObjectBasicAccountingInformation
+            ctypes.byref(information),
+            ctypes.sizeof(information),
+            ctypes.byref(returned_length),
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return int(information.ActiveProcesses)
+
     def wait_for_empty(self, timeout_seconds: float) -> bool:
-        """Wait until every process assigned to this Job Object has exited."""
+        """Poll Job Object accounting until every assigned process has exited.
+
+        A Windows Job Object is not signaled on ordinary successful process exit;
+        WaitForSingleObject is therefore not a valid empty-job completion check.
+        """
         if os.name != "nt":
             return True
         if not self._handle or not self._kernel32:
@@ -160,17 +201,15 @@ class WindowsProcessJob:
             or timeout_seconds < 0
         ):
             raise ValueError("Job wait timeout must be a non-negative number.")
-        self._kernel32.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
-        self._kernel32.WaitForSingleObject.restype = ctypes.c_uint32
-        wait_ms = min(0xFFFFFFFE, int(timeout_seconds * 1000))
-        result = self._kernel32.WaitForSingleObject(self._handle, wait_ms)
-        if result == 0x00000000:
-            return True
-        if result == 0x00000102:
-            return False
-        if result == 0xFFFFFFFF:
-            raise ctypes.WinError(ctypes.get_last_error())
-        raise RuntimeError(f"Unexpected Job Object wait result: 0x{result:08x}.")
+
+        deadline = time.monotonic() + float(timeout_seconds)
+        while True:
+            if self.active_process_count() == 0:
+                return True
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            time.sleep(min(0.05, remaining))
 
     def terminate_remaining_processes(
         self,
