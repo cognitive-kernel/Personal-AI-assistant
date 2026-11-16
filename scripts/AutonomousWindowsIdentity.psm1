@@ -40,13 +40,19 @@ function Set-AutonomousDirectoryAcl {
         [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$Path,
         [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string]$RunnerSid,
         [Parameter()][ValidatePattern("^S-1-")][string]$ReadOnlySid,
-        [Parameter()][ValidatePattern("^S-1-")][string]$AdditionalModifySid
+        [Parameter()][ValidatePattern("^S-1-")][string]$AdditionalModifySid,
+        [Parameter()][ValidatePattern("^S-1-")][string[]]$AdditionalModifySids
     )
 
     $icacls = Get-Command icacls.exe -ErrorAction Stop
     $modifySids = @($RunnerSid)
-    if ($AdditionalModifySid -and $AdditionalModifySid -notin $modifySids) {
-        $modifySids += $AdditionalModifySid
+    $additionalSids = @()
+    if ($AdditionalModifySid) { $additionalSids += $AdditionalModifySid }
+    if ($AdditionalModifySids) { $additionalSids += $AdditionalModifySids }
+    foreach ($sid in $additionalSids) {
+        if ($sid -and $sid -notin $modifySids) {
+            $modifySids += $sid
+        }
     }
     $allowedSids = @($modifySids)
     if ($ReadOnlySid -and $ReadOnlySid -notin $allowedSids) {
