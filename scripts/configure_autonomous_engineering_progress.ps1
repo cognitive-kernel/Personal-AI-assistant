@@ -4,34 +4,39 @@ param(
     [ValidateNotNullOrEmpty()]
     [string]$RunnerAccount,
 
-    [Parameter(Mandatory = $true)]
+    [Parameter()]
     [ValidateNotNullOrEmpty()]
     [string]$AppAccount
 )
 
 $ErrorActionPreference = "Stop"
-$RunnerAccount = $RunnerAccount.Trim()
-$AppAccount = $AppAccount.Trim()
-if ([string]::Equals($RunnerAccount, $AppAccount, [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw "RunnerAccount and AppAccount must be different Windows identities."
+Set-StrictMode -Version Latest
+$installerIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$installerPrincipal = [Security.Principal.WindowsPrincipal]::new($installerIdentity)
+if (-not $installerPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    throw "Run from an elevated PowerShell session."
 }
-$progressPath = Join-Path $env:ProgramData "PersonalAIAssistant\autonomous-engineering"
 
+Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsIdentity.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsPaths.psm1") -Force
+$resolvedAppAccount = if ([string]::IsNullOrWhiteSpace($AppAccount)) { $installerIdentity.Name } else { $AppAccount.Trim() }
+$runnerIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $RunnerAccount.Trim()
+$appIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $resolvedAppAccount
+$runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
+$appSid = if ($resolvedAppAccount -eq $installerIdentity.Name) { $installerIdentity.User.Value } else { Get-AutonomousWindowsAccountSid -AccountName $appIdentity }
+if ($runnerSid -eq $appSid) {
+    throw "The application and Runner must resolve to different Windows identities."
+}
+
+$machineStateDirectory = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")
+$processStateDirectory = $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR
+if (-not [string]::IsNullOrWhiteSpace($processStateDirectory) -and [string]::IsNullOrWhiteSpace($machineStateDirectory)) {
+    throw "AUTONOMOUS_ENGINEERING_PROGRESS_DIR must be configured at machine scope."
+}
+$progressPath = Resolve-AutonomousStateDirectory -ConfiguredPath $machineStateDirectory -ProgramDataPath $env:ProgramData
 if (-not (Test-Path -LiteralPath $progressPath)) {
     New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
 }
-
-$rules = @(
-    "${RunnerAccount}:(OI)(CI)M",
-    "${AppAccount}:(OI)(CI)RX",
-    "SYSTEM:(OI)(CI)F",
-    "BUILTIN\Administrators:(OI)(CI)F"
-)
-
-& icacls.exe $progressPath /inheritance:r /T /C /grant:r $rules
-if ($LASTEXITCODE -ne 0) {
-    throw "Could not configure progress directory permissions (icacls exit code $LASTEXITCODE)."
-}
-
-Write-Output "Progress telemetry directory is ready: $progressPath"
-Write-Output "Only the specified runner/app accounts, SYSTEM, and local administrators have access."
+Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -AdditionalModifySids $appSid
+$verifiedPath = Test-AutonomousStateStorageAccess -ConfiguredPath $machineStateDirectory -ProcessPath $processStateDirectory -ProgramDataPath $env:ProgramData
+Write-Output "Shared durable state storage is ready for the resolved application and Runner identities: $verifiedPath"
