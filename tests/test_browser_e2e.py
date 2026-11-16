@@ -3777,3 +3777,124 @@ def test_autonomous_dashboard_reenables_cancel_after_server_rejection():
         assert state["status_reads"] >= 2
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+def test_autonomous_dashboard_run_logs_delete_and_cleanup_controls():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    runs = [
+        {
+            "id": 701,
+            "status": "completed",
+            "conclusion": "failure",
+            "display_title": "Failed engineering run",
+            "created_at": "2026-11-16T08:00:00Z",
+            "url": "https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/701",
+        },
+        {
+            "id": 702,
+            "status": "in_progress",
+            "conclusion": None,
+            "display_title": "Active engineering run",
+            "created_at": "2026-11-16T08:05:00Z",
+            "url": "https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/702",
+        },
+    ]
+    requests = []
+    browser_errors = []
+
+    def mock_status(route):
+        route.fulfill(status=200, json={
+            "ready": False,
+            "can_dispatch": False,
+            "checks": {},
+            "github": {"recent_runs": [], "settings": {}},
+            "codex": {},
+            "runner": {},
+            "models": [],
+            "selectable_models": [],
+            "paused": False,
+            "execution_mode": "continuous",
+            "interval_hours": 24,
+        })
+
+    def mock_runs(route):
+        route.fulfill(status=200, json={"runs": list(runs)})
+
+    def mock_logs(route):
+        requests.append(("logs", route.request.method))
+        route.fulfill(status=200, json={
+            "run": {"id": 701, "status": "completed", "conclusion": "failure"},
+            "failures": [{
+                "name": "codex",
+                "status": "completed",
+                "conclusion": "failure",
+                "failed_steps": [{"name": "Install dependencies", "conclusion": "failure"}],
+            }],
+            "logs": "Traceback: ImportError: dependency missing",
+            "truncated": False,
+        })
+
+    def mock_delete(route):
+        requests.append(("delete", route.request.method))
+        runs[:] = [run for run in runs if run["id"] != 701]
+        route.fulfill(status=200, json={"deleted": True, "run_id": 701, "message": "deleted"})
+
+    def mock_cleanup(route):
+        requests.append(("cleanup", route.request.method))
+        route.fulfill(status=200, json={
+            "cleaned": True,
+            "files_removed": 3,
+            "bytes_removed": 128,
+            "message": "temporary data cleaned",
+        })
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.on("dialog", lambda dialog: dialog.accept())
+        page.route("**/api/autonomous-engineering/status", mock_status)
+        page.route("**/api/autonomous-engineering/progress**", lambda route: route.fulfill(
+            status=200,
+            json={"current": None, "history": [], "latest_snapshot": None, "events": [], "storage_configured": True},
+        ))
+        page.route("**/api/autonomous-engineering/runs?limit=30", mock_runs)
+        page.route("**/api/autonomous-engineering/runs/701/logs", mock_logs)
+        page.route("**/api/autonomous-engineering/runs/701", mock_delete)
+        page.route("**/api/autonomous-engineering/cleanup", mock_cleanup)
+
+        response = page.goto(
+            base_url.rstrip("/") + "/autonomous-engineering",
+            wait_until="domcontentloaded",
+        )
+        assert response is not None and response.status == 200
+        page.wait_for_function(
+            "() => document.querySelector('#recent-runs button[data-run-action=logs]') !== null",
+            timeout=10000,
+        )
+        page.locator('#recent-runs button[data-run-action="logs"]').first.click()
+        page.wait_for_function(
+            "() => document.querySelector('.run-log-text')?.textContent.includes('ImportError')",
+            timeout=10000,
+        )
+        assert "Install dependencies" in page.locator(".run-failures").inner_text()
+        assert page.locator('#recent-runs button[data-run-action="delete"]').count() == 1
+
+        page.locator('#recent-runs button[data-run-action="delete"]').click()
+        page.wait_for_function(
+            "() => !document.querySelector('#recent-runs')?.textContent.includes('Failed engineering run')",
+            timeout=10000,
+        )
+        page.locator("#cleanup-agent-temp").click()
+        page.wait_for_function(
+            "() => document.querySelector('#cleanup-agent-status')?.textContent.includes('temporary data cleaned')",
+            timeout=10000,
+        )
+
+        assert ("logs", "GET") in requests
+        assert ("delete", "DELETE") in requests
+        assert ("cleanup", "POST") in requests
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
