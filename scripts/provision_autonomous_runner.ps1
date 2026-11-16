@@ -206,7 +206,7 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     }
 
     $administratorsGroup = $administratorsSid = [Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)
-    Get-LocalGroup -SID $administratorsSid
+    $administratorsGroup = Get-LocalGroup -SID $administratorsSid
     $runnerIsDirectAdministrator = @(
         Get-LocalGroupMember -Group $administratorsGroup.Name -ErrorAction Stop |
             Where-Object { $_.SID -and $_.SID.Value -eq (Get-AutonomousWindowsAccountSid -AccountName $service.StartName) }
@@ -259,7 +259,7 @@ if ($runnerIsLocal) {
 }
 $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
 $administratorsGroup = $administratorsSid = [Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)
-    Get-LocalGroup -SID $administratorsSid
+    $administratorsGroup = Get-LocalGroup -SID $administratorsSid
 $runnerIsAdministrator = @(
     Get-LocalGroupMember -Group $administratorsGroup.Name -ErrorAction Stop |
         Where-Object { $_.SID -and $_.SID.Value -eq $runnerSid }
