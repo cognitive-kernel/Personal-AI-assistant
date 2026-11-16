@@ -1542,3 +1542,24 @@ def test_storage_access_status_reports_directory_write_failure(tmp_path, monkeyp
     assert result["state_directory"] == str(tmp_path)
 
 
+
+
+def test_dashboard_reports_the_actual_windows_application_process_identity(monkeypatch):
+    monkeypatch.setattr(agent.os, "name", "nt")
+    monkeypatch.setattr(
+        agent.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args[0],
+            0,
+            '"MACHINE\\app-user","S-1-5-21-100-200-300-1001"',
+            "",
+        ),
+    )
+
+    assert agent._application_windows_identity() == {
+        "name": "MACHINE\\app-user",
+        "sid": "S-1-5-21-100-200-300-1001",
+    }
+
+
