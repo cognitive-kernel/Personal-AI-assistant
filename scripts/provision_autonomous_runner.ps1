@@ -82,7 +82,7 @@ if ($RunnerName -notmatch "^[A-Za-z0-9_.-]{1,64}$") { throw "Invalid RunnerName.
 if ([string]::IsNullOrWhiteSpace($RunnerAccount)) {
     if ($existingRunnerConfiguration) {
         $discoveredService = Get-AutonomousRunnerService -RunnerRoot $RunnerRoot
-        $RunnerAccount = $discoveredService.StartName
+        $RunnerAccount = Resolve-AutonomousWindowsServiceAccountName -AccountName $discoveredService.StartName
         Write-Host "Discovered existing Runner service identity: $RunnerAccount"
     } else {
         $storedRunnerAccount = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ACCOUNT", "Machine")
@@ -275,7 +275,7 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
         throw "The existing Runner service identity is a local administrator. The provisioner will not change account or group membership; configure a dedicated non-administrator service identity."
     }
 
-    $runnerIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $service.StartName
+    $runnerIdentity = Resolve-AutonomousWindowsServiceAccountName -AccountName $service.StartName
     $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
     [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ACCOUNT", $runnerIdentity, "Machine")
     $installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
