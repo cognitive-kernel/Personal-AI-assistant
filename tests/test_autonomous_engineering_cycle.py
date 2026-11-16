@@ -882,7 +882,16 @@ def test_repository_execution_lock_rejects_a_second_process(monkeypatch: pytest.
     from scripts import autonomous_engineering_cycle as cycle
 
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path))
+    from scripts import autonomous_engineering_state_paths
+    monkeypatch.setattr(
+        autonomous_engineering_state_paths,
+        "_machine_configured_state_directory",
+        lambda: os.environ.get("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", ""),
+    )
     code = (
+        "import os; "
+        "from scripts import autonomous_engineering_state_paths as state_paths; "
+        "state_paths._machine_configured_state_directory = lambda: os.environ.get('AUTONOMOUS_ENGINEERING_PROGRESS_DIR', ''); "
         "from scripts.autonomous_engineering_cycle import repository_execution_lock; "
         "lock=repository_execution_lock('second-run','1'); lock.__enter__(); lock.__exit__(None,None,None)"
     )
