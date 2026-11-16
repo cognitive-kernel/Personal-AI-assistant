@@ -14,7 +14,7 @@ import threading
 from typing import Any
 
 import psutil
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
@@ -567,12 +567,12 @@ def _github_api_json(gh: str, path: str, *, timeout: int = 15) -> dict[str, Any]
     return value
 
 
-def _workflow_runs(gh: str, *, limit: int = 30) -> list[dict[str, Any]]:
-    if not 1 <= limit <= 100:
-        raise HTTPException(status_code=422, detail="تعداد اجراهای درخواستی باید بین ۱ تا ۱۰۰ باشد.")
+def _workflow_runs(gh: str) -> list[dict[str, Any]]:
+    # Keep the CLI/API command shape fixed. HTTP query parameters must never
+    # become command-line arguments through the GitHub CLI wrapper.
     data = _github_api_json(
         gh,
-        f"actions/workflows/{_WORKFLOW}/runs?per_page={limit}",
+        f"actions/workflows/{_WORKFLOW}/runs?per_page=100",
         timeout=20,
     )
     runs = data.get("workflow_runs")
@@ -592,19 +592,21 @@ def _workflow_runs(gh: str, *, limit: int = 30) -> list[dict[str, Any]]:
             "updated_at": item.get("updated_at"),
             "url": item.get("html_url") if isinstance(item.get("html_url"), str) else None,
             "head_branch": item.get("head_branch"),
+            "workflow_path": str(item.get("path") or "").split("@", 1)[0],
         })
     return normalized
 
 
 def _verified_workflow_run(gh: str, run_id: int) -> dict[str, Any]:
-    if isinstance(run_id, bool) or run_id <= 0:
+    if isinstance(run_id, bool) or not isinstance(run_id, int) or run_id <= 0:
         raise HTTPException(status_code=422, detail="شناسهٔ اجرای GitHub معتبر نیست.")
-    run = _github_api_json(gh, f"actions/runs/{run_id}", timeout=12)
     expected_path = f".github/workflows/{_WORKFLOW}"
-    actual_path = str(run.get("path") or "").split("@", 1)[0]
-    if run.get("id") != run_id or actual_path != expected_path:
-        raise HTTPException(status_code=404, detail="اجرای درخواستی متعلق به عامل مهندسی خودکار نیست.")
-    return run
+    # Resolve the user-selected ID against the server-fetched, workflow-scoped
+    # run list. Only the canonical ID returned by GitHub is used by CLI calls.
+    for run in _workflow_runs(gh):
+        if run.get("id") == run_id and run.get("workflow_path") == expected_path:
+            return run
+    raise HTTPException(status_code=404, detail="اجرای درخواستی متعلق به عامل مهندسی خودکار نیست.")
 
 
 def _sanitize_workflow_log(value: str) -> str:
@@ -630,16 +632,17 @@ def _sanitize_workflow_log(value: str) -> str:
 
 
 @router.get("/runs")
-def autonomous_engineering_runs(limit: int = Query(default=30, ge=1, le=100)) -> dict[str, Any]:
+def autonomous_engineering_runs() -> dict[str, Any]:
     gh = _authenticated_gh()
-    return {"runs": _workflow_runs(gh, limit=limit), "repository": _repository(), "workflow": _WORKFLOW}
+    return {"runs": _workflow_runs(gh), "repository": _repository(), "workflow": _WORKFLOW}
 
 
 @router.get("/runs/{run_id}/logs")
 def autonomous_engineering_run_logs(run_id: int) -> dict[str, Any]:
     gh = _authenticated_gh()
     run = _verified_workflow_run(gh, run_id)
-    jobs_data = _github_api_json(gh, f"actions/runs/{run_id}/jobs?per_page=100", timeout=20)
+    trusted_run_id = run["id"]
+    jobs_data = _github_api_json(gh, f"actions/runs/{trusted_run_id}/jobs?per_page=100", timeout=20)
     jobs = jobs_data.get("jobs")
     if not isinstance(jobs, list):
         jobs = []
@@ -661,7 +664,7 @@ def autonomous_engineering_run_logs(run_id: int) -> dict[str, Any]:
                 "failed_steps": failed_steps,
             })
     logs_result = _run(
-        [gh, "run", "view", str(run_id), "--log", "--repo", _repository()],
+        [gh, "run", "view", str(trusted_run_id), "--log", "--repo", _repository()],
         timeout=45,
     )
     raw_log = ""
@@ -675,7 +678,7 @@ def autonomous_engineering_run_logs(run_id: int) -> dict[str, Any]:
         raw_log = "GitHub گزارشی برای این اجرا برنگرداند؛ جزئیات مرحله‌های ناموفق در بالا آمده است."
     return {
         "run": {
-            "id": run_id,
+            "id": trusted_run_id,
             "status": run.get("status"),
             "conclusion": run.get("conclusion"),
             "url": run.get("html_url"),
@@ -690,22 +693,23 @@ def autonomous_engineering_run_logs(run_id: int) -> dict[str, Any]:
 def delete_autonomous_engineering_run(run_id: int) -> dict[str, Any]:
     gh = _authenticated_gh()
     run = _verified_workflow_run(gh, run_id)
+    trusted_run_id = run["id"]
     if run.get("status") != "completed":
         raise HTTPException(status_code=409, detail="فقط اجرای پایان‌یافته قابل حذف است؛ اجرای فعال حفظ شد.")
     result = _run(
-        [gh, "api", "--method", "DELETE", f"repos/{_repository()}/actions/runs/{run_id}"],
+        [gh, "api", "--method", "DELETE", f"repos/{_repository()}/actions/runs/{trusted_run_id}"],
         timeout=20,
     )
     if not result or result.returncode != 0:
         detail = (result.stderr or result.stdout or "")[-1000:] if result else ""
         raise HTTPException(status_code=502, detail="حذف اجرا توسط GitHub تأیید نشد. " + detail)
-    return {"deleted": True, "run_id": run_id, "message": "اجرای پایان‌یافته از تاریخچهٔ GitHub حذف شد."}
+    return {"deleted": True, "run_id": trusted_run_id, "message": "اجرای پایان‌یافته از تاریخچهٔ GitHub حذف شد."}
 
 
 @router.post("/cleanup")
 def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
     gh = _authenticated_gh()
-    runs = _workflow_runs(gh, limit=100)
+    runs = _workflow_runs(gh)
     if any(item.get("status") in _ACTIVE_RUN_STATES for item in runs):
         raise HTTPException(
             status_code=409,
