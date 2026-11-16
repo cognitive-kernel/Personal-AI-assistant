@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field, StrictInt, StrictStr
 from .task_routes import require_loopback_client
 from .autonomous_engineering_progress import get_progress, pending_work_status, storage_accessible
 from .ollama_context import maximum_context_tokens, supports_tool_calling
+from .autonomous_engineering_state import durable_state_lock, execution_state_directory
 
 _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
 _STATUS_PROBE_CONTEXT = threading.local()
@@ -519,3 +520,229 @@ def cancel_autonomous_engineering() -> dict[str, Any]:
     if not cancelled or cancelled.returncode != 0:
         raise HTTPException(status_code=502, detail="لغو اجرا توسط GitHub تأیید نشد.")
     return {"accepted": True, "run_id": active["databaseId"], "message": "درخواست لغو به GitHub ارسال شد."}
+
+# Operational administration -------------------------------------------------
+_ACTIVE_RUN_STATES = {"queued", "in_progress", "waiting", "requested", "pending"}
+_PROGRESS_CLEANUP_FILES = (
+    "events.jsonl",
+    "current.json",
+    "events.jsonl.tmp",
+    "current.json.tmp",
+    "history.jsonl.tmp",
+    "scorecard-state.json.tmp",
+    "scorecard-baseline.json.tmp",
+)
+_MAX_DASHBOARD_LOG_CHARS = 120_000
+
+
+def _authenticated_gh() -> str:
+    gh = shutil.which("gh")
+    if not gh:
+        raise HTTPException(status_code=503, detail="GitHub CLI نصب نشده است.")
+    auth = _run([gh, "auth", "status", "--hostname", "github.com"], timeout=8)
+    if not auth or auth.returncode != 0:
+        raise HTTPException(status_code=503, detail="GitHub CLI احراز هویت نشده است.")
+    return gh
+
+
+def _github_api_json(gh: str, path: str, *, timeout: int = 15) -> dict[str, Any]:
+    result = _run([gh, "api", f"repos/{_repository()}/{path}"], timeout=timeout)
+    if not result or result.returncode != 0:
+        raise HTTPException(status_code=502, detail="دریافت اطلاعات اجرا از GitHub ناموفق بود.")
+    try:
+        value = json.loads(result.stdout)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail="پاسخ GitHub برای اطلاعات اجرا معتبر نیست.") from exc
+    if not isinstance(value, dict):
+        raise HTTPException(status_code=502, detail="ساختار پاسخ GitHub برای اطلاعات اجرا معتبر نیست.")
+    return value
+
+
+def _workflow_runs(gh: str, *, limit: int = 30) -> list[dict[str, Any]]:
+    if not 1 <= limit <= 100:
+        raise HTTPException(status_code=422, detail="تعداد اجراهای درخواستی باید بین ۱ تا ۱۰۰ باشد.")
+    data = _github_api_json(
+        gh,
+        f"actions/workflows/{_WORKFLOW}/runs?per_page={limit}",
+        timeout=20,
+    )
+    runs = data.get("workflow_runs")
+    if not isinstance(runs, list):
+        raise HTTPException(status_code=502, detail="فهرست اجراهای Workflow در پاسخ GitHub وجود ندارد.")
+    normalized: list[dict[str, Any]] = []
+    for item in runs:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), int):
+            continue
+        normalized.append({
+            "id": item["id"],
+            "status": str(item.get("status") or "unknown"),
+            "conclusion": item.get("conclusion"),
+            "name": str(item.get("name") or "Autonomous local Ollama engineering"),
+            "display_title": str(item.get("display_title") or item.get("displayTitle") or ""),
+            "created_at": item.get("created_at"),
+            "updated_at": item.get("updated_at"),
+            "url": item.get("html_url") if isinstance(item.get("html_url"), str) else None,
+            "head_branch": item.get("head_branch"),
+        })
+    return normalized
+
+
+def _verified_workflow_run(gh: str, run_id: int) -> dict[str, Any]:
+    if isinstance(run_id, bool) or run_id <= 0:
+        raise HTTPException(status_code=422, detail="شناسهٔ اجرای GitHub معتبر نیست.")
+    run = _github_api_json(gh, f"actions/runs/{run_id}", timeout=12)
+    expected_path = f".github/workflows/{_WORKFLOW}"
+    actual_path = str(run.get("path") or "").split("@", 1)[0]
+    if run.get("id") != run_id or actual_path != expected_path:
+        raise HTTPException(status_code=404, detail="اجرای درخواستی متعلق به عامل مهندسی خودکار نیست.")
+    return run
+
+
+def _sanitize_workflow_log(value: str) -> str:
+    value = re.sub(r"\x1b\\[[0-?]*[ -/]*[@-~]", "", value)
+    value = re.sub(
+        r"(?i)(authorization\\s*:\\s*bearer\\s+)\\S+",
+        r"\\1[REDACTED]",
+        value,
+    )
+    value = re.sub(
+        r"(?i)\\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\\b",
+        "[REDACTED]",
+        value,
+    )
+    value = re.sub(
+        r"(?i)\\b(password|passwd|secret|api[_-]?key|access[_-]?token)(\\s*[=:]\\s*)([^\\s\"']+)",
+        r"\\1\\2[REDACTED]",
+        value,
+    )
+    if len(value) > _MAX_DASHBOARD_LOG_CHARS:
+        value = "[ابتدای گزارش به‌دلیل محدودیت حجم حذف شده است.]\\n" + value[-_MAX_DASHBOARD_LOG_CHARS:]
+    return value
+
+
+@router.get("/runs")
+def autonomous_engineering_runs(limit: int = 30) -> dict[str, Any]:
+    gh = _authenticated_gh()
+    return {"runs": _workflow_runs(gh, limit=limit), "repository": _repository(), "workflow": _WORKFLOW}
+
+
+@router.get("/runs/{run_id}/logs")
+def autonomous_engineering_run_logs(run_id: int) -> dict[str, Any]:
+    gh = _authenticated_gh()
+    run = _verified_workflow_run(gh, run_id)
+    jobs_data = _github_api_json(gh, f"actions/runs/{run_id}/jobs?per_page=100", timeout=20)
+    jobs = jobs_data.get("jobs")
+    if not isinstance(jobs, list):
+        jobs = []
+    failures = []
+    for job in jobs:
+        if not isinstance(job, dict):
+            continue
+        steps = job.get("steps") if isinstance(job.get("steps"), list) else []
+        failed_steps = [
+            {"name": str(step.get("name") or ""), "conclusion": str(step.get("conclusion") or "")}
+            for step in steps
+            if isinstance(step, dict) and step.get("conclusion") in {"failure", "timed_out", "cancelled", "action_required"}
+        ]
+        if job.get("conclusion") not in {"success", "skipped", "neutral"} or failed_steps:
+            failures.append({
+                "name": str(job.get("name") or "Job"),
+                "status": str(job.get("status") or "unknown"),
+                "conclusion": job.get("conclusion"),
+                "failed_steps": failed_steps,
+            })
+    logs_result = _run(
+        [gh, "run", "view", str(run_id), "--log", "--repo", _repository()],
+        timeout=45,
+    )
+    raw_log = ""
+    if logs_result and logs_result.returncode == 0:
+        raw_log = logs_result.stdout or ""
+    elif logs_result:
+        raw_log = logs_result.stdout or logs_result.stderr or ""
+    if not raw_log and run.get("status") != "completed":
+        raw_log = "گزارش کامل تا پایان اجرای Workflow در دسترس نیست."
+    elif not raw_log and run.get("status") == "completed":
+        raw_log = "GitHub گزارشی برای این اجرا برنگرداند؛ جزئیات مرحله‌های ناموفق در بالا آمده است."
+    return {
+        "run": {
+            "id": run_id,
+            "status": run.get("status"),
+            "conclusion": run.get("conclusion"),
+            "url": run.get("html_url"),
+        },
+        "failures": failures,
+        "logs": _sanitize_workflow_log(raw_log),
+        "truncated": len(raw_log) > _MAX_DASHBOARD_LOG_CHARS,
+    }
+
+
+@router.delete("/runs/{run_id}")
+def delete_autonomous_engineering_run(run_id: int) -> dict[str, Any]:
+    gh = _authenticated_gh()
+    run = _verified_workflow_run(gh, run_id)
+    if run.get("status") != "completed":
+        raise HTTPException(status_code=409, detail="فقط اجرای پایان‌یافته قابل حذف است؛ اجرای فعال حفظ شد.")
+    result = _run(
+        [gh, "api", "--method", "DELETE", f"repos/{_repository()}/actions/runs/{run_id}"],
+        timeout=20,
+    )
+    if not result or result.returncode != 0:
+        detail = (result.stderr or result.stdout or "")[-1000:] if result else ""
+        raise HTTPException(status_code=502, detail="حذف اجرا توسط GitHub تأیید نشد. " + detail)
+    return {"deleted": True, "run_id": run_id, "message": "اجرای پایان‌یافته از تاریخچهٔ GitHub حذف شد."}
+
+
+@router.post("/cleanup")
+def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
+    gh = _authenticated_gh()
+    runs = _workflow_runs(gh, limit=100)
+    if any(item.get("status") in _ACTIVE_RUN_STATES for item in runs):
+        raise HTTPException(
+            status_code=409,
+            detail="عامل هنوز اجرای فعال یا در صف دارد؛ پاک‌سازی داده‌های موقت تا پایان اجرا مجاز نیست.",
+        )
+    directory = execution_state_directory()
+    if not directory.is_dir():
+        return {"cleaned": True, "files_removed": 0, "bytes_removed": 0}
+    marker_names = (
+        "pending-manual-task.txt",
+        "pending-manual-task-owner.json",
+        "pending-autonomous-pr.json",
+        "pending-state-cleanup.json",
+    )
+    try:
+        with durable_state_lock(directory, timeout_seconds=2):
+            blockers = [name for name in marker_names if (directory / name).exists()]
+            if blockers:
+                raise HTTPException(
+                    status_code=409,
+                    detail="وضعیت پایدار عامل هنوز تعیین‌تکلیف نشده است؛ پاک‌سازی انجام نشد: " + ", ".join(blockers),
+                )
+            removed = 0
+            removed_bytes = 0
+            for name in _PROGRESS_CLEANUP_FILES:
+                path = directory / name
+                try:
+                    if not path.is_file() or path.is_symlink():
+                        continue
+                    size = path.stat().st_size
+                    path.unlink()
+                    removed += 1
+                    removed_bytes += size
+                except FileNotFoundError:
+                    continue
+    except HTTPException:
+        raise
+    except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"پاک‌سازی امن فضای موقت ممکن نشد؛ هیچ checkpoint یا وضعیت پایداری حذف نشد ({type(exc).__name__}).",
+        ) from exc
+    return {
+        "cleaned": True,
+        "files_removed": removed,
+        "bytes_removed": removed_bytes,
+        "preserved": ["history.jsonl", "scorecard-baseline.json", "checkpoint files", "pending task/PR markers"],
+        "message": "داده‌های موقت پیشرفت پاک شدند؛ تاریخچه و وضعیت پایدار عامل حفظ شدند.",
+    }
