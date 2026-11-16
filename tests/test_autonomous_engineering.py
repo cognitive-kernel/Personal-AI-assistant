@@ -139,7 +139,7 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="pause-agent"' in page
     assert 'id="resume-agent"' in page
     assert "OPENAI_API_KEY" not in page
-    assert "حساب Windows اختصاصی و غیرمدیر" in agent_page
+    assert "حساب سرویس محلی یکتا و غیرمدیر" in agent_page
     assert "checks.github_runs_available" in agent_script
     assert 'id="interval-hours"' in page
     assert 'id="execution-mode"' in page
