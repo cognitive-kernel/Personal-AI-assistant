@@ -121,6 +121,14 @@
   }
   let statusRefreshPromise = null;
   let dispatchPendingUntil = 0;
+  let dispatchSubmitting = false;
+  let lastCanDispatch = false;
+  let lastActiveRun = false;
+  function syncDispatchControls() {
+    const locked = dispatchSubmitting || Date.now() < dispatchPendingUntil;
+    dispatchButton.disabled = !lastCanDispatch || lastActiveRun || locked;
+    taskButton.disabled = !lastCanDispatch || lastActiveRun || locked;
+  }
   function refresh(force = false) {
     if (statusRefreshPromise) {
       if (!force) return statusRefreshPromise;
@@ -209,8 +217,9 @@
         ["queued", "in_progress", "waiting", "requested", "pending"].includes(run.status));
       if (active) dispatchPendingUntil = 0;
       const awaitingDispatchVisibility = Date.now() < dispatchPendingUntil;
-      dispatchButton.disabled = !canDispatch || active || awaitingDispatchVisibility;
-      taskButton.disabled = !canDispatch || active || awaitingDispatchVisibility;
+      lastCanDispatch = canDispatch;
+      lastActiveRun = active;
+      syncDispatchControls();
       cancelButton.disabled = !active;
       pauseButton.disabled = Boolean(data.paused);
       resumeButton.disabled = !data.paused;
@@ -255,10 +264,9 @@
       settingsSaving = false;
     }
   });
-  let taskSubmitting = false;
   taskForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (taskSubmitting) return;
+    if (dispatchSubmitting) return;
     const task = $("manual-task").value.trim();
     if (!task) {
       setMessage("ابتدا متن وظیفه را وارد کنید.", "error");
@@ -268,7 +276,7 @@
       setMessage("متن وظیفه نامعتبر یا طولانی است.", "error");
       return;
     }
-    taskSubmitting = true;
+    dispatchSubmitting = true;
     taskButton.disabled = true;
     dispatchButton.disabled = true;
     setMessage("در حال ارسال وظیفه به عامل محلی و درخواست شروع چرخه…");
@@ -286,11 +294,15 @@
       await refresh(true);
       setMessage(detail, "error");
     } finally {
-      taskSubmitting = false;
+      dispatchSubmitting = false;
+      syncDispatchControls();
     }
   });
   dispatchButton.addEventListener("click", async () => {
+    if (dispatchSubmitting) return;
+    dispatchSubmitting = true;
     dispatchButton.disabled = true;
+    taskButton.disabled = true;
     setMessage("در حال ارسال درخواست اجرای Workflow به GitHub…");
     try {
       const result = await request("dispatch", {method: "POST"});
@@ -300,6 +312,8 @@
       setMessage(error.message || "ارسال درخواست ناموفق بود.", "error");
     } finally {
       await refresh(true);
+      dispatchSubmitting = false;
+      syncDispatchControls();
     }
   });
   pauseButton.addEventListener("click", async () => {
