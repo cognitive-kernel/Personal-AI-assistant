@@ -155,7 +155,7 @@
   }
   async function refreshRuns() {
     try {
-      const data = await request("runs?limit=30");
+      const data = await request("runs");
       renderRuns(data.runs);
     } catch (error) {
       const host = $("recent-runs");
