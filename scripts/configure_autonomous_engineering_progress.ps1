@@ -42,6 +42,15 @@ $localSystemSid = [Security.Principal.SecurityIdentifier]::new([Security.Princip
 if ($runnerSid -eq $localSystemSid) {
     throw "The Runner service cannot run as LocalSystem; use a dedicated non-administrator identity."
 }
+$administratorsSid = [Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)
+$administratorsGroup = Get-LocalGroup -SID $administratorsSid -ErrorAction Stop
+$runnerIsDirectAdministrator = @(
+    Get-LocalGroupMember -Group $administratorsGroup.Name -ErrorAction Stop |
+        Where-Object { $_.SID.Value -eq $runnerSid }
+).Count -gt 0
+if ($runnerIsDirectAdministrator) {
+    throw "Runner account is a direct member of the local Administrators group; use a least-privilege identity."
+}
 if (-not [string]::IsNullOrWhiteSpace($RunnerAccount)) {
     $requestedRunnerSid = Get-AutonomousWindowsAccountSid -AccountName (
         Resolve-AutonomousWindowsServiceAccountName -AccountName $RunnerAccount.Trim()
