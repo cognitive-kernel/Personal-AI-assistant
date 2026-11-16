@@ -29,52 +29,42 @@ The autonomous-engineering status API preserves the installed-model inventory fr
 
 ## One-time Windows setup
 
-1. Install Ollama for Windows and keep its server available at `http://127.0.0.1:11434`. The standard Windows installer is per-user by default; the autonomous Runner does not need the Ollama CLI in its own PATH and uses the loopback API. If the server normally runs only in an interactive tray session, configure a persistent service/startup method before relying on unattended runs.
-2. Install the model you intend to use before selecting it in the dashboard:
-
-   ```powershell
-   ollama pull <selected-model>
-   ```
-
-   The workflow reads the selected model's architecture-specific maximum context, installed weight size, KV-cache dimensions, and currently available physical RAM. `app/ollama_context.py` selects the exact minimum of the requested context, model maximum, and safe hardware capacity; it has no fixed token floor or application-level token ceiling. Its memory budget reserves a percentage of currently available RAM and accounts for model weights plus a proportional runtime overhead; KV cache is budgeted at a conservative FP32 upper bound. When the selected base model or one of its generated context variants is already loaded, the preflight also reads `/api/ps` and accounts for its measured resident context instead of subtracting the model weights twice. Missing/invalid model metadata, missing RAM telemetry, or insufficient headroom stops the workflow rather than guessing a context. The selected value is persisted in `AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH`. The workflow creates a persistent model variant named `<selected-model>-codex-ctx<selected-context>` through Ollama `/api/create` with `num_ctx`, verifies the saved value through `/api/show`, loads it without a request-level `options.num_ctx` override, and verifies actual allocation through `/api/ps`. Codex receives that exact variant and context value in its model catalog. The original selected model is not modified, no Ollama server restart or administrator credential is required, and the workflow repeats runtime allocation verification after Codex execution. The variant shares the base model weights; it is a separate model configuration, not a second model download. The RAM estimate is a preflight estimate; successful load, `/api/ps`, and a real tool-call smoke test are runtime acceptance evidence. See the [official context-length guide](https://docs.ollama.com/context-length), [Modelfile reference](https://docs.ollama.com/modelfile), and [API reference](https://github.com/ollama/ollama/blob/main/docs/api.md). A larger context increases memory use; measure stability on the target host.
-
-
-3. Install Node.js LTS system-wide so the executable is available to the Windows Runner service.
-4. Install GitHub CLI and authorize it once with the **same GitHub account already signed in to Chrome**. Use `gh auth login --web`; GitHub opens its browser authorization flow and the existing Chrome session can be used. This does not create another GitHub account or require a paid service. The authorization is stored locally for the application account and is reused by the dashboard; do not authenticate GitHub CLI as the Runner service account:
+1. Install Python 3.11 or newer, Node.js LTS, Git, and GitHub CLI. Node.js and npm must be available to Windows services through the system PATH.
+2. Authorize GitHub CLI under the Windows identity that runs the local application. Reuse the existing browser session:
 
    ```powershell
    gh auth login --web
    gh auth status
    ```
 
-5. From an elevated PowerShell window in the repository checkout, provision the Runner and shared progress ACLs in one operation:
+   Do not authenticate GitHub CLI as the Runner service account; the trusted local controller uses the application account's authorization.
+3. From an elevated PowerShell window at the repository root, provision the Runner and shared durable state:
 
    ```powershell
-   powershell -ExecutionPolicy Bypass -File .\\scripts\\provision_autonomous_runner.ps1 `
-     -Repository "cognitive-kernel/Personal-AI-assistant" `
-     -RunnerAccount "<runner-account>"
+   powershell -ExecutionPolicy Bypass -File .\scripts\provision_autonomous_runner.ps1 -Repository "cognitive-kernel/Personal-AI-assistant"
    ```
 
-   Pass the Runner service identity for this host: an unqualified name or `COMPUTER\\name`/`.\\name` for a local account, `DOMAIN\\name` for a domain account, or a UPN. A missing local Runner account is created as a standard user; externally managed identities must already exist and be permitted to log on as a service. If `-AppAccount` is omitted, the installer dynamically resolves its current elevated Windows identity as the application identity; specify `-AppAccount` only when the app actually runs under a different identity. Both identities are resolved to their current host SIDs at provisioning time; no username or SID is embedded in project code. The Runner and application identity receive Modify on shared state because both must open the durable lock file for read/write and perform their respective state operations. The Runner receives Modify on its own root. The installer does not grant shared-state access to a fixed local group. The local Administrators role is checked only to reject an elevated Runner identity, not used as a data ACL grant. The script verifies the selected Ollama model, obtains a short-lived registration token through the authenticated GitHub CLI, downloads the official latest Windows x64 Runner, verifies GitHub’s published SHA-256 digest, configures the Runner service, and assigns the unique `autonomous-state-owner` label. If the Runner is already configured, rerunning the script preserves its registration and service identity while adding/verifying that label; the workflow schedules only onto the uniquely labelled state owner. The official Runner configuration tool prompts for the service-account password; the password is not passed as a process argument. The registration token is not written to a file or printed. If using a custom shared state root, set `AUTONOMOUS_ENGINEERING_PROGRESS_DIR` as a machine-level environment variable to an absolute path before provisioning; a process-only or per-user override is rejected to prevent the app and service from resolving different state stores.
+   The installer detects the application identity from its own Windows process token. If a Runner is already installed under the configured Runner root, it discovers the actual Windows service identity and preserves the existing registration. On a first installation, it creates a unique random local standard-user account for the Runner; no fixed username or group is required. An externally managed service identity may still be supplied through the optional `-RunnerAccount` parameter, and `-AppAccount` is an optional override only when the application truly runs under another identity.
 
-   The script requires an elevated shell and repository **Administration: write** permission. It refuses to overwrite an existing configured Runner or a non-empty unconfigured Runner directory. If a Runner is already configured, it verifies the service identity and starts it without re-registering.
+   The state root is resolved from the machine-level `AUTONOMOUS_ENGINEERING_PROGRESS_DIR` setting or the system `ProgramData` location. The Runner root is likewise configurable and recorded in machine scope. No user-profile path, username, group, or SID is embedded in the application. Both actual application and Runner service SIDs receive additive Modify ACEs on the shared state directory and durable lock. Existing explicit and inherited ACL entries are preserved; provisioning does not disable inheritance, remove other principals, or rewrite existing grants. A Runner account already in the local Administrators role is rejected without changing its group membership.
 
-6. In **Settings → Actions → General → Workflow permissions**, allow GitHub Actions to create and approve pull requests if the repository requires it. The autonomous job requests only `contents: write`, `pull-requests: write`, and `actions: write` for the trusted controller. The controller never calls GitHub's PR merge API. It leaves the validated PR open for owner review; the owner performs the merge manually. Do not disable branch protection or grant a bypass.
-7. From the application account and the application checkout, run the app-side readiness check:
+   Infrastructure provisioning does not require Ollama to be installed or running and does not require a model to be selected. Model validation is an explicit optional operation using `-VerifyModel` (and, if needed, `-Model`). The script obtains a short-lived Runner registration token through the authenticated GitHub CLI, downloads the official Windows x64 Runner, verifies GitHub's published SHA-256 digest, configures the service, and verifies the unique `autonomous-state-owner` label. The token is not written to disk or printed.
+4. Verify shared storage separately from Ollama and Codex. Run this from the application account and again from the Runner service account:
 
    ```powershell
-   powershell -ExecutionPolicy Bypass -File .\\scripts\\check_autonomous_agent.ps1
+   powershell -ExecutionPolicy Bypass -File .\scripts\check_autonomous_storage.ps1
    ```
 
-   This checks the local Ollama endpoint/model, application-account GitHub CLI authentication, Runner.Listener visibility, and actual write plus durable-lock access to the configured shared state directory. Pass the exact saved model via `-SelectedModel <saved-model>`. It intentionally does not require Codex CLI to be installed in the application account.
-8. From the Runner service account, run the Runner-side check from its checked-out workspace:
+   The check prints the current identity and SID, resolved shared directory, lock-file path, and verifies both a real write/delete probe and acquisition of the same durable byte-range lock used by Python and PowerShell. If the Runner identity or root changes, rerun the provisioner or run `configure_autonomous_engineering_progress.ps1` from an elevated shell; that script discovers the actual Runner Windows service identity automatically.
+5. Install Ollama, pull a model, then select and save it in the dashboard:
 
    ```powershell
-   powershell -ExecutionPolicy Bypass -File .\\scripts\\check_autonomous_runner.ps1
+   ollama pull <selected-model>
    ```
 
-   This checks that the Runner account is non-administrator, plus Codex CLI, the Ollama loopback API and selected model, Runner.Listener, and write access to shared progress storage. Ollama CLI installation and PATH visibility are not Runner prerequisites. Pass the exact saved model via `-SelectedModel <saved-model>`. It does not require or use GitHub CLI authentication. The workflow repeats the critical Runner checks before every Codex session.
-9. Start the local app and open `http://127.0.0.1:8000/autonomous-engineering`. When application-side readiness passes, use **شروع صف پیوسته** or start the workflow from GitHub Actions. The workflow performs its own Runner-side checks and fails closed if the Runner account is not configured correctly.
+   The workflow verifies the selected model's architecture-specific maximum context, installed weight size, KV-cache dimensions, and currently available physical RAM. `app/ollama_context.py` selects the exact minimum of the requested context, model maximum, and safe hardware capacity; it has no fixed token floor or application-level token ceiling. Missing or invalid model metadata, missing RAM telemetry, or insufficient headroom stops the workflow rather than guessing a context. Tool support is accepted from Ollama model-capabilities metadata or a real local tool-call probe. The original selected model is not modified; the workflow creates and verifies a separate context variant only when a real run starts.
+6. In **Settings → Actions → General → Workflow permissions**, allow GitHub Actions to create pull requests if the repository requires it. The trusted controller uses only the required contents, pull-request, and Actions permissions. It never merges PRs automatically; the owner performs the merge manually.
+7. Start the local app and open `http://127.0.0.1:8000/autonomous-engineering`. The dashboard displays the resolved state path and whether directory writes and the durable lock are usable, including the reported error when storage is unavailable. Ollama/model readiness remains a separate status; the UI and storage diagnostics remain accessible before model configuration.
 
 ## Workflow behavior
 
