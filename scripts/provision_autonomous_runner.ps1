@@ -53,6 +53,10 @@ if (-not $existingRunnerConfiguration -and (Test-Path -LiteralPath $provisioning
     if ($provisioningMarker.schema_version -ne 1 -or $provisioningMarker.repository -ne $Repository) {
         throw "The existing Runner provisioning marker belongs to another configuration; refusing to reuse it."
     }
+    $storedRunnerAccount = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ACCOUNT", "Machine")
+    if (-not [string]::IsNullOrWhiteSpace($storedRunnerAccount) -and $storedRunnerAccount -ne [string]$provisioningMarker.runner_account) {
+        throw "The machine-configured Runner identity differs from the saved first-install identity."
+    }
     if (-not [string]::IsNullOrWhiteSpace($RunnerAccount) -and $RunnerAccount.Trim() -ne [string]$provisioningMarker.runner_account) {
         throw "The supplied RunnerAccount differs from the saved first-install identity."
     }
