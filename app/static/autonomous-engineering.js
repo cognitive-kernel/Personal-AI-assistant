@@ -94,7 +94,8 @@
   }
   async function request(path, options) {
     const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 40000);
+    const timeoutMs = path === "status" ? 40000 : path.startsWith("progress") ? 20000 : 120000;
+    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch("/api/autonomous-engineering/" + path, {
         ...(options || {}),
@@ -111,7 +112,7 @@
       return payload;
     } catch (error) {
       if (error && error.name === "AbortError") {
-        throw new Error("پاسخ سرویس در مهلت ۴۰ ثانیه دریافت نشد؛ وضعیت سرور و لاگ‌ها را بررسی کنید.");
+        throw new Error("پاسخ سرویس در مهلت " + (timeoutMs / 1000) + " ثانیه دریافت نشد؛ وضعیت سرور و لاگ‌ها را بررسی کنید.");
       }
       throw error;
     } finally {
