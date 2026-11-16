@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory=$true)][ValidatePattern("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")][string]$Repository,
     [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$RunnerAccount,
-    [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$AppAccount,
+    [Parameter()][ValidateNotNullOrEmpty()][string]$AppAccount,
     [string]$RunnerName = "$env:COMPUTERNAME-ollama",
     [string]$RunnerRoot = (Join-Path $env:ProgramData "GitHubActionsRunner"),
     [string]$Model = ""
@@ -13,8 +13,8 @@ $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw "Run from elevated PowerShell." }
 $RunnerAccount = $RunnerAccount.Trim()
-$AppAccount = $AppAccount.Trim()
-if ([string]::IsNullOrWhiteSpace($RunnerAccount) -or [string]::IsNullOrWhiteSpace($AppAccount)) { throw "RunnerAccount and AppAccount must be non-empty Windows account identities." }
+$AppAccount = if ([string]::IsNullOrWhiteSpace($AppAccount)) { $identity.Name } else { $AppAccount.Trim() }
+if ([string]::IsNullOrWhiteSpace($RunnerAccount) -or [string]::IsNullOrWhiteSpace($AppAccount)) { throw "RunnerAccount and the resolved application identity must be non-empty Windows account identities." }
 if ($RunnerName -notmatch "^[A-Za-z0-9_.-]{1,64}$") { throw "Invalid RunnerName." }
 if ([string]::IsNullOrWhiteSpace($env:ProgramData) -or -not [System.IO.Path]::IsPathRooted($env:ProgramData)) { throw "PROGRAMDATA must resolve to an absolute shared path." }
 if (-not [System.IO.Path]::IsPathRooted($RunnerRoot)) { throw "RunnerRoot must be an absolute path." }
@@ -45,7 +45,9 @@ $statePathBoundary = $progressPath.TrimEnd([char[]]@([System.IO.Path]::Directory
 if ($RunnerRoot.Equals($progressPath, [StringComparison]::OrdinalIgnoreCase) -or $progressPath.StartsWith($runnerRootBoundary, [StringComparison]::OrdinalIgnoreCase) -or $RunnerRoot.StartsWith($statePathBoundary, [StringComparison]::OrdinalIgnoreCase)) {
     throw "RunnerRoot and shared autonomous state directory must be separate, non-nested paths."
 }
-$appSid = Get-AutonomousWindowsAccountSid -AccountName $appIdentity
+$appSid = if ($AppAccount -eq $identity.Name) { $identity.User.Value } else { Get-AutonomousWindowsAccountSid -AccountName $appIdentity }
+$runnerSidForComparison = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
+if ($appSid -eq $runnerSidForComparison) { throw "The application and Runner must resolve to different Windows identities." }
 $node = Get-Command node -ErrorAction Stop
 $npm = Get-Command npm -ErrorAction Stop
 $git = Get-Command git -ErrorAction Stop
