@@ -64,6 +64,7 @@ if ($runnerSid -eq $appSid) {
     throw "The application and Runner resolve to the same Windows identity; configure separate identities."
 }
 [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ROOT", $resolvedRunnerRoot, "Machine")
+[Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ACCOUNT", $runnerIdentity, "Machine")
 
 $machineStateDirectory = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")
 $processStateDirectory = $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR
