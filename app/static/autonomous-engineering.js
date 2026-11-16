@@ -183,7 +183,8 @@
       labels.runner.textContent = stateText(checks.runner_running);
       const runnerIdentity = data.runner_identity || {};
       const runnerIdentityText = runnerIdentity.name
-        ? " حساب سرویس پیکربندی‌شده: " + String(runnerIdentity.name) + "."
+        ? " حساب سرویس پیکربندی‌شده: " + String(runnerIdentity.name) +
+          (runnerIdentity.sid ? " (" + String(runnerIdentity.sid) + ")" : "") + "."
         : " حساب سرویس Runner هنوز در پیکربندی ماشین ثبت نشده است.";
       $("runner-detail").textContent = (checks.runner_running
         ? "فرایند Runner.Listener فعال است."
