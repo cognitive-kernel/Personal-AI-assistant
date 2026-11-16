@@ -1545,7 +1545,7 @@ def test_storage_access_status_reports_directory_write_failure(tmp_path, monkeyp
 
 
 def test_dashboard_reports_the_actual_windows_application_process_identity(monkeypatch):
-    monkeypatch.setattr(agent.os, "name", "nt")
+    monkeypatch.setattr(agent.platform, "system", lambda: "Windows")
     monkeypatch.setattr(
         agent.subprocess,
         "run",
