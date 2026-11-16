@@ -525,6 +525,9 @@ def test_workspace_tests_run_only_in_pinned_no_network_container(tmp_path, monke
     assert "--cpus=2" in args
     assert "--pids-limit=128" in args
     assert "--user=65534:65534" in args
+    assert "--env=GIT_CONFIG_COUNT=1" in args
+    assert "--env=GIT_CONFIG_KEY_0=safe.directory" in args
+    assert "--env=GIT_CONFIG_VALUE_0=/workspace" in args
     assert "type=bind,source=" + str(workspace.resolve()) + ",target=/workspace,readonly" in args
     assert args[-5] == image
     assert args[-4:-1] == ["python", "-I", "-c"]
