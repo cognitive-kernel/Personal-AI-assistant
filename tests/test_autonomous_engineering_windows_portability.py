@@ -156,6 +156,7 @@ def test_windows_provisioning_keeps_runner_least_privilege_as_a_role_invariant()
     assert "[Parameter()][ValidateNotNullOrEmpty()][string]$AppAccount" in script
     assert '$AppAccount = if ([string]::IsNullOrWhiteSpace($AppAccount)) { "" } else { $AppAccount.Trim() }' in script
     assert "Get-AutonomousApplicationIdentity" in script
+    assert "application identity could not be resolved from the installer process" not in script
     assert "$appSid = $applicationIdentity.Sid" in script
     assert "^[A-Za-z0-9_.-]+$" not in script
     assert "runnerLocalName.Length -gt 20" in script
