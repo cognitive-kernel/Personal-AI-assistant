@@ -83,20 +83,24 @@ def test_terminate_remaining_processes_waits_for_natural_descendant_exit(monkeyp
 def test_terminate_remaining_processes_kills_descendants_that_exceed_grace(monkeypatch):
     job = WindowsProcessJob()
     waits = []
-    terminated = []
+    drained = []
 
     def wait_for_empty(timeout_seconds):
         waits.append(timeout_seconds)
         return timeout_seconds == 5.0
 
     monkeypatch.setattr(job, "wait_for_empty", wait_for_empty)
-    monkeypatch.setattr(job, "terminate", lambda exit_code: terminated.append(exit_code))
+    monkeypatch.setattr(
+        job,
+        "_terminate_and_drain_job",
+        lambda exit_code, timeout_seconds: drained.append((exit_code, timeout_seconds)),
+    )
 
     assert job.terminate_remaining_processes(
         125, timeout_seconds=5.0, grace_seconds=2.0
     ) is True
-    assert waits == [2.0, 5.0]
-    assert terminated == [125]
+    assert waits == [2.0]
+    assert drained == [(125, 5.0)]
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows Job Object integration test.")
