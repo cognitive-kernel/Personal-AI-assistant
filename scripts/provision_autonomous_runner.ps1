@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][ValidatePattern("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")][string]$Repository,
-    [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$RunnerAccount,
+    [Parameter()][ValidateNotNullOrEmpty()][string]$RunnerAccount,
     [Parameter()][ValidateNotNullOrEmpty()][string]$AppAccount,
     [string]$RunnerName = "$env:COMPUTERNAME-ollama",
     [string]$RunnerRoot = (Join-Path $env:ProgramData "GitHubActionsRunner"),
@@ -12,9 +12,8 @@ Set-StrictMode -Version Latest
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw "Run from elevated PowerShell." }
-$RunnerAccount = $RunnerAccount.Trim()
 $AppAccount = if ([string]::IsNullOrWhiteSpace($AppAccount)) { $identity.Name } else { $AppAccount.Trim() }
-if ([string]::IsNullOrWhiteSpace($RunnerAccount) -or [string]::IsNullOrWhiteSpace($AppAccount)) { throw "RunnerAccount and the resolved application identity must be non-empty Windows account identities." }
+if ([string]::IsNullOrWhiteSpace($AppAccount)) { throw "The application identity could not be resolved from the installer process." }
 if ($RunnerName -notmatch "^[A-Za-z0-9_.-]{1,64}$") { throw "Invalid RunnerName." }
 if ([string]::IsNullOrWhiteSpace($env:ProgramData) -or -not [System.IO.Path]::IsPathRooted($env:ProgramData)) { throw "PROGRAMDATA must resolve to an absolute shared path." }
 if (-not [System.IO.Path]::IsPathRooted($RunnerRoot)) { throw "RunnerRoot must be an absolute path." }
@@ -22,6 +21,21 @@ $RunnerRoot = [System.IO.Path]::GetFullPath($RunnerRoot)
 Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsIdentity.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsPaths.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "AutonomousOllamaRuntime.psm1") -Force
+
+$existingRunnerConfiguration = Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")
+if ([string]::IsNullOrWhiteSpace($RunnerAccount)) {
+    if ($existingRunnerConfiguration) {
+        $discoveredService = Get-AutonomousRunnerService -RunnerRoot $RunnerRoot
+        $RunnerAccount = $discoveredService.StartName
+        Write-Host "Discovered existing Runner service identity: $RunnerAccount"
+    } else {
+        $generatedLocalName = "paa-runner-" + [guid]::NewGuid().ToString("N").Substring(0, 8)
+        $RunnerAccount = "$env:COMPUTERNAME\\$generatedLocalName"
+        Write-Host "Generated a unique non-administrator Runner service identity: $RunnerAccount"
+    }
+} else {
+    $RunnerAccount = $RunnerAccount.Trim()
+}
 $runnerIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $RunnerAccount
 $appIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $AppAccount
 $runnerLocalName = Get-AutonomousLocalAccountName -AccountName $runnerIdentity
@@ -40,6 +54,11 @@ if (-not [string]::IsNullOrWhiteSpace($processStateDirectory)) {
     }
 }
 $progressPath = Resolve-AutonomousStateDirectory -ConfiguredPath $machineStateDirectory -ProgramDataPath $env:ProgramData
+if ([string]::IsNullOrWhiteSpace($machineStateDirectory)) {
+    [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", $progressPath, "Machine")
+    $machineStateDirectory = $progressPath
+}
+[Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_RUNNER_ROOT", $RunnerRoot, "Machine")
 $runnerRootBoundary = $RunnerRoot.TrimEnd([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)) + [System.IO.Path]::DirectorySeparatorChar
 $statePathBoundary = $progressPath.TrimEnd([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)) + [System.IO.Path]::DirectorySeparatorChar
 if ($RunnerRoot.Equals($progressPath, [StringComparison]::OrdinalIgnoreCase) -or $progressPath.StartsWith($runnerRootBoundary, [StringComparison]::OrdinalIgnoreCase) -or $RunnerRoot.StartsWith($statePathBoundary, [StringComparison]::OrdinalIgnoreCase)) {
@@ -66,44 +85,47 @@ if ($LASTEXITCODE -ne 0) { throw "Authenticate gh as an account with repository 
 if ([string]::IsNullOrWhiteSpace($Model)) {
     $Model = (& $gh.Source variable get AUTONOMOUS_ENGINEERING_MODEL --repo $Repository 2>$null | Out-String).Trim()
 }
-if ([string]::IsNullOrWhiteSpace($Model)) {
-    throw "No saved AUTONOMOUS_ENGINEERING_MODEL repository variable exists. Save an installed model in the autonomous-engineering dashboard first."
-}
-if ($Model -match "(?i)-codex-ctx[0-9]+$") {
-    throw "The saved model is an internal Codex context variant. Save the original Ollama model in the dashboard."
-}
-$ollamaModels = @(Get-AutonomousOllamaModelCatalog -TimeoutSeconds 8)
-if (-not (Test-AutonomousOllamaModelInstalled -Model $Model -Catalog $ollamaModels)) {
-    throw "Saved model $Model is not installed in the local Ollama API. Install it through the configured Ollama server, then save it in the dashboard."
-}
-$modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -ContentType "application/json" -Body (@{ model = $Model; verbose = $true } | ConvertTo-Json -Compress) -TimeoutSec 15 -MaximumRedirection 0
-$architecture = [string]$modelInfo.details.family
-$contextKey = $architecture + ".context_length"
-$rawContext = $modelInfo.model_info.PSObject.Properties[$contextKey]
-if (-not $rawContext) {
-    $declaredArchitecture = $modelInfo.model_info.PSObject.Properties["general.architecture"]
-    if ($declaredArchitecture) {
-        $architecture = [string]$declaredArchitecture.Value
-        $contextKey = $architecture + ".context_length"
-        $rawContext = $modelInfo.model_info.PSObject.Properties[$contextKey]
+if (-not [string]::IsNullOrWhiteSpace($Model)) {
+    if ($Model -match "(?i)-codex-ctx[0-9]+$") {
+        throw "The saved model is an internal Codex context variant. Save the original Ollama model in the dashboard."
     }
-}
-$parsedContext = 0L
-if ([string]::IsNullOrWhiteSpace($architecture) -or -not $rawContext -or -not [int64]::TryParse([string]$rawContext.Value, [ref]$parsedContext) -or $parsedContext -le 0) {
-    throw "Saved model $Model must expose a positive architecture-specific context length for Codex."
-}
-$capabilitiesProperty = $modelInfo.PSObject.Properties["capabilities"]
-if ($capabilitiesProperty -and $null -ne $capabilitiesProperty.Value) {
-    if (@($capabilitiesProperty.Value | ForEach-Object { [string]$_ }) -notcontains "tools") {
-        throw "Saved model $Model explicitly does not advertise Ollama tools capability."
+    $ollamaModels = @(Get-AutonomousOllamaModelCatalog -TimeoutSeconds 8)
+    if (-not (Test-AutonomousOllamaModelInstalled -Model $Model -Catalog $ollamaModels)) {
+        throw "Saved model $Model is not installed in the local Ollama API. Install it through the configured Ollama server, then save it in the dashboard."
     }
+    $modelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/show" -Method Post -ContentType "application/json" -Body (@{ model = $Model; verbose = $true } | ConvertTo-Json -Compress) -TimeoutSec 15 -MaximumRedirection 0
+    $architecture = [string]$modelInfo.details.family
+    $contextKey = $architecture + ".context_length"
+    $rawContext = $modelInfo.model_info.PSObject.Properties[$contextKey]
+    if (-not $rawContext) {
+        $declaredArchitecture = $modelInfo.model_info.PSObject.Properties["general.architecture"]
+        if ($declaredArchitecture) {
+            $architecture = [string]$declaredArchitecture.Value
+            $contextKey = $architecture + ".context_length"
+            $rawContext = $modelInfo.model_info.PSObject.Properties[$contextKey]
+        }
+    }
+    $parsedContext = 0L
+    if ([string]::IsNullOrWhiteSpace($architecture) -or -not $rawContext -or -not [int64]::TryParse([string]$rawContext.Value, [ref]$parsedContext) -or $parsedContext -le 0) {
+        throw "Saved model $Model must expose a positive architecture-specific context length for Codex."
+    }
+    $capabilitiesProperty = $modelInfo.PSObject.Properties["capabilities"]
+    if ($capabilitiesProperty -and $null -ne $capabilitiesProperty.Value) {
+        if (@($capabilitiesProperty.Value | ForEach-Object { [string]$_ }) -notcontains "tools") {
+            throw "Saved model $Model explicitly does not advertise Ollama tools capability."
+        }
+    } else {
+        $toolProbeScript = Join-Path $PSScriptRoot "verify_ollama_tools.py"
+        & $python.Source $toolProbeScript --model $Model
+        if ($LASTEXITCODE -ne 0) {
+            throw "Saved model $Model failed the live Ollama tool-call probe."
+        }
+    }
+    
 } else {
-    $toolProbeScript = Join-Path $PSScriptRoot "verify_ollama_tools.py"
-    & $python.Source $toolProbeScript --model $Model
-    if ($LASTEXITCODE -ne 0) {
-        throw "Saved model $Model failed the live Ollama tool-call probe."
-    }
+    Write-Warning "No Ollama model is configured yet. Runner and shared storage will still be provisioned; select and verify the model later in the dashboard."
 }
+
 function Ensure-AutonomousStateOwnerLabel {
     $inventoryJson = & $gh.Source api "repos/$Repository/actions/runners?per_page=100"
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($inventoryJson)) {
@@ -267,7 +289,7 @@ try {
     if ($services[0].StartMode -eq "Disabled") { Set-Service -Name $services[0].Name -StartupType Automatic }
     Start-Service -Name $services[0].Name
     if ((Get-Service -Name $services[0].Name).Status -ne "Running") { throw "Runner service did not start." }
-    Write-Host "Runner registered and running as $runnerIdentity; model $Model verified."
+    Write-Host "Runner registered and running as $runnerIdentity. Shared storage and service identity were configured; model readiness is reported separately by the dashboard."
 } finally {
     $token = $null
     if ($archive -and (Test-Path -LiteralPath $archive)) { Remove-Item -LiteralPath $archive -Force -ErrorAction SilentlyContinue }
