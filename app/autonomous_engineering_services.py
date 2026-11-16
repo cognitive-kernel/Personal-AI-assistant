@@ -71,7 +71,7 @@ def _probe_tool_calling(request_fn, model: str, digest: str) -> bool:
     return supported
 
 
-def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool_calling_fn, is_context_variant, recommended_context_fn=None, tool_probe_fn=None) -> dict[str, Any]:
+def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool_calling_fn, is_context_variant, recommended_context_fn=None, tool_probe_fn=None, allow_live_tool_probe: bool = True) -> dict[str, Any]:
     empty = {
         "online": False,
         "model": model,
@@ -216,8 +216,16 @@ def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool
         # subtracted twice on the next status refresh.
         if not tools_metadata_available:
             if context_supported and callable(tool_probe_fn):
-                model_supports_tools = _probe_tool_calling(tool_probe_fn, model, model_digest)
-                tools_verification_method = "live_tool_call_probe" if model_supports_tools else "unverified"
+                if allow_live_tool_probe:
+                    model_supports_tools = _probe_tool_calling(tool_probe_fn, model, model_digest)
+                    tools_verification_method = "live_tool_call_probe" if model_supports_tools else "unverified"
+                else:
+                    cached_probe = _TOOL_PROBE_CACHE.get((model, model_digest))
+                    if cached_probe and time.monotonic() - cached_probe[0] < _TOOL_PROBE_TTL_SECONDS:
+                        model_supports_tools = cached_probe[1]
+                        tools_verification_method = "live_tool_call_probe" if model_supports_tools else "unverified"
+                    else:
+                        tools_verification_method = "probe_required"
             else:
                 tools_verification_method = "skipped_no_safe_context" if not context_supported else "probe_unavailable"
         result.update({
