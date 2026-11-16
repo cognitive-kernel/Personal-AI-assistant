@@ -134,7 +134,7 @@ def _github_snapshot() -> dict[str, Any]:
 
 def _application_windows_identity() -> dict[str, str] | None:
     """Return the current app process identity without relying on a configured username."""
-    if os.name != "nt":
+    if platform.system().casefold() != "windows":
         return None
     try:
         result = subprocess.run(
