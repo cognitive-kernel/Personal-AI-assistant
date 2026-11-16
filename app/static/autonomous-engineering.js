@@ -191,11 +191,15 @@
           : "GitHub CLI احراز هویت شده و وضعیت اجراها قابل دریافت است.";
       labels.storage.textContent = stateText(checks.progress_storage_accessible);
       const storage = data.storage || {};
+      const appIdentity = data.application_identity || {};
+      const appIdentityText = appIdentity.name
+        ? " حساب برنامه: " + String(appIdentity.name) + " (" + String(appIdentity.sid || "SID نامشخص") + ")."
+        : " هویت فرایند برنامه از Windows قابل دریافت نیست.";
       const storagePath = storage.state_directory ? " مسیر: " + String(storage.state_directory) : "";
       $("storage-detail").textContent = checks.progress_storage_accessible
-        ? "نوشتن فایل و دسترسی به قفل پایدار برای برنامه تأیید شد." + storagePath
+        ? "نوشتن فایل و دسترسی به قفل پایدار برای برنامه تأیید شد." + appIdentityText + storagePath
         : "بررسی نوشتن یا قفل پایدار ناموفق است: " +
-          String(storage.error || "علت دقیق دریافت نشد.") + storagePath +
+          String(storage.error || "علت دقیق دریافت نشد.") + appIdentityText + storagePath +
           "؛ اسکریپت provision را برای کشف هویت سرویس و اصلاح مجوزها اجرا کنید.";
       const ready = data.ready === true;
       const paused = data.paused === true;
