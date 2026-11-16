@@ -1628,3 +1628,131 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     assert "timeoutError.ambiguous = true" in script
     assert "error.ambiguous || error.status >= 500" in script
     assert "function lockDispatchVisibilityWindow()" in script
+
+def test_autonomous_run_administration_routes_are_registered():
+    paths = {route.path for route in agent.router.routes}
+    assert "/api/autonomous-engineering/runs" in paths
+    assert "/api/autonomous-engineering/runs/{run_id}/logs" in paths
+    assert "/api/autonomous-engineering/runs/{run_id}" in paths
+    assert "/api/autonomous-engineering/cleanup" in paths
+
+
+def test_workflow_log_sanitizer_redacts_common_credentials():
+    source = (
+        "Authorization: Bearer bearer-secret-value\\n"
+        "github_pat_0123456789abcdefghijklmnopqrstuvwxyz\\n"
+        "password=hunter2 api_key=secret-value\\n"
+    )
+    result = agent._sanitize_workflow_log(source)
+    assert "bearer-secret-value" not in result
+    assert "github_pat_0123456789abcdefghijklmnopqrstuvwxyz" not in result
+    assert "hunter2" not in result
+    assert "secret-value" not in result
+    assert "[REDACTED]" in result
+
+
+def test_run_logs_include_failed_job_and_step_reasons(monkeypatch):
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_verified_workflow_run", lambda gh, run_id: {
+        "id": run_id, "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main",
+        "status": "completed", "conclusion": "failure", "html_url": "https://github.com/example/run/123",
+    })
+    monkeypatch.setattr(agent, "_github_api_json", lambda gh, path, timeout=15: {
+        "jobs": [{
+            "name": "codex", "status": "completed", "conclusion": "failure",
+            "steps": [{"name": "Install dependencies", "conclusion": "failure"}],
+        }]
+    })
+    monkeypatch.setattr(agent, "_run", lambda command, timeout=8: subprocess.CompletedProcess(
+        command, 0, "Traceback: Authorization: Bearer hidden-token\\n", ""
+    ))
+
+    result = agent.autonomous_engineering_run_logs(123)
+
+    assert result["run"]["id"] == 123
+    assert result["failures"] == [{
+        "name": "codex", "status": "completed", "conclusion": "failure",
+        "failed_steps": [{"name": "Install dependencies", "conclusion": "failure"}],
+    }]
+    assert "hidden-token" not in result["logs"]
+    assert "[REDACTED]" in result["logs"]
+
+
+def test_run_logs_reject_non_agent_workflow(monkeypatch):
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_github_api_json", lambda gh, path, timeout=15: {
+        "id": 123, "path": ".github/workflows/another.yml@refs/heads/main",
+    })
+    with pytest.raises(HTTPException) as error:
+        agent._verified_workflow_run("gh", 123)
+    assert error.value.status_code == 404
+
+
+def test_delete_run_refuses_active_workflow_run(monkeypatch):
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_verified_workflow_run", lambda gh, run_id: {
+        "id": run_id, "status": "in_progress",
+    })
+    calls = []
+    monkeypatch.setattr(agent, "_run", lambda *args, **kwargs: calls.append(args) or None)
+
+    with pytest.raises(HTTPException) as error:
+        agent.delete_autonomous_engineering_run(123)
+
+    assert error.value.status_code == 409
+    assert calls == []
+
+
+def test_delete_completed_run_calls_workflow_run_delete_api(monkeypatch):
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_verified_workflow_run", lambda gh, run_id: {
+        "id": run_id, "status": "completed",
+    })
+    calls = []
+    monkeypatch.setattr(agent, "_run", lambda command, timeout=8: calls.append(command) or subprocess.CompletedProcess(
+        command, 0, "", ""
+    ))
+
+    result = agent.delete_autonomous_engineering_run(123)
+
+    assert result["deleted"] is True
+    assert calls[0][1:] == [
+        "api", "--method", "DELETE",
+        "repos/cognitive-kernel/Personal-AI-assistant/actions/runs/123",
+    ]
+
+
+def test_cleanup_removes_only_ephemeral_progress_files_and_preserves_durable_state(monkeypatch, tmp_path):
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh, limit=30: [])
+    monkeypatch.setattr(agent, "execution_state_directory", lambda: tmp_path)
+    for name in ("events.jsonl", "current.json", "history.jsonl", "scorecard-baseline.json", "worktree-checkpoint-123-1.patch"):
+        (tmp_path / name).write_text("preserve-or-remove", encoding="utf-8")
+
+    result = agent.cleanup_autonomous_engineering_temporary_data()
+
+    assert result["cleaned"] is True
+    assert result["files_removed"] == 2
+    assert not (tmp_path / "events.jsonl").exists()
+    assert not (tmp_path / "current.json").exists()
+    assert (tmp_path / "history.jsonl").is_file()
+    assert (tmp_path / "scorecard-baseline.json").is_file()
+    assert (tmp_path / "worktree-checkpoint-123-1.patch").is_file()
+
+
+def test_cleanup_refuses_active_run_or_pending_task(monkeypatch, tmp_path):
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "execution_state_directory", lambda: tmp_path)
+    (tmp_path / "events.jsonl").write_text("keep", encoding="utf-8")
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh, limit=30: [{"status": "in_progress"}])
+    with pytest.raises(HTTPException) as active_error:
+        agent.cleanup_autonomous_engineering_temporary_data()
+    assert active_error.value.status_code == 409
+    assert (tmp_path / "events.jsonl").exists()
+
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh, limit=30: [])
+    (tmp_path / "pending-manual-task.txt").write_text("pending", encoding="utf-8")
+    with pytest.raises(HTTPException) as pending_error:
+        agent.cleanup_autonomous_engineering_temporary_data()
+    assert pending_error.value.status_code == 409
+    assert (tmp_path / "events.jsonl").exists()
