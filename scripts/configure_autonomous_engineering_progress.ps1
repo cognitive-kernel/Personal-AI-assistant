@@ -37,6 +37,6 @@ $progressPath = Resolve-AutonomousStateDirectory -ConfiguredPath $machineStateDi
 if (-not (Test-Path -LiteralPath $progressPath)) {
     New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
 }
-Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -AdditionalModifySids $appSid
+Set-AutonomousStateDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -AdditionalModifySids $appSid
 $verifiedPath = Test-AutonomousStateStorageAccess -ConfiguredPath $machineStateDirectory -ProcessPath $processStateDirectory -ProgramDataPath $env:ProgramData
 Write-Output "Shared durable state storage is ready for the resolved application and Runner identities: $verifiedPath"
