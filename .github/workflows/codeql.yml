@@ -41,11 +41,22 @@ jobs:
         with:
           category: "/language:python-javascript"
 
+      - name: Stage SARIF results for artifact upload
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p codeql-results
+          if compgen -G "../results/*.sarif" > /dev/null; then
+            cp ../results/*.sarif codeql-results/
+          else
+            echo "No CodeQL SARIF files found in the expected output directory."
+          fi
+
       - name: Preserve SARIF for security-alert triage
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: codeql-sarif-${{ github.run_id }}
-          path: ../results/*.sarif
+          path: codeql-results/*.sarif
           if-no-files-found: warn
           retention-days: 7
