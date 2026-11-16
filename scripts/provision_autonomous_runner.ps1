@@ -31,7 +31,7 @@ if ([string]::IsNullOrWhiteSpace($RunnerRoot)) {
         throw "Multiple GitHub Runner services were found. Supply -RunnerRoot to select the intended installation without changing any service."
     }
     if ($installedServices.Count -eq 1) {
-        $exeMatch = [regex]::Match([string]$installedServices[0].PathName, '(?i)^"?(?<exe>.*?RunnerService\\.exe)"?(?:\\s|$)')
+        $exeMatch = [regex]::Match([string]$installedServices[0].PathName, '(?i)^"?(?<exe>.*?RunnerService\.exe)"?(?:\s|$)')
         if (-not $exeMatch.Success) { throw "Could not safely resolve the installed Runner service executable path." }
         $serviceBin = Split-Path -Parent $exeMatch.Groups["exe"].Value
         $RunnerRoot = if ((Split-Path -Leaf $serviceBin) -ieq "bin") { Split-Path -Parent $serviceBin } else { $serviceBin }
