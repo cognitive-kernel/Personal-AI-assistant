@@ -201,10 +201,7 @@ function Set-AutonomousStateDirectoryAcl {
         [System.IO.FileShare]::ReadWrite
     )
     try {
-        if ($stream.Length -eq 0) {
-            $stream.WriteByte(0)
-            $stream.Flush()
-        }
+        # Opening with ReadWrite verifies the file exists without modifying its bytes.
     } finally {
         $stream.Dispose()
     }
