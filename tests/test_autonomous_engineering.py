@@ -1707,12 +1707,25 @@ def test_run_logs_include_failed_job_and_step_reasons(monkeypatch):
     assert api_paths == ["actions/runs/123/jobs?per_page=100"]
     assert commands[0][1:] == ["run", "view", "123", "--log", "--repo", agent._repository()]
     assert result["run"]["id"] == 123
+    assert result["run"]["url"] == "https://github.com/example/run/123"
     assert result["failures"] == [{
         "name": "codex", "status": "completed", "conclusion": "failure",
         "failed_steps": [{"name": "Install dependencies", "conclusion": "failure"}],
     }]
     assert "hidden-token" not in result["logs"]
     assert "[REDACTED]" in result["logs"]
+
+
+def test_verified_workflow_run_rejects_invalid_ids_before_lookup(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: calls.append(gh) or [])
+
+    for invalid_id in (0, -1, True):
+        with pytest.raises(HTTPException) as error:
+            agent._verified_workflow_run("gh", invalid_id)
+        assert error.value.status_code == 422
+
+    assert calls == []
 
 
 def test_run_logs_reject_non_agent_workflow(monkeypatch):
