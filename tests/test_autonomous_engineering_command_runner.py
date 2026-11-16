@@ -204,7 +204,7 @@ def test_windows_command_waits_until_job_is_empty_before_return(tmp_path: Path):
 
     assert result.returncode == 0
     child_pid = int(pid_file.read_text(encoding="utf-8"))
-    assert not psutil.pid_exists(child_pid), "A Job Object descendant remained alive after run_command returned."
+    _assert_process_stopped(child_pid)
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows suspended-process cleanup contract.")
