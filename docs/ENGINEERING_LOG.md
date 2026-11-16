@@ -1965,3 +1965,11 @@ A regression test creates an uncommitted project file, verifies that the checkpo
 
 Validation on the PR head before this log-only update: **2,321 passed, 13 skipped, 55 deselected** in the complete standard test suite; full isolated Docker sandbox suite passed; Windows storage regressions, browser dashboard smoke, CodeQL, and dependency audit passed. These results apply to the source/test commit that introduced this fix; the final documentation commit is being revalidated separately.
 
+### 2026-11-16 — Windows Codex Job Object natural-drain grace
+
+Run [#43877152580](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43877152580) reached the real Codex workspace smoke on the trusted `main` commit. The standalone MXC probe returned `MXC_SERVICE_OK`; the Codex JSONL evidence reported a completed turn, successful command exit, the required workspace create/read/delete fragments, and the exact expected agent message. The job nevertheless failed because the supervisor exited while the Job Object still had a member. The progress controller checked for an empty Job Object with a zero-millisecond wait, immediately terminated that member, and converted the otherwise successful smoke to exit code 1.
+
+The zero-wait check conflated a short, normal Windows process-shutdown interval with a descendant that had genuinely outlived its owner. `WindowsProcessJob.terminate_remaining_processes` now allows a bounded two-second natural-drain window. If the Job Object becomes empty in that window, cleanup is considered normal; if a member remains, it is still terminated and the existing five-second empty-job confirmation remains mandatory. The caller continues to fail closed whenever forced descendant termination is necessary, so this change does not permit surviving Codex processes or weaken the ownership boundary.
+
+Regression coverage verifies the no-descendant path, natural exit during the grace window, forced termination after the grace window, and a real Windows Job Object case in which a short-lived child outlasts its wrapper.
+
