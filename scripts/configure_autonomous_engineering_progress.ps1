@@ -38,6 +38,10 @@ if ([string]::IsNullOrWhiteSpace($resolvedRunnerRoot)) {
 }
 $runnerIdentity = Resolve-AutonomousWindowsServiceAccountName -AccountName $runnerService.StartName
 $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
+$localSystemSid = [Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::LocalSystemSid, $null).Value
+if ($runnerSid -eq $localSystemSid) {
+    throw "The Runner service cannot run as LocalSystem; use a dedicated non-administrator identity."
+}
 if (-not [string]::IsNullOrWhiteSpace($RunnerAccount)) {
     $requestedRunnerSid = Get-AutonomousWindowsAccountSid -AccountName (
         ConvertTo-AutonomousWindowsAccountName -AccountName $RunnerAccount.Trim()
