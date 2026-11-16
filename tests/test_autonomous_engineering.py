@@ -1725,16 +1725,24 @@ def test_delete_completed_run_calls_workflow_run_delete_api(monkeypatch):
 def test_cleanup_removes_only_ephemeral_progress_files_and_preserves_durable_state(monkeypatch, tmp_path):
     monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
     monkeypatch.setattr(agent, "_workflow_runs", lambda gh, limit=30: [])
+    runtime_dir = tmp_path / "worktree"
+    runtime_dir.mkdir()
     monkeypatch.setattr(agent, "execution_state_directory", lambda: tmp_path)
+    monkeypatch.setattr(agent, "_agent_runtime_directory", lambda: runtime_dir)
     for name in ("events.jsonl", "current.json", "history.jsonl", "scorecard-baseline.json", "worktree-checkpoint-123-1.patch"):
         (tmp_path / name).write_text("preserve-or-remove", encoding="utf-8")
+    for name in (".agent-request.json", ".agent-github-state.json", ".agent-progress.json"):
+        (runtime_dir / name).write_text("temporary", encoding="utf-8")
 
     result = agent.cleanup_autonomous_engineering_temporary_data()
 
     assert result["cleaned"] is True
-    assert result["files_removed"] == 2
+    assert result["files_removed"] == 5
     assert not (tmp_path / "events.jsonl").exists()
     assert not (tmp_path / "current.json").exists()
+    assert not (runtime_dir / ".agent-request.json").exists()
+    assert not (runtime_dir / ".agent-github-state.json").exists()
+    assert not (runtime_dir / ".agent-progress.json").exists()
     assert (tmp_path / "history.jsonl").is_file()
     assert (tmp_path / "scorecard-baseline.json").is_file()
     assert (tmp_path / "worktree-checkpoint-123-1.patch").is_file()
