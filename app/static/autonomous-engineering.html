@@ -113,6 +113,11 @@
 <button id="cancel-agent" type="button" class="secondary" disabled>لغو اضطراری اجرای فعال</button>
 </div>
 <p class="hint">در حالت زمان‌بندی‌شده، عامل طبق فاصلهٔ انتخابی اجرا می‌شود. در حالت پیوسته، پس از شروع اولیه، هر وظیفه پس از موفقیت آزمون‌های محلی و سه گردش‌کار مستقل GitHub با تطبیق SHA دقیق، به‌صورت PR برای بازبینی مالک منتشر می‌شود. کنترلر آن را ادغام نمی‌کند؛ پس از ادغام دستی و موفقیت کنترل‌های پس از ادغام، چرخهٔ بعدی از main تازه آغاز می‌شود. تعداد کل وظایف محدود نیست. اجرای دستی وقتی فعال می‌شود که Ollama، مدل، Runner، احراز هویت GitHub و فضای ثبت پیشرفت آماده باشند. شروع واقعی را در فهرست اجراها مشاهده کنید.</p>
+<div class="run-admin-toolbar">
+  <button id="refresh-runs" type="button" class="secondary">به‌روزرسانی سوابق اجرا</button>
+  <button id="cleanup-agent-temp" type="button" class="secondary">پاک‌سازی فایل‌های موقت عامل</button>
+  <span id="cleanup-agent-status" class="hint" aria-live="polite"></span>
+</div>
 <div id="recent-runs" class="run-list" aria-live="polite"><p class="muted">سوابق اجرا هنوز دریافت نشده‌اند.</p></div>
 </section>
 
