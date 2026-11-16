@@ -3670,7 +3670,7 @@ def test_autonomous_dashboard_keeps_dispatch_disabled_after_accepted_run():
         )
         dispatch.click()
         page.wait_for_function(
-            "() => document.querySelector('#dispatch-agent')?.disabled === true",
+            "() => document.querySelector('#dispatch-agent')?.disabled === true && document.querySelector('#send-agent-task')?.disabled === true",
             timeout=10000,
         )
         assert state["dispatches"] == 1
