@@ -29,7 +29,7 @@ if ([string]::IsNullOrWhiteSpace($RunnerAccount)) {
         $RunnerAccount = $discoveredService.StartName
         Write-Host "Discovered existing Runner service identity: $RunnerAccount"
     } else {
-        $generatedLocalName = "paa-runner-" + [guid]::NewGuid().ToString("N").Substring(0, 8)
+        $generatedLocalName = [guid]::NewGuid().ToString("N").Substring(0, 19)
         $RunnerAccount = "$env:COMPUTERNAME\$generatedLocalName"
         Write-Host "Generated a unique non-administrator Runner service identity: $RunnerAccount"
     }
