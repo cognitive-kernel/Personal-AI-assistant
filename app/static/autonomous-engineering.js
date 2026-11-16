@@ -93,16 +93,40 @@
     }
   }
   async function request(path, options) {
-    const response = await fetch("/api/autonomous-engineering/" + path, {
-      headers: {"Accept": "application/json", ...(options && options.body ? {"Content-Type": "application/json"} : {}), ...(options && options.headers || {})},
-      ...(options || {})
-    });
-    let payload = {};
-    try { payload = await response.json(); } catch (_) {}
-    if (!response.ok) throw new Error(payload.detail || "درخواست ناموفق بود.");
-    return payload;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 40000);
+    try {
+      const response = await fetch("/api/autonomous-engineering/" + path, {
+        ...(options || {}),
+        headers: {
+          "Accept": "application/json",
+          ...(options && options.body ? {"Content-Type": "application/json"} : {}),
+          ...(options && options.headers || {})
+        },
+        signal: controller.signal
+      });
+      let payload = {};
+      try { payload = await response.json(); } catch (_) {}
+      if (!response.ok) throw new Error(payload.detail || "درخواست ناموفق بود.");
+      return payload;
+    } catch (error) {
+      if (error && error.name === "AbortError") {
+        throw new Error("پاسخ سرویس در مهلت ۴۰ ثانیه دریافت نشد؛ وضعیت سرور و لاگ‌ها را بررسی کنید.");
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
   }
-  async function refresh() {
+  let statusRefreshPromise = null;
+  function refresh() {
+    if (statusRefreshPromise) return statusRefreshPromise;
+    statusRefreshPromise = refreshStatus().finally(() => {
+      statusRefreshPromise = null;
+    });
+    return statusRefreshPromise;
+  }
+  async function refreshStatus() {
     $("refresh-agent").disabled = true;
     try {
       const data = await request("status");
@@ -127,9 +151,11 @@
           ? "؛ مدل قابلیت tools را اعلام نکرده است"
           : data.model_tools_verification_method === "skipped_no_safe_context"
             ? "؛ آزمون tools تا تأیید ظرفیت امن Context اجرا نشد"
-            : data.model_tools_verification_method === "probe_unavailable"
-              ? "؛ ابزار بررسی زنده قابلیت tools در دسترس نیست"
-              : "؛ metadata موجود نیست و آزمون واقعی tools نیز موفق نشد";
+            : data.model_tools_verification_method === "probe_required"
+              ? "؛ برای تأیید واقعی قابلیت tools، مدل را از بخش تنظیمات ذخیره/آزمایش کنید"
+              : data.model_tools_verification_method === "probe_unavailable"
+                ? "؛ ابزار بررسی زنده قابلیت tools در دسترس نیست"
+                : "؛ metadata موجود نیست و آزمون واقعی tools نیز موفق نشد";
       const modelLabel = data.model ? "مدل ذخیره‌شده: " + String(data.model) : "هنوز مدلی ذخیره نشده است";
       const installationText = data.model && checks.model_is_codex_context_variant
         ? "؛ این نسخهٔ داخلی Context است؛ مدل اصلی را انتخاب و ذخیره کنید"
@@ -232,10 +258,11 @@
       });
       $("manual-task").value = "";
       setMessage(result.message || "وظیفه برای عامل ارسال شد.", "success");
-      window.setTimeout(refresh, 2500);
-    } catch (error) {
-      setMessage(error.message, "error");
       await refresh();
+    } catch (error) {
+      const detail = error.message || "ارسال وظیفه ناموفق بود.";
+      await refresh();
+      setMessage(detail, "error");
     }
   });
   dispatchButton.addEventListener("click", async () => {
@@ -244,11 +271,10 @@
     try {
       const result = await request("dispatch", {method: "POST"});
       setMessage(result.message || "درخواست ارسال شد.", "success");
-      window.setTimeout(refresh, 2500);
     } catch (error) {
-      setMessage(error.message, "error");
+      setMessage(error.message || "ارسال درخواست ناموفق بود.", "error");
     } finally {
-      dispatchButton.disabled = false;
+      await refresh();
     }
   });
   pauseButton.addEventListener("click", async () => {
@@ -267,7 +293,7 @@
     try {
       const result = await request("resume", {method: "POST"});
       setMessage(result.message || "ادامهٔ صف درخواست شد.", "success");
-      window.setTimeout(refresh, 1500);
+      await refresh();
     } catch (error) {
       setMessage(error.message, "error");
       resumeButton.disabled = false;
@@ -279,7 +305,7 @@
     try {
       const result = await request("cancel", {method: "POST"});
       setMessage(result.message || "درخواست لغو ارسال شد.", "success");
-      window.setTimeout(refresh, 1500);
+      await refresh();
     } catch (error) {
       setMessage(error.message, "error");
     }
