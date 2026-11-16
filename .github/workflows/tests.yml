@@ -91,6 +91,7 @@ jobs:
         run: >-
           python -m pytest -vv
           tests/test_autonomous_engineering_command_runner.py
+          tests/test_autonomous_engineering_process_job.py
 
       - name: Run real checkpoint watcher startup, stop, and recovery on Windows
         run: >-
