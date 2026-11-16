@@ -161,6 +161,8 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert "cleanup_eligible" in agent_script
     assert 'runs/" + encodeURIComponent' in agent_script
     assert "checks.progress_storage_accessible" in agent_script
+    assert "data.application_identity" in agent_script
+    assert "حساب برنامه:" in agent_script
     assert "gpt-oss:20b" not in page
     assert 'هیچ مدل اصلی قابل انتخابی از Ollama شناسایی نشد' in agent_script
     assert "model_context_length" in agent_script
@@ -177,6 +179,7 @@ def test_autonomous_engineering_routes_are_registered():
 
     assert "/autonomous-engineering" in page_paths
     assert "/api/autonomous-engineering/status" in api_paths
+    assert "/api/autonomous-engineering/identity" in api_paths
     assert "/api/autonomous-engineering/progress" in api_paths
     assert "/api/autonomous-engineering/settings" in api_paths
     assert "/api/autonomous-engineering/dispatch" in api_paths
