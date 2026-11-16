@@ -4,11 +4,11 @@ from __future__ import annotations
 import json
 import re
 import tempfile
-
-from .autonomous_engineering_state import durable_state_lock, execution_state_directory
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from .autonomous_engineering_state import durable_state_lock, execution_state_directory
 
 _DEFAULT_SCORECARD = Path(__file__).resolve().parents[1] / "docs" / "ACCEPTANCE_SCORECARD.md"
 _MAX_HISTORY_BYTES = 8 * 1024 * 1024
