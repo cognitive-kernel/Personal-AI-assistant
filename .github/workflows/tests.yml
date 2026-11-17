@@ -185,10 +185,10 @@ jobs:
             foreach ($itemPath in @($root, $nested, $file)) {
               $verified = Get-Acl -LiteralPath $itemPath
               $ownerSid = ([Security.Principal.NTAccount]$verified.Owner).Translate([Security.Principal.SecurityIdentifier]).Value
-              if ($ownerSid -ne $brokerSid) { throw "State owner mismatch on $itemPath: $ownerSid" }
+              if ($ownerSid -ne $brokerSid) { throw "State owner mismatch on $($itemPath): $ownerSid" }
               foreach ($rule in $verified.Access) {
                 $sid = $rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
-                if ($sid -notin @($currentSid, $brokerSid)) { throw "Unexpected state ACL principal on $itemPath: $sid" }
+                if ($sid -notin @($currentSid, $brokerSid)) { throw "Unexpected state ACL principal on $($itemPath): $sid" }
               }
             }
             if ([System.IO.File]::ReadAllText($file) -ne '{"preserve":true}') {
