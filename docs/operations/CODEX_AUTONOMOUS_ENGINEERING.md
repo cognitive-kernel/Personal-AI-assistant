@@ -185,3 +185,6 @@ This bootstrap does not install or authenticate GitHub CLI, install/start Ollama
 When the Ollama service is already running on the local loopback endpoint, the dashboard's model settings provide an explicit “Download and install selected model” action. The user chooses the model identifier and confirms the download; the UI then polls a bounded status record and displays Ollama's progress. Only one model pull is allowed at a time. The request is sent directly to the configured loopback-only Ollama API without proxy use or redirect following; model identifiers are validated and are never passed to a shell.
 
 This action installs a model into the existing Ollama service. It does not install the Ollama application/service itself, choose a model on the user's behalf, or bypass the hardware/context checks performed before saving settings.
+### GitHub CLI in the autonomous Runner job
+
+The workflow provisions the pinned GitHub CLI release into a run-scoped directory when the required version is not already available. It downloads the official Windows x64 archive and checksum manifest, verifies SHA-256 before extraction, and adds only that job-local executable directory to the current job PATH. This does not modify the host's global installation. The workflow token supplies job authentication; it does not create or persist a Runner-account interactive login.
