@@ -1,4 +1,8 @@
-"""Shared deterministic fixtures for tests that exercise AI-learning workflows."""
+"""Shared deterministic fixtures for repository tests."""
+import os
+import tempfile
+from pathlib import Path
+
 import pytest
 
 
@@ -15,3 +19,22 @@ def _isolate_ai_learning_embedding_dependencies(monkeypatch):
                 for index, _text in enumerate(texts)]
 
     monkeypatch.setattr(service, "ollama_embed", deterministic_embeddings)
+
+
+
+@pytest.fixture
+def shared_state_tmp_path(tmp_path):
+    """Return a writable test state path outside HOME on POSIX hosts."""
+    if os.name == "nt":
+        return tmp_path / "shared-state"
+    home = Path.home().resolve()
+    candidate = tmp_path.resolve()
+    try:
+        candidate.relative_to(home)
+    except ValueError:
+        return candidate / "shared-state"
+    relative = candidate.relative_to(home)
+    shared_root = Path(tempfile.gettempdir()) / "personal-ai-shared-state-tests"
+    if shared_root.resolve().is_relative_to(home):
+        shared_root = Path("/var/tmp/personal-ai-shared-state-tests")
+    return shared_root / relative / "shared-state"
