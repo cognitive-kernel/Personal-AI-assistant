@@ -42,7 +42,7 @@ $statePathBoundary = $progressPath.TrimEnd([char[]]@([System.IO.Path]::Directory
 if ($RunnerRoot.Equals($progressPath, [StringComparison]::OrdinalIgnoreCase) -or $progressPath.StartsWith($runnerRootBoundary, [StringComparison]::OrdinalIgnoreCase) -or $RunnerRoot.StartsWith($statePathBoundary, [StringComparison]::OrdinalIgnoreCase)) {
     throw "RunnerRoot and shared autonomous state directory must be separate, non-nested paths."
 }
-$systemSid = "S-1-5-18"
+$brokerServiceSid = "S-1-5-19"
 $node = Get-Command node -ErrorAction Stop
 $npm = Get-Command npm -ErrorAction Stop
 $git = Get-Command git -ErrorAction Stop
@@ -188,17 +188,18 @@ function Install-AutonomousStateBrokerService {
         Move-Item -LiteralPath $temporaryExe -Destination $serviceExe -Force -ErrorAction Stop
         if (-not $existing) {
             New-Service -Name $serviceName -BinaryPathName ('"' + $serviceExe + '"') -DisplayName "Personal AI Assistant State Broker" -Description "Mediates allow-listed local access to protected autonomous-engineering state." -StartupType Automatic | Out-Null
-        } else {
-            $sc = Get-Command sc.exe -ErrorAction Stop
-            $binPathArgument = 'binPath= "' + $serviceExe + '"'
-            & $sc.Source config $serviceName $binPathArgument "obj= LocalSystem" "start= auto" | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-                throw "Could not update the existing state broker service configuration."
-            }
+        }
+        $sc = Get-Command sc.exe -ErrorAction Stop
+        $binPathArgument = 'binPath= "' + $serviceExe + '"'
+        $serviceAccountArgument = 'obj= "NT AUTHORITY\LocalService"'
+        $servicePasswordArgument = 'password= ""'
+        & $sc.Source config $serviceName $binPathArgument $serviceAccountArgument $servicePasswordArgument "start= auto" | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not configure the state broker to run under its restricted LocalService identity."
         }
         $service = Get-CimInstance Win32_Service -Filter "Name='$serviceName'" -ErrorAction Stop
-        if ($service.StartName -notin @("LocalSystem", "NT AUTHORITY\SYSTEM")) {
-            throw "The state broker must run as LocalSystem to own protected machine state."
+        if ($service.StartName -ne "NT AUTHORITY\LocalService") {
+            throw "The state broker must run under NT AUTHORITY\LocalService."
         }
         Start-Service -Name $serviceName -ErrorAction Stop
         $running = Get-Service -Name $serviceName -ErrorAction Stop
@@ -257,7 +258,7 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     $installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
     Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid
-    Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $systemSid)
+    Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid
     try {
         Ensure-AutonomousStateOwnerLabel
     } finally {
@@ -298,7 +299,7 @@ New-Item -ItemType Directory -Path $RunnerRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
 $installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid
-Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $systemSid)
+Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid
 $token = (& $gh.Source api --method POST "repos/$Repository/actions/runners/registration-token" --jq ".token")
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($token)) { throw "Could not obtain registration token; verify Administration: write permission." }
 $archive = $null
@@ -323,7 +324,7 @@ try {
         # Keep the elevated installer principal temporary; the installed service
         # retains access through its configured Runner SID.
         Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid
-        Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $systemSid)
+        Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid
     }
     $services = @(Get-CimInstance Win32_Service | Where-Object { $_.PathName -like "*$RunnerRoot*" })
     if ($services.Count -ne 1) { throw "Could not locate exactly one Runner service." }
@@ -334,7 +335,7 @@ try {
     Start-Service -Name $services[0].Name
     if ((Get-Service -Name $services[0].Name).Status -ne "Running") { throw "Runner service did not start." }
     Install-AutonomousStateBrokerService
-    Write-Host "Runner registered and running as $runnerIdentity; model $Model verified. The state broker runs as LocalSystem; app users do not receive filesystem ACLs."
+    Write-Host "Runner registered and running as $runnerIdentity; model $Model verified. The state broker runs as the restricted LocalService identity; app users do not receive filesystem ACLs."
 } finally {
     $token = $null
     if ($archive -and (Test-Path -LiteralPath $archive)) { Remove-Item -LiteralPath $archive -Force -ErrorAction SilentlyContinue }
