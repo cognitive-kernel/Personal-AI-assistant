@@ -140,7 +140,8 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="pause-agent"' in page
     assert 'id="resume-agent"' in page
     assert "OPENAI_API_KEY" not in page
-    assert "حساب Windows اختصاصی و غیرمدیر" in agent_page
+    assert "سرویس وضعیت مشترک" in agent_page
+    assert "هر حساب محلی احراز‌شده" in agent_page
     assert "checks.github_runs_available" in agent_script
     assert 'id="interval-hours"' in page
     assert 'id="execution-mode"' in page
@@ -1983,7 +1984,8 @@ def test_cleanup_removes_only_ephemeral_progress_files_and_preserves_durable_sta
     monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [])
     runtime_dir = tmp_path / "worktree"
     runtime_dir.mkdir()
-    monkeypatch.setattr(agent, "execution_state_directory", lambda: tmp_path)
+    from app import autonomous_engineering_progress as progress
+    monkeypatch.setattr(progress, "execution_state_directory", lambda: tmp_path)
     monkeypatch.setattr(agent, "_agent_runtime_directory", lambda: runtime_dir)
     for name in ("events.jsonl", "current.json", "history.jsonl", "scorecard-baseline.json", "worktree-checkpoint-123-1.patch"):
         (tmp_path / name).write_text("preserve-or-remove", encoding="utf-8")
