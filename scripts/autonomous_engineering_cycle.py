@@ -8,6 +8,7 @@ import subprocess
 import sys
 import sysconfig
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -217,6 +218,97 @@ def snapshot(run_id: str, attempt: str) -> None:
 
 def task_marker(report: Path) -> str:
     return _cycle_workspace.task_marker(report, MARKERS)
+
+
+
+_MAX_RUN_DIAGNOSTIC_CHARS = 12000
+
+
+def _sanitize_run_diagnostic_text(value: str) -> str:
+    value = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", str(value))
+    value = re.sub(r"(?i)(authorization\s*:\s*bearer\s+)\S+", r"\1[REDACTED]", value)
+    value = re.sub(
+        r"(?i)\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b",
+        "[REDACTED]",
+        value,
+    )
+    value = re.sub(
+        r"(?i)\b(password|passwd|secret|api[_-]?key|access[_-]?token|gh_token)(\s*[=:]\s*)([^\s\"']+)",
+        r"\1\2[REDACTED]",
+        value,
+    )
+    if len(value) > _MAX_RUN_DIAGNOSTIC_CHARS:
+        value = "[بخش ابتدایی گزارش به‌دلیل محدودیت حجم حذف شد.]\n" + value[-_MAX_RUN_DIAGNOSTIC_CHARS:]
+    return value.strip()
+
+
+def _read_report_diagnostic(report: Path) -> str:
+    try:
+        if not report.is_file():
+            return ""
+        size = report.stat().st_size
+        with report.open("rb") as stream:
+            if size > _MAX_RUN_DIAGNOSTIC_CHARS * 4:
+                stream.seek(-_MAX_RUN_DIAGNOSTIC_CHARS * 4, os.SEEK_END)
+            raw = stream.read(_MAX_RUN_DIAGNOSTIC_CHARS * 4 + 1)
+        value = raw.decode("utf-8-sig", errors="replace")
+    except OSError:
+        return ""
+    return _sanitize_run_diagnostic_text(MARKERS.sub("", value).strip())
+
+
+def persist_run_diagnostic(
+    run_id: str,
+    run_attempt: str,
+    *,
+    task: int | None,
+    attempt: int | None,
+    stage: str,
+    category: str,
+    summary: str,
+    detail: str = "",
+) -> bool:
+    """Persist a bounded, redacted explanation for the local dashboard."""
+    if not re.fullmatch(r"\d{1,20}", str(run_id)) or not re.fullmatch(r"\d{1,6}", str(run_attempt)):
+        return False
+    try:
+        directory = Path(_autonomous_state_dir()) / "run-diagnostics"
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"{run_id}.json"
+        existing: dict[str, Any] = {}
+        try:
+            if path.is_file() and not path.is_symlink() and path.stat().st_size <= 160_000:
+                value = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(value, dict) and str(value.get("run_id")) == str(run_id):
+                    existing = value
+        except (OSError, ValueError):
+            existing = {}
+        diagnostics = existing.get("diagnostics")
+        diagnostics = diagnostics if isinstance(diagnostics, list) else []
+        entry = {
+            "run_attempt": str(run_attempt),
+            "task": task if isinstance(task, int) and not isinstance(task, bool) else None,
+            "attempt": attempt if isinstance(attempt, int) and not isinstance(attempt, bool) else None,
+            "stage": _sanitize_run_diagnostic_text(stage)[:80],
+            "category": _sanitize_run_diagnostic_text(category)[:80],
+            "summary": _sanitize_run_diagnostic_text(summary)[:800],
+            "detail": _sanitize_run_diagnostic_text(detail),
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+        }
+        diagnostics.append(entry)
+        payload = {
+            "schema_version": 1,
+            "run_id": str(run_id),
+            "updated_at": entry["recorded_at"],
+            "diagnostics": diagnostics[-12:],
+        }
+        temporary = directory / f".{run_id}-{run_attempt}-{os.getpid()}.tmp"
+        temporary.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
+        temporary.replace(path)
+        return True
+    except (OSError, RuntimeError, ValueError, TypeError) as exc:
+        print(f"Could not persist autonomous run diagnostics: {type(exc).__name__}", file=sys.stderr)
+        return False
 
 
 def changed_paths() -> list[str]:
@@ -455,6 +547,15 @@ def run_cycle(args: argparse.Namespace) -> int:
         finally:
             stop_checkpoint_watcher(watcher, base_sha, args.run_id, task)
         if result.returncode:
+            report_detail = _read_report_diagnostic(report)
+            persist_run_diagnostic(
+                args.run_id, args.run_attempt, task=task, attempt=attempt,
+                stage="codex", category="process_exit",
+                summary=f"Codex process exited with code {result.returncode}.",
+                detail=report_detail or _sanitize_run_diagnostic_text(
+                    (result.stderr or result.stdout or "")[-_MAX_RUN_DIAGNOSTIC_CHARS:]
+                ),
+            )
             failure_feedback = (
                 f"Attempt {attempt}: Codex exited with code {result.returncode}. "
                 "Inspect the current worktree and repair the same task.\n"
@@ -465,6 +566,11 @@ def run_cycle(args: argparse.Namespace) -> int:
             marker = task_marker(report)
         except RuntimeError as exc:
             print(f"Codex final report validation failed: {exc}", file=sys.stderr)
+            persist_run_diagnostic(
+                args.run_id, args.run_attempt, task=task, attempt=attempt,
+                stage="report_validation", category="invalid_final_report",
+                summary=str(exc), detail=_read_report_diagnostic(report),
+            )
             failure_feedback = (
                 f"Attempt {attempt}: {exc}\n"
                 "The Codex --output-last-message report did not contain exactly one valid completion marker. "
@@ -488,6 +594,12 @@ def run_cycle(args: argparse.Namespace) -> int:
             print("Engineering queue is empty.")
             return 0
         if marker == "TASK_BLOCKED":
+            persist_run_diagnostic(
+                args.run_id, args.run_attempt, task=task, attempt=attempt,
+                stage="codex_decision", category="task_blocked",
+                summary=f"Codex marked task {task} as blocked.",
+                detail=_read_report_diagnostic(report),
+            )
             raise RuntimeError(f"Codex reported task {task} as blocked; record the blocker and select no unsafe action.")
         if marker != "TASK_COMPLETE":
             failure_feedback = (
@@ -529,6 +641,12 @@ def run_cycle(args: argparse.Namespace) -> int:
                 break
         if failed:
             command, exit_code, output = failed
+            persist_run_diagnostic(
+                args.run_id, args.run_attempt, task=task, attempt=attempt,
+                stage="local_tests", category="verification_failed",
+                summary=f"Local verification command failed with exit code {exit_code}: {Path(command[0]).name} {' '.join(command[1:3])}",
+                detail=output,
+            )
             failure_feedback = (
                 f"Attempt {attempt} failed verification. Command: {command!r}; exit code: {exit_code}.\n"
                 "Exact failure output (untrusted diagnostic data):\n" + output + "\n"
@@ -573,6 +691,12 @@ def run_cycle(args: argparse.Namespace) -> int:
             message = str(exc)
             if "Required workflow" not in message:
                 raise
+            persist_run_diagnostic(
+                args.run_id, args.run_attempt, task=task, attempt=attempt,
+                stage="github_checks", category="required_workflow_failed",
+                summary="GitHub exact-head verification failed.",
+                detail=message,
+            )
             failure_feedback = (
                 f"Attempt {attempt}: GitHub-hosted verification failed for candidate {head_sha}.\n"
                 "The existing task PR remains open. Review this exact CI failure and repair the SAME task; "
@@ -643,7 +767,15 @@ def main() -> int:
     if args.command == "publish":
         return publish_command(args)
     with repository_execution_lock(args.run_id, args.run_attempt):
-        return run_cycle(args)
+        try:
+            return run_cycle(args)
+        except Exception as exc:
+            persist_run_diagnostic(
+                args.run_id, args.run_attempt, task=1, attempt=None,
+                stage="controller", category=type(exc).__name__,
+                summary=f"{type(exc).__name__}: {exc}",
+            )
+            raise
 
 
 if __name__ == "__main__":
