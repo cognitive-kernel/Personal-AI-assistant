@@ -87,11 +87,12 @@
         (run.created_at ? " · " + String(run.created_at) : "");
       summary.append(heading, metadata);
       item.append(summary);
-      if (run.status === "completed" && run.conclusion && !["success", "neutral", "skipped"].includes(run.conclusion)) {
+      if (run.failure_summary || (run.status === "completed" && run.conclusion && !["success", "neutral", "skipped"].includes(run.conclusion))) {
         const failureSummary = document.createElement("p");
         failureSummary.className = "run-failure-summary";
+        const label = run.status === "completed" ? "علت خطا: " : "آخرین تشخیص: ";
         failureSummary.textContent = run.failure_summary
-          ? "علت خطا: " + String(run.failure_summary)
+          ? label + String(run.failure_summary)
           : "این اجرا ناموفق بوده است؛ برای دیدن مرحله و علت ثبت‌شده، گزارش اجرا را باز کنید.";
         item.append(failureSummary);
       }
