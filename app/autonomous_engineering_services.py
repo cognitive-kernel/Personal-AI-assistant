@@ -183,7 +183,7 @@ def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool
         metadata_available = context_length is not None
         recommended_context = None
         recommendation_error = None
-        if metadata_available and callable(recommended_context_fn):
+        if metadata_available and (callable(recommended_context_details_fn) or callable(recommended_context_fn)):
             prefix = f"{architecture}." if isinstance(architecture, str) and architecture else ""
             kv_dimensions_present = bool(prefix) and all(
                 isinstance(model_info.get(key), int)
