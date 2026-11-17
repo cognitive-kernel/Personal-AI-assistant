@@ -1,5 +1,6 @@
 """Shared deterministic fixtures for repository tests."""
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -23,18 +24,22 @@ def _isolate_ai_learning_embedding_dependencies(monkeypatch):
 
 
 @pytest.fixture
-def shared_state_tmp_path(tmp_path):
+def shared_state_tmp_path(tmp_path, request):
     """Return a writable test state path outside HOME on POSIX hosts."""
     if os.name == "nt":
-        return tmp_path / "shared-state"
-    home = Path.home().resolve()
-    candidate = tmp_path.resolve()
-    try:
-        candidate.relative_to(home)
-    except ValueError:
-        return candidate / "shared-state"
-    relative = candidate.relative_to(home)
-    shared_root = Path(tempfile.gettempdir()) / "personal-ai-shared-state-tests"
-    if shared_root.resolve().is_relative_to(home):
-        shared_root = Path("/var/tmp/personal-ai-shared-state-tests")
-    return shared_root / relative / "shared-state"
+        result = tmp_path / "shared-state"
+    else:
+        home = Path.home().resolve()
+        candidate = tmp_path.resolve()
+        try:
+            candidate.relative_to(home)
+            relative = candidate.relative_to(home)
+            shared_root = Path(tempfile.gettempdir()) / "personal-ai-shared-state-tests"
+            if shared_root.resolve().is_relative_to(home):
+                shared_root = Path("/var/tmp/personal-ai-shared-state-tests")
+            result = shared_root / relative / "shared-state"
+        except ValueError:
+            result = candidate / "shared-state"
+    result.mkdir(parents=True, exist_ok=True)
+    request.addfinalizer(lambda: shutil.rmtree(result, ignore_errors=True))
+    return result
