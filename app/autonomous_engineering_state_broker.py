@@ -196,7 +196,7 @@ def request(method: str, path: str, *, timeout_ms: int = 3500) -> Any:
             if kernel32.WaitNamedPipeW(_PIPE_NAME, _remaining_ms(deadline)):
                 handle = kernel32.CreateFileW(
                     _PIPE_NAME, _GENERIC_READ | _GENERIC_WRITE, 0, None,
-                    _OPEN_EXISTING, _FILE_FLAG_OVERLAPPED, None,
+                    _OPEN_EXISTING, _PIPE_OPEN_FLAGS, None,
                 )
                 if handle == _INVALID_HANDLE_VALUE:
                     error = ctypes.get_last_error()
