@@ -174,8 +174,13 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
     $installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
+    $stateLockPath = Join-Path $progressPath "autonomous-durable-state.lock"
+    if (-not (Test-Path -LiteralPath $stateLockPath -PathType Leaf)) {
+        [System.IO.File]::WriteAllBytes($stateLockPath, [byte[]]@(0))
+    }
     Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid
     Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -ReadOnlySid $appSid -AdditionalModifySid $installerSid
+    Set-AutonomousStateLockAcl -Path $progressPath -AppSid $appSid
     try {
         Ensure-AutonomousStateOwnerLabel
     } finally {
@@ -214,9 +219,14 @@ $runnerIsAdministrator = @(
 if ($runnerIsAdministrator) { throw "Runner account is a direct member of the local Administrators group; use a least-privilege identity." }
 New-Item -ItemType Directory -Path $RunnerRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
+    $stateLockPath = Join-Path $progressPath "autonomous-durable-state.lock"
+    if (-not (Test-Path -LiteralPath $stateLockPath -PathType Leaf)) {
+        [System.IO.File]::WriteAllBytes($stateLockPath, [byte[]]@(0))
+    }
 $installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid
 Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -ReadOnlySid $appSid
+Set-AutonomousStateLockAcl -Path $progressPath -AppSid $appSid
 $token = (& $gh.Source api --method POST "repos/$Repository/actions/runners/registration-token" --jq ".token")
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($token)) { throw "Could not obtain registration token; verify Administration: write permission." }
 $archive = $null
