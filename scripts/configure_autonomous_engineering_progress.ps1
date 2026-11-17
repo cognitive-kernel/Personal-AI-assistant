@@ -2,36 +2,45 @@
 param(
     [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
-    [string]$RunnerAccount,
-
-    [Parameter(Mandatory = $true)]
-    [ValidateNotNullOrEmpty()]
-    [string]$AppAccount
+    [string]$RunnerAccount
 )
 
 $ErrorActionPreference = "Stop"
-$RunnerAccount = $RunnerAccount.Trim()
-$AppAccount = $AppAccount.Trim()
-if ([string]::Equals($RunnerAccount, $AppAccount, [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw "RunnerAccount and AppAccount must be different Windows identities."
+Set-StrictMode -Version Latest
+Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsIdentity.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsPaths.psm1") -Force
+
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = [Security.Principal.WindowsPrincipal]::new($identity)
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    throw "Run this configuration from elevated PowerShell."
 }
-$progressPath = Join-Path $env:ProgramData "PersonalAIAssistant\autonomous-engineering"
+$runnerIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $RunnerAccount
+$runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
+$systemSid = "S-1-5-18"
 
-if (-not (Test-Path -LiteralPath $progressPath)) {
-    New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
+$machineStatePath = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")
+$processStatePath = $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR
+if (-not [string]::IsNullOrWhiteSpace($processStatePath) -and [string]::IsNullOrWhiteSpace($machineStatePath)) {
+    throw "AUTONOMOUS_ENGINEERING_PROGRESS_DIR is process/user-scoped; configure it at machine scope."
 }
-
-$rules = @(
-    "${RunnerAccount}:(OI)(CI)M",
-    "${AppAccount}:(OI)(CI)RX",
-    "SYSTEM:(OI)(CI)F",
-    "BUILTIN\Administrators:(OI)(CI)F"
-)
-
-& icacls.exe $progressPath /inheritance:r /T /C /grant:r $rules
-if ($LASTEXITCODE -ne 0) {
-    throw "Could not configure progress directory permissions (icacls exit code $LASTEXITCODE)."
+if (-not [string]::IsNullOrWhiteSpace($processStatePath)) {
+    $resolvedProcess = [System.IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($processStatePath.Trim()))
+    $resolvedMachine = [System.IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($machineStatePath.Trim()))
+    if (-not $resolvedProcess.Equals($resolvedMachine, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Process and machine state directory values differ."
+    }
 }
+$progressPath = Resolve-AutonomousStateDirectory -ConfiguredPath $machineStatePath -ProgramDataPath $env:ProgramData
+New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
 
-Write-Output "Progress telemetry directory is ready: $progressPath"
-Write-Output "Only the specified runner/app accounts, SYSTEM, and local administrators have access."
+# Remove stale app-user ACEs recursively. Only the dedicated Runner role and
+# the LocalSystem broker retain direct filesystem access to this data tree.
+Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $systemSid)
+
+$broker = Get-Service -Name "PersonalAIAssistantStateBroker" -ErrorAction SilentlyContinue
+if (-not $broker -or $broker.Status -ne "Running") {
+    throw "The machine state broker is not installed or running; rerun provision_autonomous_runner.ps1."
+}
+Write-Output "Shared progress storage is protected for Runner and LocalSystem broker access."
+Write-Output "Application sessions use the named-pipe broker and do not need filesystem ACL entries."
