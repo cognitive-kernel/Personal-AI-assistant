@@ -23,6 +23,7 @@ def test_autonomous_workflow_bootstraps_python_and_node_before_using_them():
     assert 'node-version: "22"' in workflow
     assert "Use preinstalled system Python" not in workflow
     assert "Node.js must be installed system-wide" not in workflow
+    assert "Install Node.js LTS system-wide" not in workflow
 
 
 def test_autonomous_workflow_keeps_codex_installation_pinned():
