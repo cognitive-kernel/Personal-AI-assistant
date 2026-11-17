@@ -124,7 +124,7 @@ def test_broker_pipe_io_cancels_a_timed_out_operation(monkeypatch):
             return 1
 
     fake = FakeKernel()
-    monkeypatch.setattr(broker.ctypes, "get_last_error", lambda: 997)
+    monkeypatch.setattr(broker.ctypes, "get_last_error", lambda: 997, raising=False)
     with pytest.raises(broker.StateBrokerError, match="timed out"):
         broker._overlapped_transfer(
             fake, 11, write=True, buffer=object(), size=1,
@@ -151,7 +151,7 @@ def test_broker_pipe_io_treats_peer_close_as_end_of_response(monkeypatch):
             return 1
 
     fake = FakeKernel()
-    monkeypatch.setattr(broker.ctypes, "get_last_error", lambda: 109)
+    monkeypatch.setattr(broker.ctypes, "get_last_error", lambda: 109, raising=False)
     result = broker._overlapped_transfer(
         fake, 11, write=False, buffer=object(), size=8,
         deadline=broker.time.monotonic() + 1,
@@ -188,7 +188,7 @@ def test_broker_pipe_io_treats_pending_broken_pipe_completion_as_eof(monkeypatch
             return 1
 
     errors = iter([997, 109])
-    monkeypatch.setattr(broker.ctypes, "get_last_error", lambda: next(errors))
+    monkeypatch.setattr(broker.ctypes, "get_last_error", lambda: next(errors), raising=False)
     fake = FakeKernel()
     result = broker._overlapped_transfer(
         fake, 11, write=False, buffer=object(), size=8,
