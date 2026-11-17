@@ -84,3 +84,83 @@ def test_progress_reader_returns_degraded_payload_when_broker_is_unavailable(mon
     assert result["current"] is None
     assert result["history"] == []
     assert "StateBrokerError" in result["error"]
+
+
+def test_broker_pipe_io_uses_overlapped_handles_and_a_shared_deadline():
+    client = (ROOT / "app" / "autonomous_engineering_state_broker.py").read_text(encoding="utf-8")
+
+    assert "_FILE_FLAG_OVERLAPPED = 0x40000000" in client
+    assert "_overlapped_transfer(" in client
+    assert "WaitForSingleObject" in client
+    assert "CancelIoEx" in client
+    assert "deadline = time.monotonic() + timeout_ms / 1000.0" in client
+    assert "size=len(chunk), deadline=deadline" in client
+    assert "size=len(payload), deadline=deadline" in client
+
+
+def test_broker_pipe_io_cancels_a_timed_out_operation(monkeypatch):
+    class FakeKernel:
+        def __init__(self):
+            self.waits = 0
+            self.cancelled = False
+            self.closed = False
+
+        def CreateEventW(self, *_args):
+            return 7
+
+        def WriteFile(self, *_args):
+            return 0
+
+        def WaitForSingleObject(self, *_args):
+            self.waits += 1
+            return 258 if self.waits == 1 else 0
+
+        def CancelIoEx(self, *_args):
+            self.cancelled = True
+            return 1
+
+        def CloseHandle(self, _handle):
+            self.closed = True
+            return 1
+
+    fake = FakeKernel()
+    monkeypatch.setattr(broker.ctypes, "get_last_error", lambda: 997)
+    with pytest.raises(broker.StateBrokerError, match="timed out"):
+        broker._overlapped_transfer(
+            fake, 11, write=True, buffer=object(), size=1,
+            deadline=broker.time.monotonic() + 1,
+        )
+    assert fake.cancelled
+    assert fake.closed
+    assert fake.waits == 2
+
+
+def test_broker_pipe_io_treats_peer_close_as_end_of_response(monkeypatch):
+    class FakeKernel:
+        def __init__(self):
+            self.closed = False
+
+        def CreateEventW(self, *_args):
+            return 7
+
+        def ReadFile(self, *_args):
+            return 0
+
+        def CloseHandle(self, _handle):
+            self.closed = True
+            return 1
+
+    fake = FakeKernel()
+    monkeypatch.setattr(broker.ctypes, "get_last_error", lambda: 109)
+    result = broker._overlapped_transfer(
+        fake, 11, write=False, buffer=object(), size=8,
+        deadline=broker.time.monotonic() + 1,
+    )
+    assert result == 0
+    assert fake.closed
+
+
+@pytest.mark.parametrize("timeout_ms", [True, False, 0, 249, 30001, 3.5, "3500"])
+def test_broker_client_rejects_invalid_io_deadlines(timeout_ms):
+    with pytest.raises(ValueError, match="timeout"):
+        broker.request("GET", "/v1/health", timeout_ms=timeout_ms)
