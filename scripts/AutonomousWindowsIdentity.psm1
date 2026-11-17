@@ -149,8 +149,12 @@ function Set-AutonomousDirectoryTreeAcl {
         }
     }
     $icacls = Get-Command icacls.exe -ErrorAction Stop
-    $installerGrant = "*$($InstallerSid):(OI)(CI)M"
     foreach ($item in $targets) {
+        $installerGrant = if ($item.PSIsContainer) {
+            "*$($InstallerSid):(OI)(CI)M"
+        } else {
+            "*$($InstallerSid):M"
+        }
         & $icacls.Source $item.FullName /grant:r $installerGrant /C /Q | Out-Null
         if ($LASTEXITCODE -ne 0) {
             throw "Could not grant temporary installer access to '$($item.FullName)'."
