@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import tempfile
 
 from .autonomous_engineering_state import durable_state_lock, execution_state_directory
 from datetime import date, datetime, timezone
@@ -22,8 +23,18 @@ def _progress_dir() -> Path:
 
 def storage_accessible() -> bool:
     try:
-        with os.scandir(_progress_dir()):
-            return True
+        directory = _progress_dir()
+        with os.scandir(directory):
+            pass
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=".autonomous-engineering-write-probe-",
+            dir=directory,
+        )
+        try:
+            os.close(descriptor)
+        finally:
+            Path(temporary_name).unlink(missing_ok=True)
+        return True
     except (OSError, RuntimeError, ValueError):
         return False
 
