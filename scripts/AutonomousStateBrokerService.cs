@@ -132,6 +132,8 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                 {
                     pipe.WaitForConnection();
                     if (_stopping) return;
+                    pipe.ReadTimeout = 3000;
+                    pipe.WriteTimeout = 3000;
                     HandleClient(pipe);
                 }
             }
@@ -217,7 +219,11 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         }
         if (method == "POST" && path == "/v1/cleanup")
         {
-            WriteResponse(pipe, 200, CleanupProgress());
+            Dictionary<string, object> cleanup = CleanupProgress() as Dictionary<string, object>;
+            object conflict;
+            int status = cleanup != null && cleanup.TryGetValue("conflict", out conflict) &&
+                conflict is Boolean && (Boolean)conflict ? 409 : 200;
+            WriteResponse(pipe, status, cleanup ?? Error("cleanup_failed"));
             return;
         }
 
