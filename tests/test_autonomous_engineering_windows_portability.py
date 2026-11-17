@@ -77,6 +77,8 @@ def test_shared_state_tree_acl_is_recursive_and_only_grants_runner_and_system():
     assert "$acl.SetAccessRule($newRule)" in module
     assert "ReparsePoint" in module
     assert "$allowed = @($ModifySids | Select-Object -Unique)" in module
+    assert "$acl.SetOwner([Security.Principal.SecurityIdentifier]$OwnerSid)" in module
+    assert "OwnerSid" in script and '"S-1-5-19"' in script
     assert "AppAccount" not in configure
     assert "Authenticated Users" not in configure
     assert "S-1-5-32-545" not in script + configure + module
