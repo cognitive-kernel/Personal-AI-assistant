@@ -45,7 +45,15 @@ def _is_path_within(path: Path, parent: Path) -> bool:
         return False
 
 
-def _shared_site_state_directory() -> Path:
+def _current_home_directory() -> Path | None:
+    """Return a home path only for legacy migration; normal state does not depend on it."""
+    try:
+        return Path.home()
+    except (OSError, RuntimeError):
+        return None
+
+
+def _shared_site_state_directory(home: Path | None) -> Path:
     """Return the OS-wide application data root, never a per-user home directory."""
     try:
         from platformdirs import site_data_path
@@ -56,7 +64,7 @@ def _shared_site_state_directory() -> Path:
     root = Path(site_data_path("PersonalAIAssistant", appauthor=False)) / "autonomous-engineering"
     if not root.is_absolute():
         raise RuntimeError("The platform shared-data directory did not resolve to an absolute path.")
-    if _is_path_within(root, Path.home()):
+    if home is not None and _is_path_within(root, home):
         raise RuntimeError(
             "The platform shared-data directory resolves inside the current user's home; "
             "configure AUTONOMOUS_ENGINEERING_PROGRESS_DIR to one shared system path."
@@ -64,11 +72,11 @@ def _shared_site_state_directory() -> Path:
     return root
 
 
-def _migrate_legacy_posix_state(legacy: Path, shared: Path) -> None:
+def _migrate_legacy_posix_state(legacy: Path | None, shared: Path, home: Path | None) -> None:
     """Copy legacy per-user state into the shared root without deleting either copy."""
-    if not legacy.exists():
+    if legacy is None or not legacy.exists():
         return
-    if legacy.is_symlink() or not legacy.is_dir() or not _is_path_within(legacy, Path.home()):
+    if legacy.is_symlink() or not legacy.is_dir() or home is None or not _is_path_within(legacy, home):
         raise RuntimeError("The legacy autonomous-engineering state path is not a safe directory inside the current home.")
     shared.mkdir(parents=True, exist_ok=True)
     if shared.is_symlink():
