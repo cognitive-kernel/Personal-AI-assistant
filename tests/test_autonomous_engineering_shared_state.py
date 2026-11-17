@@ -67,6 +67,25 @@ def test_posix_shared_state_migration_refuses_conflicts_without_overwriting_eith
     assert (shared / "pending-manual-task.txt").read_text(encoding="utf-8") == "different shared task"
 
 
+def test_posix_shared_state_resolution_works_without_a_home_directory(monkeypatch, tmp_path: Path):
+    site_root = tmp_path / "system-data"
+    monkeypatch.setattr(
+        Path,
+        "home",
+        classmethod(lambda cls: (_ for _ in ()).throw(RuntimeError("home is unavailable"))),
+    )
+    monkeypatch.setattr(platformdirs, "site_data_path", lambda *args, **kwargs: site_root)
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", raising=False)
+    monkeypatch.delenv("PROGRAMDATA", raising=False)
+
+    resolved = state.execution_state_directory(
+        is_windows_fn=lambda: False,
+        machine_state_fn=lambda: "",
+    )
+
+    assert resolved == site_root / "autonomous-engineering"
+
+
 def test_posix_rejects_configured_state_inside_current_users_home(monkeypatch, tmp_path: Path):
     home = tmp_path / "legacy-home"
     _configure_posix_state(monkeypatch, home, tmp_path / "system-data")
