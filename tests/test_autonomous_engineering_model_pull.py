@@ -65,7 +65,7 @@ def test_model_pull_endpoint_resolution_failure_is_reported_and_releases_admissi
 
     assert state is not None
     assert state["status"] == "failed"
-    assert state["error"] == "RuntimeError"
+    assert state["error"] == "Ollama endpoint invalid"
     assert pull._ACTIVE_JOB is None
 
 
@@ -73,7 +73,7 @@ def test_model_pull_does_not_claim_success_when_model_is_absent_from_inventory(m
     class FakeOpener:
         def open(self, request, timeout):
             if request.full_url.endswith("/api/pull"):
-                return io.BytesIO(b'{"status":"success"}\\n')
+                return io.BytesIO(b'{"status":"success"}\n')
             return io.BytesIO(b'{"models":[]}')
 
     monkeypatch.setattr(pull, "_base_url", lambda: "http://127.0.0.1:11434")
