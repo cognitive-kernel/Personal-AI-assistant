@@ -354,10 +354,10 @@ def test_ollama_status_probes_tool_calling_when_capabilities_metadata_is_missing
     assert result["model_supports_tools"] is True
     assert result["model_tools_metadata_available"] is False
     assert result["model_tools_verification_method"] == "live_tool_call_probe"
-    assert [call[0] for call in probe_calls] == ["/api/ps", "/api/chat"]
-    assert probe_calls[1][2] == 45
-    assert probe_calls[1][1]["think"] is False
-    assert probe_calls[1][1]["keep_alive"] == "0"
+    assert [call[0] for call in probe_calls] == ["/api/ps", "/api/ps", "/api/chat"]
+    assert probe_calls[-1][2] == 45
+    assert probe_calls[-1][1]["think"] is False
+    assert probe_calls[-1][1]["keep_alive"] == "0"
 
 
 def test_ollama_status_lists_installed_models_without_selecting_one(monkeypatch):
