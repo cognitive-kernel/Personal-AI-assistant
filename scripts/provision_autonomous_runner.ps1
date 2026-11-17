@@ -100,6 +100,24 @@ if ($capabilitiesProperty -and $null -ne $capabilitiesProperty.Value) {
         throw "Saved model $Model failed the live Ollama tool-call probe."
     }
 }
+function Assert-NoActiveAutonomousWorkflow {
+    $runsJson = & $gh.Source api "repos/$Repository/actions/workflows/autonomous-codex-engineering.yml/runs?per_page=100"
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($runsJson)) {
+        throw "Could not inspect autonomous workflow activity; refusing to modify live shared-state permissions."
+    }
+    $runs = $runsJson | ConvertFrom-Json
+    if ($null -eq $runs.workflow_runs -or [int]$runs.total_count -gt @($runs.workflow_runs).Count) {
+        throw "Autonomous workflow run inventory is incomplete; refusing to change the shared state ACL."
+    }
+    $active = @($runs.workflow_runs | Where-Object {
+        $_.status -in @("queued", "in_progress", "waiting", "requested", "pending")
+    })
+    if ($active.Count -gt 0) {
+        $ids = ($active | ForEach-Object { [string]$_.id }) -join ", "
+        throw "Autonomous workflow runs are active or queued ($ids); stop them before repairing state ACLs or updating the broker."
+    }
+}
+
 function Ensure-AutonomousStateOwnerLabel {
     $inventoryJson = & $gh.Source api "repos/$Repository/actions/runners?per_page=100"
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($inventoryJson)) {
@@ -254,6 +272,7 @@ function Install-AutonomousStateBrokerService {
 }
 
 if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
+    Assert-NoActiveAutonomousWorkflow
     $services = @(Get-CimInstance Win32_Service | Where-Object { $_.PathName -like "*$RunnerRoot*" })
     if ($services.Count -ne 1 -or (Get-AutonomousWindowsAccountSid -AccountName $services[0].StartName) -ne (Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity)) { throw "Existing Runner configuration found; refusing to replace or reconfigure it." }
 
@@ -286,7 +305,7 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     }
 
     $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
-        New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
+    New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
     Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid
     Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid -InstallerSid $installerSid
     try {
