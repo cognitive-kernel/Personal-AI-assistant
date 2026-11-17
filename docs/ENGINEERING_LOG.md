@@ -2036,3 +2036,9 @@ PR #770 now places the same explicit, non-escalating argument contract in every 
 - The autonomous controller invokes GitHub CLI commands, but the workflow previously assumed `gh` was already installed on the self-hosted Runner.
 - Added a job-local bootstrap for pinned GitHub CLI 2.104.0. The step downloads the official Windows x64 release and checksum manifest, verifies the archive SHA-256 before extraction, and exposes the executable only through the current Actions job PATH. Existing matching installations are reused; mismatched versions do not silently pass.
 - Added regression assertions for bootstrap ordering, pinned version, and checksum verification. The local dashboard still requires GitHub CLI authentication for the application account; this workflow bootstrap uses the scoped Actions token and does not create a user login.
+## 2026-11-17 — POSIX shared state root and non-destructive legacy migration
+
+- The autonomous state resolver used a per-user home-directory fallback on POSIX, so the app and a separately running Runner could resolve different task, checkpoint, and diagnostic stores.
+- POSIX now resolves its default through platformdirs.site_data_path(), rejects an explicit or platform-derived path inside the current user's home, and retains the machine-scoped Windows resolver.
+- Existing legacy POSIX state is copied—not moved or deleted—under the durable-state, repository-execution, and checkpoint-store locks. Symlinks and conflicting file contents fail closed; identical files are accepted. Lock files are recreated under the shared root rather than replacing an actively held lock inode.
+- Added platformdirs as a runtime dependency and regression tests for shared path selection, legacy migration, conflict preservation, per-user path rejection, and lock-file safety. ACL provisioning for app/Runner identities remains a separate prerequisite; exact-head CI is pending.
