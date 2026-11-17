@@ -212,3 +212,44 @@ def test_broker_pipe_io_does_not_start_when_deadline_has_expired():
             FakeKernel(), 11, write=False, buffer=object(), size=8,
             deadline=broker.time.monotonic() - 1,
         )
+
+
+def test_broker_pipe_open_retries_transient_missing_instance(monkeypatch):
+    class FakeKernel:
+        def __init__(self):
+            self.calls = 0
+
+        def CreateFileW(self, *_args):
+            self.calls += 1
+            return broker._INVALID_HANDLE_VALUE if self.calls == 1 else 77
+
+        def WaitNamedPipeW(self, *_args):
+            raise AssertionError("A missing pipe instance should be retried without an unbounded wait.")
+
+    fake = FakeKernel()
+    monkeypatch.setattr(broker.ctypes, "get_last_error", lambda: 2, raising=False)
+    monkeypatch.setattr(broker.time, "sleep", lambda _seconds: None)
+    assert broker._open_pipe(fake, broker.time.monotonic() + 1) == 77
+    assert fake.calls == 2
+
+
+def test_broker_pipe_open_waits_for_busy_instance(monkeypatch):
+    class FakeKernel:
+        def __init__(self):
+            self.calls = 0
+            self.waited = False
+
+        def CreateFileW(self, *_args):
+            self.calls += 1
+            return broker._INVALID_HANDLE_VALUE if self.calls == 1 else 88
+
+        def WaitNamedPipeW(self, _name, timeout):
+            assert timeout > 0
+            self.waited = True
+            return 1
+
+    fake = FakeKernel()
+    monkeypatch.setattr(broker.ctypes, "get_last_error", lambda: 231, raising=False)
+    assert broker._open_pipe(fake, broker.time.monotonic() + 1) == 88
+    assert fake.waited
+    assert fake.calls == 2
