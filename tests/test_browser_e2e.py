@@ -3964,3 +3964,112 @@ def test_autonomous_dashboard_run_logs_delete_and_cleanup_controls():
         assert ("cleanup", "POST") in requests
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+
+def test_browser_autonomous_run_failure_diagnostic_is_visible():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    browser_errors = []
+    run = {
+        "id": 123456,
+        "status": "completed",
+        "conclusion": "failure",
+        "display_title": "Autonomous local Ollama engineering",
+        "created_at": "2026-11-17T06:32:50Z",
+        "url": "https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/123456",
+        "failure_summary": "Codex marked task 1 as blocked.",
+    }
+    status = {
+        "ready": False,
+        "can_dispatch": False,
+        "checks": {
+            "ollama_online": False,
+            "model_installed": False,
+            "model_selectable": False,
+            "model_context_metadata_available": False,
+            "model_context_supported": False,
+            "model_supports_tools": False,
+            "model_is_codex_context_variant": False,
+            "model_tools_metadata_available": False,
+            "codex_installed": False,
+            "runner_running": False,
+            "github_cli_authenticated": False,
+            "github_runs_available": True,
+            "progress_storage_accessible": True,
+        },
+        "github": {"recent_runs": [run], "authenticated": False, "runs_available": True, "settings": {}},
+        "ollama": {"models": []},
+        "codex": {"installed": False},
+        "runner": {"running": False},
+        "model": "",
+        "models": [],
+        "selectable_models": [],
+        "interval_hours": 24,
+        "execution_mode": "continuous",
+        "paused": False,
+    }
+    logs = {
+        "run": {"id": 123456, "status": "completed", "conclusion": "failure", "url": run["url"]},
+        "failures": [{
+            "name": "codex",
+            "status": "completed",
+            "conclusion": "failure",
+            "failed_steps": [{"name": "Execute one isolated task", "conclusion": "failure"}],
+        }],
+        "error_summary": "Codex marked task 1 as blocked.",
+        "failure_stage": "codex_decision",
+        "diagnostics_available": True,
+        "diagnostic": {
+            "run_id": 123456,
+            "updated_at": "2026-11-17T06:40:29Z",
+            "diagnostics": [{
+                "run_attempt": "1",
+                "task": 1,
+                "attempt": 1,
+                "stage": "codex_decision",
+                "category": "task_blocked",
+                "summary": "Codex marked task 1 as blocked.",
+                "detail": "The selected operation needs approval unavailable to this isolated Runner. No code changes were made.",
+                "recorded_at": "2026-11-17T06:40:29Z",
+            }],
+        },
+        "logs": "Autonomous engineering cycle failed: Codex reported task 1 as blocked.",
+        "truncated": False,
+    }
+
+    def fulfill_json(route, value):
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(value))
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/api/autonomous-engineering/status", lambda route: fulfill_json(route, status))
+        page.route("**/api/autonomous-engineering/runs", lambda route: fulfill_json(route, {
+            "runs": [run], "repository": "cognitive-kernel/Personal-AI-assistant",
+            "workflow": "autonomous-codex-engineering.yml",
+        }))
+        page.route("**/api/autonomous-engineering/progress**", lambda route: fulfill_json(route, {
+            "current": None, "history": [], "events": [], "available": False,
+            "storage_configured": True,
+        }))
+        page.route("**/api/autonomous-engineering/runs/123456/logs", lambda route: fulfill_json(route, logs))
+
+        response = page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        page.locator(".run-failure-summary").get_by_text(
+            "علت خطا: Codex marked task 1 as blocked.", exact=True
+        ).wait_for(timeout=10000)
+        page.locator('#recent-runs button[data-run-action="logs"]').click()
+        page.get_by_text("علت این اجرا", exact=True).wait_for(timeout=10000)
+        page.get_by_text("Codex marked task 1 as blocked.", exact=True).last.wait_for(timeout=10000)
+        page.get_by_text("گزارش توضیحی Codex / جزئیات خطا", exact=True).click()
+        page.get_by_text(
+            "The selected operation needs approval unavailable to this isolated Runner. No code changes were made.",
+            exact=True,
+        ).wait_for(timeout=5000)
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
