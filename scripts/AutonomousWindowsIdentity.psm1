@@ -167,7 +167,7 @@ function Set-AutonomousDirectoryTreeAcl {
             $acl.RemoveAccessRuleSpecific($rule)
         }
         foreach ($sid in $allowed) {
-            $inheritance = if ($item.PSIsContainer) {
+            $inheritance = if ($item -is [System.IO.DirectoryInfo]) {
                 [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
                     [Security.AccessControl.InheritanceFlags]::ObjectInherit
             } else {
