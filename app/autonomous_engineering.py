@@ -601,12 +601,7 @@ def _workflow_runs(gh: str) -> list[dict[str, Any]]:
             "failure_summary": (
                 latest_diagnostic.get("summary")
                 if latest_diagnostic and item.get("conclusion") not in {"success", "neutral", "skipped"}
-                else (
-                    _workflow_failure_summary("", [{
-                        "name": str(item.get("name") or "Autonomous engineering"),
-                        "failed_steps": [],
-                    }]) if item.get("conclusion") not in {None, "success", "neutral", "skipped"} else None
-                )
+                else None
             ),
         })
     return normalized
