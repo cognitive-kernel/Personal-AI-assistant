@@ -119,8 +119,13 @@ def test_machine_state_broker_uses_a_local_allowlisted_pipe_not_a_network_file_a
     assert "Unsupported state-broker endpoint" in python_client
     assert "ValidateSet(" in powershell_client
     assert '"/v1/health", "/v1/pending-work", "/v1/progress"' in powershell_client
+    assert "[System.IO.Pipes.PipeOptions]::Asynchronous" in powershell_client
+    assert "WriteLineAsync" in powershell_client and "ReadLineAsync" in powershell_client
+    assert "GetAwaiter().GetResult()" in powershell_client
+    assert "ReadTimeout" not in powershell_client and "WriteTimeout" not in powershell_client
+    assert "Wait([TimeSpan]::FromMilliseconds" in powershell_client
     assert "PersonalAIAssistantStateBroker" in provision
-    assert 'obj= "NT AUTHORITY\\LocalService"' in provision
+    assert "'obj=' 'NT AUTHORITY\\LocalService' 'start=' 'auto'" in provision
     assert 'Join-Path $env:ProgramData "PersonalAIAssistant\\StateBroker"' in provision
     assert "AutonomousStateBrokerService.cs" in provision
     assert "Invoke-AutonomousStateBroker" in provision
