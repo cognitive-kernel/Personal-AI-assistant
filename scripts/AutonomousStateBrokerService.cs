@@ -132,7 +132,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                     CreatePipeSecurity()
                 ))
                 {
-                    pipe.WaitForConnection();
+                    pipe.WaitForConnectionAsync().GetAwaiter().GetResult();
                     if (_stopping) return;
                     HandleClient(pipe);
                 }
@@ -141,7 +141,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             catch (IOException) { if (_stopping) return; }
             catch (Exception ex)
             {
-                try { EventLog.WriteEntry("PersonalAIAssistantStateBroker: " + ex.GetType().Name, EventLogEntryType.Warning); } catch { }
+                try { EventLog.WriteEntry("PersonalAIAssistantStateBroker: " + ex.ToString(), EventLogEntryType.Warning); } catch { }
                 Thread.Sleep(200);
             }
         }
