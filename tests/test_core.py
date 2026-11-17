@@ -115,6 +115,64 @@ def test_startup_bootstrap_reads_project_dependencies():
     assert bootstrap.MIN_PYTHON == (3, 11)
 
 
+def test_startup_bootstrap_does_not_forward_pythonhome_to_child_processes(monkeypatch):
+    import subprocess
+
+    bootstrap = _load_startup_bootstrap()
+    captured = {}
+    monkeypatch.setenv("PYTHONHOME", r"C:\\Program Files\\Python311")
+    monkeypatch.setenv("APP_SETTING_FOR_CHILD", "preserved")
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["env"] = kwargs["env"]
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(bootstrap.subprocess, "run", fake_run)
+
+    result = bootstrap._run(["python", "-c", "pass"])
+
+    assert result.returncode == 0
+    assert "PYTHONHOME" not in captured["env"]
+    assert captured["env"]["APP_SETTING_FOR_CHILD"] == "preserved"
+
+
+def test_managed_env_does_not_recursively_relaunch_when_venv_detection_fails(monkeypatch):
+    bootstrap = _load_startup_bootstrap()
+    monkeypatch.setattr(bootstrap, "_inside_project_venv", lambda: False)
+    monkeypatch.setattr(bootstrap.sys, "argv", ["run.py", "--managed-env"])
+    monkeypatch.setattr(
+        bootstrap, "_run",
+        lambda *_args, **_kwargs: pytest.fail("managed environment must not spawn another interpreter"),
+    )
+
+    assert bootstrap.main() == 2
+
+
+def test_startup_handoff_targets_the_project_virtualenv(monkeypatch, tmp_path):
+    import subprocess
+
+    bootstrap = _load_startup_bootstrap()
+    python = tmp_path / "Scripts" / "python.exe"
+    python.parent.mkdir(parents=True)
+    python.write_bytes(b"test interpreter")
+    captured = {}
+    monkeypatch.setattr(bootstrap, "_inside_project_venv", lambda: False)
+    monkeypatch.setattr(bootstrap, "_python_in_venv", lambda: python)
+    monkeypatch.setattr(bootstrap.sys, "argv", ["run.py"])
+
+    def fake_run(command, **_kwargs):
+        captured["command"] = command
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(bootstrap, "_run", fake_run)
+
+    assert bootstrap.main() == 0
+    assert captured["command"][0] == str(python)
+    assert captured["command"][1].endswith("run.py")
+    assert captured["command"][2] == "--managed-env"
+
+
 def test_startup_bootstrap_detects_missing_distribution():
     bootstrap = _load_startup_bootstrap()
 
