@@ -461,7 +461,24 @@ def run_cycle(args: argparse.Namespace) -> int:
             )
             continue
 
-        marker = task_marker(report)
+        try:
+            marker = task_marker(report)
+        except RuntimeError as exc:
+            print(f"Codex final report validation failed: {exc}", file=sys.stderr)
+            failure_feedback = (
+                f"Attempt {attempt}: {exc}\n"
+                "The Codex --output-last-message report did not contain exactly one valid completion marker. "
+                "Continue the SAME task; do not reset or discard the existing worktree/checkpoint and do not choose another task.\n"
+                "Write your final report through the supplied --output-last-message file. End that report with exactly one of these plain-text markers on its own final line, without a Markdown code fence or punctuation: TASK_COMPLETE, QUEUE_EMPTY, TASK_BLOCKED.\n"
+                "Use TASK_COMPLETE only after the selected task, required regression tests, and engineering documentation are complete; use TASK_BLOCKED only with a concrete blocker; use QUEUE_EMPTY only when no actionable task remains and there is no unfinished checkpoint.\n"
+            )
+            record(
+                args.run_id, args.run_attempt, "retry",
+                f"اصلاح گزارش نهایی وظیفهٔ {task}",
+                "گزارش Codex نشانگر پایان معتبر نداشت؛ همان وظیفه با دستور اصلاحی دوباره اجرا می‌شود",
+            )
+            continue
+
         if marker == "QUEUE_EMPTY":
             if attempt > 1 or restored_checkpoint:
                 raise RuntimeError("Codex reported QUEUE_EMPTY while recovering an unfinished task; refusing to discard the checkpoint.")

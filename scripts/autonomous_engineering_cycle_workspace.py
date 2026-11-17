@@ -16,10 +16,13 @@ def snapshot(run_id: str, attempt: str, *, checked, python_executable: str) -> N
 def task_marker(report: Path, markers) -> str:
     try:
         matches = markers.findall(report.read_text(encoding="utf-8-sig"))
-    except OSError as exc:
-        raise RuntimeError("Codex did not produce its final task report.") from exc
+    except (OSError, UnicodeError) as exc:
+        raise RuntimeError("Codex did not produce a readable final task report.") from exc
     if len(matches) != 1:
-        raise RuntimeError("Codex report must contain exactly one valid completion marker.")
+        raise RuntimeError(
+            "Codex report must contain exactly one valid completion marker "
+            f"(found {len(matches)})."
+        )
     return matches[0]
 
 

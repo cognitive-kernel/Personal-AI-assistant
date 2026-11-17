@@ -938,6 +938,15 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert 'model_provider="ollama-local"' in codex_config
     assert "model_providers.ollama-local.base_url" in codex_config
     assert "model_providers.ollama." not in codex_config
+    # The real task prompt must pin the same safe exec_command schema used by
+    # the successful isolated Codex smoke; otherwise Ollama models may emit
+    # an invalid justification/sandbox_permissions combination.
+    assert "For EVERY Codex exec_command tool call" in workflow
+    assert "yield_time_ms to the" in workflow and "integer 10000" in workflow
+    assert 'sandbox_permissions to "use_default"' in workflow
+    assert "Omit justification, prefix_rule," in workflow
+    assert "additional_permissions entirely" in workflow
+    assert 'Never use "require_escalated"' in workflow
     assert "scripts/autonomous_engineering_cycle.py run" in workflow
     assert "contents: write" in workflow and "pull-requests: write" in workflow and "actions: write" in workflow
     assert "publish_pull_request" in cycle_controller and "dispatch_and_wait_all" in cycle_controller

@@ -150,6 +150,68 @@ def test_cycle_run_converts_timeout_to_a_diagnostic_error(monkeypatch: pytest.Mo
         cycle.run(["python", "--version"], timeout_seconds=17)
 
 
+def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("Complete the selected task.", encoding="utf-8")
+    monkeypatch.setattr(cycle, "ROOT", tmp_path)
+    monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("GH_REPO", "owner/repository")
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "autonomous-state"))
+    monkeypatch.setattr(cycle, "start_checkpoint_watcher", lambda *args: None)
+    stopped = []
+    monkeypatch.setattr(cycle, "stop_checkpoint_watcher", lambda *args: stopped.append(args))
+    monkeypatch.setattr(cycle, "record", lambda *args, **kwargs: None)
+    monkeypatch.setattr(cycle, "snapshot", lambda *args: None)
+    monkeypatch.setattr(cycle, "api", lambda *args, **kwargs: [])
+    monkeypatch.setattr(cycle, "find_open_autonomous_pr", lambda *args: None)
+    monkeypatch.setattr(cycle, "restore_checkpoint", lambda *args: False)
+    monkeypatch.setattr(
+        cycle, "checked",
+        lambda command, **kwargs: (
+            "base-sha" if command[:3] == ["git", "rev-parse", "HEAD"]
+            else "codex/local-engineering-123-1-task-1" if command[1:3] == ["branch", "--show-current"]
+            else ""
+        ),
+    )
+    monkeypatch.setattr(
+        cycle, "clear_checkpoint",
+        lambda *args: (_ for _ in ()).throw(AssertionError("invalid report must not clear the task checkpoint")),
+    )
+    calls = {"codex": 0}
+
+    def fake_run(command, *, env=None, capture=False, timeout_seconds=None):
+        assert any("autonomous_engineering_progress.py" in str(part) for part in command)
+        calls["codex"] += 1
+        if calls["codex"] == 1:
+            report = Path(command[command.index("--report") + 1])
+            report.write_text("The implementation is described, but the terminal marker is missing.\n", encoding="utf-8")
+            return subprocess.CompletedProcess(command, 0, "", "")
+        return subprocess.CompletedProcess(command, 1, "", "simulated failure in the repair attempt")
+
+    monkeypatch.setattr(cycle, "run", fake_run)
+    args = type("Args", (), {
+        "run_id": "123", "run_attempt": "1", "model": "test-model",
+        "prompt": str(prompt), "mode": "continuous",
+    })()
+
+    with pytest.raises(RuntimeError, match=r"attempt limit reached \(2\)"):
+        cycle.run_cycle(args)
+
+    retry_prompt = tmp_path / "codex-retry-prompt-1-2.md"
+    retry_text = retry_prompt.read_text(encoding="utf-8")
+    assert calls["codex"] == 2
+    assert "exactly one valid completion marker" in retry_text
+    assert "on its own final line" in retry_text
+    assert "TASK_COMPLETE, QUEUE_EMPTY, TASK_BLOCKED" in retry_text
+    assert "Continue the SAME task" in retry_text
+    assert len(stopped) == 2
+    assert prompt.read_text(encoding="utf-8") == "Complete the selected task."
+    assert cycle.load_pending_pr() is None
+
+
 def test_run_cycle_bounds_failed_codex_attempts_and_preserves_task(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     prompt = tmp_path / "prompt.md"
     prompt.write_text("Complete the selected task.", encoding="utf-8")
