@@ -11,6 +11,7 @@ import urllib.error
 import urllib.request
 import re
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -135,23 +136,42 @@ def _github_snapshot() -> dict[str, Any]:
 
 
 def collect_status() -> dict[str, Any]:
-    github = _github_snapshot()
-    settings = github.get("settings", {})
-    model = settings.get("model", "")
+    # These checks perform independent local/network I/O. Run them concurrently:
+    # serial execution adds the GitHub CLI timeouts to several Ollama HTTP calls
+    # (including the hardware/context estimate), which can exceed the UI's
+    # 40-second request deadline even when every individual call is bounded.
+    github_settings: dict[str, Any] = {}
+
+    def _status_ollama() -> dict[str, Any]:
+        # The probe policy is thread-local, so set it in the worker that performs
+        # the Ollama check rather than in the request thread.
+        _STATUS_PROBE_CONTEXT.allow_live_tool_probe = False
+        try:
+            return _ollama_status(str(github_settings.get("model", "")))
+        finally:
+            del _STATUS_PROBE_CONTEXT.allow_live_tool_probe
+
+    with ThreadPoolExecutor(max_workers=5, thread_name_prefix="autonomous-status") as pool:
+        github_future = pool.submit(_github_snapshot)
+        codex_future = pool.submit(_codex_status)
+        runner_future = pool.submit(_runner_status)
+        storage_future = pool.submit(storage_accessible)
+        # Resolve GitHub first because its repository variables select the model.
+        # The Ollama check starts immediately with the saved model only after that
+        # value is known; all remaining checks are already running concurrently.
+        github = github_future.result()
+        github_settings = github.get("settings", {})
+        model = github_settings.get("model", "")
+        ollama_future = pool.submit(_status_ollama)
+        codex = codex_future.result()
+        runner = runner_future.result()
+        progress_storage = storage_future.result()
+        ollama = ollama_future.result()
+
+    settings = github_settings
     interval_hours = settings.get("interval_hours", _DEFAULT_INTERVAL_HOURS)
     execution_mode = settings.get("execution_mode", "continuous")
     paused = bool(settings.get("paused", False))
-    # Status polling must never start model inference. A missing tools capability
-    # is verified only by the explicit settings-save action; cached probe evidence
-    # remains visible without repeating a potentially long model load.
-    _STATUS_PROBE_CONTEXT.allow_live_tool_probe = False
-    try:
-        ollama = _ollama_status(model)
-    finally:
-        del _STATUS_PROBE_CONTEXT.allow_live_tool_probe
-    codex = _codex_status()
-    runner = _runner_status()
-    progress_storage = storage_accessible()
     checks = {
         "ollama_online": ollama["online"],
         "model_installed": ollama["model_installed"],
