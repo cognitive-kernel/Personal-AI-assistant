@@ -1081,7 +1081,7 @@ def test_live_progress_reports_queued_github_validation_phase(monkeypatch):
     result = agent._enrich_progress_from_github({"run_id": "12347", "percent": 90})
 
     assert result["phase"] == "queued"
-    assert result["phase_label"] == "در انتظار Runner ویندوز"
+    assert result["phase_label"] == "در انتظار Runner خودمیزبان"
     assert result["status"] == "queued"
 
 
