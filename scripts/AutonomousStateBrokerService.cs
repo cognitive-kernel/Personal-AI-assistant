@@ -141,6 +141,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             catch (IOException) { if (_stopping) return; }
             catch (Exception ex)
             {
+                LogWorkerException(ex);
                 try { EventLog.WriteEntry("PersonalAIAssistantStateBroker: " + ex.ToString(), EventLogEntryType.Warning); } catch { }
                 Thread.Sleep(200);
             }
@@ -228,6 +229,31 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         }
 
         WriteResponse(pipe, 404, Error("not_found"));
+    }
+
+    private void LogWorkerException(Exception exception)
+    {
+        try
+        {
+            string enabled = Environment.GetEnvironmentVariable(
+                "AUTONOMOUS_STATE_BROKER_DIAGNOSTICS",
+                EnvironmentVariableTarget.Machine
+            );
+            if (!String.Equals(enabled, "1", StringComparison.Ordinal)) return;
+            string path = Path.Combine(_stateDirectory, "service-errors.log");
+            string entry = DateTime.UtcNow.ToString("o") + " " + exception.ToString() + Environment.NewLine;
+            byte[] bytes = Encoding.UTF8.GetBytes(entry);
+            if (bytes.Length > 65536)
+                bytes = Encoding.UTF8.GetBytes(entry.Substring(0, 16000));
+            using (FileStream file = new FileStream(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite))
+            {
+                if (file.Length + bytes.Length > 262144) file.SetLength(0);
+                file.Seek(0, SeekOrigin.End);
+                file.Write(bytes, 0, bytes.Length);
+                file.Flush();
+            }
+        }
+        catch { }
     }
 
     private static int RemainingMilliseconds(DateTime deadlineUtc, string operation)
