@@ -107,7 +107,7 @@ print("PASS: second account sees identical brokered progress and cannot directly
 "@
 
 $encodedProbe = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($pythonProbe))
-$argumentLine = '-c "exec(__import__(''base64'').b64decode(''' + $encodedProbe + '''))"'
+$argumentLine = "-c " + [char]34 + "exec(__import__('base64').b64decode('" + $encodedProbe + "'))" + [char]34
 $process = Start-Process -FilePath $PythonPath -Credential $SecondaryCredential -WorkingDirectory $repoRoot -ArgumentList $argumentLine -Wait -PassThru -WindowStyle Hidden
 
 if ($process.ExitCode -ne 0) {
