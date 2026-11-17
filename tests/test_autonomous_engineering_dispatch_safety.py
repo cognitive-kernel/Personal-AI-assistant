@@ -189,6 +189,19 @@ def test_storage_accessible_checks_the_shared_state_directory(monkeypatch, tmp_p
     assert progress.storage_accessible() is False
 
 
+def test_storage_accessible_requires_write_access_to_the_shared_directory(monkeypatch, tmp_path):
+    from app import autonomous_engineering_progress as progress
+
+    monkeypatch.setattr(progress, "_progress_dir", lambda: tmp_path)
+    monkeypatch.setattr(
+        progress.tempfile,
+        "mkstemp",
+        lambda **_kwargs: (_ for _ in ()).throw(PermissionError("read-only shared state")),
+    )
+
+    assert progress.storage_accessible() is False
+
+
 def test_script_state_facades_import_before_project_install_and_outside_repository_cwd(tmp_path):
     from pathlib import Path
     import sys

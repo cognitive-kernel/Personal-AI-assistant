@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import os
+import shutil
+import tempfile
 import time
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from typing import Callable, Iterator
 
@@ -33,6 +37,145 @@ def _machine_configured_state_directory() -> str:
         return ""
 
 
+def _is_path_within(path: Path, parent: Path) -> bool:
+    try:
+        Path(path).resolve().relative_to(Path(parent).resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _current_home_directory() -> Path | None:
+    """Return a home path only for legacy migration; normal state does not depend on it."""
+    try:
+        return Path.home()
+    except (OSError, RuntimeError):
+        return None
+
+
+def _shared_site_state_directory(home: Path | None) -> Path:
+    """Return the OS-wide application data root, never a per-user home directory."""
+    try:
+        from platformdirs import site_data_path
+    except ImportError as exc:  # pragma: no cover - dependency installation failure
+        raise RuntimeError(
+            "The platformdirs runtime dependency is missing; install the application dependencies."
+        ) from exc
+    root = Path(site_data_path("PersonalAIAssistant", appauthor=False)) / "autonomous-engineering"
+    if not root.is_absolute():
+        raise RuntimeError("The platform shared-data directory did not resolve to an absolute path.")
+    if home is not None and _is_path_within(root, home):
+        raise RuntimeError(
+            "The platform shared-data directory resolves inside the current user's home; "
+            "configure AUTONOMOUS_ENGINEERING_PROGRESS_DIR to one shared system path."
+        )
+    return root
+
+
+def _migrate_legacy_posix_state(legacy: Path | None, shared: Path, home: Path | None) -> None:
+    """Copy legacy per-user state into the shared root without deleting either copy."""
+    if legacy is None or not legacy.exists():
+        return
+    if legacy.is_symlink() or not legacy.is_dir() or home is None or not _is_path_within(legacy, home):
+        raise RuntimeError("The legacy autonomous-engineering state path is not a safe directory inside the current home.")
+    shared.mkdir(parents=True, exist_ok=True)
+    if shared.is_symlink():
+        raise RuntimeError("The shared autonomous-engineering state root cannot be a symbolic link.")
+    legacy_digest = hashlib.sha256(str(legacy.resolve()).encode("utf-8")).hexdigest()[:20]
+    marker = shared / f".legacy-migration-{legacy_digest}.json"
+    if marker.is_symlink():
+        raise RuntimeError("The shared-state migration marker is not a regular file.")
+    if marker.is_file():
+        try:
+            saved = json.loads(marker.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise RuntimeError("The shared-state migration marker is unreadable.") from exc
+        if isinstance(saved, dict) and saved.get("target") == str(shared):
+            return
+        raise RuntimeError("The legacy state was previously migrated to a different shared root.")
+
+    lock_names = (
+        "autonomous-durable-state.lock",
+        "repository-execution.lock",
+        "autonomous-checkpoint-store.lock",
+    )
+    lock_paths = sorted(
+        [legacy / name for name in lock_names] + [shared / name for name in lock_names],
+        key=lambda item: str(item.resolve()),
+    )
+    with ExitStack() as stack:
+        for lock_path in lock_paths:
+            stack.enter_context(exclusive_file_lock(
+                lock_path,
+                timeout_seconds=30,
+                timeout_message="Timed out waiting to migrate legacy autonomous-engineering state.",
+            ))
+
+        sources = []
+        conflicts = []
+        for source in sorted(legacy.rglob("*")):
+            if source.is_symlink():
+                raise RuntimeError("Legacy autonomous-engineering state contains a symbolic link; migration stopped safely.")
+            if not source.is_file():
+                continue
+            relative = source.relative_to(legacy)
+            if relative.name in lock_names:
+                continue
+            destination = shared / relative
+            cursor = destination.parent
+            while cursor != shared and shared in cursor.parents:
+                if cursor.is_symlink():
+                    raise RuntimeError("The shared state tree contains a symbolic link; migration stopped safely.")
+                cursor = cursor.parent
+            if destination.is_symlink():
+                raise RuntimeError("A shared-state migration target is a symbolic link.")
+            if destination.exists():
+                if not destination.is_file() or source.read_bytes() != destination.read_bytes():
+                    conflicts.append(relative.as_posix())
+            else:
+                sources.append((source, destination))
+
+        if conflicts:
+            sample = ", ".join(conflicts[:8])
+            raise RuntimeError(
+                "Legacy and shared autonomous-engineering state contain conflicting files; "
+                f"both copies were preserved. Reconcile these paths before continuing: {sample}"
+            )
+
+        for source, destination in sources:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            descriptor, temporary_name = tempfile.mkstemp(
+                prefix=".autonomous-state-migration-",
+                suffix=".tmp",
+                dir=destination.parent,
+            )
+            os.close(descriptor)
+            temporary = Path(temporary_name)
+            try:
+                shutil.copy2(source, temporary)
+                os.replace(temporary, destination)
+            finally:
+                temporary.unlink(missing_ok=True)
+
+        descriptor, marker_name = tempfile.mkstemp(
+            prefix=".legacy-migration-",
+            suffix=".tmp",
+            dir=shared,
+        )
+        os.close(descriptor)
+        temporary_marker = Path(marker_name)
+        try:
+            temporary_marker.write_text(
+                json.dumps({"schema_version": 1, "target": str(shared), "migrated_at": time.time()}, indent=2)
+                + "\n",
+                encoding="utf-8",
+            )
+            os.chmod(temporary_marker, 0o600)
+            os.replace(temporary_marker, marker)
+        finally:
+            temporary_marker.unlink(missing_ok=True)
+
+
 def execution_state_directory(
     *,
     is_windows_fn: Callable[[], bool] | None = None,
@@ -42,6 +185,7 @@ def execution_state_directory(
     is_windows = is_windows_fn or _is_windows
     machine_state = machine_state_fn or _machine_configured_state_directory
     process_configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
+    home = _current_home_directory() if not is_windows() else None
     if is_windows():
         machine_configured = machine_state()
         require_machine_scope = (
@@ -72,27 +216,53 @@ def execution_state_directory(
             return Path(machine_path)
 
     if process_configured:
-        expanded = Path(os.path.expandvars(process_configured)).expanduser()
+        expanded = Path(os.path.expandvars(process_configured))
         if not expanded.is_absolute():
             raise ValueError(
                 "AUTONOMOUS_ENGINEERING_PROGRESS_DIR must be an absolute path so "
-                "different working directories and Windows accounts resolve the same state."
+                "different working directories and service identities resolve the same state."
+            )
+        if not is_windows():
+            if home is not None and _is_path_within(expanded, home):
+                raise ValueError(
+                    "AUTONOMOUS_ENGINEERING_PROGRESS_DIR must not be inside a per-user home directory; "
+                    "configure one shared system path for all participating services."
+                )
+            _migrate_legacy_posix_state(
+                home / ".personal-ai-assistant" / "autonomous-engineering" if home is not None else None,
+                expanded,
+                home,
             )
         return expanded
 
     program_data = os.getenv("PROGRAMDATA", "").strip()
     if program_data:
-        shared_root = Path(os.path.expandvars(program_data)).expanduser()
+        shared_root = Path(os.path.expandvars(program_data))
         if not shared_root.is_absolute():
             raise RuntimeError("PROGRAMDATA must resolve to an absolute shared path.")
-        return shared_root / "PersonalAIAssistant" / "autonomous-engineering"
+        state_root = shared_root / "PersonalAIAssistant" / "autonomous-engineering"
+        if not is_windows():
+            if home is not None and _is_path_within(state_root, home):
+                raise RuntimeError("The configured shared state root cannot be inside a per-user home directory.")
+            _migrate_legacy_posix_state(
+                home / ".personal-ai-assistant" / "autonomous-engineering" if home is not None else None,
+                state_root,
+                home,
+            )
+        return state_root
     if is_windows():
         raise RuntimeError(
             "PROGRAMDATA is unavailable; refusing to fall back to a per-user "
             "autonomous-engineering state directory on Windows."
         )
 
-    return Path.home() / ".personal-ai-assistant" / "autonomous-engineering"
+    shared_root = _shared_site_state_directory(home)
+    _migrate_legacy_posix_state(
+        home / ".personal-ai-assistant" / "autonomous-engineering" if home is not None else None,
+        shared_root,
+        home,
+    )
+    return shared_root
 
 
 def _validate_lock_timeout(timeout_seconds: float) -> float:

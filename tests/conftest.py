@@ -1,4 +1,8 @@
-"""Shared deterministic fixtures for tests that exercise AI-learning workflows."""
+"""Shared deterministic fixtures for repository tests."""
+import os
+import shutil
+from pathlib import Path
+
 import pytest
 
 
@@ -15,3 +19,17 @@ def _isolate_ai_learning_embedding_dependencies(monkeypatch):
                 for index, _text in enumerate(texts)]
 
     monkeypatch.setattr(service, "ollama_embed", deterministic_embeddings)
+
+
+
+@pytest.fixture
+def shared_state_tmp_path(tmp_path, request, monkeypatch):
+    """Return a writable test state path outside the simulated service home."""
+    if os.name != "nt":
+        # Keep the test mount outside the simulated service home in both this
+        # process and real child processes launched by checkpoint integration tests.
+        monkeypatch.setenv("HOME", "/nonexistent-home-for-shared-state-tests")
+    result = tmp_path / "shared-state"
+    result.mkdir(parents=True, exist_ok=True)
+    request.addfinalizer(lambda: shutil.rmtree(result, ignore_errors=True))
+    return result

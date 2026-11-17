@@ -87,12 +87,14 @@
     <label class="field field-wide">
       <span>یا شناسهٔ مدل دیگر Ollama</span>
       <input id="custom-model" name="custom_model" type="text" maxlength="120" autocomplete="off" placeholder="مثلاً qwen3:14b">
-      <small>در صورت واردکردن شناسه، این مقدار جایگزین مدل انتخاب‌شده می‌شود. مدل باید روی همین رایانه نصب شده باشد.</small>
+      <small>در صورت واردکردن شناسه، این مقدار جایگزین مدل انتخاب‌شده می‌شود. اگر مدل نصب نیست، آن را از همین صفحه دریافت و نصب کنید؛ حجم دانلود به مدل انتخابی بستگی دارد.</small>
     </label>
   </div>
   <div class="toolbar">
+    <button id="pull-model" type="button" class="secondary">دانلود و نصب مدل انتخاب‌شده</button>
     <button id="save-agent-settings" type="submit">ذخیرهٔ تنظیمات</button>
   </div>
+  <p id="model-pull-status" class="hint" role="status" aria-live="polite">دانلود مدل فقط پس از انتخاب و تأیید شما آغاز می‌شود و به سرویس فعال Ollama نیاز دارد.</p>
 </form>
 <form id="agent-task-form" class="settings-form">
   <div class="section-heading">
@@ -170,11 +172,11 @@
 
 <section aria-labelledby="setup-title">
 <p class="eyebrow">ONE-TIME SETUP</p>
-<h2 id="setup-title">راه‌اندازی روی ویندوز</h2>
+<h2 id="setup-title">پیش‌نیازها و راه‌اندازی محیط فعلی</h2>
 <ol class="setup-list">
-<li><strong>Ollama را نصب و مدل را دریافت کنید.</strong><p>در ترمینال اجرا کنید:</p><code>ollama pull نام-مدل-انتخابی</code></li>
-<li><strong>Node.js LTS و GitHub CLI را آماده کنید.</strong><p>Node.js باید system-wide در PATH ویندوز باشد. با حسابی که برنامهٔ محلی را اجرا می‌کند، نشست موجود Chrome را برای احراز هویت GitHub به‌کار بگیرید:</p><code>gh auth login --web</code></li>
-<li><strong>Runner را در صورت نیاز provision کنید.</strong><p>اسکریپت موجود، حساب Windows اختصاصی و غیرمدیر (حساب سرویس) و Runner ویندوز با برچسب‌های ollama و autonomous-state-owner را ایجاد می‌کند و ACL فضای پیشرفت را تنظیم می‌کند. برچسب autonomous-state-owner باید فقط روی یک Runner باشد تا وضعیت محلی بین اجراها جابه‌جا نشود. به PowerShell مدیر و مجوز Administration: write در مخزن نیاز دارد. اگر Runner از قبل نصب است، اسکریپت را دوباره اجرا کنید؛ ثبت و سرویس موجود را حفظ می‌کند و فقط برچسب یکتا را اضافه و تأیید می‌کند.</p><code>powershell -ExecutionPolicy Bypass -File .\scripts\provision_autonomous_runner.ps1 -Repository "cognitive-kernel/Personal-AI-assistant" -RunnerAccount "runner-svc" -AppAccount "app-user"</code></li>
+<li><strong>سرویس Ollama را نصب و اجرا کنید.</strong><p>دانلود و نصب خود Ollama هنوز به راه‌اندازی سیستم‌عامل میزبان نیاز دارد. پس از فعال‌شدن سرویس، مدل انتخابی را از بخش تنظیمات همین صفحه دریافت کنید؛ وضعیت و درصد دانلود در UI نمایش داده می‌شود.</p></li>
+<li><strong>GitHub CLI را نصب و احراز هویت کنید.</strong><p>Node.js 22 و Python 3.11 در ابتدای هر Job به‌صورت خودکار در محیط همان Workflow دریافت می‌شوند؛ نصب system-wide آن‌ها لازم نیست. GitHub CLI باید برای حساب برنامه احراز هویت شده باشد:</p><code>gh auth login --web</code></li>
+<li><strong>Runner ویندوز را در صورت نیاز provision کنید.</strong><p>این اسکریپت فعلاً فقط برای Windows است. اسکریپت موجود، حساب Windows اختصاصی و غیرمدیر (حساب سرویس) و Runner ویندوز با برچسب‌های ollama و autonomous-state-owner را ایجاد می‌کند و ACL فضای پیشرفت را تنظیم می‌کند. برچسب autonomous-state-owner باید فقط روی یک Runner باشد تا وضعیت محلی بین اجراها جابه‌جا نشود. به PowerShell مدیر و مجوز Administration: write در مخزن نیاز دارد. اگر Runner از قبل نصب است، اسکریپت را دوباره اجرا کنید؛ ثبت و سرویس موجود را حفظ می‌کند و فقط برچسب یکتا را اضافه و تأیید می‌کند.</p><code>powershell -ExecutionPolicy Bypass -File .\scripts\provision_autonomous_runner.ps1 -Repository "cognitive-kernel/Personal-AI-assistant" -RunnerAccount "runner-svc" -AppAccount "app-user"</code></li>
 <li><strong>آمادگی هر دو حساب را بررسی کنید.</strong><p>ابتدا از حساب برنامه و سپس از حساب سرویس Runner بررسی کنید:</p><code>powershell -ExecutionPolicy Bypass -File .\scripts\check_autonomous_agent.ps1</code><code>powershell -ExecutionPolicy Bypass -File .\scripts\check_autonomous_runner.ps1</code></li>
 </ol>
 </section>

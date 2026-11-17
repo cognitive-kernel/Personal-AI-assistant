@@ -168,9 +168,30 @@ do not loosen upstream Codex sandbox ACLs or substitute unsandboxed execution.
 
 ### Dashboard admission and pending-work safety
 
-The dashboard and Windows Runner resolve the durable state directory through the same machine-aware `execution_state_directory()` contract. The dashboard checks durable task, task-owner, pending-PR, and interrupted-cleanup markers while holding the shared cross-process file lock before accepting a **new non-empty manual task**. It does not read or return the task text. If state cannot be inspected or the lock cannot be acquired, manual admission fails closed. It also checks GitHub for an open controller-owned PR before submitting a new manual task.
+The dashboard and Runner resolve the durable state directory through the same shared execution_state_directory() contract. Windows uses the machine-scoped application data root; POSIX uses the OS-wide application data root supplied by platformdirs, never the current user's home directory. The dashboard checks durable task, task-owner, pending-PR, and interrupted-cleanup markers while holding the shared cross-process file lock before accepting a **new non-empty manual task**. It does not read or return the task text. If state cannot be inspected or the lock cannot be acquired, manual admission fails closed. It also checks GitHub for an open controller-owned PR before submitting a new manual task.
 
 A non-empty manual task is rejected while prior work is pending; the dashboard does not offer a replacement or delete/quarantine existing state. An empty dispatch remains available to resume/reconcile the already-persisted task or pending PR. The workflow's own serialized persistence and capture checks remain authoritative and are not bypassed by the dashboard preflight.
 
 The recovery circuit breaker counts only a failure of the exact `Execute one isolated task, validate, and publish for owner review` workflow step. Admission rejection, schedule gating, prerequisite/setup/sandbox/dependency failures, post-execution checks, and job-level timeouts without a failed-step identity do not count as a task-execution failure. Unknown or malformed GitHub job/step evidence fails closed. This prevents an infrastructure/readiness failure from consuming the coding-task retry budget or dispatching a duplicate task.
 
+
+## Runtime prerequisite bootstrap
+
+The autonomous workflow provisions its job-local Python 3.11 and Node.js 22 runtimes with pinned actions/setup-python and actions/setup-node action commits before invoking either runtime. These tools are downloaded into the GitHub Actions job environment; the host does not need a preinstalled system Python or Node.js, and the workflow does not modify another user's global runtime installation. The Codex CLI remains pinned to the repository's required version and is installed into the Runner service account's npm prefix.
+
+This bootstrap does not install or authenticate GitHub CLI, install/start Ollama, download the selected model, register the self-hosted Runner, or provision service-account permissions. Those are host/service prerequisites and must remain visible as separate UI preflight items; missing authentication or privileged service setup cannot be fabricated by a package installer. The current coding job is still Windows-specific and this change does not claim Linux/macOS workflow support.
+### Download the selected Ollama model from the dashboard
+
+When the Ollama service is already running on the local loopback endpoint, the dashboard's model settings provide an explicit “Download and install selected model” action. The user chooses the model identifier and confirms the download; the UI then polls a bounded status record and displays Ollama's progress. Only one model pull is allowed at a time. The request is sent directly to the configured loopback-only Ollama API without proxy use or redirect following; model identifiers are validated and are never passed to a shell.
+
+This action installs a model into the existing Ollama service. It does not install the Ollama application/service itself, choose a model on the user's behalf, or bypass the hardware/context checks performed before saving settings.
+### GitHub CLI in the autonomous Runner job
+
+The workflow provisions the pinned GitHub CLI release into a run-scoped directory when the required version is not already available. It downloads the official Windows x64 archive and checksum manifest, verifies SHA-256 before extraction, and adds only that job-local executable directory to the current job PATH. This does not modify the host's global installation. The workflow token supplies job authentication; it does not create or persist a Runner-account interactive login.
+### Shared state on POSIX systems
+
+The POSIX default is the OS-wide application data directory returned by platformdirs.site_data_path(). An explicit AUTONOMOUS_ENGINEERING_PROGRESS_DIR override must be absolute and outside a per-user home directory, and all participating app/Runner processes must receive the same value. On first resolution, any legacy ~/.personal-ai-assistant/autonomous-engineering state is copied under the durable-state, repository-execution, and checkpoint-store locks. The original directory is retained; identical existing files are accepted, conflicting files stop migration without overwriting either copy, and symbolic links stop migration. The shared directory must be provisioned with the required ACLs for every participating service identity; the resolver does not broaden permissions automatically.
+### POSIX checkpoint lifecycle
+
+Durable checkpoint restore, watcher startup, stop/snapshot, and cleanup use the same shared state-root contract on POSIX and Windows. POSIX watchers are launched in a new session so they remain independent of the foreground controller; Windows retains its detached process-group launch. Missing PROGRAMDATA is not a reason to disable checkpoint recovery on Linux or macOS. The shared state directory must be provisioned for read/write access by the app and Runner identities before dispatch.
+State-root resolution does not require a login home directory. The current home is consulted only to discover a legacy per-user state tree for one-time migration; if the service identity has no home, the shared site-data root still resolves normally.

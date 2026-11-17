@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import sysconfig
@@ -17,8 +18,8 @@ def checkpoint_command(*args: str, capture: bool = True, run_command, python_exe
 
 
 def restore_checkpoint(base_sha: str, *, os_name: str, programdata: str | None, checkpoint_command) -> bool:
-    if os_name != "nt" or not programdata:
-        return False
+    # The state-root resolver is platform-neutral; an absent Windows PROGRAMDATA
+    # value must not disable the POSIX shared-state checkpoint store.
     result = checkpoint_command("restore", "--base-sha", base_sha)
     if result.returncode:
         raise RuntimeError("Could not restore durable engineering checkpoint: " + (result.stderr or result.stdout or "")[-3000:])
@@ -26,8 +27,8 @@ def restore_checkpoint(base_sha: str, *, os_name: str, programdata: str | None, 
 
 
 def start_checkpoint_watcher(base_sha: str, run_id: str, task: int, *, os_module, subprocess_module, sys_module, sysconfig_module, time_module, root: Path, checkpoint_script: Path, execution_state_directory_fn, process_start_time_fn, metadata_confirms_watcher_ready_fn, programdata: str | None) -> subprocess_module.Popen[Any] | None:
-    if os_module.name != "nt" or not programdata:
-        return None
+    # The shared state-root contract is platform-neutral. Windows uses a
+    # detached process group; POSIX uses a new session for independent lifetime.
     # The venv's Windows python.exe may report a launcher PID instead of the
     # child interpreter PID. Launch with the base interpreter so Popen.pid and
     # the watcher's os.getpid() agree, while exposing this venv's dependencies.
@@ -52,13 +53,24 @@ def start_checkpoint_watcher(base_sha: str, run_id: str, task: int, *, os_module
     state_dir.mkdir(parents=True, exist_ok=True)
     ready_path.unlink(missing_ok=True)
     error_path.unlink(missing_ok=True)
-    flags = getattr(subprocess_module, "DETACHED_PROCESS", 0) | getattr(subprocess_module, "CREATE_NEW_PROCESS_GROUP", 0)
-    with log_path.open("w", encoding="utf-8") as watcher_log:
-        process = subprocess_module.Popen(
-            command, cwd=root, stdin=subprocess_module.DEVNULL, stdout=watcher_log,
-            stderr=subprocess_module.STDOUT, close_fds=True, creationflags=flags,
-            env=watcher_env,
+    popen_options = {
+        "cwd": root,
+        "stdin": subprocess_module.DEVNULL,
+        "stdout": None,
+        "stderr": subprocess_module.STDOUT,
+        "close_fds": True,
+        "env": watcher_env,
+    }
+    if os_module.name == "nt":
+        popen_options["creationflags"] = (
+            getattr(subprocess_module, "DETACHED_PROCESS", 0)
+            | getattr(subprocess_module, "CREATE_NEW_PROCESS_GROUP", 0)
         )
+    else:
+        popen_options["start_new_session"] = True
+    with log_path.open("w", encoding="utf-8") as watcher_log:
+        popen_options["stdout"] = watcher_log
+        process = subprocess_module.Popen(command, **popen_options)
     try:
         expected_watcher_started_at = process_start_time_fn(process.pid)
     except RuntimeError as exc:
@@ -139,13 +151,27 @@ def stop_checkpoint_watcher(
     watcher, base_sha: str, run_id: str, task: int, *, subprocess_module, os_name: str, programdata: str | None, checkpoint_command,
 ) -> None:
     if watcher is not None and watcher.poll() is None:
-        watcher.terminate()
+        if os_name == "nt":
+            watcher.terminate()
+        else:
+            try:
+                # The watcher is started with start_new_session=True; terminate
+                # its whole owned session so an in-flight Git child cannot outlive it.
+                os.killpg(watcher.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
         try:
             watcher.wait(timeout=5)
         except subprocess_module.TimeoutExpired:
-            watcher.kill()
+            if os_name == "nt":
+                watcher.kill()
+            else:
+                try:
+                    os.killpg(watcher.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
             watcher.wait(timeout=5)
-    if os_name == "nt" and programdata:
+    if watcher is not None:
         stopped = checkpoint_command("stop", "--run-id", run_id, "--task", str(task))
         if stopped.returncode:
             raise RuntimeError("Could not stop the durable checkpoint watcher.")
@@ -157,12 +183,11 @@ def stop_checkpoint_watcher(
 
 
 def clear_checkpoint(run_id: str | None = None, task: int | None = None, *, os_name: str, programdata: str | None, checkpoint_command) -> None:
-    if os_name == "nt" and programdata:
-        if run_id is None and task is None:
-            result = checkpoint_command("clear-latest")
-        elif run_id is not None and task is not None:
-            result = checkpoint_command("clear", "--run-id", run_id, "--task", str(task))
-        else:
-            raise ValueError("Checkpoint cleanup requires both run_id and task, or neither for latest-owner cleanup.")
-        if result.returncode:
-            raise RuntimeError("Could not clear the completed durable worktree checkpoint.")
+    if run_id is None and task is None:
+        result = checkpoint_command("clear-latest")
+    elif run_id is not None and task is not None:
+        result = checkpoint_command("clear", "--run-id", run_id, "--task", str(task))
+    else:
+        raise ValueError("Checkpoint cleanup requires both run_id and task, or neither for latest-owner cleanup.")
+    if result.returncode:
+        raise RuntimeError("Could not clear the completed durable worktree checkpoint.")

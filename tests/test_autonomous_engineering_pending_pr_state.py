@@ -55,17 +55,17 @@ def test_malformed_cleanup_marker_preserves_all_pending_state(tmp_path: Path):
 
 
 def test_clear_pending_state_commits_and_completes_cleanup_intent(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path,
 ):
-    _seed_pending_state(tmp_path)
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path))
+    _seed_pending_state(shared_state_tmp_path)
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path))
 
     clear_pending_state()
 
     assert load_pending_pr() is None
-    assert not (tmp_path / "pending-manual-task.txt").exists()
-    assert not (tmp_path / "pending-manual-task-owner.json").exists()
-    assert not (tmp_path / "pending-state-cleanup.json").exists()
+    assert not (shared_state_tmp_path / "pending-manual-task.txt").exists()
+    assert not (shared_state_tmp_path / "pending-manual-task-owner.json").exists()
+    assert not (shared_state_tmp_path / "pending-state-cleanup.json").exists()
 
 
 @pytest.mark.parametrize(
@@ -78,9 +78,9 @@ def test_clear_pending_state_commits_and_completes_cleanup_intent(
     ],
 )
 def test_pending_pr_loader_rejects_noncanonical_or_mismatched_urls(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, url: str,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, shared_state_tmp_path: Path, url: str,
 ):
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path))
     record = {
         "number": 42,
         "url": url,
@@ -90,7 +90,8 @@ def test_pending_pr_loader_rejects_noncanonical_or_mismatched_urls(
         "run_id": "123",
         "task": 1,
     }
-    path = tmp_path / "pending-autonomous-pr.json"
+    shared_state_tmp_path.mkdir(parents=True, exist_ok=True)
+    path = shared_state_tmp_path / "pending-autonomous-pr.json"
     path.write_text(json.dumps(record), encoding="utf-8")
 
     with pytest.raises(RuntimeError, match="durable contract"):

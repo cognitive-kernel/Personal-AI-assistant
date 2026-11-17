@@ -2018,3 +2018,35 @@ PR #770 now places the same explicit, non-escalating argument contract in every 
 - The local API adds a sanitized failure summary to failed run cards and combines persistent diagnostic details with the GitHub job/step and raw workflow logs. The UI displays the cause in the run card, then shows the failure stage, attempts, saved Codex explanation, failed workflow steps, and collapsible raw logs. Historical runs without persisted diagnostic files explicitly state that their former model explanation was not retained.
 - Added regression coverage for durable redacted diagnostic writes, shared-state reads, log-based root-cause extraction, API combination, UI wiring, and a real-browser smoke case for a blocked Codex run.
 - This change does not alter task-selection, sandbox, retry, or merge policy. Exact-head CI and browser validation are required before merge.
+
+## 2026-11-17 — Autonomous Runner job-local runtime bootstrap
+
+- The coding workflow previously required Python and Node.js to be installed system-wide and visible in the self-hosted Runner service PATH. This made a clean Runner host fail before the autonomous task could start, even though both runtimes are downloadable and can be provisioned within the job.
+- The workflow now uses pinned actions/setup-python v7 and actions/setup-node v6 commits to provision Python 3.11 and Node.js 22 into the current Actions job before the existing virtual-environment and pinned Codex CLI installation steps. It no longer treats preinstalled system Python/Node as a prerequisite.
+- Added static regression coverage for bootstrap ordering and the pinned Codex version.
+- Scope boundary: this is job-local bootstrap on the existing Windows self-hosted Runner. GitHub CLI authentication, Ollama service/model provisioning, Runner registration/ACL setup, and Linux/macOS workflow support remain open; no cross-platform acceptance is claimed. Exact-head CI is pending.
+## 2026-11-17 — Dashboard-driven Ollama model provisioning
+
+- The autonomous dashboard previously listed only models already installed in Ollama; a missing selected model had to be downloaded manually outside the UI.
+- Added a background model-pull service that calls only the configured loopback Ollama API, disables proxies and redirects, validates model identifiers, limits progress-record size, sanitizes failure details, and serializes model pulls to one active job.
+- Added POST/status API endpoints and a dashboard action with explicit user confirmation, progress display, completion refresh, and error reporting. Hardware-safe context and tool-capability checks remain mandatory before saving the model for autonomous execution.
+- Added regression coverage for API target/method, progress parsing, single-download admission, identifier validation, and dashboard wiring. Exact-head CI is pending; this feature does not install the Ollama application or provision privileged host services.
+## 2026-11-17 — Verified GitHub CLI bootstrap for autonomous jobs
+
+- The autonomous controller invokes GitHub CLI commands, but the workflow previously assumed `gh` was already installed on the self-hosted Runner.
+- Added a job-local bootstrap for pinned GitHub CLI 2.104.0. The step downloads the official Windows x64 release and checksum manifest, verifies the archive SHA-256 before extraction, and exposes the executable only through the current Actions job PATH. Existing matching installations are reused; mismatched versions do not silently pass.
+- Added regression assertions for bootstrap ordering, pinned version, and checksum verification. The local dashboard still requires GitHub CLI authentication for the application account; this workflow bootstrap uses the scoped Actions token and does not create a user login.
+## 2026-11-17 — POSIX shared state root and non-destructive legacy migration
+
+- The autonomous state resolver used a per-user home-directory fallback on POSIX, so the app and a separately running Runner could resolve different task, checkpoint, and diagnostic stores.
+- POSIX now resolves its default through platformdirs.site_data_path(), rejects an explicit or platform-derived path inside the current user's home, and retains the machine-scoped Windows resolver.
+- Existing legacy POSIX state is copied—not moved or deleted—under the durable-state, repository-execution, and checkpoint-store locks. Symlinks and conflicting file contents fail closed; identical files are accepted. Lock files are recreated under the shared root rather than replacing an actively held lock inode.
+- Added platformdirs as a runtime dependency and regression tests for shared path selection, legacy migration, conflict preservation, per-user path rejection, and lock-file safety. ACL provisioning for app/Runner identities remains a separate prerequisite; exact-head CI is pending.
+- Dashboard readiness now performs a temporary write probe in the shared state directory instead of treating directory enumeration as proof of write access. The probe is removed immediately and a regression test verifies read-only state is not considered dispatch-ready.
+## 2026-11-17 — Enable durable checkpoint lifecycle on POSIX
+
+- The controller previously disabled checkpoint restore, watcher startup, final snapshot, and cleanup unless the host was Windows and PROGRAMDATA was set. This meant POSIX hosts could run without the same durable recovery guarantees.
+- Checkpoint lifecycle operations now use the shared state-root resolver on all supported platforms. The watcher launches in a new POSIX session; Windows keeps its detached process-group behavior. Restore and cleanup no longer silently skip because PROGRAMDATA is absent.
+- Added regression tests for POSIX watcher session creation, readiness metadata, restore, stop/final snapshot, and cleanup. Exact-head CI is pending.
+- POSIX shutdown now signals the watcher's dedicated process group, not only its parent PID, so a Git child cannot continue writing checkpoint state after the watcher exits. The Windows termination path is unchanged.
+- Shared state resolution no longer requires HOME/USERPROFILE to exist; home discovery is optional and used only to locate a legacy POSIX state tree for migration. A service identity with no home can still resolve the OS-wide data directory.
