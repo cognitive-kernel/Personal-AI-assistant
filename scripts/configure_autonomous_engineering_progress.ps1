@@ -11,6 +11,7 @@ Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsIdentity.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsPaths.psm1") -Force
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$installerSid = $identity.User.Value
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     throw "Run this configuration from elevated PowerShell."
@@ -36,7 +37,7 @@ New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
 
 # Remove stale app-user ACEs recursively. Only the dedicated Runner role and
 # the LocalService broker retain direct filesystem access to this data tree.
-Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid
+Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid -InstallerSid $installerSid
 
 $broker = Get-Service -Name "PersonalAIAssistantStateBroker" -ErrorAction SilentlyContinue
 if (-not $broker -or $broker.Status -ne "Running") {
