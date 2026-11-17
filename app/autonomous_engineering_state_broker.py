@@ -4,7 +4,7 @@ from __future__ import annotations
 import ctypes
 import json
 import os
-import time
+import re
 from ctypes import wintypes
 from typing import Any
 
@@ -52,7 +52,16 @@ def request(method: str, path: str, *, timeout_ms: int = 3500) -> Any:
     method = str(method).upper()
     if method not in {"GET", "POST"}:
         raise ValueError("Unsupported state-broker method.")
-    if not isinstance(path, str) or not path.startswith("/v1/") or ".." in path or "\\" in path:
+    if not isinstance(path, str):
+        raise ValueError("Unsupported state-broker endpoint.")
+    allowed = (
+        method == "GET" and path in {"/v1/health", "/v1/pending-work", "/v1/progress"}
+    ) or (
+        method == "GET" and re.fullmatch(r"/v1/diagnostics/[0-9]{1,20}", path) is not None
+    ) or (
+        method == "POST" and path == "/v1/cleanup"
+    )
+    if not allowed:
         raise ValueError("Unsupported state-broker endpoint.")
     payload = json.dumps(
         {"version": 1, "method": method, "path": path},
