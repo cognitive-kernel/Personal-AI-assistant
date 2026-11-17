@@ -693,6 +693,7 @@ def _sanitize_workflow_log(value: str) -> str:
     value = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", value)
     value = re.sub(
         r"(?i)(authorization\s*:\s*bearer\s+)\S+",
+    value = re.sub(r"(?i)\bbearer\s+\S+", "Bearer [REDACTED]", value)
         r"\1[REDACTED]",
         value,
     )
