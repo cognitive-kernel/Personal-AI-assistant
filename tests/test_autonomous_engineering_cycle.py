@@ -175,7 +175,7 @@ def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
     monkeypatch.setenv("GH_TOKEN", "test-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "autonomous-state"))
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path / "autonomous-state"))
     monkeypatch.setattr(cycle, "start_checkpoint_watcher", lambda *args: None)
     stopped = []
     monkeypatch.setattr(cycle, "stop_checkpoint_watcher", lambda *args: stopped.append(args))
@@ -235,7 +235,7 @@ def test_run_cycle_bounds_failed_codex_attempts_and_preserves_task(monkeypatch: 
     monkeypatch.setenv("GH_TOKEN", "test-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "autonomous-state"))
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path / "autonomous-state"))
     monkeypatch.setattr(cycle, "start_checkpoint_watcher", lambda *args: None)
     stopped = []
     monkeypatch.setattr(cycle, "stop_checkpoint_watcher", lambda *args: stopped.append(args))
@@ -350,7 +350,7 @@ def test_run_cycle_recovers_open_task_pr_and_waits_for_owner_merge(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path,
 ):
     records = []
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "autonomous-state"))
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path / "autonomous-state"))
     monkeypatch.setenv("GH_TOKEN", "test-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
     live_pr = {
@@ -399,7 +399,7 @@ def test_publish_pull_request_leaves_exact_sha_validated_pr_open_for_owner_merge
     base_sha = "b" * 40
     head_sha = "c" * 40
     calls = []
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "autonomous-state"))
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path / "autonomous-state"))
     created = {
         "number": 12,
         "state": "open",
@@ -854,7 +854,7 @@ def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pyt
 def test_complete_pending_draft_pr_revalidates_checks_and_leaves_pr_open(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path):
     base_sha = "b" * 40
     head_sha = "c" * 40
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "autonomous-state"))
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path / "autonomous-state"))
     current = {
         "number": 77,
         "state": "open",
@@ -988,9 +988,9 @@ def test_checkpoint_watcher_uses_base_interpreter_with_venv_dependencies(
     from scripts import autonomous_engineering_checkpoint as checkpoint
     from scripts import autonomous_engineering_cycle as cycle
 
-    state = tmp_path / "ProgramData" / "PersonalAIAssistant" / "autonomous-engineering"
+    state = shared_state_tmp_path / "ProgramData" / "PersonalAIAssistant" / "autonomous-engineering"
     monkeypatch.setattr(checkpoint, "store_dir", lambda: state)
-    monkeypatch.setenv("PROGRAMDATA", str(tmp_path / "ProgramData"))
+    monkeypatch.setenv("PROGRAMDATA", str(shared_state_tmp_path / "ProgramData"))
     monkeypatch.delenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", raising=False)
     monkeypatch.setattr(
         cycle, "os",
@@ -1593,7 +1593,7 @@ def test_recovered_open_pr_is_persisted_before_exact_sha_ci(
 ):
     head_sha = "a" * 40
     base_sha = "b" * 40
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "state"))
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path / "state"))
     current = {
         "number": 79,
         "state": "open",
