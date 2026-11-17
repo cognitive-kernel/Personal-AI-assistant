@@ -123,6 +123,25 @@ assert diagnostics and str(diagnostics["run_id"]) == "12345"
     $probe | & python -
     if ($LASTEXITCODE -ne 0) { throw "The Python named-pipe client failed its live Windows service integration test." }
 
+    # Verify the same brokered snapshot from a distinct, non-administrator logon.
+    $secondaryName = "BrokerCI" + [guid]::NewGuid().ToString("N").Substring(0, 8)
+    $secondaryPassword = "Aa9!" + [guid]::NewGuid().ToString("N") + "Zz7!"
+    $secondarySecurePassword = ConvertTo-SecureString $secondaryPassword -AsPlainText -Force
+    $secondaryCreated = $false
+    try {
+        New-LocalUser -Name $secondaryName -Password $secondarySecurePassword -PasswordNeverExpires -AccountNeverExpires | Out-Null
+        $secondaryCreated = $true
+        $secondaryCredential = [System.Management.Automation.PSCredential]::new(
+            "$env:COMPUTERNAME\$secondaryName",
+            $secondarySecurePassword
+        )
+        & (Join-Path $PSScriptRoot "test_autonomous_state_broker.ps1") -SecondaryCredential $secondaryCredential -PythonPath (Get-Command python.exe -ErrorAction Stop).Source
+    } finally {
+        if ($secondaryCreated) {
+            Remove-LocalUser -Name $secondaryName -ErrorAction SilentlyContinue
+        }
+    }
+
     $pendingMarker = Join-Path $stateRoot "pending-manual-task.txt"
     [System.IO.File]::WriteAllText($pendingMarker, "preserve-during-cleanup-test")
     $conflictProbe = @'
