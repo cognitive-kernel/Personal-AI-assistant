@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import platform
 import shutil
@@ -11,7 +12,7 @@ import urllib.error
 import urllib.request
 import re
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,10 @@ from .autonomous_engineering_model_pull import get_model_pull, start_model_pull
 
 _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
 _STATUS_PROBE_CONTEXT = threading.local()
+_STATUS_PROBE_TIMEOUT_SECONDS = 35.0
+_GITHUB_STATUS_PROBE_TIMEOUT_SECONDS = 20.0
+_STATUS_EXECUTOR = ThreadPoolExecutor(max_workers=5, thread_name_prefix="autonomous-status")
+_STATUS_LOGGER = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/autonomous-engineering",
@@ -168,38 +173,132 @@ def _github_snapshot() -> dict[str, Any]:
     )
 
 
+def _resolve_status_probe(
+    future,
+    name: str,
+    fallback: Any,
+    timed_out: list[str],
+    errors: list[str],
+) -> Any:
+    if not future.done():
+        timed_out.append(name)
+        _STATUS_LOGGER.warning("Autonomous Engineering status probe timed out: %s", name)
+        return fallback
+    try:
+        return future.result()
+    except Exception as exc:
+        errors.append(name)
+        _STATUS_LOGGER.exception(
+            "Autonomous Engineering status probe failed: %s (%s)",
+            name,
+            type(exc).__name__,
+        )
+        return fallback
+
+
+def _status_ollama_fallback(model: str) -> dict[str, Any]:
+    return {
+        "online": False,
+        "model": model,
+        "model_installed": False,
+        "model_selectable": False,
+        "model_is_codex_context_variant": _is_codex_context_variant(model),
+        "models": [],
+        "selectable_models": [],
+        "model_context_length": None,
+        "model_recommended_context_length": None,
+        "model_capabilities": [],
+        "model_tools_metadata_available": False,
+        "model_tools_verification_method": "unverified",
+        "model_supports_tools": False,
+        "model_metadata_available": False,
+        "model_context_supported": False,
+        "model_context_error": "The Ollama status probe did not finish within the request budget.",
+        "model_metadata_error": "The Ollama status probe did not finish within the request budget.",
+    }
+
+
 def collect_status() -> dict[str, Any]:
-    # These checks perform independent local/network I/O. Run them concurrently:
-    # serial execution adds the GitHub CLI timeouts to several Ollama HTTP calls
-    # (including the hardware/context estimate), which can exceed the UI's
-    # 40-second request deadline even when every individual call is bounded.
-    github_settings: dict[str, Any] = {}
+    # A shared bounded pool keeps one stalled diagnostic from blocking the API
+    # thread or creating an unbounded number of abandoned worker threads.
+    deadline = time.monotonic() + _STATUS_PROBE_TIMEOUT_SECONDS
+    timed_out: list[str] = []
+    errors: list[str] = []
+
+    github_future = _STATUS_EXECUTOR.submit(_github_snapshot)
+    codex_future = _STATUS_EXECUTOR.submit(_codex_status)
+    runner_future = _STATUS_EXECUTOR.submit(_runner_status)
+    storage_future = _STATUS_EXECUTOR.submit(storage_accessible)
+
+    # GitHub variables determine the selected model. Bound this dependency
+    # separately, then use the remaining request budget for every other probe.
+    github_wait = min(
+        _GITHUB_STATUS_PROBE_TIMEOUT_SECONDS,
+        max(0.0, deadline - time.monotonic()),
+    )
+    wait((github_future,), timeout=github_wait)
+    github_fallback = {
+        "cli_installed": bool(shutil.which("gh")),
+        "authenticated": False,
+        "recent_runs": [],
+        "runs_available": False,
+        "settings": {
+            "model": "",
+            "interval_hours": _DEFAULT_INTERVAL_HOURS,
+            "execution_mode": "continuous",
+            "paused": False,
+        },
+    }
+    github = _resolve_status_probe(
+        github_future, "github", github_fallback, timed_out, errors
+    )
+    if not isinstance(github, dict):
+        errors.append("github")
+        github = github_fallback
+    github_settings = github.get("settings", {})
+    if not isinstance(github_settings, dict):
+        errors.append("github_settings")
+        github_settings = {}
+    model = github_settings.get("model", "")
+    if not isinstance(model, str):
+        model = ""
 
     def _status_ollama() -> dict[str, Any]:
         # The probe policy is thread-local, so set it in the worker that performs
         # the Ollama check rather than in the request thread.
         _STATUS_PROBE_CONTEXT.allow_live_tool_probe = False
         try:
-            return _ollama_status(str(github_settings.get("model", "")))
+            return _ollama_status(model)
         finally:
             del _STATUS_PROBE_CONTEXT.allow_live_tool_probe
 
-    with ThreadPoolExecutor(max_workers=5, thread_name_prefix="autonomous-status") as pool:
-        github_future = pool.submit(_github_snapshot)
-        codex_future = pool.submit(_codex_status)
-        runner_future = pool.submit(_runner_status)
-        storage_future = pool.submit(storage_accessible)
-        # Resolve GitHub first because its repository variables select the model.
-        # The Ollama check starts immediately with the saved model only after that
-        # value is known; all remaining checks are already running concurrently.
-        github = github_future.result()
-        github_settings = github.get("settings", {})
-        model = github_settings.get("model", "")
-        ollama_future = pool.submit(_status_ollama)
-        codex = codex_future.result()
-        runner = runner_future.result()
-        progress_storage = storage_future.result()
-        ollama = ollama_future.result()
+    ollama_future = _STATUS_EXECUTOR.submit(_status_ollama)
+    remaining = max(0.0, deadline - time.monotonic())
+    futures = (codex_future, runner_future, storage_future, ollama_future)
+    wait(futures, timeout=remaining)
+
+    codex = _resolve_status_probe(
+        codex_future, "codex", {"installed": False, "version": None}, timed_out, errors
+    )
+    runner = _resolve_status_probe(
+        runner_future, "runner", {"running": False, "process_detected": False}, timed_out, errors
+    )
+    progress_storage = _resolve_status_probe(
+        storage_future, "storage", False, timed_out, errors
+    )
+    ollama = _resolve_status_probe(
+        ollama_future, "ollama", _status_ollama_fallback(model), timed_out, errors
+    )
+    if not isinstance(codex, dict):
+        errors.append("codex")
+        codex = {"installed": False, "version": None}
+    if not isinstance(runner, dict):
+        errors.append("runner")
+        runner = {"running": False, "process_detected": False}
+    if not isinstance(ollama, dict):
+        errors.append("ollama")
+        ollama = _status_ollama_fallback(model)
+    progress_storage = progress_storage is True
 
     settings = github_settings
     interval_hours = settings.get("interval_hours", _DEFAULT_INTERVAL_HOURS)
@@ -261,6 +360,8 @@ def collect_status() -> dict[str, Any]:
         "progress_storage_accessible": progress_storage,
         "platform": platform.platform(),
         "local_only_inference": True,
+        "status_probe_timeouts": timed_out,
+        "status_probe_errors": errors,
     }
 
 
