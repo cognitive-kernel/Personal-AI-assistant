@@ -1670,6 +1670,135 @@ def test_collect_status_runs_independent_probes_concurrently(monkeypatch):
     assert result["checks"]["progress_storage_accessible"] is True
 
 
+
+def test_collect_status_returns_with_a_degraded_snapshot_when_a_probe_stalls(monkeypatch):
+    from threading import Event
+    from time import monotonic
+
+    release_runner = Event()
+    runner_finished = Event()
+
+    def stalled_runner():
+        try:
+            release_runner.wait(timeout=2)
+            return {"running": True, "process_detected": True}
+        finally:
+            runner_finished.set()
+
+    monkeypatch.setattr(agent, "_STATUS_PROBE_TIMEOUT_SECONDS", 0.4)
+    monkeypatch.setattr(agent, "_GITHUB_STATUS_PROBE_TIMEOUT_SECONDS", 0.2)
+    monkeypatch.setattr(agent, "_github_snapshot", lambda: {
+        "cli_installed": True,
+        "authenticated": True,
+        "recent_runs": [],
+        "runs_available": True,
+        "settings": {"model": "model:latest"},
+    })
+    monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
+    monkeypatch.setattr(agent, "_runner_status", stalled_runner)
+    monkeypatch.setattr(agent, "storage_accessible", lambda: True)
+    monkeypatch.setattr(agent, "_ollama_status", lambda model: {
+        "online": True,
+        "model": model,
+        "model_installed": True,
+        "model_selectable": True,
+        "model_is_codex_context_variant": False,
+        "models": [model],
+        "selectable_models": [model],
+        "model_metadata_available": True,
+        "model_context_supported": True,
+        "model_tools_metadata_available": True,
+        "model_supports_tools": True,
+        "model_capabilities": ["tools"],
+        "model_context_length": 32768,
+    })
+
+    started = monotonic()
+    result = agent.collect_status()
+    elapsed = monotonic() - started
+
+    assert elapsed < 1.5
+    assert "runner" in result["status_probe_timeouts"]
+    assert result["checks"]["runner_running"] is False
+    assert result["checks"]["progress_storage_accessible"] is True
+    assert result["ollama"]["model"] == "model:latest"
+
+    release_runner.set()
+    assert runner_finished.wait(timeout=1)
+
+
+def test_collect_status_does_not_queue_probes_when_shared_pool_is_saturated(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import BoundedSemaphore, Event, Lock
+    from time import monotonic
+
+    capacity = 5
+    executor = ThreadPoolExecutor(max_workers=capacity)
+    release_probes = Event()
+    all_probes_started = Event()
+    started_count = 0
+    started_lock = Lock()
+
+    monkeypatch.setattr(agent, "_STATUS_EXECUTOR", executor)
+    monkeypatch.setattr(agent, "_STATUS_EXECUTOR_SLOTS", BoundedSemaphore(capacity))
+    monkeypatch.setattr(agent, "_STATUS_PROBE_TIMEOUT_SECONDS", 0.3)
+    monkeypatch.setattr(agent, "_GITHUB_STATUS_PROBE_TIMEOUT_SECONDS", 0.05)
+
+    def block_probe(result):
+        nonlocal started_count
+        with started_lock:
+            started_count += 1
+            if started_count == capacity:
+                all_probes_started.set()
+        release_probes.wait(timeout=3)
+        return result
+
+    monkeypatch.setattr(agent, "_github_snapshot", lambda: block_probe({
+        "authenticated": True, "runs_available": True, "recent_runs": [],
+        "settings": {"model": "model:latest"},
+    }))
+    monkeypatch.setattr(agent, "_codex_status", lambda: block_probe({
+        "installed": True, "version": "codex test",
+    }))
+    monkeypatch.setattr(agent, "_runner_status", lambda: block_probe({
+        "running": False, "process_detected": False,
+    }))
+    monkeypatch.setattr(agent, "storage_accessible", lambda: block_probe(True))
+    monkeypatch.setattr(agent, "_ollama_status", lambda model: block_probe({
+        "online": True,
+        "model": model,
+        "model_installed": True,
+        "model_selectable": True,
+        "model_is_codex_context_variant": False,
+        "models": [model],
+        "selectable_models": [model],
+        "model_metadata_available": True,
+        "model_context_supported": True,
+        "model_tools_metadata_available": True,
+        "model_supports_tools": True,
+        "model_capabilities": ["tools"],
+        "model_context_length": 32768,
+    }))
+
+    try:
+        started = monotonic()
+        first_result = agent.collect_status()
+        assert monotonic() - started < 1.5
+        assert all_probes_started.wait(timeout=1)
+
+        started = monotonic()
+        second_result = agent.collect_status()
+        assert monotonic() - started < 0.2
+        assert set(second_result["status_probe_unavailable"]) == {
+            "github", "codex", "runner", "storage", "ollama",
+        }
+        assert second_result["status_probe_timeouts"] == []
+        assert first_result["status_probe_timeouts"]
+    finally:
+        release_probes.set()
+        executor.shutdown(wait=True)
+
+
 def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     root = Path(__file__).resolve().parents[1]
     script = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")

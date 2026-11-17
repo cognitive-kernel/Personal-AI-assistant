@@ -235,8 +235,13 @@ def _run(
     cwd: Path = ROOT,
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    # PYTHONHOME overrides virtual-environment prefix discovery in child
+    # interpreters. It is not an application setting and must not escape into
+    # subprocesses launched by this project (including its own .venv Python).
+    child_env = dict(os.environ if env is None else env)
+    child_env.pop("PYTHONHOME", None)
     try:
-        return subprocess.run(command, cwd=cwd, text=True, check=False, env=env)
+        return subprocess.run(command, cwd=cwd, text=True, check=False, env=child_env)
     except KeyboardInterrupt:
         # Ctrl+C is expected when stopping the local server; avoid noisy tracebacks.
         return subprocess.CompletedProcess(command, 130)
@@ -250,6 +255,18 @@ def _python_in_venv() -> Path:
 
 def _inside_venv() -> bool:
     return sys.prefix != sys.base_prefix
+
+
+def _inside_project_venv() -> bool:
+    """Return True only when this process is using this repository's .venv."""
+    if not _inside_venv():
+        return False
+    try:
+        return Path(sys.prefix).resolve() == (ROOT / ".venv").resolve()
+    except OSError:
+        return os.path.normcase(os.path.abspath(sys.prefix)) == os.path.normcase(
+            os.path.abspath(ROOT / ".venv")
+        )
 
 
 def _requirements(dev: bool) -> list[str]:
@@ -968,7 +985,22 @@ def main() -> int:
     if sys.version_info < MIN_PYTHON:
         print("این پروژه به Python 3.11 یا جدیدتر نیاز دارد. ابتدا Python را نصب/به‌روزرسانی کنید.")
         return 2
-    if not _inside_venv():
+    managed_env = "--managed-env" in sys.argv[1:]
+    inside_project_venv = _inside_project_venv()
+    if managed_env and not inside_project_venv:
+        print(
+            "راه‌اندازی مدیریت‌شده خارج از محیط مجازی همین پروژه تشخیص داده شد؛ "
+            "برای جلوگیری از اجرای تودرتو، شروع برنامه متوقف شد.",
+            file=sys.stderr,
+        )
+        print(
+            f"sys.executable={sys.executable}; sys.prefix={sys.prefix}; "
+            f"expected_prefix={ROOT / '.venv'}",
+            file=sys.stderr,
+        )
+        return 2
+
+    if not inside_project_venv:
         python = _python_in_venv()
         if not python.exists():
             print("ساخت محیط مجازی پروژه ...", flush=True)

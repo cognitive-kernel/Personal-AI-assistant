@@ -47,6 +47,11 @@ jobs:
           python-version: "3.11"
       - name: Install project and test dependencies
         run: python -m pip install -e ".[dev]"
+      - name: Verify Windows launcher virtual-environment startup regressions
+        run: >-
+          python -m pytest -q
+          tests/test_core.py
+          -k "startup_bootstrap or managed_env or startup_handoff"
       - name: Verify PowerShell-to-Python Ollama context selection through an explicit file
         shell: pwsh
         run: |
