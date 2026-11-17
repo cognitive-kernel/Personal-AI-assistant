@@ -4,6 +4,7 @@ import json
 import math
 import os
 import shutil
+import tempfile
 import time
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
@@ -66,8 +67,8 @@ def _migrate_legacy_posix_state(legacy: Path, shared: Path) -> None:
     """Copy legacy per-user state into the shared root without deleting either copy."""
     if not legacy.exists():
         return
-    if legacy.is_symlink() or not legacy.is_dir():
-        raise RuntimeError("The legacy autonomous-engineering state path is not a safe directory.")
+    if legacy.is_symlink() or not legacy.is_dir() or not _is_path_within(legacy, Path.home()):
+        raise RuntimeError("The legacy autonomous-engineering state path is not a safe directory inside the current home.")
     marker = legacy / ".shared-state-migration.json"
     if marker.is_symlink():
         raise RuntimeError("The legacy shared-state migration marker is not a regular file.")
@@ -134,7 +135,13 @@ def _migrate_legacy_posix_state(legacy: Path, shared: Path) -> None:
 
         for source, destination in sources:
             destination.parent.mkdir(parents=True, exist_ok=True)
-            temporary = destination.with_name(destination.name + ".migration.tmp")
+            descriptor, temporary_name = tempfile.mkstemp(
+                prefix=".autonomous-state-migration-",
+                suffix=".tmp",
+                dir=destination.parent,
+            )
+            os.close(descriptor)
+            temporary = Path(temporary_name)
             try:
                 shutil.copy2(source, temporary)
                 os.replace(temporary, destination)
