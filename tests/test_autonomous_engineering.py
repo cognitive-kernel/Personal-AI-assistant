@@ -1837,3 +1837,100 @@ def test_run_management_controls_are_present_and_wired():
     assert 'request("cleanup", {method: "POST"})' in script
     assert 'request("runs/" + runId + "/logs")' in script
     assert 'request("runs/" + runId, {method: "DELETE"})' in script
+
+
+
+def test_run_diagnostics_are_loaded_from_shared_state_and_sanitized(monkeypatch, tmp_path):
+    diagnostic_dir = tmp_path / "run-diagnostics"
+    diagnostic_dir.mkdir()
+    (diagnostic_dir / "123.json").write_text(json.dumps({
+        "schema_version": 1,
+        "run_id": "123",
+        "updated_at": "2026-11-17T12:00:00+00:00",
+        "diagnostics": [{
+            "run_attempt": "1",
+            "task": 1,
+            "attempt": 2,
+            "stage": "codex_decision",
+            "category": "task_blocked",
+            "summary": "Codex marked task 1 as blocked.",
+            "detail": "The policy check rejected the requested action. ghp_0123456789abcdefghijklmnopqrstuvwxyz",
+            "recorded_at": "2026-11-17T12:00:00+00:00",
+        }],
+    }), encoding="utf-8")
+    monkeypatch.setattr(agent, "execution_state_directory", lambda: tmp_path)
+
+    result = agent._read_run_diagnostics(123)
+
+    assert result is not None
+    assert result["run_id"] == 123
+    assert result["diagnostics"][0]["stage"] == "codex_decision"
+    assert "policy check rejected" in result["diagnostics"][0]["detail"]
+    assert "ghp_0123456789abcdefghijklmnopqrstuvwxyz" not in result["diagnostics"][0]["detail"]
+    assert agent._read_run_diagnostics(0) is None
+    assert agent._read_run_diagnostics(True) is None
+
+
+def test_workflow_failure_summary_prefers_controller_root_cause():
+    raw_log = (
+        "##[error]Process completed with exit code 1.\\n"
+        "Autonomous engineering cycle failed: RuntimeError: Codex reported task 1 as blocked; record the blocker.\\n"
+    )
+
+    result = agent._workflow_failure_summary(raw_log, [{
+        "name": "codex",
+        "failed_steps": [{"name": "Execute one isolated task", "conclusion": "failure"}],
+    }])
+
+    assert result == "RuntimeError: Codex reported task 1 as blocked; record the blocker."
+
+
+def test_run_logs_include_persisted_codex_reason_and_failure_stage(monkeypatch):
+    diagnostic = {
+        "run_id": 123,
+        "updated_at": "2026-11-17T12:00:00+00:00",
+        "diagnostics": [{
+            "run_attempt": "1",
+            "task": 1,
+            "attempt": 1,
+            "stage": "codex_decision",
+            "category": "task_blocked",
+            "summary": "Codex marked task 1 as blocked.",
+            "detail": "The final explanation says the selected operation requires unavailable approval.",
+            "recorded_at": "2026-11-17T12:00:00+00:00",
+        }],
+    }
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_verified_workflow_run", lambda gh, run_id: {
+        "id": 123, "status": "completed", "conclusion": "failure",
+        "url": "https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/123",
+    })
+    monkeypatch.setattr(agent, "_github_api_json", lambda *args, **kwargs: {
+        "jobs": [{
+            "name": "codex", "status": "completed", "conclusion": "failure",
+            "steps": [{"name": "Execute task", "conclusion": "failure"}],
+        }]
+    })
+    monkeypatch.setattr(agent, "_run", lambda command, timeout=8: subprocess.CompletedProcess(
+        command, 0, "Autonomous engineering cycle failed: generic controller message", "",
+    ))
+    monkeypatch.setattr(agent, "_read_run_diagnostics", lambda run_id: diagnostic)
+
+    result = agent.autonomous_engineering_run_logs(123)
+
+    assert result["error_summary"] == "Codex marked task 1 as blocked."
+    assert result["failure_stage"] == "codex_decision"
+    assert result["diagnostic"]["diagnostics"][0]["detail"].startswith("The final explanation")
+    assert result["failures"][0]["failed_steps"][0]["name"] == "Execute task"
+
+
+def test_dashboard_renders_failure_summary_and_codex_diagnostic_details():
+    script = (
+        Path(__file__).resolve().parents[1] / "app" / "static" / "autonomous-engineering.js"
+    ).read_text(encoding="utf-8")
+
+    assert "علت خطا: " in script
+    assert "data.error_summary" in script
+    assert "data.diagnostic.diagnostics" in script
+    assert "گزارش توضیحی Codex / جزئیات خطا" in script
+    assert "گزارش خام GitHub" in script
