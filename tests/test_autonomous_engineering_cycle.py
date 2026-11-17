@@ -62,14 +62,14 @@ def test_validate_paths_rejects_protected_traversal_and_non_allowlisted_paths(pa
         cycle.validate_paths([path])
 
 
-def test_failed_local_and_github_checks_stop_at_retry_budget_and_preserve_task(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_failed_local_and_github_checks_stop_at_retry_budget_and_preserve_task(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, shared_state_tmp_path: Path):
     prompt = tmp_path / "prompt.md"
     prompt.write_text("Complete the selected task.", encoding="utf-8")
     monkeypatch.setattr(cycle, "ROOT", tmp_path)
     monkeypatch.setenv("GH_TOKEN", "test-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "autonomous-state"))
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path / "autonomous-state"))
     monkeypatch.setattr(cycle, "start_checkpoint_watcher", lambda *args: None)
     stopped = []
     monkeypatch.setattr(cycle, "stop_checkpoint_watcher", lambda *args: stopped.append(args))
@@ -167,7 +167,7 @@ def test_cycle_run_converts_timeout_to_a_diagnostic_error(monkeypatch: pytest.Mo
 
 
 def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path,
 ):
     prompt = tmp_path / "prompt.md"
     prompt.write_text("Complete the selected task.", encoding="utf-8")
@@ -228,7 +228,7 @@ def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
     assert cycle.load_pending_pr() is None
 
 
-def test_run_cycle_bounds_failed_codex_attempts_and_preserves_task(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_run_cycle_bounds_failed_codex_attempts_and_preserves_task(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path):
     prompt = tmp_path / "prompt.md"
     prompt.write_text("Complete the selected task.", encoding="utf-8")
     monkeypatch.setattr(cycle, "ROOT", tmp_path)
@@ -347,7 +347,7 @@ def test_complete_pending_pr_rejects_non_controller_author(monkeypatch: pytest.M
 
 
 def test_run_cycle_recovers_open_task_pr_and_waits_for_owner_merge(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path,
 ):
     records = []
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "autonomous-state"))
@@ -395,7 +395,7 @@ def test_run_cycle_recovers_open_task_pr_and_waits_for_owner_merge(
     assert "بازبینی مالک" in records[-1][0][4]
 
 
-def test_publish_pull_request_leaves_exact_sha_validated_pr_open_for_owner_merge(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_publish_pull_request_leaves_exact_sha_validated_pr_open_for_owner_merge(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path):
     base_sha = "b" * 40
     head_sha = "c" * 40
     calls = []
@@ -679,7 +679,7 @@ def test_checkpoint_watcher_persists_initial_snapshot_error(monkeypatch: pytest.
 
 
 def test_checkpoint_watcher_real_process_publishes_run_scoped_readiness(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path,
 ):
     import json
     import os
@@ -693,7 +693,7 @@ def test_checkpoint_watcher_real_process_publishes_run_scoped_readiness(
         ["git", "rev-parse", "HEAD"], cwd=root, check=True,
         capture_output=True, text=True,
     ).stdout.strip()
-    program_data = tmp_path / "ProgramData"
+    program_data = shared_state_tmp_path / "ProgramData"
     state = program_data / "PersonalAIAssistant" / "autonomous-engineering"
     monkeypatch.setenv("PROGRAMDATA", str(program_data))
     monkeypatch.delenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", raising=False)
@@ -800,16 +800,16 @@ def test_checkpoint_readiness_is_committed_without_a_secondary_marker(
     assert not (state_root / "worktree-checkpoint-106-1.ready").exists()
     assert not (state_root / "worktree-checkpoint-106-1.error").exists()
 
-def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path):
     import json
     import os
     from types import SimpleNamespace
     from scripts import autonomous_engineering_checkpoint as checkpoint
 
-    state = tmp_path / "ProgramData" / "PersonalAIAssistant" / "autonomous-engineering"
+    state = shared_state_tmp_path / "ProgramData" / "PersonalAIAssistant" / "autonomous-engineering"
     monkeypatch.setattr(checkpoint, "store_dir", lambda: state)
     state.mkdir(parents=True)
-    monkeypatch.setenv("PROGRAMDATA", str(tmp_path / "ProgramData"))
+    monkeypatch.setenv("PROGRAMDATA", str(shared_state_tmp_path / "ProgramData"))
     monkeypatch.delenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", raising=False)
     monkeypatch.setattr(
         cycle, "os",
@@ -851,7 +851,7 @@ def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pyt
     assert cycle.start_checkpoint_watcher("a" * 40, "105", 1) is not None
 
 
-def test_complete_pending_draft_pr_revalidates_checks_and_leaves_pr_open(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_complete_pending_draft_pr_revalidates_checks_and_leaves_pr_open(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path):
     base_sha = "b" * 40
     head_sha = "c" * 40
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "autonomous-state"))
@@ -953,12 +953,12 @@ def test_checkpoint_paths_are_isolated_for_each_run_and_task(monkeypatch: pytest
     assert first["plan"] != third["plan"]
 
 
-def test_repository_execution_lock_rejects_a_second_process(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_repository_execution_lock_rejects_a_second_process(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path):
     import os
     import sys
     from scripts import autonomous_engineering_cycle as cycle
 
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path))
     code = (
         "from scripts.autonomous_engineering_cycle import repository_execution_lock; "
         "lock=repository_execution_lock('second-run','1'); lock.__enter__(); lock.__exit__(None,None,None)"
@@ -979,7 +979,7 @@ def test_repository_execution_lock_rejects_a_second_process(monkeypatch: pytest.
 
 
 def test_checkpoint_watcher_uses_base_interpreter_with_venv_dependencies(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path,
 ):
     import json
     import os
@@ -1122,7 +1122,7 @@ def test_autonomous_workflow_gates_unelevated_sandbox_behind_explicit_opt_in():
     assert "disabled by default" in workflow
 
 
-def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkeypatch, tmp_path):
+def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkeypatch, tmp_path, shared_state_tmp_path):
     from types import SimpleNamespace
     from scripts import autonomous_engineering_progress as progress
 
@@ -1148,7 +1148,7 @@ def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkey
 
     monkeypatch.setattr(progress, "WindowsProcessJob", NoOpProcessJob)
     monkeypatch.setattr(progress, "PLAN_FILE", tmp_path / ".agent-progress.json")
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "progress"))
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path / "progress"))
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "64000")
 
     class BrokenInput:
@@ -1541,8 +1541,8 @@ def test_complete_merged_pr_rejects_bot_merge_actor(monkeypatch: pytest.MonkeyPa
     assert not any(method == "PUT" and str(path).endswith("/merge") for method, path, _ in calls)
 
 
-def test_pending_pr_state_round_trips_atomically_and_rejects_corruption(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "state"))
+def test_pending_pr_state_round_trips_atomically_and_rejects_corruption(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, shared_state_tmp_path: Path):
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path / "state"))
     pending = {
         "number": 91,
         "url": "https://github.com/owner/repository/pull/91",
@@ -1572,9 +1572,9 @@ def test_codex_arguments_refuse_to_invent_context_without_ollama_preflight(monke
 
 
 def test_clear_pending_state_removes_task_and_pr_in_one_transaction(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path,
 ):
-    state_dir = tmp_path / "durable-state"
+    state_dir = shared_state_tmp_path / "durable-state"
     state_dir.mkdir()
     (state_dir / "pending-manual-task.txt").write_text("task", encoding="utf-8")
     (state_dir / "pending-autonomous-pr.json").write_text("{}", encoding="utf-8")
@@ -1589,7 +1589,7 @@ def test_clear_pending_state_removes_task_and_pr_in_one_transaction(
 
 
 def test_recovered_open_pr_is_persisted_before_exact_sha_ci(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path,
 ):
     head_sha = "a" * 40
     base_sha = "b" * 40
