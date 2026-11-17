@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from contextlib import contextmanager
 import os
 import re
 import subprocess
@@ -120,6 +121,22 @@ DEFAULT_COMMAND_TIMEOUT_SECONDS = 5 * 60
 TEST_SUITE_TIMEOUT_SECONDS = 15 * 60
 PULL_REQUEST_VALIDATION_TIMEOUT_SECONDS = 25 * 60
 TASK_RETRY_POLICY = RetryPolicy(max_attempts=2, max_elapsed_seconds=2 * 60 * 60)
+
+
+@contextmanager
+def timed_stage(name: str):
+    """Emit durable console timing for each expensive controller phase."""
+    safe_name = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(name)).strip("_")[:100] or "unknown"
+    started = time.monotonic()
+    print(f"[autonomous-timing] stage={safe_name} status=started", flush=True)
+    try:
+        yield
+    finally:
+        elapsed = max(0.0, time.monotonic() - started)
+        print(
+            f"[autonomous-timing] stage={safe_name} status=finished elapsed_seconds={elapsed:.1f}",
+            flush=True,
+        )
 
 
 def run(
@@ -566,11 +583,12 @@ def run_cycle(args: argparse.Namespace) -> int:
             remaining = TASK_RETRY_POLICY.remaining_seconds(elapsed)
             if remaining <= 0:
                 raise RuntimeError("Task retry budget expired before Codex could start; preserving the current task state.")
-            result = run([
-                sys.executable, "scripts/autonomous_engineering_progress.py", "codex",
-                "--run-id", args.run_id, "--run-attempt", args.run_attempt,
-                "--model", args.model, "--prompt", str(active_prompt), "--report", str(report),
-            ], timeout_seconds=min(CODEX_TASK_TIMEOUT_SECONDS + 30, remaining))
+            with timed_stage(f"codex_attempt_{attempt}"):
+                result = run([
+                    sys.executable, "scripts/autonomous_engineering_progress.py", "codex",
+                    "--run-id", args.run_id, "--run-attempt", args.run_attempt,
+                    "--model", args.model, "--prompt", str(active_prompt), "--report", str(report),
+                ], timeout_seconds=min(CODEX_TASK_TIMEOUT_SECONDS + 30, remaining))
         finally:
             stop_checkpoint_watcher(watcher, base_sha, args.run_id, task)
         if result.returncode:
@@ -657,9 +675,15 @@ def run_cycle(args: argparse.Namespace) -> int:
             remaining = TASK_RETRY_POLICY.remaining_seconds(time.monotonic() - started)
             if remaining <= 0:
                 raise RuntimeError("Task retry budget expired during verification; preserving the current task state.")
-            checked_result = run(
-                command, capture=True, timeout_seconds=min(timeout_seconds, remaining),
+            stage_name = (
+                "pytest_full_suite"
+                if "-m" in command and "pytest" in command
+                else Path(command[1]).stem
             )
+            with timed_stage(f"verification_{stage_name}"):
+                checked_result = run(
+                    command, capture=True, timeout_seconds=min(timeout_seconds, remaining),
+                )
             output = (checked_result.stdout or "") + (checked_result.stderr or "")
             if output:
                 print(output, end="" if output.endswith("\n") else "\n")
@@ -710,10 +734,11 @@ def run_cycle(args: argparse.Namespace) -> int:
             remaining = TASK_RETRY_POLICY.remaining_seconds(time.monotonic() - started)
             if remaining <= 0:
                 raise RuntimeError("Task retry budget expired before PR validation; preserving the current task state.")
-            published_pr = publish_pr_subprocess(
-                token, repo, branch, task, args.run_id, head_sha, base_sha,
-                timeout_seconds=min(PULL_REQUEST_VALIDATION_TIMEOUT_SECONDS, remaining),
-            )
+            with timed_stage("pr_publication_and_exact_sha_ci"):
+                published_pr = publish_pr_subprocess(
+                    token, repo, branch, task, args.run_id, head_sha, base_sha,
+                    timeout_seconds=min(PULL_REQUEST_VALIDATION_TIMEOUT_SECONDS, remaining),
+                )
         except RuntimeError as exc:
             message = str(exc)
             if "Required workflow" not in message:
@@ -794,15 +819,16 @@ def main() -> int:
     if args.command == "publish":
         return publish_command(args)
     with repository_execution_lock(args.run_id, args.run_attempt):
-        try:
-            return run_cycle(args)
-        except Exception as exc:
-            persist_run_diagnostic(
-                args.run_id, args.run_attempt, task=1, attempt=None,
-                stage="controller", category=type(exc).__name__,
-                summary=f"{type(exc).__name__}: {exc}",
-            )
-            raise
+        with timed_stage("cycle_total"):
+            try:
+                return run_cycle(args)
+            except Exception as exc:
+                persist_run_diagnostic(
+                    args.run_id, args.run_attempt, task=1, attempt=None,
+                    stage="controller", category=type(exc).__name__,
+                    summary=f"{type(exc).__name__}: {exc}",
+                )
+                raise
 
 
 if __name__ == "__main__":
