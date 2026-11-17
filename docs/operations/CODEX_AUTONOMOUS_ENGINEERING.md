@@ -194,3 +194,4 @@ The POSIX default is the OS-wide application data directory returned by platform
 ### POSIX checkpoint lifecycle
 
 Durable checkpoint restore, watcher startup, stop/snapshot, and cleanup use the same shared state-root contract on POSIX and Windows. POSIX watchers are launched in a new session so they remain independent of the foreground controller; Windows retains its detached process-group launch. Missing PROGRAMDATA is not a reason to disable checkpoint recovery on Linux or macOS. The shared state directory must be provisioned for read/write access by the app and Runner identities before dispatch.
+State-root resolution does not require a login home directory. The current home is consulted only to discover a legacy per-user state tree for one-time migration; if the service identity has no home, the shared site-data root still resolves normally.
