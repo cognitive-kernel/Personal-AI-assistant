@@ -30,7 +30,14 @@ _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
 _STATUS_PROBE_CONTEXT = threading.local()
 _STATUS_PROBE_TIMEOUT_SECONDS = 35.0
 _GITHUB_STATUS_PROBE_TIMEOUT_SECONDS = 20.0
-_STATUS_EXECUTOR = ThreadPoolExecutor(max_workers=5, thread_name_prefix="autonomous-status")
+_STATUS_EXECUTOR_MAX_WORKERS = 5
+_STATUS_EXECUTOR = ThreadPoolExecutor(
+    max_workers=_STATUS_EXECUTOR_MAX_WORKERS,
+    thread_name_prefix="autonomous-status",
+)
+# Bound running plus queued probes, not just the worker count. Otherwise requests
+# can accumulate an unbounded executor queue while earlier probes are stalled.
+_STATUS_EXECUTOR_SLOTS = threading.BoundedSemaphore(_STATUS_EXECUTOR_MAX_WORKERS)
 _STATUS_LOGGER = logging.getLogger(__name__)
 
 router = APIRouter(
@@ -173,13 +180,38 @@ def _github_snapshot() -> dict[str, Any]:
     )
 
 
+def _submit_status_probe(function):
+    """Submit a probe only when a bounded worker/queue slot is available."""
+    if not _STATUS_EXECUTOR_SLOTS.acquire(blocking=False):
+        return None
+    try:
+        future = _STATUS_EXECUTOR.submit(function)
+    except RuntimeError:
+        _STATUS_EXECUTOR_SLOTS.release()
+        _STATUS_LOGGER.exception("Autonomous Engineering status probe could not be scheduled")
+        return None
+    except Exception:
+        _STATUS_EXECUTOR_SLOTS.release()
+        raise
+    future.add_done_callback(lambda _future: _STATUS_EXECUTOR_SLOTS.release())
+    return future
+
+
 def _resolve_status_probe(
     future,
     name: str,
     fallback: Any,
     timed_out: list[str],
     errors: list[str],
+    unavailable: list[str],
 ) -> Any:
+    if future is None:
+        unavailable.append(name)
+        _STATUS_LOGGER.warning(
+            "Autonomous Engineering status probe skipped because capacity is exhausted: %s",
+            name,
+        )
+        return fallback
     if not future.done():
         timed_out.append(name)
         _STATUS_LOGGER.warning("Autonomous Engineering status probe timed out: %s", name)
@@ -219,16 +251,17 @@ def _status_ollama_fallback(model: str) -> dict[str, Any]:
 
 
 def collect_status() -> dict[str, Any]:
-    # A shared bounded pool keeps one stalled diagnostic from blocking the API
-    # thread or creating an unbounded number of abandoned worker threads.
+    # A bounded pool plus non-blocking admission control prevents stalled probes
+    # from creating an unbounded queue across concurrent status requests.
     deadline = time.monotonic() + _STATUS_PROBE_TIMEOUT_SECONDS
     timed_out: list[str] = []
     errors: list[str] = []
+    unavailable: list[str] = []
 
-    github_future = _STATUS_EXECUTOR.submit(_github_snapshot)
-    codex_future = _STATUS_EXECUTOR.submit(_codex_status)
-    runner_future = _STATUS_EXECUTOR.submit(_runner_status)
-    storage_future = _STATUS_EXECUTOR.submit(storage_accessible)
+    github_future = _submit_status_probe(_github_snapshot)
+    codex_future = _submit_status_probe(_codex_status)
+    runner_future = _submit_status_probe(_runner_status)
+    storage_future = _submit_status_probe(storage_accessible)
 
     # GitHub variables determine the selected model. Bound this dependency
     # separately, then use the remaining request budget for every other probe.
@@ -236,7 +269,8 @@ def collect_status() -> dict[str, Any]:
         _GITHUB_STATUS_PROBE_TIMEOUT_SECONDS,
         max(0.0, deadline - time.monotonic()),
     )
-    wait((github_future,), timeout=github_wait)
+    if github_future is not None:
+        wait((github_future,), timeout=github_wait)
     github_fallback = {
         "cli_installed": bool(shutil.which("gh")),
         "authenticated": False,
@@ -250,7 +284,7 @@ def collect_status() -> dict[str, Any]:
         },
     }
     github = _resolve_status_probe(
-        github_future, "github", github_fallback, timed_out, errors
+        github_future, "github", github_fallback, timed_out, errors, unavailable
     )
     if not isinstance(github, dict):
         errors.append("github")
@@ -272,22 +306,30 @@ def collect_status() -> dict[str, Any]:
         finally:
             del _STATUS_PROBE_CONTEXT.allow_live_tool_probe
 
-    ollama_future = _STATUS_EXECUTOR.submit(_status_ollama)
+    ollama_future = _submit_status_probe(_status_ollama)
     remaining = max(0.0, deadline - time.monotonic())
-    futures = (codex_future, runner_future, storage_future, ollama_future)
-    wait(futures, timeout=remaining)
+    futures = tuple(
+        future
+        for future in (codex_future, runner_future, storage_future, ollama_future)
+        if future is not None
+    )
+    if futures:
+        wait(futures, timeout=remaining)
 
     codex = _resolve_status_probe(
-        codex_future, "codex", {"installed": False, "version": None}, timed_out, errors
+        codex_future, "codex", {"installed": False, "version": None},
+        timed_out, errors, unavailable,
     )
     runner = _resolve_status_probe(
-        runner_future, "runner", {"running": False, "process_detected": False}, timed_out, errors
+        runner_future, "runner", {"running": False, "process_detected": False},
+        timed_out, errors, unavailable,
     )
     progress_storage = _resolve_status_probe(
-        storage_future, "storage", False, timed_out, errors
+        storage_future, "storage", False, timed_out, errors, unavailable
     )
     ollama = _resolve_status_probe(
-        ollama_future, "ollama", _status_ollama_fallback(model), timed_out, errors
+        ollama_future, "ollama", _status_ollama_fallback(model),
+        timed_out, errors, unavailable,
     )
     if not isinstance(codex, dict):
         errors.append("codex")
@@ -362,8 +404,8 @@ def collect_status() -> dict[str, Any]:
         "local_only_inference": True,
         "status_probe_timeouts": timed_out,
         "status_probe_errors": errors,
+        "status_probe_unavailable": unavailable,
     }
-
 
 @router.get("/status")
 def autonomous_engineering_status() -> dict[str, Any]:
