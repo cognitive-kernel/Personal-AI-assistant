@@ -93,9 +93,9 @@ try {
     $serviceCreated = $true
     $sc = Get-Command sc.exe -ErrorAction Stop
     $binPathArgument = 'binPath= "' + $serviceExe + '"'
-    & $sc.Source config $serviceName $binPathArgument 'obj= "NT AUTHORITY\LocalService"' 'password= ""' "start= demand" | Out-Null
+    $serviceConfigOutput = & $sc.Source config $serviceName $binPathArgument 'obj= "NT AUTHORITY\LocalService"' 'password= ""' "start= demand" 2>&1
     if ($LASTEXITCODE -ne 0) {
-        throw "Could not configure the test broker to run as LocalService."
+        throw "Could not configure the test broker to run as LocalService: $($serviceConfigOutput -join ' ')"
     }
     Start-Service -Name $serviceName -ErrorAction Stop
     $service = Get-Service -Name $serviceName -ErrorAction Stop
