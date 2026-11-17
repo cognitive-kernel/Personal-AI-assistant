@@ -67,6 +67,36 @@ def test_posix_shared_state_migration_refuses_conflicts_without_overwriting_eith
     assert (shared / "pending-manual-task.txt").read_text(encoding="utf-8") == "different shared task"
 
 
+def test_posix_programdata_override_is_shared_and_migrates_legacy_state(monkeypatch, tmp_path: Path):
+    home = tmp_path / "legacy-home"
+    program_data = tmp_path / "shared-program-data"
+    legacy = home / ".personal-ai-assistant" / "autonomous-engineering"
+    legacy.mkdir(parents=True)
+    (legacy / "checkpoint.patch").write_bytes(b"checkpoint")
+    _configure_posix_state(monkeypatch, home, tmp_path / "unused-site-data")
+    monkeypatch.setenv("PROGRAMDATA", str(program_data))
+
+    resolved = state.execution_state_directory(
+        is_windows_fn=lambda: False,
+        machine_state_fn=lambda: "",
+    )
+
+    assert resolved == program_data / "PersonalAIAssistant" / "autonomous-engineering"
+    assert (resolved / "checkpoint.patch").read_bytes() == b"checkpoint"
+
+
+def test_posix_programdata_override_rejects_per_user_home(monkeypatch, tmp_path: Path):
+    home = tmp_path / "legacy-home"
+    _configure_posix_state(monkeypatch, home, tmp_path / "system-data")
+    monkeypatch.setenv("PROGRAMDATA", str(home))
+
+    with pytest.raises(RuntimeError, match="inside a per-user home"):
+        state.execution_state_directory(
+            is_windows_fn=lambda: False,
+            machine_state_fn=lambda: "",
+        )
+
+
 def test_posix_shared_state_resolution_works_without_a_home_directory(monkeypatch, tmp_path: Path):
     site_root = tmp_path / "system-data"
     monkeypatch.setattr(
