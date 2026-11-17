@@ -108,7 +108,9 @@ def test_machine_state_broker_uses_a_local_allowlisted_pipe_not_a_network_file_a
     assert "WaitForPipeIo" in service
     assert "ReadTimeout" not in service and "WriteTimeout" not in service
     assert "PipeSecurity" in service
+    assert 'new SecurityIdentifier("S-1-5-2")' in service
     assert 'new SecurityIdentifier("S-1-5-11")' in service
+    assert "AccessControlType.Deny" in service
     assert "GetNamedPipeClientComputerName" in service
     assert "ErrorPipeLocal = 229" in service
     assert "Marshal.GetLastWin32Error()" in service
