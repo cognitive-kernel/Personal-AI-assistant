@@ -2049,3 +2049,4 @@ PR #770 now places the same explicit, non-escalating argument contract in every 
 - Checkpoint lifecycle operations now use the shared state-root resolver on all supported platforms. The watcher launches in a new POSIX session; Windows keeps its detached process-group behavior. Restore and cleanup no longer silently skip because PROGRAMDATA is absent.
 - Added regression tests for POSIX watcher session creation, readiness metadata, restore, stop/final snapshot, and cleanup. Exact-head CI is pending.
 - POSIX shutdown now signals the watcher's dedicated process group, not only its parent PID, so a Git child cannot continue writing checkpoint state after the watcher exits. The Windows termination path is unchanged.
+- Shared state resolution no longer requires HOME/USERPROFILE to exist; home discovery is optional and used only to locate a legacy POSIX state tree for migration. A service identity with no home can still resolve the OS-wide data directory.
