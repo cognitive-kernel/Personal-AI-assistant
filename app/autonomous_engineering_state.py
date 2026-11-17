@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -69,21 +70,21 @@ def _migrate_legacy_posix_state(legacy: Path, shared: Path) -> None:
         return
     if legacy.is_symlink() or not legacy.is_dir() or not _is_path_within(legacy, Path.home()):
         raise RuntimeError("The legacy autonomous-engineering state path is not a safe directory inside the current home.")
-    marker = legacy / ".shared-state-migration.json"
+    shared.mkdir(parents=True, exist_ok=True)
+    if shared.is_symlink():
+        raise RuntimeError("The shared autonomous-engineering state root cannot be a symbolic link.")
+    legacy_digest = hashlib.sha256(str(legacy.resolve()).encode("utf-8")).hexdigest()[:20]
+    marker = shared / f".legacy-migration-{legacy_digest}.json"
     if marker.is_symlink():
-        raise RuntimeError("The legacy shared-state migration marker is not a regular file.")
+        raise RuntimeError("The shared-state migration marker is not a regular file.")
     if marker.is_file():
         try:
             saved = json.loads(marker.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
-            raise RuntimeError("The legacy shared-state migration marker is unreadable.") from exc
+            raise RuntimeError("The shared-state migration marker is unreadable.") from exc
         if isinstance(saved, dict) and saved.get("target") == str(shared):
             return
         raise RuntimeError("The legacy state was previously migrated to a different shared root.")
-
-    shared.mkdir(parents=True, exist_ok=True)
-    if shared.is_symlink():
-        raise RuntimeError("The shared autonomous-engineering state root cannot be a symbolic link.")
 
     lock_names = (
         "autonomous-durable-state.lock",
@@ -107,7 +108,7 @@ def _migrate_legacy_posix_state(legacy: Path, shared: Path) -> None:
         for source in sorted(legacy.rglob("*")):
             if source.is_symlink():
                 raise RuntimeError("Legacy autonomous-engineering state contains a symbolic link; migration stopped safely.")
-            if not source.is_file() or source == marker:
+            if not source.is_file():
                 continue
             relative = source.relative_to(legacy)
             if relative.name in lock_names:
@@ -148,13 +149,22 @@ def _migrate_legacy_posix_state(legacy: Path, shared: Path) -> None:
             finally:
                 temporary.unlink(missing_ok=True)
 
-        temporary_marker = marker.with_name(marker.name + ".tmp")
-        temporary_marker.write_text(
-            json.dumps({"schema_version": 1, "target": str(shared), "migrated_at": time.time()}, indent=2)
-            + "\n",
-            encoding="utf-8",
+        descriptor, marker_name = tempfile.mkstemp(
+            prefix=".legacy-migration-",
+            suffix=".tmp",
+            dir=shared,
         )
-        os.replace(temporary_marker, marker)
+        os.close(descriptor)
+        temporary_marker = Path(marker_name)
+        try:
+            temporary_marker.write_text(
+                json.dumps({"schema_version": 1, "target": str(shared), "migrated_at": time.time()}, indent=2)
+                + "\n",
+                encoding="utf-8",
+            )
+            os.replace(temporary_marker, marker)
+        finally:
+            temporary_marker.unlink(missing_ok=True)
 
 
 def execution_state_directory(
