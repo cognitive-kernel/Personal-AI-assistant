@@ -1873,8 +1873,8 @@ def test_run_diagnostics_are_loaded_from_shared_state_and_sanitized(monkeypatch,
 
 def test_workflow_failure_summary_prefers_controller_root_cause():
     raw_log = (
-        "##[error]Process completed with exit code 1.\\n"
-        "Autonomous engineering cycle failed: RuntimeError: Codex reported task 1 as blocked; record the blocker.\\n"
+        "##[error]Process completed with exit code 1.\n"
+        "Autonomous engineering cycle failed: RuntimeError: Codex reported task 1 as blocked; record the blocker.\n"
     )
 
     result = agent._workflow_failure_summary(raw_log, [{
