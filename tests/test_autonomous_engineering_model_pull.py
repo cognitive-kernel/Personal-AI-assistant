@@ -49,6 +49,22 @@ def test_model_pull_uses_loopback_ollama_api_and_reports_progress(monkeypatch):
     assert requests[0][1] == 60
 
 
+def test_model_pull_endpoint_resolution_failure_is_reported_and_releases_admission(monkeypatch):
+    monkeypatch.setattr(pull, "_base_url", lambda: (_ for _ in ()).throw(RuntimeError("Ollama endpoint invalid")))
+
+    job = pull.start_model_pull("example/model:latest")
+    deadline = time.monotonic() + 2
+    state = pull.get_model_pull(job["job_id"])
+    while state and state["status"] not in {"completed", "failed"} and time.monotonic() < deadline:
+        time.sleep(0.01)
+        state = pull.get_model_pull(job["job_id"])
+
+    assert state is not None
+    assert state["status"] == "failed"
+    assert state["error"] == "RuntimeError"
+    assert pull._ACTIVE_JOB is None
+
+
 def test_model_pull_rejects_invalid_model_identifiers():
     for model in ("", "../model", "model with spaces", "model:"):
         with pytest.raises(ValueError, match="شناسهٔ مدل"):
