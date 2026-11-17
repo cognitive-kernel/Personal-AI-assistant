@@ -690,25 +690,25 @@ def _workflow_failure_summary(value: str, failures: list[dict[str, Any]]) -> str
 
 
 def _sanitize_workflow_log(value: str) -> str:
-    value = re.sub(r"\\x1b\\[[0-?]*[ -/]*[@-~]", "", value)
+    value = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", value)
     value = re.sub(
-        r"(?i)(authorization\\s*:\\s*bearer\\s+)\\S+",
-        r"\\1[REDACTED]",
+        r"(?i)(authorization\s*:\s*bearer\s+)\S+",
+        r"\1[REDACTED]",
         value,
     )
-    value = re.sub(r"(?i)\\bbearer\\s+\\S+", "Bearer [REDACTED]", value)
+    value = re.sub(r"(?i)\bbearer\s+\S+", "Bearer [REDACTED]", value)
     value = re.sub(
-        r"(?i)\\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\\b",
+        r"(?i)\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b",
         "[REDACTED]",
         value,
     )
     value = re.sub(
-        r"(?i)\b[\w-]*(?:password|passwd|secret|api[_-]?key|access[_-]?token|gh[_-]?token)[\w-]*(\s*[=:]\s*)([^\s"']+)",
+        r"(?i)\b[\w-]*(?:password|passwd|secret|api[_-]?key|access[_-]?token|gh[_-]?token)[\w-]*(\s*[=:]\s*)([^\s\"']+)",
         r"[REDACTED]\1[REDACTED]",
         value,
     )
     if len(value) > _MAX_DASHBOARD_LOG_CHARS:
-        value = "[ابتدای گزارش به‌دلیل محدودیت حجم حذف شده است.]\\n" + value[-_MAX_DASHBOARD_LOG_CHARS:]
+        value = "[ابتدای گزارش به‌دلیل محدودیت حجم حذف شده است.]\n" + value[-_MAX_DASHBOARD_LOG_CHARS:]
     return value
 
 
