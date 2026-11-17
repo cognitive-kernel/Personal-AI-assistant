@@ -174,3 +174,9 @@ A non-empty manual task is rejected while prior work is pending; the dashboard d
 
 The recovery circuit breaker counts only a failure of the exact `Execute one isolated task, validate, and publish for owner review` workflow step. Admission rejection, schedule gating, prerequisite/setup/sandbox/dependency failures, post-execution checks, and job-level timeouts without a failed-step identity do not count as a task-execution failure. Unknown or malformed GitHub job/step evidence fails closed. This prevents an infrastructure/readiness failure from consuming the coding-task retry budget or dispatching a duplicate task.
 
+
+## Runtime prerequisite bootstrap
+
+The autonomous workflow provisions its job-local Python 3.11 and Node.js 22 runtimes with pinned actions/setup-python and actions/setup-node action commits before invoking either runtime. These tools are downloaded into the GitHub Actions job environment; the host does not need a preinstalled system Python or Node.js, and the workflow does not modify another user's global runtime installation. The Codex CLI remains pinned to the repository's required version and is installed into the Runner service account's npm prefix.
+
+This bootstrap does not install or authenticate GitHub CLI, install/start Ollama, download the selected model, register the self-hosted Runner, or provision service-account permissions. Those are host/service prerequisites and must remain visible as separate UI preflight items; missing authentication or privileged service setup cannot be fabricated by a package installer. The current coding job is still Windows-specific and this change does not claim Linux/macOS workflow support.
