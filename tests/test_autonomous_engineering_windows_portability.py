@@ -110,6 +110,10 @@ def test_machine_state_broker_uses_a_local_allowlisted_pipe_not_a_network_file_a
     assert "PipeSecurity" in service
     assert 'new SecurityIdentifier("S-1-5-11")' in service
     assert "GetNamedPipeClientComputerName" in service
+    assert "ErrorPipeLocal = 229" in service
+    assert "Marshal.GetLastWin32Error()" in service
+    assert "clientMachine.Capacity * sizeof(char)" in service
+    assert "clientNameError != ErrorPipeLocal" in service
     assert "Remote named-pipe clients are not accepted" in service
     assert "RunAsClient" in service
     assert "PipeAccessRights.ReadWrite" in service
