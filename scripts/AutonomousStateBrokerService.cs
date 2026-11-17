@@ -9,6 +9,7 @@ using System.Security.Principal;
 using System.ServiceProcess;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Linq;
 using System.Web.Script.Serialization;
 
@@ -125,7 +126,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                     PipeDirection.InOut,
                     WorkerCount,
                     PipeTransmissionMode.Byte,
-                    PipeOptions.None,
+                    PipeOptions.Asynchronous,
                     4096,
                     4096,
                     CreatePipeSecurity()
@@ -133,8 +134,6 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                 {
                     pipe.WaitForConnection();
                     if (_stopping) return;
-                    pipe.ReadTimeout = 3000;
-                    pipe.WriteTimeout = 3000;
                     HandleClient(pipe);
                 }
             }
@@ -231,16 +230,52 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         WriteResponse(pipe, 404, Error("not_found"));
     }
 
+    private static int RemainingMilliseconds(DateTime deadlineUtc, string operation)
+    {
+        int remaining = (int)Math.Ceiling((deadlineUtc - DateTime.UtcNow).TotalMilliseconds);
+        if (remaining <= 0)
+            throw new TimeoutException("The local state-broker timed out while " + operation + ".");
+        return remaining;
+    }
+
+    private static T WaitForPipeIo<T>(Task<T> task, DateTime deadlineUtc, string operation)
+    {
+        if (!task.Wait(RemainingMilliseconds(deadlineUtc, operation)))
+            throw new TimeoutException("The local state-broker timed out while " + operation + ".");
+        return task.GetAwaiter().GetResult();
+    }
+
+    private static void WaitForPipeIo(Task task, DateTime deadlineUtc, string operation)
+    {
+        if (!task.Wait(RemainingMilliseconds(deadlineUtc, operation)))
+            throw new TimeoutException("The local state-broker timed out while " + operation + ".");
+        task.GetAwaiter().GetResult();
+    }
+
     private static string ReadBoundedLine(Stream stream, int maximumBytes)
     {
+        DateTime deadlineUtc = DateTime.UtcNow.AddMilliseconds(3000);
         using (MemoryStream buffer = new MemoryStream())
         {
+            byte[] chunk = new byte[1024];
             while (buffer.Length <= maximumBytes)
             {
-                int value = stream.ReadByte();
-                if (value < 0) return null;
-                if (value == 10) return Encoding.UTF8.GetString(buffer.ToArray()).TrimEnd('\r');
-                if (value != 13) buffer.WriteByte((byte)value);
+                int count = WaitForPipeIo(
+                    stream.ReadAsync(chunk, 0, chunk.Length),
+                    deadlineUtc,
+                    "reading a request"
+                );
+                if (count <= 0) return null;
+                int newline = Array.IndexOf(chunk, (byte)10, 0, count);
+                int length = newline >= 0 ? newline : count;
+                for (int i = 0; i < length; i++)
+                {
+                    if (chunk[i] != 13) buffer.WriteByte(chunk[i]);
+                }
+                if (buffer.Length > maximumBytes)
+                    throw new InvalidDataException("The local state-broker request exceeded its size limit.");
+                if (newline >= 0)
+                    return Encoding.UTF8.GetString(buffer.ToArray());
             }
         }
         throw new InvalidDataException("The local state-broker request exceeded its size limit.");
@@ -253,8 +288,9 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         };
         string json = new JavaScriptSerializer { MaxJsonLength = 12 * 1024 * 1024 }.Serialize(envelope);
         byte[] bytes = new UTF8Encoding(false).GetBytes(json + "\n");
-        stream.Write(bytes, 0, bytes.Length);
-        stream.Flush();
+        DateTime deadlineUtc = DateTime.UtcNow.AddMilliseconds(3000);
+        WaitForPipeIo(stream.WriteAsync(bytes, 0, bytes.Length), deadlineUtc, "writing a response");
+        WaitForPipeIo(stream.FlushAsync(), deadlineUtc, "flushing a response");
     }
 
     private static Dictionary<string, object> Error(string code)
