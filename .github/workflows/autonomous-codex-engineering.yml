@@ -152,6 +152,16 @@ jobs:
           ref: main
           persist-credentials: false
 
+      - name: Provision Python runtime for this Runner job
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.11"
+
+      - name: Provision Node.js runtime for this Runner job
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+
       - name: Persist manual task under the controller's runner and concurrency ownership
         if: github.event_name == 'workflow_dispatch' && inputs.manual_task != ''
         env:
@@ -163,7 +173,7 @@ jobs:
         run: |
           & "$env:GITHUB_WORKSPACE\scripts\persist_autonomous_manual_task.ps1"
 
-      - name: Use preinstalled system Python under the Runner service identity
+      - name: Resolve provisioned Python runtime under the Runner service identity
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
@@ -436,7 +446,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-            throw "Node.js must be installed system-wide and available in the Runner service PATH."
+            throw "actions/setup-node did not provide the required Node.js runtime."
           }
           $npm = Get-Command npm -ErrorAction SilentlyContinue
           if (-not $npm) {
