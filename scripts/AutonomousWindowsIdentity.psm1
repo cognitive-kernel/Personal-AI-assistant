@@ -100,4 +100,48 @@ function Set-AutonomousDirectoryAcl {
     }
 }
 
-Export-ModuleMember -Function ConvertTo-AutonomousWindowsAccountName, Get-AutonomousLocalAccountName, Get-AutonomousWindowsAccountSid, Set-AutonomousDirectoryAcl
+
+function Set-AutonomousStateLockAcl {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$Path,
+        [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string]$AppSid
+    )
+
+    $lockPath = Join-Path $Path "autonomous-durable-state.lock"
+    if (-not (Test-Path -LiteralPath $lockPath -PathType Leaf)) {
+        throw "The shared durable-state lock file must be pre-created before its ACL is configured."
+    }
+
+    $icacls = Get-Command icacls.exe -ErrorAction Stop
+    & $icacls.Source $lockPath "/grant:r" "*$($AppSid):(M)" | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not grant the application account Modify access to the dedicated durable-state lock file."
+    }
+
+    $acl = Get-Acl -LiteralPath $lockPath
+    $requiredRights = [System.Security.AccessControl.FileSystemRights]::Modify
+    $hasModify = $false
+    foreach ($rule in $acl.Access) {
+        if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) {
+            continue
+        }
+        try {
+            $ruleSid = $rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+        } catch {
+            continue
+        }
+        if (
+            $ruleSid -eq $AppSid -and
+            (($rule.FileSystemRights -band $requiredRights) -eq $requiredRights)
+        ) {
+            $hasModify = $true
+            break
+        }
+    }
+    if (-not $hasModify) {
+        throw "The application account's Modify access to the dedicated durable-state lock file could not be verified."
+    }
+}
+
+Export-ModuleMember -Function ConvertTo-AutonomousWindowsAccountName, Get-AutonomousLocalAccountName, Get-AutonomousWindowsAccountSid, Set-AutonomousDirectoryAcl, Set-AutonomousStateLockAcl
