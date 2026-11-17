@@ -34,7 +34,9 @@ def test_posix_default_state_uses_system_shared_root_and_migrates_legacy_state(
     assert resolved == site_root / "autonomous-engineering"
     assert (resolved / "pending-manual-task.txt").read_text(encoding="utf-8") == "preserve this task"
     assert (legacy / "pending-manual-task.txt").read_text(encoding="utf-8") == "preserve this task"
-    marker = json.loads((legacy / ".shared-state-migration.json").read_text(encoding="utf-8"))
+    markers = list(resolved.glob(".legacy-migration-*.json"))
+    assert len(markers) == 1
+    marker = json.loads(markers[0].read_text(encoding="utf-8"))
     assert marker["target"] == str(resolved)
     assert state.execution_state_directory(
         is_windows_fn=lambda: False,
