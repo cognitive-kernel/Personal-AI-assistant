@@ -150,7 +150,7 @@ function Set-AutonomousDirectoryTreeAcl {
     }
     $icacls = Get-Command icacls.exe -ErrorAction Stop
     foreach ($item in $targets) {
-        $installerGrant = if ($item.PSIsContainer) {
+        $installerGrant = if ($item -is [System.IO.DirectoryInfo]) {
             "*$($InstallerSid):(OI)(CI)M"
         } else {
             "*$($InstallerSid):M"
