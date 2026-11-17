@@ -113,6 +113,39 @@ def test_posix_checkpoint_restore_and_clear_are_not_disabled_without_programdata
     ]
 
 
+def test_posix_checkpoint_stop_terminates_the_owned_process_group(monkeypatch):
+    import signal
+
+    killed = []
+
+    class LiveWatcher:
+        pid = 8765
+
+        def poll(self):
+            return None
+
+        def wait(self, timeout=None):
+            return 0
+
+    monkeypatch.setattr(
+        checkpoints.os,
+        "killpg",
+        lambda process_group, sig: killed.append((process_group, sig)),
+    )
+    checkpoints.stop_checkpoint_watcher(
+        LiveWatcher(),
+        "a" * 40,
+        "posix-run",
+        1,
+        subprocess_module=SimpleNamespace(TimeoutExpired=subprocess.TimeoutExpired),
+        os_name="posix",
+        programdata=None,
+        checkpoint_command=lambda *_args: SimpleNamespace(returncode=0, stdout=""),
+    )
+
+    assert killed == [(8765, signal.SIGTERM)]
+
+
 def test_posix_checkpoint_stop_saves_final_snapshot_when_watcher_exists():
     calls = []
 
