@@ -10,6 +10,7 @@ $serviceRoot = Join-Path $env:ProgramData "PersonalAIAssistant\StateBroker-CI"
 $serviceExe = Join-Path $serviceRoot "PersonalAIAssistant.StateBroker.exe"
 $stateRoot = Join-Path $env:ProgramData ("PersonalAIAssistant\Broker-CI-" + [guid]::NewGuid().ToString("N"))
 $oldMachineStatePath = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")
+$oldDiagnosticsSetting = [Environment]::GetEnvironmentVariable("AUTONOMOUS_STATE_BROKER_DIAGNOSTICS", "Machine")
 $currentSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $brokerSid = "S-1-5-19"
 $serviceCreated = $false
@@ -30,6 +31,7 @@ try {
     & icacls.exe $serviceRoot /grant:r "*$($brokerSid):(OI)(CI)RX" /T /C /Q | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Could not grant LocalService read/execute access to the test service binary." }
     [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", $stateRoot, "Machine")
+    [Environment]::SetEnvironmentVariable("AUTONOMOUS_STATE_BROKER_DIAGNOSTICS", "1", "Machine")
 
     $current = @{
         schema_version = 1
@@ -101,7 +103,17 @@ try {
     $service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds(20))
 
     Import-Module (Join-Path $PSScriptRoot "AutonomousStateBroker.psm1") -Force
-    $health = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health" -TimeoutMilliseconds 5000
+    try {
+        $health = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health" -TimeoutMilliseconds 5000
+    } catch {
+        $diagnosticPath = Join-Path $stateRoot "service-errors.log"
+        $diagnosticText = if (Test-Path -LiteralPath $diagnosticPath) {
+            Get-Content -LiteralPath $diagnosticPath -Raw -ErrorAction SilentlyContinue
+        } else {
+            "No worker diagnostic was recorded."
+        }
+        throw "PowerShell could not read live broker health: $($_.Exception.Message) Worker diagnostic: $diagnosticText"
+    }
     if ($health.ready -ne $true) { throw "PowerShell could not read live broker health." }
 
     $probe = @'
@@ -219,6 +231,11 @@ assert result["files_removed"] >= 2
     [Environment]::SetEnvironmentVariable(
         "AUTONOMOUS_ENGINEERING_PROGRESS_DIR",
         $oldMachineStatePath,
+        "Machine"
+    )
+    [Environment]::SetEnvironmentVariable(
+        "AUTONOMOUS_STATE_BROKER_DIAGNOSTICS",
+        $oldDiagnosticsSetting,
         "Machine"
     )
     if (Test-Path -LiteralPath $stateRoot) {
