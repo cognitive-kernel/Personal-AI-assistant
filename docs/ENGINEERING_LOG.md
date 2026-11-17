@@ -2025,3 +2025,9 @@ PR #770 now places the same explicit, non-escalating argument contract in every 
 - The workflow now uses pinned actions/setup-python v7 and actions/setup-node v6 commits to provision Python 3.11 and Node.js 22 into the current Actions job before the existing virtual-environment and pinned Codex CLI installation steps. It no longer treats preinstalled system Python/Node as a prerequisite.
 - Added static regression coverage for bootstrap ordering and the pinned Codex version.
 - Scope boundary: this is job-local bootstrap on the existing Windows self-hosted Runner. GitHub CLI authentication, Ollama service/model provisioning, Runner registration/ACL setup, and Linux/macOS workflow support remain open; no cross-platform acceptance is claimed. Exact-head CI is pending.
+## 2026-11-17 — Dashboard-driven Ollama model provisioning
+
+- The autonomous dashboard previously listed only models already installed in Ollama; a missing selected model had to be downloaded manually outside the UI.
+- Added a background model-pull service that calls only the configured loopback Ollama API, disables proxies and redirects, validates model identifiers, limits progress-record size, sanitizes failure details, and serializes model pulls to one active job.
+- Added POST/status API endpoints and a dashboard action with explicit user confirmation, progress display, completion refresh, and error reporting. Hardware-safe context and tool-capability checks remain mandatory before saving the model for autonomous execution.
+- Added regression coverage for API target/method, progress parsing, single-download admission, identifier validation, and dashboard wiring. Exact-head CI is pending; this feature does not install the Ollama application or provision privileged host services.
