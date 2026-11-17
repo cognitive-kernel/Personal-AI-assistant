@@ -230,7 +230,15 @@ def execution_state_directory(
         shared_root = Path(os.path.expandvars(program_data)).expanduser()
         if not shared_root.is_absolute():
             raise RuntimeError("PROGRAMDATA must resolve to an absolute shared path.")
-        return shared_root / "PersonalAIAssistant" / "autonomous-engineering"
+        state_root = shared_root / "PersonalAIAssistant" / "autonomous-engineering"
+        if not is_windows():
+            if _is_path_within(state_root, Path.home()):
+                raise RuntimeError("The configured shared state root cannot be inside a per-user home directory.")
+            _migrate_legacy_posix_state(
+                Path.home() / ".personal-ai-assistant" / "autonomous-engineering",
+                state_root,
+            )
+        return state_root
     if is_windows():
         raise RuntimeError(
             "PROGRAMDATA is unavailable; refusing to fall back to a per-user "
