@@ -63,19 +63,21 @@ def test_windows_provisioning_uses_only_the_dedicated_runner_identity():
     assert 'if ($value.Contains("@"))' not in module
 
 
-def test_shared_state_tree_acl_is_recursive_and_only_grants_runner_and_system():
+def test_shared_state_tree_acl_is_recursive_and_only_grants_runner_and_local_service():
     script = _read("scripts/provision_autonomous_runner.ps1")
     configure = _read("scripts/configure_autonomous_engineering_progress.ps1")
     module = _read("scripts/AutonomousWindowsIdentity.psm1")
 
-    assert 'Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid' in script
-    assert 'Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid' in configure
+    assert 'Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid -InstallerSid $installerSid' in script
+    assert 'Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid -InstallerSid $installerSid' in configure
     assert "Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid" in script
     assert "Set-AutonomousDirectoryTreeAcl" in module
     assert "$acl.SetAccessRuleProtection($true, $false)" in module
     assert "$acl.RemoveAccessRuleSpecific($rule)" in module
     assert "$acl.SetAccessRule($newRule)" in module
     assert "ReparsePoint" in module
+    assert "takeown.exe" in module
+    assert "/grant:r $installerGrant /T /C /Q" in module
     assert "$allowed = @($ModifySids | Select-Object -Unique)" in module
     assert "$acl.SetOwner([Security.Principal.SecurityIdentifier]$OwnerSid)" in module
     assert "OwnerSid" in script and '"S-1-5-19"' in script
