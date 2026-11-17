@@ -22,6 +22,7 @@ from .task_routes import require_loopback_client
 from .autonomous_engineering_progress import get_progress, pending_work_status, storage_accessible
 from .ollama_context import maximum_context_tokens, supports_tool_calling
 from .autonomous_engineering_state import durable_state_lock, execution_state_directory
+from .autonomous_engineering_model_pull import get_model_pull, start_model_pull
 
 _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
 _STATUS_PROBE_CONTEXT = threading.local()
@@ -52,6 +53,10 @@ class EngineeringSettings(BaseModel):
 
 class ManualTaskRequest(BaseModel):
     task: StrictStr = Field(default="", max_length=2000)
+
+
+class ModelPullRequest(BaseModel):
+    model: StrictStr = Field(min_length=1, max_length=120)
 
 
 def _repository() -> str:
@@ -209,6 +214,24 @@ def collect_status() -> dict[str, Any]:
 @router.get("/status")
 def autonomous_engineering_status() -> dict[str, Any]:
     return collect_status()
+
+
+@router.post("/models/pull", status_code=202)
+def autonomous_engineering_pull_model(payload: ModelPullRequest) -> dict[str, Any]:
+    try:
+        return start_model_pull(payload.model)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/models/pull/{job_id}")
+def autonomous_engineering_model_pull_status(job_id: str) -> dict[str, Any]:
+    state = get_model_pull(job_id)
+    if state is None:
+        raise HTTPException(status_code=404, detail="شناسهٔ عملیات دانلود مدل معتبر یا موجود نیست.")
+    return state
 
 
 def _enrich_progress_from_github(current: dict[str, Any] | None) -> dict[str, Any] | None:
