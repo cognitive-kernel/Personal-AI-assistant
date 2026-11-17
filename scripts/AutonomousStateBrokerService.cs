@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -512,7 +513,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                 try { stream.Lock(0, 1); owned = true; }
                 catch (IOException)
                 {
-                    if (DateTime.UtcNow >= deadline) throw new TimeoutException("Shared state lock timeout.");
+                    if (DateTime.UtcNow >= deadline) throw new System.TimeoutException("Shared state lock timeout.");
                     Thread.Sleep(50);
                 }
             }
