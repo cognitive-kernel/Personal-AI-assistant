@@ -408,7 +408,6 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             for (int index = start; index < sourceEntries.Length; index++)
             {
                 object value = sourceEntries[index];
-            {
                 Dictionary<string, object> entry = value as Dictionary<string, object>;
                 if (entry == null) continue;
                 Dictionary<string, object> safe = new Dictionary<string, object>();
