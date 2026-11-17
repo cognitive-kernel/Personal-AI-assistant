@@ -434,7 +434,7 @@
           : "GitHub CLI احراز هویت شده و وضعیت اجراها قابل دریافت است.";
       labels.storage.textContent = stateText(checks.progress_storage_accessible);
       $("storage-detail").textContent = checks.progress_storage_accessible
-        ? "پوشهٔ مشترک پیشرفت برای برنامه قابل خواندن است."
+        ? "پوشهٔ مشترک پیشرفت برای برنامه قابل خواندن و نوشتن است."
         : "مسیر دادهٔ مشترک سیستم باید برای حساب برنامه و Runner دسترسی خواندن/نوشتن داشته باشد؛ راه‌اندازی و مجوزها را برای سیستم‌عامل میزبان تکمیل کنید.";
       const ready = data.ready === true;
       const paused = data.paused === true;
