@@ -250,8 +250,14 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
     monkeypatch.setenv("HTTP_PROXY", "http://proxy.example:8080")
     monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example:8080")
     monkeypatch.setattr(agent.urllib.request, "build_opener", fake_build_opener)
-    from app import ollama
-    monkeypatch.setattr(ollama, "model_details", lambda model: {"recommended_context_tokens": 32768})
+    from app import hardware, ollama
+    monkeypatch.setattr(ollama, "_request", lambda path, payload=None, timeout=None: {"models": []})
+    monkeypatch.setattr(ollama, "_model_memory_estimate", lambda *args: {
+        "weights_gib": 1.0, "overhead_gib": 0.5,
+        "kv_cache_bytes_per_token_upper_bound": 1024,
+    })
+    monkeypatch.setattr(ollama, "_recommended_context_tokens", lambda *args, **kwargs: 32768)
+    monkeypatch.setattr(hardware, "detect_hardware", lambda: {})
 
     result = agent._ollama_status("gpt-oss:20b")
 
@@ -1608,32 +1614,39 @@ def test_collect_status_disables_live_tool_probe_for_status_polling(monkeypatch)
 def test_collect_status_runs_independent_probes_concurrently(monkeypatch):
     from threading import Barrier
 
-    barrier = Barrier(5)
-    monkeypatch.setattr(agent, "_github_snapshot", lambda: (
-        barrier.wait(timeout=3) or {
+    barrier = Barrier(4)
+
+    def github():
+        barrier.wait(timeout=3)
+        return {
             "authenticated": True, "runs_available": True, "recent_runs": [],
             "settings": {"model": "model:latest"},
         }
-    ))
-    monkeypatch.setattr(agent, "_ollama_status", lambda model: (
-        barrier.wait(timeout=3) or {
-            "online": True, "model": model, "model_installed": True,
-            "models": [model], "model_selectable": True,
-            "model_is_codex_context_variant": False,
-            "model_metadata_available": True, "model_context_supported": True,
-            "model_tools_metadata_available": True, "model_supports_tools": True,
-            "model_capabilities": ["tools"], "model_context_length": 32768,
-        }
-    ))
-    monkeypatch.setattr(agent, "_codex_status", lambda: (
-        barrier.wait(timeout=3) or {"installed": True, "version": "codex test"}
-    ))
-    monkeypatch.setattr(agent, "_runner_status", lambda: (
-        barrier.wait(timeout=3) or {"running": True, "process_detected": True}
-    ))
-    monkeypatch.setattr(agent, "storage_accessible", lambda: (
-        barrier.wait(timeout=3) or True
-    ))
+
+    def codex():
+        barrier.wait(timeout=3)
+        return {"installed": True, "version": "codex test"}
+
+    def runner():
+        barrier.wait(timeout=3)
+        return {"running": True, "process_detected": True}
+
+    def storage():
+        barrier.wait(timeout=3)
+        return True
+
+    monkeypatch.setattr(agent, "_github_snapshot", github)
+    monkeypatch.setattr(agent, "_ollama_status", lambda model: {
+        "online": True, "model": model, "model_installed": True,
+        "models": [model], "model_selectable": True,
+        "model_is_codex_context_variant": False,
+        "model_metadata_available": True, "model_context_supported": True,
+        "model_tools_metadata_available": True, "model_supports_tools": True,
+        "model_capabilities": ["tools"], "model_context_length": 32768,
+    })
+    monkeypatch.setattr(agent, "_codex_status", codex)
+    monkeypatch.setattr(agent, "_runner_status", runner)
+    monkeypatch.setattr(agent, "storage_accessible", storage)
 
     result = agent.collect_status()
 
