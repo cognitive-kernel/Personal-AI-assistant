@@ -2043,3 +2043,8 @@ PR #770 now places the same explicit, non-escalating argument contract in every 
 - Existing legacy POSIX state is copied—not moved or deleted—under the durable-state, repository-execution, and checkpoint-store locks. Symlinks and conflicting file contents fail closed; identical files are accepted. Lock files are recreated under the shared root rather than replacing an actively held lock inode.
 - Added platformdirs as a runtime dependency and regression tests for shared path selection, legacy migration, conflict preservation, per-user path rejection, and lock-file safety. ACL provisioning for app/Runner identities remains a separate prerequisite; exact-head CI is pending.
 - Dashboard readiness now performs a temporary write probe in the shared state directory instead of treating directory enumeration as proof of write access. The probe is removed immediately and a regression test verifies read-only state is not considered dispatch-ready.
+## 2026-11-17 — Enable durable checkpoint lifecycle on POSIX
+
+- The controller previously disabled checkpoint restore, watcher startup, final snapshot, and cleanup unless the host was Windows and PROGRAMDATA was set. This meant POSIX hosts could run without the same durable recovery guarantees.
+- Checkpoint lifecycle operations now use the shared state-root resolver on all supported platforms. The watcher launches in a new POSIX session; Windows keeps its detached process-group behavior. Restore and cleanup no longer silently skip because PROGRAMDATA is absent.
+- Added regression tests for POSIX watcher session creation, readiness metadata, restore, stop/final snapshot, and cleanup. Exact-head CI is pending.
