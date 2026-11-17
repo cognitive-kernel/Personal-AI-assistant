@@ -122,21 +122,12 @@ function Set-AutonomousDirectoryTreeAcl {
 
     $allowed = @($ModifySids | Select-Object -Unique)
     if ($allowed.Count -lt 1) { throw "At least one state-owner SID is required." }
-    $targets = @($items | Sort-Object { $_.FullName.Length -Descending }) + @($rootItem)
+    $targets = @($items | Sort-Object -Property @{ Expression = { $_.FullName.Length }; Descending = $true }) + @($rootItem)
     foreach ($item in $targets) {
         $acl = Get-Acl -LiteralPath $item.FullName -ErrorAction Stop
         $acl.SetAccessRuleProtection($true, $false)
         foreach ($rule in @($acl.Access)) {
-            $sid = $null
-            try {
-                $sid = $rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
-            } catch {
-                if ($rule.IdentityReference.Value -match "^S-1-") { $sid = $rule.IdentityReference.Value }
-                else { throw "Could not resolve an existing ACL principal on '$($item.FullName)'." }
-            }
-            if ($sid -notin $allowed) {
-                $acl.RemoveAccessRuleSpecific($rule)
-            }
+            $acl.RemoveAccessRuleSpecific($rule)
         }
         foreach ($sid in $allowed) {
             $inheritance = if ($item.PSIsContainer) {
