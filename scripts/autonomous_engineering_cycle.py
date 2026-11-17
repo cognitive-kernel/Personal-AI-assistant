@@ -304,16 +304,33 @@ def persist_run_diagnostic(
             "detail": _sanitize_run_diagnostic_text(detail),
             "recorded_at": datetime.now(timezone.utc).isoformat(),
         }
+        entry["detail"] = str(entry["detail"])[:6000]
         diagnostics.append(entry)
         payload = {
             "schema_version": 1,
             "run_id": str(run_id),
             "updated_at": entry["recorded_at"],
-            "diagnostics": diagnostics[-12:],
+            "diagnostics": diagnostics[-8:],
         }
         temporary = directory / f".{run_id}-{run_attempt}-{os.getpid()}.tmp"
         temporary.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
         temporary.replace(path)
+        try:
+            retained = sorted(
+                (
+                    item for item in directory.glob("*.json")
+                    if item.is_file() and not item.is_symlink()
+                ),
+                key=lambda item: item.stat().st_mtime_ns,
+            )
+            for expired in retained[:-100]:
+                if expired != path:
+                    expired.unlink(missing_ok=True)
+        except OSError as prune_error:
+            print(
+                f"Could not prune old autonomous run diagnostics: {type(prune_error).__name__}",
+                file=sys.stderr,
+            )
         return True
     except (OSError, RuntimeError, ValueError, TypeError) as exc:
         print(f"Could not persist autonomous run diagnostics: {type(exc).__name__}", file=sys.stderr)
