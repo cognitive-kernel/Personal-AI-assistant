@@ -185,6 +185,7 @@ def execution_state_directory(
     is_windows = is_windows_fn or _is_windows
     machine_state = machine_state_fn or _machine_configured_state_directory
     process_configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
+    home = _current_home_directory() if not is_windows() else None
     if is_windows():
         machine_configured = machine_state()
         require_machine_scope = (
@@ -222,14 +223,15 @@ def execution_state_directory(
                 "different working directories and service identities resolve the same state."
             )
         if not is_windows():
-            if _is_path_within(expanded, Path.home()):
+            if home is not None and _is_path_within(expanded, home):
                 raise ValueError(
                     "AUTONOMOUS_ENGINEERING_PROGRESS_DIR must not be inside a per-user home directory; "
                     "configure one shared system path for all participating services."
                 )
             _migrate_legacy_posix_state(
-                Path.home() / ".personal-ai-assistant" / "autonomous-engineering",
+                home / ".personal-ai-assistant" / "autonomous-engineering" if home is not None else None,
                 expanded,
+                home,
             )
         return expanded
 
@@ -240,11 +242,12 @@ def execution_state_directory(
             raise RuntimeError("PROGRAMDATA must resolve to an absolute shared path.")
         state_root = shared_root / "PersonalAIAssistant" / "autonomous-engineering"
         if not is_windows():
-            if _is_path_within(state_root, Path.home()):
+            if home is not None and _is_path_within(state_root, home):
                 raise RuntimeError("The configured shared state root cannot be inside a per-user home directory.")
             _migrate_legacy_posix_state(
-                Path.home() / ".personal-ai-assistant" / "autonomous-engineering",
+                home / ".personal-ai-assistant" / "autonomous-engineering" if home is not None else None,
                 state_root,
+                home,
             )
         return state_root
     if is_windows():
@@ -253,10 +256,11 @@ def execution_state_directory(
             "autonomous-engineering state directory on Windows."
         )
 
-    shared_root = _shared_site_state_directory()
+    shared_root = _shared_site_state_directory(home)
     _migrate_legacy_posix_state(
-        Path.home() / ".personal-ai-assistant" / "autonomous-engineering",
+        home / ".personal-ai-assistant" / "autonomous-engineering" if home is not None else None,
         shared_root,
+        home,
     )
     return shared_root
 
