@@ -54,7 +54,7 @@ jobs:
 
       - name: Preserve SARIF for security-alert triage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: codeql-sarif-${{ github.run_id }}
           path: codeql-results/*.sarif
