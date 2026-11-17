@@ -39,7 +39,6 @@ function Set-AutonomousDirectoryAcl {
     param(
         [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$Path,
         [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string]$RunnerSid,
-        [Parameter()][ValidatePattern("^S-1-")][string]$ReadOnlySid,
         [Parameter()][ValidatePattern("^S-1-")][string]$AdditionalModifySid
     )
 
@@ -49,9 +48,6 @@ function Set-AutonomousDirectoryAcl {
         $modifySids += $AdditionalModifySid
     }
     $allowedSids = @($modifySids)
-    if ($ReadOnlySid -and $ReadOnlySid -notin $allowedSids) {
-        $allowedSids += $ReadOnlySid
-    }
 
     & $icacls.Source $Path /inheritance:r | Out-Null
     if ($LASTEXITCODE -ne 0) {
@@ -80,9 +76,6 @@ function Set-AutonomousDirectoryAcl {
     }
 
     $grants = @($modifySids | ForEach-Object { "*$($_):(OI)(CI)M" })
-    if ($ReadOnlySid -and $ReadOnlySid -notin $modifySids) {
-        $grants += "*$($ReadOnlySid):(OI)(CI)RX"
-    }
     $arguments = @($Path, "/grant:r") + $grants
     & $icacls.Source @arguments | Out-Null
     if ($LASTEXITCODE -ne 0) {
