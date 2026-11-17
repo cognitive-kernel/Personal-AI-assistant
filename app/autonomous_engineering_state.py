@@ -216,7 +216,7 @@ def execution_state_directory(
             return Path(machine_path)
 
     if process_configured:
-        expanded = Path(os.path.expandvars(process_configured)).expanduser()
+        expanded = Path(os.path.expandvars(process_configured))
         if not expanded.is_absolute():
             raise ValueError(
                 "AUTONOMOUS_ENGINEERING_PROGRESS_DIR must be an absolute path so "
@@ -237,7 +237,7 @@ def execution_state_directory(
 
     program_data = os.getenv("PROGRAMDATA", "").strip()
     if program_data:
-        shared_root = Path(os.path.expandvars(program_data)).expanduser()
+        shared_root = Path(os.path.expandvars(program_data))
         if not shared_root.is_absolute():
             raise RuntimeError("PROGRAMDATA must resolve to an absolute shared path.")
         state_root = shared_root / "PersonalAIAssistant" / "autonomous-engineering"
