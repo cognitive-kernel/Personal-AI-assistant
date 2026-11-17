@@ -1043,6 +1043,13 @@ def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
             removed_bytes = int(result.get("bytes_removed", 0))
             failed_files.extend(str(item) for item in result.get("failed_files", []))
         except RuntimeError as exc:
+            from .autonomous_engineering_state_broker import StateBrokerConflict
+            if isinstance(exc, StateBrokerConflict):
+                blockers = ", ".join(exc.blockers)
+                raise HTTPException(
+                    status_code=409,
+                    detail="وضعیت پایدار عامل هنوز تعیین‌تکلیف نشده است؛ پاک‌سازی انجام نشد: " + blockers,
+                ) from exc
             raise HTTPException(
                 status_code=503,
                 detail=f"پاک‌سازی امن فضای مشترک ممکن نشد؛ وضعیت پایدار حفظ شد ({type(exc).__name__}).",
