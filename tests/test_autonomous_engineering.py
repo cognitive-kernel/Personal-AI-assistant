@@ -337,7 +337,13 @@ def test_ollama_status_probes_tool_calling_when_capabilities_metadata_is_missing
 
     agent._services._TOOL_PROBE_CACHE.clear()
     monkeypatch.setattr(agent.urllib.request, "build_opener", lambda *args: FakeOpener())
-    monkeypatch.setattr(ollama, "model_details", lambda model: {"recommended_context_tokens": 32768})
+    from app import hardware
+    monkeypatch.setattr(ollama, "_model_memory_estimate", lambda *args: {
+        "weights_gib": 1.0, "overhead_gib": 0.5,
+        "kv_cache_bytes_per_token_upper_bound": 1024,
+    })
+    monkeypatch.setattr(ollama, "_recommended_context_tokens", lambda *args, **kwargs: 32768)
+    monkeypatch.setattr(hardware, "detect_hardware", lambda: {})
     probe_calls = []
     def fake_probe_request(path, payload=None, timeout=None):
         probe_calls.append((path, payload, timeout))
