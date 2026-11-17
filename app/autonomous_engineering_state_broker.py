@@ -20,6 +20,8 @@ _PIPE_OPEN_FLAGS = _FILE_FLAG_OVERLAPPED | _SECURITY_SQOS_PRESENT | _SECURITY_IM
 _INVALID_HANDLE_VALUE = wintypes.HANDLE(-1).value
 _ERROR_IO_PENDING = 997
 _ERROR_PIPE_BUSY = 231
+_ERROR_FILE_NOT_FOUND = 2
+_ERROR_SEM_TIMEOUT = 121
 _WAIT_OBJECT_0 = 0
 _WAIT_TIMEOUT = 258
 _MAX_REQUEST_BYTES = 16 * 1024
@@ -154,6 +156,45 @@ def _overlapped_transfer(
         kernel32.CloseHandle(event)
 
 
+def _open_pipe(kernel32, deadline: float):
+    """Open the service pipe while tolerating the brief gap between instances."""
+    while True:
+        handle = kernel32.CreateFileW(
+            _PIPE_NAME,
+            _GENERIC_READ | _GENERIC_WRITE,
+            0,
+            None,
+            _OPEN_EXISTING,
+            _PIPE_OPEN_FLAGS,
+            None,
+        )
+        if handle != _INVALID_HANDLE_VALUE:
+            return handle
+
+        error = ctypes.get_last_error()
+        if error == _ERROR_FILE_NOT_FOUND:
+            # A worker disposes its instance after each response and immediately
+            # creates the next one. During that tiny gap the pipe name may have
+            # no instance yet; retry within the caller's single deadline.
+            remaining = _remaining_ms(deadline)
+            time.sleep(min(0.01, remaining / 1000.0))
+            continue
+
+        if error == _ERROR_PIPE_BUSY:
+            remaining = _remaining_ms(deadline)
+            if kernel32.WaitNamedPipeW(_PIPE_NAME, remaining):
+                continue
+            wait_error = ctypes.get_last_error()
+            if wait_error in {_ERROR_FILE_NOT_FOUND, _ERROR_SEM_TIMEOUT}:
+                _remaining_ms(deadline)
+                continue
+            raise StateBrokerError(
+                f"Windows state broker pipe wait failed (WinError {wait_error})."
+            )
+
+        raise StateBrokerError(f"Windows state broker is unavailable (WinError {error}).")
+
+
 def request(method: str, path: str, *, timeout_ms: int = 3500) -> Any:
     """Call one fixed broker endpoint; all pipe I/O is bounded by timeout_ms."""
     if isinstance(timeout_ms, bool) or not isinstance(timeout_ms, int) or not 250 <= timeout_ms <= 30000:
@@ -181,29 +222,7 @@ def request(method: str, path: str, *, timeout_ms: int = 3500) -> Any:
 
     deadline = time.monotonic() + timeout_ms / 1000.0
     kernel32 = _windows_api()
-    handle = kernel32.CreateFileW(
-        _PIPE_NAME,
-        _GENERIC_READ | _GENERIC_WRITE,
-        0,
-        None,
-        _OPEN_EXISTING,
-        _PIPE_OPEN_FLAGS,
-        None,
-    )
-    if handle == _INVALID_HANDLE_VALUE:
-        error = ctypes.get_last_error()
-        if error == _ERROR_PIPE_BUSY:
-            if kernel32.WaitNamedPipeW(_PIPE_NAME, _remaining_ms(deadline)):
-                handle = kernel32.CreateFileW(
-                    _PIPE_NAME, _GENERIC_READ | _GENERIC_WRITE, 0, None,
-                    _OPEN_EXISTING, _PIPE_OPEN_FLAGS, None,
-                )
-                if handle == _INVALID_HANDLE_VALUE:
-                    error = ctypes.get_last_error()
-            else:
-                error = ctypes.get_last_error()
-        if handle == _INVALID_HANDLE_VALUE:
-            raise StateBrokerError(f"Windows state broker is unavailable (WinError {error}).")
+    handle = _open_pipe(kernel32, deadline)
 
     try:
         buffer = ctypes.create_string_buffer(payload)
