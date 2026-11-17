@@ -68,8 +68,8 @@ def test_shared_state_tree_acl_is_recursive_and_only_grants_runner_and_system():
     configure = _read("scripts/configure_autonomous_engineering_progress.ps1")
     module = _read("scripts/AutonomousWindowsIdentity.psm1")
 
-    assert 'Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $systemSid)' in script
-    assert 'Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $systemSid)' in configure
+    assert 'Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid' in script
+    assert 'Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid' in configure
     assert "Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid" in script
     assert "Set-AutonomousDirectoryTreeAcl" in module
     assert "$acl.SetAccessRuleProtection($true, $false)" in module
@@ -110,7 +110,7 @@ def test_machine_state_broker_uses_a_local_allowlisted_pipe_not_a_network_file_a
     assert "ValidateSet(" in powershell_client
     assert '"/v1/health", "/v1/pending-work", "/v1/progress"' in powershell_client
     assert "PersonalAIAssistantStateBroker" in provision
-    assert "obj= LocalSystem" in provision
+    assert 'obj= "NT AUTHORITY\\LocalService"' in provision
     assert 'Join-Path $env:ProgramData "PersonalAIAssistant\\StateBroker"' in provision
     assert "AutonomousStateBrokerService.cs" in provision
     assert "Invoke-AutonomousStateBroker" in provision
