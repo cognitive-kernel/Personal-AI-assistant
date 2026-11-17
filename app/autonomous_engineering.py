@@ -598,10 +598,11 @@ def _workflow_runs(gh: str) -> list[dict[str, Any]]:
             "url": item.get("html_url") if isinstance(item.get("html_url"), str) else None,
             "head_branch": item.get("head_branch"),
             "workflow_path": str(item.get("path") or "").split("@", 1)[0],
-            "failure_summary": (
-                latest_diagnostic.get("summary")
-                if latest_diagnostic and item.get("conclusion") not in {None, "success", "neutral", "skipped"}
-                else None
+            "failure_summary": latest_diagnostic.get("summary") if latest_diagnostic else (
+                _workflow_failure_summary("", [{
+                    "name": str(item.get("name") or "Autonomous engineering"),
+                    "failed_steps": [],
+                }]) if item.get("conclusion") not in {None, "success", "neutral", "skipped"} else None
             ),
         })
     return normalized
