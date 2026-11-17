@@ -285,6 +285,15 @@ def persist_run_diagnostic(
             existing = {}
         diagnostics = existing.get("diagnostics")
         diagnostics = diagnostics if isinstance(diagnostics, list) else []
+        if stage == "controller" and any(
+            isinstance(item, dict)
+            and str(item.get("run_attempt")) == str(run_attempt)
+            and item.get("stage") != "controller"
+            for item in diagnostics
+        ):
+            # Keep the more specific Codex/test/CI diagnosis as the latest
+            # visible reason instead of replacing it with the controller wrapper.
+            return True
         entry = {
             "run_attempt": str(run_attempt),
             "task": task if isinstance(task, int) and not isinstance(task, bool) else None,
