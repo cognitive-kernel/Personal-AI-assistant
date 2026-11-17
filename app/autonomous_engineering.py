@@ -91,7 +91,39 @@ _NoRedirectHandler = _services.NoRedirectHandler
 
 
 def _ollama_status(model: str) -> dict[str, Any]:
-    from .ollama import _find_running_model_entry, _request as ollama_request, model_details
+    from .ollama import (
+        _find_running_model_entry,
+        _model_memory_estimate,
+        _recommended_context_tokens,
+        _request as ollama_request,
+    )
+    from .hardware import detect_hardware
+
+    def _recommended_context(
+        selected_model: str,
+        model_info: dict[str, Any],
+        details: dict[str, Any],
+        model_entry: dict[str, Any],
+    ) -> int | None:
+        # Reuse /api/show and /api/tags data already fetched by ollama_status.
+        # model_details() repeats both requests and adds a separate /api/ps call,
+        # which made each dashboard refresh unnecessarily slow.
+        running_payload = ollama_request("/api/ps", timeout=4)
+        running = running_payload.get("models", []) if isinstance(running_payload, dict) else []
+        running_entry = _find_running_model_entry(running, selected_model)
+        maximum = maximum_context_tokens(model_info, details.get("family"))
+        estimate = _model_memory_estimate(
+            selected_model, model_info, details, model_entry.get("size"), maximum
+        )
+        return _recommended_context_tokens(
+            maximum,
+            estimate,
+            detect_hardware(),
+            model_is_loaded=running_entry is not None,
+            running_context_tokens=(
+                running_entry.get("context_length") if isinstance(running_entry, dict) else None
+            ),
+        )
 
     def _tool_probe(payload: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -109,7 +141,7 @@ def _ollama_status(model: str) -> dict[str, Any]:
         maximum_context_fn=maximum_context_tokens,
         supports_tool_calling_fn=supports_tool_calling,
         is_context_variant=_is_codex_context_variant,
-        recommended_context_fn=lambda selected_model: model_details(selected_model).get("recommended_context_tokens"),
+        recommended_context_details_fn=_recommended_context,
         tool_probe_fn=_tool_probe,
         allow_live_tool_probe=getattr(_STATUS_PROBE_CONTEXT, "allow_live_tool_probe", True),
     )
