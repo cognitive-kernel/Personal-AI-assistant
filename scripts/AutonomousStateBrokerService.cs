@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -16,8 +17,10 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
     private const int WorkerCount = 8;
     private const int MaxRequestBytes = 16384;
     private const int MaxDiagnosticBytes = 240000;
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool GetNamedPipeClientComputerName(IntPtr pipe, StringBuilder computerName, uint length);
     private readonly object _healthGate = new object();
-    private readonly JavaScriptSerializer _json = new JavaScriptSerializer { MaxJsonLength = 4 * 1024 * 1024 };
+    private readonly JavaScriptSerializer _json = new JavaScriptSerializer { MaxJsonLength = 12 * 1024 * 1024 };
     private volatile bool _stopping;
     private string _stateDirectory;
     private bool _lastHealth;
@@ -144,6 +147,11 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
 
     private void HandleClient(NamedPipeServerStream pipe)
     {
+        StringBuilder clientMachine = new StringBuilder(256);
+        if (!GetNamedPipeClientComputerName(pipe.SafePipeHandle.DangerousGetHandle(), clientMachine, (uint)clientMachine.Capacity) ||
+            !String.Equals(clientMachine.ToString(), Environment.MachineName, StringComparison.OrdinalIgnoreCase))
+            throw new UnauthorizedAccessException("Remote named-pipe clients are not accepted.");
+
         string callerSid = null;
         pipe.RunAsClient(delegate
         {
@@ -234,9 +242,9 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
     private static void WriteResponse(Stream stream, int status, object payload)
     {
         Dictionary<string, object> envelope = new Dictionary<string, object> {
-            { "status", status }, { "payload", payload }
+            { "version", 1 }, { "status", status }, { "payload", payload }
         };
-        string json = new JavaScriptSerializer { MaxJsonLength = 4 * 1024 * 1024 }.Serialize(envelope);
+        string json = new JavaScriptSerializer { MaxJsonLength = 12 * 1024 * 1024 }.Serialize(envelope);
         byte[] bytes = new UTF8Encoding(false).GetBytes(json + "\n");
         stream.Write(bytes, 0, bytes.Length);
         stream.Flush();
