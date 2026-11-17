@@ -98,7 +98,8 @@ function Set-AutonomousDirectoryTreeAcl {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$Path,
-        [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string[]]$ModifySids
+        [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string[]]$ModifySids,
+        [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string]$OwnerSid
     )
 
     $root = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
@@ -138,8 +139,14 @@ function Set-AutonomousDirectoryTreeAcl {
             )
             $acl.SetAccessRule($newRule)
         }
+        $acl.SetOwner([Security.Principal.SecurityIdentifier]$OwnerSid)
         Set-Acl -LiteralPath $item.FullName -AclObject $acl -ErrorAction Stop
         $verified = Get-Acl -LiteralPath $item.FullName -ErrorAction Stop
+        $verifiedOwner = $verified.Owner
+        $verifiedOwnerSid = ([Security.Principal.NTAccount]$verifiedOwner).Translate([Security.Principal.SecurityIdentifier]).Value
+        if ($verifiedOwnerSid -ne $OwnerSid) {
+            throw "Could not transfer ownership of '$($item.FullName)' to the broker service identity."
+        }
         foreach ($rule in $verified.Access) {
             $sid = $rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
             if ($sid -notin $allowed) {
