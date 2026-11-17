@@ -77,7 +77,14 @@ def test_shared_state_tree_acl_is_recursive_and_only_grants_runner_and_local_ser
     assert "$acl.SetAccessRule($newRule)" in module
     assert "ReparsePoint" in module
     assert "takeown.exe" in module
-    assert "/grant:r $installerGrant /T /C /Q" in module
+    assert "$pendingDirectories.Push($root)" in module
+    assert "$items.Add($directoryInfo)" in module
+    assert "EnumerateFileSystemEntries" in module
+    assert module.index("EnumerateFileSystemEntries") < module.index("takeown.exe")
+    assert module.index("EnumerateFileSystemEntries") < module.index("icacls.exe")
+    assert "/grant:r $installerGrant /C /Q" in module
+    assert "/grant:r $installerGrant /T" not in module
+    assert "/F $root /R" not in module
     assert "$allowed = @($ModifySids | Select-Object -Unique)" in module
     assert "$acl.SetOwner([Security.Principal.SecurityIdentifier]$OwnerSid)" in module
     assert "OwnerSid" in script and '"S-1-5-19"' in script
