@@ -131,6 +131,7 @@ def test_posix_checkpoint_stop_terminates_the_owned_process_group(monkeypatch):
         checkpoints.os,
         "killpg",
         lambda process_group, sig: killed.append((process_group, sig)),
+        raising=False,
     )
     checkpoints.stop_checkpoint_watcher(
         LiveWatcher(),
