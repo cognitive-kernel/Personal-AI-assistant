@@ -77,14 +77,15 @@ def test_shared_state_tree_acl_is_recursive_and_only_grants_runner_and_local_ser
     assert "$acl.SetAccessRule($newRule)" in module
     assert "ReparsePoint" in module
     assert "takeown.exe" in module
-    assert "$pendingDirectories.Push($root)" in module
-    assert "$items.Add($directoryInfo)" in module
-    assert "EnumerateFileSystemEntries" in module
-    assert module.index("EnumerateFileSystemEntries") < module.index("takeown.exe")
-    assert module.index("EnumerateFileSystemEntries") < module.index("icacls.exe")
-    assert "/grant:r $installerGrant /C /Q" in module
-    assert "/grant:r $installerGrant /T" not in module
-    assert "/F $root /R" not in module
+    acl_function = module[module.index("function Set-AutonomousDirectoryTreeAcl"):]
+    assert "$pendingDirectories.Push($root)" in acl_function
+    assert "$items.Add($directoryInfo)" in acl_function
+    assert "EnumerateFileSystemEntries" in acl_function
+    assert acl_function.index("EnumerateFileSystemEntries") < acl_function.index("takeown.exe")
+    assert acl_function.index("EnumerateFileSystemEntries") < acl_function.index("icacls.exe")
+    assert "/grant:r $installerGrant /C /Q" in acl_function
+    assert "/grant:r $installerGrant /T" not in acl_function
+    assert "/F $root /R" not in acl_function
     assert "$allowed = @($ModifySids | Select-Object -Unique)" in module
     assert "$acl.SetOwner([Security.Principal.SecurityIdentifier]$OwnerSid)" in module
     assert "OwnerSid" in script and '"S-1-5-19"' in script
