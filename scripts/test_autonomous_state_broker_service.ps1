@@ -27,6 +27,8 @@ try {
 
     New-Item -ItemType Directory -Path $serviceRoot, $stateRoot, (Join-Path $stateRoot "run-diagnostics") -Force | Out-Null
     Copy-Item -LiteralPath $serviceSource -Destination $serviceExe -Force
+    & icacls.exe $serviceRoot /grant:r "*$($brokerSid):(OI)(CI)RX" /T /C /Q | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Could not grant LocalService read/execute access to the test service binary." }
     [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", $stateRoot, "Machine")
 
     $current = @{
@@ -116,7 +118,7 @@ assert len(snapshot["events"]) == 1
 pending = broker.pending_work()
 assert pending["available"] is True and pending["blocked"] is False
 diagnostics = broker.diagnostics(12345)
-assert diagnostics and diagnostics["run_id"] == 12345
+assert diagnostics and str(diagnostics["run_id"]) == "12345"
 '@
     $probe | & python -
     if ($LASTEXITCODE -ne 0) { throw "The Python named-pipe client failed its live Windows service integration test." }
