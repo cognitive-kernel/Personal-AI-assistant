@@ -17,6 +17,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
 {
     private const string PipeName = "PersonalAIAssistant.StateBroker.v1";
     private const int WorkerCount = 8;
+    private const int ErrorPipeLocal = 229;
     private const int MaxRequestBytes = 16384;
     private const int MaxDiagnosticBytes = 240000;
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -151,9 +152,19 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
     private void HandleClient(NamedPipeServerStream pipe)
     {
         StringBuilder clientMachine = new StringBuilder(256);
-        if (!GetNamedPipeClientComputerName(pipe.SafePipeHandle.DangerousGetHandle(), clientMachine, (uint)clientMachine.Capacity) ||
-            !String.Equals(clientMachine.ToString(), Environment.MachineName, StringComparison.OrdinalIgnoreCase))
+        bool clientNameResolved = GetNamedPipeClientComputerName(
+            pipe.SafePipeHandle.DangerousGetHandle(),
+            clientMachine,
+            (uint)(clientMachine.Capacity * sizeof(char))
+        );
+        if (clientNameResolved)
             throw new UnauthorizedAccessException("Remote named-pipe clients are not accepted.");
+
+        int clientNameError = Marshal.GetLastWin32Error();
+        if (clientNameError != ErrorPipeLocal)
+            throw new UnauthorizedAccessException(
+                "Could not prove that the named-pipe client is local (WinError " + clientNameError + ")."
+            );
 
         string callerSid = null;
         pipe.RunAsClient(delegate
