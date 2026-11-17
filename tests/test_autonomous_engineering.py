@@ -1605,6 +1605,45 @@ def test_collect_status_disables_live_tool_probe_for_status_polling(monkeypatch)
     assert not hasattr(agent._STATUS_PROBE_CONTEXT, "allow_live_tool_probe")
 
 
+def test_collect_status_runs_independent_probes_concurrently(monkeypatch):
+    from threading import Barrier
+
+    barrier = Barrier(5)
+    monkeypatch.setattr(agent, "_github_snapshot", lambda: (
+        barrier.wait(timeout=3) or {
+            "authenticated": True, "runs_available": True, "recent_runs": [],
+            "settings": {"model": "model:latest"},
+        }
+    ))
+    monkeypatch.setattr(agent, "_ollama_status", lambda model: (
+        barrier.wait(timeout=3) or {
+            "online": True, "model": model, "model_installed": True,
+            "models": [model], "model_selectable": True,
+            "model_is_codex_context_variant": False,
+            "model_metadata_available": True, "model_context_supported": True,
+            "model_tools_metadata_available": True, "model_supports_tools": True,
+            "model_capabilities": ["tools"], "model_context_length": 32768,
+        }
+    ))
+    monkeypatch.setattr(agent, "_codex_status", lambda: (
+        barrier.wait(timeout=3) or {"installed": True, "version": "codex test"}
+    ))
+    monkeypatch.setattr(agent, "_runner_status", lambda: (
+        barrier.wait(timeout=3) or {"running": True, "process_detected": True}
+    ))
+    monkeypatch.setattr(agent, "storage_accessible", lambda: (
+        barrier.wait(timeout=3) or True
+    ))
+
+    result = agent.collect_status()
+
+    assert result["github"]["authenticated"] is True
+    assert result["ollama"]["model"] == "model:latest"
+    assert result["codex"]["installed"] is True
+    assert result["runner"]["running"] is True
+    assert result["checks"]["progress_storage_accessible"] is True
+
+
 def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     root = Path(__file__).resolve().parents[1]
     script = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
