@@ -21,6 +21,14 @@ class StateBrokerError(RuntimeError):
     """A local machine state-broker request failed safely."""
 
 
+class StateBrokerConflict(StateBrokerError):
+    """The broker refused an operation because durable task state is pending."""
+
+    def __init__(self, message: str, blockers: list[str] | None = None):
+        super().__init__(message)
+        self.blockers = blockers or []
+
+
 def _windows_api():
     if os.name != "nt":
         raise StateBrokerError("The machine state broker is available only on Windows.")
@@ -128,6 +136,12 @@ def request(method: str, path: str, *, timeout_ms: int = 3500) -> Any:
             raise StateBrokerError("The state broker returned an invalid response envelope.")
         status = envelope["status"]
         result = envelope.get("payload")
+        if status == 409 and isinstance(result, dict):
+            blockers = result.get("blockers", [])
+            if not isinstance(blockers, list):
+                blockers = []
+            detail = str(result.get("message") or result.get("error") or "operation_conflict")
+            raise StateBrokerConflict(detail, [str(item) for item in blockers])
         if status < 200 or status >= 300:
             detail = result.get("error", "request_failed") if isinstance(result, dict) else "request_failed"
             raise StateBrokerError(f"State broker rejected the request ({status}: {detail}).")
@@ -176,8 +190,8 @@ def cleanup() -> dict[str, Any]:
         raise StateBrokerError("The broker did not return a valid cleanup result.")
     if value.get("conflict") is True:
         blockers = value.get("blockers", [])
-        raise StateBrokerError(
-            "Durable task state is pending; cleanup was refused: "
-            + ", ".join(str(item) for item in blockers)
+        raise StateBrokerConflict(
+            "Durable task state is pending; cleanup was refused.",
+            [str(item) for item in blockers] if isinstance(blockers, list) else [],
         )
     return value
