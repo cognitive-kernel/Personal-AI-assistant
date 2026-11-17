@@ -6,3 +6,18 @@
 @media(max-width:700px){.progress-overview{grid-template-columns:1fr}.progress-filters{align-items:stretch}.progress-filters .field{min-width:100%}.progress-filters button{width:100%}}
 
 .run-admin-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px}.run-summary{display:grid;gap:2px;min-width:0;flex:1}.run-summary strong{color:#1f3155}.run-summary span{color:#68758a;font-size:.84rem}.run-controls{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.run-controls button{min-height:34px;padding:5px 10px;font-size:.84rem}.run-controls a{padding:5px 8px}.danger-button{background:#fff;color:#b42318;border-color:#f2b8b5}.danger-button:hover{background:#fff5f5}.run-log-panel{flex:1 0 100%;min-width:0;padding-top:10px}.run-failures{margin:0 0 8px;padding-inline-start:24px;color:#9f1239}.run-log-text{display:block;max-height:420px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;direction:ltr;text-align:left;padding:12px;background:#111827;color:#e5e7eb;border-radius:9px;font:12px/1.55 Consolas,monospace}#cleanup-agent-status{flex:1 1 100%}
+
+.run-failure-summary{flex:1 0 100%;margin:0;color:#9f1239;font-size:.88rem;font-weight:700}
+.run-diagnosis{min-width:0;padding:12px;border:1px solid #f0c6c6;border-inline-start:4px solid #b42318;border-radius:9px;background:#fffafa}
+.run-diagnosis h3{margin:0 0 6px;color:#8f1d1d;font-size:1rem}
+.run-diagnosis-summary{margin:4px 0;color:#7f1d1d;font-weight:750;overflow-wrap:anywhere}
+.run-diagnosis-stage{margin:3px 0;color:#68758a;font-size:.82rem}
+.run-diagnostic-entries{display:grid;gap:8px;margin-top:9px}
+.run-diagnostic-entry{padding:9px;border:1px solid #eadede;border-radius:8px;background:#fff}
+.run-diagnostic-entry strong{display:block;color:#344054;font-size:.84rem;overflow-wrap:anywhere}
+.run-diagnostic-entry p{margin:4px 0 0;color:#4b5563;white-space:pre-wrap;overflow-wrap:anywhere}
+.run-diagnostic-entry details,.run-raw-logs{margin-top:8px}
+.run-diagnostic-entry details summary,.run-raw-logs summary{color:#344054;font-size:.84rem;font-weight:700;cursor:pointer}
+.run-diagnostic-detail{max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;direction:auto;text-align:start;padding:10px;background:#f5f7fa;color:#263449;border-radius:7px;font:12px/1.6 Consolas,monospace}
+.run-diagnostic-note{margin:8px 0;color:#7c5b16;font-size:.84rem}
+.run-log-panel h4{margin:10px 0 4px;color:#526071;font-size:.88rem}
