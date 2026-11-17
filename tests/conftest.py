@@ -1,10 +1,11 @@
 """Shared deterministic fixtures for repository tests."""
 import os
 import shutil
-import tempfile
 from pathlib import Path
 
 import pytest
+
+from app import autonomous_engineering_state
 
 
 @pytest.fixture(autouse=True)
@@ -24,22 +25,17 @@ def _isolate_ai_learning_embedding_dependencies(monkeypatch):
 
 
 @pytest.fixture
-def shared_state_tmp_path(tmp_path, request):
-    """Return a writable test state path outside HOME on POSIX hosts."""
-    if os.name == "nt":
-        result = tmp_path / "shared-state"
-    else:
-        home = Path.home().resolve()
-        candidate = tmp_path.resolve()
-        try:
-            candidate.relative_to(home)
-            relative = candidate.relative_to(home)
-            shared_root = Path(tempfile.gettempdir()) / "personal-ai-shared-state-tests"
-            if shared_root.resolve().is_relative_to(home):
-                shared_root = Path("/var/tmp/personal-ai-shared-state-tests")
-            result = shared_root / relative / "shared-state"
-        except ValueError:
-            result = candidate / "shared-state"
+def shared_state_tmp_path(tmp_path, request, monkeypatch):
+    """Return a writable test state path outside the simulated service home."""
+    if os.name != "nt":
+        # Simulate a service identity whose home is unrelated to the writable
+        # pytest temp mount. This keeps tests valid in read-only Docker images.
+        monkeypatch.setattr(
+            autonomous_engineering_state,
+            "_current_home_directory",
+            lambda: Path("/nonexistent-home-for-shared-state-tests"),
+        )
+    result = tmp_path / "shared-state"
     result.mkdir(parents=True, exist_ok=True)
     request.addfinalizer(lambda: shutil.rmtree(result, ignore_errors=True))
     return result
