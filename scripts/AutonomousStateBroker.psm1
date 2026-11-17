@@ -8,6 +8,17 @@ function Invoke-AutonomousStateBroker {
         [int]$TimeoutMilliseconds = 3500
     )
 
+    $allowed = (
+        $Method -eq "GET" -and $Path -in @("/v1/health", "/v1/pending-work", "/v1/progress")
+    ) -or (
+        $Method -eq "GET" -and $Path -match "^/v1/diagnostics/[0-9]{1,20}$"
+    ) -or (
+        $Method -eq "POST" -and $Path -eq "/v1/cleanup"
+    )
+    if (-not $allowed) {
+        throw "Unsupported state-broker endpoint."
+    }
+
     $pipe = $null
     $reader = $null
     $writer = $null
