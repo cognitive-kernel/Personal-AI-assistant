@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
 from .autonomous_engineering_progress import get_progress, pending_work_status, storage_accessible
-from .ollama_context import maximum_context_tokens, supports_tool_calling
+from .ollama_context import maximum_context_tokens, resolve_model_architecture, supports_tool_calling
 from .autonomous_engineering_state import durable_state_lock, execution_state_directory
 from .autonomous_engineering_model_pull import get_model_pull, start_model_pull
 
@@ -111,7 +111,8 @@ def _ollama_status(model: str) -> dict[str, Any]:
         running_payload = ollama_request("/api/ps", timeout=4)
         running = running_payload.get("models", []) if isinstance(running_payload, dict) else []
         running_entry = _find_running_model_entry(running, selected_model)
-        maximum = maximum_context_tokens(model_info, details.get("family"))
+        architecture = resolve_model_architecture(model_info, details.get("family"))
+        maximum = maximum_context_tokens(model_info, architecture)
         estimate = _model_memory_estimate(
             selected_model, model_info, details, model_entry.get("size"), maximum
         )
