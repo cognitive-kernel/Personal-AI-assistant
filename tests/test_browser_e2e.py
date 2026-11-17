@@ -3975,8 +3975,8 @@ def test_browser_autonomous_run_failure_diagnostic_is_visible():
     browser_errors = []
     run = {
         "id": 123456,
-        "status": "completed",
-        "conclusion": "failure",
+        "status": "in_progress",
+        "conclusion": None,
         "display_title": "Autonomous local Ollama engineering",
         "created_at": "2026-11-17T06:32:50Z",
         "url": "https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/123456",
@@ -4012,7 +4012,7 @@ def test_browser_autonomous_run_failure_diagnostic_is_visible():
         "paused": False,
     }
     logs = {
-        "run": {"id": 123456, "status": "completed", "conclusion": "failure", "url": run["url"]},
+        "run": {"id": 123456, "status": "in_progress", "conclusion": None, "url": run["url"]},
         "failures": [{
             "name": "codex",
             "status": "completed",
@@ -4061,7 +4061,7 @@ def test_browser_autonomous_run_failure_diagnostic_is_visible():
         response = page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
         assert response is not None and response.status == 200
         page.locator(".run-failure-summary").get_by_text(
-            "علت خطا: Codex marked task 1 as blocked.", exact=True
+            "آخرین تشخیص: Codex marked task 1 as blocked.", exact=True
         ).wait_for(timeout=10000)
         page.locator('#recent-runs button[data-run-action="logs"]').click()
         page.get_by_text("علت این اجرا", exact=True).wait_for(timeout=10000)
