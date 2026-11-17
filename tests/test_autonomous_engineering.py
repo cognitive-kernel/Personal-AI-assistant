@@ -2056,7 +2056,8 @@ def test_run_diagnostics_are_loaded_from_shared_state_and_sanitized(monkeypatch,
             "recorded_at": "2026-11-17T12:00:00+00:00",
         }],
     }), encoding="utf-8")
-    monkeypatch.setattr(agent, "execution_state_directory", lambda: tmp_path)
+    from app import autonomous_engineering_progress as progress
+    monkeypatch.setattr(progress, "execution_state_directory", lambda: tmp_path)
 
     result = agent._read_run_diagnostics(123)
 
