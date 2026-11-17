@@ -207,8 +207,10 @@ jobs:
           $junction = Join-Path $unsafeRoot "outside-link"
           New-Item -ItemType Directory -Path $unsafeRoot, $outside -Force | Out-Null
           try {
-            $rootOwnerBefore = ([Security.Principal.NTAccount](Get-Acl -LiteralPath $unsafeRoot).Owner).Translate([Security.Principal.SecurityIdentifier]).Value
-            $outsideOwnerBefore = ([Security.Principal.NTAccount](Get-Acl -LiteralPath $outside).Owner).Translate([Security.Principal.SecurityIdentifier]).Value
+            $rootAclBefore = Get-Acl -LiteralPath $unsafeRoot
+            $outsideAclBefore = Get-Acl -LiteralPath $outside
+            $rootOwnerBefore = ([Security.Principal.NTAccount]$rootAclBefore.Owner).Translate([Security.Principal.SecurityIdentifier]).Value
+            $outsideOwnerBefore = ([Security.Principal.NTAccount]$outsideAclBefore.Owner).Translate([Security.Principal.SecurityIdentifier]).Value
             New-Item -ItemType Junction -Path $junction -Target $outside -ErrorAction Stop | Out-Null
             $reparseRejected = $false
             try {
@@ -217,8 +219,10 @@ jobs:
               if ($_.Exception.Message -like "*reparse point*") { $reparseRejected = $true } else { throw }
             }
             if (-not $reparseRejected) { throw "A state tree containing a junction was not rejected." }
-            $rootOwnerAfter = ([Security.Principal.NTAccount](Get-Acl -LiteralPath $unsafeRoot).Owner).Translate([Security.Principal.SecurityIdentifier]).Value
-            $outsideOwnerAfter = ([Security.Principal.NTAccount](Get-Acl -LiteralPath $outside).Owner).Translate([Security.Principal.SecurityIdentifier]).Value
+            $rootAclAfter = Get-Acl -LiteralPath $unsafeRoot
+            $outsideAclAfter = Get-Acl -LiteralPath $outside
+            $rootOwnerAfter = ([Security.Principal.NTAccount]$rootAclAfter.Owner).Translate([Security.Principal.SecurityIdentifier]).Value
+            $outsideOwnerAfter = ([Security.Principal.NTAccount]$outsideAclAfter.Owner).Translate([Security.Principal.SecurityIdentifier]).Value
             if ($rootOwnerAfter -ne $rootOwnerBefore -or $outsideOwnerAfter -ne $outsideOwnerBefore) {
               throw "ACL preflight changed ownership before rejecting the reparse point."
             }
