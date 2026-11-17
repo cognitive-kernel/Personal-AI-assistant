@@ -294,7 +294,7 @@ def _enrich_progress_from_github(current: dict[str, Any] | None) -> dict[str, An
         })
     elif queued_job and queued_job.get("name") == "codex":
         updated.update({
-            "phase": "queued", "phase_label": "در انتظار Runner ویندوز",
+            "phase": "queued", "phase_label": "در انتظار Runner خودمیزبان",
             "activity": "چرخه در صف اجرا قرار دارد", "status": "queued",
         })
     elif all(
