@@ -67,9 +67,11 @@ function Invoke-AutonomousStateBroker {
         }
         return $envelope.payload
     } finally {
-        if ($writer) { $writer.Dispose() }
-        if ($reader) { $reader.Dispose() }
-        if ($pipe) { $pipe.Dispose() }
+        # The service closes its pipe instance after each response. Disposing a
+        # writer after that close can surface a harmless broken-pipe flush error.
+        if ($pipe) { try { $pipe.Dispose() } catch { } }
+        if ($writer) { try { $writer.Dispose() } catch { } }
+        if ($reader) { try { $reader.Dispose() } catch { } }
     }
 }
 
