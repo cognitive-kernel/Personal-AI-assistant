@@ -464,6 +464,7 @@ def run_cycle(args: argparse.Namespace) -> int:
         try:
             marker = task_marker(report)
         except RuntimeError as exc:
+            print(f"Codex final report validation failed: {exc}", file=sys.stderr)
             failure_feedback = (
                 f"Attempt {attempt}: {exc}\n"
                 "The Codex --output-last-message report did not contain exactly one valid completion marker. "
