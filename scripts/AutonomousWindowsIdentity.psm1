@@ -99,10 +99,26 @@ function Set-AutonomousDirectoryTreeAcl {
     param(
         [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$Path,
         [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string[]]$ModifySids,
-        [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string]$OwnerSid
+        [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string]$OwnerSid,
+        [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string]$InstallerSid
     )
 
-    $root = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
+    $root = [System.IO.Path]::GetFullPath($Path)
+    if (-not (Test-Path -LiteralPath $root -PathType Container)) {
+        throw "The shared autonomous state root must be an existing directory."
+    }
+    $takeown = Get-Command takeown.exe -ErrorAction Stop
+    & $takeown.Source /F $root /R /D Y | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not take temporary ownership of the protected state tree for ACL repair."
+    }
+    $icacls = Get-Command icacls.exe -ErrorAction Stop
+    $installerGrant = "*$($InstallerSid):(OI)(CI)M"
+    & $icacls.Source $root /grant:r $installerGrant /T /C /Q | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not grant temporary installer access to the protected state tree."
+    }
+
     $rootItem = Get-Item -LiteralPath $root -Force -ErrorAction Stop
     if (-not $rootItem.PSIsContainer -or ($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
         throw "The shared autonomous state root must be a real directory."
