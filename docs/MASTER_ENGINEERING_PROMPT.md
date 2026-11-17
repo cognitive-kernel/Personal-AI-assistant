@@ -593,3 +593,13 @@ At the start of every new session:
 6. Report the baseline, actual progress, remaining hours/days, schedule variance, contingency use, and external gates separately.
 
 If the estimate document and this prompt ever disagree, inspect their dates and Git history, preserve the original baseline, and record an explicit dated correction. Do not silently choose whichever number looks more convenient.
+
+## Portable runtime and prerequisite contract (mandatory)
+
+- Do not hard-code or assume a particular operating system, CPU architecture, login name, user profile, group name, home directory, installation directory, drive letter, or executable path. Resolve capabilities at runtime and keep OS-specific behavior behind small, independently tested platform adapters.
+- The same application and autonomous-engineering modules must support the documented Windows, Linux, and macOS targets. A workflow or installer that supports only one target must declare that limitation explicitly; do not describe it as portable.
+- Before executing a feature, enumerate its runtime and service prerequisites, versions, capabilities, permissions, and availability. If a downloadable prerequisite is missing, obtain it from its official publisher, verify its integrity/signature where available, install it into an application-managed or job-scoped location, add that location to the current process environment, and verify the installed executable/version before continuing. Do not require a system-wide installation when a safe user/job-scoped installation is sufficient.
+- If a prerequisite requires administrator/root privileges, interactive consent, account authentication, a service identity, or a hardware-specific choice, report the exact missing capability in the UI and request the necessary user action. Never bypass privilege boundaries, invent credentials, silently change service identities, or claim setup succeeded before verification.
+- The UI must expose prerequisite status, supported installation actions, progress, verification results, and actionable blockers. Installation and execution must be separate observable phases; a failed install must preserve existing settings, task state, checkpoints, and user data.
+- Do not treat a package manager, shell, service manager, PATH layout, ACL tool, or filesystem permission model as universal. Detect supported tooling and use the appropriate adapter; if no safe adapter exists, fail with a precise explanation and do not execute the dependent task.
+- Add cross-platform tests for path resolution, process ownership/cancellation, file locking, installer selection, executable discovery, permission failures, and clean environments with missing prerequisites. CI evidence must identify the OS and architecture tested.
