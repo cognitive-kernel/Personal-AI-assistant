@@ -574,13 +574,15 @@ def run_course(course_id: int) -> None:
             "UPDATE browser_learning_courses SET status='running', error=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?",
             (course_id,),
         )
+    from .browser_runtime import BrowserRuntimeSetupError, load_sync_playwright
+
     try:
-        from playwright.sync_api import sync_playwright
-    except ImportError:
+        sync_playwright = load_sync_playwright()
+    except BrowserRuntimeSetupError as exc:
         if not _WORKER_LEASE_LOST.is_set():
             _fail_course(
                 course_id,
-                "وابستگی Playwright نصب نیست؛ بستهٔ اختیاری browser را نصب کنید.",
+                f"راه‌اندازی خودکار وابستگی Playwright ناموفق بود: {exc}",
                 retryable=False,
             )
         return
