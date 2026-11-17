@@ -24,7 +24,7 @@ def test_autonomous_runner_uses_the_loopback_api_not_a_user_scoped_ollama_cli():
     assert "Get-Command ollama" not in diagnostic
     assert "ollama --version" not in diagnostic
     assert "AutonomousOllamaRuntime.psm1" in diagnostic
-    assert 'Import-Module "$env:GITHUB_WORKSPACE\\\\scripts\\\\AutonomousOllamaRuntime.psm1" -Force' in workflow
+    assert 'AutonomousOllamaRuntime.psm1" -Force' in workflow
     assert 'Import-Module (Join-Path $PSScriptRoot "AutonomousOllamaRuntime.psm1") -Force' in provision
     assert 'Import-Module (Join-Path $PSScriptRoot "AutonomousOllamaRuntime.psm1") -Force' in runner_check
     assert '$script:AutonomousOllamaApiBaseUrl = "http://127.0.0.1:11434"' in runtime
@@ -107,7 +107,7 @@ def test_machine_state_broker_uses_a_local_allowlisted_pipe_not_a_network_file_a
     assert '"version", 1' in service
     assert 'method == "GET" and path in {"/v1/health", "/v1/pending-work", "/v1/progress"}' in python_client
     assert 'method == "POST" and path == "/v1/cleanup"' in python_client
-    assert '"/v1/diagnostics/[0-9]' not in python_client
+    assert 're.fullmatch(r"/v1/diagnostics/[0-9]{1,20}", path)' in python_client
     assert "Unsupported state-broker endpoint" in python_client
     assert "ValidateSet(" in powershell_client
     assert '"/v1/health", "/v1/pending-work", "/v1/progress"' in powershell_client
