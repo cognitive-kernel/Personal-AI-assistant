@@ -254,7 +254,19 @@ def get_progress(
     end = _parse_date(end_date)
     if period == "custom" and (start is None or end is None or start > end):
         return {"current": None, "history": [], "available": False, "error": "بازهٔ تاریخ معتبر نیست."}
-    snapshot = _shared_state_snapshot()
+    try:
+        snapshot = _shared_state_snapshot()
+    except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
+        return {
+            "current": None,
+            "history": [],
+            "latest_snapshot": None,
+            "events": [],
+            "available": False,
+            "storage_configured": False,
+            "error": f"Shared progress storage is unavailable: {type(exc).__name__}",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
     current = snapshot.get("current")
     records = snapshot.get("history") if isinstance(snapshot.get("history"), list) else []
     baseline = _scorecard_baseline(snapshot.get("baseline") if isinstance(snapshot.get("baseline"), dict) else None)
