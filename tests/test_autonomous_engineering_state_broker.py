@@ -67,3 +67,20 @@ def test_broker_service_has_no_generic_file_path_operation():
     assert "Directory.GetDirectories" not in service
     assert "TcpListener" not in service
     assert "File.ReadAllText(path" in service
+
+
+
+def test_progress_reader_returns_degraded_payload_when_broker_is_unavailable(monkeypatch):
+    from app import autonomous_engineering_progress as progress
+
+    def unavailable():
+        raise broker.StateBrokerError("pipe unavailable")
+
+    monkeypatch.setattr(progress, "_shared_state_snapshot", unavailable)
+    result = progress.get_progress()
+
+    assert result["available"] is False
+    assert result["storage_configured"] is False
+    assert result["current"] is None
+    assert result["history"] == []
+    assert "StateBrokerError" in result["error"]
