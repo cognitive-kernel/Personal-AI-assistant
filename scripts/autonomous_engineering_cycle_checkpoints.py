@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import sysconfig
@@ -150,11 +151,25 @@ def stop_checkpoint_watcher(
     watcher, base_sha: str, run_id: str, task: int, *, subprocess_module, os_name: str, programdata: str | None, checkpoint_command,
 ) -> None:
     if watcher is not None and watcher.poll() is None:
-        watcher.terminate()
+        if os_name == "nt":
+            watcher.terminate()
+        else:
+            try:
+                # The watcher is started with start_new_session=True; terminate
+                # its whole owned session so an in-flight Git child cannot outlive it.
+                os.killpg(watcher.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
         try:
             watcher.wait(timeout=5)
         except subprocess_module.TimeoutExpired:
-            watcher.kill()
+            if os_name == "nt":
+                watcher.kill()
+            else:
+                try:
+                    os.killpg(watcher.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
             watcher.wait(timeout=5)
     if watcher is not None:
         stopped = checkpoint_command("stop", "--run-id", run_id, "--task", str(task))
