@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import threading
 import time
 import uuid
@@ -18,6 +19,11 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import service
+from ..browser_runtime import (
+    BrowserRuntimeSetupError,
+    ensure_managed_chromium,
+    load_sync_playwright,
+)
 
 _LOCK = threading.Lock()
 _WORKER_OWNER_PID = os.getpid()
@@ -43,6 +49,7 @@ def _reset_process_identity() -> None:
     global _LOCK, _LOG_LOCK, _WORKER_OWNER_PID, _WORKER_OWNER
     global _WORKER_LEASE_EPOCH, _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
     global _CANCEL_EVENTS, _SHUTTING_DOWN, _BROWSER_SESSION
+    global _BROWSER_BOOTSTRAP_THREAD_LOCK, _BROWSER_BOOTSTRAP_THREAD
 
     _WORKER_OWNER_PID = os.getpid()
     _WORKER_OWNER = f"{_WORKER_OWNER_PID}-{uuid.uuid4().hex}"
@@ -55,6 +62,8 @@ def _reset_process_identity() -> None:
     _LOCK = threading.Lock()
     _LOG_LOCK = threading.Lock()
     _BROWSER_SESSION = threading.local()
+    _BROWSER_BOOTSTRAP_THREAD_LOCK = threading.Lock()
+    _BROWSER_BOOTSTRAP_THREAD = None
 
 
 def _ensure_process_identity() -> None:
@@ -395,17 +404,76 @@ def _provider_gate_error(url: str, visible_text: str) -> BrowserAutomationError 
     return None
 
 
-def _chrome_path() -> str | None:
+def _system_chrome_path() -> str | None:
     configured = os.getenv("AI_LEARNING_CHROME_PATH", "").strip()
     candidates = [configured] if configured else []
     if os.name == "nt":
-        candidates += [
-            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-        ]
+        for variable in ("ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"):
+            root = os.getenv(variable, "").strip()
+            if root:
+                candidates.append(
+                    str(Path(root) / "Google" / "Chrome" / "Application" / "chrome.exe")
+                )
+        candidates.extend(
+            shutil.which(name) for name in ("chrome.exe", "chrome")
+        )
     else:
-        candidates += ["/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"]
-    return next((candidate for candidate in candidates if candidate and Path(candidate).is_file()), None)
+        candidates.extend(
+            shutil.which(name)
+            for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser")
+        )
+        candidates.extend(
+            ("/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser")
+        )
+    return next(
+        (candidate for candidate in candidates if candidate and Path(candidate).is_file()),
+        None,
+    )
+
+
+def _chrome_path(sync_playwright_factory: Any | None = None) -> str:
+    """Use an installed system Chrome or provision Playwright's matching Chromium."""
+    system_chrome = _system_chrome_path()
+    if system_chrome:
+        return system_chrome
+    return str(ensure_managed_chromium(sync_playwright_factory))
+
+
+_BROWSER_BOOTSTRAP_THREAD_LOCK = threading.Lock()
+_BROWSER_BOOTSTRAP_THREAD: threading.Thread | None = None
+
+
+def ensure_browser_runtime() -> tuple[Callable, str]:
+    """Ensure Python Playwright and a launchable Chrome/Chromium are available."""
+    sync_playwright = load_sync_playwright()
+    chrome = _chrome_path(sync_playwright)
+    _log_event("browser_runtime_ready", chrome_path=chrome)
+    return sync_playwright, chrome
+
+
+def schedule_browser_runtime_bootstrap() -> None:
+    """Provision browser dependencies in the background without delaying dashboard startup."""
+    global _BROWSER_BOOTSTRAP_THREAD
+    with _BROWSER_BOOTSTRAP_THREAD_LOCK:
+        if _BROWSER_BOOTSTRAP_THREAD is not None and _BROWSER_BOOTSTRAP_THREAD.is_alive():
+            return
+
+        def bootstrap() -> None:
+            try:
+                ensure_browser_runtime()
+            except Exception as exc:
+                _log_event(
+                    "browser_runtime_bootstrap_failed",
+                    exception_type=type(exc).__name__,
+                    message=str(exc)[:600],
+                )
+
+        _BROWSER_BOOTSTRAP_THREAD = threading.Thread(
+            target=bootstrap,
+            name="ai-learning-browser-runtime-bootstrap",
+            daemon=True,
+        )
+        _BROWSER_BOOTSTRAP_THREAD.start()
 
 
 def _profile_path() -> Path:
@@ -1063,19 +1131,17 @@ def _browser_capture(
     capture_started = time.monotonic()
     _log_event("capture_started", prompt_chars=len(prompt), cancelled=bool(cancel_event and cancel_event.is_set()))
     try:
-        from playwright.sync_api import sync_playwright
-    except ImportError as exc:
-        raise BrowserAutomationError(
-            "playwright_not_installed",
-            'Playwright نصب نیست. در پوشه پروژه دستور pip install -e ".[browser]" را اجرا کنید.',
-        ) from exc
-
-    chrome = _chrome_path()
-    if not chrome:
-        raise BrowserAutomationError(
-            "chrome_not_found",
-            "Chrome پیدا نشد. مسیر آن را در AI_LEARNING_CHROME_PATH تنظیم کنید.",
+        sync_playwright, chrome = ensure_browser_runtime()
+    except BrowserRuntimeSetupError as exc:
+        _log_event(
+            "browser_runtime_setup_failed",
+            exception_type=type(exc).__name__,
+            message=str(exc)[:600],
         )
+        raise BrowserAutomationError(
+            "browser_runtime_setup_failed",
+            f"راه‌اندازی خودکار مرورگر ناموفق بود: {exc}",
+        ) from exc
     profile = _profile_path()
     _log_event("browser_configured", chrome_path=chrome, profile_path=str(profile))
     try:

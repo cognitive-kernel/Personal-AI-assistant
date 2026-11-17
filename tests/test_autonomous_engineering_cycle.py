@@ -9,6 +9,21 @@ import pytest
 from scripts import autonomous_engineering_cycle as cycle
 
 
+def test_timed_stage_reports_started_and_elapsed_duration(monkeypatch, capsys):
+    timestamps = iter((10.0, 12.5))
+    monkeypatch.setattr(cycle.time, "monotonic", lambda: next(timestamps))
+
+    with cycle.timed_stage("local tests"):
+        pass
+
+    output = capsys.readouterr().out
+    assert "[autonomous-timing] stage=local_tests status=started" in output
+    assert (
+        "[autonomous-timing] stage=local_tests status=finished elapsed_seconds=2.5"
+        in output
+    )
+
+
 @pytest.mark.parametrize(
     ("report", "expected"),
     [("TASK_COMPLETE", "TASK_COMPLETE"), ("QUEUE_EMPTY", "QUEUE_EMPTY"), ("TASK_BLOCKED", "TASK_BLOCKED")],
