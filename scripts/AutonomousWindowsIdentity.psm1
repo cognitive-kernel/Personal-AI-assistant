@@ -100,4 +100,69 @@ function Set-AutonomousDirectoryAcl {
     }
 }
 
-Export-ModuleMember -Function ConvertTo-AutonomousWindowsAccountName, Get-AutonomousLocalAccountName, Get-AutonomousWindowsAccountSid, Set-AutonomousDirectoryAcl
+
+function Set-AutonomousDirectoryTreeAcl {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$Path,
+        [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string[]]$ModifySids
+    )
+
+    $root = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
+    $rootItem = Get-Item -LiteralPath $root -Force -ErrorAction Stop
+    if (-not $rootItem.PSIsContainer -or ($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        throw "The shared autonomous state root must be a real directory."
+    }
+    $items = @(Get-ChildItem -LiteralPath $root -Force -Recurse -ErrorAction Stop)
+    foreach ($item in $items) {
+        if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+            throw "The shared state tree contains a reparse point; refusing to change permissions."
+        }
+    }
+
+    $allowed = @($ModifySids | Select-Object -Unique)
+    if ($allowed.Count -lt 1) { throw "At least one state-owner SID is required." }
+    $targets = @($items | Sort-Object { $_.FullName.Length -Descending }) + @($rootItem)
+    foreach ($item in $targets) {
+        $acl = Get-Acl -LiteralPath $item.FullName -ErrorAction Stop
+        $acl.SetAccessRuleProtection($true, $false)
+        foreach ($rule in @($acl.Access)) {
+            $sid = $null
+            try {
+                $sid = $rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+            } catch {
+                if ($rule.IdentityReference.Value -match "^S-1-") { $sid = $rule.IdentityReference.Value }
+                else { throw "Could not resolve an existing ACL principal on '$($item.FullName)'." }
+            }
+            if ($sid -notin $allowed) {
+                $acl.RemoveAccessRuleSpecific($rule)
+            }
+        }
+        foreach ($sid in $allowed) {
+            $inheritance = if ($item.PSIsContainer) {
+                [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
+                    [Security.AccessControl.InheritanceFlags]::ObjectInherit
+            } else {
+                [Security.AccessControl.InheritanceFlags]::None
+            }
+            $newRule = [Security.AccessControl.FileSystemAccessRule]::new(
+                [Security.Principal.SecurityIdentifier]$sid,
+                [Security.AccessControl.FileSystemRights]::Modify,
+                $inheritance,
+                [Security.AccessControl.PropagationFlags]::None,
+                [Security.AccessControl.AccessControlType]::Allow
+            )
+            $acl.SetAccessRule($newRule)
+        }
+        Set-Acl -LiteralPath $item.FullName -AclObject $acl -ErrorAction Stop
+        $verified = Get-Acl -LiteralPath $item.FullName -ErrorAction Stop
+        foreach ($rule in $verified.Access) {
+            $sid = $rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+            if ($sid -notin $allowed) {
+                throw "Unexpected principal remains on '$($item.FullName)' ACL: $sid."
+            }
+        }
+    }
+}
+
+Export-ModuleMember -Function ConvertTo-AutonomousWindowsAccountName, Get-AutonomousLocalAccountName, Get-AutonomousWindowsAccountSid, Set-AutonomousDirectoryAcl, Set-AutonomousDirectoryTreeAcl
