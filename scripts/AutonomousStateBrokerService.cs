@@ -425,6 +425,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                 safeEntries.Add(safe);
             }
             return new Dictionary<string, object> {
+                { "schema_version", 1 },
                 { "run_id", runId },
                 { "updated_at", payload.ContainsKey("updated_at") ? payload["updated_at"] : "" },
                 { "diagnostics", safeEntries.ToArray() }
