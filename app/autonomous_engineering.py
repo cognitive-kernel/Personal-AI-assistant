@@ -11,6 +11,7 @@ import urllib.error
 import urllib.request
 import re
 import threading
+from pathlib import Path
 from typing import Any
 
 import psutil
@@ -533,6 +534,8 @@ _PROGRESS_CLEANUP_FILES = (
     "scorecard-baseline.json.tmp",
 )
 _MAX_DASHBOARD_LOG_CHARS = 120_000
+_MAX_RUN_DIAGNOSTIC_BYTES = 180_000
+_MAX_RUN_DIAGNOSTIC_ENTRIES = 12
 _RUNTIME_CLEANUP_FILES = (
     ".agent-request.json",
     ".agent-github-state.json",
@@ -582,6 +585,8 @@ def _workflow_runs(gh: str) -> list[dict[str, Any]]:
     for item in runs:
         if not isinstance(item, dict) or not isinstance(item.get("id"), int):
             continue
+        diagnostic = _read_run_diagnostics(item["id"])
+        latest_diagnostic = diagnostic["diagnostics"][-1] if diagnostic else None
         normalized.append({
             "id": item["id"],
             "status": str(item.get("status") or "unknown"),
@@ -593,6 +598,11 @@ def _workflow_runs(gh: str) -> list[dict[str, Any]]:
             "url": item.get("html_url") if isinstance(item.get("html_url"), str) else None,
             "head_branch": item.get("head_branch"),
             "workflow_path": str(item.get("path") or "").split("@", 1)[0],
+            "failure_summary": (
+                latest_diagnostic.get("summary")
+                if latest_diagnostic and item.get("conclusion") not in {None, "success", "neutral", "skipped"}
+                else None
+            ),
         })
     return normalized
 
@@ -607,6 +617,76 @@ def _verified_workflow_run(gh: str, run_id: int) -> dict[str, Any]:
         if run.get("id") == run_id and run.get("workflow_path") == expected_path:
             return run
     raise HTTPException(status_code=404, detail="اجرای درخواستی متعلق به عامل مهندسی خودکار نیست.")
+
+
+def _read_run_diagnostics(run_id: int) -> dict[str, Any] | None:
+    """Read the runner-persisted, redacted report for one verified run ID."""
+    if isinstance(run_id, bool) or not isinstance(run_id, int) or run_id <= 0:
+        return None
+    try:
+        path = execution_state_directory() / "run-diagnostics" / f"{run_id}.json"
+        if not path.is_file() or path.is_symlink() or path.stat().st_size > _MAX_RUN_DIAGNOSTIC_BYTES:
+            return None
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, RuntimeError, ValueError, TypeError):
+        return None
+    if (
+        not isinstance(payload, dict)
+        or payload.get("schema_version") != 1
+        or str(payload.get("run_id")) != str(run_id)
+        or not isinstance(payload.get("diagnostics"), list)
+    ):
+        return None
+    entries = []
+    for item in payload["diagnostics"][-_MAX_RUN_DIAGNOSTIC_ENTRIES:]:
+        if not isinstance(item, dict):
+            continue
+        entries.append({
+            "run_attempt": str(item.get("run_attempt") or "")[:12],
+            "task": item.get("task") if isinstance(item.get("task"), int) else None,
+            "attempt": item.get("attempt") if isinstance(item.get("attempt"), int) else None,
+            "stage": _sanitize_workflow_log(str(item.get("stage") or ""))[:80],
+            "category": _sanitize_workflow_log(str(item.get("category") or ""))[:80],
+            "summary": _sanitize_workflow_log(str(item.get("summary") or ""))[:800],
+            "detail": _sanitize_workflow_log(str(item.get("detail") or ""))[-12_000:],
+            "recorded_at": str(item.get("recorded_at") or "")[:64],
+        })
+    if not entries:
+        return None
+    return {
+        "run_id": run_id,
+        "updated_at": str(payload.get("updated_at") or "")[:64],
+        "diagnostics": entries,
+    }
+
+
+def _workflow_failure_summary(value: str, failures: list[dict[str, Any]]) -> str | None:
+    """Prefer the controller's root-cause line over generic shell exit messages."""
+    lines = [line.strip() for line in _sanitize_workflow_log(value).splitlines() if line.strip()]
+    preferred = []
+    for line in lines:
+        marker = "Autonomous engineering cycle failed:"
+        if marker in line:
+            preferred.append(line.split(marker, 1)[1].strip())
+        elif "Codex reported task " in line and " as blocked" in line:
+            preferred.append(line)
+    if preferred:
+        return preferred[-1][:800]
+    actionable = [
+        line for line in lines
+        if (
+            ("##[error]" in line or re.search(r"(?i)\b(error|exception|traceback):", line))
+            and "Process completed with exit code" not in line
+        )
+    ]
+    if actionable:
+        return actionable[-1][:800]
+    if failures:
+        first = failures[0]
+        failed_steps = first.get("failed_steps") if isinstance(first.get("failed_steps"), list) else []
+        step = failed_steps[0].get("name") if failed_steps and isinstance(failed_steps[0], dict) else None
+        return (f"{first.get('name', 'Job')} failed" + (f" at {step}" if step else ""))[:800]
+    return None
 
 
 def _sanitize_workflow_log(value: str) -> str:
@@ -676,6 +756,13 @@ def autonomous_engineering_run_logs(run_id: int) -> dict[str, Any]:
         raw_log = "گزارش کامل تا پایان اجرای Workflow در دسترس نیست."
     elif not raw_log and run.get("status") == "completed":
         raw_log = "GitHub گزارشی برای این اجرا برنگرداند؛ جزئیات مرحله‌های ناموفق در بالا آمده است."
+    diagnostic = _read_run_diagnostics(trusted_run_id)
+    diagnostic_entries = diagnostic.get("diagnostics", []) if diagnostic else []
+    latest_diagnostic = diagnostic_entries[-1] if diagnostic_entries else None
+    error_summary = (
+        latest_diagnostic.get("summary")
+        if latest_diagnostic else _workflow_failure_summary(raw_log, failures)
+    )
     return {
         "run": {
             "id": trusted_run_id,
@@ -684,6 +771,12 @@ def autonomous_engineering_run_logs(run_id: int) -> dict[str, Any]:
             "url": run.get("url"),
         },
         "failures": failures,
+        "error_summary": error_summary,
+        "failure_stage": latest_diagnostic.get("stage") if latest_diagnostic else (
+            failures[0].get("name") if failures else None
+        ),
+        "diagnostic": diagnostic,
+        "diagnostics_available": bool(diagnostic_entries),
         "logs": _sanitize_workflow_log(raw_log),
         "truncated": len(raw_log) > _MAX_DASHBOARD_LOG_CHARS,
     }
