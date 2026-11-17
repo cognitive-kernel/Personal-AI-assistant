@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import os
 import subprocess
 import sys
 import threading
@@ -20,6 +21,15 @@ PACKAGE_INSTALL_TIMEOUT_SECONDS = 600
 BROWSER_INSTALL_TIMEOUT_SECONDS = 900
 
 _BOOTSTRAP_LOCK = threading.RLock()
+
+
+def _reset_bootstrap_lock_after_fork() -> None:
+    global _BOOTSTRAP_LOCK
+    _BOOTSTRAP_LOCK = threading.RLock()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_bootstrap_lock_after_fork)
 
 
 class BrowserRuntimeSetupError(RuntimeError):
