@@ -278,7 +278,7 @@ def persist_run_diagnostic(
         path = directory / f"{run_id}.json"
         existing: dict[str, Any] = {}
         try:
-            if path.is_file() and not path.is_symlink() and path.stat().st_size <= 160_000:
+            if path.is_file() and not path.is_symlink() and path.stat().st_size <= 220_000:
                 value = json.loads(path.read_text(encoding="utf-8"))
                 if isinstance(value, dict) and str(value.get("run_id")) == str(run_id):
                     existing = value
