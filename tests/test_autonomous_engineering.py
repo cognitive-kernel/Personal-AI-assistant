@@ -994,7 +994,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "[string]$RunnerAccount" in acl_script
     assert "AppAccount" not in acl_script
     assert "Set-AutonomousDirectoryTreeAcl" in acl_script
-    assert '"S-1-5-18"' in acl_script
+    assert '"S-1-5-19"' in acl_script
     assert "PersonalAIAssistantStateBroker" in runner_check
     assert 'window.setInterval(refreshProgress, 5000)' in script
     assert "createElementNS" in script
