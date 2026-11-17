@@ -5,6 +5,7 @@ import ctypes
 import json
 import os
 import re
+import time
 from ctypes import wintypes
 from typing import Any
 
@@ -12,9 +13,24 @@ _PIPE_NAME = r"\\.\pipe\PersonalAIAssistant.StateBroker.v1"
 _GENERIC_READ = 0x80000000
 _GENERIC_WRITE = 0x40000000
 _OPEN_EXISTING = 3
+_FILE_FLAG_OVERLAPPED = 0x40000000
 _INVALID_HANDLE_VALUE = wintypes.HANDLE(-1).value
+_ERROR_IO_PENDING = 997
+_ERROR_PIPE_BUSY = 231
+_WAIT_OBJECT_0 = 0
+_WAIT_TIMEOUT = 258
 _MAX_REQUEST_BYTES = 16 * 1024
 _MAX_RESPONSE_BYTES = 16 * 1024 * 1024
+
+
+class _OVERLAPPED(ctypes.Structure):
+    _fields_ = [
+        ("Internal", ctypes.c_size_t),
+        ("InternalHigh", ctypes.c_size_t),
+        ("Offset", wintypes.DWORD),
+        ("OffsetHigh", wintypes.DWORD),
+        ("hEvent", wintypes.HANDLE),
+    ]
 
 
 class StateBrokerError(RuntimeError):
@@ -40,14 +56,27 @@ def _windows_api():
     kernel32.CreateFileW.restype = wintypes.HANDLE
     kernel32.WaitNamedPipeW.argtypes = (wintypes.LPCWSTR, wintypes.DWORD)
     kernel32.WaitNamedPipeW.restype = wintypes.BOOL
+    kernel32.CreateEventW.argtypes = (
+        wintypes.LPVOID, wintypes.BOOL, wintypes.BOOL, wintypes.LPCWSTR,
+    )
+    kernel32.CreateEventW.restype = wintypes.HANDLE
+    kernel32.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+    kernel32.WaitForSingleObject.restype = wintypes.DWORD
+    kernel32.GetOverlappedResult.argtypes = (
+        wintypes.HANDLE, ctypes.POINTER(_OVERLAPPED),
+        ctypes.POINTER(wintypes.DWORD), wintypes.BOOL,
+    )
+    kernel32.GetOverlappedResult.restype = wintypes.BOOL
+    kernel32.CancelIoEx.argtypes = (wintypes.HANDLE, ctypes.POINTER(_OVERLAPPED))
+    kernel32.CancelIoEx.restype = wintypes.BOOL
     kernel32.WriteFile.argtypes = (
         wintypes.HANDLE, wintypes.LPVOID, wintypes.DWORD,
-        ctypes.POINTER(wintypes.DWORD), wintypes.LPVOID,
+        ctypes.POINTER(wintypes.DWORD), ctypes.POINTER(_OVERLAPPED),
     )
     kernel32.WriteFile.restype = wintypes.BOOL
     kernel32.ReadFile.argtypes = (
         wintypes.HANDLE, wintypes.LPVOID, wintypes.DWORD,
-        ctypes.POINTER(wintypes.DWORD), wintypes.LPVOID,
+        ctypes.POINTER(wintypes.DWORD), ctypes.POINTER(_OVERLAPPED),
     )
     kernel32.ReadFile.restype = wintypes.BOOL
     kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
@@ -55,8 +84,68 @@ def _windows_api():
     return kernel32
 
 
+def _remaining_ms(deadline: float) -> int:
+    remaining = int((deadline - time.monotonic()) * 1000)
+    if remaining <= 0:
+        raise StateBrokerError("The state-broker request timed out.")
+    return max(1, remaining)
+
+
+def _overlapped_transfer(
+    kernel32,
+    handle,
+    *,
+    write: bool,
+    buffer,
+    size: int,
+    deadline: float,
+) -> int:
+    """Perform one pipe I/O operation with a hard deadline and cancellation."""
+    event = kernel32.CreateEventW(None, True, False, None)
+    if not event:
+        raise StateBrokerError(
+            f"Could not create a state-broker I/O event (WinError {ctypes.get_last_error()})."
+        )
+    operation = _OVERLAPPED()
+    operation.hEvent = event
+    transferred = wintypes.DWORD()
+    try:
+        api = kernel32.WriteFile if write else kernel32.ReadFile
+        succeeded = api(
+            handle, buffer, size, ctypes.byref(transferred), ctypes.byref(operation)
+        )
+        if not succeeded:
+            error = ctypes.get_last_error()
+            if error != _ERROR_IO_PENDING:
+                raise StateBrokerError(
+                    f"Could not {'send' if write else 'read'} the state-broker response "
+                    f"(WinError {error})."
+                )
+            wait_result = kernel32.WaitForSingleObject(event, _remaining_ms(deadline))
+            if wait_result != _WAIT_OBJECT_0:
+                # Cancel only this operation. Closing the pipe in request() then
+                # releases the handle even if the peer has stopped responding.
+                kernel32.CancelIoEx(handle, ctypes.byref(operation))
+                kernel32.WaitForSingleObject(event, 1000)
+                if wait_result == _WAIT_TIMEOUT:
+                    raise StateBrokerError("The state-broker request timed out.")
+                raise StateBrokerError(
+                    f"Waiting for state-broker I/O failed (WinError {ctypes.get_last_error()})."
+                )
+            if not kernel32.GetOverlappedResult(
+                handle, ctypes.byref(operation), ctypes.byref(transferred), False
+            ):
+                error = ctypes.get_last_error()
+                raise StateBrokerError(
+                    f"State-broker I/O did not complete (WinError {error})."
+                )
+        return int(transferred.value)
+    finally:
+        kernel32.CloseHandle(event)
+
+
 def request(method: str, path: str, *, timeout_ms: int = 3500) -> Any:
-    """Call one fixed broker endpoint; callers cannot supply filesystem paths."""
+    """Call one fixed broker endpoint; all pipe I/O is bounded by timeout_ms."""
     if isinstance(timeout_ms, bool) or not isinstance(timeout_ms, int) or not 250 <= timeout_ms <= 30000:
         raise ValueError("State-broker timeout must be an integer between 250 and 30000 milliseconds.")
     method = str(method).upper()
@@ -80,6 +169,7 @@ def request(method: str, path: str, *, timeout_ms: int = 3500) -> Any:
     if len(payload) > _MAX_REQUEST_BYTES:
         raise ValueError("State-broker request is too large.")
 
+    deadline = time.monotonic() + timeout_ms / 1000.0
     kernel32 = _windows_api()
     handle = kernel32.CreateFileW(
         _PIPE_NAME,
@@ -87,42 +177,44 @@ def request(method: str, path: str, *, timeout_ms: int = 3500) -> Any:
         0,
         None,
         _OPEN_EXISTING,
-        0,
+        _FILE_FLAG_OVERLAPPED,
         None,
     )
     if handle == _INVALID_HANDLE_VALUE:
         error = ctypes.get_last_error()
-        if error == 231:  # ERROR_PIPE_BUSY
-            if kernel32.WaitNamedPipeW(_PIPE_NAME, timeout_ms):
+        if error == _ERROR_PIPE_BUSY:
+            if kernel32.WaitNamedPipeW(_PIPE_NAME, _remaining_ms(deadline)):
                 handle = kernel32.CreateFileW(
                     _PIPE_NAME, _GENERIC_READ | _GENERIC_WRITE, 0, None,
-                    _OPEN_EXISTING, 0, None,
+                    _OPEN_EXISTING, _FILE_FLAG_OVERLAPPED, None,
                 )
                 if handle == _INVALID_HANDLE_VALUE:
                     error = ctypes.get_last_error()
+            else:
+                error = ctypes.get_last_error()
         if handle == _INVALID_HANDLE_VALUE:
             raise StateBrokerError(f"Windows state broker is unavailable (WinError {error}).")
 
     try:
         buffer = ctypes.create_string_buffer(payload)
-        written = wintypes.DWORD()
-        if not kernel32.WriteFile(handle, buffer, len(payload), ctypes.byref(written), None):
-            raise StateBrokerError(f"Could not send the state-broker request (WinError {ctypes.get_last_error()}).")
-        if written.value != len(payload):
+        written = _overlapped_transfer(
+            kernel32, handle, write=True, buffer=buffer,
+            size=len(payload), deadline=deadline,
+        )
+        if written != len(payload):
             raise StateBrokerError("The state broker accepted only part of the request.")
 
         response = bytearray()
         while len(response) <= _MAX_RESPONSE_BYTES:
+            _remaining_ms(deadline)
             chunk = ctypes.create_string_buffer(8192)
-            read = wintypes.DWORD()
-            if not kernel32.ReadFile(handle, chunk, len(chunk), ctypes.byref(read), None):
-                error = ctypes.get_last_error()
-                if error == 109:  # ERROR_BROKEN_PIPE
-                    break
-                raise StateBrokerError(f"Could not read the state-broker response (WinError {error}).")
-            if read.value == 0:
+            read = _overlapped_transfer(
+                kernel32, handle, write=False, buffer=chunk,
+                size=len(chunk), deadline=deadline,
+            )
+            if read == 0:
                 break
-            data = chunk.raw[:read.value]
+            data = chunk.raw[:read]
             newline = data.find(b"\n")
             if newline >= 0:
                 response.extend(data[:newline])
