@@ -150,7 +150,10 @@ assert diagnostics and str(diagnostics["run_id"]) == "12345"
         & (Join-Path $PSScriptRoot "test_autonomous_state_broker.ps1") -SecondaryCredential $secondaryCredential -PythonPath (Get-Command python.exe -ErrorAction Stop).Source
     } finally {
         if ($secondaryCreated) {
-            Remove-LocalUser -Name $secondaryName -ErrorAction SilentlyContinue
+            $localSecondary = Get-LocalUser -Name $secondaryName -ErrorAction SilentlyContinue
+            if ($localSecondary) {
+                Remove-LocalUser -InputObject $localSecondary -ErrorAction SilentlyContinue
+            }
         }
     }
 
