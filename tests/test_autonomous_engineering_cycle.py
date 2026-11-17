@@ -1664,13 +1664,13 @@ def test_persist_run_diagnostic_appends_redacted_report_details(
     saved = json.loads((tmp_path / "run-diagnostics" / "12345.json").read_text(encoding="utf-8"))
     assert saved["schema_version"] == 1
     assert saved["run_id"] == "12345"
-    assert len(saved["diagnostics"]) == 2
+    assert len(saved["diagnostics"]) == 1
     detail = saved["diagnostics"][0]["detail"]
     assert "sandbox policy rejected" in detail
     assert "bearer-secret-value" not in detail
     assert "ghp_0123456789abcdefghijklmnopqrstuvwxyz" not in detail
     assert "hunter2" not in detail
-    assert saved["diagnostics"][1]["summary"] == "Codex reported task 1 as blocked."
+    assert saved["diagnostics"][0]["stage"] == "codex_decision"
 
 
 def test_persist_run_diagnostic_rejects_non_numeric_run_identifiers(
