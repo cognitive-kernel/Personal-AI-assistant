@@ -11,6 +11,7 @@ import urllib.error
 import urllib.request
 import re
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +21,7 @@ from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
 from .autonomous_engineering_progress import get_progress, pending_work_status, storage_accessible
-from .ollama_context import maximum_context_tokens, supports_tool_calling
+from .ollama_context import maximum_context_tokens, resolve_model_architecture, supports_tool_calling
 from .autonomous_engineering_state import durable_state_lock, execution_state_directory
 from .autonomous_engineering_model_pull import get_model_pull, start_model_pull
 
@@ -90,7 +91,40 @@ _NoRedirectHandler = _services.NoRedirectHandler
 
 
 def _ollama_status(model: str) -> dict[str, Any]:
-    from .ollama import _find_running_model_entry, _request as ollama_request, model_details
+    from .ollama import (
+        _find_running_model_entry,
+        _model_memory_estimate,
+        _recommended_context_tokens,
+        _request as ollama_request,
+    )
+    from .hardware import detect_hardware
+
+    def _recommended_context(
+        selected_model: str,
+        model_info: dict[str, Any],
+        details: dict[str, Any],
+        model_entry: dict[str, Any],
+    ) -> int | None:
+        # Reuse /api/show and /api/tags data already fetched by ollama_status.
+        # model_details() repeats both requests and adds a separate /api/ps call,
+        # which made each dashboard refresh unnecessarily slow.
+        running_payload = ollama_request("/api/ps", timeout=4)
+        running = running_payload.get("models", []) if isinstance(running_payload, dict) else []
+        running_entry = _find_running_model_entry(running, selected_model)
+        architecture = resolve_model_architecture(model_info, details.get("family"))
+        maximum = maximum_context_tokens(model_info, architecture)
+        estimate = _model_memory_estimate(
+            selected_model, model_info, details, model_entry.get("size"), maximum
+        )
+        return _recommended_context_tokens(
+            maximum,
+            estimate,
+            detect_hardware(),
+            model_is_loaded=running_entry is not None,
+            running_context_tokens=(
+                running_entry.get("context_length") if isinstance(running_entry, dict) else None
+            ),
+        )
 
     def _tool_probe(payload: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -108,7 +142,7 @@ def _ollama_status(model: str) -> dict[str, Any]:
         maximum_context_fn=maximum_context_tokens,
         supports_tool_calling_fn=supports_tool_calling,
         is_context_variant=_is_codex_context_variant,
-        recommended_context_fn=lambda selected_model: model_details(selected_model).get("recommended_context_tokens"),
+        recommended_context_details_fn=_recommended_context,
         tool_probe_fn=_tool_probe,
         allow_live_tool_probe=getattr(_STATUS_PROBE_CONTEXT, "allow_live_tool_probe", True),
     )
@@ -135,23 +169,42 @@ def _github_snapshot() -> dict[str, Any]:
 
 
 def collect_status() -> dict[str, Any]:
-    github = _github_snapshot()
-    settings = github.get("settings", {})
-    model = settings.get("model", "")
+    # These checks perform independent local/network I/O. Run them concurrently:
+    # serial execution adds the GitHub CLI timeouts to several Ollama HTTP calls
+    # (including the hardware/context estimate), which can exceed the UI's
+    # 40-second request deadline even when every individual call is bounded.
+    github_settings: dict[str, Any] = {}
+
+    def _status_ollama() -> dict[str, Any]:
+        # The probe policy is thread-local, so set it in the worker that performs
+        # the Ollama check rather than in the request thread.
+        _STATUS_PROBE_CONTEXT.allow_live_tool_probe = False
+        try:
+            return _ollama_status(str(github_settings.get("model", "")))
+        finally:
+            del _STATUS_PROBE_CONTEXT.allow_live_tool_probe
+
+    with ThreadPoolExecutor(max_workers=5, thread_name_prefix="autonomous-status") as pool:
+        github_future = pool.submit(_github_snapshot)
+        codex_future = pool.submit(_codex_status)
+        runner_future = pool.submit(_runner_status)
+        storage_future = pool.submit(storage_accessible)
+        # Resolve GitHub first because its repository variables select the model.
+        # The Ollama check starts immediately with the saved model only after that
+        # value is known; all remaining checks are already running concurrently.
+        github = github_future.result()
+        github_settings = github.get("settings", {})
+        model = github_settings.get("model", "")
+        ollama_future = pool.submit(_status_ollama)
+        codex = codex_future.result()
+        runner = runner_future.result()
+        progress_storage = storage_future.result()
+        ollama = ollama_future.result()
+
+    settings = github_settings
     interval_hours = settings.get("interval_hours", _DEFAULT_INTERVAL_HOURS)
     execution_mode = settings.get("execution_mode", "continuous")
     paused = bool(settings.get("paused", False))
-    # Status polling must never start model inference. A missing tools capability
-    # is verified only by the explicit settings-save action; cached probe evidence
-    # remains visible without repeating a potentially long model load.
-    _STATUS_PROBE_CONTEXT.allow_live_tool_probe = False
-    try:
-        ollama = _ollama_status(model)
-    finally:
-        del _STATUS_PROBE_CONTEXT.allow_live_tool_probe
-    codex = _codex_status()
-    runner = _runner_status()
-    progress_storage = storage_accessible()
     checks = {
         "ollama_online": ollama["online"],
         "model_installed": ollama["model_installed"],

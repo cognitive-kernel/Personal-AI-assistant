@@ -250,8 +250,14 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
     monkeypatch.setenv("HTTP_PROXY", "http://proxy.example:8080")
     monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example:8080")
     monkeypatch.setattr(agent.urllib.request, "build_opener", fake_build_opener)
-    from app import ollama
-    monkeypatch.setattr(ollama, "model_details", lambda model: {"recommended_context_tokens": 32768})
+    from app import hardware, ollama
+    monkeypatch.setattr(ollama, "_request", lambda path, payload=None, timeout=None: {"models": []})
+    monkeypatch.setattr(ollama, "_model_memory_estimate", lambda *args: {
+        "weights_gib": 1.0, "overhead_gib": 0.5,
+        "kv_cache_bytes_per_token_upper_bound": 1024,
+    })
+    monkeypatch.setattr(ollama, "_recommended_context_tokens", lambda *args, **kwargs: 32768)
+    monkeypatch.setattr(hardware, "detect_hardware", lambda: {})
 
     result = agent._ollama_status("gpt-oss:20b")
 
@@ -331,7 +337,13 @@ def test_ollama_status_probes_tool_calling_when_capabilities_metadata_is_missing
 
     agent._services._TOOL_PROBE_CACHE.clear()
     monkeypatch.setattr(agent.urllib.request, "build_opener", lambda *args: FakeOpener())
-    monkeypatch.setattr(ollama, "model_details", lambda model: {"recommended_context_tokens": 32768})
+    from app import hardware
+    monkeypatch.setattr(ollama, "_model_memory_estimate", lambda *args: {
+        "weights_gib": 1.0, "overhead_gib": 0.5,
+        "kv_cache_bytes_per_token_upper_bound": 1024,
+    })
+    monkeypatch.setattr(ollama, "_recommended_context_tokens", lambda *args, **kwargs: 32768)
+    monkeypatch.setattr(hardware, "detect_hardware", lambda: {})
     probe_calls = []
     def fake_probe_request(path, payload=None, timeout=None):
         probe_calls.append((path, payload, timeout))
@@ -348,10 +360,10 @@ def test_ollama_status_probes_tool_calling_when_capabilities_metadata_is_missing
     assert result["model_supports_tools"] is True
     assert result["model_tools_metadata_available"] is False
     assert result["model_tools_verification_method"] == "live_tool_call_probe"
-    assert [call[0] for call in probe_calls] == ["/api/ps", "/api/chat"]
-    assert probe_calls[1][2] == 45
-    assert probe_calls[1][1]["think"] is False
-    assert probe_calls[1][1]["keep_alive"] == "0"
+    assert [call[0] for call in probe_calls] == ["/api/ps", "/api/ps", "/api/chat"]
+    assert probe_calls[-1][2] == 45
+    assert probe_calls[-1][1]["think"] is False
+    assert probe_calls[-1][1]["keep_alive"] == "0"
 
 
 def test_ollama_status_lists_installed_models_without_selecting_one(monkeypatch):
@@ -1400,7 +1412,14 @@ def test_ollama_status_accepts_large_valid_show_metadata_response(monkeypatch):
             return io.BytesIO(show_body)
 
     monkeypatch.setattr(agent.urllib.request, "build_opener", lambda *handlers: FakeOpener())
-    monkeypatch.setattr(ollama, "model_details", lambda model: {"recommended_context_tokens": 32768})
+    from app import hardware
+    monkeypatch.setattr(ollama, "_request", lambda path, payload=None, timeout=None: {"models": []})
+    monkeypatch.setattr(ollama, "_model_memory_estimate", lambda *args: {
+        "weights_gib": 1.0, "overhead_gib": 0.5,
+        "kv_cache_bytes_per_token_upper_bound": 1024,
+    })
+    monkeypatch.setattr(ollama, "_recommended_context_tokens", lambda *args, **kwargs: 32768)
+    monkeypatch.setattr(hardware, "detect_hardware", lambda: {})
 
     result = agent._ollama_status("large-model:latest")
 
@@ -1603,6 +1622,52 @@ def test_collect_status_disables_live_tool_probe_for_status_polling(monkeypatch)
 
     assert observed["allow_live_tool_probe"] is False
     assert not hasattr(agent._STATUS_PROBE_CONTEXT, "allow_live_tool_probe")
+
+
+def test_collect_status_runs_independent_probes_concurrently(monkeypatch):
+    from threading import Barrier
+
+    barrier = Barrier(4)
+
+    def github():
+        barrier.wait(timeout=3)
+        return {
+            "authenticated": True, "runs_available": True, "recent_runs": [],
+            "settings": {"model": "model:latest"},
+        }
+
+    def codex():
+        barrier.wait(timeout=3)
+        return {"installed": True, "version": "codex test"}
+
+    def runner():
+        barrier.wait(timeout=3)
+        return {"running": True, "process_detected": True}
+
+    def storage():
+        barrier.wait(timeout=3)
+        return True
+
+    monkeypatch.setattr(agent, "_github_snapshot", github)
+    monkeypatch.setattr(agent, "_ollama_status", lambda model: {
+        "online": True, "model": model, "model_installed": True,
+        "models": [model], "model_selectable": True,
+        "model_is_codex_context_variant": False,
+        "model_metadata_available": True, "model_context_supported": True,
+        "model_tools_metadata_available": True, "model_supports_tools": True,
+        "model_capabilities": ["tools"], "model_context_length": 32768,
+    })
+    monkeypatch.setattr(agent, "_codex_status", codex)
+    monkeypatch.setattr(agent, "_runner_status", runner)
+    monkeypatch.setattr(agent, "storage_accessible", storage)
+
+    result = agent.collect_status()
+
+    assert result["github"]["authenticated"] is True
+    assert result["ollama"]["model"] == "model:latest"
+    assert result["codex"]["installed"] is True
+    assert result["runner"]["running"] is True
+    assert result["checks"]["progress_storage_accessible"] is True
 
 
 def test_dashboard_script_bounds_and_coalesces_status_refreshes():
