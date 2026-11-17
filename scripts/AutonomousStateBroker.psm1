@@ -18,6 +18,9 @@ function Invoke-AutonomousStateBroker {
     if (-not $allowed) {
         throw "Unsupported state-broker endpoint."
     }
+    if ($TimeoutMilliseconds -lt 250 -or $TimeoutMilliseconds -gt 30000) {
+        throw "State-broker timeout must be between 250 and 30000 milliseconds."
+    }
 
     $pipe = $null
     $reader = $null
@@ -27,12 +30,11 @@ function Invoke-AutonomousStateBroker {
             ".",
             "PersonalAIAssistant.StateBroker.v1",
             [System.IO.Pipes.PipeDirection]::InOut,
-            [System.IO.Pipes.PipeOptions]::None,
+            [System.IO.Pipes.PipeOptions]::Asynchronous,
             [System.Security.Principal.TokenImpersonationLevel]::Impersonation
         )
+        $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
         $pipe.Connect($TimeoutMilliseconds)
-        $pipe.ReadTimeout = $TimeoutMilliseconds
-        $pipe.WriteTimeout = $TimeoutMilliseconds
         $reader = [System.IO.StreamReader]::new($pipe, [System.Text.Encoding]::UTF8, $false, 4096, $true)
         $writer = [System.IO.StreamWriter]::new($pipe, [System.Text.UTF8Encoding]::new($false), 4096, $true)
         $writer.AutoFlush = $true
@@ -41,8 +43,20 @@ function Invoke-AutonomousStateBroker {
             method = $Method.ToUpperInvariant()
             path = $Path
         } | ConvertTo-Json -Compress
-        $writer.WriteLine($request)
-        $responseLine = $reader.ReadLine()
+
+        $remaining = [int][Math]::Floor(($deadline - [DateTime]::UtcNow).TotalMilliseconds)
+        if ($remaining -le 0 -or -not $writer.WriteLineAsync($request).Wait([TimeSpan]::FromMilliseconds([Math]::Max(1, $remaining)))) {
+            throw "State broker request timed out while writing."
+        }
+        $remaining = [int][Math]::Floor(($deadline - [DateTime]::UtcNow).TotalMilliseconds)
+        if ($remaining -le 0) {
+            throw "State broker request timed out while waiting for a response."
+        }
+        $readTask = $reader.ReadLineAsync()
+        if (-not $readTask.Wait([TimeSpan]::FromMilliseconds($remaining))) {
+            throw "State broker request timed out while reading a response."
+        }
+        $responseLine = $readTask.GetAwaiter().GetResult()
         if ([string]::IsNullOrWhiteSpace($responseLine)) {
             throw "State broker returned an empty response."
         }
