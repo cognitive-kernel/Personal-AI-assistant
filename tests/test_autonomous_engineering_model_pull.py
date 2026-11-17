@@ -80,6 +80,36 @@ def test_model_pull_allows_only_one_active_download(monkeypatch):
     assert state and state["status"] == "completed"
 
 
+def test_model_pull_api_exposes_start_and_status(monkeypatch):
+    from app import autonomous_engineering as agent
+
+    started = {
+        "job_id": "a" * 32,
+        "model": "example/model:latest",
+        "status": "queued",
+        "progress": 0,
+        "message": "queued",
+        "error": None,
+        "started_at": 1.0,
+        "updated_at": 1.0,
+    }
+    monkeypatch.setattr(agent, "start_model_pull", lambda model: {**started, "model": model})
+    monkeypatch.setattr(agent, "get_model_pull", lambda job_id: started if job_id == "a" * 32 else None)
+
+    result = agent.autonomous_engineering_pull_model(
+        agent.ModelPullRequest(model="example/model:latest")
+    )
+    assert result["job_id"] == "a" * 32
+    assert result["model"] == "example/model:latest"
+    assert agent.autonomous_engineering_model_pull_status("a" * 32) == started
+
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as missing:
+        agent.autonomous_engineering_model_pull_status("b" * 32)
+    assert missing.value.status_code == 404
+
+
 def test_dashboard_exposes_model_pull_controls_and_progress():
     from pathlib import Path
 
