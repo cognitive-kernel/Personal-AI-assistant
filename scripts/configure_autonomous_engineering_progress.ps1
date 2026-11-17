@@ -17,7 +17,7 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 }
 $runnerIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $RunnerAccount
 $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
-$systemSid = "S-1-5-18"
+$brokerServiceSid = "S-1-5-19"
 
 $machineStatePath = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")
 $processStatePath = $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR
@@ -35,12 +35,12 @@ $progressPath = Resolve-AutonomousStateDirectory -ConfiguredPath $machineStatePa
 New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
 
 # Remove stale app-user ACEs recursively. Only the dedicated Runner role and
-# the LocalSystem broker retain direct filesystem access to this data tree.
-Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $systemSid)
+# the LocalService broker retain direct filesystem access to this data tree.
+Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid
 
 $broker = Get-Service -Name "PersonalAIAssistantStateBroker" -ErrorAction SilentlyContinue
 if (-not $broker -or $broker.Status -ne "Running") {
     throw "The machine state broker is not installed or running; rerun provision_autonomous_runner.ps1."
 }
-Write-Output "Shared progress storage is protected for Runner and LocalSystem broker access."
+Write-Output "Shared progress storage is protected for Runner and LocalService broker access."
 Write-Output "Application sessions use the named-pipe broker and do not need filesystem ACL entries."
