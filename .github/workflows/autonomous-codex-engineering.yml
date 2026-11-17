@@ -450,7 +450,7 @@ jobs:
           }
           $npm = Get-Command npm -ErrorAction SilentlyContinue
           if (-not $npm) {
-            throw "npm was not found in the Runner service PATH. Install Node.js LTS system-wide and restart the Runner service."
+            throw "npm was not available after actions/setup-node provisioned Node.js 22 for this job."
           }
           $npmPrefix = (npm config get prefix).Trim()
           if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($npmPrefix)) {
