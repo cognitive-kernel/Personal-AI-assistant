@@ -72,7 +72,7 @@ def _probe_tool_calling(request_fn, model: str, digest: str) -> bool:
     return supported
 
 
-def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool_calling_fn, is_context_variant, recommended_context_fn=None, tool_probe_fn=None, allow_live_tool_probe: bool = True) -> dict[str, Any]:
+def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool_calling_fn, is_context_variant, recommended_context_fn=None, recommended_context_details_fn=None, tool_probe_fn=None, allow_live_tool_probe: bool = True) -> dict[str, Any]:
     empty = {
         "online": False,
         "model": model,
@@ -204,7 +204,10 @@ def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool
                 recommendation_error = "Ollama did not expose enough architecture-specific KV-cache metadata to calculate a hardware-safe context."
             else:
                 try:
-                    candidate = recommended_context_fn(model)
+                    if callable(recommended_context_details_fn):
+                        candidate = recommended_context_details_fn(model, model_info, details, model_entry)
+                    else:
+                        candidate = recommended_context_fn(model)
                     if isinstance(candidate, int) and not isinstance(candidate, bool) and candidate > 0:
                         recommended_context = min(candidate, context_length)
                     else:
