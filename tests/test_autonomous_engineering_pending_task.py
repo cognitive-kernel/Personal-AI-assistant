@@ -121,10 +121,11 @@ def test_manual_task_persistence_is_inside_the_single_owned_runner_job():
     assert "group: autonomous-local-engineering-${{ github.repository }}" in codex_job
     assert "runs-on: [self-hosted, Windows, X64, ollama, autonomous-state-owner]" in codex_job
 
+    python_setup = codex_job.index("Provision Python runtime for this Runner job")
+    node_setup = codex_job.index("Provision Node.js runtime for this Runner job")
     persist_step = codex_job.index("Persist manual task under the controller's runner and concurrency ownership")
-    python_setup = codex_job.index("Use preinstalled system Python under the Runner service identity")
     ollama_preflight = codex_job.index("Verify local Ollama and Codex prerequisites")
-    assert persist_step < python_setup < ollama_preflight
+    assert python_setup < node_setup < persist_step < ollama_preflight
 
     assert "A manual task was not accepted because autonomous engineering is paused" in gate_job
     assert "A manual task was not accepted because another run is active or queued" in gate_job
