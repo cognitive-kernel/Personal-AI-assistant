@@ -1653,7 +1653,7 @@ def test_persist_run_diagnostic_appends_redacted_report_details(
         "12345", "1", task=1, attempt=2,
         stage="codex_decision", category="task_blocked",
         summary="Codex marked task 1 as blocked.",
-        detail="The sandbox policy rejected the requested operation. Bearer bearer-secret-value ghp_0123456789abcdefghijklmnopqrstuvwxyz password=hunter2",
+        detail="The sandbox policy rejected the requested operation. Bearer bearer-secret-value ghp_0123456789abcdefghijklmnopqrstuvwxyz password=hunter2 OPENAI_API_KEY=sk-test-value CLIENT_SECRET=client-secret-value",
     )
     assert cycle.persist_run_diagnostic(
         "12345", "1", task=1, attempt=2,
@@ -1670,6 +1670,8 @@ def test_persist_run_diagnostic_appends_redacted_report_details(
     assert "bearer-secret-value" not in detail
     assert "ghp_0123456789abcdefghijklmnopqrstuvwxyz" not in detail
     assert "hunter2" not in detail
+    assert "sk-test-value" not in detail
+    assert "client-secret-value" not in detail
     assert saved["diagnostics"][0]["stage"] == "codex_decision"
 
 
