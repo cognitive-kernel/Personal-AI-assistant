@@ -120,7 +120,8 @@ try {
 from app import autonomous_engineering_state_broker as broker
 from app.autonomous_engineering_state_broker import StateBrokerConflict
 
-assert broker.health(), "Python named-pipe health request failed."
+health = broker.request("GET", "/v1/health")
+assert health.get("ready") is True, "Python named-pipe health response was not ready."
 snapshot = broker.progress()
 assert snapshot["storage_configured"] is True
 assert snapshot["current"]["phase_label"] == "CI live broker pipe test"
