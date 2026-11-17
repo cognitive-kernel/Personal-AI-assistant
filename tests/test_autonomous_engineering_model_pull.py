@@ -69,6 +69,29 @@ def test_model_pull_endpoint_resolution_failure_is_reported_and_releases_admissi
     assert pull._ACTIVE_JOB is None
 
 
+def test_model_pull_does_not_claim_success_when_model_is_absent_from_inventory(monkeypatch):
+    class FakeOpener:
+        def open(self, request, timeout):
+            if request.full_url.endswith("/api/pull"):
+                return io.BytesIO(b'{"status":"success"}\\n')
+            return io.BytesIO(b'{"models":[]}')
+
+    monkeypatch.setattr(pull, "_base_url", lambda: "http://127.0.0.1:11434")
+    monkeypatch.setattr(pull.urllib.request, "build_opener", lambda *args: FakeOpener())
+
+    job = pull.start_model_pull("example/model:latest")
+    deadline = time.monotonic() + 2
+    state = pull.get_model_pull(job["job_id"])
+    while state and state["status"] not in {"completed", "failed"} and time.monotonic() < deadline:
+        time.sleep(0.01)
+        state = pull.get_model_pull(job["job_id"])
+
+    assert state is not None
+    assert state["status"] == "failed"
+    assert state["error"].startswith("Ollama reported success")
+    assert pull._ACTIVE_JOB is None
+
+
 def test_model_pull_rejects_invalid_model_identifiers():
     for model in ("", "../model", "model with spaces", "model:"):
         with pytest.raises(ValueError, match="شناسهٔ مدل"):
