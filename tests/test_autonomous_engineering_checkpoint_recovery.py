@@ -121,7 +121,7 @@ def test_watcher_start_does_not_replace_state_when_previous_owner_is_ambiguous(
 
 
 def test_checkpoint_watcher_real_process_stops_before_restore(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path,
 ):
     import json
     import os
@@ -134,7 +134,7 @@ def test_checkpoint_watcher_real_process_stops_before_restore(
         ["git", "rev-parse", "HEAD"], cwd=root, check=True,
         capture_output=True, text=True,
     ).stdout.strip()
-    program_data = tmp_path / "ProgramData"
+    program_data = shared_state_tmp_path / "ProgramData"
     state = program_data / "PersonalAIAssistant" / "autonomous-engineering"
     monkeypatch.setenv("PROGRAMDATA", str(program_data))
     monkeypatch.delenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", raising=False)
