@@ -496,6 +496,53 @@
       settingsSaving = false;
     }
   });
+  const pullModelButton = $("pull-model");
+  const pullModelStatus = $("model-pull-status");
+  let modelPullActive = false;
+  async function monitorModelPull(jobId) {
+    while (modelPullActive) {
+      const state = await request("models/pull/" + encodeURIComponent(jobId));
+      const percent = Number.isSafeInteger(state.progress) ? " · " + state.progress + "%" : "";
+      pullModelStatus.textContent = String(state.message || "در حال دریافت مدل…") + percent;
+      if (state.status === "completed") {
+        modelPullActive = false;
+        pullModelStatus.textContent = "مدل " + state.model + " با موفقیت نصب شد؛ در حال بازخوانی فهرست مدل‌ها…";
+        setMessage(pullModelStatus.textContent, "success");
+        await refresh(true);
+        return;
+      }
+      if (state.status === "failed") {
+        modelPullActive = false;
+        throw new Error(state.error || state.message || "دانلود مدل ناموفق بود.");
+      }
+      await new Promise(resolve => window.setTimeout(resolve, 1500));
+    }
+  }
+  pullModelButton.addEventListener("click", async () => {
+    if (modelPullActive) return;
+    const model = $("custom-model").value.trim() || $("ollama-model").value;
+    if (!model) {
+      pullModelStatus.textContent = "ابتدا شناسهٔ مدل را وارد یا از فهرست انتخاب کنید.";
+      return;
+    }
+    if (!window.confirm("مدل «" + model + "» از طریق سرویس محلی Ollama دریافت شود؟ حجم دانلود ممکن است زیاد باشد.")) return;
+    modelPullActive = true;
+    pullModelButton.disabled = true;
+    pullModelStatus.textContent = "در حال ایجاد عملیات دانلود مدل…";
+    try {
+      const job = await request("models/pull", {
+        method: "POST",
+        body: JSON.stringify({model})
+      });
+      await monitorModelPull(job.job_id);
+    } catch (error) {
+      modelPullActive = false;
+      pullModelStatus.textContent = error.message || "دانلود مدل ناموفق بود.";
+      setMessage(pullModelStatus.textContent, "error");
+    } finally {
+      pullModelButton.disabled = false;
+    }
+  });
   taskForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!canStartDispatch()) {
