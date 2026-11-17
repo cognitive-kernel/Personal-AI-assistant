@@ -196,3 +196,15 @@ def test_broker_pipe_io_treats_pending_broken_pipe_completion_as_eof(monkeypatch
     )
     assert result == 0
     assert fake.closed
+
+
+def test_broker_pipe_io_does_not_start_when_deadline_has_expired():
+    class FakeKernel:
+        def CreateEventW(self, *_args):
+            raise AssertionError("An expired operation must not allocate or start pipe I/O.")
+
+    with pytest.raises(broker.StateBrokerError, match="timed out"):
+        broker._overlapped_transfer(
+            FakeKernel(), 11, write=False, buffer=object(), size=8,
+            deadline=broker.time.monotonic() - 1,
+        )
