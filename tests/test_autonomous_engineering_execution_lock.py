@@ -20,9 +20,9 @@ from scripts.autonomous_engineering_execution_lock import (
 
 
 def test_execution_lock_records_owner_metadata_and_releases_after_scope(
-    monkeypatch, tmp_path: Path,
+    monkeypatch, tmp_path: Path, shared_state_tmp_path: Path,
 ):
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path))
     with repository_execution_lock("run-1", "attempt-2"):
         pass
 
@@ -30,7 +30,7 @@ def test_execution_lock_records_owner_metadata_and_releases_after_scope(
     # locked file; inspect its diagnostic metadata after ownership is released.
     import json
 
-    metadata = json.loads((tmp_path / "repository-execution.lock").read_text(encoding="utf-8"))
+    metadata = json.loads((shared_state_tmp_path / "repository-execution.lock").read_text(encoding="utf-8"))
     assert metadata["pid"] == os.getpid()
     assert metadata["run_id"] == "run-1"
     assert metadata["run_attempt"] == "attempt-2"
@@ -42,9 +42,9 @@ def test_execution_lock_records_owner_metadata_and_releases_after_scope(
 
 
 def test_execution_lock_is_released_by_operating_system_after_process_crash(
-    monkeypatch, tmp_path: Path,
+    monkeypatch, tmp_path: Path, shared_state_tmp_path: Path,
 ):
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path))
     code = (
         "import os; "
         "from scripts.autonomous_engineering_execution_lock import repository_execution_lock; "
@@ -66,8 +66,8 @@ def test_execution_lock_is_released_by_operating_system_after_process_crash(
         pass
 
 
-def test_execution_state_directory_uses_configured_shared_root(monkeypatch, tmp_path: Path):
-    configured = tmp_path / "shared-state"
+def test_execution_state_directory_uses_configured_shared_root(monkeypatch, shared_state_tmp_path: Path):
+    configured = shared_state_tmp_path
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(configured))
     assert execution_state_directory() == configured
 
@@ -79,16 +79,16 @@ def test_cycle_orchestrator_preserves_public_lock_api_via_module_boundary():
 
 
 def test_progress_checkpoint_and_controller_share_expanded_state_root(
-    monkeypatch, tmp_path: Path,
+    monkeypatch, tmp_path: Path, shared_state_tmp_path: Path,
 ):
     from scripts import autonomous_engineering_checkpoint as checkpoint
     from scripts import autonomous_engineering_cycle as cycle
     from scripts import autonomous_engineering_progress as progress
 
-    monkeypatch.setenv("AUTONOMOUS_STATE_TEST_ROOT", str(tmp_path / "resolved-state"))
+    monkeypatch.setenv("AUTONOMOUS_STATE_TEST_ROOT", str(shared_state_tmp_path / "resolved-state"))
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "$AUTONOMOUS_STATE_TEST_ROOT")
 
-    expected = tmp_path / "resolved-state"
+    expected = shared_state_tmp_path / "resolved-state"
     assert execution_state_directory() == expected
     assert progress.store_dir() == expected
     assert checkpoint.store_dir() == expected
