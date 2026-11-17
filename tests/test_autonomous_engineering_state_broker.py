@@ -90,6 +90,9 @@ def test_broker_pipe_io_uses_overlapped_handles_and_a_shared_deadline():
     client = (ROOT / "app" / "autonomous_engineering_state_broker.py").read_text(encoding="utf-8")
 
     assert "_FILE_FLAG_OVERLAPPED = 0x40000000" in client
+    assert "_SECURITY_SQOS_PRESENT = 0x00100000" in client
+    assert "_SECURITY_IMPERSONATION = 0x00020000" in client
+    assert "_PIPE_OPEN_FLAGS = _FILE_FLAG_OVERLAPPED | _SECURITY_SQOS_PRESENT | _SECURITY_IMPERSONATION" in client
     assert "_overlapped_transfer(" in client
     assert "WaitForSingleObject" in client
     assert "CancelIoEx" in client
