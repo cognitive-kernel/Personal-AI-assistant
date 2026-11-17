@@ -2018,3 +2018,10 @@ PR #770 now places the same explicit, non-escalating argument contract in every 
 - The local API adds a sanitized failure summary to failed run cards and combines persistent diagnostic details with the GitHub job/step and raw workflow logs. The UI displays the cause in the run card, then shows the failure stage, attempts, saved Codex explanation, failed workflow steps, and collapsible raw logs. Historical runs without persisted diagnostic files explicitly state that their former model explanation was not retained.
 - Added regression coverage for durable redacted diagnostic writes, shared-state reads, log-based root-cause extraction, API combination, UI wiring, and a real-browser smoke case for a blocked Codex run.
 - This change does not alter task-selection, sandbox, retry, or merge policy. Exact-head CI and browser validation are required before merge.
+
+## 2026-11-17 — Autonomous Runner job-local runtime bootstrap
+
+- The coding workflow previously required Python and Node.js to be installed system-wide and visible in the self-hosted Runner service PATH. This made a clean Runner host fail before the autonomous task could start, even though both runtimes are downloadable and can be provisioned within the job.
+- The workflow now uses pinned actions/setup-python v7 and actions/setup-node v6 commits to provision Python 3.11 and Node.js 22 into the current Actions job before the existing virtual-environment and pinned Codex CLI installation steps. It no longer treats preinstalled system Python/Node as a prerequisite.
+- Added static regression coverage for bootstrap ordering and the pinned Codex version.
+- Scope boundary: this is job-local bootstrap on the existing Windows self-hosted Runner. GitHub CLI authentication, Ollama service/model provisioning, Runner registration/ACL setup, and Linux/macOS workflow support remain open; no cross-platform acceptance is claimed. Exact-head CI is pending.
