@@ -90,6 +90,7 @@ def test_pending_pr_loader_rejects_noncanonical_or_mismatched_urls(
         "run_id": "123",
         "task": 1,
     }
+    shared_state_tmp_path.mkdir(parents=True, exist_ok=True)
     path = shared_state_tmp_path / "pending-autonomous-pr.json"
     path.write_text(json.dumps(record), encoding="utf-8")
 
