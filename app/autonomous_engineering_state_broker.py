@@ -41,7 +41,7 @@ def _windows_api():
     kernel32.WaitNamedPipeW.argtypes = (wintypes.LPCWSTR, wintypes.DWORD)
     kernel32.WaitNamedPipeW.restype = wintypes.BOOL
     kernel32.WriteFile.argtypes = (
-        wintypes.HANDLE, wintypes.LPCVOID, wintypes.DWORD,
+        wintypes.HANDLE, wintypes.LPVOID, wintypes.DWORD,
         ctypes.POINTER(wintypes.DWORD), wintypes.LPVOID,
     )
     kernel32.WriteFile.restype = wintypes.BOOL
@@ -57,6 +57,8 @@ def _windows_api():
 
 def request(method: str, path: str, *, timeout_ms: int = 3500) -> Any:
     """Call one fixed broker endpoint; callers cannot supply filesystem paths."""
+    if isinstance(timeout_ms, bool) or not isinstance(timeout_ms, int) or not 250 <= timeout_ms <= 30000:
+        raise ValueError("State-broker timeout must be an integer between 250 and 30000 milliseconds.")
     method = str(method).upper()
     if method not in {"GET", "POST"}:
         raise ValueError("Unsupported state-broker method.")
