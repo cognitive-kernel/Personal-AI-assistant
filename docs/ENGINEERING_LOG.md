@@ -2048,3 +2048,4 @@ PR #770 now places the same explicit, non-escalating argument contract in every 
 - The controller previously disabled checkpoint restore, watcher startup, final snapshot, and cleanup unless the host was Windows and PROGRAMDATA was set. This meant POSIX hosts could run without the same durable recovery guarantees.
 - Checkpoint lifecycle operations now use the shared state-root resolver on all supported platforms. The watcher launches in a new POSIX session; Windows keeps its detached process-group behavior. Restore and cleanup no longer silently skip because PROGRAMDATA is absent.
 - Added regression tests for POSIX watcher session creation, readiness metadata, restore, stop/final snapshot, and cleanup. Exact-head CI is pending.
+- POSIX shutdown now signals the watcher's dedicated process group, not only its parent PID, so a Git child cannot continue writing checkpoint state after the watcher exits. The Windows termination path is unchanged.
