@@ -158,6 +158,50 @@ jobs:
           }
           Write-Host "Windows state broker compiled successfully."
 
+      - name: Exercise recursive protected state ACLs on Windows
+        shell: pwsh
+        run: |
+          Import-Module "$env:GITHUB_WORKSPACE\scripts\AutonomousWindowsIdentity.psm1" -Force
+          $root = Join-Path $env:RUNNER_TEMP ("autonomous-state-acl-" + [guid]::NewGuid().ToString("N"))
+          $nested = Join-Path $root "nested"
+          New-Item -ItemType Directory -Path $nested -Force | Out-Null
+          $file = Join-Path $nested "existing-state.json"
+          [System.IO.File]::WriteAllText($file, '{"preserve":true}')
+          $currentSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          $brokerSid = "S-1-5-19"
+          try {
+            $acl = Get-Acl -LiteralPath $root
+            $legacy = [Security.AccessControl.FileSystemAccessRule]::new(
+              "BUILTIN\Users",
+              [Security.AccessControl.FileSystemRights]::FullControl,
+              [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit,
+              [Security.AccessControl.PropagationFlags]::None,
+              [Security.AccessControl.AccessControlType]::Allow
+            )
+            $acl.AddAccessRule($legacy)
+            Set-Acl -LiteralPath $root -AclObject $acl
+            Set-AutonomousDirectoryTreeAcl -Path $root -ModifySids @($currentSid, $brokerSid) -OwnerSid $brokerSid -InstallerSid $currentSid
+
+            foreach ($itemPath in @($root, $nested, $file)) {
+              $verified = Get-Acl -LiteralPath $itemPath
+              $ownerSid = ([Security.Principal.NTAccount]$verified.Owner).Translate([Security.Principal.SecurityIdentifier]).Value
+              if ($ownerSid -ne $brokerSid) { throw "State owner mismatch on $itemPath: $ownerSid" }
+              foreach ($rule in $verified.Access) {
+                $sid = $rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+                if ($sid -notin @($currentSid, $brokerSid)) { throw "Unexpected state ACL principal on $itemPath: $sid" }
+              }
+            }
+            if ([System.IO.File]::ReadAllText($file) -ne '{"preserve":true}') {
+              throw "Existing state file contents changed during ACL provisioning."
+            }
+          } finally {
+            if (Test-Path -LiteralPath $root) {
+              & icacls.exe $root /grant:r "*$($currentSid):(OI)(CI)F" /T /C /Q | Out-Null
+              Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
+          Write-Host "Recursive state ACL reset, owner transfer, and existing-data preservation passed."
+
       - name: Test shared Ollama runtime API contract
         shell: pwsh
         run: |
