@@ -100,7 +100,26 @@ def _run_pull(job_id: str, model: str) -> None:
                 )
         if not saw_success:
             raise RuntimeError("Ollama closed the download stream before confirming success.")
-        _update(job_id, status="completed", progress=100, message="دانلود و نصب مدل در Ollama تأیید شد.", error=None)
+        verify_request = urllib.request.Request(
+            _base_url() + "/api/tags",
+            headers={"Accept": "application/json"},
+            method="GET",
+        )
+        with opener.open(verify_request, timeout=10) as response:
+            body = response.read(8_000_001)
+        if len(body) > 8_000_000:
+            raise ValueError("Ollama model inventory exceeded the safety limit.")
+        inventory = json.loads(body.decode("utf-8"))
+        models = inventory.get("models", []) if isinstance(inventory, dict) else []
+        installed_names = {
+            str(item.get("name"))
+            for item in models
+            if isinstance(item, dict) and item.get("name")
+        } if isinstance(models, list) else set()
+        expected_names = {model, model + ":latest"} if ":" not in model else {model}
+        if not expected_names.intersection(installed_names):
+            raise RuntimeError("Ollama reported success but the selected model is not present in its local inventory.")
+        _update(job_id, status="completed", progress=100, message="دانلود، نصب و حضور مدل در Ollama تأیید شد.", error=None)
     except urllib.error.HTTPError as exc:
         _update(
             job_id,
