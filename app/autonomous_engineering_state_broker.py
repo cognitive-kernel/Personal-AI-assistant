@@ -116,6 +116,8 @@ def _overlapped_transfer(
         )
         if not succeeded:
             error = ctypes.get_last_error()
+            if error == 109 and not write:  # ERROR_BROKEN_PIPE: peer closed after its response.
+                return 0
             if error != _ERROR_IO_PENDING:
                 raise StateBrokerError(
                     f"Could not {'send' if write else 'read'} the state-broker response "
@@ -126,7 +128,8 @@ def _overlapped_transfer(
                 # Cancel only this operation. Closing the pipe in request() then
                 # releases the handle even if the peer has stopped responding.
                 kernel32.CancelIoEx(handle, ctypes.byref(operation))
-                kernel32.WaitForSingleObject(event, 1000)
+                # Do not release OVERLAPPED/event storage until cancellation completes.
+                kernel32.WaitForSingleObject(event, 0xFFFFFFFF)
                 if wait_result == _WAIT_TIMEOUT:
                     raise StateBrokerError("The state-broker request timed out.")
                 raise StateBrokerError(
