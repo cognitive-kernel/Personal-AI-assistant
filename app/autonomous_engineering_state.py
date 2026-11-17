@@ -109,6 +109,8 @@ def _migrate_legacy_posix_state(legacy: Path, shared: Path) -> None:
             if not source.is_file() or source == marker:
                 continue
             relative = source.relative_to(legacy)
+            if relative.name in lock_names:
+                continue
             destination = shared / relative
             cursor = destination.parent
             while cursor != shared and shared in cursor.parents:
@@ -142,7 +144,7 @@ def _migrate_legacy_posix_state(legacy: Path, shared: Path) -> None:
         temporary_marker = marker.with_name(marker.name + ".tmp")
         temporary_marker.write_text(
             json.dumps({"schema_version": 1, "target": str(shared), "migrated_at": time.time()}, indent=2)
-            + "\\n",
+            + "\n",
             encoding="utf-8",
         )
         os.replace(temporary_marker, marker)
@@ -206,7 +208,7 @@ def execution_state_directory(
         return expanded
 
     program_data = os.getenv("PROGRAMDATA", "").strip()
-    if program_data:
+    if is_windows() and program_data:
         shared_root = Path(os.path.expandvars(program_data)).expanduser()
         if not shared_root.is_absolute():
             raise RuntimeError("PROGRAMDATA must resolve to an absolute shared path.")
