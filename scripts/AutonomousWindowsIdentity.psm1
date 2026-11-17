@@ -107,32 +107,55 @@ function Set-AutonomousDirectoryTreeAcl {
     if (-not (Test-Path -LiteralPath $root -PathType Container)) {
         throw "The shared autonomous state root must be an existing directory."
     }
-    $takeown = Get-Command takeown.exe -ErrorAction Stop
-    & $takeown.Source /F $root /R /D Y | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "Could not take temporary ownership of the protected state tree for ACL repair."
-    }
-    $icacls = Get-Command icacls.exe -ErrorAction Stop
-    $installerGrant = "*$($InstallerSid):(OI)(CI)M"
-    & $icacls.Source $root /grant:r $installerGrant /T /C /Q | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "Could not grant temporary installer access to the protected state tree."
-    }
-
     $rootItem = Get-Item -LiteralPath $root -Force -ErrorAction Stop
     if (-not $rootItem.PSIsContainer -or ($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
         throw "The shared autonomous state root must be a real directory."
     }
-    $items = @(Get-ChildItem -LiteralPath $root -Force -Recurse -ErrorAction Stop)
-    foreach ($item in $items) {
-        if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
-            throw "The shared state tree contains a reparse point; refusing to change permissions."
+
+    # Preflight the complete tree before changing ownership or ACLs. Enumerate
+    # one directory at a time and reject reparse points before descending into
+    # them; never use recursive takeown/icacls operations on an untrusted tree.
+    $items = New-Object 'System.Collections.Generic.List[System.IO.FileSystemInfo]'
+    $pendingDirectories = New-Object 'System.Collections.Generic.Stack[string]'
+    $pendingDirectories.Push($root)
+    while ($pendingDirectories.Count -gt 0) {
+        $directory = $pendingDirectories.Pop()
+        foreach ($entry in [System.IO.Directory]::EnumerateFileSystemEntries($directory)) {
+            $attributes = [System.IO.File]::GetAttributes($entry)
+            if (($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "The shared state tree contains a reparse point; refusing to change permissions."
+            }
+            if (($attributes -band [IO.FileAttributes]::Directory) -ne 0) {
+                $directoryInfo = [System.IO.DirectoryInfo]::new($entry)
+                $items.Add($directoryInfo)
+                $pendingDirectories.Push($entry)
+            } else {
+                $items.Add([System.IO.FileInfo]::new($entry))
+            }
         }
     }
 
     $allowed = @($ModifySids | Select-Object -Unique)
     if ($allowed.Count -lt 1) { throw "At least one state-owner SID is required." }
     $targets = @($items | Sort-Object -Property @{ Expression = { $_.FullName.Length }; Descending = $true }) + @($rootItem)
+
+    # Work on each preflighted path individually. Recursive utilities can follow
+    # junctions/symlinks and are deliberately not used for protected state.
+    $takeown = Get-Command takeown.exe -ErrorAction Stop
+    foreach ($item in $targets) {
+        & $takeown.Source /F $item.FullName | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not take temporary ownership of '$($item.FullName)' for ACL repair."
+        }
+    }
+    $icacls = Get-Command icacls.exe -ErrorAction Stop
+    $installerGrant = "*$($InstallerSid):(OI)(CI)M"
+    foreach ($item in $targets) {
+        & $icacls.Source $item.FullName /grant:r $installerGrant /C /Q | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not grant temporary installer access to '$($item.FullName)'."
+        }
+    }
     foreach ($item in $targets) {
         $acl = Get-Acl -LiteralPath $item.FullName -ErrorAction Stop
         $acl.SetAccessRuleProtection($true, $false)
