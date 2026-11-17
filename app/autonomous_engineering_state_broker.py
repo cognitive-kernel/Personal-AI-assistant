@@ -139,6 +139,8 @@ def _overlapped_transfer(
                 handle, ctypes.byref(operation), ctypes.byref(transferred), False
             ):
                 error = ctypes.get_last_error()
+                if error == 109 and not write:  # ERROR_BROKEN_PIPE after pending read.
+                    return 0
                 raise StateBrokerError(
                     f"State-broker I/O did not complete (WinError {error})."
                 )
