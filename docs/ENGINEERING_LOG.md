@@ -2031,3 +2031,8 @@ PR #770 now places the same explicit, non-escalating argument contract in every 
 - Added a background model-pull service that calls only the configured loopback Ollama API, disables proxies and redirects, validates model identifiers, limits progress-record size, sanitizes failure details, and serializes model pulls to one active job.
 - Added POST/status API endpoints and a dashboard action with explicit user confirmation, progress display, completion refresh, and error reporting. Hardware-safe context and tool-capability checks remain mandatory before saving the model for autonomous execution.
 - Added regression coverage for API target/method, progress parsing, single-download admission, identifier validation, and dashboard wiring. Exact-head CI is pending; this feature does not install the Ollama application or provision privileged host services.
+## 2026-11-17 — Verified GitHub CLI bootstrap for autonomous jobs
+
+- The autonomous controller invokes GitHub CLI commands, but the workflow previously assumed `gh` was already installed on the self-hosted Runner.
+- Added a job-local bootstrap for pinned GitHub CLI 2.104.0. The step downloads the official Windows x64 release and checksum manifest, verifies the archive SHA-256 before extraction, and exposes the executable only through the current Actions job PATH. Existing matching installations are reused; mismatched versions do not silently pass.
+- Added regression assertions for bootstrap ordering, pinned version, and checksum verification. The local dashboard still requires GitHub CLI authentication for the application account; this workflow bootstrap uses the scoped Actions token and does not create a user login.
