@@ -96,6 +96,12 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
     {
         PipeSecurity security = new PipeSecurity();
         security.SetAccessRuleProtection(true, false);
+        // Network logons are denied at the pipe ACL before they can occupy workers.
+        security.AddAccessRule(new PipeAccessRule(
+            new SecurityIdentifier("S-1-5-2"),
+            PipeAccessRights.ReadWrite,
+            AccessControlType.Deny
+        ));
         // The pipe exposes a narrow, allow-listed application protocol only.
         // It does not grant clients filesystem access to the protected state.
         security.AddAccessRule(new PipeAccessRule(
