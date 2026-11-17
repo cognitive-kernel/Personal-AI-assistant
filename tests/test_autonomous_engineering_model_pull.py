@@ -33,7 +33,11 @@ def test_model_pull_uses_loopback_ollama_api_and_reports_progress(monkeypatch):
                 )
             return io.BytesIO(b'{"models":[{"name":"example/model:latest"}]}')
 
-    monkeypatch.setattr(pull, "_base_url", lambda: "http://127.0.0.1:11434")
+    base_url_calls = []
+    monkeypatch.setattr(
+        pull, "_base_url",
+        lambda: (base_url_calls.append("resolved") or "http://127.0.0.1:11434"),
+    )
     monkeypatch.setattr(pull.urllib.request, "build_opener", lambda *args: FakeOpener())
 
     job = pull.start_model_pull("example/model:latest")
@@ -51,6 +55,7 @@ def test_model_pull_uses_loopback_ollama_api_and_reports_progress(monkeypatch):
     assert requests[0][1] == 60
     assert requests[1][0].full_url == "http://127.0.0.1:11434/api/tags"
     assert requests[1][0].get_method() == "GET"
+    assert base_url_calls == ["resolved"]
 
 
 def test_model_pull_endpoint_resolution_failure_is_reported_and_releases_admission(monkeypatch):
