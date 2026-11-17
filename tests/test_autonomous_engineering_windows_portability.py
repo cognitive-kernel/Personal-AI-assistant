@@ -103,6 +103,10 @@ def test_machine_state_broker_uses_a_local_allowlisted_pipe_not_a_network_file_a
     provision = _read("scripts/provision_autonomous_runner.ps1")
 
     assert "NamedPipeServerStream" in service
+    assert "PipeOptions.Asynchronous" in service
+    assert "ReadAsync(chunk" in service and "WriteAsync(bytes" in service
+    assert "WaitForPipeIo" in service
+    assert "ReadTimeout" not in service and "WriteTimeout" not in service
     assert "PipeSecurity" in service
     assert 'new SecurityIdentifier("S-1-5-11")' in service
     assert "GetNamedPipeClientComputerName" in service
