@@ -1,3 +1,21 @@
+## 2026-11-17 — Automatic Playwright provisioning and autonomous-cycle timing
+
+### Root cause
+- AI-learning browser automation treated Playwright and system Chrome as operator-installed prerequisites. It only searched a small set of fixed Chrome paths and returned a manual installation/path instruction when either dependency was missing.
+- The autonomous engineering workflow grouped Codex inference, the full local verification suite, PR publication, and exact-head GitHub checks inside one PowerShell step. Its duration therefore did not identify which operation dominated a long run.
+
+### Corrective change
+- Added a shared browser-runtime provisioner that installs Playwright into the active Python interpreter when absent and installs the Playwright-matched Chromium when no system Chrome is found.
+- AI-learning startup now schedules provisioning in a background thread only when the feature is enabled. Browser tasks also ensure their dependencies on demand, including the legacy CDP browser-learning worker. Existing system Chrome and the explicit AI_LEARNING_CHROME_PATH override remain supported.
+- Added process-fork lock resets and deterministic tests for missing-package installation, Chromium installation/reuse, fallback selection, and background startup.
+- Added explicit elapsed-time logging around Codex attempts, each local verification command, PR publication/exact-SHA CI waiting, and the complete controller cycle. This records the real bottleneck without removing required tests or security checks.
+
+### Validation boundary
+- Focused regression tests were added for the new provisioning and timing behavior. They are not yet considered passed until exact-head CI completes.
+- No user browser profile, database, existing browser installation, or application data is deleted or overwritten. First-run downloads use the active interpreter and Playwright's own browser-cache resolution.
+
+---
+
 ## 2026-11-15 — Remove the remaining module-time psutil dependency from the Windows controller import graph
 
 ### Root cause
