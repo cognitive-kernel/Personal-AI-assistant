@@ -170,7 +170,7 @@ def _migrate_legacy_posix_state(legacy: Path | None, shared: Path, home: Path | 
                 + "\n",
                 encoding="utf-8",
             )
-            os.chmod(temporary_marker, 0o644)
+            os.chmod(temporary_marker, 0o600)
             os.replace(temporary_marker, marker)
         finally:
             temporary_marker.unlink(missing_ok=True)
