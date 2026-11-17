@@ -5,8 +5,6 @@ from pathlib import Path
 
 import pytest
 
-from app import autonomous_engineering_state
-
 
 @pytest.fixture(autouse=True)
 def _isolate_ai_learning_embedding_dependencies(monkeypatch):
@@ -28,13 +26,9 @@ def _isolate_ai_learning_embedding_dependencies(monkeypatch):
 def shared_state_tmp_path(tmp_path, request, monkeypatch):
     """Return a writable test state path outside the simulated service home."""
     if os.name != "nt":
-        # Simulate a service identity whose home is unrelated to the writable
-        # pytest temp mount. This keeps tests valid in read-only Docker images.
-        monkeypatch.setattr(
-            autonomous_engineering_state,
-            "_current_home_directory",
-            lambda: Path("/nonexistent-home-for-shared-state-tests"),
-        )
+        # Keep the test mount outside the simulated service home in both this
+        # process and real child processes launched by checkpoint integration tests.
+        monkeypatch.setenv("HOME", "/nonexistent-home-for-shared-state-tests")
     result = tmp_path / "shared-state"
     result.mkdir(parents=True, exist_ok=True)
     request.addfinalizer(lambda: shutil.rmtree(result, ignore_errors=True))
