@@ -218,10 +218,7 @@ function Install-AutonomousStateBrokerService {
             $newServiceCreated = $true
         }
         $sc = Get-Command sc.exe -ErrorAction Stop
-        $binPathArgument = 'binPath= "' + $serviceExe + '"'
-        $serviceAccountArgument = 'obj= "NT AUTHORITY\LocalService"'
-        $servicePasswordArgument = 'password= ""'
-        & $sc.Source config $serviceName $binPathArgument $serviceAccountArgument $servicePasswordArgument "start= auto" | Out-Null
+        & $sc.Source config $serviceName 'binPath=' $serviceExe 'obj=' 'NT AUTHORITY\LocalService' 'start=' 'auto' | Out-Null
         if ($LASTEXITCODE -ne 0) {
             throw "Could not configure the state broker to run under its restricted LocalService identity."
         }
