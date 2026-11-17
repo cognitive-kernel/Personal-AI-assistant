@@ -55,8 +55,9 @@ def _update(job_id: str, **values: Any) -> None:
 def _run_pull(job_id: str, model: str) -> None:
     _update(job_id, status="running", message="اتصال به Ollama و دریافت مدل آغاز شد.")
     try:
+        base_url = _base_url()
         request = urllib.request.Request(
-            _base_url() + "/api/pull",
+            base_url + "/api/pull",
             data=json.dumps({"model": model, "stream": True}).encode("utf-8"),
             headers={"Accept": "application/x-ndjson", "Content-Type": "application/json"},
             method="POST",
@@ -101,7 +102,7 @@ def _run_pull(job_id: str, model: str) -> None:
         if not saw_success:
             raise RuntimeError("Ollama closed the download stream before confirming success.")
         verify_request = urllib.request.Request(
-            _base_url() + "/api/tags",
+            base_url + "/api/tags",
             headers={"Accept": "application/json"},
             method="GET",
         )
