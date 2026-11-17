@@ -353,6 +353,10 @@ def startup() -> None:
     # Recover only explicit, persisted AI-learning runs. This never auto-generates
     # new topics/lessons and respects the durable global pause flag.
     if ai_learning_config.is_enabled():
+        # Browser dependencies are optional until this feature is enabled. Check
+        # and provision them asynchronously so the local dashboard remains
+        # responsive during a first-run package/browser download.
+        ai_learning_browser_automation.schedule_browser_runtime_bootstrap()
         try:
             ai_learning_browser_automation.recover_pending_runs()
         except Exception:
