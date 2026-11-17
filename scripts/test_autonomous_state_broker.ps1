@@ -106,12 +106,15 @@ else:
 print("PASS: second account sees identical brokered progress and cannot directly enumerate protected state.")
 "@
 
-$encodedProbe = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($pythonProbe))
-$argumentLine = "-c " + [char]34 + "exec(__import__('base64').b64decode('" + $encodedProbe + "'))" + [char]34
-$process = Start-Process -FilePath $PythonPath -Credential $SecondaryCredential -WorkingDirectory $repoRoot -ArgumentList $argumentLine -Wait -PassThru -WindowStyle Hidden
-
-if ($process.ExitCode -ne 0) {
-    throw "Cross-account state-broker acceptance test failed (Python exit code $($process.ExitCode))."
+$probePath = Join-Path $PSScriptRoot (".state-broker-probe-" + [guid]::NewGuid().ToString("N") + ".py")
+try {
+    [System.IO.File]::WriteAllText($probePath, $pythonProbe, [System.Text.UTF8Encoding]::new($false))
+    $process = Start-Process -FilePath $PythonPath -Credential $SecondaryCredential -WorkingDirectory $repoRoot -ArgumentList ('"' + $probePath + '"') -Wait -PassThru
+    if ($process.ExitCode -ne 0) {
+        throw "Cross-account state-broker acceptance test failed (Python exit code $($process.ExitCode))."
+    }
+} finally {
+    if (Test-Path -LiteralPath $probePath) { Remove-Item -LiteralPath $probePath -Force -ErrorAction SilentlyContinue }
 }
 
 Write-Host "PASS: broker is healthy; a second non-admin account sees the same progress and is denied direct state-directory access."
