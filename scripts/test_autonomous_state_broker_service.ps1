@@ -92,8 +92,7 @@ try {
     New-Service -Name $serviceName -BinaryPathName ('"' + $serviceExe + '"') -DisplayName "Personal AI Assistant State Broker CI" -StartupType Manual | Out-Null
     $serviceCreated = $true
     $sc = Get-Command sc.exe -ErrorAction Stop
-    $binPathArgument = 'binPath= "' + $serviceExe + '"'
-    $serviceConfigOutput = & $sc.Source config $serviceName $binPathArgument 'obj= "NT AUTHORITY\LocalService"' 'password= ""' "start= demand" 2>&1
+    $serviceConfigOutput = & $sc.Source config $serviceName 'obj=' 'NT AUTHORITY\LocalService' 'start=' 'demand' 2>&1
     if ($LASTEXITCODE -ne 0) {
         throw "Could not configure the test broker to run as LocalService: $($serviceConfigOutput -join ' ')"
     }
