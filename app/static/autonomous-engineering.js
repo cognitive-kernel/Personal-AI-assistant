@@ -435,7 +435,7 @@
       labels.storage.textContent = stateText(checks.progress_storage_accessible);
       $("storage-detail").textContent = checks.progress_storage_accessible
         ? "پوشهٔ مشترک پیشرفت برای برنامه قابل خواندن است."
-        : "پوشهٔ مشترک را با scripts/configure_autonomous_engineering_progress.ps1 پیکربندی کنید.";
+        : "مسیر دادهٔ مشترک سیستم باید برای حساب برنامه و Runner دسترسی خواندن/نوشتن داشته باشد؛ راه‌اندازی و مجوزها را برای سیستم‌عامل میزبان تکمیل کنید.";
       const ready = data.ready === true;
       const paused = data.paused === true;
       const canDispatch = data.can_dispatch === undefined ? (ready && !paused) : data.can_dispatch === true;
