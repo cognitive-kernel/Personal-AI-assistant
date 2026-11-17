@@ -177,7 +177,8 @@ function Install-AutonomousStateBrokerService {
     }
 
     $existing = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-    if ($existing -and $existing.Status -eq "Running") {
+    $wasRunning = ($null -ne $existing -and $existing.Status -eq "Running")
+    if ($wasRunning) {
         Stop-Service -Name $serviceName -Force -ErrorAction Stop
         $existing = Get-Service -Name $serviceName -ErrorAction Stop
         $existing.WaitForStatus(
@@ -185,10 +186,18 @@ function Install-AutonomousStateBrokerService {
             [TimeSpan]::FromSeconds(30)
         )
     }
+    $backupExe = $null
+    $newServiceCreated = $false
     try {
-        Move-Item -LiteralPath $temporaryExe -Destination $serviceExe -Force -ErrorAction Stop
+        if (Test-Path -LiteralPath $serviceExe -PathType Leaf) {
+            $backupExe = Join-Path $serviceRoot ("broker-previous-" + [guid]::NewGuid().ToString("N") + ".exe")
+            [System.IO.File]::Replace($temporaryExe, $serviceExe, $backupExe, $true)
+        } else {
+            [System.IO.File]::Move($temporaryExe, $serviceExe)
+        }
         if (-not $existing) {
             New-Service -Name $serviceName -BinaryPathName ('"' + $serviceExe + '"') -DisplayName "Personal AI Assistant State Broker" -Description "Mediates allow-listed local access to protected autonomous-engineering state." -StartupType Automatic | Out-Null
+            $newServiceCreated = $true
         }
         $sc = Get-Command sc.exe -ErrorAction Stop
         $binPathArgument = 'binPath= "' + $serviceExe + '"'
@@ -214,12 +223,33 @@ function Install-AutonomousStateBrokerService {
         if ($null -eq $health -or $health.ready -ne $true -or $health.schema_version -ne 1) {
             throw "The state broker service started but failed its protected storage health check."
         }
+        if ($backupExe -and (Test-Path -LiteralPath $backupExe)) {
+            Remove-Item -LiteralPath $backupExe -Force -ErrorAction Stop
+        }
         Write-Host "Machine state broker installed and verified at $serviceRoot."
     } catch {
+        $failure = $_
+        $serviceAfterFailure = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+        if ($serviceAfterFailure -and $serviceAfterFailure.Status -eq "Running") {
+            Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
+        }
+        if ($backupExe -and (Test-Path -LiteralPath $backupExe)) {
+            try {
+                [System.IO.File]::Replace($backupExe, $serviceExe, $null, $true)
+            } catch {
+                Write-Warning "The previous state-broker binary backup remains at $backupExe; do not delete it until the service is restored."
+            }
+        } elseif ($newServiceCreated) {
+            Remove-Item -LiteralPath $serviceExe -Force -ErrorAction SilentlyContinue
+            sc.exe delete $serviceName | Out-Null
+        }
+        if ($wasRunning) {
+            Start-Service -Name $serviceName -ErrorAction SilentlyContinue
+        }
         if (Test-Path -LiteralPath $temporaryExe) {
             Remove-Item -LiteralPath $temporaryExe -Force -ErrorAction SilentlyContinue
         }
-        throw
+        throw $failure
     }
 }
 
