@@ -4,13 +4,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _read(relative: str) -> str:
+    return (ROOT / relative).read_text(encoding="utf-8")
+
+
 def test_autonomous_runner_uses_the_loopback_api_not_a_user_scoped_ollama_cli():
-    workflow = (ROOT / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
-    provision = (ROOT / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
-    runner_check = (ROOT / "scripts" / "check_autonomous_runner.ps1").read_text(encoding="utf-8")
-    agent_check = (ROOT / "scripts" / "check_autonomous_agent.ps1").read_text(encoding="utf-8")
-    diagnostic = (ROOT / ".github" / "workflows" / "codex-windows-sandbox-diagnostic.yml").read_text(encoding="utf-8")
-    runtime = (ROOT / "scripts" / "AutonomousOllamaRuntime.psm1").read_text(encoding="utf-8")
+    workflow = _read(".github/workflows/autonomous-codex-engineering.yml")
+    provision = _read("scripts/provision_autonomous_runner.ps1")
+    runner_check = _read("scripts/check_autonomous_runner.ps1")
+    agent_check = _read("scripts/check_autonomous_agent.ps1")
+    diagnostic = _read(".github/workflows/codex-windows-sandbox-diagnostic.yml")
+    runtime = _read("scripts/AutonomousOllamaRuntime.psm1")
 
     assert "Get-Command ollama" not in workflow
     assert "ollama --version" not in workflow
@@ -20,18 +24,18 @@ def test_autonomous_runner_uses_the_loopback_api_not_a_user_scoped_ollama_cli():
     assert "Get-Command ollama" not in diagnostic
     assert "ollama --version" not in diagnostic
     assert "AutonomousOllamaRuntime.psm1" in diagnostic
-    assert 'Import-Module "$env:GITHUB_WORKSPACE\\scripts\\AutonomousOllamaRuntime.psm1" -Force' in workflow
+    assert 'Import-Module "$env:GITHUB_WORKSPACE\\\\scripts\\\\AutonomousOllamaRuntime.psm1" -Force' in workflow
     assert 'Import-Module (Join-Path $PSScriptRoot "AutonomousOllamaRuntime.psm1") -Force' in provision
     assert 'Import-Module (Join-Path $PSScriptRoot "AutonomousOllamaRuntime.psm1") -Force' in runner_check
     assert '$script:AutonomousOllamaApiBaseUrl = "http://127.0.0.1:11434"' in runtime
-    assert '/api/tags' in runtime
+    assert "/api/tags" in runtime
     assert "ConvertFrom-AutonomousOllamaTagsResponse" in runtime
     assert "Test-AutonomousOllamaModelInstalled" in runtime
     assert "Ollama API is unavailable" in runtime
 
 
 def test_autonomous_ollama_runtime_contract_rejects_malformed_model_catalogs():
-    runtime = (ROOT / "scripts" / "AutonomousOllamaRuntime.psm1").read_text(encoding="utf-8")
+    runtime = _read("scripts/AutonomousOllamaRuntime.psm1")
 
     assert '$Response.PSObject.Properties["models"]' in runtime
     assert '$model.PSObject.Properties["name"]' in runtime
@@ -40,45 +44,93 @@ def test_autonomous_ollama_runtime_contract_rejects_malformed_model_catalogs():
     assert "Get-Command ollama" not in runtime
 
 
-def test_windows_provisioning_uses_the_shared_identity_module():
-    script = (ROOT / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
-    module = (ROOT / "scripts" / "AutonomousWindowsIdentity.psm1").read_text(encoding="utf-8")
+def test_windows_provisioning_uses_only_the_dedicated_runner_identity():
+    script = _read("scripts/provision_autonomous_runner.ps1")
+    module = _read("scripts/AutonomousWindowsIdentity.psm1")
 
     assert 'Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsIdentity.psm1")' in script
     assert "ConvertTo-AutonomousWindowsAccountName" in module
     assert "Get-AutonomousLocalAccountName" in module
     assert "Get-AutonomousWindowsAccountSid" in module
-    assert "Get-AutonomousWindowsAccountSid -AccountName $appIdentity" in script
     assert "Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity" in script
     assert "$runnerIsLocal = -not [string]::IsNullOrWhiteSpace($runnerLocalName)" in script
     assert script.index("$runnerIsLocal =") < script.index("if ($runnerIsLocal)")
+    assert "AppAccount" not in script
+    assert "$appIdentity" not in script
+    assert "$appSid" not in script
+    assert "ReadOnlySid" not in module
     assert "if ($value.Contains(" in module
     assert 'if ($value.Contains("@"))' not in module
 
 
-def test_windows_provisioning_does_not_require_a_fixed_users_group_or_admin_acl_grants():
-    script = (ROOT / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
-    module = (ROOT / "scripts" / "AutonomousWindowsIdentity.psm1").read_text(encoding="utf-8")
+def test_shared_state_tree_acl_is_recursive_and_only_grants_runner_and_system():
+    script = _read("scripts/provision_autonomous_runner.ps1")
+    configure = _read("scripts/configure_autonomous_engineering_progress.ps1")
+    module = _read("scripts/AutonomousWindowsIdentity.psm1")
 
-    assert "Add-LocalGroupMember" not in script
-    assert "S-1-5-32-545" not in script
-    assert "BUILTIN" not in script + module
-    assert '"SYSTEM:(OI)(CI)F"' not in script + module
+    assert 'Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $systemSid)' in script
+    assert 'Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $systemSid)' in configure
     assert "Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid" in script
-    assert "Set-AutonomousDirectoryAcl -Path $progressPath -RunnerSid $runnerSid -ReadOnlySid $appSid" in script
-    assert "$allowedSids = @($modifySids)" in module
-    assert '$Path /remove "*$sid"' in module
-    assert "$unexpectedSids" in module
-    assert '$modifySids = @($RunnerSid)' in module
-    assert '*$($_):(OI)(CI)M' in module
-    assert '*$($ReadOnlySid):(OI)(CI)RX' in module
-    assert '$installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value' in script
-    assert "Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid" in script
+    assert "Set-AutonomousDirectoryTreeAcl" in module
+    assert "$acl.SetAccessRuleProtection($true, $false)" in module
+    assert "$acl.RemoveAccessRuleSpecific($rule)" in module
+    assert "$acl.SetAccessRule($newRule)" in module
+    assert "ReparsePoint" in module
+    assert "$allowed = @($ModifySids | Select-Object -Unique)" in module
+    assert "AppAccount" not in configure
+    assert "Authenticated Users" not in configure
+    assert "S-1-5-32-545" not in script + configure + module
+    assert "BUILTIN" not in script + configure + module
+    assert "Everyone" not in script + configure + module
+
+
+def test_machine_state_broker_uses_a_local_allowlisted_pipe_not_a_network_file_api():
+    service = _read("scripts/AutonomousStateBrokerService.cs")
+    python_client = _read("app/autonomous_engineering_state_broker.py")
+    powershell_client = _read("scripts/AutonomousStateBroker.psm1")
+    provision = _read("scripts/provision_autonomous_runner.ps1")
+
+    assert "NamedPipeServerStream" in service
+    assert "PipeSecurity" in service
+    assert 'new SecurityIdentifier("S-1-5-11")' in service
+    assert "GetNamedPipeClientComputerName" in service
+    assert "Remote named-pipe clients are not accepted" in service
+    assert "RunAsClient" in service
+    assert "PipeAccessRights.ReadWrite" in service
+    assert "TcpListener" not in service
+    assert "TcpClient" not in service
+    assert "NetworkStream" not in service
+    assert '"version", 1' in service
+    assert 'method == "GET" and path in {"/v1/health", "/v1/pending-work", "/v1/progress"}' in python_client
+    assert 'method == "POST" and path == "/v1/cleanup"' in python_client
+    assert '"/v1/diagnostics/[0-9]' not in python_client
+    assert "Unsupported state-broker endpoint" in python_client
+    assert "ValidateSet(" in powershell_client
+    assert '"/v1/health", "/v1/pending-work", "/v1/progress"' in powershell_client
+    assert "PersonalAIAssistantStateBroker" in provision
+    assert "obj= LocalSystem" in provision
+    assert 'Join-Path $env:ProgramData "PersonalAIAssistant\\StateBroker"' in provision
+    assert "AutonomousStateBrokerService.cs" in provision
+    assert "Invoke-AutonomousStateBroker" in provision
+
+
+def test_app_and_runner_checks_use_the_state_broker_without_app_directory_acl():
+    app_check = _read("scripts/check_autonomous_agent.ps1")
+    runner_check = _read("scripts/check_autonomous_runner.ps1")
+    configure = _read("scripts/configure_autonomous_engineering_progress.ps1")
+
+    assert 'Get-Service -Name "PersonalAIAssistantStateBroker"' in app_check
+    assert 'Invoke-AutonomousStateBroker -Method GET -Path "/v1/health"' in app_check
+    assert "Join-Path $env:ProgramData" not in app_check
+    assert 'Invoke-AutonomousStateBroker -Method GET -Path "/v1/health"' in runner_check
+    assert "Runner shared-state write access" in runner_check
+    assert "WriteAllText($probe" in runner_check
+    assert "AppAccount" not in configure
 
 
 def test_windows_provisioning_uses_the_runtime_shared_state_path_contract():
-    script = (ROOT / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
-    paths_module = (ROOT / "scripts" / "AutonomousWindowsPaths.psm1").read_text(encoding="utf-8")
+    script = _read("scripts/provision_autonomous_runner.ps1")
+    paths_module = _read("scripts/AutonomousWindowsPaths.psm1")
 
     assert 'Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsPaths.psm1")' in script
     assert "$env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR" in script
@@ -92,10 +144,10 @@ def test_windows_provisioning_uses_the_runtime_shared_state_path_contract():
 
 
 def test_windows_provisioning_keeps_runner_least_privilege_as_a_role_invariant():
-    script = (ROOT / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
+    script = _read("scripts/provision_autonomous_runner.ps1")
 
     assert 'Get-LocalGroup -SID "S-1-5-32-544"' in script
     assert "Runner account is a direct member of the local Administrators group" in script
-    assert "RunnerAccount and AppAccount must be non-empty Windows account identities." in script
+    assert "RunnerAccount must be a non-empty Windows account identity." in script
     assert "^[A-Za-z0-9_.-]+$" not in script
     assert "runnerLocalName.Length -gt 20" in script
