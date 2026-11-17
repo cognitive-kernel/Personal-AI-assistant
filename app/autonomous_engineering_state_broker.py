@@ -101,6 +101,7 @@ def _overlapped_transfer(
     deadline: float,
 ) -> int:
     """Perform one pipe I/O operation with a hard deadline and cancellation."""
+    _remaining_ms(deadline)
     event = kernel32.CreateEventW(None, True, False, None)
     if not event:
         raise StateBrokerError(
@@ -123,7 +124,8 @@ def _overlapped_transfer(
                     f"Could not {'send' if write else 'read'} the state-broker response "
                     f"(WinError {error})."
                 )
-            wait_result = kernel32.WaitForSingleObject(event, _remaining_ms(deadline))
+            remaining = max(0, int((deadline - time.monotonic()) * 1000))
+            wait_result = kernel32.WaitForSingleObject(event, remaining)
             if wait_result != _WAIT_OBJECT_0:
                 # Cancel only this operation. Closing the pipe in request() then
                 # releases the handle even if the peer has stopped responding.
