@@ -106,21 +106,43 @@ $runner = Get-Process -Name "Runner.Listener" -ErrorAction SilentlyContinue | Se
 $runnerReady = [bool]$runner
 $checks += [pscustomobject]@{ Component = "GitHub Runner"; Ready = $runnerReady; Detail = if ($runnerReady) { "Listener process active" } else { "Runner.Listener is not running in this account" } }
 
-$progressPath = Join-Path $env:ProgramData "PersonalAIAssistant\autonomous-engineering"
+$progressPath = $null
 $progressReady = $false
-$probe = Join-Path $progressPath ".runner-write-check-$PID.tmp"
+$brokerReady = $false
 try {
-    if (Test-Path -LiteralPath $progressPath -PathType Container) {
-        [System.IO.File]::WriteAllText($probe, "ok")
-        Remove-Item -LiteralPath $probe -Force
-        $progressReady = $true
+    Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsPaths.psm1") -Force
+    $machineStatePath = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")
+    $processStatePath = $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR
+    if (-not [string]::IsNullOrWhiteSpace($processStatePath) -and [string]::IsNullOrWhiteSpace($machineStatePath)) {
+        throw "Process-scoped state path is not accepted."
     }
+    $progressPath = Resolve-AutonomousStateDirectory -ConfiguredPath $machineStatePath -ProgramDataPath $env:ProgramData
+    $probe = Join-Path $progressPath (".runner-write-check-" + [guid]::NewGuid().ToString("N") + ".tmp")
+    [System.IO.File]::WriteAllText($probe, "ok")
+    Remove-Item -LiteralPath $probe -Force -ErrorAction Stop
+    $progressReady = $true
 } catch {
-    if (Test-Path -LiteralPath $probe) {
-        Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
-    }
+    $progressReady = $false
 }
-$checks += [pscustomobject]@{ Component = "Shared progress storage"; Ready = $progressReady; Detail = if ($progressReady) { "Runner account can write to $progressPath" } else { "Run configure_autonomous_engineering_progress.ps1 with the exact Runner service account" } }
+$checks += [pscustomobject]@{
+    Component = "Runner shared-state write access"
+    Ready = $progressReady
+    Detail = if ($progressReady) { "Runner role can write to the machine state root" } else { "Runner identity must have Modify access to the machine state root" }
+}
+
+try {
+    $brokerService = Get-Service -Name "PersonalAIAssistantStateBroker" -ErrorAction Stop
+    if ($brokerService.Status -eq "Running") {
+        Import-Module (Join-Path $PSScriptRoot "AutonomousStateBroker.psm1") -Force
+        $brokerHealth = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health" -TimeoutMilliseconds 4000
+        $brokerReady = ($brokerHealth.ready -eq $true -and $brokerHealth.schema_version -eq 1)
+    }
+} catch {}
+$checks += [pscustomobject]@{
+    Component = "Machine state broker"
+    Ready = $brokerReady
+    Detail = if ($brokerReady) { "Local authenticated pipe is available" } else { "Install or start PersonalAIAssistantStateBroker" }
+}
 
 $checks | Format-Table -AutoSize
 if (@($checks | Where-Object { -not $_.Ready }).Count -gt 0) {
