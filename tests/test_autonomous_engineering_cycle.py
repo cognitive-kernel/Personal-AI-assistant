@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -1640,3 +1641,47 @@ def test_autonomous_windows_workflows_do_not_pin_tools_to_a_specific_user_or_pyt
         assert "get-command python" in lowered
         assert "get-command ollama" not in lowered
         assert "autonomousollamaruntime.psm1" in lowered
+
+
+
+def test_persist_run_diagnostic_appends_redacted_report_details(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    monkeypatch.setattr(cycle, "_autonomous_state_dir", lambda: tmp_path)
+
+    assert cycle.persist_run_diagnostic(
+        "12345", "1", task=1, attempt=2,
+        stage="codex_decision", category="task_blocked",
+        summary="Codex marked task 1 as blocked.",
+        detail="The sandbox policy rejected the requested operation. Bearer bearer-secret-value ghp_0123456789abcdefghijklmnopqrstuvwxyz password=hunter2 OPENAI_API_KEY=sk-test-value CLIENT_SECRET=client-secret-value",
+    )
+    assert cycle.persist_run_diagnostic(
+        "12345", "1", task=1, attempt=2,
+        stage="controller", category="RuntimeError",
+        summary="Codex reported task 1 as blocked.",
+    )
+
+    saved = json.loads((tmp_path / "run-diagnostics" / "12345.json").read_text(encoding="utf-8"))
+    assert saved["schema_version"] == 1
+    assert saved["run_id"] == "12345"
+    assert len(saved["diagnostics"]) == 1
+    detail = saved["diagnostics"][0]["detail"]
+    assert "sandbox policy rejected" in detail
+    assert "bearer-secret-value" not in detail
+    assert "ghp_0123456789abcdefghijklmnopqrstuvwxyz" not in detail
+    assert "hunter2" not in detail
+    assert "sk-test-value" not in detail
+    assert "client-secret-value" not in detail
+    assert saved["diagnostics"][0]["stage"] == "codex_decision"
+
+
+def test_persist_run_diagnostic_rejects_non_numeric_run_identifiers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    monkeypatch.setattr(cycle, "_autonomous_state_dir", lambda: tmp_path)
+
+    assert not cycle.persist_run_diagnostic(
+        "../123", "1", task=1, attempt=1,
+        stage="controller", category="RuntimeError", summary="invalid identity",
+    )
+    assert not (tmp_path / "run-diagnostics").exists()

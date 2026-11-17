@@ -87,6 +87,15 @@
         (run.created_at ? " · " + String(run.created_at) : "");
       summary.append(heading, metadata);
       item.append(summary);
+      if (run.failure_summary || (run.status === "completed" && run.conclusion && !["success", "neutral", "skipped"].includes(run.conclusion))) {
+        const failureSummary = document.createElement("p");
+        failureSummary.className = "run-failure-summary";
+        const label = run.status === "completed" ? "علت خطا: " : "آخرین تشخیص: ";
+        failureSummary.textContent = run.failure_summary
+          ? label + String(run.failure_summary)
+          : "این اجرا ناموفق بوده است؛ برای دیدن مرحله و علت ثبت‌شده، گزارش اجرا را باز کنید.";
+        item.append(failureSummary);
+      }
       const controls = document.createElement("div");
       controls.className = "run-controls";
       if (typeof run.url === "string" && run.url.startsWith("https://github.com/")) {
@@ -178,21 +187,88 @@
       if (!panel) {
         panel = document.createElement("section");
         panel.className = "run-log-panel";
+        const diagnosis = document.createElement("section");
+        diagnosis.className = "run-diagnosis";
+        const diagnosisHeading = document.createElement("h3");
+        diagnosisHeading.textContent = "علت این اجرا";
+        const diagnosisSummary = document.createElement("p");
+        diagnosisSummary.className = "run-diagnosis-summary";
+        const diagnosisStage = document.createElement("p");
+        diagnosisStage.className = "run-diagnosis-stage";
+        const diagnosisEntries = document.createElement("div");
+        diagnosisEntries.className = "run-diagnostic-entries";
+        diagnosis.append(diagnosisHeading, diagnosisSummary, diagnosisStage, diagnosisEntries);
+        const failuresHeading = document.createElement("h4");
+        failuresHeading.textContent = "مرحله‌های ناموفق GitHub";
         const failures = document.createElement("ul");
         failures.className = "run-failures";
+        const rawDetails = document.createElement("details");
+        rawDetails.className = "run-raw-logs";
+        const rawSummary = document.createElement("summary");
+        rawSummary.textContent = "گزارش خام GitHub";
         const pre = document.createElement("pre");
         pre.className = "run-log-text";
-        panel.append(failures, pre);
+        rawDetails.append(rawSummary, pre);
+        panel.append(diagnosis, failuresHeading, failures, rawDetails);
         item.append(panel);
       }
       panel.hidden = false;
       const pre = panel.querySelector(".run-log-text");
       const failures = panel.querySelector(".run-failures");
-      pre.textContent = "در حال دریافت گزارش از GitHub…";
+      const diagnosisSummary = panel.querySelector(".run-diagnosis-summary");
+      const diagnosisStage = panel.querySelector(".run-diagnosis-stage");
+      const diagnosisEntries = panel.querySelector(".run-diagnostic-entries");
+      diagnosisSummary.textContent = "در حال استخراج علت از گزارش Runner و GitHub…";
+      diagnosisStage.textContent = "";
+      diagnosisEntries.replaceChildren();
+      pre.textContent = "در حال دریافت گزارش خام از GitHub…";
       failures.replaceChildren();
       button.disabled = true;
       try {
         const data = await request("runs/" + runId + "/logs");
+        diagnosisSummary.textContent = data.error_summary || (
+          data.run && data.run.status !== "completed"
+            ? "اجرا هنوز پایان نیافته است؛ پس از پایان، گزارش نهایی علت دقیق‌تری ارائه می‌کند."
+            : "علت اختصاصی از گزارش قابل استخراج نبود؛ مرحله‌های ناموفق و گزارش خام را بررسی کنید."
+        );
+        diagnosisStage.textContent = data.failure_stage
+          ? "مرحله: " + String(data.failure_stage)
+          : "";
+        const diagnostic = data.diagnostic && Array.isArray(data.diagnostic.diagnostics)
+          ? data.diagnostic.diagnostics
+          : [];
+        if (diagnostic.length) {
+          for (const detail of diagnostic) {
+            const entry = document.createElement("article");
+            entry.className = "run-diagnostic-entry";
+            const metadata = document.createElement("strong");
+            metadata.textContent = [
+              detail.stage || "مرحله نامشخص",
+              detail.task ? "وظیفه " + detail.task : "",
+              detail.attempt ? "تلاش " + detail.attempt : "",
+              detail.recorded_at || ""
+            ].filter(Boolean).join(" · ");
+            const summary = document.createElement("p");
+            summary.textContent = detail.summary || "جزئیات علت ثبت نشده است.";
+            entry.append(metadata, summary);
+            if (detail.detail) {
+              const detailDisclosure = document.createElement("details");
+              const detailLabel = document.createElement("summary");
+              detailLabel.textContent = "گزارش توضیحی Codex / جزئیات خطا";
+              const detailText = document.createElement("pre");
+              detailText.className = "run-diagnostic-detail";
+              detailText.textContent = String(detail.detail);
+              detailDisclosure.append(detailLabel, detailText);
+              entry.append(detailDisclosure);
+            }
+            diagnosisEntries.append(entry);
+          }
+        } else if (data.error_summary && /TASK_BLOCKED|blocked/i.test(data.error_summary)) {
+          const note = document.createElement("p");
+          note.className = "run-diagnostic-note";
+          note.textContent = "برای این اجرای قدیمی، متن توضیحی نهایی Codex در فضای پایدار ذخیره نشده بود؛ فقط پیام انسداد در لاگ GitHub موجود است. اجراهای جدید گزارش توضیحی را جداگانه نگه می‌دارند.";
+          diagnosisEntries.append(note);
+        }
         for (const job of data.failures || []) {
           const entry = document.createElement("li");
           const failedSteps = Array.isArray(job.failed_steps)
@@ -207,7 +283,7 @@
           entry.textContent = "برای این اجرا مرحلهٔ ناموفقی در گزارش GitHub ثبت نشده است.";
           failures.append(entry);
         }
-        pre.textContent = data.logs || "گزارشی برای نمایش وجود ندارد.";
+        pre.textContent = data.logs || "گزارش خامی برای نمایش وجود ندارد.";
       } catch (error) {
         pre.textContent = error.message || "دریافت گزارش اجرا ناموفق بود.";
       } finally {
