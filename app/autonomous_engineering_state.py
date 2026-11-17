@@ -226,7 +226,7 @@ def execution_state_directory(
         return expanded
 
     program_data = os.getenv("PROGRAMDATA", "").strip()
-    if is_windows() and program_data:
+    if program_data:
         shared_root = Path(os.path.expandvars(program_data)).expanduser()
         if not shared_root.is_absolute():
             raise RuntimeError("PROGRAMDATA must resolve to an absolute shared path.")
