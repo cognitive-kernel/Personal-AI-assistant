@@ -131,6 +131,33 @@ jobs:
           }
           Write-Host "Parsed $($files.Count) PowerShell scripts/modules successfully."
 
+      - name: Compile the Windows machine state broker against .NET Framework
+        shell: pwsh
+        run: |
+          $frameworkCandidates = @(
+            (Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319"),
+            (Join-Path $env:WINDIR "Microsoft.NET\Framework\v4.0.30319")
+          )
+          $frameworkRoot = $frameworkCandidates | Where-Object {
+            Test-Path -LiteralPath (Join-Path $_ "csc.exe") -PathType Leaf
+          } | Select-Object -First 1
+          if (-not $frameworkRoot) { throw ".NET Framework C# compiler was not found." }
+          $source = Join-Path $env:GITHUB_WORKSPACE "scripts\AutonomousStateBrokerService.cs"
+          $output = Join-Path $env:RUNNER_TEMP "AutonomousStateBrokerService.exe"
+          $references = @("System.Core.dll", "System.ServiceProcess.dll", "System.Web.Extensions.dll")
+          $pipeAccess = Join-Path $frameworkRoot "System.IO.Pipes.AccessControl.dll"
+          if (Test-Path -LiteralPath $pipeAccess) { $references += "System.IO.Pipes.AccessControl.dll" }
+          $arguments = @("/nologo", "/target:exe", "/out:$output")
+          foreach ($reference in $references) {
+            $arguments += "/reference:" + (Join-Path $frameworkRoot $reference)
+          }
+          $arguments += $source
+          & (Join-Path $frameworkRoot "csc.exe") @arguments
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $output)) {
+            throw "Windows state broker did not compile."
+          }
+          Write-Host "Windows state broker compiled successfully."
+
       - name: Test shared Ollama runtime API contract
         shell: pwsh
         run: |
