@@ -1412,7 +1412,14 @@ def test_ollama_status_accepts_large_valid_show_metadata_response(monkeypatch):
             return io.BytesIO(show_body)
 
     monkeypatch.setattr(agent.urllib.request, "build_opener", lambda *handlers: FakeOpener())
-    monkeypatch.setattr(ollama, "model_details", lambda model: {"recommended_context_tokens": 32768})
+    from app import hardware
+    monkeypatch.setattr(ollama, "_request", lambda path, payload=None, timeout=None: {"models": []})
+    monkeypatch.setattr(ollama, "_model_memory_estimate", lambda *args: {
+        "weights_gib": 1.0, "overhead_gib": 0.5,
+        "kv_cache_bytes_per_token_upper_bound": 1024,
+    })
+    monkeypatch.setattr(ollama, "_recommended_context_tokens", lambda *args, **kwargs: 32768)
+    monkeypatch.setattr(hardware, "detect_hardware", lambda: {})
 
     result = agent._ollama_status("large-model:latest")
 
