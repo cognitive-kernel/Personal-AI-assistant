@@ -9,6 +9,7 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$installerSid = $identity.User.Value
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw "Run from elevated PowerShell." }
 $RunnerAccount = $RunnerAccount.Trim()
@@ -255,10 +256,9 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     }
 
     $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
-    $installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-    New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
+        New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
     Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid
-    Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid
+    Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid -InstallerSid $installerSid
     try {
         Ensure-AutonomousStateOwnerLabel
     } finally {
@@ -299,7 +299,7 @@ New-Item -ItemType Directory -Path $RunnerRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
 $installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid
-Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid
+Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid -InstallerSid $installerSid
 $token = (& $gh.Source api --method POST "repos/$Repository/actions/runners/registration-token" --jq ".token")
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($token)) { throw "Could not obtain registration token; verify Administration: write permission." }
 $archive = $null
@@ -324,7 +324,7 @@ try {
         # Keep the elevated installer principal temporary; the installed service
         # retains access through its configured Runner SID.
         Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid
-        Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid
+        Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid -InstallerSid $installerSid
     }
     $services = @(Get-CimInstance Win32_Service | Where-Object { $_.PathName -like "*$RunnerRoot*" })
     if ($services.Count -ne 1) { throw "Could not locate exactly one Runner service." }
