@@ -49,6 +49,7 @@ def _reset_process_identity() -> None:
     global _LOCK, _LOG_LOCK, _WORKER_OWNER_PID, _WORKER_OWNER
     global _WORKER_LEASE_EPOCH, _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
     global _CANCEL_EVENTS, _SHUTTING_DOWN, _BROWSER_SESSION
+    global _BROWSER_BOOTSTRAP_THREAD_LOCK, _BROWSER_BOOTSTRAP_THREAD
 
     _WORKER_OWNER_PID = os.getpid()
     _WORKER_OWNER = f"{_WORKER_OWNER_PID}-{uuid.uuid4().hex}"
@@ -61,6 +62,8 @@ def _reset_process_identity() -> None:
     _LOCK = threading.Lock()
     _LOG_LOCK = threading.Lock()
     _BROWSER_SESSION = threading.local()
+    _BROWSER_BOOTSTRAP_THREAD_LOCK = threading.Lock()
+    _BROWSER_BOOTSTRAP_THREAD = None
 
 
 def _ensure_process_identity() -> None:
