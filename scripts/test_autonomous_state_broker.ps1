@@ -109,7 +109,7 @@ print("PASS: second account sees identical brokered progress and cannot directly
 $probePath = Join-Path $PSScriptRoot (".state-broker-probe-" + [guid]::NewGuid().ToString("N") + ".py")
 try {
     [System.IO.File]::WriteAllText($probePath, $pythonProbe, [System.Text.UTF8Encoding]::new($false))
-    $process = Start-Process -FilePath $PythonPath -Credential $SecondaryCredential -WorkingDirectory $repoRoot -ArgumentList ('"' + $probePath + '"') -Wait -PassThru
+    $process = Start-Process -FilePath $PythonPath -Credential $SecondaryCredential -ArgumentList ('"' + $probePath + '"') -Wait -PassThru
     if ($process.ExitCode -ne 0) {
         throw "Cross-account state-broker acceptance test failed (Python exit code $($process.ExitCode))."
     }
