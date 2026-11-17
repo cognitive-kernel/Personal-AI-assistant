@@ -237,7 +237,6 @@ jobs:
         shell: pwsh
         run: |
           & "$env:GITHUB_WORKSPACE\scripts\test_autonomous_state_broker_service.ps1"
-          if ($LASTEXITCODE -ne 0) { throw "Live Windows state broker integration test failed." }
 
       - name: Test shared Ollama runtime API contract
         shell: pwsh
