@@ -139,17 +139,18 @@ function Set-AutonomousDirectoryTreeAcl {
     if ($allowed.Count -lt 1) { throw "At least one state-owner SID is required." }
     $targets = @($items | Sort-Object -Property @{ Expression = { $_.FullName.Length }; Descending = $true }) + @($rootItem)
 
-    # Work on each preflighted path individually. Recursive utilities can follow
-    # junctions/symlinks and are deliberately not used for protected state.
+    # Work on each preflighted path individually, from the root downward.
+    # Granting the root first preserves traversal for protected child directories.
+    $provisionTargets = @($rootItem) + @(
+        $items | Sort-Object -Property @{ Expression = { $_.FullName.Length }; Descending = $false }
+    )
     $takeown = Get-Command takeown.exe -ErrorAction Stop
-    foreach ($item in $targets) {
+    $icacls = Get-Command icacls.exe -ErrorAction Stop
+    foreach ($item in $provisionTargets) {
         & $takeown.Source /F $item.FullName | Out-Null
         if ($LASTEXITCODE -ne 0) {
             throw "Could not take temporary ownership of '$($item.FullName)' for ACL repair."
         }
-    }
-    $icacls = Get-Command icacls.exe -ErrorAction Stop
-    foreach ($item in $targets) {
         $installerGrant = if ($item -is [System.IO.DirectoryInfo]) {
             "*$($InstallerSid):(OI)(CI)M"
         } else {
