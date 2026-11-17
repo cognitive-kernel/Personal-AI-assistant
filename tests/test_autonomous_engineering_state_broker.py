@@ -164,3 +164,35 @@ def test_broker_pipe_io_treats_peer_close_as_end_of_response(monkeypatch):
 def test_broker_client_rejects_invalid_io_deadlines(timeout_ms):
     with pytest.raises(ValueError, match="timeout"):
         broker.request("GET", "/v1/health", timeout_ms=timeout_ms)
+
+
+def test_broker_pipe_io_treats_pending_broken_pipe_completion_as_eof(monkeypatch):
+    class FakeKernel:
+        def __init__(self):
+            self.closed = False
+
+        def CreateEventW(self, *_args):
+            return 7
+
+        def ReadFile(self, *_args):
+            return 0
+
+        def WaitForSingleObject(self, *_args):
+            return 0
+
+        def GetOverlappedResult(self, *_args):
+            return 0
+
+        def CloseHandle(self, _handle):
+            self.closed = True
+            return 1
+
+    errors = iter([997, 109])
+    monkeypatch.setattr(broker.ctypes, "get_last_error", lambda: next(errors))
+    fake = FakeKernel()
+    result = broker._overlapped_transfer(
+        fake, 11, write=False, buffer=object(), size=8,
+        deadline=broker.time.monotonic() + 1,
+    )
+    assert result == 0
+    assert fake.closed
