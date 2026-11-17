@@ -703,8 +703,8 @@ def _sanitize_workflow_log(value: str) -> str:
         value,
     )
     value = re.sub(
-        r"(?i)\\b(password|passwd|secret|api[_-]?key|access[_-]?token)(\\s*[=:]\\s*)([^\\s\\\"']+)",
-        r"\\1\\2[REDACTED]",
+        r"(?i)\b[\w-]*(?:password|passwd|secret|api[_-]?key|access[_-]?token|gh[_-]?token)[\w-]*(\s*[=:]\s*)([^\s"']+)",
+        r"[REDACTED]\1[REDACTED]",
         value,
     )
     if len(value) > _MAX_DASHBOARD_LOG_CHARS:
