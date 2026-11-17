@@ -234,21 +234,21 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
     {
         int remaining = (int)Math.Ceiling((deadlineUtc - DateTime.UtcNow).TotalMilliseconds);
         if (remaining <= 0)
-            throw new TimeoutException("The local state-broker timed out while " + operation + ".");
+            throw new System.TimeoutException("The local state-broker timed out while " + operation + ".");
         return remaining;
     }
 
     private static T WaitForPipeIo<T>(Task<T> task, DateTime deadlineUtc, string operation)
     {
         if (!task.Wait(RemainingMilliseconds(deadlineUtc, operation)))
-            throw new TimeoutException("The local state-broker timed out while " + operation + ".");
+            throw new System.TimeoutException("The local state-broker timed out while " + operation + ".");
         return task.GetAwaiter().GetResult();
     }
 
     private static void WaitForPipeIo(Task task, DateTime deadlineUtc, string operation)
     {
         if (!task.Wait(RemainingMilliseconds(deadlineUtc, operation)))
-            throw new TimeoutException("The local state-broker timed out while " + operation + ".");
+            throw new System.TimeoutException("The local state-broker timed out while " + operation + ".");
         task.GetAwaiter().GetResult();
     }
 
