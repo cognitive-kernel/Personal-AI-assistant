@@ -16,14 +16,19 @@ def test_autonomous_workflow_bootstraps_python_and_node_before_using_them():
     python_use = workflow.index("Resolve provisioned Python runtime under the Runner service identity")
     python_venv = workflow.index("Prepare Runner virtual environment and install runtime dependencies")
     codex_install = workflow.index("Ensure Codex CLI is installed for the Runner service account")
+    gh_setup = workflow.index("Provision verified GitHub CLI for this Runner job")
 
     assert python_setup < python_use < python_venv
     assert node_setup < codex_install
+    assert gh_setup < codex_install
     assert 'python-version: "3.11"' in workflow
     assert 'node-version: "22"' in workflow
     assert "Use preinstalled system Python" not in workflow
     assert "Node.js must be installed system-wide" not in workflow
     assert "Install Node.js LTS system-wide" not in workflow
+    assert '$requiredGhVersion = "2.104.0"' in workflow
+    assert "Get-FileHash -LiteralPath $archivePath -Algorithm SHA256" in workflow
+    assert "official GitHub CLI checksum file" in workflow
 
 
 def test_autonomous_workflow_keeps_codex_installation_pinned():
