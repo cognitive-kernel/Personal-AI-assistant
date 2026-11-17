@@ -534,8 +534,8 @@ _PROGRESS_CLEANUP_FILES = (
     "scorecard-baseline.json.tmp",
 )
 _MAX_DASHBOARD_LOG_CHARS = 120_000
-_MAX_RUN_DIAGNOSTIC_BYTES = 180_000
-_MAX_RUN_DIAGNOSTIC_ENTRIES = 12
+_MAX_RUN_DIAGNOSTIC_BYTES = 240_000
+_MAX_RUN_DIAGNOSTIC_ENTRIES = 8
 _RUNTIME_CLEANUP_FILES = (
     ".agent-request.json",
     ".agent-github-state.json",
