@@ -177,7 +177,36 @@ assert result["files_removed"] >= 2
         throw "The broker cleanup endpoint did not preserve durable history and baseline data."
     }
 
-    Write-Host "Live LocalService broker, Python overlapped pipe client, progress, diagnostics, pending-work conflict, and safe cleanup tests passed."
+    Stop-Service -Name $serviceName -Force -ErrorAction Stop
+    (Get-Service -Name $serviceName -ErrorAction Stop).WaitForStatus(
+        [System.ServiceProcess.ServiceControllerStatus]::Stopped,
+        [TimeSpan]::FromSeconds(20)
+    )
+    $fakeServer = [System.IO.Pipes.NamedPipeServerStream]::new(
+        "PersonalAIAssistant.StateBroker.v1",
+        [System.IO.Pipes.PipeDirection]::InOut,
+        1,
+        [System.IO.Pipes.PipeTransmissionMode]::Byte,
+        [System.IO.Pipes.PipeOptions]::Asynchronous
+    )
+    $acceptTask = $fakeServer.WaitForConnectionAsync()
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    try {
+        $timeoutObserved = $false
+        try {
+            Invoke-AutonomousStateBroker -Method GET -Path "/v1/health" -TimeoutMilliseconds 500 | Out-Null
+        } catch {
+            if ($_.Exception.Message -like "*timed out*") { $timeoutObserved = $true } else { throw }
+        }
+        if (-not $timeoutObserved) { throw "The PowerShell client did not time out when a connected peer withheld its response." }
+        if ($stopwatch.Elapsed.TotalSeconds -gt 3) {
+            throw "The PowerShell client exceeded its bounded response timeout."
+        }
+    } finally {
+        $fakeServer.Dispose()
+    }
+
+    Write-Host "Live LocalService broker, Python overlapped pipe client, progress, diagnostics, pending-work conflict, safe cleanup, and PowerShell timeout tests passed."
 } finally {
     $running = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
     if ($running -and $running.Status -eq "Running") {
