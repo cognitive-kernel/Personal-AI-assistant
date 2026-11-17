@@ -53,18 +53,19 @@ def _update(job_id: str, **values: Any) -> None:
 
 
 def _run_pull(job_id: str, model: str) -> None:
-    request = urllib.request.Request(
-        _base_url() + "/api/pull",
-        data=json.dumps({"model": model, "stream": True}).encode("utf-8"),
-        headers={"Accept": "application/x-ndjson", "Content-Type": "application/json"},
-        method="POST",
-    )
     _update(job_id, status="running", message="اتصال به Ollama و دریافت مدل آغاز شد.")
     try:
+        request = urllib.request.Request(
+            _base_url() + "/api/pull",
+            data=json.dumps({"model": model, "stream": True}).encode("utf-8"),
+            headers={"Accept": "application/x-ndjson", "Content-Type": "application/json"},
+            method="POST",
+        )
         opener = urllib.request.build_opener(
             urllib.request.ProxyHandler({}),
             _NoRedirectHandler(),
         )
+        saw_success = False
         with opener.open(request, timeout=60) as response:
             while True:
                 line = response.readline(_MAX_PROGRESS_LINE_BYTES + 1)
@@ -89,19 +90,16 @@ def _run_pull(job_id: str, model: str) -> None:
                 ):
                     percent = max(0, min(100, int(completed * 100 / total)))
                 status = str(payload.get("status") or "در حال دریافت")
+                if status.casefold() == "success":
+                    saw_success = True
+                    break
                 _update(
                     job_id,
                     progress=percent,
                     message=status[:160],
                 )
-        with _LOCK:
-            state = _JOBS.get(job_id)
-            if not state:
-                return
-            if state.get("message") == "success":
-                pass
-            elif state.get("status") == "running":
-                raise RuntimeError("Ollama closed the download stream before confirming success.")
+        if not saw_success:
+            raise RuntimeError("Ollama closed the download stream before confirming success.")
         _update(job_id, status="completed", progress=100, message="دانلود و نصب مدل در Ollama تأیید شد.", error=None)
     except urllib.error.HTTPError as exc:
         _update(
