@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$ApplicationArguments = @()
+    [switch]$Dev,
+    [switch]$CheckOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -115,9 +115,13 @@ try {
     }
 
     $env:PAA_VENV_DIR = $selectedVenv
+    $applicationArguments = @()
+    if ($Dev) { $applicationArguments += "--dev" }
+    if ($CheckOnly) { $applicationArguments += "--check-only" }
+
     Write-Host "Runtime directory: $RuntimeRoot"
     Write-Host "Python environment: $selectedVenv"
-    & $python (Join-Path $Root "run.py") @ApplicationArguments
+    & $python (Join-Path $Root "run.py") @applicationArguments
     exit $LASTEXITCODE
 } catch {
     Write-Error $_
