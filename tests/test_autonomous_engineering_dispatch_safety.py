@@ -166,15 +166,15 @@ def test_packaged_state_resolver_prefers_machine_scope(monkeypatch, tmp_path):
     assert state.execution_state_directory() == machine_root
 
 
-def test_packaged_state_resolver_rejects_a_divergent_process_override(monkeypatch, tmp_path):
+def test_packaged_state_resolver_ignores_a_per_user_override_when_machine_scope_exists(monkeypatch, tmp_path):
     from app import autonomous_engineering_state as state
 
+    machine_root = tmp_path / "machine"
     monkeypatch.setattr(state, "_is_windows", lambda: True)
-    monkeypatch.setattr(state, "_machine_configured_state_directory", lambda: str(tmp_path / "machine"))
+    monkeypatch.setattr(state, "_machine_configured_state_directory", lambda: str(machine_root))
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "user"))
 
-    with pytest.raises(RuntimeError, match="differs from the machine-scoped state root"):
-        state.execution_state_directory()
+    assert state.execution_state_directory() == machine_root
 
 
 def test_storage_accessible_checks_the_broker_health_boundary(monkeypatch):
