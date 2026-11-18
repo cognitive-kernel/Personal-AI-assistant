@@ -35,14 +35,9 @@ detect_target() {
         Linux:x86_64:musl) TARGET="x86_64-unknown-linux-musl"; SHA256="58ccf5f1792b8a5a88d01bc910ea131a8b3db4a319a17ad5fad75e0845a3e271" ;;
         Linux:aarch64:gnu) TARGET="aarch64-unknown-linux-gnu"; SHA256="0797542018e541a9288855df555c8077eed06f7a47d206362030480e8ecc9f3d" ;;
         Linux:aarch64:musl) TARGET="aarch64-unknown-linux-musl"; SHA256="37fbb7c5bc66cf99c12aa881949d216181e201dec449772c4329e56487d61179" ;;
-        Linux:i686:gnu|Linux:i386:gnu) TARGET="i686-unknown-linux-gnu"; SHA256="ef1d3f7464e650d639f41f10130b2d9cb06d4171dd9778beb7f93a6d498812c5" ;;
-        Linux:i686:musl|Linux:i386:musl) TARGET="i686-unknown-linux-musl"; SHA256="0fc2dc2355d4d9c8b3695c3a0aedeb6d62ef921e6e78db1bbc0ff32857b944b7" ;;
         Linux:armv7l:gnu|Linux:armv7:gnu) TARGET="armv7-unknown-linux-gnueabihf"; SHA256="8bd2ce216e6d3fe825ec0fde4532dea708964e8c419844d2ed8e9e7901a7a11e" ;;
-        Linux:armv7l:musl|Linux:armv7:musl) TARGET="armv7-unknown-linux-musleabihf"; SHA256="477c4d3759aaf68d76e570da03438d80a6445118e2a3d74500a98144c54324db" ;;
-        Linux:armv6l:musl|Linux:arm:musl) TARGET="arm-unknown-linux-musleabihf"; SHA256="b43b18e668c94f60e39fb91994cd5b4f17474f81d4967039071afb8f18a6b72d" ;;
         Linux:powerpc64le:gnu) TARGET="powerpc64le-unknown-linux-gnu"; SHA256="5c074a4a008037787c665081116b5b7bc77161d1b5b47ca936732f84b498b317" ;;
         Linux:riscv64:gnu) TARGET="riscv64gc-unknown-linux-gnu"; SHA256="96543eb42d59426db0092f1d860f319abb87c83aaa413a9710108cbd4f68c34b" ;;
-        Linux:riscv64:musl) TARGET="riscv64gc-unknown-linux-musl"; SHA256="0cf8c79c766dcbbc641e2a40f7433491c279a5b39869d6138bcd1c71adf82f93" ;;
         Linux:s390x:gnu) TARGET="s390x-unknown-linux-gnu"; SHA256="7e15c75fbd907334790d60037e492877ed053dff82cc1c0e2a1de0825d0d3864" ;;
         *) fail "Unsupported platform or architecture: OS=$OS ARCH=$ARCH libc=$LIBC. No verified uv $UV_VERSION asset is configured for this target." ;;
     esac
