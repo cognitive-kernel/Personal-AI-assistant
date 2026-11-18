@@ -2078,3 +2078,11 @@ PR #770 now places the same explicit, non-escalating argument contract in every 
 - Added regression tests for POSIX watcher session creation, readiness metadata, restore, stop/final snapshot, and cleanup. Exact-head CI is pending.
 - POSIX shutdown now signals the watcher's dedicated process group, not only its parent PID, so a Git child cannot continue writing checkpoint state after the watcher exits. The Windows termination path is unchanged.
 - Shared state resolution no longer requires HOME/USERPROFILE to exist; home discovery is optional and used only to locate a legacy POSIX state tree for migration. A service identity with no home can still resolve the OS-wide data directory.
+
+## 2026-11-18 — Pin the tested Windows shell in the production Codex prompt
+
+Run [#44296129799](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44296129799) completed the Runner setup and the isolated Codex workspace-tool smoke, but the production task session reported that shell commands could not be executed. The task prompt already specified the non-escalating sandbox arguments added in the earlier tool-schema fix, but it still did not pin the Windows `shell` and `login` fields. The preceding smoke prompt did pin both: the absolute `C:\Windows\System32\cmd.exe` executable and `login=false`. That left the successful smoke and the real task using different tool-call contracts.
+
+The production prompt now requires the same explicit Windows shell fields for every `exec_command`, and requires a bounded read-only Git probe before the agent can report that shell execution is unavailable. The prompt regression test now asserts the shell executable, login mode, PowerShell exclusion, and probe command. This does not enable elevated execution or change the `workspace-write` sandbox.
+
+Validation boundary: exact-head CI and a new self-hosted Runner execution are pending. The prompt alignment is implemented, but the autonomous module is not yet considered operationally verified.
