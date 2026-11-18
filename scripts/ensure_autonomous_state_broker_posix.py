@@ -207,35 +207,35 @@ def _migrate_legacy_state(state_dir: Path, legacy_home: Path | None, service_uid
                 "Legacy and shared POSIX state contain conflicting files; both copies were preserved: "
                 + ", ".join(conflicts[:8])
             )
+        # Re-create only missing parent directories. Existing state entries are
+        # never chmod/chown'ed; preserve Runner/app access grants and file modes.
         for source, destination in sources:
-            destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            relative_parent = source.parent.relative_to(legacy)
+            source_parent = legacy / relative_parent
+            directory_chain = []
+            current_source = source_parent
+            while current_source != legacy:
+                directory_chain.append(current_source)
+                current_source = current_source.parent
+            for source_directory in reversed(directory_chain):
+                relative_directory = source_directory.relative_to(legacy)
+                target_directory = state_dir / relative_directory
+                if not target_directory.exists():
+                    target_directory.mkdir(exist_ok=True)
+                    metadata = source_directory.stat(follow_symlinks=False)
+                    os.chown(target_directory, service_uid, metadata.st_gid)
+                    os.chmod(target_directory, stat.S_IMODE(metadata.st_mode))
             descriptor, temporary_name = tempfile.mkstemp(prefix=".state-migration-", dir=destination.parent)
             os.close(descriptor)
             temporary = Path(temporary_name)
             try:
+                source_metadata = source.stat(follow_symlinks=False)
                 shutil.copy2(source, temporary)
-                os.chown(temporary, service_uid, -1)
-                os.chmod(temporary, 0o600)
+                os.chown(temporary, service_uid, source_metadata.st_gid)
+                os.chmod(temporary, stat.S_IMODE(source_metadata.st_mode))
                 os.replace(temporary, destination)
             finally:
                 temporary.unlink(missing_ok=True)
-
-        # A copied state subtree must be writable by the broker identity and
-        # inaccessible to unrelated local accounts, without changing file bytes.
-        for root, directories, files in os.walk(state_dir, followlinks=False):
-            root_path = Path(root)
-            for name in directories:
-                directory = root_path / name
-                if directory.is_symlink():
-                    raise RuntimeError("Shared state contains a symlink after migration.")
-                os.chown(directory, service_uid, -1)
-                os.chmod(directory, 0o700)
-            for name in files:
-                file_path = root_path / name
-                if file_path.is_symlink():
-                    raise RuntimeError("Shared state contains a symlink after migration.")
-                os.chown(file_path, service_uid, -1)
-                os.chmod(file_path, 0o600)
         marker_payload = json.dumps(
             {"schema_version": 1, "target": str(state_dir), "migrated_at": __import__("time").time()},
             ensure_ascii=False,
@@ -391,12 +391,16 @@ def _elevated_setup(
         if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
             raise RuntimeError("Shared POSIX state root must be a real directory.")
         service_uid = info.st_uid
+        if service_uid == 0 and installer_uid != 0:
+            raise RuntimeError(
+                "The existing shared state root is owned by root. Refusing to rewrite its ownership or permissions; "
+                "configure a machine-owned shared path or grant the intended service identity access explicitly."
+            )
     else:
         state_dir.mkdir(parents=True, exist_ok=True)
         service_uid = installer_uid
         os.chown(state_dir, service_uid, -1)
-    os.chown(state_dir, service_uid, -1)
-    os.chmod(state_dir, 0o700)
+        os.chmod(state_dir, 0o700)
     _migrate_legacy_state(state_dir, legacy_home, service_uid)
     try:
         service_user = pwd.getpwuid(service_uid).pw_name
