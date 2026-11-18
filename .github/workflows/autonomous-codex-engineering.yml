@@ -152,10 +152,18 @@ jobs:
           ref: main
           persist-credentials: false
 
-      - name: Provision Python runtime for this Runner job
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
-        with:
-          python-version: "3.11"
+      - name: Bootstrap project-local managed Python runtime for this Runner job
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $bootstrap = Join-Path $env:GITHUB_WORKSPACE "bootstrap.ps1"
+          if (-not (Test-Path -LiteralPath $bootstrap -PathType Leaf)) {
+            throw "Project Python runtime bootstrap script is missing."
+          }
+          & $bootstrap -RuntimeOnly
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not provision the project-local managed Python 3.11 runtime."
+          }
 
       - name: Provision Node.js runtime for this Runner job
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -173,31 +181,46 @@ jobs:
         run: |
           & "$env:GITHUB_WORKSPACE\scripts\persist_autonomous_manual_task.ps1"
 
-      - name: Resolve provisioned Python runtime under the Runner service identity
+      - name: Resolve managed Python runtime under the Runner service identity
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
           Write-Host "Runner identity:"
           whoami
-          $python = Get-Command python -ErrorAction Stop
-          $pythonDirectory = Split-Path -Parent $python.Source
-          $scriptsPath = Join-Path $pythonDirectory "Scripts"
-          & $python.Source --version
+          $venvCandidates = @(
+            (Join-Path $env:GITHUB_WORKSPACE ".venv"),
+            (Join-Path $env:GITHUB_WORKSPACE ".runtime\venvs\python-3.11")
+          )
+          $selectedVenv = $null
+          foreach ($candidate in $venvCandidates) {
+            $candidatePython = Join-Path $candidate "Scripts\python.exe"
+            if (-not (Test-Path -LiteralPath $candidatePython -PathType Leaf)) {
+              continue
+            }
+            & $candidatePython -c "import sys, pip; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)" *> $null
+            if ($LASTEXITCODE -eq 0) {
+              $selectedVenv = [System.IO.Path]::GetFullPath($candidate)
+              break
+            }
+          }
+          if ([string]::IsNullOrWhiteSpace($selectedVenv)) {
+            throw "The managed bootstrap completed without a usable Python 3.11 virtual environment."
+          }
+          $venvPython = Join-Path $selectedVenv "Scripts\python.exe"
+          & $venvPython --version
           if ($LASTEXITCODE -ne 0) {
-            throw "Python cannot execute under the Runner service identity."
+            throw "Managed Python cannot execute under the Runner service identity."
           }
-          $pathEntries = @($pythonDirectory)
-          if (Test-Path -LiteralPath $scriptsPath -PathType Container) {
-            $pathEntries += $scriptsPath
-          }
-          $pathEntries | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          $env:PATH = (($pathEntries -join ";") + ";" + $env:PATH)
-          python --version
+          $venvScripts = Split-Path -Parent $venvPython
+          $venvScripts | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          "PAA_VENV_DIR=$selectedVenv" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $env:PAA_VENV_DIR = $selectedVenv
+          $env:PATH = "$venvScripts;$env:PATH"
+          & $venvPython -c "import sys; print('Managed Python:', sys.executable)"
           if ($LASTEXITCODE -ne 0) {
-            throw "Python is not resolvable through PATH under the Runner service identity."
+            throw "Managed Python is not executable under the Runner service identity."
           }
-          (Get-Command python).Source | Write-Host
-          Write-Host "Python is accessible. Ollama is validated independently through its loopback API."
+          Write-Host "Python is accessible from the project-local managed runtime. Ollama is validated independently through its loopback API."
 
       - name: Prepare Runner virtual environment and install runtime dependencies
         env:
@@ -206,17 +229,21 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          python -m venv .venv
-          $venvPython = Join-Path $env:GITHUB_WORKSPACE ".venv\Scripts\python.exe"
+          if ([string]::IsNullOrWhiteSpace($env:PAA_VENV_DIR)) {
+            throw "PAA_VENV_DIR was not carried into the dependency installation step."
+          }
+          $venvPython = Join-Path $env:PAA_VENV_DIR "Scripts\python.exe"
+          if (-not (Test-Path -LiteralPath $venvPython -PathType Leaf)) {
+            throw "The selected managed Python virtual environment is missing."
+          }
           & $venvPython -m pip install --disable-pip-version-check --retries 10 --timeout 120 -e .
           if ($LASTEXITCODE -ne 0) { throw "Could not install project runtime dependencies for the Runner service identity." }
           & $venvPython -c "import psutil, fastapi, uvicorn; print('RUNNER_RUNTIME_DEPENDENCIES_OK')"
           if ($LASTEXITCODE -ne 0) { throw "Required Runner runtime dependencies are unavailable in the isolated environment." }
-          $venvScripts = Join-Path $env:GITHUB_WORKSPACE ".venv\Scripts"
-          $venvScripts | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          $venvScripts = Split-Path -Parent $venvPython
           $env:PATH = "$venvScripts;$env:PATH"
-          python -c "import sys, psutil; print(sys.executable); print('psutil', psutil.__version__)"
-          if ($LASTEXITCODE -ne 0) { throw "The Runner virtual environment is not active." }
+          & $venvPython -c "import sys, psutil; print(sys.executable); print('psutil', psutil.__version__)"
+          if ($LASTEXITCODE -ne 0) { throw "The Runner managed virtual environment is not active." }
 
       - name: Recover only the latest owned checkpoint through the run-scoped controller
         shell: powershell
