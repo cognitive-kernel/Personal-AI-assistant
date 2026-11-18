@@ -63,7 +63,7 @@ install_verified_uv() {
     archive="$temp_root/$asset"
     extract_root="$temp_root/extract"
     mkdir -p "$extract_root" "$TOOLS_ROOT"
-    trap 'rm -rf "$temp_root"' EXIT HUP INT TERM
+    trap 'rm -rf "$temp_root"' 0 HUP INT TERM
 
     if command -v curl >/dev/null 2>&1; then
         curl --fail --location --retry 3 --connect-timeout 20 --max-time 240 --output "$archive" "$url" ||
@@ -87,13 +87,16 @@ install_verified_uv() {
     [ "$actual" = "$SHA256" ] || fail "uv archive SHA-256 mismatch; refusing to execute the downloaded file."
 
     tar -xzf "$archive" -C "$extract_root" || fail "Could not extract the verified uv archive."
-    binary=$(find "$extract_root" -type f -name uv -print -quit)
+    binary=""
+    for candidate in "$extract_root"/uv-*/uv "$extract_root"/uv; do
+        if [ -f "$candidate" ]; then binary="$candidate"; break; fi
+    done
     [ -n "$binary" ] && [ -f "$binary" ] || fail "The verified uv archive did not contain the uv executable."
     cp "$binary" "$UV_PATH.new"
     chmod 755 "$UV_PATH.new"
     mv -f "$UV_PATH.new" "$UV_PATH"
     rm -rf "$temp_root"
-    trap - EXIT HUP INT TERM
+    trap - 0 HUP INT TERM
 }
 
 mkdir -p "$RUNTIME_ROOT" "$TOOLS_ROOT" "$PYTHON_INSTALL_ROOT" "$CACHE_ROOT"
@@ -121,8 +124,13 @@ if [ -e "$VENV_PATH" ] && ! test_python_environment "$VENV_PATH"; then
 fi
 
 if ! test_python_environment "$VENV_PATH"; then
-    if [ -e "$VENV_PATH" ] && [ -n "$(find "$VENV_PATH" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
-        fail "The selected virtual-environment directory is non-empty but invalid; refusing to overwrite it."
+    if [ -e "$VENV_PATH" ] || [ -L "$VENV_PATH" ]; then
+        [ -d "$VENV_PATH" ] || fail "The selected virtual-environment path exists but is not a directory."
+        for entry in "$VENV_PATH"/* "$VENV_PATH"/.[!.]* "$VENV_PATH"/..?*; do
+            if [ -e "$entry" ] || [ -L "$entry" ]; then
+                fail "The selected virtual-environment directory is non-empty but invalid; refusing to overwrite it."
+            fi
+        done
     fi
     printf '%s\n' "Preparing project-local managed Python 3.11 and virtual environment ..."
     "$UV_PATH" python install 3.11 || fail "Could not install the managed Python 3.11 runtime."
