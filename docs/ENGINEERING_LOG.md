@@ -38,6 +38,34 @@
 
 # Engineering Continuity Log
 
+## 2026-11-18 — Checkpoint-aware State Broker and dashboard admission
+
+### Root cause
+- The pending-work operation counted only task, owner, PR, and cleanup markers. A worktree checkpoint could remain recoverable while the dashboard reported no pending work and accepted a new task.
+- The protected state directory intentionally denies direct access even to an interactive administrator. The UI had no safe status operation for checkpoint metadata, encouraging manual filesystem inspection.
+- The checkpoint selector relied on the newest timestamp. After clearing the current snapshot, an older retained snapshot could become active again.
+- A bare TASK_BLOCKED marker passed report validation even when the explanation was empty; the saved diagnostic then had no actionable detail.
+- The API queried storage health and pending-work status in separate executor jobs and the dispatch endpoint performed another read, allowing inconsistent snapshots and unnecessary executor pressure.
+
+### Corrective change
+- The controller publishes an atomic, path-free checkpoint index with explicit active/inactive states after the patch and metadata are complete. It validates run/task identity, base SHA, timestamp, and patch byte count. Clearing a checkpoint deactivates the exact pointer before deleting only that checkpoint; historical snapshots are retained and an inactive pointer prevents stale reactivation.
+- Windows Named Pipe and POSIX Unix-domain-socket brokers expose the same verified summary. They do not return patch content or filesystem paths. An active or unverified checkpoint blocks new manual tasks and progress cleanup; an unverified pointer also blocks resume. Broker reads consume the atomic pointer and do not wait on the watcher's lifetime lock.
+- The UI now displays the persisted task/checkpoint state. It leaves empty dispatch available to resume a verified checkpoint while disabling new manual tasks; an unknown or inconsistent status disables dispatch.
+- The API reads broker health and pending work through one bounded status probe and reuses that snapshot for admission.
+- A marker-only TASK_BLOCKED report is treated as invalid and the same task is retried with explicit evidence requirements. A substantive explanation is preserved in the existing bounded, redacted run diagnostic.
+- Regression coverage now exercises active/inactive/corrupt checkpoint pointers, path-free broker results, cleanup refusal, dashboard/API admission, and live Windows named-pipe behavior.
+
+### Portability boundary
+- Human account names, group names, home directories, and fixed hardware identifiers are not part of the dashboard contract. Windows and POSIX use platform-specific IPC/locking adapters behind the same broker API; those operating-system primitives are not removed or emulated.
+- Model/context selection remains runtime-driven from Ollama metadata and detected resource limits. The current self-hosted autonomous coding workflow still targets its configured Windows Runner/sandbox; this change does not claim that the Codex Runner workflow itself is already Linux/macOS portable.
+
+### Validation boundary
+- The branch is awaiting exact-head CI. No Python suite, Windows service integration, browser test, dependency audit, or CodeQL result is claimed until GitHub reports it against the final commit.
+- No user data, protected state, checkpoint patch, account ACL, or main branch content has been deleted or modified by this work.
+
+---
+
+
 ## 2026-11-14 — PR #757 follow-up: controller-owned POSIX Codex process group
 
 ### Root cause

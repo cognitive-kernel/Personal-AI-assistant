@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import fcntl
 import json
+import math
 import os
 import signal
 import socket
@@ -141,16 +142,132 @@ class RestrictedStateBroker:
             probe.unlink(missing_ok=True)
         return {"ok": True, "ready": True, "service": "posix-unix-socket", "schema_version": 1}
 
+    @staticmethod
+    def _unknown_checkpoint(reason: str) -> dict[str, Any]:
+        return {"available": True, "verified": False, "reason": reason}
+
+    @staticmethod
+    def _no_checkpoint() -> dict[str, Any]:
+        return {"available": False, "verified": True}
+
+    @staticmethod
+    def _safe_checkpoint_run_id(value: Any) -> bool:
+        return (
+            isinstance(value, str)
+            and 1 <= len(value) <= 100
+            and all(ch.isascii() and (ch.isalnum() or ch in "-_") for ch in value)
+        )
+
+    def _checkpoint_summary(self) -> dict[str, Any]:
+        """Read the atomic pointer or the current run's legacy checkpoint; return no paths."""
+        index_path = self.state_dir / "latest-worktree-checkpoint.json"
+        index_info = self._regular_file(index_path, 16 * 1024)
+        index: dict[str, Any] | None = None
+        if index_info is None:
+            current_path = self.state_dir / "current.json"
+            current_info = self._regular_file(current_path, 256_000)
+            if current_info is None:
+                return self._no_checkpoint()
+            current = self._read_json("current.json", 256_000)
+            if not isinstance(current, dict):
+                return self._unknown_checkpoint("current_progress_unreadable")
+            run_id = current.get("run_id")
+            task = current.get("task", 1)
+        else:
+            try:
+                index = json.loads(index_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, UnicodeError):
+                return self._unknown_checkpoint("checkpoint_index_unreadable")
+            if (
+                not isinstance(index, dict)
+                or index.get("schema_version") != 1
+                or not isinstance(index.get("active"), bool)
+            ):
+                return self._unknown_checkpoint("checkpoint_index_invalid")
+            if index["active"] is False:
+                return self._no_checkpoint()
+            run_id = index.get("run_id")
+            task = index.get("task")
+
+        if (
+            not self._safe_checkpoint_run_id(run_id)
+            or isinstance(task, bool) or not isinstance(task, int) or task < 1
+        ):
+            return self._unknown_checkpoint("checkpoint_index_identity_invalid")
+
+        stem = f"worktree-checkpoint-{run_id}-{task}"
+        metadata_path = self.state_dir / f"{stem}.json"
+        patch_path = self.state_dir / f"{stem}.patch"
+        metadata_info = self._regular_file(metadata_path, 64 * 1024)
+        patch_info = self._regular_file(patch_path)
+        if index is None and metadata_info is None and patch_info is None:
+            return self._no_checkpoint()
+        if metadata_info is None or patch_info is None:
+            return self._unknown_checkpoint("checkpoint_files_incomplete")
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, UnicodeError):
+            return self._unknown_checkpoint("checkpoint_metadata_unreadable")
+        if not isinstance(metadata, dict):
+            return self._unknown_checkpoint("checkpoint_metadata_invalid")
+
+        schema = metadata.get("schema_version")
+        saved_run_id = metadata.get("run_id")
+        saved_task = metadata.get("task")
+        base_sha = metadata.get("base_sha")
+        updated_at = metadata.get("updated_at")
+        patch_bytes = metadata.get("patch_bytes")
+        if (
+            isinstance(schema, bool) or schema not in {2, 3, 4}
+            or saved_run_id != run_id
+            or isinstance(saved_task, bool) or saved_task != task
+            or not isinstance(base_sha, str) or len(base_sha) != 40
+            or any(ch not in "0123456789abcdef" for ch in base_sha)
+            or isinstance(updated_at, bool) or not isinstance(updated_at, (int, float))
+            or not math.isfinite(float(updated_at))
+            or isinstance(patch_bytes, bool) or not isinstance(patch_bytes, int) or patch_bytes < 0
+            or patch_bytes != patch_info.st_size
+        ):
+            return self._unknown_checkpoint("checkpoint_metadata_mismatch")
+
+        if index is not None:
+            index_bytes = index.get("patch_bytes")
+            index_updated = index.get("updated_at")
+            if (
+                index.get("base_sha") != base_sha
+                or isinstance(index_bytes, bool) or not isinstance(index_bytes, int)
+                or index_bytes != patch_info.st_size
+                or isinstance(index_updated, bool) or not isinstance(index_updated, (int, float))
+                or not math.isfinite(float(index_updated))
+                or float(index_updated) != float(updated_at)
+            ):
+                return self._unknown_checkpoint("checkpoint_index_mismatch")
+
+        return {
+            "available": True,
+            "verified": True,
+            "run_id": run_id,
+            "task": task,
+            "base_sha": base_sha,
+            "updated_at": float(updated_at),
+            "patch_bytes": patch_info.st_size,
+            "plan_available": self._regular_file(self.state_dir / f"worktree-plan-{run_id}-{task}.json") is not None,
+        }
+
     def pending_work(self) -> dict[str, Any]:
         def read() -> dict[str, Any]:
             present: dict[str, bool] = {}
             for key, filename in MARKERS.items():
                 present[key] = self._regular_file(self.state_dir / filename) is not None
+            checkpoint = self._checkpoint_summary()
             blockers = [key for key, exists in present.items() if exists]
+            if checkpoint.get("available") is True or checkpoint.get("verified") is False:
+                blockers.append("checkpoint")
             return {
                 "available": True,
                 "blocked": bool(blockers),
                 "markers": present,
+                "checkpoint": checkpoint,
                 "reason": ", ".join(blockers) if blockers else None,
             }
         return self._with_state_lock(read)
@@ -222,46 +339,75 @@ class RestrictedStateBroker:
 
     def cleanup(self) -> dict[str, Any]:
         def perform() -> dict[str, Any]:
-            blockers = [
-                filename
-                for filename in MARKERS.values()
-                if self._regular_file(self.state_dir / filename) is not None
-            ]
-            if blockers:
-                return {
-                    "conflict": True,
-                    "blockers": blockers,
-                    "message": "Durable task state is pending; cleanup was refused.",
-                }
-            removed = 0
-            removed_bytes = 0
-            failed: list[str] = []
-            for name in CLEANUP_NAMES:
-                path = self.state_dir / name
+            # The watcher owns this lock for its full lifetime. Hold it across
+            # both the checkpoint check and telemetry cleanup so a new watcher
+            # cannot publish a checkpoint between the check and file removal.
+            lock_path = self.state_dir / "autonomous-checkpoint-store.lock"
+            flags = os.O_CREAT | os.O_RDWR
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            descriptor = os.open(lock_path, flags, 0o600)
+            locked = False
+            try:
+                if os.fstat(descriptor).st_size == 0:
+                    os.write(descriptor, b"\0")
+                    os.fsync(descriptor)
                 try:
-                    info = self._regular_file(path)
-                    if info is None:
+                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    locked = True
+                except BlockingIOError:
+                    return {
+                        "conflict": True,
+                        "blockers": ["checkpoint_writer_active"],
+                        "message": "A checkpoint watcher owns the durable checkpoint store; cleanup was refused.",
+                    }
+                blockers = [
+                    filename
+                    for filename in MARKERS.values()
+                    if self._regular_file(self.state_dir / filename) is not None
+                ]
+                checkpoint = self._checkpoint_summary()
+                if checkpoint.get("available") is True or checkpoint.get("verified") is False:
+                    blockers.append("latest-worktree-checkpoint")
+                if blockers:
+                    return {
+                        "conflict": True,
+                        "blockers": blockers,
+                        "message": "Durable task state is pending; cleanup was refused.",
+                    }
+                removed = 0
+                removed_bytes = 0
+                failed: list[str] = []
+                for name in CLEANUP_NAMES:
+                    path = self.state_dir / name
+                    try:
+                        info = self._regular_file(path)
+                        if info is None:
+                            continue
+                        path.unlink()
+                        removed += 1
+                        removed_bytes += info.st_size
+                    except FileNotFoundError:
                         continue
-                    path.unlink()
-                    removed += 1
-                    removed_bytes += info.st_size
-                except FileNotFoundError:
-                    continue
-                except OSError:
-                    failed.append(name)
-            return {
-                "conflict": False,
-                "cleaned": not failed,
-                "files_removed": removed,
-                "bytes_removed": removed_bytes,
-                "failed_files": failed,
-                "preserved": [
-                    "history.jsonl",
-                    "scorecard-baseline.json",
-                    "checkpoint files",
-                    "pending task/PR markers",
-                ],
-            }
+                    except OSError:
+                        failed.append(name)
+                return {
+                    "conflict": False,
+                    "cleaned": not failed,
+                    "files_removed": removed,
+                    "bytes_removed": removed_bytes,
+                    "failed_files": failed,
+                    "preserved": [
+                        "history.jsonl",
+                        "scorecard-baseline.json",
+                        "checkpoint files",
+                        "pending task/PR markers",
+                    ],
+                }
+            finally:
+                if locked:
+                    fcntl.flock(descriptor, fcntl.LOCK_UN)
+                os.close(descriptor)
         return self._with_state_lock(perform)
 
     def dispatch(self, request: Any) -> tuple[int, Any]:

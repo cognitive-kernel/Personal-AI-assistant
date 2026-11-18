@@ -171,23 +171,28 @@ distributed lock. Keep the Runner service non-administrator; do not loosen upstr
 Codex sandbox ACLs or substitute unsandboxed execution.
 
 ### Dashboard admission and pending-work safety
-
 The Runner and controller resolve durable storage through the shared
 execution_state_directory() contract. On Windows, the dashboard uses the LocalService
-state broker for health, marker inspection, progress telemetry, diagnostics, and
-bounded cleanup; the Runner and workflow continue to use the same machine state root
-and cross-process byte-range locks directly. POSIX retains the direct shared
-site-data path. The dashboard checks durable task, task-owner, pending-PR, and
-interrupted-cleanup markers while holding the shared lock before accepting a **new
-non-empty manual task**. It does not read or return the task text. If state cannot be
-inspected or the lock cannot be acquired, manual admission fails closed. It also
-checks GitHub for an open controller-owned PR before submitting a new manual task.
+state broker for health, marker inspection, progress telemetry, diagnostics, path-free
+checkpoint status, and bounded cleanup. POSIX exposes the same application contract
+through its restricted Unix-domain-socket broker and OS-wide machine data root. The
+Runner and workflow continue to write to the same machine state root using the shared
+cross-process locks. The dashboard checks durable task, task-owner, pending-PR,
+interrupted-cleanup, and checkpoint state before accepting a **new non-empty manual
+task**. Checkpoint status comes from an atomically published pointer; the dashboard
+does not wait on the watcher's lifetime lock and receives only the run ID, task,
+base SHA, timestamp, patch byte count, and verification state. It never receives task
+text, patch contents, or filesystem paths. If state cannot be inspected or verified,
+admission fails closed. It also checks GitHub for an open controller-owned PR before
+submitting a new manual task.
 
-
-A non-empty manual task is rejected while prior work is pending; the dashboard does not offer a replacement or delete/quarantine existing state. An empty dispatch remains available to resume/reconcile the already-persisted task or pending PR. The workflow's own serialized persistence and capture checks remain authoritative and are not bypassed by the dashboard preflight.
-
-The recovery circuit breaker counts only a failure of the exact `Execute one isolated task, validate, and publish for owner review` workflow step. Admission rejection, schedule gating, prerequisite/setup/sandbox/dependency failures, post-execution checks, and job-level timeouts without a failed-step identity do not count as a task-execution failure. Unknown or malformed GitHub job/step evidence fails closed. This prevents an infrastructure/readiness failure from consuming the coding-task retry budget or dispatching a duplicate task.
-
+A verified active checkpoint blocks a new non-empty task but keeps empty dispatch
+available to resume that same task. A corrupt, stale, or mismatched pointer blocks
+continuation and new admission until reconciled. Completed checkpoints are deactivated
+atomically; retained snapshots are not deleted or silently reactivated. Broker cleanup
+refuses to remove progress data while a checkpoint is active or unverified. The
+workflow's own serialized persistence and capture checks remain authoritative and
+are not bypassed by dashboard preflight.
 
 ## Runtime prerequisite bootstrap
 
@@ -204,8 +209,17 @@ This action installs a model into the existing Ollama service. It does not insta
 The workflow provisions the pinned GitHub CLI release into a run-scoped directory when the required version is not already available. It downloads the official Windows x64 archive and checksum manifest, verifies SHA-256 before extraction, and adds only that job-local executable directory to the current job PATH. This does not modify the host's global installation. The workflow token supplies job authentication; it does not create or persist a Runner-account interactive login.
 ### Shared state on POSIX systems
 
-The POSIX default is the OS-wide application data directory returned by platformdirs.site_data_path(). An explicit AUTONOMOUS_ENGINEERING_PROGRESS_DIR override must be absolute and outside a per-user home directory, and all participating app/Runner processes must receive the same value. On first resolution, any legacy ~/.personal-ai-assistant/autonomous-engineering state is copied under the durable-state, repository-execution, and checkpoint-store locks. The original directory is retained; identical existing files are accepted, conflicting files stop migration without overwriting either copy, and symbolic links stop migration. The shared directory must be provisioned with the required ACLs for every participating service identity; the resolver does not broaden permissions automatically.
+The POSIX default is the OS-wide application data directory returned by platformdirs.site_data_path(). An explicit AUTONOMOUS_ENGINEERING_PROGRESS_DIR override must be absolute and outside a per-user home directory, and all participating app/Runner processes must receive the same value. On first resolution, any legacy ~/.personal-ai-assistant/autonomous-engineering state is copied under the durable-state, repository-execution, and checkpoint-store locks. The original directory is retained; identical existing files are accepted, conflicting files stop migration without overwriting either copy, and symbolic links stop migration. The shared directory is provisioned for the discovered service identities; the resolver does not grant direct state-file access to arbitrary app users or broaden permissions automatically.
 ### POSIX checkpoint lifecycle
 
-Durable checkpoint restore, watcher startup, stop/snapshot, and cleanup use the same shared state-root contract on POSIX and Windows. POSIX watchers are launched in a new session so they remain independent of the foreground controller; Windows retains its detached process-group launch. Missing PROGRAMDATA is not a reason to disable checkpoint recovery on Linux or macOS. The shared state directory must be provisioned for read/write access by the app and Runner identities before dispatch.
+Durable checkpoint restore, watcher startup, stop/snapshot, and cleanup use the same
+shared state-root and checkpoint-index contract on POSIX and Windows. POSIX watchers
+are launched in a new session so they remain independent of the foreground controller;
+Windows retains its detached process-group launch. Missing PROGRAMDATA is not a reason
+to disable checkpoint recovery on Linux or macOS. The POSIX broker socket and shared
+data-root ownership are provisioned from the discovered service identity; the
+application uses its allow-listed socket API and does not need direct access to
+checkpoint files. No human login name, group name, home directory, or fixed hardware
+identifier is configured by the operator. Model context is selected from runtime
+metadata and available memory/compute resources, not a hard-coded GPU/CPU model.
 State-root resolution does not require a login home directory. The current home is consulted only to discover a legacy per-user state tree for one-time migration; if the service identity has no home, the shared site-data root still resolves normally.

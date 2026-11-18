@@ -11,6 +11,22 @@ from fastapi import HTTPException
 from app import autonomous_engineering as agent
 
 
+@pytest.fixture(autouse=True)
+def _stub_durable_pending_work_status(monkeypatch):
+    monkeypatch.setattr(agent, "pending_work_status", lambda: {
+        "available": True,
+        "blocked": False,
+        "markers": {
+            "pending_task": False,
+            "pending_owner": False,
+            "pending_pr": False,
+            "cleanup_in_progress": False,
+        },
+        "checkpoint": {"available": False, "verified": True},
+        "reason": None,
+    })
+
+
 def test_status_readiness_requires_every_local_dependency(monkeypatch):
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_MODEL", "gpt-oss:20b")
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_REPOSITORY", "cognitive-kernel/Personal-AI-assistant")
@@ -34,6 +50,8 @@ def test_status_readiness_requires_every_local_dependency(monkeypatch):
     assert result["checks"]["model_is_codex_context_variant"] is False
     assert result["local_only_inference"] is True
     assert result["workflow"] == "autonomous-codex-engineering.yml"
+    assert result["pending_work"]["available"] is True
+    assert result["checks"]["durable_state_available"] is True
 
 
 def test_status_is_not_ready_when_local_model_is_missing(monkeypatch):
@@ -141,6 +159,11 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="resume-agent"' in page
     assert "OPENAI_API_KEY" not in page
     assert "سرویس Broker" in agent_page
+    assert 'id="checkpoint-state"' in agent_page
+    assert 'id="checkpoint-detail"' in agent_page
+    assert 'id="manual-task-state"' in agent_page
+    assert "data.pending_work" in agent_script
+    assert "checkpoint.verified" in agent_script
     assert "فقط Runner و Broker به فایل‌های محافظت‌شده دسترسی مستقیم دارند" in agent_page
     assert "حساب‌های برنامه از کانال محلی محدود استفاده می‌کنند" in agent_page
     assert "checks.github_runs_available" in agent_script
@@ -2130,3 +2153,94 @@ def test_dashboard_renders_failure_summary_and_codex_diagnostic_details():
     assert "data.diagnostic.diagnostics" in script
     assert "گزارش توضیحی Codex / جزئیات خطا" in script
     assert "گزارش خام GitHub" in script
+
+
+
+def _readiness_with_checkpoint(checkpoint):
+    return {
+        "ready": True,
+        "paused": False,
+        "can_dispatch": True,
+        "github": {"runs_available": True, "recent_runs": []},
+        "pending_work": {
+            "available": True,
+            "blocked": True,
+            "markers": {
+                "pending_task": False,
+                "pending_owner": False,
+                "pending_pr": False,
+                "cleanup_in_progress": False,
+            },
+            "checkpoint": checkpoint,
+            "reason": "checkpoint",
+        },
+    }
+
+
+def test_manual_dispatch_rejects_new_task_when_verified_checkpoint_is_pending(monkeypatch):
+    checkpoint = {
+        "available": True,
+        "verified": True,
+        "run_id": "44269615724",
+        "task": 1,
+        "base_sha": "a" * 40,
+        "updated_at": 1763452800.0,
+        "patch_bytes": 4096,
+    }
+    monkeypatch.setattr(agent, "collect_status", lambda: _readiness_with_checkpoint(checkpoint))
+    monkeypatch.setattr(
+        agent.shutil, "which",
+        lambda _: (_ for _ in ()).throw(AssertionError("blocked manual task must not reach GitHub CLI")),
+    )
+
+    with pytest.raises(HTTPException) as error:
+        agent.dispatch_autonomous_engineering(agent.ManualTaskRequest(task="شروع وظیفهٔ تازه"))
+
+    assert error.value.status_code == 409
+    assert "checkpoint" in error.value.detail
+    assert "44269615724" in error.value.detail
+
+
+def test_empty_dispatch_resumes_verified_checkpoint(monkeypatch):
+    calls = []
+    checkpoint = {
+        "available": True,
+        "verified": True,
+        "run_id": "44269615724",
+        "task": 1,
+        "base_sha": "a" * 40,
+        "updated_at": 1763452800.0,
+        "patch_bytes": 4096,
+    }
+    monkeypatch.setattr(agent, "collect_status", lambda: _readiness_with_checkpoint(checkpoint))
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    def fake_run(command, timeout=8):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    result = agent.dispatch_autonomous_engineering()
+
+    assert result["accepted"] is True
+    assert result["manual_task_submitted"] is False
+    assert calls[-1][-2:] == ["--field", "manual_task="]
+
+
+def test_dispatch_fails_closed_when_checkpoint_integrity_is_unverified(monkeypatch):
+    checkpoint = {
+        "available": True,
+        "verified": False,
+        "reason": "checkpoint_patch_size_mismatch",
+    }
+    monkeypatch.setattr(agent, "collect_status", lambda: _readiness_with_checkpoint(checkpoint))
+    monkeypatch.setattr(
+        agent.shutil, "which",
+        lambda _: (_ for _ in ()).throw(AssertionError("unverified checkpoint must block every dispatch")),
+    )
+
+    with pytest.raises(HTTPException) as error:
+        agent.dispatch_autonomous_engineering()
+
+    assert error.value.status_code == 409
+    assert "یکپارچگی" in error.value.detail

@@ -157,6 +157,197 @@ assert diagnostics and str(diagnostics["run_id"]) == "12345"
         }
     }
 
+    # Publish a test checkpoint and verify that the protected Windows broker
+    # exposes only its validated summary and refuses progress cleanup.
+    $checkpointRunId = "12345"
+    $checkpointTask = 1
+    $checkpointStem = "worktree-checkpoint-$checkpointRunId-$checkpointTask"
+    $checkpointPatch = Join-Path $stateRoot ($checkpointStem + ".patch")
+    $checkpointMetadataPath = Join-Path $stateRoot ($checkpointStem + ".json")
+    $checkpointIndexPath = Join-Path $stateRoot "latest-worktree-checkpoint.json"
+    $privatePatchBytes = [System.Text.Encoding]::UTF8.GetBytes("private checkpoint payload; never return this from the broker")
+    [System.IO.File]::WriteAllBytes($checkpointPatch, $privatePatchBytes)
+    $checkpointPatchLength = (Get-Item -LiteralPath $checkpointPatch).Length
+    $checkpointBaseSha = "c" * 40
+    $checkpointUpdatedAt = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0
+    $checkpointMetadata = [ordered]@{
+        schema_version = 4
+        run_id = $checkpointRunId
+        task = $checkpointTask
+        base_sha = $checkpointBaseSha
+        updated_at = $checkpointUpdatedAt
+        patch_bytes = $checkpointPatchLength
+        watcher_pid = $null
+        watcher_started_at = $null
+        watcher_ready = $false
+    }
+    $checkpointIndex = [ordered]@{
+        schema_version = 1
+        active = $true
+        run_id = $checkpointRunId
+        task = $checkpointTask
+        base_sha = $checkpointBaseSha
+        updated_at = $checkpointUpdatedAt
+        patch_bytes = $checkpointPatchLength
+        plan_available = $false
+    }
+    [System.IO.File]::WriteAllText(
+        $checkpointMetadataPath,
+        (ConvertTo-Json -InputObject $checkpointMetadata -Depth 5 -Compress),
+        [System.Text.UTF8Encoding]::new($false)
+    )
+    [System.IO.File]::WriteAllText(
+        $checkpointIndexPath,
+        (ConvertTo-Json -InputObject $checkpointIndex -Depth 5 -Compress),
+        [System.Text.UTF8Encoding]::new($false)
+    )
+    $checkpointProbe = @'
+from app import autonomous_engineering_state_broker as broker
+from app.autonomous_engineering_state_broker import StateBrokerConflict
+
+pending = broker.pending_work()
+assert pending["available"] is True and pending["blocked"] is True
+checkpoint = pending["checkpoint"]
+assert checkpoint["available"] is True and checkpoint["verified"] is True
+assert checkpoint["run_id"] == "12345" and checkpoint["task"] == 1
+assert checkpoint["patch_bytes"] > 0
+assert "private checkpoint payload" not in repr(pending)
+assert "ProgramData" not in repr(pending)
+try:
+    broker.cleanup()
+except StateBrokerConflict:
+    pass
+else:
+    raise SystemExit("Cleanup was not blocked by the active checkpoint.")
+'@
+    $checkpointProbe | & python -
+    if ($LASTEXITCODE -ne 0) { throw "The Windows Broker did not expose and protect the active checkpoint summary." }
+    if (-not (Test-Path -LiteralPath $checkpointPatch -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $checkpointMetadataPath -PathType Leaf)) {
+        throw "Checkpoint bytes or metadata were modified during status/cleanup preflight."
+    }
+
+    # Deactivation must retain historical checkpoint bytes and allow safe cleanup.
+    $checkpointIndex.active = $false
+    [System.IO.File]::WriteAllText(
+        $checkpointIndexPath,
+        (ConvertTo-Json -InputObject $checkpointIndex -Depth 5 -Compress),
+        [System.Text.UTF8Encoding]::new($false)
+    )
+    $inactiveProbe = @'
+from app import autonomous_engineering_state_broker as broker
+pending = broker.pending_work()
+assert pending["available"] is True and pending["blocked"] is False
+assert pending["checkpoint"] == {"available": False, "verified": True}
+'@
+    $inactiveProbe | & python -
+    if ($LASTEXITCODE -ne 0) { throw "The Windows Broker did not honor the inactive checkpoint pointer." }
+
+    # Cleanup must also fail while a watcher owns the store lock, even before
+    # a new pointer is published.
+    $checkpointLockPath = Join-Path $stateRoot "autonomous-checkpoint-store.lock"
+    $checkpointLockStream = [System.IO.File]::Open(
+        $checkpointLockPath,
+        [System.IO.FileMode]::OpenOrCreate,
+        [System.IO.FileAccess]::ReadWrite,
+        [System.IO.FileShare]::ReadWrite
+    )
+    try {
+        if ($checkpointLockStream.Length -eq 0) {
+            $checkpointLockStream.WriteByte(0)
+            $checkpointLockStream.Flush($true)
+        }
+        $checkpointLockStream.Lock(0, 1)
+        $writerLockProbe = @'
+from app import autonomous_engineering_state_broker as broker
+from app.autonomous_engineering_state_broker import StateBrokerConflict
+try:
+    broker.cleanup()
+except StateBrokerConflict:
+    pass
+else:
+    raise SystemExit("Cleanup ignored an active checkpoint writer lock.")
+'@
+        $writerLockProbe | & python -
+        if ($LASTEXITCODE -ne 0) { throw "The Windows Broker ignored an active checkpoint writer lock." }
+    } finally {
+        try { $checkpointLockStream.Unlock(0, 1) } catch { }
+        $checkpointLockStream.Dispose()
+    }
+
+    # A completed current run without either checkpoint file is an empty
+    # checkpoint state, not a malformed checkpoint.
+    Remove-Item -LiteralPath $checkpointIndexPath -Force
+    $emptyCurrent = [ordered]@{ run_id = "77777"; run_attempt = "1"; status = "completed" }
+    [System.IO.File]::WriteAllText(
+        (Join-Path $stateRoot "current.json"),
+        (ConvertTo-Json -InputObject $emptyCurrent -Depth 5 -Compress),
+        [System.Text.UTF8Encoding]::new($false)
+    )
+    $emptyLegacyProbe = @'
+from app import autonomous_engineering_state_broker as broker
+pending = broker.pending_work()
+assert pending["available"] is True and pending["blocked"] is False
+assert pending["checkpoint"] == {"available": False, "verified": True}
+'@
+    $emptyLegacyProbe | & python -
+    if ($LASTEXITCODE -ne 0) { throw "The Windows Broker misclassified a completed run with no checkpoint." }
+
+    [System.IO.File]::WriteAllText(
+        (Join-Path $stateRoot "current.json"),
+        "{broken",
+        [System.Text.UTF8Encoding]::new($false)
+    )
+    $corruptCurrentProbe = @'
+from app import autonomous_engineering_state_broker as broker
+from app.autonomous_engineering_state_broker import StateBrokerConflict
+pending = broker.pending_work()
+assert pending["blocked"] is True
+assert pending["checkpoint"]["available"] is True
+assert pending["checkpoint"]["verified"] is False
+try:
+    broker.cleanup()
+except StateBrokerConflict:
+    pass
+else:
+    raise SystemExit("Cleanup ignored a malformed current checkpoint identity.")
+'@
+    $corruptCurrentProbe | & python -
+    if ($LASTEXITCODE -ne 0) { throw "The Windows Broker did not fail closed on malformed current progress." }
+
+    # Legacy checkpoints created before the atomic index are resolved only
+    # through the current run identity; no directory scan or path endpoint exists.
+    $legacyCurrent = [ordered]@{ run_id = $checkpointRunId; run_attempt = "1"; status = "completed" }
+    [System.IO.File]::WriteAllText(
+        (Join-Path $stateRoot "current.json"),
+        (ConvertTo-Json -InputObject $legacyCurrent -Depth 5 -Compress),
+        [System.Text.UTF8Encoding]::new($false)
+    )
+    $legacyProbe = @'
+from app import autonomous_engineering_state_broker as broker
+from app.autonomous_engineering_state_broker import StateBrokerConflict
+
+pending = broker.pending_work()
+assert pending["blocked"] is True
+assert pending["checkpoint"]["available"] is True
+assert pending["checkpoint"]["verified"] is True
+assert pending["checkpoint"]["run_id"] == "12345"
+try:
+    broker.cleanup()
+except StateBrokerConflict:
+    pass
+else:
+    raise SystemExit("Legacy checkpoint was not protected.")
+'@
+    $legacyProbe | & python -
+    if ($LASTEXITCODE -ne 0) { throw "The Windows Broker did not resolve a legacy checkpoint from the current run identity." }
+
+    [System.IO.File]::WriteAllText(
+        $checkpointIndexPath,
+        (ConvertTo-Json -InputObject $checkpointIndex -Depth 5 -Compress),
+        [System.Text.UTF8Encoding]::new($false)
+    )
+
     $pendingMarker = Join-Path $stateRoot "pending-manual-task.txt"
     [System.IO.File]::WriteAllText($pendingMarker, "preserve-during-cleanup-test")
     $conflictProbe = @'
@@ -191,6 +382,11 @@ assert result["files_removed"] >= 2
     if (-not (Test-Path -LiteralPath (Join-Path $stateRoot "history.jsonl")) -or
         -not (Test-Path -LiteralPath (Join-Path $stateRoot "scorecard-baseline.json"))) {
         throw "The broker cleanup endpoint did not preserve durable history and baseline data."
+    }
+    if (-not (Test-Path -LiteralPath $checkpointPatch -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $checkpointMetadataPath -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $checkpointIndexPath -PathType Leaf)) {
+        throw "The Broker cleanup endpoint removed retained checkpoint data."
     }
 
     Stop-Service -Name $serviceName -Force -ErrorAction Stop

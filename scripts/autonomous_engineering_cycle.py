@@ -640,9 +640,9 @@ def run_cycle(args: argparse.Namespace) -> int:
             return 0
         if marker == "TASK_BLOCKED":
             blocked_detail = _read_report_diagnostic(report)
-            meaningful_detail = re.sub(r"(?m)^\\s*#{1,6}\\s*", "", blocked_detail)
-            meaningful_detail = re.sub(r"[\\s#*_\\x60>\\-]", "", meaningful_detail)
-            if len(meaningful_detail) < 32:
+            meaningful_detail = "".join(ch for ch in blocked_detail if ch.isalnum())
+            meaningful_detail = "".join(ch for ch in blocked_detail if ch.isalnum())
+            if len(meaningful_detail) < 80:
                 persist_run_diagnostic(
                     args.run_id, args.run_attempt, task=task, attempt=attempt,
                     stage="report_validation", category="invalid_blocked_report",
@@ -650,12 +650,12 @@ def run_cycle(args: argparse.Namespace) -> int:
                     detail=blocked_detail,
                 )
                 failure_feedback = (
-                    f"Attempt {attempt}: TASK_BLOCKED is not accepted without a substantive explanation.\\n"
+                    f"Attempt {attempt}: TASK_BLOCKED is not accepted without a substantive explanation.\n"
                     "Continue the SAME task and preserve all checkpoint/worktree changes. Do not switch tasks. "
                     "Either complete the task, or if it truly cannot be completed safely, explain: "
                     "the exact action attempted, the file/command/evidence involved, the concrete blocker, "
                     "why no safe alternative exists, and what is needed to unblock it. "
-                    "The explanation must contain at least two informative sentences before the final TASK_BLOCKED marker.\\n"
+                    "The explanation must identify the attempted action, concrete evidence, blocker, safe alternatives, and required unblocker.\n"
                 )
                 record(
                     args.run_id, args.run_attempt, "retry",

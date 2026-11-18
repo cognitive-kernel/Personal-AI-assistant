@@ -501,3 +501,83 @@ def test_snapshot_uses_temporary_git_objects_when_checkout_is_read_only(
     assert after_objects == before_objects
     assert not list(state_directory.glob("checkpoint-git-*"))
 
+
+
+
+def _write_indexed_checkpoint(tmp_path: Path, run_id: str, updated_at: float) -> dict[str, Path]:
+    state = checkpoint.paths(run_id, 1)
+    patch = f"checkpoint patch for {run_id}".encode("utf-8")
+    state["patch"].write_bytes(patch)
+    metadata = {
+        "schema_version": 4,
+        "run_id": run_id,
+        "task": 1,
+        "base_sha": "d" * 40,
+        "watcher_pid": None,
+        "watcher_started_at": None,
+        "watcher_ready": False,
+        "updated_at": updated_at,
+        "patch_bytes": len(patch),
+    }
+    state["metadata"].write_text(json.dumps(metadata), encoding="utf-8")
+    return state
+
+
+def test_checkpoint_index_is_authoritative_and_inactive_pointer_preserves_history(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: tmp_path)
+    old_state = _write_indexed_checkpoint(tmp_path, "run-old", 500.0)
+    active_state = _write_indexed_checkpoint(tmp_path, "run-active", 100.0)
+
+    active_metadata = json.loads(active_state["metadata"].read_text(encoding="utf-8"))
+    checkpoint._write_checkpoint_index_unlocked(active_metadata, active_state)
+
+    latest = checkpoint._latest_checkpoint()
+    assert latest is not None
+    assert latest[0]["run_id"] == "run-active"
+    assert latest[1]["patch"].read_bytes() == active_state["patch"].read_bytes()
+
+    index_path = tmp_path / checkpoint.CHECKPOINT_INDEX_NAME
+    active_index = json.loads(index_path.read_text(encoding="utf-8"))
+    assert active_index["active"] is True
+    assert "path" not in active_index
+    assert "patch" not in active_index
+
+    checkpoint._deactivate_checkpoint_index_unlocked(tmp_path, "run-active", 1)
+    inactive_index = json.loads(index_path.read_text(encoding="utf-8"))
+    assert inactive_index["active"] is False
+    assert checkpoint._latest_checkpoint() is None
+
+    # Neither the completed snapshot nor older history is deleted/reactivated.
+    assert active_state["patch"].is_file()
+    assert active_state["metadata"].is_file()
+    assert old_state["patch"].is_file()
+    assert old_state["metadata"].is_file()
+
+
+def test_checkpoint_index_corruption_fails_closed_without_legacy_fallback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: tmp_path)
+    _write_indexed_checkpoint(tmp_path, "run-safe", 100.0)
+    (tmp_path / checkpoint.CHECKPOINT_INDEX_NAME).write_text("{broken", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="Checkpoint index is unreadable"):
+        checkpoint._latest_checkpoint()
+
+
+def test_checkpoint_index_patch_mismatch_preserves_snapshot_and_blocks_restore(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: tmp_path)
+    state = _write_indexed_checkpoint(tmp_path, "run-mismatch", 100.0)
+    metadata = json.loads(state["metadata"].read_text(encoding="utf-8"))
+    checkpoint._write_checkpoint_index_unlocked(metadata, state)
+    state["patch"].write_bytes(b"tampered patch with a different length")
+
+    with pytest.raises(RuntimeError, match="patch size"):
+        checkpoint._latest_checkpoint()
+
+    assert state["metadata"].is_file()
+    assert state["patch"].read_bytes() == b"tampered patch with a different length"

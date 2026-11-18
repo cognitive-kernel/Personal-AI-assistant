@@ -190,3 +190,162 @@ def test_posix_broker_rejects_non_allowlisted_endpoints_without_socket_access(po
 
     with pytest.raises(ValueError, match="Unsupported state-broker endpoint"):
         broker.request("GET", "/v1/files?path=/etc/passwd")
+
+
+
+def _write_posix_checkpoint_fixture(state_dir: Path, run_id: str = "run-123"):
+    patch = b"private checkpoint patch bytes"
+    stem = f"worktree-checkpoint-{run_id}-1"
+    (state_dir / f"{stem}.patch").write_bytes(patch)
+    metadata = {
+        "schema_version": 4,
+        "run_id": run_id,
+        "task": 1,
+        "base_sha": "e" * 40,
+        "updated_at": 1763452800.25,
+        "patch_bytes": len(patch),
+        "watcher_pid": None,
+        "watcher_started_at": None,
+        "watcher_ready": False,
+    }
+    (state_dir / f"{stem}.json").write_text(json.dumps(metadata), encoding="utf-8")
+    index = {
+        "schema_version": 1,
+        "active": True,
+        "run_id": run_id,
+        "task": 1,
+        "base_sha": metadata["base_sha"],
+        "updated_at": metadata["updated_at"],
+        "patch_bytes": len(patch),
+        "plan_available": False,
+    }
+    index_path = state_dir / "latest-worktree-checkpoint.json"
+    index_path.write_text(json.dumps(index), encoding="utf-8")
+    return stem, index_path, patch
+
+
+def test_posix_broker_exposes_only_verified_checkpoint_summary_and_blocks_cleanup(posix_broker):
+    state_dir, _socket_path, broker = posix_broker
+    stem, index_path, patch = _write_posix_checkpoint_fixture(state_dir)
+
+    pending = broker.pending_work()
+    assert pending["available"] is True
+    assert pending["blocked"] is True
+    assert pending["checkpoint"]["available"] is True
+    assert pending["checkpoint"]["verified"] is True
+    assert pending["checkpoint"]["run_id"] == "run-123"
+    assert pending["checkpoint"]["task"] == 1
+    assert pending["checkpoint"]["patch_bytes"] == len(patch)
+    assert patch.decode() not in repr(pending)
+    assert str(state_dir) not in repr(pending)
+    assert "path" not in pending["checkpoint"]
+
+    with pytest.raises(broker.StateBrokerConflict, match="Durable task state is pending"):
+        broker.cleanup()
+    assert (state_dir / f"{stem}.patch").read_bytes() == patch
+    assert (state_dir / f"{stem}.json").is_file()
+
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    index["active"] = False
+    index_path.write_text(json.dumps(index), encoding="utf-8")
+
+    empty = broker.pending_work()
+    assert empty["available"] is True
+    assert empty["blocked"] is False
+    assert empty["checkpoint"] == {"available": False, "verified": True}
+
+    cleaned = broker.cleanup()
+    assert cleaned["conflict"] is False
+    assert cleaned["cleaned"] is True
+    assert (state_dir / f"{stem}.patch").read_bytes() == patch
+    assert (state_dir / f"{stem}.json").is_file()
+
+
+def test_posix_broker_fails_closed_on_checkpoint_pointer_mismatch(posix_broker):
+    state_dir, _socket_path, broker = posix_broker
+    stem, index_path, _patch = _write_posix_checkpoint_fixture(state_dir)
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    index["patch_bytes"] += 1
+    index_path.write_text(json.dumps(index), encoding="utf-8")
+
+    pending = broker.pending_work()
+    assert pending["available"] is True
+    assert pending["blocked"] is True
+    assert pending["checkpoint"]["available"] is True
+    assert pending["checkpoint"]["verified"] is False
+    with pytest.raises(broker.StateBrokerConflict, match="Durable task state is pending"):
+        broker.cleanup()
+    assert (state_dir / f"{stem}.patch").is_file()
+    assert (state_dir / f"{stem}.json").is_file()
+
+
+
+def test_posix_broker_cleanup_refuses_while_checkpoint_watcher_owns_lock(posix_broker):
+    import fcntl
+
+    state_dir, _socket_path, broker = posix_broker
+    lock_path = state_dir / "autonomous-checkpoint-store.lock"
+    with lock_path.open("a+b") as handle:
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"\0")
+            handle.flush()
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            result = broker.cleanup()
+            assert result["conflict"] is True
+            assert "checkpoint_writer_active" in result["blockers"]
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+
+def test_posix_broker_resolves_legacy_checkpoint_from_current_run_without_index(posix_broker):
+    state_dir, _socket_path, broker = posix_broker
+    stem, index_path, patch = _write_posix_checkpoint_fixture(state_dir, "run-legacy")
+    index_path.unlink()
+    (state_dir / "current.json").write_text(
+        json.dumps({"run_id": "run-legacy", "status": "completed"}),
+        encoding="utf-8",
+    )
+
+    pending = broker.pending_work()
+    assert pending["blocked"] is True
+    assert pending["checkpoint"]["available"] is True
+    assert pending["checkpoint"]["verified"] is True
+    assert pending["checkpoint"]["run_id"] == "run-legacy"
+    assert pending["checkpoint"]["patch_bytes"] == len(patch)
+    with pytest.raises(broker.StateBrokerConflict):
+        broker.cleanup()
+    assert (state_dir / f"{stem}.patch").is_file()
+
+
+
+def test_posix_broker_does_not_misclassify_completed_current_run_without_checkpoint(posix_broker):
+    state_dir, _socket_path, broker = posix_broker
+    (state_dir / "current.json").write_text(
+        json.dumps({"run_id": "run-already-completed", "status": "completed"}),
+        encoding="utf-8",
+    )
+
+    pending = broker.pending_work()
+    assert pending["available"] is True
+    assert pending["blocked"] is False
+    assert pending["checkpoint"] == {"available": False, "verified": True}
+
+
+
+def test_posix_broker_fails_closed_when_legacy_current_progress_is_corrupt(posix_broker):
+    state_dir, _socket_path, broker = posix_broker
+    (state_dir / "current.json").write_text("{broken", encoding="utf-8")
+
+    pending = broker.pending_work()
+    assert pending["available"] is True
+    assert pending["blocked"] is True
+    assert pending["checkpoint"]["available"] is True
+    assert pending["checkpoint"]["verified"] is False
+    assert pending["checkpoint"]["reason"] == "current_progress_unreadable"
+
+    with pytest.raises(broker.StateBrokerConflict):
+        broker.cleanup()
+    assert (state_dir / "current.json").read_text(encoding="utf-8") == "{broken"
