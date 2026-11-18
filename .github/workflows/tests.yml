@@ -121,7 +121,10 @@ jobs:
       - name: Parse all PowerShell scripts
         shell: pwsh
         run: |
-          $files = Get-ChildItem -LiteralPath scripts -File -Recurse | Where-Object { $_.Extension -in @(".ps1", ".psm1") }
+          $files = @(
+            Get-ChildItem -LiteralPath scripts -File -Recurse | Where-Object { $_.Extension -in @(".ps1", ".psm1") }
+            Get-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE "bootstrap.ps1")
+          )
           foreach ($file in $files) {
             $tokens = $null
             $errors = $null
