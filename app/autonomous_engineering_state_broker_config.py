@@ -12,14 +12,17 @@ _MAX_CONFIG_BYTES = 8192
 
 
 def config_directory() -> Path:
-    try:
-        from platformdirs import site_config_path
-    except ImportError as exc:  # pragma: no cover
-        raise RuntimeError("platformdirs is required to locate machine broker configuration.") from exc
-    directory = Path(site_config_path("PersonalAIAssistant", appauthor=False))
-    if not directory.is_absolute():
-        raise RuntimeError("Machine broker configuration directory must be absolute.")
-    return directory
+    # Use the OS-defined system configuration root, never XDG_CONFIG_HOME or
+    # another account's profile. These are machine-wide service locations.
+    import sys
+
+    if sys.platform == "darwin":
+        root = Path("/Library/Application Support")
+    elif sys.platform.startswith("linux"):
+        root = Path("/etc/xdg")
+    else:
+        raise RuntimeError("Machine state broker configuration is not supported on this POSIX platform.")
+    return root / "PersonalAIAssistant"
 
 
 def config_file() -> Path:
@@ -36,6 +39,18 @@ def load_config(*, missing_ok: bool = True) -> dict[str, Any] | None:
         raise
     if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode):
         raise RuntimeError("Machine broker configuration must be a regular file.")
+    directory = path.parent
+    try:
+        directory_info = directory.lstat()
+    except OSError as exc:
+        raise RuntimeError("Machine broker configuration directory is unavailable.") from exc
+    if (
+        not stat.S_ISDIR(directory_info.st_mode)
+        or stat.S_ISLNK(directory_info.st_mode)
+        or directory_info.st_uid != 0
+        or directory_info.st_mode & 0o022
+    ):
+        raise PermissionError("Machine broker configuration directory is not protected by the operating system.")
     if info.st_size > _MAX_CONFIG_BYTES:
         raise RuntimeError("Machine broker configuration exceeds its size limit.")
     # Other local accounts may read the endpoint but must not be able to replace it.
