@@ -54,7 +54,7 @@ def test_windows_provisioning_uses_only_the_dedicated_runner_identity():
     assert "Get-AutonomousWindowsAccountSid" in module
     assert "$normalizedAccountName = ConvertTo-AutonomousWindowsAccountName -AccountName $AccountName" in module
     assert "[Security.Principal.NTAccount]$normalizedAccountName" in module
-    assert "Get-AutonomousWindowsAccountSid -AccountName $services[0].StartName" in script
+    assert "Get-AutonomousWindowsAccountSid -AccountName $matchingRunnerServices[0].Service.StartName" in script
     assert "Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity" in script
     assert "$runnerIsLocal = -not [string]::IsNullOrWhiteSpace($runnerLocalName)" in script
     assert script.index("$runnerIsLocal =") < script.index("if ($runnerIsLocal)")
@@ -162,6 +162,10 @@ def test_runner_provisioning_discovers_existing_path_and_service_identity():
     assert "$matchingRunnerServices[0].Service.StartName" in script
     assert 'Join-Path $env:ProgramData "GitHubActionsRunner"' in script
     assert "paa-runner-$suffix" in script
+    assert "Get-Command node -ErrorAction Stop" not in script
+    assert "Get-Command npm -ErrorAction Stop" not in script
+    assert "Python 3.11 or newer is required on the Runner host" not in script
+    assert '.venv\\\\Scripts\\\\python.exe' in script
     assert "$normalizedAccountName = ConvertTo-AutonomousWindowsAccountName -AccountName $AccountName" in module
     assert "ConvertTo-AutonomousWindowsAccountName -AccountName $AccountName" in module
     assert "Runner.Worker.exe" in ensure
