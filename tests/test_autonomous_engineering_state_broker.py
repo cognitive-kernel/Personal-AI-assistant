@@ -93,7 +93,7 @@ def test_broker_pipe_io_uses_overlapped_handles_and_a_shared_deadline():
     assert "_SECURITY_SQOS_PRESENT = 0x00100000" in client
     assert "_SECURITY_IMPERSONATION = 0x00020000" in client
     assert "_PIPE_OPEN_FLAGS = _FILE_FLAG_OVERLAPPED | _SECURITY_SQOS_PRESENT | _SECURITY_IMPERSONATION" in client
-    assert client.count("_PIPE_OPEN_FLAGS,") == 2
+    assert client.count("_PIPE_OPEN_FLAGS,") == 1
     assert "_ERROR_FILE_NOT_FOUND = 2" in client
     assert "def _open_pipe(" in client
     assert "handle = _open_pipe(kernel32, deadline)" in client
