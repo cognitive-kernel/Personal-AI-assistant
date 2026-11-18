@@ -1037,9 +1037,9 @@ def _ensure_windows_state_broker() -> None:
         raise RuntimeError(f"اجرای راه‌انداز Broker ناموفق بود: {type(exc).__name__}") from exc
 
     if result.stdout:
-        print(result.stdout, end="" if result.stdout.endswith("\\n") else "\\n", flush=True)
+        print(result.stdout, end="" if result.stdout.endswith("\n") else "\n", flush=True)
     if result.stderr:
-        print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\\n") else "\\n", flush=True)
+        print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n", flush=True)
     if result.returncode != 0:
         raise RuntimeError(
             "سرویس فضای پیشرفت مشترک نصب/ترمیم نشد. "
