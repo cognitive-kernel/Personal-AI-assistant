@@ -17,7 +17,9 @@ def test_windows_state_broker_is_checked_and_repaired_before_app_startup():
     assert "shell=False" in bootstrap
     assert "if health():" in bootstrap
     assert "if not health():" in bootstrap
-    assert main.index("_ensure_dependencies(dev)") < main.index("_ensure_windows_state_broker()")
+    assert main.index("_ensure_dependencies(dev)") < main.index("from dotenv import load_dotenv")
+    assert main.index("load_dotenv(ROOT / \".env\", override=False)") < main.index("_ensure_windows_state_broker()")
+    assert main.index("_ensure_windows_state_broker()") < main.index("_ensure_ollama()")
     assert main.index("_ensure_windows_state_broker()") < main.index("uvicorn")
 
 
