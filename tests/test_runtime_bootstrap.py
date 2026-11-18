@@ -83,3 +83,20 @@ def test_run_py_uses_a_configurable_project_virtual_environment_without_changing
 def test_gitignore_excludes_the_downloaded_local_runtime():
     source = _read(".gitignore")
     assert "/.runtime/" in source
+
+def test_windows_bootstrap_recognizes_uv_build_metadata_without_reinstalling():
+    windows = _read("bootstrap.ps1")
+
+    assert "if ($version -match ('^uv\\s+' + [regex]::Escape($UvVersion) + '(\\s|$)'))" in windows
+    assert 'if ($version -eq "uv $UvVersion")' not in windows
+
+
+def test_autonomous_runner_uses_managed_python_instead_of_setup_python():
+    workflow = _read(".github/workflows/autonomous-codex-engineering.yml")
+
+    assert "actions/setup-python@" not in workflow
+    assert '& $bootstrap -RuntimeOnly' in workflow
+    assert "PAA_VENV_DIR=$selectedVenv" in workflow
+    assert 'Join-Path $env:PAA_VENV_DIR "Scripts\\python.exe"' in workflow
+    assert "python -m venv .venv" not in workflow
+    assert "Resolve managed Python runtime under the Runner service identity" in workflow
