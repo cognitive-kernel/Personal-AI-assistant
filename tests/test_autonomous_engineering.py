@@ -142,7 +142,7 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert "OPENAI_API_KEY" not in page
     assert "سرویس Broker" in agent_page
     assert "فقط Runner و Broker به فایل‌های محافظت‌شده دسترسی مستقیم دارند" in agent_page
-    assert "هر حساب محلی احراز‌شده" in agent_page
+    assert "حساب‌های برنامه از کانال محلی محدود استفاده می‌کنند" in agent_page
     assert "checks.github_runs_available" in agent_script
     assert 'id="interval-hours"' in page
     assert 'id="execution-mode"' in page
