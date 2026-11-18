@@ -220,13 +220,13 @@ def test_windows_state_root_rejects_process_only_configuration(
         paths.execution_state_directory()
 
 
-def test_powershell_manual_task_persistence_rejects_user_scoped_state_override():
+def test_powershell_manual_task_persistence_uses_machine_scope_over_user_override():
     root = Path(__file__).resolve().parents[1]
     script = (root / "scripts" / "persist_autonomous_manual_task.ps1").read_text(encoding="utf-8")
 
     assert '[Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")' in script
     assert "process/user-scoped" in script
-    assert "machine-scoped state root" in script
+    assert "Machine AUTONOMOUS_ENGINEERING_PROGRESS_DIR must be an absolute shared path" in script
     assert "[System.IO.Path]::IsPathRooted($expandedStateDir)" in script
     assert "differs from the machine-scoped state root" not in script
 
