@@ -41,6 +41,9 @@ def test_windows_broker_setup_discovers_runner_identity_and_path():
     assert '[string]$RunnerAccount = ""' in provision
     assert '[string]$RunnerRoot = ""' in provision
     assert "Start-Process" in ensure and "-Verb RunAs" in ensure
+    assert ensure.index("Stop-Service -Name $runnerService.Name") < ensure.index("Set-AutonomousDirectoryTreeAcl")
+    assert "activeWorkersAfterStop" in ensure
+    assert "Start-Service -Name $runnerService.Name" in ensure
 
 
 def test_posix_broker_setup_uses_dynamic_service_identity_and_native_service_manager():
@@ -59,6 +62,8 @@ def test_posix_broker_setup_uses_dynamic_service_identity_and_native_service_man
     assert "RestrictAddressFamilies=AF_UNIX" in installer
     assert 'sys.executable,\n            "-I",\n            "-S",' in installer
     assert '"/home"' in installer and '"/Users"' in installer
+    assert "_assert_no_active_runner_worker(sys.platform)" in installer
+    assert "sys.path.insert(0, str(project_root))" in installer
     assert "def _prepare_socket_path" in service
     assert "AccessControl" not in service
     assert "MARKERS" in service and "CLEANUP_NAMES" in service
