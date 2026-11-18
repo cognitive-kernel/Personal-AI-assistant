@@ -48,12 +48,29 @@ if ($null -eq $pending -or $pending.available -ne $true) {
 }
 
 $currentUpdatedAt = ""
-if ($null -ne $progress.current -and $progress.current.updated_at) {
-    $currentUpdatedAt = [string]$progress.current.updated_at
+$currentSummary = $null
+if ($null -ne $progress.current) {
+    if ($progress.current.updated_at) {
+        if ($progress.current.updated_at -is [DateTime]) {
+            $currentUpdatedAt = $progress.current.updated_at.ToUniversalTime().ToString(
+                "yyyy-MM-ddTHH:mm:ss'Z'",
+                [Globalization.CultureInfo]::InvariantCulture
+            )
+        } else {
+            $currentUpdatedAt = [string]$progress.current.updated_at
+        }
+    }
+    $currentSummary = @{
+        status = [string]$progress.current.status
+        phase_label = [string]$progress.current.phase_label
+        activity = [string]$progress.current.activity
+        percent = [int]$progress.current.percent
+    }
 }
 $expected = @{
     current_present = ($null -ne $progress.current)
     current_updated_at = $currentUpdatedAt
+    current_summary = $currentSummary
     history_count = @($progress.history).Count
     events_count = @($progress.events).Count
     pending_markers = $pending.markers
@@ -84,9 +101,22 @@ if snapshot.get("storage_configured") is not True:
     raise SystemExit("The second Windows account did not receive configured shared progress.")
 
 pending = broker.pending_work()
+current = snapshot.get("current")
+updated_at = str((current or {}).get("updated_at") or "")
+if updated_at:
+    from datetime import datetime, timezone
+    parsed_updated_at = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+    updated_at = parsed_updated_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+current_summary = None if current is None else {
+    "status": str(current.get("status") or ""),
+    "phase_label": str(current.get("phase_label") or ""),
+    "activity": str(current.get("activity") or ""),
+    "percent": int(current.get("percent") or 0),
+}
 actual = {
-    "current_present": snapshot.get("current") is not None,
-    "current_updated_at": str((snapshot.get("current") or {}).get("updated_at") or ""),
+    "current_present": current is not None,
+    "current_updated_at": updated_at,
+    "current_summary": current_summary,
     "history_count": len(snapshot.get("history") or []),
     "events_count": len(snapshot.get("events") or []),
     "pending_markers": pending.get("markers"),
