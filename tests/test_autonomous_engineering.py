@@ -976,6 +976,11 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     # the successful isolated Codex smoke; otherwise Ollama models may emit
     # an invalid justification/sandbox_permissions combination.
     assert "For EVERY Codex exec_command tool call" in workflow
+    assert "For EVERY Codex exec_command tool call on Windows" in workflow
+    assert "set `shell`" in workflow and r"C:\Windows\System32\cmd.exe" in workflow
+    assert "set `login` to `false`" in workflow
+    assert "Do not use the default PowerShell shell" in workflow
+    assert "git status --short --branch && git rev-parse HEAD" in workflow
     assert "yield_time_ms to the" in workflow and "integer 10000" in workflow
     assert 'sandbox_permissions to "use_default"' in workflow
     assert "Omit justification, prefix_rule," in workflow
