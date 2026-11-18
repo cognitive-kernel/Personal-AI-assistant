@@ -13,3 +13,4 @@ build/
 
 # Downloaded runtime prerequisites and local virtual environment
 prerequisites/
+.runtime/
