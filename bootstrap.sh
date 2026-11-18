@@ -128,6 +128,12 @@ PYTHON="$VENV_PATH/bin/python"
 test_python_environment "$VENV_PATH" || fail "The selected Python environment failed its Python 3.11+ and pip validation."
 export PAA_VENV_DIR="$VENV_PATH"
 
+if [ "$#" -eq 1 ] && [ "$1" = "--runtime-only" ]; then
+    "$PYTHON" -c 'import sys, pip; print("Managed Python runtime bootstrap passed:", sys.version.split()[0])' ||
+        fail "The managed Python runtime failed its final validation."
+    exit 0
+fi
+
 printf '%s\n' "Runtime directory: $RUNTIME_ROOT"
 printf '%s\n' "Python environment: $VENV_PATH"
 exec "$PYTHON" "$ROOT/run.py" "$@"
