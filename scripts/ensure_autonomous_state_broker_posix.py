@@ -1,0 +1,461 @@
+#!/usr/bin/env python3
+"""Idempotently install the POSIX machine state broker using systemd or launchd.
+
+The service identity is derived from the shared state directory owner. No fixed
+login name, primary group, repository checkout path, or user home is required.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import plistlib
+import pwd
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+
+SERVICE_NAME = "personal-ai-assistant-state-broker"
+LAUNCHD_LABEL = "com.personal-ai-assistant.state-broker"
+
+
+def _run(command: list[str], *, timeout: int = 30) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+        shell=False,
+    )
+
+
+def _path_is_secure_executable(path: Path, service_uid: int) -> bool:
+    try:
+        resolved = path.resolve(strict=True)
+        info = resolved.stat()
+    except OSError:
+        return False
+    if not stat.S_ISREG(info.st_mode) or not os.access(resolved, os.X_OK):
+        return False
+    if info.st_uid not in {0, service_uid}:
+        return False
+    if info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        return False
+    for parent in resolved.parents:
+        try:
+            parent_info = parent.stat()
+        except OSError:
+            return False
+        if parent_info.st_uid not in {0, service_uid}:
+            return False
+        if parent_info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            return False
+        if parent == parent.parent:
+            break
+    return True
+
+
+def _select_service_python(service_uid: int, suggested: str) -> Path:
+    candidates = [Path(suggested)]
+    for name in ("python3", "python"):
+        found = shutil.which(name)
+        if found:
+            candidates.append(Path(found))
+    candidates.extend(Path(item) for item in ("/usr/bin/python3", "/usr/local/bin/python3"))
+    seen: set[str] = set()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve(strict=True)
+        except OSError:
+            continue
+        if str(resolved) in seen:
+            continue
+        seen.add(str(resolved))
+        if _path_is_secure_executable(resolved, service_uid):
+            try:
+                version = subprocess.run(
+                    [str(resolved), "-I", "-S", "-c", "import sys; print(sys.version_info.major * 100 + sys.version_info.minor)"],
+                    capture_output=True, text=True, timeout=5, check=False, shell=False,
+                )
+                if version.returncode == 0 and int(version.stdout.strip()) >= 308:
+                    return resolved
+            except (OSError, ValueError, subprocess.TimeoutExpired):
+                continue
+    raise RuntimeError(
+        "No machine-managed Python 3.8+ runtime is available for the POSIX broker. "
+        "Install a system Python runtime, then restart the application; the existing app interpreter was not elevated."
+    )
+
+
+def _write_atomic(path: Path, payload: bytes, mode: int, owner_uid: int = 0) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.parent.is_symlink():
+        raise RuntimeError(f"Refusing a symlinked machine configuration directory: {path.parent}")
+    descriptor, temporary_name = tempfile.mkstemp(prefix=".paa-state-broker-", dir=path.parent)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temporary, mode)
+        os.chown(temporary, owner_uid, -1)
+        os.replace(temporary, path)
+        os.chmod(path, mode)
+        os.chown(path, owner_uid, -1)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _acquire_lock(path: Path):
+    import fcntl
+    flags = os.O_CREAT | os.O_RDWR
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(path, flags, 0o600)
+    if os.fstat(descriptor).st_size == 0:
+        os.write(descriptor, b"\0")
+        os.fsync(descriptor)
+    fcntl.flock(descriptor, fcntl.LOCK_EX)
+    return descriptor
+
+
+def _migrate_legacy_state(state_dir: Path, legacy_home: Path | None) -> None:
+    if legacy_home is None:
+        return
+    legacy = legacy_home / ".personal-ai-assistant" / "autonomous-engineering"
+    if not legacy.exists():
+        return
+    if legacy.is_symlink() or not legacy.is_dir():
+        raise RuntimeError("Legacy POSIX state path is not a safe directory; both locations are preserved.")
+    state_dir.mkdir(parents=True, exist_ok=True)
+    if state_dir.is_symlink():
+        raise RuntimeError("Shared POSIX state root cannot be a symbolic link.")
+    digest = hashlib.sha256(str(legacy.resolve()).encode("utf-8")).hexdigest()[:20]
+    marker = state_dir / f".legacy-migration-{digest}.json"
+    if marker.is_symlink():
+        raise RuntimeError("Legacy migration marker is a symbolic link.")
+    if marker.is_file():
+        try:
+            saved = json.loads(marker.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise RuntimeError("Legacy migration marker is unreadable.") from exc
+        if isinstance(saved, dict) and saved.get("target") == str(state_dir):
+            return
+        raise RuntimeError("Legacy state was previously migrated to another target.")
+
+    lock_names = (
+        "autonomous-durable-state.lock",
+        "repository-execution.lock",
+        "autonomous-checkpoint-store.lock",
+    )
+    lock_paths = sorted(
+        [legacy / name for name in lock_names] + [state_dir / name for name in lock_names],
+        key=lambda value: str(value.resolve()),
+    )
+    descriptors = []
+    try:
+        for lock_path in lock_paths:
+            descriptors.append(_acquire_lock(lock_path))
+        sources = []
+        conflicts = []
+        for root, directories, files in os.walk(legacy, followlinks=False):
+            root_path = Path(root)
+            for name in list(directories):
+                path = root_path / name
+                if path.is_symlink():
+                    raise RuntimeError("Legacy state contains a symlink; migration stopped without changing either copy.")
+            for name in files:
+                source = root_path / name
+                if source.is_symlink():
+                    raise RuntimeError("Legacy state contains a symlink; migration stopped without changing either copy.")
+                relative = source.relative_to(legacy)
+                if relative.name in lock_names:
+                    continue
+                destination = state_dir / relative
+                cursor = destination.parent
+                while cursor != state_dir and state_dir in cursor.parents:
+                    if cursor.is_symlink():
+                        raise RuntimeError("Shared state tree contains a symlink; migration stopped safely.")
+                    cursor = cursor.parent
+                if destination.is_symlink():
+                    raise RuntimeError("A migration target is a symlink; migration stopped safely.")
+                if destination.exists():
+                    if not destination.is_file() or source.read_bytes() != destination.read_bytes():
+                        conflicts.append(relative.as_posix())
+                else:
+                    sources.append((source, destination))
+        if conflicts:
+            raise RuntimeError(
+                "Legacy and shared POSIX state contain conflicting files; both copies were preserved: "
+                + ", ".join(conflicts[:8])
+            )
+        for source, destination in sources:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            descriptor, temporary_name = tempfile.mkstemp(prefix=".state-migration-", dir=destination.parent)
+            os.close(descriptor)
+            temporary = Path(temporary_name)
+            try:
+                shutil.copy2(source, temporary)
+                os.replace(temporary, destination)
+            finally:
+                temporary.unlink(missing_ok=True)
+        marker_payload = json.dumps(
+            {"schema_version": 1, "target": str(state_dir), "migrated_at": __import__("time").time()},
+            ensure_ascii=False,
+            indent=2,
+        ).encode("utf-8") + b"\n"
+        _write_atomic(marker, marker_payload, 0o600)
+    finally:
+        import fcntl
+        for descriptor in reversed(descriptors):
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            finally:
+                os.close(descriptor)
+
+
+def _systemd_unit(
+    service_user: str,
+    python: Path,
+    service_script: Path,
+    state_dir: Path,
+    socket_path: Path,
+) -> str:
+    def quote(value: str) -> str:
+        return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+    args = " ".join(quote(value) for value in (
+        str(python), "-I", "-S", str(service_script),
+        "--state-dir", str(state_dir), "--socket-path", str(socket_path),
+    ))
+    user_line = "" if service_user == "root" else f"User={service_user}\n"
+    return (
+        "[Unit]\n"
+        "Description=Personal AI Assistant local shared-state broker\n"
+        "After=local-fs.target\n"
+        "Before=multi-user.target\n\n"
+        "[Service]\n"
+        "Type=simple\n"
+        f"{user_line}"
+        f"ExecStart={args}\n"
+        "Restart=on-failure\n"
+        "RestartSec=2\n"
+        "NoNewPrivileges=true\n"
+        "ProtectSystem=strict\n"
+        "ProtectHome=true\n"
+        "PrivateTmp=false\n"
+        "ProtectKernelTunables=true\n"
+        "ProtectControlGroups=true\n"
+        "RestrictAddressFamilies=AF_UNIX\n"
+        "LockPersonality=true\n"
+        "MemoryDenyWriteExecute=true\n"
+        "CapabilityBoundingSet=\n"
+        "AmbientCapabilities=\n"
+        "UMask=000\n"
+        f"ReadWritePaths={quote(str(state_dir))} {quote(str(socket_path.parent))}\n\n"
+        "[Install]\n"
+        "WantedBy=multi-user.target\n"
+    )
+
+
+def _install_systemd(
+    service_user: str,
+    python: Path,
+    service_script: Path,
+    state_dir: Path,
+    socket_path: Path,
+) -> None:
+    systemctl = shutil.which("systemctl")
+    if not systemctl or not Path("/run/systemd/system").is_dir():
+        raise RuntimeError("This Linux host is not running systemd; automatic POSIX broker service setup is not supported here.")
+    unit_path = Path("/etc/systemd/system") / f"{SERVICE_NAME}.service"
+    unit_data = _systemd_unit(service_user, python, service_script, state_dir, socket_path).encode("utf-8")
+    _write_atomic(unit_path, unit_data, 0o644)
+    for command in (
+        [systemctl, "daemon-reload"],
+        [systemctl, "enable", "--now", f"{SERVICE_NAME}.service"],
+        [systemctl, "restart", f"{SERVICE_NAME}.service"],
+    ):
+        result = _run(command, timeout=60)
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "").strip()[-1200:]
+            raise RuntimeError(f"systemd service setup failed ({command[1]}): {detail}")
+
+
+def _install_launchd(
+    service_user: str,
+    python: Path,
+    service_script: Path,
+    state_dir: Path,
+    socket_path: Path,
+) -> None:
+    launchctl = shutil.which("launchctl")
+    if not launchctl:
+        raise RuntimeError("launchctl is unavailable; macOS broker service setup cannot continue.")
+    plist_path = Path("/Library/LaunchDaemons") / f"{LAUNCHD_LABEL}.plist"
+    arguments = [
+        str(python), "-I", "-S", str(service_script),
+        "--state-dir", str(state_dir), "--socket-path", str(socket_path),
+    ]
+    plist: dict[str, object] = {
+        "Label": LAUNCHD_LABEL,
+        "ProgramArguments": arguments,
+        "RunAtLoad": True,
+        "KeepAlive": True,
+        "ProcessType": "Background",
+        "Umask": 0,
+    }
+    if service_user != "root":
+        plist["UserName"] = service_user
+    payload = plistlib.dumps(plist, fmt=plistlib.FMT_XML, sort_keys=True)
+    _write_atomic(plist_path, payload, 0o644)
+    # bootout is idempotent: an unloaded service is expected on first install.
+    _run([launchctl, "bootout", "system", str(plist_path)], timeout=20)
+    result = _run([launchctl, "bootstrap", "system", str(plist_path)], timeout=30)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()[-1200:]
+        raise RuntimeError(f"launchd broker bootstrap failed: {detail}")
+    result = _run([launchctl, "kickstart", "-k", f"system/{LAUNCHD_LABEL}"], timeout=30)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()[-1200:]
+        raise RuntimeError(f"launchd broker start failed: {detail}")
+
+
+def _elevated_setup(
+    state_dir: Path,
+    config_dir: Path,
+    service_python: Path,
+    installer_uid: int,
+    legacy_home: Path | None,
+) -> None:
+    if os.geteuid() != 0:
+        raise RuntimeError("POSIX broker installation requires administrator privileges.")
+    if not state_dir.is_absolute() or not config_dir.is_absolute():
+        raise RuntimeError("State and configuration paths must be absolute.")
+    if legacy_home is not None and (not legacy_home.is_absolute() or state_dir == legacy_home or legacy_home in state_dir.parents):
+        raise RuntimeError("Shared state cannot be inside a per-user home directory.")
+    _migrate_legacy_state(state_dir, legacy_home)
+
+    if state_dir.exists():
+        info = state_dir.lstat()
+        if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
+            raise RuntimeError("Shared POSIX state root must be a real directory.")
+        service_uid = info.st_uid
+    else:
+        state_dir.mkdir(parents=True, exist_ok=True)
+        service_uid = installer_uid
+        os.chown(state_dir, service_uid, -1)
+        os.chmod(state_dir, 0o700)
+    try:
+        service_user = pwd.getpwuid(service_uid).pw_name
+    except KeyError as exc:
+        if service_uid == 0:
+            service_user = "root"
+        else:
+            raise RuntimeError(f"Shared state directory owner UID {service_uid} has no local account.") from exc
+
+    python = _select_service_python(service_uid, str(service_python))
+    config_dir.mkdir(parents=True, exist_ok=True)
+    if config_dir.is_symlink():
+        raise RuntimeError("Machine broker configuration directory cannot be a symlink.")
+    os.chown(config_dir, 0, -1)
+    os.chmod(config_dir, 0o755)
+    source = Path(__file__).resolve().parent / "autonomous_state_broker_service_posix.py"
+    if source.is_symlink() or not source.is_file():
+        raise RuntimeError("POSIX state-broker service source is missing or unsafe.")
+    service_script = config_dir / "state_broker_service.py"
+    _write_atomic(service_script, source.read_bytes(), 0o644)
+    socket_hash = hashlib.sha256(str(state_dir.resolve()).encode("utf-8")).hexdigest()[:16]
+    socket_dir = Path("/tmp") / f"paa-state-broker-{socket_hash}"
+    socket_path = socket_dir / "broker.sock"
+
+    system = sys.platform
+    if system.startswith("linux"):
+        _install_systemd(service_user, python, service_script, state_dir, socket_path)
+    elif system == "darwin":
+        _install_launchd(service_user, python, service_script, state_dir, socket_path)
+    else:
+        raise RuntimeError(f"Automatic broker service setup is not implemented for {system}.")
+
+    config = {
+        "schema_version": 1,
+        "state_directory": str(state_dir),
+        "socket_path": str(socket_path),
+        "service_uid": service_uid,
+    }
+    config_payload = json.dumps(config, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
+    _write_atomic(config_dir / "autonomous-state-broker.json", config_payload, 0o644)
+
+    # The client reads the machine config written above. Validate the actual
+    # running service before reporting success.
+    result = _run([str(python), "-I", "-S", "-c", "import socket; s=socket.socket(socket.AF_UNIX); s.settimeout(2); s.connect(" + repr(str(socket_path)) + "); s.close()"], timeout=5)
+    if result.returncode != 0:
+        raise RuntimeError("POSIX state broker service was installed but its local socket is not accepting connections.")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--elevated", action="store_true")
+    parser.add_argument("--state-dir")
+    parser.add_argument("--config-dir")
+    parser.add_argument("--service-python")
+    parser.add_argument("--installer-uid", type=int)
+    parser.add_argument("--legacy-home")
+    args = parser.parse_args()
+
+    if sys.platform == "win32":
+        raise SystemExit("Use the Windows service-broker installer on Windows.")
+    if sys.platform not in {"linux", "darwin"}:
+        raise SystemExit(f"Automatic POSIX broker setup is not supported on {sys.platform}.")
+
+    if not args.elevated:
+        from app.autonomous_engineering_state import execution_state_directory
+        from app.autonomous_engineering_state_broker_config import config_directory
+
+        try:
+            state_dir = execution_state_directory()
+        except (OSError, RuntimeError, ValueError):
+            from app.autonomous_engineering_state import _shared_site_state_directory, _current_home_directory
+            state_dir = _shared_site_state_directory(_current_home_directory())
+        home = Path.home()
+        service_python = Path(getattr(sys, "_base_executable", sys.executable)).resolve()
+        command = [
+            shutil.which("sudo") or "sudo",
+            "--",
+            sys.executable,
+            str(Path(__file__).resolve()),
+            "--elevated",
+            "--state-dir", str(state_dir),
+            "--config-dir", str(config_directory()),
+            "--service-python", str(service_python),
+            "--installer-uid", str(os.geteuid()),
+            "--legacy-home", str(home),
+        ]
+        try:
+            result = subprocess.run(command, check=False, shell=False, timeout=300)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise SystemExit(f"Could not start elevated broker setup: {type(exc).__name__}") from exc
+        return result.returncode
+
+    if not all((args.state_dir, args.config_dir, args.service_python)) or args.installer_uid is None:
+        raise SystemExit("Elevated broker setup is missing required machine paths or identity.")
+    _elevated_setup(
+        Path(args.state_dir),
+        Path(args.config_dir),
+        Path(args.service_python),
+        args.installer_uid,
+        Path(args.legacy_home) if args.legacy_home else None,
+    )
+    print("POSIX machine state broker is installed and healthy.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
