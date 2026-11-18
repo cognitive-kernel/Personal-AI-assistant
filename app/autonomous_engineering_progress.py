@@ -22,56 +22,27 @@ def _progress_dir() -> Path:
 
 
 def storage_accessible() -> bool:
-    if os.name == "nt":
-        from .autonomous_engineering_state_broker import health
-        return health()
-    try:
-        directory = _progress_dir()
-        with os.scandir(directory):
-            pass
-        descriptor, temporary_name = tempfile.mkstemp(
-            prefix=".autonomous-engineering-write-probe-",
-            dir=directory,
-        )
-        try:
-            os.close(descriptor)
-        finally:
-            Path(temporary_name).unlink(missing_ok=True)
-        return True
-    except (OSError, RuntimeError, ValueError):
-        return False
+    """Check the broker boundary, not the dashboard account's filesystem ACL."""
+    from .autonomous_engineering_state_broker import health
+    return health()
 
 
 def _shared_state_snapshot() -> dict[str, Any]:
-    if os.name == "nt":
-        from .autonomous_engineering_state_broker import progress
-        return progress()
-    directory = _progress_dir()
-    return {
-        "current": _read_json(directory / "current.json"),
-        "baseline": _read_json(directory / "scorecard-baseline.json"),
-        "history": _read_history(directory),
-        "events": _read_recent_events(directory),
-        "storage_configured": directory.is_dir(),
-    }
+    from .autonomous_engineering_state_broker import progress
+    return progress()
 
 
 def read_run_diagnostics(run_id: int) -> dict[str, Any] | None:
     if isinstance(run_id, bool) or not isinstance(run_id, int) or run_id <= 0:
         return None
     try:
-        if os.name == "nt":
-            from .autonomous_engineering_state_broker import diagnostics
-            return diagnostics(run_id)
-        path = _progress_dir() / "run-diagnostics" / f"{run_id}.json"
-        return _read_json(path) if path.is_file() and not path.is_symlink() and path.stat().st_size <= 240_000 else None
+        from .autonomous_engineering_state_broker import diagnostics
+        return diagnostics(run_id)
     except (OSError, RuntimeError, ValueError, TypeError):
         return None
 
 
 def cleanup_shared_progress_data() -> dict[str, Any]:
-    if os.name != "nt":
-        raise RuntimeError("The state broker cleanup action is only used on Windows.")
     from .autonomous_engineering_state_broker import cleanup
     return cleanup()
 
@@ -85,26 +56,8 @@ def pending_work_status() -> dict[str, Any]:
         "cleanup_in_progress": "pending-state-cleanup.json",
     }
     try:
-        if os.name == "nt":
-            from .autonomous_engineering_state_broker import pending_work
-            return pending_work()
-        directory = _progress_dir()
-        with durable_state_lock(directory, timeout_seconds=2):
-            present: dict[str, bool] = {}
-            for key, filename in state_files.items():
-                path = directory / filename
-                try:
-                    path.stat()
-                    present[key] = True
-                except FileNotFoundError:
-                    present[key] = False
-        blockers = [key for key, exists in present.items() if exists]
-        return {
-            "available": True,
-            "blocked": bool(blockers),
-            "markers": present,
-            "reason": ", ".join(blockers) if blockers else None,
-        }
+        from .autonomous_engineering_state_broker import pending_work
+        return pending_work()
     except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
         return {
             "available": False,
@@ -134,8 +87,6 @@ def _parse_date(value: str | None) -> date | None:
 
 
 def _scorecard_baseline(saved: dict[str, Any] | None = None) -> dict[str, Any] | None:
-    if saved is None and os.name != "nt":
-        saved = _read_json(_progress_dir() / "scorecard-baseline.json")
     if isinstance(saved, dict):
         saved_date = _parse_date(str(saved.get("date", "")))
         engineering_value = saved.get("engineering_percent")
