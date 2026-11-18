@@ -62,15 +62,9 @@ def load_config(*, missing_ok: bool = True) -> dict[str, Any] | None:
         raise RuntimeError("Machine broker configuration contains invalid paths or service identity.")
     if info.st_uid not in {0, service_uid}:
         raise PermissionError("Machine broker configuration owner does not match the broker service identity.")
-    process_override = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
-    if process_override:
-        import os.path
-        expanded = os.path.abspath(os.path.expandvars(process_override))
-        configured = os.path.abspath(os.path.expandvars(state_dir))
-        if os.path.normcase(expanded) != os.path.normcase(configured):
-            raise RuntimeError(
-                "Process AUTONOMOUS_ENGINEERING_PROGRESS_DIR differs from the machine broker state root."
-            )
+    # The machine-scoped broker configuration is authoritative for every local
+    # account. User/process-scoped environment overrides are deliberately ignored
+    # after provisioning so different login environments cannot split the state.
     return value
 
 
