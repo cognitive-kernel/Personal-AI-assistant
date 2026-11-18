@@ -180,12 +180,12 @@ def _select_service_python(service_uid: int, suggested: str) -> Path:
                     [str(resolved), "-I", "-S", "-c", "import sys; print(sys.version_info.major * 100 + sys.version_info.minor)"],
                     capture_output=True, text=True, timeout=5, check=False, shell=False,
                 )
-                if version.returncode == 0 and int(version.stdout.strip()) >= 308:
+                if version.returncode == 0 and int(version.stdout.strip()) >= 310:
                     return resolved
             except (OSError, ValueError, subprocess.TimeoutExpired):
                 continue
     raise RuntimeError(
-        "No trusted machine-managed Python 3.8+ runtime is available for the POSIX broker. "
+        "No trusted machine-managed Python 3.10+ runtime is available for the POSIX broker. "
         "Install Python through the operating-system package manager, then restart the app. "
         "A user-home virtual environment is never executed by the machine service."
     )
