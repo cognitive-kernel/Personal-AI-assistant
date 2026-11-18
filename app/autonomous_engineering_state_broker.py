@@ -213,6 +213,15 @@ def request(method: str, path: str, *, timeout_ms: int = 3500) -> Any:
     )
     if not allowed:
         raise ValueError("Unsupported state-broker endpoint.")
+    if os.name != "nt":
+        from .autonomous_engineering_state_broker_unix import request_unix
+        return request_unix(
+            method,
+            path,
+            timeout_ms=timeout_ms,
+            error_type=StateBrokerError,
+            conflict_type=StateBrokerConflict,
+        )
     payload = json.dumps(
         {"version": 1, "method": method, "path": path},
         separators=(",", ":"),
