@@ -519,7 +519,7 @@ def _elevated_setup(
     request = json.dumps(
         {"version": 1, "method": "GET", "path": "/v1/health"},
         separators=(",", ":"),
-    ).encode("utf-8") + b"\\n"
+    ).encode("utf-8") + b"\n"
     deadline = __import__("time").monotonic() + 20
     last_error = None
     while __import__("time").monotonic() < deadline:
@@ -533,7 +533,7 @@ def _elevated_setup(
                     chunk = client.recv(4096)
                     if not chunk:
                         break
-                    newline = chunk.find(b"\\n")
+                    newline = chunk.find(b"\n")
                     response.extend(chunk[:newline] if newline >= 0 else chunk)
                     if newline >= 0:
                         break
