@@ -192,7 +192,7 @@ def test_windows_state_root_uses_machine_scope_when_process_override_is_absent(
     assert paths.execution_state_directory() == machine_root
 
 
-def test_windows_state_root_rejects_per_user_override_that_diverges_from_machine(
+def test_windows_state_root_ignores_per_user_override_when_machine_scope_exists(
     monkeypatch, tmp_path: Path
 ):
     from scripts import autonomous_engineering_state_paths as paths
@@ -203,8 +203,7 @@ def test_windows_state_root_rejects_per_user_override_that_diverges_from_machine
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(user_root))
     _install_fake_machine_environment(monkeypatch, str(machine_root))
 
-    with pytest.raises(RuntimeError, match="differs from the machine-scoped state root"):
-        paths.execution_state_directory()
+    assert paths.execution_state_directory() == machine_root
 
 
 def test_windows_state_root_rejects_process_only_configuration(
@@ -227,8 +226,9 @@ def test_powershell_manual_task_persistence_rejects_user_scoped_state_override()
 
     assert '[Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")' in script
     assert "process/user-scoped" in script
-    assert "differs from the machine-scoped state root" in script
+    assert "machine-scoped state root" in script
     assert "[System.IO.Path]::IsPathRooted($expandedStateDir)" in script
+    assert "differs from the machine-scoped state root" not in script
 
 
 def test_durable_and_checkpoint_locks_share_one_platform_primitive():
