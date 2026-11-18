@@ -171,6 +171,8 @@ class RestrictedStateBroker:
             current = self._read_json("current.json", 256_000)
             if not isinstance(current, dict):
                 return self._unknown_checkpoint("current_progress_unreadable")
+            if "run_id" not in current:
+                return self._no_checkpoint()
             run_id = current.get("run_id")
             task = current.get("task", 1)
         else:

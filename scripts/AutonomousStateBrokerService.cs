@@ -429,7 +429,8 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             if (!SafeFileExists(currentPath)) return NoCheckpoint();
             Dictionary<string, object> current = ReadJsonFile("current.json", 256000) as Dictionary<string, object>;
             if (current == null) return UnknownCheckpoint("current_progress_unreadable");
-            runId = Convert.ToString(current.ContainsKey("run_id") ? current["run_id"] : "");
+            if (!current.ContainsKey("run_id")) return NoCheckpoint();
+            runId = Convert.ToString(current["run_id"]);
             object currentTask;
             if (current.TryGetValue("task", out currentTask))
             {
