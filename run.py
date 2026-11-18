@@ -1093,11 +1093,11 @@ def main() -> int:
     check_only = "--check-only" in sys.argv[1:]
     try:
         _ensure_dependencies(dev)
-        _ensure_windows_state_broker()
-        # Load the same project environment file used by app.config before resolving
-        # purpose-specific model overrides for installation.
+        # Load machine/shared-state overrides before the broker resolves its state root.
+        # The same environment is inherited by the elevated setup process.
         from dotenv import load_dotenv
         load_dotenv(ROOT / ".env", override=False)
+        _ensure_windows_state_broker()
         _ensure_ollama()
     except (RuntimeError, OSError, urllib.error.URLError) as exc:
         print(f"پیش‌نیاز آماده نیست: {exc}", file=sys.stderr)
