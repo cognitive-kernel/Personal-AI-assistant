@@ -8,14 +8,12 @@ state directory (discovered by the installer).
 from __future__ import annotations
 
 import argparse
-import array
 import fcntl
 import json
 import os
 import signal
 import socket
 import stat
-import struct
 import threading
 import time
 from pathlib import Path
@@ -50,9 +48,14 @@ class BrokerFailure(Exception):
 
 class RestrictedStateBroker:
     def __init__(self, state_dir: Path):
-        self.state_dir = state_dir.resolve(strict=True)
-        if not self.state_dir.is_dir() or self.state_dir.is_symlink():
-            raise RuntimeError("Shared state root must be a real directory.")
+        supplied = Path(state_dir)
+        try:
+            info = supplied.lstat()
+        except OSError as exc:
+            raise RuntimeError("Shared state root is unavailable.") from exc
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+            raise RuntimeError("Shared state root must be a real directory, not a symlink.")
+        self.state_dir = supplied.resolve(strict=True)
 
     @staticmethod
     def _regular_file(path: Path, maximum_bytes: int | None = None) -> os.stat_result | None:
