@@ -140,7 +140,8 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="pause-agent"' in page
     assert 'id="resume-agent"' in page
     assert "OPENAI_API_KEY" not in page
-    assert "حساب Windows اختصاصی و غیرمدیر" in agent_page
+    assert "سرویس وضعیت مشترک" in agent_page
+    assert "هر حساب محلی احراز‌شده" in agent_page
     assert "checks.github_runs_available" in agent_script
     assert 'id="interval-hours"' in page
     assert 'id="execution-mode"' in page
@@ -991,9 +992,11 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "inputs.manual_task" in workflow
     assert "pending-manual-task.txt" in workflow
     assert "actions/variables" not in workflow
-    assert '"${RunnerAccount}:(OI)(CI)M"' in acl_script
-    assert '"${AppAccount}:(OI)(CI)RX"' in acl_script
-    assert "/inheritance:r /T /C /grant:r" in acl_script
+    assert "[string]$RunnerAccount" in acl_script
+    assert "AppAccount" not in acl_script
+    assert "Set-AutonomousDirectoryTreeAcl" in acl_script
+    assert '"S-1-5-19"' in acl_script
+    assert "PersonalAIAssistantStateBroker" in runner_check
     assert 'window.setInterval(refreshProgress, 5000)' in script
     assert "createElementNS" in script
 
@@ -1981,6 +1984,7 @@ def test_cleanup_removes_only_ephemeral_progress_files_and_preserves_durable_sta
     monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [])
     runtime_dir = tmp_path / "worktree"
     runtime_dir.mkdir()
+    from app import autonomous_engineering_progress as progress
     monkeypatch.setattr(agent, "execution_state_directory", lambda: tmp_path)
     monkeypatch.setattr(agent, "_agent_runtime_directory", lambda: runtime_dir)
     for name in ("events.jsonl", "current.json", "history.jsonl", "scorecard-baseline.json", "worktree-checkpoint-123-1.patch"):
@@ -2052,7 +2056,8 @@ def test_run_diagnostics_are_loaded_from_shared_state_and_sanitized(monkeypatch,
             "recorded_at": "2026-11-17T12:00:00+00:00",
         }],
     }), encoding="utf-8")
-    monkeypatch.setattr(agent, "execution_state_directory", lambda: tmp_path)
+    from app import autonomous_engineering_progress as progress
+    monkeypatch.setattr(progress, "execution_state_directory", lambda: tmp_path)
 
     result = agent._read_run_diagnostics(123)
 

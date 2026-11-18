@@ -21,7 +21,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
-from .autonomous_engineering_progress import get_progress, pending_work_status, storage_accessible
+from .autonomous_engineering_progress import (
+    cleanup_shared_progress_data,
+    get_progress,
+    pending_work_status,
+    read_run_diagnostics,
+    storage_accessible,
+)
 from .ollama_context import maximum_context_tokens, resolve_model_architecture, supports_tool_calling
 from .autonomous_engineering_state import durable_state_lock, execution_state_directory
 from .autonomous_engineering_model_pull import get_model_pull, start_model_pull
@@ -843,10 +849,9 @@ def _read_run_diagnostics(run_id: int) -> dict[str, Any] | None:
     if isinstance(run_id, bool) or not isinstance(run_id, int) or run_id <= 0:
         return None
     try:
-        path = execution_state_directory() / "run-diagnostics" / f"{run_id}.json"
-        if not path.is_file() or path.is_symlink() or path.stat().st_size > _MAX_RUN_DIAGNOSTIC_BYTES:
+        payload = read_run_diagnostics(run_id)
+        if not isinstance(payload, dict):
             return None
-        payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, RuntimeError, ValueError, TypeError):
         return None
     if (
@@ -1028,45 +1033,64 @@ def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
             status_code=409,
             detail="عامل هنوز اجرای فعال یا در صف دارد؛ پاک‌سازی داده‌های موقت تا پایان اجرا مجاز نیست.",
         )
-    directory = execution_state_directory()
-    marker_names = (
-        "pending-manual-task.txt",
-        "pending-manual-task-owner.json",
-        "pending-autonomous-pr.json",
-        "pending-state-cleanup.json",
-    )
     removed = 0
     removed_bytes = 0
     failed_files: list[str] = []
-    try:
-        if directory.is_dir():
-            with durable_state_lock(directory, timeout_seconds=2):
-                blockers = [name for name in marker_names if (directory / name).exists()]
-                if blockers:
-                    raise HTTPException(
-                        status_code=409,
-                        detail="وضعیت پایدار عامل هنوز تعیین‌تکلیف نشده است؛ پاک‌سازی انجام نشد: " + ", ".join(blockers),
-                    )
-                for name in _PROGRESS_CLEANUP_FILES:
-                    path = directory / name
-                    try:
-                        if not path.is_file() or path.is_symlink():
+    if os.name == "nt":
+        try:
+            result = cleanup_shared_progress_data()
+            removed = int(result.get("files_removed", 0))
+            removed_bytes = int(result.get("bytes_removed", 0))
+            failed_files.extend(str(item) for item in result.get("failed_files", []))
+        except RuntimeError as exc:
+            from .autonomous_engineering_state_broker import StateBrokerConflict
+            if isinstance(exc, StateBrokerConflict):
+                blockers = ", ".join(exc.blockers)
+                raise HTTPException(
+                    status_code=409,
+                    detail="وضعیت پایدار عامل هنوز تعیین‌تکلیف نشده است؛ پاک‌سازی انجام نشد: " + blockers,
+                ) from exc
+            raise HTTPException(
+                status_code=503,
+                detail=f"پاک‌سازی امن فضای مشترک ممکن نشد؛ وضعیت پایدار حفظ شد ({type(exc).__name__}).",
+            ) from exc
+    else:
+        directory = execution_state_directory()
+        marker_names = (
+            "pending-manual-task.txt",
+            "pending-manual-task-owner.json",
+            "pending-autonomous-pr.json",
+            "pending-state-cleanup.json",
+        )
+        try:
+            if directory.is_dir():
+                with durable_state_lock(directory, timeout_seconds=2):
+                    blockers = [name for name in marker_names if (directory / name).exists()]
+                    if blockers:
+                        raise HTTPException(
+                            status_code=409,
+                            detail="وضعیت پایدار عامل هنوز تعیین‌تکلیف نشده است؛ پاک‌سازی انجام نشد: " + ", ".join(blockers),
+                        )
+                    for name in _PROGRESS_CLEANUP_FILES:
+                        path = directory / name
+                        try:
+                            if not path.is_file() or path.is_symlink():
+                                continue
+                            size = path.stat().st_size
+                            path.unlink()
+                            removed += 1
+                            removed_bytes += size
+                        except FileNotFoundError:
                             continue
-                        size = path.stat().st_size
-                        path.unlink()
-                        removed += 1
-                        removed_bytes += size
-                    except FileNotFoundError:
-                        continue
-                    except OSError:
-                        failed_files.append(str(path))
-    except HTTPException:
-        raise
-    except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=f"پاک‌سازی امن فضای موقت ممکن نشد؛ checkpointها و وضعیت پایدار عامل حفظ شدند ({type(exc).__name__}).",
-        ) from exc
+                        except OSError:
+                            failed_files.append(str(path))
+        except HTTPException:
+            raise
+        except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"پاک‌سازی امن فضای موقت ممکن نشد؛ checkpointها و وضعیت پایدار عامل حفظ شدند ({type(exc).__name__}).",
+            ) from exc
 
     # These three names are the controller's declared worktree runtime files;
     # durable checkpoints and all pending task/PR ownership files are excluded.

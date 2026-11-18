@@ -68,22 +68,29 @@ $runner = Get-Process -Name "Runner.Listener" -ErrorAction SilentlyContinue | Se
 $runnerReady = [bool]$runner
 $checks += [pscustomobject]@{ Component = "GitHub Runner"; Ready = $runnerReady; Detail = if ($runnerReady) { "Listener process active" } else { "Register and start the self-hosted runner with label ollama" } }
 
-$progressPath = Join-Path $env:ProgramData "PersonalAIAssistant\autonomous-engineering"
-$progressReady = $false
-if (Test-Path -LiteralPath $progressPath -PathType Container) {
-    try {
-        Get-ChildItem -LiteralPath $progressPath -ErrorAction Stop | Select-Object -First 1 | Out-Null
-        $progressReady = $true
-    } catch {}
+$brokerReady = $false
+$brokerDetail = "State broker service is not installed or reachable."
+try {
+    $brokerService = Get-Service -Name "PersonalAIAssistantStateBroker" -ErrorAction Stop
+    if ($brokerService.Status -eq "Running") {
+        Import-Module (Join-Path $PSScriptRoot "AutonomousStateBroker.psm1") -Force
+        $brokerHealth = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health" -TimeoutMilliseconds 4000
+        $brokerReady = ($brokerHealth.ready -eq $true -and $brokerHealth.schema_version -eq 1)
+        $brokerDetail = if ($brokerReady) { "Machine state broker is healthy; no app-user filesystem ACL is required" } else { "Machine state broker reports that protected shared storage is unavailable" }
+    } else {
+        $brokerDetail = "Machine state broker service is not running"
+    }
+} catch {
+    $brokerDetail = "State broker check failed: $($_.Exception.GetType().Name)"
 }
 $checks += [pscustomobject]@{
     Component = "Shared progress storage"
-    Ready = $progressReady
-    Detail = if ($progressReady) { $progressPath } else { "Run configure_autonomous_engineering_progress.ps1 for the app and runner accounts" }
+    Ready = $brokerReady
+    Detail = $brokerDetail
 }
 
 $checks | Format-Table -AutoSize
 if (@($checks | Where-Object { -not $_.Ready }).Count -gt 0) {
     exit 1
 }
-Write-Host "App-account prerequisites are ready. Run check_autonomous_runner.ps1 as the dedicated Runner service account to verify Codex and runner access."
+Write-Host "Application-session prerequisites are ready. Any authenticated local app session uses the machine state broker; Runner file access is checked separately."

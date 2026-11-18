@@ -47,34 +47,32 @@ The autonomous-engineering status API preserves the installed-model inventory fr
    gh auth status
    ```
 
-5. From an elevated PowerShell window in the repository checkout, provision the Runner and shared progress ACLs in one operation:
+5. From an elevated PowerShell window in the repository checkout, provision the Runner and machine state broker in one operation:
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\\scripts\\provision_autonomous_runner.ps1 `
      -Repository "cognitive-kernel/Personal-AI-assistant" `
-     -RunnerAccount "runner-svc" `
-     -AppAccount "app-user"
+     -RunnerAccount "runner-svc"
    ```
 
-   Pass any resolvable Windows account identity for the Runner and application principals: an unqualified name or `COMPUTER\\name`/`.\\name` for a local account, `DOMAIN\\name` for a domain account, or a UPN. A missing local Runner account is created as a standard user; externally managed identities must already exist and be permitted to log on as a service. The application principal may be a user or group. The installer resolves each configured principal to its SID on the target host; it does not assume a fixed username, local Users-group membership, or grant access to a fixed Administrators group. The Runner receives Modify on its own root and shared state; the configured application principal receives read/execute on shared state (or Modify when deliberately configured as the same identity). The local Administrators role is checked only to reject an elevated Runner identity, not used as a data ACL grant. The script verifies the selected Ollama model, obtains a short-lived registration token through the authenticated GitHub CLI, downloads the official latest Windows x64 Runner, verifies GitHub’s published SHA-256 digest, configures the Runner service, and assigns the unique `autonomous-state-owner` label. If the Runner is already configured, rerunning the script preserves its registration and service identity while adding/verifying that label; the workflow schedules only onto the uniquely labelled state owner. The official Runner configuration tool prompts for the service-account password; the password is not passed as a process argument. The registration token is not written to a file or printed. If using a custom shared state root, set `AUTONOMOUS_ENGINEERING_PROGRESS_DIR` as a machine-level environment variable to an absolute path before provisioning; a process-only or per-user override is rejected to prevent the app and service from resolving different state stores.
-
+   Only the dedicated Runner service identity is configured by name. A missing local Runner account is created as a standard user; externally managed identities must already exist and be permitted to log on as a service. No application account, username, or group is required. The provisioning step compiles and installs `PersonalAIAssistantStateBroker` as a LocalService Windows service under the machine-wide `%ProgramData%\\PersonalAIAssistant\\StateBroker` directory, independent of the application checkout or installing user's home. The state directory ACL is reset recursively; only the Runner SID and LocalService retain direct Modify access. The broker pipe is available to authenticated local Windows sessions, but exposes only fixed, allow-listed status, progress, diagnostic, and bounded cleanup operations; it does not accept filesystem paths or expose direct directory/file access. Remote named-pipe clients are rejected. The installer does not add the machine's general Users group to the data ACL. The local Administrators role is checked only to reject an elevated Runner identity, not used as a data ACL grant. The script verifies the selected Ollama model, obtains a short-lived registration token through the authenticated GitHub CLI, downloads the official latest Windows x64 Runner, verifies GitHub’s published SHA-256 digest, configures the Runner service, and assigns the unique `autonomous-state-owner` label. If the Runner is already configured, rerunning the script preserves its registration and service identity while updating and health-checking the broker; the workflow schedules only onto the uniquely labelled state owner. The Runner configuration tool prompts for the service-account password; the password is not passed as a process argument. The registration token is not written to a file or printed. If using a custom state root, set `AUTONOMOUS_ENGINEERING_PROGRESS_DIR` as a machine-level environment variable to an absolute path before provisioning; process-only or per-user overrides are rejected.
    The script requires an elevated shell and repository **Administration: write** permission. It refuses to overwrite an existing configured Runner or a non-empty unconfigured Runner directory. If a Runner is already configured, it verifies the service identity and starts it without re-registering.
 
 6. In **Settings → Actions → General → Workflow permissions**, allow GitHub Actions to create and approve pull requests if the repository requires it. The autonomous job requests only `contents: write`, `pull-requests: write`, and `actions: write` for the trusted controller. The controller never calls GitHub's PR merge API. It leaves the validated PR open for owner review; the owner performs the merge manually. Do not disable branch protection or grant a bypass.
-7. From the application account and the application checkout, run the app-side readiness check:
+7. From any Windows account that will launch the application, run the app-side readiness check:
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\\scripts\\check_autonomous_agent.ps1
    ```
 
-   This checks the local Ollama endpoint/model, application-account GitHub CLI authentication, Runner.Listener visibility, and read access to shared progress storage. Pass the exact saved model via `-SelectedModel <saved-model>`. It intentionally does not require Codex CLI to be installed in the application account.
+   This checks the local Ollama endpoint/model, that account's GitHub CLI authentication, Runner.Listener visibility, and the machine broker's storage health. No app-account filesystem ACL or fixed application username is required. Pass the exact saved model via `-SelectedModel <saved-model>`. It intentionally does not require Codex CLI to be installed in the application session.
 8. From the Runner service account, run the Runner-side check from its checked-out workspace:
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\\scripts\\check_autonomous_runner.ps1
    ```
 
-   This checks that the Runner account is non-administrator, plus Codex CLI, the Ollama loopback API and selected model, Runner.Listener, and write access to shared progress storage. Ollama CLI installation and PATH visibility are not Runner prerequisites. Pass the exact saved model via `-SelectedModel <saved-model>`. It does not require or use GitHub CLI authentication. The workflow repeats the critical Runner checks before every Codex session.
+   This checks that the Runner account is non-administrator, plus Codex CLI, the Ollama loopback API and selected model, Runner.Listener, the Runner's direct write access to the state root, and the LocalService broker's health. Ollama CLI installation and PATH visibility are not Runner prerequisites. Pass the exact saved model via `-SelectedModel <saved-model>`. It does not require or use GitHub CLI authentication. The workflow repeats the critical Runner checks before every Codex session.
 9. Start the local app and open `http://127.0.0.1:8000/autonomous-engineering`. When application-side readiness passes, use **شروع صف پیوسته** or start the workflow from GitHub Actions. The workflow performs its own Runner-side checks and fails closed if the Runner account is not configured correctly.
 
 ## Workflow behavior
@@ -94,7 +92,7 @@ The autonomous-engineering status API preserves the installed-model inventory fr
 
 ## Dashboard
 
-The local page at `/autonomous-engineering` reports Ollama reachability, selected-model presence, the Codex CLI visible to the application account (informational only), Runner.Listener process state, application-account GitHub CLI authentication, shared progress-storage access, and recent workflow runs. The workflow separately verifies Codex CLI and write access under the actual Runner service account before every coding session. It provides explicit manual dispatch and cancellation controls. It does not install the runner or silently start privileged Windows services.
+The local page at `/autonomous-engineering` reports Ollama reachability, selected-model presence, the Codex CLI visible to the current application session (informational only), Runner.Listener process state, current-session GitHub CLI authentication, brokered shared progress-storage access, and recent workflow runs. The workflow separately verifies Codex CLI and direct write access under the actual Runner service account before every coding session. It provides explicit manual dispatch and cancellation controls. It does not install the Runner or silently start privileged Windows services.
 
 During each Codex session, a detached Windows checkpoint watcher atomically saves the allowlisted worktree diff and agent plan to `%ProgramData%\PersonalAIAssistant\\autonomous-engineering` every 20 seconds. Before the next checkout cleanup, the workflow stops the previous watcher and captures a final snapshot. A retry restores the checkpoint only when its immutable base SHA still matches `main`; otherwise it preserves the checkpoint and fails closed instead of applying it to a different code base. Watcher ownership metadata binds run ID, task, base SHA, PID, and process creation time. Recovery must confirm the exact process has exited before changing checkpoint state; access denied, ambiguous identity, or an unresponsive process aborts recovery and preserves the checkpoint. The watcher process lifecycle is isolated from checkpoint serialization policy in `scripts/autonomous_engineering_checkpoint_process.py`. Checkpoint files stay outside the Git repository and never contain workflow credentials.
 
@@ -107,7 +105,7 @@ The page also separates two progress measures:
 - **Agent plan progress:** the percentage is the completed/total count of Codex's structured plan items (equal-weight task count, not estimated effort). The current workflow phase and active step are displayed separately; the plan can reach 100% before tests, independent validation, owner review, manual merge, and post-merge checks finish. Codex runs with `--json`; the wrapper records bounded activity events and never publishes raw command output or model reasoning. The plan file is temporary and excluded from the candidate patch.
 - **Project progress:** the engineering-completion and overall-acceptance percentages from `docs/ACCEPTANCE_SCORECARD.md`. The workflow snapshots the trusted `main`-branch scorecard before Codex starts. A dated chart point is recorded only when a later run observes changed accepted percentages on `main`; unmerged candidate changes are never recorded, and repeated runs with unchanged scores do not create artificial chart points. This keeps daily, weekly, and custom date-range charts limited to verified progress changes. Historical points are not fabricated or backfilled.
 
-The app polls the lightweight progress endpoint every five seconds and draws the chart with native SVG; no charting dependency or full-page reload is used. Activity details are collapsed by default. Progress state and its bounded event history are stored under `%ProgramData%\PersonalAIAssistant\autonomous-engineering`. The Runner service account and local app account must both have access, configured by the one-time ACL script above. If that directory is not accessible, the page reports that live telemetry is unavailable rather than inventing values.
+The app polls the lightweight progress endpoint every five seconds and draws the chart with native SVG; no charting dependency or full-page reload is used. Activity details are collapsed by default. Progress state and its bounded event history are stored under `%ProgramData%\\PersonalAIAssistant\\autonomous-engineering`. The Runner SID and LocalService broker SID alone have direct filesystem access. App sessions use the local named-pipe broker for fixed read/status operations; they never receive read/write ACLs on the protected state tree. If the service or state root is unavailable, the page reports that live telemetry is unavailable rather than inventing values.
 
 The AI-learning page and autonomous-engineering page both include the primary navigation menu. The main dashboard also links to the autonomous-engineering page.
 
@@ -150,25 +148,39 @@ Ollama executable or profile. The API server must remain available on loopback, 
 capability, context, and runtime-allocation checks remain mandatory.
 
 The Runner installation root defaults to
-`%ProgramData%\GitHubActionsRunner`. The shared state root defaults to
-`%ProgramData%\PersonalAIAssistant\autonomous-engineering` and can be overridden
+`%ProgramData%\\GitHubActionsRunner`. The shared state root defaults to
+`%ProgramData%\\PersonalAIAssistant\\autonomous-engineering` and can be overridden
 with `AUTONOMOUS_ENGINEERING_PROGRESS_DIR`, which must be an absolute path. Windows
 fails closed rather than falling back to a per-user home directory if `PROGRAMDATA`
-is unavailable. The provisioning script resolves the
-configured application and Runner account names to their current machine SIDs and
-applies access to those selected identities; no account name or SID is embedded in
-the Python modules or workflow paths.
+is unavailable. The provisioning script resolves the dedicated Runner account to its
+current SID. It does not require or resolve an application account. A LocalService
+Windows service owns the machine state broker and the direct filesystem ACL includes
+only the Runner and LocalService SIDs. The dashboard communicates with the broker over
+a local named pipe; authenticated local sessions can use only fixed allow-listed
+operations and cannot provide paths, enumerate the data directory, or access
+checkpoint files directly. The pipe rejects remote clients. The data directory is
+never granted to the machine-wide Users group or Everyone.
 
 Python and PowerShell serialize durable state through the same byte-range lock file
-inside the shared state directory. This lock works across Windows logon sessions;
-the directory ACL is a separate installation concern and must grant the participating
-application/Runner identities the access required by their roles. The lock is local
-to one host and is not a distributed lock. Keep the Runner service non-administrator;
-do not loosen upstream Codex sandbox ACLs or substitute unsandboxed execution.
+inside the shared state directory. The lock works across Windows logon sessions.
+The LocalService broker uses that same lock for marker inspection and cleanup,
+preserving cross-process exclusion. The lock is local to one host and is not a
+distributed lock. Keep the Runner service non-administrator; do not loosen upstream
+Codex sandbox ACLs or substitute unsandboxed execution.
 
 ### Dashboard admission and pending-work safety
 
-The dashboard and Runner resolve the durable state directory through the same shared execution_state_directory() contract. Windows uses the machine-scoped application data root; POSIX uses the OS-wide application data root supplied by platformdirs, never the current user's home directory. The dashboard checks durable task, task-owner, pending-PR, and interrupted-cleanup markers while holding the shared cross-process file lock before accepting a **new non-empty manual task**. It does not read or return the task text. If state cannot be inspected or the lock cannot be acquired, manual admission fails closed. It also checks GitHub for an open controller-owned PR before submitting a new manual task.
+The Runner and controller resolve durable storage through the shared
+execution_state_directory() contract. On Windows, the dashboard uses the LocalService
+state broker for health, marker inspection, progress telemetry, diagnostics, and
+bounded cleanup; the Runner and workflow continue to use the same machine state root
+and cross-process byte-range locks directly. POSIX retains the direct shared
+site-data path. The dashboard checks durable task, task-owner, pending-PR, and
+interrupted-cleanup markers while holding the shared lock before accepting a **new
+non-empty manual task**. It does not read or return the task text. If state cannot be
+inspected or the lock cannot be acquired, manual admission fails closed. It also
+checks GitHub for an open controller-owned PR before submitting a new manual task.
+
 
 A non-empty manual task is rejected while prior work is pending; the dashboard does not offer a replacement or delete/quarantine existing state. An empty dispatch remains available to resume/reconcile the already-persisted task or pending PR. The workflow's own serialized persistence and capture checks remain authoritative and are not bypassed by the dashboard preflight.
 

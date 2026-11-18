@@ -39,7 +39,6 @@ function Set-AutonomousDirectoryAcl {
     param(
         [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$Path,
         [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string]$RunnerSid,
-        [Parameter()][ValidatePattern("^S-1-")][string]$ReadOnlySid,
         [Parameter()][ValidatePattern("^S-1-")][string]$AdditionalModifySid
     )
 
@@ -49,9 +48,6 @@ function Set-AutonomousDirectoryAcl {
         $modifySids += $AdditionalModifySid
     }
     $allowedSids = @($modifySids)
-    if ($ReadOnlySid -and $ReadOnlySid -notin $allowedSids) {
-        $allowedSids += $ReadOnlySid
-    }
 
     & $icacls.Source $Path /inheritance:r | Out-Null
     if ($LASTEXITCODE -ne 0) {
@@ -80,9 +76,6 @@ function Set-AutonomousDirectoryAcl {
     }
 
     $grants = @($modifySids | ForEach-Object { "*$($_):(OI)(CI)M" })
-    if ($ReadOnlySid -and $ReadOnlySid -notin $modifySids) {
-        $grants += "*$($ReadOnlySid):(OI)(CI)RX"
-    }
     $arguments = @($Path, "/grant:r") + $grants
     & $icacls.Source @arguments | Out-Null
     if ($LASTEXITCODE -ne 0) {
@@ -100,4 +93,111 @@ function Set-AutonomousDirectoryAcl {
     }
 }
 
-Export-ModuleMember -Function ConvertTo-AutonomousWindowsAccountName, Get-AutonomousLocalAccountName, Get-AutonomousWindowsAccountSid, Set-AutonomousDirectoryAcl
+
+function Set-AutonomousDirectoryTreeAcl {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$Path,
+        [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string[]]$ModifySids,
+        [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string]$OwnerSid,
+        [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string]$InstallerSid
+    )
+
+    $root = [System.IO.Path]::GetFullPath($Path)
+    if (-not (Test-Path -LiteralPath $root -PathType Container)) {
+        throw "The shared autonomous state root must be an existing directory."
+    }
+    $rootItem = Get-Item -LiteralPath $root -Force -ErrorAction Stop
+    if (-not $rootItem.PSIsContainer -or ($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        throw "The shared autonomous state root must be a real directory."
+    }
+
+    # Preflight the complete tree before changing ownership or ACLs. Enumerate
+    # one directory at a time and reject reparse points before descending into
+    # them; never use recursive takeown/icacls operations on an untrusted tree.
+    $items = New-Object 'System.Collections.Generic.List[System.IO.FileSystemInfo]'
+    $pendingDirectories = New-Object 'System.Collections.Generic.Stack[string]'
+    $pendingDirectories.Push($root)
+    while ($pendingDirectories.Count -gt 0) {
+        $directory = $pendingDirectories.Pop()
+        foreach ($entry in [System.IO.Directory]::EnumerateFileSystemEntries($directory)) {
+            $attributes = [System.IO.File]::GetAttributes($entry)
+            if (($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "The shared state tree contains a reparse point; refusing to change permissions."
+            }
+            if (($attributes -band [IO.FileAttributes]::Directory) -ne 0) {
+                $directoryInfo = [System.IO.DirectoryInfo]::new($entry)
+                $items.Add($directoryInfo)
+                $pendingDirectories.Push($entry)
+            } else {
+                $items.Add([System.IO.FileInfo]::new($entry))
+            }
+        }
+    }
+
+    $allowed = @($ModifySids | Select-Object -Unique)
+    if ($allowed.Count -lt 1) { throw "At least one state-owner SID is required." }
+    $targets = @($items | Sort-Object -Property @{ Expression = { $_.FullName.Length }; Descending = $true }) + @($rootItem)
+
+    # Work on each preflighted path individually, from the root downward.
+    # Granting the root first preserves traversal for protected child directories.
+    $provisionTargets = @($rootItem) + @(
+        $items | Sort-Object -Property @{ Expression = { $_.FullName.Length }; Descending = $false }
+    )
+    $takeown = Get-Command takeown.exe -ErrorAction Stop
+    $icacls = Get-Command icacls.exe -ErrorAction Stop
+    foreach ($item in $provisionTargets) {
+        & $takeown.Source /F $item.FullName | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not take temporary ownership of '$($item.FullName)' for ACL repair."
+        }
+        $installerGrant = if ($item -is [System.IO.DirectoryInfo]) {
+            "*$($InstallerSid):(OI)(CI)M"
+        } else {
+            "*$($InstallerSid):M"
+        }
+        & $icacls.Source $item.FullName /grant:r $installerGrant /C /Q | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not grant temporary installer access to '$($item.FullName)'."
+        }
+    }
+    foreach ($item in $targets) {
+        $acl = Get-Acl -LiteralPath $item.FullName -ErrorAction Stop
+        $acl.SetAccessRuleProtection($true, $false)
+        foreach ($rule in @($acl.Access)) {
+            $acl.RemoveAccessRuleSpecific($rule)
+        }
+        foreach ($sid in $allowed) {
+            $inheritance = if ($item -is [System.IO.DirectoryInfo]) {
+                [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
+                    [Security.AccessControl.InheritanceFlags]::ObjectInherit
+            } else {
+                [Security.AccessControl.InheritanceFlags]::None
+            }
+            $newRule = [Security.AccessControl.FileSystemAccessRule]::new(
+                [Security.Principal.SecurityIdentifier]$sid,
+                [Security.AccessControl.FileSystemRights]::Modify,
+                $inheritance,
+                [Security.AccessControl.PropagationFlags]::None,
+                [Security.AccessControl.AccessControlType]::Allow
+            )
+            $acl.SetAccessRule($newRule)
+        }
+        $acl.SetOwner([Security.Principal.SecurityIdentifier]$OwnerSid)
+        Set-Acl -LiteralPath $item.FullName -AclObject $acl -ErrorAction Stop
+        $verified = Get-Acl -LiteralPath $item.FullName -ErrorAction Stop
+        $verifiedOwner = $verified.Owner
+        $verifiedOwnerSid = ([Security.Principal.NTAccount]$verifiedOwner).Translate([Security.Principal.SecurityIdentifier]).Value
+        if ($verifiedOwnerSid -ne $OwnerSid) {
+            throw "Could not transfer ownership of '$($item.FullName)' to the broker service identity."
+        }
+        foreach ($rule in $verified.Access) {
+            $sid = $rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+            if ($sid -notin $allowed) {
+                throw "Unexpected principal remains on '$($item.FullName)' ACL: $sid."
+            }
+        }
+    }
+}
+
+Export-ModuleMember -Function ConvertTo-AutonomousWindowsAccountName, Get-AutonomousLocalAccountName, Get-AutonomousWindowsAccountSid, Set-AutonomousDirectoryAcl, Set-AutonomousDirectoryTreeAcl

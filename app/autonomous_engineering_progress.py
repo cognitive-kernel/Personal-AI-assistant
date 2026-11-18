@@ -22,6 +22,9 @@ def _progress_dir() -> Path:
 
 
 def storage_accessible() -> bool:
+    if os.name == "nt":
+        from .autonomous_engineering_state_broker import health
+        return health()
     try:
         directory = _progress_dir()
         with os.scandir(directory):
@@ -39,6 +42,40 @@ def storage_accessible() -> bool:
         return False
 
 
+def _shared_state_snapshot() -> dict[str, Any]:
+    if os.name == "nt":
+        from .autonomous_engineering_state_broker import progress
+        return progress()
+    directory = _progress_dir()
+    return {
+        "current": _read_json(directory / "current.json"),
+        "baseline": _read_json(directory / "scorecard-baseline.json"),
+        "history": _read_history(directory),
+        "events": _read_recent_events(directory),
+        "storage_configured": directory.is_dir(),
+    }
+
+
+def read_run_diagnostics(run_id: int) -> dict[str, Any] | None:
+    if isinstance(run_id, bool) or not isinstance(run_id, int) or run_id <= 0:
+        return None
+    try:
+        if os.name == "nt":
+            from .autonomous_engineering_state_broker import diagnostics
+            return diagnostics(run_id)
+        path = _progress_dir() / "run-diagnostics" / f"{run_id}.json"
+        return _read_json(path) if path.is_file() and not path.is_symlink() and path.stat().st_size <= 240_000 else None
+    except (OSError, RuntimeError, ValueError, TypeError):
+        return None
+
+
+def cleanup_shared_progress_data() -> dict[str, Any]:
+    if os.name != "nt":
+        raise RuntimeError("The state broker cleanup action is only used on Windows.")
+    from .autonomous_engineering_state_broker import cleanup
+    return cleanup()
+
+
 def pending_work_status() -> dict[str, Any]:
     """Inspect durable ownership markers without reading or changing task data."""
     state_files = {
@@ -48,6 +85,9 @@ def pending_work_status() -> dict[str, Any]:
         "cleanup_in_progress": "pending-state-cleanup.json",
     }
     try:
+        if os.name == "nt":
+            from .autonomous_engineering_state_broker import pending_work
+            return pending_work()
         directory = _progress_dir()
         with durable_state_lock(directory, timeout_seconds=2):
             present: dict[str, bool] = {}
@@ -93,8 +133,9 @@ def _parse_date(value: str | None) -> date | None:
         return None
 
 
-def _scorecard_baseline() -> dict[str, Any] | None:
-    saved = _read_json(_progress_dir() / "scorecard-baseline.json")
+def _scorecard_baseline(saved: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    if saved is None and os.name != "nt":
+        saved = _read_json(_progress_dir() / "scorecard-baseline.json")
     if isinstance(saved, dict):
         saved_date = _parse_date(str(saved.get("date", "")))
         engineering_value = saved.get("engineering_percent")
@@ -132,8 +173,8 @@ def _scorecard_baseline() -> dict[str, Any] | None:
     }
 
 
-def _read_history() -> list[dict[str, Any]]:
-    path = _progress_dir() / "history.jsonl"
+def _read_history(directory: Path | None = None) -> list[dict[str, Any]]:
+    path = (directory or _progress_dir()) / "history.jsonl"
     try:
         if not path.is_file() or path.stat().st_size > _MAX_HISTORY_BYTES:
             return []
@@ -154,8 +195,8 @@ def _read_history() -> list[dict[str, Any]]:
 
 
 
-def _read_recent_events() -> list[dict[str, Any]]:
-    path = _progress_dir() / "events.jsonl"
+def _read_recent_events(directory: Path | None = None) -> list[dict[str, Any]]:
+    path = (directory or _progress_dir()) / "events.jsonl"
     try:
         if not path.is_file() or path.stat().st_size > 1024 * 1024:
             return []
@@ -180,9 +221,9 @@ def _read_recent_events() -> list[dict[str, Any]]:
 
 
 def _aggregate_snapshots(
-    records: list[dict[str, Any]], period: str, start: date | None, end: date | None
+    records: list[dict[str, Any]], period: str, start: date | None, end: date | None,
+    baseline: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    baseline = _scorecard_baseline()
     candidates = list(records)
     if baseline:
         candidates.insert(0, baseline)
@@ -213,26 +254,44 @@ def get_progress(
     end = _parse_date(end_date)
     if period == "custom" and (start is None or end is None or start > end):
         return {"current": None, "history": [], "available": False, "error": "بازهٔ تاریخ معتبر نیست."}
-    current = _read_json(_progress_dir() / "current.json")
-    records = _read_history()
-    all_snapshots = _aggregate_snapshots(records, "daily", None, None)
-    latest_snapshot = all_snapshots[-1] if all_snapshots else _scorecard_baseline()
+    try:
+        snapshot = _shared_state_snapshot()
+    except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
+        return {
+            "current": None,
+            "history": [],
+            "latest_snapshot": None,
+            "events": [],
+            "available": False,
+            "storage_configured": False,
+            "error": f"Shared progress storage is unavailable: {type(exc).__name__}",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    current = snapshot.get("current")
+    records = snapshot.get("history") if isinstance(snapshot.get("history"), list) else []
+    baseline = _scorecard_baseline(snapshot.get("baseline") if isinstance(snapshot.get("baseline"), dict) else None)
+    all_snapshots = _aggregate_snapshots(records, "daily", None, None, baseline)
+    latest_snapshot = all_snapshots[-1] if all_snapshots else baseline
     chart_period = "weekly" if period == "weekly" else "daily"
-    history = _aggregate_snapshots(records, chart_period, start, end)
+    history = _aggregate_snapshots(records, chart_period, start, end, baseline)
     if period == "daily" and start is None and end is None:
         today = datetime.now(timezone.utc).date()
         start = date.fromordinal(today.toordinal() - 6)
-        history = _aggregate_snapshots(records, "daily", start, today)
+        history = _aggregate_snapshots(records, "daily", start, today, baseline)
     elif period == "weekly" and start is None and end is None:
         today = datetime.now(timezone.utc).date()
         start = date.fromordinal(today.toordinal() - 55)
-        history = _aggregate_snapshots(records, "weekly", start, today)
+        history = _aggregate_snapshots(records, "weekly", start, today, baseline)
     return {
         "current": current,
         "history": history,
         "latest_snapshot": latest_snapshot,
-        "events": _read_recent_events(),
+        "events": (
+            snapshot.get("events", [])[-50:]
+            if isinstance(snapshot.get("events"), list)
+            else []
+        ),
         "available": bool(current or history),
-        "storage_configured": _progress_dir().is_dir(),
+        "storage_configured": bool(snapshot.get("storage_configured")),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
