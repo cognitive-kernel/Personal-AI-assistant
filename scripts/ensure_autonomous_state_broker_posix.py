@@ -35,6 +35,65 @@ def _run(command: list[str], *, timeout: int = 30) -> subprocess.CompletedProces
     )
 
 
+def _resolve_service_uid(raw_identity: str, *, source: str) -> int:
+    value = (raw_identity or "").strip()
+    if not value:
+        raise RuntimeError(f"{source} did not publish a dedicated non-root Runner identity.")
+    try:
+        uid = int(value)
+    except ValueError:
+        try:
+            uid = pwd.getpwnam(value).pw_uid
+        except KeyError as exc:
+            raise RuntimeError(f"{source} references an unknown local service identity.") from exc
+    if uid <= 0:
+        raise RuntimeError(f"{source} runs as root; a non-root Runner service identity is required.")
+    return uid
+
+
+def _discover_runner_service_uid(system: str) -> int | None:
+    """Discover the installed GitHub Runner service identity without fixed names."""
+    identities: set[int] = set()
+    if system == "linux":
+        systemctl = shutil.which("systemctl")
+        if not systemctl or not Path("/run/systemd/system").is_dir():
+            return None
+        listed = _run([systemctl, "list-units", "--all", "--type=service", "--no-legend"], timeout=20)
+        if listed.returncode != 0:
+            raise RuntimeError("Could not inspect systemd services to identify the installed GitHub Runner.")
+        units = []
+        for line in listed.stdout.splitlines():
+            fields = line.split()
+            if fields and fields[0].startswith("actions.runner.") and fields[0].endswith(".service"):
+                units.append(fields[0])
+        for unit in sorted(set(units)):
+            shown = _run([systemctl, "show", unit, "--property=User", "--value"], timeout=10)
+            if shown.returncode != 0:
+                raise RuntimeError(f"Could not read the service identity for {unit}.")
+            identities.add(_resolve_service_uid(shown.stdout.strip(), source=unit))
+    elif system == "darwin":
+        launch_daemons = Path("/Library/LaunchDaemons")
+        if not launch_daemons.is_dir():
+            return None
+        for plist_path in sorted(launch_daemons.glob("actions.runner.*.plist")):
+            if plist_path.is_symlink() or not plist_path.is_file():
+                raise RuntimeError(f"Unsafe GitHub Runner launchd registration: {plist_path.name}")
+            try:
+                with plist_path.open("rb") as stream:
+                    plist = plistlib.load(stream)
+            except (OSError, plistlib.InvalidFileException, ValueError) as exc:
+                raise RuntimeError(f"Could not inspect GitHub Runner launchd registration {plist_path.name}.") from exc
+            if not isinstance(plist, dict):
+                raise RuntimeError(f"Invalid GitHub Runner launchd registration {plist_path.name}.")
+            identities.add(_resolve_service_uid(str(plist.get("UserName", "")), source=plist_path.name))
+    if len(identities) > 1:
+        raise RuntimeError(
+            "Multiple GitHub Runner services use different identities. "
+            "Automatic shared-state ownership is ambiguous; configure one Runner service identity first."
+        )
+    return next(iter(identities)) if identities else None
+
+
 def _path_is_secure_executable(path: Path, service_uid: int) -> bool:
     try:
         resolved = path.resolve(strict=True)
@@ -124,14 +183,16 @@ def _write_atomic(path: Path, payload: bytes, mode: int, owner_uid: int = 0) -> 
         temporary.unlink(missing_ok=True)
 
 
-def _acquire_lock(path: Path):
+def _acquire_lock(path: Path, *, owner_uid: int | None = None, owner_gid: int | None = None):
     import fcntl
     flags = os.O_CREAT | os.O_RDWR
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
     descriptor = os.open(path, flags, 0o600)
+    if owner_uid is not None:
+        os.fchown(descriptor, owner_uid, owner_gid if owner_gid is not None else -1)
     if os.fstat(descriptor).st_size == 0:
-        os.write(descriptor, b"\0")
+        os.write(descriptor, b"\\0")
         os.fsync(descriptor)
     fcntl.flock(descriptor, fcntl.LOCK_EX)
     return descriptor
@@ -173,7 +234,12 @@ def _migrate_legacy_state(state_dir: Path, legacy_home: Path | None, service_uid
     descriptors = []
     try:
         for lock_path in lock_paths:
-            descriptors.append(_acquire_lock(lock_path))
+            is_shared_lock = lock_path.parent == state_dir or state_dir in lock_path.parents
+            descriptors.append(_acquire_lock(
+                lock_path,
+                owner_uid=service_uid if is_shared_lock else None,
+                owner_gid=pwd.getpwuid(service_uid).pw_gid if is_shared_lock else None,
+            ))
         sources = []
         conflicts = []
         for root, directories, files in os.walk(legacy, followlinks=False):
@@ -386,20 +452,21 @@ def _elevated_setup(
         if cursor != state_dir and not stat.S_ISDIR(current.st_mode):
             raise RuntimeError(f"Shared state path ancestor is not a directory: {cursor}")
 
+    runner_uid = _discover_runner_service_uid(sys.platform)
     if state_dir.exists():
         info = state_dir.lstat()
         if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
             raise RuntimeError("Shared POSIX state root must be a real directory.")
-        service_uid = info.st_uid
+        service_uid = runner_uid if runner_uid is not None else info.st_uid
         if service_uid == 0 and installer_uid != 0:
             raise RuntimeError(
-                "The existing shared state root is owned by root. Refusing to rewrite its ownership or permissions; "
-                "configure a machine-owned shared path or grant the intended service identity access explicitly."
+                "The discovered state/Runner owner is root. Refusing to run the state broker as root; "
+                "install the Runner under a dedicated non-root service identity or use a non-root-owned shared state root."
             )
     else:
+        service_uid = runner_uid if runner_uid is not None else installer_uid
         state_dir.mkdir(parents=True, exist_ok=True)
-        service_uid = installer_uid
-        os.chown(state_dir, service_uid, -1)
+        os.chown(state_dir, service_uid, pwd.getpwuid(service_uid).pw_gid)
         os.chmod(state_dir, 0o700)
     _migrate_legacy_state(state_dir, legacy_home, service_uid)
     try:
