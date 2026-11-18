@@ -62,12 +62,20 @@ def _path_is_secure_executable(path: Path, service_uid: int) -> bool:
 
 
 def _select_service_python(service_uid: int, suggested: str) -> Path:
-    candidates = [Path(suggested)]
+    # Prefer OS-managed interpreter locations. A venv below /home or /Users is
+    # intentionally rejected: systemd/launchd must not depend on a login home.
+    candidates = [
+        Path("/usr/bin/python3"),
+        Path("/usr/local/bin/python3"),
+        Path("/opt/homebrew/bin/python3"),
+        Path("/opt/local/bin/python3"),
+        Path(suggested),
+    ]
     for name in ("python3", "python"):
         found = shutil.which(name)
         if found:
             candidates.append(Path(found))
-    candidates.extend(Path(item) for item in ("/usr/bin/python3", "/usr/local/bin/python3"))
+    home_roots = (Path("/home"), Path("/Users"))
     seen: set[str] = set()
     for candidate in candidates:
         try:
@@ -77,6 +85,8 @@ def _select_service_python(service_uid: int, suggested: str) -> Path:
         if str(resolved) in seen:
             continue
         seen.add(str(resolved))
+        if any(resolved == root or root in resolved.parents for root in home_roots):
+            continue
         if _path_is_secure_executable(resolved, service_uid):
             try:
                 version = subprocess.run(
@@ -88,8 +98,9 @@ def _select_service_python(service_uid: int, suggested: str) -> Path:
             except (OSError, ValueError, subprocess.TimeoutExpired):
                 continue
     raise RuntimeError(
-        "No machine-managed Python 3.8+ runtime is available for the POSIX broker. "
-        "Install a system Python runtime, then restart the application; the existing app interpreter was not elevated."
+        "No trusted machine-managed Python 3.8+ runtime is available for the POSIX broker. "
+        "Install Python through the operating-system package manager, then restart the app. "
+        "A user-home virtual environment is never executed by the machine service."
     )
 
 
@@ -126,7 +137,7 @@ def _acquire_lock(path: Path):
     return descriptor
 
 
-def _migrate_legacy_state(state_dir: Path, legacy_home: Path | None) -> None:
+def _migrate_legacy_state(state_dir: Path, legacy_home: Path | None, service_uid: int) -> None:
     if legacy_home is None:
         return
     legacy = legacy_home / ".personal-ai-assistant" / "autonomous-engineering"
@@ -197,15 +208,34 @@ def _migrate_legacy_state(state_dir: Path, legacy_home: Path | None) -> None:
                 + ", ".join(conflicts[:8])
             )
         for source, destination in sources:
-            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             descriptor, temporary_name = tempfile.mkstemp(prefix=".state-migration-", dir=destination.parent)
             os.close(descriptor)
             temporary = Path(temporary_name)
             try:
                 shutil.copy2(source, temporary)
+                os.chown(temporary, service_uid, -1)
+                os.chmod(temporary, 0o600)
                 os.replace(temporary, destination)
             finally:
                 temporary.unlink(missing_ok=True)
+
+        # A copied state subtree must be writable by the broker identity and
+        # inaccessible to unrelated local accounts, without changing file bytes.
+        for root, directories, files in os.walk(state_dir, followlinks=False):
+            root_path = Path(root)
+            for name in directories:
+                directory = root_path / name
+                if directory.is_symlink():
+                    raise RuntimeError("Shared state contains a symlink after migration.")
+                os.chown(directory, service_uid, -1)
+                os.chmod(directory, 0o700)
+            for name in files:
+                file_path = root_path / name
+                if file_path.is_symlink():
+                    raise RuntimeError("Shared state contains a symlink after migration.")
+                os.chown(file_path, service_uid, -1)
+                os.chmod(file_path, 0o600)
         marker_payload = json.dumps(
             {"schema_version": 1, "target": str(state_dir), "migrated_at": __import__("time").time()},
             ensure_ascii=False,
@@ -341,7 +371,20 @@ def _elevated_setup(
         raise RuntimeError("State and configuration paths must be absolute.")
     if legacy_home is not None and (not legacy_home.is_absolute() or state_dir == legacy_home or legacy_home in state_dir.parents):
         raise RuntimeError("Shared state cannot be inside a per-user home directory.")
-    _migrate_legacy_state(state_dir, legacy_home)
+    if not state_dir.is_absolute():
+        raise RuntimeError("Shared state root must be absolute.")
+    # Reject symlinked ancestors before creating/changing any state permissions.
+    cursor = Path(state_dir.anchor)
+    for part in state_dir.parts[1:]:
+        cursor = cursor / part
+        try:
+            current = cursor.lstat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(current.st_mode):
+            raise RuntimeError(f"Shared state path contains a symlink: {cursor}")
+        if cursor != state_dir and not stat.S_ISDIR(current.st_mode):
+            raise RuntimeError(f"Shared state path ancestor is not a directory: {cursor}")
 
     if state_dir.exists():
         info = state_dir.lstat()
@@ -352,7 +395,9 @@ def _elevated_setup(
         state_dir.mkdir(parents=True, exist_ok=True)
         service_uid = installer_uid
         os.chown(state_dir, service_uid, -1)
-        os.chmod(state_dir, 0o700)
+    os.chown(state_dir, service_uid, -1)
+    os.chmod(state_dir, 0o700)
+    _migrate_legacy_state(state_dir, legacy_home, service_uid)
     try:
         service_user = pwd.getpwuid(service_uid).pw_name
     except KeyError as exc:
@@ -422,14 +467,22 @@ def main() -> int:
         try:
             state_dir = execution_state_directory()
         except (OSError, RuntimeError, ValueError):
-            from app.autonomous_engineering_state import _shared_site_state_directory, _current_home_directory
-            state_dir = _shared_site_state_directory(_current_home_directory())
+            configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
+            if configured:
+                state_dir = Path(os.path.expandvars(configured)).expanduser()
+                if not state_dir.is_absolute():
+                    raise RuntimeError("AUTONOMOUS_ENGINEERING_PROGRESS_DIR must be an absolute system path.")
+            else:
+                from app.autonomous_engineering_state import _shared_site_state_directory, _current_home_directory
+                state_dir = _shared_site_state_directory(_current_home_directory())
         home = Path.home()
         service_python = Path(getattr(sys, "_base_executable", sys.executable)).resolve()
         command = [
             shutil.which("sudo") or "sudo",
             "--",
             sys.executable,
+            "-I",
+            "-S",
             str(Path(__file__).resolve()),
             "--elevated",
             "--state-dir", str(state_dir),
