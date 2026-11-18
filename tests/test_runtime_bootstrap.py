@@ -61,7 +61,12 @@ def test_runtime_bootstrap_uses_only_project_relative_runtime_and_preserves_inva
     assert "The existing project and managed virtual environments are not usable" in windows
     assert "test_python_environment" in unix
     assert "The existing project and managed virtual environments are not usable" in unix
-    assert "Move-Item" not in windows or "Move-Item -LiteralPath $stagedUv -Destination $UvPath -Force" in windows
+    assert "Move-Item -LiteralPath $stagedUv -Destination $UvPath -Force" in windows
+    assert "[switch]$Dev" in windows
+    assert "[switch]$CheckOnly" in windows
+    assert "[switch]$RuntimeOnly" in windows
+    assert "if ($RuntimeOnly)" in windows
+    assert '"--runtime-only"' in unix
     assert "%~dp0" in command
     assert "bootstrap.ps1" in command
 
