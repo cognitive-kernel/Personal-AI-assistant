@@ -19,6 +19,11 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent
+_configured_venv = os.environ.get("PAA_VENV_DIR", "").strip()
+VENV_DIR = Path(_configured_venv).expanduser() if _configured_venv else ROOT / ".venv"
+if not VENV_DIR.is_absolute():
+    VENV_DIR = ROOT / VENV_DIR
+VENV_DIR = VENV_DIR.resolve()
 PREREQUISITES = ROOT / "prerequisites"
 WHEELHOUSE = PREREQUISITES / "wheels"
 INSTALLERS = PREREQUISITES / "installers"
@@ -249,8 +254,8 @@ def _run(
 
 def _python_in_venv() -> Path:
     if os.name == "nt":
-        return ROOT / ".venv" / "Scripts" / "python.exe"
-    return ROOT / ".venv" / "bin" / "python"
+        return VENV_DIR / "Scripts" / "python.exe"
+    return VENV_DIR / "bin" / "python"
 
 
 def _inside_venv() -> bool:
@@ -258,14 +263,14 @@ def _inside_venv() -> bool:
 
 
 def _inside_project_venv() -> bool:
-    """Return True only when this process is using this repository's .venv."""
+    """Return True only when this process uses the configured project runtime environment."""
     if not _inside_venv():
         return False
     try:
-        return Path(sys.prefix).resolve() == (ROOT / ".venv").resolve()
+        return Path(sys.prefix).resolve() == VENV_DIR
     except OSError:
         return os.path.normcase(os.path.abspath(sys.prefix)) == os.path.normcase(
-            os.path.abspath(ROOT / ".venv")
+            os.path.abspath(VENV_DIR)
         )
 
 
@@ -1085,7 +1090,7 @@ def main() -> int:
         )
         print(
             f"sys.executable={sys.executable}; sys.prefix={sys.prefix}; "
-            f"expected_prefix={ROOT / '.venv'}",
+            f"expected_prefix={VENV_DIR}",
             file=sys.stderr,
         )
         return 2
@@ -1095,7 +1100,7 @@ def main() -> int:
         if not python.exists():
             print("ساخت محیط مجازی پروژه ...", flush=True)
             try:
-                venv.EnvBuilder(with_pip=True).create(ROOT / ".venv")
+                venv.EnvBuilder(with_pip=True).create(VENV_DIR)
             except Exception as exc:
                 print(f"ساخت محیط مجازی ناموفق بود: {exc}")
                 return 2

@@ -104,6 +104,7 @@ def test_manual_task_is_persisted_before_codex_and_ollama_preflight():
     assert capture < codex_install < ollama_check < sandbox_smoke
 
 
+
 def test_manual_task_persistence_is_inside_the_single_owned_runner_job():
     from pathlib import Path
 
@@ -121,16 +122,19 @@ def test_manual_task_persistence_is_inside_the_single_owned_runner_job():
     assert "group: autonomous-local-engineering-${{ github.repository }}" in codex_job
     assert "runs-on: [self-hosted, Windows, X64, ollama, autonomous-state-owner]" in codex_job
 
-    python_setup = codex_job.index("Provision Python runtime for this Runner job")
+    python_bootstrap = codex_job.index(
+        "Bootstrap project-local managed Python runtime for this Runner job"
+    )
     node_setup = codex_job.index("Provision Node.js runtime for this Runner job")
-    persist_step = codex_job.index("Persist manual task under the controller's runner and concurrency ownership")
+    persist_step = codex_job.index(
+        "Persist manual task under the controller's runner and concurrency ownership"
+    )
     ollama_preflight = codex_job.index("Verify local Ollama and Codex prerequisites")
-    assert python_setup < node_setup < persist_step < ollama_preflight
+    assert python_bootstrap < node_setup < persist_step < ollama_preflight
 
     assert "A manual task was not accepted because autonomous engineering is paused" in gate_job
     assert "A manual task was not accepted because another run is active or queued" in gate_job
     assert "needs: persist-manual-task" not in workflow
-
 
 def test_early_manual_task_persistence_script_is_protected_and_validated_in_ci():
     from pathlib import Path
