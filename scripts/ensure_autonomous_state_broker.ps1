@@ -101,20 +101,63 @@ if (-not [string]::IsNullOrWhiteSpace($processStateDirectory)) {
     }
 }
 $stateRoot = Resolve-AutonomousStateDirectory -ConfiguredPath $machineStateDirectory -ProgramDataPath $env:ProgramData
-New-Item -ItemType Directory -Path $stateRoot -Force | Out-Null
-
 $installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-Set-AutonomousDirectoryTreeAcl -Path $stateRoot -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid -InstallerSid $installerSid
+$runnerService = Get-Service -Name $runner.Service.Name -ErrorAction Stop
+$runnerWasRunning = ($runnerService.Status -eq "Running")
 
-Install-AutonomousStateBrokerService
-
-$verified = Get-Service -Name $serviceName -ErrorAction Stop
-if ($verified.Status -ne "Running") {
-    throw "The state broker service did not reach Running state."
+if ($runnerWasRunning) {
+    Stop-Service -Name $runnerService.Name -ErrorAction Stop
+    $runnerService = Get-Service -Name $runnerService.Name -ErrorAction Stop
+    $runnerService.WaitForStatus(
+        [System.ServiceProcess.ServiceControllerStatus]::Stopped,
+        [TimeSpan]::FromSeconds(30)
+    )
 }
-$health = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health" -TimeoutMilliseconds 5000
-if ($health.ready -ne $true -or $health.schema_version -ne 1) {
-    throw "The installed state broker did not pass its health check."
+
+$setupFailure = $null
+try {
+    # Stop the listener first, then re-check for a worker that may have started
+    # between the initial process preflight and the service stop.
+    $activeWorkersAfterStop = @(Get-CimInstance Win32_Process -ErrorAction Stop |
+        Where-Object { $_.Name -ieq "Runner.Worker.exe" })
+    if ($activeWorkersAfterStop.Count -gt 0) {
+        throw "A Runner worker remained active after stopping the listener. No ACL or state files were changed."
+    }
+
+    New-Item -ItemType Directory -Path $stateRoot -Force | Out-Null
+    Set-AutonomousDirectoryTreeAcl -Path $stateRoot -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid -InstallerSid $installerSid
+
+    Install-AutonomousStateBrokerService
+
+    $verified = Get-Service -Name $serviceName -ErrorAction Stop
+    if ($verified.Status -ne "Running") {
+        throw "The state broker service did not reach Running state."
+    }
+    $health = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health" -TimeoutMilliseconds 5000
+    if ($health.ready -ne $true -or $health.schema_version -ne 1) {
+        throw "The installed state broker did not pass its health check."
+    }
+} catch {
+    $setupFailure = $_
+} finally {
+    if ($runnerWasRunning) {
+        try {
+            Start-Service -Name $runnerService.Name -ErrorAction Stop
+            $restartedRunner = Get-Service -Name $runnerService.Name -ErrorAction Stop
+            $restartedRunner.WaitForStatus(
+                [System.ServiceProcess.ServiceControllerStatus]::Running,
+                [TimeSpan]::FromSeconds(30)
+            )
+        } catch {
+            if ($setupFailure) {
+                throw "Broker setup failed: $($setupFailure.Exception.Message). Runner service restart also failed: $($_.Exception.Message)"
+            }
+            throw
+        }
+    }
+}
+if ($setupFailure) {
+    throw $setupFailure
 }
 
 Write-Host "Machine state broker is installed and healthy."
