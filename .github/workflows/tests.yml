@@ -16,6 +16,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+      - name: Validate portable bootstrap shell syntax
+        run: sh -n bootstrap.sh
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
