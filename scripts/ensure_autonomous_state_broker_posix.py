@@ -14,6 +14,7 @@ import plistlib
 import pwd
 import shutil
 import stat
+import socket
 import subprocess
 import sys
 import tempfile
@@ -435,10 +436,15 @@ def _elevated_setup(
         raise RuntimeError("POSIX broker installation requires administrator privileges.")
     if not state_dir.is_absolute() or not config_dir.is_absolute():
         raise RuntimeError("State and configuration paths must be absolute.")
-    if legacy_home is not None and (not legacy_home.is_absolute() or state_dir == legacy_home or legacy_home in state_dir.parents):
-        raise RuntimeError("Shared state cannot be inside a per-user home directory.")
     if not state_dir.is_absolute():
         raise RuntimeError("Shared state root must be absolute.")
+    home_roots = tuple(Path(value) for value in ("/home", "/Users"))
+    if any(state_dir == root or root in state_dir.parents for root in home_roots):
+        raise RuntimeError("Shared state cannot be inside any per-user home directory.")
+    if legacy_home is not None and (
+        not legacy_home.is_absolute() or state_dir == legacy_home or legacy_home in state_dir.parents
+    ):
+        raise RuntimeError("Shared state cannot be inside the installing user's home directory.")
     # Reject symlinked ancestors before creating/changing any state permissions.
     cursor = Path(state_dir.anchor)
     for part in state_dir.parts[1:]:
@@ -458,9 +464,9 @@ def _elevated_setup(
         if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
             raise RuntimeError("Shared POSIX state root must be a real directory.")
         service_uid = runner_uid if runner_uid is not None else info.st_uid
-        if service_uid == 0 and installer_uid != 0:
+        if service_uid == 0:
             raise RuntimeError(
-                "The discovered state/Runner owner is root. Refusing to run the state broker as root; "
+                "The shared state/Runner owner is root. Refusing to run the state broker as root; "
                 "install the Runner under a dedicated non-root service identity or use a non-root-owned shared state root."
             )
     else:
@@ -509,11 +515,48 @@ def _elevated_setup(
     config_payload = json.dumps(config, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
     _write_atomic(config_dir / "autonomous-state-broker.json", config_payload, 0o644)
 
-    # The client reads the machine config written above. Validate the actual
-    # running service before reporting success.
-    result = _run([str(python), "-I", "-S", "-c", "import socket; s=socket.socket(socket.AF_UNIX); s.settimeout(2); s.connect(" + repr(str(socket_path)) + "); s.close()"], timeout=5)
-    if result.returncode != 0:
-        raise RuntimeError("POSIX state broker service was installed but its local socket is not accepting connections.")
+    # Verify a successful broker health response, not only that a socket path exists.
+    request = json.dumps(
+        {"version": 1, "method": "GET", "path": "/v1/health"},
+        separators=(",", ":"),
+    ).encode("utf-8") + b"\\n"
+    deadline = __import__("time").monotonic() + 20
+    last_error = None
+    while __import__("time").monotonic() < deadline:
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                client.settimeout(2)
+                client.connect(str(socket_path))
+                client.sendall(request)
+                response = bytearray()
+                while len(response) <= 16 * 1024:
+                    chunk = client.recv(4096)
+                    if not chunk:
+                        break
+                    newline = chunk.find(b"\\n")
+                    response.extend(chunk[:newline] if newline >= 0 else chunk)
+                    if newline >= 0:
+                        break
+                envelope = json.loads(response.decode("utf-8"))
+                payload = envelope.get("payload") if isinstance(envelope, dict) else None
+                if (
+                    isinstance(envelope, dict)
+                    and envelope.get("version") == 1
+                    and envelope.get("status") == 200
+                    and isinstance(payload, dict)
+                    and payload.get("ready") is True
+                    and payload.get("schema_version") == 1
+                ):
+                    break
+                last_error = RuntimeError("Broker health response was not ready.")
+        except (OSError, ValueError, UnicodeError) as exc:
+            last_error = exc
+            __import__("time").sleep(0.25)
+    else:
+        raise RuntimeError(
+            "POSIX state broker service did not pass its health check. "
+            f"Last error: {type(last_error).__name__ if last_error else 'timeout'}."
+        )
 
 
 def main() -> int:
