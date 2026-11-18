@@ -141,12 +141,19 @@ def test_malformed_job_or_step_records_are_not_silently_ignored():
     ]) == UNKNOWN
 
 
+
 def test_runner_runtime_dependencies_are_ready_before_codex_sandbox_smoke():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
     workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
 
+    bootstrap_step = workflow.index(
+        "      - name: Bootstrap project-local managed Python runtime for this Runner job"
+    )
+    resolve_step = workflow.index(
+        "      - name: Resolve managed Python runtime under the Runner service identity"
+    )
     runtime_step = workflow.index(
         "      - name: Prepare Runner virtual environment and install runtime dependencies"
     )
@@ -157,13 +164,20 @@ def test_runner_runtime_dependencies_are_ready_before_codex_sandbox_smoke():
         "      - name: Install project dependencies for local test execution"
     )
 
-    assert runtime_step < codex_smoke_step < development_dependencies_step
+    assert bootstrap_step < resolve_step < runtime_step < codex_smoke_step < development_dependencies_step
 
+    bootstrap_setup = workflow[bootstrap_step:resolve_step]
+    resolved_runtime = workflow[resolve_step:runtime_step]
     runtime_setup = workflow[runtime_step:codex_smoke_step]
-    assert "python -m venv .venv" in runtime_setup
-    assert '$venvPython -m pip install --disable-pip-version-check --retries 10 --timeout 120 -e .' in runtime_setup
+
+    assert '& $bootstrap -RuntimeOnly' in bootstrap_setup
+    assert "PAA_VENV_DIR=$selectedVenv" in resolved_runtime
+    assert '$venvScripts | Out-File -FilePath $env:GITHUB_PATH' in resolved_runtime
+    assert 'Join-Path $env:PAA_VENV_DIR "Scripts\\python.exe"' in resolved_runtime
+    assert '& $venvPython -m pip install --disable-pip-version-check --retries 10 --timeout 120 -e .' in runtime_setup
     assert 'import psutil, fastapi, uvicorn' in runtime_setup
-    assert '$venvScripts | Out-File -FilePath $env:GITHUB_PATH' in runtime_setup
+    assert "python -m venv .venv" not in runtime_setup
 
     development_setup = workflow[development_dependencies_step:]
     assert '$venvPython -m pip install --disable-pip-version-check --retries 10 --timeout 120 -e ".[dev]"' in development_setup
+
