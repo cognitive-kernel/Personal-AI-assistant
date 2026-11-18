@@ -54,7 +54,7 @@ def test_windows_provisioning_uses_only_the_dedicated_runner_identity():
     assert "Get-AutonomousWindowsAccountSid" in module
     assert "$normalizedAccountName = ConvertTo-AutonomousWindowsAccountName -AccountName $AccountName" in module
     assert "[Security.Principal.NTAccount]$normalizedAccountName" in module
-    assert "Get-AutonomousWindowsAccountSid -AccountName $matchingRunnerServices[0].Service.StartName" in script
+    assert '$RunnerAccount = [string]$matchingRunnerServices[0].Service.StartName' in script
     assert "Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity" in script
     assert "$runnerIsLocal = -not [string]::IsNullOrWhiteSpace($runnerLocalName)" in script
     assert script.index("$runnerIsLocal =") < script.index("if ($runnerIsLocal)")
