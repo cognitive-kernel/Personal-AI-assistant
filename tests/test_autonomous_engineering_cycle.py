@@ -1642,6 +1642,7 @@ def test_recovered_open_pr_is_persisted_before_exact_sha_ci(
     assert result["awaiting_review"] is True
 
 
+
 def test_autonomous_windows_workflows_do_not_pin_tools_to_a_specific_user_or_python_install():
     root = Path(__file__).resolve().parents[1]
     workflow_paths = (
@@ -1653,11 +1654,15 @@ def test_autonomous_windows_workflows_do_not_pin_tools_to_a_specific_user_or_pyt
         lowered = content.casefold()
         assert r"c:\users\admin" not in lowered
         assert r"c:\program files\python311" not in lowered
-        assert "get-command python" in lowered
         assert "get-command ollama" not in lowered
         assert "autonomousollamaruntime.psm1" in lowered
 
-
+        if workflow_path.name == "autonomous-codex-engineering.yml":
+            assert "bootstrap.ps1" in lowered
+            assert "paa_venv_dir" in lowered
+            assert "actions/setup-python@" not in lowered
+        else:
+            assert "get-command python" in lowered
 
 def test_persist_run_diagnostic_appends_redacted_report_details(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
