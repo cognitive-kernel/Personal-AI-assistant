@@ -679,7 +679,15 @@ jobs:
           The immutable base commit is recorded by the workflow.
 
           Execute shell work only inside the repository workspace and never request elevated or
-          unsandboxed execution. For EVERY Codex exec_command tool call, set yield_time_ms to the
+          unsandboxed execution. For EVERY Codex exec_command tool call on Windows, set `shell`
+          to the absolute executable `C:\Windows\System32\cmd.exe`, set `login` to `false`,
+          and use standard cmd.exe syntax, exactly as in the successful workspace sandbox smoke.
+          Do not use the default PowerShell shell or omit either field. Before claiming that shell
+          execution is unavailable, make this bounded read-only probe with that exact tool
+          configuration: `git status --short --branch && git rev-parse HEAD`. Report shell
+          execution as unavailable only if that call returns a concrete tool error, and include
+          the actual error rather than a generic assertion.
+          For EVERY Codex exec_command tool call, set yield_time_ms to the
           integer 10000 and sandbox_permissions to "use_default". Omit justification, prefix_rule,
           and additional_permissions entirely. Never use "require_escalated" or request any broader
           permission. Do not provide a justification for an escalated command. Use narrow discovery
