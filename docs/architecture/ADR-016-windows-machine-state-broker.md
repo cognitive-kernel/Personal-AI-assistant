@@ -15,7 +15,7 @@ The Windows dashboard and the self-hosted Runner must share one durable autonomo
 3. Install PersonalAIAssistantStateBroker as a LocalService Windows service under %ProgramData%\PersonalAIAssistant\StateBroker. It reads and performs only fixed operations over a local named pipe. The service shares the existing autonomous-durable-state.lock protocol with Python and PowerShell.
 4. Reset ACLs recursively across the complete state tree. Only the resolved Runner SID and LocalService retain Modify access. No app account, Users group, Everyone, or Authenticated Users ACE is added to the data directory.
 5. The named pipe is limited to authenticated local Windows sessions and rejects remote clients. Its protocol accepts only versioned, allow-listed operations: storage health, pending-work status, progress snapshot, a numeric run-diagnostics identifier, and bounded temporary telemetry cleanup. Clients cannot submit file paths, enumerate directories, or read checkpoint/task/PR files directly. Caller identity is inspected through Windows pipe impersonation.
-6. The dashboard uses the broker on Windows for readiness, marker checks, progress, diagnostics, and telemetry cleanup. POSIX keeps the existing direct shared-site-data design. The Runner/workflow write path, checkpoint watcher, task/PR ownership state, and Python/PowerShell lock protocol remain unchanged.
+6. The dashboard uses the broker on Windows for readiness, marker checks, progress, diagnostics, path-free checkpoint status, and telemetry cleanup. POSIX exposes the same application contract through its restricted Unix-domain-socket broker and OS-wide machine data root. The Windows named-pipe service and POSIX socket service are platform adapters; the API and UI do not depend on a human username, a configured user/group name, a home directory, a checkout path, or a fixed CPU/GPU model. Service identities and machine paths are discovered from the host during provisioning; model context is selected from Ollama metadata and current resource limits. The underlying operating system still supplies the required local IPC, file locking, and service isolation primitives.
 
 ## Consequences and security boundary
 
@@ -24,7 +24,7 @@ The Windows dashboard and the self-hosted Runner must share one durable autonomo
 - Local administrators and SYSTEM retain their normal machine-level administrative authority; the design does not claim to defend local data against a malicious administrator.
 - The service is machine-local and not a distributed lock. The unique autonomous-state-owner Runner label remains required for host affinity.
 - Provisioning is idempotent: it preserves an existing configured Runner, builds the broker to a temporary executable before replacing the installed broker, verifies LocalService service identity, and health-checks the pipe.
-- If the broker is unavailable or the state lock cannot be acquired, dashboard admission fails closed. Existing task, PR, and checkpoint files are preserved.
+- If the broker is unavailable, a checkpoint pointer is corrupt, or durable-state inspection is inconclusive, dashboard admission fails closed. Existing task, PR, and checkpoint bytes are preserved. Completed checkpoints are deactivated through an atomic inactive pointer; retained historical snapshots cannot silently become active again.
 
 ## Validation requirements
 
@@ -35,5 +35,6 @@ The Windows dashboard and the self-hosted Runner must share one durable autonomo
 - Run the Python state/progress, pending-task/PR, checkpoint ownership/recovery, and dispatch-safety test suites.
 - On the target host, verify the broker can read/write the root as LocalService, the Runner can write state directly, and two different non-admin app accounts can independently call health/progress/pending-work and see the same persisted state.
 - Confirm that neither app account can open/read state files directly, that a remote machine cannot connect to the named pipe, and that cleanup refuses to run while pending task/PR/cleanup markers exist.
+- Exercise active, inactive, stale, corrupt, and patch-size-mismatched checkpoint pointers through both Windows and POSIX brokers. Verify that status remains responsive while a checkpoint watcher holds its lifetime lock and that no patch contents or filesystem paths are exposed.
 
 No change is accepted as operationally complete until the target-host multi-account and denial tests pass.

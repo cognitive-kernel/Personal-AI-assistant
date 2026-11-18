@@ -372,6 +372,160 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         catch { return false; }
     }
 
+    private static bool IsSafeCheckpointRunId(string value)
+    {
+        if (String.IsNullOrEmpty(value) || value.Length > 100) return false;
+        for (int i = 0; i < value.Length; i++)
+        {
+            char ch = value[i];
+            if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+                  (ch >= '0' && ch <= '9') || ch == '-' || ch == '_'))
+                return false;
+        }
+        return true;
+    }
+
+    private static bool TryReadCheckpointInteger(
+        Dictionary<string, object> value, string key, out long parsed
+    )
+    {
+        parsed = 0;
+        object raw;
+        if (value == null || !value.TryGetValue(key, out raw) || raw is Boolean)
+            return false;
+        try
+        {
+            parsed = Convert.ToInt64(raw);
+            return true;
+        }
+        catch { return false; }
+    }
+
+    private static Dictionary<string, object> UnknownCheckpoint(string reason)
+    {
+        return new Dictionary<string, object> {
+            { "available", true }, { "verified", false }, { "reason", reason }
+        };
+    }
+
+    private static Dictionary<string, object> NoCheckpoint()
+    {
+        return new Dictionary<string, object> {
+            { "available", false }, { "verified", true }
+        };
+    }
+
+    private object ReadCheckpointSummary()
+    {
+        // The pointer is atomically replaced by the watcher. Older installations
+        // without an index may resolve only the current run's fixed checkpoint name.
+        const string indexName = "latest-worktree-checkpoint.json";
+        Dictionary<string, object> index = null;
+        string runId;
+        long task;
+        if (!SafeFileExists(Path.Combine(_stateDirectory, indexName)))
+        {
+            string currentPath = Path.Combine(_stateDirectory, "current.json");
+            if (!SafeFileExists(currentPath)) return NoCheckpoint();
+            Dictionary<string, object> current = ReadJsonFile("current.json", 256000) as Dictionary<string, object>;
+            if (current == null) return UnknownCheckpoint("current_progress_unreadable");
+            if (!current.ContainsKey("run_id")) return NoCheckpoint();
+            runId = Convert.ToString(current["run_id"]);
+            object currentTask;
+            if (current.TryGetValue("task", out currentTask))
+            {
+                try { task = Convert.ToInt64(currentTask); }
+                catch { return UnknownCheckpoint("current_progress_invalid"); }
+            }
+            else task = 1;
+        }
+        else
+        {
+            index = ReadJsonFile(indexName, 16 * 1024) as Dictionary<string, object>;
+            if (index == null) return UnknownCheckpoint("checkpoint_index_unreadable");
+            long indexSchema;
+            object active;
+            if (!TryReadCheckpointInteger(index, "schema_version", out indexSchema) || indexSchema != 1 ||
+                !index.TryGetValue("active", out active) || !(active is Boolean))
+                return UnknownCheckpoint("checkpoint_index_invalid");
+            if (!(Boolean)active) return NoCheckpoint();
+            runId = Convert.ToString(index.ContainsKey("run_id") ? index["run_id"] : "");
+            if (!TryReadCheckpointInteger(index, "task", out task))
+                return UnknownCheckpoint("checkpoint_index_identity_invalid");
+        }
+
+        if (!IsSafeCheckpointRunId(runId) || task < 1 || task > Int32.MaxValue)
+            return UnknownCheckpoint("checkpoint_index_identity_invalid");
+
+        string stem = "worktree-checkpoint-" + runId + "-" + task.ToString();
+        string metadataName = stem + ".json";
+        string patchPath = Path.Combine(_stateDirectory, stem + ".patch");
+        bool metadataExists = SafeFileExists(Path.Combine(_stateDirectory, metadataName));
+        bool patchExists = SafeFileExists(patchPath);
+        if (index == null && !metadataExists && !patchExists) return NoCheckpoint();
+        if (!metadataExists || !patchExists)
+            return UnknownCheckpoint("checkpoint_files_incomplete");
+
+        Dictionary<string, object> metadata = ReadJsonFile(metadataName, 64 * 1024) as Dictionary<string, object>;
+        if (metadata == null) return UnknownCheckpoint("checkpoint_metadata_unreadable");
+        long schema, savedTask, patchBytes;
+        if (!TryReadCheckpointInteger(metadata, "schema_version", out schema) ||
+            (schema != 2 && schema != 3 && schema != 4) ||
+            !TryReadCheckpointInteger(metadata, "task", out savedTask) || savedTask != task ||
+            Convert.ToString(metadata.ContainsKey("run_id") ? metadata["run_id"] : "") != runId ||
+            !TryReadCheckpointInteger(metadata, "patch_bytes", out patchBytes) || patchBytes < 0)
+            return UnknownCheckpoint("checkpoint_metadata_mismatch");
+
+        string baseSha = Convert.ToString(metadata.ContainsKey("base_sha") ? metadata["base_sha"] : "");
+        if (baseSha.Length != 40) return UnknownCheckpoint("checkpoint_metadata_mismatch");
+        for (int i = 0; i < baseSha.Length; i++)
+        {
+            char ch = baseSha[i];
+            if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')))
+                return UnknownCheckpoint("checkpoint_metadata_mismatch");
+        }
+
+        double updatedAt;
+        try
+        {
+            updatedAt = Convert.ToDouble(metadata.ContainsKey("updated_at") ? metadata["updated_at"] : null);
+        }
+        catch { return UnknownCheckpoint("checkpoint_metadata_mismatch"); }
+        if (Double.IsNaN(updatedAt) || Double.IsInfinity(updatedAt))
+            return UnknownCheckpoint("checkpoint_metadata_mismatch");
+
+        long actualPatchBytes;
+        try { actualPatchBytes = new FileInfo(patchPath).Length; }
+        catch { return UnknownCheckpoint("checkpoint_patch_unreadable"); }
+        if (actualPatchBytes != patchBytes)
+            return UnknownCheckpoint("checkpoint_patch_size_mismatch");
+
+        if (index != null)
+        {
+            long indexBytes;
+            double indexUpdatedAt;
+            try { indexUpdatedAt = Convert.ToDouble(index.ContainsKey("updated_at") ? index["updated_at"] : null); }
+            catch { return UnknownCheckpoint("checkpoint_index_mismatch"); }
+            if (!TryReadCheckpointInteger(index, "patch_bytes", out indexBytes) ||
+                indexBytes != actualPatchBytes ||
+                Convert.ToString(index.ContainsKey("base_sha") ? index["base_sha"] : "") != baseSha ||
+                Double.IsNaN(indexUpdatedAt) || Double.IsInfinity(indexUpdatedAt) ||
+                indexUpdatedAt != updatedAt)
+                return UnknownCheckpoint("checkpoint_index_mismatch");
+        }
+
+        return new Dictionary<string, object> {
+            { "available", true },
+            { "verified", true },
+            { "run_id", runId },
+            { "task", task },
+            { "base_sha", baseSha },
+            { "updated_at", updatedAt },
+            { "patch_bytes", actualPatchBytes },
+            { "plan_available", SafeFileExists(Path.Combine(_stateDirectory, "worktree-plan-" + runId + "-" + task.ToString() + ".json")) }
+        };
+    }
+
     private object ReadPendingWork()
     {
         return WithStateLock(delegate
@@ -391,10 +545,17 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                 markers[keys[i]] = exists;
                 if (exists) blockers.Add(keys[i]);
             }
+            Dictionary<string, object> checkpoint = ReadCheckpointSummary() as Dictionary<string, object>;
+            if (checkpoint == null)
+                checkpoint = UnknownCheckpoint("checkpoint_status_unavailable");
+            if (Convert.ToBoolean(checkpoint["available"]) ||
+                (checkpoint.ContainsKey("verified") && !Convert.ToBoolean(checkpoint["verified"])))
+                blockers.Add("checkpoint");
             return new Dictionary<string, object> {
                 { "available", true },
                 { "blocked", blockers.Count > 0 },
                 { "markers", markers },
+                { "checkpoint", checkpoint },
                 { "reason", blockers.Count > 0 ? String.Join(", ", blockers.ToArray()) : null }
             };
         }, 2000);
@@ -523,56 +684,101 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
     {
         return WithStateLock(delegate
         {
-            string[] markerNames = {
-                "pending-manual-task.txt",
-                "pending-manual-task-owner.json",
-                "pending-autonomous-pr.json",
-                "pending-state-cleanup.json"
-            };
-            List<string> blockers = new List<string>();
-            foreach (string name in markerNames)
-                if (SafeFileExists(Path.Combine(_stateDirectory, name))) blockers.Add(name);
-            if (blockers.Count > 0)
-                return new Dictionary<string, object> {
-                    { "conflict", true }, { "blockers", blockers.ToArray() },
-                    { "message", "Durable task state is pending; cleanup was refused." }
-                };
-
-            string[] cleanupNames = {
-                "events.jsonl",
-                "current.json",
-                "events.jsonl.tmp",
-                "current.json.tmp",
-                "history.jsonl.tmp",
-                "scorecard-state.json.tmp",
-                "scorecard-baseline.json.tmp"
-            };
-            int removed = 0;
-            long removedBytes = 0;
-            List<string> failed = new List<string>();
-            foreach (string name in cleanupNames)
+            try
             {
-                string path = Path.Combine(_stateDirectory, name);
-                try
+                return WithCheckpointStoreLock(delegate
                 {
-                    if (!SafeFileExists(path)) continue;
-                    long size = new FileInfo(path).Length;
-                    File.Delete(path);
-                    removed++;
-                    removedBytes += size;
-                }
-                catch (FileNotFoundException) { }
-                catch { failed.Add(name); }
+                    string[] markerNames = {
+                        "pending-manual-task.txt",
+                        "pending-manual-task-owner.json",
+                        "pending-autonomous-pr.json",
+                        "pending-state-cleanup.json"
+                    };
+                    List<string> blockers = new List<string>();
+                    foreach (string name in markerNames)
+                        if (SafeFileExists(Path.Combine(_stateDirectory, name))) blockers.Add(name);
+                    Dictionary<string, object> checkpoint = ReadCheckpointSummary() as Dictionary<string, object>;
+                    if (checkpoint == null || Convert.ToBoolean(checkpoint["available"]) ||
+                        (checkpoint.ContainsKey("verified") && !Convert.ToBoolean(checkpoint["verified"])))
+                        blockers.Add("latest-worktree-checkpoint");
+                    if (blockers.Count > 0)
+                        return new Dictionary<string, object> {
+                            { "conflict", true }, { "blockers", blockers.ToArray() },
+                            { "message", "Durable task/checkpoint state is pending; cleanup was refused." }
+                        };
+
+                    string[] cleanupNames = {
+                        "events.jsonl",
+                        "current.json",
+                        "events.jsonl.tmp",
+                        "current.json.tmp",
+                        "history.jsonl.tmp",
+                        "scorecard-state.json.tmp",
+                        "scorecard-baseline.json.tmp"
+                    };
+                    int removed = 0;
+                    long removedBytes = 0;
+                    List<string> failed = new List<string>();
+                    foreach (string name in cleanupNames)
+                    {
+                        string path = Path.Combine(_stateDirectory, name);
+                        try
+                        {
+                            if (!SafeFileExists(path)) continue;
+                            long size = new FileInfo(path).Length;
+                            File.Delete(path);
+                            removed++;
+                            removedBytes += size;
+                        }
+                        catch (FileNotFoundException) { }
+                        catch { failed.Add(name); }
+                    }
+                    return new Dictionary<string, object> {
+                        { "conflict", false },
+                        { "cleaned", failed.Count == 0 },
+                        { "files_removed", removed },
+                        { "bytes_removed", removedBytes },
+                        { "failed_files", failed.ToArray() },
+                        { "preserved", new[] { "history.jsonl", "scorecard-baseline.json", "checkpoint files", "pending task/PR markers" } }
+                    };
+                }, 250);
             }
-            return new Dictionary<string, object> {
-                { "conflict", false },
-                { "cleaned", failed.Count == 0 },
-                { "files_removed", removed },
-                { "bytes_removed", removedBytes },
-                { "failed_files", failed.ToArray() },
-                { "preserved", new[] { "history.jsonl", "scorecard-baseline.json", "checkpoint files", "pending task/PR markers" } }
-            };
+            catch (System.TimeoutException)
+            {
+                return new Dictionary<string, object> {
+                    { "conflict", true },
+                    { "blockers", new[] { "checkpoint_writer_active" } },
+                    { "message", "A checkpoint watcher owns the durable checkpoint store; cleanup was refused." }
+                };
+            }
         }, 2000);
+    }
+
+    private object WithCheckpointStoreLock(Func<object> operation, int timeoutMilliseconds)
+    {
+        string lockPath = Path.Combine(_stateDirectory, "autonomous-checkpoint-store.lock");
+        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMilliseconds);
+        using (FileStream stream = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite))
+        {
+            if (stream.Length == 0)
+            {
+                stream.WriteByte(0);
+                stream.Flush(true);
+            }
+            bool owned = false;
+            while (!owned)
+            {
+                try { stream.Lock(0, 1); owned = true; }
+                catch (IOException)
+                {
+                    if (DateTime.UtcNow >= deadline)
+                        throw new System.TimeoutException("Checkpoint store lock timeout.");
+                    Thread.Sleep(50);
+                }
+            }
+            try { return operation(); }
+            finally { try { stream.Unlock(0, 1); } catch { } }
+        }
     }
 
     private object WithStateLock(Func<object> operation, int timeoutMilliseconds)

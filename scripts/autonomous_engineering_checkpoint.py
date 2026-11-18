@@ -41,6 +41,7 @@ except ImportError:  # Direct script execution from the scripts directory.
 
 ROOT = Path(__file__).resolve().parents[1]
 POLL_SECONDS = 20
+CHECKPOINT_INDEX_NAME = "latest-worktree-checkpoint.json"
 
 
 def store_dir() -> Path:
@@ -113,6 +114,136 @@ def stop_existing_watcher(metadata: dict[str, Any] | None) -> None:
     stop_owned_watcher(metadata, script_path=Path(__file__).resolve())
 
 
+def _checkpoint_index_payload(metadata: dict[str, Any], state: dict[str, Path]) -> dict[str, Any] | None:
+    """Build the fixed, path-free status record consumed by the local State Broker."""
+    run_id = metadata.get("run_id")
+    task = metadata.get("task")
+    base_sha = metadata.get("base_sha")
+    updated_at = metadata.get("updated_at")
+    if (
+        not isinstance(run_id, str) or not run_id
+        or len(run_id) > 100
+        or any(not (ch.isascii() and (ch.isalnum() or ch in "-_")) for ch in run_id)
+        or isinstance(task, bool) or not isinstance(task, int) or task < 1
+        or not isinstance(base_sha, str) or len(base_sha) != 40
+        or any(ch not in "0123456789abcdef" for ch in base_sha)
+        or isinstance(updated_at, bool) or not isinstance(updated_at, (int, float))
+        or not math.isfinite(float(updated_at))
+    ):
+        return None
+    patch_path = state["patch"]
+    if not patch_path.is_file():
+        raise RuntimeError("Checkpoint patch is unavailable while publishing its status index.")
+    patch_bytes = patch_path.stat().st_size
+    declared_bytes = metadata.get("patch_bytes")
+    if declared_bytes is not None and (
+        isinstance(declared_bytes, bool)
+        or not isinstance(declared_bytes, int)
+        or declared_bytes != patch_bytes
+    ):
+        raise RuntimeError("Checkpoint patch size changed while publishing its status index.")
+    return {
+        "schema_version": 1,
+        "active": True,
+        "run_id": run_id,
+        "task": task,
+        "base_sha": base_sha,
+        "updated_at": float(updated_at),
+        "patch_bytes": patch_bytes,
+        "plan_available": state["plan"].is_file(),
+    }
+
+
+def _write_checkpoint_index_unlocked(metadata: dict[str, Any], state: dict[str, Path]) -> None:
+    payload = _checkpoint_index_payload(metadata, state)
+    if payload is None:
+        raise RuntimeError("Checkpoint metadata cannot be represented by the shared broker index; preserving checkpoint files.")
+    _atomic_write(
+        state["directory"] / CHECKPOINT_INDEX_NAME,
+        json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n",
+    )
+
+
+def _deactivate_checkpoint_index_unlocked(
+    directory: Path, run_id: str, task: int,
+) -> None:
+    """Deactivate only the exact checkpoint being cleared; preserve other owners."""
+    index_path = directory / CHECKPOINT_INDEX_NAME
+    if not index_path.is_file():
+        # Establish an explicit empty state for pre-index snapshots so an older
+        # retained file cannot be selected again after this owner is cleared.
+        _atomic_write(
+            index_path,
+            json.dumps({
+                "schema_version": 1,
+                "active": False,
+                "updated_at": time.time(),
+            }, sort_keys=True) + "\n",
+        )
+        return
+    try:
+        current = json.loads(index_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise RuntimeError("Checkpoint index is unreadable; refusing to clear checkpoint data.") from exc
+    if (
+        not isinstance(current, dict)
+        or current.get("schema_version") != 1
+        or not isinstance(current.get("active"), bool)
+    ):
+        raise RuntimeError("Checkpoint index is malformed; refusing to clear checkpoint data.")
+    if current["active"] is False:
+        return
+    if str(current.get("run_id")) != str(run_id) or current.get("task") != task:
+        return
+    _atomic_write(
+        index_path,
+        json.dumps({
+            "schema_version": 1,
+            "active": False,
+            "updated_at": time.time(),
+        }, sort_keys=True) + "\n",
+    )
+
+
+def _read_checkpoint_index(
+    directory: Path,
+) -> tuple[dict[str, Any], dict[str, Path]] | None | bool:
+    """Read the authoritative pointer; False is an explicit empty state."""
+    index_path = directory / CHECKPOINT_INDEX_NAME
+    if not index_path.is_file():
+        return None
+    try:
+        index = json.loads(index_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise RuntimeError("Checkpoint index is unreadable; refusing stale-checkpoint fallback.") from exc
+    if (
+        not isinstance(index, dict)
+        or index.get("schema_version") != 1
+        or not isinstance(index.get("active"), bool)
+    ):
+        raise RuntimeError("Checkpoint index is malformed; refusing stale-checkpoint fallback.")
+    if index["active"] is False:
+        return False
+    run_id = index.get("run_id")
+    task = index.get("task")
+    if (
+        not isinstance(run_id, str) or not run_id
+        or len(run_id) > 100
+        or any(not (ch.isascii() and (ch.isalnum() or ch in "-_")) for ch in run_id)
+        or isinstance(task, bool) or not isinstance(task, int) or task < 1
+    ):
+        raise RuntimeError("Checkpoint index identity is invalid; preserving all checkpoint state.")
+    state = paths(run_id, task)
+    metadata = read_metadata(run_id, task, state=state)
+    if metadata is None:
+        raise RuntimeError("Checkpoint index points to missing metadata; preserving all checkpoint state.")
+    expected = _checkpoint_index_payload(metadata, state)
+    if expected is None:
+        raise RuntimeError("Checkpoint index points to an unsupported checkpoint; preserving all checkpoint state.")
+    for key in ("schema_version", "active", "run_id", "task", "base_sha", "patch_bytes", "updated_at"):
+        if index.get(key) != expected.get(key):
+            raise RuntimeError(f"Checkpoint index does not match {key}; preserving all checkpoint state.")
+    return metadata, state
 
 
 def read_metadata(
@@ -266,6 +397,7 @@ def _write_snapshot_unlocked(
     # This atomic metadata replacement is the readiness commit point. The
     # controller must not depend on a second, separately published marker.
     _atomic_write(state["metadata"], json.dumps(metadata, ensure_ascii=False, sort_keys=True) + "\n")
+    _write_checkpoint_index_unlocked(metadata, state)
 
 
 def write_snapshot(
@@ -361,8 +493,9 @@ def _latest_checkpoint() -> tuple[dict[str, Any], dict[str, Path]] | None:
                     }
                     _atomic_write(
                         destination["metadata"],
-                        json.dumps(migrated, ensure_ascii=False, sort_keys=True) + "\\n",
+                        json.dumps(migrated, ensure_ascii=False, sort_keys=True) + "\n",
                     )
+                    _write_checkpoint_index_unlocked(migrated, destination)
                     legacy_metadata_path.unlink(missing_ok=True)
                     legacy_patch_path.unlink(missing_ok=True)
                     legacy_plan_path.unlink(missing_ok=True)
@@ -371,6 +504,11 @@ def _latest_checkpoint() -> tuple[dict[str, Any], dict[str, Path]] | None:
             raise RuntimeError(
                 "The legacy shared checkpoint could not be migrated safely; original files were preserved."
             ) from exc
+    indexed = _read_checkpoint_index(directory)
+    if indexed is False:
+        return None
+    if indexed is not None:
+        return indexed
     candidates = []
     for metadata_path in directory.glob("worktree-checkpoint-*.json"):
         try:
@@ -424,6 +562,9 @@ def _latest_checkpoint() -> tuple[dict[str, Any], dict[str, Path]] | None:
         candidates.append((float(updated_at), metadata, state))
     if not candidates:
         return None
+    # Legacy stores have no index. Do not acquire the watcher's lifetime lock
+    # here: restore() first stops the prior watcher, then publishes the index
+    # while holding that lock. Until then the broker uses current.json fallback.
     _, metadata, state = max(candidates, key=lambda item: item[0])
     return metadata, state
 
@@ -439,6 +580,7 @@ def restore(base_sha: str) -> bool:
         current_metadata = read_metadata(str(metadata["run_id"]), int(metadata["task"]), state=state)
         if current_metadata is None or current_metadata.get("base_sha") != metadata.get("base_sha"):
             raise RuntimeError("Checkpoint ownership changed during recovery; preserving all checkpoint data.")
+        _write_checkpoint_index_unlocked(current_metadata, state)
         current_head = git("rev-parse", "HEAD").stdout.strip()
         if current_head != base_sha:
             raise RuntimeError("The checked-out HEAD does not match the immutable base SHA; checkpoint was preserved.")
@@ -500,6 +642,7 @@ def clear(run_id: str, task: int) -> None:
     metadata = read_metadata(run_id, task, state=state)
     stop_existing_watcher(metadata)
     with checkpoint_store_lock(state["directory"]):
+        _deactivate_checkpoint_index_unlocked(state["directory"], run_id, task)
         _atomic_write(state["stop"], "stop\n")
         for key in ("patch", "metadata", "plan", "stop"):
             state[key].unlink(missing_ok=True)
@@ -518,6 +661,7 @@ def clear_latest() -> None:
         current_metadata = read_metadata(str(metadata["run_id"]), int(metadata["task"]), state=state)
         if current_metadata is None:
             raise RuntimeError("Checkpoint disappeared during cleanup; preserving unknown ownership state.")
+        _deactivate_checkpoint_index_unlocked(state["directory"], str(metadata["run_id"]), int(metadata["task"]))
         _atomic_write(state["stop"], "stop\n")
         for key in ("patch", "metadata", "plan", "stop"):
             state[key].unlink(missing_ok=True)

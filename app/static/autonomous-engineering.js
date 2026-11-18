@@ -10,6 +10,7 @@
   const settingsForm = $("agent-settings-form");
   const taskForm = $("agent-task-form");
   const taskButton = $("send-agent-task");
+  let lastPendingWork = null;
   const labels = {
     ollama: $("ollama-state"), model: $("model-state"), codex: $("codex-state"),
     runner: $("runner-state"), github: $("github-state"), storage: $("storage-state")
@@ -335,10 +336,27 @@
   function canStartDispatch() {
     return statusKnown && lastCanDispatch && !lastActiveRun && !dispatchSubmitting && Date.now() >= dispatchPendingUntil;
   }
+  function canStartManualTask() {
+    const pending = lastPendingWork;
+    const checkpoint = pending && pending.checkpoint && typeof pending.checkpoint === "object"
+      ? pending.checkpoint
+      : null;
+    return canStartDispatch() &&
+      pending && pending.available === true &&
+      pending.blocked !== true &&
+      !(checkpoint && checkpoint.available === true);
+  }
   function syncDispatchControls() {
     const allowed = canStartDispatch();
-    dispatchButton.disabled = !allowed;
-    taskButton.disabled = !allowed;
+    const pending = lastPendingWork;
+    const checkpoint = pending && pending.checkpoint && typeof pending.checkpoint === "object"
+      ? pending.checkpoint
+      : null;
+    const checkpointNeedsReview = Boolean(
+      checkpoint && checkpoint.available === true && checkpoint.verified !== true
+    );
+    dispatchButton.disabled = !allowed || checkpointNeedsReview;
+    taskButton.disabled = !canStartManualTask() || checkpointNeedsReview;
   }
   function lockDispatchVisibilityWindow() {
     dispatchPendingUntil = Date.now() + 30000;
@@ -436,6 +454,47 @@
       $("storage-detail").textContent = checks.progress_storage_accessible
         ? "سرویس Broker محلی آماده است؛ حساب برنامه از کانال محدود محلی استفاده می‌کند و به مجوز مستقیم پوشه نیاز ندارد."
         : "سرویس Broker فضای پیشرفت آماده نیست. برنامه هنگام شروع برای نصب آن درخواست مجوز مدیر می‌کند؛ در صورت ردشدن UAC یا نبود Runner، اسکریپت ensure_autonomous_state_broker.ps1 را از PowerShell مدیر اجرا کنید.";
+      lastPendingWork = data.pending_work && typeof data.pending_work === "object"
+        ? data.pending_work
+        : {available: false, blocked: true, checkpoint: {available: true, verified: false}};
+      const checkpoint = lastPendingWork.checkpoint && typeof lastPendingWork.checkpoint === "object"
+        ? lastPendingWork.checkpoint
+        : null;
+      const checkpointState = $("checkpoint-state");
+      const checkpointDetail = $("checkpoint-detail");
+      if (!lastPendingWork.available) {
+        checkpointState.textContent = "قابل بررسی نیست";
+        checkpointDetail.textContent = "سرویس وضعیت پایدار پاسخ معتبر نداد؛ شروع هر چرخه تا بازیابی اتصال متوقف است.";
+      } else if (checkpoint && checkpoint.available === true && checkpoint.verified === true) {
+        checkpointState.textContent = "ذخیره‌شده و قابل بازیابی";
+        checkpointDetail.textContent = "وظیفهٔ " + String(checkpoint.task || 1) +
+          " از اجرای " + String(checkpoint.run_id || "نامشخص") +
+          "؛ " + Number(checkpoint.patch_bytes || 0).toLocaleString() +
+          " بایت تغییر ذخیره‌شده. اجرای بدون متن، همین وظیفه را ادامه می‌دهد.";
+      } else if (checkpoint && checkpoint.available === true) {
+        checkpointState.textContent = "نیازمند بررسی";
+        checkpointDetail.textContent = "وجود checkpoint تأیید شد اما تطبیق فراداده و patch موفق نبود؛ اجرای خودکار و پذیرش کار جدید مسدود است.";
+      } else if (lastPendingWork.blocked) {
+        checkpointState.textContent = "کار قبلی معلق است";
+        checkpointDetail.textContent = "یک وظیفه، PR یا عملیات پایدار قبلی تعیین‌تکلیف نشده است؛ کار جدید تا تعیین‌تکلیف آن پذیرفته نمی‌شود.";
+      } else {
+        checkpointState.textContent = "checkpoint معلقی وجود ندارد";
+        checkpointDetail.textContent = "فضای وضعیت بررسی شد و checkpoint بازیابی‌نشده‌ای ثبت نشده است.";
+      }
+      $("manual-task-state").textContent = lastPendingWork.blocked
+        ? "کار پایدار قبلی باقی مانده است؛ ارسال وظیفهٔ جدید غیرفعال است. دکمهٔ اجرای چرخه بدون متن، مسیر ادامه یا تطبیق همان کار است."
+        : "وظیفهٔ جدید فقط وقتی پذیرفته می‌شود که هیچ task، PR یا checkpoint قبلی باقی نمانده باشد.";
+      if (checkpoint && checkpoint.available === true) {
+        dispatchButton.textContent = checkpoint.verified === true
+          ? "ادامهٔ وظیفهٔ ذخیره‌شده"
+          : "checkpoint نیازمند بررسی است";
+      } else if (lastPendingWork.blocked) {
+        dispatchButton.textContent = "ادامه از وضعیت قبلی";
+      } else {
+        dispatchButton.textContent = executionMode === "continuous"
+          ? "شروع صف پیوسته"
+          : "اجرای یک چرخهٔ زمان‌بندی‌شده";
+      }
       const ready = data.ready === true;
       const paused = data.paused === true;
       const canDispatch = data.can_dispatch === undefined ? (ready && !paused) : data.can_dispatch === true;
@@ -457,6 +516,7 @@
       setMessage(data.paused ? "صف مهندسی متوقف است؛ برای ادامه از آخرین وضعیت، دکمهٔ ادامه را بزنید." : (ready ? "پیش‌نیازهای حساب برنامه آماده‌اند؛ Workflow پیش‌نیازهای حساب Runner را جداگانه بررسی می‌کند." : "برای فعال‌شدن اجرا، موارد ناقص را در راهنمای راه‌اندازی تکمیل کنید."), data.paused || ready ? "success" : "");
     } catch (error) {
       statusKnown = false;
+      lastPendingWork = null;
       setMessage(error.message || "دریافت وضعیت با خطا مواجه شد.", "error");
       syncDispatchControls();
       dispatchButton.disabled = true;
@@ -545,8 +605,13 @@
   });
   taskForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!canStartDispatch()) {
-      setMessage("عامل در حال اجرا، ارسال یا انتظار برای ثبت اجرای قبلی است؛ پس از به‌روزرسانی وضعیت دوباره تلاش کنید.", "error");
+    if (!canStartManualTask()) {
+      setMessage(
+        lastPendingWork && lastPendingWork.blocked
+          ? "کار پایدار قبلی یا checkpoint هنوز تعیین‌تکلیف نشده است؛ برای ادامه، از دکمهٔ اجرای بدون متن استفاده کنید."
+          : "وضعیت پایدار برای ارسال وظیفهٔ جدید آماده نیست؛ پس از به‌روزرسانی وضعیت دوباره تلاش کنید.",
+        "error"
+      );
       return;
     }
     const task = $("manual-task").value.trim();

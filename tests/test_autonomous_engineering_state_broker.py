@@ -82,6 +82,8 @@ def test_broker_service_has_no_generic_file_path_operation():
     assert 'path == "/v1/progress"' in service
     assert 'path == "/v1/cleanup"' in service
     assert 'path.StartsWith("/v1/diagnostics/"' in service
+    assert "ReadCheckpointSummary" in service
+    assert "latest-worktree-checkpoint.json" in service
     assert "request.ContainsKey(\"body\")" in service
     assert "Directory.GetFiles" not in service
     assert "Directory.GetDirectories" not in service
