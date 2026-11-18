@@ -104,6 +104,8 @@ def test_machine_state_broker_uses_a_local_allowlisted_pipe_not_a_network_file_a
     python_client = _read("app/autonomous_engineering_state_broker.py")
     powershell_client = _read("scripts/AutonomousStateBroker.psm1")
     provision = _read("scripts/provision_autonomous_runner.ps1")
+    installer = _read("scripts/AutonomousStateBrokerInstall.psm1")
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
 
     assert "NamedPipeServerStream" in service
     assert "PipeOptions.Asynchronous" in service
@@ -142,6 +144,23 @@ def test_machine_state_broker_uses_a_local_allowlisted_pipe_not_a_network_file_a
     assert 'Join-Path $env:ProgramData "PersonalAIAssistant\\StateBroker"' in provision
     assert "AutonomousStateBrokerService.cs" in provision
     assert "Invoke-AutonomousStateBroker" in provision
+
+
+def test_runner_provisioning_discovers_existing_path_and_service_identity():
+    script = _read("scripts/provision_autonomous_runner.ps1")
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+    module = _read("scripts/AutonomousWindowsIdentity.psm1")
+
+    assert '[string]$RunnerAccount = ""' in script
+    assert '[string]$RunnerRoot = ""' in script
+    assert "RunnerService\\\\.exe" in script
+    assert "$matchingRunnerServices[0].Service.StartName" in script
+    assert 'Join-Path $env:ProgramData "GitHubActionsRunner"' in script
+    assert "paa-runner-$suffix" in script
+    assert 'Get-AutonomousWindowsAccountSid -AccountName $AccountName' in module
+    assert "ConvertTo-AutonomousWindowsAccountName -AccountName $AccountName" in module
+    assert "Runner.Worker.exe" in ensure
+    assert "C:\\\\actions-runner" not in script + ensure
 
 
 def test_app_and_runner_checks_use_the_state_broker_without_app_directory_acl():
