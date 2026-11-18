@@ -2086,3 +2086,11 @@ Run [#44296129799](https://github.com/cognitive-kernel/Personal-AI-assistant/act
 The production prompt now requires the same explicit Windows shell fields for every `exec_command`, and requires a bounded read-only Git probe before the agent can report that shell execution is unavailable. The prompt regression test now asserts the shell executable, login mode, PowerShell exclusion, and probe command. This does not enable elevated execution or change the `workspace-write` sandbox.
 
 Validation boundary: exact-head CI and a new self-hosted Runner execution are pending. The prompt alignment is implemented, but the autonomous module is not yet considered operationally verified.
+
+## 2026-11-18 — Codex no-event progress visibility
+
+- Run [#44305904911](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44305904911) completed with failure on exact main SHA `2f7072447ebf50ab22f757ee5b16a468ea7e404e`; it was already completed, so no cancellation was necessary.
+- The Windows sandbox smoke test passed. The real task consumed two bounded Codex attempts: attempt 1 returned without a valid final report after 1,762 seconds; attempt 2 hit the 1,800-second supervisor deadline and its owned process tree was drained. The controller preserved the task/checkpoint and correctly refused to publish unverified work.
+- The user-facing progress stream only updated when Codex emitted JSONL. During long Ollama prefill/inference with no emitted event, the dashboard could therefore look frozen even while the supervised process remained alive.
+- Fix branch `fix/codex-stall-progress-heartbeat-20261118` adds a 60-second heartbeat to the progress stream and workflow log, distinguishing “waiting for first Codex/Ollama event” from a session that has emitted events. It does not misrepresent a heartbeat as model progress or change the 1,800-second hard deadline.
+- Focused heartbeat regressions were added. Exact-head CI and a live Windows Runner execution are required before claiming the fix is verified. This observability fix does not by itself prove the local model can complete the selected engineering task.
