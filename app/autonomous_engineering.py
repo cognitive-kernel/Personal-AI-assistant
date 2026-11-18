@@ -650,15 +650,35 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) ->
     if not readiness["ready"]:
         raise HTTPException(status_code=409, detail="پیش‌نیازهای عامل کامل نیست؛ ابتدا وضعیت محلی را بررسی کنید.")
     pending = readiness.get("pending_work")
-    if not isinstance(pending, dict):
-        # Compatibility with callers/tests providing a partial readiness snapshot.
+    if manual_task and not isinstance(pending, dict):
+        # New work requires an explicit, current Broker snapshot. Empty dispatch
+        # is a resume/reconcile request; the serialized controller makes the
+        # authoritative recovery decision and must not be treated as new work.
         pending = pending_work_status()
-    if not isinstance(pending, dict) or pending.get("available") is not True:
+    if manual_task:
+        if not isinstance(pending, dict) or pending.get("available") is not True:
+            raise HTTPException(
+                status_code=503,
+                detail="وضعیت پایدار وظایف و checkpoint قابل بررسی نیست؛ وظیفهٔ جدید ارسال نشد.",
+            )
+    elif isinstance(pending, dict) and pending.get("available") is not True:
         raise HTTPException(
             status_code=503,
-            detail="وضعیت پایدار وظایف و checkpoint قابل بررسی نیست؛ هیچ چرخه‌ای ارسال نشد.",
+            detail="وضعیت پایدار وظایف و checkpoint قابل بررسی نیست؛ اجرای ادامه متوقف شد.",
         )
-    checkpoint = pending.get("checkpoint") if isinstance(pending.get("checkpoint"), dict) else {}
+    elif not isinstance(pending, dict):
+        checks = readiness.get("checks", {})
+        if isinstance(checks, dict) and checks.get("durable_state_available") is False:
+            raise HTTPException(
+                status_code=503,
+                detail="وضعیت پایدار وظایف و checkpoint قابل بررسی نیست؛ اجرای ادامه متوقف شد.",
+            )
+
+    checkpoint = (
+        pending.get("checkpoint")
+        if isinstance(pending, dict) and isinstance(pending.get("checkpoint"), dict)
+        else {}
+    )
     if checkpoint.get("available") is True and checkpoint.get("verified") is not True:
         raise HTTPException(
             status_code=409,
