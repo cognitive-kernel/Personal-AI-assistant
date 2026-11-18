@@ -3436,6 +3436,21 @@ def test_autonomous_engineering_manual_task_form_dispatches_bounded_input():
         "model": "gpt-oss:20b", "models": ["gpt-oss:20b"], "runs_per_day": 1,
         "codex": {"installed": False, "version": None},
         "github": {"recent_runs": [], "settings": {"model": "gpt-oss:20b", "runs_per_day": 1}},
+        "pending_work": {
+            "available": True,
+            "blocked": False,
+            "markers": {
+                "pending_task": False, "pending_owner": False,
+                "pending_pr": False, "cleanup_in_progress": False,
+            },
+            "checkpoint": {"available": False, "verified": True},
+            "reason": None,
+        },
+        "checks": {
+            "durable_state_available": True,
+            "progress_storage_accessible": True,
+        },
+        "can_dispatch": True,
         "local_only_inference": True,
     }
     progress_payload = {
@@ -3689,6 +3704,16 @@ def test_autonomous_dashboard_keeps_dispatch_disabled_after_accepted_run():
             "interval_hours": 24,
             "execution_mode": "continuous",
             "paused": False,
+            "pending_work": {
+                "available": True,
+                "blocked": False,
+                "markers": {
+                    "pending_task": False, "pending_owner": False,
+                    "pending_pr": False, "cleanup_in_progress": False,
+                },
+                "checkpoint": {"available": False, "verified": True},
+                "reason": None,
+            },
             "github": {"recent_runs": active_runs, "settings": {"model": "model:latest"}},
             "codex": {"installed": False, "version": None},
             "local_only_inference": True,

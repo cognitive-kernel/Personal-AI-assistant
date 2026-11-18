@@ -1845,7 +1845,8 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     assert "let dispatchSubmitting = false" in script
     assert script.count("dispatchSubmitting = true") == 2
     assert "function syncDispatchControls()" in script
-    assert "taskButton.disabled = !allowed" in script
+    assert "taskButton.disabled = !canStartManualTask()" in script
+    assert "function canStartManualTask()" in script
     assert "function canStartDispatch()" in script
     assert "let statusKnown = false" in script
     assert "statusKnown && lastCanDispatch" in script
