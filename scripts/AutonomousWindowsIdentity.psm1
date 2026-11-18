@@ -27,10 +27,14 @@ function Get-AutonomousWindowsAccountSid {
     [CmdletBinding()]
     param([Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$AccountName)
 
+    # Windows services commonly report local identities as ".\\user".
+    # Normalize that form to "COMPUTER\\user" before SID translation so
+    # service identities resolve consistently with provisioning parameters.
+    $normalizedAccountName = ConvertTo-AutonomousWindowsAccountName -AccountName $AccountName
     try {
-        return ([Security.Principal.NTAccount]$AccountName).Translate([Security.Principal.SecurityIdentifier]).Value
+        return ([Security.Principal.NTAccount]$normalizedAccountName).Translate([Security.Principal.SecurityIdentifier]).Value
     } catch {
-        throw "Could not resolve configured Windows principal '$AccountName' to a SID."
+        throw "Could not resolve configured Windows principal '$AccountName' (normalized as '$normalizedAccountName') to a SID."
     }
 }
 
