@@ -36,6 +36,33 @@ def _run(command: list[str], *, timeout: int = 30) -> subprocess.CompletedProces
     )
 
 
+def _assert_no_active_runner_worker(system: str) -> None:
+    ps = shutil.which("ps")
+    if not ps:
+        raise RuntimeError("Cannot safely verify whether a GitHub Runner job is active; the ps utility is unavailable.")
+    arguments = ["-axo", "pid=,command="] if system == "darwin" else ["-eo", "pid=,args="]
+    result = _run([ps, *arguments], timeout=10)
+    if result.returncode != 0:
+        raise RuntimeError("Cannot safely inspect running processes before state ACL or service changes.")
+    import re
+    worker = re.compile(r"(?i)(?:^|[\\s/])Runner\\.Worker(?:\\.dll|\\.exe)?(?:[\\s]|$)")
+    active = []
+    for line in result.stdout.splitlines():
+        fields = line.strip().split(None, 1)
+        if len(fields) != 2:
+            continue
+        try:
+            pid = int(fields[0])
+        except ValueError:
+            continue
+        if pid != os.getpid() and worker.search(fields[1]):
+            active.append(pid)
+    if active:
+        raise RuntimeError(
+            "A GitHub Runner worker is currently active. Broker setup did not change state files, ACLs, or services; retry after the job completes."
+        )
+
+
 def _resolve_service_uid(raw_identity: str, *, source: str) -> int:
     value = (raw_identity or "").strip()
     if not value:
@@ -434,6 +461,7 @@ def _elevated_setup(
 ) -> None:
     if os.geteuid() != 0:
         raise RuntimeError("POSIX broker installation requires administrator privileges.")
+    _assert_no_active_runner_worker(sys.platform)
     if not state_dir.is_absolute() or not config_dir.is_absolute():
         raise RuntimeError("State and configuration paths must be absolute.")
     if not state_dir.is_absolute():
