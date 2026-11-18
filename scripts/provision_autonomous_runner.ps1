@@ -98,18 +98,25 @@ if ($RunnerRoot.Equals($progressPath, [StringComparison]::OrdinalIgnoreCase) -or
     throw "RunnerRoot and shared autonomous state directory must be separate, non-nested paths."
 }
 $brokerServiceSid = "S-1-5-19"
-$node = Get-Command node -ErrorAction Stop
-$npm = Get-Command npm -ErrorAction Stop
-$git = Get-Command git -ErrorAction Stop
-$python = Get-Command python -ErrorAction Stop
-& $node.Source --version
-if ($LASTEXITCODE -ne 0) { throw "Node.js is not executable." }
-& $npm.Source --version
-if ($LASTEXITCODE -ne 0) { throw "npm is not executable." }
+
+# Node.js/npm and Python are provisioned inside each autonomous workflow job.
+# Do not require global copies during machine provisioning.
+$git = Get-Command git -ErrorAction SilentlyContinue
+if (-not $git) {
+    throw "Git for Windows is required by actions/checkout but is not installed or visible in the Runner service PATH. Install the official Git for Windows package, then retry."
+}
 & $git.Source --version
-if ($LASTEXITCODE -ne 0) { throw "Git is not executable." }
-$pythonVersion = (& $python.Source -c "import sys; print(sys.version_info.major, sys.version_info.minor, sep=chr(46))")
-if ($LASTEXITCODE -ne 0 -or [version]$pythonVersion -lt [version]"3.11") { throw "Python 3.11 or newer is required on the Runner host." }
+if ($LASTEXITCODE -ne 0) { throw "Git is present but cannot execute." }
+
+$python = $null
+$projectRoot = Split-Path -Parent $PSScriptRoot
+$projectPython = Join-Path $projectRoot ".venv\\Scripts\\python.exe"
+if (Test-Path -LiteralPath $projectPython -PathType Leaf) {
+    $python = Get-Item -LiteralPath $projectPython
+} else {
+    $pythonCommand = Get-Command python -ErrorAction SilentlyContinue
+    if ($pythonCommand) { $python = $pythonCommand }
+}
 $gh = Get-Command gh -ErrorAction Stop
 & $gh.Source auth status --hostname github.com
 if ($LASTEXITCODE -ne 0) { throw "Authenticate gh as an account with repository Administration: write permission." }
@@ -149,7 +156,11 @@ if ($capabilitiesProperty -and $null -ne $capabilitiesProperty.Value) {
     }
 } else {
     $toolProbeScript = Join-Path $PSScriptRoot "verify_ollama_tools.py"
-    & $python.Source $toolProbeScript --model $Model
+    if (-not $python) {
+        throw "Ollama did not publish tool capability metadata and no project Python runtime is available. Start run.py once to prepare the local Python environment, then retry."
+    }
+    $pythonExecutable = if ($python.PSObject.Properties["Source"]) { $python.Source } else { $python.FullName }
+    & $pythonExecutable $toolProbeScript --model $Model
     if ($LASTEXITCODE -ne 0) {
         throw "Saved model $Model failed the live Ollama tool-call probe."
     }
