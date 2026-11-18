@@ -176,7 +176,14 @@ class RestrictedStateBroker:
     def diagnostics(self, run_id: str) -> dict[str, Any] | None:
         if not run_id.isascii() or not run_id.isdigit() or not (1 <= len(run_id) <= 20) or int(run_id) <= 0:
             raise BrokerFailure(400, "invalid_run_id")
-        path = self.state_dir / "run-diagnostics" / f"{run_id}.json"
+        diagnostics_dir = self.state_dir / "run-diagnostics"
+        try:
+            directory_info = diagnostics_dir.lstat()
+        except FileNotFoundError:
+            return None
+        if not stat.S_ISDIR(directory_info.st_mode) or stat.S_ISLNK(directory_info.st_mode):
+            raise OSError("Run diagnostics directory is not a real directory.")
+        path = diagnostics_dir / f"{run_id}.json"
         info = self._regular_file(path, 240_000)
         if info is None:
             return None
