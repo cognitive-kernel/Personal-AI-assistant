@@ -87,7 +87,7 @@ try {
     $needsUv = $true
     if (Test-Path -LiteralPath $UvPath -PathType Leaf) {
         $version = (& $UvPath --version 2>$null | Out-String).Trim()
-        if ($version -eq "uv $UvVersion") { $needsUv = $false }
+        if ($version -match ('^uv\s+' + [regex]::Escape($UvVersion) + '(\s|$)')) { $needsUv = $false }
     }
     if ($needsUv) {
         Write-Host "Installing verified uv $UvVersion for $target ..."
