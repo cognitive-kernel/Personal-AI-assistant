@@ -106,15 +106,25 @@ else:
 print("PASS: second account sees identical brokered progress and cannot directly enumerate protected state.")
 "@
 
-$probePath = Join-Path $PSScriptRoot (".state-broker-probe-" + [guid]::NewGuid().ToString("N") + ".py")
+$probeId = [guid]::NewGuid().ToString("N")
+$probePath = Join-Path $PSScriptRoot (".state-broker-probe-$probeId.py")
+$stdoutPath = Join-Path $PSScriptRoot (".state-broker-probe-$probeId.stdout.log")
+$stderrPath = Join-Path $PSScriptRoot (".state-broker-probe-$probeId.stderr.log")
 try {
     [System.IO.File]::WriteAllText($probePath, $pythonProbe, [System.Text.UTF8Encoding]::new($false))
-    $process = Start-Process -FilePath $PythonPath -Credential $SecondaryCredential -ArgumentList ('"' + $probePath + '"') -Wait -PassThru
+    $process = Start-Process -FilePath $PythonPath -Credential $SecondaryCredential -ArgumentList ('"' + $probePath + '"') -Wait -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
     if ($process.ExitCode -ne 0) {
-        throw "Cross-account state-broker acceptance test failed (Python exit code $($process.ExitCode))."
+        $stdout = if (Test-Path -LiteralPath $stdoutPath) { Get-Content -LiteralPath $stdoutPath -Raw } else { "" }
+        $stderr = if (Test-Path -LiteralPath $stderrPath) { Get-Content -LiteralPath $stderrPath -Raw } else { "" }
+        throw "Cross-account state-broker acceptance test failed (Python exit code $($process.ExitCode)). stdout: $stdout stderr: $stderr"
     }
+    if (Test-Path -LiteralPath $stdoutPath) { Get-Content -LiteralPath $stdoutPath }
 } finally {
-    if (Test-Path -LiteralPath $probePath) { Remove-Item -LiteralPath $probePath -Force -ErrorAction SilentlyContinue }
+    foreach ($temporaryPath in @($probePath, $stdoutPath, $stderrPath)) {
+        if (Test-Path -LiteralPath $temporaryPath) {
+            Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 Write-Host "PASS: broker is healthy; a second non-admin account sees the same progress and is denied direct state-directory access."
