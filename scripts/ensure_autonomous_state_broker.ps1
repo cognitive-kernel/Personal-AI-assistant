@@ -90,16 +90,10 @@ $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runner.Service.StartN
 
 $machineStateDirectory = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")
 $processStateDirectory = $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR
-if (-not [string]::IsNullOrWhiteSpace($processStateDirectory)) {
-    if ([string]::IsNullOrWhiteSpace($machineStateDirectory)) {
-        throw "AUTONOMOUS_ENGINEERING_PROGRESS_DIR is process/user-scoped; configure it at machine scope before broker setup."
-    }
-    $processPath = [System.IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($processStateDirectory.Trim()))
-    $machinePath = [System.IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($machineStateDirectory.Trim()))
-    if (-not $processPath.Equals($machinePath, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "The current process state path differs from the machine state path. No ACLs were changed."
-    }
+if (-not [string]::IsNullOrWhiteSpace($processStateDirectory) -and [string]::IsNullOrWhiteSpace($machineStateDirectory)) {
+    throw "AUTONOMOUS_ENGINEERING_PROGRESS_DIR is process/user-scoped; configure a machine-level path before broker setup."
 }
+# When a machine value exists it is authoritative; ignore per-process overrides.
 $stateRoot = Resolve-AutonomousStateDirectory -ConfiguredPath $machineStateDirectory -ProgramDataPath $env:ProgramData
 $installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $runnerService = Get-Service -Name $runner.Service.Name -ErrorAction Stop
