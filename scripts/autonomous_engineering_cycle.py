@@ -639,11 +639,36 @@ def run_cycle(args: argparse.Namespace) -> int:
             print("Engineering queue is empty.")
             return 0
         if marker == "TASK_BLOCKED":
+            blocked_detail = _read_report_diagnostic(report)
+            meaningful_detail = re.sub(r"(?m)^\\s*#{1,6}\\s*", "", blocked_detail)
+            meaningful_detail = re.sub(r"[\\s#*_\\x60>\\-]", "", meaningful_detail)
+            if len(meaningful_detail) < 32:
+                persist_run_diagnostic(
+                    args.run_id, args.run_attempt, task=task, attempt=attempt,
+                    stage="report_validation", category="invalid_blocked_report",
+                    summary="Codex returned TASK_BLOCKED without a concrete explanation; the same task will be retried.",
+                    detail=blocked_detail,
+                )
+                failure_feedback = (
+                    f"Attempt {attempt}: TASK_BLOCKED is not accepted without a substantive explanation.\\n"
+                    "Continue the SAME task and preserve all checkpoint/worktree changes. Do not switch tasks. "
+                    "Either complete the task, or if it truly cannot be completed safely, explain: "
+                    "the exact action attempted, the file/command/evidence involved, the concrete blocker, "
+                    "why no safe alternative exists, and what is needed to unblock it. "
+                    "The explanation must contain at least two informative sentences before the final TASK_BLOCKED marker.\\n"
+                )
+                record(
+                    args.run_id, args.run_attempt, "retry",
+                    f"تکمیل توضیح انسداد وظیفهٔ {task}",
+                    "گزارش TASK_BLOCKED توضیح کافی نداشت؛ همان وظیفه با حفظ checkpoint دوباره اجرا می‌شود",
+                )
+                continue
+            first_line = next((line.strip() for line in blocked_detail.splitlines() if line.strip()), "")
             persist_run_diagnostic(
                 args.run_id, args.run_attempt, task=task, attempt=attempt,
                 stage="codex_decision", category="task_blocked",
-                summary=f"Codex marked task {task} as blocked.",
-                detail=_read_report_diagnostic(report),
+                summary=(first_line[:800] if first_line else f"Codex marked task {task} as blocked."),
+                detail=blocked_detail,
             )
             raise RuntimeError(f"Codex reported task {task} as blocked; record the blocker and select no unsafe action.")
         if marker != "TASK_COMPLETE":

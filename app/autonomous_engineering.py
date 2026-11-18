@@ -36,7 +36,7 @@ _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
 _STATUS_PROBE_CONTEXT = threading.local()
 _STATUS_PROBE_TIMEOUT_SECONDS = 35.0
 _GITHUB_STATUS_PROBE_TIMEOUT_SECONDS = 20.0
-_STATUS_EXECUTOR_MAX_WORKERS = 5
+_STATUS_EXECUTOR_MAX_WORKERS = 6
 _STATUS_EXECUTOR = ThreadPoolExecutor(
     max_workers=_STATUS_EXECUTOR_MAX_WORKERS,
     thread_name_prefix="autonomous-status",
@@ -268,6 +268,7 @@ def collect_status() -> dict[str, Any]:
     codex_future = _submit_status_probe(_codex_status)
     runner_future = _submit_status_probe(_runner_status)
     storage_future = _submit_status_probe(storage_accessible)
+    pending_future = _submit_status_probe(pending_work_status)
 
     # GitHub variables determine the selected model. Bound this dependency
     # separately, then use the remaining request budget for every other probe.
@@ -316,7 +317,7 @@ def collect_status() -> dict[str, Any]:
     remaining = max(0.0, deadline - time.monotonic())
     futures = tuple(
         future
-        for future in (codex_future, runner_future, storage_future, ollama_future)
+        for future in (codex_future, runner_future, storage_future, pending_future, ollama_future)
         if future is not None
     )
     if futures:
@@ -333,6 +334,10 @@ def collect_status() -> dict[str, Any]:
     progress_storage = _resolve_status_probe(
         storage_future, "storage", False, timed_out, errors, unavailable
     )
+    pending_work = _resolve_status_probe(
+        pending_future, "pending_work", {"available": False, "blocked": True, "checkpoint": {"available": False, "verified": False}},
+        timed_out, errors, unavailable,
+    )
     ollama = _resolve_status_probe(
         ollama_future, "ollama", _status_ollama_fallback(model),
         timed_out, errors, unavailable,
@@ -346,6 +351,9 @@ def collect_status() -> dict[str, Any]:
     if not isinstance(ollama, dict):
         errors.append("ollama")
         ollama = _status_ollama_fallback(model)
+    if not isinstance(pending_work, dict):
+        errors.append("pending_work")
+        pending_work = {"available": False, "blocked": True, "checkpoint": {"available": False, "verified": False}}
     progress_storage = progress_storage is True
 
     settings = github_settings
@@ -366,6 +374,7 @@ def collect_status() -> dict[str, Any]:
         "github_cli_authenticated": github["authenticated"],
         "github_runs_available": github.get("runs_available", False),
         "progress_storage_accessible": progress_storage,
+        "durable_state_available": pending_work.get("available") is True,
     }
     ready = all(
         value
@@ -383,6 +392,7 @@ def collect_status() -> dict[str, Any]:
         "ready": ready,
         "can_dispatch": can_dispatch,
         "checks": checks,
+        "pending_work": pending_work,
         "ollama": ollama,
         "codex": codex,
         "runner": runner,
@@ -637,10 +647,16 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) ->
                 detail="وضعیت تسک پایدار قابل بررسی نیست؛ برای جلوگیری از تداخل، وظیفهٔ جدید ارسال نشد.",
             )
         if pending.get("blocked"):
-            raise HTTPException(
-                status_code=409,
-                detail="یک تسک، PR یا عملیات پاک‌سازی قبلی هنوز تعیین‌تکلیف نشده است؛ متن جدید پذیرفته نشد. برای ادامهٔ همان کار، اجرای بدون متن وظیفه را ارسال کنید.",
-            )
+            checkpoint = pending.get("checkpoint") if isinstance(pending.get("checkpoint"), dict) else {}
+            if checkpoint.get("available") is True:
+                run_id = str(checkpoint.get("run_id") or "نامشخص")
+                task = checkpoint.get("task", 1)
+                detail = f"یک checkpoint تأییدشده برای اجرای {run_id} و وظیفهٔ {task} باقی مانده است. درخواست جدید پذیرفته نشد؛ برای ادامهٔ همان وظیفه، اجرای چرخه را بدون متن وظیفه ارسال کنید."
+            elif checkpoint.get("verified") is False:
+                detail = "وضعیت checkpoint قابل تأیید نیست؛ برای جلوگیری از ازدست‌رفتن تغییرات، وظیفهٔ جدید پذیرفته نشد."
+            else:
+                detail = "یک تسک، PR یا عملیات پاک‌سازی قبلی هنوز تعیین‌تکلیف نشده است؛ متن جدید پذیرفته نشد. برای ادامهٔ همان کار، اجرای چرخه را بدون متن وظیفه ارسال کنید."
+            raise HTTPException(status_code=409, detail=detail)
     active_runs = readiness.get("github", {}).get("recent_runs", [])
     if any(item.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"} for item in active_runs):
         raise HTTPException(status_code=409, detail="یک اجرای عامل در حال انجام است؛ ابتدا وضعیت آن را بررسی کنید.")

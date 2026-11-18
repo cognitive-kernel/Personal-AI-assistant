@@ -41,6 +41,7 @@ except ImportError:  # Direct script execution from the scripts directory.
 
 ROOT = Path(__file__).resolve().parents[1]
 POLL_SECONDS = 20
+CHECKPOINT_INDEX_NAME = "latest-worktree-checkpoint.json"
 
 
 def store_dir() -> Path:
@@ -111,6 +112,98 @@ def _atomic_write(path: Path, data: str | bytes) -> None:
 
 def stop_existing_watcher(metadata: dict[str, Any] | None) -> None:
     stop_owned_watcher(metadata, script_path=Path(__file__).resolve())
+
+
+def _checkpoint_index_payload(metadata: dict[str, Any], state: dict[str, Path]) -> dict[str, Any] | None:
+    """Build the fixed, path-free status record consumed by the local State Broker."""
+    run_id = metadata.get("run_id")
+    task = metadata.get("task")
+    base_sha = metadata.get("base_sha")
+    updated_at = metadata.get("updated_at")
+    if (
+        not isinstance(run_id, str) or not run_id.isascii()
+        or not run_id.isdigit() or not 1 <= len(run_id) <= 20
+        or isinstance(task, bool) or not isinstance(task, int) or task < 1
+        or not isinstance(base_sha, str) or len(base_sha) != 40
+        or any(ch not in "0123456789abcdef" for ch in base_sha)
+        or isinstance(updated_at, bool) or not isinstance(updated_at, (int, float))
+        or not math.isfinite(float(updated_at))
+    ):
+        return None
+    patch_path = state["patch"]
+    if not patch_path.is_file():
+        raise RuntimeError("Checkpoint patch is unavailable while publishing its status index.")
+    patch_bytes = patch_path.stat().st_size
+    declared_bytes = metadata.get("patch_bytes")
+    if declared_bytes is not None and (
+        isinstance(declared_bytes, bool)
+        or not isinstance(declared_bytes, int)
+        or declared_bytes != patch_bytes
+    ):
+        raise RuntimeError("Checkpoint patch size changed while publishing its status index.")
+    return {
+        "schema_version": 1,
+        "run_id": run_id,
+        "task": task,
+        "base_sha": base_sha,
+        "updated_at": float(updated_at),
+        "patch_bytes": patch_bytes,
+        "plan_available": state["plan"].is_file(),
+    }
+
+
+def _write_checkpoint_index_unlocked(metadata: dict[str, Any], state: dict[str, Path]) -> None:
+    payload = _checkpoint_index_payload(metadata, state)
+    if payload is None:
+        return
+    _atomic_write(
+        state["directory"] / CHECKPOINT_INDEX_NAME,
+        json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\\n",
+    )
+
+
+def _refresh_checkpoint_index_unlocked(directory: Path) -> bool:
+    """Point the broker at the newest verifiable numeric workflow checkpoint."""
+    candidates: list[tuple[float, dict[str, Any], dict[str, Path]]] = []
+    try:
+        for metadata_path in directory.glob("worktree-checkpoint-*.json"):
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            if not isinstance(metadata, dict):
+                return False
+            run_id = metadata.get("run_id")
+            task = metadata.get("task")
+            updated_at = metadata.get("updated_at")
+            if (
+                not isinstance(run_id, str) or not run_id.isascii()
+                or not run_id.isdigit() or not 1 <= len(run_id) <= 20
+                or isinstance(task, bool) or not isinstance(task, int) or task < 1
+                or isinstance(updated_at, bool) or not isinstance(updated_at, (int, float))
+                or not math.isfinite(float(updated_at))
+            ):
+                continue
+            state = {
+                "directory": directory,
+                "patch": directory / f"worktree-checkpoint-{run_id}-{task}.patch",
+                "metadata": metadata_path,
+                "plan": directory / f"worktree-plan-{run_id}-{task}.json",
+                "stop": directory / f"worktree-checkpoint-{run_id}-{task}.stop",
+            }
+            if metadata_path.name != f"worktree-checkpoint-{run_id}-{task}.json":
+                return False
+            payload = _checkpoint_index_payload(metadata, state)
+            if payload is None:
+                return False
+            candidates.append((float(updated_at), metadata, state))
+        if not candidates:
+            (directory / CHECKPOINT_INDEX_NAME).unlink(missing_ok=True)
+            return True
+        _, metadata, state = max(candidates, key=lambda item: item[0])
+        _write_checkpoint_index_unlocked(metadata, state)
+        return True
+    except (OSError, ValueError, TypeError, RuntimeError):
+        # Keep the previous index. A broker that detects a stale index fails
+        # closed instead of treating an uncertain checkpoint as an empty queue.
+        return False
 
 
 
@@ -266,6 +359,7 @@ def _write_snapshot_unlocked(
     # This atomic metadata replacement is the readiness commit point. The
     # controller must not depend on a second, separately published marker.
     _atomic_write(state["metadata"], json.dumps(metadata, ensure_ascii=False, sort_keys=True) + "\n")
+    _write_checkpoint_index_unlocked(metadata, state)
 
 
 def write_snapshot(
@@ -363,6 +457,7 @@ def _latest_checkpoint() -> tuple[dict[str, Any], dict[str, Path]] | None:
                         destination["metadata"],
                         json.dumps(migrated, ensure_ascii=False, sort_keys=True) + "\\n",
                     )
+                    _write_checkpoint_index_unlocked(migrated, destination)
                     legacy_metadata_path.unlink(missing_ok=True)
                     legacy_patch_path.unlink(missing_ok=True)
                     legacy_plan_path.unlink(missing_ok=True)
@@ -439,6 +534,7 @@ def restore(base_sha: str) -> bool:
         current_metadata = read_metadata(str(metadata["run_id"]), int(metadata["task"]), state=state)
         if current_metadata is None or current_metadata.get("base_sha") != metadata.get("base_sha"):
             raise RuntimeError("Checkpoint ownership changed during recovery; preserving all checkpoint data.")
+        _write_checkpoint_index_unlocked(current_metadata, state)
         current_head = git("rev-parse", "HEAD").stdout.strip()
         if current_head != base_sha:
             raise RuntimeError("The checked-out HEAD does not match the immutable base SHA; checkpoint was preserved.")
@@ -506,6 +602,7 @@ def clear(run_id: str, task: int) -> None:
         ready, error = watcher_marker_paths(run_id, task)
         ready.unlink(missing_ok=True)
         error.unlink(missing_ok=True)
+        _refresh_checkpoint_index_unlocked(state["directory"])
 
 
 def clear_latest() -> None:
@@ -524,6 +621,7 @@ def clear_latest() -> None:
         ready, error = watcher_marker_paths(str(metadata["run_id"]), int(metadata["task"]), state=state)
         ready.unlink(missing_ok=True)
         error.unlink(missing_ok=True)
+        _refresh_checkpoint_index_unlocked(state["directory"])
 
 
 def main() -> int:
