@@ -140,7 +140,8 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="pause-agent"' in page
     assert 'id="resume-agent"' in page
     assert "OPENAI_API_KEY" not in page
-    assert "سرویس وضعیت مشترک" in agent_page
+    assert "سرویس Broker" in agent_page
+    assert "فقط Runner و Broker به فایل‌های محافظت‌شده دسترسی مستقیم دارند" in agent_page
     assert "هر حساب محلی احراز‌شده" in agent_page
     assert "checks.github_runs_available" in agent_script
     assert 'id="interval-hours"' in page
