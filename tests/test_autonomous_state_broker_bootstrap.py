@@ -64,7 +64,8 @@ def test_posix_broker_setup_uses_dynamic_service_identity_and_native_service_man
     assert "MARKERS" in service and "CLEANUP_NAMES" in service
     assert "/v1/progress" in client
     assert "configured_socket_path" in client
-    assert "platformdirs" in config
+    assert 'Path("/etc/xdg")' in config
+    assert 'Path("/Library/Application Support")' in config
     assert "process_override" not in config
 
 
