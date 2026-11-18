@@ -30,6 +30,16 @@ def test_runtime_bootstrap_pins_verified_uv_assets_for_supported_platforms():
     assert "aarch64-unknown-linux-musl" in unix
     assert "Unsupported platform or architecture" in unix
     assert "Unsupported Windows processor architecture" in windows
+    # The managed Python 3.11 distributions used by uv do not cover these
+    # uv executable-only targets; fail closed rather than claim bootstrap support.
+    for unsupported in (
+        "i686-unknown-linux-gnu",
+        "i686-unknown-linux-musl",
+        "armv7-unknown-linux-musleabihf",
+        "arm-unknown-linux-musleabihf",
+        "riscv64gc-unknown-linux-musl",
+    ):
+        assert unsupported not in unix
 
 
 def test_runtime_bootstrap_uses_only_project_relative_runtime_and_preserves_invalid_venv():
