@@ -194,7 +194,8 @@ def test_windows_provisioning_uses_the_runtime_shared_state_path_contract():
     assert "$env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR" in script
     assert '[Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")' in script
     assert "must be configured at machine scope" in script
-    assert "Process and machine AUTONOMOUS_ENGINEERING_PROGRESS_DIR values differ" in script
+    assert "AUTONOMOUS_ENGINEERING_PROGRESS_DIR must be configured at machine scope" in script
+    assert "Process and machine AUTONOMOUS_ENGINEERING_PROGRESS_DIR values differ" not in script
     assert "Resolve-AutonomousStateDirectory" in paths_module
     assert "AUTONOMOUS_ENGINEERING_PROGRESS_DIR must be an absolute shared path." in paths_module
     assert "per-user fallback is not supported on Windows" in paths_module
