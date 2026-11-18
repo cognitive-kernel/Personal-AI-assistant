@@ -328,3 +328,24 @@ jobs:
           tests/test_schema_registry.py::test_application_database_initializer_migrates_observed_legacy_learning_store
           tests/test_schema_registry.py::test_restore_backup_requires_opt_in_to_replace_and_restores_verified_file
           tests/test_storage_routes.py::test_restore_staging_cleanup_previews_and_deletes_only_old_verified_snapshots
+
+  runtime-bootstrap:
+    name: Managed Python bootstrap (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Bootstrap and validate managed Python on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\bootstrap.ps1 -RuntimeOnly
+      - name: Bootstrap and validate managed Python on POSIX
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          chmod +x ./bootstrap.sh
+          ./bootstrap.sh --runtime-only
