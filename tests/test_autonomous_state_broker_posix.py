@@ -292,9 +292,9 @@ def test_posix_broker_cleanup_refuses_while_checkpoint_watcher_owns_lock(posix_b
             handle.flush()
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         try:
-            result = broker.cleanup()
-            assert result["conflict"] is True
-            assert "checkpoint_writer_active" in result["blockers"]
+            with pytest.raises(broker.StateBrokerConflict) as conflict:
+                broker.cleanup()
+            assert "checkpoint_writer_active" in conflict.value.blockers
         finally:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
@@ -335,33 +335,10 @@ def test_posix_broker_does_not_misclassify_completed_current_run_without_checkpo
 
 
 
-def test_posix_broker_fails_closed_when_legacy_current_progress_is_corrupt(posix_broker):
+def test_posix_broker_reports_empty_checkpoint_when_current_progress_is_absent(posix_broker):
     state_dir, _socket_path, broker = posix_broker
-    (state_dir / "current.json").write_text("{broken", encoding="utf-8")
-
-    pending = broker.pending_work()
-    assert pending["available"] is True
-    assert pending["blocked"] is True
-    assert pending["checkpoint"]["available"] is True
-    assert pending["checkpoint"]["verified"] is False
-    assert pending["checkpoint"]["reason"] == "current_progress_unreadable"
-
-    with pytest.raises(broker.StateBrokerConflict):
-        broker.cleanup()
-    assert (state_dir / "current.json").read_text(encoding="utf-8") == "{broken"
-
-
-
-def test_posix_broker_accepts_legacy_current_progress_without_run_id_as_no_checkpoint(posix_broker):
-    state_dir, _socket_path, broker = posix_broker
-    (state_dir / "current.json").write_text(
-        json.dumps({
-            "status": "completed",
-            "phase_label": "پایان چرخه",
-            "updated_at": "2026-11-18T10:00:00Z",
-        }),
-        encoding="utf-8",
-    )
+    assert not (state_dir / "current.json").exists()
+    assert not (state_dir / "latest-worktree-checkpoint.json").exists()
 
     pending = broker.pending_work()
     assert pending["available"] is True

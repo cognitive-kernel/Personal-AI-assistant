@@ -364,9 +364,6 @@ def collect_status() -> dict[str, Any]:
     if not isinstance(ollama, dict):
         errors.append("ollama")
         ollama = _status_ollama_fallback(model)
-    if not isinstance(pending_work, dict):
-        errors.append("pending_work")
-        pending_work = {"available": False, "blocked": True, "checkpoint": {"available": False, "verified": False}}
     progress_storage = progress_storage is True
 
     settings = github_settings

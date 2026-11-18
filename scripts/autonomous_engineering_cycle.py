@@ -641,7 +641,6 @@ def run_cycle(args: argparse.Namespace) -> int:
         if marker == "TASK_BLOCKED":
             blocked_detail = _read_report_diagnostic(report)
             meaningful_detail = "".join(ch for ch in blocked_detail if ch.isalnum())
-            meaningful_detail = "".join(ch for ch in blocked_detail if ch.isalnum())
             if len(meaningful_detail) < 80:
                 persist_run_diagnostic(
                     args.run_id, args.run_attempt, task=task, attempt=attempt,
@@ -663,7 +662,13 @@ def run_cycle(args: argparse.Namespace) -> int:
                     "گزارش TASK_BLOCKED توضیح کافی نداشت؛ همان وظیفه با حفظ checkpoint دوباره اجرا می‌شود",
                 )
                 continue
-            first_line = next((line.strip() for line in blocked_detail.splitlines() if line.strip()), "")
+            first_line = next(
+                (
+                    line.strip() for line in blocked_detail.splitlines()
+                    if line.strip().lower().startswith(("concrete blocker:", "blocker:"))
+                ),
+                next((line.strip() for line in blocked_detail.splitlines() if line.strip()), ""),
+            )
             persist_run_diagnostic(
                 args.run_id, args.run_attempt, task=task, attempt=attempt,
                 stage="codex_decision", category="task_blocked",

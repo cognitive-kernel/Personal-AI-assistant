@@ -157,7 +157,7 @@ def _checkpoint_index_payload(metadata: dict[str, Any], state: dict[str, Path]) 
 def _write_checkpoint_index_unlocked(metadata: dict[str, Any], state: dict[str, Path]) -> None:
     payload = _checkpoint_index_payload(metadata, state)
     if payload is None:
-        return
+        raise RuntimeError("Checkpoint metadata cannot be represented by the shared broker index; preserving checkpoint files.")
     _atomic_write(
         state["directory"] / CHECKPOINT_INDEX_NAME,
         json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n",
@@ -170,6 +170,16 @@ def _deactivate_checkpoint_index_unlocked(
     """Deactivate only the exact checkpoint being cleared; preserve other owners."""
     index_path = directory / CHECKPOINT_INDEX_NAME
     if not index_path.is_file():
+        # Establish an explicit empty state for pre-index snapshots so an older
+        # retained file cannot be selected again after this owner is cleared.
+        _atomic_write(
+            index_path,
+            json.dumps({
+                "schema_version": 1,
+                "active": False,
+                "updated_at": time.time(),
+            }, sort_keys=True) + "\n",
+        )
         return
     try:
         current = json.loads(index_path.read_text(encoding="utf-8"))

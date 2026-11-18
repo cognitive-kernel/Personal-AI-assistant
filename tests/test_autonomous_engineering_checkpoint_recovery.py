@@ -581,3 +581,48 @@ def test_checkpoint_index_patch_mismatch_preserves_snapshot_and_blocks_restore(
 
     assert state["metadata"].is_file()
     assert state["patch"].read_bytes() == b"tampered patch with a different length"
+
+
+
+def test_clear_legacy_checkpoint_writes_inactive_pointer_before_removing_only_target(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: tmp_path)
+    monkeypatch.setattr(checkpoint, "stop_existing_watcher", lambda _metadata: None)
+    older = _write_indexed_checkpoint(tmp_path, "run-history", 50.0)
+    active = _write_indexed_checkpoint(tmp_path, "run-to-clear", 100.0)
+
+    assert not (tmp_path / checkpoint.CHECKPOINT_INDEX_NAME).exists()
+    checkpoint.clear("run-to-clear", 1)
+
+    index = json.loads((tmp_path / checkpoint.CHECKPOINT_INDEX_NAME).read_text(encoding="utf-8"))
+    assert index["active"] is False
+    assert not active["patch"].exists()
+    assert not active["metadata"].exists()
+    assert older["patch"].read_bytes() == b"checkpoint patch for run-history"
+    assert older["metadata"].is_file()
+    assert checkpoint._latest_checkpoint() is None
+
+
+def test_checkpoint_index_publication_rejects_unsupported_identity_without_deleting_source(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: tmp_path)
+    state = checkpoint.paths("run-valid", 1)
+    state["patch"].write_bytes(b"preserve source bytes")
+    invalid = {
+        "schema_version": 4,
+        "run_id": "run-valid",
+        "task": 1,
+        "base_sha": "not-a-valid-base",
+        "updated_at": 100.0,
+        "patch_bytes": state["patch"].stat().st_size,
+    }
+    state["metadata"].write_text(json.dumps(invalid), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="cannot be represented"):
+        checkpoint._write_checkpoint_index_unlocked(invalid, state)
+
+    assert state["patch"].read_bytes() == b"preserve source bytes"
+    assert state["metadata"].is_file()
+    assert not (tmp_path / checkpoint.CHECKPOINT_INDEX_NAME).exists()

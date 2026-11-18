@@ -165,8 +165,7 @@ class RestrictedStateBroker:
         index: dict[str, Any] | None = None
         if index_info is None:
             current_path = self.state_dir / "current.json"
-            current_info = self._regular_file(current_path, 256_000)
-            if current_info is None:
+            if self._regular_file(current_path, 256_000) is None:
                 return self._no_checkpoint()
             current = self._read_json("current.json", 256_000)
             if not isinstance(current, dict):

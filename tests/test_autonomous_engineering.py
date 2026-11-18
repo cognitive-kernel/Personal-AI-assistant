@@ -164,6 +164,8 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="manual-task-state"' in agent_page
     assert "data.pending_work" in agent_script
     assert "checkpoint.verified" in agent_script
+    assert "function canStartManualTask()" in agent_script
+    assert "if (!canStartManualTask())" in agent_script
     assert "فقط Runner و Broker به فایل‌های محافظت‌شده دسترسی مستقیم دارند" in agent_page
     assert "حساب‌های برنامه از کانال محلی محدود استفاده می‌کنند" in agent_page
     assert "checks.github_runs_available" in agent_script

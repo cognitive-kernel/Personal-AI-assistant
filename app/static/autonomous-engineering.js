@@ -336,6 +336,16 @@
   function canStartDispatch() {
     return statusKnown && lastCanDispatch && !lastActiveRun && !dispatchSubmitting && Date.now() >= dispatchPendingUntil;
   }
+  function canStartManualTask() {
+    const pending = lastPendingWork;
+    const checkpoint = pending && pending.checkpoint && typeof pending.checkpoint === "object"
+      ? pending.checkpoint
+      : null;
+    return canStartDispatch() &&
+      pending && pending.available === true &&
+      pending.blocked !== true &&
+      !(checkpoint && checkpoint.available === true);
+  }
   function syncDispatchControls() {
     const allowed = canStartDispatch();
     const pending = lastPendingWork;
@@ -345,9 +355,8 @@
     const checkpointNeedsReview = Boolean(
       checkpoint && checkpoint.available === true && checkpoint.verified !== true
     );
-    const manualTaskBlocked = !pending || pending.available !== true || pending.blocked === true;
     dispatchButton.disabled = !allowed || checkpointNeedsReview;
-    taskButton.disabled = !allowed || manualTaskBlocked || checkpointNeedsReview;
+    taskButton.disabled = !canStartManualTask() || checkpointNeedsReview;
   }
   function lockDispatchVisibilityWindow() {
     dispatchPendingUntil = Date.now() + 30000;
@@ -596,8 +605,13 @@
   });
   taskForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!canStartDispatch()) {
-      setMessage("عامل در حال اجرا، ارسال یا انتظار برای ثبت اجرای قبلی است؛ پس از به‌روزرسانی وضعیت دوباره تلاش کنید.", "error");
+    if (!canStartManualTask()) {
+      setMessage(
+        lastPendingWork && lastPendingWork.blocked
+          ? "کار پایدار قبلی یا checkpoint هنوز تعیین‌تکلیف نشده است؛ برای ادامه، از دکمهٔ اجرای بدون متن استفاده کنید."
+          : "وضعیت پایدار برای ارسال وظیفهٔ جدید آماده نیست؛ پس از به‌روزرسانی وضعیت دوباره تلاش کنید.",
+        "error"
+      );
       return;
     }
     const task = $("manual-task").value.trim();

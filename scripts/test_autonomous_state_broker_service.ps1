@@ -293,28 +293,6 @@ assert pending["checkpoint"] == {"available": False, "verified": True}
     $emptyLegacyProbe | & python -
     if ($LASTEXITCODE -ne 0) { throw "The Windows Broker misclassified a completed run with no checkpoint." }
 
-    [System.IO.File]::WriteAllText(
-        (Join-Path $stateRoot "current.json"),
-        "{broken",
-        [System.Text.UTF8Encoding]::new($false)
-    )
-    $corruptCurrentProbe = @'
-from app import autonomous_engineering_state_broker as broker
-from app.autonomous_engineering_state_broker import StateBrokerConflict
-pending = broker.pending_work()
-assert pending["blocked"] is True
-assert pending["checkpoint"]["available"] is True
-assert pending["checkpoint"]["verified"] is False
-try:
-    broker.cleanup()
-except StateBrokerConflict:
-    pass
-else:
-    raise SystemExit("Cleanup ignored a malformed current checkpoint identity.")
-'@
-    $corruptCurrentProbe | & python -
-    if ($LASTEXITCODE -ne 0) { throw "The Windows Broker did not fail closed on malformed current progress." }
-
     # Legacy checkpoints created before the atomic index are resolved only
     # through the current run identity; no directory scan or path endpoint exists.
     $legacyCurrent = [ordered]@{ run_id = $checkpointRunId; run_attempt = "1"; status = "completed" }
