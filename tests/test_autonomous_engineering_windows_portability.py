@@ -202,6 +202,10 @@ def test_windows_provisioning_keeps_runner_least_privilege_as_a_role_invariant()
 
     assert 'Get-LocalGroup -SID "S-1-5-32-544"' in script
     assert "Runner account is a direct member of the local Administrators group" in script
-    assert "RunnerAccount must be a non-empty Windows account identity." in script
+    # Runner identity is discovered or generated; it is no longer a required
+    # caller-supplied account name. Preserve the least-privilege role guard.
+    assert '$runnerIsAdministrator =' in script
+    assert "if ($runnerIsAdministrator)" in script
+    assert "Runner account is a direct member of the local Administrators group" in script
     assert "^[A-Za-z0-9_.-]+$" not in script
     assert "runnerLocalName.Length -gt 20" in script
