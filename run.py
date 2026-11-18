@@ -981,6 +981,96 @@ def _ensure_ollama() -> None:
             raise RuntimeError("مدل‌های موردنیاز پس از دریافت در Ollama دیده نشدند: " + ", ".join(absent))
 
 
+def _ensure_state_broker() -> bool:
+    """Check/install the machine broker through the native platform adapter."""
+    system = platform.system()
+    from app.autonomous_engineering_state_broker import health
+
+    if health():
+        return True
+
+    if system == "Windows":
+        script = ROOT / "scripts" / "ensure_autonomous_state_broker.ps1"
+        if not script.is_file():
+            print(
+                "فضای پیشرفت مشترک در دسترس نیست؛ اسکریپت نصب Broker پیدا نشد.",
+                file=sys.stderr,
+                flush=True,
+            )
+            return False
+        powershell = shutil.which("powershell.exe") or shutil.which("powershell")
+        if not powershell:
+            windir = os.environ.get("WINDIR")
+            if windir:
+                candidate = Path(windir) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+                if candidate.is_file():
+                    powershell = str(candidate)
+        if not powershell:
+            print("Windows PowerShell در دسترس نیست؛ Broker نصب نشد.", file=sys.stderr, flush=True)
+            return False
+        print(
+            "بررسی فضای پیشرفت مشترک: Broker آماده نیست؛ راه‌اندازی امن با درخواست مجوز مدیر ...",
+            flush=True,
+        )
+        command = [
+            powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)
+        ]
+        capture_output = True
+    elif system in {"Linux", "Darwin"}:
+        script = ROOT / "scripts" / "ensure_autonomous_state_broker_posix.py"
+        if not script.is_file():
+            print("راه‌انداز Broker بومی POSIX پیدا نشد؛ برنامه در حالت محدود اجرا می‌شود.", file=sys.stderr, flush=True)
+            return False
+        print(
+            "بررسی فضای پیشرفت مشترک: Broker آماده نیست؛ راه‌اندازی سرویس محلی با تأیید مدیر سیستم ...",
+            flush=True,
+        )
+        command = [sys.executable, str(script)]
+        # sudo may need to prompt in the terminal; do not capture or suppress it.
+        capture_output = False
+    else:
+        print(
+            f"Broker مشترک برای سیستم‌عامل {system} پیاده‌سازی نشده است؛ برنامه در حالت محدود اجرا می‌شود.",
+            file=sys.stderr,
+            flush=True,
+        )
+        return False
+
+    try:
+        result = subprocess.run(
+            command,
+            cwd=ROOT,
+            text=True,
+            capture_output=capture_output,
+            timeout=300,
+            check=False,
+            shell=False,
+        )
+    except subprocess.TimeoutExpired:
+        print("راه‌اندازی Broker در مهلت ۵ دقیقه کامل نشد؛ برنامه در حالت محدود اجرا می‌شود.", file=sys.stderr, flush=True)
+        return False
+    except OSError as exc:
+        print(f"اجرای راه‌انداز Broker ناموفق بود: {type(exc).__name__}؛ برنامه در حالت محدود اجرا می‌شود.", file=sys.stderr, flush=True)
+        return False
+
+    if capture_output:
+        if result.stdout:
+            print(result.stdout, end="" if result.stdout.endswith("\n") else "\n", flush=True)
+        if result.stderr:
+            print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n", flush=True)
+    if result.returncode != 0:
+        print(
+            "سرویس فضای پیشرفت مشترک نصب/ترمیم نشد؛ برنامه در حالت محدود اجرا می‌شود. "
+            "تأیید مجوز مدیر، سرویس Runner و گزارش راه‌انداز را بررسی کنید.",
+            file=sys.stderr,
+            flush=True,
+        )
+        return False
+    if not health():
+        print("Broker پس از نصب از کانال محلی پاسخ سالم نداد؛ برنامه در حالت محدود اجرا می‌شود.", file=sys.stderr, flush=True)
+        return False
+    return True
+
 def main() -> int:
     if sys.version_info < MIN_PYTHON:
         print("این پروژه به Python 3.11 یا جدیدتر نیاز دارد. ابتدا Python را نصب/به‌روزرسانی کنید.")
@@ -1015,10 +1105,11 @@ def main() -> int:
     check_only = "--check-only" in sys.argv[1:]
     try:
         _ensure_dependencies(dev)
-        # Load the same project environment file used by app.config before resolving
-        # purpose-specific model overrides for installation.
+        # Load machine/shared-state overrides before the broker resolves its state root.
+        # The same environment is inherited by the elevated setup process.
         from dotenv import load_dotenv
         load_dotenv(ROOT / ".env", override=False)
+        _ensure_state_broker()
         _ensure_ollama()
     except (RuntimeError, OSError, urllib.error.URLError) as exc:
         print(f"پیش‌نیاز آماده نیست: {exc}", file=sys.stderr)

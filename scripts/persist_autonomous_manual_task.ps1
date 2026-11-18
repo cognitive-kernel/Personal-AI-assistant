@@ -24,13 +24,7 @@ if (-not [string]::IsNullOrWhiteSpace($machineConfiguredStateDir)) {
         throw "Machine AUTONOMOUS_ENGINEERING_PROGRESS_DIR must be an absolute shared path."
     }
     $stateDir = [System.IO.Path]::GetFullPath($expandedStateDir)
-    if (-not [string]::IsNullOrWhiteSpace($processConfiguredStateDir)) {
-        $expandedProcessStateDir = [Environment]::ExpandEnvironmentVariables($processConfiguredStateDir.Trim())
-        if (-not [System.IO.Path]::IsPathRooted($expandedProcessStateDir) -or
-            -not [System.IO.Path]::GetFullPath($expandedProcessStateDir).Equals($stateDir, [StringComparison]::OrdinalIgnoreCase)) {
-            throw "Process AUTONOMOUS_ENGINEERING_PROGRESS_DIR differs from the machine-scoped state root; refusing per-account state divergence."
-        }
-    }
+    # The machine-scoped path is authoritative; process-level values are ignored.
 } else {
     if ([string]::IsNullOrWhiteSpace($env:PROGRAMDATA) -or -not [System.IO.Path]::IsPathRooted($env:PROGRAMDATA)) {
         throw "PROGRAMDATA must resolve to an absolute shared path."

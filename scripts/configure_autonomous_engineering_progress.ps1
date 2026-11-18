@@ -26,11 +26,7 @@ if (-not [string]::IsNullOrWhiteSpace($processStatePath) -and [string]::IsNullOr
     throw "AUTONOMOUS_ENGINEERING_PROGRESS_DIR is process/user-scoped; configure it at machine scope."
 }
 if (-not [string]::IsNullOrWhiteSpace($processStatePath)) {
-    $resolvedProcess = [System.IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($processStatePath.Trim()))
-    $resolvedMachine = [System.IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($machineStatePath.Trim()))
-    if (-not $resolvedProcess.Equals($resolvedMachine, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "Process and machine state directory values differ."
-    }
+    # Machine scope is authoritative; user-scoped overrides are not consulted.
 }
 $progressPath = Resolve-AutonomousStateDirectory -ConfiguredPath $machineStatePath -ProgramDataPath $env:ProgramData
 New-Item -ItemType Directory -Path $progressPath -Force | Out-Null

@@ -52,6 +52,9 @@ def test_windows_provisioning_uses_only_the_dedicated_runner_identity():
     assert "ConvertTo-AutonomousWindowsAccountName" in module
     assert "Get-AutonomousLocalAccountName" in module
     assert "Get-AutonomousWindowsAccountSid" in module
+    assert "$normalizedAccountName = ConvertTo-AutonomousWindowsAccountName -AccountName $AccountName" in module
+    assert "[Security.Principal.NTAccount]$normalizedAccountName" in module
+    assert '$RunnerAccount = [string]$matchingRunnerServices[0].Service.StartName' in script
     assert "Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity" in script
     assert "$runnerIsLocal = -not [string]::IsNullOrWhiteSpace($runnerLocalName)" in script
     assert script.index("$runnerIsLocal =") < script.index("if ($runnerIsLocal)")
@@ -101,6 +104,8 @@ def test_machine_state_broker_uses_a_local_allowlisted_pipe_not_a_network_file_a
     python_client = _read("app/autonomous_engineering_state_broker.py")
     powershell_client = _read("scripts/AutonomousStateBroker.psm1")
     provision = _read("scripts/provision_autonomous_runner.ps1")
+    installer = _read("scripts/AutonomousStateBrokerInstall.psm1")
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
 
     assert "NamedPipeServerStream" in service
     assert "PipeOptions.Asynchronous" in service
@@ -134,11 +139,37 @@ def test_machine_state_broker_uses_a_local_allowlisted_pipe_not_a_network_file_a
     assert "GetAwaiter().GetResult()" in powershell_client
     assert "ReadTimeout" not in powershell_client and "WriteTimeout" not in powershell_client
     assert "Wait([TimeSpan]::FromMilliseconds" in powershell_client
-    assert "PersonalAIAssistantStateBroker" in provision
-    assert "'obj=' 'NT AUTHORITY\\LocalService' 'start=' 'auto'" in provision
-    assert 'Join-Path $env:ProgramData "PersonalAIAssistant\\StateBroker"' in provision
-    assert "AutonomousStateBrokerService.cs" in provision
-    assert "Invoke-AutonomousStateBroker" in provision
+    assert "AutonomousStateBrokerInstall.psm1" in provision
+    assert "Install-AutonomousStateBrokerService" in provision
+    assert "PersonalAIAssistantStateBroker" in installer
+    assert "'obj=' 'NT AUTHORITY\\LocalService' 'start=' 'auto'" in installer
+    assert 'Join-Path $env:ProgramData "PersonalAIAssistant\\StateBroker"' in installer
+    assert "AutonomousStateBrokerService.cs" in installer
+    assert "Invoke-AutonomousStateBroker" in installer
+    assert "Start-Process" in ensure and "-Verb RunAs" in ensure
+    assert "Runner.Worker.exe" in ensure
+    assert "Get-AutonomousWindowsAccountSid -AccountName $runner.Service.StartName" in ensure
+
+
+def test_runner_provisioning_discovers_existing_path_and_service_identity():
+    script = _read("scripts/provision_autonomous_runner.ps1")
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+    module = _read("scripts/AutonomousWindowsIdentity.psm1")
+
+    assert '[string]$RunnerAccount = ""' in script
+    assert '[string]$RunnerRoot = ""' in script
+    assert "RunnerService\\.exe" in script
+    assert "$matchingRunnerServices[0].Service.StartName" in script
+    assert 'Join-Path $env:ProgramData "GitHubActionsRunner"' in script
+    assert "paa-runner-$suffix" in script
+    assert "Get-Command node -ErrorAction Stop" not in script
+    assert "Get-Command npm -ErrorAction Stop" not in script
+    assert "Python 3.11 or newer is required on the Runner host" not in script
+    assert '.venv\\\\Scripts\\\\python.exe' in script
+    assert "$normalizedAccountName = ConvertTo-AutonomousWindowsAccountName -AccountName $AccountName" in module
+    assert "ConvertTo-AutonomousWindowsAccountName -AccountName $AccountName" in module
+    assert "Runner.Worker.exe" in ensure
+    assert "C:\\actions-runner" not in script + ensure
 
 
 def test_app_and_runner_checks_use_the_state_broker_without_app_directory_acl():
@@ -163,7 +194,8 @@ def test_windows_provisioning_uses_the_runtime_shared_state_path_contract():
     assert "$env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR" in script
     assert '[Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")' in script
     assert "must be configured at machine scope" in script
-    assert "Process and machine AUTONOMOUS_ENGINEERING_PROGRESS_DIR values differ" in script
+    assert "AUTONOMOUS_ENGINEERING_PROGRESS_DIR must be configured at machine scope" in script
+    assert "Process and machine AUTONOMOUS_ENGINEERING_PROGRESS_DIR values differ" not in script
     assert "Resolve-AutonomousStateDirectory" in paths_module
     assert "AUTONOMOUS_ENGINEERING_PROGRESS_DIR must be an absolute shared path." in paths_module
     assert "per-user fallback is not supported on Windows" in paths_module
@@ -175,6 +207,10 @@ def test_windows_provisioning_keeps_runner_least_privilege_as_a_role_invariant()
 
     assert 'Get-LocalGroup -SID "S-1-5-32-544"' in script
     assert "Runner account is a direct member of the local Administrators group" in script
-    assert "RunnerAccount must be a non-empty Windows account identity." in script
+    # Runner identity is discovered or generated; it is no longer a required
+    # caller-supplied account name. Preserve the least-privilege role guard.
+    assert '$runnerIsAdministrator =' in script
+    assert "if ($runnerIsAdministrator)" in script
+    assert "Runner account is a direct member of the local Administrators group" in script
     assert "^[A-Za-z0-9_.-]+$" not in script
     assert "runnerLocalName.Length -gt 20" in script

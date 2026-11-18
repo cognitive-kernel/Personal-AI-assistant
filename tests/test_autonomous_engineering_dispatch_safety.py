@@ -26,15 +26,10 @@ def test_progress_reader_uses_the_runner_machine_aware_state_root(monkeypatch, t
     assert progress._progress_dir() == expected
 
 
-def test_pending_work_status_reports_only_marker_presence_without_reading_contents(monkeypatch, tmp_path):
-    monkeypatch.setattr(progress, "_progress_dir", lambda: tmp_path)
-    (tmp_path / "pending-manual-task.txt").write_text("private task contents", encoding="utf-8")
-    (tmp_path / "pending-manual-task-owner.json").write_text('{"private":"owner"}', encoding="utf-8")
-    (tmp_path / "pending-autonomous-pr.json").write_text('{"number":123}', encoding="utf-8")
+def test_pending_work_status_uses_only_the_broker_marker_snapshot(monkeypatch):
+    from app import autonomous_engineering_state_broker as broker
 
-    result = progress.pending_work_status()
-
-    assert result == {
+    expected = {
         "available": True,
         "blocked": True,
         "markers": {
@@ -45,24 +40,28 @@ def test_pending_work_status_reports_only_marker_presence_without_reading_conten
         },
         "reason": "pending_task, pending_owner, pending_pr",
     }
-    assert "private task contents" not in repr(result)
-    assert "private" not in repr(result)
+    monkeypatch.setattr(broker, "pending_work", lambda: expected)
+
+    result = progress.pending_work_status()
+
+    assert result == expected
+    assert "task contents" not in repr(result)
 
 
-def test_pending_work_status_fails_closed_when_shared_lock_cannot_be_acquired(monkeypatch, tmp_path):
-    monkeypatch.setattr(progress, "_progress_dir", lambda: tmp_path)
+def test_pending_work_status_fails_closed_when_broker_cannot_verify_shared_state(monkeypatch):
+    from app import autonomous_engineering_state_broker as broker
 
-    class LockFailure:
-        def __init__(self, *args, **kwargs):
-            raise TimeoutError("busy")
+    def unavailable():
+        raise TimeoutError("broker unavailable")
 
-    monkeypatch.setattr(progress, "durable_state_lock", LockFailure)
+    monkeypatch.setattr(broker, "pending_work", unavailable)
 
     result = progress.pending_work_status()
 
     assert result["available"] is False
     assert result["blocked"] is True
     assert result["markers"] == {}
+    assert result["reason"] == "Durable task state cannot be verified safely: TimeoutError"
 
 
 def test_manual_dispatch_is_rejected_when_a_durable_task_is_pending(monkeypatch):
@@ -167,38 +166,24 @@ def test_packaged_state_resolver_prefers_machine_scope(monkeypatch, tmp_path):
     assert state.execution_state_directory() == machine_root
 
 
-def test_packaged_state_resolver_rejects_a_divergent_process_override(monkeypatch, tmp_path):
+def test_packaged_state_resolver_ignores_a_per_user_override_when_machine_scope_exists(monkeypatch, tmp_path):
     from app import autonomous_engineering_state as state
 
+    machine_root = tmp_path / "machine"
     monkeypatch.setattr(state, "_is_windows", lambda: True)
-    monkeypatch.setattr(state, "_machine_configured_state_directory", lambda: str(tmp_path / "machine"))
+    monkeypatch.setattr(state, "_machine_configured_state_directory", lambda: str(machine_root))
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "user"))
 
-    with pytest.raises(RuntimeError, match="differs from the machine-scoped state root"):
-        state.execution_state_directory()
+    assert state.execution_state_directory() == machine_root
 
 
-def test_storage_accessible_checks_the_shared_state_directory(monkeypatch, tmp_path):
-    from app import autonomous_engineering_progress as progress
+def test_storage_accessible_checks_the_broker_health_boundary(monkeypatch):
+    from app import autonomous_engineering_state_broker as broker
 
-    monkeypatch.setattr(progress, "_progress_dir", lambda: tmp_path)
+    monkeypatch.setattr(broker, "health", lambda: True)
     assert progress.storage_accessible() is True
 
-    missing = tmp_path / "missing"
-    monkeypatch.setattr(progress, "_progress_dir", lambda: missing)
-    assert progress.storage_accessible() is False
-
-
-def test_storage_accessible_requires_write_access_to_the_shared_directory(monkeypatch, tmp_path):
-    from app import autonomous_engineering_progress as progress
-
-    monkeypatch.setattr(progress, "_progress_dir", lambda: tmp_path)
-    monkeypatch.setattr(
-        progress.tempfile,
-        "mkstemp",
-        lambda **_kwargs: (_ for _ in ()).throw(PermissionError("read-only shared state")),
-    )
-
+    monkeypatch.setattr(broker, "health", lambda: False)
     assert progress.storage_accessible() is False
 
 

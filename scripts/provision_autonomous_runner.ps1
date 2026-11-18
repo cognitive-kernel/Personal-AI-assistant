@@ -1,9 +1,9 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][ValidatePattern("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")][string]$Repository,
-    [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$RunnerAccount,
-    [string]$RunnerName = "$env:COMPUTERNAME-ollama",
-    [string]$RunnerRoot = (Join-Path $env:ProgramData "GitHubActionsRunner"),
+    [string]$RunnerAccount = "",
+    [string]$RunnerName = "",
+    [string]$RunnerRoot = "",
     [string]$Model = ""
 )
 $ErrorActionPreference = "Stop"
@@ -12,16 +12,70 @@ $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $installerSid = $identity.User.Value
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw "Run from elevated PowerShell." }
-$RunnerAccount = $RunnerAccount.Trim()
-if ([string]::IsNullOrWhiteSpace($RunnerAccount)) { throw "RunnerAccount must be a non-empty Windows account identity." }
-if ($RunnerName -notmatch "^[A-Za-z0-9_.-]{1,64}$") { throw "Invalid RunnerName." }
 if ([string]::IsNullOrWhiteSpace($env:ProgramData) -or -not [System.IO.Path]::IsPathRooted($env:ProgramData)) { throw "PROGRAMDATA must resolve to an absolute shared path." }
-if (-not [System.IO.Path]::IsPathRooted($RunnerRoot)) { throw "RunnerRoot must be an absolute path." }
-$RunnerRoot = [System.IO.Path]::GetFullPath($RunnerRoot)
 Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsIdentity.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsPaths.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "AutonomousOllamaRuntime.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "AutonomousStateBrokerInstall.psm1") -Force
+
+# Discover an existing Runner from its registered Windows service instead of
+# assuming a fixed install path or requiring a specific account name.
+$runnerServiceCandidates = @(Get-CimInstance Win32_Service -ErrorAction Stop | Where-Object { $_.PathName -match '(?i)RunnerService\.exe' })
+$resolvedRunnerServices = @()
+foreach ($candidate in $runnerServiceCandidates) {
+    $rawPath = [string]$candidate.PathName
+    $match = [regex]::Match($rawPath, '^\s*"(?<exe>[^"]+RunnerService\.exe)"')
+    if (-not $match.Success) {
+        $match = [regex]::Match($rawPath, '^\s*(?<exe>.+?RunnerService\.exe)(?:\s|$)')
+    }
+    if (-not $match.Success) { continue }
+    $executable = [System.IO.Path]::GetFullPath($match.Groups["exe"].Value)
+    $root = [System.IO.Path]::GetFullPath((Split-Path -Parent (Split-Path -Parent $executable)))
+    if ([string]::IsNullOrWhiteSpace($RunnerRoot) -or $root.Equals([System.IO.Path]::GetFullPath($RunnerRoot), [StringComparison]::OrdinalIgnoreCase)) {
+        $resolvedRunnerServices += [pscustomobject]@{ Service = $candidate; Executable = $executable; Root = $root }
+    }
+}
+if ([string]::IsNullOrWhiteSpace($RunnerRoot)) {
+    if ($resolvedRunnerServices.Count -gt 1) {
+        throw "Multiple Runner services were found. Specify RunnerRoot to select the intended installation."
+    }
+    if ($resolvedRunnerServices.Count -eq 1) {
+        $RunnerRoot = $resolvedRunnerServices[0].Root
+    } else {
+        $RunnerRoot = Join-Path $env:ProgramData "GitHubActionsRunner"
+    }
+}
+if (-not [System.IO.Path]::IsPathRooted($RunnerRoot)) { throw "RunnerRoot must be an absolute path." }
+$RunnerRoot = [System.IO.Path]::GetFullPath($RunnerRoot)
+$matchingRunnerServices = @($resolvedRunnerServices | Where-Object { $_.Root.Equals($RunnerRoot, [StringComparison]::OrdinalIgnoreCase) })
+if ($matchingRunnerServices.Count -gt 1) { throw "More than one Runner service maps to the selected RunnerRoot." }
+
+if ([string]::IsNullOrWhiteSpace($RunnerAccount)) {
+    if ($matchingRunnerServices.Count -eq 1) {
+        $RunnerAccount = [string]$matchingRunnerServices[0].Service.StartName
+    } else {
+        $seed = [System.Text.Encoding]::UTF8.GetBytes(("$env:COMPUTERNAME|$Repository".ToLowerInvariant()))
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        try { $suffix = ([BitConverter]::ToString($sha.ComputeHash($seed))).Replace("-", "").Substring(0, 6).ToLowerInvariant() }
+        finally { $sha.Dispose() }
+        $RunnerAccount = "paa-runner-$suffix"
+        Write-Host "No existing Runner service was found; using a generated least-privilege local service identity."
+    }
+}
+$RunnerAccount = $RunnerAccount.Trim()
 $runnerIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $RunnerAccount
+
+if ([string]::IsNullOrWhiteSpace($RunnerName)) {
+    $runnerMetadataPath = Join-Path $RunnerRoot ".runner"
+    if (Test-Path -LiteralPath $runnerMetadataPath -PathType Leaf) {
+        $runnerMetadata = Get-Content -LiteralPath $runnerMetadataPath -Raw | ConvertFrom-Json -ErrorAction Stop
+        $RunnerName = [string]$runnerMetadata.agentName
+    }
+    if ([string]::IsNullOrWhiteSpace($RunnerName)) {
+        $RunnerName = "$env:COMPUTERNAME-ollama"
+    }
+}
+if ($RunnerName -notmatch "^[A-Za-z0-9_.-]{1,64}$") { throw "Invalid RunnerName." }
 $runnerLocalName = Get-AutonomousLocalAccountName -AccountName $runnerIdentity
 $runnerIsLocal = -not [string]::IsNullOrWhiteSpace($runnerLocalName)
 if ($runnerLocalName -and ($runnerLocalName.Length -gt 20 -or $runnerLocalName -match '[\\/"\[\]:;|=,+*?<>]')) { throw "Invalid local Runner account name." }
@@ -31,11 +85,7 @@ if (-not [string]::IsNullOrWhiteSpace($processStateDirectory)) {
     if ([string]::IsNullOrWhiteSpace($machineStateDirectory)) {
         throw "AUTONOMOUS_ENGINEERING_PROGRESS_DIR must be configured at machine scope so all Windows service and application identities share one state root."
     }
-    $processStatePath = [System.IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($processStateDirectory.Trim()))
-    $machineStatePath = [System.IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($machineStateDirectory.Trim()))
-    if (-not $processStatePath.Equals($machineStatePath, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "Process and machine AUTONOMOUS_ENGINEERING_PROGRESS_DIR values differ; refusing per-account state divergence."
-    }
+    # A machine setting is authoritative for every account; ignore any process override.
 }
 $progressPath = Resolve-AutonomousStateDirectory -ConfiguredPath $machineStateDirectory -ProgramDataPath $env:ProgramData
 $runnerRootBoundary = $RunnerRoot.TrimEnd([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)) + [System.IO.Path]::DirectorySeparatorChar
@@ -44,18 +94,25 @@ if ($RunnerRoot.Equals($progressPath, [StringComparison]::OrdinalIgnoreCase) -or
     throw "RunnerRoot and shared autonomous state directory must be separate, non-nested paths."
 }
 $brokerServiceSid = "S-1-5-19"
-$node = Get-Command node -ErrorAction Stop
-$npm = Get-Command npm -ErrorAction Stop
-$git = Get-Command git -ErrorAction Stop
-$python = Get-Command python -ErrorAction Stop
-& $node.Source --version
-if ($LASTEXITCODE -ne 0) { throw "Node.js is not executable." }
-& $npm.Source --version
-if ($LASTEXITCODE -ne 0) { throw "npm is not executable." }
+
+# Node.js/npm and Python are provisioned inside each autonomous workflow job.
+# Do not require global copies during machine provisioning.
+$git = Get-Command git -ErrorAction SilentlyContinue
+if (-not $git) {
+    throw "Git for Windows is required by actions/checkout but is not installed or visible in the Runner service PATH. Install the official Git for Windows package, then retry."
+}
 & $git.Source --version
-if ($LASTEXITCODE -ne 0) { throw "Git is not executable." }
-$pythonVersion = (& $python.Source -c "import sys; print(sys.version_info.major, sys.version_info.minor, sep=chr(46))")
-if ($LASTEXITCODE -ne 0 -or [version]$pythonVersion -lt [version]"3.11") { throw "Python 3.11 or newer is required on the Runner host." }
+if ($LASTEXITCODE -ne 0) { throw "Git is present but cannot execute." }
+
+$python = $null
+$projectRoot = Split-Path -Parent $PSScriptRoot
+$projectPython = Join-Path $projectRoot ".venv\\Scripts\\python.exe"
+if (Test-Path -LiteralPath $projectPython -PathType Leaf) {
+    $python = Get-Item -LiteralPath $projectPython
+} else {
+    $pythonCommand = Get-Command python -ErrorAction SilentlyContinue
+    if ($pythonCommand) { $python = $pythonCommand }
+}
 $gh = Get-Command gh -ErrorAction Stop
 & $gh.Source auth status --hostname github.com
 if ($LASTEXITCODE -ne 0) { throw "Authenticate gh as an account with repository Administration: write permission." }
@@ -95,7 +152,11 @@ if ($capabilitiesProperty -and $null -ne $capabilitiesProperty.Value) {
     }
 } else {
     $toolProbeScript = Join-Path $PSScriptRoot "verify_ollama_tools.py"
-    & $python.Source $toolProbeScript --model $Model
+    if (-not $python) {
+        throw "Ollama did not publish tool capability metadata and no project Python runtime is available. Start run.py once to prepare the local Python environment, then retry."
+    }
+    $pythonExecutable = if ($python.PSObject.Properties["Source"]) { $python.Source } else { $python.FullName }
+    & $pythonExecutable $toolProbeScript --model $Model
     if ($LASTEXITCODE -ne 0) {
         throw "Saved model $Model failed the live Ollama tool-call probe."
     }
@@ -156,121 +217,9 @@ function Ensure-AutonomousStateOwnerLabel {
 }
 
 
-function Install-AutonomousStateBrokerService {
-    $serviceName = "PersonalAIAssistantStateBroker"
-    $serviceRoot = Join-Path $env:ProgramData "PersonalAIAssistant\StateBroker"
-    $serviceSource = Join-Path $PSScriptRoot "AutonomousStateBrokerService.cs"
-    if (-not (Test-Path -LiteralPath $serviceSource -PathType Leaf)) {
-        throw "AutonomousStateBrokerService.cs is missing from the provisioning package."
-    }
-    New-Item -ItemType Directory -Path $serviceRoot -Force | Out-Null
-    $serviceExe = Join-Path $serviceRoot "PersonalAIAssistant.StateBroker.exe"
-    $temporaryExe = Join-Path $serviceRoot ("broker-build-" + [guid]::NewGuid().ToString("N") + ".exe")
-
-    $frameworkCandidates = @(
-        (Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319"),
-        (Join-Path $env:WINDIR "Microsoft.NET\Framework\v4.0.30319")
-    )
-    $frameworkRoot = $frameworkCandidates | Where-Object {
-        Test-Path -LiteralPath (Join-Path $_ "csc.exe") -PathType Leaf
-    } | Select-Object -First 1
-    if (-not $frameworkRoot) {
-        throw ".NET Framework C# compiler is required to install the local state broker."
-    }
-    $compiler = Join-Path $frameworkRoot "csc.exe"
-    $references = @("System.ServiceProcess.dll", "System.Core.dll", "System.Web.Extensions.dll")
-    $pipeAccessAssembly = Join-Path $frameworkRoot "System.IO.Pipes.AccessControl.dll"
-    if (Test-Path -LiteralPath $pipeAccessAssembly -PathType Leaf) {
-        $references += "System.IO.Pipes.AccessControl.dll"
-    }
-    $compileArguments = @("/nologo", "/target:exe", "/out:$temporaryExe")
-    foreach ($reference in $references) {
-        $compileArguments += "/reference:" + (Join-Path $frameworkRoot $reference)
-    }
-    $compileArguments += $serviceSource
-    & $compiler @compileArguments
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $temporaryExe -PathType Leaf)) {
-        Remove-Item -LiteralPath $temporaryExe -Force -ErrorAction SilentlyContinue
-        throw "Could not compile the local Windows state broker; the Runner and existing state were not replaced."
-    }
-
-    $existing = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-    $wasRunning = ($null -ne $existing -and $existing.Status -eq "Running")
-    if ($wasRunning) {
-        Stop-Service -Name $serviceName -Force -ErrorAction Stop
-        $existing = Get-Service -Name $serviceName -ErrorAction Stop
-        $existing.WaitForStatus(
-            [System.ServiceProcess.ServiceControllerStatus]::Stopped,
-            [TimeSpan]::FromSeconds(30)
-        )
-    }
-    $backupExe = $null
-    $newServiceCreated = $false
-    try {
-        if (Test-Path -LiteralPath $serviceExe -PathType Leaf) {
-            $backupExe = Join-Path $serviceRoot ("broker-previous-" + [guid]::NewGuid().ToString("N") + ".exe")
-            [System.IO.File]::Replace($temporaryExe, $serviceExe, $backupExe, $true)
-        } else {
-            [System.IO.File]::Move($temporaryExe, $serviceExe)
-        }
-        if (-not $existing) {
-            New-Service -Name $serviceName -BinaryPathName ('"' + $serviceExe + '"') -DisplayName "Personal AI Assistant State Broker" -Description "Mediates allow-listed local access to protected autonomous-engineering state." -StartupType Automatic | Out-Null
-            $newServiceCreated = $true
-        }
-        $sc = Get-Command sc.exe -ErrorAction Stop
-        & $sc.Source config $serviceName 'binPath=' $serviceExe 'obj=' 'NT AUTHORITY\LocalService' 'start=' 'auto' | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "Could not configure the state broker to run under its restricted LocalService identity."
-        }
-        $service = Get-CimInstance Win32_Service -Filter "Name='$serviceName'" -ErrorAction Stop
-        if ($service.StartName -ne "NT AUTHORITY\LocalService") {
-            throw "The state broker must run under NT AUTHORITY\LocalService."
-        }
-        Start-Service -Name $serviceName -ErrorAction Stop
-        $running = Get-Service -Name $serviceName -ErrorAction Stop
-        $running.WaitForStatus(
-            [System.ServiceProcess.ServiceControllerStatus]::Running,
-            [TimeSpan]::FromSeconds(30)
-        )
-
-        Import-Module (Join-Path $PSScriptRoot "AutonomousStateBroker.psm1") -Force
-        $health = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health" -TimeoutMilliseconds 5000
-        if ($null -eq $health -or $health.ready -ne $true -or $health.schema_version -ne 1) {
-            throw "The state broker service started but failed its protected storage health check."
-        }
-        if ($backupExe -and (Test-Path -LiteralPath $backupExe)) {
-            Remove-Item -LiteralPath $backupExe -Force -ErrorAction Stop
-        }
-        Write-Host "Machine state broker installed and verified at $serviceRoot."
-    } catch {
-        $failure = $_
-        $serviceAfterFailure = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-        if ($serviceAfterFailure -and $serviceAfterFailure.Status -eq "Running") {
-            Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
-        }
-        if ($backupExe -and (Test-Path -LiteralPath $backupExe)) {
-            try {
-                [System.IO.File]::Replace($backupExe, $serviceExe, $null, $true)
-            } catch {
-                Write-Warning "The previous state-broker binary backup remains at $backupExe; do not delete it until the service is restored."
-            }
-        } elseif ($newServiceCreated) {
-            Remove-Item -LiteralPath $serviceExe -Force -ErrorAction SilentlyContinue
-            sc.exe delete $serviceName | Out-Null
-        }
-        if ($wasRunning) {
-            Start-Service -Name $serviceName -ErrorAction SilentlyContinue
-        }
-        if (Test-Path -LiteralPath $temporaryExe) {
-            Remove-Item -LiteralPath $temporaryExe -Force -ErrorAction SilentlyContinue
-        }
-        throw $failure
-    }
-}
-
 if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     Assert-NoActiveAutonomousWorkflow
-    $services = @(Get-CimInstance Win32_Service | Where-Object { $_.PathName -like "*$RunnerRoot*" })
+    $services = @($matchingRunnerServices | ForEach-Object { $_.Service })
     if ($services.Count -ne 1 -or (Get-AutonomousWindowsAccountSid -AccountName $services[0].StartName) -ne (Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity)) { throw "Existing Runner configuration found; refusing to replace or reconfigure it." }
 
     # Existing installations must receive the same least-privilege enforcement as

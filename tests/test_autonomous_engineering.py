@@ -140,8 +140,9 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="pause-agent"' in page
     assert 'id="resume-agent"' in page
     assert "OPENAI_API_KEY" not in page
-    assert "سرویس وضعیت مشترک" in agent_page
-    assert "هر حساب محلی احراز‌شده" in agent_page
+    assert "سرویس Broker" in agent_page
+    assert "فقط Runner و Broker به فایل‌های محافظت‌شده دسترسی مستقیم دارند" in agent_page
+    assert "حساب‌های برنامه از کانال محلی محدود استفاده می‌کنند" in agent_page
     assert "checks.github_runs_available" in agent_script
     assert 'id="interval-hours"' in page
     assert 'id="execution-mode"' in page
@@ -757,36 +758,32 @@ def test_github_snapshot_reads_saved_model_and_frequency(monkeypatch):
     assert result["settings"] == {"model": "qwen3:14b", "interval_hours": 12, "execution_mode": "continuous", "paused": False}
 
 
-def test_progress_reader_uses_scorecard_baseline_and_date_filtered_snapshots(monkeypatch, tmp_path):
-    from app import autonomous_engineering_progress as progress
 
-    scorecard = tmp_path / "ACCEPTANCE_SCORECARD.md"
-    scorecard.write_text(
-        "**Snapshot:** 2026-11-03\n"
-        "**Scored baseline:** main at " + "c" * 40 + "\n"
-        "- **Engineering completion:** score = 62.00%\n"
-        "- **Overall acceptance progress:** score = 59.00%\n",
-        encoding="utf-8",
-    )
-    storage = tmp_path / "telemetry"
-    storage.mkdir()
-    (storage / "scorecard-baseline.json").write_text(json.dumps({
-        "date": "2026-11-01",
-        "engineering_percent": 60.47,
-        "overall_percent": 57.45,
-        "sha": "a" * 40,
-        "source": "scorecard-baseline",
-    }), encoding="utf-8")
-    (storage / "history.jsonl").write_text(
-        json.dumps({
-            "type": "project_snapshot", "date": "2026-11-02",
+def test_progress_reader_uses_scorecard_baseline_and_date_filtered_snapshots(monkeypatch):
+    from app import autonomous_engineering_progress as progress
+    from app import autonomous_engineering_state_broker as broker
+
+    snapshot = {
+        "current": None,
+        "baseline": {
+            "date": "2026-11-01",
+            "engineering_percent": 60.47,
+            "overall_percent": 57.45,
+            "sha": "a" * 40,
+            "source": "scorecard-baseline",
+        },
+        "history": [{
+            "type": "project_snapshot",
+            "date": "2026-11-02",
             "recorded_at": "2026-11-02T10:00:00+00:00",
-            "engineering_percent": 61.0, "overall_percent": 58.0, "sha": "b" * 40,
-        }) + "\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(progress, "_DEFAULT_SCORECARD", scorecard)
-    monkeypatch.setattr(progress, "_progress_dir", lambda: storage)
+            "engineering_percent": 61.0,
+            "overall_percent": 58.0,
+            "sha": "b" * 40,
+        }],
+        "events": [],
+        "storage_configured": True,
+    }
+    monkeypatch.setattr(broker, "progress", lambda: snapshot)
 
     result = progress.get_progress(
         period="custom", start_date="2026-11-01", end_date="2026-11-02"
@@ -796,7 +793,6 @@ def test_progress_reader_uses_scorecard_baseline_and_date_filtered_snapshots(mon
     assert result["history"][0]["engineering_percent"] == 60.47
     assert result["history"][0]["overall_percent"] == 57.45
     assert result["history"][1]["engineering_percent"] == 61.0
-
 
 def test_record_phase_preserves_plan_percentage_for_same_run(monkeypatch, tmp_path):
     from scripts import autonomous_engineering_progress as writer
@@ -2038,10 +2034,11 @@ def test_run_management_controls_are_present_and_wired():
 
 
 
-def test_run_diagnostics_are_loaded_from_shared_state_and_sanitized(monkeypatch, tmp_path):
-    diagnostic_dir = tmp_path / "run-diagnostics"
-    diagnostic_dir.mkdir()
-    (diagnostic_dir / "123.json").write_text(json.dumps({
+
+def test_run_diagnostics_are_loaded_from_shared_state_and_sanitized(monkeypatch):
+    from app import autonomous_engineering_state_broker as broker
+
+    payload = {
         "schema_version": 1,
         "run_id": "123",
         "updated_at": "2026-11-17T12:00:00+00:00",
@@ -2055,9 +2052,10 @@ def test_run_diagnostics_are_loaded_from_shared_state_and_sanitized(monkeypatch,
             "detail": "The policy check rejected the requested action. ghp_0123456789abcdefghijklmnopqrstuvwxyz",
             "recorded_at": "2026-11-17T12:00:00+00:00",
         }],
-    }), encoding="utf-8")
-    from app import autonomous_engineering_progress as progress
-    monkeypatch.setattr(progress, "execution_state_directory", lambda: tmp_path)
+    }
+    monkeypatch.setattr(
+        broker, "diagnostics", lambda run_id: payload if run_id == 123 else None
+    )
 
     result = agent._read_run_diagnostics(123)
 
@@ -2068,7 +2066,6 @@ def test_run_diagnostics_are_loaded_from_shared_state_and_sanitized(monkeypatch,
     assert "ghp_0123456789abcdefghijklmnopqrstuvwxyz" not in result["diagnostics"][0]["detail"]
     assert agent._read_run_diagnostics(0) is None
     assert agent._read_run_diagnostics(True) is None
-
 
 def test_workflow_failure_summary_prefers_controller_root_cause():
     raw_log = (

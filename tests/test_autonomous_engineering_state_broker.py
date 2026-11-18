@@ -26,19 +26,39 @@ def test_python_broker_client_rejects_unlisted_methods_and_paths_before_connecti
         broker.request(method, path)
 
 
-def test_python_broker_client_accepts_only_fixed_protocol_endpoints():
-    # Endpoint validation occurs before the Windows-only pipe open.
-    with pytest.raises(broker.StateBrokerError, match="only on Windows"):
-        broker.request("GET", "/v1/health")
-    with pytest.raises(broker.StateBrokerError, match="only on Windows"):
-        broker.request("GET", "/v1/pending-work")
-    with pytest.raises(broker.StateBrokerError, match="only on Windows"):
-        broker.request("GET", "/v1/progress")
-    with pytest.raises(broker.StateBrokerError, match="only on Windows"):
-        broker.request("GET", "/v1/diagnostics/44083557068")
-    with pytest.raises(broker.StateBrokerError, match="only on Windows"):
-        broker.request("POST", "/v1/cleanup")
 
+def test_python_broker_client_accepts_only_fixed_protocol_endpoints(monkeypatch):
+    endpoints = [
+        ("GET", "/v1/health"),
+        ("GET", "/v1/pending-work"),
+        ("GET", "/v1/progress"),
+        ("GET", "/v1/diagnostics/44083557068"),
+        ("POST", "/v1/cleanup"),
+    ]
+
+    if broker.os.name == "nt":
+        def stop_before_pipe_io():
+            raise broker.StateBrokerError("transport reached")
+
+        monkeypatch.setattr(broker, "_windows_api", stop_before_pipe_io)
+        for method, path in endpoints:
+            with pytest.raises(broker.StateBrokerError, match="transport reached"):
+                broker.request(method, path)
+    else:
+        from app import autonomous_engineering_state_broker_unix as unix
+
+        calls = []
+
+        def fake_request_unix(method, path, **kwargs):
+            calls.append((method, path, kwargs))
+            return {"accepted": path}
+
+        monkeypatch.setattr(unix, "request_unix", fake_request_unix)
+        for method, path in endpoints:
+            assert broker.request(method, path) == {"accepted": path}
+
+        assert [(method, path) for method, path, _ in calls] == endpoints
+        assert all(call[2]["timeout_ms"] == 3500 for call in calls)
 
 def test_windows_app_state_paths_are_mediated_by_the_broker():
     progress = (ROOT / "app" / "autonomous_engineering_progress.py").read_text(encoding="utf-8")
