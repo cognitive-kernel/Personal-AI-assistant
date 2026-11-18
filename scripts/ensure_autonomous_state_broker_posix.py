@@ -603,6 +603,8 @@ def main() -> int:
         raise SystemExit(f"Automatic POSIX broker setup is not supported on {sys.platform}.")
 
     if not args.elevated:
+        project_root = Path(__file__).resolve().parents[1]
+        sys.path.insert(0, str(project_root))
         from app.autonomous_engineering_state import execution_state_directory
         from app.autonomous_engineering_state_broker_config import config_directory
 
