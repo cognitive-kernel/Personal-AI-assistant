@@ -93,7 +93,10 @@ actual = {
 }
 normalize = lambda value: json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 if normalize(actual) != normalize(expected):
-    raise SystemExit("The second account received a different shared progress or pending-work snapshot.")
+    raise SystemExit(
+        "The second account received a different shared progress or pending-work snapshot. "
+        + "Expected=" + normalize(expected) + " Actual=" + normalize(actual)
+    )
 
 try:
     with os.scandir(state_directory):
