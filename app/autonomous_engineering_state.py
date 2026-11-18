@@ -211,16 +211,8 @@ def execution_state_directory(
                 raise ValueError(
                     "Machine AUTONOMOUS_ENGINEERING_PROGRESS_DIR must be an absolute path."
                 )
-            if process_configured:
-                process_path = os.path.expandvars(process_configured).strip()
-                if not Path(process_path).is_absolute() or (
-                    os.path.normcase(os.path.abspath(process_path))
-                    != os.path.normcase(os.path.abspath(machine_path))
-                ):
-                    raise RuntimeError(
-                        "Process AUTONOMOUS_ENGINEERING_PROGRESS_DIR differs from the "
-                        "machine-scoped state root; refusing per-account state divergence."
-                    )
+            # Machine scope is authoritative. A user/process environment value
+            # must never redirect one account to a different durable state tree.
             return Path(machine_path)
 
     if process_configured:
