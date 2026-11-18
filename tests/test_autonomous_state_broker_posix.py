@@ -124,6 +124,7 @@ def test_posix_broker_health_and_progress_use_one_shared_socket(posix_broker):
     assert "secret" not in repr(snapshot)
 
 
+
 def test_posix_broker_pending_work_and_cleanup_preserve_durable_state(posix_broker):
     state_dir, _socket_path, broker = posix_broker
     (state_dir / "pending-manual-task.txt").write_text("private task", encoding="utf-8")
@@ -140,8 +141,10 @@ def test_posix_broker_pending_work_and_cleanup_preserve_durable_state(posix_brok
     assert pending["markers"]["pending_pr"] is True
     assert "private task" not in repr(pending)
 
-    blocked = broker.cleanup()
-    assert blocked["conflict"] is True
+    with pytest.raises(broker.StateBrokerConflict, match="Durable task state is pending") as conflict:
+        broker.cleanup()
+    assert any("pending-manual-task.txt" in item for item in conflict.value.blockers)
+    assert any("pending-autonomous-pr.json" in item for item in conflict.value.blockers)
     assert (state_dir / "current.json").exists()
     assert (state_dir / "events.jsonl").exists()
 
@@ -154,7 +157,6 @@ def test_posix_broker_pending_work_and_cleanup_preserve_durable_state(posix_brok
     assert not (state_dir / "events.jsonl").exists()
     assert (state_dir / "history.jsonl").exists()
     assert (state_dir / "scorecard-baseline.json").exists()
-
 
 def test_posix_broker_diagnostics_are_run_scoped_and_bounded(posix_broker):
     state_dir, _socket_path, broker = posix_broker
