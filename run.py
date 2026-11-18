@@ -981,22 +981,24 @@ def _ensure_ollama() -> None:
             raise RuntimeError("مدل‌های موردنیاز پس از دریافت در Ollama دیده نشدند: " + ", ".join(absent))
 
 
-def _ensure_windows_state_broker() -> None:
+def _ensure_windows_state_broker() -> bool:
     """Install/repair the machine broker before the Windows dashboard starts."""
     if platform.system() != "Windows":
-        return
+        return True
 
     from app.autonomous_engineering_state_broker import health
 
     if health():
-        return
+        return True
 
     script = ROOT / "scripts" / "ensure_autonomous_state_broker.ps1"
     if not script.is_file():
-        raise RuntimeError(
-            "Windows shared progress storage requires the machine state broker, "
-            f"but its setup script is missing: {script.name}"
+        print(
+            "فضای پیشرفت مشترک در دسترس نیست؛ اسکریپت نصب Broker پیدا نشد.",
+            file=sys.stderr,
+            flush=True,
         )
+        return False
 
     powershell = shutil.which("powershell.exe") or shutil.which("powershell")
     if not powershell:
@@ -1006,7 +1008,8 @@ def _ensure_windows_state_broker() -> None:
             if candidate.is_file():
                 powershell = str(candidate)
     if not powershell:
-        raise RuntimeError("Windows PowerShell is unavailable; the machine state broker cannot be installed.")
+        print("Windows PowerShell در دسترس نیست؛ Broker نصب نشد.", file=sys.stderr, flush=True)
+        return False
 
     print(
         "بررسی فضای پیشرفت مشترک: سرویس سیستم نصب نیست یا پاسخ نمی‌دهد؛ "
@@ -1031,22 +1034,29 @@ def _ensure_windows_state_broker() -> None:
             check=False,
             shell=False,
         )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError("راه‌اندازی Broker در مهلت ۵ دقیقه کامل نشد؛ وضعیت سرویس را بررسی کنید.") from exc
+    except subprocess.TimeoutExpired:
+        print("راه‌اندازی Broker در مهلت ۵ دقیقه کامل نشد؛ برنامه در حالت محدود اجرا می‌شود.", file=sys.stderr, flush=True)
+        return False
     except OSError as exc:
-        raise RuntimeError(f"اجرای راه‌انداز Broker ناموفق بود: {type(exc).__name__}") from exc
+        print(f"اجرای راه‌انداز Broker ناموفق بود: {type(exc).__name__}؛ برنامه در حالت محدود اجرا می‌شود.", file=sys.stderr, flush=True)
+        return False
 
     if result.stdout:
         print(result.stdout, end="" if result.stdout.endswith("\n") else "\n", flush=True)
     if result.stderr:
         print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n", flush=True)
     if result.returncode != 0:
-        raise RuntimeError(
-            "سرویس فضای پیشرفت مشترک نصب/ترمیم نشد. "
-            "تأیید UAC، سرویس Runner و گزارش PowerShell را بررسی کنید."
+        print(
+            "سرویس فضای پیشرفت مشترک نصب/ترمیم نشد؛ برنامه در حالت محدود اجرا می‌شود. "
+            "تأیید UAC، نصب بودن Runner و گزارش PowerShell را بررسی کنید.",
+            file=sys.stderr,
+            flush=True,
         )
+        return False
     if not health():
-        raise RuntimeError("فرایند نصب تمام شد، اما Broker از Named Pipe پاسخ سالم نمی‌دهد.")
+        print("Broker پس از نصب از Named Pipe پاسخ سالم نداد؛ برنامه در حالت محدود اجرا می‌شود.", file=sys.stderr, flush=True)
+        return False
+    return True
 
 
 def main() -> int:
