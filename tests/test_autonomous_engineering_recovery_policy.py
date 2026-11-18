@@ -173,7 +173,7 @@ def test_runner_runtime_dependencies_are_ready_before_codex_sandbox_smoke():
     assert '& $bootstrap -RuntimeOnly' in bootstrap_setup
     assert "PAA_VENV_DIR=$selectedVenv" in resolved_runtime
     assert '$venvScripts | Out-File -FilePath $env:GITHUB_PATH' in resolved_runtime
-    assert 'Join-Path $env:PAA_VENV_DIR "Scripts\\python.exe"' in resolved_runtime
+    assert 'Join-Path $candidate "Scripts\\python.exe"' in resolved_runtime
     assert '& $venvPython -m pip install --disable-pip-version-check --retries 10 --timeout 120 -e .' in runtime_setup
     assert 'import psutil, fastapi, uvicorn' in runtime_setup
     assert "python -m venv .venv" not in runtime_setup
