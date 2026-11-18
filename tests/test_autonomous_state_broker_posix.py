@@ -31,16 +31,16 @@ def posix_broker(monkeypatch, tmp_path):
     socket_dir.chmod(0o755)
     socket_path = socket_dir / "broker.sock"
 
-    config_path = tmp_path / "machine-broker.json"
     config_value = {
         "schema_version": 1,
         "state_directory": str(state_dir),
         "socket_path": str(socket_path),
         "service_uid": os.geteuid(),
     }
-    config_path.write_text(json.dumps(config_value), encoding="utf-8")
-    config_path.chmod(0o600)
-    monkeypatch.setattr(config, "config_file", lambda: config_path)
+    # The integration test runs without root privileges. Exercise the actual
+    # Unix socket client while replacing only the already-validated machine
+    # configuration reader; production config ownership checks stay strict.
+    monkeypatch.setattr(config, "load_config", lambda missing_ok=True: config_value)
 
     process = subprocess.Popen(
         [
