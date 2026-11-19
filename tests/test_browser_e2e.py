@@ -4960,3 +4960,75 @@ def test_ai_learning_discards_lesson_list_after_switching_courses():
         assert page.locator("#lessons .lesson").count() == 0
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_storage_backup_refresh_discards_a_late_older_response():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    request_count = 0
+    browser_errors = []
+
+    def backups_route(route):
+        nonlocal request_count
+        request_count += 1
+        backup_id = "backup-old" if request_count == 1 else "backup-new"
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({
+                "items": [{
+                    "id": backup_id,
+                    "created_at": "2026-11-19T07:00:00Z",
+                    "format_version": 1,
+                    "database_roles": ["application"],
+                    "complete": True,
+                }]
+            }),
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.add_init_script("""
+            (() => {
+                const originalFetch = window.fetch.bind(window);
+                let delayed = false;
+                window.fetch = (resource, options) => {
+                    const url = typeof resource === "string" ? resource : resource.url;
+                    if (!delayed && url.endsWith("/api/storage/backups")) {
+                        delayed = true;
+                        window.__firstBackupListStarted = true;
+                        return new Promise((resolve, reject) => {
+                            originalFetch(resource, options).then(response => {
+                                window.setTimeout(() => {
+                                    window.__firstBackupListResolved = true;
+                                    resolve(response);
+                                }, 1200);
+                            }, reject);
+                        });
+                    }
+                    return originalFetch(resource, options);
+                };
+            })();
+        """)
+        page.route("**/api/storage/backups", backups_route)
+        _goto_section(page, base_url, "storage-health-section")
+        page.wait_for_function(
+            "() => window.__firstBackupListStarted === true", timeout=10000
+        )
+
+        page.locator("#refresh-storage-backups").click()
+        output = page.locator("#storage-backups-list")
+        output.get_by_text("backup-new", exact=True).wait_for(timeout=10000)
+        page.wait_for_function(
+            "() => window.__firstBackupListResolved === true", timeout=10000
+        )
+
+        assert request_count == 2
+        assert output.get_by_text("backup-new", exact=True).is_visible()
+        assert output.get_by_text("backup-old", exact=True).count() == 0
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
