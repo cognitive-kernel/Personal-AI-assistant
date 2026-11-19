@@ -4574,3 +4574,152 @@ def test_browser_sandbox_revocation_cannot_be_overridden_by_a_stale_consent_read
         )
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_browser_quota_and_experience_consent_revocation_ignores_stale_reads():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    states = {
+        "kaggle": {"gets": 0, "revoked": False},
+        "oci": {"gets": 0, "revoked": False},
+        "experience": {"gets": 0, "revoked": False},
+    }
+    browser_errors = []
+
+    def consent_payload(kind, enabled):
+        if kind == "kaggle":
+            return {
+                "consent": {
+                    "enabled": enabled, "user_consent": enabled,
+                    "executable_path": "/opt/kaggle" if enabled else "",
+                },
+                "snapshots": [], "consent_events": [],
+            }
+        if kind == "oci":
+            return {
+                "consent": {
+                    "enabled": enabled, "user_consent": enabled,
+                    "executable_path": "/opt/oci" if enabled else "",
+                    "config_file": "/tmp/config" if enabled else "",
+                    "profile": "DEFAULT" if enabled else "",
+                    "region": "eu-frankfurt-1" if enabled else "",
+                    "compartment_id": "ocid1.compartment" if enabled else "",
+                },
+                "snapshots": [], "consent_events": [],
+            }
+        return {
+            "consent": {
+                "enabled": enabled,
+                "policy_version": "test-policy",
+                "events": [],
+            }
+        }
+
+    def make_route(kind):
+        def handler(route):
+            request = route.request
+            state = states[kind]
+            if request.method == "GET":
+                state["gets"] += 1
+                enabled = state["gets"] == 1 and not state["revoked"]
+                route.fulfill(
+                    status=200, content_type="application/json",
+                    body=json.dumps(consent_payload(kind, enabled)),
+                )
+                return
+            if (kind == "experience" and request.method == "DELETE") or (
+                kind in {"kaggle", "oci"} and request.method == "PATCH"
+            ):
+                state["revoked"] = True
+                route.fulfill(
+                    status=200, content_type="application/json",
+                    body=json.dumps(consent_payload(kind, False)),
+                )
+                return
+            route.fulfill(status=405, body="method not allowed")
+        return handler
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.add_init_script("""
+            (() => {
+                const originalFetch = window.fetch.bind(window);
+                const delayed = new Set();
+                window.__delayedConsentResolved = [];
+                window.fetch = (resource, options) => {
+                    const url = typeof resource === "string" ? resource : resource.url;
+                    const endpoints = [
+                        "/api/cloud-resources/kaggle-quota",
+                        "/api/cloud-resources/oci-limits",
+                        "/api/experiences/auto-capture/consent"
+                    ];
+                    const endpoint = endpoints.find(item => url.endsWith(item));
+                    const method = options && options.method ? options.method : "GET";
+                    if (endpoint && method === "GET" && !delayed.has(endpoint)) {
+                        delayed.add(endpoint);
+                        window.__delayedConsentStarted = window.__delayedConsentStarted || [];
+                        window.__delayedConsentStarted.push(endpoint);
+                        const pendingResponse = originalFetch(resource, options);
+                        return new Promise((resolve, reject) => {
+                            pendingResponse.then(response => {
+                                window.setTimeout(() => {
+                                    window.__delayedConsentResolved.push(endpoint);
+                                    resolve(response);
+                                }, 1000);
+                            }, reject);
+                        });
+                    }
+                    return originalFetch(resource, options);
+                };
+            })();
+        """)
+        page.route("**/api/cloud-resources/kaggle-quota**", make_route("kaggle"))
+        page.route("**/api/cloud-resources/oci-limits**", make_route("oci"))
+        page.route("**/api/experiences/auto-capture/consent", make_route("experience"))
+        response = page.goto(base_url, wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        page.wait_for_function(
+            "() => (window.__delayedConsentStarted || []).length === 3", timeout=10000
+        )
+
+        page.locator("#kaggle-quota-revoke").click()
+        page.wait_for_function(
+            "() => document.querySelector('#kaggle-quota-status')?.textContent.includes('رضایت غیرفعال است')",
+            timeout=10000,
+        )
+        page.wait_for_function(
+            "() => window.__delayedConsentResolved.includes('/api/cloud-resources/kaggle-quota')",
+            timeout=10000,
+        )
+        assert not page.locator("#kaggle-quota-consent").is_checked()
+        assert page.locator("#kaggle-quota-refresh").is_disabled()
+
+        page.locator("#oci-limits-revoke").click()
+        page.wait_for_function(
+            "() => document.querySelector('#oci-limits-status')?.textContent.includes('رضایت غیرفعال است')",
+            timeout=10000,
+        )
+        page.wait_for_function(
+            "() => window.__delayedConsentResolved.includes('/api/cloud-resources/oci-limits')",
+            timeout=10000,
+        )
+        assert not page.locator("#oci-limits-consent").is_checked()
+        assert page.locator("#oci-limits-refresh").is_disabled()
+
+        page.locator("#experience-auto-capture-revoke").click()
+        page.wait_for_function(
+            "() => document.querySelector('#experience-auto-capture-status')?.textContent.includes('ذخیرهٔ خودکار غیرفعال است')",
+            timeout=10000,
+        )
+        page.wait_for_function(
+            "() => window.__delayedConsentResolved.includes('/api/experiences/auto-capture/consent')",
+            timeout=10000,
+        )
+        assert not page.locator("#experience-auto-capture-confirm").is_checked()
+        assert all(state["revoked"] for state in states.values())
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
