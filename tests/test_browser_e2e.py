@@ -4190,6 +4190,7 @@ def test_ai_learning_ignores_stale_course_response_after_selection_changes():
         selector = page.locator("#course-select")
         page.locator('#course-select option[value="43"]').wait_for(state="attached", timeout=10000)
         selector.select_option("43")
+        page.locator("#catalog-menu > summary").click()
         page.locator("#topics").get_by_text("موضوع دورهٔ انتخاب‌شده", exact=False).wait_for(timeout=10000)
         page.wait_for_function("() => window.__delayedCourse42Resolved === true", timeout=10000)
 
@@ -4563,6 +4564,7 @@ def test_browser_sandbox_revocation_cannot_be_overridden_by_a_stale_consent_read
         _goto_section(page, base_url, "sandbox-section")
 
         run_button = page.locator("#sandbox-run")
+        page.locator("#sandbox-refresh").click()
         page.wait_for_function(
             "() => window.__delayedSandboxConsentCaptured === true", timeout=10000
         )
@@ -4583,17 +4585,47 @@ def test_browser_sandbox_revocation_cannot_be_overridden_by_a_stale_consent_read
         browser.close()
 
 
+
 def test_browser_quota_and_experience_consent_revocation_ignores_stale_reads():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
         pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
-    states = {
-        "kaggle": {"gets": 0, "revoked": False},
-        "oci": {"gets": 0, "revoked": False},
-        "experience": {"gets": 0, "revoked": False},
-    }
-    browser_errors = []
+    cases = [
+        {
+            "kind": "kaggle",
+            "endpoint": "/api/cloud-resources/kaggle-quota",
+            "page_id": "kaggle-quota-section",
+            "revoke_id": "kaggle-quota-revoke",
+            "status_id": "kaggle-quota-status",
+            "checkbox_id": "kaggle-quota-consent",
+            "refresh_id": "kaggle-quota-refresh",
+            "method": "PATCH",
+            "disabled_text": "رضایت غیرفعال است",
+        },
+        {
+            "kind": "oci",
+            "endpoint": "/api/cloud-resources/oci-limits",
+            "page_id": "oci-limits-section",
+            "revoke_id": "oci-limits-revoke",
+            "status_id": "oci-limits-status",
+            "checkbox_id": "oci-limits-consent",
+            "refresh_id": "oci-limits-refresh",
+            "method": "PATCH",
+            "disabled_text": "رضایت غیرفعال است",
+        },
+        {
+            "kind": "experience",
+            "endpoint": "/api/experiences/auto-capture/consent",
+            "page_id": "experience-memory-section",
+            "revoke_id": "experience-auto-capture-revoke",
+            "status_id": "experience-auto-capture-status",
+            "checkbox_id": "experience-auto-capture-confirm",
+            "refresh_id": None,
+            "method": "DELETE",
+            "disabled_text": "ذخیرهٔ خودکار غیرفعال است",
+        },
+    ]
 
     def consent_payload(kind, enabled):
         if kind == "kaggle":
@@ -4624,115 +4656,89 @@ def test_browser_quota_and_experience_consent_revocation_ignores_stale_reads():
             }
         }
 
-    def make_route(kind):
-        def handler(route):
-            request = route.request
-            state = states[kind]
-            if request.method == "GET":
-                state["gets"] += 1
-                enabled = state["gets"] == 1 and not state["revoked"]
-                route.fulfill(
-                    status=200, content_type="application/json",
-                    body=json.dumps(consent_payload(kind, enabled)),
-                )
-                return
-            if (kind == "experience" and request.method == "DELETE") or (
-                kind in {"kaggle", "oci"} and request.method == "PATCH"
-            ):
-                state["revoked"] = True
-                route.fulfill(
-                    status=200, content_type="application/json",
-                    body=json.dumps(consent_payload(kind, False)),
-                )
-                return
-            route.fulfill(status=405, body="method not allowed")
-        return handler
-
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
-        page = browser.new_page()
-        page.on("pageerror", lambda error: browser_errors.append(str(error)))
-        page.add_init_script("""
-            (() => {
-                const originalFetch = window.fetch.bind(window);
-                const delayed = new Set();
-                window.__delayedConsentCaptured = [];
-                window.__delayedConsentResolved = [];
-                window.fetch = (resource, options) => {
-                    const url = typeof resource === "string" ? resource : resource.url;
-                    const endpoints = [
-                        "/api/cloud-resources/kaggle-quota",
-                        "/api/cloud-resources/oci-limits",
-                        "/api/experiences/auto-capture/consent"
-                    ];
-                    const endpoint = endpoints.find(item => url.endsWith(item));
-                    const method = options && options.method ? options.method : "GET";
-                    if (endpoint && method === "GET" && !delayed.has(endpoint)) {
-                        delayed.add(endpoint);
-                        window.__delayedConsentStarted = window.__delayedConsentStarted || [];
-                        window.__delayedConsentStarted.push(endpoint);
-                        const pendingResponse = originalFetch(resource, options);
-                        return new Promise((resolve, reject) => {
-                            pendingResponse.then(response => {
-                                window.__delayedConsentCaptured.push(endpoint);
-                                window.setTimeout(() => {
-                                    window.__delayedConsentResolved.push(endpoint);
-                                    resolve(response);
-                                }, 1000);
-                            }, reject);
-                        });
-                    }
-                    return originalFetch(resource, options);
-                };
-            })();
-        """)
-        page.route("**/api/cloud-resources/kaggle-quota**", make_route("kaggle"))
-        page.route("**/api/cloud-resources/oci-limits**", make_route("oci"))
-        page.route("**/api/experiences/auto-capture/consent", make_route("experience"))
-        response = page.goto(base_url, wait_until="domcontentloaded")
-        assert response is not None and response.status == 200
-        page.wait_for_function(
-            "() => (window.__delayedConsentCaptured || []).length === 3", timeout=10000
-        )
+        for case in cases:
+            state = {"gets": 0, "revoked": False}
+            browser_errors = []
 
-        page.locator("#kaggle-quota-revoke").click()
-        page.wait_for_function(
-            "() => document.querySelector('#kaggle-quota-status')?.textContent.includes('رضایت غیرفعال است')",
-            timeout=10000,
-        )
-        page.wait_for_function(
-            "() => window.__delayedConsentResolved.includes('/api/cloud-resources/kaggle-quota')",
-            timeout=10000,
-        )
-        assert not page.locator("#kaggle-quota-consent").is_checked()
-        assert page.locator("#kaggle-quota-refresh").is_disabled()
+            def consent_route(route, current_case=case, current_state=state):
+                request = route.request
+                if request.method == "GET":
+                    current_state["gets"] += 1
+                    enabled = current_state["gets"] == 1 and not current_state["revoked"]
+                    route.fulfill(
+                        status=200, content_type="application/json",
+                        body=json.dumps(consent_payload(current_case["kind"], enabled)),
+                    )
+                    return
+                if request.method == current_case["method"]:
+                    current_state["revoked"] = True
+                    route.fulfill(
+                        status=200, content_type="application/json",
+                        body=json.dumps(consent_payload(current_case["kind"], False)),
+                    )
+                    return
+                route.fulfill(status=405, body="method not allowed")
 
-        page.locator("#oci-limits-revoke").click()
-        page.wait_for_function(
-            "() => document.querySelector('#oci-limits-status')?.textContent.includes('رضایت غیرفعال است')",
-            timeout=10000,
-        )
-        page.wait_for_function(
-            "() => window.__delayedConsentResolved.includes('/api/cloud-resources/oci-limits')",
-            timeout=10000,
-        )
-        assert not page.locator("#oci-limits-consent").is_checked()
-        assert page.locator("#oci-limits-refresh").is_disabled()
+            page = browser.new_page()
+            page.on("pageerror", lambda error: browser_errors.append(str(error)))
+            page.add_init_script(f"""
+                (() => {{
+                    const originalFetch = window.fetch.bind(window);
+                    const endpoint = {json.dumps(case["endpoint"])};
+                    let delayed = false;
+                    window.fetch = (resource, options) => {{
+                        const url = typeof resource === "string" ? resource : resource.url;
+                        const method = options && options.method ? options.method : "GET";
+                        if (!delayed && url.endsWith(endpoint) && method === "GET") {{
+                            delayed = true;
+                            const pendingResponse = originalFetch(resource, options);
+                            return new Promise((resolve, reject) => {{
+                                pendingResponse.then(response => {{
+                                    window.__delayedConsentCaptured = true;
+                                    window.setTimeout(() => {{
+                                        window.__delayedConsentResolved = true;
+                                        resolve(response);
+                                    }}, 1000);
+                                }}, reject);
+                            }});
+                        }}
+                        return originalFetch(resource, options);
+                    }};
+                }})();
+            """)
+            page.route("**" + case["endpoint"] + "**", consent_route)
+            page.goto(
+                base_url.rstrip("/") + "/page/" + case["page_id"],
+                wait_until="domcontentloaded",
+            )
 
-        page.locator("#experience-auto-capture-revoke").click()
-        page.wait_for_function(
-            "() => document.querySelector('#experience-auto-capture-status')?.textContent.includes('ذخیرهٔ خودکار غیرفعال است')",
-            timeout=10000,
-        )
-        page.wait_for_function(
-            "() => window.__delayedConsentResolved.includes('/api/experiences/auto-capture/consent')",
-            timeout=10000,
-        )
-        assert not page.locator("#experience-auto-capture-confirm").is_checked()
-        assert all(state["revoked"] for state in states.values())
-        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+            checkbox = page.locator("#" + case["checkbox_id"])
+            revoke = page.locator("#" + case["revoke_id"])
+            page.wait_for_function(
+                "() => window.__delayedConsentCaptured === true", timeout=10000
+            )
+            if case["refresh_id"]:
+                refresh = page.locator("#" + case["refresh_id"])
+                assert refresh.is_disabled(), "Quota refresh must start disabled until consent is verified."
+
+            revoke.click()
+            page.wait_for_function(
+                f"() => document.querySelector('#{case['status_id']}')?.textContent.includes({json.dumps(case['disabled_text'])})",
+                timeout=10000,
+            )
+            page.wait_for_function(
+                "() => window.__delayedConsentResolved === true", timeout=10000
+            )
+
+            assert not checkbox.is_checked(), case["kind"] + " consent checkbox must remain revoked."
+            if case["refresh_id"]:
+                assert page.locator("#" + case["refresh_id"]).is_disabled()
+            assert state["revoked"] is True
+            assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+            page.close()
         browser.close()
-
 
 def test_chat_refresh_preserves_a_newer_conversation_selection():
     base_url = os.environ.get("E2E_BASE_URL")
