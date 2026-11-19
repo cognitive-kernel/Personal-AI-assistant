@@ -177,13 +177,14 @@ def test_open_pr_rejects_remote_base_drift(proposal_repo, monkeypatch):
 
 
 def test_self_improvement_ui_requires_confirmation_before_opening_draft_pr():
-    page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
-        encoding="utf-8"
-    )
-    assert "ایجاد PR پیش‌نویس در GitHub" in page
-    assert '"/api/self-improvement/proposals/"+item.id+"/open-pr"' in page
-    assert "PR ادغام یا مستقر نمی‌شود" in page
-    assert 'JSON.stringify({confirm:true})' in page
+    static = Path(__file__).parents[1] / "app" / "static"
+    page = (static / "index.html").read_text(encoding="utf-8")
+    module = (static / "engineering-assistance.js").read_text(encoding="utf-8")
+    assert "id=\"self-improvement-section\"" in page
+    assert "ایجاد PR پیش‌نویس در GitHub" in module
+    assert '"/api/self-improvement/proposals/"+item.id+"/open-pr"' in module
+    assert "PR ادغام یا مستقر نمی‌شود" in module
+    assert 'JSON.stringify({confirm:true})' in module
 
 
 
