@@ -282,9 +282,9 @@ def test_codex_uses_unique_custom_ollama_provider_without_redefining_reserved_pr
     assert 'model_providers.ollama-local.base_url="http://127.0.0.1:11434/v1/"' in overrides
     assert 'model_providers.ollama-local.wire_api="responses"' in overrides
     assert "model_providers.ollama-local.requires_openai_auth=false" in overrides
-    assert "model_providers.ollama-local.stream_idle_timeout_ms=300000" in overrides
-    assert "model_providers.ollama-local.stream_max_retries=2" in overrides
-    assert "model_providers.ollama-local.request_max_retries=1" in overrides
+    assert "model_providers.ollama-local.stream_idle_timeout_ms=900000" in overrides
+    assert "model_providers.ollama-local.stream_max_retries=0" in overrides
+    assert "model_providers.ollama-local.request_max_retries=0" in overrides
     assert not any(value.startswith("model_providers.ollama.") for value in overrides)
     assert "--oss" not in arguments
     assert "--local-provider" not in arguments
@@ -308,9 +308,9 @@ def test_codex_runtime_profiles_bound_smoke_and_task_retries(monkeypatch):
     assert "model_providers.ollama-local.stream_idle_timeout_ms=120000" in smoke
     assert "model_providers.ollama-local.stream_max_retries=0" in smoke
     assert "model_providers.ollama-local.request_max_retries=0" in smoke
-    assert "model_providers.ollama-local.stream_idle_timeout_ms=300000" in task
-    assert "model_providers.ollama-local.stream_max_retries=2" in task
-    assert "model_providers.ollama-local.request_max_retries=1" in task
+    assert "model_providers.ollama-local.stream_idle_timeout_ms=900000" in task
+    assert "model_providers.ollama-local.stream_max_retries=0" in task
+    assert "model_providers.ollama-local.request_max_retries=0" in task
 
 
 def test_codex_command_uses_owner_aware_supervisor_and_distinct_budgets(monkeypatch):
