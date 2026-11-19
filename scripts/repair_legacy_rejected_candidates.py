@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sqlite3
 import sys
 from pathlib import Path
 from typing import Any
@@ -14,15 +15,33 @@ if str(ROOT) not in sys.path:
 from app import db
 
 
+def _connect_existing_learning_db(*, readonly: bool) -> sqlite3.Connection:
+    """Open an existing learning database without creating files or running migrations."""
+    path = Path(db.defaults.learning_db_path).expanduser().resolve()
+    if not path.is_file():
+        raise FileNotFoundError(f"Learning database does not exist: {path}")
+    mode = "ro" if readonly else "rw"
+    connection = sqlite3.connect(
+        f"{path.as_uri()}?mode={mode}",
+        uri=True,
+        timeout=10,
+        factory=db.ClosingConnection,
+    )
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA busy_timeout = 10000")
+    return connection
+
+
 def repair_legacy_rejected_candidates(*, apply: bool = False) -> dict[str, Any]:
     """Recover only hash-verifiable fields from legacy scrubbed rejection records.
 
-    The default mode is read-only. This utility never deletes data and never
-    reconstructs source text, assessments, test plans, or knowledge versions
-    that the old rejection path already erased.
+    The default mode opens an existing database in SQLite read-only mode. It does
+    not initialize schemas, run migrations, create directories, or seed settings.
+    Apply mode also requires an existing database and never creates one.
+    This utility never deletes data or fabricates missing evidence.
     """
-    db.init_databases()
-    with db.learning_connection() as connection:
+    with _connect_existing_learning_db(readonly=not apply) as connection:
         if apply:
             connection.execute("BEGIN IMMEDIATE")
         rows = connection.execute(
