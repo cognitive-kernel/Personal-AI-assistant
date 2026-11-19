@@ -901,14 +901,17 @@ function renderTasks(tasks,{append=false}={}) {
  updateTaskDashboard();
 }
 let taskNextCursor=null;
+let taskRefreshSequence=0;
 async function refreshTasks({append=false}={}) {
+  const requestSequence=++taskRefreshSequence;
   const loadMore=el("load-more-tasks");
+  const statusFilter=el("task-status-filter").value;
   try {
    const query=new URLSearchParams({limit:"50"});
-   const statusFilter=el("task-status-filter").value;
    if(statusFilter) query.set("statuses",statusFilter);
    if(append&&taskNextCursor) query.set("cursor",taskNextCursor);
    const result=await api("/api/tasks?"+query.toString());
+   if(requestSequence!==taskRefreshSequence||el("task-status-filter").value!==statusFilter)return;
    const tasks=result.tasks||[];
    renderTasks(tasks,{append});
    taskNextCursor=result.next_cursor||null;
@@ -920,7 +923,8 @@ async function refreshTasks({append=false}={}) {
     setTimeout(()=>{taskPollScheduled=false;refreshTasks();},2000);
    }
   } catch(error) {
-   el("tasks-output").textContent="فهرست وظایف دریافت نشد: "+error.message;
+   if(requestSequence===taskRefreshSequence&&el("task-status-filter").value===statusFilter)
+    el("tasks-output").textContent="فهرست وظایف دریافت نشد: "+error.message;
   }
  }
  el("refresh-tasks").addEventListener("click",()=>{taskNextCursor=null;refreshTasks();});
