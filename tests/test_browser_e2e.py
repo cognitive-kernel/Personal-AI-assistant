@@ -5641,3 +5641,95 @@ def test_cloud_resource_limit_change_discards_a_late_previous_response():
         assert "limit-10" not in page.locator("#cloud-output").inner_text()
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+def test_learning_review_and_recommendation_panels_discard_late_responses():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    due_reads = 0
+    recommendation_reads = 0
+    browser_errors = []
+
+    def learning_api_route(route):
+        nonlocal due_reads, recommendation_reads
+        path = route.request.url.split("?", 1)[0].removeprefix(base_url.rstrip("/"))
+        if route.request.method == "GET" and path == "/api/learning/reviews/due":
+            due_reads += 1
+            payload = {"items": [{
+                "path_title": "مرور قدیمی",
+                "topic": "موضوع قدیمی",
+                "due_at": "2026-11-18T00:00:00Z",
+                "interval_days": 1,
+            }]} if due_reads == 1 else {"items": []}
+        elif route.request.method == "GET" and path == "/api/learning/recommendations":
+            recommendation_reads += 1
+            payload = {"recommendations": [{
+                "recommendation_type": "next_topic",
+                "path_title": "پیشنهاد قدیمی",
+                "topic": "موضوع قدیمی",
+                "reason": "پاسخ قدیمی",
+            }]} if recommendation_reads == 1 else {"recommendations": []}
+        else:
+            route.continue_()
+            return
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(payload, ensure_ascii=False),
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.add_init_script("""
+            (() => {
+                const originalFetch = window.fetch.bind(window);
+                const delayed = new Set();
+                window.fetch = (resource, options) => {
+                    const url = typeof resource === "string" ? resource : resource.url;
+                    const key = url.includes("/api/learning/reviews/due?limit=100")
+                        ? "due"
+                        : url.includes("/api/learning/recommendations?limit=20")
+                            ? "recommendations" : null;
+                    if (key && !delayed.has(key)) {
+                        delayed.add(key);
+                        window["__first" + key + "Started"] = true;
+                        return new Promise((resolve, reject) => {
+                            originalFetch(resource, options).then(response => {
+                                window.setTimeout(() => {
+                                    window["__first" + key + "Resolved"] = true;
+                                    resolve(response);
+                                }, 1200);
+                            }, reject);
+                        });
+                    }
+                    return originalFetch(resource, options);
+                };
+            })();
+        """)
+        page.route("**/api/learning/**", learning_api_route)
+        _goto_section(page, base_url, "learning-paths-section")
+        page.wait_for_function(
+            "() => window.__firstdueStarted === true && window.__firstrecommendationsStarted === true",
+            timeout=10000,
+        )
+
+        page.locator("#refresh-due-reviews").click()
+        page.locator("#refresh-learning-recommendations").click()
+        due_output = page.locator("#due-reviews-output")
+        recommendation_output = page.locator("#learning-recommendations-output")
+        due_output.get_by_text("در حال حاضر مرور سررسیدشده‌ای وجود ندارد.", exact=True).wait_for(timeout=10000)
+        recommendation_output.get_by_text("در حال حاضر گام بعدی مشخصی وجود ندارد.", exact=True).wait_for(timeout=10000)
+        page.wait_for_function(
+            "() => window.__firstdueResolved === true && window.__firstrecommendationsResolved === true",
+            timeout=10000,
+        )
+
+        assert due_reads == 2
+        assert recommendation_reads == 2
+        assert "موضوع قدیمی" not in due_output.inner_text()
+        assert "موضوع قدیمی" not in recommendation_output.inner_text()
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
