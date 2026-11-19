@@ -1,5 +1,3 @@
-import pytest
-
 from pathlib import Path
 
 
@@ -14,23 +12,20 @@ def test_local_ui_exposes_sandbox_consent_status_and_bounded_execution():
     assert 'id="sandbox-consent-grant"' in html
     assert 'id="sandbox-consent-revoke"' in html
     assert 'id="sandbox-cancel" type="button" disabled' in html
-    assert 'api("/api/tasks/"+taskId+"/cancel"' in html
+    assert 'api("/api/tasks/"+taskId+"/cancel"' in module
     assert 'id="sandbox-run-form"' in html
     assert 'id="sandbox-run" type="submit" disabled' in html
-    assert 'api("/api/sandbox/consent")' in html
-    assert 'api("/api/sandbox/run"' in html
-    assert 'api("/api/tasks/"+task.id)' in html
+    assert 'api("/api/sandbox/consent")' in module
+    assert 'api("/api/sandbox/run"' in module
+    assert 'api("/api/tasks/"+task.id)' in module
     assert 'max="120"' in html
     assert 'max="65536"' in html
 
 
 def test_local_ui_never_enables_sandbox_when_status_lookup_fails():
     html_path = Path(__file__).parents[1] / "app" / "static" / "index.html"
-    html = html_path.read_text(encoding="utf-8")
-    if 'async function refreshSandbox()' not in html:
-        pytest.skip("Sandbox UI is introduced by the pending UI pull request.")
-
-    failure_branch = html.split('async function refreshSandbox()', 1)[1].split(
+    module = (html_path.parent / "sandbox.js").read_text(encoding="utf-8")
+    failure_branch = module.split('async function refreshSandbox()', 1)[1].split(
         'el("sandbox-refresh")', 1
     )[0]
     assert 'runButton.disabled=true;' in failure_branch
