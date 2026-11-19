@@ -1,6 +1,8 @@
 import hashlib
 import json
 
+import pytest
+
 from app import db, knowledge_lifecycle, learning
 from scripts.repair_legacy_rejected_candidates import repair_legacy_rejected_candidates
 
@@ -145,3 +147,25 @@ def test_legacy_repair_never_restores_content_when_job_hash_does_not_match(tmp_p
     assert row["content"] == ""
     assert json.loads(row["source_urls_json"]) == ["https://docs.example.org/verified-source"]
     assert json.loads(row["quality_report_json"])["lesson_retained"] is True
+
+
+
+def test_dry_run_refuses_to_create_a_missing_database_or_parent_directory(tmp_path, monkeypatch):
+    database_path = tmp_path / "missing-store" / "learning.db"
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(database_path))
+
+    with pytest.raises(FileNotFoundError, match="Learning database does not exist"):
+        repair_legacy_rejected_candidates()
+
+    assert not database_path.exists()
+    assert not database_path.parent.exists()
+
+
+def test_apply_refuses_to_create_a_missing_database(tmp_path, monkeypatch):
+    database_path = tmp_path / "missing-learning.db"
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(database_path))
+
+    with pytest.raises(FileNotFoundError, match="Learning database does not exist"):
+        repair_legacy_rejected_candidates(apply=True)
+
+    assert not database_path.exists()
