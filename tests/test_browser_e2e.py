@@ -4538,13 +4538,14 @@ def test_browser_sandbox_revocation_cannot_be_overridden_by_a_stale_consent_read
                         && (!options || !options.method || options.method === "GET")) {
                         delayed = true;
                         window.__delayedSandboxConsentStarted = true;
+                        const pendingResponse = originalFetch(resource, options);
                         return new Promise((resolve, reject) => {
-                            window.setTimeout(() => {
-                                originalFetch(resource, options).then(response => {
+                            pendingResponse.then(response => {
+                                window.setTimeout(() => {
                                     window.__delayedSandboxConsentResolved = true;
                                     resolve(response);
-                                }, reject);
-                            }, 1000);
+                                }, 1000);
+                            }, reject);
                         });
                     }
                     return originalFetch(resource, options);
