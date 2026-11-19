@@ -5026,19 +5026,19 @@ def test_browser_learning_course_refresh_discards_a_late_older_response():
         )
 
         page.locator("#browser-learning-refresh").click()
-        page.locator("#browser-learning-courses").get_by_text(
-            "دورهٔ جدید", exact=False
+        page.locator("#browser-learning-courses .browser-learning-course h4").filter(
+            has_text="دورهٔ جدید"
         ).wait_for(timeout=10000)
         page.wait_for_function(
             "() => window.__firstBrowserCourseListResolved === true", timeout=10000
         )
 
         assert request_count == 2
-        assert page.locator("#browser-learning-courses").get_by_text(
-            "دورهٔ جدید", exact=False
+        assert page.locator("#browser-learning-courses .browser-learning-course h4").filter(
+            has_text="دورهٔ جدید"
         ).is_visible()
-        assert page.locator("#browser-learning-courses").get_by_text(
-            "دورهٔ قدیمی", exact=False
+        assert page.locator("#browser-learning-courses .browser-learning-course h4").filter(
+            has_text="دورهٔ قدیمی"
         ).count() == 0
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
