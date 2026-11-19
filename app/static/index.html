@@ -2157,11 +2157,14 @@ el("oci-limits-refresh").addEventListener("click",async()=>{
 });
 
 let activeSandboxTaskId = null;
+let sandboxConsentRefreshSequence=0;
 async function refreshSandbox() {
+ const requestSequence=++sandboxConsentRefreshSequence;
  const status=el("sandbox-status");
  const runButton=el("sandbox-run");
  try {
   const result=await api("/api/sandbox/consent");
+  if(requestSequence!==sandboxConsentRefreshSequence)return;
   const consent=result.consent||{};
   const enabled=result.execution_enabled===true;
   el("sandbox-consent-confirm").checked=consent.enabled===true;
@@ -2176,6 +2179,7 @@ async function refreshSandbox() {
    audit_events:consent.events||[]
   },null,2);
  } catch(error) {
+  if(requestSequence!==sandboxConsentRefreshSequence)return;
   runButton.disabled=true;
   status.textContent="وضعیت sandbox قابل دریافت نیست؛ اجرا غیرفعال می‌ماند. "+error.message;
  }
@@ -2195,6 +2199,7 @@ el("sandbox-cancel").addEventListener("click",async()=>{
  }
 });
 el("sandbox-consent-grant").addEventListener("click",async()=>{
+ sandboxConsentRefreshSequence+=1;
  if(!el("sandbox-consent-confirm").checked) {
   el("sandbox-status").textContent="برای ثبت رضایت، ابتدا چک‌باکس رضایت صریح را فعال کنید.";
   return;
@@ -2209,6 +2214,7 @@ el("sandbox-consent-grant").addEventListener("click",async()=>{
  }
 });
 el("sandbox-consent-revoke").addEventListener("click",async()=>{
+ sandboxConsentRefreshSequence+=1;
  el("sandbox-status").textContent="در حال لغو رضایت…";
  el("sandbox-run").disabled=true;
  try {
