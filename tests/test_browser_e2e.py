@@ -1927,8 +1927,11 @@ def test_browser_sandbox_consent_fails_closed_and_runs_bounded_task():
 
         run_button = page.locator("#sandbox-run")
         assert run_button.is_disabled()
-        page.locator("#sandbox-refresh").click()
-        page.get_by_text("وضعیت sandbox قابل دریافت نیست؛ اجرا غیرفعال می‌ماند.", exact=False).wait_for()
+        # The module performs its initial consent lookup on page load. The
+        # first injected 503 must leave execution disabled without user action.
+        page.get_by_text("وضعیت sandbox قابل دریافت نیست؛ اجرا غیرفعال می‌ماند.", exact=False).wait_for(
+            timeout=5000
+        )
         assert run_button.is_disabled(), "A failed consent lookup must keep execution disabled."
 
         page.locator("#sandbox-refresh").click()
