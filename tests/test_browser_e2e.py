@@ -4960,3 +4960,82 @@ def test_ai_learning_discards_lesson_list_after_switching_courses():
         assert page.locator("#lessons .lesson").count() == 0
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_autonomous_run_history_refresh_discards_a_late_older_response():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    request_count = 0
+    browser_errors = []
+
+    def runs_route(route):
+        nonlocal request_count
+        request_count += 1
+        run_id = 9101 if request_count == 1 else 9102
+        title = "OLD_RUN_RESPONSE" if request_count == 1 else "NEW_RUN_RESPONSE"
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({
+                "runs": [{
+                    "id": run_id,
+                    "name": title,
+                    "display_title": title,
+                    "status": "completed",
+                    "conclusion": "success",
+                    "created_at": "2026-11-19T07:00:00Z",
+                    "url": None,
+                }]
+            }),
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.add_init_script("""
+            (() => {
+                const originalFetch = window.fetch.bind(window);
+                let delayed = false;
+                window.fetch = (resource, options) => {
+                    const url = typeof resource === "string" ? resource : resource.url;
+                    if (!delayed && url.endsWith("/api/autonomous-engineering/runs")) {
+                        delayed = true;
+                        window.__firstRunListStarted = true;
+                        return new Promise((resolve, reject) => {
+                            originalFetch(resource, options).then(response => {
+                                window.setTimeout(() => {
+                                    window.__firstRunListResolved = true;
+                                    resolve(response);
+                                }, 1200);
+                            }, reject);
+                        });
+                    }
+                    return originalFetch(resource, options);
+                };
+            })();
+        """)
+        page.route("**/api/autonomous-engineering/runs", runs_route)
+        response = page.goto(
+            base_url.rstrip("/") + "/autonomous-engineering",
+            wait_until="domcontentloaded",
+        )
+        assert response is not None and response.status == 200
+        page.wait_for_function(
+            "() => window.__firstRunListStarted === true", timeout=10000
+        )
+
+        page.locator("#refresh-runs").click()
+        runs = page.locator("#recent-runs")
+        runs.get_by_text("NEW_RUN_RESPONSE", exact=True).wait_for(timeout=10000)
+        page.wait_for_function(
+            "() => window.__firstRunListResolved === true", timeout=10000
+        )
+
+        assert request_count == 2
+        assert runs.get_by_text("NEW_RUN_RESPONSE", exact=True).is_visible()
+        assert runs.get_by_text("OLD_RUN_RESPONSE", exact=True).count() == 0
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
