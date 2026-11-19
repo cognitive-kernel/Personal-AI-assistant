@@ -4732,3 +4732,103 @@ def test_browser_quota_and_experience_consent_revocation_ignores_stale_reads():
         assert all(state["revoked"] for state in states.values())
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_chat_refresh_preserves_a_newer_conversation_selection():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    conversation_a = {
+        "id": 901, "title": "گفتگوی اول", "created_at": "2026-11-19 07:00:00",
+        "updated_at": "2026-11-19 07:00:00", "message_count": 1,
+        "last_message": "پیام اول",
+    }
+    conversation_b = {
+        "id": 902, "title": "گفتگوی دوم", "created_at": "2026-11-19 07:01:00",
+        "updated_at": "2026-11-19 07:01:00", "message_count": 1,
+        "last_message": "پیام دوم",
+    }
+    browser_errors = []
+
+    def mock_api(route):
+        request = route.request
+        path = request.url.split("?", 1)[0].removeprefix(base_url.rstrip("/"))
+        if request.method == "GET" and path == "/api/conversations":
+            route.fulfill(
+                status=200, content_type="application/json",
+                body=json.dumps({"conversations": [conversation_a, conversation_b]}, ensure_ascii=False),
+            )
+            return
+        if request.method == "GET" and path == "/api/conversations/901/messages":
+            conversation, message_id, content = conversation_a, 1901, "پیام اول"
+        elif request.method == "GET" and path == "/api/conversations/902/messages":
+            conversation, message_id, content = conversation_b, 1902, "پیام دوم"
+        else:
+            route.continue_()
+            return
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=json.dumps({
+                "conversation": conversation,
+                "messages": [{
+                    "id": message_id, "conversation_id": conversation["id"],
+                    "role": "assistant", "content": content,
+                    "created_at": conversation["created_at"],
+                }],
+            }, ensure_ascii=False),
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.add_init_script("""
+            (() => {
+                const originalFetch = window.fetch.bind(window);
+                let listReads = 0;
+                window.fetch = (resource, options) => {
+                    const url = typeof resource === "string" ? resource : resource.url;
+                    if (url.endsWith("/api/conversations?limit=200")) {
+                        listReads += 1;
+                        if (listReads === 2) {
+                            const pendingResponse = originalFetch(resource, options);
+                            return new Promise((resolve, reject) => {
+                                pendingResponse.then(response => {
+                                    window.__delayedConversationListCaptured = true;
+                                    window.setTimeout(() => {
+                                        window.__delayedConversationListResolved = true;
+                                        resolve(response);
+                                    }, 1000);
+                                }, reject);
+                            });
+                        }
+                    }
+                    return originalFetch(resource, options);
+                };
+            })();
+        """)
+        page.route("**/api/conversations**", mock_api)
+        response = page.goto(base_url, wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+
+        selector = page.locator("#chat-conversation-select")
+        page.locator('#chat-conversation-select option[value="902"]').wait_for(
+            state="attached", timeout=10000
+        )
+        page.get_by_text("پیام اول", exact=True).wait_for(timeout=10000)
+        page.locator("#chat-refresh-conversations").click()
+        page.wait_for_function(
+            "() => window.__delayedConversationListCaptured === true", timeout=10000
+        )
+        selector.select_option("902")
+        page.get_by_text("پیام دوم", exact=True).wait_for(timeout=10000)
+        page.wait_for_function(
+            "() => window.__delayedConversationListResolved === true", timeout=10000
+        )
+
+        assert selector.input_value() == "902"
+        assert page.get_by_text("پیام دوم", exact=True).is_visible()
+        assert page.get_by_text("پیام اول", exact=True).count() == 0
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
