@@ -66,3 +66,19 @@ def test_core_theme_tokens_meet_wcag_text_contrast():
             f"{theme_name} focus indicator on surface has contrast "
             f"{focus_ratio:.2f}:1; expected at least 3:1"
         )
+
+
+def test_dark_storage_alert_code_remains_readable():
+    css = CSS_PATH.read_text(encoding="utf-8")
+    selector = ':root[data-theme="dark"] .storage-alert code'
+    match = re.search(re.escape(selector) + r"\\s*\\{([^}]*)\\}", css, re.DOTALL)
+    assert match, "Dark theme must define explicit storage-alert code colors."
+
+    foreground = re.search(r"color\\s*:\\s*(#[0-9a-fA-F]{3,6})\\s*;", match.group(1))
+    background = re.search(r"background(?:-color)?\\s*:\\s*(#[0-9a-fA-F]{3,6})\\s*;", match.group(1))
+    assert foreground and background, "Storage-alert code needs explicit foreground and background colors."
+
+    ratio = _contrast(foreground.group(1), background.group(1))
+    assert ratio >= 4.5, (
+        f"Dark-theme storage-alert code contrast is {ratio:.2f}:1; expected at least 4.5:1"
+    )
