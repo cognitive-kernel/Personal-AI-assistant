@@ -4948,6 +4948,7 @@ def test_ai_learning_discards_lesson_list_after_switching_courses():
         page.locator("#topics").get_by_text("سرفصل دورهٔ انتخاب‌شده", exact=False).wait_for(
             timeout=10000
         )
+        page.locator("#lesson-list-details > summary").click()
         page.wait_for_function(
             "() => window.__delayedOldCourseLessonsResolved === true", timeout=10000
         )
