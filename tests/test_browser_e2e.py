@@ -4487,3 +4487,89 @@ def test_browser_task_filter_ignores_a_late_response_from_the_previous_filter():
         assert page.get_by_text("#101 — e2e.previous-filter-result", exact=True).count() == 0
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_browser_sandbox_revocation_cannot_be_overridden_by_a_stale_consent_read():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    state = {"get_count": 0, "revoked": False}
+    browser_errors = []
+
+    def consent_route(route):
+        request = route.request
+        if request.method == "GET":
+            state["get_count"] += 1
+            enabled = state["get_count"] == 1 and not state["revoked"]
+            route.fulfill(
+                status=200, content_type="application/json",
+                body=json.dumps({
+                    "consent": {"enabled": enabled, "events": []},
+                    "runtime_configured": True,
+                    "execution_enabled": enabled,
+                }),
+            )
+            return
+        if request.method == "DELETE":
+            state["revoked"] = True
+            route.fulfill(
+                status=200, content_type="application/json",
+                body=json.dumps({
+                    "consent": {"enabled": False, "events": []},
+                    "runtime_configured": True,
+                    "execution_enabled": False,
+                }),
+            )
+            return
+        route.fulfill(status=405, body="method not allowed")
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.add_init_script("""
+            (() => {
+                const originalFetch = window.fetch.bind(window);
+                let delayed = false;
+                window.fetch = (resource, options) => {
+                    const url = typeof resource === "string" ? resource : resource.url;
+                    if (!delayed && url.endsWith("/api/sandbox/consent")
+                        && (!options || !options.method || options.method === "GET")) {
+                        delayed = true;
+                        window.__delayedSandboxConsentStarted = true;
+                        return new Promise((resolve, reject) => {
+                            window.setTimeout(() => {
+                                originalFetch(resource, options).then(response => {
+                                    window.__delayedSandboxConsentResolved = true;
+                                    resolve(response);
+                                }, reject);
+                            }, 1000);
+                        });
+                    }
+                    return originalFetch(resource, options);
+                };
+            })();
+        """)
+        page.route("**/api/sandbox/consent", consent_route)
+        _goto_section(page, base_url, "sandbox-section")
+
+        run_button = page.locator("#sandbox-run")
+        page.wait_for_function(
+            "() => window.__delayedSandboxConsentStarted === true", timeout=10000
+        )
+        assert run_button.is_disabled()
+        page.locator("#sandbox-consent-revoke").click()
+        page.get_by_text('"execution_enabled": false', exact=False).wait_for(timeout=10000)
+        assert run_button.is_disabled()
+        page.wait_for_function(
+            "() => window.__delayedSandboxConsentResolved === true", timeout=10000
+        )
+
+        assert state["revoked"] is True
+        assert page.locator("#sandbox-consent-confirm").is_checked() is False
+        assert run_button.is_disabled(), (
+            "A delayed pre-revocation consent response must never re-enable execution."
+        )
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
