@@ -195,7 +195,7 @@
 <p class="muted">به‌طور پیش‌فرض غیرفعال است. فقط با فعال‌سازی صریح، برنامه از CLI رسمی Kaggle استفاده می‌کند تا سهمیهٔ GPU/TPU حساب فعلی را بخواند. هیچ notebook ارسال یا اجرا نمی‌شود؛ توکن‌ها ذخیره نمی‌شوند. شرایط استفادهٔ Kaggle و محدودیت یک حساب فعال را رعایت کنید.</p>
 <label>مسیر کامل فایل اجرایی Kaggle CLI<input id="kaggle-cli-path" type="text" maxlength="2048" placeholder="مسیر کامل kaggle یا kaggle.exe روی همین دستگاه" aria-label="مسیر کامل kaggle یا kaggle.exe روی همین دستگاه"></label>
 <label><input id="kaggle-quota-consent" type="checkbox" style="width:auto"> رضایت می‌دهم برنامه با اعتبارنامهٔ از قبل تنظیم‌شدهٔ حساب فعلی، سهمیهٔ GPU/TPU را فقط هنگام درخواست من بخواند.</label>
-<div class="cloud-actions"><button id="kaggle-quota-enable" type="button">ثبت رضایت و فعال‌سازی</button><button id="kaggle-quota-revoke" type="button">لغو رضایت</button><button id="kaggle-quota-refresh" type="button">خواندن سهمیه اکنون</button></div>
+<div class="cloud-actions"><button id="kaggle-quota-enable" type="button">ثبت رضایت و فعال‌سازی</button><button id="kaggle-quota-revoke" type="button">لغو رضایت</button><button id="kaggle-quota-refresh" type="button" disabled>خواندن سهمیه اکنون</button></div>
 <pre id="kaggle-quota-status">سهمیهٔ Kaggle غیرفعال است.</pre>
 </section>
 <section id="oci-limits-section"><h2>محدودیت‌های حساب Oracle Cloud (فقط‌خواندنی، اختیاری)</h2>
@@ -208,7 +208,7 @@
 <label>Compartment یا Tenancy OCID<input id="oci-compartment-id" type="text" maxlength="512" placeholder="ocid1.compartment..." aria-label="ocid1.compartment..."></label>
 </div>
 <label><input id="oci-limits-consent" type="checkbox" style="width:auto"> رضایت می‌دهم برنامه فقط با درخواست دستی من، از CLI رسمی و config محلی فعلی برای خواندن محدودیت‌های Compute حساب Oracle استفاده کند.</label>
-<div class="cloud-actions"><button id="oci-limits-enable" type="button">ثبت رضایت و فعال‌سازی</button><button id="oci-limits-revoke" type="button">لغو رضایت و حذف snapshotها</button><button id="oci-limits-refresh" type="button">خواندن محدودیت‌ها اکنون</button></div>
+<div class="cloud-actions"><button id="oci-limits-enable" type="button">ثبت رضایت و فعال‌سازی</button><button id="oci-limits-revoke" type="button">لغو رضایت و حذف snapshotها</button><button id="oci-limits-refresh" type="button" disabled>خواندن محدودیت‌ها اکنون</button></div>
 <pre id="oci-limits-status">خواندن محدودیت‌های OCI غیرفعال است.</pre>
 </section>
 <section id="sandbox-section"><h2>اجرای آزمایشی کد در محیط ایزوله</h2>
@@ -262,6 +262,7 @@ async function api(path, options = {}) {
 }
 let currentConversationId = null;
 let conversationRefreshInProgress = false;
+let conversationLoadSequence = 0;
 function formatChatTimestamp(value) {
  if (!value) return "";
  const timestamp = String(value).trim();
@@ -342,12 +343,29 @@ function renderChatMessages(messages) {
  }
 }
 async function loadConversationMessages(conversationId) {
- if (!conversationId) { renderChatMessages([]); return; }
- const result = await api("/api/conversations/" + encodeURIComponent(conversationId) + "/messages");
- currentConversationId = Number(result.conversation.id);
+ const requestSequence = ++conversationLoadSequence;
+ if (!conversationId) { currentConversationId = null; renderChatMessages([]); return; }
+ const requestedId = Number(conversationId);
+ currentConversationId = requestedId;
+ let result;
+ try {
+  result = await api("/api/conversations/" + encodeURIComponent(requestedId) + "/messages");
+ } catch(error) {
+  if (requestSequence !== conversationLoadSequence ||
+      Number(el("chat-conversation-select").value) !== requestedId) return;
+  throw error;
+ }
+ if (requestSequence !== conversationLoadSequence ||
+     Number(el("chat-conversation-select").value) !== requestedId) return;
+ if (Number(result.conversation && result.conversation.id) !== requestedId) {
+  throw new Error("پاسخ سرویس با گفتگوی انتخاب‌شده مطابقت ندارد.");
+ }
  renderChatMessages(result.messages || []);
 }
-async function refreshConversations({selectId=currentConversationId, createIfEmpty=true}={}) {
+async function refreshConversations(options={}) {
+ const hasExplicitSelect=Object.prototype.hasOwnProperty.call(options,"selectId");
+ const selectId=hasExplicitSelect?options.selectId:currentConversationId;
+ const createIfEmpty=options.createIfEmpty!==false;
  if (conversationRefreshInProgress) return;
  conversationRefreshInProgress = true;
  const select = el("chat-conversation-select");
@@ -358,6 +376,7 @@ async function refreshConversations({selectId=currentConversationId, createIfEmp
    const created = await api("/api/conversations", {method:"POST"});
    conversations = [created.conversation];
   }
+  const currentSelection=select.value?Number(select.value):null;
   select.replaceChildren();
   if (!conversations.length) {
    const option = document.createElement("option");
@@ -375,8 +394,9 @@ async function refreshConversations({selectId=currentConversationId, createIfEmp
    option.textContent = (conversation.title || "گفتگوی جدید") + " (" + conversation.message_count + ")";
    select.append(option);
   }
-  const target = conversations.some(item => Number(item.id) === Number(selectId))
-   ? Number(selectId) : Number(conversations[0].id);
+  const preferredId=!hasExplicitSelect&&currentSelection?currentSelection:selectId;
+  const target = conversations.some(item => Number(item.id) === Number(preferredId))
+   ? Number(preferredId) : Number(conversations[0].id);
   select.value = String(target);
   currentConversationId = target;
   el("chat-delete-conversation").disabled = false;
@@ -893,14 +913,17 @@ function renderTasks(tasks,{append=false}={}) {
  updateTaskDashboard();
 }
 let taskNextCursor=null;
+let taskRefreshSequence=0;
 async function refreshTasks({append=false}={}) {
+  const requestSequence=++taskRefreshSequence;
   const loadMore=el("load-more-tasks");
+  const statusFilter=el("task-status-filter").value;
   try {
    const query=new URLSearchParams({limit:"50"});
-   const statusFilter=el("task-status-filter").value;
    if(statusFilter) query.set("statuses",statusFilter);
    if(append&&taskNextCursor) query.set("cursor",taskNextCursor);
    const result=await api("/api/tasks?"+query.toString());
+   if(requestSequence!==taskRefreshSequence||el("task-status-filter").value!==statusFilter)return;
    const tasks=result.tasks||[];
    renderTasks(tasks,{append});
    taskNextCursor=result.next_cursor||null;
@@ -912,7 +935,8 @@ async function refreshTasks({append=false}={}) {
     setTimeout(()=>{taskPollScheduled=false;refreshTasks();},2000);
    }
   } catch(error) {
-   el("tasks-output").textContent="فهرست وظایف دریافت نشد: "+error.message;
+   if(requestSequence===taskRefreshSequence&&el("task-status-filter").value===statusFilter)
+    el("tasks-output").textContent="فهرست وظایف دریافت نشد: "+error.message;
   }
  }
  el("refresh-tasks").addEventListener("click",()=>{taskNextCursor=null;refreshTasks();});
@@ -2006,12 +2030,17 @@ el("cloud-plan-run").addEventListener("click",async()=>{
  }
 });
 
+let kaggleQuotaRefreshSequence=0;
 async function refreshKaggleQuota() {
+ const requestSequence=++kaggleQuotaRefreshSequence;
  try {
   const result=await api("/api/cloud-resources/kaggle-quota");
+  if(requestSequence!==kaggleQuotaRefreshSequence)return;
   const consent=result.consent||{};
-  el("kaggle-quota-consent").checked=!!consent.enabled&&!!consent.user_consent;
-  if(consent.executable_path) el("kaggle-cli-path").value=consent.executable_path;
+  const hasConsent=!!consent.enabled&&!!consent.user_consent;
+  if(document.activeElement!==el("kaggle-quota-consent"))el("kaggle-quota-consent").checked=hasConsent;
+  if(document.activeElement!==el("kaggle-cli-path"))el("kaggle-cli-path").value=consent.executable_path||"";
+  el("kaggle-quota-refresh").disabled=!hasConsent;
   const snapshots=result.snapshots||[];
   const events=result.consent_events||[];
   const state=consent.enabled&&consent.user_consent
@@ -2021,10 +2050,13 @@ async function refreshKaggleQuota() {
    (snapshots.length?JSON.stringify(snapshots,null,2):"هنوز سهمیه‌ای ثبت نشده است.")+
    "\n\nتاریخچهٔ رضایت:\n"+JSON.stringify(events,null,2);
  } catch(error) {
+  if(requestSequence!==kaggleQuotaRefreshSequence)return;
+  el("kaggle-quota-refresh").disabled=true;
   el("kaggle-quota-status").textContent="وضعیت سهمیه قابل دریافت نیست: "+error.message;
  }
 }
 el("kaggle-quota-enable").addEventListener("click",async()=>{
+ kaggleQuotaRefreshSequence+=1;
  const path=el("kaggle-cli-path").value.trim();
  if(!el("kaggle-quota-consent").checked) {
   el("kaggle-quota-status").textContent="برای فعال‌سازی، ابتدا چک‌باکس رضایت صریح را علامت بزنید.";
@@ -2042,10 +2074,13 @@ el("kaggle-quota-enable").addEventListener("click",async()=>{
   });
   await refreshKaggleQuota();
  } catch(error) {
+  await refreshKaggleQuota();
   el("kaggle-quota-status").textContent="رضایت ذخیره نشد: "+error.message;
  }
 });
 el("kaggle-quota-revoke").addEventListener("click",async()=>{
+ kaggleQuotaRefreshSequence+=1;
+ el("kaggle-quota-refresh").disabled=true;
  el("kaggle-quota-status").textContent="در حال لغو رضایت…";
  try {
   await api("/api/cloud-resources/kaggle-quota/consent",{
@@ -2056,15 +2091,19 @@ el("kaggle-quota-revoke").addEventListener("click",async()=>{
   el("kaggle-quota-consent").checked=false;
   await refreshKaggleQuota();
  } catch(error) {
+  await refreshKaggleQuota();
   el("kaggle-quota-status").textContent="لغو رضایت انجام نشد: "+error.message;
  }
 });
 el("kaggle-quota-refresh").addEventListener("click",async()=>{
+ kaggleQuotaRefreshSequence+=1;
+ el("kaggle-quota-refresh").disabled=true;
  el("kaggle-quota-status").textContent="در حال خواندن سهمیه از CLI رسمی…";
  try {
   await api("/api/cloud-resources/kaggle-quota/refresh",{method:"POST"});
   await refreshKaggleQuota();
  } catch(error) {
+  await refreshKaggleQuota();
   el("kaggle-quota-status").textContent="سهمیه دریافت نشد: "+error.message;
  }
 });
@@ -2072,17 +2111,22 @@ el("kaggle-quota-refresh").addEventListener("click",async()=>{
 
 
 
+let ociLimitsRefreshSequence=0;
 async function refreshOciLimits() {
+ const requestSequence=++ociLimitsRefreshSequence;
  try {
   const result=await api("/api/cloud-resources/oci-limits");
+  if(requestSequence!==ociLimitsRefreshSequence)return;
   const consent=result.consent||{};
-  el("oci-limits-consent").checked=!!consent.enabled&&!!consent.user_consent;
+  const hasConsent=!!consent.enabled&&!!consent.user_consent;
+  if(document.activeElement!==el("oci-limits-consent"))el("oci-limits-consent").checked=hasConsent;
   for(const [field,key] of [
    ["oci-cli-path","executable_path"],["oci-config-path","config_file"],
    ["oci-profile","profile"],["oci-region","region"],["oci-compartment-id","compartment_id"]
   ]) {
-   if(consent[key]) el(field).value=consent[key];
+   if(document.activeElement!==el(field))el(field).value=consent[key]||"";
   }
+  el("oci-limits-refresh").disabled=!hasConsent;
   const snapshots=result.snapshots||[];
   const events=result.consent_events||[];
   const state=consent.enabled&&consent.user_consent
@@ -2093,10 +2137,13 @@ async function refreshOciLimits() {
    (snapshots.length?JSON.stringify(snapshots,null,2):"هنوز snapshot محدودیت ثبت نشده است.")+
    "\n\nمجوز اجرای remote: false\n\nتاریخچهٔ رضایت:\n"+JSON.stringify(events,null,2);
  } catch(error) {
+  if(requestSequence!==ociLimitsRefreshSequence)return;
+  el("oci-limits-refresh").disabled=true;
   el("oci-limits-status").textContent="وضعیت محدودیت‌های OCI قابل دریافت نیست: "+error.message;
  }
 }
 el("oci-limits-enable").addEventListener("click",async()=>{
+ ociLimitsRefreshSequence+=1;
  if(!el("oci-limits-consent").checked) {
   el("oci-limits-status").textContent="برای فعال‌سازی، ابتدا رضایت صریح را علامت بزنید.";
   return;
@@ -2114,10 +2161,13 @@ el("oci-limits-enable").addEventListener("click",async()=>{
   await api("/api/cloud-resources/oci-limits/consent",{method:"PATCH",body:JSON.stringify(body)});
   await refreshOciLimits();
  } catch(error) {
+  await refreshOciLimits();
   el("oci-limits-status").textContent="رضایت OCI ذخیره نشد: "+error.message;
  }
 });
 el("oci-limits-revoke").addEventListener("click",async()=>{
+ ociLimitsRefreshSequence+=1;
+ el("oci-limits-refresh").disabled=true;
  el("oci-limits-status").textContent="در حال لغو رضایت و پاک‌سازی snapshotها…";
  try {
   await api("/api/cloud-resources/oci-limits/consent",{
@@ -2131,25 +2181,32 @@ el("oci-limits-revoke").addEventListener("click",async()=>{
   for(const id of ["oci-cli-path","oci-config-path","oci-profile","oci-region","oci-compartment-id"]) el(id).value="";
   await refreshOciLimits();
  } catch(error) {
+  await refreshOciLimits();
   el("oci-limits-status").textContent="لغو رضایت OCI انجام نشد: "+error.message;
  }
 });
 el("oci-limits-refresh").addEventListener("click",async()=>{
+ ociLimitsRefreshSequence+=1;
+ el("oci-limits-refresh").disabled=true;
  el("oci-limits-status").textContent="در حال اجرای فرمان خواندنی OCI limits value list…";
  try {
   await api("/api/cloud-resources/oci-limits/refresh",{method:"POST"});
   await refreshOciLimits();
  } catch(error) {
+  await refreshOciLimits();
   el("oci-limits-status").textContent="محدودیت‌های OCI دریافت نشد: "+error.message;
  }
 });
 
 let activeSandboxTaskId = null;
+let sandboxConsentRefreshSequence=0;
 async function refreshSandbox() {
+ const requestSequence=++sandboxConsentRefreshSequence;
  const status=el("sandbox-status");
  const runButton=el("sandbox-run");
  try {
   const result=await api("/api/sandbox/consent");
+  if(requestSequence!==sandboxConsentRefreshSequence)return;
   const consent=result.consent||{};
   const enabled=result.execution_enabled===true;
   el("sandbox-consent-confirm").checked=consent.enabled===true;
@@ -2164,6 +2221,7 @@ async function refreshSandbox() {
    audit_events:consent.events||[]
   },null,2);
  } catch(error) {
+  if(requestSequence!==sandboxConsentRefreshSequence)return;
   runButton.disabled=true;
   status.textContent="وضعیت sandbox قابل دریافت نیست؛ اجرا غیرفعال می‌ماند. "+error.message;
  }
@@ -2183,6 +2241,7 @@ el("sandbox-cancel").addEventListener("click",async()=>{
  }
 });
 el("sandbox-consent-grant").addEventListener("click",async()=>{
+ sandboxConsentRefreshSequence+=1;
  if(!el("sandbox-consent-confirm").checked) {
   el("sandbox-status").textContent="برای ثبت رضایت، ابتدا چک‌باکس رضایت صریح را فعال کنید.";
   return;
@@ -2197,6 +2256,7 @@ el("sandbox-consent-grant").addEventListener("click",async()=>{
  }
 });
 el("sandbox-consent-revoke").addEventListener("click",async()=>{
+ sandboxConsentRefreshSequence+=1;
  el("sandbox-status").textContent="در حال لغو رضایت…";
  el("sandbox-run").disabled=true;
  try {
@@ -2501,22 +2561,28 @@ function renderExperienceItems(items) {
   container.append(card);
  });
 }
+let experienceConsentRefreshSequence=0;
 async function refreshExperienceAutoCaptureConsent() {
+ const requestSequence=++experienceConsentRefreshSequence;
  const output=el("experience-auto-capture-status");
  try {
   const result=await api("/api/experiences/auto-capture/consent");
+  if(requestSequence!==experienceConsentRefreshSequence)return;
   const consent=result.consent||{};
-  el("experience-auto-capture-confirm").checked=consent.enabled===true;
+  if(document.activeElement!==el("experience-auto-capture-confirm"))
+   el("experience-auto-capture-confirm").checked=consent.enabled===true;
   output.textContent=(consent.enabled
    ? "ذخیرهٔ خودکار فعال است؛ فقط پرسش‌های فنیِ دارای منبع ذخیره می‌شوند."
    : "ذخیرهٔ خودکار غیرفعال است؛ هیچ پرسش یا پاسخی خودکار ذخیره نمی‌شود.")+
    "\n\nنسخهٔ سیاست: "+consent.policy_version+
    "\n\nتاریخچهٔ رضایت:\n"+JSON.stringify(consent.events||[],null,2);
  } catch(error) {
+  if(requestSequence!==experienceConsentRefreshSequence)return;
   output.textContent="وضعیت رضایت قابل دریافت نیست: "+error.message;
  }
 }
 el("experience-auto-capture-enable").addEventListener("click",async()=>{
+ experienceConsentRefreshSequence+=1;
  if(!el("experience-auto-capture-confirm").checked) {
   el("experience-auto-capture-status").textContent="برای فعال‌سازی، ابتدا رضایت صریح را علامت بزنید.";
   return;
@@ -2525,15 +2591,22 @@ el("experience-auto-capture-enable").addEventListener("click",async()=>{
  try {
   await api("/api/experiences/auto-capture/consent",{method:"POST",body:JSON.stringify({confirm:true})});
   await refreshExperienceAutoCaptureConsent();
- } catch(error) { el("experience-auto-capture-status").textContent="رضایت ثبت نشد: "+error.message; }
+ } catch(error) {
+  await refreshExperienceAutoCaptureConsent();
+  el("experience-auto-capture-status").textContent="رضایت ثبت نشد: "+error.message;
+ }
 });
 el("experience-auto-capture-revoke").addEventListener("click",async()=>{
+ experienceConsentRefreshSequence+=1;
  el("experience-auto-capture-status").textContent="در حال لغو رضایت…";
  try {
   await api("/api/experiences/auto-capture/consent",{method:"DELETE"});
   el("experience-auto-capture-confirm").checked=false;
   await refreshExperienceAutoCaptureConsent();
- } catch(error) { el("experience-auto-capture-status").textContent="لغو رضایت انجام نشد: "+error.message; }
+ } catch(error) {
+  await refreshExperienceAutoCaptureConsent();
+  el("experience-auto-capture-status").textContent="لغو رضایت انجام نشد: "+error.message;
+ }
 });
 el("experience-auto-capture-refresh").addEventListener("click",refreshExperienceAutoCaptureConsent);
 refreshExperienceAutoCaptureConsent();

@@ -2403,6 +2403,7 @@ def test_browser_kaggle_quota_requires_consent_and_recovers_from_refresh_failure
 
         page.wait_for_function("() => document.querySelector('#kaggle-quota-status')?.textContent.includes('رضایت غیرفعال است')")
         assert not consent.is_checked()
+        assert refresh.is_disabled(), "Kaggle refresh must stay disabled without explicit consent."
         enable.click()
         page.get_by_text("ابتدا چک‌باکس رضایت صریح", exact=False).wait_for()
         assert state["patches"] == []
@@ -2411,6 +2412,7 @@ def test_browser_kaggle_quota_requires_consent_and_recovers_from_refresh_failure
         page.locator("#kaggle-cli-path").fill("/opt/kaggle")
         enable.click()
         page.get_by_text("رضایت فعال است", exact=False).wait_for()
+        assert refresh.is_enabled(), "Kaggle refresh should enable only after consent is active."
         assert state["patches"] == [{
             "enabled": True,
             "user_consent": True,
@@ -2427,6 +2429,7 @@ def test_browser_kaggle_quota_requires_consent_and_recovers_from_refresh_failure
         revoke.click()
         page.wait_for_function("() => document.querySelector('#kaggle-quota-status')?.textContent.includes('رضایت غیرفعال است')")
         assert not consent.is_checked()
+        assert refresh.is_disabled(), "Kaggle refresh must disable immediately after revocation."
         assert page.locator("#kaggle-cli-path").input_value() == ""
         assert state["patches"][-1] == {
             "enabled": False,
@@ -2538,6 +2541,7 @@ def test_browser_oci_limits_requires_consent_and_never_authorizes_execution():
 
         page.wait_for_function("() => document.querySelector('#oci-limits-status')?.textContent.includes('رضایت غیرفعال است')")
         assert not consent.is_checked()
+        assert refresh.is_disabled(), "OCI refresh must stay disabled without explicit consent."
         enable.click()
         page.get_by_text("ابتدا رضایت صریح", exact=False).wait_for()
         assert state["patches"] == []
@@ -2550,6 +2554,7 @@ def test_browser_oci_limits_requires_consent_and_never_authorizes_execution():
         page.locator("#oci-compartment-id").fill("ocid1.compartment.oc1..test")
         enable.click()
         page.get_by_text("رضایت فعال است", exact=False).wait_for()
+        assert refresh.is_enabled(), "OCI refresh should enable only after consent is active."
         assert state["patches"] == [{
             "enabled": True,
             "user_consent": True,
@@ -2571,6 +2576,7 @@ def test_browser_oci_limits_requires_consent_and_never_authorizes_execution():
         revoke.click()
         page.wait_for_function("() => document.querySelector('#oci-limits-status')?.textContent.includes('رضایت غیرفعال است')")
         assert not consent.is_checked()
+        assert refresh.is_disabled(), "OCI refresh must disable immediately after revocation."
         for field in ("oci-cli-path", "oci-config-path", "oci-profile", "oci-region", "oci-compartment-id"):
             assert page.locator("#" + field).input_value() == ""
         assert state["patches"][-1] == {
@@ -4096,5 +4102,741 @@ def test_browser_autonomous_run_failure_diagnostic_is_visible():
             "The selected operation needs approval unavailable to this isolated Runner. No code changes were made.",
             exact=True,
         ).wait_for(timeout=5000)
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+def test_ai_learning_ignores_stale_course_response_after_selection_changes():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    browser_errors = []
+    course_a = {
+        "id": 42, "position": 1, "title": "موضوع دورهٔ قدیمی",
+        "approval_status": "pending", "processing_status": "idle",
+        "progress_percent": 0, "lesson_count": 0,
+    }
+    course_b = {
+        "id": 43, "position": 1, "title": "موضوع دورهٔ انتخاب‌شده",
+        "approval_status": "pending", "processing_status": "idle",
+        "progress_percent": 0, "lesson_count": 0,
+    }
+
+    def learning_api_route(route):
+        request = route.request
+        path = request.url.split("?", 1)[0].removeprefix(base_url.rstrip("/"))
+        if request.method == "GET" and path == "/api/ai-learning/courses":
+            payload = {
+                "items": [
+                    {"id": 42, "title": "دورهٔ قدیمی", "topic_count": 1},
+                    {"id": 43, "title": "دورهٔ انتخاب‌شده", "topic_count": 1},
+                ],
+                "count": 2,
+            }
+        elif request.method == "GET" and path == "/api/ai-learning/courses/42":
+            payload = {"topics": [course_a]}
+        elif request.method == "GET" and path == "/api/ai-learning/courses/43":
+            payload = {"topics": [course_b]}
+        elif request.method == "GET" and path in {
+            "/api/ai-learning/courses/42/runs",
+            "/api/ai-learning/courses/43/runs",
+        }:
+            payload = {"items": [], "count": 0}
+        elif request.method == "GET" and path == "/api/ai-learning/control":
+            payload = {
+                "paused": False, "reason": "", "retry_pending": False,
+                "worker_active": False, "worker_recovery_pending": False,
+            }
+        else:
+            route.fulfill(
+                status=404,
+                content_type="application/json",
+                body=json.dumps({"detail": "unexpected AI-learning request: " + path}),
+            )
+            return
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(payload, ensure_ascii=False),
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.add_init_script("""
+            (() => {
+                const originalFetch = window.fetch.bind(window);
+                window.fetch = (resource, options) => {
+                    const url = typeof resource === "string" ? resource : resource.url;
+                    if (url.endsWith("/api/ai-learning/courses/42")) {
+                        return new Promise((resolve, reject) => {
+                            window.setTimeout(() => {
+                                originalFetch(resource, options).then(response => {
+                                    window.__delayedCourse42Resolved = true;
+                                    resolve(response);
+                                }, reject);
+                            }, 1000);
+                        });
+                    }
+                    return originalFetch(resource, options);
+                };
+            })();
+        """)
+        page.route("**/api/ai-learning/**", learning_api_route)
+        page.goto(base_url.rstrip("/") + "/ai-learning", wait_until="domcontentloaded")
+
+        selector = page.locator("#course-select")
+        page.locator('#course-select option[value="43"]').wait_for(state="attached", timeout=10000)
+        selector.select_option("43")
+        page.locator("#catalog-menu > summary").click()
+        page.locator("#topics").get_by_text("موضوع دورهٔ انتخاب‌شده", exact=False).wait_for(timeout=10000)
+        page.wait_for_function("() => window.__delayedCourse42Resolved === true", timeout=10000)
+
+        assert selector.input_value() == "43"
+        assert page.locator("#topics").get_by_text("موضوع دورهٔ انتخاب‌شده", exact=False).is_visible()
+        assert page.locator("#topics").get_by_text("موضوع دورهٔ قدیمی", exact=False).count() == 0
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+def test_ai_learning_ignores_stale_run_history_after_selection_changes():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    browser_errors = []
+
+    def learning_api_route(route):
+        request = route.request
+        path = request.url.split("?", 1)[0].removeprefix(base_url.rstrip("/"))
+        if request.method == "GET" and path == "/api/ai-learning/courses":
+            payload = {
+                "items": [
+                    {"id": 42, "title": "دورهٔ قدیمی", "topic_count": 0},
+                    {"id": 43, "title": "دورهٔ انتخاب‌شده", "topic_count": 0},
+                ],
+                "count": 2,
+            }
+        elif request.method == "GET" and path in {
+            "/api/ai-learning/courses/42",
+            "/api/ai-learning/courses/43",
+        }:
+            payload = {"topics": []}
+        elif request.method == "GET" and path == "/api/ai-learning/courses/42/runs":
+            payload = {"items": [{
+                "id": 420, "run_type": "outline", "status": "succeeded",
+                "created_at": "2026-11-19T07:00:00Z",
+            }], "count": 1}
+        elif request.method == "GET" and path == "/api/ai-learning/courses/43/runs":
+            payload = {"items": [{
+                "id": 430, "run_type": "outline", "status": "succeeded",
+                "created_at": "2026-11-19T07:01:00Z",
+            }], "count": 1}
+        elif request.method == "GET" and path == "/api/ai-learning/control":
+            payload = {
+                "paused": False, "reason": "", "retry_pending": False,
+                "worker_active": False, "worker_recovery_pending": False,
+            }
+        else:
+            route.fulfill(
+                status=404,
+                content_type="application/json",
+                body=json.dumps({"detail": "unexpected AI-learning request: " + path}),
+            )
+            return
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(payload, ensure_ascii=False),
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.add_init_script("""
+            (() => {
+                const originalFetch = window.fetch.bind(window);
+                window.fetch = (resource, options) => {
+                    const url = typeof resource === "string" ? resource : resource.url;
+                    if (url.includes("/api/ai-learning/courses/42/runs?limit=50")) {
+                        window.__delayedRun42Started = true;
+                        return new Promise((resolve, reject) => {
+                            window.setTimeout(() => {
+                                originalFetch(resource, options).then(response => {
+                                    window.__delayedRun42Resolved = true;
+                                    resolve(response);
+                                }, reject);
+                            }, 1000);
+                        });
+                    }
+                    return originalFetch(resource, options);
+                };
+            })();
+        """)
+        page.route("**/api/ai-learning/**", learning_api_route)
+        page.goto(base_url.rstrip("/") + "/ai-learning", wait_until="domcontentloaded")
+
+        selector = page.locator("#course-select")
+        page.locator('#course-select option[value="43"]').wait_for(state="attached", timeout=10000)
+        page.wait_for_function("() => window.__delayedRun42Started === true", timeout=10000)
+        selector.select_option("43")
+        page.get_by_text("اجرای #430", exact=False).wait_for(timeout=10000)
+        page.wait_for_function("() => window.__delayedRun42Resolved === true", timeout=10000)
+
+        assert selector.input_value() == "43"
+        assert page.get_by_text("اجرای #430", exact=False).is_visible()
+        assert page.get_by_text("اجرای #420", exact=False).count() == 0
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+def test_chat_ignores_stale_conversation_messages_and_keeps_delete_target_in_sync():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    state = {"deleted_id": None}
+    conversation_a = {
+        "id": 901, "title": "گفتگوی قدیمی", "created_at": "2026-11-19 07:00:00",
+        "updated_at": "2026-11-19 07:00:00", "message_count": 1,
+        "last_message": "پیام گفتگوی قدیمی",
+    }
+    conversation_b = {
+        "id": 902, "title": "گفتگوی انتخاب‌شده", "created_at": "2026-11-19 07:01:00",
+        "updated_at": "2026-11-19 07:01:00", "message_count": 1,
+        "last_message": "پیام گفتگوی انتخاب‌شده",
+    }
+    browser_errors = []
+
+    def mock_api(route):
+        request = route.request
+        path = request.url.split("?", 1)[0].removeprefix(base_url.rstrip("/"))
+        if request.method == "GET" and path == "/api/conversations":
+            conversations = [conversation_a]
+            if state["deleted_id"] != 902:
+                conversations.append(conversation_b)
+            route.fulfill(
+                status=200, content_type="application/json",
+                body=json.dumps({"conversations": conversations}, ensure_ascii=False),
+            )
+            return
+        if request.method == "GET" and path == "/api/conversations/901/messages":
+            route.fulfill(
+                status=200, content_type="application/json",
+                body=json.dumps({
+                    "conversation": conversation_a,
+                    "messages": [{
+                        "id": 1901, "conversation_id": 901, "role": "assistant",
+                        "content": "پیام گفتگوی قدیمی", "created_at": "2026-11-19 07:00:00",
+                    }],
+                }, ensure_ascii=False),
+            )
+            return
+        if request.method == "GET" and path == "/api/conversations/902/messages":
+            route.fulfill(
+                status=200, content_type="application/json",
+                body=json.dumps({
+                    "conversation": conversation_b,
+                    "messages": [{
+                        "id": 1902, "conversation_id": 902, "role": "assistant",
+                        "content": "پیام گفتگوی انتخاب‌شده", "created_at": "2026-11-19 07:01:00",
+                    }],
+                }, ensure_ascii=False),
+            )
+            return
+        if request.method == "DELETE" and path == "/api/conversations/902":
+            state["deleted_id"] = 902
+            route.fulfill(
+                status=200, content_type="application/json",
+                body=json.dumps({"deleted": True}),
+            )
+            return
+        route.continue_()
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.add_init_script("""
+            (() => {
+                const originalFetch = window.fetch.bind(window);
+                let delayed = false;
+                window.fetch = (resource, options) => {
+                    const url = typeof resource === "string" ? resource : resource.url;
+                    if (!delayed && url.endsWith("/api/conversations/901/messages")) {
+                        delayed = true;
+                        window.__delayedConversation901Started = true;
+                        return new Promise((resolve, reject) => {
+                            window.setTimeout(() => {
+                                originalFetch(resource, options).then(response => {
+                                    window.__delayedConversation901Resolved = true;
+                                    resolve(response);
+                                }, reject);
+                            }, 1000);
+                        });
+                    }
+                    return originalFetch(resource, options);
+                };
+            })();
+        """)
+        page.route("**/api/conversations**", mock_api)
+        response = page.goto(base_url, wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+
+        selector = page.locator("#chat-conversation-select")
+        page.locator('#chat-conversation-select option[value="902"]').wait_for(
+            state="attached", timeout=10000
+        )
+        page.wait_for_function(
+            "() => window.__delayedConversation901Started === true", timeout=10000
+        )
+        selector.select_option("902")
+        page.get_by_text("پیام گفتگوی انتخاب‌شده", exact=True).wait_for(timeout=10000)
+        page.wait_for_function(
+            "() => window.__delayedConversation901Resolved === true", timeout=10000
+        )
+
+        assert selector.input_value() == "902"
+        assert page.get_by_text("پیام گفتگوی انتخاب‌شده", exact=True).is_visible()
+        assert page.get_by_text("پیام گفتگوی قدیمی", exact=True).count() == 0
+        page.on("dialog", lambda dialog: dialog.accept())
+        with page.expect_request(
+            lambda request: request.method == "DELETE"
+            and request.url.endswith("/api/conversations/902"),
+            timeout=10000,
+        ):
+            page.locator("#chat-delete-conversation").click()
+        assert state["deleted_id"] == 902
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+def test_browser_task_filter_ignores_a_late_response_from_the_previous_filter():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    def task(task_id, name, status):
+        return {
+            "id": task_id, "task_type": name, "status": status,
+            "priority": 0, "attempts": 1, "max_attempts": 1,
+            "created_at": "2026-11-19T07:00:00+00:00",
+            "updated_at": "2026-11-19T07:00:00+00:00",
+            "error": None, "result": None,
+        }
+
+    browser_errors = []
+
+    def mock_api(route):
+        request = route.request
+        path = request.url.split("?", 1)[0].removeprefix(base_url.rstrip("/"))
+        if request.method == "GET" and path == "/api/tasks":
+            if "statuses=failed" in request.url:
+                payload = {
+                    "tasks": [task(303, "e2e.failed-filter-result", "failed")],
+                    "next_cursor": None, "has_more": False,
+                }
+            else:
+                payload = {
+                    "tasks": [task(101, "e2e.previous-filter-result", "queued")],
+                    "next_cursor": None, "has_more": False,
+                }
+            route.fulfill(
+                status=200, content_type="application/json",
+                body=json.dumps(payload),
+            )
+            return
+        route.continue_()
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.add_init_script("""
+            (() => {
+                const originalFetch = window.fetch.bind(window);
+                let delayed = false;
+                window.fetch = (resource, options) => {
+                    const url = typeof resource === "string" ? resource : resource.url;
+                    if (!delayed && url.includes("/api/tasks?") && !url.includes("statuses=")) {
+                        delayed = true;
+                        window.__delayedUnfilteredTasksStarted = true;
+                        return new Promise((resolve, reject) => {
+                            window.setTimeout(() => {
+                                originalFetch(resource, options).then(response => {
+                                    window.__delayedUnfilteredTasksResolved = true;
+                                    resolve(response);
+                                }, reject);
+                            }, 1000);
+                        });
+                    }
+                    return originalFetch(resource, options);
+                };
+            })();
+        """)
+        page.route("**/api/tasks**", mock_api)
+        _goto_section(page, base_url, "task-manager-section")
+
+        page.wait_for_function(
+            "() => window.__delayedUnfilteredTasksStarted === true", timeout=10000
+        )
+        page.locator("#task-status-filter").select_option("failed")
+        page.get_by_text("#303 — e2e.failed-filter-result", exact=True).wait_for(timeout=10000)
+        page.wait_for_function(
+            "() => window.__delayedUnfilteredTasksResolved === true", timeout=10000
+        )
+
+        assert page.locator("#task-status-filter").input_value() == "failed"
+        assert page.get_by_text("#303 — e2e.failed-filter-result", exact=True).is_visible()
+        assert page.get_by_text("#101 — e2e.previous-filter-result", exact=True).count() == 0
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+def test_browser_sandbox_revocation_cannot_be_overridden_by_a_stale_consent_read():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    state = {"get_count": 0, "revoked": False}
+    browser_errors = []
+
+    def consent_route(route):
+        request = route.request
+        if request.method == "GET":
+            state["get_count"] += 1
+            enabled = state["get_count"] == 1 and not state["revoked"]
+            route.fulfill(
+                status=200, content_type="application/json",
+                body=json.dumps({
+                    "consent": {"enabled": enabled, "events": []},
+                    "runtime_configured": True,
+                    "execution_enabled": enabled,
+                }),
+            )
+            return
+        if request.method == "DELETE":
+            state["revoked"] = True
+            route.fulfill(
+                status=200, content_type="application/json",
+                body=json.dumps({
+                    "consent": {"enabled": False, "events": []},
+                    "runtime_configured": True,
+                    "execution_enabled": False,
+                }),
+            )
+            return
+        route.fulfill(status=405, body="method not allowed")
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.add_init_script("""
+            (() => {
+                const originalFetch = window.fetch.bind(window);
+                let delayed = false;
+                window.fetch = (resource, options) => {
+                    const url = typeof resource === "string" ? resource : resource.url;
+                    if (!delayed && url.endsWith("/api/sandbox/consent")
+                        && (!options || !options.method || options.method === "GET")) {
+                        delayed = true;
+                        window.__delayedSandboxConsentStarted = true;
+                        const pendingResponse = originalFetch(resource, options);
+                        return new Promise((resolve, reject) => {
+                            pendingResponse.then(response => {
+                                window.__delayedSandboxConsentCaptured = true;
+                                window.setTimeout(() => {
+                                    window.__delayedSandboxConsentResolved = true;
+                                    resolve(response);
+                                }, 1000);
+                            }, reject);
+                        });
+                    }
+                    return originalFetch(resource, options);
+                };
+            })();
+        """)
+        page.route("**/api/sandbox/consent", consent_route)
+        _goto_section(page, base_url, "sandbox-section")
+
+        run_button = page.locator("#sandbox-run")
+        page.locator("#sandbox-refresh").click()
+        page.wait_for_function(
+            "() => window.__delayedSandboxConsentCaptured === true", timeout=10000
+        )
+        assert run_button.is_disabled()
+        page.locator("#sandbox-consent-revoke").click()
+        page.get_by_text('"execution_enabled": false', exact=False).wait_for(timeout=10000)
+        assert run_button.is_disabled()
+        page.wait_for_function(
+            "() => window.__delayedSandboxConsentResolved === true", timeout=10000
+        )
+
+        assert state["revoked"] is True
+        assert page.locator("#sandbox-consent-confirm").is_checked() is False
+        assert run_button.is_disabled(), (
+            "A delayed pre-revocation consent response must never re-enable execution."
+        )
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+
+def test_browser_quota_and_experience_consent_revocation_ignores_stale_reads():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    cases = [
+        {
+            "kind": "kaggle",
+            "endpoint": "/api/cloud-resources/kaggle-quota",
+            "page_id": "kaggle-quota-section",
+            "revoke_id": "kaggle-quota-revoke",
+            "status_id": "kaggle-quota-status",
+            "checkbox_id": "kaggle-quota-consent",
+            "refresh_id": "kaggle-quota-refresh",
+            "method": "PATCH",
+            "disabled_text": "رضایت غیرفعال است",
+        },
+        {
+            "kind": "oci",
+            "endpoint": "/api/cloud-resources/oci-limits",
+            "page_id": "oci-limits-section",
+            "revoke_id": "oci-limits-revoke",
+            "status_id": "oci-limits-status",
+            "checkbox_id": "oci-limits-consent",
+            "refresh_id": "oci-limits-refresh",
+            "method": "PATCH",
+            "disabled_text": "رضایت غیرفعال است",
+        },
+        {
+            "kind": "experience",
+            "endpoint": "/api/experiences/auto-capture/consent",
+            "page_id": "experience-memory-section",
+            "revoke_id": "experience-auto-capture-revoke",
+            "status_id": "experience-auto-capture-status",
+            "checkbox_id": "experience-auto-capture-confirm",
+            "refresh_id": None,
+            "method": "DELETE",
+            "disabled_text": "ذخیرهٔ خودکار غیرفعال است",
+        },
+    ]
+
+    def consent_payload(kind, enabled):
+        if kind == "kaggle":
+            return {
+                "consent": {
+                    "enabled": enabled, "user_consent": enabled,
+                    "executable_path": "/opt/kaggle" if enabled else "",
+                },
+                "snapshots": [], "consent_events": [],
+            }
+        if kind == "oci":
+            return {
+                "consent": {
+                    "enabled": enabled, "user_consent": enabled,
+                    "executable_path": "/opt/oci" if enabled else "",
+                    "config_file": "/tmp/config" if enabled else "",
+                    "profile": "DEFAULT" if enabled else "",
+                    "region": "eu-frankfurt-1" if enabled else "",
+                    "compartment_id": "ocid1.compartment" if enabled else "",
+                },
+                "snapshots": [], "consent_events": [],
+            }
+        return {
+            "consent": {
+                "enabled": enabled,
+                "policy_version": "test-policy",
+                "events": [],
+            }
+        }
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        for case in cases:
+            state = {"gets": 0, "revoked": False}
+            browser_errors = []
+
+            def make_consent_route(current_case, current_state):
+                def handler(route):
+                    request = route.request
+                    if request.method == "GET":
+                        current_state["gets"] += 1
+                        enabled = current_state["gets"] == 1 and not current_state["revoked"]
+                        route.fulfill(
+                            status=200, content_type="application/json",
+                            body=json.dumps(consent_payload(current_case["kind"], enabled)),
+                        )
+                        return
+                    if request.method == current_case["method"]:
+                        current_state["revoked"] = True
+                        route.fulfill(
+                            status=200, content_type="application/json",
+                            body=json.dumps(consent_payload(current_case["kind"], False)),
+                        )
+                        return
+                    route.fulfill(status=405, body="method not allowed")
+                return handler
+
+            page = browser.new_page()
+            page.on("pageerror", lambda error: browser_errors.append(str(error)))
+            page.add_init_script(f"""
+                (() => {{
+                    const originalFetch = window.fetch.bind(window);
+                    const endpoint = {json.dumps(case["endpoint"])};
+                    let delayed = false;
+                    window.fetch = (resource, options) => {{
+                        const url = typeof resource === "string" ? resource : resource.url;
+                        const method = options && options.method ? options.method : "GET";
+                        if (!delayed && url.endsWith(endpoint) && method === "GET") {{
+                            delayed = true;
+                            const pendingResponse = originalFetch(resource, options);
+                            return new Promise((resolve, reject) => {{
+                                pendingResponse.then(response => {{
+                                    window.__delayedConsentCaptured = true;
+                                    window.setTimeout(() => {{
+                                        window.__delayedConsentResolved = true;
+                                        resolve(response);
+                                    }}, 1000);
+                                }}, reject);
+                            }});
+                        }}
+                        return originalFetch(resource, options);
+                    }};
+                }})();
+            """)
+            page.route("**" + case["endpoint"] + "**", make_consent_route(case, state))
+            page.goto(
+                base_url.rstrip("/") + "/page/" + case["page_id"],
+                wait_until="domcontentloaded",
+            )
+
+            checkbox = page.locator("#" + case["checkbox_id"])
+            revoke = page.locator("#" + case["revoke_id"])
+            page.wait_for_function(
+                "() => window.__delayedConsentCaptured === true", timeout=10000
+            )
+            if case["refresh_id"]:
+                refresh = page.locator("#" + case["refresh_id"])
+                assert refresh.is_disabled(), "Quota refresh must start disabled until consent is verified."
+
+            revoke.click()
+            page.wait_for_function(
+                f"() => document.querySelector('#{case['status_id']}')?.textContent.includes({json.dumps(case['disabled_text'])})",
+                timeout=10000,
+            )
+            page.wait_for_function(
+                "() => window.__delayedConsentResolved === true", timeout=10000
+            )
+
+            assert not checkbox.is_checked(), case["kind"] + " consent checkbox must remain revoked."
+            if case["refresh_id"]:
+                assert page.locator("#" + case["refresh_id"]).is_disabled()
+            assert state["revoked"] is True
+            assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+            page.close()
+        browser.close()
+
+def test_chat_refresh_preserves_a_newer_conversation_selection():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    conversation_a = {
+        "id": 901, "title": "گفتگوی اول", "created_at": "2026-11-19 07:00:00",
+        "updated_at": "2026-11-19 07:00:00", "message_count": 1,
+        "last_message": "پیام اول",
+    }
+    conversation_b = {
+        "id": 902, "title": "گفتگوی دوم", "created_at": "2026-11-19 07:01:00",
+        "updated_at": "2026-11-19 07:01:00", "message_count": 1,
+        "last_message": "پیام دوم",
+    }
+    browser_errors = []
+
+    def mock_api(route):
+        request = route.request
+        path = request.url.split("?", 1)[0].removeprefix(base_url.rstrip("/"))
+        if request.method == "GET" and path == "/api/conversations":
+            route.fulfill(
+                status=200, content_type="application/json",
+                body=json.dumps({"conversations": [conversation_a, conversation_b]}, ensure_ascii=False),
+            )
+            return
+        if request.method == "GET" and path == "/api/conversations/901/messages":
+            conversation, message_id, content = conversation_a, 1901, "پیام اول"
+        elif request.method == "GET" and path == "/api/conversations/902/messages":
+            conversation, message_id, content = conversation_b, 1902, "پیام دوم"
+        else:
+            route.continue_()
+            return
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=json.dumps({
+                "conversation": conversation,
+                "messages": [{
+                    "id": message_id, "conversation_id": conversation["id"],
+                    "role": "assistant", "content": content,
+                    "created_at": conversation["created_at"],
+                }],
+            }, ensure_ascii=False),
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.add_init_script("""
+            (() => {
+                const originalFetch = window.fetch.bind(window);
+                let listReads = 0;
+                window.fetch = (resource, options) => {
+                    const url = typeof resource === "string" ? resource : resource.url;
+                    if (url.endsWith("/api/conversations?limit=200")) {
+                        listReads += 1;
+                        if (listReads === 2) {
+                            const pendingResponse = originalFetch(resource, options);
+                            return new Promise((resolve, reject) => {
+                                pendingResponse.then(response => {
+                                    window.__delayedConversationListCaptured = true;
+                                    window.setTimeout(() => {
+                                        window.__delayedConversationListResolved = true;
+                                        resolve(response);
+                                    }, 1000);
+                                }, reject);
+                            });
+                        }
+                    }
+                    return originalFetch(resource, options);
+                };
+            })();
+        """)
+        page.route("**/api/conversations**", mock_api)
+        response = page.goto(base_url, wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+
+        selector = page.locator("#chat-conversation-select")
+        page.locator('#chat-conversation-select option[value="902"]').wait_for(
+            state="attached", timeout=10000
+        )
+        page.get_by_text("پیام اول", exact=True).wait_for(timeout=10000)
+        page.locator("#chat-refresh-conversations").click()
+        page.wait_for_function(
+            "() => window.__delayedConversationListCaptured === true", timeout=10000
+        )
+        selector.select_option("902")
+        page.get_by_text("پیام دوم", exact=True).wait_for(timeout=10000)
+        page.wait_for_function(
+            "() => window.__delayedConversationListResolved === true", timeout=10000
+        )
+
+        assert selector.input_value() == "902"
+        assert page.get_by_text("پیام دوم", exact=True).is_visible()
+        assert page.get_by_text("پیام اول", exact=True).count() == 0
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
