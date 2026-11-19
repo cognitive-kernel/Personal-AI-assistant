@@ -340,10 +340,13 @@ def test_rollback_pr_refuses_to_overwrite_later_changes(proposal_repo, monkeypat
 
 
 def test_rollback_pr_ui_is_explicit_and_advisory():
-    page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(encoding="utf-8")
-    assert "ایجاد PR پیش‌نویس بازگشت" in page
-    assert '"/api/self-improvement/proposals/"+item.id+"/rollback-pr"' in page
-    assert "هیچ ادغام یا استقراری انجام نمی‌شود" in page
+    static = Path(__file__).parents[1] / "app" / "static"
+    page = (static / "index.html").read_text(encoding="utf-8")
+    module = (static / "engineering-assistance.js").read_text(encoding="utf-8")
+    assert 'id="self-improvement-section"' in page
+    assert "ایجاد PR پیش‌نویس بازگشت" in module
+    assert '"/api/self-improvement/proposals/"+item.id+"/rollback-pr"' in module
+    assert "هیچ ادغام یا استقراری انجام نمی‌شود" in module
 
 
 def test_github_api_disables_environment_proxies_and_redirects(monkeypatch):
