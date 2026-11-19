@@ -51,3 +51,21 @@ def test_codex_heartbeat_prefers_current_task_title(monkeypatch):
     )
 
     assert record["activity"] == "افزودن تست رگرسیون"
+
+
+def test_codex_heartbeat_console_line_is_ascii_safe_for_windows_code_pages():
+    line = progress.codex_heartbeat_console_line(elapsed_seconds=125, event_count=0)
+
+    assert line.isascii()
+    assert "elapsed_minutes=2" in line
+    assert "jsonl_events=0" in line
+    assert "state=waiting_for_first_event" in line
+
+
+def test_codex_heartbeat_console_line_reports_received_events():
+    line = progress.codex_heartbeat_console_line(elapsed_seconds=245, event_count=7)
+
+    assert line.isascii()
+    assert "elapsed_minutes=4" in line
+    assert "jsonl_events=7" in line
+    assert "state=receiving_events" in line
