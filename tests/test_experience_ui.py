@@ -2,11 +2,12 @@ from pathlib import Path
 
 
 def test_experience_memory_ui_exposes_safe_curation_search_and_history():
-    page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
-        encoding="utf-8"
-    )
+    root = Path(__file__).parents[1] / "app" / "static"
+    page = (root / "index.html").read_text(encoding="utf-8")
+    core = (root / "dashboard-core.js").read_text(encoding="utf-8")
+    source = page + "\\n" + core
 
-    assert 'id="experience-memory-section"' in page
+    assert 'id="experience-memory-section"' in source
     assert 'id="experience-create-form"' in page
     assert 'id="experience-refresh"' in page
     assert 'id="experience-search-form"' in page
