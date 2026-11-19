@@ -17,7 +17,7 @@
 python scripts/repair_legacy_rejected_candidates.py
 ```
 
-این حالت فقط‌خواندنی است. برای هر candidate شناسه، فیلدهای قابل بازیابی، فیلدهای غیرقابل بازیابی و نتیجهٔ بررسی hash را گزارش می‌کند. هیچ تغییری در دیتابیس ایجاد نمی‌شود.
+این حالت دیتابیس موجود را با SQLite ‌`mode=ro` باز می‌کند؛ هیچ schema initialization، migration، seed تنظیمات، ایجاد پوشه یا ایجاد فایل دیتابیس انجام نمی‌دهد. برای هر candidate شناسه، فیلدهای قابل بازیابی، فیلدهای غیرقابل بازیابی و نتیجهٔ بررسی hash را گزارش می‌کند. اگر فایل دیتابیس وجود نداشته باشد، عملیات بدون ایجاد فایل متوقف می‌شود.
 
 ## مرحلهٔ دوم: اعمال بازیابی پس از بررسی گزارش
 
@@ -27,7 +27,7 @@ python scripts/repair_legacy_rejected_candidates.py
 python scripts/repair_legacy_rejected_candidates.py --apply
 ```
 
-ابزار فقط این داده‌ها را بازیابی می‌کند:
+حالت `--apply` نیز فقط دیتابیس موجود را با ‌`mode=rw` باز می‌کند و فایل جدید نمی‌سازد. ابزار فقط این داده‌ها را بازیابی می‌کند:
 
 - متن candidate از `learning_jobs.lesson`، فقط وقتی SHA-256 آن دقیقاً با `content_sha256` ثبت‌شده در candidate برابر باشد.
 - URLهای منبع از رکوردهای باقی‌ماندهٔ `learning_evidence` با نوع `web_page` و فقط URLهای HTTPS.
