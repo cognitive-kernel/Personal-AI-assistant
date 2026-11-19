@@ -978,12 +978,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 // Phase one: acquire lessons through the user's authenticated ChatGPT tab in local Chrome.
+let browserLearningCoursesLoadSequence = 0;
 async function refreshBrowserLearningCourses() {
+ const requestSequence = ++browserLearningCoursesLoadSequence;
  const container = learningEl("browser-learning-courses");
  if (!container) return;
  container.textContent = "در حال بارگذاری دوره‌های هوش‌به‌هوش…";
  try {
   const result = await learningApi("/api/learning/browser/courses?limit=50");
+  if (requestSequence !== browserLearningCoursesLoadSequence) return;
   container.replaceChildren();
   const courses = result.courses || [];
   if (!courses.length) {
@@ -1029,7 +1032,9 @@ async function refreshBrowserLearningCourses() {
    container.append(card);
   }
  } catch (error) {
-  container.textContent = "بارگذاری فهرست دوره‌ها ناموفق بود: " + error.message;
+  if (requestSequence === browserLearningCoursesLoadSequence) {
+   container.textContent = "بارگذاری فهرست دوره‌ها ناموفق بود: " + error.message;
+  }
  }
 }
 
