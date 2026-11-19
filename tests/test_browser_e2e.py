@@ -4284,3 +4284,124 @@ def test_ai_learning_ignores_stale_run_history_after_selection_changes():
         assert page.get_by_text("اجرای #420", exact=False).count() == 0
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_chat_ignores_stale_conversation_messages_and_keeps_delete_target_in_sync():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    state = {"deleted_id": None}
+    conversation_a = {
+        "id": 901, "title": "گفتگوی قدیمی", "created_at": "2026-11-19 07:00:00",
+        "updated_at": "2026-11-19 07:00:00", "message_count": 1,
+        "last_message": "پیام گفتگوی قدیمی",
+    }
+    conversation_b = {
+        "id": 902, "title": "گفتگوی انتخاب‌شده", "created_at": "2026-11-19 07:01:00",
+        "updated_at": "2026-11-19 07:01:00", "message_count": 1,
+        "last_message": "پیام گفتگوی انتخاب‌شده",
+    }
+    browser_errors = []
+
+    def mock_api(route):
+        request = route.request
+        path = request.url.split("?", 1)[0].removeprefix(base_url.rstrip("/"))
+        if request.method == "GET" and path == "/api/conversations":
+            conversations = [conversation_a]
+            if state["deleted_id"] != 902:
+                conversations.append(conversation_b)
+            route.fulfill(
+                status=200, content_type="application/json",
+                body=json.dumps({"conversations": conversations}, ensure_ascii=False),
+            )
+            return
+        if request.method == "GET" and path == "/api/conversations/901/messages":
+            route.fulfill(
+                status=200, content_type="application/json",
+                body=json.dumps({
+                    "conversation": conversation_a,
+                    "messages": [{
+                        "id": 1901, "conversation_id": 901, "role": "assistant",
+                        "content": "پیام گفتگوی قدیمی", "created_at": "2026-11-19 07:00:00",
+                    }],
+                }, ensure_ascii=False),
+            )
+            return
+        if request.method == "GET" and path == "/api/conversations/902/messages":
+            route.fulfill(
+                status=200, content_type="application/json",
+                body=json.dumps({
+                    "conversation": conversation_b,
+                    "messages": [{
+                        "id": 1902, "conversation_id": 902, "role": "assistant",
+                        "content": "پیام گفتگوی انتخاب‌شده", "created_at": "2026-11-19 07:01:00",
+                    }],
+                }, ensure_ascii=False),
+            )
+            return
+        if request.method == "DELETE" and path == "/api/conversations/902":
+            state["deleted_id"] = 902
+            route.fulfill(
+                status=200, content_type="application/json",
+                body=json.dumps({"deleted": True}),
+            )
+            return
+        route.continue_()
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.add_init_script("""
+            (() => {
+                const originalFetch = window.fetch.bind(window);
+                let delayed = false;
+                window.fetch = (resource, options) => {
+                    const url = typeof resource === "string" ? resource : resource.url;
+                    if (!delayed && url.endsWith("/api/conversations/901/messages")) {
+                        delayed = true;
+                        window.__delayedConversation901Started = true;
+                        return new Promise((resolve, reject) => {
+                            window.setTimeout(() => {
+                                originalFetch(resource, options).then(response => {
+                                    window.__delayedConversation901Resolved = true;
+                                    resolve(response);
+                                }, reject);
+                            }, 1000);
+                        });
+                    }
+                    return originalFetch(resource, options);
+                };
+            })();
+        """)
+        page.route("**/api/conversations**", mock_api)
+        response = page.goto(base_url, wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+
+        selector = page.locator("#chat-conversation-select")
+        page.locator('#chat-conversation-select option[value="902"]').wait_for(
+            state="attached", timeout=10000
+        )
+        page.wait_for_function(
+            "() => window.__delayedConversation901Started === true", timeout=10000
+        )
+        selector.select_option("902")
+        page.get_by_text("پیام گفتگوی انتخاب‌شده", exact=True).wait_for(timeout=10000)
+        page.wait_for_function(
+            "() => window.__delayedConversation901Resolved === true", timeout=10000
+        )
+
+        assert selector.input_value() == "902"
+        assert page.get_by_text("پیام گفتگوی انتخاب‌شده", exact=True).is_visible()
+        assert page.get_by_text("پیام گفتگوی قدیمی", exact=True).count() == 0
+        page.on("dialog", lambda dialog: dialog.accept())
+        with page.expect_request(
+            lambda request: request.method == "DELETE"
+            and request.url.endswith("/api/conversations/902"),
+            timeout=10000,
+        ):
+            page.locator("#chat-delete-conversation").click()
+        assert state["deleted_id"] == 902
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
