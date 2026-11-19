@@ -320,9 +320,12 @@ $("search-form").onsubmit=e=>{e.preventDefault();act(async()=>{
  feedback.append(helpful,notHelpful,status);root.append(feedback);
  say(r.count+" نتیجه بازیابی شد.")
 })};
-async function refreshCourseProgress(){if(!courseId)return;const d=await api("/courses/"+courseId);const nextTopics=d.topics||[];if(JSON.stringify(nextTopics)===renderedTopicsSnapshot)return;const inlineReviewOpen=!!document.querySelector(".topic-inline-lessons:not([hidden])");if(!inlineReviewOpen){topics=nextTopics;renderTopics();$("select-all-topics").checked=topics.length>0&&topics.every(t=>selectedTopicIds.has(Number(t.id)))}}
+async function refreshCourseProgress(){if(!courseId)return;const requestedCourseId=courseId;const d=await api("/courses/"+requestedCourseId);if(!isCurrentCourse(requestedCourseId))return;const nextTopics=d.topics||[];if(JSON.stringify(nextTopics)===renderedTopicsSnapshot)return;const inlineReviewOpen=!!document.querySelector(".topic-inline-lessons:not([hidden])");if(!inlineReviewOpen){topics=nextTopics;renderTopics();$("select-all-topics").checked=topics.length>0&&topics.every(t=>selectedTopicIds.has(Number(t.id)))}}
+let learningControlRequestSequence=0;
 async function refreshLearningControl(){
+ const requestSequence=++learningControlRequestSequence;
  const state=await api("/control");
+ if(requestSequence!==learningControlRequestSequence)return;
  $("learning-control-status").textContent=state.paused
   ?"وضعیت: مکث سراسری فعال است؛ این تنظیم پس از خاموشی نیز حفظ می‌شود."
     +(state.retry_pending?" بازیابی خودکار پس از "+state.retry_after+" انجام می‌شود.":"")
