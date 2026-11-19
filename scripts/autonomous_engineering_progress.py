@@ -4,11 +4,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import queue
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -189,6 +192,29 @@ def codex_activity(event: dict[str, Any]) -> str | None:
     return None
 
 
+
+CODEX_PROGRESS_HEARTBEAT_SECONDS = 60
+
+
+def codex_heartbeat_record(args: argparse.Namespace, elapsed_seconds: float, event_count: int) -> dict[str, Any]:
+    """Describe a live Codex process even when Ollama has not emitted JSONL yet."""
+    elapsed_minutes = max(0, int(max(0.0, elapsed_seconds) // 60))
+    completed, total, active_title = plan_state()
+    if active_title:
+        activity = active_title
+    elif event_count == 0:
+        activity = f"در انتظار اولین رویداد از Codex/Ollama؛ نشست هنوز فعال است ({elapsed_minutes} دقیقه)"
+    else:
+        activity = f"نشست Codex فعال است؛ {event_count} رویداد دریافت شده ({elapsed_minutes} دقیقه)"
+    return {
+        "run_id": args.run_id, "run_attempt": args.run_attempt,
+        "status": "running", "phase": "coding",
+        "phase_label": "تحلیل و پیاده‌سازی",
+        "activity": activity,
+        "plan_completed": completed, "plan_total": total,
+        "plan_percent": plan_percentage(completed, total),
+    }
+
 def run_codex(args: argparse.Namespace) -> int:
     executable = shutil.which("codex")
     if not executable:
@@ -253,14 +279,52 @@ def run_codex(args: argparse.Namespace) -> int:
             "activity": "عامل در حال شروع تحلیل است",
             "plan_completed": 0, "plan_total": 0, "plan_percent": None,
         })
+    line_events: queue.Queue[str | None] = queue.Queue()
+
+    def read_codex_output() -> None:
+        try:
+            for output_line in process.stdout:
+                line_events.put(output_line)
+        finally:
+            line_events.put(None)
+
+    output_reader = threading.Thread(
+        target=read_codex_output, name="autonomous-codex-jsonl-reader", daemon=True,
+    )
+    output_reader.start()
+    codex_started_at = time.monotonic()
+    next_heartbeat_at = codex_started_at + CODEX_PROGRESS_HEARTBEAT_SECONDS
+    event_count = 0
+    stream_closed = False
     try:
-        for line in process.stdout:
+        while not stream_closed:
+            wait_seconds = max(0.1, min(5.0, next_heartbeat_at - time.monotonic()))
+            try:
+                line = line_events.get(timeout=wait_seconds)
+            except queue.Empty:
+                if process.poll() is not None and not output_reader.is_alive():
+                    break
+                now_monotonic = time.monotonic()
+                if now_monotonic >= next_heartbeat_at:
+                    elapsed = now_monotonic - codex_started_at
+                    heartbeat = codex_heartbeat_record(args, elapsed, event_count)
+                    persist(heartbeat)
+                    print(
+                        "[autonomous-progress] " + str(heartbeat["activity"]),
+                        flush=True,
+                    )
+                    next_heartbeat_at = now_monotonic + CODEX_PROGRESS_HEARTBEAT_SECONDS
+                continue
+            if line is None:
+                stream_closed = True
+                continue
             try:
                 event = json.loads(line)
             except ValueError:
                 continue
             if not isinstance(event, dict):
                 continue
+            event_count += 1
             if getattr(args, "require_command_output", None) or getattr(args, "expected_agent_message", None):
                 if (
                     event.get("type") in {"item.started", "item.completed", "turn.completed", "turn.failed", "error"}
