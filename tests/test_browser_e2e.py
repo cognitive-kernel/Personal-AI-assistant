@@ -4547,6 +4547,7 @@ def test_browser_sandbox_revocation_cannot_be_overridden_by_a_stale_consent_read
                         const pendingResponse = originalFetch(resource, options);
                         return new Promise((resolve, reject) => {
                             pendingResponse.then(response => {
+                                window.__delayedSandboxConsentCaptured = true;
                                 window.setTimeout(() => {
                                     window.__delayedSandboxConsentResolved = true;
                                     resolve(response);
@@ -4563,7 +4564,7 @@ def test_browser_sandbox_revocation_cannot_be_overridden_by_a_stale_consent_read
 
         run_button = page.locator("#sandbox-run")
         page.wait_for_function(
-            "() => window.__delayedSandboxConsentStarted === true", timeout=10000
+            "() => window.__delayedSandboxConsentCaptured === true", timeout=10000
         )
         assert run_button.is_disabled()
         page.locator("#sandbox-consent-revoke").click()
@@ -4655,6 +4656,7 @@ def test_browser_quota_and_experience_consent_revocation_ignores_stale_reads():
             (() => {
                 const originalFetch = window.fetch.bind(window);
                 const delayed = new Set();
+                window.__delayedConsentCaptured = [];
                 window.__delayedConsentResolved = [];
                 window.fetch = (resource, options) => {
                     const url = typeof resource === "string" ? resource : resource.url;
@@ -4672,6 +4674,7 @@ def test_browser_quota_and_experience_consent_revocation_ignores_stale_reads():
                         const pendingResponse = originalFetch(resource, options);
                         return new Promise((resolve, reject) => {
                             pendingResponse.then(response => {
+                                window.__delayedConsentCaptured.push(endpoint);
                                 window.setTimeout(() => {
                                     window.__delayedConsentResolved.push(endpoint);
                                     resolve(response);
@@ -4689,7 +4692,7 @@ def test_browser_quota_and_experience_consent_revocation_ignores_stale_reads():
         response = page.goto(base_url, wait_until="domcontentloaded")
         assert response is not None and response.status == 200
         page.wait_for_function(
-            "() => (window.__delayedConsentStarted || []).length === 3", timeout=10000
+            "() => (window.__delayedConsentCaptured || []).length === 3", timeout=10000
         )
 
         page.locator("#kaggle-quota-revoke").click()
