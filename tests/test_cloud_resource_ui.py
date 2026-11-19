@@ -5,14 +5,20 @@ def test_cloud_resource_ui_exposes_discovery_and_review_controls_safely():
     page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
         encoding="utf-8"
     )
+    core = (Path(__file__).parents[1] / "app" / "static" / "dashboard-core.js").read_text(
+        encoding="utf-8"
+    )
     module = (Path(__file__).parents[1] / "app" / "static" / "cloud-resources.js").read_text(
         encoding="utf-8"
     )
-    source = page + "\\n" + module
+    source = page + "\\n" + core + "\\n" + module
 
+    assert 'src="/static/dashboard-core.js"' in page
     assert 'src="/static/cloud-resources.js"' in page
-    assert "window.dashboardCore = Object.freeze({el, api, appendText})" in page
+    assert "window.dashboardCore = Object.freeze({" in core
+    assert "version: 1" in core
     assert "dashboardCore.{api,el,appendText}" in module
+    assert "core.version!==1" in module
 
     assert 'id="cloud-resources-section"' in source
     assert 'id="cloud-refresh"' in source
