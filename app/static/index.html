@@ -1701,7 +1701,9 @@ el("settings-form").addEventListener("submit", async event => {
  } catch(error) { el("settings-output").textContent="ذخیره تنظیمات ناموفق بود: "+error.message; }
 });
 
+let cloudResourcesRequestSequence=0;
 async function refreshCloudResources() {
+ const requestSequence=++cloudResourcesRequestSequence;
  const output=el("cloud-output");
  output.textContent="در حال بارگذاری نامزدهای منابع…";
  try {
@@ -1709,6 +1711,7 @@ async function refreshCloudResources() {
   const requestedLimit=Number(limitControl?.value||10);
   const candidateLimit=[10,25,50,100].includes(requestedLimit)?requestedLimit:10;
   const result=await api("/api/cloud-resources?limit="+candidateLimit);
+  if(requestSequence!==cloudResourcesRequestSequence)return;
   const run=result.latest_run;
   const runSummary=run
    ? "آخرین اجرا: "+run.status+" | زمان: "+(run.finished_at||run.started_at)+" | منابع دیده‌شده: "+run.sources_seen+" | نامزدهای ذخیره‌شده: "+run.candidates_upserted
@@ -1743,8 +1746,10 @@ async function refreshCloudResources() {
    : "");
   renderCloudCandidates(result.candidates||[]);
  } catch(error) {
-  output.textContent="خطا در بارگذاری منابع: "+error.message;
-  el("cloud-candidates").replaceChildren();
+  if(requestSequence===cloudResourcesRequestSequence) {
+   output.textContent="خطا در بارگذاری منابع: "+error.message;
+   el("cloud-candidates").replaceChildren();
+  }
  }
 }
 function appendText(parent, tag, text, className) {
