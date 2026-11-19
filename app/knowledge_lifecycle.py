@@ -84,6 +84,13 @@ def record_candidate_review(
     candidate_sha256 = _digest(candidate_sha256, "candidate_sha256")
     if review_kind not in _REVIEW_KINDS or verdict not in _VERDICTS:
         raise ValueError("Unsupported review kind or verdict.")
+    # Reject terminal candidates before any live source fetch or model-adapter work.
+    with learning_connection() as connection:
+        current_candidate = _candidate_row(connection, candidate_id)
+        if current_candidate["status"] == "failed" and str(current_candidate["failure_reason"] or "").startswith("rejected_after_review:"):
+            raise ValueError("Candidate was rejected after review; create a new versioned candidate to reassess it.")
+        if candidate_sha256 != current_candidate["content_sha256"]:
+            raise ValueError("Review candidate hash is stale; refresh the candidate before recording evidence.")
     if review_kind != "source" and _trusted_adapter is not True:
         raise ValueError("AI/test evidence can only be written by a trusted internal adapter, not the public API.")
     if not isinstance(reviewer_id, str) or not 1 <= len(reviewer_id.strip()) <= 200:
@@ -131,7 +138,7 @@ def record_candidate_review(
         connection.execute("BEGIN IMMEDIATE")
         candidate = _candidate_row(connection, candidate_id)
         if candidate["status"] == "failed" and str(candidate["failure_reason"] or "").startswith("rejected_after_review:"):
-            raise ValueError("Rejected candidate content has been scrubbed and cannot be reviewed again.")
+            raise ValueError("Candidate was rejected after review; create a new versioned candidate to reassess it.")
         if candidate_sha256 != candidate["content_sha256"]:
             raise ValueError("Review candidate hash is stale; refresh the candidate before recording evidence.")
         cursor = connection.execute(
@@ -160,18 +167,111 @@ def candidate_readiness(candidate_id: int) -> dict[str, Any]:
     with learning_connection() as connection:
         candidate = _candidate_row(connection, candidate_id)
         if candidate["status"] == "failed" and str(candidate["failure_reason"] or "").startswith("rejected_after_review:"):
+            reviews = [dict(row) for row in connection.execute(
+                """SELECT review_kind, reviewer_id, verdict, note, source_host
+                   FROM knowledge_candidate_reviews
+                   WHERE candidate_id=? AND candidate_sha256=?
+                   ORDER BY id""",
+                (candidate_id, candidate["content_sha256"]),
+            ).fetchall()]
             total_reviews = int(connection.execute(
                 "SELECT COUNT(*) FROM knowledge_candidate_reviews WHERE candidate_id=?", (candidate_id,)
             ).fetchone()[0])
+            contradictions = [
+                {"kind": item["review_kind"], "reviewer_id": item["reviewer_id"], "source_host": item["source_host"], "note": item["note"][:300]}
+                for item in reviews if item["verdict"] == "contradicts"
+            ]
+            content_retained = bool(str(candidate["content"] or ""))
+            legacy_recovery_applied = "legacy_recovery:" in str(candidate["failure_reason"] or "")
+            try:
+                source_urls = json.loads(candidate["source_urls_json"])
+            except (TypeError, json.JSONDecodeError):
+                source_urls = []
+            try:
+                quality_report = json.loads(candidate["quality_report_json"])
+            except (TypeError, json.JSONDecodeError):
+                quality_report = {}
+            try:
+                test_plan = json.loads(candidate["test_plan_json"])
+            except (TypeError, json.JSONDecodeError):
+                test_plan = []
+            try:
+                test_results = json.loads(candidate["test_results_json"])
+            except (TypeError, json.JSONDecodeError):
+                test_results = []
+            if legacy_recovery_applied:
+                job_state = connection.execute(
+                    "SELECT assessment_json FROM learning_jobs WHERE id=?",
+                    (candidate["job_id"],),
+                ).fetchone()
+                source_text_retained = connection.execute(
+                    "SELECT 1 FROM learning_source_text WHERE job_id=?",
+                    (candidate["job_id"],),
+                ).fetchone() is not None
+                knowledge_item_retained = connection.execute(
+                    "SELECT 1 FROM knowledge_items WHERE job_id=?",
+                    (candidate["job_id"],),
+                ).fetchone() is not None
+                return {
+                    "candidate_id": candidate_id,
+                    "candidate_sha256": candidate["content_sha256"],
+                    "status": "rejected_after_review",
+                    "ready_for_promotion": False,
+                    "checks": {
+                        "content_hash_valid": content_retained,
+                        "content_retained": content_retained,
+                        "source_urls_retained": bool(source_urls),
+                        "quality_report_retained": bool(quality_report),
+                        "test_plan_retained": bool(test_plan),
+                        "test_results_retained": bool(test_results),
+                        "source_text_retained": source_text_retained,
+                        "assessment_retained": bool(job_state and job_state["assessment_json"]),
+                        "knowledge_item_version_retained": knowledge_item_retained,
+                        "legacy_partial_recovery": True,
+                        "promotion_blocked": True,
+                    },
+                    "evidence_counts": {
+                        "review_records": total_reviews,
+                        "current_hash_reviews": len(reviews),
+                        "contradictions": len(contradictions),
+                    },
+                    "contradictions": contradictions,
+                    "note": "This legacy record was only partially recoverable. The repair tool restores candidate content only when its SHA-256 exactly matches the preserved job lesson, and restores source URLs/quality metadata only from preserved database records. Missing source text, assessment, test plan, or original knowledge version cannot be fabricated; promotion remains blocked.",
+                }
+            if not content_retained:
+                return {
+                    "candidate_id": candidate_id,
+                    "candidate_sha256": candidate["content_sha256"],
+                    "status": "rejected_after_review",
+                    "ready_for_promotion": False,
+                    "checks": {
+                        "content_retained": False,
+                        "legacy_content_scrubbed": True,
+                        "legacy_recovery_check_available": True,
+                        "promotion_blocked": True,
+                    },
+                    "evidence_counts": {"review_records": total_reviews, "contradictions": len(contradictions)},
+                    "contradictions": contradictions,
+                    "note": "This legacy record was scrubbed by an earlier implementation. Run scripts/repair_legacy_rejected_candidates.py in read-only mode first; it can restore only exact-hash-matching lesson content and source/quality metadata still present in the database. Deleted source text, assessment, test plan, and knowledge version cannot be fabricated.",
+                }
             return {
                 "candidate_id": candidate_id,
                 "candidate_sha256": candidate["content_sha256"],
                 "status": "rejected_after_review",
                 "ready_for_promotion": False,
-                "checks": {"content_scrubbed": True, "promotion_blocked": True},
-                "evidence_counts": {"review_records": total_reviews},
-                "contradictions": [],
-                "note": "Rejected content was scrubbed after multi-source review; audit hashes and review records remain.",
+                "checks": {
+                    "content_hash_valid": True,
+                    "content_retained": True,
+                    "no_unresolved_contradictions": False,
+                    "promotion_blocked": True,
+                },
+                "evidence_counts": {
+                    "review_records": total_reviews,
+                    "current_hash_reviews": len(reviews),
+                    "contradictions": len(contradictions),
+                },
+                "contradictions": contradictions,
+                "note": "The candidate was rejected after contradictory evidence. Original content, source provenance, assessment, quality report, test plan/results, and review history remain available for audit; promotion is blocked. Reassess through a new versioned candidate.",
             }
         reviews = [dict(row) for row in connection.execute(
             """SELECT * FROM knowledge_candidate_reviews
@@ -349,6 +449,18 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
         topic = str(candidate["topic"])
         stored_urls = json.loads(candidate["source_urls_json"])
         current_hash = str(candidate["content_sha256"])
+        terminal_rejection = (
+            candidate["status"] == "failed"
+            and str(candidate["failure_reason"] or "").startswith("rejected_after_review:")
+        )
+    if terminal_rejection:
+        return {
+            "candidate_id": candidate_id,
+            "status": "rejected_after_review",
+            "ready_for_promotion": False,
+            "reason": "This candidate is terminal; create a new versioned candidate to reassess the claim.",
+            "readiness": candidate_readiness(candidate_id),
+        }
     if not isinstance(stored_urls, list):
         stored_urls = []
     urls = list(dict.fromkeys(
@@ -587,31 +699,45 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
                 (json.dumps([test_result], ensure_ascii=False, sort_keys=True), candidate_id, current_hash),
             )
     elif all_contradict and len(source_hosts_contradicting) >= 2:
-        reason = "rejected_after_review: two digest-distinct reviewers and at least two distinct live source hosts contradicted this candidate; content scrubbed, hashes retained."
+        reason = (
+            "rejected_after_review: two digest-distinct reviewers and at least two distinct live source domains "
+            "contradicted this candidate; original content, source text, assessment, quality report, test plan, "
+            "test results, source URLs, and review history retained; promotion blocked. "
+            "Create a new versioned candidate to reassess."
+        )
         with learning_connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            previous_job = connection.execute(
+                "SELECT error FROM learning_jobs WHERE id=?", (candidate["job_id"],)
+            ).fetchone()
+            previous_failure = str(candidate["failure_reason"] or "").strip()
+            previous_error = str(previous_job["error"] or "").strip() if previous_job else ""
+            candidate_reason = reason
+            job_error = reason
+            if previous_failure and not previous_failure.startswith("rejected_after_review:"):
+                candidate_reason += " Previous candidate failure retained: " + previous_failure[:1000]
+            if previous_error and not previous_error.startswith("rejected_after_review:"):
+                job_error += " Previous job error retained: " + previous_error[:1000]
             connection.execute(
-                "DELETE FROM learning_source_text WHERE job_id=?",
-                (candidate["job_id"],),
-            )
-            connection.execute(
-                "DELETE FROM knowledge_items WHERE job_id=? AND status='unverified'",
+                """UPDATE knowledge_items SET status='conflicting'
+                   WHERE job_id=? AND status='unverified'""",
                 (candidate["job_id"],),
             )
             connection.execute(
                 """UPDATE learning_jobs
-                   SET status='rejected', assessment_json=NULL, error=?,
-                       updated_at=CURRENT_TIMESTAMP
+                   SET status='rejected', error=?, updated_at=CURRENT_TIMESTAMP
                    WHERE id=?""",
-                (reason, candidate["job_id"]),
+                (job_error, candidate["job_id"]),
             )
-            connection.execute(
+            updated = connection.execute(
                 """UPDATE temporary_knowledge_candidates
-                   SET content='', source_urls_json='[]', quality_report_json='{}',
-                       test_plan_json='[]', status='failed', failure_reason=?,
-                       updated_at=CURRENT_TIMESTAMP
-                   WHERE id=? AND content_sha256=? AND promoted_knowledge_id IS NULL""",
-                (reason, candidate_id, current_hash),
+                   SET status='failed', failure_reason=?, updated_at=CURRENT_TIMESTAMP
+                   WHERE id=? AND content_sha256=? AND promoted_knowledge_id IS NULL
+                     AND status IN ('awaiting_test','passed','failed')""",
+                (candidate_reason, candidate_id, current_hash),
             )
+            if updated.rowcount != 1:
+                raise ValueError("Candidate changed before its rejection state could be recorded.")
     readiness = candidate_readiness(candidate_id)
     return {
         "candidate_id": candidate_id,
