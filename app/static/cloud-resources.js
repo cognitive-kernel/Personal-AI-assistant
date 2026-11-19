@@ -1,11 +1,11 @@
 /* Cloud resource discovery and review UI.
  * Owns its request sequencing, rendering, and event handlers.
- * Shared dependency contract: dashboardCore.{api,el,appendText}.
+ * Shared dependency contract v1: dashboardCore.{api,el,appendText}.
  */
 (() => {
  "use strict";
  const core=window.dashboardCore;
- if(!core||typeof core.api!=="function"||typeof core.el!=="function"||typeof core.appendText!=="function"){
+ if(!core||core.version!==1||typeof core.api!=="function"||typeof core.el!=="function"||typeof core.appendText!=="function"){
   const output=document.getElementById("cloud-output");
   if(output) output.textContent="ماژول منابع ابری بارگذاری نشد: قرارداد هستهٔ داشبورد در دسترس نیست.";
   throw new Error("Cloud resources module requires the dashboardCore contract.");
