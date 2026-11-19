@@ -2403,6 +2403,7 @@ def test_browser_kaggle_quota_requires_consent_and_recovers_from_refresh_failure
 
         page.wait_for_function("() => document.querySelector('#kaggle-quota-status')?.textContent.includes('رضایت غیرفعال است')")
         assert not consent.is_checked()
+        assert refresh.is_disabled(), "Kaggle refresh must stay disabled without explicit consent."
         enable.click()
         page.get_by_text("ابتدا چک‌باکس رضایت صریح", exact=False).wait_for()
         assert state["patches"] == []
@@ -2411,6 +2412,7 @@ def test_browser_kaggle_quota_requires_consent_and_recovers_from_refresh_failure
         page.locator("#kaggle-cli-path").fill("/opt/kaggle")
         enable.click()
         page.get_by_text("رضایت فعال است", exact=False).wait_for()
+        assert refresh.is_enabled(), "Kaggle refresh should enable only after consent is active."
         assert state["patches"] == [{
             "enabled": True,
             "user_consent": True,
@@ -2427,6 +2429,7 @@ def test_browser_kaggle_quota_requires_consent_and_recovers_from_refresh_failure
         revoke.click()
         page.wait_for_function("() => document.querySelector('#kaggle-quota-status')?.textContent.includes('رضایت غیرفعال است')")
         assert not consent.is_checked()
+        assert refresh.is_disabled(), "Kaggle refresh must disable immediately after revocation."
         assert page.locator("#kaggle-cli-path").input_value() == ""
         assert state["patches"][-1] == {
             "enabled": False,
@@ -2538,6 +2541,7 @@ def test_browser_oci_limits_requires_consent_and_never_authorizes_execution():
 
         page.wait_for_function("() => document.querySelector('#oci-limits-status')?.textContent.includes('رضایت غیرفعال است')")
         assert not consent.is_checked()
+        assert refresh.is_disabled(), "OCI refresh must stay disabled without explicit consent."
         enable.click()
         page.get_by_text("ابتدا رضایت صریح", exact=False).wait_for()
         assert state["patches"] == []
@@ -2550,6 +2554,7 @@ def test_browser_oci_limits_requires_consent_and_never_authorizes_execution():
         page.locator("#oci-compartment-id").fill("ocid1.compartment.oc1..test")
         enable.click()
         page.get_by_text("رضایت فعال است", exact=False).wait_for()
+        assert refresh.is_enabled(), "OCI refresh should enable only after consent is active."
         assert state["patches"] == [{
             "enabled": True,
             "user_consent": True,
@@ -2571,6 +2576,7 @@ def test_browser_oci_limits_requires_consent_and_never_authorizes_execution():
         revoke.click()
         page.wait_for_function("() => document.querySelector('#oci-limits-status')?.textContent.includes('رضایت غیرفعال است')")
         assert not consent.is_checked()
+        assert refresh.is_disabled(), "OCI refresh must disable immediately after revocation."
         for field in ("oci-cli-path", "oci-config-path", "oci-profile", "oci-region", "oci-compartment-id"):
             assert page.locator("#" + field).input_value() == ""
         assert state["patches"][-1] == {
