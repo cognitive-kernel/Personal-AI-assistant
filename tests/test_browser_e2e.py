@@ -5559,3 +5559,78 @@ def test_storage_backup_refresh_discards_a_late_older_response():
         assert output.get_by_text("backup-old", exact=True).count() == 0
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+def test_cloud_resource_limit_change_discards_a_late_previous_response():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    requested_limits = []
+    browser_errors = []
+
+    def cloud_resources_route(route):
+        from urllib.parse import parse_qs, urlparse
+
+        limit = parse_qs(urlparse(route.request.url).query).get("limit", ["10"])[0]
+        requested_limits.append(limit)
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({
+                "latest_run": {
+                    "status": "limit-" + limit,
+                    "started_at": "2026-11-19T07:00:00Z",
+                    "sources_seen": 0,
+                    "candidates_upserted": 0,
+                    "query_results": [],
+                },
+                "candidates": [],
+            }),
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.add_init_script("""
+            (() => {
+                const originalFetch = window.fetch.bind(window);
+                let delayed = false;
+                window.fetch = (resource, options) => {
+                    const url = typeof resource === "string" ? resource : resource.url;
+                    if (!delayed && url.includes("/api/cloud-resources?limit=10")) {
+                        delayed = true;
+                        window.__firstCloudLimitStarted = true;
+                        return new Promise((resolve, reject) => {
+                            originalFetch(resource, options).then(response => {
+                                window.setTimeout(() => {
+                                    window.__firstCloudLimitResolved = true;
+                                    resolve(response);
+                                }, 1200);
+                            }, reject);
+                        });
+                    }
+                    return originalFetch(resource, options);
+                };
+            })();
+        """)
+        page.route("**/api/cloud-resources**", cloud_resources_route)
+        _goto_section(page, base_url, "cloud-resources-section")
+        page.wait_for_function(
+            "() => window.__firstCloudLimitStarted === true", timeout=10000
+        )
+
+        page.locator("#cloud-candidate-limit").select_option("25")
+        page.wait_for_function(
+            "() => document.querySelector('#cloud-output')?.textContent.includes('limit-25')",
+            timeout=10000,
+        )
+        page.wait_for_function(
+            "() => window.__firstCloudLimitResolved === true", timeout=10000
+        )
+
+        assert requested_limits[:2] == ["10", "25"]
+        assert "limit-25" in page.locator("#cloud-output").inner_text()
+        assert "limit-10" not in page.locator("#cloud-output").inner_text()
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
