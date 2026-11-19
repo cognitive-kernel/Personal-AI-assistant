@@ -775,9 +775,9 @@
       host.append(item);
     }
   }
-  async function refreshProgress() {
+  async function refreshProgress({queueIfBusy = false} = {}) {
     if (progressBusy) {
-      progressRefreshQueued = true;
+      if (queueIfBusy) progressRefreshQueued = true;
       return;
     }
     progressBusy = true;
@@ -872,9 +872,9 @@
     const custom = $("progress-period").value === "custom";
     $("progress-start-wrap").hidden = !custom;
     $("progress-end-wrap").hidden = !custom;
-    if (!custom) refreshProgress();
+    if (!custom) refreshProgress({queueIfBusy: true});
   });
-  $("refresh-progress").addEventListener("click", refreshProgress);
+  $("refresh-progress").addEventListener("click", () => refreshProgress({queueIfBusy: true}));
   $("refresh-agent").addEventListener("click", refresh);
   refresh();
   refreshProgress();
