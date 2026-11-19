@@ -252,21 +252,9 @@
 <fieldset><legend>بازبینی مستقل دانش factual</legend><label>موتور بازبینی<select id="factual-review-provider"><option value="ollama">Ollama</option><option value="openai_compatible">OpenAI-compatible API</option></select></label><label>Base URL بازبینی<input id="factual-review-base-url" type="url" maxlength="2048" placeholder="https://api.openai.com/v1" aria-label="Base URL بازبینی factual"></label><label>نام متغیر محیطی کلید API بازبینی<input id="factual-review-api-key-env" maxlength="128" placeholder="OPENAI_API_KEY" aria-label="نام متغیر محیطی کلید API بازبینی factual"></label><label>نام مدل مستقل<input id="factual-review-model" list="ollama-model-options" autocomplete="off"></label><p>مدل بازبینی باید از مدل تولید مستقل باشد. بازبینی با سقف ۴۵ ثانیه و حداکثر ۵۰۰ توکن خروجی اجرا می‌شود.</p></fieldset>
 <fieldset><legend>مدل embedding و جست‌وجوی معنایی</legend><label>موتور embedding<select id="embedding-provider"><option value="ollama">Ollama</option><option value="openai_compatible">OpenAI-compatible API</option></select></label><label>Base URL embedding<input id="embedding-base-url" type="url" maxlength="2048" placeholder="https://api.openai.com/v1" aria-label="Base URL embedding"></label><label>نام متغیر محیطی کلید API embedding<input id="embedding-api-key-env" maxlength="128" placeholder="OPENAI_API_KEY" aria-label="نام متغیر محیطی کلید API embedding"></label><label>نام مدل embedding<input id="embedding-model" maxlength="200" required value="nomic-embed-text"></label><p>برای خاموش‌کردن کامل وابستگی به Ollama، موتور embedding را نیز به provider سازگار تغییر دهید. تغییر مدل embedding بین نسخه‌های داده‌شده ممکن است بُعد بردار را عوض کند؛ داده‌های برداری قبلی حذف نمی‌شوند و باید ایندکس جداگانه بازسازی شود.</p></fieldset>
 <fieldset><legend>سقف مستقل استفاده از منابع سخت‌افزاری</legend><label><input id="gpu-enabled" type="checkbox"> فعال‌سازی استفاده از GPU</label><p class="muted">GPU به‌صورت پیش‌فرض غیرفعال است. در حالت غیرفعال، به Ollama درخواست استفاده از CPU به‌جای GPU داده می‌شود. این گزینه به‌تنهایی سخت‌افزار را خاموش نمی‌کند.</p><p class="muted">هر سقف مستقل است و از ۱۰ تا ۹۵ درصد قابل تنظیم است. CPU علاوه بر پایش، تعداد thread را هم محدود می‌کند. RAM و GPU هنگام شروع درخواست پایش می‌شوند؛ این برنامه نمی‌تواند مصرف پردازش خارجی Ollama را به‌صورت سخت در سطح سیستم‌عامل محدود کند. تشخیص GPU چندسازنده‌ای است و از ابزارهای درایور و شمارنده‌های عمومی سیستم‌عامل استفاده می‌کند؛ اگر فقط نام کارت شناسایی شود اما معیار مصرف/حافظه در دسترس نباشد، آن معیار «نامشخص» نمایش داده می‌شود. وضعیت واقعی استفادهٔ Ollama از GPU از اندازهٔ حافظهٔ VRAM تخصیص‌یافته در /api/ps گزارش می‌شود.</p><label>حداکثر استفاده از CPU (%)<input id="cpu-resource-limit" type="number" min="10" max="95" step="1" required></label><label>حداکثر استفاده از RAM (%)<input id="ram-resource-limit" type="number" min="10" max="95" step="1" required></label><label>حداکثر استفاده از GPU و حافظهٔ گرافیکی (%)<input id="gpu-resource-limit" type="number" min="10" max="95" step="1" required></label><label>حداکثر سقف RAM برای مدل و حاشیهٔ امن (گیگابایت، حداکثر ۲۵)<input id="ram-budget-max" type="number" min="1" max="25" step="1" required></label><label>حاشیهٔ امن RAM برای سیستم‌عامل (گیگابایت)<input id="ram-safety-reserve" type="number" min="1" max="8" step="1" required></label><p class="muted">بودجهٔ مؤثر از RAM واقعاً در دسترس پس از کسر حاشیهٔ امن محاسبه می‌شود و از سقف بالا بیشتر نمی‌شود؛ این مقدار رزرو اجباری RAM یا محدودیت سخت سیستم‌عامل نیست.</p></fieldset><section class="panel"><h3>تحلیل زندهٔ سخت‌افزار و مدل انتخابی</h3><p id="hardware-diagnostics" class="muted" aria-live="polite">در حال جمع‌آوری اطلاعات سخت‌افزار…</p><p class="muted">حافظه اشتراکی GPU بخشی از RAM سیستم است و ظرفیت مستقل از RAM محسوب نمی‌شود؛ مقادیر اختصاصی و اشتراکی جداگانه نمایش داده می‌شوند.</p></section><label><input id="settings-temporary" type="checkbox"> اعمال موقت تا زمان بسته‌شدن برنامه (بدون ذخیره در پایگاه تنظیمات)</label><p class="muted">در حالت موقت، تغییرات فوراً برای درخواست‌های بعدی فعال می‌شوند و پس از راه‌اندازی مجدد به تنظیمات دائمی برمی‌گردند. با برداشتن تیک و ذخیره، مقادیر به‌صورت دائمی ثبت می‌شوند.</p><button type="submit">اعمال / ذخیره تنظیمات</button></form><pre id="settings-output" role="status" aria-live="polite"></pre></section>
+<script src="/static/dashboard-core.js"></script>
 <script>
-const el = id => document.getElementById(id);
-async function api(path, options = {}) {
- const response = await fetch(path, {headers: {"Content-Type":"application/json"}, ...options});
- const data = await response.json().catch(() => ({}));
- if (!response.ok) throw new Error(data.detail || ("HTTP " + response.status));
- return data;
-}
-function appendText(parent, tag, text, className) {
- const node=document.createElement(tag);
- node.textContent=text;
- if(className) node.className=className;
- parent.append(node);
- return node;
-}
+const { el, api, appendText } = window.dashboardCore;
 let currentConversationId = null;
 let conversationRefreshInProgress = false;
 let conversationLoadSequence = 0;
@@ -2616,5 +2604,4 @@ el("self-improvement-refresh").addEventListener("click",refreshSelfImprovement);
 })();
 refreshTasks();
 refreshConversations();
-window.dashboardCore = Object.freeze({el, api, appendText});
 </script><script src="/static/cloud-resources.js"></script><script src="/static/page-navigation.js"></script><script src="/static/learning.js"></script></main></div></body></html>
