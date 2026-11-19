@@ -5396,6 +5396,8 @@ def test_ai_learning_background_progress_ignores_previous_course_after_switch():
         """)
         page.route("**/api/ai-learning/**", learning_api_route)
         page.goto(base_url.rstrip("/") + "/ai-learning", wait_until="domcontentloaded")
+        # Topics are intentionally grouped inside a collapsed catalog disclosure.
+        page.locator("#catalog-menu > summary").click()
 
         topics_panel = page.locator("#topics")
         topics_panel.get_by_text("سرفصل دورهٔ قدیمی", exact=False).wait_for(timeout=10000)
