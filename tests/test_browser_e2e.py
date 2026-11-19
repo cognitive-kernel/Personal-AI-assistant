@@ -2227,7 +2227,14 @@ def test_browser_settings_form_persists_values_and_surfaces_api_failure():
             }""",
             timeout=10000,
         )
-        assert page.locator("#ollama-model-options option").count() == 1
+        # This CI settings fixture may default to external providers. Explicitly
+        # select Ollama and use the same refresh control exposed to the user.
+        page.locator("#chat-provider").select_option("ollama")
+        page.locator("#refresh-ollama-models").click()
+        page.wait_for_function(
+            "() => document.querySelectorAll('#ollama-model-options option').length === 1",
+            timeout=10000,
+        )
         for select_id in ("chat-model-installed", "learning-model-installed", "programming-model-installed"):
             assert page.locator(f"#{select_id} option[value='ci-model']").count() == 1
         page.locator("#chat-model-installed").select_option("ci-model")
