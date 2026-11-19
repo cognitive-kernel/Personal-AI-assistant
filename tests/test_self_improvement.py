@@ -275,17 +275,17 @@ def test_self_improvement_api_is_loopback_guarded_and_uses_explicit_approval(
 
 
 def test_self_improvement_ui_discloses_non_execution_and_explicit_approval():
-    page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
-        encoding="utf-8"
-    )
+    static = Path(__file__).parents[1] / "app" / "static"
+    page = (static / "index.html").read_text(encoding="utf-8")
+    module = (static / "engineering-assistance.js").read_text(encoding="utf-8")
     assert 'id="self-improvement-section"' in page
     assert "SELF_IMPROVEMENT_REPO_ROOT" in page
     assert "کد پیشنهادی فقط داخل کانتینر اجرا می‌شود" in page
     assert "آزمون‌های رفتاری را در کانتینر Docker ایزوله اجرا می‌کند" in page
-    assert "تأیید برای بررسی PR" in page
-    assert '"/api/self-improvement/proposals/"+item.id+"/validate"' in page
-    assert '"/api/self-improvement/proposals/"+item.id+"/static-check"' in page
-    assert '"/api/self-improvement/proposals/"+item.id+"/approve"' in page
+    assert "تأیید برای بررسی PR" in module
+    assert '"/api/self-improvement/proposals/"+item.id+"/validate"' in module
+    assert '"/api/self-improvement/proposals/"+item.id+"/static-check"' in module
+    assert '"/api/self-improvement/proposals/"+item.id+"/approve"' in module
 
 
 
