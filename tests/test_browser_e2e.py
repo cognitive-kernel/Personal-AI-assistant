@@ -4960,3 +4960,85 @@ def test_ai_learning_discards_lesson_list_after_switching_courses():
         assert page.locator("#lessons .lesson").count() == 0
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_browser_learning_course_refresh_discards_a_late_older_response():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    request_count = 0
+    browser_errors = []
+
+    def learning_course_route(route):
+        nonlocal request_count
+        path = route.request.url.split("?", 1)[0].removeprefix(base_url.rstrip("/"))
+        if route.request.method == "GET" and path == "/api/learning/browser/courses":
+            request_count += 1
+            title = "دورهٔ قدیمی" if request_count == 1 else "دورهٔ جدید"
+            payload = {
+                "courses": [{
+                    "id": 8101 if request_count == 1 else 8102,
+                    "title": title,
+                    "topic": title,
+                    "status": "completed",
+                    "error": None,
+                }]
+            }
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(payload, ensure_ascii=False),
+            )
+            return
+        route.continue_()
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.add_init_script("""
+            (() => {
+                const originalFetch = window.fetch.bind(window);
+                let delayed = false;
+                window.fetch = (resource, options) => {
+                    const url = typeof resource === "string" ? resource : resource.url;
+                    if (!delayed && url.includes("/api/learning/browser/courses?limit=50")) {
+                        delayed = true;
+                        window.__firstBrowserCourseListStarted = true;
+                        return new Promise((resolve, reject) => {
+                            window.setTimeout(() => {
+                                originalFetch(resource, options).then(response => {
+                                    window.__firstBrowserCourseListResolved = true;
+                                    resolve(response);
+                                }, reject);
+                            }, 1200);
+                        });
+                    }
+                    return originalFetch(resource, options);
+                };
+            })();
+        """)
+        page.route("**/api/learning/browser/courses**", learning_course_route)
+        _goto_section(page, base_url, "learning-section")
+        page.wait_for_function(
+            "() => window.__firstBrowserCourseListStarted === true", timeout=10000
+        )
+
+        page.locator("#browser-learning-refresh").click()
+        page.locator("#browser-learning-courses").get_by_text(
+            "دورهٔ جدید", exact=False
+        ).wait_for(timeout=10000)
+        page.wait_for_function(
+            "() => window.__firstBrowserCourseListResolved === true", timeout=10000
+        )
+
+        assert request_count == 2
+        assert page.locator("#browser-learning-courses").get_by_text(
+            "دورهٔ جدید", exact=False
+        ).is_visible()
+        assert page.locator("#browser-learning-courses").get_by_text(
+            "دورهٔ قدیمی", exact=False
+        ).count() == 0
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
