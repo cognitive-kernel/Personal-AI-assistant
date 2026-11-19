@@ -4840,3 +4840,123 @@ def test_chat_refresh_preserves_a_newer_conversation_selection():
         assert page.get_by_text("پیام اول", exact=True).count() == 0
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_ai_learning_discards_lesson_list_after_switching_courses():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    topic_a = {
+        "id": 421, "position": 1, "title": "سرفصل دورهٔ قبلی",
+        "approval_status": "approved", "processing_status": "idle",
+        "progress_percent": 0, "lesson_count": 1,
+    }
+    topic_b = {
+        "id": 431, "position": 1, "title": "سرفصل دورهٔ انتخاب‌شده",
+        "approval_status": "approved", "processing_status": "idle",
+        "progress_percent": 0, "lesson_count": 0,
+    }
+    browser_errors = []
+
+    def learning_api_route(route):
+        request = route.request
+        path = request.url.split("?", 1)[0].removeprefix(base_url.rstrip("/"))
+        if request.method == "GET" and path == "/api/ai-learning/courses":
+            payload = {
+                "items": [
+                    {"id": 42, "title": "دورهٔ قبلی", "topic_count": 1},
+                    {"id": 43, "title": "دورهٔ انتخاب‌شده", "topic_count": 1},
+                ],
+                "count": 2,
+            }
+        elif request.method == "GET" and path == "/api/ai-learning/courses/42":
+            payload = {"topics": [topic_a]}
+        elif request.method == "GET" and path == "/api/ai-learning/courses/43":
+            payload = {"topics": [topic_b]}
+        elif request.method == "GET" and path in {
+            "/api/ai-learning/courses/42/runs",
+            "/api/ai-learning/courses/43/runs",
+        }:
+            payload = {"items": [], "count": 0}
+        elif request.method == "GET" and path == "/api/ai-learning/topics/421/lessons":
+            payload = {
+                "items": [{
+                    "id": 4211, "position": 1, "title": "درس دورهٔ قبلی",
+                    "status": "ready", "progress_percent": 0,
+                    "progress_label": "آماده",
+                }],
+                "count": 1,
+            }
+        elif request.method == "GET" and path == "/api/ai-learning/lessons/4211/versions":
+            payload = {"items": [], "count": 0}
+        elif request.method == "GET" and path == "/api/ai-learning/control":
+            payload = {
+                "paused": False, "reason": "", "retry_pending": False,
+                "worker_active": False, "worker_recovery_pending": False,
+            }
+        else:
+            route.fulfill(
+                status=404,
+                content_type="application/json",
+                body=json.dumps({"detail": "unexpected AI-learning request: " + path}),
+            )
+            return
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(payload, ensure_ascii=False),
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.add_init_script("""
+            (() => {
+                const originalFetch = window.fetch.bind(window);
+                window.fetch = (resource, options) => {
+                    const url = typeof resource === "string" ? resource : resource.url;
+                    if (url.endsWith("/api/ai-learning/topics/421/lessons")) {
+                        window.__delayedOldCourseLessonsStarted = true;
+                        return new Promise((resolve, reject) => {
+                            window.setTimeout(() => {
+                                originalFetch(resource, options).then(response => {
+                                    window.__delayedOldCourseLessonsResolved = true;
+                                    resolve(response);
+                                }, reject);
+                            }, 1000);
+                        });
+                    }
+                    return originalFetch(resource, options);
+                };
+            })();
+        """)
+        page.route("**/api/ai-learning/**", learning_api_route)
+        page.goto(base_url.rstrip("/") + "/ai-learning", wait_until="domcontentloaded")
+
+        selector = page.locator("#course-select")
+        page.locator('#course-select option[value="43"]').wait_for(state="attached", timeout=10000)
+        page.locator("#catalog-menu > summary").click()
+        page.locator("#topics").get_by_text("سرفصل دورهٔ قبلی", exact=False).wait_for(timeout=10000)
+        page.locator("#lesson-list-details > summary").click()
+        page.locator("#show-all-lessons").click()
+        page.wait_for_function(
+            "() => window.__delayedOldCourseLessonsStarted === true", timeout=10000
+        )
+
+        selector.select_option("43")
+        page.locator("#topics").get_by_text("سرفصل دورهٔ انتخاب‌شده", exact=False).wait_for(
+            timeout=10000
+        )
+        page.locator("#lesson-list-details > summary").click()
+        page.wait_for_function(
+            "() => window.__delayedOldCourseLessonsResolved === true", timeout=10000
+        )
+
+        assert selector.input_value() == "43"
+        assert page.locator("#lessons").get_by_text("برای نمایش متن", exact=False).is_visible()
+        assert page.locator("#lessons").get_by_text("درس دورهٔ قبلی", exact=False).count() == 0
+        assert page.locator("#lessons .lesson").count() == 0
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
