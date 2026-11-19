@@ -4938,6 +4938,7 @@ def test_ai_learning_discards_lesson_list_after_switching_courses():
         selector = page.locator("#course-select")
         page.locator('#course-select option[value="43"]').wait_for(state="attached", timeout=10000)
         page.locator("#catalog-menu > summary").click()
+        page.locator("#topics").get_by_text("سرفصل دورهٔ قبلی", exact=False).wait_for(timeout=10000)
         page.locator("#lesson-list-details > summary").click()
         page.locator("#show-all-lessons").click()
         page.wait_for_function(
