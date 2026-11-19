@@ -706,6 +706,7 @@
   });
 
   let progressBusy = false;
+  let progressRefreshQueued = false;
   const svgNS = "http://www.w3.org/2000/svg";
   function svgNode(name, attrs, text) {
     const node = document.createElementNS(svgNS, name);
@@ -775,14 +776,24 @@
     }
   }
   async function refreshProgress() {
-    if (progressBusy) return;
+    if (progressBusy) {
+      progressRefreshQueued = true;
+      return;
+    }
     progressBusy = true;
     const period = $("progress-period").value;
+    const start = $("progress-start").value, end = $("progress-end").value;
+    const selectionIsCurrent = () => $("progress-period").value === period &&
+      (period !== "custom" || ($("progress-start").value === start && $("progress-end").value === end));
     const params = new URLSearchParams({period});
     if (period === "custom") {
-      const start = $("progress-start").value, end = $("progress-end").value;
       if (!start || !end) {
         $("progress-chart-caption").textContent = "تاریخ شروع و پایان را انتخاب کنید.";
+        progressBusy = false;
+        return;
+      }
+      if (start > end) {
+        $("progress-chart-caption").textContent = "تاریخ شروع باید قبل از تاریخ پایان باشد.";
         progressBusy = false;
         return;
       }
@@ -791,6 +802,10 @@
     }
     try {
       const data = await request("progress?" + params.toString());
+      if (!selectionIsCurrent()) {
+        progressRefreshQueued = true;
+        return;
+      }
       if (data.error) throw new Error(data.error);
       const current = data.current;
       if (current) {
@@ -840,9 +855,17 @@
       renderProgressChart(snapshots);
       renderProgressEvents(data.events);
     } catch (error) {
+      if (!selectionIsCurrent()) {
+        progressRefreshQueued = true;
+        return;
+      }
       $("progress-chart-caption").textContent = error.message || "دریافت دادهٔ پیشرفت ناموفق بود.";
     } finally {
       progressBusy = false;
+      if (progressRefreshQueued) {
+        progressRefreshQueued = false;
+        void refreshProgress();
+      }
     }
   }
   $("progress-period").addEventListener("change", () => {
