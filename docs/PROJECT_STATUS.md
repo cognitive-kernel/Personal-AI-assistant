@@ -1,3 +1,16 @@
+# وضعیت جاری پروژه — بازبینی 2026-11-19
+
+> این بخش مرجع وضعیت زنده است. بخش‌های پایین‌تر snapshotهای تاریخی‌اند و نباید به‌عنوان وضعیت فعلی PRها یا CI تفسیر شوند.
+
+- **مبنای PR جاری:** شاخهٔ `fix/ui-regression-audit-bundle-20261119`، PR [#795](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/795)، پایهٔ `main` با SHA `bc1d273bdece690b5067a70b2deea8aa77ed7e28`. PR باز و ادغام‌نشده است؛ هیچ تغییری در `main` یا محیط کاربر اعمال نشده است.
+- **مالکیت وضعیت، قفل و بازیابی:** اصلاحات معماری قبلی در PRهای [#757](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/757)، [#760](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/760) و [#761](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/761) ادغام شده‌اند. مالکیت process tree برای Codex، deadline/retry محدود، قفل مشترک و ماشین‌آگاه در بستهٔ نصب‌شدهٔ `app`، هم‌راستایی state root داشبورد و Runner، قفل‌های durable state/checkpoint، طبقه‌بندی fail-closed شکست و بازیابی در main موجود است. این گیت از نظر پیاده‌سازی repository-side بسته شده؛ پذیرش crash/restart و ACL روی Windows واقعی کاربر همچنان باز است.
+- **UI در PR #795:** guardهای stale-response، اصلاح کنتراست dark theme، استخراج core مشترک، ماژول‌های cloud و sandbox، و در ادامهٔ این PR ماژول مستقل تجربه/حافظه پیاده‌سازی شده‌اند. ماژول تجربه/حافظه فقط به قرارداد نسخه‌دار `dashboardCore` وابسته است و وضعیت، رندر، درخواست‌ها و event handlerهای خودش را مالک است.
+- **CI:** آخرین اجرای ناموفق روی SHA قبلی `96115391d865dc46f20f0f08a12178cfbb6c9a3e` برابر ۲۴۳۰ passed، ۱۵ skipped و ۴ failed بود. چهار شکست از assertionهای مکان‌محور قدیمی ناشی شده بود که منطق استخراج‌شده را هنوز در `index.html` می‌جستند؛ تست‌ها به مرز واقعی ماژول‌ها منتقل شده‌اند. اجرای تازهٔ exact-head برای SHA `3b554150c91fe233d28115606e8d79b88baf817b` در زمان ثبت این یادداشت در صف/در حال اجرا بود؛ نتیجهٔ نهایی هنوز ادعا نمی‌شود.
+- **گیت‌های کلان باز:** Issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290) همچنان ردیاب پذیرش کل پروژه و UI است؛ Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) تا ثبت بازبینی امنیتی مستقل باز می‌ماند. پذیرش واقعی روی Windows هدف، مرور دستی صفحه‌خوان/کیبورد و RTL/LTR/responsive، ارزیابی زندهٔ مدل، soak، backup/restore و rollback نیز باید با شواهد مستقل بسته شوند.
+- **سیاست:** تست یا assertion برای سبز شدن CI حذف یا تضعیف نمی‌شود. شکست‌ها باید در ریشه اصلاح شوند. هیچ merge، deployment، اجرای remote یا تغییر دادهٔ کاربر بدون گیت و مجوز لازم انجام نمی‌شود.
+
+---
+
 # وضعیت یکپارچهٔ پروژه
 
 ## 2026-11-15 — اصلاح طبقه‌بندی شکست و بازیابی چرخهٔ خودکار
