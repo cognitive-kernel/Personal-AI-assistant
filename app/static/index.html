@@ -347,7 +347,14 @@ async function loadConversationMessages(conversationId) {
  if (!conversationId) { currentConversationId = null; renderChatMessages([]); return; }
  const requestedId = Number(conversationId);
  currentConversationId = requestedId;
- const result = await api("/api/conversations/" + encodeURIComponent(requestedId) + "/messages");
+ let result;
+ try {
+  result = await api("/api/conversations/" + encodeURIComponent(requestedId) + "/messages");
+ } catch(error) {
+  if (requestSequence !== conversationLoadSequence ||
+      Number(el("chat-conversation-select").value) !== requestedId) return;
+  throw error;
+ }
  if (requestSequence !== conversationLoadSequence ||
      Number(el("chat-conversation-select").value) !== requestedId) return;
  if (Number(result.conversation && result.conversation.id) !== requestedId) {
