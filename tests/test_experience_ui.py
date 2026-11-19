@@ -26,9 +26,12 @@ def test_experience_memory_ui_exposes_safe_curation_search_and_history():
 
     for contract in (
         '"/api/experiences/auto-capture/consent"',
+        'method:"POST",body:JSON.stringify({confirm:true})',
+        'method:"DELETE"',
         '"/api/experiences?limit=100"',
         '"/api/experiences/search?query="+encodeURIComponent(query)',
         '"/api/experiences/"+item.id+"/versions"',
+        '"/api/experiences/"+item.id',
         '"/api/experiences/"+item.id+"/run-test"',
         'source_code:sourceInput.value',
         'source_evidence:sourceEvidence,test_plan:testPlan,takeaway:takeawayInput.value',
@@ -40,8 +43,9 @@ def test_experience_memory_ui_exposes_safe_curation_search_and_history():
     ):
         assert contract in module
 
+    assert "به‌صورت پیش‌فرض خاموش است" in page
     assert "node.textContent = text;" in core
-    assert "innerHTML" not in module
+    assert "innerHTML" not in page + module
     assert "const {api,el,appendText}=core;" in module
     assert "core.version!==1" in module
 
