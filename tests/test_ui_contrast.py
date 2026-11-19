@@ -82,3 +82,17 @@ def test_dark_storage_alert_code_remains_readable():
     assert ratio >= 4.5, (
         f"Dark-theme storage-alert code contrast is {ratio:.2f}:1; expected at least 4.5:1"
     )
+
+
+def test_dark_mode_status_colors_remain_readable_on_standalone_learning_pages():
+    root = CSS_PATH.parents[2]
+    cases = [
+        (root / "app" / "static" / "ai-learning.css", ".ok"),
+        (root / "app" / "ai_learning" / "static" / "style.css", ".success"),
+    ]
+    for css_path, success_selector in cases:
+        css = css_path.read_text(encoding="utf-8")
+        assert "@media(prefers-color-scheme:dark){.error{color:#ff8a8a}" in css
+        assert f"{success_selector}{{color:#86efac}}" in css
+        assert _contrast("#ff8a8a", "#121212") >= 4.5
+        assert _contrast("#86efac", "#121212") >= 4.5
