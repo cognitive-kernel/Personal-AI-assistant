@@ -473,11 +473,14 @@ async function refreshStorageHealth() {
  }
 }
 el("refresh-storage-health").addEventListener("click",refreshStorageHealth);
+let storageBackupsRequestSequence=0;
 async function refreshStorageBackups() {
+ const requestSequence=++storageBackupsRequestSequence;
  const output=el("storage-backups-list");
  output.replaceChildren();
  try {
   const result=await api("/api/storage/backups");
+  if(requestSequence!==storageBackupsRequestSequence)return;
   if(!result.items || !result.items.length) {
    output.textContent="پشتیبان معتبری پیدا نشد.";
    return;
@@ -496,7 +499,9 @@ async function refreshStorageBackups() {
    output.append(card);
   });
  } catch(error) {
-  output.textContent="فهرست پشتیبان‌ها دریافت نشد: "+error.message;
+  if(requestSequence===storageBackupsRequestSequence) {
+   output.textContent="فهرست پشتیبان‌ها دریافت نشد: "+error.message;
+  }
  }
 }
 async function stageBackupRestore(backupId,button) {
