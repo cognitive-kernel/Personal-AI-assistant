@@ -4184,12 +4184,12 @@ def test_ai_learning_ignores_stale_course_response_after_selection_changes():
         selector = page.locator("#course-select")
         page.locator('#course-select option[value="43"]').wait_for(state="attached", timeout=10000)
         selector.select_option("43")
-        page.get_by_text("موضوع دورهٔ انتخاب‌شده", exact=False).wait_for(timeout=10000)
+        page.locator("#topics").get_by_text("موضوع دورهٔ انتخاب‌شده", exact=False).wait_for(timeout=10000)
         page.wait_for_function("() => window.__delayedCourse42Resolved === true", timeout=10000)
 
         assert selector.input_value() == "43"
-        assert page.get_by_text("موضوع دورهٔ انتخاب‌شده", exact=False).is_visible()
-        assert page.get_by_text("موضوع دورهٔ قدیمی", exact=False).count() == 0
+        assert page.locator("#topics").get_by_text("موضوع دورهٔ انتخاب‌شده", exact=False).is_visible()
+        assert page.locator("#topics").get_by_text("موضوع دورهٔ قدیمی", exact=False).count() == 0
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
 
