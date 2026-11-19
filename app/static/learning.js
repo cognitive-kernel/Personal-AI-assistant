@@ -28,19 +28,24 @@ function formatTaskAuditEventChange(event) {
  }
 }
 
+let dueLearningReviewsRequestSequence = 0;
 async function refreshDueLearningReviews() {
+ const requestSequence = ++dueLearningReviewsRequestSequence;
  const output = learningEl("due-reviews-output");
  if (!output) return;
  output.textContent = "در حال بارگذاری مرورهای سررسیدشده…";
  try {
   const result = await learningApi("/api/learning/reviews/due?limit=100");
+  if (requestSequence !== dueLearningReviewsRequestSequence) return;
   const items = result.items || [];
   output.textContent = items.length
    ? items.map(item => item.path_title + " — " + item.topic +
       "\nسررسید: " + item.due_at + "؛ فاصله فعلی: " + item.interval_days + " روز").join("\n\n")
    : "در حال حاضر مرور سررسیدشده‌ای وجود ندارد.";
  } catch (error) {
-  output.textContent = "دریافت مرورهای سررسیدشده ناموفق بود: " + error.message;
+  if (requestSequence === dueLearningReviewsRequestSequence) {
+   output.textContent = "دریافت مرورهای سررسیدشده ناموفق بود: " + error.message;
+  }
  }
 }
 
@@ -191,12 +196,15 @@ function outputForHistory(record, job) {
  }
 }
 
+let learningRecommendationsRequestSequence = 0;
 async function refreshLearningRecommendations() {
+ const requestSequence = ++learningRecommendationsRequestSequence;
  const output = learningEl("learning-recommendations-output");
  if (!output) return;
  output.textContent = "در حال محاسبهٔ گام بعدی یادگیری…";
  try {
   const result = await learningApi("/api/learning/recommendations?limit=20");
+  if (requestSequence !== learningRecommendationsRequestSequence) return;
   const items = result.recommendations || [];
   const labels = {
    spaced_repetition: "مرور سررسیدشده",
@@ -211,7 +219,9 @@ async function refreshLearningRecommendations() {
       "\n\nاین فهرست فقط توصیه است؛ هیچ درس یا وظیفه‌ای به‌صورت خودکار شروع نشده است."
    : "در حال حاضر گام بعدی مشخصی وجود ندارد.";
  } catch (error) {
-  output.textContent = "توصیه‌های یادگیری در دسترس نیست: " + error.message;
+  if (requestSequence === learningRecommendationsRequestSequence) {
+   output.textContent = "توصیه‌های یادگیری در دسترس نیست: " + error.message;
+  }
  }
 }
 
