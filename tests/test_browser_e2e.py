@@ -5028,6 +5028,8 @@ def test_autonomous_progress_refresh_queues_the_latest_selected_period():
             "() => window.__delayedDailyProgressStarted === true", timeout=10000
         )
 
+        progress_details = page.locator("details.progress-details").first
+        progress_details.locator("summary").click()
         period_selector = page.locator("#progress-period")
         period_selector.select_option("weekly")
         with page.expect_request(
