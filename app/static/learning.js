@@ -569,13 +569,17 @@ async function stopLesson(path, topic, stopButton, output) {
  }
 }
 
+let learningPathsLoadSequence = 0;
 async function loadLearningPaths() {
+ const requestSequence = ++learningPathsLoadSequence;
  try {
   const data = await learningApi("/api/learning/paths");
+  if (requestSequence !== learningPathsLoadSequence) return;
   const [jobData, taskData] = await Promise.all([
    learningApi("/api/learning/jobs?limit=200").catch(() => ({jobs: []})),
    learningApi("/api/tasks?limit=100").catch(() => ({tasks: []}))
   ]);
+  if (requestSequence !== learningPathsLoadSequence) return;
   const jobsByTopicId = new Map();
   (jobData.jobs || []).forEach(job => {
    if (job.path_topic_id == null) return;
@@ -918,7 +922,9 @@ async function loadLearningPaths() {
    pathCard.append(progressGroup, details);
    container.append(pathCard);
   });
- } catch (error) { learningEl("paths-output").textContent = error.message; }
+ } catch (error) {
+  if (requestSequence === learningPathsLoadSequence) learningEl("paths-output").textContent = error.message;
+ }
 }
 
 async function refreshLearningCapabilities() {
