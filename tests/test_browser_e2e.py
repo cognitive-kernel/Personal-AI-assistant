@@ -5016,12 +5016,12 @@ def test_learning_path_refresh_discards_a_late_older_response():
                         delayed = true;
                         window.__firstLearningPathsStarted = true;
                         return new Promise((resolve, reject) => {
-                            window.setTimeout(() => {
-                                originalFetch(resource, options).then(response => {
+                            originalFetch(resource, options).then(response => {
+                                window.setTimeout(() => {
                                     window.__firstLearningPathsResolved = true;
                                     resolve(response);
-                                }, reject);
-                            }, 1200);
+                                }, 1200);
+                            }, reject);
                         });
                     }
                     return originalFetch(resource, options);
