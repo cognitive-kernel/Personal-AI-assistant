@@ -64,3 +64,21 @@ def test_engineering_assistance_is_loaded_as_an_independent_feature_module():
     assert "const {api,el}=core;" in module
     assert module.rstrip().endswith("})();")
     assert "innerHTML" not in module
+
+
+def test_browser_learning_is_an_isolated_feature_module():
+    page = (STATIC / "index.html").read_text(encoding="utf-8")
+    learning = (STATIC / "learning.js").read_text(encoding="utf-8")
+    module = (STATIC / "browser-learning.js").read_text(encoding="utf-8")
+
+    assert page.index('src="/static/learning.js"') < page.index('src="/static/browser-learning.js"')
+    assert "async function refreshBrowserLearningCourses()" not in learning
+    assert "let browserLearningCoursesLoadSequence" not in learning
+    assert "async function refreshBrowserLearningCourses()" in module
+    assert "async function loadBrowserLearningCourse(" in module
+    assert "async function pollBrowserLearningCourse(" in module
+    assert "core.version!==1" in module
+    assert "const {api,el}=core;" in module
+    assert "refreshBrowserLearningCourses();" in module
+    assert module.rstrip().endswith("})();")
+    assert "innerHTML" not in module
