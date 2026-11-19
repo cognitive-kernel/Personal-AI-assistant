@@ -163,16 +163,20 @@
       window.clearTimeout(timeoutId);
     }
   }
+  let runsRequestSequence = 0;
   async function refreshRuns() {
+    const requestSequence = ++runsRequestSequence;
     try {
       const data = await request("runs");
+      if (requestSequence !== runsRequestSequence) return;
       renderRuns(data.runs);
     } catch (error) {
+      if (requestSequence !== runsRequestSequence) return;
       const host = $("recent-runs");
       const note = document.createElement("p");
       note.className = "muted";
       note.textContent = "دریافت تاریخچهٔ کامل اجراها ناموفق بود: " + (error.message || "خطای نامشخص");
-      host.append(note);
+      host.replaceChildren(note);
     }
   }
 
