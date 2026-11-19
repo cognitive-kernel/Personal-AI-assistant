@@ -369,6 +369,7 @@ async function refreshConversations(options={}) {
    const created = await api("/api/conversations", {method:"POST"});
    conversations = [created.conversation];
   }
+  const currentSelection=select.value?Number(select.value):null;
   select.replaceChildren();
   if (!conversations.length) {
    const option = document.createElement("option");
@@ -386,7 +387,6 @@ async function refreshConversations(options={}) {
    option.textContent = (conversation.title || "گفتگوی جدید") + " (" + conversation.message_count + ")";
    select.append(option);
   }
-  const currentSelection=select.value?Number(select.value):null;
   const preferredId=!hasExplicitSelect&&currentSelection?currentSelection:selectId;
   const target = conversations.some(item => Number(item.id) === Number(preferredId))
    ? Number(preferredId) : Number(conversations[0].id);
