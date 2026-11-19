@@ -4960,3 +4960,92 @@ def test_ai_learning_discards_lesson_list_after_switching_courses():
         assert page.locator("#lessons .lesson").count() == 0
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_autonomous_progress_refresh_queues_the_latest_selected_period():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    requested_periods = []
+
+    def progress_route(route):
+        from urllib.parse import parse_qs, urlparse
+
+        period = parse_qs(urlparse(route.request.url).query).get("period", [""])[0]
+        requested_periods.append(period)
+        activity = "WEEKLY_RESPONSE" if period == "weekly" else "DAILY_RESPONSE"
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({
+                "current": {
+                    "plan_percent": 50, "status": "running",
+                    "phase_label": period, "activity": activity,
+                    "plan_total": 2, "plan_completed": 1,
+                    "updated_at": "2026-11-19T07:00:00Z",
+                },
+                "history": [], "latest_snapshot": None,
+                "events": [], "available": True, "storage_configured": True,
+            }),
+        )
+
+    browser_errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.add_init_script("""
+            (() => {
+                const originalFetch = window.fetch.bind(window);
+                let delayed = false;
+                window.fetch = (resource, options) => {
+                    const url = typeof resource === "string" ? resource : resource.url;
+                    if (!delayed && url.includes("/api/autonomous-engineering/progress?")
+                        && url.includes("period=daily")) {
+                        delayed = true;
+                        window.__delayedDailyProgressStarted = true;
+                        return new Promise((resolve, reject) => {
+                            window.setTimeout(() => {
+                                originalFetch(resource, options).then(response => {
+                                    window.__delayedDailyProgressResolved = true;
+                                    resolve(response);
+                                }, reject);
+                            }, 1200);
+                        });
+                    }
+                    return originalFetch(resource, options);
+                };
+            })();
+        """)
+        page.route("**/api/autonomous-engineering/progress**", progress_route)
+        response = page.goto(
+            base_url.rstrip("/") + "/autonomous-engineering",
+            wait_until="domcontentloaded",
+        )
+        assert response is not None and response.status == 200
+        page.wait_for_function(
+            "() => window.__delayedDailyProgressStarted === true", timeout=10000
+        )
+
+        period_selector = page.locator("#progress-period")
+        period_selector.select_option("weekly")
+        with page.expect_request(
+            lambda request: "/api/autonomous-engineering/progress?" in request.url
+            and "period=weekly" in request.url,
+            timeout=3000,
+        ) as weekly_request:
+            page.wait_for_function(
+                "() => window.__delayedDailyProgressResolved === true", timeout=10000
+            )
+
+        assert weekly_request.value is not None
+        page.wait_for_function(
+            "() => document.querySelector('#current-activity')?.textContent.includes('WEEKLY_RESPONSE')",
+            timeout=10000,
+        )
+        assert period_selector.input_value() == "weekly"
+        assert requested_periods[-1] == "weekly"
+        assert "DAILY_RESPONSE" not in page.locator("#current-activity").inner_text()
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
