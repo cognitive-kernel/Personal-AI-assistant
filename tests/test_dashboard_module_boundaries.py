@@ -11,11 +11,12 @@ def test_dashboard_core_is_loaded_before_inline_and_feature_scripts():
 
     core_tag = page.index('src="/static/dashboard-core.js"')
     inline_script = page.index("<script>", core_tag)
+    engineering_tag = page.index('src="/static/engineering-assistance.js"')
     experience_tag = page.index('src="/static/experience-memory.js"')
     cloud_tag = page.index('src="/static/cloud-resources.js"')
     sandbox_tag = page.index('src="/static/sandbox.js"')
 
-    assert core_tag < inline_script < experience_tag < cloud_tag < sandbox_tag
+    assert core_tag < inline_script < engineering_tag < experience_tag < cloud_tag < sandbox_tag
     assert "const { el, api, appendText } = window.dashboardCore;" in page
     assert "window.dashboardCore = Object.freeze({" in core
     assert "version: 1" in core
@@ -46,5 +47,20 @@ def test_experience_memory_is_an_isolated_module_with_explicit_core_contract():
     assert "core.version!==1" in module
     assert "const {api,el,appendText}=core;" in module
     assert "refreshExperienceAutoCaptureConsent();" in module
+    assert module.rstrip().endswith("})();")
+    assert "innerHTML" not in module
+
+
+def test_engineering_assistance_is_loaded_as_an_independent_feature_module():
+    page = (STATIC / "index.html").read_text(encoding="utf-8")
+    module = (STATIC / "engineering-assistance.js").read_text(encoding="utf-8")
+
+    assert 'src="/static/engineering-assistance.js"' in page
+    assert "async function refreshSelfImprovement()" not in page
+    assert "async function refreshSelfImprovement()" in module
+    assert "programming-assist-form" in module
+    assert "self-improvement-form" in module
+    assert "core.version!==1" in module
+    assert "const {api,el}=core;" in module
     assert module.rstrip().endswith("})();")
     assert "innerHTML" not in module
