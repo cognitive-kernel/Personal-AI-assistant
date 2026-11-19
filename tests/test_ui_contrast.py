@@ -75,7 +75,7 @@ def test_dark_storage_alert_code_remains_readable():
     assert match, "Dark theme must define explicit storage-alert code colors."
 
     foreground = re.search(r"color\s*:\s*(#[0-9a-fA-F]{3,6})\s*;", match.group(1))
-    background = re.search(r"background(?:-color)?\s*:\s*(#[0-9a-fA-F]{3,6})\s*;", match.group(1))
+    background = re.search(r"background(?:-color)?\s*:\s*(#[0-9a-fA-F]{3,6})\s*;?", match.group(1))
     assert foreground and background, "Storage-alert code needs explicit foreground and background colors."
 
     ratio = _contrast(foreground.group(1), background.group(1))
