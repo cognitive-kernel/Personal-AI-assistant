@@ -2018,12 +2018,17 @@ el("cloud-plan-run").addEventListener("click",async()=>{
  }
 });
 
+let kaggleQuotaRefreshSequence=0;
 async function refreshKaggleQuota() {
+ const requestSequence=++kaggleQuotaRefreshSequence;
  try {
   const result=await api("/api/cloud-resources/kaggle-quota");
+  if(requestSequence!==kaggleQuotaRefreshSequence)return;
   const consent=result.consent||{};
-  el("kaggle-quota-consent").checked=!!consent.enabled&&!!consent.user_consent;
-  if(consent.executable_path) el("kaggle-cli-path").value=consent.executable_path;
+  const hasConsent=!!consent.enabled&&!!consent.user_consent;
+  if(document.activeElement!==el("kaggle-quota-consent"))el("kaggle-quota-consent").checked=hasConsent;
+  if(document.activeElement!==el("kaggle-cli-path"))el("kaggle-cli-path").value=consent.executable_path||"";
+  el("kaggle-quota-refresh").disabled=!hasConsent;
   const snapshots=result.snapshots||[];
   const events=result.consent_events||[];
   const state=consent.enabled&&consent.user_consent
@@ -2033,10 +2038,13 @@ async function refreshKaggleQuota() {
    (snapshots.length?JSON.stringify(snapshots,null,2):"هنوز سهمیه‌ای ثبت نشده است.")+
    "\n\nتاریخچهٔ رضایت:\n"+JSON.stringify(events,null,2);
  } catch(error) {
+  if(requestSequence!==kaggleQuotaRefreshSequence)return;
+  el("kaggle-quota-refresh").disabled=true;
   el("kaggle-quota-status").textContent="وضعیت سهمیه قابل دریافت نیست: "+error.message;
  }
 }
 el("kaggle-quota-enable").addEventListener("click",async()=>{
+ kaggleQuotaRefreshSequence+=1;
  const path=el("kaggle-cli-path").value.trim();
  if(!el("kaggle-quota-consent").checked) {
   el("kaggle-quota-status").textContent="برای فعال‌سازی، ابتدا چک‌باکس رضایت صریح را علامت بزنید.";
@@ -2058,6 +2066,8 @@ el("kaggle-quota-enable").addEventListener("click",async()=>{
  }
 });
 el("kaggle-quota-revoke").addEventListener("click",async()=>{
+ kaggleQuotaRefreshSequence+=1;
+ el("kaggle-quota-refresh").disabled=true;
  el("kaggle-quota-status").textContent="در حال لغو رضایت…";
  try {
   await api("/api/cloud-resources/kaggle-quota/consent",{
@@ -2072,6 +2082,8 @@ el("kaggle-quota-revoke").addEventListener("click",async()=>{
  }
 });
 el("kaggle-quota-refresh").addEventListener("click",async()=>{
+ kaggleQuotaRefreshSequence+=1;
+ el("kaggle-quota-refresh").disabled=true;
  el("kaggle-quota-status").textContent="در حال خواندن سهمیه از CLI رسمی…";
  try {
   await api("/api/cloud-resources/kaggle-quota/refresh",{method:"POST"});
@@ -2084,17 +2096,22 @@ el("kaggle-quota-refresh").addEventListener("click",async()=>{
 
 
 
+let ociLimitsRefreshSequence=0;
 async function refreshOciLimits() {
+ const requestSequence=++ociLimitsRefreshSequence;
  try {
   const result=await api("/api/cloud-resources/oci-limits");
+  if(requestSequence!==ociLimitsRefreshSequence)return;
   const consent=result.consent||{};
-  el("oci-limits-consent").checked=!!consent.enabled&&!!consent.user_consent;
+  const hasConsent=!!consent.enabled&&!!consent.user_consent;
+  if(document.activeElement!==el("oci-limits-consent"))el("oci-limits-consent").checked=hasConsent;
   for(const [field,key] of [
    ["oci-cli-path","executable_path"],["oci-config-path","config_file"],
    ["oci-profile","profile"],["oci-region","region"],["oci-compartment-id","compartment_id"]
   ]) {
-   if(consent[key]) el(field).value=consent[key];
+   if(document.activeElement!==el(field))el(field).value=consent[key]||"";
   }
+  el("oci-limits-refresh").disabled=!hasConsent;
   const snapshots=result.snapshots||[];
   const events=result.consent_events||[];
   const state=consent.enabled&&consent.user_consent
@@ -2105,10 +2122,13 @@ async function refreshOciLimits() {
    (snapshots.length?JSON.stringify(snapshots,null,2):"هنوز snapshot محدودیت ثبت نشده است.")+
    "\n\nمجوز اجرای remote: false\n\nتاریخچهٔ رضایت:\n"+JSON.stringify(events,null,2);
  } catch(error) {
+  if(requestSequence!==ociLimitsRefreshSequence)return;
+  el("oci-limits-refresh").disabled=true;
   el("oci-limits-status").textContent="وضعیت محدودیت‌های OCI قابل دریافت نیست: "+error.message;
  }
 }
 el("oci-limits-enable").addEventListener("click",async()=>{
+ ociLimitsRefreshSequence+=1;
  if(!el("oci-limits-consent").checked) {
   el("oci-limits-status").textContent="برای فعال‌سازی، ابتدا رضایت صریح را علامت بزنید.";
   return;
@@ -2130,6 +2150,8 @@ el("oci-limits-enable").addEventListener("click",async()=>{
  }
 });
 el("oci-limits-revoke").addEventListener("click",async()=>{
+ ociLimitsRefreshSequence+=1;
+ el("oci-limits-refresh").disabled=true;
  el("oci-limits-status").textContent="در حال لغو رضایت و پاک‌سازی snapshotها…";
  try {
   await api("/api/cloud-resources/oci-limits/consent",{
@@ -2147,6 +2169,8 @@ el("oci-limits-revoke").addEventListener("click",async()=>{
  }
 });
 el("oci-limits-refresh").addEventListener("click",async()=>{
+ ociLimitsRefreshSequence+=1;
+ el("oci-limits-refresh").disabled=true;
  el("oci-limits-status").textContent="در حال اجرای فرمان خواندنی OCI limits value list…";
  try {
   await api("/api/cloud-resources/oci-limits/refresh",{method:"POST"});
@@ -2519,22 +2543,28 @@ function renderExperienceItems(items) {
   container.append(card);
  });
 }
+let experienceConsentRefreshSequence=0;
 async function refreshExperienceAutoCaptureConsent() {
+ const requestSequence=++experienceConsentRefreshSequence;
  const output=el("experience-auto-capture-status");
  try {
   const result=await api("/api/experiences/auto-capture/consent");
+  if(requestSequence!==experienceConsentRefreshSequence)return;
   const consent=result.consent||{};
-  el("experience-auto-capture-confirm").checked=consent.enabled===true;
+  if(document.activeElement!==el("experience-auto-capture-confirm"))
+   el("experience-auto-capture-confirm").checked=consent.enabled===true;
   output.textContent=(consent.enabled
    ? "ذخیرهٔ خودکار فعال است؛ فقط پرسش‌های فنیِ دارای منبع ذخیره می‌شوند."
    : "ذخیرهٔ خودکار غیرفعال است؛ هیچ پرسش یا پاسخی خودکار ذخیره نمی‌شود.")+
    "\n\nنسخهٔ سیاست: "+consent.policy_version+
    "\n\nتاریخچهٔ رضایت:\n"+JSON.stringify(consent.events||[],null,2);
  } catch(error) {
+  if(requestSequence!==experienceConsentRefreshSequence)return;
   output.textContent="وضعیت رضایت قابل دریافت نیست: "+error.message;
  }
 }
 el("experience-auto-capture-enable").addEventListener("click",async()=>{
+ experienceConsentRefreshSequence+=1;
  if(!el("experience-auto-capture-confirm").checked) {
   el("experience-auto-capture-status").textContent="برای فعال‌سازی، ابتدا رضایت صریح را علامت بزنید.";
   return;
@@ -2546,6 +2576,7 @@ el("experience-auto-capture-enable").addEventListener("click",async()=>{
  } catch(error) { el("experience-auto-capture-status").textContent="رضایت ثبت نشد: "+error.message; }
 });
 el("experience-auto-capture-revoke").addEventListener("click",async()=>{
+ experienceConsentRefreshSequence+=1;
  el("experience-auto-capture-status").textContent="در حال لغو رضایت…";
  try {
   await api("/api/experiences/auto-capture/consent",{method:"DELETE"});
