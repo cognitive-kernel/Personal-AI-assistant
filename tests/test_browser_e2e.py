@@ -4405,3 +4405,85 @@ def test_chat_ignores_stale_conversation_messages_and_keeps_delete_target_in_syn
         assert state["deleted_id"] == 902
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_browser_task_filter_ignores_a_late_response_from_the_previous_filter():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    def task(task_id, name, status):
+        return {
+            "id": task_id, "task_type": name, "status": status,
+            "priority": 0, "attempts": 1, "max_attempts": 1,
+            "created_at": "2026-11-19T07:00:00+00:00",
+            "updated_at": "2026-11-19T07:00:00+00:00",
+            "error": None, "result": None,
+        }
+
+    browser_errors = []
+
+    def mock_api(route):
+        request = route.request
+        path = request.url.split("?", 1)[0].removeprefix(base_url.rstrip("/"))
+        if request.method == "GET" and path == "/api/tasks":
+            if "statuses=failed" in request.url:
+                payload = {
+                    "tasks": [task(303, "e2e.failed-filter-result", "failed")],
+                    "next_cursor": None, "has_more": False,
+                }
+            else:
+                payload = {
+                    "tasks": [task(101, "e2e.previous-filter-result", "queued")],
+                    "next_cursor": None, "has_more": False,
+                }
+            route.fulfill(
+                status=200, content_type="application/json",
+                body=json.dumps(payload),
+            )
+            return
+        route.continue_()
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.add_init_script("""
+            (() => {
+                const originalFetch = window.fetch.bind(window);
+                let delayed = false;
+                window.fetch = (resource, options) => {
+                    const url = typeof resource === "string" ? resource : resource.url;
+                    if (!delayed && url.includes("/api/tasks?") && !url.includes("statuses=")) {
+                        delayed = true;
+                        window.__delayedUnfilteredTasksStarted = true;
+                        return new Promise((resolve, reject) => {
+                            window.setTimeout(() => {
+                                originalFetch(resource, options).then(response => {
+                                    window.__delayedUnfilteredTasksResolved = true;
+                                    resolve(response);
+                                }, reject);
+                            }, 1000);
+                        });
+                    }
+                    return originalFetch(resource, options);
+                };
+            })();
+        """)
+        page.route("**/api/tasks**", mock_api)
+        _goto_section(page, base_url, "task-manager-section")
+
+        page.wait_for_function(
+            "() => window.__delayedUnfilteredTasksStarted === true", timeout=10000
+        )
+        page.locator("#task-status-filter").select_option("failed")
+        page.get_by_text("#303 — e2e.failed-filter-result", exact=True).wait_for(timeout=10000)
+        page.wait_for_function(
+            "() => window.__delayedUnfilteredTasksResolved === true", timeout=10000
+        )
+
+        assert page.locator("#task-status-filter").input_value() == "failed"
+        assert page.get_by_text("#303 — e2e.failed-filter-result", exact=True).is_visible()
+        assert page.get_by_text("#101 — e2e.previous-filter-result", exact=True).count() == 0
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
