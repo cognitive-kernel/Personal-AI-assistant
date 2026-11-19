@@ -4960,3 +4960,88 @@ def test_ai_learning_discards_lesson_list_after_switching_courses():
         assert page.locator("#lessons .lesson").count() == 0
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_learning_path_refresh_discards_a_late_older_response():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    request_count = 0
+    browser_errors = []
+
+    def learning_api_route(route):
+        nonlocal request_count
+        path = route.request.url.split("?", 1)[0].removeprefix(base_url.rstrip("/"))
+        if route.request.method == "GET" and path == "/api/learning/paths":
+            request_count += 1
+            title = "مسیر قدیمی" if request_count == 1 else "مسیر جدید"
+            payload = {
+                "paths": [{
+                    "id": 7101 if request_count == 1 else 7102,
+                    "title": title,
+                    "topic_count": 0,
+                    "completed_count": 0,
+                    "reference_urls": [],
+                    "topics": [],
+                    "research": True,
+                }]
+            }
+        elif route.request.method == "GET" and path == "/api/learning/jobs":
+            payload = {"jobs": []}
+        elif route.request.method == "GET" and path == "/api/learning/reviews/due":
+            payload = {"items": []}
+        elif route.request.method == "GET" and path == "/api/learning/recommendations":
+            payload = {"recommendations": []}
+        else:
+            route.continue_()
+            return
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(payload, ensure_ascii=False),
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.add_init_script("""
+            (() => {
+                const originalFetch = window.fetch.bind(window);
+                let delayed = false;
+                window.fetch = (resource, options) => {
+                    const url = typeof resource === "string" ? resource : resource.url;
+                    if (!delayed && url.endsWith("/api/learning/paths")) {
+                        delayed = true;
+                        window.__firstLearningPathsStarted = true;
+                        return new Promise((resolve, reject) => {
+                            window.setTimeout(() => {
+                                originalFetch(resource, options).then(response => {
+                                    window.__firstLearningPathsResolved = true;
+                                    resolve(response);
+                                }, reject);
+                            }, 1200);
+                        });
+                    }
+                    return originalFetch(resource, options);
+                };
+            })();
+        """)
+        page.route("**/api/learning/**", learning_api_route)
+        _goto_section(page, base_url, "learning-paths-section")
+        page.wait_for_function(
+            "() => window.__firstLearningPathsStarted === true", timeout=10000
+        )
+
+        page.locator("#refresh-paths").click()
+        page.get_by_text("مسیر جدید", exact=False).wait_for(timeout=10000)
+        page.wait_for_function(
+            "() => window.__firstLearningPathsResolved === true", timeout=10000
+        )
+
+        assert request_count == 2
+        assert page.get_by_text("مسیر جدید", exact=False).is_visible()
+        assert page.get_by_text("مسیر قدیمی", exact=False).count() == 0
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
