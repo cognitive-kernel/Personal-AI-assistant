@@ -5394,19 +5394,20 @@ def test_ai_learning_background_progress_ignores_previous_course_after_switch():
         page.route("**/api/ai-learning/**", learning_api_route)
         page.goto(base_url.rstrip("/") + "/ai-learning", wait_until="domcontentloaded")
 
-        page.get_by_text("سرفصل دورهٔ قدیمی", exact=False).wait_for(timeout=10000)
+        topics_panel = page.locator("#topics")
+        topics_panel.get_by_text("سرفصل دورهٔ قدیمی", exact=False).wait_for(timeout=10000)
         page.wait_for_function(
             "() => window.__delayedCourse42ProgressStarted === true", timeout=12000
         )
         page.locator("#course-select").select_option("43")
-        page.get_by_text("سرفصل دورهٔ انتخاب‌شده", exact=False).wait_for(timeout=10000)
+        topics_panel.get_by_text("سرفصل دورهٔ انتخاب‌شده", exact=False).wait_for(timeout=10000)
         page.wait_for_function(
             "() => window.__delayedCourse42ProgressResolved === true", timeout=10000
         )
 
         assert page.locator("#course-select").input_value() == "43"
-        assert page.get_by_text("سرفصل دورهٔ انتخاب‌شده", exact=False).is_visible()
-        assert page.get_by_text("سرفصل دورهٔ قدیمی", exact=False).count() == 0
+        assert topics_panel.get_by_text("سرفصل دورهٔ انتخاب‌شده", exact=False).is_visible()
+        assert topics_panel.get_by_text("سرفصل دورهٔ قدیمی", exact=False).count() == 0
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
 
