@@ -2103,3 +2103,31 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Added regression tests proving the task and smoke profiles remain separate. Exact-head CI and a real Windows Runner task are required before claiming this addresses the underlying inference failure.
 
 - Follow-up regression found after PR #782 merge: the new heartbeat persisted Persian text correctly for the dashboard but also printed it directly to the Windows Actions console. On the Runner's active code page this raised `UnicodeEncodeError` during the Codex smoke and aborted the smoke process before any model/tool conclusion. Console heartbeat output is now ASCII-only while persisted dashboard activity remains Persian; added regression tests for both heartbeat states. This fix is included in the still-open PR #783 branch so the stream-profile change is not merged with the console regression.
+
+## 2026-11-13 — Preserve rejected learning candidates and contradictory evidence
+
+### Root-cause analysis
+
+- `validate_candidate_with_models()` treated agreement between two reviewers and two distinct source domains that contradicted a candidate as permission to scrub it.
+- The rejection branch physically deleted `learning_source_text` and the unverified `knowledge_items` row, cleared `learning_jobs.assessment_json`, and blanked candidate content, source URLs, quality report, and test plan.
+- This contradicted the learning-completion contract: contradictory or low-confidence observations must remain attributable and versioned; rejection must block promotion, not erase evidence.
+
+### Corrective change
+
+- Keep the original candidate content/hash, source URLs and text, assessment, quality report, test plan/results, and review records.
+- Mark the durable knowledge row `conflicting`, the job `rejected`, and the temporary candidate `failed` with a reason that records the contradictory evidence and points to a new versioned candidate for reassessment.
+- Keep promotion and additional review blocked for a terminal rejected candidate; `candidate_readiness` exposes the actual contradictions and explicitly reports retained content.
+- Preserve backward compatibility for legacy rows already scrubbed by the old implementation. Add a dry-run-by-default recovery utility that restores only content whose SHA-256 matches the preserved job lesson, source URLs still present in learning_evidence, and the quality report still present in the job record; deleted source text, assessment, test plan, and original knowledge version are never guessed.
+
+### Regression coverage
+
+- Update the existing two-model/two-source contradiction regression to prove all source and candidate data, assessment, quality report, test plan/results, and content remain intact.
+- Assert the retained knowledge row is marked `conflicting`, promotion is blocked, and a terminal candidate does not trigger new source/model calls.
+- Add a compatibility regression for legacy scrubbed rows plus dry-run/apply, exact-hash mismatch, idempotence, and partial-recovery reporting for the legacy repair utility.
+- Align `LEARNING_COMPLETION_POLICY.md` with the new retention behavior.
+
+### Validation
+
+- Exact-head GitHub Actions for the associated PR are pending.
+- No local, target-host, or human test is claimed.
+- No migration or physical data deletion is introduced.
