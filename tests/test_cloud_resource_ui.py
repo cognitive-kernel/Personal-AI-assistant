@@ -49,5 +49,5 @@ def test_cloud_resource_ui_exposes_discovery_and_review_controls_safely():
     assert 'sendClaimReview("rejected")' in source
     assert 'ادعاهای استخراج‌شده از متن (هنوز تأییدنشده)' in source
     # External source text must be rendered as text, never injected as markup.
-    assert 'node.textContent=text' in source
+    assert 'node.textContent = text;' in core
     assert 'innerHTML' not in source
