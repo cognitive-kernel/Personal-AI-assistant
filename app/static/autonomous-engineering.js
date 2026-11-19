@@ -163,16 +163,20 @@
       window.clearTimeout(timeoutId);
     }
   }
+  let runsRequestSequence = 0;
   async function refreshRuns() {
+    const requestSequence = ++runsRequestSequence;
     try {
       const data = await request("runs");
+      if (requestSequence !== runsRequestSequence) return;
       renderRuns(data.runs);
     } catch (error) {
+      if (requestSequence !== runsRequestSequence) return;
       const host = $("recent-runs");
       const note = document.createElement("p");
       note.className = "muted";
       note.textContent = "دریافت تاریخچهٔ کامل اجراها ناموفق بود: " + (error.message || "خطای نامشخص");
-      host.append(note);
+      host.replaceChildren(note);
     }
   }
 
@@ -706,6 +710,7 @@
   });
 
   let progressBusy = false;
+  let progressRefreshQueued = false;
   const svgNS = "http://www.w3.org/2000/svg";
   function svgNode(name, attrs, text) {
     const node = document.createElementNS(svgNS, name);
@@ -774,15 +779,25 @@
       host.append(item);
     }
   }
-  async function refreshProgress() {
-    if (progressBusy) return;
+  async function refreshProgress({queueIfBusy = false} = {}) {
+    if (progressBusy) {
+      if (queueIfBusy) progressRefreshQueued = true;
+      return;
+    }
     progressBusy = true;
     const period = $("progress-period").value;
+    const start = $("progress-start").value, end = $("progress-end").value;
+    const selectionIsCurrent = () => $("progress-period").value === period &&
+      (period !== "custom" || ($("progress-start").value === start && $("progress-end").value === end));
     const params = new URLSearchParams({period});
     if (period === "custom") {
-      const start = $("progress-start").value, end = $("progress-end").value;
       if (!start || !end) {
         $("progress-chart-caption").textContent = "تاریخ شروع و پایان را انتخاب کنید.";
+        progressBusy = false;
+        return;
+      }
+      if (start > end) {
+        $("progress-chart-caption").textContent = "تاریخ شروع باید قبل از تاریخ پایان باشد.";
         progressBusy = false;
         return;
       }
@@ -791,6 +806,10 @@
     }
     try {
       const data = await request("progress?" + params.toString());
+      if (!selectionIsCurrent()) {
+        progressRefreshQueued = true;
+        return;
+      }
       if (data.error) throw new Error(data.error);
       const current = data.current;
       if (current) {
@@ -840,18 +859,26 @@
       renderProgressChart(snapshots);
       renderProgressEvents(data.events);
     } catch (error) {
+      if (!selectionIsCurrent()) {
+        progressRefreshQueued = true;
+        return;
+      }
       $("progress-chart-caption").textContent = error.message || "دریافت دادهٔ پیشرفت ناموفق بود.";
     } finally {
       progressBusy = false;
+      if (progressRefreshQueued) {
+        progressRefreshQueued = false;
+        void refreshProgress();
+      }
     }
   }
   $("progress-period").addEventListener("change", () => {
     const custom = $("progress-period").value === "custom";
     $("progress-start-wrap").hidden = !custom;
     $("progress-end-wrap").hidden = !custom;
-    if (!custom) refreshProgress();
+    if (!custom) refreshProgress({queueIfBusy: true});
   });
-  $("refresh-progress").addEventListener("click", refreshProgress);
+  $("refresh-progress").addEventListener("click", () => refreshProgress({queueIfBusy: true}));
   $("refresh-agent").addEventListener("click", refresh);
   refresh();
   refreshProgress();
