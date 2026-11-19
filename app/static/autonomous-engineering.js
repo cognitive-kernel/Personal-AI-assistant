@@ -515,7 +515,9 @@
       cancelButton.disabled = !active;
       pauseButton.disabled = Boolean(data.paused);
       resumeButton.disabled = !data.paused;
-      renderRuns(data.github && data.github.recent_runs);
+      // The run-history panel has one render owner: refreshRuns().
+      // Rendering this status snapshot here bypasses its request sequence and
+      // can overwrite a newer, explicitly refreshed run list with stale data.
       void refreshRuns();
       setMessage(data.paused ? "صف مهندسی متوقف است؛ برای ادامه از آخرین وضعیت، دکمهٔ ادامه را بزنید." : (ready ? "پیش‌نیازهای حساب برنامه آماده‌اند؛ Workflow پیش‌نیازهای حساب Runner را جداگانه بررسی می‌کند." : "برای فعال‌شدن اجرا، موارد ناقص را در راهنمای راه‌اندازی تکمیل کنید."), data.paused || ready ? "success" : "");
     } catch (error) {
