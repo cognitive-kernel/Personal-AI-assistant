@@ -4662,24 +4662,26 @@ def test_browser_quota_and_experience_consent_revocation_ignores_stale_reads():
             state = {"gets": 0, "revoked": False}
             browser_errors = []
 
-            def consent_route(route, current_case=case, current_state=state):
-                request = route.request
-                if request.method == "GET":
-                    current_state["gets"] += 1
-                    enabled = current_state["gets"] == 1 and not current_state["revoked"]
-                    route.fulfill(
-                        status=200, content_type="application/json",
-                        body=json.dumps(consent_payload(current_case["kind"], enabled)),
-                    )
-                    return
-                if request.method == current_case["method"]:
-                    current_state["revoked"] = True
-                    route.fulfill(
-                        status=200, content_type="application/json",
-                        body=json.dumps(consent_payload(current_case["kind"], False)),
-                    )
-                    return
-                route.fulfill(status=405, body="method not allowed")
+            def make_consent_route(current_case, current_state):
+                def handler(route):
+                    request = route.request
+                    if request.method == "GET":
+                        current_state["gets"] += 1
+                        enabled = current_state["gets"] == 1 and not current_state["revoked"]
+                        route.fulfill(
+                            status=200, content_type="application/json",
+                            body=json.dumps(consent_payload(current_case["kind"], enabled)),
+                        )
+                        return
+                    if request.method == current_case["method"]:
+                        current_state["revoked"] = True
+                        route.fulfill(
+                            status=200, content_type="application/json",
+                            body=json.dumps(consent_payload(current_case["kind"], False)),
+                        )
+                        return
+                    route.fulfill(status=405, body="method not allowed")
+                return handler
 
             page = browser.new_page()
             page.on("pageerror", lambda error: browser_errors.append(str(error)))
@@ -4708,7 +4710,7 @@ def test_browser_quota_and_experience_consent_revocation_ignores_stale_reads():
                     }};
                 }})();
             """)
-            page.route("**" + case["endpoint"] + "**", consent_route)
+            page.route("**" + case["endpoint"] + "**", make_consent_route(case, state))
             page.goto(
                 base_url.rstrip("/") + "/page/" + case["page_id"],
                 wait_until="domcontentloaded",
