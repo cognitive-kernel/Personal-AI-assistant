@@ -154,9 +154,12 @@ def codex_arguments(model: str, report: str) -> list[str]:
         'model_providers.ollama-local.base_url="http://127.0.0.1:11434/v1/"',
         'model_providers.ollama-local.wire_api="responses"',
         "model_providers.ollama-local.requires_openai_auth=false",
-        "model_providers.ollama-local.stream_idle_timeout_ms=120000" if is_smoke else "model_providers.ollama-local.stream_idle_timeout_ms=300000",
-        "model_providers.ollama-local.stream_max_retries=0" if is_smoke else "model_providers.ollama-local.stream_max_retries=2",
-        "model_providers.ollama-local.request_max_retries=0" if is_smoke else "model_providers.ollama-local.request_max_retries=1",
+        # Keep the smoke probe strict and fast. Production task streams may need a
+        # longer first-token window on a local 20B model; controller-level retries
+        # already preserve the task/checkpoint, so avoid nested provider retries.
+        "model_providers.ollama-local.stream_idle_timeout_ms=120000" if is_smoke else "model_providers.ollama-local.stream_idle_timeout_ms=900000",
+        "model_providers.ollama-local.stream_max_retries=0",
+        "model_providers.ollama-local.request_max_retries=0",
     ]
     if reasoning_effort:
         config_overrides.insert(0, f'model_reasoning_effort="{reasoning_effort}"')
