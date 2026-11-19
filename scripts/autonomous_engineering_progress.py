@@ -215,6 +215,16 @@ def codex_heartbeat_record(args: argparse.Namespace, elapsed_seconds: float, eve
         "plan_percent": plan_percentage(completed, total),
     }
 
+
+def codex_heartbeat_console_line(elapsed_seconds: float, event_count: int) -> str:
+    """Return an ASCII-only workflow log line for Windows console code pages."""
+    elapsed_minutes = max(0, int(max(0.0, elapsed_seconds) // 60))
+    state = "waiting_for_first_event" if event_count == 0 else "receiving_events"
+    return (
+        f"[autonomous-progress] elapsed_minutes={elapsed_minutes} "
+        f"jsonl_events={max(0, int(event_count))} state={state}"
+    )
+
 def run_codex(args: argparse.Namespace) -> int:
     executable = shutil.which("codex")
     if not executable:
@@ -310,7 +320,7 @@ def run_codex(args: argparse.Namespace) -> int:
                     heartbeat = codex_heartbeat_record(args, elapsed, event_count)
                     persist(heartbeat)
                     print(
-                        "[autonomous-progress] " + str(heartbeat["activity"]),
+                        codex_heartbeat_console_line(elapsed, event_count),
                         flush=True,
                     )
                     next_heartbeat_at = now_monotonic + CODEX_PROGRESS_HEARTBEAT_SECONDS
