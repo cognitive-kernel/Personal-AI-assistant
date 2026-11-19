@@ -262,6 +262,7 @@ async function api(path, options = {}) {
 }
 let currentConversationId = null;
 let conversationRefreshInProgress = false;
+let conversationLoadSequence = 0;
 function formatChatTimestamp(value) {
  if (!value) return "";
  const timestamp = String(value).trim();
@@ -342,9 +343,16 @@ function renderChatMessages(messages) {
  }
 }
 async function loadConversationMessages(conversationId) {
- if (!conversationId) { renderChatMessages([]); return; }
- const result = await api("/api/conversations/" + encodeURIComponent(conversationId) + "/messages");
- currentConversationId = Number(result.conversation.id);
+ const requestSequence = ++conversationLoadSequence;
+ if (!conversationId) { currentConversationId = null; renderChatMessages([]); return; }
+ const requestedId = Number(conversationId);
+ currentConversationId = requestedId;
+ const result = await api("/api/conversations/" + encodeURIComponent(requestedId) + "/messages");
+ if (requestSequence !== conversationLoadSequence ||
+     Number(el("chat-conversation-select").value) !== requestedId) return;
+ if (Number(result.conversation && result.conversation.id) !== requestedId) {
+  throw new Error("پاسخ سرویس با گفتگوی انتخاب‌شده مطابقت ندارد.");
+ }
  renderChatMessages(result.messages || []);
 }
 async function refreshConversations({selectId=currentConversationId, createIfEmpty=true}={}) {
