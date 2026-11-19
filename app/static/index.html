@@ -2062,6 +2062,7 @@ el("kaggle-quota-enable").addEventListener("click",async()=>{
   });
   await refreshKaggleQuota();
  } catch(error) {
+  await refreshKaggleQuota();
   el("kaggle-quota-status").textContent="رضایت ذخیره نشد: "+error.message;
  }
 });
@@ -2078,6 +2079,7 @@ el("kaggle-quota-revoke").addEventListener("click",async()=>{
   el("kaggle-quota-consent").checked=false;
   await refreshKaggleQuota();
  } catch(error) {
+  await refreshKaggleQuota();
   el("kaggle-quota-status").textContent="لغو رضایت انجام نشد: "+error.message;
  }
 });
@@ -2089,6 +2091,7 @@ el("kaggle-quota-refresh").addEventListener("click",async()=>{
   await api("/api/cloud-resources/kaggle-quota/refresh",{method:"POST"});
   await refreshKaggleQuota();
  } catch(error) {
+  await refreshKaggleQuota();
   el("kaggle-quota-status").textContent="سهمیه دریافت نشد: "+error.message;
  }
 });
@@ -2146,6 +2149,7 @@ el("oci-limits-enable").addEventListener("click",async()=>{
   await api("/api/cloud-resources/oci-limits/consent",{method:"PATCH",body:JSON.stringify(body)});
   await refreshOciLimits();
  } catch(error) {
+  await refreshOciLimits();
   el("oci-limits-status").textContent="رضایت OCI ذخیره نشد: "+error.message;
  }
 });
@@ -2165,6 +2169,7 @@ el("oci-limits-revoke").addEventListener("click",async()=>{
   for(const id of ["oci-cli-path","oci-config-path","oci-profile","oci-region","oci-compartment-id"]) el(id).value="";
   await refreshOciLimits();
  } catch(error) {
+  await refreshOciLimits();
   el("oci-limits-status").textContent="لغو رضایت OCI انجام نشد: "+error.message;
  }
 });
@@ -2176,6 +2181,7 @@ el("oci-limits-refresh").addEventListener("click",async()=>{
   await api("/api/cloud-resources/oci-limits/refresh",{method:"POST"});
   await refreshOciLimits();
  } catch(error) {
+  await refreshOciLimits();
   el("oci-limits-status").textContent="محدودیت‌های OCI دریافت نشد: "+error.message;
  }
 });
@@ -2573,7 +2579,10 @@ el("experience-auto-capture-enable").addEventListener("click",async()=>{
  try {
   await api("/api/experiences/auto-capture/consent",{method:"POST",body:JSON.stringify({confirm:true})});
   await refreshExperienceAutoCaptureConsent();
- } catch(error) { el("experience-auto-capture-status").textContent="رضایت ثبت نشد: "+error.message; }
+ } catch(error) {
+  await refreshExperienceAutoCaptureConsent();
+  el("experience-auto-capture-status").textContent="رضایت ثبت نشد: "+error.message;
+ }
 });
 el("experience-auto-capture-revoke").addEventListener("click",async()=>{
  experienceConsentRefreshSequence+=1;
@@ -2582,7 +2591,10 @@ el("experience-auto-capture-revoke").addEventListener("click",async()=>{
   await api("/api/experiences/auto-capture/consent",{method:"DELETE"});
   el("experience-auto-capture-confirm").checked=false;
   await refreshExperienceAutoCaptureConsent();
- } catch(error) { el("experience-auto-capture-status").textContent="لغو رضایت انجام نشد: "+error.message; }
+ } catch(error) {
+  await refreshExperienceAutoCaptureConsent();
+  el("experience-auto-capture-status").textContent="لغو رضایت انجام نشد: "+error.message;
+ }
 });
 el("experience-auto-capture-refresh").addEventListener("click",refreshExperienceAutoCaptureConsent);
 refreshExperienceAutoCaptureConsent();
