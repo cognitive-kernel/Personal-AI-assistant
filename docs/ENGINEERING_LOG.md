@@ -2122,3 +2122,4 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 
 - Added regression coverage for non-destructive rejection, API listing/detail, browser visibility/control gating, and dry-run/apply/idempotent legacy recovery. Exact-head CI is required before claiming validation.
 - Legacy source text, assessments, test plans, and knowledge version metadata already physically deleted by older code cannot be reconstructed. The recovery utility does not fabricate them. No live user database is modified by this repository change.
+- سخت‌سازی ابزار بازیابی: دیتابیس فقط با SQLite URI در حالت `mode=rw` باز می‌شود؛ ابزار نه فایل جدید می‌سازد و نه migration اجرا می‌کند. مسیر ناموجود یا schema ناقص خطای صریح ایجاد می‌کند و regression جلوگیری از ساخت دیتابیس اشتباه اضافه شده است.
