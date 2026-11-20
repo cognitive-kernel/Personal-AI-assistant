@@ -495,9 +495,9 @@ def test_dashboard_uses_researched_courses_and_hides_preset_catalog_controls():
 
     root = Path(__file__).resolve().parents[1]
     page = (root / "app" / "static" / "index.html").read_text(encoding="utf-8")
-    script = (root / "app" / "static" / "learning.js").read_text(encoding="utf-8")
+    script = (root / "app" / "static" / "learning-review.js").read_text(encoding="utf-8")
     assert 'id="learning-form"' in page
-    assert "/api/learning/courses" in page
+    assert "/api/learning/courses" in script
     assert 'id="curriculum-select"' not in page
     assert 'id="enroll-curriculum"' not in page
     assert "loadLearningCurricula();" not in script
