@@ -116,7 +116,7 @@ def test_learning_ui_exposes_recommendation_panel():
 
     root = Path(__file__).parents[1] / "app" / "static"
     index = (root / "index.html").read_text(encoding="utf-8")
-    script = (root / "learning.js").read_text(encoding="utf-8")
+    script = (root / "learning-overview.js").read_text(encoding="utf-8")
     assert 'id="refresh-learning-recommendations"' in index
     assert 'id="learning-recommendations-output"' in index
     assert '"/api/learning/recommendations?limit=20"' in script
