@@ -155,7 +155,6 @@
    el(modelId)?.value.trim()===model && Number(el(contextId)?.value||0)===context &&
    el(purpose+"-provider")?.value===provider;
   try {
-   const purpose=profile[0];
    const query=new URLSearchParams({purpose});
    if(model) query.set("model",model);
    if(context>0) query.set("context_tokens",String(context));
