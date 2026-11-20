@@ -11,10 +11,10 @@ A second integrity-path defect made a candidate with non-empty but hash-invalid 
 - Define the candidate failure/status node before appending it and render the stored `failure_reason` as text, not HTML.
 - Extract the complete candidate-panel behavior into `app/static/learning-candidates.js`.
 - Keep the dashboard shell in `app/static/index.html`; it now loads the dedicated module after the shared API/DOM helpers are initialized.
-- The module boundary owns candidate listing, detail/readiness/history views, review admission, test-plan creation, and sandbox-test dispatch UI. It depends only on the shared `api()` and `el()` helpers; it does not duplicate transport logic.
+- The module boundary owns candidate listing, detail/readiness/history views, review admission, test-plan creation, and sandbox-test dispatch UI. The dashboard shell exposes an explicit frozen `window.PersonalAssistantUI` contract containing only `api` and `el`; the feature module receives these dependencies through that contract and does not duplicate transport logic or depend on incidental globals.
 - Hash-invalid candidate content is now available through a read-only detail path with `integrity_valid=false`. The readiness API reports `integrity_mismatch` and blocks promotion. Claim extraction, review, test-plan writes, and promotion remain fail-closed.
 - The detail action remains available for integrity-invalid candidates so retained evidence can be audited; mutation controls remain disabled.
-- Added `tests/test_learning_candidate_integrity_readonly.py` for read-only detail, explicit integrity status, blocked claim extraction, and blocked promotion.
+- Added `tests/test_learning_candidate_integrity_readonly.py` for read-only detail, explicit integrity status, blocked claim extraction, and blocked promotion. The exact-hash recovery regression seeds the durable `learning_jobs.lesson` source explicitly before verifying restoration.
 - Existing browser regression `test_browser_e2e.py` exercises a terminal contradictory candidate, verifies the rejection/promotion-blocked state is rendered, checks mutation controls remain hidden, and opens retained detail and readiness evidence.
 
 ## Validation boundary
