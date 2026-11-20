@@ -504,3 +504,6 @@ Evidence: Tests/Windows regressions https://github.com/cognitive-kernel/Personal
 The subsequent documentation-only evidence update does not change runtime code and is followed by a fresh exact-head CI run. Target-host cross-account ACL verification, non-admin sandbox smoke/soak, crash/restart acceptance, and independent security review remain pending. Durable Pause remains enabled; no Runner, service, or autonomous process was started.
 
 - Follow-up UI modularization in PR #795: conversation/message rendering, feedback, conversation CRUD, and queued-response polling now live in `app/static/chat.js`; the module owns selected-conversation identity and stale-response sequencing. Architecture tests enforce the boundary. Exact-head CI remains pending.
+
+- PR #795 UI decomposition now includes dedicated chat, knowledge, storage, tasks, cloud-account, settings, learning-review, system-health, theme, and section-navigation modules. The dashboard inline script no longer owns these workflows; learning-candidate UI remains in the shell on this branch and is being extracted separately in PR #797. Exact-head CI and target-host/human acceptance are pending.
+
