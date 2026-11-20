@@ -300,7 +300,12 @@ def test_browser_can_cancel_a_persisted_scheduled_task():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
+        browser_errors = []
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
         _goto_section(page, base_url, "task-manager-section")
+        assert page.evaluate("typeof refreshTasks") == "function"
+        assert page.evaluate("typeof api") == "function"
+        assert page.evaluate("typeof el") == "function"
 
         scheduled_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
         response = page.request.post(
@@ -318,11 +323,32 @@ def test_browser_can_cancel_a_persisted_scheduled_task():
         task_id = created["id"]
         assert created["status"] == "queued"
 
-        page.locator("#refresh-tasks").click()
+        api_snapshot = page.request.get(base_url.rstrip("/") + "/api/tasks?limit=50").json()
+        assert any(int(item["id"]) == int(task_id) for item in api_snapshot.get("tasks", [])), (
+            "Task API omitted the just-created task: " + json.dumps(api_snapshot, ensure_ascii=False)
+        )
+        with page.expect_response(
+            lambda item: item.request.method == "GET" and item.url.endswith("/api/tasks?limit=50")
+        ) as tasks_response:
+            page.locator("#refresh-tasks").click()
+        rendered_api = tasks_response.value.json()
+        assert any(int(item["id"]) == int(task_id) for item in rendered_api.get("tasks", [])), (
+            "Refresh response omitted the just-created task: " + json.dumps(rendered_api, ensure_ascii=False)
+        )
         card = page.locator("#tasks-container article").filter(
             has_text=f"#{task_id} — e2e.scheduled-cancellation"
         )
-        card.wait_for(state="visible", timeout=10000)
+        try:
+            card.wait_for(state="visible", timeout=10000)
+        except Exception as error:
+            raise AssertionError(
+                "Task card did not render; tasks-output="
+                + page.locator("#tasks-output").inner_text()
+                + "; container="
+                + page.locator("#tasks-container").inner_text()
+                + "; page-errors="
+                + "; ".join(browser_errors)
+            ) from error
         card.get_by_role("button", name="لغو").click()
         page.wait_for_function(
             """async (taskId) => {
