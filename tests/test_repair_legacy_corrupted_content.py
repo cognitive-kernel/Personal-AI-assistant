@@ -12,6 +12,10 @@ def test_repair_finds_corrupted_content_even_when_metadata_is_complete(tmp_path,
     original = "The exact lesson text retained by the durable learning job."
     job = learning.create_job("Legacy corrupted candidate")
     with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE learning_jobs SET lesson=? WHERE id=?",
+            (original, job["id"]),
+        )
         candidate_id = int(connection.execute(
             """INSERT INTO temporary_knowledge_candidates(
                    job_id, topic, content, source_kind, source_urls_json, content_sha256,
