@@ -2,7 +2,7 @@
 
 ## Entry point and failure isolation
 
-`app/ai_learning/static/index.html` loads only `app.js` as a native ES module. The entry point dynamically imports the core and each feature module with `Promise.allSettled`; feature modules do not statically import one another. A failed download, syntax error, version mismatch or factory failure is recorded for that feature and does not reject the other imports.
+`app/ai_learning/static/index.html` loads only `app.js` as a native ES module. The entry point dynamically imports the core and each feature module with `Promise.allSettled`; each import has a five-second timeout, so a stalled asset cannot hold the page indefinitely. Feature modules do not statically import one another. A failed download, syntax error, version mismatch or factory failure is recorded for that feature and does not reject the other imports.
 
 The core module exports `createCore()` under contract version 1. If `core.js` itself cannot load or create the contract, the small fallback implementation in `app.js` provides the same API/DOM helper contract. This prevents the shared helper file from becoming a single point of failure.
 
