@@ -548,3 +548,37 @@ def test_legacy_scrubbed_rejection_remains_readable_without_fabricating_content(
     assert readiness["ready_for_promotion"] is False
     assert readiness["checks"]["content_retained"] is False
     assert readiness["checks"]["legacy_content_scrubbed"] is True
+
+def test_terminal_rejection_stops_before_source_fetch_or_model_calls(lifecycle_store, monkeypatch):
+    job = learning.create_job("Terminal rejection guard")
+    candidate_id, digest = _candidate(job["id"])
+    with db.learning_connection() as connection:
+        connection.execute(
+            """UPDATE temporary_knowledge_candidates
+               SET status='failed',
+                   failure_reason='rejected_after_review: terminal evidence conflict; promotion blocked.'
+               WHERE id=?""",
+            (candidate_id,),
+        )
+
+    def unexpected_external_call(*_args, **_kwargs):
+        raise AssertionError("terminal candidate must not trigger source or model calls")
+
+    monkeypatch.setattr("app.web_sources.fetch_public_document", unexpected_external_call)
+    monkeypatch.setattr("app.ollama.list_models", unexpected_external_call)
+
+    result = knowledge_lifecycle.validate_candidate_with_models(candidate_id)
+    assert result["status"] == "rejected_after_review"
+    assert result["ready_for_promotion"] is False
+
+    with pytest.raises(ValueError, match="Candidate was rejected after review"):
+        knowledge_lifecycle.record_candidate_review(
+            candidate_id,
+            candidate_sha256=digest,
+            review_kind="source",
+            verdict="contradicts",
+            reviewer_id="source-reviewer",
+            note="Terminal candidates cannot accept new evidence or external fetches.",
+            source_url="https://docs.example.test/topic",
+            source_sha256="1" * 64,
+        )
