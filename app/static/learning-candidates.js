@@ -133,5 +133,6 @@ async function refreshLearningCandidates() {
   }
  }catch(error){container.textContent="بارگذاری نامزدهای موقت ناموفق بود: "+error.message;}
 }
-el("refresh-learning-candidates").addEventListener("click",refreshLearningCandidates);
+const refreshButton = el("refresh-learning-candidates");
+ if (refreshButton) refreshButton.addEventListener("click", refreshLearningCandidates);
 })();
