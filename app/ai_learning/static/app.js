@@ -7,6 +7,7 @@ const moduleImports=await Promise.allSettled([
  import("./controls.js?v="+MODULE_VERSION),
  import("./search.js?v="+MODULE_VERSION),
 ]);
+const moduleFailures=[];
 
 function createFallbackCore(){
  const API="/api/ai-learning";
@@ -21,10 +22,10 @@ function createFallbackCore(){
 }
 
 function loadFeature(result,label,contractName,factoryName,core,dependencies={}){
- if(result.status!=="fulfilled"){core.say("ماژول "+label+" بارگذاری نشد؛ سایر بخش‌ها مستقل ادامه می‌دهند.",true);return null}
+ if(result.status!=="fulfilled"){moduleFailures.push(label+" (بارگذاری ناموفق)");return null}
  const module=result.value;
- if(module[contractName]!==1||typeof module[factoryName]!=="function"){core.say("قرارداد ماژول "+label+" معتبر نیست.",true);return null}
- try{return module[factoryName](core,dependencies)}catch(error){core.say("راه‌اندازی ماژول "+label+" ناموفق بود: "+error.message,true);return null}
+ if(module[contractName]!==1||typeof module[factoryName]!=="function"){moduleFailures.push(label+" (قرارداد ناسازگار)");return null}
+ try{return module[factoryName](core,dependencies)}catch(error){moduleFailures.push(label+" (راه‌اندازی ناموفق: "+error.message+")");return null}
 }
 
 const coreResult=moduleImports[0];
@@ -35,7 +36,7 @@ try{
  if(!core||core.CORE_CONTRACT_VERSION!==1)throw new Error("core contract mismatch");
 }catch(error){
  core=createFallbackCore();
- core.say("هستهٔ مشترک از نسخهٔ پشتیبان داخلی استفاده می‌کند: "+error.message,true);
+ moduleFailures.push("هستهٔ مشترک (نسخهٔ پشتیبان داخلی: "+error.message+")");
 }
 
 const courses=loadFeature(moduleImports[1],"دوره‌ها","COURSES_CONTRACT_VERSION","createCoursesModule",core);
@@ -61,7 +62,7 @@ const search=loadFeature(moduleImports[5],"جست‌وجو","SEARCH_CONTRACT_VER
 
 function disableControls(ids,message){for(const id of ids){const control=core.$(id);if(control){control.disabled=true;control.title=message}}}
 function disableForms(ids,message){for(const id of ids){const form=core.$(id);form?.querySelectorAll("input,select,button,textarea").forEach(control=>{control.disabled=true;control.title=message})}}
-if(!courses){disableForms(["course-form","outline-form","topic-form"],"ماژول مدیریت دوره‌ها در دسترس نیست.");disableControls(["reload-course","delete-course","select-all-topics","approve-selected","approve-all-topics","learn-selected-topics","reject-selected","save-order"],"ماژول مدیریت دوره‌ها در دسترس نیست.")}
+if(!courses){disableForms(["course-form","outline-form","topic-form"],"ماژول مدیریت دوره‌ها در دسترس نیست.");disableControls(["course-select","reload-course","delete-course","select-all-topics","approve-selected","approve-all-topics","learn-selected-topics","reject-selected","save-order","reset-learning-data"],"ماژول مدیریت دوره‌ها در دسترس نیست.")}
 if(!lessons)disableControls(["approve-all-lessons","recover-deleted-lessons","publish-all-lessons","show-all-lessons","select-all-course-lessons","approve-selected-course-lessons"],"ماژول درس‌ها در دسترس نیست.");
 if(!runs)disableControls(["stop-active-runs","delete-selected-runs"],"ماژول سوابق اجرا در دسترس نیست.");
 if(!controls)disableControls(["pause-learning","resume-learning","reset-learning-data"],"ماژول کنترل سراسری در دسترس نیست.");
@@ -73,7 +74,7 @@ if(courses){
 }else core.say("ماژول مدیریت دوره‌ها در دسترس نیست؛ سایر بخش‌های بارگذاری‌شده فعال می‌مانند.",true);
 
 if(controls)controls.refreshLearningControl().catch(error=>core.say(error.message,true));
-core.say("راه‌انداز رابط یادگیری فعال شد؛ وضعیت هر ماژول مستقل مدیریت می‌شود.");
+if(moduleFailures.length)core.say("برخی ماژول‌ها در دسترس نیستند: "+moduleFailures.join("، ")+"؛ بخش‌های مستقل فعال باقی مانده‌اند.",true);else core.say("راه‌انداز رابط یادگیری فعال شد؛ وضعیت هر ماژول مستقل مدیریت می‌شود.");
 window.setInterval(()=>{
  controls?.refreshLearningControl().catch(()=>{});
  courses?.refreshCourseProgress().catch(()=>{});
