@@ -86,7 +86,7 @@ def test_learning_dashboard_exposes_capability_map_control():
 
     root = Path(__file__).parents[1] / "app" / "static"
     page = (root / "index.html").read_text(encoding="utf-8")
-    script = (root / "learning.js").read_text(encoding="utf-8")
+    script = (root / "learning-overview.js").read_text(encoding="utf-8")
     assert 'id="refresh-capability-map"' in page
     assert 'id="capability-map-output"' in page
     assert '"/api/learning/capabilities?limit=200"' in script
