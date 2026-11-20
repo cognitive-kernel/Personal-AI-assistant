@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import sys
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -21,8 +22,39 @@ def repair_legacy_rejected_candidates(*, apply: bool = False) -> dict[str, Any]:
     reconstructs source text, assessments, test plans, or knowledge versions
     that the old rejection path already erased.
     """
-    db.init_databases()
-    with db.learning_connection() as connection:
+    database_path = Path(db.defaults.learning_db_path).expanduser()
+    if not database_path.is_file():
+        raise FileNotFoundError(
+            f"Learning database does not exist; refusing to create or initialize it: {database_path}"
+        )
+    # Open an existing database in read/write mode. Unlike sqlite3's default,
+    # mode=rw cannot silently create a new empty database at a misconfigured path.
+    connection = sqlite3.connect(
+        database_path.as_uri() + "?mode=rw",
+        uri=True,
+        timeout=10,
+    )
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA busy_timeout = 10000")
+    try:
+        required_tables = {
+            "temporary_knowledge_candidates",
+            "learning_jobs",
+            "learning_evidence",
+        }
+        present_tables = {
+            row["name"]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        missing_tables = required_tables - present_tables
+        if missing_tables:
+            raise RuntimeError(
+                "Learning database schema is incomplete; refusing repair: "
+                + ", ".join(sorted(missing_tables))
+            )
         if apply:
             connection.execute("BEGIN IMMEDIATE")
         rows = connection.execute(
@@ -154,9 +186,12 @@ def repair_legacy_rejected_candidates(*, apply: bool = False) -> dict[str, Any]:
                 report["result"] = "recovery_available"
             reports.append(report)
 
+    finally:
+        connection.close()
+
     return {
         "mode": "apply" if apply else "dry_run",
-        "database_path": str(db.defaults.learning_db_path),
+        "database_path": str(database_path),
         "scanned": len(reports),
         "updated": updated_count,
         "candidates": reports,
