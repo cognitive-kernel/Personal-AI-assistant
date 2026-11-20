@@ -59,7 +59,12 @@ const controls=loadFeature(moduleImports[4],"کنترل سراسری","CONTROLS_
 });
 const search=loadFeature(moduleImports[5],"جست‌وجو","SEARCH_CONTRACT_VERSION","createSearchModule",core);
 
-if(!controls){for(const id of ["pause-learning","resume-learning","reset-learning-data"]){const button=core.$(id);if(button){button.disabled=true;button.title="ماژول کنترل سراسری در دسترس نیست."}}}
+function disableControls(ids,message){for(const id of ids){const control=core.$(id);if(control){control.disabled=true;control.title=message}}}
+function disableForms(ids,message){for(const id of ids){const form=core.$(id);form?.querySelectorAll("input,select,button,textarea").forEach(control=>{control.disabled=true;control.title=message})}}
+if(!courses){disableForms(["course-form","outline-form","topic-form"],"ماژول مدیریت دوره‌ها در دسترس نیست.");disableControls(["reload-course","delete-course","select-all-topics","approve-selected","approve-all-topics","learn-selected-topics","reject-selected","save-order"],"ماژول مدیریت دوره‌ها در دسترس نیست.")}
+if(!lessons)disableControls(["approve-all-lessons","recover-deleted-lessons","publish-all-lessons","show-all-lessons","select-all-course-lessons","approve-selected-course-lessons"],"ماژول درس‌ها در دسترس نیست.");
+if(!runs)disableControls(["stop-active-runs","delete-selected-runs"],"ماژول سوابق اجرا در دسترس نیست.");
+if(!controls)disableControls(["pause-learning","resume-learning","reset-learning-data"],"ماژول کنترل سراسری در دسترس نیست.");
 if(!search){const button=core.$("search-form")?.querySelector('button[type="submit"]');if(button)button.disabled=true}
 if(!runs&&core.$("runs"))core.$("runs").append(core.el("p","ماژول سوابق اجرا در دسترس نیست."));
 
