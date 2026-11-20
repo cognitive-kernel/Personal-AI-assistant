@@ -273,3 +273,22 @@ def test_system_health_and_degraded_storage_banner_are_module_owned():
     assert "refresh();" in module
     assert module.rstrip().endswith("})();")
 
+def test_dashboard_decomposition_inventory_matches_the_ui_audit():
+    audit = (ROOT / "docs" / "UI_AUDIT_2026-10-30.md").read_text(encoding="utf-8")
+    page = (STATIC / "index.html").read_text(encoding="utf-8")
+
+    for module_name in (
+        "chat.js",
+        "knowledge.js",
+        "storage.js",
+        "tasks.js",
+        "cloud-accounts.js",
+        "settings.js",
+        "learning-review.js",
+        "system-health.js",
+        "theme.js",
+        "section-navigation.js",
+    ):
+        assert module_name in audit
+        assert f'/static/{module_name}' in page
+
