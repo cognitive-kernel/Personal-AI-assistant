@@ -30,9 +30,6 @@
   }
  }
  
- el("refresh").addEventListener("click", () => { refresh(); const settings=window.dashboardSettings; if(settings && settings.version===1) settings.refresh(); });
- refresh();
- 
- el("refresh").addEventListener("click",refresh);
+ el("refresh").addEventListener("click", refresh);
  refresh();
 })();

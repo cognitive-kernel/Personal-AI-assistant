@@ -5841,3 +5841,41 @@ def test_learning_review_and_recommendation_panels_discard_late_responses():
         assert "موضوع قدیمی" not in recommendation_output.inner_text()
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_system_health_refresh_performs_one_health_request_and_does_not_reload_settings():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.add_init_script(
+            """() => {
+                const originalFetch = window.fetch.bind(window);
+                window.__dashboardRequestCounts = {health: 0, settings: 0};
+                window.fetch = (input, options = {}) => {
+                    const url = typeof input === "string" ? input : input.url;
+                    if (url.endsWith("/api/health")) window.__dashboardRequestCounts.health += 1;
+                    if (url.endsWith("/api/settings")) window.__dashboardRequestCounts.settings += 1;
+                    return originalFetch(input, options);
+                };
+            }"""
+        )
+        response = page.goto(base_url, wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        page.wait_for_function(
+            "window.__dashboardRequestCounts && window.__dashboardRequestCounts.health >= 1"
+        )
+        initial_health_calls = page.evaluate("window.__dashboardRequestCounts.health")
+        initial_settings_calls = page.evaluate("window.__dashboardRequestCounts.settings")
+        assert initial_health_calls == 1, "Health module must perform exactly one startup request."
+
+        page.locator("#refresh").click()
+        page.wait_for_function(
+            "(count) => window.__dashboardRequestCounts.health >= count + 1",
+            arg=initial_health_calls,
+        )
+        assert page.evaluate("window.__dashboardRequestCounts.health") == initial_health_calls + 1
+        assert page.evaluate("window.__dashboardRequestCounts.settings") == initial_settings_calls
+        browser.close()

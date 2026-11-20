@@ -353,3 +353,12 @@ def test_dashboard_module_architecture_decision_records_contract_and_merge_gates
     assert "Do not merge" in adr
     assert "No live database was accessed or modified" in adr
 
+
+
+def test_system_health_refresh_is_single_and_does_not_depend_on_settings():
+    module = (STATIC / "system-health.js").read_text(encoding="utf-8")
+
+    assert 'src="/static/system-health.js"' in (STATIC / "index.html").read_text(encoding="utf-8")
+    assert module.count('el("refresh").addEventListener("click"') == 1
+    assert module.count(" refresh();") == 1
+    assert "dashboardSettings" not in module
