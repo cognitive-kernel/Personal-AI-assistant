@@ -1,4 +1,5 @@
 import hashlib
+import json
 
 from app import db, learning
 from scripts.repair_legacy_rejected_candidates import repair_legacy_rejected_candidates
@@ -76,7 +77,7 @@ def test_hash_mismatch_preserves_content_but_recovers_independent_metadata(tmp_p
     with db.learning_connection() as connection:
         connection.execute(
             "UPDATE learning_jobs SET lesson=?, quality_json=? WHERE id=?",
-            ("Different durable lesson must not be substituted.", __import__("json").dumps(quality), job["id"]),
+            ("Different durable lesson must not be substituted.", json.dumps(quality), job["id"]),
         )
         connection.execute(
             """INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
@@ -109,5 +110,5 @@ def test_hash_mismatch_preserves_content_but_recovers_independent_metadata(tmp_p
             (candidate_id,),
         ).fetchone()
     assert row["content"] == corrupted
-    assert __import__("json").loads(row["source_urls_json"]) == ["https://verified.example/evidence"]
-    assert __import__("json").loads(row["quality_report_json"]) == quality
+    assert json.loads(row["source_urls_json"]) == ["https://verified.example/evidence"]
+    assert json.loads(row["quality_report_json"]) == quality
