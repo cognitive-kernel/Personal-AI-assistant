@@ -24,7 +24,7 @@ This follow-up extends the non-destructive learning-candidate recovery work on `
 ## Validation
 
 - Regression: `tests/test_repair_legacy_corrupted_content.py`.
-- Code/test commits: `ce4168c24e835c6aaf7733d72cca7413867c736b` and `26e16eaecbcf267e6c30404f1fda28da3a5d5a6a`.
+- Code/test commits: `ce4168c24e835c6aaf7733d72cca7413867c736b`, `26e16eaecbcf267e6c30404f1fda28da3a5d5a6a`, `dbef244c22b6e16a31072acfd7a2f0c8f6c78a83`, `7ea47a72d1fc08b7c2707f1db081a34401f0803d`, and `58be58dabca2ed9932c1cac5f61af94f24e515e0`.
 - Initial checks on the earlier code commit showed tests, Windows storage regressions, and Browser E2E still running; dependency audit passed; CodeQL was cancelled. Those results do not validate the later code commit.
 - Final code head requiring exact-head CI: `26e16eaecbcf267e6c30404f1fda28da3a5d5a6a`.
 - No local test execution, target-host database repair, or live user-data mutation is claimed.
@@ -33,7 +33,7 @@ This follow-up extends the non-destructive learning-candidate recovery work on `
 
 1. Dry-run leaves candidate rows unchanged.
 2. Exact-hash matching durable lesson may replace corrupted candidate content, even if other metadata is complete.
-3. A hash mismatch never overwrites candidate content or causes unrelated metadata changes.
+3. A hash mismatch never overwrites candidate content; independently verifiable source/quality metadata may be restored without changing the content digest.
 4. Apply is idempotent and does not alter candidate terminal status or promotion state.
 5. Any exception rolls back the whole apply transaction.
 6. Rejected candidates remain ineligible for promotion.
