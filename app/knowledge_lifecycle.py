@@ -44,7 +44,7 @@ def _digest(value: Any, field: str) -> str:
     return value
 
 
-def _candidate_row(connection, candidate_id: int):
+def _candidate_row(connection, candidate_id: int, *, allow_hash_mismatch: bool = False):
     row = connection.execute(
         """SELECT id, job_id, topic, content, source_kind, source_urls_json,
                   content_sha256, quality_report_json, status, test_plan_json,
@@ -57,7 +57,7 @@ def _candidate_row(connection, candidate_id: int):
     if row["status"] == "failed" and str(row["failure_reason"] or "").startswith("rejected_after_review:") and not str(row["content"]):
         return row
     actual = hashlib.sha256(str(row["content"]).encode("utf-8")).hexdigest()
-    if actual != row["content_sha256"]:
+    if actual != row["content_sha256"] and not allow_hash_mismatch:
         raise ValueError("Candidate content hash mismatch; review and promotion are blocked.")
     return row
 
@@ -164,7 +164,48 @@ def candidate_readiness(candidate_id: int) -> dict[str, Any]:
     """Compute conservative readiness from distinct, current-hash evidence."""
     init_databases()
     with learning_connection() as connection:
-        candidate = _candidate_row(connection, candidate_id)
+        candidate = _candidate_row(connection, candidate_id, allow_hash_mismatch=True)
+        candidate_content = str(candidate["content"] or "")
+        actual_content_hash = hashlib.sha256(candidate_content.encode("utf-8")).hexdigest()
+        if candidate_content and actual_content_hash != candidate["content_sha256"]:
+            mismatch_reviews = [dict(row) for row in connection.execute(
+                """SELECT review_kind, reviewer_id, verdict, note, source_host
+                   FROM knowledge_candidate_reviews
+                   WHERE candidate_id=? AND candidate_sha256=?
+                   ORDER BY id""",
+                (candidate_id, candidate["content_sha256"]),
+            ).fetchall()]
+            mismatch_total = int(connection.execute(
+                "SELECT COUNT(*) FROM knowledge_candidate_reviews WHERE candidate_id=?",
+                (candidate_id,),
+            ).fetchone()[0])
+            mismatch_contradictions = [
+                {
+                    "kind": item["review_kind"],
+                    "reviewer_id": item["reviewer_id"],
+                    "source_host": item["source_host"],
+                    "note": item["note"][:300],
+                }
+                for item in mismatch_reviews if item["verdict"] == "contradicts"
+            ]
+            return {
+                "candidate_id": candidate_id,
+                "candidate_sha256": candidate["content_sha256"],
+                "status": "integrity_mismatch",
+                "ready_for_promotion": False,
+                "checks": {
+                    "content_hash_valid": False,
+                    "content_retained": True,
+                    "promotion_blocked": True,
+                },
+                "evidence_counts": {
+                    "review_records": mismatch_total,
+                    "current_hash_reviews": len(mismatch_reviews),
+                    "contradictions": len(mismatch_contradictions),
+                },
+                "contradictions": mismatch_contradictions,
+                "note": "Candidate content is retained for read-only audit, but its current SHA-256 does not match the recorded digest. Review, testing, and promotion remain blocked; restore only from an exact-hash source or create a new versioned candidate.",
+            }
         if candidate["status"] == "failed" and str(candidate["failure_reason"] or "").startswith("rejected_after_review:"):
             reviews = [dict(row) for row in connection.execute(
                 """SELECT review_kind, reviewer_id, verdict, note, source_host
