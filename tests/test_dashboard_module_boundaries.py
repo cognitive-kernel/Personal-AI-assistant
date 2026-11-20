@@ -259,3 +259,17 @@ def test_theme_and_scroll_navigation_are_separate_shell_modules():
     assert "requestAnimationFrame" in section_navigation
     assert "innerHTML" not in theme + section_navigation
 
+def test_system_health_and_degraded_storage_banner_are_module_owned():
+    page = (STATIC / "index.html").read_text(encoding="utf-8")
+    module = (STATIC / "system-health.js").read_text(encoding="utf-8")
+
+    assert 'src="/static/system-health.js"' in page
+    assert "async function refresh()" not in page
+    assert 'el("refresh").addEventListener' not in page
+    assert "async function refresh()" in module
+    assert "storage-degraded-banner" in module
+    assert "storage-degraded-message" in module
+    assert "core.version!==1" in module
+    assert "refresh();" in module
+    assert module.rstrip().endswith("})();")
+
