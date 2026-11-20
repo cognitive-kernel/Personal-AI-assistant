@@ -343,3 +343,13 @@ def test_remaining_large_ui_modules_are_not_misreported_as_complete():
         assert name in engineering_log
     assert "prevents declaring the no-god-module objective complete" in status
 
+def test_dashboard_module_architecture_decision_records_contract_and_merge_gates():
+    adr = (ROOT / "docs" / "adr" / "0001-dashboard-feature-module-contracts.md").read_text(encoding="utf-8")
+
+    assert "Status:** Proposed" in adr
+    assert "dashboardCore v1" in adr
+    assert "learningCore v1" in adr
+    assert "Stale read responses" in adr
+    assert "Do not merge" in adr
+    assert "No live database was accessed or modified" in adr
+
