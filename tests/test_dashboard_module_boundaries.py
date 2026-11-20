@@ -334,3 +334,12 @@ def test_learning_architecture_documentation_lists_the_split_modules():
         assert name in docs
         assert name in audit
 
+def test_remaining_large_ui_modules_are_not_misreported_as_complete():
+    status = (ROOT / "docs" / "PROJECT_STATUS.md").read_text(encoding="utf-8")
+    engineering_log = (ROOT / "docs" / "ENGINEERING_LOG.md").read_text(encoding="utf-8")
+
+    for name in ("autonomous-engineering.js", "ai-learning.js", "learning.js"):
+        assert name in status
+        assert name in engineering_log
+    assert "prevents declaring the no-god-module objective complete" in status
+
