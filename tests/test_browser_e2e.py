@@ -369,6 +369,7 @@ def test_browser_can_cancel_a_persisted_scheduled_task():
             arg=task_id,
             timeout=10000,
         )
+        assert browser_errors == [], "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
 
 
