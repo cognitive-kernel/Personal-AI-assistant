@@ -2124,4 +2124,8 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Added explicit module guards for the immutable `dashboardCore v1` contract and required DOM controls. Settings exposes only a versioned `window.dashboardSettings.refresh()` interface to the page shell.
 - The inline dashboard script now contains only the learning-candidate workflow (scheduled for extraction by PR #797) and shared-core binding; the rest of the UI modules are isolated.
 - Architecture tests cover script ordering, module ownership, startup refresh, safe rendering, and consistency between implementation and engineering docs. Exact-head CI and browser tests are pending; no merge or target-host acceptance is claimed.
+## 2026-11-20 — Learning UI responsibility split (PR #795)
 
+- Replaced the 994-line learning UI module with four smaller files: shared `learning-core.js` (common API/error and rendering helpers), `learning-lessons.js` (lesson generation, stop/regenerate, assessment/review UI), `learning-overview.js` (due reviews, recommendations, capability map), and `learning.js` (path/topic rendering and curriculum proposals).
+- Cross-module calls use explicit versioned `learningCore`, `learningLessons`, and `learningOverview` contracts. Script order is tested; path rendering cannot silently run before its lesson and overview dependencies.
+- Updated feature tests to assert behavior in the owning module rather than relying on the old monolithic file location. Exact-head CI and browser E2E remain pending.
