@@ -303,6 +303,7 @@ def test_browser_can_cancel_a_persisted_scheduled_task():
         browser_errors = []
         page.on("pageerror", lambda error: browser_errors.append(str(error)))
         _goto_section(page, base_url, "task-manager-section")
+        assert page.evaluate("window.dashboardCore?.version") == 1
         assert page.evaluate("typeof refreshTasks") == "function"
         assert page.evaluate("typeof api") == "function"
         assert page.evaluate("typeof el") == "function"
