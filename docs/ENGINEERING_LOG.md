@@ -2112,4 +2112,5 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Extracted durable task rendering, event history, controls, filtering, pagination, and polling into `app/static/tasks.js`; task cursor, request sequence, and poll scheduling now belong to that feature module.
 - Both modules validate the versioned `dashboardCore v1` dependency and required DOM controls. Architecture tests enforce script registration, feature ownership, and the absence of moved state/functions from `index.html`.
 - The extraction changes no API/data contracts or persisted records. Exact-head CI and browser validation are pending; no target-host acceptance or merge is claimed.
+- Added a real-browser concurrency regression: while backup creation is deliberately held in flight, a simultaneous prune click must not issue a second mutation request. This verifies the UI gate at the interaction boundary rather than only checking its source text.
 
