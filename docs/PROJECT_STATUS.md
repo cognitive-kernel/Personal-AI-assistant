@@ -1,3 +1,15 @@
+## 2026-11-20 — P0 learning evidence and UI integrity follow-up
+
+- Canonical work remains in draft PR [#797](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/797), based directly on current main `bc1d273bdece690b5067a70b2deea8aa77ed7e28`. The duplicate PR #796 was closed as superseded; its source branch was retained and not deleted.
+- Legacy recovery now scans all eligible rejected candidates, restores corrupted non-empty content only from an exact SHA-256-matching preserved job lesson, and leaves mismatched content and adjacent metadata untouched. Dry-run remains default; apply uses a bounded transaction with explicit rollback and no database creation/migration.
+- The learning-candidate UI runtime failure caused by an undefined `failure` node was fixed. Candidate interactions were extracted from the dashboard shell into `app/static/learning-candidates.js`.
+- Hash-invalid candidate content is now available for read-only audit with `integrity_valid=false`; readiness reports `integrity_mismatch`. Claim extraction, review, test-plan writes, and promotion remain blocked.
+- New regressions: `tests/test_repair_legacy_corrupted_content.py` and `tests/test_learning_candidate_integrity_readonly.py`; existing Browser E2E coverage verifies the terminal contradictory-candidate UI and hidden mutation controls.
+- Latest code head requiring exact-head validation: `68fb3df53e0cdc1a765c9abaf57cac95913b0831`. GitHub tests, Windows storage, Browser E2E, CodeQL, and dependency audit were running at the time of this status update. No pass is claimed for these later changes yet.
+- No live user database was repaired, no user data was modified, and no target-host or human UI acceptance is claimed.
+
+---
+
 # وضعیت یکپارچهٔ پروژه
 
 > **P0 داده‌های یادگیری — 2026-11-20:** نقص حذف شواهد نامزدهای متناقض که در Issue [#769](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/769) شناسایی شده بود، روی main بازتولید و در Draft PR [#797](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/797) از نو اصلاح شده است. تغییرات شامل حفظ غیرمخرب داده، مسدودسازی terminal candidate، نمایش شواهد در UI و ابزار بازیابی محدود و fail-closed برای رکوردهای قدیمی است. CI exact-head این PR باید کامل شود؛ هیچ تست محلی یا پذیرش میزبان هدف هنوز ادعا نمی‌شود. PR ادغام‌نشده است.
