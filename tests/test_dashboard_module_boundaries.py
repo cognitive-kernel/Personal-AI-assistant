@@ -474,3 +474,14 @@ def test_autonomous_engineering_console_uses_independent_versioned_feature_modul
     assert "status.refresh(true)" in controls and "autonomousEngineeringStatus" in controls
     assert "autonomous-engineering:status-mutated" in status + runs
     assert "autonomous-engineering:cleanup-completed" in runs + progress
+
+
+
+def test_autonomous_engineering_status_can_run_when_controls_module_is_unavailable():
+    orchestrator = (STATIC / "autonomous-engineering.js").read_text(encoding="utf-8")
+    core = (STATIC / "autonomous-engineering-core.js").read_text(encoding="utf-8")
+
+    assert 'if (status && status.version === 1)' in orchestrator
+    assert 'if (!controls || controls.version !== 1) missing.push("کنترل");' in orchestrator
+    assert 'if (!message) return;' in core
+    assert 'if (!core || core.version !== 1)' in orchestrator

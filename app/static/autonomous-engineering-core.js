@@ -2,8 +2,8 @@
   "use strict";
   const $ = (id) => document.getElementById(id);
   const message = $("agent-message");
-  if (!message) return;
   function setMessage(text, kind) {
+    if (!message) return;
     message.textContent = text;
     message.dataset.kind = kind || "";
   }

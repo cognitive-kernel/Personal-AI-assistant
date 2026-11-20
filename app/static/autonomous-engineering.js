@@ -11,9 +11,10 @@
     return;
   }
   const missing = [];
-  if (status && status.version === 1 && controls && controls.version === 1) {
+  if (status && status.version === 1) {
     void status.refresh(); window.setInterval(() => void status.refresh(), 30000);
-  } else missing.push("وضعیت/کنترل");
+  } else missing.push("وضعیت");
+  if (!controls || controls.version !== 1) missing.push("کنترل");
   if (runs && runs.version === 1) {
     void runs.refresh(); window.setInterval(() => void runs.refresh(), 30000);
   } else missing.push("تاریخچه اجرا");
