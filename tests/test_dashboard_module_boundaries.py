@@ -295,3 +295,34 @@ def test_dashboard_decomposition_inventory_matches_the_ui_audit():
         assert module_name in audit
         assert f'/static/{module_name}' in page
 
+def test_learning_path_workflows_use_small_versioned_core_lesson_and_overview_modules():
+    page = (STATIC / "index.html").read_text(encoding="utf-8")
+    core = (STATIC / "learning-core.js").read_text(encoding="utf-8")
+    lessons = (STATIC / "learning-lessons.js").read_text(encoding="utf-8")
+    overview = (STATIC / "learning-overview.js").read_text(encoding="utf-8")
+    paths = (STATIC / "learning.js").read_text(encoding="utf-8")
+
+    ordered = [
+        "learning-core.js",
+        "learning-lessons.js",
+        "learning-overview.js",
+        "learning.js",
+        "learning-review.js",
+    ]
+    positions = [page.index(f'/static/{name}') for name in ordered]
+    assert positions == sorted(positions)
+    assert "window.learningCore=Object.freeze(" in core
+    assert "version:1" in core
+    assert "window.learningLessons=Object.freeze({version:1,startLesson,stopLesson})" in lessons
+    assert "window.learningOverview=Object.freeze(" in overview
+    assert "window.learningCore" in paths
+    assert "window.learningLessons" in paths
+    assert "window.learningOverview" in paths
+    assert "async function refreshDueLearningReviews()" not in paths
+    assert "async function refreshLearningRecommendations()" not in paths
+    assert "async function refreshLearningCapabilities()" not in paths
+    assert "async function regenerateLesson(" not in paths
+    assert "async function loadLearningPaths()" in paths
+    assert max(len(core.splitlines()), len(lessons.splitlines()), len(overview.splitlines()), len(paths.splitlines())) < 600
+    assert "innerHTML" not in core + lessons + overview + paths
+
