@@ -52,7 +52,7 @@ def test_learning_data_reset_requires_exact_server_side_confirmation(monkeypatch
 def test_learning_data_reset_ui_sends_the_server_confirmation():
     from pathlib import Path
 
-    source = Path("app/ai_learning/static/app.js").read_text(encoding="utf-8")
+    source = Path("app/ai_learning/static/controls.js").read_text(encoding="utf-8")
     assert 'if(phrase!=="RESET AI LEARNING DATA")' in source
     assert 'body:JSON.stringify({confirmation:phrase})' in source
     assert 'api("/reset-learning-data",{method:"POST",body:JSON.stringify({confirmation:phrase})})' in source
