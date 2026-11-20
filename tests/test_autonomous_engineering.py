@@ -935,6 +935,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     root = Path(__file__).resolve().parents[1]
     page = (root / "app" / "static" / "autonomous-engineering.html").read_text(encoding="utf-8")
     script = (root / "app" / "static" / "autonomous-engineering-progress.js").read_text(encoding="utf-8")
+    controls = (root / "app" / "static" / "autonomous-engineering-controls.js").read_text(encoding="utf-8")
     workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
     operations = (root / "docs" / "operations" / "CODEX_AUTONOMOUS_ENGINEERING.md").read_text(encoding="utf-8")
     master_prompt = (root / "docs" / "MASTER_ENGINEERING_PROMPT.md").read_text(encoding="utf-8")
@@ -950,7 +951,10 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert 'id="progress-end"' in page
     assert 'id="progress-events"' in page
     assert "current.plan_percent" in script
-    assert "شروع صف پیوسته" in script
+    assert 'id="dispatch-agent"' in page
+    assert "اجرای یک چرخهٔ خودکار از صف مهندسی" in page
+    assert 'dispatchButton.addEventListener("click"' in controls
+    assert 'request("dispatch", {method: "POST"})' in controls
     assert "PR را برای بازبینی مالک باز می‌گذارد" in page
     assert "هرگز آن را خودکار ادغام نمی‌کند" in page
     assert "The controller never calls GitHub's PR merge API." in operations
