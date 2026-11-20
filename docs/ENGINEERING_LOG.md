@@ -2103,3 +2103,11 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Added regression tests proving the task and smoke profiles remain separate. Exact-head CI and a real Windows Runner task are required before claiming this addresses the underlying inference failure.
 
 - Follow-up regression found after PR #782 merge: the new heartbeat persisted Persian text correctly for the dashboard but also printed it directly to the Windows Actions console. On the Runner's active code page this raised `UnicodeEncodeError` during the Codex smoke and aborted the smoke process before any model/tool conclusion. Console heartbeat output is now ASCII-only while persisted dashboard activity remains Persian; added regression tests for both heartbeat states. This fix is included in the still-open PR #783 branch so the stream-profile change is not merged with the console regression.
+
+ 
+## 2026-11-20 — Windows state broker pipe server ACL
+
+- The live Windows service integration test failed after the broker was configured to run as NT AUTHORITY\LocalService (SID S-1-5-19). The worker repeatedly threw UnauthorizedAccessException while constructing NamedPipeServerStream; the PowerShell health client then timed out.
+- Root cause: the protected pipe DACL granted Authenticated Users only ReadWrite and granted FullControl only to LocalSystem and Administrators. It did not grant the service identity the CreateNewInstance right required to create a named-pipe server instance.
+- Added an explicit least-privilege ACE for LocalService with CreateNewInstance | ReadWrite. The deny rule for network logons and the client-facing Authenticated Users rule remain unchanged; LocalService is not granted FullControl.
+- Added a source-level ACL regression test. The existing Windows live integration test remains the acceptance test: it starts the real LocalService, verifies PowerShell and Python clients, and checks access from a separate non-admin local account. Exact-head CI and target-host validation remain required.
