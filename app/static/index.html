@@ -256,25 +256,6 @@
 <script>
 const { el, api, appendText } = window.dashboardCore;
 
-async function refresh() {
- try {
-  const health = await api("/api/health");
-  el("health").textContent = JSON.stringify(health, null, 2);
-  const degraded = health.status === "degraded" && health.reason === "untracked_storage_schema";
-  const banner = el("storage-degraded-banner");
-  if (banner) banner.hidden = !degraded;
-  if (degraded) {
-   el("storage-degraded-message").textContent = health.message || "ساختار پایگاه داده نیازمند بررسی است؛ عملیات دیتابیسی مسدود است و هیچ مهاجرت یا تعمیری انجام نشده است.";
-  }
- } catch(error) {
-  el("health").textContent = error.message;
-  const banner = el("storage-degraded-banner");
-  if (banner) banner.hidden = true;
- }
-}
-
-el("refresh").addEventListener("click", () => { refresh(); const settings=window.dashboardSettings; if(settings && settings.version===1) settings.refresh(); });
-refresh();
 
 async function refreshLearningCandidates() {
  const container=el("learning-candidates");
