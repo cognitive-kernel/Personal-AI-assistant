@@ -5862,8 +5862,9 @@ def test_system_health_refresh_performs_one_health_request_and_does_not_reload_s
                 };
             })();"""
         )
-        response = page.goto(base_url, wait_until="domcontentloaded")
+        response = _goto_section(page, base_url, "storage-health-section")
         assert response is not None and response.status == 200
+        assert page.locator("#refresh").is_visible()
         page.wait_for_function(
             "window.__dashboardRequestCounts && window.__dashboardRequestCounts.health >= 1"
         )
