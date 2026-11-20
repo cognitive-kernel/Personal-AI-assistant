@@ -222,3 +222,25 @@ def test_learning_assessment_and_factual_review_are_isolated_in_one_feature_modu
     assert module.rstrip().endswith("})();")
     assert "innerHTML" not in module
 
+def test_settings_and_model_diagnostics_are_owned_by_versioned_settings_module():
+    page = (STATIC / "index.html").read_text(encoding="utf-8")
+    module = (STATIC / "settings.js").read_text(encoding="utf-8")
+
+    assert 'src="/static/settings.js"' in page
+    for symbol in (
+        "async function refreshOllamaModels(",
+        "const modelContextProfiles",
+        "async function refreshModelContextHint(",
+        "async function refreshHardwareDiagnostics(",
+        'el("settings-form").addEventListener',
+    ):
+        assert symbol not in page
+        assert symbol in module
+    assert "async function refreshSettings()" in module
+    assert "settingsLoadSequence" in module
+    assert "window.dashboardSettings=Object.freeze({version:1,refresh:refreshSettings})" in module
+    assert "const settings=window.dashboardSettings" in page
+    assert "core.version!==1" in module
+    assert module.rstrip().endswith("})();")
+    assert "innerHTML" not in module
+
