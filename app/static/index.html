@@ -769,9 +769,7 @@ function renderTasks(tasks,{append=false}={}) {
    }
    card.append(diagnostics);
   }
-  const failure=document.createElement("p"); failure.className="muted";
-   failure.textContent=item.failure_reason||""; failure.hidden=!item.failure_reason;
-   const actions=document.createElement("div"); actions.className="cloud-actions";
+  const actions=document.createElement("div"); actions.className="cloud-actions";
   if(["queued","paused"].includes(task.status)) {
    const editControls=document.createElement("div"); editControls.className="task-edit-controls";
    const priorityLabel=document.createElement("label");
