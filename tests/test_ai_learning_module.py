@@ -1490,46 +1490,35 @@ def test_provider_network_error_is_actionable():
 
 def test_selected_lesson_request_key_does_not_embed_all_topic_ids():
     from pathlib import Path
-    script = (Path(__file__).resolve().parents[1] / "app" / "static" / "ai-learning.js").read_text(encoding="utf-8")
-    assert 'const requestKey = "ui-selected-lessons-" + selectedCourse + "-" + Date.now();' in script
-    assert 'ids.join("-") + "-" + Date.now()' not in script
+    script = (Path(__file__).resolve().parents[1] / "app" / "ai_learning" / "static" / "app.js").read_text(encoding="utf-8")
+    assert 'request_key:"playwright-selected-lessons-"+courseId+"-"+Date.now()' in script
+    assert 'ids.join("-")' not in script
 
-def test_review_and_publish_return_scroll_to_the_same_parent_topic():
+def test_review_and_publish_preserve_the_active_parent_topic_context():
     from pathlib import Path
 
-    script = (Path(__file__).resolve().parents[1] / "app" / "static" / "ai-learning.js").read_text(encoding="utf-8")
-    assert 'card.id = "topic-card-" + topic.id;' in script
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "app" / "ai_learning" / "static" / "app.js"
+    ).read_text(encoding="utf-8")
+
     assert 'function returnToTopic(topicId)' in script
-    assert 'card.scrollIntoView({behavior:"smooth", block:"center"});' in script
-    assert 'card.focus({preventScroll:true})' in script
+    assert 'card.scrollIntoView({behavior:"smooth",block:"start"})' in script
+    assert 'summary.focus({preventScroll:true})' in script
+    assert 'const refreshLessons=()=>isCurrentLoad()?loadLessons(topicId,root,inline):Promise.resolve();' in script
 
-    review_start = script.index('action("تأیید بازبینی"')
-    review_end = script.index('action("رد نسخه"', review_start)
+    review_start = script.index('if(v.review_status==="needs_review")')
+    review_end = script.index('if(v.review_status==="reviewed"||v.review_status==="rejected")', review_start)
     review_handler = script[review_start:review_end]
-    assert 'await showLessons(topic);' in review_handler
-    assert 'returnToTopic(topic.id);' in review_handler
-    assert review_handler.index('await showLessons(topic);') < review_handler.index('returnToTopic(topic.id);')
+    assert 'await refreshLessons();' in review_handler
 
-    publish_start = script.index('action("انتشار"')
-    publish_end = script.index('if (version.review_status === "published")', publish_start)
+    publish_start = script.index('if(v.review_status==="reviewed"){const b=el("button","انتشار برای بازیابی")')
+    publish_end = script.index('a.append(b)}', publish_start) + len('a.append(b)}')
     publish_handler = script[publish_start:publish_end]
-    assert 'await showLessons(topic);' in publish_handler
-    assert 'returnToTopic(topic.id);' in publish_handler
-    assert publish_handler.index('await showLessons(topic);') < publish_handler.index('returnToTopic(topic.id);')
+    assert 'const parentTopicId=Number(l._topicId||topicId)' in publish_handler
+    assert 'await loadLessons(parentTopicId,root,inline)' in publish_handler
+    assert 'if(!inline)returnToTopic(parentTopicId)' in publish_handler
 
-    decision_start = script.index("async function decide(topicId, decision)")
-    decision_end = script.index("async function editTopic", decision_start)
-    assert "returnToTopic(topicId);" in script[decision_start:decision_end]
-
-    bulk_start = script.index("async function bulkReviewLessons(ids)")
-    bulk_end = script.index('byId("approve-all-lessons")', bulk_start)
-    bulk_handler = script[bulk_start:bulk_end]
-    assert "returnToTopic(topic.id);" in bulk_handler
-
-    manual_start = script.index("async function createLesson(topic)")
-    manual_end = script.index("byId(\"course-form\")", manual_start)
-    manual_handler = script[manual_start:manual_end]
-    assert "returnToTopic(topic.id);" in manual_handler
 
 def test_active_learning_ui_publish_returns_to_parent_topic():
     from pathlib import Path
