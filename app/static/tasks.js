@@ -381,4 +381,5 @@
  el("bulk-cancel-tasks").addEventListener("click",()=>runBulkTaskAction("cancel"));
  el("load-more-tasks").addEventListener("click",()=>refreshTasks({append:true}));
  
+} refreshTasks();
 })();
