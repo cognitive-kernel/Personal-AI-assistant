@@ -144,7 +144,7 @@ def test_candidate_test_plan_is_immutable_without_a_revision_workflow(candidate_
     assert "audited revision" in response.json()["detail"]
 
 
-def test_candidate_detail_fails_closed_when_content_hash_is_corrupt(candidate_store):
+def test_candidate_detail_allows_read_only_audit_when_content_hash_is_corrupt(candidate_store):
     job = learning.create_job("Corrupt candidate")
     candidate_id = _candidate(job["id"])
     with db.learning_connection() as connection:
@@ -154,7 +154,10 @@ def test_candidate_detail_fails_closed_when_content_hash_is_corrupt(candidate_st
         )
 
     response = candidate_store.get(f"/api/learning/candidates/{candidate_id}")
-    assert response.status_code == 409
+    assert response.status_code == 200
+    candidate = response.json()["candidate"]
+    assert candidate["content"] == "modified after staging"
+    assert candidate["integrity_valid"] is False
     assert "hash mismatch" in response.json()["detail"]
 
 
