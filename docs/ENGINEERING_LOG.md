@@ -2103,3 +2103,22 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Added regression tests proving the task and smoke profiles remain separate. Exact-head CI and a real Windows Runner task are required before claiming this addresses the underlying inference failure.
 
 - Follow-up regression found after PR #782 merge: the new heartbeat persisted Persian text correctly for the dashboard but also printed it directly to the Windows Actions console. On the Runner's active code page this raised `UnicodeEncodeError` during the Codex smoke and aborted the smoke process before any model/tool conclusion. Console heartbeat output is now ASCII-only while persisted dashboard activity remains Persian; added regression tests for both heartbeat states. This fix is included in the still-open PR #783 branch so the stream-profile change is not merged with the console regression.
+
+## 2026-11-20 — Preserve contradictory learning evidence (P0 recovery)
+
+### Root cause
+
+- The main-branch contradiction path treated a terminal review decision as permission to delete source text and the unverified knowledge row, and to blank candidate content, source URLs, quality metadata, test plan, and the job assessment.
+- The old regression asserted the destructive behavior, so the data-loss contract was encoded as expected behavior rather than caught as a defect.
+
+### Correction
+
+- Rebuilt the fix on current main rather than reopening the stale PR branch. Rejection now retains candidate/source/assessment/test evidence, marks the related knowledge row conflicting, and keeps the candidate/job terminal and non-promotable.
+- Terminal candidates are rejected before further source fetching or model calls. Readiness exposes retained evidence and actual contradiction records.
+- Added a dry-run-first legacy recovery utility. It restores only fields whose provenance/hash can still be verified and explicitly reports irrecoverable fields; it never invents deleted data.
+- Updated the browser panel to list rejected candidates, expose retained text/provenance/readiness, and hide review/test mutation controls for terminal records.
+
+### Validation plan and residual risk
+
+- Added regression coverage for non-destructive rejection, API listing/detail, browser visibility/control gating, and dry-run/apply/idempotent legacy recovery. Exact-head CI is required before claiming validation.
+- Legacy source text, assessments, test plans, and knowledge version metadata already physically deleted by older code cannot be reconstructed. The recovery utility does not fabricate them. No live user database is modified by this repository change.
