@@ -507,3 +507,6 @@ The subsequent documentation-only evidence update does not change runtime code a
 
 - PR #795 UI decomposition now includes dedicated chat, knowledge, storage, tasks, cloud-account, settings, learning-review, system-health, theme, and section-navigation modules. The dashboard inline script no longer owns these workflows; learning-candidate UI remains in the shell on this branch and is being extracted separately in PR #797. Exact-head CI and target-host/human acceptance are pending.
 - The former 994-line `learning.js` has been decomposed into `learning-core.js`, `learning-lessons.js`, `learning-overview.js`, and a path/curriculum-focused `learning.js`. Versioned contracts and script order are enforced by tests. Exact-head CI remains pending.
+
+- Remaining modularity debt is explicitly tracked in Issue #290: `autonomous-engineering.js` (889 lines), `ai-learning.js` (518 lines), and the learning path controller `learning.js` (about 502 lines) still need cohesion review and, where responsibilities are distinct, further decomposition. Their presence prevents declaring the no-god-module objective complete.
+
