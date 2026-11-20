@@ -5880,3 +5880,87 @@ def test_system_health_refresh_performs_one_health_request_and_does_not_reload_s
         assert page.evaluate("window.__dashboardRequestCounts.health") == initial_health_calls + 1
         assert page.evaluate("window.__dashboardRequestCounts.settings") == initial_settings_calls
         browser.close()
+
+
+
+def test_factual_review_queue_discards_stale_out_of_order_browser_responses():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        pending_routes = []
+        page.add_init_script(
+            """(() => {
+                const originalFetch = window.fetch.bind(window);
+                window.__reviewQueueJsonResponses = 0;
+                window.fetch = async (input, options = {}) => {
+                    const response = await originalFetch(input, options);
+                    const url = typeof input === "string" ? input : input.url;
+                    if (url.includes("/api/factual-knowledge/review-queue")) {
+                        const originalJson = response.json.bind(response);
+                        response.json = async () => {
+                            const payload = await originalJson();
+                            window.__reviewQueueJsonResponses += 1;
+                            return payload;
+                        };
+                    }
+                    return response;
+                };
+            })();"""
+        )
+
+        def hold_review_request(route):
+            pending_routes.append(route)
+
+        page.route("**/api/factual-knowledge/review-queue*", hold_review_request)
+        with page.expect_request(
+            lambda request: "/api/factual-knowledge/review-queue" in request.url
+        ):
+            _goto_section(page, base_url, "learning-section")
+        assert len(pending_routes) == 1
+
+        with page.expect_request(
+            lambda request: "/api/factual-knowledge/review-queue" in request.url
+        ):
+            page.locator("#refresh-factual-review-queue").click()
+        assert len(pending_routes) == 2
+
+        def payload(claim, item_id):
+            return {
+                "items": [{
+                    "id": item_id,
+                    "domain_name": "race-test",
+                    "environment_version": "v1",
+                    "claim": claim,
+                    "evidence_level": "candidate",
+                    "lifecycle_status": "pending",
+                    "risk_level": "low",
+                    "evidence": [],
+                }],
+                "count": 1,
+            }
+
+        pending_routes[1].fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(payload("NEW_RESPONSE", 2)),
+        )
+        page.get_by_text("NEW_RESPONSE").wait_for(timeout=5000)
+
+        with page.expect_response(
+            lambda response: "/api/factual-knowledge/review-queue" in response.url
+        ):
+            pending_routes[0].fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(payload("STALE_RESPONSE", 1)),
+            )
+        page.wait_for_function(
+            """() => window.__reviewQueueJsonResponses === 2 &&
+                document.querySelector("#factual-review-queue").textContent.includes("NEW_RESPONSE") &&
+                !document.querySelector("#factual-review-queue").textContent.includes("STALE_RESPONSE")""",
+            timeout=5000,
+        )
+        browser.close()

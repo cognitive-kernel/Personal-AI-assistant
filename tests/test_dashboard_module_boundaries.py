@@ -362,3 +362,28 @@ def test_system_health_refresh_is_single_and_does_not_depend_on_settings():
     assert module.count('el("refresh").addEventListener("click"') == 1
     assert module.count(" refresh();") == 1
     assert "dashboardSettings" not in module
+
+
+
+def test_learning_review_panels_ignore_stale_out_of_order_responses():
+    module = (STATIC / "learning-review.js").read_text(encoding="utf-8")
+    sequences = (
+        "learningEscalationsRequestSequence",
+        "factualReviewQueueRequestSequence",
+        "factualTestQueueRequestSequence",
+        "factualTestHistoryRequestSequence",
+    )
+    for sequence in sequences:
+        assert f"let {sequence}=0;" in module
+        assert f"const requestSequence=++{sequence};" in module
+        assert f"if(requestSequence!=={sequence})return;" in module
+        assert f"if(requestSequence==={sequence})" in module
+
+
+def test_learning_capability_refresh_ignores_stale_out_of_order_responses():
+    module = (STATIC / "learning-overview.js").read_text(encoding="utf-8")
+
+    assert "let learningCapabilitiesRequestSequence = 0;" in module
+    assert "const requestSequence = ++learningCapabilitiesRequestSequence;" in module
+    assert "if (requestSequence !== learningCapabilitiesRequestSequence) return;" in module
+    assert "if (requestSequence === learningCapabilitiesRequestSequence)" in module

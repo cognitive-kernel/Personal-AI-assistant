@@ -60,12 +60,15 @@
  
  
  
- async function refreshLearningCapabilities() {
+ let learningCapabilitiesRequestSequence = 0;
+async function refreshLearningCapabilities() {
+  const requestSequence = ++learningCapabilitiesRequestSequence;
   const output = learningEl("capability-map-output");
   if (!output) return;
   output.textContent = "در حال ساخت نقشه از ارزیابی‌های ذخیره‌شده…";
   try {
    const result = await learningApi("/api/learning/capabilities?limit=200");
+   if (requestSequence !== learningCapabilitiesRequestSequence) return;
    const items = result.capabilities || [];
    const labels = {
     not_assessed: "ارزیابی نشده",
@@ -101,7 +104,9 @@
       "\n\nشواهد عملی فقط وقتی تکرارپذیر شمرده می‌شود که دست‌کم دو برنامهٔ آزمون متفاوت با منبع زندهٔ مستند وجود داشته باشد؛ این هم به‌تنهایی انتقال مهارت عملی را اثبات نمی‌کند."
     : "هنوز سرفصلی برای نمایش در نقشهٔ قابلیت‌ها وجود ندارد.";
   } catch (error) {
-   output.textContent = "ساخت نقشهٔ قابلیت‌ها ناموفق بود: " + error.message;
+   if (requestSequence === learningCapabilitiesRequestSequence) {
+    output.textContent = "ساخت نقشهٔ قابلیت‌ها ناموفق بود: " + error.message;
+   }
   }
  }
  
