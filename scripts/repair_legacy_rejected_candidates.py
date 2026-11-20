@@ -27,8 +27,6 @@ def repair_legacy_rejected_candidates(*, apply: bool = False) -> dict[str, Any]:
         raise FileNotFoundError(
             f"Learning database does not exist; refusing to create or initialize it: {database_path}"
         )
-    # Open an existing database in read/write mode. Unlike sqlite3's default,
-    # mode=rw cannot silently create a new empty database at a misconfigured path.
     connection = sqlite3.connect(
         database_path.as_uri() + "?mode=rw",
         uri=True,
@@ -77,7 +75,6 @@ def repair_legacy_rejected_candidates(*, apply: bool = False) -> dict[str, Any]:
                  AND c.failure_reason LIKE 'rejected_after_review:%'
                  AND c.failure_reason NOT LIKE '%legacy_recovery:%'
                  AND c.promoted_knowledge_id IS NULL
-                 AND (c.content='' OR c.source_urls_json='[]' OR c.quality_report_json='{}') 
                ORDER BY c.id"""
         ).fetchall()
 
@@ -94,8 +91,6 @@ def repair_legacy_rejected_candidates(*, apply: bool = False) -> dict[str, Any]:
                 and hashlib.sha256(content.encode("utf-8")).hexdigest() == expected_hash
             )
             if not content_hash_verified:
-                # A non-empty but corrupted candidate must not block exact recovery
-                # from the independently retained lesson field.
                 lesson = str(row["job_lesson"] or "")
                 if lesson and hashlib.sha256(lesson.encode("utf-8")).hexdigest() == expected_hash:
                     if lesson != content:
@@ -109,7 +104,28 @@ def repair_legacy_rejected_candidates(*, apply: bool = False) -> dict[str, Any]:
                 existing_urls = json.loads(row["source_urls_json"])
             except (TypeError, json.JSONDecodeError):
                 existing_urls = None
-            if existing_urls == []:
+            urls_missing = existing_urls == []
+            quality_missing = row["quality_report_json"] == "{}"
+
+            # Scan all eligible rejected candidates so a corrupted non-empty
+            # content field is not hidden by otherwise complete metadata.
+            if content_hash_verified and not urls_missing and not quality_missing and not updates:
+                continue
+            # Never append a recovery marker or modify adjacent metadata when
+            # non-empty candidate content is hash-invalid and cannot be restored.
+            if content and not content_hash_verified:
+                reports.append({
+                    "candidate_id": int(row["id"]),
+                    "job_id": int(row["job_id"]),
+                    "content_hash_verified": False,
+                    "recovered_fields": [],
+                    "unavailable_fields": ["content_hash_match"],
+                    "mode": "apply" if apply else "dry_run",
+                    "result": "content_hash_mismatch",
+                })
+                continue
+
+            if urls_missing:
                 evidence_rows = connection.execute(
                     """SELECT source_ref FROM learning_evidence
                        WHERE job_id=? AND evidence_type='web_page' ORDER BY id""",
@@ -127,7 +143,7 @@ def repair_legacy_rejected_candidates(*, apply: bool = False) -> dict[str, Any]:
                 else:
                     unavailable.append("source_urls")
 
-            if row["quality_report_json"] == "{}":
+            if quality_missing:
                 try:
                     quality = json.loads(row["job_quality_json"]) if row["job_quality_json"] else None
                 except (TypeError, json.JSONDecodeError):
