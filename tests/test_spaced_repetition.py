@@ -112,12 +112,12 @@ def test_learning_task_audit_history_formats_each_event_kind():
         encoding="utf-8"
     )
     assert "function formatTaskAuditEventChange(event)" in core
-    assert 'case "status_changed"' in core
-    assert 'case "priority_changed"' in core
-    assert 'case "scheduled"' in core
-    assert 'case "created"' in core
-    assert '"اولویت: " + (event.old_priority ?? "—")' in core
-    assert '"زمان‌بندی: " + (event.old_scheduled_at || "—")' in core
+    assert 'case "status_changed"' in page
+    assert 'case "priority_changed"' in page
+    assert 'case "scheduled"' in page
+    assert 'case "created"' in page
+    assert '"اولویت: " + (event.old_priority ?? "—")' in page
+    assert '"زمان‌بندی: " + (event.old_scheduled_at || "—")' in page
     assert "const change = formatTaskAuditEventChange(event);" in page
     assert 'olderEventsButton.textContent = "بارگذاری رویدادهای قدیمی‌تر"' in page
     assert '"/events?limit=100" + cursor' in page

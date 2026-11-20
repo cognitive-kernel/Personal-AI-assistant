@@ -918,6 +918,7 @@ def test_browser_restores_saved_semantic_review_and_only_generates_after_confirm
             else:
                 route.continue_()
 
+        page.route("**/api/learning/paths/1/topics/*/start", start_topic_route)
         page.route("**/api/learning/paths/1/topics/*", start_topic_route)
 
         def semantic_review_route(route):
@@ -1930,6 +1931,10 @@ def test_storage_mutations_are_serialized_while_backup_creation_is_in_flight():
             timeout=10000,
         )
 
+        page.wait_for_function(
+            "document.querySelector('#create-storage-backup')?.disabled === false",
+            timeout=10000,
+        )
         assert page.locator("#create-storage-backup").is_enabled()
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
