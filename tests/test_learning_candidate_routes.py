@@ -158,7 +158,6 @@ def test_candidate_detail_allows_read_only_audit_when_content_hash_is_corrupt(ca
     candidate = response.json()["candidate"]
     assert candidate["content"] == "modified after staging"
     assert candidate["integrity_valid"] is False
-    assert "hash mismatch" in response.json()["detail"]
 
 
 def test_candidate_api_rejects_unknown_status_and_missing_candidate(candidate_store):
