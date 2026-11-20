@@ -2129,3 +2129,6 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Replaced the 994-line learning UI module with four smaller files: shared `learning-core.js` (common API/error and rendering helpers), `learning-lessons.js` (lesson generation, stop/regenerate, assessment/review UI), `learning-overview.js` (due reviews, recommendations, capability map), and `learning.js` (path/topic rendering and curriculum proposals).
 - Cross-module calls use explicit versioned `learningCore`, `learningLessons`, and `learningOverview` contracts. Script order is tested; path rendering cannot silently run before its lesson and overview dependencies.
 - Updated feature tests to assert behavior in the owning module rather than relying on the old monolithic file location. Exact-head CI and browser E2E remain pending.
+
+- Residual audit: `autonomous-engineering.js` remains 889 lines (~42 KB), `ai-learning.js` 518 lines (~27 KB), and the path/curriculum controller `learning.js` ~502 lines (~25 KB). Tracked under Issue #290 for line-by-line dependency/state mapping before further splits. No claim of 100% modularity is made.
+
