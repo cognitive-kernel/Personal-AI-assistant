@@ -19,10 +19,10 @@ A separate integrity-path defect made a candidate with non-empty but hash-invali
 
 ## Validation boundary
 
-- UI fix commits: `5b7bef88107f96b1286dab5bb90b498c4d030353`, `05161175f39051e10034647bab42cfebfa3c7cc2`, and `eefb42988d5b777bb7898baa445b5d4d9072af0e`.
+- UI/module commits include the task-card renderer correction, the shared `dashboardCore` v1 contract, and candidate-module integration; latest validated code/test head: `b3c1c9df3ba73ac854461754631e77cc03d74dc2`.
 - Module extraction commits: `824fce6cd899a2adbc4ea543f5ae4f5691631616` and `f492bbeb9faf170a7cb9398ace6460fdae644b79`.
 - Read-only integrity commits: `5282b90e6f3ff43bcf4571dc991baecbf178cb0d`, `2fcbad659558ac295a9329f1e3cb8a43910059cf`, `f789e6db2a37b14119d3b446f1e7b5dbd0c1c820`, and `68fb3df53e0cdc1a765c9abaf57cac95913b0831`.
-- On exact commit `f492bbeb9faf170a7cb9398ace6460fdae644b79`, Dependency Audit and CodeQL passed; Browser E2E and full tests/Windows storage were still running. The later integrity changes require fresh exact-head CI.
+- Exact-head validation passed on `b3c1c9df3ba73ac854461754631e77cc03d74dc2`: 2,441 Python tests passed, 14 skipped, 65 deselected; Browser E2E, Windows storage/LocalService broker, Dependency Audit, CodeQL, generated-artifact validation, Markdown links, import-cycle checks, and retrieval/claim-coverage benchmarks passed.
 - No human keyboard/screen-reader review, target-host UI acceptance, or live backend/provider interaction is claimed.
 
 ## Acceptance
