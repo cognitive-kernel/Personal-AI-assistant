@@ -6078,9 +6078,14 @@ def test_ai_learning_course_catalog_discards_a_late_initial_list_after_course_cr
             payload = {"items": items, "count": len(items)}
         elif request.method == "POST" and path == "/api/ai-learning/courses":
             payload = {"id": 43, "title": "دورهٔ تازه", "topic_count": 0}
-        elif request.method == "GET" and path == "/api/ai-learning/courses/42":
+        elif request.method == "GET" and path in {
+            "/api/ai-learning/courses/42", "/api/ai-learning/courses/43",
+        }:
             payload = {"topics": []}
-        elif request.method == "GET" and path == "/api/ai-learning/courses/42/runs":
+        elif request.method == "GET" and path in {
+            "/api/ai-learning/courses/42/runs",
+            "/api/ai-learning/courses/43/runs",
+        }:
             payload = {"items": [], "count": 0}
         elif request.method == "GET" and path == "/api/ai-learning/control":
             payload = {
@@ -6142,6 +6147,7 @@ def test_ai_learning_course_catalog_discards_a_late_initial_list_after_course_cr
         )
 
         assert page.locator('#course-select option[value="43"]').count() == 1
+        assert page.locator("#course-select").input_value() == "43"
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
 
@@ -6389,5 +6395,97 @@ def test_ai_learning_reset_ui_sends_exact_server_confirmation():
         page.get_by_text("پاک‌سازی انجام شد", exact=False).wait_for(timeout=10000)
 
         assert reset_requests == [{"confirmation": "RESET AI LEARNING DATA"}]
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+def test_ai_learning_search_discards_late_results_from_an_older_query():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    browser_errors = []
+
+    def learning_api_route(route):
+        request = route.request
+        path = request.url.split("?", 1)[0].removeprefix(base_url.rstrip("/"))
+        if request.method == "GET" and path == "/api/ai-learning/courses":
+            payload = {"items": [], "count": 0}
+        elif request.method == "GET" and path == "/api/ai-learning/control":
+            payload = {
+                "paused": False, "reason": "", "retry_pending": False,
+                "worker_active": False, "worker_recovery_pending": False,
+            }
+        elif request.method == "GET" and path == "/api/ai-learning/search":
+            query = request.url.split("query=", 1)[1]
+            old_query = query == "old"
+            payload = {
+                "items": [{
+                    "course_title": "دورهٔ قدیمی" if old_query else "دورهٔ جدید",
+                    "topic_title": "سرفصل آزمایشی",
+                    "lesson_title": "درس آزمایشی",
+                    "version_no": 1,
+                    "chunk_id": 1,
+                    "body": "محتوای نتیجهٔ جست‌وجو",
+                }],
+                "count": 1,
+                "trace_id": "old-trace" if old_query else "new-trace",
+            }
+        else:
+            route.fulfill(
+                status=404,
+                content_type="application/json",
+                body=json.dumps({"detail": "unexpected AI-learning request: " + path}),
+            )
+            return
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(payload, ensure_ascii=False),
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.add_init_script("""
+            (() => {
+                const originalFetch = window.fetch.bind(window);
+                let delayed = false;
+                window.fetch = (resource, options) => {
+                    const url = typeof resource === "string" ? resource : resource.url;
+                    if (!delayed && url.includes("/api/ai-learning/search?query=old")) {
+                        delayed = true;
+                        window.__oldSearchStarted = true;
+                        return new Promise((resolve, reject) => {
+                            originalFetch(resource, options).then(response => {
+                                window.setTimeout(() => {
+                                    window.__oldSearchResolved = true;
+                                    resolve(response);
+                                }, 1200);
+                            }, reject);
+                        });
+                    }
+                    return originalFetch(resource, options);
+                };
+            })();
+        """)
+        page.route("**/api/ai-learning/**", learning_api_route)
+        page.goto(base_url.rstrip("/") + "/ai-learning", wait_until="domcontentloaded")
+        page.wait_for_function(
+            "() => document.querySelector('#learning-control-status')?.textContent.includes('مکث')",
+            timeout=10000,
+        )
+
+        page.locator("#search-query").fill("old")
+        page.locator('#search-form button[type="submit"]').click()
+        page.wait_for_function("() => window.__oldSearchStarted === true", timeout=10000)
+        page.locator("#search-query").fill("new")
+        page.locator('#search-form button[type="submit"]').click()
+        page.locator("#search-results").get_by_text("دورهٔ جدید", exact=False).wait_for(timeout=10000)
+        page.wait_for_function("() => window.__oldSearchResolved === true", timeout=10000)
+
+        assert page.locator("#search-results").get_by_text("دورهٔ جدید", exact=False).is_visible()
+        assert page.locator("#search-results").get_by_text("دورهٔ قدیمی", exact=False).count() == 0
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
