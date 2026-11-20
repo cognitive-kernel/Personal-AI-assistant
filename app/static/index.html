@@ -1616,13 +1616,6 @@ async function refreshCloudResources() {
   el("cloud-candidates").replaceChildren();
  }
 }
-function appendText(parent, tag, text, className) {
- const node=document.createElement(tag);
- node.textContent=text;
- if(className) node.className=className;
- parent.append(node);
- return node;
-}
 function renderCloudCandidates(candidates) {
  const container=el("cloud-candidates");
  container.replaceChildren();
