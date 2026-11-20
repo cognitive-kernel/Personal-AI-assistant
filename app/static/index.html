@@ -1179,6 +1179,8 @@ async function refreshLearningCandidates() {
    const meta=document.createElement("p");
    meta.textContent="وضعیت: "+item.status+" | صحت hash: "+(item.integrity_valid?"تأیید شد":"نامعتبر")+" | منابع: "+(item.source_urls||[]).length;
    const preview=document.createElement("p"); preview.textContent=item.content_preview||"پیش‌نمایش موجود نیست.";
+   const failure=document.createElement("p"); failure.className="muted";
+   failure.textContent=item.failure_reason?"جزئیات وضعیت: "+item.failure_reason:"";
    const actions=document.createElement("div"); actions.className="cloud-actions";
    const detailButton=document.createElement("button"); detailButton.type="button"; detailButton.textContent="نمایش متن و شواهد کامل"; detailButton.disabled=!item.integrity_valid;
    detailButton.addEventListener("click",async()=>{
