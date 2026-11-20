@@ -55,3 +55,18 @@ def test_hash_invalid_candidate_content_is_readable_but_not_reviewable_or_promot
             candidate_id,
             expected_candidate_sha256=expected_hash,
         )
+
+
+def test_empty_nonlegacy_candidate_content_is_an_integrity_mismatch(tmp_path, monkeypatch):
+    candidate_id, _expected_hash, _corrupted = _seed_hash_invalid_candidate(tmp_path, monkeypatch)
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE temporary_knowledge_candidates SET content='' WHERE id=?",
+            (candidate_id,),
+        )
+
+    readiness = knowledge_lifecycle.candidate_readiness(candidate_id)
+    assert readiness["status"] == "integrity_mismatch"
+    assert readiness["ready_for_promotion"] is False
+    assert readiness["checks"]["content_hash_valid"] is False
+    assert readiness["checks"]["promotion_blocked"] is True
