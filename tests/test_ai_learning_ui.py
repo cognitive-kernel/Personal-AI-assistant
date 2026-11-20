@@ -191,6 +191,14 @@ def test_ai_learning_modules_have_versioned_contracts_and_bounded_ownership():
     assert (_ROOT / "app.js").stat().st_size < 7_000
     assert "Promise.allSettled" in entry
     assert "function importWithTimeout(path,timeoutMs=5000)" in entry
+    assert "module load timeout:" in entry
+    for helper in ("async function api(", "function say(", "function el(", "function data(", "function progressMeter(", "async function act("):
+        assert helper in entry
+    courses = _asset("courses.js")
+    search = _asset("search.js")
+    assert "loadCourses(created.id)" in courses
+    assert "Promise.resolve(runHistoryLoader(requestedCourseId)).catch" in courses
+    assert "searchRequestSequence" in search
     assert 'import("./core.js?v="+MODULE_VERSION)' in entry
     assert 'import("./courses.js?v="+MODULE_VERSION)' in entry
     assert "function createFallbackCore()" in entry
