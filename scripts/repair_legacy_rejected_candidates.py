@@ -186,6 +186,8 @@ def repair_legacy_rejected_candidates(*, apply: bool = False) -> dict[str, Any]:
                 report["result"] = "recovery_available"
             reports.append(report)
 
+        if apply:
+            connection.commit()
     finally:
         connection.close()
 
