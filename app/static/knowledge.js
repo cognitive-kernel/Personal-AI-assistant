@@ -17,14 +17,17 @@
   try { el("knowledge-output").textContent=JSON.stringify(await api("/api/knowledge"),null,2); }
   catch(error) { el("knowledge-output").textContent=error.message; }
  });
+ let knowledgeSourcesSequence=0;
  async function refreshKnowledgeSources() {
+  const requestSequence=++knowledgeSourcesSequence;
   const output=el("knowledge-source-status");
   try {
    const result=await api("/api/knowledge/sources");
+   if(requestSequence!==knowledgeSourcesSequence)return result;
    output.textContent=JSON.stringify(result,null,2);
    return result;
   } catch(error) {
-   output.textContent="بارگذاری منابع ناموفق بود: "+error.message;
+   if(requestSequence===knowledgeSourcesSequence)output.textContent="بارگذاری منابع ناموفق بود: "+error.message;
    throw error;
   }
  }
