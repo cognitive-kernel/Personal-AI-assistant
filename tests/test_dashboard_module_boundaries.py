@@ -244,3 +244,18 @@ def test_settings_and_model_diagnostics_are_owned_by_versioned_settings_module()
     assert module.rstrip().endswith("})();")
     assert "innerHTML" not in module
 
+def test_theme_and_scroll_navigation_are_separate_shell_modules():
+    page = (STATIC / "index.html").read_text(encoding="utf-8")
+    theme = (STATIC / "theme.js").read_text(encoding="utf-8")
+    section_navigation = (STATIC / "section-navigation.js").read_text(encoding="utf-8")
+
+    assert 'src="/static/theme.js"' in page
+    assert 'src="/static/section-navigation.js"' in page
+    assert "initializeDashboardTheme" not in page
+    assert "initializeCurrentSectionNavigation" not in page
+    assert "initializeDashboardTheme" in theme
+    assert "initializeCurrentSectionNavigation" in section_navigation
+    assert "localStorage" in theme
+    assert "requestAnimationFrame" in section_navigation
+    assert "innerHTML" not in theme + section_navigation
+
