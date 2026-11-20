@@ -1,6 +1,11 @@
-/* Learning-candidate UI: isolated from the dashboard shell.
- * Depends only on the shared global api() and el() transport/DOM helpers.
- */
+/* Learning-candidate UI: isolated from the dashboard shell. */
+(() => {
+ const shared = window.PersonalAssistantUI;
+ if (!shared || typeof shared.api !== "function" || typeof shared.el !== "function") {
+  console.error("Learning-candidate UI contract is unavailable; panel remains inactive.");
+  return;
+ }
+ const { api, el } = shared;
 async function refreshLearningCandidates() {
  const container=el("learning-candidates");
  container.textContent="در حال بارگذاری نامزدهای موقت…";
@@ -129,3 +134,4 @@ async function refreshLearningCandidates() {
  }catch(error){container.textContent="بارگذاری نامزدهای موقت ناموفق بود: "+error.message;}
 }
 el("refresh-learning-candidates").addEventListener("click",refreshLearningCandidates);
+})();
