@@ -351,9 +351,9 @@ $("resume-learning").onclick=()=>act(async()=>{
 });
 $("reset-learning-data").onclick=()=>act(async()=>{
  if(!confirm("همهٔ سرفصل‌ها، درس‌ها، نسخه‌های محتوا، سوابق اجرا و ردپاهای جست‌وجوی این ماژول پاک می‌شوند. تعریف دوره‌ها باقی می‌ماند. ادامه می‌دهید؟"))return;
- const phrase=prompt("برای تأیید پاک‌سازی کامل، عبارت RESET را وارد کنید:");
- if(phrase!=="RESET") { say("پاک‌سازی لغو شد."); return; }
- const result=await api("/reset-learning-data",{method:"POST"});
+ const phrase=prompt("برای تأیید پاک‌سازی کامل، عبارت RESET AI LEARNING DATA را دقیقاً وارد کنید:");
+ if(phrase!=="RESET AI LEARNING DATA") { say("پاک‌سازی لغو شد."); return; }
+ const result=await api("/reset-learning-data",{method:"POST",body:JSON.stringify({confirmation:phrase})});
  await loadCourses(courseId||undefined);
  $("select-all-topics").checked=false;
  $("select-all-course-lessons").checked=false;
