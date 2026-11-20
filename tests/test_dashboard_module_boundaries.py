@@ -104,3 +104,23 @@ def test_storage_workflows_are_isolated_with_local_concurrency_and_refresh_owner
     assert module.rstrip().endswith("})();")
     assert "innerHTML" not in module
 
+def test_task_dashboard_is_an_isolated_feature_with_private_refresh_and_poll_state():
+    page = (STATIC / "index.html").read_text(encoding="utf-8")
+    module = (STATIC / "tasks.js").read_text(encoding="utf-8")
+
+    assert 'src="/static/tasks.js"' in page
+    assert page.index('src="/static/dashboard-core.js"') < page.index('src="/static/tasks.js"')
+    assert "let taskPollScheduled" not in page
+    assert "let taskNextCursor" not in page
+    assert "let taskRefreshSequence" not in page
+    assert "function renderTasks(" not in page
+    assert "async function refreshTasks(" not in page
+    assert "let taskPollScheduled" in module
+    assert "let taskNextCursor" in module
+    assert "let taskRefreshSequence" in module
+    assert "async function refreshTasks(" in module
+    assert "refreshTasks();" in module
+    assert "core.version!==1" in module
+    assert module.rstrip().endswith("})();")
+    assert "innerHTML" not in module
+
