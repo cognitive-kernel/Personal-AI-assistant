@@ -1,7 +1,7 @@
 /* Learning-candidate UI: isolated from the dashboard shell. */
 (() => {
- const shared = window.PersonalAssistantUI;
- if (!shared || typeof shared.api !== "function" || typeof shared.el !== "function") {
+ const shared = window.dashboardCore;
+ if (!shared || shared.version !== 1 || typeof shared.api !== "function" || typeof shared.el !== "function") {
   console.error("Learning-candidate UI contract is unavailable; panel remains inactive.");
   return;
  }
