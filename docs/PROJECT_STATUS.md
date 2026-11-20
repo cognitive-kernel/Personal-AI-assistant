@@ -1,3 +1,10 @@
+## 2026-11-20 — Owner clarification and UI modularization checkpoint
+
+- Owner clarification: the application and its databases are still raw development scaffolding; no module is yet complete/usable and there is no meaningful operational user dataset to preserve. This is an owner-reported project-state statement, not a database inspection. No live database was accessed or modified during this work.
+- Consequence for architecture: do not let speculative production-data compatibility prevent correcting module boundaries or designing clean initial schemas. Still keep migrations explicit, deterministic, tested, and reversible; test fixtures and any future user data must not be silently discarded.
+- PR #795 now extracts storage workflows into `app/static/storage.js` and durable task UI into `app/static/tasks.js`. Both use the shared `dashboardCore v1` contract and own their request sequencing/state; storage mutations are serialized within the feature module.
+- Architecture-boundary regression tests were added. Exact-head CI, browser E2E, and full PR review are pending for this newest change set. No merge, deployment, or live database operation was performed.
+
 # وضعیت جاری پروژه — بازبینی 2026-11-19
 
 > این بخش مرجع وضعیت زنده است. بخش‌های پایین‌تر snapshotهای تاریخی‌اند و نباید به‌عنوان وضعیت فعلی PRها یا CI تفسیر شوند.
