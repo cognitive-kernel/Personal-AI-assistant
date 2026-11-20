@@ -1,6 +1,6 @@
 "use strict";
 const API="/api/ai-learning", $=id=>document.getElementById(id);let courseId=null,topics=[],allCourseLessonsVisible=false,selectedTopicIds=new Set(),renderedTopicsSnapshot="";
-let courseListRequestSequence=0,courseDetailsRequestSequence=0,runHistoryRequestSequence=0,courseProgressRequestSequence=0;
+let courseListRequestSequence=0,courseDetailsRequestSequence=0,runHistoryRequestSequence=0,courseProgressRequestSequence=0;let searchRequestSequence=0;
 async function api(path,options={}){const r=await fetch(API+path,{cache:"no-store",headers:{"Content-Type":"application/json",...(options.headers||{})},...options});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||("HTTP "+r.status));return d}
 function say(s,bad=false){$("status").textContent=s;$("status").className=bad?"error":"success"}
 function el(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n}
@@ -218,7 +218,7 @@ async function moveInHierarchy(topic,delta){
 }
 async function move(i,d){const j=i+d;if(j<0||j>=topics.length)return;[topics[i],topics[j]]=[topics[j],topics[i]];topics.forEach((t,k)=>t.position=k+1);renderTopics();say("ترتیب محلی تغییر کرد؛ برای ذخیره، «ذخیره ترتیب» را بزنید.")}
 async function decide(ids,decision){if(!ids.length)throw Error("حداقل یک سرفصل انتخاب کنید.");await api("/topics/decision",{method:"POST",body:JSON.stringify({topic_ids:ids,decision})});await loadCourse();say("وضعیت سرفصل‌ها به‌روزرسانی شد.")}
-$("course-form").onsubmit=e=>{e.preventDefault();const form=e.currentTarget;const payload=data(form);act(async()=>{await api("/courses",{method:"POST",body:JSON.stringify(payload)});form.reset();await loadCourses();say("دوره ایجاد شد.")})};
+$("course-form").onsubmit=e=>{e.preventDefault();const form=e.currentTarget;const payload=data(form);act(async()=>{const created=await api("/courses",{method:"POST",body:JSON.stringify(payload)});form.reset();await loadCourses(created.id);say("دوره ایجاد شد.")})};
 $("reload").onclick=()=>act(async()=>{const b=$("reload"),label=b.textContent;if(!courseId)throw Error("ابتدا دورهٔ موردنظر را انتخاب کنید.");b.disabled=true;b.textContent="در حال اجرای Chrome…";try{say("در حال راه‌اندازی Chrome و ارسال درخواست به ChatGPT؛ این صفحه را نبندید.");const started=await api("/browser/outline",{method:"POST",body:JSON.stringify({course_id:Number(courseId),request_key:"playwright-outline-"+courseId+"-"+Date.now()})});const runId=Number(started.run_id);if(!runId)throw Error("سرویس مرورگر شناسه اجرای معتبر برنگرداند.");say("درخواست ارسال شد؛ منتظر پاسخ کامل ChatGPT هستیم. ممکن است پنجره Chrome باز شود.");const deadline=Date.now()+12*60*1000;let run=null;while(Date.now()<deadline){await new Promise(resolve=>setTimeout(resolve,2500));run=await api("/runs/"+runId);if(["succeeded","failed","cancelled","needs_user_action"].includes(run.status))break;say("در حال دریافت پاسخ از ChatGPT… اجرای #"+runId)}if(!run||!["succeeded","failed","cancelled","needs_user_action"].includes(run.status))throw Error("زمان انتظار داشبورد تمام شد؛ وضعیت اجرا در بخش «اجراهای اخیر» قابل بررسی است.");await loadCourse();if(run.status==="succeeded")say("سرفصل‌ها با موفقیت ثبت شدند؛ موارد تکراری نادیده گرفته شدند. برای کنترل کیفیت، ابتدا سرفصل‌ها را تأیید کنید و سپس دریافت درس را اجرا کنید یا «ادامه/بازیابی» را بزنید.");else say(run.error_message||("اجرای ChatGPT با وضعیت "+run.status+" پایان یافت."),true)}finally{b.disabled=false;b.textContent=label}});
 $("delete-course").onclick=()=>act(async()=>{
  if(!courseId)throw Error("ابتدا یک دوره انتخاب کنید.");
@@ -308,7 +308,7 @@ $("approve-selected-course-lessons").onclick=()=>act(async()=>{
  say(reviewed+" نسخهٔ درس تأیید شد؛ "+deleted+" درس بدون منبع حذف شد؛ "+skipped+" درس خالی بدون تأیید باقی ماند.");
 });
 $("search-form").onsubmit=e=>{e.preventDefault();act(async()=>{
- const r=await api("/search?query="+encodeURIComponent($("search-query").value));
+ const requestSequence=++searchRequestSequence;let r;try{r=await api("/search?query="+encodeURIComponent($("search-query").value))}catch(error){if(requestSequence!==searchRequestSequence)return;throw error}if(requestSequence!==searchRequestSequence)return;
  const root=$("search-results");root.replaceChildren();
  if(!r.items.length)root.append(el("p","نتیجه‌ای یافت نشد."));
  for(const x of r.items){const card=el("article",undefined,"result");card.append(el("h3",x.course_title+" ← "+x.topic_title+" ← "+x.lesson_title),el("p","نسخه "+x.version_no+"؛ بخش "+x.chunk_id,"muted"),el("pre",x.body,"content"));root.append(card)}
