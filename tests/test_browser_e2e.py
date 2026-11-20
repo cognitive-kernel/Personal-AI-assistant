@@ -6557,7 +6557,7 @@ def test_ai_learning_core_module_failure_uses_fallback_without_blocking_features
 
         page.locator("#search-query").fill("fallback")
         page.locator('#search-form button[type="submit"]').click()
-        page.locator("#search-results").get_by_text("دورهٔ جست‌وجو", exact=False).wait_for(timeout=10000)
+        page.locator("#search-results").get_by_text("نتیجهٔ جست‌وجو", exact=False).wait_for(timeout=10000)
 
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
@@ -6633,13 +6633,15 @@ def test_ai_learning_lesson_module_failure_does_not_block_course_and_search_ui()
         page.route("**/api/ai-learning/**", learning_api_route)
         page.goto(base_url.rstrip("/") + "/ai-learning", wait_until="domcontentloaded")
         page.locator('#course-select option[value="42"]').wait_for(timeout=10000)
+        page.locator("#catalog-menu > summary").click()
+        page.locator("#topics details.topic > summary").wait_for(timeout=10000)
         page.locator("#topics details.topic > summary").first.click()
         page.get_by_role("button", name="مشاهده درس‌ها و محتوا").click()
         page.get_by_text("ماژول درس‌ها در دسترس نیست.", exact=False).wait_for(timeout=10000)
 
         page.locator("#search-query").fill("isolated")
         page.locator('#search-form button[type="submit"]').click()
-        page.locator("#search-results").get_by_text("دورهٔ جست‌وجو", exact=False).wait_for(timeout=10000)
+        page.locator("#search-results").get_by_text("نتیجهٔ جست‌وجو", exact=False).wait_for(timeout=10000)
 
         assert page.locator('#course-select option[value="42"]').count() == 1
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
