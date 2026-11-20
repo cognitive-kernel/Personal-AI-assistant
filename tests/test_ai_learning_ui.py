@@ -170,3 +170,15 @@ def test_ai_learning_page_contains_shared_main_navigation():
     assert '<nav class="main-nav" aria-label="منوی اصلی">' in html
     assert 'href="/autonomous-engineering"' in html
     assert 'aria-current="page">یادگیری از هوش مصنوعی</a>' in html
+
+
+def test_ai_learning_page_has_one_loopback_protected_route_owner():
+    from app.main import app
+
+    routes = [
+        route for route in app.routes
+        if getattr(route, "path", None) == "/ai-learning"
+    ]
+    assert len(routes) == 1
+    assert routes[0].name == "learning_dashboard"
+    assert routes[0].dependant.dependencies
