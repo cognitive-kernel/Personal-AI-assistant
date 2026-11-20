@@ -167,7 +167,12 @@ def candidate_readiness(candidate_id: int) -> dict[str, Any]:
         candidate = _candidate_row(connection, candidate_id, allow_hash_mismatch=True)
         candidate_content = str(candidate["content"] or "")
         actual_content_hash = hashlib.sha256(candidate_content.encode("utf-8")).hexdigest()
-        if candidate_content and actual_content_hash != candidate["content_sha256"]:
+        legacy_scrubbed_empty = (
+            not candidate_content
+            and candidate["status"] == "failed"
+            and str(candidate["failure_reason"] or "").startswith("rejected_after_review:")
+        )
+        if actual_content_hash != candidate["content_sha256"] and not legacy_scrubbed_empty:
             mismatch_reviews = [dict(row) for row in connection.execute(
                 """SELECT review_kind, reviewer_id, verdict, note, source_host
                    FROM knowledge_candidate_reviews
