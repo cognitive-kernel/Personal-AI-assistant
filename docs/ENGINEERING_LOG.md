@@ -2103,3 +2103,13 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Added regression tests proving the task and smoke profiles remain separate. Exact-head CI and a real Windows Runner task are required before claiming this addresses the underlying inference failure.
 
 - Follow-up regression found after PR #782 merge: the new heartbeat persisted Persian text correctly for the dashboard but also printed it directly to the Windows Actions console. On the Runner's active code page this raised `UnicodeEncodeError` during the Codex smoke and aborted the smoke process before any model/tool conclusion. Console heartbeat output is now ASCII-only while persisted dashboard activity remains Persian; added regression tests for both heartbeat states. This fix is included in the still-open PR #783 branch so the stream-profile change is not merged with the console regression.
+
+## 2026-11-20 — Storage and task dashboard ownership extraction (PR #795)
+
+- Owner clarified that the software/database layer remains raw development scaffolding and that no completed/usable module has created an operational user dataset. This is recorded as owner-reported context only; no database was opened to infer or verify emptiness.
+- Root cause: storage and task workflows still lived inside the large dashboard inline script, so their state, request sequencing, and event ownership were coupled to unrelated page initialization.
+- Extracted storage health/backup/staging/prune flows into `app/static/storage.js`; added module-local stale-response counters and a single mutation gate across backup/restore/prune actions.
+- Extracted durable task rendering, event history, controls, filtering, pagination, and polling into `app/static/tasks.js`; task cursor, request sequence, and poll scheduling now belong to that feature module.
+- Both modules validate the versioned `dashboardCore v1` dependency and required DOM controls. Architecture tests enforce script registration, feature ownership, and the absence of moved state/functions from `index.html`.
+- The extraction changes no API/data contracts or persisted records. Exact-head CI and browser validation are pending; no target-host acceptance or merge is claimed.
+
