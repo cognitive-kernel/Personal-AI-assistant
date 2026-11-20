@@ -120,6 +120,8 @@ def test_task_dashboard_is_an_isolated_feature_with_private_refresh_and_poll_sta
     assert "let taskRefreshSequence" in module
     assert "async function refreshTasks(" in module
     assert "refreshTasks();" in module
+    assert module.rfind("refreshTasks();") < module.rfind("})();")
+    assert "} refreshTasks();" not in module
     assert "core.version!==1" in module
     assert module.rstrip().endswith("})();")
     assert "innerHTML" not in module
