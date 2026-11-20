@@ -2,15 +2,13 @@
 
 ## Defects found
 
-A focused review of the temporary learning-candidate panel found a runtime exception in `refreshLearningCandidates()`: the renderer appended a `failure` node that had never been declared. When at least one candidate was returned, the render loop threw a `ReferenceError`; the panel's outer catch replaced the list with a load-failure message.
+The candidate panel's original failure/status node was already correctly scoped. The actual runtime defect exposed by Browser E2E was in the task dashboard: an earlier UI edit had placed a candidate-specific failure node inside the task-card renderer, where it referenced undefined `item`. `refreshTasks()` caught `ReferenceError: item is not defined`, so task cards were never rendered. The misplaced node was removed from task rendering; the candidate-specific node remains in its own module.
 
-A second integrity-path defect made a candidate with non-empty but hash-invalid content unreadable through the detail and readiness views. Blocking review and promotion was correct; blocking read-only audit made retained evidence inaccessible and obscured the reason for the integrity failure.
-
-The browser regression also exposed a task-dashboard runtime error: a candidate-card failure node had been inserted into the task-card renderer, where it referenced an undefined `item` variable. This caused `refreshTasks()` to catch `ReferenceError: item is not defined`, so task cards were never rendered. The misplaced node was removed from task rendering; the candidate-specific failure node remains in its own module.
+A separate integrity-path defect made a candidate with non-empty but hash-invalid content unreadable through the detail and readiness views. Blocking review and promotion was correct; blocking read-only audit made retained evidence inaccessible and obscured the reason for the integrity failure.
 
 ## Correction
 
-- Define the candidate failure/status node before appending it and render the stored `failure_reason` as text, not HTML.
+- Keep the candidate failure/status node scoped to the candidate card and render stored `failure_reason` as text, not HTML; remove the misplaced candidate node from task-card rendering.
 - Extract the complete candidate-panel behavior into `app/static/learning-candidates.js`.
 - Keep the dashboard shell in `app/static/index.html`; it now loads the dedicated module after the shared API/DOM helpers are initialized.
 - The module boundary owns candidate listing, detail/readiness/history views, review admission, test-plan creation, and sandbox-test dispatch UI. The dashboard shell exposes an explicit frozen `window.PersonalAssistantUI` contract containing only `api` and `el`; the feature module receives these dependencies through that contract and does not duplicate transport logic or depend on incidental globals.
