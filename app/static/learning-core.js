@@ -7,7 +7,6 @@
   return;
  }
  const learningEl=dashboard.el;
- const learningEl = id => document.getElementById(id);
  
  async function learningApi(path, options = {}) {
   const response = await fetch(path, {headers: {"Content-Type":"application/json"}, ...options});
