@@ -1,7 +1,8 @@
-import {api,say,$,el,act} from "./core.js?v=20261120-3";
 export const SEARCH_CONTRACT_VERSION=1;
+export function createSearchModule(core){
+ if(!core||core.CORE_CONTRACT_VERSION!==1)throw new Error("AI-learning search requires core contract v1");
+ const {api,say,$,el,act}=core;
 let searchRequestSequence=0;
-export function initSearch(){
 $("search-form").onsubmit=e=>{e.preventDefault();act(async()=>{
  const requestSequence=++searchRequestSequence;let r;try{r=await api("/search?query="+encodeURIComponent($("search-query").value))}catch(error){if(requestSequence!==searchRequestSequence)return;throw error}if(requestSequence!==searchRequestSequence)return;
  const root=$("search-results");root.replaceChildren();
@@ -17,4 +18,5 @@ $("search-form").onsubmit=e=>{e.preventDefault();act(async()=>{
  say(r.count+" نتیجه بازیابی شد.")
 })};
 
+ return Object.freeze({});
 }
