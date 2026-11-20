@@ -1,5 +1,9 @@
 # Project acceptance gates
 
+
+**Owner clarification (2026-11-20):** The application and databases remain raw development scaffolding; the owner does not consider any module complete and usable, and no completed module has produced an operational user dataset. This is an owner-reported product-state statement, not proof that every database file is empty; no live database was inspected as part of this work. This removes the need to preserve a nonexistent production dataset as a reason to avoid architectural correction, but does not justify unsafe schema edits: migrations, fixtures, and future user data still require explicit, deterministic, tested evolution.
+
+
 This file is the release-gate ledger for tracking issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290). It distinguishes repository implementation and CI evidence from target-host operations, live-model evaluation, human adjudication, and independent review. A merged PR is not by itself proof that an acceptance gate passed.
 
 **Work resumed on 2026-10-29:** Issues #52 and #290 have been reopened because the outstanding acceptance work is active again. This is not a release acceptance or a claim that the remaining gates are complete. Keep repository implementation work separate from target-host operations, live-model evaluation, human adjudication, and independent security review. Do not describe the project as 100% complete while any required gate below is blocked or unverified.
