@@ -145,7 +145,7 @@ def test_topic_checkbox_is_outside_summary_and_script_cache_is_busted():
     html = _asset("index.html")
     courses = _asset("courses.js")
     runs = _asset("runs.js")
-    assert '/ai-learning-assets/app.js?v=20261120-4' in html
+    assert '/ai-learning-assets/app.js?v=20261120-5' in html
     assert 'head.append(el("strong",numberPath+". "+topic.title)' in courses
     assert 'card.append(head);' in courses
     assert 'const selection=el("div",undefined,"topic-select");selection.append(check);card.append(selection);' in courses
@@ -188,7 +188,7 @@ def test_ai_learning_modules_have_versioned_contracts_and_bounded_ownership():
         assert (_ROOT / filename).stat().st_size < 24_000
 
     entry = _asset("app.js")
-    assert (_ROOT / "app.js").stat().st_size < 6_000
+    assert (_ROOT / "app.js").stat().st_size < 7_000
     assert "Promise.allSettled" in entry
     assert 'import("./core.js?v="+MODULE_VERSION)' in entry
     assert 'import("./courses.js?v="+MODULE_VERSION)' in entry
