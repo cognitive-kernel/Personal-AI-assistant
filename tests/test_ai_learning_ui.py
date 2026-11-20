@@ -197,7 +197,7 @@ def test_ai_learning_modules_have_versioned_contracts_and_bounded_ownership():
     courses = _asset("courses.js")
     search = _asset("search.js")
     assert "loadCourses(created.id)" in courses
-    assert "Promise.resolve(runHistoryLoader(requestedCourseId)).catch" in courses
+    assert "Promise.resolve().then(()=>runHistoryLoader(requestedCourseId)).catch" in courses
     assert "searchRequestSequence" in search
     assert 'import("./core.js?v="+MODULE_VERSION)' in entry
     assert 'import("./courses.js?v="+MODULE_VERSION)' in entry
