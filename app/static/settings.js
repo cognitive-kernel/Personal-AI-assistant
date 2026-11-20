@@ -244,11 +244,6 @@
   } catch(error) { el("settings-output").textContent="ذخیره تنظیمات ناموفق بود: "+error.message; }
  });
  
- 
- refresh();
- 
- 
- 
  window.dashboardSettings=Object.freeze({version:1,refresh:refreshSettings});
  refreshSettings();
 })();
