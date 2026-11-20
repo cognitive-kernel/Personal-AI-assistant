@@ -1,4 +1,4 @@
-const MODULE_VERSION="20261120-4";
+const MODULE_VERSION="20261120-5";
 const moduleImports=await Promise.allSettled([
  import("./core.js?v="+MODULE_VERSION),
  import("./courses.js?v="+MODULE_VERSION),
