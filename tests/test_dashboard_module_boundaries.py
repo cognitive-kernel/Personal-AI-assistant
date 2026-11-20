@@ -124,3 +124,12 @@ def test_task_dashboard_is_an_isolated_feature_with_private_refresh_and_poll_sta
     assert module.rstrip().endswith("})();")
     assert "innerHTML" not in module
 
+def test_ui_audit_tracks_the_current_storage_and_task_module_boundaries():
+    audit = (ROOT / "docs" / "UI_AUDIT_2026-10-30.md").read_text(encoding="utf-8")
+    engineering_log = (ROOT / "docs" / "ENGINEERING_LOG.md").read_text(encoding="utf-8")
+
+    assert "app/static/storage.js" in audit
+    assert "app/static/tasks.js" in audit
+    assert "mutation gate" in audit
+    assert "concurrency regression" in engineering_log
+
