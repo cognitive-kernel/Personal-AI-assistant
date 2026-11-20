@@ -42,6 +42,8 @@ def repair_legacy_rejected_candidates(*, apply: bool = False) -> dict[str, Any]:
             "temporary_knowledge_candidates",
             "learning_jobs",
             "learning_evidence",
+            "learning_source_text",
+            "knowledge_items",
         }
         present_tables = {
             row["name"]
@@ -75,7 +77,7 @@ def repair_legacy_rejected_candidates(*, apply: bool = False) -> dict[str, Any]:
                  AND c.failure_reason LIKE 'rejected_after_review:%'
                  AND c.failure_reason NOT LIKE '%legacy_recovery:%'
                  AND c.promoted_knowledge_id IS NULL
-                 AND (c.content='' OR c.source_urls_json='[]' OR c.quality_report_json='{}')
+                 AND (c.content='' OR c.source_urls_json='[]' OR c.quality_report_json='{}') 
                ORDER BY c.id"""
         ).fetchall()
 
@@ -85,18 +87,20 @@ def repair_legacy_rejected_candidates(*, apply: bool = False) -> dict[str, Any]:
             updates: dict[str, str] = {}
             recovered: list[str] = []
             unavailable: list[str] = []
-            content_hash_verified = False
-
-            if row["content"]:
-                content_hash_verified = (
-                    hashlib.sha256(str(row["content"]).encode("utf-8")).hexdigest()
-                    == row["content_sha256"]
-                )
-            else:
+            content = str(row["content"] or "")
+            expected_hash = str(row["content_sha256"] or "")
+            content_hash_verified = bool(
+                content
+                and hashlib.sha256(content.encode("utf-8")).hexdigest() == expected_hash
+            )
+            if not content_hash_verified:
+                # A non-empty but corrupted candidate must not block exact recovery
+                # from the independently retained lesson field.
                 lesson = str(row["job_lesson"] or "")
-                if lesson and hashlib.sha256(lesson.encode("utf-8")).hexdigest() == row["content_sha256"]:
-                    updates["content"] = lesson
-                    recovered.append("content")
+                if lesson and hashlib.sha256(lesson.encode("utf-8")).hexdigest() == expected_hash:
+                    if lesson != content:
+                        updates["content"] = lesson
+                        recovered.append("content")
                     content_hash_verified = True
                 else:
                     unavailable.append("content_hash_match")
@@ -188,6 +192,10 @@ def repair_legacy_rejected_candidates(*, apply: bool = False) -> dict[str, Any]:
 
         if apply:
             connection.commit()
+    except BaseException:
+        if connection.in_transaction:
+            connection.rollback()
+        raise
     finally:
         connection.close()
 
