@@ -528,3 +528,23 @@ def test_worker_deduplicates_sibling_hosts_before_spending_model_calls(lifecycle
     assert result["status"] == "awaiting_evidence"
     assert result["ready_for_promotion"] is False
     assert model_list_called is False
+
+
+def test_legacy_scrubbed_rejection_remains_readable_without_fabricating_content(lifecycle_store):
+    job = learning.create_job("Legacy scrubbed candidate")
+    candidate_id, _digest = _candidate(job["id"])
+    with db.learning_connection() as connection:
+        connection.execute(
+            """UPDATE temporary_knowledge_candidates
+               SET content='', status='failed',
+                   failure_reason='rejected_after_review: legacy scrubbed record'
+               WHERE id=?""",
+            (candidate_id,),
+        )
+
+    readiness = knowledge_lifecycle.candidate_readiness(candidate_id)
+
+    assert readiness["status"] == "rejected_after_review"
+    assert readiness["ready_for_promotion"] is False
+    assert readiness["checks"]["content_retained"] is False
+    assert readiness["checks"]["legacy_content_scrubbed"] is True
