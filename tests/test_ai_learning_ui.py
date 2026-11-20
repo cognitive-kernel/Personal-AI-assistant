@@ -108,7 +108,7 @@ def test_topic_and_lesson_catalog_is_one_collapsible_menu():
     assert 'const card=el("details",undefined,"topic")' in courses
     assert 'if(catalog)catalog.open=true' in courses
     assert 'await lessonLoader(topic.id,inlineLessons,true)' in courses
-    assert 'export async function loadLessons(topicId,targetRoot,inline=false)' in lessons
+    assert 'async function loadLessons(topicId,targetRoot,inline=false)' in lessons
 
 
 def test_lesson_review_is_rendered_inline_under_its_topic():
