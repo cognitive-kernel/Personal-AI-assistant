@@ -367,17 +367,22 @@ def test_system_health_refresh_is_single_and_does_not_depend_on_settings():
 
 def test_learning_review_panels_ignore_stale_out_of_order_responses():
     module = (STATIC / "learning-review.js").read_text(encoding="utf-8")
-    sequences = (
-        "learningEscalationsRequestSequence",
-        "factualReviewQueueRequestSequence",
-        "factualTestQueueRequestSequence",
-        "factualTestHistoryRequestSequence",
+    panels = (
+        ("refreshLearningEscalations", "learningEscalationsRequestSequence"),
+        ("refreshFactualReviewQueue", "factualReviewQueueRequestSequence"),
+        ("refreshFactualTestQueue", "factualTestQueueRequestSequence"),
+        ("refreshFactualTestHistory", "factualTestHistoryRequestSequence"),
     )
-    for sequence in sequences:
+    for function_name, sequence in panels:
         assert f"let {sequence}=0;" in module
-        assert f"const requestSequence=++{sequence};" in module
-        assert f"if(requestSequence!=={sequence})return;" in module
-        assert f"if(requestSequence==={sequence})" in module
+        start = module.index(f"async function {function_name}()")
+        end = module.find("\nasync function ", start + 1)
+        block = module[start:end if end >= 0 else len(module)]
+        guard = f"if(requestSequence!=={sequence})return;"
+        assert f"const requestSequence=++{sequence};" in block
+        assert guard in block
+        assert block.index(guard) < block.index("container.replaceChildren();")
+        assert f"if(requestSequence==={sequence})" in block
 
 
 def test_learning_capability_refresh_ignores_stale_out_of_order_responses():
@@ -387,3 +392,17 @@ def test_learning_capability_refresh_ignores_stale_out_of_order_responses():
     assert "const requestSequence = ++learningCapabilitiesRequestSequence;" in module
     assert "if (requestSequence !== learningCapabilitiesRequestSequence) return;" in module
     assert "if (requestSequence === learningCapabilitiesRequestSequence)" in module
+
+
+def test_learning_capability_guard_runs_before_rendering_latest_response():
+    module = (STATIC / "learning-overview.js").read_text(encoding="utf-8")
+    start = module.index("async function refreshLearningCapabilities()")
+    end = module.find("\n}", start)
+    block = module[start:end if end >= 0 else len(module)]
+
+    await_result = 'await learningApi("/api/learning/capabilities?limit=200")'
+    guard = "if (requestSequence !== learningCapabilitiesRequestSequence) return;"
+    assert await_result in block
+    assert guard in block
+    assert block.index(await_result) < block.index(guard) < block.index("const items = result.capabilities || [];")
+    assert "if (requestSequence === learningCapabilitiesRequestSequence)" in block
