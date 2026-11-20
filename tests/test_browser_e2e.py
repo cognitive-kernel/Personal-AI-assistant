@@ -4,7 +4,6 @@ Run this suite only in the dedicated browser-e2e workflow.
 """
 import json
 import os
-import time
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
@@ -1844,51 +1843,48 @@ def test_storage_mutations_are_serialized_while_backup_creation_is_in_flight():
     if not base_url:
         pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
-    backup_posts = []
-    prune_posts = []
     browser_errors = []
-
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
         page.on("pageerror", lambda error: browser_errors.append(str(error)))
-
-        def backup_route(route):
-            if route.request.method == "POST":
-                backup_posts.append(route.request.method)
-                time.sleep(0.5)
-                route.fulfill(
-                    status=200,
-                    content_type="application/json",
-                    body=json.dumps({
-                        "status": "created",
-                        "complete": True,
-                        "verified": True,
-                        "backup_id": "snapshot-test",
-                    }),
-                )
-            else:
-                route.continue_()
-
-        def prune_route(route):
-            if route.request.method == "POST":
-                prune_posts.append(route.request.method)
-                route.fulfill(
-                    status=200,
-                    content_type="application/json",
-                    body=json.dumps({"would_delete_count": 0, "candidates": []}),
-                )
-            else:
-                route.continue_()
-
-        page.route("**/api/storage/backups", backup_route)
-        page.route("**/api/storage/backups/prune", prune_route)
         page.on("dialog", lambda dialog: dialog.accept())
         _goto_section(page, base_url, "storage-health-section")
 
+        page.evaluate(
+            """() => {
+                const originalFetch = window.fetch.bind(window);
+                window.__releaseBackupRequest = null;
+                window.__prunePostCount = 0;
+                window.fetch = (input, options = {}) => {
+                    const url = typeof input === "string" ? input : input.url;
+                    if (url.endsWith("/api/storage/backups") && options.method === "POST") {
+                        return new Promise(resolve => {
+                            window.__releaseBackupRequest = () => resolve(new Response(
+                                JSON.stringify({
+                                    status: "created",
+                                    complete: true,
+                                    verified: true,
+                                    backup_id: "snapshot-test"
+                                }),
+                                {status: 200, headers: {"Content-Type": "application/json"}}
+                            ));
+                        });
+                    }
+                    if (url.endsWith("/api/storage/backups/prune") && options.method === "POST") {
+                        window.__prunePostCount += 1;
+                    }
+                    return originalFetch(input, options);
+                };
+            }"""
+        )
+
         page.locator("#create-storage-backup").click()
+        page.wait_for_function("typeof window.__releaseBackupRequest === 'function'")
         page.locator("#prune-storage-backups").click()
 
+        assert page.evaluate("window.__prunePostCount") == 0
+        page.evaluate("window.__releaseBackupRequest()")
         page.wait_for_function(
             """() => {
                 const node = document.querySelector('#storage-backup-output');
@@ -1897,8 +1893,6 @@ def test_storage_mutations_are_serialized_while_backup_creation_is_in_flight():
             timeout=10000,
         )
 
-        assert backup_posts == ["POST"]
-        assert prune_posts == [], "A second storage mutation must not overlap an active mutation."
         assert page.locator("#create-storage-backup").is_enabled()
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
