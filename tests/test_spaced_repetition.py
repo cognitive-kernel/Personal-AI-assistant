@@ -90,13 +90,16 @@ def test_learning_ui_exposes_spaced_repetition_controls():
     page = (Path(__file__).parents[1] / "app" / "static" / "learning.js").read_text(
         encoding="utf-8"
     )
+    overview = (Path(__file__).parents[1] / "app" / "static" / "learning-overview.js").read_text(
+        encoding="utf-8"
+    )
     index = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
         encoding="utf-8"
     )
     assert 'id="refresh-due-reviews"' in index
     assert "نمایش مرورهای سررسیدشده" in index
     assert "ثبت مرور و زمان‌بندی بعدی" in page
-    assert '"/api/learning/reviews/due?limit=100"' in page
+    assert '"/api/learning/reviews/due?limit=100"' in overview
     assert '"/api/learning/paths/" + path.id + "/topics/" + topic.id + "/reviews"' in page
 
 def test_learning_task_audit_history_formats_each_event_kind():
