@@ -108,7 +108,10 @@ def test_learning_task_audit_history_formats_each_event_kind():
     page = (Path(__file__).parents[1] / "app" / "static" / "learning.js").read_text(
         encoding="utf-8"
     )
-    assert "function formatTaskAuditEventChange(event)" in page
+    core = (Path(__file__).parents[1] / "app" / "static" / "learning-core.js").read_text(
+        encoding="utf-8"
+    )
+    assert "function formatTaskAuditEventChange(event)" in core
     assert 'case "status_changed"' in page
     assert 'case "priority_changed"' in page
     assert 'case "scheduled"' in page
