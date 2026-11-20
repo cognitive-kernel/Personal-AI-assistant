@@ -1,3 +1,23 @@
+## 2026-11-20 — AI-learning UI route ownership, reset contract and stale-response races
+
+### Root cause
+- The feature-owned `app/ai_learning/ui.py` router was registered before a second `/ai-learning` handler in `app/main.py`. The first route served the package-owned `app/ai_learning/static/index.html`; the later handler pointed at the obsolete `app/static/ai-learning.html`. Tests still inspected the obsolete `app/static/ai-learning.js`, so they could pass while the page actually served to users behaved differently.
+- The active reset UI prompted for `RESET` and sent no confirmation body, while the API requires the exact `RESET AI LEARNING DATA` value in a strict request model. The visible reset control therefore could not complete successfully against the real endpoint.
+- Course catalog, course detail and run-history reads relied mainly on selected-course identity. That protects course switches, but not overlapping requests for the same course; older responses could replace newer UI state. Background progress refresh also needed its own generation fence and invalidation when a detail reload begins.
+
+### Corrective change
+- Removed the duplicate page handler and the unused legacy HTML, JavaScript and CSS assets. `app/ai_learning/ui.py` is now the only page owner and retains its loopback dependency and explicit asset allowlist.
+- Updated the active reset UI to require and send the exact server-side confirmation phrase. Tests now target the active page and verify the actual request body in Chromium.
+- Added independent request generations for course-list, course-detail, run-history and background-progress reads. Both stale successful responses and stale errors are discarded; course switches and same-course refreshes are covered separately.
+- Migrated UI source assertions away from the dead legacy script. Added a route-uniqueness/security-boundary test and browser regressions for stale initial course lists, same-course detail refreshes, same-course run-history refreshes and the destructive reset flow.
+
+### Validation boundary
+- Exact-head CI, browser E2E, Windows storage, sandbox integration, CodeQL and dependency audit must all pass on the final PR head before the change is considered validated.
+- No live AI-learning database, course, lesson, run, browser profile or user data was read, reset or modified. The destructive reset was tested only with an isolated browser API fixture.
+- The active `app/ai_learning/static/app.js` remains a multi-responsibility controller; splitting it into independently owned course, lesson/version, run-history, search and global-control modules remains open work.
+
+---
+
 ## 2026-11-17 — Automatic Playwright provisioning and autonomous-cycle timing
 
 ### Root cause
