@@ -53,7 +53,9 @@ def _decode_json(value: str, *, field: str) -> Any:
         raise HTTPException(status_code=503, detail=f"Stored candidate {field} is invalid.") from exc
 
 
-def _candidate(row: sqlite3.Row, *, include_content: bool = False) -> dict[str, Any]:
+def _candidate(
+    row: sqlite3.Row, *, include_content: bool = False, require_integrity: bool = True
+) -> dict[str, Any]:
     result = dict(row)
     content = result.pop("content")
     expected_hash = result.get("content_sha256")
@@ -70,7 +72,7 @@ def _candidate(row: sqlite3.Row, *, include_content: bool = False) -> dict[str, 
         result.pop("test_results_json"), field="test results"
     )
     if include_content:
-        if not result["integrity_valid"]:
+        if require_integrity and not result["integrity_valid"]:
             raise HTTPException(status_code=409, detail="Candidate content hash mismatch; review is blocked.")
         result["content"] = content
     else:
@@ -159,7 +161,7 @@ def get_learning_candidate(candidate_id: int) -> dict[str, Any]:
             ).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Learning candidate not found.")
-        return {"candidate": _candidate(row, include_content=True)}
+        return {"candidate": _candidate(row, include_content=True, require_integrity=False)}
     except HTTPException:
         raise
     except (OSError, sqlite3.Error) as exc:
