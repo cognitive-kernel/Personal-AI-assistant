@@ -6,7 +6,7 @@
 
 ## Context
 
-The dashboard's inline script accumulated unrelated chat, knowledge, storage, task, cloud-account, settings, learning, health, theme, and navigation workflows. Those workflows shared page-level helpers and mutable state. A failure or stale response in one feature could affect unrelated UI initialization, and module ownership was not enforceable. The learning UI also grew into a 994-line file with multiple distinct responsibilities.
+The dashboard's inline script accumulated unrelated chat, knowledge, storage, task, cloud-account, settings, learning, health, theme, and navigation workflows. Those workflows shared page-level helpers and mutable state. A failure or stale response in one feature could affect unrelated UI initialization, and module ownership was not enforceable. The AI-learning UI also had two competing page implementations and route definitions: the feature-owned `app/ai_learning/ui.py` route served `app/ai_learning/static/index.html`, while a later route in `app/main.py` pointed at a legacy `app/static/ai-learning.html`. The active `app/ai_learning/static/app.js` still coordinates course, topic, lesson/version, run-history, search and global-control workflows.
 
 The project owner clarified that the application and databases are still raw development scaffolding, no module is considered complete and usable, and there is no operational user dataset produced by completed modules. This is an owner-reported product-state statement, not evidence that every database file is empty. It removes hypothetical production-data compatibility as a reason to avoid architectural correction, but does not relax migration or test-fixture safety.
 
@@ -19,7 +19,7 @@ The project owner clarified that the application and databases are still raw dev
 5. Stale read responses must not overwrite newer UI state. Storage mutations are serialized within the storage feature module. Server-side concurrency and durable task locks remain authoritative; browser guards are not substitutes for them.
 6. Modules render untrusted content using DOM text APIs, not `innerHTML`.
 7. Architecture fitness tests enforce script order, dependency versions, state ownership, safe rendering, and the module inventory. Browser tests cover user-visible failure and concurrency behavior.
-8. The autonomous engineering console is split into a shared transport/DOM core and independent runs, status, controls, and progress modules. They communicate through versioned contracts and narrow custom events; the orchestrator only validates module contracts and schedules independent refreshes. `ai-learning.js` and the learning path controller remain in the modularity backlog for further cohesion review.
+8. The autonomous engineering console is split into a shared transport/DOM core and independent runs, status, controls, and progress modules. They communicate through versioned contracts and narrow custom events; the orchestrator only validates module contracts and schedules independent refreshes. The active `app/ai_learning/static/app.js` and the learning path controller remain in the modularity backlog for further cohesion review. The shadow `app/static/ai-learning.*` implementation and duplicate `/ai-learning` route are removed; the feature router is the only page owner.
 
 ## Consequences
 
