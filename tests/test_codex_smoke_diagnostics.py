@@ -260,14 +260,15 @@ def test_codex_model_catalog_uses_selected_context_from_environment(monkeypatch)
 def test_settings_expose_visible_installed_model_selectors_and_manual_context_inputs():
     from pathlib import Path
 
-    html = (Path(__file__).resolve().parents[1] / "app" / "static" / "index.html").read_text(encoding="utf-8")
+    static = Path(__file__).resolve().parents[1] / "app" / "static"
+    html = (static / "index.html").read_text(encoding="utf-8")
+    module = (static / "settings.js").read_text(encoding="utf-8")
     for profile in ("chat", "learning", "programming"):
         assert f'id="{profile}-model-installed"' in html
         assert f'id="{profile}-model"' in html
         assert f'id="{profile}-ctx" type="number"' in html
-        assert f'id="{profile}-model-installed"' in html
-    assert 'const result=await api("/api/models")' in html
-    assert 'installedSelect?.addEventListener("change"' in html
+    assert 'const result=await api("/api/models")' in module
+    assert 'installedSelect?.addEventListener("change"' in module
 
 
 def test_codex_uses_unique_custom_ollama_provider_without_redefining_reserved_provider(monkeypatch):
