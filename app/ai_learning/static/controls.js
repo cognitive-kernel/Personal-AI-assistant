@@ -25,25 +25,26 @@ async function refreshLearningControl(){
 }
 $("pause-learning").onclick=()=>act(async()=>{
  await api("/pause",{method:"POST"});
- await refreshLearningControl();
  say("مکث سراسری ثبت شد؛ کار جاری در اولین نقطه امن متوقف می‌شود.");
+ Promise.resolve().then(()=>refreshLearningControl()).catch(error=>say(error.message,true));
 });
 $("resume-learning").onclick=()=>act(async()=>{
  const result=await api("/resume",{method:"POST",body:JSON.stringify({course_id:getCourseId()})});
- await refreshLearningControl();
- await loadRuns();
  say(result.message||"فرایند یادگیری ادامه یافت.");
+ Promise.resolve().then(()=>refreshLearningControl()).catch(error=>say(error.message,true));
+ Promise.resolve().then(()=>loadRuns()).catch(error=>say(error.message,true));
 });
 $("reset-learning-data").onclick=()=>act(async()=>{
  if(!confirm("همهٔ سرفصل‌ها، درس‌ها، نسخه‌های محتوا، سوابق اجرا و ردپاهای جست‌وجوی این ماژول پاک می‌شوند. تعریف دوره‌ها باقی می‌ماند. ادامه می‌دهید؟"))return;
  const phrase=prompt("برای تأیید پاک‌سازی کامل، عبارت RESET AI LEARNING DATA را دقیقاً وارد کنید:");
  if(phrase!=="RESET AI LEARNING DATA") { say("پاک‌سازی لغو شد."); return; }
  const result=await api("/reset-learning-data",{method:"POST",body:JSON.stringify({confirmation:phrase})});
- await loadCourses(getCourseId()||undefined);
- $("select-all-topics").checked=false;
- $("select-all-course-lessons").checked=false;
- $("select-all-runs").checked=false;
+ const topicSelection=$("select-all-topics"),lessonSelection=$("select-all-course-lessons"),runSelection=$("select-all-runs");
+ if(topicSelection)topicSelection.checked=false;
+ if(lessonSelection)lessonSelection.checked=false;
+ if(runSelection)runSelection.checked=false;
  say("پاک‌سازی انجام شد. سرفصل‌ها: "+result.deleted.topics+"، درس‌ها: "+result.deleted.lessons+"، نسخه‌ها: "+result.deleted.versions+"، سوابق اجرا: "+result.deleted.runs+" حذف شدند؛ دوره‌ها باقی ماندند و آماده شروع مجدد هستند.");
+ Promise.resolve().then(()=>loadCourses(getCourseId()||undefined)).catch(error=>say(error.message,true));
 });
 
  return Object.freeze({refreshLearningControl});
