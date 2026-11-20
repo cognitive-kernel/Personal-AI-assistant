@@ -6056,3 +6056,272 @@ def test_settings_model_catalog_discards_stale_out_of_order_refresh_response():
             timeout=5000,
         )
         browser.close()
+
+
+def test_ai_learning_course_catalog_discards_a_late_initial_list_after_course_creation():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    course_reads = 0
+    browser_errors = []
+
+    def learning_api_route(route):
+        nonlocal course_reads
+        request = route.request
+        path = request.url.split("?", 1)[0].removeprefix(base_url.rstrip("/"))
+        if request.method == "GET" and path == "/api/ai-learning/courses":
+            course_reads += 1
+            items = [{"id": 42, "title": "دورهٔ موجود", "topic_count": 0}]
+            if course_reads > 1:
+                items.append({"id": 43, "title": "دورهٔ تازه", "topic_count": 0})
+            payload = {"items": items, "count": len(items)}
+        elif request.method == "POST" and path == "/api/ai-learning/courses":
+            payload = {"id": 43, "title": "دورهٔ تازه", "topic_count": 0}
+        elif request.method == "GET" and path == "/api/ai-learning/courses/42":
+            payload = {"topics": []}
+        elif request.method == "GET" and path == "/api/ai-learning/courses/42/runs":
+            payload = {"items": [], "count": 0}
+        elif request.method == "GET" and path == "/api/ai-learning/control":
+            payload = {
+                "paused": False, "reason": "", "retry_pending": False,
+                "worker_active": False, "worker_recovery_pending": False,
+            }
+        else:
+            route.fulfill(
+                status=404,
+                content_type="application/json",
+                body=json.dumps({"detail": "unexpected AI-learning request: " + path}),
+            )
+            return
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(payload, ensure_ascii=False),
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.add_init_script("""
+            (() => {
+                const originalFetch = window.fetch.bind(window);
+                let delayed = false;
+                window.fetch = (resource, options) => {
+                    const url = typeof resource === "string" ? resource : resource.url;
+                    if (!delayed && url.endsWith("/api/ai-learning/courses")) {
+                        delayed = true;
+                        window.__firstCourseCatalogReadStarted = true;
+                        return new Promise((resolve, reject) => {
+                            originalFetch(resource, options).then(response => {
+                                window.setTimeout(() => {
+                                    window.__firstCourseCatalogReadResolved = true;
+                                    resolve(response);
+                                }, 1200);
+                            }, reject);
+                        });
+                    }
+                    return originalFetch(resource, options);
+                };
+            })();
+        """)
+        page.route("**/api/ai-learning/**", learning_api_route)
+        page.goto(base_url.rstrip("/") + "/ai-learning", wait_until="domcontentloaded")
+        page.wait_for_function(
+            "() => window.__firstCourseCatalogReadStarted === true", timeout=10000
+        )
+
+        page.locator('#course-form input[name="title"]').fill("دورهٔ تازه")
+        page.locator('#course-form button[type="submit"]').click()
+        page.locator('#course-select option[value="43"]').wait_for(
+            state="attached", timeout=10000
+        )
+        page.wait_for_function(
+            "() => window.__firstCourseCatalogReadResolved === true", timeout=10000
+        )
+
+        assert page.locator('#course-select option[value="43"]').count() == 1
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+def test_ai_learning_same_course_refresh_discards_stale_course_details():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    course_detail_reads = 0
+    old_topic = {
+        "id": 4201, "position": 1, "title": "موضوع قدیمی",
+        "parent_topic_id": None, "approval_status": "pending",
+        "processing_status": "idle", "progress_percent": 0, "lesson_count": 0,
+    }
+    new_topic = {
+        "id": 4202, "position": 1, "title": "موضوع جدید",
+        "parent_topic_id": None, "approval_status": "pending",
+        "processing_status": "idle", "progress_percent": 0, "lesson_count": 0,
+    }
+    browser_errors = []
+
+    def learning_api_route(route):
+        nonlocal course_detail_reads
+        request = route.request
+        path = request.url.split("?", 1)[0].removeprefix(base_url.rstrip("/"))
+        if request.method == "GET" and path == "/api/ai-learning/courses":
+            payload = {"items": [{"id": 42, "title": "دورهٔ آزمایشی"}], "count": 1}
+        elif request.method == "GET" and path == "/api/ai-learning/courses/42":
+            course_detail_reads += 1
+            payload = {"topics": [old_topic if course_detail_reads == 1 else new_topic]}
+        elif request.method == "POST" and path == "/api/ai-learning/courses/42/topics":
+            payload = {"id": 4202}
+        elif request.method == "GET" and path == "/api/ai-learning/courses/42/runs":
+            payload = {"items": [], "count": 0}
+        elif request.method == "GET" and path == "/api/ai-learning/control":
+            payload = {
+                "paused": False, "reason": "", "retry_pending": False,
+                "worker_active": False, "worker_recovery_pending": False,
+            }
+        else:
+            route.fulfill(
+                status=404,
+                content_type="application/json",
+                body=json.dumps({"detail": "unexpected AI-learning request: " + path}),
+            )
+            return
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(payload, ensure_ascii=False),
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.add_init_script("""
+            (() => {
+                const originalFetch = window.fetch.bind(window);
+                let delayed = false;
+                window.fetch = (resource, options) => {
+                    const url = typeof resource === "string" ? resource : resource.url;
+                    if (!delayed && url.endsWith("/api/ai-learning/courses/42")) {
+                        delayed = true;
+                        window.__firstCourseDetailReadStarted = true;
+                        return new Promise((resolve, reject) => {
+                            originalFetch(resource, options).then(response => {
+                                window.setTimeout(() => {
+                                    window.__firstCourseDetailReadResolved = true;
+                                    resolve(response);
+                                }, 1200);
+                            }, reject);
+                        });
+                    }
+                    return originalFetch(resource, options);
+                };
+            })();
+        """)
+        page.route("**/api/ai-learning/**", learning_api_route)
+        page.goto(base_url.rstrip("/") + "/ai-learning", wait_until="domcontentloaded")
+        page.wait_for_function(
+            "() => window.__firstCourseDetailReadStarted === true", timeout=10000
+        )
+        page.locator("#catalog-menu > summary").click()
+        page.locator('#topic-form input[name="title"]').fill("موضوع جدید")
+        page.locator('#topic-form button[type="submit"]').click()
+        page.locator("#topics").get_by_text("موضوع جدید", exact=False).wait_for(timeout=10000)
+        page.wait_for_function(
+            "() => window.__firstCourseDetailReadResolved === true", timeout=10000
+        )
+
+        assert page.locator("#topics").get_by_text("موضوع جدید", exact=False).is_visible()
+        assert page.locator("#topics").get_by_text("موضوع قدیمی", exact=False).count() == 0
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+def test_ai_learning_same_course_run_history_discards_stale_refresh():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    run_reads = 0
+    browser_errors = []
+
+    def learning_api_route(route):
+        nonlocal run_reads
+        request = route.request
+        path = request.url.split("?", 1)[0].removeprefix(base_url.rstrip("/"))
+        if request.method == "GET" and path == "/api/ai-learning/courses":
+            payload = {"items": [{"id": 42, "title": "دورهٔ آزمایشی"}], "count": 1}
+        elif request.method == "GET" and path == "/api/ai-learning/courses/42":
+            payload = {"topics": []}
+        elif request.method == "GET" and path == "/api/ai-learning/courses/42/runs":
+            run_reads += 1
+            run_id = 420 if run_reads == 1 else 421
+            payload = {"items": [{
+                "id": run_id, "run_type": "outline", "status": "succeeded",
+                "created_at": "2026-11-20T07:00:00Z",
+            }], "count": 1}
+        elif request.method == "POST" and path == "/api/ai-learning/resume":
+            payload = {"message": "بازیابی ثبت شد."}
+        elif request.method == "GET" and path == "/api/ai-learning/control":
+            payload = {
+                "paused": False, "reason": "", "retry_pending": False,
+                "worker_active": False, "worker_recovery_pending": False,
+            }
+        else:
+            route.fulfill(
+                status=404,
+                content_type="application/json",
+                body=json.dumps({"detail": "unexpected AI-learning request: " + path}),
+            )
+            return
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(payload, ensure_ascii=False),
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.add_init_script("""
+            (() => {
+                const originalFetch = window.fetch.bind(window);
+                let delayed = false;
+                window.fetch = (resource, options) => {
+                    const url = typeof resource === "string" ? resource : resource.url;
+                    if (!delayed && url.includes("/api/ai-learning/courses/42/runs?limit=50")) {
+                        delayed = true;
+                        window.__firstRunHistoryReadStarted = true;
+                        return new Promise((resolve, reject) => {
+                            originalFetch(resource, options).then(response => {
+                                window.setTimeout(() => {
+                                    window.__firstRunHistoryReadResolved = true;
+                                    resolve(response);
+                                }, 1200);
+                            }, reject);
+                        });
+                    }
+                    return originalFetch(resource, options);
+                };
+            })();
+        """)
+        page.route("**/api/ai-learning/**", learning_api_route)
+        page.goto(base_url.rstrip("/") + "/ai-learning", wait_until="domcontentloaded")
+        page.wait_for_function(
+            "() => window.__firstRunHistoryReadStarted === true", timeout=10000
+        )
+
+        page.locator("#resume-learning").click()
+        page.get_by_text("اجرای #421", exact=False).wait_for(timeout=10000)
+        page.wait_for_function(
+            "() => window.__firstRunHistoryReadResolved === true", timeout=10000
+        )
+
+        assert page.get_by_text("اجرای #421", exact=False).is_visible()
+        assert page.get_by_text("اجرای #420", exact=False).count() == 0
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
