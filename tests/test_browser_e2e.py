@@ -6038,7 +6038,10 @@ def test_settings_model_catalog_discards_stale_out_of_order_refresh_response():
             content_type="application/json",
             body=json.dumps({"models": [{"name": "new-model"}]}),
         )
-        page.locator("#ollama-model-options option[value='new-model']").wait_for(timeout=5000)
+        page.wait_for_function(
+            "document.querySelector('#ollama-model-options option[value=\\\"new-model\\\"]') !== null",
+            timeout=5000,
+        )
 
         with page.expect_response(lambda response: response.url.endswith("/api/models")):
             pending_routes[0].fulfill(
