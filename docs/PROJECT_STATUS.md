@@ -506,4 +506,4 @@ The subsequent documentation-only evidence update does not change runtime code a
 - Follow-up UI modularization in PR #795: conversation/message rendering, feedback, conversation CRUD, and queued-response polling now live in `app/static/chat.js`; the module owns selected-conversation identity and stale-response sequencing. Architecture tests enforce the boundary. Exact-head CI remains pending.
 
 - PR #795 UI decomposition now includes dedicated chat, knowledge, storage, tasks, cloud-account, settings, learning-review, system-health, theme, and section-navigation modules. The dashboard inline script no longer owns these workflows; learning-candidate UI remains in the shell on this branch and is being extracted separately in PR #797. Exact-head CI and target-host/human acceptance are pending.
-
+- The former 994-line `learning.js` has been decomposed into `learning-core.js`, `learning-lessons.js`, `learning-overview.js`, and a path/curriculum-focused `learning.js`. Versioned contracts and script order are enforced by tests. Exact-head CI remains pending.
