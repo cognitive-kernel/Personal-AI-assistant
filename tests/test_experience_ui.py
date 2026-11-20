@@ -34,7 +34,7 @@ def test_experience_memory_ui_exposes_safe_curation_search_and_history():
         encoding="utf-8"
     )
     assert '<script src="/static/dashboard-core.js"></script>' in page
-    assert 'node.textContent=text' in core
+    assert 'node.textContent = text' in core
     assert 'innerHTML' not in page
     assert 'innerHTML' not in core
 
