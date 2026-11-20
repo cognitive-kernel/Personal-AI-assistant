@@ -2123,3 +2123,16 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Added regression coverage for non-destructive rejection, API listing/detail, browser visibility/control gating, and dry-run/apply/idempotent legacy recovery. Exact-head CI is required before claiming validation.
 - Legacy source text, assessments, test plans, and knowledge version metadata already physically deleted by older code cannot be reconstructed. The recovery utility does not fabricate them. No live user database is modified by this repository change.
 - سخت‌سازی ابزار بازیابی: دیتابیس فقط با SQLite URI در حالت `mode=rw` باز می‌شود؛ ابزار نه فایل جدید می‌سازد و نه migration اجرا می‌کند. مسیر ناموجود یا schema ناقص خطای صریح ایجاد می‌کند و regression جلوگیری از ساخت دیتابیس اشتباه اضافه شده است.
+
+
+## 2026-11-20 — P0 learning evidence recovery, UI isolation, and integrity audit
+
+- Canonical PR: #797, branch `fix/preserve-learning-evidence-main-20261120`, based on main SHA `bc1d273bdece690b5067a70b2deea8aa77ed7e28`.
+- Closed duplicate PR #796 as superseded; retained its source branch and commits.
+- Corrected legacy recovery so hash-invalid non-empty content can be restored only from an exact-hash-matching preserved job lesson, including when source/quality metadata are already populated. Non-matching content is never replaced; no adjacent metadata is changed in that mismatch case.
+- Recovery defaults to dry-run, opens only an existing database in `mode=rw` for explicit apply, validates required tables, uses compare-and-set row predicates, and explicitly rolls back on exceptions.
+- Fixed candidate-card rendering (`failure` was referenced before declaration) and extracted the 11 KB candidate interaction block into `app/static/learning-candidates.js`; `app/static/index.html` no longer owns this feature's rendering and event-handler logic.
+- Hash-invalid non-empty candidate content remains available to read-only detail and readiness views. Integrity mismatch blocks claim extraction, review, test-plan mutation, and promotion.
+- Added tests: `tests/test_repair_legacy_corrupted_content.py` and `tests/test_learning_candidate_integrity_readonly.py`. Existing browser regression covers the terminal candidate rendering, retained evidence, and hidden mutation actions.
+- Latest code head: `68fb3df53e0cdc1a765c9abaf57cac95913b0831`. Exact-head tests, Windows storage regressions, Browser E2E, CodeQL, and dependency audit were queued/running at this checkpoint; no completion claim is made.
+- No local test run, live database repair, target-host UI acceptance, or human accessibility review is claimed. The branch remains a draft PR and must not merge until exact-head checks pass and remaining acceptance gates are reviewed.
