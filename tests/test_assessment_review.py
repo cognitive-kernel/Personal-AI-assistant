@@ -107,7 +107,7 @@ def test_semantic_review_rejects_attempt_from_another_job(tmp_path, monkeypatch)
 def test_learning_ui_exposes_opt_in_advisory_semantic_review():
     from pathlib import Path
 
-    page = (Path(__file__).parents[1] / "app" / "static" / "learning.js").read_text(
+    page = (Path(__file__).parents[1] / "app" / "static" / "learning-lessons.js").read_text(
         encoding="utf-8"
     )
     assert "مشاهده/اجرای بازبینی معنایی کمکی" in page
