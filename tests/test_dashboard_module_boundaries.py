@@ -484,4 +484,5 @@ def test_autonomous_engineering_status_can_run_when_controls_module_is_unavailab
     assert 'if (status && status.version === 1)' in orchestrator
     assert 'if (!controls || controls.version !== 1) missing.push("کنترل");' in orchestrator
     assert 'if (!message) return;' in core
+    assert 'const message = $("agent-message");\n  if (!message) return;' not in core
     assert 'if (!core || core.version !== 1)' in orchestrator
