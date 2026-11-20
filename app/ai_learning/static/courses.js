@@ -1,15 +1,17 @@
-import {api,say,$,el,data,progressMeter,act} from "./core.js?v=20261120-3";
 export const COURSES_CONTRACT_VERSION=1;
+export function createCoursesModule(core){
+ if(!core||core.CORE_CONTRACT_VERSION!==1)throw new Error("AI-learning courses requires core contract v1");
+ const {api,say,$,el,data,progressMeter,act}=core;
 let courseId=null,topics=[],selectedTopicIds=new Set(),renderedTopicsSnapshot="";
 let courseListRequestSequence=0,courseDetailsRequestSequence=0,courseProgressRequestSequence=0;
 let runHistoryLoader=async()=>{},lessonLoader=async()=>{};
-export function setRunHistoryLoader(loader){if(typeof loader!=="function")throw new TypeError("run history loader must be a function");runHistoryLoader=loader}
-export function setLessonLoader(loader){if(typeof loader!=="function")throw new TypeError("lesson loader must be a function");lessonLoader=loader}
-export function getCourseId(){return courseId}
-export function getTopics(){return topics}
-export async function loadCourses(keep){const requestSequence=++courseListRequestSequence;let d;try{d=await api("/courses")}catch(error){if(requestSequence!==courseListRequestSequence)return;throw error}if(requestSequence!==courseListRequestSequence)return;const s=$("course-select");s.replaceChildren();for(const c of d.items){const o=el("option",c.title+" (شناسه "+c.id+")");o.value=c.id;s.append(o)}if(keep&&d.items.some(c=>String(c.id)===String(keep)))s.value=String(keep);courseId=s.value?Number(s.value):null;if(courseId)localStorage.setItem("aiLearningCourseId",String(courseId));await loadCourse()}
-export function isCurrentCourse(requestedCourseId){const selectedValue=$("course-select").value;const selectedId=selectedValue?Number(selectedValue):null;return courseId===requestedCourseId&&selectedId===requestedCourseId}
-export async function loadCourse(){const nextCourseId=$("course-select").value?Number($("course-select").value):null;if(nextCourseId!==courseId)selectedTopicIds.clear();courseId=nextCourseId;const requestedCourseId=courseId;const requestSequence=++courseDetailsRequestSequence;courseProgressRequestSequence++;const lessonsRoot=$("lessons");if(lessonsRoot)lessonsRoot.dataset.loadSequence=String((Number(lessonsRoot.dataset.loadSequence)||0)+1);$("topics").replaceChildren();$("lessons").replaceChildren();if($("lesson-list-details"))$("lesson-list-details").open=false;if(!requestedCourseId){$("topics").append(el("p","هنوز دوره‌ای ثبت نشده است."));await runHistoryLoader(null);return}let course;try{course=await api("/courses/"+requestedCourseId)}catch(error){if(requestSequence!==courseDetailsRequestSequence||!isCurrentCourse(requestedCourseId))return;throw error}if(requestSequence!==courseDetailsRequestSequence||!isCurrentCourse(requestedCourseId))return;topics=course.topics||[];renderTopics();$("lessons").append(el("p","برای نمایش متن، روی «مشاهده درس‌ها و محتوا» در کارت سرفصل بزنید یا «نمایش همهٔ درس‌های دوره» را انتخاب کنید."));await runHistoryLoader(requestedCourseId)}
+function setRunHistoryLoader(loader){if(typeof loader!=="function")throw new TypeError("run history loader must be a function");runHistoryLoader=loader}
+function setLessonLoader(loader){if(typeof loader!=="function")throw new TypeError("lesson loader must be a function");lessonLoader=loader}
+function getCourseId(){return courseId}
+function getTopics(){return topics}
+async function loadCourses(keep){const requestSequence=++courseListRequestSequence;let d;try{d=await api("/courses")}catch(error){if(requestSequence!==courseListRequestSequence)return;throw error}if(requestSequence!==courseListRequestSequence)return;const s=$("course-select");s.replaceChildren();for(const c of d.items){const o=el("option",c.title+" (شناسه "+c.id+")");o.value=c.id;s.append(o)}if(keep&&d.items.some(c=>String(c.id)===String(keep)))s.value=String(keep);courseId=s.value?Number(s.value):null;if(courseId)localStorage.setItem("aiLearningCourseId",String(courseId));await loadCourse()}
+function isCurrentCourse(requestedCourseId){const selectedValue=$("course-select").value;const selectedId=selectedValue?Number(selectedValue):null;return courseId===requestedCourseId&&selectedId===requestedCourseId}
+async function loadCourse(){const nextCourseId=$("course-select").value?Number($("course-select").value):null;if(nextCourseId!==courseId)selectedTopicIds.clear();courseId=nextCourseId;const requestedCourseId=courseId;const requestSequence=++courseDetailsRequestSequence;courseProgressRequestSequence++;const lessonsRoot=$("lessons");if(lessonsRoot)lessonsRoot.dataset.loadSequence=String((Number(lessonsRoot.dataset.loadSequence)||0)+1);$("topics").replaceChildren();$("lessons").replaceChildren();if($("lesson-list-details"))$("lesson-list-details").open=false;if(!requestedCourseId){$("topics").append(el("p","هنوز دوره‌ای ثبت نشده است."));await runHistoryLoader(null);return}let course;try{course=await api("/courses/"+requestedCourseId)}catch(error){if(requestSequence!==courseDetailsRequestSequence||!isCurrentCourse(requestedCourseId))return;throw error}if(requestSequence!==courseDetailsRequestSequence||!isCurrentCourse(requestedCourseId))return;topics=course.topics||[];renderTopics();$("lessons").append(el("p","برای نمایش متن، روی «مشاهده درس‌ها و محتوا» در کارت سرفصل بزنید یا «نمایش همهٔ درس‌های دوره» را انتخاب کنید."));await runHistoryLoader(requestedCourseId)}
 function childTopics(topicId) {
  return topics.filter(item=>Number(item.parent_topic_id||0)===Number(topicId));
 }
@@ -246,7 +248,7 @@ $("learn-selected-topics").onclick=()=>act(async()=>{
 });
 $("reject-selected").onclick=()=>act(()=>decide(Array.from(document.querySelectorAll(".topic-check:checked")).map(x=>Number(x.closest(".topic").dataset.id)),"rejected"));
 $("save-order").onclick=()=>act(async()=>{if(!courseId||!topics.length)throw Error("سرفصلی برای مرتب‌سازی وجود ندارد.");await api("/courses/"+courseId+"/topic-order",{method:"PUT",body:JSON.stringify({topic_ids:topics.map(t=>t.id)})});await loadCourse();say("ترتیب ذخیره شد.")});
-export function returnToTopic(topicId){
+function returnToTopic(topicId){
  const root=$("topics");if(!root)return;
  const card=Array.from(root.querySelectorAll("details.topic")).find(item=>Number(item.dataset.id)===Number(topicId));
  if(!card)return;
@@ -257,4 +259,7 @@ export function returnToTopic(topicId){
  card.open=true;
  window.requestAnimationFrame(()=>{card.scrollIntoView({behavior:"smooth",block:"start"});const summary=card.querySelector(":scope > summary");if(summary){summary.setAttribute("tabindex","-1");try{summary.focus({preventScroll:true})}catch(_){summary.focus()}}});
 }
-export async function refreshCourseProgress(){if(!courseId)return;const requestSequence=++courseProgressRequestSequence;const requestedCourseId=courseId;let d;try{d=await api("/courses/"+requestedCourseId)}catch(error){if(requestSequence!==courseProgressRequestSequence||!isCurrentCourse(requestedCourseId))return;throw error}if(requestSequence!==courseProgressRequestSequence||!isCurrentCourse(requestedCourseId))return;const nextTopics=d.topics||[];if(JSON.stringify(nextTopics)===renderedTopicsSnapshot)return;const inlineReviewOpen=!!document.querySelector(".topic-inline-lessons:not([hidden])");if(!inlineReviewOpen){topics=nextTopics;renderTopics();$("select-all-topics").checked=topics.length>0&&topics.every(t=>selectedTopicIds.has(Number(t.id)))}}
+async function refreshCourseProgress(){if(!courseId)return;const requestSequence=++courseProgressRequestSequence;const requestedCourseId=courseId;let d;try{d=await api("/courses/"+requestedCourseId)}catch(error){if(requestSequence!==courseProgressRequestSequence||!isCurrentCourse(requestedCourseId))return;throw error}if(requestSequence!==courseProgressRequestSequence||!isCurrentCourse(requestedCourseId))return;const nextTopics=d.topics||[];if(JSON.stringify(nextTopics)===renderedTopicsSnapshot)return;const inlineReviewOpen=!!document.querySelector(".topic-inline-lessons:not([hidden])");if(!inlineReviewOpen){topics=nextTopics;renderTopics();$("select-all-topics").checked=topics.length>0&&topics.every(t=>selectedTopicIds.has(Number(t.id)))}}
+
+ return Object.freeze({setRunHistoryLoader,setLessonLoader,getCourseId,getTopics,isCurrentCourse,loadCourses,loadCourse,refreshCourseProgress,returnToTopic});
+}
