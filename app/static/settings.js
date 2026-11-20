@@ -18,17 +18,26 @@
   const requestSequence=++settingsLoadSequence;
   try { const s = await api("/api/settings"); if(requestSequence!==settingsLoadSequence)return; el("cpu-resource-limit").value=s.cpu_resource_limit_percent ?? 90; el("ram-resource-limit").value=s.ram_resource_limit_percent ?? 90; el("gpu-resource-limit").value=s.gpu_resource_limit_percent ?? 90; el("gpu-enabled").checked=s.gpu_enabled === true; el("ram-budget-max").value=s.ram_budget_max_gb ?? 25; el("ram-safety-reserve").value=s.ram_safety_reserve_gb ?? 4; const fields={"chat-provider":"chat_llm_provider","chat-base-url":"chat_llm_base_url","chat-api-key-env":"chat_llm_api_key_env","research-plan-provider":"research_plan_llm_provider","research-plan-base-url":"research_plan_llm_base_url","research-plan-api-key-env":"research_plan_llm_api_key_env","research-plan-model":"research_plan_ollama_model","learning-provider":"learning_llm_provider","learning-base-url":"learning_llm_base_url","learning-api-key-env":"learning_llm_api_key_env","programming-provider":"programming_llm_provider","programming-base-url":"programming_llm_base_url","programming-api-key-env":"programming_llm_api_key_env","factual-review-provider":"factual_review_llm_provider","factual-review-base-url":"factual_review_llm_base_url","factual-review-api-key-env":"factual_review_llm_api_key_env","embedding-provider":"embedding_llm_provider","embedding-base-url":"embedding_llm_base_url","embedding-api-key-env":"embedding_llm_api_key_env","embedding-model":"ollama_embedding_model","chat-keep-alive":"chat_model_keep_alive","learning-keep-alive":"learning_model_keep_alive","programming-keep-alive":"programming_model_keep_alive","chat-model":"chat_ollama_model","chat-ctx":"chat_ollama_num_ctx","chat-threads":"chat_ollama_num_thread","chat-timeout":"chat_ollama_timeout_seconds","chat-concurrency":"chat_max_concurrent_jobs","chat-source-limit":"chat_source_max_chars","learning-model":"learning_ollama_model","learning-ctx":"learning_ollama_num_ctx","learning-threads":"learning_ollama_num_thread","learning-timeout":"learning_ollama_timeout_seconds","learning-concurrency":"learning_max_concurrent_jobs","learning-source-limit":"learning_source_max_chars","programming-model":"programming_ollama_model","programming-ctx":"programming_ollama_num_ctx","programming-threads":"programming_ollama_num_thread","programming-timeout":"programming_ollama_timeout_seconds","programming-concurrency":"programming_max_concurrent_jobs","programming-source-limit":"programming_source_max_chars","factual-review-model":"factual_review_ollama_model","learning-min-quality":"learning_model_minimum_quality_score"}; for(const [id,key] of Object.entries(fields)) el(id).value=s[key] ?? s.ollama_model ?? ""; el("programming-context").maxLength=Number(s.programming_source_max_chars ?? 12000); el("learning-cost-profiles").value=JSON.stringify(s.learning_model_cost_profiles || {},null,2); el("learning-external-review-providers").value=JSON.stringify(s.learning_external_review_providers || [],null,2); el("learning-task-budget").value=s.learning_task_budget_microusd == null ? "" : s.learning_task_budget_microusd; refreshOllamaModels(); } catch(error) { if(requestSequence===settingsLoadSequence) el("settings-output").textContent=error.message; }
  }
+ let ollamaModelsRequestSequence=0;
  async function refreshOllamaModels() {
+  const requestSequence=++ollamaModelsRequestSequence;
   const list=el("ollama-model-options");
   if(!list) return;
   list.replaceChildren();
   const providers=["chat","research-plan","learning","programming","factual-review","embedding"];
+  const providerSnapshot=providers.map(name=>el(name+"-provider")?.value||"").join("|");
+  const isCurrent=()=>requestSequence===ollamaModelsRequestSequence &&
+   providerSnapshot===providers.map(name=>el(name+"-provider")?.value||"").join("|");
   if(providers.every(name=>el(name+"-provider")?.value==="openai_compatible")) {
    for(const id of ["chat-model-installed","learning-model-installed","programming-model-installed"]) {
     const select=el(id);
     if(select) select.replaceChildren(new Option("مدل‌ها از endpoint انتخاب‌شده دریافت می‌شوند",""));
    }
-   for(const profile of modelContextProfiles) await refreshModelContextHint(profile);
+   for(const profile of modelContextProfiles) {
+    if(!isCurrent()) return;
+    await refreshModelContextHint(profile);
+   }
+   if(!isCurrent()) return;
    el("settings-output").textContent="تمام مسیرها از provider سازگار استفاده می‌کنند؛ فهرست مدل Ollama لازم نیست.";
    return;
   }
@@ -43,6 +52,7 @@
   }
   try {
    const result=await api("/api/models");
+   if(!isCurrent()) return;
    const models=Array.isArray(result.models)?result.models:[];
    for(const model of models) {
     if(!model || typeof model.name!=="string" || !model.name.trim()) continue;
@@ -62,9 +72,13 @@
    }
    el("settings-output").textContent="مدل‌های نصب‌شدهٔ Ollama: "+models.filter(model=>model&&typeof model.name==="string").length;
   } catch(error) {
-   el("settings-output").textContent="فهرست مدل‌های نصب‌شده دریافت نشد؛ نام مدل را می‌توانید دستی وارد کنید. "+error.message;
+   if(isCurrent()) el("settings-output").textContent="فهرست مدل‌های نصب‌شده دریافت نشد؛ نام مدل را می‌توانید دستی وارد کنید. "+error.message;
   }
-  for(const profile of modelContextProfiles) await refreshModelContextHint(profile);
+  for(const profile of modelContextProfiles) {
+   if(!isCurrent()) return;
+   await refreshModelContextHint(profile);
+  }
+  if(!isCurrent()) return;
   await refreshHardwareDiagnostics(modelContextProfiles[0]);
  }
  
@@ -73,10 +87,17 @@
   ["learning","learning-model","learning-ctx","learning-ctx-hint"],
   ["programming","programming-model","programming-ctx","programming-ctx-hint"]
  ];
+ const modelContextHintRequestSequences=new Map();
  async function refreshModelContextHint(profile, applyRecommendation=false) {
   const [purpose,modelId,contextId,hintId]=profile;
   const model=el(modelId).value.trim();
   let context=Number(el(contextId).value);
+  const requestSequence=(modelContextHintRequestSequences.get(purpose)||0)+1;
+  modelContextHintRequestSequences.set(purpose,requestSequence);
+  const provider=el(purpose+"-provider")?.value||"";
+  const isCurrent=()=>modelContextHintRequestSequences.get(purpose)===requestSequence &&
+   el(modelId)?.value.trim()===model && Number(el(contextId)?.value)===context &&
+   el(purpose+"-provider")?.value===provider;
   const input=el(contextId);
   const hint=el(hintId);
   if(el(purpose+"-provider")?.value==="openai_compatible") {
@@ -89,11 +110,13 @@
   hint.textContent="در حال دریافت metadata مدل و برآورد حافظه…";
   try {
    let data=await api("/api/model-details?name="+encodeURIComponent(model)+"&context_tokens="+encodeURIComponent(context));
+   if(!isCurrent()) return;
    const maximum=data.maximum_context_tokens;
    if(applyRecommendation && Number.isInteger(data.recommended_context_tokens) && data.recommended_context_tokens>0) {
     context=data.recommended_context_tokens;
     el(contextId).value=String(context);
     data=await api("/api/model-details?name="+encodeURIComponent(model)+"&context_tokens="+encodeURIComponent(context));
+    if(!isCurrent()) return;
    }
    if(Number.isInteger(maximum) && maximum>0) {
     input.max=String(maximum);
@@ -113,22 +136,30 @@
     hint.textContent="حداکثر context در metadata این مدل موجود نیست؛ برای جلوگیری از تنظیم اشتباه، امکان تأیید context وجود ندارد.";
    }
   } catch(error) {
-   input.setCustomValidity("");
-   hint.textContent="اطلاعات مدل دریافت نشد: "+error.message;
+   if(isCurrent()) {
+    input.setCustomValidity("");
+    hint.textContent="اطلاعات مدل دریافت نشد: "+error.message;
+   }
   }
  }
+ let hardwareDiagnosticsRequestSequence=0;
  async function refreshHardwareDiagnostics(profile=modelContextProfiles[0]) {
   const output=el("hardware-diagnostics");
   if(!output) return;
-  const [,modelId,contextId]=profile;
+  const requestSequence=++hardwareDiagnosticsRequestSequence;
+  const [purpose,modelId,contextId]=profile;
   const model=el(modelId)?.value.trim()||"";
   const context=Number(el(contextId)?.value||0);
+  const provider=el(purpose+"-provider")?.value||"";
+  const isCurrent=()=>requestSequence===hardwareDiagnosticsRequestSequence &&
+   el(modelId)?.value.trim()===model && Number(el(contextId)?.value||0)===context &&
+   el(purpose+"-provider")?.value===provider;
   try {
-   const purpose=profile[0];
    const query=new URLSearchParams({purpose});
    if(model) query.set("model",model);
    if(context>0) query.set("context_tokens",String(context));
    const data=await api("/api/hardware/diagnostics?"+query.toString());
+   if(!isCurrent()) return;
    const h=data.hardware||{};
    const cpu=h.cpu_utilization_percent==null?"نامشخص":h.cpu_utilization_percent+"% مصرف / "+h.cpu_available_percent+"% ظرفیت آزاد تقریبی";
    const ram=h.available_ram_gb==null?"نامشخص":h.available_ram_gb+" GiB آزاد از "+h.total_ram_gb+" GiB";
@@ -147,6 +178,7 @@
    const externalProvider=data.provider==="openai_compatible";
    const estimate=selected?.memory_estimate?.total_ram_gib_float16;
    const settings=await api("/api/settings");
+   if(!isCurrent()) return;
    const availableRam=h.available_ram_gb==null?NaN:Number(h.available_ram_gb);
    const budget=Number.isFinite(availableRam)
     ? Math.max(0,Math.min(availableRam,Number(settings.ram_budget_max_gb||25))-Number(settings.ram_safety_reserve_gb||4))
@@ -177,7 +209,7 @@
    output.textContent="Provider: "+(externalProvider?"OpenAI-compatible":"Ollama")+"؛ CPU: "+h.logical_cpu_count+" thread منطقی؛ "+cpu+"؛ RAM: "+ram+"؛ GPU: "+(gpuLines.length?gpuLines.join(" | "):"هیچ GPU شناسایی نشد یا اطلاعات دستگاه در دسترس نیست.")+contextStatus
     +(externalProvider?"؛ "+fit:(running.length?"؛ تخصیص واقعی Ollama: "+running.join(" | "):"؛ مدل فعالی در Ollama گزارش نشده است."))
     +(estimate!=null?"؛ نیاز تخمینی RAM مدل در context انتخابی: "+estimate+" GiB. "+fit:"؛ "+fit)+"؛ وضعیت GPU: "+gpuStatus+(gpuEstimate!=null?"؛ VRAM لازم برای offload کامل (تخمینی): "+gpuEstimate+" GiB؛ "+gpuFit:"؛ "+gpuFit);
-  } catch(error) { output.textContent="تحلیل سخت‌افزار در دسترس نیست: "+error.message; }
+  } catch(error) { if(isCurrent()) output.textContent="تحلیل سخت‌افزار در دسترس نیست: "+error.message; }
  }
  for(const profile of modelContextProfiles) {
   const [purpose,modelId,contextId]=profile;
