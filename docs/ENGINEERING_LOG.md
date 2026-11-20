@@ -2116,3 +2116,12 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 
 - Follow-up extraction: chat conversation selection, message rendering/feedback, create/delete, request sequencing, and queued-response polling moved into `app/static/chat.js`. The selected conversation ID and refresh/load sequence counters are now module-private; the shell no longer references chat feature functions or state.
 - Added architecture tests for the chat module's versioned core dependency, script registration, startup refresh, and absence of chat workflow symbols from `index.html`. Exact-head validation remains pending.
+
+## 2026-11-20 — Dashboard shell decomposition (PR #795)
+
+- Continued the root-cause refactor beyond storage/tasks: chat, knowledge, cloud-account consent/quota, settings/model diagnostics, learning assessment/factual review, system health, theme, and scroll-position navigation now each have a dedicated browser module.
+- Module state is local to its owner: chat conversation identity/load sequence, task cursor/poll/refresh state, storage list/health sequences and mutation gate, cloud quota refresh sequences, and settings load sequence are no longer page-global.
+- Added explicit module guards for the immutable `dashboardCore v1` contract and required DOM controls. Settings exposes only a versioned `window.dashboardSettings.refresh()` interface to the page shell.
+- The inline dashboard script now contains only the learning-candidate workflow (scheduled for extraction by PR #797) and shared-core binding; the rest of the UI modules are isolated.
+- Architecture tests cover script ordering, module ownership, startup refresh, safe rendering, and consistency between implementation and engineering docs. Exact-head CI and browser tests are pending; no merge or target-host acceptance is claimed.
+
