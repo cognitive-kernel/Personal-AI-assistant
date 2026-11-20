@@ -159,3 +159,10 @@ def test_chat_and_conversation_state_are_owned_by_the_chat_module():
     assert module.rstrip().endswith("})();")
     assert "innerHTML" not in module
 
+def test_acceptance_ledger_distinguishes_owner_reported_raw_state_from_verified_database_state():
+    acceptance = (ROOT / "docs" / "ROADMAP_ACCEPTANCE.md").read_text(encoding="utf-8")
+
+    assert "Owner clarification (2026-11-20)" in acceptance
+    assert "no live database was inspected" in acceptance
+    assert "migrations, fixtures, and future user data" in acceptance
+
