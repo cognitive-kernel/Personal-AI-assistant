@@ -842,7 +842,6 @@ def test_browser_restores_saved_semantic_review_and_only_generates_after_confirm
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
-        _goto_section(page, base_url, "learning-section")
 
         saved_review = {
             "kind": "model_assisted_advisory",
@@ -860,59 +859,94 @@ def test_browser_restores_saved_semantic_review_and_only_generates_after_confirm
             "independent_verification": False,
         }
         saved_calls = {"get": 0, "post": 0}
-
-        def saved_route(route):
-            request = route.request
-            if request.method == "GET":
-                saved_calls["get"] += 1
-                route.fulfill(status=200, content_type="application/json", body=json.dumps({
-                    "job_id": 990001,
-                    "attempt_id": 11,
-                    "semantic_review": saved_review,
-                }))
-            else:
-                saved_calls["post"] += 1
-                route.fulfill(status=500, content_type="application/json", body='{"detail":"unexpected POST"}')
-
-        page.route("**/api/learning/jobs/990001/assessment/11/semantic-review", saved_route)
-        page.evaluate("""() => {
-            const output = document.createElement('div');
-            output.id = 'semantic-review-saved-output';
-            document.body.append(output);
-            renderLessonResult(output, {
-                id: 990001, status: 'completed', lesson: 'A saved lesson.',
-                quality: {score: 90},
-                assessment: {questions: ['Question?'], answer_key: ['Answer']},
-                assessment_attempts: [{id: 11, score: 0, correct_count: 0, question_count: 1}],
-                latest_review: null
-            }, {id: 1}, {id: 2, row: null});
-        }""")
-        saved_output = page.locator("#semantic-review-saved-output")
-        saved_output.get_by_role("button", name="مشاهده/اجرای بازبینی معنایی کمکی").click()
-        page.get_by_text("Saved semantic review rationale.").wait_for(timeout=5000)
-        assert "Saved advisory note." in saved_output.inner_text()
-        assert saved_calls == {"get": 1, "post": 0}
-
         new_calls = {"get": 0, "post": 0, "confirm": None}
+        path_data = {
+            "paths": [{
+                "id": 1,
+                "title": "Semantic review UI test",
+                "topic_count": 2,
+                "completed_count": 0,
+                "reference_urls": [],
+                "topics": [
+                    {"id": 2, "topic": "Saved semantic review topic", "position": 1,
+                     "status": "in_progress", "latest_score": None, "updated_at": "2026-11-20 10:00:00"},
+                    {"id": 3, "topic": "New semantic review topic", "position": 2,
+                     "status": "in_progress", "latest_score": None, "updated_at": "2026-11-20 10:00:00"},
+                ],
+            }]
+        }
+        jobs = {
+            2: {
+                "id": 990001, "path_topic_id": 2, "status": "completed",
+                "lesson": "A saved lesson.", "quality": {"score": 90},
+                "assessment": {"questions": ["Question?"], "answer_key": ["Answer"]},
+                "assessment_attempts": [{"id": 11, "score": 0, "correct_count": 0, "question_count": 1}],
+                "latest_review": None,
+            },
+            3: {
+                "id": 990002, "path_topic_id": 3, "status": "completed",
+                "lesson": "Another lesson.", "quality": {"score": 90},
+                "assessment": {"questions": ["Question?"], "answer_key": ["Answer"]},
+                "assessment_attempts": [{"id": 22, "score": 0, "correct_count": 0, "question_count": 1}],
+                "latest_review": None,
+            },
+        }
 
-        def new_route(route):
+        def fulfill_json(route, payload, status=200):
+            route.fulfill(status=status, content_type="application/json", body=json.dumps(payload))
+
+        page.route("**/api/learning/paths", lambda route: fulfill_json(route, path_data))
+
+        def learning_jobs_route(route):
+            if "/semantic-review" in route.request.url:
+                route.fallback()
+                return
+            fulfill_json(route, {"jobs": []})
+
+        page.route("**/api/learning/jobs*", learning_jobs_route)
+        page.route("**/api/tasks*", lambda route: fulfill_json(route, {"tasks": []}))
+        page.route("**/api/learning/reviews/due*", lambda route: fulfill_json(route, {"items": []}))
+        page.route("**/api/learning/recommendations*", lambda route: fulfill_json(route, {"recommendations": []}))
+
+        def start_topic_route(route):
+            request_path = route.request.url.split("?", 1)[0]
+            if request_path.endswith("/start"):
+                topic_id = int(request_path.rsplit("/", 2)[1])
+                fulfill_json(route, jobs[topic_id])
+            elif route.request.method == "PATCH":
+                fulfill_json(route, {})
+            else:
+                route.continue_()
+
+        page.route("**/api/learning/paths/1/topics/*/start", start_topic_route)
+        page.route("**/api/learning/paths/1/topics/*", start_topic_route)
+
+        def semantic_review_route(route):
             request = route.request
+            url = request.url
+            if "/990001/assessment/11/" in url:
+                counters = saved_calls
+                if request.method == "GET":
+                    counters["get"] += 1
+                    fulfill_json(route, {
+                        "job_id": 990001, "attempt_id": 11,
+                        "semantic_review": saved_review,
+                    })
+                else:
+                    counters["post"] += 1
+                    fulfill_json(route, {"detail": "unexpected POST"}, status=500)
+                return
             if request.method == "GET":
                 new_calls["get"] += 1
-                route.fulfill(
-                    status=404,
-                    content_type="application/json",
-                    body='{"detail":"No semantic review is stored for this attempt."}',
-                )
+                fulfill_json(route, {"detail": "No semantic review is stored for this attempt."}, status=404)
                 return
             new_calls["post"] += 1
             new_calls["confirm"] = request.post_data_json
-            route.fulfill(status=200, content_type="application/json", body=json.dumps({
+            fulfill_json(route, {
                 "kind": "model_assisted_advisory",
                 "review": {
                     "items": [{
-                        "index": 1,
-                        "judgment": "partial",
+                        "index": 1, "judgment": "partial",
                         "rationale": "Newly generated advisory rationale.",
                         "missing_concepts": ["trade-off"],
                     }],
@@ -921,26 +955,30 @@ def test_browser_restores_saved_semantic_review_and_only_generates_after_confirm
                 "note": "This review is advisory only.",
                 "score_changed": False,
                 "independent_verification": False,
-            }))
+            })
 
-        page.route("**/api/learning/jobs/990002/assessment/22/semantic-review", new_route)
+        page.route("**/api/learning/jobs/*/assessment/*/semantic-review", semantic_review_route)
+
+        _goto_section(page, base_url, "learning-paths-section")
+        page.locator(".path-card > details > summary").click()
+
+        first_topic = page.locator(".path-topic").nth(0)
+        first_topic.get_by_role("button", name="شروع / ادامه درس").click()
+        saved_button = first_topic.get_by_role("button", name="مشاهده/اجرای بازبینی معنایی کمکی")
+        saved_button.wait_for(state="visible", timeout=5000)
+        saved_button.click()
+        page.get_by_text("Saved semantic review rationale.").wait_for(timeout=5000)
+        assert "Saved advisory note." in first_topic.inner_text()
+        assert saved_calls == {"get": 1, "post": 0}
+
+        second_topic = page.locator(".path-topic").nth(1)
+        second_topic.get_by_role("button", name="شروع / ادامه درس").click()
+        new_button = second_topic.get_by_role("button", name="مشاهده/اجرای بازبینی معنایی کمکی")
+        new_button.wait_for(state="visible", timeout=5000)
         page.on("dialog", lambda dialog: dialog.accept())
-        page.evaluate("""() => {
-            const output = document.createElement('div');
-            output.id = 'semantic-review-new-output';
-            document.body.append(output);
-            renderLessonResult(output, {
-                id: 990002, status: 'completed', lesson: 'Another lesson.',
-                quality: {score: 90},
-                assessment: {questions: ['Question?'], answer_key: ['Answer']},
-                assessment_attempts: [{id: 22, score: 0, correct_count: 0, question_count: 1}],
-                latest_review: null
-            }, {id: 1}, {id: 3, row: null});
-        }""")
-        new_output = page.locator("#semantic-review-new-output")
-        new_output.get_by_role("button", name="مشاهده/اجرای بازبینی معنایی کمکی").click()
+        new_button.click()
         page.get_by_text("Newly generated advisory rationale.").wait_for(timeout=5000)
-        assert "New advisory note." in new_output.inner_text()
+        assert "New advisory note." in second_topic.inner_text()
         assert new_calls == {"get": 1, "post": 1, "confirm": {"confirm": True}}
         browser.close()
 
@@ -1893,6 +1931,10 @@ def test_storage_mutations_are_serialized_while_backup_creation_is_in_flight():
             timeout=10000,
         )
 
+        page.wait_for_function(
+            "document.querySelector('#create-storage-backup')?.disabled === false",
+            timeout=10000,
+        )
         assert page.locator("#create-storage-backup").is_enabled()
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()

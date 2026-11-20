@@ -242,7 +242,7 @@ def test_settings_and_model_diagnostics_are_owned_by_versioned_settings_module()
     assert "settingsLoadSequence" in module
     assert "requestSequence===settingsLoadSequence" in module
     assert "window.dashboardSettings=Object.freeze({version:1,refresh:refreshSettings})" in module
-    assert "const settings=window.dashboardSettings" in page
+    assert "window.dashboardSettings" not in page
     assert "core.version!==1" in module
     assert module.rstrip().endswith("})();")
     assert "innerHTML" not in module
