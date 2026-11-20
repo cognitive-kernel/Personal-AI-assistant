@@ -936,6 +936,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     page = (root / "app" / "static" / "autonomous-engineering.html").read_text(encoding="utf-8")
     script = (root / "app" / "static" / "autonomous-engineering-progress.js").read_text(encoding="utf-8")
     controls = (root / "app" / "static" / "autonomous-engineering-controls.js").read_text(encoding="utf-8")
+    orchestrator = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
     workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
     operations = (root / "docs" / "operations" / "CODEX_AUTONOMOUS_ENGINEERING.md").read_text(encoding="utf-8")
     master_prompt = (root / "docs" / "MASTER_ENGINEERING_PROMPT.md").read_text(encoding="utf-8")
@@ -1033,7 +1034,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "Set-AutonomousDirectoryTreeAcl" in acl_script
     assert '"S-1-5-19"' in acl_script
     assert "PersonalAIAssistantStateBroker" in runner_check
-    assert 'window.setInterval(refreshProgress, 5000)' in script
+    assert 'window.setInterval(() => void progress.refresh(), 5000)' in orchestrator
     assert "createElementNS" in script
 
 
