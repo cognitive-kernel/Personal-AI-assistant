@@ -326,3 +326,11 @@ def test_learning_path_workflows_use_small_versioned_core_lesson_and_overview_mo
     assert max(len(core.splitlines()), len(lessons.splitlines()), len(overview.splitlines()), len(paths.splitlines())) < 600
     assert "innerHTML" not in core + lessons + overview + paths
 
+def test_learning_architecture_documentation_lists_the_split_modules():
+    docs = (ROOT / "docs" / "LEARNING.md").read_text(encoding="utf-8")
+    audit = (ROOT / "docs" / "UI_AUDIT_2026-10-30.md").read_text(encoding="utf-8")
+
+    for name in ("learning-core.js", "learning-lessons.js", "learning-overview.js", "learning-review.js"):
+        assert name in docs
+        assert name in audit
+
