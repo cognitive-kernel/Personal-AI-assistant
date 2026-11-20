@@ -101,6 +101,8 @@ def test_storage_workflows_are_isolated_with_local_concurrency_and_refresh_owner
     assert "async function withMutation(" in module
     assert "async function refreshStorageHealth()" in module
     assert "async function refreshStorageBackups()" in module
+    assert "refreshStorageHealth();" in module
+    assert "refreshStorageBackups();" in module
     assert module.rstrip().endswith("})();")
     assert "innerHTML" not in module
 
