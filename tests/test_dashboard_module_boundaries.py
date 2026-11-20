@@ -182,3 +182,24 @@ def test_knowledge_source_workflows_are_isolated_from_dashboard_shell():
     assert module.rstrip().endswith("})();")
     assert "innerHTML" not in module
 
+def test_cloud_account_consent_and_quota_workflows_are_module_owned():
+    page = (STATIC / "index.html").read_text(encoding="utf-8")
+    module = (STATIC / "cloud-accounts.js").read_text(encoding="utf-8")
+
+    assert 'src="/static/cloud-accounts.js"' in page
+    for symbol in (
+        "let kaggleQuotaRefreshSequence",
+        "async function refreshKaggleQuota(",
+        "let ociLimitsRefreshSequence",
+        "async function refreshOciLimits(",
+        'el("kaggle-quota-enable").addEventListener',
+        'el("oci-limits-enable").addEventListener',
+    ):
+        assert symbol not in page
+        assert symbol in module
+    assert "core.version!==1" in module
+    assert "refreshKaggleQuota();" in module
+    assert "refreshOciLimits();" in module
+    assert module.rstrip().endswith("})();")
+    assert "innerHTML" not in module
+
