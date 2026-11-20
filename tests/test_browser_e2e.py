@@ -6325,3 +6325,69 @@ def test_ai_learning_same_course_run_history_discards_stale_refresh():
         assert page.get_by_text("اجرای #420", exact=False).count() == 0
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_ai_learning_reset_ui_sends_exact_server_confirmation():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    reset_requests = []
+    browser_errors = []
+
+    def learning_api_route(route):
+        request = route.request
+        path = request.url.split("?", 1)[0].removeprefix(base_url.rstrip("/"))
+        if request.method == "GET" and path == "/api/ai-learning/courses":
+            payload = {"items": [], "count": 0}
+        elif request.method == "GET" and path == "/api/ai-learning/control":
+            payload = {
+                "paused": False, "reason": "", "retry_pending": False,
+                "worker_active": False, "worker_recovery_pending": False,
+            }
+        elif request.method == "POST" and path == "/api/ai-learning/reset-learning-data":
+            reset_requests.append(request.post_data_json)
+            if request.post_data_json != {"confirmation": "RESET AI LEARNING DATA"}:
+                route.fulfill(
+                    status=422,
+                    content_type="application/json",
+                    body=json.dumps({"detail": "Exact reset confirmation is required."}),
+                )
+                return
+            payload = {
+                "reset": True,
+                "deleted": {"topics": 0, "lessons": 0, "versions": 0, "runs": 0},
+            }
+        else:
+            route.fulfill(
+                status=404,
+                content_type="application/json",
+                body=json.dumps({"detail": "unexpected AI-learning request: " + path}),
+            )
+            return
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(payload, ensure_ascii=False),
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+
+        def accept_reset_dialog(dialog):
+            if dialog.type == "prompt":
+                dialog.accept("RESET AI LEARNING DATA")
+            else:
+                dialog.accept()
+
+        page.on("dialog", accept_reset_dialog)
+        page.route("**/api/ai-learning/**", learning_api_route)
+        page.goto(base_url.rstrip("/") + "/ai-learning", wait_until="domcontentloaded")
+        page.locator("#reset-learning-data").click()
+        page.get_by_text("پاک‌سازی انجام شد", exact=False).wait_for(timeout=10000)
+
+        assert reset_requests == [{"confirmation": "RESET AI LEARNING DATA"}]
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
