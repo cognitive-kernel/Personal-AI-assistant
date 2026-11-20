@@ -183,7 +183,7 @@ def test_bulk_lesson_actions_never_delete_lessons_and_accept_textual_sources():
     assert "if(!quality.hasSource){skipped++;continue}" in publish_all
     assert "deleteLessonForBulk" not in publish_all
 
-    lesson_list_start = lessons.index("export async function loadLessons(")
+    lesson_list_start = lessons.index("async function loadLessons(")
     lesson_list_end = lessons.index('$("show-all-lessons").onclick=', lesson_list_start)
     lesson_list = lessons[lesson_list_start:lesson_list_end]
     review_start = lesson_list.index('const approveBulk=el("button"')
@@ -1501,7 +1501,7 @@ def test_review_and_publish_preserve_the_active_parent_topic_context():
     courses = (root / "courses.js").read_text(encoding="utf-8")
     lessons = (root / "lessons.js").read_text(encoding="utf-8")
 
-    assert 'export function returnToTopic(topicId)' in courses
+    assert 'function returnToTopic(topicId)' in courses
     assert 'card.scrollIntoView({behavior:"smooth",block:"start"})' in courses
     assert 'summary.focus({preventScroll:true})' in courses
     assert 'const refreshLessons=()=>isCurrentLoad()?loadLessons(topicId,root,inline):Promise.resolve();' in lessons
