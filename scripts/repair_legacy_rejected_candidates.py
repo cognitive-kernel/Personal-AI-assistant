@@ -111,20 +111,6 @@ def repair_legacy_rejected_candidates(*, apply: bool = False) -> dict[str, Any]:
             # content field is not hidden by otherwise complete metadata.
             if content_hash_verified and not urls_missing and not quality_missing and not updates:
                 continue
-            # Never append a recovery marker or modify adjacent metadata when
-            # non-empty candidate content is hash-invalid and cannot be restored.
-            if content and not content_hash_verified:
-                reports.append({
-                    "candidate_id": int(row["id"]),
-                    "job_id": int(row["job_id"]),
-                    "content_hash_verified": False,
-                    "recovered_fields": [],
-                    "unavailable_fields": ["content_hash_match"],
-                    "mode": "apply" if apply else "dry_run",
-                    "result": "content_hash_mismatch",
-                })
-                continue
-
             if urls_missing:
                 evidence_rows = connection.execute(
                     """SELECT source_ref FROM learning_evidence
