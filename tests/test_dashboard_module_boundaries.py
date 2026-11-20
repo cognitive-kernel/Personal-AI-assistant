@@ -82,3 +82,25 @@ def test_browser_learning_is_an_isolated_feature_module():
     assert "refreshBrowserLearningCourses();" in module
     assert module.rstrip().endswith("})();")
     assert "innerHTML" not in module
+
+def test_storage_workflows_are_isolated_with_local_concurrency_and_refresh_ownership():
+    page = (STATIC / "index.html").read_text(encoding="utf-8")
+    module = (STATIC / "storage.js").read_text(encoding="utf-8")
+
+    assert 'src="/static/storage.js"' in page
+    assert "async function refreshStorageHealth()" not in page
+    assert "async function refreshStorageBackups()" not in page
+    assert "async function stageBackupRestore(" not in page
+    assert "async function pruneStorageBackups()" not in page
+    assert "async function pruneRestoreStaging()" not in page
+    assert "async function createStorageBackup()" not in page
+    assert "core.version !== 1" in module
+    assert "let healthSequence = 0" in module
+    assert "let backupsSequence = 0" in module
+    assert "let mutationActive = false" in module
+    assert "async function withMutation(" in module
+    assert "async function refreshStorageHealth()" in module
+    assert "async function refreshStorageBackups()" in module
+    assert module.rstrip().endswith("})();")
+    assert "innerHTML" not in module
+
