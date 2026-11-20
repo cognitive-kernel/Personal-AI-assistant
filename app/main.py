@@ -476,15 +476,6 @@ def shutdown() -> None:
         if not runtime.stop(timeout=10.0):
             logger.warning("Task runtime %s did not stop before the shutdown deadline.", runtime.worker_prefix)
 
-@app.get("/ai-learning", include_in_schema=False)
-def ai_learning_page() -> FileResponse:
-    """Serve the isolated learning console only when its feature flag is enabled."""
-    from .ai_learning.config import is_enabled
-    if not is_enabled():
-        raise HTTPException(status_code=404, detail="AI-learning module is disabled.")
-    return FileResponse(STATIC_DIR / "ai-learning.html")
-
-
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
