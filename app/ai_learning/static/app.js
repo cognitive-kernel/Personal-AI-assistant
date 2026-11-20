@@ -1,11 +1,17 @@
 const MODULE_VERSION="20261120-5";
+function importWithTimeout(path,timeoutMs=5000){
+ return Promise.race([
+  import(path),
+  new Promise((_,reject)=>window.setTimeout(()=>reject(new Error("module load timeout: "+path)),timeoutMs)),
+ ]);
+}
 const moduleImports=await Promise.allSettled([
- import("./core.js?v="+MODULE_VERSION),
- import("./courses.js?v="+MODULE_VERSION),
- import("./runs.js?v="+MODULE_VERSION),
- import("./lessons.js?v="+MODULE_VERSION),
- import("./controls.js?v="+MODULE_VERSION),
- import("./search.js?v="+MODULE_VERSION),
+ importWithTimeout("./core.js?v="+MODULE_VERSION),
+ importWithTimeout("./courses.js?v="+MODULE_VERSION),
+ importWithTimeout("./runs.js?v="+MODULE_VERSION),
+ importWithTimeout("./lessons.js?v="+MODULE_VERSION),
+ importWithTimeout("./controls.js?v="+MODULE_VERSION),
+ importWithTimeout("./search.js?v="+MODULE_VERSION),
 ]);
 const moduleFailures=[];
 
