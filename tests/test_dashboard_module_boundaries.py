@@ -203,3 +203,22 @@ def test_cloud_account_consent_and_quota_workflows_are_module_owned():
     assert module.rstrip().endswith("})();")
     assert "innerHTML" not in module
 
+def test_learning_assessment_and_factual_review_are_isolated_in_one_feature_module():
+    page = (STATIC / "index.html").read_text(encoding="utf-8")
+    module = (STATIC / "learning-review.js").read_text(encoding="utf-8")
+
+    assert 'src="/static/learning-review.js"' in page
+    for symbol in (
+        "function showLearningJob(",
+        'el("learning-form").addEventListener',
+        "async function refreshLearningEscalations(",
+        "async function refreshFactualReviewQueue(",
+        "async function refreshFactualTestQueue(",
+        "async function refreshFactualTestHistory(",
+    ):
+        assert symbol not in page
+        assert symbol in module
+    assert "core.version!==1" in module
+    assert module.rstrip().endswith("})();")
+    assert "innerHTML" not in module
+
