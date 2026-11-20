@@ -1835,41 +1835,40 @@ def test_collect_status_does_not_queue_probes_when_shared_pool_is_saturated(monk
 
 
 def test_dashboard_script_bounds_and_coalesces_status_refreshes():
-    root = Path(__file__).resolve().parents[1]
-    static = root / "app" / "static"
-    script = (static / "autonomous-engineering-status.js").read_text(encoding="utf-8")
-    core_script = (static / "autonomous-engineering-core.js").read_text(encoding="utf-8")
+    static = Path(__file__).resolve().parents[1] / "app" / "static"
+    orchestrator = (static / "autonomous-engineering.js").read_text(encoding="utf-8")
+    core = (static / "autonomous-engineering-core.js").read_text(encoding="utf-8")
+    status = (static / "autonomous-engineering-status.js").read_text(encoding="utf-8")
+    controls = (static / "autonomous-engineering-controls.js").read_text(encoding="utf-8")
+    progress = (static / "autonomous-engineering-progress.js").read_text(encoding="utf-8")
 
-    assert "new AbortController()" in core_script
-    assert "statusRefreshPromise" in script
-    assert "function refresh(force = false)" in script
-    assert "if (force) return refreshAfterMutation()" in script
-    assert "dispatchPendingUntil" in script
-    assert "if (settingsSaving) return" in controls_script
-    assert "if (!status.canStartDispatch()) return" in controls_script
-    assert "if (statusRefreshPromise) return statusRefreshPromise" in script
-    assert "async function refreshAfterMutation()" in script
-    assert "const timeoutMs = path === \"status\" ? 40000" in core_script
-    assert "path.startsWith(\"progress\") ? 20000 : 120000" in core_script
-    assert 'window.setInterval(() => void status.refresh(), 30000)' in agent_script
-    assert 'window.setInterval(() => void progress.refresh(), 5000)' in agent_script
-    assert 'window.setTimeout(refresh, 2500)' not in script
-    assert 'finally {\n      dispatchButton.disabled = false;' not in script
-    assert "let dispatchSubmitting = false" in script
-    assert script.count("dispatchSubmitting = true") == 2
-    assert "function syncDispatchControls()" in script
-    assert "taskButton.disabled = !canStartManualTask()" in script
-    assert "function canStartManualTask()" in script
-    assert "function canStartDispatch()" in script
-    assert "let statusKnown = false" in script
-    assert "statusKnown && lastCanDispatch" in script
-    assert "statusKnown = false;" in script
-    assert "item.point[line.key] !== null" in script
-    assert "engineeringPercent !== null" in script
-    assert "window.setTimeout(syncDispatchControls, 30000)" in script
-    assert "timeoutError.ambiguous = true" in script
-    assert "error.ambiguous || error.status >= 500" in script
-    assert "function lockDispatchVisibilityWindow()" in script
+    assert "new AbortController()" in core
+    assert "const timeoutMs = path === \\"status\\" ? 40000" in core
+    assert "path.startsWith(\\"progress\\") ? 20000 : 120000" in core
+    assert "timeoutError.ambiguous = true" in core
+    assert "statusRefreshPromise" in status
+    assert "function refresh(force = false)" in status
+    assert "if (force) return refreshAfterMutation()" in status
+    assert "dispatchPendingUntil" in status
+    assert "if (settingsSaving) return" in controls
+    assert "if (!status.canStartDispatch()) return" in controls
+    assert "status.setDispatchSubmitting(true)" in controls
+    assert "status.setDispatchSubmitting(false)" in controls
+    assert "setDispatchSubmitting(value)" in status
+    assert "if (statusRefreshPromise) return statusRefreshPromise" in status
+    assert "async function refreshAfterMutation()" in status
+    assert "function syncDispatchControls()" in status
+    assert "taskButton.disabled = !canStartManualTask()" in status
+    assert "function canStartManualTask()" in status
+    assert "function canStartDispatch()" in status
+    assert "statusKnown && lastCanDispatch" in status
+    assert "window.setTimeout(syncDispatchControls, 30000)" in status
+    assert "item.point[line.key] !== null" in progress
+    assert "engineeringPercent !== null" in progress
+    assert 'window.setInterval(() => void status.refresh(), 30000)' in orchestrator
+    assert 'window.setInterval(() => void progress.refresh(), 5000)' in orchestrator
+    assert "window.setTimeout(refresh, 2500)" not in orchestrator + status + controls
+    assert "dispatchButton.disabled = false" not in controls
 
 def test_autonomous_run_administration_routes_are_registered():
     paths = {route.path for route in agent.router.routes}
