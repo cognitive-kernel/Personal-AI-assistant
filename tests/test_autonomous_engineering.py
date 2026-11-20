@@ -171,7 +171,7 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert "data.pending_work" in status_script
     assert "checkpoint.verified" in status_script
     assert "function canStartManualTask()" in status_script
-    assert "if (!canStartManualTask())" in status_script
+    assert "taskButton.disabled = !canStartManualTask()" in status_script
     assert "فقط Runner و Broker به فایل‌های محافظت‌شده دسترسی مستقیم دارند" in agent_page
     assert "حساب‌های برنامه از کانال محلی محدود استفاده می‌کنند" in agent_page
     assert "checks.github_runs_available" in status_script
@@ -186,7 +186,7 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="send-agent-task"' in page
     assert 'id="save-agent-settings"' in page
     assert 'id="storage-state"' in page
-    assert "checks.progress_storage_accessible" in agent_script
+    assert "checks.progress_storage_accessible" in status_script
     assert "gpt-oss:20b" not in page
     assert 'هیچ مدل اصلی قابل انتخابی از Ollama شناسایی نشد' in status_script
     assert "model_context_length" in status_script
@@ -1843,16 +1843,16 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     assert "new AbortController()" in core_script
     assert "statusRefreshPromise" in script
     assert "function refresh(force = false)" in script
-    assert "await refresh(true)" in script
+    assert "if (force) return refreshAfterMutation()" in script
     assert "dispatchPendingUntil" in script
-    assert "if (settingsSaving) return" in script
-    assert "if (!canStartDispatch())" in script
+    assert "if (settingsSaving) return" in controls_script
+    assert "if (!status.canStartDispatch()) return" in controls_script
     assert "if (statusRefreshPromise) return statusRefreshPromise" in script
     assert "async function refreshAfterMutation()" in script
-    assert "const timeoutMs = path === \"status\" ? 40000" in script
-    assert "path.startsWith(\"progress\") ? 20000 : 120000" in script
-    assert 'window.setInterval(refresh, 30000)' in script
-    assert 'window.setInterval(refreshProgress, 5000)' in script
+    assert "const timeoutMs = path === \"status\" ? 40000" in core_script
+    assert "path.startsWith(\"progress\") ? 20000 : 120000" in core_script
+    assert 'window.setInterval(() => void status.refresh(), 30000)' in agent_script
+    assert 'window.setInterval(() => void progress.refresh(), 5000)' in agent_script
     assert 'window.setTimeout(refresh, 2500)' not in script
     assert 'finally {\n      dispatchButton.disabled = false;' not in script
     assert "let dispatchSubmitting = false" in script
