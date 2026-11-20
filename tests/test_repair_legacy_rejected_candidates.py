@@ -145,3 +145,15 @@ def test_legacy_repair_never_restores_content_when_job_hash_does_not_match(tmp_p
     assert row["content"] == ""
     assert json.loads(row["source_urls_json"]) == ["https://docs.example.org/verified-source"]
     assert json.loads(row["quality_report_json"])["lesson_retained"] is True
+
+
+def test_repair_refuses_to_create_or_initialize_a_missing_database(tmp_path, monkeypatch):
+    missing = tmp_path / "does-not-exist" / "learning.db"
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(missing))
+
+    import pytest
+
+    with pytest.raises(FileNotFoundError, match="refusing to create or initialize"):
+        repair_legacy_rejected_candidates()
+
+    assert not missing.exists()
