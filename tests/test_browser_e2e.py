@@ -5964,3 +5964,92 @@ def test_factual_review_queue_discards_stale_out_of_order_browser_responses():
             timeout=5000,
         )
         browser.close()
+
+
+
+def test_settings_model_catalog_discards_stale_out_of_order_refresh_response():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        pending_routes = []
+        page.add_init_script(
+            """(() => {
+                const originalFetch = window.fetch.bind(window);
+                window.__modelListJsonResponses = 0;
+                window.fetch = async (input, options = {}) => {
+                    const response = await originalFetch(input, options);
+                    const url = typeof input === "string" ? input : input.url;
+                    if (url.endsWith("/api/models")) {
+                        const originalJson = response.json.bind(response);
+                        response.json = async () => {
+                            const payload = await originalJson();
+                            window.__modelListJsonResponses += 1;
+                            return payload;
+                        };
+                    }
+                    return response;
+                };
+            })();"""
+        )
+
+        settings_payload = {
+            "chat_llm_provider": "openai_compatible",
+            "research_plan_llm_provider": "openai_compatible",
+            "learning_llm_provider": "openai_compatible",
+            "programming_llm_provider": "openai_compatible",
+            "factual_review_llm_provider": "openai_compatible",
+            "embedding_llm_provider": "openai_compatible",
+            "ram_budget_max_gb": 25,
+            "ram_safety_reserve_gb": 4,
+            "gpu_enabled": False,
+        }
+        page.route(
+            "**/api/settings",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(settings_payload),
+            ),
+        )
+
+        def hold_model_request(route):
+            pending_routes.append(route)
+
+        page.route("**/api/models", hold_model_request)
+        response = _goto_section(page, base_url, "settings-section")
+        assert response is not None and response.status == 200
+        page.wait_for_function(
+            "() => document.querySelector('#chat-provider')?.value === 'openai_compatible'"
+        )
+        page.locator("#chat-provider").select_option("ollama")
+
+        with page.expect_request(lambda request: request.url.endswith("/api/models")):
+            page.locator("#refresh-ollama-models").click()
+        assert len(pending_routes) == 1
+        with page.expect_request(lambda request: request.url.endswith("/api/models")):
+            page.locator("#refresh-ollama-models").click()
+        assert len(pending_routes) == 2
+
+        pending_routes[1].fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"models": [{"name": "new-model"}]}),
+        )
+        page.locator("#ollama-model-options option[value='new-model']").wait_for(timeout=5000)
+
+        with page.expect_response(lambda response: response.url.endswith("/api/models")):
+            pending_routes[0].fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"models": [{"name": "stale-model"}]}),
+            )
+        page.wait_for_function(
+            """() => window.__modelListJsonResponses === 2 &&
+                document.querySelector("#ollama-model-options option[value='new-model']") &&
+                !document.querySelector("#ollama-model-options option[value='stale-model']")""",
+            timeout=5000,
+        )
+        browser.close()

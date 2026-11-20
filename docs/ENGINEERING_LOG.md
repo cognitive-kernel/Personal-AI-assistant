@@ -2115,8 +2115,8 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Strengthened the live Windows integration gate: it now fails if any broker worker exception was written to the opt-in service diagnostic log. This prevents a single surviving pipe worker from making sequential health probes pass while other workers silently fail to create instances.
 
  
-## 2026-11-20 — Prevent stale learning-review responses from replacing newer UI state
+## 2026-11-20 — Prevent stale settings and model-diagnostics responses
 
-- The learning review, factual review queue, factual test queue, test history, and capability-map refresh paths issued independent asynchronous reads but did not all guard against out-of-order responses. A slower earlier request could overwrite a newer result after the user refreshed or completed an approval/test action.
-- Added per-panel monotonically increasing request sequences. Only the latest request may render success or error state; stale responses are ignored without changing another panel's state.
-- Added architecture regression tests for each sequence contract and a Chromium test that deliberately resolves the newer factual-review response before the older one, then verifies the stale result cannot replace the newer visible claim. Exact-head CI is required.
+- The settings module had independent asynchronous reads for the Ollama model catalog, per-profile model context metadata, and shared hardware diagnostics. Older responses could overwrite newer model/provider/context selections and the shared diagnostics panel.
+- Added request-generation guards for the model catalog and hardware diagnostics, plus per-profile guards for context metadata. The guards are checked after each awaited API response and before rendering success or error state.
+- Added architecture assertions and a Chromium test that holds two model-catalog requests, resolves the newer response first, then verifies the older response cannot add stale model options. Exact-head CI is required.

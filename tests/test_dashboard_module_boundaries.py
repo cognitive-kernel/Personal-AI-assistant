@@ -406,3 +406,33 @@ def test_learning_capability_guard_runs_before_rendering_latest_response():
     assert guard in block
     assert block.index(await_result) < block.index(guard) < block.index("const items = result.capabilities || [];")
     assert "if (requestSequence === learningCapabilitiesRequestSequence)" in block
+
+
+
+def test_settings_refresh_paths_discard_stale_model_and_hardware_responses():
+    module = (STATIC / "settings.js").read_text(encoding="utf-8")
+
+    assert "let ollamaModelsRequestSequence=0;" in module
+    assert "const modelContextHintRequestSequences=new Map();" in module
+    assert "let hardwareDiagnosticsRequestSequence=0;" in module
+
+    catalog_start = module.index("async function refreshOllamaModels()")
+    catalog_end = module.index("const modelContextHintRequestSequences", catalog_start)
+    catalog = module[catalog_start:catalog_end]
+    assert "const requestSequence=++ollamaModelsRequestSequence;" in catalog
+    assert "const isCurrent=()=>requestSequence===ollamaModelsRequestSequence" in catalog
+    assert 'const result=await api("/api/models");\n   if(!isCurrent()) return;' in catalog
+
+    context_start = module.index("async function refreshModelContextHint(")
+    context_end = module.index("let hardwareDiagnosticsRequestSequence", context_start)
+    context = module[context_start:context_end]
+    assert "modelContextHintRequestSequences.set(purpose,requestSequence);" in context
+    assert "if(!isCurrent()) return;" in context
+    assert "if(isCurrent()) {" in context
+
+    hardware_start = module.index("async function refreshHardwareDiagnostics(")
+    hardware_end = module.index("for(const profile of modelContextProfiles)", hardware_start)
+    hardware = module[hardware_start:hardware_end]
+    assert "const requestSequence=++hardwareDiagnosticsRequestSequence;" in hardware
+    assert "if(!isCurrent()) return;" in hardware
+    assert "if(isCurrent()) output.textContent=" in hardware
