@@ -271,8 +271,10 @@ async function refresh() {
   const banner = el("storage-degraded-banner");
   if (banner) banner.hidden = true;
  }
+}
 
 el("refresh").addEventListener("click", () => { refresh(); const settings=window.dashboardSettings; if(settings && settings.version===1) settings.refresh(); });
+refresh();
 
 async function refreshLearningCandidates() {
  const container=el("learning-candidates");
