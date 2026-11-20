@@ -31,11 +31,11 @@ The optional module gathers structured knowledge for later use by Personal-AI-as
 
 ## Browser UI ownership and request lifecycle
 
-- `app/ai_learning/ui.py` is the sole owner of the `/ai-learning` page route. It enforces the loopback dependency and serves only the feature package's `index.html`, `app.js` and `style.css` through an explicit asset allowlist.
+- `app/ai_learning/ui.py` is the sole owner of the `/ai-learning` page route. It enforces the loopback dependency and serves only the feature package's `index.html`, versioned JavaScript modules and `style.css` through an explicit asset allowlist.
 - `app/main.py` must not define a second `/ai-learning` route. The superseded `app/static/ai-learning.*` page, script and stylesheet were removed so source tests cannot accidentally validate a page that users do not receive.
-- The active browser controller fences course-list, course-detail, run-history, background-progress and global-control responses with independent request generations. A late response or error from an older request must not overwrite newer state, including when the selected course ID has not changed.
+- Course-list, course-detail, run-history, background-progress, global-control and retrieval-search responses are fenced by the feature module that owns them. A late response or error from an older request must not overwrite newer state, including when the selected course ID has not changed. Creating a course selects the returned course ID rather than relying on list order.
 - The destructive reset contract is shared by the UI and API; the UI must send the exact server phrase, not merely display a client-side confirmation.
-- The active `app/ai_learning/static/app.js` still coordinates multiple AI-learning workflows. Further extraction into course, lesson/version, run-history, search and global-control modules remains an explicit modularity task; do not reintroduce a parallel legacy page as a shortcut.
+- The active UI is split into `core.js`, `courses.js`, `runs.js`, `lessons.js`, `controls.js` and `search.js`; `app.js` is a bounded orchestrator. Feature modules are dynamically loaded with `Promise.allSettled`, versioned factories and injected contracts. The entry point provides a fallback core, disables only controls owned by a failed module, and continues initializing independent features. See `docs/AI_LEARNING_MODULES.md`; do not reintroduce static feature-to-feature imports or a parallel legacy page.
 
 ## Code quality requirements
 
