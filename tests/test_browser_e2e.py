@@ -5851,7 +5851,7 @@ def test_system_health_refresh_performs_one_health_request_and_does_not_reload_s
         browser = playwright.chromium.launch()
         page = browser.new_page()
         page.add_init_script(
-            """() => {
+            """(() => {
                 const originalFetch = window.fetch.bind(window);
                 window.__dashboardRequestCounts = {health: 0, settings: 0};
                 window.fetch = (input, options = {}) => {
@@ -5860,7 +5860,7 @@ def test_system_health_refresh_performs_one_health_request_and_does_not_reload_s
                     if (url.endsWith("/api/settings")) window.__dashboardRequestCounts.settings += 1;
                     return originalFetch(input, options);
                 };
-            }"""
+            })();"""
         )
         response = page.goto(base_url, wait_until="domcontentloaded")
         assert response is not None and response.status == 200
