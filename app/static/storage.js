@@ -144,4 +144,6 @@
  el("create-storage-backup").addEventListener("click",createStorageBackup);
  el("prune-storage-backups").addEventListener("click",pruneStorageBackups);
  el("prune-restore-staging").addEventListener("click",pruneRestoreStaging);
+ refreshStorageHealth();
+ refreshStorageBackups();
 })();
