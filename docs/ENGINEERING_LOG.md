@@ -2120,3 +2120,12 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - The settings module had independent asynchronous reads for the Ollama model catalog, per-profile model context metadata, and shared hardware diagnostics. Older responses could overwrite newer model/provider/context selections and the shared diagnostics panel.
 - Added request-generation guards for the model catalog and hardware diagnostics, plus per-profile guards for context metadata. The guards are checked after each awaited API response and before rendering success or error state.
 - Added architecture assertions and a Chromium test that holds two model-catalog requests, resolves the newer response first, then verifies the older response cannot add stale model options. Exact-head CI is required.
+
+ 
+## 2026-11-20 — Decompose the autonomous engineering console
+
+- The autonomous engineering page had an 889-line script combining shared HTTP/DOM helpers, run history/actions, status and dispatch controls, model-pull monitoring, and progress rendering. These are separate feature responsibilities and should not share one lifecycle owner.
+- Split the implementation into a small versioned core (request transport, DOM lookup, status messaging), independent runs, status, controls, and progress modules. The existing autonomous-engineering.js is now a small orchestrator that validates contracts and schedules each feature's refresh independently.
+- Removed direct runs-to-progress and status-to-runs function calls. Cleanup and post-mutation coordination now use narrow custom events; each feature retains its own request state and UI handlers. A failure to load the status module no longer prevents runs or progress from starting.
+- Updated the architecture contract test, project status, and ADR. The separate ai-learning.js and learning path controller remain explicitly in the modularity backlog; no overall completion claim is made.
+- Exact-head CI, browser tests for the autonomous engineering console, and target-host acceptance are required.

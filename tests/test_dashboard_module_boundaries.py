@@ -338,10 +338,12 @@ def test_remaining_large_ui_modules_are_not_misreported_as_complete():
     status = (ROOT / "docs" / "PROJECT_STATUS.md").read_text(encoding="utf-8")
     engineering_log = (ROOT / "docs" / "ENGINEERING_LOG.md").read_text(encoding="utf-8")
 
-    for name in ("autonomous-engineering.js", "ai-learning.js", "learning.js"):
+    for name in ("ai-learning.js", "learning.js"):
         assert name in status
         assert name in engineering_log
     assert "prevents declaring the no-god-module objective complete" in status
+    orchestrator = (STATIC / "autonomous-engineering.js").read_text(encoding="utf-8")
+    assert len(orchestrator.splitlines()) <= 40
 
 def test_dashboard_module_architecture_decision_records_contract_and_merge_gates():
     adr = (ROOT / "docs" / "adr" / "0001-dashboard-feature-module-contracts.md").read_text(encoding="utf-8")
@@ -436,3 +438,39 @@ def test_settings_refresh_paths_discard_stale_model_and_hardware_responses():
     assert "const requestSequence=++hardwareDiagnosticsRequestSequence;" in hardware
     assert "if(!isCurrent()) return;" in hardware
     assert "if(isCurrent()) output.textContent=" in hardware
+
+
+
+def test_autonomous_engineering_console_uses_independent_versioned_feature_modules():
+    page = (STATIC / "autonomous-engineering.html").read_text(encoding="utf-8")
+    script_paths = (
+        "/static/autonomous-engineering-core.js",
+        "/static/autonomous-engineering-runs.js",
+        "/static/autonomous-engineering-status.js",
+        "/static/autonomous-engineering-controls.js",
+        "/static/autonomous-engineering-progress.js",
+        "/static/autonomous-engineering.js",
+    )
+    positions = [page.index(f'src="{path}"') for path in script_paths]
+    assert positions == sorted(positions)
+
+    core = (STATIC / "autonomous-engineering-core.js").read_text(encoding="utf-8")
+    runs = (STATIC / "autonomous-engineering-runs.js").read_text(encoding="utf-8")
+    status = (STATIC / "autonomous-engineering-status.js").read_text(encoding="utf-8")
+    controls = (STATIC / "autonomous-engineering-controls.js").read_text(encoding="utf-8")
+    progress = (STATIC / "autonomous-engineering-progress.js").read_text(encoding="utf-8")
+    orchestrator = (STATIC / "autonomous-engineering.js").read_text(encoding="utf-8")
+
+    assert "window.autonomousEngineeringCore = Object.freeze" in core
+    assert "window.autonomousEngineeringRuns = Object.freeze" in runs
+    assert "window.autonomousEngineeringStatus = Object.freeze" in status
+    assert "window.autonomousEngineeringControls = Object.freeze" in controls
+    assert "window.autonomousEngineeringProgress = Object.freeze" in progress
+    assert len(core.splitlines()) < 100
+    assert len(orchestrator.splitlines()) <= 40
+    assert "renderRuns" not in orchestrator and "refreshStatus" not in orchestrator
+    assert "refreshRuns" not in status and "refreshProgress" not in status
+    assert "refreshProgress" not in runs and "refreshStatus" not in runs
+    assert "status.refresh(true)" in controls and "autonomousEngineeringStatus" in controls
+    assert "autonomous-engineering:status-mutated" in status + runs
+    assert "autonomous-engineering:cleanup-completed" in runs + progress
