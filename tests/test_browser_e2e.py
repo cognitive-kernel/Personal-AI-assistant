@@ -1715,6 +1715,92 @@ def test_learning_candidate_review_panel_loads_without_executing_or_promoting():
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
 
+def test_browser_hash_invalid_candidate_remains_read_only_auditable():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    browser_errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        _goto_section(page, base_url, "learning-section")
+        candidate = {
+            "id": 987655,
+            "topic": "Hash-invalid retained candidate",
+            "status": "failed",
+            "integrity_valid": False,
+            "source_urls": ["https://verified.example/evidence"],
+            "content_preview": "Retained content with an invalid digest.",
+            "failure_reason": "content integrity mismatch; promotion blocked.",
+            "test_plan": [],
+            "test_results": [],
+        }
+        page.route(
+            "**/api/learning/candidates?limit=50",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"items": [candidate], "count": 1}),
+            ),
+        )
+        page.route(
+            "**/api/learning/candidates/987655",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"candidate": {
+                    "content": "Retained raw content is visible for audit only.",
+                    "integrity_valid": False,
+                    "source_urls": ["https://verified.example/evidence"],
+                    "quality_report": {},
+                    "test_plan": [],
+                    "test_results": [],
+                    "failure_reason": candidate["failure_reason"],
+                }}),
+            ),
+        )
+        page.route(
+            "**/api/learning/candidates/987655/readiness",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "candidate_id": 987655,
+                    "status": "integrity_mismatch",
+                    "ready_for_promotion": False,
+                    "checks": {
+                        "content_hash_valid": False,
+                        "content_retained": True,
+                        "promotion_blocked": True,
+                    },
+                    "contradictions": [],
+                }),
+            ),
+        )
+        page.locator("#refresh-learning-candidates").click()
+        card = page.locator("#learning-candidates article").filter(
+            has_text="Hash-invalid retained candidate"
+        )
+        card.wait_for(state="visible", timeout=10000)
+        detail = card.get_by_role("button", name="نمایش متن و شواهد کامل")
+        assert detail.is_enabled(), "Hash-invalid content must remain readable for audit."
+        assert card.get_by_role("button", name="شروع بررسی وب و peer-AI").is_hidden()
+        assert card.get_by_role("button", name="ثبت طرح آزمون").is_hidden()
+        assert card.get_by_role("button", name="اجرای آزمون‌های Python در sandbox").is_hidden()
+        detail.click()
+        page.wait_for_function(
+            "() => document.querySelector('.candidate-detail')?.textContent.includes('Retained raw content is visible for audit only.')"
+        )
+        assert '"integrity_valid": false' in card.locator(".candidate-detail").text_content()
+        card.get_by_role("button", name="نمایش وضعیت شواهد و تناقض‌ها").click()
+        page.wait_for_function(
+            "() => document.querySelector('.candidate-readiness')?.textContent.includes('integrity_mismatch')"
+        )
+        assert browser_errors == [], "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
 def test_ai_learning_search_feedback_is_bound_to_trace_and_persisted():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
