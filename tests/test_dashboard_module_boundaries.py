@@ -166,3 +166,19 @@ def test_acceptance_ledger_distinguishes_owner_reported_raw_state_from_verified_
     assert "no live database was inspected" in acceptance
     assert "migrations, fixtures, and future user data" in acceptance
 
+def test_knowledge_source_workflows_are_isolated_from_dashboard_shell():
+    page = (STATIC / "index.html").read_text(encoding="utf-8")
+    module = (STATIC / "knowledge.js").read_text(encoding="utf-8")
+
+    assert 'src="/static/knowledge.js"' in page
+    for symbol in (
+        "async function refreshKnowledgeSources(",
+        'el("knowledge-source-ingest-form").addEventListener',
+        'el("knowledge-source-search-form").addEventListener',
+    ):
+        assert symbol not in page
+        assert symbol in module
+    assert "core.version!==1" in module
+    assert module.rstrip().endswith("})();")
+    assert "innerHTML" not in module
+
