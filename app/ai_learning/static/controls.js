@@ -1,9 +1,14 @@
-import {api,say,$,act} from "./core.js?v=20261120-3";
-import {getCourseId,loadCourses} from "./courses.js?v=20261120-3";
-import {loadRuns} from "./runs.js?v=20261120-3";
 export const CONTROLS_CONTRACT_VERSION=1;
+export function createControlsModule(core,dependencies={}){
+ if(!core||core.CORE_CONTRACT_VERSION!==1)throw new Error("AI-learning controls requires core contract v1");
+ const {api,say,$,act}=core;
+ const {
+  getCourseId=()=>Number($("#course-select")?.value)||null,
+  loadCourses=async()=>{},
+  loadRuns=async()=>{},
+ }=dependencies;
 let learningControlRequestSequence=0;
-export async function refreshLearningControl(){
+async function refreshLearningControl(){
  const requestSequence=++learningControlRequestSequence;
  const state=await api("/control");
  if(requestSequence!==learningControlRequestSequence)return;
@@ -40,3 +45,6 @@ $("reset-learning-data").onclick=()=>act(async()=>{
  $("select-all-runs").checked=false;
  say("پاک‌سازی انجام شد. سرفصل‌ها: "+result.deleted.topics+"، درس‌ها: "+result.deleted.lessons+"، نسخه‌ها: "+result.deleted.versions+"، سوابق اجرا: "+result.deleted.runs+" حذف شدند؛ دوره‌ها باقی ماندند و آماده شروع مجدد هستند.");
 });
+
+ return Object.freeze({refreshLearningControl});
+}
