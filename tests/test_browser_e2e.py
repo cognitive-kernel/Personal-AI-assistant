@@ -6121,6 +6121,7 @@ def test_ai_learning_course_catalog_discards_a_late_initial_list_after_course_cr
                         return new Promise((resolve, reject) => {
                             originalFetch(resource, options).then(response => {
                                 window.setTimeout(() => {
+                                    window.__firstCourseCatalogResponseReceived = true;
                                     window.__firstCourseCatalogReadResolved = true;
                                     resolve(response);
                                 }, 1200);
@@ -6134,7 +6135,7 @@ def test_ai_learning_course_catalog_discards_a_late_initial_list_after_course_cr
         page.route("**/api/ai-learning/**", learning_api_route)
         page.goto(base_url.rstrip("/") + "/ai-learning", wait_until="domcontentloaded")
         page.wait_for_function(
-            "() => window.__firstCourseCatalogReadStarted === true", timeout=10000
+            "() => window.__firstCourseCatalogResponseReceived === true", timeout=10000
         )
 
         page.locator('#course-form input[name="title"]').fill("دورهٔ تازه")
@@ -6217,6 +6218,7 @@ def test_ai_learning_same_course_refresh_discards_stale_course_details():
                         return new Promise((resolve, reject) => {
                             originalFetch(resource, options).then(response => {
                                 window.setTimeout(() => {
+                                    window.__firstCourseDetailResponseReceived = true;
                                     window.__firstCourseDetailReadResolved = true;
                                     resolve(response);
                                 }, 1200);
@@ -6230,7 +6232,7 @@ def test_ai_learning_same_course_refresh_discards_stale_course_details():
         page.route("**/api/ai-learning/**", learning_api_route)
         page.goto(base_url.rstrip("/") + "/ai-learning", wait_until="domcontentloaded")
         page.wait_for_function(
-            "() => window.__firstCourseDetailReadStarted === true", timeout=10000
+            "() => window.__firstCourseDetailResponseReceived === true", timeout=10000
         )
         page.locator("#catalog-menu > summary").click()
         page.locator('#topic-form input[name="title"]').fill("موضوع جدید")
@@ -6305,6 +6307,7 @@ def test_ai_learning_same_course_run_history_discards_stale_refresh():
                         return new Promise((resolve, reject) => {
                             originalFetch(resource, options).then(response => {
                                 window.setTimeout(() => {
+                                    window.__firstRunHistoryResponseReceived = true;
                                     window.__firstRunHistoryReadResolved = true;
                                     resolve(response);
                                 }, 1200);
@@ -6318,7 +6321,7 @@ def test_ai_learning_same_course_run_history_discards_stale_refresh():
         page.route("**/api/ai-learning/**", learning_api_route)
         page.goto(base_url.rstrip("/") + "/ai-learning", wait_until="domcontentloaded")
         page.wait_for_function(
-            "() => window.__firstRunHistoryReadStarted === true", timeout=10000
+            "() => window.__firstRunHistoryResponseReceived === true", timeout=10000
         )
 
         page.locator("#resume-learning").click()
@@ -6460,6 +6463,7 @@ def test_ai_learning_search_discards_late_results_from_an_older_query():
                         return new Promise((resolve, reject) => {
                             originalFetch(resource, options).then(response => {
                                 window.setTimeout(() => {
+                                    window.__oldSearchResponseReceived = true;
                                     window.__oldSearchResolved = true;
                                     resolve(response);
                                 }, 1200);
@@ -6479,7 +6483,7 @@ def test_ai_learning_search_discards_late_results_from_an_older_query():
 
         page.locator("#search-query").fill("old")
         page.locator('#search-form button[type="submit"]').click()
-        page.wait_for_function("() => window.__oldSearchStarted === true", timeout=10000)
+        page.wait_for_function("() => window.__oldSearchResponseReceived === true", timeout=10000)
         page.locator("#search-query").fill("new")
         page.locator('#search-form button[type="submit"]').click()
         page.locator("#search-results").get_by_text("دورهٔ جدید", exact=False).wait_for(timeout=10000)
