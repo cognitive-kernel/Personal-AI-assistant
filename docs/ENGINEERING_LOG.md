@@ -2114,3 +2114,5 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - The extraction changes no API/data contracts or persisted records. Exact-head CI and browser validation are pending; no target-host acceptance or merge is claimed.
 - Added a real-browser concurrency regression: while backup creation is deliberately held in flight, a simultaneous prune click must not issue a second mutation request. This verifies the UI gate at the interaction boundary rather than only checking its source text.
 
+- Follow-up extraction: chat conversation selection, message rendering/feedback, create/delete, request sequencing, and queued-response polling moved into `app/static/chat.js`. The selected conversation ID and refresh/load sequence counters are now module-private; the shell no longer references chat feature functions or state.
+- Added architecture tests for the chat module's versioned core dependency, script registration, startup refresh, and absence of chat workflow symbols from `index.html`. Exact-head validation remains pending.
