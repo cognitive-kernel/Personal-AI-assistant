@@ -4,6 +4,7 @@ Run this suite only in the dedicated browser-e2e workflow.
 """
 import json
 import os
+import time
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
@@ -1834,6 +1835,71 @@ def test_storage_backup_failure_is_reported_and_controls_recover():
         assert "backup service unavailable" in output.inner_text()
         assert backup_requests == ["POST"]
         assert button.is_enabled(), "Backup action must recover after a failed request."
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+def test_storage_mutations_are_serialized_while_backup_creation_is_in_flight():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    backup_posts = []
+    prune_posts = []
+    browser_errors = []
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+
+        def backup_route(route):
+            if route.request.method == "POST":
+                backup_posts.append(route.request.method)
+                time.sleep(0.5)
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps({
+                        "status": "created",
+                        "complete": True,
+                        "verified": True,
+                        "backup_id": "snapshot-test",
+                    }),
+                )
+            else:
+                route.continue_()
+
+        def prune_route(route):
+            if route.request.method == "POST":
+                prune_posts.append(route.request.method)
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps({"would_delete_count": 0, "candidates": []}),
+                )
+            else:
+                route.continue_()
+
+        page.route("**/api/storage/backups", backup_route)
+        page.route("**/api/storage/backups/prune", prune_route)
+        page.on("dialog", lambda dialog: dialog.accept())
+        _goto_section(page, base_url, "storage-health-section")
+
+        page.locator("#create-storage-backup").click()
+        page.locator("#prune-storage-backups").click()
+
+        page.wait_for_function(
+            """() => {
+                const node = document.querySelector('#storage-backup-output');
+                return node && node.textContent.includes('"status": "created"');
+            }""",
+            timeout=10000,
+        )
+
+        assert backup_posts == ["POST"]
+        assert prune_posts == [], "A second storage mutation must not overlap an active mutation."
+        assert page.locator("#create-storage-backup").is_enabled()
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
 
