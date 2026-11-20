@@ -137,3 +137,25 @@ def test_ui_audit_tracks_the_current_storage_and_task_module_boundaries():
     assert "mutation gate" in audit
     assert "concurrency regression" in engineering_log
 
+def test_chat_and_conversation_state_are_owned_by_the_chat_module():
+    page = (STATIC / "index.html").read_text(encoding="utf-8")
+    module = (STATIC / "chat.js").read_text(encoding="utf-8")
+
+    assert 'src="/static/chat.js"' in page
+    assert page.index('src="/static/dashboard-core.js"') < page.index('src="/static/chat.js"')
+    for symbol in (
+        "currentConversationId",
+        "conversationRefreshInProgress",
+        "conversationLoadSequence",
+        "async function refreshConversations(",
+        "async function loadConversationMessages(",
+    ):
+        assert symbol not in page
+        assert symbol in module
+    assert 'el("chat-form").addEventListener' not in page
+    assert 'el("chat-form").addEventListener' in module
+    assert "core.version!==1" in module
+    assert "refreshConversations();" in module
+    assert module.rstrip().endswith("})();")
+    assert "innerHTML" not in module
+
