@@ -2111,3 +2111,5 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Root cause: the protected pipe DACL granted Authenticated Users only ReadWrite and granted FullControl only to LocalSystem and Administrators. It did not grant the service identity the CreateNewInstance right required to create a named-pipe server instance.
 - Added an explicit least-privilege ACE for LocalService with CreateNewInstance | ReadWrite. The deny rule for network logons and the client-facing Authenticated Users rule remain unchanged; LocalService is not granted FullControl.
 - Added a source-level ACL regression test. The existing Windows live integration test remains the acceptance test: it starts the real LocalService, verifies PowerShell and Python clients, and checks access from a separate non-admin local account. Exact-head CI and target-host validation remain required.
+
+- Strengthened the live Windows integration gate: it now fails if any broker worker exception was written to the opt-in service diagnostic log. This prevents a single surviving pipe worker from making sequential health probes pass while other workers silently fail to create instances.

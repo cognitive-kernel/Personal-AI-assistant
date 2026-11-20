@@ -367,6 +367,17 @@ assert result["files_removed"] >= 2
         throw "The Broker cleanup endpoint removed retained checkpoint data."
     }
 
+    # Every worker must be able to create its own pipe instance. A worker
+    # exception here is evidence of an ACL or lifecycle defect even if one
+    # surviving worker happened to satisfy the sequential client probes.
+    $workerDiagnosticsPath = Join-Path $stateRoot "service-errors.log"
+    if (Test-Path -LiteralPath $workerDiagnosticsPath -PathType Leaf) {
+        $workerDiagnostics = Get-Content -LiteralPath $workerDiagnosticsPath -Raw
+        if (-not [String]::IsNullOrWhiteSpace($workerDiagnostics)) {
+            throw "The state broker worker loop recorded unexpected exceptions: $workerDiagnostics"
+        }
+    }
+
     Stop-Service -Name $serviceName -Force -ErrorAction Stop
     (Get-Service -Name $serviceName -ErrorAction Stop).WaitForStatus(
         [System.ServiceProcess.ServiceControllerStatus]::Stopped,

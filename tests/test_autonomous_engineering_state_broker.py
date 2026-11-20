@@ -295,3 +295,11 @@ def test_broker_pipe_acl_grants_local_service_minimal_server_instance_rights():
     assert network_deny < local_service < server_rights < authenticated_users
     assert "AccessControlType.Deny" in service[network_deny:local_service]
     assert "AccessControlType.Allow" in service[local_service:authenticated_users]
+
+
+
+def test_broker_live_windows_integration_rejects_worker_loop_diagnostics():
+    service_test = (ROOT / "scripts" / "test_autonomous_state_broker_service.ps1").read_text(encoding="utf-8")
+
+    assert '$workerDiagnosticsPath = Join-Path $stateRoot "service-errors.log"' in service_test
+    assert "recorded unexpected exceptions" in service_test
