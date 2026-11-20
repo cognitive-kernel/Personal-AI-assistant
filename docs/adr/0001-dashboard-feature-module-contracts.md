@@ -19,7 +19,7 @@ The project owner clarified that the application and databases are still raw dev
 5. Stale read responses must not overwrite newer UI state. Storage mutations are serialized within the storage feature module. Server-side concurrency and durable task locks remain authoritative; browser guards are not substitutes for them.
 6. Modules render untrusted content using DOM text APIs, not `innerHTML`.
 7. Architecture fitness tests enforce script order, dependency versions, state ownership, safe rendering, and the module inventory. Browser tests cover user-visible failure and concurrency behavior.
-8. The autonomous engineering console is split into a shared transport/DOM core and independent runs, status, controls, and progress modules. They communicate through versioned contracts and narrow custom events; the orchestrator only validates module contracts and schedules independent refreshes. `ai-learning.js` and the learning path controller remain in the modularity backlog for further cohesion review.
+8. Large remaining modules are not silently considered complete. `autonomous-engineering.js`, `ai-learning.js`, and the learning path controller remain in the modularity backlog for further cohesion review.
 
 ## Consequences
 

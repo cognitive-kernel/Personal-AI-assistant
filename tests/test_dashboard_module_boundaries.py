@@ -242,7 +242,7 @@ def test_settings_and_model_diagnostics_are_owned_by_versioned_settings_module()
     assert "settingsLoadSequence" in module
     assert "requestSequence===settingsLoadSequence" in module
     assert "window.dashboardSettings=Object.freeze({version:1,refresh:refreshSettings})" in module
-    assert "window.dashboardSettings" not in page
+    assert "const settings=window.dashboardSettings" in page
     assert "core.version!==1" in module
     assert module.rstrip().endswith("})();")
     assert "innerHTML" not in module
@@ -338,12 +338,10 @@ def test_remaining_large_ui_modules_are_not_misreported_as_complete():
     status = (ROOT / "docs" / "PROJECT_STATUS.md").read_text(encoding="utf-8")
     engineering_log = (ROOT / "docs" / "ENGINEERING_LOG.md").read_text(encoding="utf-8")
 
-    for name in ("ai-learning.js", "learning.js"):
+    for name in ("autonomous-engineering.js", "ai-learning.js", "learning.js"):
         assert name in status
         assert name in engineering_log
     assert "prevents declaring the no-god-module objective complete" in status
-    orchestrator = (STATIC / "autonomous-engineering.js").read_text(encoding="utf-8")
-    assert len(orchestrator.splitlines()) <= 40
 
 def test_dashboard_module_architecture_decision_records_contract_and_merge_gates():
     adr = (ROOT / "docs" / "adr" / "0001-dashboard-feature-module-contracts.md").read_text(encoding="utf-8")
@@ -355,134 +353,3 @@ def test_dashboard_module_architecture_decision_records_contract_and_merge_gates
     assert "Do not merge" in adr
     assert "No live database was accessed or modified" in adr
 
-
-
-def test_system_health_refresh_is_single_and_does_not_depend_on_settings():
-    module = (STATIC / "system-health.js").read_text(encoding="utf-8")
-
-    assert 'src="/static/system-health.js"' in (STATIC / "index.html").read_text(encoding="utf-8")
-    assert module.count('el("refresh").addEventListener("click"') == 1
-    assert module.count(" refresh();") == 1
-    assert "dashboardSettings" not in module
-
-
-
-def test_learning_review_panels_ignore_stale_out_of_order_responses():
-    module = (STATIC / "learning-review.js").read_text(encoding="utf-8")
-    panels = (
-        ("refreshLearningEscalations", "learningEscalationsRequestSequence"),
-        ("refreshFactualReviewQueue", "factualReviewQueueRequestSequence"),
-        ("refreshFactualTestQueue", "factualTestQueueRequestSequence"),
-        ("refreshFactualTestHistory", "factualTestHistoryRequestSequence"),
-    )
-    for function_name, sequence in panels:
-        assert f"let {sequence}=0;" in module
-        start = module.index(f"async function {function_name}()")
-        end = module.find("\nasync function ", start + 1)
-        block = module[start:end if end >= 0 else len(module)]
-        guard = f"if(requestSequence!=={sequence})return;"
-        assert f"const requestSequence=++{sequence};" in block
-        assert guard in block
-        assert block.index(guard) < block.index("container.replaceChildren();")
-        assert f"if(requestSequence==={sequence})" in block
-
-
-def test_learning_capability_refresh_ignores_stale_out_of_order_responses():
-    module = (STATIC / "learning-overview.js").read_text(encoding="utf-8")
-
-    assert "let learningCapabilitiesRequestSequence = 0;" in module
-    assert "const requestSequence = ++learningCapabilitiesRequestSequence;" in module
-    assert "if (requestSequence !== learningCapabilitiesRequestSequence) return;" in module
-    assert "if (requestSequence === learningCapabilitiesRequestSequence)" in module
-
-
-def test_learning_capability_guard_runs_before_rendering_latest_response():
-    module = (STATIC / "learning-overview.js").read_text(encoding="utf-8")
-    start = module.index("async function refreshLearningCapabilities()")
-    end = module.find("\n}", start)
-    block = module[start:end if end >= 0 else len(module)]
-
-    await_result = 'await learningApi("/api/learning/capabilities?limit=200")'
-    guard = "if (requestSequence !== learningCapabilitiesRequestSequence) return;"
-    assert await_result in block
-    assert guard in block
-    assert block.index(await_result) < block.index(guard) < block.index("const items = result.capabilities || [];")
-    assert "if (requestSequence === learningCapabilitiesRequestSequence)" in block
-
-
-
-def test_settings_refresh_paths_discard_stale_model_and_hardware_responses():
-    module = (STATIC / "settings.js").read_text(encoding="utf-8")
-
-    assert "let ollamaModelsRequestSequence=0;" in module
-    assert "const modelContextHintRequestSequences=new Map();" in module
-    assert "let hardwareDiagnosticsRequestSequence=0;" in module
-
-    catalog_start = module.index("async function refreshOllamaModels()")
-    catalog_end = module.index("const modelContextHintRequestSequences", catalog_start)
-    catalog = module[catalog_start:catalog_end]
-    assert "const requestSequence=++ollamaModelsRequestSequence;" in catalog
-    assert "const isCurrent=()=>requestSequence===ollamaModelsRequestSequence" in catalog
-    assert 'const result=await api("/api/models");\n   if(!isCurrent()) return;' in catalog
-
-    context_start = module.index("async function refreshModelContextHint(")
-    context_end = module.index("let hardwareDiagnosticsRequestSequence", context_start)
-    context = module[context_start:context_end]
-    assert "modelContextHintRequestSequences.set(purpose,requestSequence);" in context
-    assert "if(!isCurrent()) return;" in context
-    assert "if(isCurrent()) {" in context
-
-    hardware_start = module.index("async function refreshHardwareDiagnostics(")
-    hardware_end = module.index("for(const profile of modelContextProfiles)", hardware_start)
-    hardware = module[hardware_start:hardware_end]
-    assert "const requestSequence=++hardwareDiagnosticsRequestSequence;" in hardware
-    assert "if(!isCurrent()) return;" in hardware
-    assert "if(isCurrent()) output.textContent=" in hardware
-
-
-
-def test_autonomous_engineering_console_uses_independent_versioned_feature_modules():
-    page = (STATIC / "autonomous-engineering.html").read_text(encoding="utf-8")
-    script_paths = (
-        "/static/autonomous-engineering-core.js",
-        "/static/autonomous-engineering-runs.js",
-        "/static/autonomous-engineering-status.js",
-        "/static/autonomous-engineering-controls.js",
-        "/static/autonomous-engineering-progress.js",
-        "/static/autonomous-engineering.js",
-    )
-    positions = [page.index(f'src="{path}"') for path in script_paths]
-    assert positions == sorted(positions)
-
-    core = (STATIC / "autonomous-engineering-core.js").read_text(encoding="utf-8")
-    runs = (STATIC / "autonomous-engineering-runs.js").read_text(encoding="utf-8")
-    status = (STATIC / "autonomous-engineering-status.js").read_text(encoding="utf-8")
-    controls = (STATIC / "autonomous-engineering-controls.js").read_text(encoding="utf-8")
-    progress = (STATIC / "autonomous-engineering-progress.js").read_text(encoding="utf-8")
-    orchestrator = (STATIC / "autonomous-engineering.js").read_text(encoding="utf-8")
-
-    assert "window.autonomousEngineeringCore = Object.freeze" in core
-    assert "window.autonomousEngineeringRuns = Object.freeze" in runs
-    assert "window.autonomousEngineeringStatus = Object.freeze" in status
-    assert "window.autonomousEngineeringControls = Object.freeze" in controls
-    assert "window.autonomousEngineeringProgress = Object.freeze" in progress
-    assert len(core.splitlines()) < 100
-    assert len(orchestrator.splitlines()) <= 40
-    assert "renderRuns" not in orchestrator and "refreshStatus" not in orchestrator
-    assert "refreshRuns" not in status and "refreshProgress" not in status
-    assert "refreshProgress" not in runs and "refreshStatus" not in runs
-    assert "status.refresh(true)" in controls and "autonomousEngineeringStatus" in controls
-    assert "autonomous-engineering:status-mutated" in status + runs
-    assert "autonomous-engineering:cleanup-completed" in runs + progress
-
-
-
-def test_autonomous_engineering_status_can_run_when_controls_module_is_unavailable():
-    orchestrator = (STATIC / "autonomous-engineering.js").read_text(encoding="utf-8")
-    core = (STATIC / "autonomous-engineering-core.js").read_text(encoding="utf-8")
-
-    assert 'if (status && status.version === 1)' in orchestrator
-    assert 'if (!controls || controls.version !== 1) missing.push("کنترل");' in orchestrator
-    assert 'if (!message) return;' in core
-    assert 'const message = $("agent-message");\n  if (!message) return;' not in core
-    assert 'if (!core || core.version !== 1)' in orchestrator

@@ -2104,28 +2104,31 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 
 - Follow-up regression found after PR #782 merge: the new heartbeat persisted Persian text correctly for the dashboard but also printed it directly to the Windows Actions console. On the Runner's active code page this raised `UnicodeEncodeError` during the Codex smoke and aborted the smoke process before any model/tool conclusion. Console heartbeat output is now ASCII-only while persisted dashboard activity remains Persian; added regression tests for both heartbeat states. This fix is included in the still-open PR #783 branch so the stream-profile change is not merged with the console regression.
 
- 
-## 2026-11-20 — Windows state broker pipe server ACL
+## 2026-11-20 — Storage and task dashboard ownership extraction (PR #795)
 
-- The live Windows service integration test failed after the broker was configured to run as NT AUTHORITY\LocalService (SID S-1-5-19). The worker repeatedly threw UnauthorizedAccessException while constructing NamedPipeServerStream; the PowerShell health client then timed out.
-- Root cause: the protected pipe DACL granted Authenticated Users only ReadWrite and granted FullControl only to LocalSystem and Administrators. It did not grant the service identity the CreateNewInstance right required to create a named-pipe server instance.
-- Added an explicit least-privilege ACE for LocalService with CreateNewInstance | ReadWrite. The deny rule for network logons and the client-facing Authenticated Users rule remain unchanged; LocalService is not granted FullControl.
-- Added a source-level ACL regression test. The existing Windows live integration test remains the acceptance test: it starts the real LocalService, verifies PowerShell and Python clients, and checks access from a separate non-admin local account. Exact-head CI and target-host validation remain required.
+- Owner clarified that the software/database layer remains raw development scaffolding and that no completed/usable module has created an operational user dataset. This is recorded as owner-reported context only; no database was opened to infer or verify emptiness.
+- Root cause: storage and task workflows still lived inside the large dashboard inline script, so their state, request sequencing, and event ownership were coupled to unrelated page initialization.
+- Extracted storage health/backup/staging/prune flows into `app/static/storage.js`; added module-local stale-response counters and a single mutation gate across backup/restore/prune actions.
+- Extracted durable task rendering, event history, controls, filtering, pagination, and polling into `app/static/tasks.js`; task cursor, request sequence, and poll scheduling now belong to that feature module.
+- Both modules validate the versioned `dashboardCore v1` dependency and required DOM controls. Architecture tests enforce script registration, feature ownership, and the absence of moved state/functions from `index.html`.
+- The extraction changes no API/data contracts or persisted records. Exact-head CI and browser validation are pending; no target-host acceptance or merge is claimed.
+- Added a real-browser concurrency regression: while backup creation is deliberately held in flight, a simultaneous prune click must not issue a second mutation request. This verifies the UI gate at the interaction boundary rather than only checking its source text.
 
-- Strengthened the live Windows integration gate: it now fails if any broker worker exception was written to the opt-in service diagnostic log. This prevents a single surviving pipe worker from making sequential health probes pass while other workers silently fail to create instances.
+- Follow-up extraction: chat conversation selection, message rendering/feedback, create/delete, request sequencing, and queued-response polling moved into `app/static/chat.js`. The selected conversation ID and refresh/load sequence counters are now module-private; the shell no longer references chat feature functions or state.
+- Added architecture tests for the chat module's versioned core dependency, script registration, startup refresh, and absence of chat workflow symbols from `index.html`. Exact-head validation remains pending.
 
- 
-## 2026-11-20 — Prevent stale settings and model-diagnostics responses
+## 2026-11-20 — Dashboard shell decomposition (PR #795)
 
-- The settings module had independent asynchronous reads for the Ollama model catalog, per-profile model context metadata, and shared hardware diagnostics. Older responses could overwrite newer model/provider/context selections and the shared diagnostics panel.
-- Added request-generation guards for the model catalog and hardware diagnostics, plus per-profile guards for context metadata. The guards are checked after each awaited API response and before rendering success or error state.
-- Added architecture assertions and a Chromium test that holds two model-catalog requests, resolves the newer response first, then verifies the older response cannot add stale model options. Exact-head CI is required.
+- Continued the root-cause refactor beyond storage/tasks: chat, knowledge, cloud-account consent/quota, settings/model diagnostics, learning assessment/factual review, system health, theme, and scroll-position navigation now each have a dedicated browser module.
+- Module state is local to its owner: chat conversation identity/load sequence, task cursor/poll/refresh state, storage list/health sequences and mutation gate, cloud quota refresh sequences, and settings load sequence are no longer page-global.
+- Added explicit module guards for the immutable `dashboardCore v1` contract and required DOM controls. Settings exposes only a versioned `window.dashboardSettings.refresh()` interface to the page shell.
+- The inline dashboard script now contains only the learning-candidate workflow (scheduled for extraction by PR #797) and shared-core binding; the rest of the UI modules are isolated.
+- Architecture tests cover script ordering, module ownership, startup refresh, safe rendering, and consistency between implementation and engineering docs. Exact-head CI and browser tests are pending; no merge or target-host acceptance is claimed.
+## 2026-11-20 — Learning UI responsibility split (PR #795)
 
- 
-## 2026-11-20 — Decompose the autonomous engineering console
+- Replaced the 994-line learning UI module with four smaller files: shared `learning-core.js` (common API/error and rendering helpers), `learning-lessons.js` (lesson generation, stop/regenerate, assessment/review UI), `learning-overview.js` (due reviews, recommendations, capability map), and `learning.js` (path/topic rendering and curriculum proposals).
+- Cross-module calls use explicit versioned `learningCore`, `learningLessons`, and `learningOverview` contracts. Script order is tested; path rendering cannot silently run before its lesson and overview dependencies.
+- Updated feature tests to assert behavior in the owning module rather than relying on the old monolithic file location. Exact-head CI and browser E2E remain pending.
 
-- The autonomous engineering page had an 889-line script combining shared HTTP/DOM helpers, run history/actions, status and dispatch controls, model-pull monitoring, and progress rendering. These are separate feature responsibilities and should not share one lifecycle owner.
-- Split the implementation into a small versioned core (request transport, DOM lookup, status messaging), independent runs, status, controls, and progress modules. The existing autonomous-engineering.js is now a small orchestrator that validates contracts and schedules each feature's refresh independently.
-- Removed direct runs-to-progress and status-to-runs function calls. Cleanup and post-mutation coordination now use narrow custom events; each feature retains its own request state and UI handlers. A failure to load the status module no longer prevents runs or progress from starting.
-- Updated the architecture contract test, project status, and ADR. The separate ai-learning.js and learning path controller remain explicitly in the modularity backlog; no overall completion claim is made.
-- Exact-head CI, browser tests for the autonomous engineering console, and target-host acceptance are required.
+- Residual audit: `autonomous-engineering.js` remains 889 lines (~42 KB), `ai-learning.js` 518 lines (~27 KB), and the path/curriculum controller `learning.js` ~502 lines (~25 KB). Tracked under Issue #290 for line-by-line dependency/state mapping before further splits. No claim of 100% modularity is made.
+

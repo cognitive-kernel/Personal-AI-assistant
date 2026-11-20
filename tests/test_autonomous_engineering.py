@@ -147,7 +147,13 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     main = (root / "app" / "static" / "index.html").read_text(encoding="utf-8")
     learning = (root / "app" / "ai_learning" / "static" / "index.html").read_text(encoding="utf-8")
     agent_page = (root / "app" / "static" / "autonomous-engineering.html").read_text(encoding="utf-8")
-    agent_script = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
+    static = root / "app" / "static"
+    agent_script = (static / "autonomous-engineering.js").read_text(encoding="utf-8")
+    status_script = (static / "autonomous-engineering-status.js").read_text(encoding="utf-8")
+    controls_script = (static / "autonomous-engineering-controls.js").read_text(encoding="utf-8")
+    runs_script = (static / "autonomous-engineering-runs.js").read_text(encoding="utf-8")
+    progress_script = (static / "autonomous-engineering-progress.js").read_text(encoding="utf-8")
+    core_script = (static / "autonomous-engineering-core.js").read_text(encoding="utf-8")
 
     assert 'href="/autonomous-engineering"' in main
     assert 'href="/autonomous-engineering"' in learning
@@ -162,13 +168,13 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="checkpoint-state"' in agent_page
     assert 'id="checkpoint-detail"' in agent_page
     assert 'id="manual-task-state"' in agent_page
-    assert "data.pending_work" in agent_script
-    assert "checkpoint.verified" in agent_script
-    assert "function canStartManualTask()" in agent_script
-    assert "if (!canStartManualTask())" in agent_script
+    assert "data.pending_work" in status_script
+    assert "checkpoint.verified" in status_script
+    assert "function canStartManualTask()" in status_script
+    assert "if (!canStartManualTask())" in status_script
     assert "فقط Runner و Broker به فایل‌های محافظت‌شده دسترسی مستقیم دارند" in agent_page
     assert "حساب‌های برنامه از کانال محلی محدود استفاده می‌کنند" in agent_page
-    assert "checks.github_runs_available" in agent_script
+    assert "checks.github_runs_available" in status_script
     assert 'id="interval-hours"' in page
     assert 'id="execution-mode"' in page
     assert 'value="continuous"' in page
@@ -182,11 +188,11 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="storage-state"' in page
     assert "checks.progress_storage_accessible" in agent_script
     assert "gpt-oss:20b" not in page
-    assert 'هیچ مدل اصلی قابل انتخابی از Ollama شناسایی نشد' in agent_script
-    assert "model_context_length" in agent_script
-    assert "model_supports_tools" in agent_script
-    assert "model_selectable" in agent_script
-    assert "نسخهٔ داخلی Context" in agent_script
+    assert 'هیچ مدل اصلی قابل انتخابی از Ollama شناسایی نشد' in status_script
+    assert "model_context_length" in status_script
+    assert "model_supports_tools" in status_script
+    assert "model_selectable" in status_script
+    assert "نسخهٔ داخلی Context" in status_script
 
 
 def test_autonomous_engineering_routes_are_registered():
@@ -751,7 +757,7 @@ def test_autonomous_workflow_requires_saved_model_without_a_hardcoded_fallback()
     assert "variable get AUTONOMOUS_ENGINEERING_MODEL" in (
         root / "scripts" / "provision_autonomous_runner.ps1"
     ).read_text(encoding="utf-8")
-    dashboard = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
+    dashboard = (root / "app" / "static" / "autonomous-engineering-status.js").read_text(encoding="utf-8")
     assert "ابتدا مدل نصب‌شده را انتخاب کنید" in dashboard
     assert "installed.includes(selectedModel)" in dashboard
     assert "هنوز مدلی ذخیره نشده است" in dashboard
@@ -928,7 +934,7 @@ def test_progress_reader_rejects_invalid_custom_date_range():
 def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     root = Path(__file__).resolve().parents[1]
     page = (root / "app" / "static" / "autonomous-engineering.html").read_text(encoding="utf-8")
-    script = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
+    script = (root / "app" / "static" / "autonomous-engineering-progress.js").read_text(encoding="utf-8")
     workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
     operations = (root / "docs" / "operations" / "CODEX_AUTONOMOUS_ENGINEERING.md").read_text(encoding="utf-8")
     master_prompt = (root / "docs" / "MASTER_ENGINEERING_PROMPT.md").read_text(encoding="utf-8")
@@ -1830,9 +1836,11 @@ def test_collect_status_does_not_queue_probes_when_shared_pool_is_saturated(monk
 
 def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     root = Path(__file__).resolve().parents[1]
-    script = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
+    static = root / "app" / "static"
+    script = (static / "autonomous-engineering-status.js").read_text(encoding="utf-8")
+    core_script = (static / "autonomous-engineering-core.js").read_text(encoding="utf-8")
 
-    assert "new AbortController()" in script
+    assert "new AbortController()" in core_script
     assert "statusRefreshPromise" in script
     assert "function refresh(force = false)" in script
     assert "await refresh(true)" in script
@@ -2053,7 +2061,7 @@ def test_cleanup_refuses_active_run_or_pending_task(monkeypatch, tmp_path):
 def test_run_management_controls_are_present_and_wired():
     root = Path(__file__).resolve().parents[1]
     page = (root / "app" / "static" / "autonomous-engineering.html").read_text(encoding="utf-8")
-    script = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
+    script = (root / "app" / "static" / "autonomous-engineering-runs.js").read_text(encoding="utf-8")
     assert 'id="refresh-runs"' in page
     assert 'id="cleanup-agent-temp"' in page
     assert 'id="cleanup-agent-status"' in page
@@ -2153,7 +2161,7 @@ def test_run_logs_include_persisted_codex_reason_and_failure_stage(monkeypatch):
 
 def test_dashboard_renders_failure_summary_and_codex_diagnostic_details():
     script = (
-        Path(__file__).resolve().parents[1] / "app" / "static" / "autonomous-engineering.js"
+        Path(__file__).resolve().parents[1] / "app" / "static" / "autonomous-engineering-runs.js"
     ).read_text(encoding="utf-8")
 
     assert "علت خطا: " in script

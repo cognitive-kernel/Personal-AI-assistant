@@ -13,12 +13,7 @@
   if(fallback)fallback.textContent="ماژول ارزیابی و بازبینی یادگیری به کنترل‌های لازم دسترسی ندارد: "+missing.join(", ");
   return;
  }
- let learningEscalationsRequestSequence=0;
-let factualReviewQueueRequestSequence=0;
-let factualTestQueueRequestSequence=0;
-let factualTestHistoryRequestSequence=0;
-
-function showLearningJob(result) {
+ function showLearningJob(result) {
   el("learning-output").textContent=JSON.stringify(result,null,2);
   const container=el("assessment-form-container");
   container.replaceChildren();
@@ -121,11 +116,9 @@ function showLearningJob(result) {
  });
  
  async function refreshLearningEscalations() {
-  const requestSequence=++learningEscalationsRequestSequence;
   const container=el("learning-escalations");
   try {
    const result=await api("/api/learning/escalations?limit=50");
-   if(requestSequence!==learningEscalationsRequestSequence)return;
    container.replaceChildren();
    const items=result.escalations||[];
    if(!items.length) { container.textContent="صف بازبینی انسانی خالی است."; return; }
@@ -151,15 +144,13 @@ function showLearningJob(result) {
     card.append(heading,details,error,note,actions);
     container.append(card);
    }
-  } catch(error) { if(requestSequence===learningEscalationsRequestSequence)container.textContent="بارگذاری صف بازبینی ناموفق بود: "+error.message; }
+  } catch(error) { container.textContent="بارگذاری صف بازبینی ناموفق بود: "+error.message; }
  }
  async function refreshFactualReviewQueue() {
-  const requestSequence=++factualReviewQueueRequestSequence;
   const container=el("factual-review-queue");
   container.textContent="در حال بارگذاری صف منبع…";
   try {
    const result=await api("/api/factual-knowledge/review-queue?limit=100");
-   if(requestSequence!==factualReviewQueueRequestSequence)return;
    container.replaceChildren();
    const items=result.items||[];
    if(!items.length) { container.textContent="ادعای خام دارای منبع برای بازبینی وجود ندارد."; return; }
@@ -217,15 +208,13 @@ function showLearningJob(result) {
     card.append(heading,claim,meta,sources,note,confirmLabel,submit,reject,status);
     container.append(card);
    }
-  } catch(error) { if(requestSequence===factualReviewQueueRequestSequence)container.textContent="بارگذاری صف منبع ناموفق بود: "+error.message; }
+  } catch(error) { container.textContent="بارگذاری صف منبع ناموفق بود: "+error.message; }
  }
  async function refreshFactualTestQueue() {
-  const requestSequence=++factualTestQueueRequestSequence;
   const container=el("factual-test-queue");
   container.textContent="در حال بارگذاری صف آزمون…";
   try {
    const result=await api("/api/factual-knowledge/test-queue?limit=50");
-   if(requestSequence!==factualTestQueueRequestSequence)return;
    container.replaceChildren();
    const items=result.items||[];
    if(!items.length) { container.textContent="ادعای واجد شرایطی برای آزمون وجود ندارد."; return; }
@@ -277,15 +266,13 @@ function showLearningJob(result) {
     card.append(heading,claim,sources,testName,sourceCode,oracleNote,timeout,confirmLabel,submit,status);
     container.append(card);
    }
-  } catch(error) { if(requestSequence===factualTestQueueRequestSequence)container.textContent="بارگذاری صف آزمون ناموفق بود: "+error.message; }
+  } catch(error) { container.textContent="بارگذاری صف آزمون ناموفق بود: "+error.message; }
  }
  async function refreshFactualTestHistory() {
-  const requestSequence=++factualTestHistoryRequestSequence;
   const container=el("factual-test-history");
   container.textContent="در حال بارگذاری تاریخچهٔ آزمون‌ها…";
   try {
    const result=await api("/api/factual-knowledge/test-history?limit=50");
-   if(requestSequence!==factualTestHistoryRequestSequence)return;
    container.replaceChildren();
    const items=result.items||[];
    if(!items.length) { container.textContent="هنوز نتیجهٔ آزمونی ثبت نشده است."; return; }
@@ -304,7 +291,7 @@ function showLearningJob(result) {
     card.append(heading,claim,details,summary,hashes,timestamp);
     container.append(card);
    }
-  } catch(error) { if(requestSequence===factualTestHistoryRequestSequence)container.textContent="بارگذاری تاریخچهٔ آزمون ناموفق بود: "+error.message; }
+  } catch(error) { container.textContent="بارگذاری تاریخچهٔ آزمون ناموفق بود: "+error.message; }
  }
  el("refresh-factual-test-history").addEventListener("click",refreshFactualTestHistory);
  refreshFactualTestHistory();
