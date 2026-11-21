@@ -2113,6 +2113,21 @@ def test_run_diagnostics_are_loaded_from_shared_state_and_sanitized(monkeypatch)
     assert agent._read_run_diagnostics(0) is None
     assert agent._read_run_diagnostics(True) is None
 
+def test_workflow_failure_summary_explains_missing_codex_final_agent_message():
+    raw_log = (
+        "Warning: no last agent message; wrote empty content to codex-report.md\\n"
+        "Codex final report validation failed: completion marker count was 0.\\n"
+        "Autonomous engineering cycle failed: RuntimeError: bounded retry budget exhausted."
+    )
+
+    result = agent._workflow_failure_summary(raw_log, [])
+
+    assert result is not None
+    assert "Codex did not emit a final agent message" in result
+    assert "output-last-message report was empty" in result
+    assert "durable task/checkpoint" in result
+
+
 def test_workflow_failure_summary_prefers_controller_root_cause():
     raw_log = (
         "##[error]Process completed with exit code 1.\n"
