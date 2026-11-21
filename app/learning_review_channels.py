@@ -409,6 +409,8 @@ def consult_configured_peer_ais(
         record_review_attempt(
             candidate_id, channel="peer_ai", status="unconfigured",
             details={"consulted": 0, "reason": "PEER_AI_PROVIDERS_JSON_not_set"},
+            task_context=task_context, expected_task_type=expected_task_type,
+            expected_payload=expected_payload,
         )
         return {"candidate_id": candidate_id, "status": "unconfigured", "consulted": 0, "errors": []}
     try:
@@ -544,6 +546,8 @@ def consult_configured_peer_ais(
                 citations=citations[:100],
                 stance=stance,
                 prompt_version=PEER_REVIEW_PROMPT_VERSION,
+                task_context=task_context, expected_task_type=expected_task_type,
+                expected_payload=expected_payload,
                 independence_note=(
                     "Automatically consulted through a configured OpenAI-compatible endpoint. "
                     "Training-data and organizational independence have not been established."
