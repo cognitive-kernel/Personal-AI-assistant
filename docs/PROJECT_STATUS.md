@@ -506,3 +506,10 @@ The subsequent documentation-only evidence update does not change runtime code a
 - Gate-C follow-up in PR #820: the shared browser request helper now preserves backend error code/correlation/retryable metadata; dispatch refresh ordering no longer overwrites the failure message. A new Chromium test asserts the 503 code, correlation ID, and retry lock. Exact-head CI is pending.
 
 - PR #820 also fixes result-message ordering for settings, model pull, manual task, dispatch, pause, resume and cancel: authoritative status refresh now precedes the final success/error message. Browser tests assert these outcomes and cancel recovery.
+
+
+## 2026-11-22 — PR #820 UI exact-head revalidation
+
+- PR #820 code head `133db4ce6d300b8e982d45d5fec1ed13aa6c6a39` passed the rerun of the full Windows suite (2462 passed, 16 skipped, 74 deselected), Ubuntu suite (2464 passed, 14 skipped, 74 deselected), Windows storage regressions (11 passed, 2 skipped), Browser E2E, Dependency Audit and CodeQL.
+- The first Windows test attempt had one failure in unchanged `tests/test_task_routes.py::test_task_api_refuses_to_delete_running_tasks`; rerunning that same job on the same SHA passed. No test or product code was changed for that failure. Monitor for recurrence.
+- This does not close Gates G/H/J: real Windows Runner/Ollama/Codex acceptance, crash/restart checkpoint preservation and owner approval are still required. PR remains Draft and unmerged.
