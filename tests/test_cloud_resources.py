@@ -9,6 +9,7 @@ import pytest
 
 from app import cloud_resources, db, task_manager, web_sources
 from app.cloud_resources import CloudResourceError
+from app.task_worker import TaskContext
 from app.schema_migrations import MigrationRunner
 from app.schema_registry import CLOUD_RESOURCE_MIGRATIONS, initialize_database_file
 
@@ -729,6 +730,52 @@ def test_discovery_records_safe_provider_codes_without_raw_error_messages(tmp_pa
 
 
 
+def test_stale_cloud_discovery_task_cannot_upsert_candidates(tmp_path, monkeypatch):
+    _configure_paths(tmp_path, monkeypatch)
+    payload = {"trigger": "manual"}
+    task = task_manager.create_task(
+        cloud_resources.CLOUD_DISCOVERY_TASK_TYPE, payload, max_attempts=3
+    )
+    worker_id = "cloud-discovery-worker"
+    claimed = task_manager.claim_next_task(worker_id)
+    assert claimed is not None and claimed["id"] == task["id"]
+    context = TaskContext(
+        task_id=task["id"],
+        worker_id=worker_id,
+        lease_epoch=claimed["lease_epoch"],
+    )
+    reclaimed = False
+
+    def discover(_query, *, limit):
+        nonlocal reclaimed
+        if not reclaimed:
+            with db.learning_connection() as connection:
+                connection.execute(
+                    "UPDATE task_queue SET lease_expires_at=? WHERE id=?",
+                    ("2000-01-01T00:00:00.000000+00:00", task["id"]),
+                )
+            new_claim = task_manager.claim_next_task(worker_id)
+            assert new_claim is not None and new_claim["id"] == task["id"]
+            assert new_claim["lease_epoch"] > context.lease_epoch
+            reclaimed = True
+        return [_document()]
+
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        cloud_resources.discover_resources(
+            discover_fn=discover,
+            checkpoint=context.checkpoint,
+            task_context=context,
+            expected_task_type=cloud_resources.CLOUD_DISCOVERY_TASK_TYPE,
+            expected_payload=payload,
+        )
+
+    with cloud_resources._connect() as connection:
+        candidate_count = connection.execute(
+            "SELECT COUNT(*) FROM cloud_resource_candidates"
+        ).fetchone()[0]
+    assert candidate_count == 0
+
+
 def test_daily_discovery_enqueue_is_idempotent(tmp_path, monkeypatch):
     _configure_paths(tmp_path, monkeypatch)
 
@@ -757,17 +804,26 @@ def test_daily_discovery_recovers_a_pre_run_cancelled_task(tmp_path, monkeypatch
 
 def test_discovery_handler_schedules_next_daily_pass(tmp_path, monkeypatch):
     _configure_paths(tmp_path, monkeypatch)
+    captured = {}
     monkeypatch.setattr(
         cloud_resources,
         "discover_resources",
-        lambda checkpoint=None: {
-            "run_id": 1,
-            "status": "completed",
-            "queries_attempted": 3,
-            "sources_seen": 2,
-            "candidates_upserted": 2,
-            "error_summary": None,
-        },
+        lambda checkpoint=None, task_context=None, expected_task_type=None, expected_payload=None: (
+            captured.update({
+                "checkpoint": checkpoint,
+                "task_context": task_context,
+                "task_type": expected_task_type,
+                "payload": expected_payload,
+            })
+            or {
+                "run_id": 1,
+                "status": "completed",
+                "queries_attempted": 3,
+                "sources_seen": 2,
+                "candidates_upserted": 2,
+                "error_summary": None,
+            }
+        ),
     )
 
     class Context:
@@ -777,6 +833,10 @@ def test_discovery_handler_schedules_next_daily_pass(tmp_path, monkeypatch):
     result = cloud_resources.handle_discovery_task(
         {"trigger": "manual"}, None, Context()
     )
+    assert captured["checkpoint"] is not None
+    assert captured["task_context"] is not None
+    assert captured["task_type"] == cloud_resources.CLOUD_DISCOVERY_TASK_TYPE
+    assert captured["payload"] == {"trigger": "manual"}
     next_task = task_manager.get_task(result["next_scheduled_task_id"])
     assert next_task["task_type"] == cloud_resources.CLOUD_DISCOVERY_TASK_TYPE
     assert next_task["status"] == "queued"
