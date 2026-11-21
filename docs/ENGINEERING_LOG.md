@@ -2160,3 +2160,13 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - The route ownership test now checks the feature router's loopback dependency and the explicit application router registration. The real `/ai-learning` route remains covered by Browser E2E; this avoids relying on a separately imported global app object's mutable route list in the unit test.
 - Two Browser E2E tests waited for a native `<option>` to become visible. Options inside a closed native `<select>` are not independently visible; the tests now wait for DOM attachment and continue to assert the selected value and user-visible feature behavior.
 - No application runtime behavior, API contract, persisted data, or safety boundary changed in this follow-up. Exact-head CI is required on the resulting commit; prior failures are not reclassified as passes.
+
+
+## 2026-11-21 — Dashboard feature fault isolation (in progress)
+
+- Removed the remaining 125-line inline learning-candidate UI and moved it to `app/static/learning-candidates.js`.
+- Made `dashboardCore v1` immutable and non-replaceable. Each dashboard feature script now carries a local fallback for only the generic DOM/HTTP primitives it consumes, so a failed `dashboard-core.js` asset does not disable the feature scripts.
+- Learning lessons/overview now have local learning-core fallbacks; the learning path orchestrator degrades optional lesson/overview capabilities without aborting the rest of the path UI.
+- Autonomous-engineering submodules have local fallbacks for their small transport/DOM core; a missing shared core no longer disables every submodule.
+- Added static boundary checks and a browser E2E case that aborts the shared-core asset request and checks that core feature globals and controls still initialize.
+- Validation status: exact-head browser E2E/full suite pending; no UI action is claimed tested until the workflow completes.
