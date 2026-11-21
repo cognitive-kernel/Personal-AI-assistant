@@ -18,6 +18,7 @@ The dashboard had extracted most feature logic from `index.html`, but almost eve
 5. Each autonomous-engineering submodule has its own fallback for the small `autonomousEngineeringCore v1` transport/DOM contract. The orchestrator reports missing capabilities without disabling successfully loaded siblings.
 6. Feature-owned state, refresh sequencing, event listeners, and domain operations remain in their own module. Fallbacks do not contain domain logic.
 7. The task dashboard is split by responsibility into a view module (summary/filter/selection), a card module (rendering/history/actions), and a small orchestrator (refresh sequencing/polling/event wiring). Their frozen versioned contracts are validated before use.
+8. Experience auto-capture consent is a separate module from experience-memory listing/search/curation, with independent state and local transport fallback.
 
 ## Invariants
 
