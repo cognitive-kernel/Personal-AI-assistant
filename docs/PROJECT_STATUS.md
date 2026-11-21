@@ -503,3 +503,5 @@ The subsequent documentation-only evidence update does not change runtime code a
 - Remaining Gate-B scope: audit and fence other task handlers/domain mutation paths (candidate review, curriculum, factual verification and any method/quality-gate writes), then complete Browser E2E fault-isolation and live Windows Runner acceptance. Existing data and checkpoints have not been touched.
 
 - The learning-job branch also fences handler-generated `learning_escalations` writes in the same transaction; a second stale-epoch regression verifies no escalation row is created by a reclaimed worker. Other task adapters remain open.
+
+- PR #819 now also tests lease reclamation during the model-generation request, proving the stale worker cannot settle the domain job as failed after another worker receives the newer epoch.
