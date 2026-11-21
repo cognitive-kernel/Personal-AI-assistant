@@ -411,14 +411,14 @@ def test_missing_codex_report_is_recovered_from_successful_jsonl_agent_message(t
 
     recovered = progress.recover_final_agent_message_report(
         report,
-        "Implementation and regression tests are complete.\\nTASK_COMPLETE",
+        "Implementation and regression tests are complete.\nTASK_COMPLETE",
         turn_completed=True,
         turn_failed=False,
     )
 
     assert recovered is True
     assert report.read_text(encoding="utf-8") == (
-        "Implementation and regression tests are complete.\\nTASK_COMPLETE\\n"
+        "Implementation and regression tests are complete.\nTASK_COMPLETE\n"
     )
 
 
