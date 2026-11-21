@@ -1,6 +1,41 @@
 (() => {
  "use strict";
- const core=window.learningCore;
+ function createLocalLearningCore() {
+ const el = id => document.getElementById(id);
+ async function api(path, options = {}) {
+  const response = await fetch(path, {
+   headers: {"Content-Type": "application/json", ...(options.headers || {})},
+   ...options
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.detail || ("HTTP " + response.status));
+  return payload;
+ }
+ const delay = ms => new Promise(resolve => window.setTimeout(resolve, ms));
+ async function waitForLearningJob(jobId, output) {
+  for (let attempt = 0; attempt < 600; attempt += 1) {
+   const job = await api("/api/learning/jobs/" + jobId);
+   if (["completed", "rejected", "failed", "cancelled"].includes(job.status)) return job;
+   if (output) output.textContent = "درس در حال تولید است… وضعیت: " + job.status;
+   await delay(1500);
+  }
+  throw new Error("نتیجه نهایی درس در مهلت انتظار دریافت نشد؛ شناسه کار: " + jobId);
+ }
+ return Object.freeze({
+  version: 1, el, api, delay, waitForLearningJob,
+  learningStatusLabels: Object.freeze({
+   queued:"در صف",running:"در حال اجرا",completed:"درس تولید شد",
+   rejected:"ردشده در کنترل کیفیت",failed:"ناموفق",cancelled:"لغوشده"
+  }),
+  taskStatusLabels: Object.freeze({
+   queued:"در صف",running:"در حال اجرا",pause_requested:"درخواست توقف موقت",
+   paused:"متوقف موقت",cancel_requested:"درخواست لغو",succeeded:"اجرای وظیفه تمام شد",
+   failed:"اجرای وظیفه ناموفق",cancelled:"وظیفه لغو شد"
+  })
+ });
+}
+
+ const core=window.learningCore && window.learningCore.version===1 ? window.learningCore : createLocalLearningCore();
  const fallback=document.getElementById("paths-output");
  if(!core||core.version!==1){
   if(fallback)fallback.textContent="ماژول تولید و ارزیابی درس به learningCore v1 نیاز دارد.";
