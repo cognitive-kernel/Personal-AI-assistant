@@ -495,3 +495,10 @@ Evidence: Tests/Windows regressions https://github.com/cognitive-kernel/Personal
 The subsequent documentation-only evidence update does not change runtime code and is followed by a fresh exact-head CI run. Target-host cross-account ACL verification, non-admin sandbox smoke/soak, crash/restart acceptance, and independent security review remain pending. Durable Pause remains enabled; no Runner, service, or autonomous process was started.
 
 - Gate-C backend follow-up in PR #817: all Autonomous Engineering API route failures now use the structured error envelope (`code`, `message`, `correlation_id`, `retryable`, `safe_details`) with matching headers; validation input values and unexpected exception details are redacted. Raw GitHub stderr is no longer returned by run deletion. New contract tests added; exact-head CI pending.
+
+
+## 2026-11-22 — Gate-C diagnostics and dispatch follow-up (PR #817)
+
+- Windows Runner execution `44932980718` / job `137009509972` failed after two Codex attempts: attempt 2 produced no final `agent_message`, the output-last-message report was empty, and completion-marker validation failed. The durable task was preserved and not marked complete; no artifact was produced.
+- The Autonomous Engineering dashboard now reports this as a distinct Codex no-final-message failure instead of showing only the generic bounded-retry error. `/resume` dispatch now marks timeouts ambiguous and non-retryable, while definite CLI launch failures are retryable with a correlation ID. Unmatched 404/405 errors under the module prefix now follow the structured error contract.
+- Regression tests were added for these cases. Exact-head CI for the resulting PR #817 head is pending; Gate C is not closed, and no target-host acceptance is claimed.
