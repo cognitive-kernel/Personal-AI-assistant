@@ -37,6 +37,11 @@ def enqueue_learning_task(job_id: int, *, priority: int = 0) -> dict[str, Any]:
     if existing["status"] not in task_manager.TERMINAL_STATUSES:
         return existing
 
+    context.assert_current(
+        expected_task_type=LEARNING_TASK_TYPE,
+        expected_payload={"job_id": job_id},
+    )
+
     try:
         job = learning.get_job(job_id)
     except KeyError:
@@ -269,8 +274,13 @@ def handle_learning_job(
     # A task is reclaimed only after its previous lease expires. A stale learning
     # status must therefore be reset before this newly claimed attempt can resume it.
     if status in {"failed", "running"}:
-        context.control_status()  # Verify this worker still owns a live task lease.
         with learning_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            context.assert_current(
+                conn,
+                expected_task_type=LEARNING_TASK_TYPE,
+                expected_payload={"job_id": job_id},
+            )
             conn.execute(
                 """UPDATE learning_jobs
                    SET status='queued', error=NULL, updated_at=CURRENT_TIMESTAMP
@@ -287,7 +297,7 @@ def handle_learning_job(
 
     context.checkpoint({"phase": "learning_queued", "job_id": job_id})
     try:
-        learning.run_job(job_id)
+        learning.run_job(job_id, task_context=context)
     except learning.LearningError as exc:
         cause = exc.__cause__
         task = task_manager.get_task(context.task_id) or {}
