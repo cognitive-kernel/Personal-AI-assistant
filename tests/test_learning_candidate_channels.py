@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from app import db, learning_candidate_channels as channels, learning, learning_candidate_experiences as experiences, task_manager
+from app import db, learning_candidate_channels as channels, learning, learning_candidate_experiences as experiences, learning_review_channels as review_channels, task_manager
 from app.task_worker import TaskContext
 
 
@@ -164,6 +164,58 @@ def test_stale_sandbox_task_cannot_write_test_failure_experience(candidate_store
         count = connection.execute(
             "SELECT COUNT(*) FROM learning_experiences WHERE topic=?",
             ("Test failure: Channel ledger candidate",),
+        ).fetchone()[0]
+    assert count == 0
+
+
+def test_stale_review_task_cannot_write_review_attempt(candidate_store):
+    context, payload = _stale_review_context(candidate_store)
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        review_channels.record_review_attempt(
+            candidate_store, channel="peer_ai", status="failed",
+            details={"error_type": "provider_unavailable"},
+            task_context=context, expected_task_type="learning.review_candidate",
+            expected_payload=payload,
+        )
+    with db.learning_connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM knowledge_review_attempts WHERE candidate_id=?",
+            (candidate_store,),
+        ).fetchone()[0]
+    assert count == 0
+
+
+def test_stale_review_task_cannot_write_review_evidence(candidate_store):
+    context, payload = _stale_review_context(candidate_store)
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        review_channels.record_review_evidence(
+            candidate_store, evidence_kind="context",
+            source_url="https://docs.example.test/evidence",
+            excerpt="A bounded source excerpt that must not be persisted by a stale task.",
+            task_context=context, expected_task_type="learning.review_candidate",
+            expected_payload=payload,
+        )
+    with db.learning_connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM knowledge_review_evidence WHERE candidate_id=?",
+            (candidate_store,),
+        ).fetchone()[0]
+    assert count == 0
+
+
+def test_stale_review_task_cannot_write_peer_consultation(candidate_store):
+    context, payload = _stale_review_context(candidate_store)
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        review_channels.record_peer_consultation(
+            candidate_store, provider="peer-one", prompt="Review this candidate.",
+            response="This is a bounded peer response that should not be persisted.",
+            task_context=context, expected_task_type="learning.review_candidate",
+            expected_payload=payload,
+        )
+    with db.learning_connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM knowledge_peer_consultations WHERE candidate_id=?",
+            (candidate_store,),
         ).fetchone()[0]
     assert count == 0
 
