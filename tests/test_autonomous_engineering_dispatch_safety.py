@@ -72,7 +72,7 @@ def test_manual_dispatch_is_rejected_when_a_durable_task_is_pending(monkeypatch)
         "markers": {"pending_task": True},
     })
     calls = []
-    monkeypatch.setattr(agent, "_run", lambda command, timeout=8: calls.append(command))
+    monkeypatch.setattr(agent, "_run", lambda command, timeout=8, *, raise_os_error=False: calls.append(command))
 
     with pytest.raises(HTTPException) as error:
         agent.dispatch_autonomous_engineering(agent.ManualTaskRequest(task="new task"))
@@ -105,7 +105,7 @@ def test_manual_dispatch_is_rejected_when_an_autonomous_pr_is_open(monkeypatch):
     })
     calls = []
 
-    def fake_run(command, timeout=8):
+    def fake_run(command, timeout=8, *, raise_os_error=False):
         calls.append(command)
         if command[1:3] == ["auth", "status"]:
             return subprocess.CompletedProcess(command, 0, "", "")
@@ -141,7 +141,7 @@ def test_manual_dispatch_fails_closed_when_github_cannot_confirm_open_pr_state(m
         "markers": {},
     })
 
-    def fake_run(command, timeout=8):
+    def fake_run(command, timeout=8, *, raise_os_error=False):
         if command[1:3] == ["auth", "status"]:
             return subprocess.CompletedProcess(command, 0, "", "")
         return subprocess.CompletedProcess(command, 1, "", "network unavailable")
@@ -278,7 +278,7 @@ def test_empty_dispatch_remains_available_to_resume_persisted_work(monkeypatch):
     monkeypatch.setattr(agent, "pending_work_status", unexpected_pending_check)
     calls = []
 
-    def fake_run(command, timeout=8):
+    def fake_run(command, timeout=8, *, raise_os_error=False):
         calls.append(command)
         if command[1:3] == ["auth", "status"]:
             return subprocess.CompletedProcess(command, 0, "", "")
