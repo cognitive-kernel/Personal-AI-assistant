@@ -51,8 +51,8 @@
       if (state.status === "completed") {
         modelPullActive = false;
         pullModelStatus.textContent = "مدل " + state.model + " با موفقیت نصب شد؛ در حال بازخوانی فهرست مدل‌ها…";
-        setMessage(pullModelStatus.textContent, "success");
         await status.refresh(true);
+        setMessage(pullModelStatus.textContent, "success");
         return;
       }
       if (state.status === "failed") {
@@ -155,8 +155,8 @@
     pauseButton.disabled = true;
     try {
       const result = await request("pause", {method: "POST"});
-      setMessage(result.message || "توقف ایمن ثبت شد.", "success");
       await status.refresh(true);
+      setMessage(result.message || "توقف ایمن ثبت شد.", "success");
     } catch (error) {
       const detail = error.message || "توقف ایمن ثبت نشد.";
       await status.refresh(true);
@@ -168,8 +168,8 @@
     try {
       const result = await request("resume", {method: "POST"});
       status.lockDispatchVisibilityWindow();
-      setMessage(result.message || "ادامهٔ صف درخواست شد.", "success");
       await status.refresh(true);
+      setMessage(result.message || "ادامهٔ صف درخواست شد.", "success");
     } catch (error) {
       if (error.ambiguous || error.retryable || error.status >= 500) status.lockDispatchVisibilityWindow();
       const detail = error.message || "ادامهٔ صف ثبت نشد.";
@@ -182,8 +182,8 @@
     cancelButton.disabled = true;
     try {
       const result = await request("cancel", {method: "POST"});
-      setMessage(result.message || "درخواست لغو ارسال شد.", "success");
       await status.refresh(true);
+      setMessage(result.message || "درخواست لغو ارسال شد.", "success");
     } catch (error) {
       const detail = error.message || "لغو اجرای فعال ناموفق بود.";
       await status.refresh(true);
