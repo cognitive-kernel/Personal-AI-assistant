@@ -536,3 +536,10 @@ The subsequent documentation-only evidence update does not change runtime code a
 - ماژول‌های lessons/overview و orchestrator یادگیری در صورت خرابی همسایه‌ها fail-soft می‌شوند؛ زیرماژول‌های autonomous engineering نیز fallback مستقل دارند.
 - تست static و browser E2E برای قطع عمدی درخواست `dashboard-core.js` اضافه شده است.
 - CI exact-head هنوز اجرا نشده؛ صحت عملی همه دکمه‌ها و مسیرهای API تا تکمیل browser E2E تأییدشده محسوب نمی‌شود.
+
+
+### تفکیک مالکیت رضایت حافظهٔ تجربه
+
+- رضایت ذخیره‌سازی خودکار تجربه به فایل مستقل `experience-memory-consent.js` منتقل شد؛ state و کنترل‌های فعال/لغو/بازخوانی رضایت از فهرست، جست‌وجو و curation تجربه جدا هستند.
+- خرابی ماژول رضایت نباید قابلیت مرور/جست‌وجو/curation حافظه را متوقف کند و خرابی فهرست نیز نباید امکان لغو رضایت را از بین ببرد.
+- تست‌های معماری و ترتیب بارگذاری اضافه شده‌اند؛ پذیرش browser E2E و CI دقیق هنوز در حال اجراست.
