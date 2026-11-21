@@ -2152,3 +2152,11 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Removed direct runs-to-progress and status-to-runs function calls. Cleanup and post-mutation coordination now use narrow custom events; each feature retains its own request state and UI handlers. A failure to load the status module no longer prevents runs or progress from starting.
 - Updated the architecture contract test, project status, and ADR. The separate ai-learning.js and learning path controller remain explicitly in the modularity backlog; no overall completion claim is made.
 - Exact-head CI, browser tests for the autonomous engineering console, and target-host acceptance are required.
+
+
+### 2026-11-21 — UI module-contract and browser-test follow-up
+
+- Exact-head CI on the dashboard modularization candidate exposed stale test ownership assumptions after AI-learning behavior moved into dedicated modules: search feedback belongs to `search.js`, dynamic imports are wrapped by the timeout-aware loader, and the active standalone stylesheet is `app/ai_learning/static/style.css`. Updated the tests to assert those actual contracts without removing behavioral coverage.
+- The route ownership test now checks the feature router's loopback dependency and the explicit application router registration. The real `/ai-learning` route remains covered by Browser E2E; this avoids relying on a separately imported global app object's mutable route list in the unit test.
+- Two Browser E2E tests waited for a native `<option>` to become visible. Options inside a closed native `<select>` are not independently visible; the tests now wait for DOM attachment and continue to assert the selected value and user-visible feature behavior.
+- No application runtime behavior, API contract, persisted data, or safety boundary changed in this follow-up. Exact-head CI is required on the resulting commit; prior failures are not reclassified as passes.
