@@ -300,7 +300,13 @@ def test_browser_can_cancel_a_persisted_scheduled_task():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
+        browser_errors = []
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
         _goto_section(page, base_url, "task-manager-section")
+        assert page.evaluate("window.dashboardCore?.version") == 1
+        assert page.evaluate("typeof refreshTasks") == "function"
+        assert page.evaluate("typeof api") == "function"
+        assert page.evaluate("typeof el") == "function"
 
         scheduled_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
         response = page.request.post(
@@ -318,11 +324,32 @@ def test_browser_can_cancel_a_persisted_scheduled_task():
         task_id = created["id"]
         assert created["status"] == "queued"
 
-        page.locator("#refresh-tasks").click()
+        api_snapshot = page.request.get(base_url.rstrip("/") + "/api/tasks?limit=50").json()
+        assert any(int(item["id"]) == int(task_id) for item in api_snapshot.get("tasks", [])), (
+            "Task API omitted the just-created task: " + json.dumps(api_snapshot, ensure_ascii=False)
+        )
+        with page.expect_response(
+            lambda item: item.request.method == "GET" and item.url.endswith("/api/tasks?limit=50")
+        ) as tasks_response:
+            page.locator("#refresh-tasks").click()
+        rendered_api = tasks_response.value.json()
+        assert any(int(item["id"]) == int(task_id) for item in rendered_api.get("tasks", [])), (
+            "Refresh response omitted the just-created task: " + json.dumps(rendered_api, ensure_ascii=False)
+        )
         card = page.locator("#tasks-container article").filter(
             has_text=f"#{task_id} — e2e.scheduled-cancellation"
         )
-        card.wait_for(state="visible", timeout=10000)
+        try:
+            card.wait_for(state="visible", timeout=10000)
+        except Exception as error:
+            raise AssertionError(
+                "Task card did not render; tasks-output="
+                + page.locator("#tasks-output").inner_text()
+                + "; container="
+                + page.locator("#tasks-container").inner_text()
+                + "; page-errors="
+                + "; ".join(browser_errors)
+            ) from error
         card.get_by_role("button", name="لغو").click()
         page.wait_for_function(
             """async (taskId) => {
@@ -343,6 +370,7 @@ def test_browser_can_cancel_a_persisted_scheduled_task():
             arg=task_id,
             timeout=10000,
         )
+        assert browser_errors == [], "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
 
 
@@ -1635,21 +1663,169 @@ def test_learning_candidate_review_panel_loads_without_executing_or_promoting():
         _goto_section(page, base_url, "learning-section")
         assert page.locator("#refresh-learning-candidates").count() == 1
         response = page.request.get(
-            base_url.rstrip("/") + "/api/learning/candidates?status=awaiting_test&limit=10"
+            base_url.rstrip("/") + "/api/learning/candidates?limit=10"
         )
         assert response.status == 200
         result = response.json()
         assert isinstance(result.get("items"), list)
+
+        failed_candidate = {
+            "id": 987654,
+            "topic": "Retained contradictory candidate",
+            "status": "failed",
+            "integrity_valid": True,
+            "source_urls": ["https://alpha.example.test/source", "https://beta.other.test/source"],
+            "content_preview": "Original content remains available.",
+            "failure_reason": "rejected_after_review: contradictory source evidence; promotion blocked.",
+            "test_plan": [],
+            "test_results": [],
+        }
+        page.route(
+            "**/api/learning/candidates?limit=50",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"items": [failed_candidate], "count": 1}),
+            ),
+        )
+        page.route(
+            "**/api/learning/candidates/987654",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"candidate": {"content": "Original retained candidate content."}}),
+            ),
+        )
+        page.route(
+            "**/api/learning/candidates/987654/readiness",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "candidate_id": 987654,
+                    "status": "rejected_after_review",
+                    "ready_for_promotion": False,
+                    "checks": {"content_retained": True, "promotion_blocked": True},
+                    "contradictions": [{"kind": "source", "note": "The source contradicts the claim."}],
+                }),
+            ),
+        )
+        page.route(
+            "**/api/learning/candidates/987654/review-history",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"items": []}),
+            ),
+        )
+
         page.locator("#refresh-learning-candidates").click()
         page.wait_for_function(
             """() => {
                 const node = document.querySelector('#learning-candidates');
-                return node && node.textContent.trim() &&
-                    !node.textContent.includes('در حال بارگذاری');
+                return node && node.textContent.includes('Retained contradictory candidate');
             }""",
             timeout=10000,
         )
+        assert "promotion blocked" in page.locator("#learning-candidates").text_content()
+        assert page.get_by_role("button", name="شروع بررسی وب و peer-AI").is_hidden()
+        assert page.get_by_role("button", name="ثبت طرح آزمون").is_hidden()
+        assert page.get_by_role("button", name="اجرای آزمون‌های Python در sandbox").is_hidden()
+
+        page.get_by_role("button", name="نمایش متن و شواهد کامل").click()
+        page.wait_for_function(
+            "() => document.querySelector('#learning-candidates pre')?.textContent.includes('Original retained candidate content.')"
+        )
+        page.get_by_role("button", name="نمایش وضعیت شواهد و تناقض‌ها").click()
+        page.wait_for_function(
+            "() => document.querySelector('.candidate-readiness')?.textContent.includes('rejected_after_review')"
+        )
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+def test_browser_hash_invalid_candidate_remains_read_only_auditable():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    browser_errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        _goto_section(page, base_url, "learning-section")
+        candidate = {
+            "id": 987655,
+            "topic": "Hash-invalid retained candidate",
+            "status": "failed",
+            "integrity_valid": False,
+            "source_urls": ["https://verified.example/evidence"],
+            "content_preview": "Retained content with an invalid digest.",
+            "failure_reason": "content integrity mismatch; promotion blocked.",
+            "test_plan": [],
+            "test_results": [],
+        }
+        page.route(
+            "**/api/learning/candidates?limit=50",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"items": [candidate], "count": 1}),
+            ),
+        )
+        page.route(
+            "**/api/learning/candidates/987655",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"candidate": {
+                    "content": "Retained raw content is visible for audit only.",
+                    "integrity_valid": False,
+                    "source_urls": ["https://verified.example/evidence"],
+                    "quality_report": {},
+                    "test_plan": [],
+                    "test_results": [],
+                    "failure_reason": candidate["failure_reason"],
+                }}),
+            ),
+        )
+        page.route(
+            "**/api/learning/candidates/987655/readiness",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "candidate_id": 987655,
+                    "status": "integrity_mismatch",
+                    "ready_for_promotion": False,
+                    "checks": {
+                        "content_hash_valid": False,
+                        "content_retained": True,
+                        "promotion_blocked": True,
+                    },
+                    "contradictions": [],
+                }),
+            ),
+        )
+        page.locator("#refresh-learning-candidates").click()
+        card = page.locator("#learning-candidates article").filter(
+            has_text="Hash-invalid retained candidate"
+        )
+        card.wait_for(state="visible", timeout=10000)
+        detail = card.get_by_role("button", name="نمایش متن و شواهد کامل")
+        assert detail.is_enabled(), "Hash-invalid content must remain readable for audit."
+        assert card.get_by_role("button", name="شروع بررسی وب و peer-AI").is_hidden()
+        assert card.get_by_role("button", name="ثبت طرح آزمون").is_hidden()
+        assert card.get_by_role("button", name="اجرای آزمون‌های Python در sandbox").is_hidden()
+        detail.click()
+        page.wait_for_function(
+            "() => document.querySelector('.candidate-detail')?.textContent.includes('Retained raw content is visible for audit only.')"
+        )
+        assert '"integrity_valid": false' in card.locator(".candidate-detail").text_content()
+        card.get_by_role("button", name="نمایش وضعیت شواهد و تناقض‌ها").click()
+        page.wait_for_function(
+            "() => document.querySelector('.candidate-readiness')?.textContent.includes('integrity_mismatch')"
+        )
+        assert browser_errors == [], "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
 
 
@@ -4960,7 +5136,6 @@ def test_ai_learning_discards_lesson_list_after_switching_courses():
         assert page.locator("#lessons .lesson").count() == 0
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
-
 
 def test_autonomous_progress_refresh_applies_latest_selected_period_after_slow_response():
     base_url = os.environ.get("E2E_BASE_URL")
