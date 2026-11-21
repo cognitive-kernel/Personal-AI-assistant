@@ -833,6 +833,10 @@ def test_discovery_handler_schedules_next_daily_pass(tmp_path, monkeypatch):
         def checkpoint(self, data):
             return data
 
+        def assert_current(self, *, expected_task_type=None, expected_payload=None):
+            assert expected_task_type == cloud_resources.CLOUD_DISCOVERY_TASK_TYPE
+            assert expected_payload == {"trigger": "manual"}
+
     result = cloud_resources.handle_discovery_task(
         {"trigger": "manual"}, None, Context()
     )
