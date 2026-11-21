@@ -1,5 +1,14 @@
 # وضعیت یکپارچهٔ پروژه
 
+## 2026-11-21 — Dual fencing برای اجرای learning job (PR زنجیره‌ای در حال اعتبارسنجی)
+
+- بر پایهٔ PR #799، شاخهٔ `fix/learning-job-execution-fencing-20261121` مالکیت صف و مالکیت دامنه‌ای `learning_jobs` را به هم متصل می‌کند.
+- migration افزایشی ۴۹، owner/epoch دامنه و task ID/epoch مبدأ را اضافه می‌کند؛ claim و commit در تراکنش‌های SQLite با اعتبارسنجی هم‌زمان queue lease و domain epoch انجام می‌شوند.
+- task تکراری دیگر نمی‌تواند رکوردی را که هنوز توسط queue lease معتبر اجرا می‌شود به `queued` برگرداند. بازیابی فقط پس از منقضی/تغییر/settle شدن lease قبلی مجاز است.
+- تست‌های epoch قدیمی، قرارداد payload، حفظ رکوردهای موجود و جلوگیری از takeover توسط task تکراری اضافه شده‌اند.
+- CI exact-head هنوز اجرا نشده است؛ هیچ تستی موفق اعلام نمی‌شود. PRها ادغام نشده‌اند.
+
+
 ## 2026-11-21 — اصلاح مالکیت صف اجرا و fencing (PR #799، در حال اعتبارسنجی)
 
 - شاخهٔ بازسازی‌شده از main فعلی `bc1d273bdece690b5067a70b2deea8aa77ed7e28` ساخته شده است؛ PR [#799](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/799) به‌صورت Draft باز است.
