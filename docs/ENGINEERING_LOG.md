@@ -1,3 +1,23 @@
+## 2026-11-21 — Preserve rejected learning evidence (P0)
+
+### Confirmed defect
+- In `app/knowledge_lifecycle.py::validate_candidate_with_models`, the all-contradictory review branch deleted `learning_source_text` and unverified `knowledge_items`, nulled `learning_jobs.assessment_json`, and blanked candidate content, source URLs, quality report, and test plan.
+- A valid negative review therefore destroyed evidence required for audit and later recovery. A prior regression encoded that destructive behavior as the expected contract.
+
+### Correction
+- Contradictory review now changes lifecycle status and blocks promotion without deleting retained source text, assessments, candidate content/provenance, test plan/results, or immutable review history.
+- Terminally rejected candidates are stopped before new source-fetch/model work; stale candidate hashes are rejected before evidence writes.
+- Hash-invalid content remains available for read-only audit, while review/test/promotion remain fail-closed.
+- A dry-run-by-default repair utility restores content only from a surviving durable lesson with an exact SHA-256 match, and metadata only from independently retained evidence. It never fabricates missing fields.
+- Added tests for contradiction preservation, terminal-state checks, read-only integrity mismatch, dry-run non-mutation, exact-hash recovery, mismatched-hash non-substitution, and refusal to initialize a missing database.
+
+### Safety and validation
+- The repair utility was not run against any user database. It defaults to dry-run; `--apply` requires explicit owner action.
+- This PR is stacked on the autonomous UI reliability PR so both sets of Browser E2E regressions remain present. No merge, deployment, migration, or database operation was performed.
+- Exact-head full tests, Browser E2E, Docker sandbox, Windows storage, Dependency Audit, CodeQL, and architecture checks remain required. Target-host and human acceptance gates remain separate.
+
+---
+
 ## 2026-11-21 — Windows state broker LocalService pipe ACL
 
 ### Root cause
@@ -2156,3 +2176,8 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - PR #806 was rebased onto the updated `main` after PR #805 added its own engineering-log section at the top of the same file.
 - The rebased tree retains both PR #805's dashboard record and this PR's LocalService ACL evidence; the broker source and Windows regression tests are unchanged.
 - The PR branch now has `main` as its direct parent so it can be merged without carrying duplicate dashboard changes.
+
+
+## 2026-11-21 — Learning evidence PR retargeted after dashboard merge
+- PR #807 now targets `main` after PR #805 was merged. Its base includes the tested autonomous-dashboard refresh changes; the evidence-preservation patch and its regression tests remain unchanged.
+- This commit records the re-targeting so the full validation matrix, including main-target CodeQL, runs against the current PR head.
