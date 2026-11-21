@@ -19,6 +19,13 @@ class RecordingContext:
         self.task_id = task_id
         self.checkpoint_data = checkpoint_data
         self.checkpoints = []
+        self.assertions = []
+
+    def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+        self.assertions.append({
+            "task_type": expected_task_type,
+            "payload": expected_payload,
+        })
 
     def checkpoint(self, value):
         self.checkpoint_data = value
@@ -260,6 +267,7 @@ def test_research_task_persists_sources_outline_and_starts_only_first_lesson(
     assert path["topics"][0]["status"] == "in_progress"
     assert all(item["status"] == "pending" for item in path["topics"][1:])
     assert context.checkpoint_data["phase"] == "curriculum_persisted"
+    assert any(item["task_type"] == learning_curriculum_tasks.CURRICULUM_TASK_TYPE for item in context.assertions)
     assert context.checkpoint_data["queries"] == learning_curriculum_tasks._research_queries("موضوع فنی")
     assert context.checkpoint_data["completed_queries"] == learning_curriculum_tasks._research_queries("موضوع فنی")
 
