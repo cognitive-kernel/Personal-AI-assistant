@@ -3673,6 +3673,10 @@ def test_autonomous_engineering_manual_task_form_dispatches_bounded_input():
         with page.expect_request("**/api/autonomous-engineering/dispatch") as request_info:
             page.locator("#send-agent-task").click()
         assert request_info.value.post_data_json == {"task": task}
+        page.wait_for_function(
+            "() => document.querySelector('#agent-message')?.textContent.includes('وظیفهٔ دستی ارسال شد.')",
+            timeout=10000,
+        )
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
 
@@ -3838,6 +3842,7 @@ def test_autonomous_engineering_model_picker_requires_explicit_selection_and_sav
             "execution_mode": "continuous",
         }
         assert model_picker.input_value() == "gpt-oss:20b"
+        assert page.locator("#agent-message").inner_text() == "تنظیمات ذخیره شد."
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
 
