@@ -25,6 +25,7 @@ class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
 _TOOL_PROBE_CACHE: dict[tuple[str, str], tuple[float, bool]] = {}
 _TOOL_PROBE_TTL_SECONDS = 600
 _MAX_OLLAMA_SHOW_RESPONSE_BYTES = 32 * 1024 * 1024
+MIN_CODEX_CONTEXT_TOKENS = 65536
 
 
 def _probe_tool_calling(request_fn, model: str, digest: str) -> bool:
@@ -83,6 +84,7 @@ def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool
         "selectable_models": [],
         "model_context_length": None,
         "model_recommended_context_length": None,
+        "model_required_context_length": MIN_CODEX_CONTEXT_TOKENS,
         "model_capabilities": [],
         "model_tools_metadata_available": False,
         "model_tools_verification_method": "unverified",
@@ -214,7 +216,15 @@ def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool
                         recommendation_error = "Current hardware and model metadata do not yield a safe context allocation."
                 except Exception as exc:
                     recommendation_error = f"Hardware context calculation failed: {type(exc).__name__}"
-        context_supported = recommended_context is not None
+        context_supported = (
+            recommended_context is not None
+            and recommended_context >= MIN_CODEX_CONTEXT_TOKENS
+        )
+        if recommended_context is not None and recommended_context < MIN_CODEX_CONTEXT_TOKENS:
+            recommendation_error = (
+                f"Codex requires at least {MIN_CODEX_CONTEXT_TOKENS} context tokens; "
+                f"the current hardware-safe allocation is {recommended_context}."
+            )
         # Probe only after the hardware estimate: a first probe may load the model,
         # which changes free RAM and would otherwise cause the same weights to be
         # subtracted twice on the next status refresh.
@@ -235,6 +245,7 @@ def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool
         result.update({
             "model_context_length": context_length,
             "model_recommended_context_length": recommended_context,
+            "model_required_context_length": MIN_CODEX_CONTEXT_TOKENS,
             "model_capabilities": capabilities,
             "model_tools_metadata_available": tools_metadata_available,
             "model_tools_verification_method": tools_verification_method,
