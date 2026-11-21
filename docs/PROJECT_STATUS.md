@@ -519,3 +519,9 @@ The subsequent documentation-only evidence update does not change runtime code a
 - PR #819 now also binds candidate-review and candidate-sandbox channel reservation/reclaim/completion to the current TaskContext lease epoch, exact task type and payload in the same SQLite write transaction. Channel-local `attempt_generation` is retained as an additional guard.
 - Candidate failure-experience writes are likewise fenced in their transaction. New regressions cover stale reservation, stale channel completion and stale web/peer/sandbox failure-experience writes. Existing direct/manual helper calls remain compatible when no TaskContext is supplied.
 - The new exact head is `a710bc759e3827f62aa386daf3a5d5e24fba5978` at the time of this log entry; after this documentation entry the head will advance and must be revalidated. Gate B remains open for factual verification, knowledge lifecycle/graph, research/programming/cloud/sandbox and other task adapters, curriculum child-job scheduling, and release-watch maintenance.
+
+
+## 2026-11-22 — Candidate web/peer evidence transaction fencing (PR #819)
+
+- PR #819 now covers candidate-review web/peer evidence persistence and attempt records in addition to channel ledger and failure-experience writes. Every writer receives the exact review task contract and checks the live lease inside its `BEGIN IMMEDIATE` transaction before insert/update. Sandbox attempt records use the sandbox-review task contract.
+- Added stale-owner tests for attempt, evidence and peer-consultation writes. Direct/manual helper compatibility is preserved when task context is omitted. Exact-head CI is pending for the new branch head.
