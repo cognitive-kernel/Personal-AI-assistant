@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import stat
 from pathlib import Path
 
@@ -39,7 +40,9 @@ def test_posix_default_state_uses_system_shared_root_and_migrates_legacy_state(
     assert len(markers) == 1
     marker = json.loads(markers[0].read_text(encoding="utf-8"))
     assert marker["target"] == str(resolved)
-    assert stat.S_IMODE(markers[0].stat().st_mode) == 0o600
+    # Windows filesystems do not expose POSIX group/other permission bits.
+    if os.name != "nt":
+        assert stat.S_IMODE(markers[0].stat().st_mode) == 0o600
     assert state.execution_state_directory(
         is_windows_fn=lambda: False,
         machine_state_fn=lambda: "",

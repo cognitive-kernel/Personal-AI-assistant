@@ -47,6 +47,11 @@ _STATUS_EXECUTOR_SLOTS = threading.BoundedSemaphore(_STATUS_EXECUTOR_MAX_WORKERS
 _STATUS_LOGGER = logging.getLogger(__name__)
 
 
+def _is_windows() -> bool:
+    """Expose the platform boundary so cleanup behavior can be tested portably."""
+    return os.name == "nt"
+
+
 def _storage_and_pending_work_status() -> dict[str, Any]:
     """Read broker health and durable work state in one bounded executor slot."""
     return {
@@ -1087,7 +1092,7 @@ def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
     removed = 0
     removed_bytes = 0
     failed_files: list[str] = []
-    if os.name == "nt":
+    if _is_windows():
         try:
             result = cleanup_shared_progress_data()
             removed = int(result.get("files_removed", 0))

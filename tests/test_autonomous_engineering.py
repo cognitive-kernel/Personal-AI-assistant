@@ -2007,6 +2007,7 @@ def test_delete_completed_run_calls_workflow_run_delete_api(monkeypatch):
 
 
 def test_cleanup_removes_only_ephemeral_progress_files_and_preserves_durable_state(monkeypatch, tmp_path):
+    monkeypatch.setattr(agent, "_is_windows", lambda: False)
     monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
     monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [])
     runtime_dir = tmp_path / "worktree"
@@ -2034,6 +2035,7 @@ def test_cleanup_removes_only_ephemeral_progress_files_and_preserves_durable_sta
 
 
 def test_cleanup_refuses_active_run_or_pending_task(monkeypatch, tmp_path):
+    monkeypatch.setattr(agent, "_is_windows", lambda: False)
     monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
     monkeypatch.setattr(agent, "execution_state_directory", lambda: tmp_path)
     (tmp_path / "events.jsonl").write_text("keep", encoding="utf-8")

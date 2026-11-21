@@ -28,7 +28,7 @@ def proposal_repo(tmp_path, monkeypatch):
     (root / "app").mkdir(parents=True)
     (root / "tests").mkdir()
     (root / "docs").mkdir()
-    (root / "app" / "sample.py").write_text("value = 1\n", encoding="utf-8")
+    (root / "app" / "sample.py").write_bytes(b"value = 1\n")
     (root / "tests" / "test_sample.py").write_text("def test_value():\n    assert True\n", encoding="utf-8")
     (root / "docs" / "design.md").write_text("# Design\n", encoding="utf-8")
     _git(root, "init", "-q")
