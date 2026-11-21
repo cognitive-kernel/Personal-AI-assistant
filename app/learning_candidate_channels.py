@@ -12,6 +12,7 @@ import sqlite3
 from typing import Any, Literal
 
 from .db import learning_connection
+from .task_worker import TaskContext
 
 Channel = Literal["research_web", "peer_ai", "sandbox"]
 TerminalStatus = Literal["succeeded", "failed", "skipped"]
@@ -68,6 +69,9 @@ def reserve_channel_run(
     idempotency_key: str,
     *,
     reclaim_running: bool = False,
+    task_context: TaskContext | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Atomically reserve one channel run; only the first caller may execute it."""
     if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
@@ -81,6 +85,17 @@ def reserve_channel_run(
     try:
         with learning_connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            if task_context is not None:
+                if expected_task_type is None or expected_payload is None:
+                    raise CandidateChannelError("Task ownership contract is required for fenced channel reservation.")
+                try:
+                    task_context.assert_current(
+                        connection,
+                        expected_task_type=expected_task_type,
+                        expected_payload=expected_payload,
+                    )
+                except Exception as exc:
+                    raise CandidateChannelError("Stale or unauthorized task cannot reserve a candidate channel.") from exc
             candidate = connection.execute(
                 """SELECT id, content, content_sha256, status
                    FROM temporary_knowledge_candidates WHERE id=?""",
@@ -148,6 +163,9 @@ def finish_channel_run(
     result: dict[str, Any] | None = None,
     error_code: str | None = None,
     attempt_generation: int | None = None,
+    task_context: TaskContext | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Record immutable terminal metadata; repeated identical completion is idempotent."""
     if isinstance(run_id, bool) or not isinstance(run_id, int) or run_id < 1:
@@ -165,6 +183,17 @@ def finish_channel_run(
     try:
         with learning_connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            if task_context is not None:
+                if expected_task_type is None or expected_payload is None:
+                    raise CandidateChannelError("Task ownership contract is required for fenced channel completion.")
+                try:
+                    task_context.assert_current(
+                        connection,
+                        expected_task_type=expected_task_type,
+                        expected_payload=expected_payload,
+                    )
+                except Exception as exc:
+                    raise CandidateChannelError("Stale or unauthorized task cannot finish a candidate channel.") from exc
             row = connection.execute(
                 "SELECT * FROM learning_candidate_channel_runs WHERE id=?",
                 (run_id,),
