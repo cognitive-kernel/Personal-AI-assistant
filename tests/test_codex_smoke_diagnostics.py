@@ -490,6 +490,8 @@ def test_run_codex_recovers_invalid_report_from_successful_jsonl_turn(tmp_path, 
     ]
 
     class FakeJob:
+        CREATE_SUSPENDED = 0
+
         def __enter__(self):
             return self
 
