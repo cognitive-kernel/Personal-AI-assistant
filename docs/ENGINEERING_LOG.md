@@ -2232,3 +2232,9 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Root-cause gap in the controller: production `run_codex` consumed the JSONL stream for progress telemetry but discarded completed `agent_message` events; the cycle controller then relied exclusively on the separate report file. Thus a successfully completed JSONL turn had no report-recovery path if that file was missing or empty.
 - Fix: retain only the last completed `agent_message` in the current turn, track successful `turn.completed` versus failure events, and recover the report only when the process exits successfully, the turn completed without a failure event, the final message is non-empty, and the `--output-last-message` file is absent or empty. Existing non-empty report files are never overwritten; failed/incomplete turns are never promoted.
 - Regression tests cover successful fallback, fail-closed behavior for incomplete/failed/empty turns, and preservation of an existing report. Exact-head CI and a real Windows Runner execution are still required; this patch is not yet accepted as a verified fix.
+
+
+### Follow-up hardening — invalid non-empty report handling
+
+- The validator reports `found 0` for both an absent report and a non-empty report with no valid marker. Recovery therefore now preserves an existing report only when it already contains exactly one valid completion marker. Otherwise it may replace that temporary report only when the final JSONL `agent_message` itself contains exactly one valid marker and the Codex turn completed successfully without failure events.
+- Regression tests cover invalid non-empty replacement, preservation of an already valid report, and rejection of missing/duplicate markers in the JSONL message.
