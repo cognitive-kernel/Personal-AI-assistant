@@ -1453,6 +1453,18 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_task_queue_lease_owner_epoch ON task_queue(lease_owner, lease_epoch)",
         ),
     ),
+    Migration(
+        49,
+        "fenced-learning-job-execution-ownership",
+        (
+            "ALTER TABLE learning_jobs ADD COLUMN execution_owner TEXT",
+            "ALTER TABLE learning_jobs ADD COLUMN execution_epoch INTEGER NOT NULL DEFAULT 0 CHECK(execution_epoch >= 0)",
+            "ALTER TABLE learning_jobs ADD COLUMN execution_task_id INTEGER",
+            "ALTER TABLE learning_jobs ADD COLUMN execution_task_epoch INTEGER",
+            "CREATE INDEX idx_learning_jobs_execution_owner_epoch ON learning_jobs(execution_owner, execution_epoch)",
+            "CREATE INDEX idx_learning_jobs_execution_task ON learning_jobs(execution_task_id, execution_task_epoch)",
+        ),
+    ),
 )
 
 
