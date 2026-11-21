@@ -2122,3 +2122,10 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - The queue handler no longer resets a running learning job while its recorded queue lease remains live; stale queue owners can be recovered only after the old lease is no longer current.
 - Added tests for domain epoch reclaim, exact queue-task payload binding, additive migration, and duplicate-task non-interference.
 - Validation status: pending exact-head GitHub Actions; no local or target-host test result is claimed.
+
+
+### Learning follow-up scheduling and escalation fencing
+
+- Follow-up job creation, path-topic status advancement, queue insertion, and escalation records now validate the originating `learning.run_job` task payload and lease in their own SQLite write transactions.
+- `task_queue_store.create_task` accepts a caller-owned SQLite connection so an authorized task enqueue can share the transaction that validates the caller's queue lease.
+- Duplicate-task recovery checks the recorded task ID/epoch against the live queue row; a live owner is never reset to queued. Stale owners cannot create follow-up work or escalation records.
