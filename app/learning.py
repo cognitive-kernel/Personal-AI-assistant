@@ -4,6 +4,7 @@ import math
 import json
 import platform
 import re
+import uuid
 from typing import Any
 from urllib.parse import urlencode, urlparse
 from .db import learning_connection, get_settings
@@ -201,9 +202,20 @@ def create_job(
         raise LearningError("Learning job could not be created.")
     return get_job(job_id)
 
-def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
+def _discover_and_store_sources(
+    job_id: int, topic: str, *, execution_lease=None, task_context: Any | None = None
+) -> tuple[str, str]:
     """Fetch bounded public web evidence before generation, falling back safely when unavailable."""
     from .web_sources import discover_sources
+
+    def assert_execution_owner(connection) -> None:
+        if execution_lease is None:
+            return
+        connection.execute("BEGIN IMMEDIATE")
+        from . import learning_execution
+        learning_execution.assert_current(
+            execution_lease, connection=connection, task_context=task_context
+        )
 
     settings = get_settings()
     max_chars = max(1000, min(100000, int(settings.get("learning_source_max_chars", 12000))))
@@ -218,6 +230,7 @@ def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
 
     if not documents:
         with learning_connection() as conn:
+            assert_execution_owner(conn)
             conn.execute("""INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
                 SELECT ?, 'web_search', ?, NULL, ?
                 WHERE NOT EXISTS (
@@ -245,6 +258,7 @@ def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
     combined = "\n\n".join(chunks)[:max_chars]
     if not combined:
         with learning_connection() as conn:
+            assert_execution_owner(conn)
             conn.execute("""INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
                 SELECT ?, 'web_search', ?, NULL, ?
                 WHERE NOT EXISTS (
@@ -254,6 +268,7 @@ def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
         return "", "model_knowledge_no_external_source"
 
     with learning_connection() as conn:
+        assert_execution_owner(conn)
         conn.execute("""INSERT INTO learning_source_text(job_id, content) VALUES (?, ?)
             ON CONFLICT(job_id) DO UPDATE SET content=excluded.content""", (job_id, combined))
         conn.execute("UPDATE learning_jobs SET source_kind='web_retrieved', updated_at=CURRENT_TIMESTAMP WHERE id=?", (job_id,))
@@ -806,17 +821,38 @@ def _select_learning_generation_model(
     }
 
 
-def run_job(job_id: int) -> None:
-    with learning_connection() as conn:
-        # Atomically claim a queued job. Multiple workers may call run_job for the
-        # same ID after a retry/reconciliation race; only one may start inference.
-        claim = conn.execute(
-            "UPDATE learning_jobs SET status='running', updated_at=CURRENT_TIMESTAMP "
-            "WHERE id=? AND status='queued'",
-            (job_id,),
-        )
-        if claim.rowcount != 1:
+def run_job(job_id: int, *, task_context: Any | None = None) -> None:
+    from . import learning_execution
+
+    if task_context is not None:
+        task_context.checkpoint({"phase": "learning_job_claim", "job_id": job_id})
+        execution_owner = f"task:{task_context.task_id}:{task_context.worker_id}"
+    else:
+        execution_owner = f"direct:{uuid.uuid4().hex}"
+    execution_lease = learning_execution.claim_execution(
+        job_id, execution_owner, task_context=task_context
+    )
+    if execution_lease is None:
+        return
+
+    def assert_execution_owner(phase: str, connection=None) -> None:
+        if connection is not None:
+            learning_execution.assert_current(
+                execution_lease, connection=connection, task_context=task_context
+            )
             return
+        if task_context is not None:
+            task_context.checkpoint({
+                "phase": phase,
+                "job_id": job_id,
+                "execution_epoch": execution_lease.epoch,
+            })
+        learning_execution.assert_current(
+            execution_lease, task_context=task_context
+        )
+
+    assert_execution_owner("learning_job_claimed")
+    with learning_connection() as conn:
         row = conn.execute("SELECT * FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
         if row is None:
             return
@@ -861,7 +897,9 @@ def run_job(job_id: int) -> None:
         # (for example, SQLite errors while persisting web evidence). Keep the job
         # terminally observable instead of leaving it stuck in "running" forever.
         if not source_text and source_kind == "model_knowledge_no_external_source":
-            source_text, source_kind = _discover_and_store_sources(job_id, topic)
+            source_text, source_kind = _discover_and_store_sources(
+                job_id, topic, execution_lease=execution_lease, task_context=task_context
+            )
         verified_factual_context = _verified_factual_context_for_topic(topic)
         failure_warnings = _failure_warnings_for_topic(topic, limit=3)
         settings = get_settings()
@@ -883,13 +921,9 @@ def run_job(job_id: int) -> None:
         )[:4000]
     except Exception as exc:
         safe_error = f"Learning preparation failed ({type(exc).__name__})."
-        with learning_connection() as conn:
-            conn.execute(
-                """UPDATE learning_jobs
-                   SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP
-                   WHERE id=? AND status='running'""",
-                (safe_error, job_id),
-            )
+        learning_execution.fail_if_current(
+            execution_lease, safe_error, task_context=task_context
+        )
         raise LearningError(f"Learning job {job_id} preparation failed.") from exc
     prompt = {
         "topic": topic,
@@ -1015,6 +1049,7 @@ def run_job(job_id: int) -> None:
             raise LearningError(
                 "Initial generation budget was exhausted or already consumed; refusing an untracked duplicate model request."
             )
+        assert_execution_owner("before_generation_request")
         response = _request("/api/chat", {
             "model": model, "stream": False, "format": "json",
             "messages": [
@@ -1111,6 +1146,7 @@ def run_job(job_id: int) -> None:
                 {"system_prompt": repair_system_prompt, "user_prompt": serialized_repair_prompt},
             )["sha256"]
             generation_attempts = 2
+            assert_execution_owner("before_repair_request")
             retry_response = _request("/api/chat", {
                 "model": model, "stream": False, "format": "json",
                 "messages": [
@@ -1208,6 +1244,7 @@ def run_job(job_id: int) -> None:
                             "reviewer": "local_ollama_model_assisted_not_independent",
                         }
                     else:
+                        assert_execution_owner("before_claim_review")
                         claim_review_result = review_answer_claims(
                             topic, result["lesson"], sources, model_override=model
                         )
@@ -1263,16 +1300,37 @@ def run_job(job_id: int) -> None:
                 quality["verification_status"] = "needs_review"
 
         with learning_connection() as conn:
-            current = conn.execute("SELECT status FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
-            # If the user stopped the path while Ollama was generating, discard this result.
-            if current is None or current["status"] != "running":
+            conn.execute("BEGIN IMMEDIATE")
+            assert_execution_owner("learning_job_commit", conn)
+            current = conn.execute(
+                "SELECT status, execution_owner, execution_epoch FROM learning_jobs WHERE id=?",
+                (job_id,),
+            ).fetchone()
+            # A reclaimed task or domain epoch must never commit an old model response.
+            if (
+                current is None
+                or current["status"] != "running"
+                or current["execution_owner"] != execution_lease.owner
+                or int(current["execution_epoch"]) != execution_lease.epoch
+            ):
                 return
             if not isinstance(result.get("lesson"), str) or not result["lesson"].strip():
                 raise LearningError("The model and bounded repair attempt returned no lesson text; source material was retained.")
             quality["lesson_retained"] = True
             quality["retention_policy"] = "all_nonempty_lessons_are_preserved; heuristic_quality_is_advisory_only"
-            conn.execute("UPDATE learning_jobs SET status='completed', lesson=?, assessment_json=?, quality_json=?, error=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                (result["lesson"], json.dumps(assessment, ensure_ascii=False), json.dumps(quality, ensure_ascii=False), job_id))
+            completed = conn.execute(
+                """UPDATE learning_jobs
+                   SET status='completed', lesson=?, assessment_json=?, quality_json=?,
+                       error=NULL, updated_at=CURRENT_TIMESTAMP
+                   WHERE id=? AND status='running' AND execution_owner=? AND execution_epoch=?""",
+                (
+                    result["lesson"], json.dumps(assessment, ensure_ascii=False),
+                    json.dumps(quality, ensure_ascii=False), job_id,
+                    execution_lease.owner, execution_lease.epoch,
+                ),
+            )
+            if completed.rowcount != 1:
+                return
             # Automatically persist the lesson-quality score on its curriculum topic.
             # This is a content-quality score, not a score for the learner's understanding.
             path_topic_id = conn.execute(
@@ -1362,9 +1420,9 @@ def run_job(job_id: int) -> None:
             # Never delete user-provided or retrieved source material because a
             # heuristic score is low. It remains provenance-labelled and untrusted.
     except Exception as exc:
-        with learning_connection() as conn:
-            conn.execute("UPDATE learning_jobs SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'",
-                         (str(exc)[:1000], job_id))
+        learning_execution.fail_if_current(
+            execution_lease, str(exc)[:1000], task_context=task_context
+        )
         raise LearningError(f"Learning job {job_id} failed: {exc}") from exc
 
 def get_job(job_id: int) -> dict[str, Any]:
