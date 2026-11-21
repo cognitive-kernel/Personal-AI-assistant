@@ -104,6 +104,13 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         ));
         // The pipe exposes a narrow, allow-listed application protocol only.
         // It does not grant clients filesystem access to the protected state.
+        // LocalService owns the server process and must be allowed to create
+        // named-pipe instances. ReadWrite alone does not include CreateNewInstance.
+        security.AddAccessRule(new PipeAccessRule(
+            new SecurityIdentifier("S-1-5-19"),
+            PipeAccessRights.CreateNewInstance | PipeAccessRights.ReadWrite,
+            AccessControlType.Allow
+        ));
         security.AddAccessRule(new PipeAccessRule(
             new SecurityIdentifier("S-1-5-11"),
             PipeAccessRights.ReadWrite,

@@ -1,3 +1,22 @@
+## 2026-11-21 — Windows state broker LocalService pipe ACL
+
+### Root cause
+- The broker service runs as NT AUTHORITY\\LocalService (SID S-1-5-19), but the protected named-pipe ACL did not grant that service identity the `CreateNewInstance` right. `ReadWrite` alone is insufficient for the service to create named-pipe server instances.
+- The previous live integration gate could be satisfied by a surviving worker even if another worker repeatedly failed. The worker loop already records opt-in diagnostics, but the integration test did not reject a non-empty diagnostic log.
+
+### Correction
+- Added a least-privilege ACE for LocalService with `CreateNewInstance | ReadWrite`. The network-logon deny ACE, Authenticated Users client ReadWrite ACE, and existing LocalSystem/Administrators FullControl ACEs remain unchanged. LocalService receives no FullControl grant.
+- Strengthened the real Windows service integration test to fail when any worker exception is present in the opt-in diagnostic log.
+- Added source-level regression tests for ACL ordering/rights and worker-diagnostic enforcement.
+
+### Validation boundary
+- This branch requires exact-head Windows live LocalService service tests, full suite, Browser E2E, dependency audit, and CodeQL.
+- The integration test is CI evidence, not target-host acceptance. The owner’s Windows service identity, named-pipe access, and restart/ACL behavior still require acceptance on the actual target host.
+- No state directory, task, checkpoint, database, or existing user data was modified.
+- No merge or deployment is performed by this change.
+
+---
+
 ## 2026-11-21 — Autonomous dashboard stale-response recovery
 
 ### Root cause and evidence
