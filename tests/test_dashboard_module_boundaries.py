@@ -528,3 +528,21 @@ def test_autonomous_engineering_status_can_run_when_controls_module_is_unavailab
     assert 'if (!message) return;' in core
     assert 'const message = $("agent-message");\n  if (!message) return;' not in core
     assert 'if (!core || core.version !== 1)' in orchestrator
+
+
+def test_task_dashboard_has_separate_view_card_and_orchestration_responsibilities():
+    page = (STATIC / "index.html").read_text(encoding="utf-8")
+    orchestrator = (STATIC / "tasks.js").read_text(encoding="utf-8")
+    view = (STATIC / "tasks-view.js").read_text(encoding="utf-8")
+    cards = (STATIC / "tasks-cards.js").read_text(encoding="utf-8")
+
+    view_tag = page.index('src="/static/tasks-view.js"')
+    cards_tag = page.index('src="/static/tasks-cards.js"')
+    orchestrator_tag = page.index('src="/static/tasks.js"')
+    assert view_tag < cards_tag < orchestrator_tag
+    assert "createTaskView" in view and "updateTaskDashboard" in view
+    assert "createTaskCards" in cards and "renderTasks" in cards
+    assert "refreshTasks" in orchestrator and "taskCardsFactory" in orchestrator
+    assert len(orchestrator.splitlines()) < 120
+    assert len(view.splitlines()) < 130
+    assert len(cards.splitlines()) < 280
