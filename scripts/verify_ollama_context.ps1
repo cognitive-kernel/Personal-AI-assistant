@@ -122,6 +122,7 @@ function Get-AutomaticContext {
         model_weight_bytes = $weightBytes
         available_memory_bytes = $availableMemoryBytes
         requested_context_tokens = $RequestedContext
+        minimum_context_tokens = 65536
         model_is_loaded = $modelIsLoaded
         running_context_tokens = $runningContextTokens
     } | ConvertTo-Json -Depth 30 -Compress
@@ -223,7 +224,10 @@ if ($VerifyOnly) {
 
     $contextSelection = Get-AutomaticContext -Info $modelInfo -ModelName $baseModel -RequestedContext $requestedContext
     $selectedContext = [int64]$contextSelection.selected_context_tokens
-    if ($selectedContext -le 0 -or $selectedContext -gt $maximum) {
+    if ($selectedContext -lt 65536) {
+        throw "Codex requires at least 65536 context tokens; the hardware-safe allocation is only $selectedContext. Free memory or use a host that can safely allocate 64k; no coding task may start."
+    }
+    if ($selectedContext -gt $maximum) {
         throw "Selected context $selectedContext is outside the supported Codex range for model maximum $maximum."
     }
 
