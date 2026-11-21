@@ -5564,6 +5564,6 @@ def test_autonomous_engineering_progress_module_failure_isolated_from_other_modu
                 break
             page.wait_for_timeout(50)
         assert state["runs_reads"] >= 1, "The independent run-history module did not initialize."
-        assert "پیشرفت" in page.locator("#agent-message").inner_text()
+        assert "پیشرفت" in page.locator("#agent-module-warning").inner_text()
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
