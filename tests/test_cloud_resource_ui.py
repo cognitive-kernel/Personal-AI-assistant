@@ -35,5 +35,10 @@ def test_cloud_resource_ui_exposes_discovery_and_review_controls_safely():
     assert 'sendClaimReview("rejected")' in page
     assert 'ادعاهای استخراج‌شده از متن (هنوز تأییدنشده)' in page
     # External source text must be rendered as text, never injected as markup.
-    assert 'node.textContent=text' in page
+    core = (Path(__file__).parents[1] / "app" / "static" / "dashboard-core.js").read_text(
+        encoding="utf-8"
+    )
+    assert '<script src="/static/dashboard-core.js"></script>' in page
+    assert 'node.textContent = text' in core
     assert 'innerHTML' not in page
+    assert 'innerHTML' not in core

@@ -30,8 +30,13 @@ def test_experience_memory_ui_exposes_safe_curation_search_and_history():
     assert 'item.status==="verified"' in page
     assert 'نتایج آزمون ثبت‌شده' in page
     # Database content and external source text must never be injected as HTML.
-    assert 'node.textContent=text' in page
+    core = (Path(__file__).parents[1] / "app" / "static" / "dashboard-core.js").read_text(
+        encoding="utf-8"
+    )
+    assert '<script src="/static/dashboard-core.js"></script>' in page
+    assert 'node.textContent = text' in core
     assert 'innerHTML' not in page
+    assert 'innerHTML' not in core
 
 
 

@@ -144,7 +144,7 @@ def test_candidate_test_plan_is_immutable_without_a_revision_workflow(candidate_
     assert "audited revision" in response.json()["detail"]
 
 
-def test_candidate_detail_fails_closed_when_content_hash_is_corrupt(candidate_store):
+def test_candidate_detail_allows_read_only_audit_when_content_hash_is_corrupt(candidate_store):
     job = learning.create_job("Corrupt candidate")
     candidate_id = _candidate(job["id"])
     with db.learning_connection() as connection:
@@ -154,8 +154,10 @@ def test_candidate_detail_fails_closed_when_content_hash_is_corrupt(candidate_st
         )
 
     response = candidate_store.get(f"/api/learning/candidates/{candidate_id}")
-    assert response.status_code == 409
-    assert "hash mismatch" in response.json()["detail"]
+    assert response.status_code == 200
+    candidate = response.json()["candidate"]
+    assert candidate["content"] == "modified after staging"
+    assert candidate["integrity_valid"] is False
 
 
 def test_candidate_api_rejects_unknown_status_and_missing_candidate(candidate_store):
@@ -286,3 +288,46 @@ def test_candidate_claim_coverage_is_exposed_and_incomplete_mapping_fails_closed
     assert plan["claim_coverage"]["covered_claim_count"] == 2
     assert saved.json()["executed"] is False
     assert saved.json()["promoted"] is False
+
+
+def test_rejected_candidate_remains_listable_and_readable_with_retained_evidence(candidate_store):
+    job = learning.create_job(
+        "Rejected candidate",
+        source_text="Original source text retained for audit after contradictory evidence.",
+    )
+    content = "Original candidate content retained for audit."
+    candidate_id = _candidate(job["id"], content=content)
+    reason = (
+        "rejected_after_review: independent reviewers and source domains contradicted this claim; "
+        "content and provenance retained; promotion blocked."
+    )
+    with db.learning_connection() as connection:
+        connection.execute(
+            """UPDATE temporary_knowledge_candidates
+               SET status='failed', failure_reason=? WHERE id=?""",
+            (reason, candidate_id),
+        )
+        connection.execute(
+            """INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id)
+               VALUES (?, ?, ?, ?, 'conflicting', ?)""",
+            ("Rejected candidate", content, "web_retrieved", 1, job["id"]),
+        )
+
+    listing = candidate_store.get("/api/learning/candidates?limit=50")
+    assert listing.status_code == 200
+    item = next(item for item in listing.json()["items"] if item["id"] == candidate_id)
+    assert item["status"] == "failed"
+    assert item["integrity_valid"] is True
+    assert item["failure_reason"] == reason
+    assert item["source_urls"] == ["https://docs.python.org/3/"]
+
+    detail = candidate_store.get(f"/api/learning/candidates/{candidate_id}")
+    assert detail.status_code == 200
+    assert detail.json()["candidate"]["content"] == content
+    assert detail.json()["candidate"]["quality_report"]["accepted"] is True
+
+    readiness = candidate_store.get(f"/api/learning/candidates/{candidate_id}/readiness")
+    assert readiness.status_code == 200
+    assert readiness.json()["status"] == "rejected_after_review"
+    assert readiness.json()["checks"]["content_retained"] is True
+    assert readiness.json()["checks"]["promotion_blocked"] is True
