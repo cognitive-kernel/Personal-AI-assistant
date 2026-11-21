@@ -6,9 +6,20 @@ import threading
 import time
 from collections.abc import Callable
 
-from .task_worker import TaskHandler, TaskWorker
+from .task_worker import PermanentTaskError, TaskContext, TaskHandler, TaskWorker
 
 logger = logging.getLogger("personal_ai_assistant.task_runtime")
+
+
+def reject_unregistered_task(
+    _payload: dict,
+    _checkpoint: dict | None,
+    _context: TaskContext,
+) -> dict:
+    """Fail unknown task types explicitly; never acknowledge them as successful."""
+    raise PermanentTaskError("No registered handler exists for this task type.")
+
+
 
 
 class TaskRuntime:
