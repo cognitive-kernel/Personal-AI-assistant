@@ -474,7 +474,7 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
                 "با ثبت خط مبنا و مقایسه logical reads و زمان اجرا روی داده نماینده.",
             ],
         }, ensure_ascii=False)}}
-    monkeypatch.setattr(learning, "_discover_and_store_sources", lambda *_args: ("", "model_knowledge_no_external_source"))
+    monkeypatch.setattr(learning, "_discover_and_store_sources", lambda *_args, **_kwargs: ("", "model_knowledge_no_external_source"))
     monkeypatch.setattr(learning, "detect_hardware", lambda: {
         "logical_cpu_count": 4, "total_ram_gb": 16, "available_ram_gb": 12,
     })
@@ -546,7 +546,7 @@ def test_learning_job_retains_lesson_when_learning_outcomes_are_missing(tmp_path
         ],
     }
     calls = []
-    monkeypatch.setattr(learning, "_discover_and_store_sources", lambda *_args: ("", "model_knowledge_no_external_source"))
+    monkeypatch.setattr(learning, "_discover_and_store_sources", lambda *_args, **_kwargs: ("", "model_knowledge_no_external_source"))
     monkeypatch.setattr(learning, "detect_hardware", lambda: {
         "logical_cpu_count": 4, "total_ram_gb": 16, "available_ram_gb": 12,
     })
@@ -608,7 +608,7 @@ def test_concurrent_run_job_calls_only_claim_queued_job_once(tmp_path, monkeypat
     release = threading.Event()
     calls = []
     errors = []
-    monkeypatch.setattr(learning, "_discover_and_store_sources", lambda *_args: ("", "model_knowledge_no_external_source"))
+    monkeypatch.setattr(learning, "_discover_and_store_sources", lambda *_args, **_kwargs: ("", "model_knowledge_no_external_source"))
     monkeypatch.setattr(learning, "detect_hardware", lambda: {
         "logical_cpu_count": 4, "total_ram_gb": 16, "available_ram_gb": 12,
     })
@@ -720,7 +720,7 @@ def test_learning_job_repairs_malformed_initial_json_response(tmp_path, monkeypa
         ],
     }
     calls = []
-    monkeypatch.setattr(learning, "_discover_and_store_sources", lambda *_args: ("", "model_knowledge_no_external_source"))
+    monkeypatch.setattr(learning, "_discover_and_store_sources", lambda *_args, **_kwargs: ("", "model_knowledge_no_external_source"))
     monkeypatch.setattr(learning, "detect_hardware", lambda: {
         "logical_cpu_count": 4, "total_ram_gb": 16, "available_ram_gb": 12,
     })
