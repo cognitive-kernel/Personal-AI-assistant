@@ -291,7 +291,9 @@ def _collect_sources(
                 "retrieved_at": datetime.now(timezone.utc).isoformat(),
                 "query": query,
             }
-            _persist_source_body(context.task_id, source, body)
+            _persist_source_body(
+                context.task_id, source, body, task_context=context, topic=topic
+            )
             sources.append(source)
             seen.add(url)
         completed_queries.append(query)
