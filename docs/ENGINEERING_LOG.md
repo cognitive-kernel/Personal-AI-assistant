@@ -2251,3 +2251,12 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 ### Mid-generation lease-loss regression
 
 - Added a regression that reclaims the learning task during the model request itself (after the domain job has entered `running`). The old worker then raises a simulated model error; the failure-settlement transaction must reject the stale epoch and leave the domain job untouched for the new owner to recover.
+
+
+## 2026-11-21 — PR #819 follow-up: preserve direct learning execution compatibility
+
+- Exact-head CI on the earlier PR #819 head `4c8f064e5906e8ea80454d0eadfd847349b7ec93` exposed two root causes: `enqueue_learning_task()` referenced an undefined `context` while reconciling terminal queue records, and `run_job()` always passed the new `task_context` keyword into `_discover_and_store_sources()`, breaking existing direct callers/tests that replace that helper with the established two-argument contract.
+- Removed only the misplaced lease assertion from the reconciliation/enqueue path; lease validation remains in `handle_learning_job()` and in the durable domain-write transactions where the task context is available.
+- Preserved the direct/manual `run_job(job_id)` contract by passing the optional context keyword only for worker-owned execution. Calls without a task context retain the original two-argument source-discovery call.
+- No queue records, learning jobs, lessons, evidence, checkpoints, or user data were changed by these source edits. No migration was executed against a user database.
+- Follow-up exact-head CI for the corrected branch head is still required; this log does not claim the failures are resolved until the tests rerun successfully.
