@@ -242,7 +242,7 @@ def recover_final_agent_message_report(
     try:
         if report.is_file() and report.stat().st_size > 0:
             return False
-        report.write_text(message + "\\n", encoding="utf-8")
+        report.write_text(message + "\n", encoding="utf-8")
     except OSError:
         return False
     return True
