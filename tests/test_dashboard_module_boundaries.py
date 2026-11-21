@@ -568,3 +568,14 @@ def test_experience_consent_and_memory_list_are_independent_modules():
     assert "experience-auto-capture-enable" not in memory
     assert "experience-auto-capture-revoke" not in memory
     assert "renderExperienceItems" in memory
+
+
+def test_cloud_resource_card_renderer_is_independent_from_discovery_orchestrator():
+    page = (STATIC / "index.html").read_text(encoding="utf-8")
+    cards = (STATIC / "cloud-resource-cards.js").read_text(encoding="utf-8")
+    orchestrator = (STATIC / "cloud-resources.js").read_text(encoding="utf-8")
+    assert page.index('src="/static/cloud-resource-cards.js"') < page.index('src="/static/cloud-resources.js"')
+    assert "createCloudResourceCards" in cards
+    assert "renderCloudCandidates" in cards
+    assert "cloudResourceCardsFactory" in orchestrator
+    assert "cloudResourceCards.renderCloudCandidates" in orchestrator
