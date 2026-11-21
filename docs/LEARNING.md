@@ -335,3 +335,17 @@ python scripts/evaluate_learning_acceptance.py path/to/reference-dataset.json pa
 ### 3.3 بازبینی خودکار پیش از ارائه و ارزیابی معنایی
 
 پرامپت درس نسخهٔ `learning-lesson-v6` پیش از تحویل، بازبینی سازگاری نسخه/تاریخ، رفتار دستور و API، پیش‌نیازها، مراحل جاافتاده، تناقض‌ها، عوارض جانبی و خروجی مورد انتظار را از مدل می‌خواهد. هر نقصی که مدل تشخیص دهد باید پیش از ارائه اصلاح شود؛ اجرای واقعی فقط با نتیجهٔ اجرای واقعی قابل ادعاست. ارزیابی پاسخ باید بر معنا و استدلال تکیه کند، نه تطبیق دقیق رشته؛ بازنویسی معتبر و روش جایگزین درست باید پذیرفته شود و پاسخ ناقص از پاسخ نادرست تفکیک شود. این بازبینی درونی جای آزمون اجرایی یا تأیید مستقل را نمی‌گیرد. خطای کشف‌شده در استفاده یا گزارش کاربر باید به اصلاح نسخه‌دار و غیرمخرب منجر شود.
+
+
+## UI module boundaries and failure isolation
+
+The learning-path UI is split into small versioned modules loaded in dependency order:
+
+- `learning-core.js`: shared, read-only UI contract for API requests, DOM helpers, labels and task-event formatting.
+- `learning-lessons.js`: lesson generation and stop controls.
+- `learning-overview.js`: due reviews, recommendations and capability summaries.
+- `learning-history.js`: persisted learning-job history and cursor-based task-event history.
+- `learning-curriculum.js`: curriculum-proposal generation, rendering and human review decisions.
+- `learning.js`: path list, progress, topic status, path-level start/stop and review orchestration.
+
+Only the small core contract is required by the path controller. Lessons, overview, history and curriculum are optional, version-checked capabilities; failure of one disables only its own UI actions and does not prevent path rendering or unrelated modules. The modules do not statically import one another, and the learning-path module set is guarded by a 400-line per-file architecture test. Browser failure-injection tests exercise each optional module independently.
