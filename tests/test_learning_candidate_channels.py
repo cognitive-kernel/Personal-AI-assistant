@@ -4,7 +4,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from app import db, learning_candidate_channels as channels, learning
+from app import db, learning_candidate_channels as channels, learning, task_manager
+from app.task_worker import TaskContext
 
 
 @pytest.fixture
@@ -29,6 +30,67 @@ def candidate_store(tmp_path, monkeypatch):
         )
         candidate_id = int(cursor.lastrowid)
     return candidate_id
+
+
+def _stale_review_context(candidate_id):
+    payload = {
+        "candidate_id": candidate_id,
+        "query": "review candidate evidence",
+        "web_mode": "search",
+    }
+    task = task_manager.create_task(
+        "learning.review_candidate", payload, max_attempts=3
+    )
+    worker_id = "candidate-channel-worker"
+    claimed = task_manager.claim_next_task(worker_id)
+    assert claimed is not None and claimed["id"] == task["id"]
+    context = TaskContext(
+        task_id=task["id"],
+        worker_id=worker_id,
+        lease_epoch=claimed["lease_epoch"],
+    )
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE task_queue SET lease_expires_at=? WHERE id=?",
+            ("2000-01-01T00:00:00.000000+00:00", task["id"]),
+        )
+    reclaimed = task_manager.claim_next_task(worker_id)
+    assert reclaimed is not None and reclaimed["id"] == task["id"]
+    assert reclaimed["lease_epoch"] > context.lease_epoch
+    return context, payload
+
+
+def test_stale_task_lease_cannot_reserve_candidate_channel(candidate_store):
+    context, payload = _stale_review_context(candidate_store)
+
+    with pytest.raises(channels.CandidateChannelError, match="Stale or unauthorized task"):
+        channels.reserve_channel_run(
+            candidate_store, "research_web", "stale-reservation",
+            reclaim_running=True, task_context=context,
+            expected_task_type="learning.review_candidate",
+            expected_payload=payload,
+        )
+
+    assert channels.list_candidate_channel_runs(candidate_store) == []
+
+
+def test_stale_task_lease_cannot_finish_candidate_channel(candidate_store):
+    run = channels.reserve_channel_run(candidate_store, "peer_ai", "stale-finish")
+    context, payload = _stale_review_context(candidate_store)
+
+    with pytest.raises(channels.CandidateChannelError, match="Stale or unauthorized task"):
+        channels.finish_channel_run(
+            run["id"], "succeeded", result={"reviewed": True},
+            attempt_generation=run["attempt_generation"],
+            task_context=context,
+            expected_task_type="learning.review_candidate",
+            expected_payload=payload,
+        )
+
+    saved = channels.list_candidate_channel_runs(candidate_store)
+    assert len(saved) == 1
+    assert saved[0]["status"] == "running"
+    assert saved[0]["result"] == {}
 
 
 def test_channel_run_reservation_is_idempotent_and_does_not_promote(candidate_store):
