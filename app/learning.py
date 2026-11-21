@@ -920,10 +920,16 @@ def run_job(job_id: int, *, task_context: Any | None = None) -> None:
             for item in indexed_knowledge
         )[:4000]
     except Exception as exc:
+        if isinstance(exc, learning_execution.LearningExecutionLeaseLostError):
+            raise
         safe_error = f"Learning preparation failed ({type(exc).__name__})."
-        learning_execution.fail_if_current(
+        settled = learning_execution.fail_if_current(
             execution_lease, safe_error, task_context=task_context
         )
+        if not settled:
+            raise learning_execution.LearningExecutionLeaseLostError(
+                f"Learning job {job_id} lost its execution lease during preparation."
+            ) from exc
         raise LearningError(f"Learning job {job_id} preparation failed.") from exc
     prompt = {
         "topic": topic,
@@ -1420,9 +1426,15 @@ def run_job(job_id: int, *, task_context: Any | None = None) -> None:
             # Never delete user-provided or retrieved source material because a
             # heuristic score is low. It remains provenance-labelled and untrusted.
     except Exception as exc:
-        learning_execution.fail_if_current(
+        if isinstance(exc, learning_execution.LearningExecutionLeaseLostError):
+            raise
+        settled = learning_execution.fail_if_current(
             execution_lease, str(exc)[:1000], task_context=task_context
         )
+        if not settled:
+            raise learning_execution.LearningExecutionLeaseLostError(
+                f"Learning job {job_id} lost its execution lease before failure settlement."
+            ) from exc
         raise LearningError(f"Learning job {job_id} failed: {exc}") from exc
 
 def get_job(job_id: int) -> dict[str, Any]:
