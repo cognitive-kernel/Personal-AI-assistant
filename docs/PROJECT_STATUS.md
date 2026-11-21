@@ -512,3 +512,10 @@ The subsequent documentation-only evidence update does not change runtime code a
 - Added lease-epoch validation to `learning.plan_curriculum` source-body persistence and researched-path persistence. The exact task ID, task type and topic are checked inside each writer's `BEGIN IMMEDIATE` transaction before any insert/update. Stale-owner regressions cover both writers; the optional context preserves direct/manual helper compatibility.
 - The PR #819 branch has been extended with this focused curriculum change. Exact-head tests, browser E2E, dependency audit and CodeQL are pending for the resulting head; no pass is claimed yet.
 - Remaining Gate-B gaps are explicit: `start_researched_path_learning()` child-job/queue scheduling is not yet fenced in its own write transactions; candidate review/sandbox channel ledgers and experience writes, factual-verification records, research/programming/cloud handlers and release-watch maintenance still require a complete mutation-by-mutation audit. PR #819 is not a Gate-B completion claim.
+
+
+## 2026-11-22 — Candidate review/sandbox task fencing follow-up (PR #819)
+
+- PR #819 now also binds candidate-review and candidate-sandbox channel reservation/reclaim/completion to the current TaskContext lease epoch, exact task type and payload in the same SQLite write transaction. Channel-local `attempt_generation` is retained as an additional guard.
+- Candidate failure-experience writes are likewise fenced in their transaction. New regressions cover stale reservation, stale channel completion and stale web/peer/sandbox failure-experience writes. Existing direct/manual helper calls remain compatible when no TaskContext is supplied.
+- The new exact head is `a710bc759e3827f62aa386daf3a5d5e24fba5978` at the time of this log entry; after this documentation entry the head will advance and must be revalidated. Gate B remains open for factual verification, knowledge lifecycle/graph, research/programming/cloud/sandbox and other task adapters, curriculum child-job scheduling, and release-watch maintenance.
