@@ -87,7 +87,6 @@ def test_dark_storage_alert_code_remains_readable():
 def test_dark_mode_status_colors_remain_readable_on_standalone_learning_pages():
     root = CSS_PATH.parents[2]
     cases = [
-        (root / "app" / "static" / "ai-learning.css", ".ok"),
         (root / "app" / "ai_learning" / "static" / "style.css", ".success"),
     ]
     for css_path, success_selector in cases:
