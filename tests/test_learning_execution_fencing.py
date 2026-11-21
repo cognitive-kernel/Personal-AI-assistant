@@ -164,6 +164,19 @@ def test_stale_task_context_cannot_enqueue_or_escalate_after_reclaim(execution_s
     assert replacement["lease_epoch"] > stale_context.lease_epoch
 
     with pytest.raises(TaskManagerError):
+        learning.create_job(
+            "Unauthorized stale task creation",
+            task_context=stale_context,
+            authority_job_id=first_job["id"],
+        )
+    with db.learning_connection() as connection:
+        unauthorized = connection.execute(
+            "SELECT id FROM learning_jobs WHERE topic=?",
+            ("Unauthorized stale task creation",),
+        ).fetchone()
+    assert unauthorized is None
+
+    with pytest.raises(TaskManagerError):
         enqueue_learning_task(
             next_job["id"],
             task_context=stale_context,
@@ -188,3 +201,29 @@ def test_stale_task_context_cannot_enqueue_or_escalate_after_reclaim(execution_s
             (task["id"],),
         ).fetchone()
     assert escalation is None
+
+
+def test_current_task_context_can_atomically_enqueue_a_followup_learning_task(execution_store):
+    authority_job = learning.create_job("Current task authority")
+    task = task_manager.create_task(
+        LEARNING_TASK_TYPE,
+        {"job_id": authority_job["id"]},
+        dedupe_key="learning-current-authority",
+    )
+    claimed = task_manager.claim_next_task("current-authority-worker")
+    assert claimed is not None and claimed["id"] == task["id"]
+    context = TaskContext(
+        task_id=task["id"],
+        worker_id="current-authority-worker",
+        lease_epoch=claimed["lease_epoch"],
+    )
+    next_job = learning.create_job("Authorized follow-up learning job")
+
+    queued = enqueue_learning_task(
+        next_job["id"],
+        task_context=context,
+        authority_job_id=authority_job["id"],
+    )
+    assert queued["task_type"] == LEARNING_TASK_TYPE
+    assert queued["payload"] == {"job_id": next_job["id"]}
+    assert queued["status"] == "queued"
