@@ -589,7 +589,7 @@ def test_task_checkpoint_and_result_records_are_bounded_before_state_changes(
     claimed = task_manager.claim_next_task("bounded-worker")
     assert claimed["id"] == task["id"]
 
-    monkeypatch.setattr(task_lease_manager, "MAX_TASK_RECORD_BYTES", 8)
+    monkeypatch.setattr(task_manager_core, "MAX_TASK_RECORD_BYTES", 8)
     with pytest.raises(ValueError, match="Task checkpoint exceeds"):
         task_manager.save_checkpoint(
             task["id"], "bounded-worker", {"value": "checkpoint too large"},
