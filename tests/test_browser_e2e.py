@@ -5714,3 +5714,69 @@ def test_autonomous_engineering_model_pull_requires_consent_and_reports_progress
         assert page.locator("#pull-model").is_enabled()
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_autonomous_engineering_model_pull_failure_restores_control_and_shows_diagnostic():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    status_payload = {
+        "ready": False, "can_dispatch": False,
+        "checks": {
+            "ollama_online": True, "model_installed": False, "model_selectable": False,
+            "model_context_metadata_available": False, "model_context_supported": False,
+            "model_supports_tools": False, "model_tools_metadata_available": False,
+            "model_is_codex_context_variant": False, "codex_installed": False,
+            "runner_running": True, "github_cli_authenticated": True,
+            "github_runs_available": True, "progress_storage_accessible": True,
+        },
+        "model": "", "models": [], "selectable_models": [],
+        "model_context_length": None, "model_recommended_context_length": None,
+        "model_tools_verification_method": "probe_required",
+        "interval_hours": 24, "execution_mode": "continuous", "paused": False,
+        "pending_work": {
+            "available": True, "blocked": False,
+            "markers": {"pending_task": False, "pending_owner": False, "pending_pr": False, "cleanup_in_progress": False},
+            "checkpoint": {"available": False, "verified": True}, "reason": None,
+        },
+        "github": {"recent_runs": [], "settings": {"model": ""}},
+        "codex": {"installed": False, "version": None},
+        "local_only_inference": True,
+    }
+    browser_errors = []
+    dialogs = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.on("dialog", lambda dialog: (dialogs.append(dialog.message), dialog.accept()))
+        page.route("**/api/autonomous-engineering/status", lambda route: route.fulfill(status=200, json=status_payload))
+        page.route("**/api/autonomous-engineering/runs**", lambda route: route.fulfill(status=200, json={"runs": []}))
+        page.route("**/api/autonomous-engineering/progress**", lambda route: route.fulfill(
+            status=200,
+            json={"current": None, "history": [], "latest_snapshot": None, "events": [], "storage_configured": True},
+        ))
+        page.route("**/api/autonomous-engineering/models/pull", lambda route: route.fulfill(
+            status=503,
+            headers={
+                "X-Correlation-ID": "model-pull-correlation-test-820",
+                "X-Error-Code": "OLLAMA_MODEL_PULL_UNAVAILABLE",
+                "X-Retryable": "true",
+            },
+            json={"detail": "Ollama is temporarily unavailable."},
+        ))
+        response = page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        page.locator("#custom-model").fill("example/model:latest")
+        page.locator("#pull-model").click()
+        page.wait_for_function(
+            "() => document.querySelector('#model-pull-status')?.textContent.includes('model-pull-correlation-test-820')",
+            timeout=10000,
+        )
+        page.wait_for_function("() => document.querySelector('#pull-model')?.disabled === false", timeout=10000)
+        assert dialogs and "example/model:latest" in dialogs[0]
+        status_text = page.locator("#model-pull-status").inner_text()
+        assert "OLLAMA_MODEL_PULL_UNAVAILABLE" in status_text
+        assert "Ollama is temporarily unavailable." in status_text
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
