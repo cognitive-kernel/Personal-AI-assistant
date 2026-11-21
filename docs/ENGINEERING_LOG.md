@@ -2239,7 +2239,7 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Existing browser coverage already exercises initial render/local status, bounded manual dispatch, explicit model selection, accepted-dispatch lockout, cancel rejection recovery, run logs/delete/cleanup, failure diagnosis, stale progress/history responses, durable pending-work blockers, and Pause/Resume state.
 - Added browser regressions for RTL layout and keyboard skip-link access at 390px, 768px, and 1440px widths, including horizontal-overflow checks.
 - Added fault-isolation coverage that deliberately blocks only the progress module and verifies status, controls, and run-history modules still initialize without uncaught browser exceptions.
-- This is test-only coverage; no UI implementation or working module was changed. Exact-head browser E2E and full CI remain pending.
+- The initial addition was test-only; a follow-up in this branch corrected the warning lifecycle without changing the behavior of healthy modules. Exact-head browser E2E and full CI remain pending.
 
 
 ## 2026-11-21 — Keep module-load warnings visible during asynchronous status refresh
