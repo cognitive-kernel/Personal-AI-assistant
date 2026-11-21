@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from fastapi.responses import JSONResponse
 
 from app import autonomous_engineering as agent
+from app import main as main_module
 
 
 @pytest.fixture(autouse=True)
@@ -25,6 +29,44 @@ def _stub_durable_pending_work_status(monkeypatch):
         "checkpoint": {"available": False, "verified": True},
         "reason": None,
     })
+
+
+@pytest.mark.parametrize(
+    ("status_code", "expected_code"),
+    [
+        (404, "AUTONOMOUS_ENGINEERING_NOT_FOUND"),
+        (405, "AUTONOMOUS_ENGINEERING_METHOD_NOT_ALLOWED"),
+    ],
+)
+def test_unmatched_autonomous_engineering_routes_use_structured_errors(status_code, expected_code):
+    async def call_next(_request):
+        return JSONResponse(status_code=status_code, content={"detail": "Not Found"})
+
+    request = SimpleNamespace(
+        url=SimpleNamespace(path="/api/autonomous-engineering/not-a-real-route")
+    )
+    response = asyncio.run(main_module.log_http_error_explanation(request, call_next))
+    payload = json.loads(response.body)
+
+    assert response.status_code == status_code
+    assert payload["code"] == expected_code
+    assert payload["retryable"] is False
+    assert payload["correlation_id"]
+    assert response.headers["X-Correlation-ID"] == payload["correlation_id"]
+    assert response.headers["X-Error-Code"] == expected_code
+    assert response.headers["X-Retryable"] == "false"
+
+
+def test_unmatched_non_autonomous_routes_keep_their_existing_response():
+    async def call_next(_request):
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+
+    request = SimpleNamespace(url=SimpleNamespace(path="/api/tasks/not-a-real-route"))
+    response = asyncio.run(main_module.log_http_error_explanation(request, call_next))
+
+    assert response.status_code == 404
+    assert json.loads(response.body) == {"detail": "Not Found"}
+    assert response.headers.get("X-Error-Code") is None
 
 
 def test_status_readiness_requires_every_local_dependency(monkeypatch):
