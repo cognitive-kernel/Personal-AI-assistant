@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, StrictStr
@@ -96,3 +98,13 @@ def test_retryable_http_status_gets_generated_error_code_and_correlation_id():
     assert payload["correlation_id"]
     assert response.headers["X-Correlation-ID"] == payload["correlation_id"]
     assert response.headers["X-Retryable"] == "true"
+
+
+def test_http_error_correlation_id_is_logged_without_detail(caplog):
+    caplog.set_level(logging.WARNING)
+    response = _client_with_error_routes().get("/conflict")
+
+    correlation_id = response.json()["correlation_id"]
+    assert correlation_id in caplog.text
+    assert "PENDING_TASK_CONFLICT" in caplog.text
+    assert "A durable task is already pending." not in caplog.text
