@@ -2232,3 +2232,10 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Root-cause gap in the controller: production `run_codex` consumed the JSONL stream for progress telemetry but discarded completed `agent_message` events; the cycle controller then relied exclusively on the separate report file. Thus a successfully completed JSONL turn had no report-recovery path if that file was missing or empty.
 - Fix: retain only the last completed `agent_message` in the current turn, track successful `turn.completed` versus failure events, and recover the report only when the process exits successfully, the turn completed without a failure event, the final message is non-empty, and the `--output-last-message` file is absent or empty. Existing non-empty report files are never overwritten; failed/incomplete turns are never promoted.
 - Regression tests cover successful fallback, fail-closed behavior for incomplete/failed/empty turns, and preservation of an existing report. Exact-head CI and a real Windows Runner execution are still required; this patch is not yet accepted as a verified fix.
+
+
+## 2026-11-21 — Correlated diagnostics for autonomous Workflow dispatch failures
+
+- UIE-02 reproduction: `POST /api/autonomous-engineering/dispatch` converted every `gh workflow run` failure into the same generic HTTP 502 message. The browser therefore could not distinguish a definitive CLI rejection from a timeout where GitHub may already have accepted the request, and there was no correlation identifier for support logs.
+- Fix: attach a UUID correlation ID and stable error code to dispatch failures; log only sanitized/truncated CLI stderr on definitive nonzero exit; classify a missing process result as an ambiguous outcome. The UI detail explicitly tells the operator to refresh run history before retrying. Both paths set `X-Retryable: false` to prevent unsafe blind retries.
+- Regression tests verify safe redaction, correlation headers, stable error codes, and ambiguous-timeout messaging. Exact-head CI is pending; no dispatch was sent while developing this patch.
