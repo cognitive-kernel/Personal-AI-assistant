@@ -2230,5 +2230,18 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 
 - Evidence from failed workflow run [44907149358](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44907149358): attempt 1 ran for 205.1 seconds; attempt 2 ran for 2,872.6 seconds and received 146 JSONL events. The process exited successfully, but the controller rejected the absent/invalid `--output-last-message` completion marker and exhausted its two-attempt budget. The durable task/checkpoint was retained.
 - Root-cause gap in the controller: production `run_codex` consumed the JSONL stream for progress telemetry but discarded completed `agent_message` events; the cycle controller then relied exclusively on the separate report file. Thus a successfully completed JSONL turn had no report-recovery path if that file was missing or empty.
-- Fix: retain only the last completed `agent_message` in the current turn, track successful `turn.completed` versus failure events, and recover the report only when the process exits successfully, the turn completed without a failure event, the final message is non-empty, and the `--output-last-message` file is absent or empty. Existing non-empty report files are never overwritten; failed/incomplete turns are never promoted.
+- Fix: retain only the last completed `agent_message` in the current turn, track successful `turn.completed` versus failure events, and recover the report only when the process exits successfully, the turn completed without a failure event, the final message is non-empty, and the `--output-last-message` file is absent or empty. Existing reports with exactly one valid completion marker are preserved; missing or invalid reports are replaced only from a successful final JSONL message containing exactly one valid marker; failed/incomplete turns are never promoted.
 - Regression tests cover successful fallback, fail-closed behavior for incomplete/failed/empty turns, and preservation of an existing report. Exact-head CI and a real Windows Runner execution are still required; this patch is not yet accepted as a verified fix.
+
+
+### Follow-up hardening — invalid non-empty report handling
+
+- The validator reports `found 0` for both an absent report and a non-empty report with no valid marker. Recovery therefore now preserves an existing report only when it already contains exactly one valid completion marker. Otherwise it may replace that temporary report only when the final JSONL `agent_message` itself contains exactly one valid marker and the Codex turn completed successfully without failure events.
+- Regression tests cover invalid non-empty replacement, preservation of an already valid report, and rejection of missing/duplicate markers in the JSONL message.
+
+
+### 2026-11-21 — Recover from an undecodable temporary Codex report
+
+- Review found that a non-empty report containing invalid UTF-8 was classified as an I/O failure, preventing the already validated successful JSONL final message from repairing it.
+- Treat Unicode decoding failure as an invalid temporary report; preserve the existing fail-closed requirements for the final turn and exactly-one completion marker. Filesystem I/O failures still stop recovery.
+- Added a regression using invalid UTF-8 bytes and verifying replacement only from a successful final message with one valid marker. Exact-head CI and target-host acceptance remain required.
