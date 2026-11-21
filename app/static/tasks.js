@@ -30,7 +30,9 @@
   output.textContent="زیرماژول نمایش یا کارت وظایف بارگذاری نشد؛ سایر بخش‌های داشبورد فعال هستند.";
   return;
  }
- let taskPollScheduled=false,taskNextCursor=null,taskRefreshSequence=0;
+ let taskPollScheduled=false;
+ let taskNextCursor=null;
+ let taskRefreshSequence=0;
  const resetCursor=()=>{taskNextCursor=null;};
  async function refreshTasks({append=false}={}) {
   const requestSequence=++taskRefreshSequence;
