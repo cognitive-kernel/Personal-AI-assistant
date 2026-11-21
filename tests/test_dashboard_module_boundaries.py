@@ -5,21 +5,61 @@ ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "app" / "static"
 
 
-def test_dashboard_core_is_loaded_before_inline_and_feature_scripts():
+def test_dashboard_core_and_learning_candidates_are_external_feature_scripts():
     page = (STATIC / "index.html").read_text(encoding="utf-8")
     core = (STATIC / "dashboard-core.js").read_text(encoding="utf-8")
 
     core_tag = page.index('src="/static/dashboard-core.js"')
-    inline_script = page.index("<script>", core_tag)
+    candidates_tag = page.index('src="/static/learning-candidates.js"')
     engineering_tag = page.index('src="/static/engineering-assistance.js"')
     experience_tag = page.index('src="/static/experience-memory.js"')
     cloud_tag = page.index('src="/static/cloud-resources.js"')
     sandbox_tag = page.index('src="/static/sandbox.js"')
 
-    assert core_tag < inline_script < engineering_tag < experience_tag < cloud_tag < sandbox_tag
-    assert "const { el, api, appendText } = window.dashboardCore;" in page
-    assert "window.dashboardCore = Object.freeze({" in core
+    assert core_tag < candidates_tag < engineering_tag < experience_tag < cloud_tag < sandbox_tag
+    assert "<script>" not in page
+    assert "refreshLearningCandidates" not in page
+    assert "Object.defineProperty(window, \"dashboardCore\"" in core
+    assert "configurable: false" in core
+    assert "writable: false" in core
     assert "version: 1" in core
+
+
+def test_dashboard_feature_modules_fallback_when_the_shared_core_asset_fails():
+    modules = (
+        "browser-learning.js", "chat.js", "cloud-accounts.js", "cloud-resources.js",
+        "engineering-assistance.js", "experience-memory.js", "knowledge.js",
+        "learning-core.js", "learning-review.js", "sandbox.js", "storage.js",
+        "system-health.js", "tasks.js", "settings.js", "learning-candidates.js",
+    )
+    for name in modules:
+        source = (STATIC / name).read_text(encoding="utf-8")
+        assert "createLocalDashboardCore" in source, name
+        assert "window.dashboardCore" in source, name
+
+
+def test_learning_submodules_degrade_independently_when_learning_core_assets_fail():
+    lessons = (STATIC / "learning-lessons.js").read_text(encoding="utf-8")
+    overview = (STATIC / "learning-overview.js").read_text(encoding="utf-8")
+    orchestrator = (STATIC / "learning.js").read_text(encoding="utf-8")
+
+    assert "createLocalLearningCore" in lessons
+    assert "createLocalLearningCore" in overview
+    assert "window.learningCore && window.learningCore.version===1" in orchestrator
+    assert "lessons?.startLesson" in orchestrator
+    assert "overview?.refreshDueReviews" in orchestrator
+
+
+def test_autonomous_engineering_submodules_have_independent_core_fallbacks():
+    for name in (
+        "autonomous-engineering-controls.js",
+        "autonomous-engineering-progress.js",
+        "autonomous-engineering-runs.js",
+        "autonomous-engineering-status.js",
+        "autonomous-engineering.js",
+    ):
+        source = (STATIC / name).read_text(encoding="utf-8")
+        assert "createLocalAutonomousEngineeringCore" in source, name
 
 
 def test_sandbox_feature_has_an_isolated_versioned_module_and_startup_refresh():
