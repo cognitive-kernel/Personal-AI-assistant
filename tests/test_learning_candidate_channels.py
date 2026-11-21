@@ -63,7 +63,7 @@ def _stale_review_context(candidate_id):
 def test_stale_task_lease_cannot_reserve_candidate_channel(candidate_store):
     context, payload = _stale_review_context(candidate_store)
 
-    with pytest.raises(channels.CandidateChannelError, match="Stale or unauthorized task"):
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
         channels.reserve_channel_run(
             candidate_store, "research_web", "stale-reservation",
             reclaim_running=True, task_context=context,
@@ -78,7 +78,7 @@ def test_stale_task_lease_cannot_finish_candidate_channel(candidate_store):
     run = channels.reserve_channel_run(candidate_store, "peer_ai", "stale-finish")
     context, payload = _stale_review_context(candidate_store)
 
-    with pytest.raises(channels.CandidateChannelError, match="Stale or unauthorized task"):
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
         channels.finish_channel_run(
             run["id"], "succeeded", result={"reviewed": True},
             attempt_generation=run["attempt_generation"],
