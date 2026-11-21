@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from app import db, learning_candidate_channels as channels, learning, task_manager
+from app import db, learning_candidate_channels as channels, learning, learning_candidate_experiences as experiences, task_manager
 from app.task_worker import TaskContext
 
 
@@ -91,6 +91,81 @@ def test_stale_task_lease_cannot_finish_candidate_channel(candidate_store):
     assert len(saved) == 1
     assert saved[0]["status"] == "running"
     assert saved[0]["result"] == {}
+
+
+def _stale_sandbox_context(candidate_id, content_sha256):
+    payload = {
+        "candidate_id": candidate_id,
+        "content_sha256": content_sha256,
+        "test_plan_sha256": "b" * 64,
+        "request_id": "sandbox-request-1",
+    }
+    task = task_manager.create_task(
+        "learning.sandbox_candidate", payload, max_attempts=3
+    )
+    worker_id = "candidate-sandbox-worker"
+    claimed = task_manager.claim_next_task(worker_id)
+    assert claimed is not None and claimed["id"] == task["id"]
+    context = TaskContext(
+        task_id=task["id"],
+        worker_id=worker_id,
+        lease_epoch=claimed["lease_epoch"],
+    )
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE task_queue SET lease_expires_at=? WHERE id=?",
+            ("2000-01-01T00:00:00.000000+00:00", task["id"]),
+        )
+    reclaimed = task_manager.claim_next_task(worker_id)
+    assert reclaimed is not None and reclaimed["id"] == task["id"]
+    assert reclaimed["lease_epoch"] > context.lease_epoch
+    return context, payload
+
+
+def test_stale_review_task_cannot_write_channel_failure_experience(candidate_store):
+    context, payload = _stale_review_context(candidate_store)
+    with db.learning_connection() as connection:
+        row = connection.execute(
+            "SELECT content_sha256 FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_store,),
+        ).fetchone()
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        experiences.record_candidate_channel_failure(
+            candidate_store, topic="Channel ledger candidate",
+            content_sha256=row["content_sha256"], channel="peer_ai",
+            status="failed", task_context=context,
+            expected_task_type="learning.review_candidate",
+            expected_payload=payload,
+        )
+    with db.learning_connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM learning_experiences WHERE topic=?",
+            ("peer-AI review failure: Channel ledger candidate",),
+        ).fetchone()[0]
+    assert count == 0
+
+
+def test_stale_sandbox_task_cannot_write_test_failure_experience(candidate_store):
+    with db.learning_connection() as connection:
+        row = connection.execute(
+            "SELECT content_sha256 FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_store,),
+        ).fetchone()
+    context, payload = _stale_sandbox_context(candidate_store, row["content_sha256"])
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        experiences.record_candidate_test_failure(
+            candidate_store, topic="Channel ledger candidate",
+            content_sha256=row["content_sha256"], test_plan_sha256="b" * 64,
+            outcomes=[{"test": "reviewed_test", "passed": False, "status": "failed"}],
+            task_context=context, expected_task_type="learning.sandbox_candidate",
+            expected_payload=payload,
+        )
+    with db.learning_connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM learning_experiences WHERE topic=?",
+            ("Test failure: Channel ledger candidate",),
+        ).fetchone()[0]
+    assert count == 0
 
 
 def test_channel_run_reservation_is_idempotent_and_does_not_promote(candidate_store):
