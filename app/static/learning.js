@@ -1,19 +1,45 @@
 (() => {
  "use strict";
- const core=window.learningCore;
- const lessons=window.learningLessons;
- const overview=window.learningOverview;
+ const core=window.learningCore && window.learningCore.version===1 ? window.learningCore : (() => {
+  const el=id=>document.getElementById(id);
+  async function api(path,options={}) {
+   const response=await fetch(path,{headers:{"Content-Type":"application/json",...(options.headers||{})},...options});
+   const payload=await response.json().catch(()=>({}));
+   if(!response.ok)throw new Error(payload.detail||("HTTP "+response.status));
+   return payload;
+  }
+  function appendHistoryText(container,label,value) {
+   if(value===null||value===undefined||value==="")return;
+   const line=document.createElement("p");
+   line.textContent=label+": "+(typeof value==="string"?value:JSON.stringify(value,null,2));
+   container.append(line);
+  }
+  function formatTaskAuditEventChange(event) {
+   switch(event.event_type) {
+    case "status_changed": return (event.old_status||"—")+" ← "+(event.new_status||"—");
+    case "priority_changed": return "اولویت: "+(event.old_priority??"—")+" ← "+(event.new_priority??"—");
+    case "scheduled": return "زمان‌بندی: "+(event.old_scheduled_at||"—")+" ← "+(event.new_scheduled_at||"—");
+    case "created": return "ایجاد وظیفه: "+(event.new_status||"—")+"، اولویت: "+(event.new_priority??"—");
+    default: return event.new_status||event.event_type||"رویداد";
+   }
+  }
+  return Object.freeze({
+   version:1,el,api,formatTaskAuditEventChange,appendHistoryText,
+   learningStatusLabels:{queued:"در صف",running:"در حال اجرا",completed:"درس تولید شد",rejected:"ردشده در کنترل کیفیت",failed:"ناموفق",cancelled:"لغوشده"},
+   taskStatusLabels:{queued:"در صف",running:"در حال اجرا",pause_requested:"درخواست توقف موقت",paused:"متوقف موقت",cancel_requested:"درخواست لغو",succeeded:"اجرای وظیفه تمام شد",failed:"اجرای وظیفه ناموفق",cancelled:"وظیفه لغو شد"}
+  });
+ })();
+ const lessons=window.learningLessons && window.learningLessons.version===1 ? window.learningLessons : null;
+ const overview=window.learningOverview && window.learningOverview.version===1 ? window.learningOverview : null;
  const fallback=document.getElementById("paths-output");
- if(!core||core.version!==1||!lessons||lessons.version!==1||!overview||overview.version!==1){
-  if(fallback)fallback.textContent="ماژول مسیرهای یادگیری به قراردادهای learningCore، learningLessons و learningOverview نیاز دارد.";
-  return;
- }
+ if(!lessons && fallback)fallback.textContent="ماژول تولید درس در دسترس نیست؛ سایر بخش‌های مسیر یادگیری همچنان فعال هستند.";
  const {
   el:learningEl,api:learningApi,formatTaskAuditEventChange,
   learningStatusLabels,taskStatusLabels,appendHistoryText
  }=core;
- const {startLesson,stopLesson}=lessons;
- const refreshDueLearningReviews=overview.refreshDueReviews;
+ const startLesson=lessons?.startLesson|| (async()=>{throw new Error("ماژول تولید درس در دسترس نیست.")});
+ const stopLesson=lessons?.stopLesson|| (async()=>{throw new Error("ماژول تولید درس در دسترس نیست.")});
+ const refreshDueLearningReviews=overview?.refreshDueReviews|| (async()=>{});
  function renderTopicJobHistory(output, topic, jobs, tasksByJobId) {
   const history = document.createElement("details");
   history.className = "path-topic-job-history";
