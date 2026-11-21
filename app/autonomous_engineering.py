@@ -12,6 +12,7 @@ import urllib.error
 import urllib.request
 import re
 import threading
+import uuid
 from concurrent.futures import ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import Any
@@ -720,8 +721,46 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) ->
         ],
         timeout=20,
     )
-    if not result or result.returncode != 0:
-        raise HTTPException(status_code=502, detail="درخواست اجرای Workflow به GitHub ارسال نشد.")
+    if result is None:
+        correlation_id = uuid.uuid4().hex
+        _STATUS_LOGGER.warning(
+            "Autonomous workflow dispatch outcome is unknown; correlation_id=%s",
+            correlation_id,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "نتیجهٔ ارسال Workflow نامشخص است؛ ممکن است GitHub درخواست را دریافت کرده باشد. "
+                "پیش از تلاش مجدد، سوابق اجرا را بازخوانی کنید. شناسهٔ پیگیری: "
+                + correlation_id
+            ),
+            headers={
+                "X-Correlation-ID": correlation_id,
+                "X-Error-Code": "WORKFLOW_DISPATCH_OUTCOME_UNKNOWN",
+                "X-Retryable": "false",
+            },
+        )
+    if result.returncode != 0:
+        correlation_id = uuid.uuid4().hex
+        safe_stderr = _sanitize_workflow_log(str(result.stderr or ""))
+        _STATUS_LOGGER.error(
+            "Autonomous workflow dispatch failed; correlation_id=%s exit_code=%s stderr=%s",
+            correlation_id,
+            result.returncode,
+            safe_stderr[-1200:],
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"ارسال Workflow ناموفق بود (exit code {result.returncode}). "
+                "شناسهٔ پیگیری: " + correlation_id
+            ),
+            headers={
+                "X-Correlation-ID": correlation_id,
+                "X-Error-Code": "WORKFLOW_DISPATCH_FAILED",
+                "X-Retryable": "false",
+            },
+        )
     return {
         "accepted": True,
         "repository": _repository(),
