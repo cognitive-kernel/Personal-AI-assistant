@@ -4,7 +4,13 @@ import time
 import pytest
 
 from app import db, task_manager
-from app.task_runtime import TaskRuntime
+from app.task_runtime import TaskRuntime, reject_unregistered_task
+from app.task_worker import PermanentTaskError
+
+
+def test_unregistered_task_handler_fails_closed():
+    with pytest.raises(PermanentTaskError, match="No registered handler"):
+        reject_unregistered_task({}, None, None)
 
 
 @pytest.fixture
@@ -13,6 +19,27 @@ def runtime_store(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
     task_manager.initialize_task_store()
+
+
+def test_unregistered_task_type_is_terminally_failed(runtime_store):
+    task = task_manager.create_task("runtime.unregistered", {})
+    runtime = TaskRuntime(
+        {"runtime.unregistered": reject_unregistered_task},
+        poll_interval=0.05,
+        lease_seconds=10,
+    )
+    runtime.start()
+    try:
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            saved = task_manager.get_task(task["id"])
+            if saved["status"] == "failed":
+                break
+            time.sleep(0.05)
+        assert saved["status"] == "failed"
+        assert "No registered handler" in (saved.get("error") or "")
+    finally:
+        assert runtime.stop(timeout=3) is True
 
 
 def test_runtime_processes_queued_task_and_stops_cleanly(runtime_store):
@@ -67,7 +94,8 @@ def test_new_runtime_reclaims_expired_lease_and_resumes_from_checkpoint(runtime_
     claimed = task_manager.claim_next_task("previous-process", lease_seconds=30)
     assert claimed["id"] == task["id"]
     task_manager.save_checkpoint(
-        task["id"], "previous-process", {"phase": "before_restart", "cursor": 17}
+        task["id"], "previous-process", {"phase": "before_restart", "cursor": 17},
+        lease_epoch=claimed["lease_epoch"],
     )
     with db.learning_connection() as conn:
         conn.execute(
@@ -203,6 +231,7 @@ def test_expired_sandbox_lease_is_reconciled_before_cleanup_callback(runtime_sto
     task_manager.save_checkpoint(
         task["id"], "crashed-worker",
         {"phase": "sandbox_started", "source_sha256": "a" * 64},
+        lease_epoch=claimed["lease_epoch"],
     )
     with db.learning_connection() as conn:
         conn.execute(
@@ -314,7 +343,7 @@ def test_runtime_restarts_partial_worker_set_after_worker_thread_exits(runtime_s
     original_run_worker = TaskRuntime._run_worker
 
     def run_worker(runtime, worker):
-        if worker.worker_id.endswith("-1") and not failed_once.is_set():
+        if worker.worker_label.endswith("-1") and not failed_once.is_set():
             failed_once.set()
             worker_exited.set()
             return
