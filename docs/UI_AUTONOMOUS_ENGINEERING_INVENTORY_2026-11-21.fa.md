@@ -80,7 +80,7 @@ API ابتدا active run را رد می‌کند و سپس Broker/state markers
 - Progress: انتخاب period/date در زمان پاسخ دوباره اعتبارسنجی می‌شود؛ درخواست متناظر با انتخاب جدید صف می‌شود.
 - Model pull: polling هر 1.5 ثانیه تا completed/failed.
 - Core اکنون `code`, `correlation_id`, `retryable`, `safe_details` را از JSON و headerهای `X-Error-Code`, `X-Correlation-ID`, `X-Retryable` می‌خواند و code/correlation امن را به پیام UI می‌افزاید. retry خودکار انجام نمی‌شود.
-- پاسخ ساختاریافتهٔ خطا هنوز برای همهٔ endpointهای backend یکسان نیست؛ PR #817 headerهای تشخیصی را برای شکست قطعی launch در dispatch اضافه می‌کند. یکپارچه‌سازی body schema و correlation برای همهٔ endpointها همچنان باز است.
+- PR #817 در شاخهٔ بررسی، برای تمام routeهای API یک error envelope یکنواخت شامل code/message/correlation_id/retryable/safe_details و headerهای متناظر اضافه می‌کند؛ خطاهای validation و exceptionهای غیرمنتظره نیز بدون echo ورودی یا جزئیات خام redacted می‌شوند. این تغییر تا عبور exact-head CI هنوز پذیرفته‌شده محسوب نمی‌شود.
 
 ## 6. پوشش تست موجود
 
@@ -114,7 +114,7 @@ API ابتدا active run را رد می‌کند و سپس Broker/state markers
 ## 7. موارد باز برای تکمیل و پذیرش
 
 1. اجرای exact-head CI برای PRهای #817–#820 و رفع هر شکست پیش از promotion.
-2. یکسان‌سازی پاسخ خطا برای تمام endpointها به schema versioned شامل code/message/correlation_id/retryable/safe_details؛ در حال حاضر پشتیبانی UI آماده است اما backend همهٔ مسیرها را پوشش نمی‌دهد.
+2. تأیید و ادغام error envelope یکنواخت PR #817 پس از exact-head CI؛ سپس بررسی سازگاری همهٔ consumerها و حفظ قرارداد backward-compatible `detail`.
 3. اجرای پذیرش واقعی روی Windows Runner service identity: Broker ACL/UAC، restart/crash، Pause/Resume/Cancel، checkpoint recovery، cleanup با/بدون active run و مشاهدهٔ log واقعی.
 4. آزمون مدل pull در مرورگر mock شده است؛ آزمون عملی با Ollama محلی و مدل واقعی باید روی میزبان هدف انجام شود.
 5. Gate B فراتر از writer اصلی `learning.run_job` هنوز باز است؛ candidate-review، curriculum، factual-verification و سایر domain mutation handlers باید جداگانه inventory و fence شوند. PR #819 فقط مسیر اصلی learning job و escalation را می‌بندد.
