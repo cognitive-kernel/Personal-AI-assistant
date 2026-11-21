@@ -2239,3 +2239,10 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - UIE-02 reproduction: `POST /api/autonomous-engineering/dispatch` converted every `gh workflow run` failure into the same generic HTTP 502 message. The browser therefore could not distinguish a definitive CLI rejection from a timeout where GitHub may already have accepted the request, and there was no correlation identifier for support logs.
 - Fix: attach a UUID correlation ID and stable error code to dispatch failures; log only sanitized/truncated CLI stderr on definitive nonzero exit; classify a missing process result as an ambiguous outcome. The UI detail explicitly tells the operator to refresh run history before retrying. Both paths set `X-Retryable: false` to prevent unsafe blind retries.
 - Regression tests verify safe redaction, correlation headers, stable error codes, and ambiguous-timeout messaging. Exact-head CI is pending; no dispatch was sent while developing this patch.
+
+
+### 2026-11-21 — Distinguish GitHub CLI launch failure from dispatch timeout
+
+- Review of PR #817 identified that _run collapsed OSError (the CLI never started) and TimeoutExpired (the request may already have reached GitHub) into the same None result. Treating both as ambiguous incorrectly blocked a safe retry after a definite local launch failure.
+- Added an opt-in raise_os_error mode used only by the workflow-dispatch call; all other _run callers retain their existing fail-closed behavior. A launch error now returns a correlated WORKFLOW_DISPATCH_LAUNCH_FAILED response marked retryable, while timeout remains ambiguous and non-retryable.
+- Added a regression that simulates the executable disappearing after lookup and asserts the distinct safe response. Exact-head CI remains required.
