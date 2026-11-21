@@ -497,7 +497,7 @@ The subsequent documentation-only evidence update does not change runtime code a
 
 ## 2026-11-21 — UI resilience tests
 
-- Branch `test/autonomous-engineering-ui-resilience-20261121` adds browser E2E coverage for RTL/keyboard skip-link behavior and horizontal overflow at mobile, tablet, and desktop widths, plus isolation when the progress module fails to load. This is test-only; production UI modules are unchanged. Exact-head browser E2E and full CI are pending.
+- Branch `test/autonomous-engineering-ui-resilience-20261121` adds browser E2E coverage for RTL/keyboard skip-link behavior and horizontal overflow at mobile, tablet, and desktop widths, plus isolation when the progress module fails to load. This began as test-only; a follow-up fixes persistent module-failure reporting while leaving healthy modules unchanged. Exact-head browser E2E and full CI are pending.
 
 
 - Fault-isolation testing exposed and fixed a message-lifecycle defect: asynchronous status polling could overwrite the missing-module warning. `app/static/autonomous-engineering.js` now renders a separate accessible `#agent-module-warning` notice, leaving status polling and `#agent-message` independent. The E2E regression asserts warning persistence.
