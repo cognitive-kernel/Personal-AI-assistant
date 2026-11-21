@@ -422,6 +422,7 @@ def collect_status() -> dict[str, Any]:
         "model_is_codex_context_variant": ollama.get("model_is_codex_context_variant", False),
         "model_context_length": ollama.get("model_context_length"),
         "model_recommended_context_length": ollama.get("model_recommended_context_length"),
+        "model_required_context_length": ollama.get("model_required_context_length", 65536),
         "model_context_supported": ollama.get("model_context_supported", False),
         "model_context_error": ollama.get("model_context_error"),
         "model_capabilities": ollama.get("model_capabilities", []),
@@ -576,10 +577,16 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
     if not local_model.get("model_metadata_available"):
         raise HTTPException(status_code=422, detail="حداکثر Context مدل از metadata معتبر Ollama قابل تأیید نیست؛ مدل ذخیره نشد.")
     if not local_model.get("model_context_supported"):
-        raise HTTPException(
-            status_code=422,
-            detail="با توجه به metadata مدل و حافظهٔ آزاد فعلی، ظرفیت امن Context قابل محاسبه نیست؛ تنظیمات ذخیره نشد.",
-        )
+        recommended = local_model.get("model_recommended_context_length")
+        if isinstance(recommended, int) and not isinstance(recommended, bool) and recommended < 65536:
+            detail = (
+                f"برای اجرای Codex حداقل ۶۵۵۳۶ توکن Context لازم است؛ "
+                f"ظرفیت امن فعلی سخت‌افزار {recommended:,} توکن است. "
+                "حافظهٔ آزاد را افزایش دهید یا از میزبان قدرتمندتری استفاده کنید؛ تنظیمات ذخیره نشد."
+            )
+        else:
+            detail = "با توجه به metadata مدل و حافظهٔ آزاد فعلی، ظرفیت امن حداقل ۶۴k توکن قابل تأیید نیست؛ تنظیمات ذخیره نشد."
+        raise HTTPException(status_code=422, detail=detail)
     if not local_model.get("model_supports_tools"):
         raise HTTPException(status_code=422, detail="مدل انتخاب‌شده قابلیت tools را اعلام نکرده و برای Codex قابل استفاده نیست.")
     gh = shutil.which("gh")
