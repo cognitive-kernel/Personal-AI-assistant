@@ -294,7 +294,7 @@ def test_worker_recovers_when_lesson_commit_precedes_task_completion(
     original_complete = task_manager.complete_task
     complete_calls = {"count": 0}
 
-    def fail_once_after_domain_commit(task_id, worker_id, result):
+    def fail_once_after_domain_commit(task_id, worker_id, result, *, lease_epoch):
         complete_calls["count"] += 1
         if complete_calls["count"] == 1:
             raise RetryableTaskError("injected crash after lesson commit")
