@@ -2160,3 +2160,12 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - The route ownership test now checks the feature router's loopback dependency and the explicit application router registration. The real `/ai-learning` route remains covered by Browser E2E; this avoids relying on a separately imported global app object's mutable route list in the unit test.
 - Two Browser E2E tests waited for a native `<option>` to become visible. Options inside a closed native `<select>` are not independently visible; the tests now wait for DOM attachment and continue to assert the selected value and user-visible feature behavior.
 - No application runtime behavior, API contract, persisted data, or safety boundary changed in this follow-up. Exact-head CI is required on the resulting commit; prior failures are not reclassified as passes.
+
+
+## 2026-11-21 — Split learning path history and curriculum ownership
+
+- The 502-line `app/static/learning.js` still combined path lifecycle/rendering with persisted task-event history and curriculum-proposal review controls. Those workflows have separate APIs, state and failure modes; keeping them inside the path controller made a single UI module the owner of unrelated concerns.
+- Extracted `learning-history.js` (job/task history rendering and cursor-based task-event reads) and `learning-curriculum.js` (proposal generation, display and human accept/reject workflow). Each module has its own versioned `learningCore v1` contract and private handlers/state; neither imports or calls the path controller.
+- Reduced `learning.js` to the path/curriculum orchestration surface (about 309 lines). History and curriculum are optional modules; lessons and overview are now optional too. If any optional module fails to load, the path list and unrelated controls still render, while only the missing capability is disabled or given an explicit local status message.
+- Added architecture fitness assertions for script order, versioned contracts, optional dependencies, no cross-module implementation leakage, and a 400-line ceiling for the learning path module set. Added Chromium failure-injection coverage for history, curriculum, lessons and overview module failures.
+- No API, persisted schema, database content, lesson history, curriculum proposal or user data was changed. Exact-head unit, Browser E2E, sandbox and dependency/security checks remain required before merge; target-host UI acceptance is separate.
