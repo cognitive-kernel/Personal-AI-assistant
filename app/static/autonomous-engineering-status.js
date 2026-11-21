@@ -135,6 +135,13 @@
       labels.model.textContent = stateText(modelReady);
       const contextLength = Number(data.model_context_length);
       const recommendedContext = Number(data.model_recommended_context_length);
+      const requiredContext = Number(data.model_required_context_length || 65536);
+      const contextRequirementText = Number.isSafeInteger(recommendedContext) && recommendedContext > 0 &&
+        Number.isSafeInteger(requiredContext) && requiredContext > 0 && recommendedContext < requiredContext
+        ? "؛ حداقل لازم برای Codex: " + requiredContext.toLocaleString() + " توکن؛ ظرفیت امن فعلی کافی نیست"
+        : !Number.isSafeInteger(recommendedContext) || recommendedContext <= 0
+          ? "؛ ظرفیت امن حداقل ۶۴k توکن هنوز تأیید نشده است"
+          : "";
       const contextText = Number.isSafeInteger(contextLength) && contextLength > 0
         ? "؛ حداکثر Context مدل: " + contextLength.toLocaleString() + " توکن" +
           (Number.isSafeInteger(recommendedContext) && recommendedContext > 0
@@ -158,7 +165,7 @@
       const installationText = data.model && checks.model_is_codex_context_variant
         ? "؛ این نسخهٔ داخلی Context است؛ مدل اصلی را انتخاب و ذخیره کنید"
         : data.model && !checks.model_installed ? "؛ مدل ذخیره‌شده روی این سیستم نصب نیست" : "";
-      $("model-detail").textContent = modelLabel + installationText + contextText + toolsText;
+      $("model-detail").textContent = modelLabel + installationText + contextText + contextRequirementText + toolsText;
       renderModels(data.selectable_models || data.models, data.model, checks.model_is_codex_context_variant);
       const executionMode = data.execution_mode || "continuous";
       if (document.activeElement !== $("execution-mode")) {
