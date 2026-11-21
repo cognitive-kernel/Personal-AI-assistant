@@ -278,3 +278,26 @@ def test_broker_pipe_open_waits_for_busy_instance(monkeypatch):
     assert broker._open_pipe(fake, broker.time.monotonic() + 1) == 88
     assert fake.waited
     assert fake.calls == 2
+
+
+def test_broker_pipe_acl_grants_local_service_minimal_server_instance_rights():
+    service = (ROOT / "scripts" / "AutonomousStateBrokerService.cs").read_text(encoding="utf-8")
+
+    local_service = service.index('new SecurityIdentifier("S-1-5-19")')
+    server_rights = service.index(
+        "PipeAccessRights.CreateNewInstance | PipeAccessRights.ReadWrite",
+        local_service,
+    )
+    authenticated_users = service.index('new SecurityIdentifier("S-1-5-11")')
+    network_deny = service.index('new SecurityIdentifier("S-1-5-2")')
+
+    assert network_deny < local_service < server_rights < authenticated_users
+    assert "AccessControlType.Deny" in service[network_deny:local_service]
+    assert "AccessControlType.Allow" in service[local_service:authenticated_users]
+
+
+def test_broker_live_windows_integration_rejects_worker_loop_diagnostics():
+    service_test = (ROOT / "scripts" / "test_autonomous_state_broker_service.ps1").read_text(encoding="utf-8")
+
+    assert '$workerDiagnosticsPath = Join-Path $stateRoot "service-errors.log"' in service_test
+    assert "recorded unexpected exceptions" in service_test

@@ -1,3 +1,22 @@
+## 2026-11-21 — Windows state broker LocalService pipe ACL
+
+### Root cause
+- The broker service runs as NT AUTHORITY\\LocalService (SID S-1-5-19), but the protected named-pipe ACL did not grant that service identity the `CreateNewInstance` right. `ReadWrite` alone is insufficient for the service to create named-pipe server instances.
+- The previous live integration gate could be satisfied by a surviving worker even if another worker repeatedly failed. The worker loop already records opt-in diagnostics, but the integration test did not reject a non-empty diagnostic log.
+
+### Correction
+- Added a least-privilege ACE for LocalService with `CreateNewInstance | ReadWrite`. The network-logon deny ACE, Authenticated Users client ReadWrite ACE, and existing LocalSystem/Administrators FullControl ACEs remain unchanged. LocalService receives no FullControl grant.
+- Strengthened the real Windows service integration test to fail when any worker exception is present in the opt-in diagnostic log.
+- Added source-level regression tests for ACL ordering/rights and worker-diagnostic enforcement.
+
+### Validation boundary
+- This branch requires exact-head Windows live LocalService service tests, full suite, Browser E2E, dependency audit, and CodeQL.
+- The integration test is CI evidence, not target-host acceptance. The owner’s Windows service identity, named-pipe access, and restart/ACL behavior still require acceptance on the actual target host.
+- No state directory, task, checkpoint, database, or existing user data was modified.
+- No merge or deployment is performed by this change.
+
+---
+
 ## 2026-11-21 — Autonomous dashboard stale-response recovery
 
 ### Root cause and evidence
@@ -2132,3 +2151,8 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Added regression coverage for same-label reclaim, stale mutation rejection, worker-token uniqueness, and existing restart/retry/control behavior.
 - Validation status: exact-head GitHub CI has not yet run. The prior closed PR #747 is not used as proof: its old head had 24 full-suite failures and the real-Docker sandbox job timed out; those failures included unrelated baseline drift and must not be hidden.
 - Residual scope: domain-level learning transaction fencing, full UI isolation/failure recovery, and target-host Windows acceptance remain open. No database migration has been run against user data; the migration is only defined in code and is additive.
+
+## 2026-11-21 — Windows broker PR rebased after dashboard merge
+- PR #806 was rebased onto the updated `main` after PR #805 added its own engineering-log section at the top of the same file.
+- The rebased tree retains both PR #805's dashboard record and this PR's LocalService ACL evidence; the broker source and Windows regression tests are unchanged.
+- The PR branch now has `main` as its direct parent so it can be merged without carrying duplicate dashboard changes.

@@ -367,6 +367,16 @@ assert result["files_removed"] >= 2
         throw "The Broker cleanup endpoint removed retained checkpoint data."
     }
 
+    # Every worker must create its own pipe instance. Fail if any worker
+    # recorded an exception, even when another worker served the sequential probes.
+    $workerDiagnosticsPath = Join-Path $stateRoot "service-errors.log"
+    if (Test-Path -LiteralPath $workerDiagnosticsPath -PathType Leaf) {
+        $workerDiagnostics = Get-Content -LiteralPath $workerDiagnosticsPath -Raw
+        if (-not [String]::IsNullOrWhiteSpace($workerDiagnostics)) {
+            throw "The state broker worker loop recorded unexpected exceptions: $workerDiagnostics"
+        }
+    }
+
     Stop-Service -Name $serviceName -Force -ErrorAction Stop
     (Get-Service -Name $serviceName -ErrorAction Stop).WaitForStatus(
         [System.ServiceProcess.ServiceControllerStatus]::Stopped,
