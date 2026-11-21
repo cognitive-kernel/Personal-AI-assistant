@@ -39,6 +39,7 @@ def test_dashboard_feature_modules_fallback_when_the_shared_core_asset_fails():
 
 
 def test_learning_submodules_degrade_independently_when_learning_core_assets_fail():
+    renderer = (STATIC / "learning-lesson-render.js").read_text(encoding="utf-8")
     lessons = (STATIC / "learning-lessons.js").read_text(encoding="utf-8")
     overview = (STATIC / "learning-overview.js").read_text(encoding="utf-8")
     orchestrator = (STATIC / "learning.js").read_text(encoding="utf-8")
@@ -344,6 +345,7 @@ def test_learning_path_workflows_use_small_versioned_core_lesson_and_overview_mo
 
     ordered = [
         "learning-core.js",
+        "learning-lesson-render.js",
         "learning-lessons.js",
         "learning-overview.js",
         "learning.js",
@@ -353,6 +355,9 @@ def test_learning_path_workflows_use_small_versioned_core_lesson_and_overview_mo
     assert positions == sorted(positions)
     assert "window.learningCore=Object.freeze(" in core
     assert "version:1" in core
+    assert "window.learningLessonRendererFactory" in renderer
+    assert "renderLessonResult" in renderer
+    assert "learningLessonRendererFactory" in lessons
     assert "window.learningLessons=Object.freeze({version:1,startLesson,stopLesson})" in lessons
     assert "window.learningOverview=Object.freeze(" in overview
     assert "window.learningCore" in paths
@@ -363,14 +368,14 @@ def test_learning_path_workflows_use_small_versioned_core_lesson_and_overview_mo
     assert "async function refreshLearningCapabilities()" not in paths
     assert "async function regenerateLesson(" not in paths
     assert "async function loadLearningPaths()" in paths
-    assert max(len(core.splitlines()), len(lessons.splitlines()), len(overview.splitlines()), len(paths.splitlines())) < 600
-    assert "innerHTML" not in core + lessons + overview + paths
+    assert max(len(core.splitlines()), len(renderer.splitlines()), len(lessons.splitlines()), len(overview.splitlines()), len(paths.splitlines())) < 600
+    assert "innerHTML" not in core + renderer + lessons + overview + paths
 
 def test_learning_architecture_documentation_lists_the_split_modules():
     docs = (ROOT / "docs" / "LEARNING.md").read_text(encoding="utf-8")
     audit = (ROOT / "docs" / "UI_AUDIT_2026-10-30.md").read_text(encoding="utf-8")
 
-    for name in ("learning-core.js", "learning-lessons.js", "learning-overview.js", "learning-review.js"):
+    for name in ("learning-core.js", "learning-lesson-render.js", "learning-lessons.js", "learning-overview.js", "learning-review.js"):
         assert name in docs
         assert name in audit
 
