@@ -139,9 +139,11 @@ def record_candidate_review(
 
     with learning_connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
-        if task_context is not None:
+        if task_context is not None and (
+            expected_task_type is not None or expected_payload is not None
+        ):
             if expected_task_type is None or expected_payload is None:
-                raise ValueError("Task ownership contract is required for candidate review persistence.")
+                raise ValueError("Task ownership contract is incomplete for candidate review persistence.")
             task_context.assert_current(
                 connection,
                 expected_task_type=expected_task_type,
@@ -761,9 +763,11 @@ def validate_candidate_with_models(
         )
         with learning_connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            if context is not None:
+            if context is not None and (
+                expected_task_type is not None or expected_payload is not None
+            ):
                 if expected_task_type is None or expected_payload is None:
-                    raise ValueError("Task ownership contract is required for candidate validation settlement.")
+                    raise ValueError("Task ownership contract is incomplete for candidate validation settlement.")
                 context.assert_current(
                     connection,
                     expected_task_type=expected_task_type,
@@ -785,9 +789,11 @@ def validate_candidate_with_models(
         )
         with learning_connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            if context is not None:
+            if context is not None and (
+                expected_task_type is not None or expected_payload is not None
+            ):
                 if expected_task_type is None or expected_payload is None:
-                    raise ValueError("Task ownership contract is required for candidate rejection settlement.")
+                    raise ValueError("Task ownership contract is incomplete for candidate rejection settlement.")
                 context.assert_current(
                     connection,
                     expected_task_type=expected_task_type,
