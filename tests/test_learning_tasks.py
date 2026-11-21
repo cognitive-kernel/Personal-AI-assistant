@@ -27,6 +27,34 @@ def _claimed_context(job_id):
     return TaskContext(task_id=task["id"], worker_id="worker-1", lease_epoch=claimed["lease_epoch"]), task
 
 
+
+def test_stale_task_epoch_cannot_mutate_learning_job_domain_row(learning_task_store):
+    job = learning.create_job("Fence stale learning job writer")
+    context, task = _claimed_context(job["id"])
+
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE task_queue SET lease_expires_at='2000-01-01T00:00:00.000000+00:00' WHERE id=?",
+            (task["id"],),
+        )
+
+    reclaimed = task_manager.claim_next_task("worker-1")
+    assert reclaimed is not None
+    assert reclaimed["id"] == task["id"]
+    assert reclaimed["lease_epoch"] > context.lease_epoch
+
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        learning.run_job(job["id"], task_context=context)
+
+    saved = learning.get_job(job["id"])
+    assert saved["status"] == "queued"
+    assert saved["lesson"] is None
+    with db.learning_connection() as conn:
+        evidence_count = conn.execute(
+            "SELECT COUNT(*) FROM learning_evidence WHERE job_id=?", (job["id"],)
+        ).fetchone()[0]
+    assert evidence_count == 0
+
 def test_learning_task_missing_domain_record_is_permanent(learning_task_store):
     context, _task = _claimed_context(999999)
 
@@ -57,6 +85,8 @@ def test_learning_task_handler_persists_real_learning_outcome(
     job = learning.create_job("Task handler outcome")
 
     def fake_run_job(job_id, *, task_context=None):
+        assert task_context is not None
+        assert task_context.task_id > 0
         with db.learning_connection() as conn:
             conn.execute(
                 "UPDATE learning_jobs SET status='completed', updated_at=CURRENT_TIMESTAMP WHERE id=?",
