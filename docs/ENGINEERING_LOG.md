@@ -2232,3 +2232,32 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Root-cause gap in the controller: production `run_codex` consumed the JSONL stream for progress telemetry but discarded completed `agent_message` events; the cycle controller then relied exclusively on the separate report file. Thus a successfully completed JSONL turn had no report-recovery path if that file was missing or empty.
 - Fix: retain only the last completed `agent_message` in the current turn, track successful `turn.completed` versus failure events, and recover the report only when the process exits successfully, the turn completed without a failure event, the final message is non-empty, and the `--output-last-message` file is absent or empty. Existing non-empty report files are never overwritten; failed/incomplete turns are never promoted.
 - Regression tests cover successful fallback, fail-closed behavior for incomplete/failed/empty turns, and preservation of an existing report. Exact-head CI and a real Windows Runner execution are still required; this patch is not yet accepted as a verified fix.
+
+
+## 2026-11-21 — Autonomous Engineering UI resilience acceptance
+
+- Existing browser coverage already exercises initial render/local status, bounded manual dispatch, explicit model selection, accepted-dispatch lockout, cancel rejection recovery, run logs/delete/cleanup, failure diagnosis, stale progress/history responses, durable pending-work blockers, and Pause/Resume state.
+- Added browser regressions for RTL layout and keyboard skip-link access at 390px, 768px, and 1440px widths, including horizontal-overflow checks.
+- Added fault-isolation coverage that deliberately blocks only the progress module and verifies status, controls, and run-history modules still initialize without uncaught browser exceptions.
+- The initial addition was test-only; a follow-up in this branch corrected the warning lifecycle without changing the behavior of healthy modules. Exact-head browser E2E and full CI remain pending.
+
+
+## 2026-11-21 — Keep module-load warnings visible during asynchronous status refresh
+
+- The new fault-isolation browser test exposed a real UI defect: the main module reported a missing feature module through `#agent-message`, but the independent status poll overwrote that message after it completed. A user could lose the only indication that part of the console had failed to load.
+- The main module now renders a separate persistent `#agent-module-warning` alert using the existing notice style and accessible `role=alert`/`aria-live` semantics. Status polling continues to own `#agent-message`; working modules remain independent.
+- The browser regression now verifies that the progress module can fail while status, controls, and run history still initialize, and that the warning remains visible after status refresh. No module execution or task state is changed by the warning.
+
+
+## 2026-11-21 — Preserve structured dispatch errors in the UI
+
+- Gate-C review found that the shared UI request helper discarded backend error headers (`X-Error-Code`, `X-Correlation-ID`, `X-Retryable`), and the no-body dispatch handler wrote its error before an authoritative status refresh that immediately overwrote it.
+- The shared request helper now retains `code`, `correlationId`, `retryable`, and bounded `safeDetails` metadata, and includes the safe code/correlation ID in the displayed message. Dispatch/resume/manual-task retry lockout now respects the retryable flag; no automatic retry is introduced.
+- Dispatch success and failure both refresh authoritative status before setting the final user message, so the result is not overwritten. A Chromium regression simulates a 503 launch failure and verifies the error code, correlation ID, and retry lock remain visible.
+
+
+## 2026-11-21 — Preserve successful action feedback after status polling
+
+- Review of the full control inventory found that Settings, manual task, model pull, Pause, Resume and Cancel success messages were set before an authoritative status refresh; the refresh could immediately overwrite the result. Dispatch had the same issue and was already corrected in this branch.
+- All these handlers now refresh authoritative status first and then render the final success message. Failure paths retain their existing refresh-then-error ordering. No API/state semantics changed.
+- Browser assertions now verify Settings/manual-task/Pause/Resume success feedback and a Cancel sequence that first fails, recovers, then succeeds and disables the control when the active run disappears.
