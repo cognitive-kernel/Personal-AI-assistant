@@ -121,7 +121,7 @@
       setMessage(result.message || "وظیفه برای عامل ارسال شد.", "success");
       await status.refresh(true);
     } catch (error) {
-      if (error.ambiguous || error.status >= 500) status.lockDispatchVisibilityWindow();
+      if (error.ambiguous || error.retryable || error.status >= 500) status.lockDispatchVisibilityWindow();
       const detail = error.message || "ارسال وظیفه ناموفق بود.";
       await status.refresh(true);
       setMessage(detail, "error");
@@ -139,12 +139,14 @@
     try {
       const result = await request("dispatch", {method: "POST"});
       status.lockDispatchVisibilityWindow();
+      await status.refresh(true);
       setMessage(result.message || "درخواست ارسال شد.", "success");
     } catch (error) {
-      if (error.ambiguous || error.status >= 500) status.lockDispatchVisibilityWindow();
-      setMessage(error.message || "ارسال درخواست ناموفق بود.", "error");
-    } finally {
+      if (error.ambiguous || error.retryable || error.status >= 500) status.lockDispatchVisibilityWindow();
+      const detail = error.message || "ارسال درخواست ناموفق بود.";
       await status.refresh(true);
+      setMessage(detail, "error");
+    } finally {
       status.setDispatchSubmitting(false);
       status.syncDispatchControls();
     }
@@ -169,7 +171,7 @@
       setMessage(result.message || "ادامهٔ صف درخواست شد.", "success");
       await status.refresh(true);
     } catch (error) {
-      if (error.ambiguous || error.status >= 500) status.lockDispatchVisibilityWindow();
+      if (error.ambiguous || error.retryable || error.status >= 500) status.lockDispatchVisibilityWindow();
       const detail = error.message || "ادامهٔ صف ثبت نشد.";
       await status.refresh(true);
       setMessage(detail, "error");
