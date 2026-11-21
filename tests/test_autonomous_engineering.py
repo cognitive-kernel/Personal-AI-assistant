@@ -308,7 +308,8 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
     assert result["model_context_length"] == 65536
     assert result["model_recommended_context_length"] == 32768
     assert result["model_supports_tools"] is True
-    assert result["model_context_supported"] is True
+    assert result["model_context_supported"] is False
+    assert "requires at least 65536" in result["model_context_error"]
 
 
 def test_standalone_ollama_tool_probe_uses_local_endpoint_and_structured_tool_call(monkeypatch):
@@ -375,7 +376,7 @@ def test_ollama_status_probes_tool_calling_when_capabilities_metadata_is_missing
         "weights_gib": 1.0, "overhead_gib": 0.5,
         "kv_cache_bytes_per_token_upper_bound": 1024,
     })
-    monkeypatch.setattr(ollama, "_recommended_context_tokens", lambda *args, **kwargs: 32768)
+    monkeypatch.setattr(ollama, "_recommended_context_tokens", lambda *args, **kwargs: 65536)
     monkeypatch.setattr(hardware, "detect_hardware", lambda: {})
     probe_calls = []
     def fake_probe_request(path, payload=None, timeout=None):
@@ -1405,7 +1406,7 @@ def test_ollama_status_returns_every_installed_model_without_inserting_defaults(
     assert result["model_installed"] is True
     assert result["model_metadata_available"] is True
     assert result["model_context_supported"] is False
-    assert "hardware-safe context" in result["model_context_error"]
+    assert "requires at least 65536" in result["model_context_error"]
 
 
 def test_ollama_status_keeps_server_online_when_selected_model_metadata_fails(monkeypatch):
@@ -1458,7 +1459,7 @@ def test_ollama_status_accepts_large_valid_show_metadata_response(monkeypatch):
         "weights_gib": 1.0, "overhead_gib": 0.5,
         "kv_cache_bytes_per_token_upper_bound": 1024,
     })
-    monkeypatch.setattr(ollama, "_recommended_context_tokens", lambda *args, **kwargs: 32768)
+    monkeypatch.setattr(ollama, "_recommended_context_tokens", lambda *args, **kwargs: 65536)
     monkeypatch.setattr(hardware, "detect_hardware", lambda: {})
 
     result = agent._ollama_status("large-model:latest")
@@ -1471,7 +1472,7 @@ def test_ollama_status_accepts_large_valid_show_metadata_response(monkeypatch):
     assert result["model_tools_metadata_available"] is True
     assert result["model_supports_tools"] is True
     assert result["model_context_supported"] is True
-    assert result["model_recommended_context_length"] == 32768
+    assert result["model_recommended_context_length"] == 65536
 
 
 def test_save_settings_rejects_model_without_explicit_tool_calling_support(monkeypatch):
@@ -1583,9 +1584,10 @@ def test_dashboard_status_does_not_start_an_uncached_live_ollama_probe(monkeypat
     )
 
     assert probe_calls == []
-    assert result["model_context_supported"] is True
+    assert result["model_context_supported"] is False
     assert result["model_supports_tools"] is False
-    assert result["model_tools_verification_method"] == "probe_required"
+    assert result["model_tools_verification_method"] == "skipped_no_safe_context"
+    assert result["model_required_context_length"] == 65536
 
 
 def test_dashboard_status_reuses_recent_tool_probe_evidence_without_inference():
@@ -1624,7 +1626,7 @@ def test_dashboard_status_reuses_recent_tool_probe_evidence_without_inference():
         maximum_context_fn=lambda info, architecture: info["llama.context_length"],
         supports_tool_calling_fn=lambda capabilities: "tools" in capabilities,
         is_context_variant=lambda model: False,
-        recommended_context_fn=lambda model: 32768,
+        recommended_context_fn=lambda model: 65536,
         tool_probe_fn=lambda payload: pytest.fail("Dashboard status must not run inference."),
         allow_live_tool_probe=False,
     )
@@ -1750,7 +1752,7 @@ def test_collect_status_returns_with_a_degraded_snapshot_when_a_probe_stalls(mon
         "model_tools_metadata_available": True,
         "model_supports_tools": True,
         "model_capabilities": ["tools"],
-        "model_context_length": 32768,
+        "model_context_length": 65536,
     })
 
     started = monotonic()
@@ -1817,7 +1819,7 @@ def test_collect_status_does_not_queue_probes_when_shared_pool_is_saturated(monk
         "model_tools_metadata_available": True,
         "model_supports_tools": True,
         "model_capabilities": ["tools"],
-        "model_context_length": 32768,
+        "model_context_length": 65536,
     }))
 
     try:
