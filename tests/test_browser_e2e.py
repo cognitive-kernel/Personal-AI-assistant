@@ -6646,3 +6646,30 @@ def test_ai_learning_lesson_module_failure_does_not_block_course_and_search_ui()
         assert page.locator('#course-select option[value="42"]').count() == 1
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_dashboard_feature_modules_boot_without_the_shared_dashboard_core_asset():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    browser_errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/static/dashboard-core.js", lambda route: route.abort())
+        response = page.goto(base_url, wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        assert page.locator("#chat-form").count() == 1
+        assert page.evaluate("window.dashboardCore === undefined")
+        assert page.evaluate("Boolean(window.learningCore && window.learningCore.version === 1)")
+        assert page.evaluate("Boolean(window.learningLessons && window.learningLessons.version === 1)")
+        assert page.evaluate("Boolean(window.learningOverview && window.learningOverview.version === 1)")
+        assert page.evaluate("Boolean(window.autonomousEngineeringStatus && window.autonomousEngineeringStatus.version === 1)")
+        assert page.locator("#refresh-tasks").count() == 1
+        assert page.locator("#refresh-storage-health").count() == 1
+        assert not any(
+            "dashboardCore" in error or "learningCore" in error or "autonomousEngineeringCore" in error
+            for error in browser_errors
+        )
+        browser.close()
