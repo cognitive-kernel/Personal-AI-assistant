@@ -2232,3 +2232,11 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Root-cause gap in the controller: production `run_codex` consumed the JSONL stream for progress telemetry but discarded completed `agent_message` events; the cycle controller then relied exclusively on the separate report file. Thus a successfully completed JSONL turn had no report-recovery path if that file was missing or empty.
 - Fix: retain only the last completed `agent_message` in the current turn, track successful `turn.completed` versus failure events, and recover the report only when the process exits successfully, the turn completed without a failure event, the final message is non-empty, and the `--output-last-message` file is absent or empty. Existing non-empty report files are never overwritten; failed/incomplete turns are never promoted.
 - Regression tests cover successful fallback, fail-closed behavior for incomplete/failed/empty turns, and preservation of an existing report. Exact-head CI and a real Windows Runner execution are still required; this patch is not yet accepted as a verified fix.
+
+
+## 2026-11-21 — Autonomous Engineering UI resilience acceptance
+
+- Existing browser coverage already exercises initial render/local status, bounded manual dispatch, explicit model selection, accepted-dispatch lockout, cancel rejection recovery, run logs/delete/cleanup, failure diagnosis, stale progress/history responses, durable pending-work blockers, and Pause/Resume state.
+- Added browser regressions for RTL layout and keyboard skip-link access at 390px, 768px, and 1440px widths, including horizontal-overflow checks.
+- Added fault-isolation coverage that deliberately blocks only the progress module and verifies status, controls, and run-history modules still initialize without uncaught browser exceptions.
+- This is test-only coverage; no UI implementation or working module was changed. Exact-head browser E2E and full CI remain pending.
