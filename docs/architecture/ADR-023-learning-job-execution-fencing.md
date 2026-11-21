@@ -16,6 +16,7 @@ Queue-level fencing alone is insufficient when a domain job has its own status r
 3. Every domain write transaction validates both the queue lease and domain execution epoch before changing job state or persisting generated lesson/evidence/candidate records.
 4. Completion and failure updates use compare-and-set predicates over job ID, running state, execution owner, and execution epoch.
 5. Persist the originating queue task ID and lease epoch on the domain job. A duplicate task may not reset a running job while that exact queue lease remains active. It can recover the job only after the recorded queue lease has expired, been reclaimed, or settled.
+6. Follow-up job creation, path advancement, task enqueue, and escalation writes performed by a learning worker validate the same authority inside each write transaction. Task creation can reuse the caller's SQLite connection so queue inserts participate in the same transaction as the ownership check.
 6. Direct/manual execution receives a unique non-reusable owner token. A direct execution with no queue lease is not silently stolen by a duplicate queue task.
 
 ## Invariants
@@ -25,6 +26,7 @@ Queue-level fencing alone is insufficient when a domain job has its own status r
 - Reclaim increments the domain epoch; stale execution epochs cannot complete or fail the new run.
 - A duplicate task cannot mark a currently owned learning job queued.
 - A stale worker cannot record an escalation or failure after losing queue authority.
+- A stale worker cannot create a follow-up learning job, advance a researched path, or enqueue the next task.
 
 ## Recovery
 
