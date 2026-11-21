@@ -3956,12 +3956,12 @@ def test_autonomous_dashboard_keeps_dispatch_disabled_after_accepted_run():
         browser.close()
 
 
-def test_autonomous_dashboard_reenables_cancel_after_server_rejection():
+def test_autonomous_dashboard_cancel_recovers_after_rejection_and_succeeds():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
         pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
-    state = {"cancel_calls": 0, "status_reads": 0}
+    state = {"cancel_calls": 0, "status_reads": 0, "cancelled": False}
     browser_errors = []
 
     def status_payload():
@@ -3994,7 +3994,7 @@ def test_autonomous_dashboard_reenables_cancel_after_server_rejection():
             "execution_mode": "continuous",
             "paused": False,
             "github": {
-                "recent_runs": [{
+                "recent_runs": [] if state["cancelled"] else [{
                     "id": 987655, "status": "in_progress", "conclusion": None,
                     "created_at": "2026-11-16T08:00:00Z",
                     "url": "https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/987655",
@@ -4023,7 +4023,11 @@ def test_autonomous_dashboard_reenables_cancel_after_server_rejection():
 
         def reject_cancel(route):
             state["cancel_calls"] += 1
-            route.fulfill(status=503, json={"detail": "temporary cancel failure"})
+            if state["cancel_calls"] == 1:
+                route.fulfill(status=503, json={"detail": "temporary cancel failure"})
+                return
+            state["cancelled"] = True
+            route.fulfill(status=200, json={"message": "active run cancellation requested"})
 
         page.route("**/api/autonomous-engineering/cancel", reject_cancel)
         response = page.goto(
@@ -4046,8 +4050,15 @@ def test_autonomous_dashboard_reenables_cancel_after_server_rejection():
             }""",
             timeout=10000,
         )
-        assert state["cancel_calls"] == 1
-        assert state["status_reads"] >= 2
+        assert "temporary cancel failure" in page.locator("#agent-message").inner_text()
+        cancel.click()
+        page.wait_for_function(
+            "() => document.querySelector('#cancel-agent')?.disabled === true &&
+                document.querySelector('#agent-message')?.textContent.includes('active run cancellation requested')",
+            timeout=10000,
+        )
+        assert state["cancel_calls"] == 2
+        assert state["status_reads"] >= 3
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
 
@@ -5429,6 +5440,7 @@ def test_autonomous_dashboard_pause_and_resume_controls_follow_server_state():
             timeout=10000,
         )
         assert page.locator("#agent-readiness").inner_text() == "توقف ایمن فعال است"
+        assert page.locator("#agent-message").inner_text() == "safe pause confirmed"
 
         resume.click()
         page.wait_for_function(
@@ -5436,6 +5448,7 @@ def test_autonomous_dashboard_pause_and_resume_controls_follow_server_state():
             timeout=10000,
         )
         assert page.locator("#agent-readiness").inner_text() == "آمادهٔ ارسال Workflow"
+        assert page.locator("#agent-message").inner_text() == "resume confirmed"
         assert state["pause_calls"] == 1
         assert state["resume_calls"] == 1
         assert state["status_reads"] >= 3
