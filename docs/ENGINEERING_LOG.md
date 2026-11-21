@@ -2254,3 +2254,10 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Gate-C review found that the shared UI request helper discarded backend error headers (`X-Error-Code`, `X-Correlation-ID`, `X-Retryable`), and the no-body dispatch handler wrote its error before an authoritative status refresh that immediately overwrote it.
 - The shared request helper now retains `code`, `correlationId`, `retryable`, and bounded `safeDetails` metadata, and includes the safe code/correlation ID in the displayed message. Dispatch/resume/manual-task retry lockout now respects the retryable flag; no automatic retry is introduced.
 - Dispatch success and failure both refresh authoritative status before setting the final user message, so the result is not overwritten. A Chromium regression simulates a 503 launch failure and verifies the error code, correlation ID, and retry lock remain visible.
+
+
+## 2026-11-21 — Preserve successful action feedback after status polling
+
+- Review of the full control inventory found that Settings, manual task, model pull, Pause, Resume and Cancel success messages were set before an authoritative status refresh; the refresh could immediately overwrite the result. Dispatch had the same issue and was already corrected in this branch.
+- All these handlers now refresh authoritative status first and then render the final success message. Failure paths retain their existing refresh-then-error ordering. No API/state semantics changed.
+- Browser assertions now verify Settings/manual-task/Pause/Resume success feedback and a Cancel sequence that first fails, recovers, then succeeds and disables the control when the active run disappears.
