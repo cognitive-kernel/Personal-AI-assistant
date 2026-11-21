@@ -116,6 +116,11 @@ def test_lease_reclaimed_during_learning_generation_blocks_failure_settlement(
     saved = learning.get_job(job["id"])
     assert saved["status"] == "running"
     assert not saved["lesson"]
+    with db.learning_connection() as conn:
+        current_epoch = conn.execute(
+            "SELECT lease_epoch FROM task_queue WHERE id=?", (task["id"],)
+        ).fetchone()[0]
+    assert current_epoch > context.lease_epoch
 
 def test_learning_task_missing_domain_record_is_permanent(learning_task_store):
     context, _task = _claimed_context(999999)
