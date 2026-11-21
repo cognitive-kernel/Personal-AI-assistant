@@ -543,3 +543,10 @@ The subsequent documentation-only evidence update does not change runtime code a
 - رضایت ذخیره‌سازی خودکار تجربه به فایل مستقل `experience-memory-consent.js` منتقل شد؛ state و کنترل‌های فعال/لغو/بازخوانی رضایت از فهرست، جست‌وجو و curation تجربه جدا هستند.
 - خرابی ماژول رضایت نباید قابلیت مرور/جست‌وجو/curation حافظه را متوقف کند و خرابی فهرست نیز نباید امکان لغو رضایت را از بین ببرد.
 - تست‌های معماری و ترتیب بارگذاری اضافه شده‌اند؛ پذیرش browser E2E و CI دقیق هنوز در حال اجراست.
+
+
+### تفکیک نمایش کارت منابع از orchestration کشف
+
+- رندر کارت‌ها، شواهد، بازبینی ادعا و حذف منبع به `cloud-resource-cards.js` منتقل شد؛ `cloud-resources.js` مالک refresh sequencing، ثبت دستی منبع، polling وظیفهٔ discovery و برنامه‌ریزی read-only است.
+- شکست رندر کارت‌ها نباید ارسال منبع دستی، اجرای discovery یا برنامه‌ریزی را متوقف کند.
+- تست قرارداد و browser initialization اضافه شده‌اند؛ نتیجهٔ exact-head CI هنوز pending است.
