@@ -486,8 +486,22 @@ def _update_run(
     candidates_upserted: int,
     query_results: list[dict[str, Any]],
     error_summary: str | None,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
 ) -> None:
     with closing(_connect()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        if task_context is not None and (
+            expected_task_type is not None or expected_payload is not None
+        ):
+            if expected_task_type is None or expected_payload is None:
+                raise CloudResourceError("Cloud discovery task ownership contract is incomplete.")
+            task_context.assert_current(
+                connection,
+                expected_task_type=expected_task_type,
+                expected_payload=expected_payload,
+            )
         connection.execute(
             """UPDATE cloud_resource_discovery_runs
                SET finished_at=CURRENT_TIMESTAMP, status=?, queries_attempted=?,
@@ -622,11 +636,25 @@ def discover_resources(
     *,
     discover_fn: Callable[..., list[web_sources.SourceDocument]] | None = None,
     checkpoint: Callable[[dict[str, Any]], Any] | None = None,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Search a bounded set of topics and persist source-backed candidates as unreviewed."""
     initialize_store()
     search = discover_fn or web_sources.discover_sources
     with closing(_connect()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        if task_context is not None and (
+            expected_task_type is not None or expected_payload is not None
+        ):
+            if expected_task_type is None or expected_payload is None:
+                raise CloudResourceError("Cloud discovery task ownership contract is incomplete.")
+            task_context.assert_current(
+                connection,
+                expected_task_type=expected_task_type,
+                expected_payload=expected_payload,
+            )
         cursor = connection.execute(
             "INSERT INTO cloud_resource_discovery_runs(status) VALUES ('running')"
         )
@@ -759,6 +787,17 @@ def discover_resources(
                 )
 
         with closing(_connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            if task_context is not None and (
+                expected_task_type is not None or expected_payload is not None
+            ):
+                if expected_task_type is None or expected_payload is None:
+                    raise CloudResourceError("Cloud discovery task ownership contract is incomplete.")
+                task_context.assert_current(
+                    connection,
+                    expected_task_type=expected_task_type,
+                    expected_payload=expected_payload,
+                )
             for candidate in unique.values():
                 previous = connection.execute(
                     "SELECT id, content_sha256 FROM cloud_resource_candidates WHERE source_url=?",
@@ -878,6 +917,8 @@ def discover_resources(
             candidates_upserted=0,
             query_results=query_results,
             error_summary="; ".join(errors),
+            task_context=task_context, expected_task_type=expected_task_type,
+            expected_payload=expected_payload,
         )
         raise
 
@@ -889,6 +930,8 @@ def discover_resources(
         candidates_upserted=len(unique),
         query_results=query_results,
         error_summary="; ".join(errors) if errors else None,
+        task_context=task_context, expected_task_type=expected_task_type,
+        expected_payload=expected_payload,
     )
     return {
         "run_id": run_id,
@@ -1528,7 +1571,12 @@ def handle_discovery_task(
 ) -> dict[str, Any]:
     """Run discovery under durable task controls and schedule the next daily pass."""
     try:
-        report = discover_resources(checkpoint=context.checkpoint)
+        report = discover_resources(
+            checkpoint=context.checkpoint,
+            task_context=context,
+            expected_task_type=CLOUD_DISCOVERY_TASK_TYPE,
+            expected_payload=payload,
+        )
     except Exception:
         # Keep the daily chain alive even when a task is paused/cancelled or discovery fails.
         _schedule_next_daily_run()
