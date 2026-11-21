@@ -213,7 +213,13 @@ def test_autonomous_engineering_routes_are_registered():
 def test_pause_sets_durable_repository_variable(monkeypatch):
     calls = []
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
-    monkeypatch.setattr(agent, "_run", lambda command, timeout=8: calls.append(command) or subprocess.CompletedProcess(command, 0, "", ""))
+    monkeypatch.setattr(
+        agent, "_run",
+        lambda command, timeout=8, *, raise_os_error=False: (
+            calls.append((command, raise_os_error))
+            or subprocess.CompletedProcess(command, 0, "", "")
+        ),
+    )
 
     result = agent.pause_autonomous_engineering()
 
@@ -233,9 +239,57 @@ def test_resume_clears_pause_and_dispatches_without_legacy_failure_counter(monke
     result = agent.resume_autonomous_engineering()
 
     assert result["paused"] is False
-    assert calls[1][2:5] == ["set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body"]
-    assert calls[2][1:3] == ["workflow", "run"]
-    assert all("AUTONOMOUS_ENGINEERING_FAILURE_STREAK" not in call for call in calls)
+    assert calls[1][0][2:5] == ["set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body"]
+    assert calls[2][0][1:3] == ["workflow", "run"]
+    assert calls[2][1] is True
+    assert all("AUTONOMOUS_ENGINEERING_FAILURE_STREAK" not in call[0] for call in calls)
+
+
+def test_resume_dispatch_timeout_is_ambiguous_and_non_retryable(monkeypatch):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    calls = []
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append((command, raise_os_error))
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["variable", "set"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        assert raise_os_error is True
+        return None
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    with pytest.raises(HTTPException) as error:
+        agent.resume_autonomous_engineering()
+
+    assert error.value.status_code == 502
+    assert error.value.headers["X-Error-Code"] == "WORKFLOW_RESUME_DISPATCH_OUTCOME_UNKNOWN"
+    assert error.value.headers["X-Retryable"] == "false"
+    assert error.value.headers["X-Correlation-ID"] in error.value.detail
+    assert "نامشخص" in error.value.detail
+    assert "تاریخچهٔ اجراها را بازخوانی کنید" in error.value.detail
+    assert calls[-1][1] is True
+
+
+def test_resume_dispatch_launch_failure_is_retryable(monkeypatch):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        if command[1:3] == ["auth", "status"] or command[1:3] == ["variable", "set"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        assert raise_os_error is True
+        raise FileNotFoundError("gh executable disappeared")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    with pytest.raises(HTTPException) as error:
+        agent.resume_autonomous_engineering()
+
+    assert error.value.status_code == 503
+    assert error.value.headers["X-Error-Code"] == "WORKFLOW_RESUME_DISPATCH_LAUNCH_FAILED"
+    assert error.value.headers["X-Retryable"] == "true"
+    assert error.value.headers["X-Correlation-ID"] in error.value.detail
 
 
 def test_autonomous_recovery_uses_the_durable_policy_module():
