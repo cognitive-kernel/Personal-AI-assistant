@@ -2150,7 +2150,7 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - The autonomous engineering page had an 889-line script combining shared HTTP/DOM helpers, run history/actions, status and dispatch controls, model-pull monitoring, and progress rendering. These are separate feature responsibilities and should not share one lifecycle owner.
 - Split the implementation into a small versioned core (request transport, DOM lookup, status messaging), independent runs, status, controls, and progress modules. The existing autonomous-engineering.js is now a small orchestrator that validates contracts and schedules each feature's refresh independently.
 - Removed direct runs-to-progress and status-to-runs function calls. Cleanup and post-mutation coordination now use narrow custom events; each feature retains its own request state and UI handlers. A failure to load the status module no longer prevents runs or progress from starting.
-- Updated the architecture contract test, project status, and ADR. The separate ai-learning.js and learning path controller remain explicitly in the modularity backlog; no overall completion claim is made.
+- Updated the architecture contract test, project status, and ADR. The obsolete standalone `app/static/ai-learning.js` page/script was removed and replaced by the package-owned modular AI-learning UI; the learning path controller remains explicitly in the modularity backlog. No overall completion claim is made.
 - Exact-head CI, browser tests for the autonomous engineering console, and target-host acceptance are required.
 
 
