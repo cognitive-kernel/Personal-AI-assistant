@@ -271,8 +271,8 @@ def _discover_and_store_sources(
         return "", "model_knowledge_no_external_source"
 
     with learning_connection() as conn:
-            conn.execute("BEGIN IMMEDIATE")
-            _assert_learning_task_context(conn, task_context, job_id)
+        conn.execute("BEGIN IMMEDIATE")
+        _assert_learning_task_context(conn, task_context, job_id)
         conn.execute("""INSERT INTO learning_source_text(job_id, content) VALUES (?, ?)
             ON CONFLICT(job_id) DO UPDATE SET content=excluded.content""", (job_id, combined))
         conn.execute("UPDATE learning_jobs SET source_kind='web_retrieved', updated_at=CURRENT_TIMESTAMP WHERE id=?", (job_id,))
