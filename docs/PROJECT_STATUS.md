@@ -493,3 +493,10 @@ Exact tested code head: ab703a284752c80531e9f25e0b7ad53a04c453a0.
 Evidence: Tests/Windows regressions https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863471 ; Browser E2E https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863440 ; Dependency audit https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863452 ; CodeQL https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863507 .
 
 The subsequent documentation-only evidence update does not change runtime code and is followed by a fresh exact-head CI run. Target-host cross-account ACL verification, non-admin sandbox smoke/soak, crash/restart acceptance, and independent security review remain pending. Durable Pause remains enabled; no Runner, service, or autonomous process was started.
+
+
+## 2026-11-22 — Knowledge lifecycle and graph review fencing (PR pending)
+
+- `learning.validate_candidate` now passes its exact task contract into candidate-review evidence writes and final success/rejection settlement. Lease/epoch validation occurs inside each corresponding write transaction.
+- `learning.review_graph_edge` now validates its owner/epoch, task type and exact payload inside the transaction that persists the graph review report/status. Added stale-owner regressions for both domains.
+- Exact-head CI and review are pending. Remaining Gate-B writers include research/programming/cloud/sandbox task adapters, curriculum child-job scheduling, other knowledge lifecycle paths and release-watch maintenance.
