@@ -5567,3 +5567,67 @@ def test_autonomous_engineering_progress_module_failure_isolated_from_other_modu
         assert "پیشرفت" in page.locator("#agent-module-warning").inner_text()
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_autonomous_dispatch_error_exposes_code_and_correlation_id_after_status_refresh():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    status_payload = {
+        "ready": True, "can_dispatch": True,
+        "checks": {
+            "ollama_online": True, "model_installed": True, "model_selectable": True,
+            "model_context_metadata_available": True, "model_context_supported": True,
+            "model_supports_tools": True, "model_tools_metadata_available": True,
+            "model_is_codex_context_variant": False, "codex_installed": False,
+            "runner_running": True, "github_cli_authenticated": True,
+            "github_runs_available": True, "progress_storage_accessible": True,
+        },
+        "model": "model:latest", "models": ["model:latest"],
+        "selectable_models": ["model:latest"], "model_context_length": 65536,
+        "model_recommended_context_length": 32768,
+        "model_tools_verification_method": "ollama_model_capabilities",
+        "interval_hours": 24, "execution_mode": "continuous", "paused": False,
+        "pending_work": {
+            "available": True, "blocked": False,
+            "markers": {"pending_task": False, "pending_owner": False, "pending_pr": False, "cleanup_in_progress": False},
+            "checkpoint": {"available": False, "verified": True}, "reason": None,
+        },
+        "github": {"recent_runs": [], "settings": {"model": "model:latest"}},
+        "codex": {"installed": False, "version": None},
+        "local_only_inference": True,
+    }
+    browser_errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/api/autonomous-engineering/status", lambda route: route.fulfill(status=200, json=status_payload))
+        page.route("**/api/autonomous-engineering/runs**", lambda route: route.fulfill(status=200, json={"runs": []}))
+        page.route("**/api/autonomous-engineering/progress**", lambda route: route.fulfill(
+            status=200,
+            json={"current": None, "history": [], "latest_snapshot": None, "events": [], "storage_configured": True},
+        ))
+        page.route("**/api/autonomous-engineering/dispatch", lambda route: route.fulfill(
+            status=503,
+            headers={
+                "X-Correlation-ID": "dispatch-correlation-test-820",
+                "X-Error-Code": "WORKFLOW_DISPATCH_LAUNCH_FAILED",
+                "X-Retryable": "true",
+            },
+            json={"detail": "GitHub CLI could not be started."},
+        ))
+        response = page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        page.wait_for_function("() => document.querySelector('#dispatch-agent')?.disabled === false", timeout=10000)
+        page.locator("#dispatch-agent").click()
+        page.wait_for_function(
+            "() => document.querySelector('#agent-message')?.textContent.includes('dispatch-correlation-test-820')",
+            timeout=10000,
+        )
+        message = page.locator("#agent-message").inner_text()
+        assert "WORKFLOW_DISPATCH_LAUNCH_FAILED" in message
+        assert "GitHub CLI could not be started." in message
+        assert page.locator("#dispatch-agent").is_disabled(), "Retryable dispatch failure must keep the visibility lock."
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
