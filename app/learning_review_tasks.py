@@ -173,6 +173,8 @@ def handle_candidate_review(
                 reservation["id"], terminal, result=value,
                 error_code="channel_failed" if terminal == "failed" else None,
                 attempt_generation=reservation["attempt_generation"],
+                task_context=context, expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+                expected_payload=payload,
             )
         except learning_candidate_channels.CandidateChannelStorageError as exc:
             raise RetryableTaskError("Candidate channel ledger is temporarily unavailable.") from exc
