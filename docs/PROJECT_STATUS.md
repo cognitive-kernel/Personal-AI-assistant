@@ -505,3 +505,10 @@ The subsequent documentation-only evidence update does not change runtime code a
 - The learning-job branch also fences handler-generated `learning_escalations` writes in the same transaction; a second stale-epoch regression verifies no escalation row is created by a reclaimed worker. Other task adapters remain open.
 
 - PR #819 now also tests lease reclamation during the model-generation request, proving the stale worker cannot settle the domain job as failed after another worker receives the newer epoch.
+
+
+## 2026-11-22 — Gate-B curriculum persistence follow-up (PR #819)
+
+- Added lease-epoch validation to `learning.plan_curriculum` source-body persistence and researched-path persistence. The exact task ID, task type and topic are checked inside each writer's `BEGIN IMMEDIATE` transaction before any insert/update. Stale-owner regressions cover both writers; the optional context preserves direct/manual helper compatibility.
+- The PR #819 branch has been extended with this focused curriculum change. Exact-head tests, browser E2E, dependency audit and CodeQL are pending for the resulting head; no pass is claimed yet.
+- Remaining Gate-B gaps are explicit: `start_researched_path_learning()` child-job/queue scheduling is not yet fenced in its own write transactions; candidate review/sandbox channel ledgers and experience writes, factual-verification records, research/programming/cloud handlers and release-watch maintenance still require a complete mutation-by-mutation audit. PR #819 is not a Gate-B completion claim.
