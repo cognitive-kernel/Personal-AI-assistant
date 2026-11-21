@@ -25,10 +25,12 @@ This file is the release-gate ledger for tracking issue [#290](https://github.co
 
 ### Current focused PR evidence (all unmerged)
 
-- PR #817 — current PR head (verify in GitHub metadata): dispatch launch-vs-timeout classification and uniform API error envelope. One earlier exact-head run found a legacy mock-signature failure after the new keyword was added; the mock was corrected. The current exact-head Tests, Browser E2E, Dependency Audit and CodeQL runs are queued; do not reuse older results.
-- PR #818 — current PR head (verify in GitHub metadata): Codex final-report recovery when an existing report is missing or invalid (zero valid completion markers), using only a successful final JSONL agent_message with exactly one valid marker. Exact-head Tests, Browser E2E, Dependency Audit and CodeQL all passed. Target-host smoke remains separate.
-- PR #819 — current PR head (verify in GitHub metadata): learning-job domain fencing and stale-escalation regression. Exact-head Browser E2E, Dependency Audit and CodeQL passed; Tests remain queued. Draft; other task adapters are out of scope and explicitly open.
-- PR #820 — current PR head (verify in GitHub metadata): UI module-warning persistence, structured error display, dispatch message ordering, responsive/fault-isolation/model-pull E2E, and the control/API inventory. Exact-head CodeQL passed; Tests, Browser E2E and Dependency Audit remain queued. Draft.
+Status below is a point-in-time snapshot. The GitHub PR check list is authoritative for each latest head; results from an earlier commit must not be reused after code/test changes.
+
+- PR #817 — dispatch launch-vs-timeout classification and uniform API error envelope. The legacy mock-signature failure found on an earlier head was corrected. All four checks for the current branch head (Tests, Browser E2E, Dependency Audit, CodeQL) are queued.
+- PR #818 — recovery of missing/invalid Codex final reports using only a successful final JSONL `agent_message` with exactly one valid completion marker. All four checks pass on its current head.
+- PR #819 — learning-job domain fencing, escalation fencing, and a regression for lease reclamation during model generation. The latest head adds the mid-generation regression; all four checks for that head are queued. Earlier-head results are not reusable.
+- PR #820 — UI module-warning persistence, structured error display, action-message ordering, responsive/fault-isolation/model-pull E2E, and the control/API inventory. The latest head adds success/failure feedback assertions; all four checks for that head are queued. Earlier-head results are not reusable.
 
 ### Previously merged foundations
 
