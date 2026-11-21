@@ -92,5 +92,10 @@
 
   return Object.freeze({updateTaskDashboard,updateTaskBulkControls});
  }
- window.taskViewFactory = Object.freeze({version:1,createTaskView});
+ Object.defineProperty(window, "taskViewFactory", {
+  value: Object.freeze({version:1,createTaskView}),
+  enumerable: true,
+  configurable: false,
+  writable: false
+ });
 })();
