@@ -191,16 +191,24 @@ def handle_candidate_review(
                 return channels.record_review_attempt(
                     candidate_id, channel="web_research", status="unconfigured",
                     details={"reason": "disabled_by_local_user"},
+                    task_context=context, expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+                    expected_payload=payload,
                 )
             except Exception as exc:
                 raise RetryableTaskError("Could not record disabled web-review state.") from exc
         try:
-            return channels.research_candidate_online(candidate_id, query.strip(), limit=3)
+            return channels.research_candidate_online(
+                candidate_id, query.strip(), limit=3,
+                task_context=context, expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+                expected_payload=payload,
+            )
         except Exception as exc:
             try:
                 channels.record_review_attempt(
                     candidate_id, channel="web_research", status="failed",
                     details={"error_type": type(exc).__name__},
+                    task_context=context, expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+                    expected_payload=payload,
                 )
             except Exception as db_exc:
                 raise RetryableTaskError("Could not persist web-review failure.") from db_exc
@@ -208,7 +216,11 @@ def handle_candidate_review(
 
     def review_peer() -> dict[str, Any]:
         try:
-            return channels.consult_configured_peer_ais(candidate_id, limit=3)
+            return channels.consult_configured_peer_ais(
+                candidate_id, limit=3,
+                task_context=context, expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+                expected_payload=payload,
+            )
         except Exception as exc:
             try:
                 channels.record_review_attempt(
