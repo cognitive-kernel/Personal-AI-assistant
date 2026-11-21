@@ -37,11 +37,6 @@ def enqueue_learning_task(job_id: int, *, priority: int = 0) -> dict[str, Any]:
     if existing["status"] not in task_manager.TERMINAL_STATUSES:
         return existing
 
-    context.assert_current(
-        expected_task_type=LEARNING_TASK_TYPE,
-        expected_payload={"job_id": job_id},
-    )
-
     try:
         job = learning.get_job(job_id)
     except KeyError:
