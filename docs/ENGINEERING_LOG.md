@@ -2151,3 +2151,8 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Added regression coverage for same-label reclaim, stale mutation rejection, worker-token uniqueness, and existing restart/retry/control behavior.
 - Validation status: exact-head GitHub CI has not yet run. The prior closed PR #747 is not used as proof: its old head had 24 full-suite failures and the real-Docker sandbox job timed out; those failures included unrelated baseline drift and must not be hidden.
 - Residual scope: domain-level learning transaction fencing, full UI isolation/failure recovery, and target-host Windows acceptance remain open. No database migration has been run against user data; the migration is only defined in code and is additive.
+
+## 2026-11-21 — Windows broker PR rebased after dashboard merge
+- PR #806 was rebased onto the updated `main` after PR #805 added its own engineering-log section at the top of the same file.
+- The rebased tree retains both PR #805's dashboard record and this PR's LocalService ACL evidence; the broker source and Windows regression tests are unchanged.
+- The PR branch now has `main` as its direct parent so it can be merged without carrying duplicate dashboard changes.
