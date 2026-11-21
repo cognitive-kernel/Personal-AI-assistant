@@ -22,7 +22,7 @@ def repair_legacy_rejected_candidates(*, apply: bool = False) -> dict[str, Any]:
     reconstructs source text, assessments, test plans, or knowledge versions
     that the old rejection path already erased.
     """
-    database_path = Path(db.defaults.learning_db_path).expanduser()
+    database_path = Path(db.defaults.learning_db_path).expanduser().resolve()
     if not database_path.is_file():
         raise FileNotFoundError(
             f"Learning database does not exist; refusing to create or initialize it: {database_path}"
