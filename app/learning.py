@@ -131,6 +131,9 @@ def create_job(
     source_text: str | None = None,
     path_topic_id: int | None = None,
     lesson_review: dict[str, Any] | None = None,
+    *,
+    task_context: Any | None = None,
+    authority_job_id: int | None = None,
 ) -> dict[str, Any]:
     topic = topic.strip()
     if not topic or len(topic) > 300:
@@ -145,9 +148,17 @@ def create_job(
     job_id: int | None = None
     with learning_connection() as conn:
         # Path-topic creation is idempotent under concurrent start/resume requests.
-        # Acquire the SQLite write reservation before checking for an active job.
-        if path_topic_id is not None:
+        # Acquire the write reservation before checking the task lease or active job.
+        if path_topic_id is not None or task_context is not None:
             conn.execute("BEGIN IMMEDIATE")
+        if task_context is not None:
+            if authority_job_id is None:
+                raise ValueError("authority_job_id is required for task-authorized job creation.")
+            task_context.assert_current(
+                conn,
+                expected_task_type="learning.run_job",
+                expected_payload={"job_id": authority_job_id},
+            )
             topic_row = conn.execute(
                 "SELECT id FROM learning_path_topics WHERE id=?", (path_topic_id,)
             ).fetchone()
@@ -1838,11 +1849,15 @@ def list_jobs(limit: int = 50) -> list[dict[str, Any]]:
         ids = [row["id"] for row in conn.execute("SELECT id FROM learning_jobs ORDER BY id DESC LIMIT ?", (max(1, min(200, limit)),)).fetchall()]
     return [get_job(job_id) for job_id in ids]
 
-def _enqueue_learning_job(job_id: int) -> dict[str, Any]:
+def _enqueue_learning_job(
+    job_id: int, *, task_context: Any | None = None, authority_job_id: int | None = None
+) -> dict[str, Any]:
     # Import lazily to keep the task adapter's dependency on this module acyclic.
     from .learning_tasks import enqueue_learning_task
 
-    return enqueue_learning_task(job_id)
+    return enqueue_learning_task(
+        job_id, task_context=task_context, authority_job_id=authority_job_id
+    )
 
 
 def _cancel_learning_job_task(job_id: int) -> dict[str, Any] | None:
@@ -2268,7 +2283,8 @@ def stop_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
 
 
 def start_researched_path_learning(
-    path_id: int, *, allow_retry: bool = False
+    path_id: int, *, allow_retry: bool = False,
+    task_context: Any | None = None, authority_job_id: int | None = None,
 ) -> dict[str, Any]:
     """Queue only the first unfinished lesson; later lessons follow terminal success."""
     path = get_learning_path(path_id)
@@ -2280,6 +2296,13 @@ def start_researched_path_learning(
             skipped_completed += 1
             continue
         with learning_connection() as conn:
+            if task_context is not None:
+                conn.execute("BEGIN IMMEDIATE")
+                task_context.assert_current(
+                    conn,
+                    expected_task_type="learning.run_job",
+                    expected_payload={"job_id": authority_job_id},
+                )
             latest = conn.execute(
                 "SELECT id, status FROM learning_jobs WHERE path_topic_id=? ORDER BY id DESC LIMIT 1",
                 (topic["id"],),
@@ -2300,14 +2323,26 @@ def start_researched_path_learning(
                 "blocked_topic": topic["topic"],
                 "message": "ادامهٔ صف به‌دلیل ناموفق‌بودن درس قبلی متوقف است؛ برای تلاش دوباره، شروع مسیر را انتخاب کنید.",
             }
-        job = create_job(topic["topic"], path_topic_id=int(topic["id"]))
+        job = create_job(
+            topic["topic"], path_topic_id=int(topic["id"]),
+            task_context=task_context, authority_job_id=authority_job_id,
+        )
         with learning_connection() as conn:
+            if task_context is not None:
+                conn.execute("BEGIN IMMEDIATE")
+                task_context.assert_current(
+                    conn,
+                    expected_task_type="learning.run_job",
+                    expected_payload={"job_id": authority_job_id},
+                )
             conn.execute(
                 "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP "
                 "WHERE id=? AND path_id=? AND status!='completed'",
                 (topic["id"], path_id),
             )
-        task = _enqueue_learning_job(int(job["id"]))
+        task = _enqueue_learning_job(
+            int(job["id"]), task_context=task_context, authority_job_id=authority_job_id
+        )
         return {
             "path_id": path_id,
             "queued_count": 1,
@@ -2324,9 +2359,18 @@ def start_researched_path_learning(
     }
 
 
-def queue_next_researched_path_topic(path_topic_id: int) -> dict[str, Any] | None:
+def queue_next_researched_path_topic(
+    path_topic_id: int, *, task_context: Any | None = None, authority_job_id: int | None = None
+) -> dict[str, Any] | None:
     """Advance a researched path only after its current lesson completed successfully."""
     with learning_connection() as conn:
+        if task_context is not None:
+            conn.execute("BEGIN IMMEDIATE")
+            task_context.assert_current(
+                conn,
+                expected_task_type="learning.run_job",
+                expected_payload={"job_id": authority_job_id},
+            )
         row = conn.execute(
             "SELECT path_id FROM learning_path_topics WHERE id=?",
             (path_topic_id,),
@@ -2340,7 +2384,9 @@ def queue_next_researched_path_topic(path_topic_id: int) -> dict[str, Any] | Non
         ).fetchone()
     if is_researched is None:
         return None
-    return start_researched_path_learning(path_id, allow_retry=False)
+    return start_researched_path_learning(
+        path_id, allow_retry=False, task_context=task_context, authority_job_id=authority_job_id
+    )
 
 
 def start_path_learning(path_id: int) -> dict[str, Any]:
