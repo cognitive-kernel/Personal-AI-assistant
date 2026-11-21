@@ -102,7 +102,10 @@ API ابتدا active run را رد می‌کند و سپس Broker/state markers
 - RTL، Skip Link با صفحه‌کلید و نبود overflow افقی در عرض‌های 390، 768 و 1440؛
 - قطع عمدی progress module و اثبات ادامهٔ کار Status/Controls/Runs همراه هشدار پایدار؛
 - خطای dispatch با 503 و بررسی code/correlation ID و قفل retry؛
-- pull مدل با تأیید کاربر، polling پیشرفت و بازیابی دکمه.
+- pull مدل با تأیید کاربر، polling پیشرفت، نمایش خطای ساختاریافته و بازیابی دکمه.
+
+
+- مسیر موفق و شکست model pull هر دو در E2E مرورگر پوشش داده شده‌اند؛ خطای موقت Ollama باید code/correlation را نشان دهد و کنترل را دوباره فعال کند.
 
 ### Unit/API
 
