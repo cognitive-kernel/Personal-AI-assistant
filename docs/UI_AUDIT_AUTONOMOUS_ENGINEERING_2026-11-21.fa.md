@@ -99,3 +99,16 @@
 ## محدودیت شواهد این ممیزی
 
 این سند ادعای «تمام باگ‌های UI پیدا شده‌اند» ندارد. برای چنین ادعایی باید تمام صفحات و کنترل‌ها در مرورگر اجرا شوند و به سرویس واقعی/آزمایشی متصل شوند. این گزارش صرفاً یافته‌های قابل استناد از کد و مستندات موجود را ثبت می‌کند و نقشهٔ کار ممیزی زنده را مشخص می‌سازد.
+
+
+## الحاقیهٔ راستی‌آزمایی وضعیت معماری — 2026-11-21
+
+بررسی مجدد وضعیت زندهٔ GitHub و مستندات main یک نکتهٔ مهم را روشن کرد که باید پیش از هر تغییر اجرایی لحاظ شود:
+
+- PR شمارهٔ [799](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/799) با عنوان `Fence durable task ownership with monotonic lease epochs` در تاریخ 2026-11-21 ادغام شده است؛ merge commit برابر `852423ae8b862b834e007eada0033d087a37cd83` است. بنابراین fencing مبتنی بر epoch و تفکیک task manager در main وجود دارد و نباید دوباره از صفر یا با تغییر موازی پیاده‌سازی شود.
+- طبق `docs/PROJECT_STATUS.md`، PR #799 قرارداد lease/epoch، افزایش epoch هنگام claim، اعتبارسنجی owner+epoch+expiry و تست‌های worker قدیمی را اضافه کرده است. همان سند هنوز گیت‌های تکمیل اتصال fencing به تمام mutationهای دامنه‌ای و پذیرش زندهٔ Windows را باز می‌داند.
+- در نتیجه، UIE-01 به معنی «فقدان fencing» نیست؛ معنای دقیق آن **نیاز به ممیزی پوشش end-to-end fencing و مالکیت execution در همهٔ مرزها** است. قبل از هر تغییر، باید commit ادغام‌شدهٔ #799 و تمام call siteهای آن بررسی شوند و فقط شکاف‌های اثبات‌شده اصلاح شوند.
+- اجرای autonomous قبلی [run 44907149358](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44907149358) اکنون completed/failed است. لاگ job نشان می‌دهد دو تلاش Codex اجرا شده و خطای نهایی اعتبارسنجی گزارش بوده است: `Codex report must contain exactly one valid completion marker (found 0)`. task به‌عنوان verified منتشر نشده و طبق پیام کنترلر برای recovery نگه داشته شده است. این evidence باید در تحلیل قرارداد خروجی Codex و recovery لحاظ شود.
+- PR مستنداتی #814 در حال گذراندن Full Windows test suite و تست اصلی است؛ تا پایان همهٔ checkها ادغام انجام نشده است.
+
+**اثر بر برنامه:** Gate B باید با ممیزی کد موجود پس از PR #799 آغاز شود؛ ابتدا state transition و مسیرهای mutation را inventory کن، پوشش lease epoch و قفل‌ها را با تست اثبات کن، سپس تنها شکاف‌های باقی‌مانده را اصلاح کن. پیاده‌سازی تکراری fencing ممنوع است.
