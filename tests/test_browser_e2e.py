@@ -4063,6 +4063,7 @@ def test_autonomous_dashboard_cancel_recovers_after_rejection_and_succeeds():
             timeout=10000,
         )
         assert state["cancel_calls"] == 2
+        assert state["cancelled"] is True
         assert state["status_reads"] >= 3
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
