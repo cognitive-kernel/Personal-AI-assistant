@@ -38,6 +38,25 @@ def test_context_selection_uses_model_and_live_memory_without_fixed_token_floor(
     assert result["selected_context_tokens"] <= result["requested_context_tokens"]
 
 
+def test_context_selection_rejects_hardware_capacity_below_workload_minimum():
+    data = payload()
+    data["minimum_context_tokens"] = 65536
+
+    with pytest.raises(OllamaModelMetadataError, match="below the required minimum 65536"):
+        select_context_window(**data)
+
+
+def test_context_selection_accepts_hardware_capacity_at_workload_minimum():
+    data = payload()
+    data["available_memory_bytes"] = 32 * GIB
+    data["minimum_context_tokens"] = 65536
+    result = select_context_window(**data)
+
+    assert result["hardware_maximum_context_tokens"] >= 65536
+    assert result["selected_context_tokens"] >= 65536
+    assert result["minimum_context_tokens"] == 65536
+
+
 def test_context_selection_accounts_for_loaded_weights_and_kv_cache():
     data = payload()
     data["available_memory_bytes"] = 10 * GIB
