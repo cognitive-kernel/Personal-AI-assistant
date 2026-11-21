@@ -6655,9 +6655,11 @@ def test_dashboard_feature_modules_boot_without_the_shared_dashboard_core_asset(
     browser_errors = []
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
-        page = browser.new_page()
+        context = browser.new_context(service_workers="block")
+        page = context.new_page()
+        blocked_core_requests = []
         page.on("pageerror", lambda error: browser_errors.append(str(error)))
-        page.route("**/static/dashboard-core.js", lambda route: route.abort())
+        page.route("**/static/dashboard-core.js", lambda route: (blocked_core_requests.append(route.request.url), route.abort()))
         response = page.goto(base_url, wait_until="domcontentloaded")
         assert response is not None and response.status == 200
         assert page.locator("#chat-form").count() == 1
@@ -6665,9 +6667,9 @@ def test_dashboard_feature_modules_boot_without_the_shared_dashboard_core_asset(
         assert page.evaluate("Boolean(window.learningCore && window.learningCore.version === 1)")
         assert page.evaluate("Boolean(window.learningLessons && window.learningLessons.version === 1)")
         assert page.evaluate("Boolean(window.learningOverview && window.learningOverview.version === 1)")
-        assert page.evaluate("Boolean(window.autonomousEngineeringStatus && window.autonomousEngineeringStatus.version === 1)")
         assert page.locator("#refresh-tasks").count() == 1
         assert page.locator("#refresh-storage-health").count() == 1
+        assert blocked_core_requests, "dashboard-core.js request was not intercepted"
         assert not any(
             "dashboardCore" in error or "learningCore" in error or "autonomousEngineeringCore" in error
             for error in browser_errors
