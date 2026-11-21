@@ -503,3 +503,5 @@ The subsequent documentation-only evidence update does not change runtime code a
 - Fault-isolation testing exposed and fixed a message-lifecycle defect: asynchronous status polling could overwrite the missing-module warning. `app/static/autonomous-engineering.js` now renders a separate accessible `#agent-module-warning` notice, leaving status polling and `#agent-message` independent. The E2E regression asserts warning persistence.
 
 - Gate-C follow-up in PR #820: the shared browser request helper now preserves backend error code/correlation/retryable metadata; dispatch refresh ordering no longer overwrites the failure message. A new Chromium test asserts the 503 code, correlation ID, and retry lock. Exact-head CI is pending.
+
+- PR #820 also fixes result-message ordering for settings, model pull, manual task, dispatch, pause, resume and cancel: authoritative status refresh now precedes the final success/error message. Browser tests assert these outcomes and cancel recovery.
