@@ -5441,3 +5441,129 @@ def test_autonomous_dashboard_pause_and_resume_controls_follow_server_state():
         assert state["status_reads"] >= 3
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_autonomous_engineering_rtl_mobile_layout_and_keyboard_skip_link():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    status_payload = {
+        "ready": True,
+        "can_dispatch": True,
+        "checks": {
+            "ollama_online": True, "model_installed": True, "model_selectable": True,
+            "model_context_metadata_available": True, "model_context_supported": True,
+            "model_supports_tools": True, "model_tools_metadata_available": True,
+            "model_is_codex_context_variant": False, "codex_installed": False,
+            "runner_running": True, "github_cli_authenticated": True,
+            "github_runs_available": True, "progress_storage_accessible": True,
+        },
+        "model": "model:latest", "models": ["model:latest"],
+        "selectable_models": ["model:latest"], "model_context_length": 65536,
+        "model_recommended_context_length": 32768,
+        "model_tools_verification_method": "ollama_model_capabilities",
+        "interval_hours": 24, "execution_mode": "continuous", "paused": False,
+        "pending_work": {
+            "available": True, "blocked": False,
+            "markers": {"pending_task": False, "pending_owner": False, "pending_pr": False, "cleanup_in_progress": False},
+            "checkpoint": {"available": False, "verified": True}, "reason": None,
+        },
+        "github": {"recent_runs": [], "settings": {"model": "model:latest"}},
+        "codex": {"installed": False, "version": None},
+        "local_only_inference": True,
+    }
+    browser_errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": 390, "height": 844})
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/api/autonomous-engineering/status", lambda route: route.fulfill(status=200, json=status_payload))
+        page.route("**/api/autonomous-engineering/runs", lambda route: route.fulfill(status=200, json={"runs": []}))
+        page.route("**/api/autonomous-engineering/progress**", lambda route: route.fulfill(
+            status=200,
+            json={"current": None, "history": [], "latest_snapshot": None, "events": [], "storage_configured": True},
+        ))
+
+        response = page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        assert page.locator("html").get_attribute("dir") == "rtl"
+        page.keyboard.press("Tab")
+        skip_link = page.locator(".skip-link")
+        assert skip_link.evaluate("(element) => document.activeElement === element")
+        box = skip_link.bounding_box()
+        assert box is not None and box["y"] >= 0
+        page.keyboard.press("Enter")
+        assert page.evaluate("window.location.hash") == "#main-content"
+
+        for width in (390, 768, 1440):
+            page.set_viewport_size({"width": width, "height": 900})
+            page.wait_for_timeout(50)
+            overflow = page.evaluate(
+                "() => document.documentElement.scrollWidth - document.documentElement.clientWidth"
+            )
+            assert overflow <= 1, f"Unexpected horizontal page overflow at {width}px: {overflow}px"
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+def test_autonomous_engineering_progress_module_failure_isolated_from_other_modules():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    status_payload = {
+        "ready": True,
+        "can_dispatch": True,
+        "checks": {
+            "ollama_online": True, "model_installed": True, "model_selectable": True,
+            "model_context_metadata_available": True, "model_context_supported": True,
+            "model_supports_tools": True, "model_tools_metadata_available": True,
+            "model_is_codex_context_variant": False, "codex_installed": False,
+            "runner_running": True, "github_cli_authenticated": True,
+            "github_runs_available": True, "progress_storage_accessible": True,
+        },
+        "model": "model:latest", "models": ["model:latest"],
+        "selectable_models": ["model:latest"], "model_context_length": 65536,
+        "model_recommended_context_length": 32768,
+        "model_tools_verification_method": "ollama_model_capabilities",
+        "interval_hours": 24, "execution_mode": "continuous", "paused": False,
+        "pending_work": {
+            "available": True, "blocked": False,
+            "markers": {"pending_task": False, "pending_owner": False, "pending_pr": False, "cleanup_in_progress": False},
+            "checkpoint": {"available": False, "verified": True}, "reason": None,
+        },
+        "github": {"recent_runs": [], "settings": {"model": "model:latest"}},
+        "codex": {"installed": False, "version": None},
+        "local_only_inference": True,
+    }
+    state = {"runs_reads": 0}
+    browser_errors = []
+
+    def mock_runs(route):
+        state["runs_reads"] += 1
+        route.fulfill(status=200, json={"runs": []})
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/static/autonomous-engineering-progress.js", lambda route: route.abort())
+        page.route("**/api/autonomous-engineering/status", lambda route: route.fulfill(status=200, json=status_payload))
+        page.route("**/api/autonomous-engineering/runs", mock_runs)
+        response = page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        page.wait_for_function(
+            "() => document.querySelector('#agent-readiness')?.textContent !== 'در حال بررسی'",
+            timeout=10000,
+        )
+        page.wait_for_function(
+            "() => document.querySelector('#dispatch-agent')?.disabled === false",
+            timeout=10000,
+        )
+        for _ in range(100):
+            if state["runs_reads"]:
+                break
+            page.wait_for_timeout(50)
+        assert state["runs_reads"] >= 1, "The independent run-history module did not initialize."
+        assert "پیشرفت" in page.locator("#agent-message").inner_text()
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
