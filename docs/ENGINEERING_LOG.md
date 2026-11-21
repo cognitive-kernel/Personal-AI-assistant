@@ -2247,3 +2247,10 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - The new fault-isolation browser test exposed a real UI defect: the main module reported a missing feature module through `#agent-message`, but the independent status poll overwrote that message after it completed. A user could lose the only indication that part of the console had failed to load.
 - The main module now renders a separate persistent `#agent-module-warning` alert using the existing notice style and accessible `role=alert`/`aria-live` semantics. Status polling continues to own `#agent-message`; working modules remain independent.
 - The browser regression now verifies that the progress module can fail while status, controls, and run history still initialize, and that the warning remains visible after status refresh. No module execution or task state is changed by the warning.
+
+
+## 2026-11-21 — Preserve structured dispatch errors in the UI
+
+- Gate-C review found that the shared UI request helper discarded backend error headers (`X-Error-Code`, `X-Correlation-ID`, `X-Retryable`), and the no-body dispatch handler wrote its error before an authoritative status refresh that immediately overwrote it.
+- The shared request helper now retains `code`, `correlationId`, `retryable`, and bounded `safeDetails` metadata, and includes the safe code/correlation ID in the displayed message. Dispatch/resume/manual-task retry lockout now respects the retryable flag; no automatic retry is introduced.
+- Dispatch success and failure both refresh authoritative status before setting the final user message, so the result is not overwritten. A Chromium regression simulates a 503 launch failure and verifies the error code, correlation ID, and retry lock remain visible.
