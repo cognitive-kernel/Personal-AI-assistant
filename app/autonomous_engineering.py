@@ -1,6 +1,7 @@
 """Local diagnostics and explicit controls for the Ollama-backed GitHub engineering agent."""
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -743,11 +744,15 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) ->
     if result.returncode != 0:
         correlation_id = uuid.uuid4().hex
         safe_stderr = _sanitize_workflow_log(str(result.stderr or ""))
+        stderr_fingerprint = (
+            hashlib.sha256(safe_stderr.encode("utf-8")).hexdigest()[:16]
+            if safe_stderr else "empty"
+        )
         _STATUS_LOGGER.error(
-            "Autonomous workflow dispatch failed; correlation_id=%s exit_code=%s stderr=%s",
+            "Autonomous workflow dispatch failed; correlation_id=%s exit_code=%s stderr_sha256=%s",
             correlation_id,
             result.returncode,
-            safe_stderr[-1200:],
+            stderr_fingerprint,
         )
         raise HTTPException(
             status_code=502,
