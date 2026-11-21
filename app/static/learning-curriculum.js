@@ -109,7 +109,6 @@
       }
      });
      proposalControls.append(generateProposalsButton, proposalOutput);
-     details.append(proposalControls);
   return proposalControls;
  }
 
