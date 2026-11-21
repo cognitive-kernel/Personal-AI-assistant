@@ -243,11 +243,16 @@ def recover_final_agent_message_report(
         return False
     report = Path(report_path)
     try:
-        existing = report.read_text(encoding="utf-8-sig") if report.is_file() else ""
+        try:
+            existing = report.read_text(encoding="utf-8-sig") if report.is_file() else ""
+        except UnicodeError:
+            # A corrupt temporary report is invalid, not a reason to discard
+            # the independently validated final message from the JSONL turn.
+            existing = ""
         if len(_CODEX_COMPLETION_MARKERS.findall(existing)) == 1:
             return False
         report.write_text(message + "\n", encoding="utf-8")
-    except (OSError, UnicodeError):
+    except OSError:
         return False
     return True
 
