@@ -258,6 +258,9 @@ def handle_learning_job(
 
     status = job["status"]
     if status in _TERMINAL_LEARNING_STATUSES:
+        context.assert_current(
+            expected_task_type=LEARNING_TASK_TYPE, expected_payload={"job_id": job_id}
+        )
         if status == "rejected":
             _record_learning_escalation(
                 context.task_id, job_id, "quality_rejected", job.get("error") or "Lesson did not pass quality checks."
@@ -269,11 +272,17 @@ def handle_learning_job(
     # A task is reclaimed only after its previous lease expires. A stale learning
     # status must therefore be reset before this newly claimed attempt can resume it.
     if status in {"failed", "running"}:
-        context.control_status()  # Verify this worker still owns a live task lease.
         with learning_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            context.assert_current(
+                conn,
+                expected_task_type=LEARNING_TASK_TYPE,
+                expected_payload={"job_id": job_id},
+            )
             conn.execute(
                 """UPDATE learning_jobs
-                   SET status='queued', error=NULL, updated_at=CURRENT_TIMESTAMP
+                   SET status='queued', execution_owner=NULL, error=NULL,
+                       updated_at=CURRENT_TIMESTAMP
                    WHERE id=? AND status IN ('failed', 'running')""",
                 (job_id,),
             )
@@ -286,9 +295,15 @@ def handle_learning_job(
         )
 
     context.checkpoint({"phase": "learning_queued", "job_id": job_id})
+    context.assert_current(
+        expected_task_type=LEARNING_TASK_TYPE, expected_payload={"job_id": job_id}
+    )
     try:
-        learning.run_job(job_id)
+        learning.run_job(job_id, task_context=context)
     except learning.LearningError as exc:
+        context.assert_current(
+            expected_task_type=LEARNING_TASK_TYPE, expected_payload={"job_id": job_id}
+        )
         cause = exc.__cause__
         task = task_manager.get_task(context.task_id) or {}
         attempts = int(task.get("attempts", 0))
@@ -319,6 +334,9 @@ def handle_learning_job(
             )
         raise RetryableTaskError("Learning job execution failed; retry may succeed.") from exc
 
+    context.assert_current(
+        expected_task_type=LEARNING_TASK_TYPE, expected_payload={"job_id": job_id}
+    )
     result = learning.get_job(job_id)
     status = result["status"]
     if status == "rejected":
