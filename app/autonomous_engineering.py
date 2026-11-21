@@ -20,6 +20,9 @@ from typing import Any
 
 import psutil
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
@@ -48,6 +51,107 @@ _STATUS_EXECUTOR = ThreadPoolExecutor(
 _STATUS_EXECUTOR_SLOTS = threading.BoundedSemaphore(_STATUS_EXECUTOR_MAX_WORKERS)
 _STATUS_LOGGER = logging.getLogger(__name__)
 
+_HTTP_ERROR_CODES = {
+    400: "AUTONOMOUS_ENGINEERING_BAD_REQUEST",
+    401: "AUTONOMOUS_ENGINEERING_UNAUTHORIZED",
+    403: "AUTONOMOUS_ENGINEERING_FORBIDDEN",
+    404: "AUTONOMOUS_ENGINEERING_NOT_FOUND",
+    408: "AUTONOMOUS_ENGINEERING_TIMEOUT",
+    409: "AUTONOMOUS_ENGINEERING_CONFLICT",
+    422: "AUTONOMOUS_ENGINEERING_VALIDATION_FAILED",
+    429: "AUTONOMOUS_ENGINEERING_RATE_LIMITED",
+    500: "AUTONOMOUS_ENGINEERING_INTERNAL_ERROR",
+    502: "AUTONOMOUS_ENGINEERING_UPSTREAM_ERROR",
+    503: "AUTONOMOUS_ENGINEERING_UNAVAILABLE",
+    504: "AUTONOMOUS_ENGINEERING_TIMEOUT",
+}
+_RETRYABLE_HTTP_STATUSES = {408, 425, 429, 500, 502, 503, 504}
+
+
+def _structured_error_response(
+    *, status_code: int, message: str, detail: Any, headers: dict[str, str] | None = None,
+    code: str | None = None, retryable: bool | None = None, safe_details: dict[str, Any] | None = None,
+) -> JSONResponse:
+    response_headers = dict(headers or {})
+    correlation_id = response_headers.get("X-Correlation-ID") or uuid.uuid4().hex
+    error_code = response_headers.get("X-Error-Code") or code or _HTTP_ERROR_CODES.get(
+        status_code, "AUTONOMOUS_ENGINEERING_HTTP_ERROR"
+    )
+    retry_header = response_headers.get("X-Retryable")
+    can_retry = (
+        retry_header.casefold() == "true" if retry_header is not None
+        else (status_code in _RETRYABLE_HTTP_STATUSES if retryable is None else retryable)
+    )
+    response_headers.update({
+        "X-Correlation-ID": correlation_id,
+        "X-Error-Code": error_code,
+        "X-Retryable": "true" if can_retry else "false",
+    })
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "detail": detail,
+            "code": error_code,
+            "message": message,
+            "correlation_id": correlation_id,
+            "retryable": can_retry,
+            "safe_details": safe_details if isinstance(safe_details, dict) else {},
+        },
+        headers=response_headers,
+    )
+
+
+class AutonomousEngineeringAPIRoute(APIRoute):
+    """Keep all Autonomous Engineering API failures on one safe diagnostic contract."""
+
+    def get_route_handler(self):
+        original_handler = super().get_route_handler()
+
+        async def structured_handler(request):
+            try:
+                return await original_handler(request)
+            except HTTPException as exc:
+                message = exc.detail if isinstance(exc.detail, str) else "درخواست ناموفق بود."
+                return _structured_error_response(
+                    status_code=exc.status_code,
+                    message=message,
+                    detail=exc.detail if isinstance(exc.detail, (str, list, dict)) else message,
+                    headers=exc.headers,
+                    safe_details=getattr(exc, "safe_details", None),
+                )
+            except RequestValidationError as exc:
+                errors = []
+                for error in exc.errors():
+                    location = error.get("loc", ())
+                    errors.append({
+                        "loc": [str(part) for part in location if isinstance(part, (str, int))],
+                        "msg": str(error.get("msg") or "Invalid value"),
+                        "type": str(error.get("type") or "validation_error"),
+                    })
+                return _structured_error_response(
+                    status_code=422,
+                    message="ورودی درخواست معتبر نیست.",
+                    detail=errors,
+                    code="AUTONOMOUS_ENGINEERING_VALIDATION_FAILED",
+                    retryable=False,
+                    safe_details={"validation_errors": errors},
+                )
+            except Exception:
+                correlation_id = uuid.uuid4().hex
+                _STATUS_LOGGER.exception(
+                    "Autonomous Engineering API failed; correlation_id=%s", correlation_id
+                )
+                return _structured_error_response(
+                    status_code=500,
+                    message="خطای داخلی سرویس رخ داد؛ شناسهٔ پیگیری را برای بررسی ارائه کنید.",
+                    detail="خطای داخلی سرویس رخ داد.",
+                    headers={"X-Correlation-ID": correlation_id},
+                    code="AUTONOMOUS_ENGINEERING_INTERNAL_ERROR",
+                    retryable=False,
+                )
+
+        return structured_handler
+
 
 def _is_windows() -> bool:
     """Expose the platform boundary so cleanup behavior can be tested portably."""
@@ -65,6 +169,7 @@ def _storage_and_pending_work_status() -> dict[str, Any]:
 router = APIRouter(
     prefix="/api/autonomous-engineering",
     tags=["autonomous-engineering"],
+    route_class=AutonomousEngineeringAPIRoute,
     dependencies=[Depends(require_loopback_client)],
 )
 
