@@ -159,6 +159,7 @@ def create_job(
                 expected_task_type="learning.run_job",
                 expected_payload={"job_id": authority_job_id},
             )
+        if path_topic_id is not None:
             topic_row = conn.execute(
                 "SELECT id FROM learning_path_topics WHERE id=?", (path_topic_id,)
             ).fetchone()
