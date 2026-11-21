@@ -6668,6 +6668,7 @@ def test_dashboard_feature_modules_boot_without_the_shared_dashboard_core_asset(
         assert page.evaluate("Boolean(window.learningLessons && window.learningLessons.version === 1)")
         assert page.evaluate("Boolean(window.learningOverview && window.learningOverview.version === 1)")
         assert page.evaluate("Boolean(window.experienceMemoryConsent && window.experienceMemoryConsent.version === 1)")
+        assert page.evaluate("Boolean(window.cloudResourceCardsFactory && window.cloudResourceCardsFactory.version === 1)")
         assert page.locator("#refresh-tasks").count() == 1
         assert page.locator("#refresh-storage-health").count() == 1
         assert page.evaluate("Boolean(window.taskDashboard && window.taskDashboard.version === 1)")
