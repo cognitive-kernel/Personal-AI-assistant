@@ -190,6 +190,8 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert "gpt-oss:20b" not in page
     assert 'هیچ مدل اصلی قابل انتخابی از Ollama شناسایی نشد' in status_script
     assert "model_context_length" in status_script
+    assert "contextRequirementText" in status_script
+    assert "حداقل لازم برای Codex" in status_script
     assert "model_supports_tools" in status_script
     assert "model_selectable" in status_script
     assert "نسخهٔ داخلی Context" in status_script
@@ -559,6 +561,32 @@ def test_save_settings_rejects_uninstalled_or_unsupported_models_before_github_w
 
     assert error.value.status_code == expected_status
     assert calls == []
+
+
+def test_save_settings_rejects_hardware_context_below_codex_minimum(monkeypatch):
+    monkeypatch.setattr(agent, "_ollama_status", lambda model: {
+        "online": True,
+        "model": model,
+        "model_installed": True,
+        "model_metadata_available": True,
+        "model_context_supported": False,
+        "model_recommended_context_length": 11656,
+        "model_supports_tools": True,
+    })
+    monkeypatch.setattr(
+        agent.shutil,
+        "which",
+        lambda _: (_ for _ in ()).throw(AssertionError("GitHub must not be changed for an unusable context")),
+    )
+
+    with pytest.raises(HTTPException) as error:
+        agent.save_autonomous_engineering_settings(
+            agent.EngineeringSettings(model="gpt-oss:20b", interval_hours=24, execution_mode="continuous")
+        )
+
+    assert error.value.status_code == 422
+    assert "۶۵۵۳۶" in error.value.detail
+    assert "11,656" in error.value.detail
 
 
 def test_save_settings_updates_model_and_hourly_interval(monkeypatch):
@@ -1361,6 +1389,8 @@ def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_c
     assert "Get-AutomaticContext" in context_gate
     assert "Assert-ToolCallingCapability" in context_gate
     assert "ollama_context.py" in context_gate
+    assert "minimum_context_tokens = 65536" in context_gate
+    assert "Codex requires at least 65536" in context_gate
     assert "return [int64][Math]::Min($Maximum, 512)" not in context_gate
     assert "return [int64][Math]::Min($Maximum, 2048)" not in context_gate
     assert "AUTONOMOUS_ENGINEERING_MODEL=$codexModel" in context_gate
@@ -1697,7 +1727,7 @@ def test_collect_status_runs_independent_probes_concurrently(monkeypatch):
         "model_is_codex_context_variant": False,
         "model_metadata_available": True, "model_context_supported": True,
         "model_tools_metadata_available": True, "model_supports_tools": True,
-        "model_capabilities": ["tools"], "model_context_length": 32768,
+        "model_capabilities": ["tools"], "model_context_length": 65536,
     })
     monkeypatch.setattr(agent, "_codex_status", codex)
     monkeypatch.setattr(agent, "_runner_status", runner)
