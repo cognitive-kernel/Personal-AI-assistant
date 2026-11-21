@@ -2259,3 +2259,11 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Validation details expose only field location/message/type and never echo submitted values. Unexpected exceptions are logged with correlation ID and returned as a redacted 500. Existing explicit dispatch headers are preserved.
 - Removed raw GitHub CLI stderr from the run-delete error response; only a bounded safe warning (run ID, return code, stderr-present boolean) is logged.
 - Added API contract tests for HTTPException compatibility, validation redaction, and unexpected-exception redaction. Exact-head CI is required.
+
+
+## 2026-11-22 — Codex no-final-message diagnosis and dispatch error boundary
+
+- Reproduced from Windows Runner workflow `44932980718`, job `137009509972`: attempt 1 ran for about 25 minutes and emitted 95 JSONL events; attempt 2 ran for about 6 minutes and emitted 26 events, then the Runner reported `Warning: no last agent message` and wrote an empty `--output-last-message` report. The controller rejected the report because it contained no completion marker and stopped after its bounded two-attempt budget. The task was not discarded or published as verified; no artifact was produced.
+- The dashboard's workflow-failure summarizer now recognizes that exact warning and prioritizes a clear diagnosis over the generic retry-budget error. It explicitly tells the operator to preserve the durable task/checkpoint and inspect terminal events before retrying; it does not claim to repair the Codex stream.
+- The `/resume` endpoint now distinguishes a definitive local CLI launch failure (correlated, retryable) from an ambiguous dispatch timeout (correlated, non-retryable) and a nonzero CLI result (correlated, non-retryable), preventing an automatic duplicate workflow dispatch. Unmatched 404/405 responses under `/api/autonomous-engineering` now use the same structured error contract; unrelated API routes retain their existing responses.
+- Regression tests cover missing final agent message, resume timeout/launch failure, structured unmatched 404/405, and non-Autonomous route isolation. Exact-head CI is pending. No workflow, task, checkpoint, branch, or user data was cancelled or deleted.
