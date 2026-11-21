@@ -2112,3 +2112,13 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Added regression coverage for same-label reclaim, stale mutation rejection, worker-token uniqueness, and existing restart/retry/control behavior.
 - Validation status: exact-head GitHub CI has not yet run. The prior closed PR #747 is not used as proof: its old head had 24 full-suite failures and the real-Docker sandbox job timed out; those failures included unrelated baseline drift and must not be hidden.
 - Residual scope: domain-level learning transaction fencing, full UI isolation/failure recovery, and target-host Windows acceptance remain open. No database migration has been run against user data; the migration is only defined in code and is additive.
+
+
+## 2026-11-21 — Learning-job domain execution fencing (in progress)
+
+- Added migration 49 for `execution_owner`, monotonic `execution_epoch`, and the originating queue task ID/epoch. The migration is additive and retains existing jobs, lessons, sources, and evidence.
+- Added `learning_execution.py` to own the domain lease contract. A learning job claim now validates the exact `learning.run_job` queue payload and epoch in the same transaction that increments the domain epoch.
+- `learning.run_job` validates both queue and domain ownership before source persistence, model calls, completion, and failure settlement. The final lesson/evidence write is a compare-and-set transaction over the current domain epoch.
+- The queue handler no longer resets a running learning job while its recorded queue lease remains live; stale queue owners can be recovered only after the old lease is no longer current.
+- Added tests for domain epoch reclaim, exact queue-task payload binding, additive migration, and duplicate-task non-interference.
+- Validation status: pending exact-head GitHub Actions; no local or target-host test result is claimed.
