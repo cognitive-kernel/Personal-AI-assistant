@@ -882,7 +882,12 @@ def run_job(job_id: int, *, task_context=None) -> None:
         # (for example, SQLite errors while persisting web evidence). Keep the job
         # terminally observable instead of leaving it stuck in "running" forever.
         if not source_text and source_kind == "model_knowledge_no_external_source":
-            source_text, source_kind = _discover_and_store_sources(job_id, topic, task_context=task_context)
+            if task_context is None:
+                source_text, source_kind = _discover_and_store_sources(job_id, topic)
+            else:
+                source_text, source_kind = _discover_and_store_sources(
+                    job_id, topic, task_context=task_context
+                )
         verified_factual_context = _verified_factual_context_for_topic(topic)
         failure_warnings = _failure_warnings_for_topic(topic, limit=3)
         settings = get_settings()
