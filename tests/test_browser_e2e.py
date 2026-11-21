@@ -5331,3 +5331,113 @@ def test_autonomous_dashboard_explains_durable_pending_task_blockers():
         assert page.locator("#send-agent-task").is_disabled()
         assert page.locator("#dispatch-agent").is_enabled(), "Resume/reconcile must remain available while new-task submission is blocked."
         browser.close()
+
+
+def test_autonomous_dashboard_pause_and_resume_controls_follow_server_state():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    state = {"paused": False, "pause_calls": 0, "resume_calls": 0, "status_reads": 0}
+    browser_errors = []
+
+    def status_payload():
+        state["status_reads"] += 1
+        return {
+            "ready": True,
+            "can_dispatch": not state["paused"],
+            "checks": {
+                "ollama_online": True,
+                "model_installed": True,
+                "model_selectable": True,
+                "model_context_metadata_available": True,
+                "model_context_supported": True,
+                "model_supports_tools": True,
+                "model_tools_metadata_available": True,
+                "model_is_codex_context_variant": False,
+                "codex_installed": False,
+                "runner_running": True,
+                "github_cli_authenticated": True,
+                "github_runs_available": True,
+                "progress_storage_accessible": True,
+            },
+            "model": "model:latest",
+            "models": ["model:latest"],
+            "selectable_models": ["model:latest"],
+            "model_context_length": 65536,
+            "model_recommended_context_length": 32768,
+            "model_tools_verification_method": "ollama_model_capabilities",
+            "interval_hours": 24,
+            "execution_mode": "continuous",
+            "paused": state["paused"],
+            "github": {
+                "recent_runs": [],
+                "settings": {"model": "model:latest"},
+            },
+            "codex": {"installed": False, "version": None},
+            "local_only_inference": True,
+        }
+
+    def pause_route(route):
+        state["pause_calls"] += 1
+        state["paused"] = True
+        route.fulfill(status=200, json={"accepted": True, "paused": True, "message": "safe pause confirmed"})
+
+    def resume_route(route):
+        state["resume_calls"] += 1
+        state["paused"] = False
+        route.fulfill(status=200, json={"accepted": True, "paused": False, "message": "resume confirmed"})
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route(
+            "**/api/autonomous-engineering/status",
+            lambda route: route.fulfill(status=200, json=status_payload()),
+        )
+        page.route(
+            "**/api/autonomous-engineering/progress**",
+            lambda route: route.fulfill(status=200, json={
+                "current": None, "history": [], "latest_snapshot": None,
+                "events": [], "storage_configured": True,
+            }),
+        )
+        page.route(
+            "**/api/autonomous-engineering/runs",
+            lambda route: route.fulfill(status=200, json={"runs": []}),
+        )
+        page.route("**/api/autonomous-engineering/pause", pause_route)
+        page.route("**/api/autonomous-engineering/resume", resume_route)
+
+        response = page.goto(
+            base_url.rstrip("/") + "/autonomous-engineering",
+            wait_until="domcontentloaded",
+        )
+        assert response is not None and response.status == 200
+        pause = page.locator("#pause-agent")
+        resume = page.locator("#resume-agent")
+        page.wait_for_function(
+            "() => document.querySelector('#pause-agent')?.disabled === false",
+            timeout=10000,
+        )
+        assert resume.is_disabled()
+
+        pause.click()
+        page.wait_for_function(
+            "() => document.querySelector('#pause-agent')?.disabled === true && document.querySelector('#resume-agent')?.disabled === false",
+            timeout=10000,
+        )
+        assert page.locator("#agent-message").inner_text() == "safe pause confirmed"
+
+        resume.click()
+        page.wait_for_function(
+            "() => document.querySelector('#pause-agent')?.disabled === false && document.querySelector('#resume-agent')?.disabled === true",
+            timeout=10000,
+        )
+        assert page.locator("#agent-message").inner_text() == "resume confirmed"
+        assert state["pause_calls"] == 1
+        assert state["resume_calls"] == 1
+        assert state["status_reads"] >= 3
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
