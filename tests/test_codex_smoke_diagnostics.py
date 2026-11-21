@@ -456,6 +456,19 @@ def test_jsonl_report_recovery_replaces_invalid_nonempty_output_with_valid_final
     assert report.read_text(encoding="utf-8") == "Recovered final report.\nTASK_COMPLETE\n"
 
 
+def test_jsonl_report_recovery_replaces_undecodable_existing_report(tmp_path):
+    report = tmp_path / "codex-report.md"
+    report.write_bytes(b"Existing report with invalid UTF-8: \\xff\\xfe")
+
+    recovered = progress.recover_final_agent_message_report(
+        report, "Recovered final report.\\nTASK_COMPLETE",
+        turn_completed=True, turn_failed=False,
+    )
+
+    assert recovered is True
+    assert report.read_text(encoding="utf-8") == "Recovered final report.\\nTASK_COMPLETE\\n"
+
+
 def test_jsonl_report_recovery_never_overwrites_an_already_valid_output_last_message(tmp_path):
     report = tmp_path / "codex-report.md"
     report.write_text("Existing verified report.\nTASK_COMPLETE\n", encoding="utf-8")
