@@ -4058,8 +4058,8 @@ def test_autonomous_dashboard_cancel_recovers_after_rejection_and_succeeds():
         assert "temporary cancel failure" in page.locator("#agent-message").inner_text()
         cancel.click()
         page.wait_for_function(
-            "() => document.querySelector('#cancel-agent')?.disabled === true &&
-                document.querySelector('#agent-message')?.textContent.includes('active run cancellation requested')",
+            """() => document.querySelector('#cancel-agent')?.disabled === true &&
+                document.querySelector('#agent-message')?.textContent.includes('active run cancellation requested')""",
             timeout=10000,
         )
         assert state["cancel_calls"] == 2
