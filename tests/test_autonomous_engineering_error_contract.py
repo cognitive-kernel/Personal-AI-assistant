@@ -76,6 +76,6 @@ def test_unexpected_exception_is_redacted_and_correlated():
     assert payload["code"] == "AUTONOMOUS_ENGINEERING_INTERNAL_ERROR"
     assert payload["retryable"] is False
     assert payload["correlation_id"]
-    assert payload["safe_details"] == {}
+    assert payload["safe_details"] == {"exception_type": "RuntimeError"}
     assert "secret-token-must-not-reach-the-client" not in response.text
     assert response.headers["X-Correlation-ID"] == payload["correlation_id"]
