@@ -493,3 +493,11 @@ Exact tested code head: ab703a284752c80531e9f25e0b7ad53a04c453a0.
 Evidence: Tests/Windows regressions https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863471 ; Browser E2E https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863440 ; Dependency audit https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863452 ; CodeQL https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863507 .
 
 The subsequent documentation-only evidence update does not change runtime code and is followed by a fresh exact-head CI run. Target-host cross-account ACL verification, non-admin sandbox smoke/soak, crash/restart acceptance, and independent security review remain pending. Durable Pause remains enabled; no Runner, service, or autonomous process was started.
+
+
+## 2026-11-21 — Gate-B follow-up: learning-job domain fencing
+
+- Verified live GitHub state: PR #799 (task lease epochs), #808 (Autonomous Engineering UI module split), #815 (Codex JSONL report recovery), and #816 (browser pause/resume coverage) are merged into `main`.
+- PR #817 and #818 remain open while exact-head tests, browser E2E and CodeQL run; their new review findings were addressed with focused regressions. Neither PR is considered accepted until all checks finish.
+- Gate-B audit found the primary `learning.run_job` handler did not pass its `TaskContext` into `learning.run_job`; queue fencing alone did not fence independent learning-domain writes. Branch `fix/learning-job-domain-fencing-20261121` now passes and validates the exact task claim in the same SQLite write transactions as the learning-job claim, source/evidence persistence, failure settlement and final lesson/evidence/candidate writes. A stale-epoch regression was added.
+- Remaining Gate-B scope: audit and fence other task handlers/domain mutation paths (candidate review, curriculum, factual verification and any method/quality-gate writes), then complete Browser E2E fault-isolation and live Windows Runner acceptance. Existing data and checkpoints have not been touched.
