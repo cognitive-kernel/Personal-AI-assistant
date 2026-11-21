@@ -84,7 +84,7 @@ def test_experience_memory_is_an_isolated_module_with_explicit_core_contract():
     assert "const experienceStatuses" not in page
     assert "async function refreshExperiences()" in module
     assert "async function refreshExperienceAutoCaptureConsent()" in module
-    assert "core.version!==1" in module
+    assert "window.dashboardCore&&window.dashboardCore.version===1?window.dashboardCore:createLocalDashboardCore()" in module
     assert "const {api,el,appendText}=core;" in module
     assert "refreshExperienceAutoCaptureConsent();" in module
     assert module.rstrip().endswith("})();")
