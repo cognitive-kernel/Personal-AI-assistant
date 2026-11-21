@@ -74,7 +74,7 @@ API ابتدا active run را رد می‌کند و سپس Broker/state markers
 
 ## 5. Polling، پاسخ قدیمی و خطا
 
-- Core timeout: status برابر 40 ثانیه، progress برابر 20 ثانیه، سایر درخواست‌ها 120 ثانیه.
+- Core timeout: status برابر 40 ثانیه، progress برابر 20 ثانیه، سایر درخواست‌ها 120 ثانیه. Polling دوره‌ای Status و Runs هر 30 ثانیه و Progress هر 5 ثانیه انجام می‌شود.
 - Status: single-flight؛ refresh بعد از mutation منتظر درخواست قبلی می‌ماند و سپس snapshot authoritative می‌گیرد.
 - Runs: sequence counter؛ پاسخ درخواست قدیمی دور انداخته می‌شود.
 - Progress: انتخاب period/date در زمان پاسخ دوباره اعتبارسنجی می‌شود؛ درخواست متناظر با انتخاب جدید صف می‌شود.
