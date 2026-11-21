@@ -3,6 +3,10 @@ from __future__ import annotations
 from scripts import autonomous_engineering_codex_config as config
 
 
+def test_local_codex_task_budget_allows_slow_cpu_inference():
+    assert config.CODEX_TASK_TIMEOUT_SECONDS == 3600
+
+
 def _overrides(arguments: list[str]) -> set[str]:
     return {
         arguments[index + 1]

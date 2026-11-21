@@ -17,7 +17,7 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parents[1]
 CODEX_SMOKE_TIMEOUT_SECONDS = 300
-CODEX_TASK_TIMEOUT_SECONDS = 1800
+CODEX_TASK_TIMEOUT_SECONDS = 3600
 
 
 def codex_command(
