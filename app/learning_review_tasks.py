@@ -113,6 +113,8 @@ def handle_candidate_review(
                     channel=channel,
                     status=channel_status,
                     error_type=str(value.get("error_type", value.get("reason", "unknown"))),
+                    task_context=context, expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+                    expected_payload=payload,
                 )
             except Exception as exc:
                 # The ledger result is already durable. Retrying is safe: the terminal
@@ -381,6 +383,8 @@ def handle_candidate_sandbox_review(
                     candidate_id, topic=str(row["topic"] or f"Candidate {candidate_id}"),
                     content_sha256=actual_hash, test_plan_sha256=actual_plan_hash,
                     outcomes=saved.get("outcomes", []),
+                    task_context=context, expected_task_type=LEARNING_SANDBOX_REVIEW_TASK_TYPE,
+                    expected_payload=payload,
                 )
             except Exception as exc:
                 raise RetryableTaskError("Sandbox failure exists, but its learning experience could not be persisted.") from exc
@@ -529,6 +533,8 @@ def handle_candidate_sandbox_review(
                 content_sha256=actual_hash,
                 test_plan_sha256=actual_plan_hash,
                 outcomes=outcomes,
+                task_context=context, expected_task_type=LEARNING_SANDBOX_REVIEW_TASK_TYPE,
+                expected_payload=payload,
             )
         except Exception as exc:
             raise RetryableTaskError("Sandbox failure was recorded, but its learning experience could not be persisted.") from exc
