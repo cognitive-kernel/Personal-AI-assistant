@@ -295,17 +295,21 @@ def test_dashboard_decomposition_inventory_matches_the_ui_audit():
         assert module_name in audit
         assert f'/static/{module_name}' in page
 
-def test_learning_path_workflows_use_small_versioned_core_lesson_and_overview_modules():
+def test_learning_path_workflows_use_small_versioned_feature_modules():
     page = (STATIC / "index.html").read_text(encoding="utf-8")
     core = (STATIC / "learning-core.js").read_text(encoding="utf-8")
     lessons = (STATIC / "learning-lessons.js").read_text(encoding="utf-8")
     overview = (STATIC / "learning-overview.js").read_text(encoding="utf-8")
+    history = (STATIC / "learning-history.js").read_text(encoding="utf-8")
+    curriculum = (STATIC / "learning-curriculum.js").read_text(encoding="utf-8")
     paths = (STATIC / "learning.js").read_text(encoding="utf-8")
 
     ordered = [
         "learning-core.js",
         "learning-lessons.js",
         "learning-overview.js",
+        "learning-history.js",
+        "learning-curriculum.js",
         "learning.js",
         "learning-review.js",
     ]
@@ -315,22 +319,32 @@ def test_learning_path_workflows_use_small_versioned_core_lesson_and_overview_mo
     assert "version:1" in core
     assert "window.learningLessons=Object.freeze({version:1,startLesson,stopLesson})" in lessons
     assert "window.learningOverview=Object.freeze(" in overview
-    assert "window.learningCore" in paths
-    assert "window.learningLessons" in paths
-    assert "window.learningOverview" in paths
+    assert "window.learningHistory = Object.freeze({version: 1, renderTopicJobHistory})" in history
+    assert "window.learningCurriculum = Object.freeze({version: 1, createControls: createCurriculumControls})" in curriculum
+    assert "const history=window.learningHistory;" in paths
+    assert "const curriculum=window.learningCurriculum;" in paths
+    assert "if (history && history.version === 1)" in paths
+    assert "if (curriculum && curriculum.version === 1)" in paths
+    assert "const lessonsAvailable=Boolean(" in paths
+    assert "const overviewAvailable=Boolean(" in paths
+    assert "if (lessonsAvailable)" in paths
+    assert "if (overviewAvailable) await refreshDueLearningReviews();" in paths
+    assert "function renderTopicJobHistory(" not in paths
+    assert "function renderCurriculumProposals(" not in paths
     assert "async function refreshDueLearningReviews()" not in paths
     assert "async function refreshLearningRecommendations()" not in paths
     assert "async function refreshLearningCapabilities()" not in paths
     assert "async function regenerateLesson(" not in paths
     assert "async function loadLearningPaths()" in paths
-    assert max(len(core.splitlines()), len(lessons.splitlines()), len(overview.splitlines()), len(paths.splitlines())) < 600
-    assert "innerHTML" not in core + lessons + overview + paths
+    modules = (core, lessons, overview, history, curriculum, paths)
+    assert max(len(module.splitlines()) for module in modules) < 400
+    assert all("innerHTML" not in module for module in modules)
 
 def test_learning_architecture_documentation_lists_the_split_modules():
     docs = (ROOT / "docs" / "LEARNING.md").read_text(encoding="utf-8")
     audit = (ROOT / "docs" / "UI_AUDIT_2026-10-30.md").read_text(encoding="utf-8")
 
-    for name in ("learning-core.js", "learning-lessons.js", "learning-overview.js", "learning-review.js"):
+    for name in ("learning-core.js", "learning-lessons.js", "learning-overview.js", "learning-history.js", "learning-curriculum.js", "learning-review.js"):
         assert name in docs
         assert name in audit
 
@@ -340,10 +354,15 @@ def test_remaining_large_ui_modules_are_not_misreported_as_complete():
 
     assert not (STATIC / "ai-learning.js").exists()
     assert "app/ai_learning/static/app.js" in status
-    assert "learning.js" in status
-    assert "learning.js" in engineering_log
+    assert "learning-history.js" in status and "learning-curriculum.js" in status
+    assert "learning.js" in status and "learning.js" in engineering_log
     assert "ai-learning.js" in engineering_log  # Historical root-cause record, not an active module.
-    assert "prevents declaring the no-god-module objective complete" in status
+    modules = [
+        "learning-core.js", "learning-lessons.js", "learning-overview.js",
+        "learning-history.js", "learning-curriculum.js", "learning.js",
+    ]
+    assert max(len((STATIC / name).read_text(encoding="utf-8").splitlines()) for name in modules) < 400
+    assert "no-god-module objective remains open" in status
     orchestrator = (STATIC / "autonomous-engineering.js").read_text(encoding="utf-8")
     assert len(orchestrator.splitlines()) <= 40
 
