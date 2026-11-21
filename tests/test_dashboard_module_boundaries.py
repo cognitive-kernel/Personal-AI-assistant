@@ -28,7 +28,7 @@ def test_dashboard_core_and_learning_candidates_are_external_feature_scripts():
 def test_dashboard_feature_modules_fallback_when_the_shared_core_asset_fails():
     modules = (
         "browser-learning.js", "chat.js", "cloud-accounts.js", "cloud-resources.js",
-        "engineering-assistance.js", "experience-memory.js", "knowledge.js",
+        "engineering-assistance.js", "experience-memory-consent.js", "experience-memory.js", "knowledge.js",
         "learning-core.js", "learning-review.js", "sandbox.js", "storage.js",
         "system-health.js", "tasks.js", "settings.js", "learning-candidates.js",
     )
@@ -555,3 +555,16 @@ def test_task_dashboard_has_separate_view_card_and_orchestration_responsibilitie
     assert len(orchestrator.splitlines()) < 120
     assert len(view.splitlines()) < 130
     assert len(cards.splitlines()) < 280
+
+
+def test_experience_consent_and_memory_list_are_independent_modules():
+    page = (STATIC / "index.html").read_text(encoding="utf-8")
+    consent = (STATIC / "experience-memory-consent.js").read_text(encoding="utf-8")
+    memory = (STATIC / "experience-memory.js").read_text(encoding="utf-8")
+    assert page.index('src="/static/experience-memory-consent.js"') < page.index('src="/static/experience-memory.js"')
+    assert "refreshExperienceAutoCaptureConsent" in consent
+    assert "experienceConsentRefreshSequence" in consent
+    assert "createLocalDashboardCore" in consent
+    assert "experience-auto-capture-enable" not in memory
+    assert "experience-auto-capture-revoke" not in memory
+    assert "renderExperienceItems" in memory
