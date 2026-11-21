@@ -1,5 +1,16 @@
 # وضعیت یکپارچهٔ پروژه
 
+## 2026-11-21 — اصلاح مالکیت صف اجرا و fencing (PR #799، در حال اعتبارسنجی)
+
+- شاخهٔ بازسازی‌شده از main فعلی `bc1d273bdece690b5067a70b2deea8aa77ed7e28` ساخته شده است؛ PR [#799](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/799) به‌صورت Draft باز است.
+- علت ریشه‌ای: مالکیت task فقط با رشتهٔ قابل‌بازیافت `lease_owner` و زمان انقضا سنجیده می‌شد؛ worker قدیمی با شناسهٔ تکراری می‌توانست پس از reclaim هنوز mutation انجام دهد. همچنین task manager مسئولیت‌های storage، lease، control و قرارداد داده را در یک فایل ۶۴۵ خطی جمع کرده بود.
+- اصلاح در PR: ماژول‌های جدا برای قرارداد، ذخیره‌سازی، چرخهٔ lease و کنترل؛ facade سازگار `app.task_manager`؛ migration افزایشی ۴۸ برای `lease_epoch`؛ افزایش epoch هنگام claim در تراکنش؛ اعتبارسنجی owner+epoch+expiry برای mutation؛ توکن یکتای هر نمونهٔ worker؛ انتقال epoch در TaskContext.
+- تست‌های regression برای reclaim با worker label یکسان، رد mutation با epoch قدیمی، یکتایی توکن worker و بازیابی checkpoint اضافه شده‌اند.
+- وضعیت CI exact-head: هنوز اجرا/نتیجه‌ای از GitHub Actions در دسترس نیست؛ هیچ موفقیتی ادعا نمی‌شود.
+- دامنهٔ باز: fencing در تراکنش‌های دامنه‌ای learning job/method/quality gate هنوز باید به تمام مسیرهای mutation متصل شود؛ UI fault isolation و اجرای کامل ماژول‌ها نیز همچنان باز است.
+- تست میزبان Windows، crash/restart واقعی، soak، restore/rollback و بازبینی امنیتی مستقل انجام‌شده محسوب نمی‌شوند. هیچ migration روی دیتابیس کاربر اجرا نشده و هیچ merge انجام نشده است.
+
+
 ## 2026-11-15 — اصلاح طبقه‌بندی شکست و بازیابی چرخهٔ خودکار
 
 - وضعیت: **پیاده‌سازی کامل در PRهای باز؛ CI دقیق هر دو PR سبز؛ ادغام‌نشده؛ تست محلی مالک و پذیرش زنده pending**.
