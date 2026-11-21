@@ -434,16 +434,35 @@ def test_jsonl_report_recovery_requires_a_successful_completed_turn(tmp_path):
     assert not progress.recover_final_agent_message_report(
         report, "   ", turn_completed=True, turn_failed=False,
     )
+    assert not progress.recover_final_agent_message_report(
+        report, "No completion marker was emitted.", turn_completed=True, turn_failed=False,
+    )
+    assert not progress.recover_final_agent_message_report(
+        report, "TASK_COMPLETE\\nQUEUE_EMPTY", turn_completed=True, turn_failed=False,
+    )
     assert not report.exists()
 
 
-def test_jsonl_report_recovery_never_overwrites_existing_output_last_message(tmp_path):
+def test_jsonl_report_recovery_replaces_invalid_nonempty_output_with_valid_final_message(tmp_path):
     report = tmp_path / "codex-report.md"
-    report.write_text("Existing report without marker.", encoding="utf-8")
+    report.write_text("Existing report without a completion marker.", encoding="utf-8")
 
     recovered = progress.recover_final_agent_message_report(
-        report, "TASK_COMPLETE", turn_completed=True, turn_failed=False,
+        report, "Recovered final report.\\nTASK_COMPLETE",
+        turn_completed=True, turn_failed=False,
+    )
+
+    assert recovered is True
+    assert report.read_text(encoding="utf-8") == "Recovered final report.\\nTASK_COMPLETE\\n"
+
+
+def test_jsonl_report_recovery_never_overwrites_an_already_valid_output_last_message(tmp_path):
+    report = tmp_path / "codex-report.md"
+    report.write_text("Existing verified report.\\nTASK_COMPLETE\\n", encoding="utf-8")
+
+    recovered = progress.recover_final_agent_message_report(
+        report, "New report.\\nTASK_COMPLETE", turn_completed=True, turn_failed=False,
     )
 
     assert recovered is False
-    assert report.read_text(encoding="utf-8") == "Existing report without marker."
+    assert report.read_text(encoding="utf-8") == "Existing verified report.\\nTASK_COMPLETE\\n"
