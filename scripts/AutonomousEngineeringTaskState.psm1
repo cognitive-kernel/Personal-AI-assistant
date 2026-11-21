@@ -16,7 +16,8 @@ function Get-AutonomousTaskDigest {
 function Get-AutonomousTaskOwnerRecord {
     param(
         [Parameter(Mandatory=$true)][string]$Path,
-        [Parameter(Mandatory=$true)][string]$Task
+        # Empty Task requests structural validation only; a non-empty Task also verifies its digest.
+        [Parameter(Mandatory=$true)][AllowEmptyString()][string]$Task
     )
     try {
         $raw = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
@@ -41,7 +42,6 @@ function Get-AutonomousTaskOwnerRecord {
     $claimCount = 0
     $createdAt = 0.0
     $claimedAt = 0.0
-    $taskDigest = Get-AutonomousTaskDigest -Task $Task
     if (
         $record.schema_version -is [bool] -or
         -not ($record.schema_version -is [int] -or $record.schema_version -is [long]) -or
@@ -72,8 +72,13 @@ function Get-AutonomousTaskOwnerRecord {
     ) {
         throw "Pending task owner metadata violates schema v1; preserving it."
     }
-    if ([string]$record.task_sha256 -cne $taskDigest) {
-        throw "Pending task owner digest does not match the durable task; preserving both records."
+    # Structural checks are independent from task identity checks. The caller may not
+    # have loaded the durable task yet; in that case preserve and validate the record only.
+    if (-not [string]::IsNullOrEmpty($Task)) {
+        $taskDigest = Get-AutonomousTaskDigest -Task $Task
+        if ([string]$record.task_sha256 -cne $taskDigest) {
+            throw "Pending task owner digest does not match the durable task; preserving both records."
+        }
     }
     return $record
 }
