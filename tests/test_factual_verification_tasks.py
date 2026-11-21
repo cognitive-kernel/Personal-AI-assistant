@@ -5,6 +5,7 @@ import re
 import pytest
 
 from app import db, factual_knowledge, factual_semantic_review, factual_verification_routes, factual_verification_tasks, sandbox_consent, task_manager
+from app.task_worker import TaskContext
 
 
 class FakeContext:
@@ -19,6 +20,9 @@ class FakeContext:
 
     def control_status(self):
         return self.status
+
+    def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+        return None
 
 
 @pytest.fixture
@@ -101,6 +105,68 @@ def _completion_marker(wrapper_source):
     match = re.search(r"__PAI_TEST_COMPLETED__:[0-9a-f]{32}", wrapper_source)
     assert match is not None
     return match.group(0)
+
+
+def test_stale_factual_verification_worker_cannot_record_or_promote_result(learning_store, monkeypatch):
+    knowledge_id = _active_sourced_python_claim()
+    source_code = "assert True"
+    payload = {
+        "knowledge_id": knowledge_id,
+        "test_name": "stale lease test",
+        "source_code": source_code,
+        "oracle_reviewed": True,
+        "oracle_review_id": _oracle_review_id(knowledge_id, source_code),
+        "oracle_review_note": "Compared the exact assertion against the official Python reference excerpt.",
+        "timeout_seconds": 5,
+        "max_output_bytes": 1000,
+    }
+    monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
+    task = task_manager.create_task(
+        factual_verification_tasks.FACTUAL_VERIFY_TASK_TYPE,
+        payload,
+        max_attempts=3,
+    )
+    worker_id = "factual-verification-worker"
+    claimed = task_manager.claim_next_task(worker_id)
+    assert claimed is not None and claimed["id"] == task["id"]
+    context = TaskContext(
+        task_id=task["id"],
+        worker_id=worker_id,
+        lease_epoch=claimed["lease_epoch"],
+    )
+
+    def reclaim_during_sandbox(sandbox_payload, _checkpoint, worker_context):
+        with db.learning_connection() as connection:
+            connection.execute(
+                "UPDATE task_queue SET lease_expires_at=? WHERE id=?",
+                ("2000-01-01T00:00:00.000000+00:00", task["id"]),
+            )
+        reclaimed = task_manager.claim_next_task(worker_id)
+        assert reclaimed is not None and reclaimed["id"] == task["id"]
+        assert reclaimed["lease_epoch"] > worker_context.lease_epoch
+        # Force the handler past its cooperative pre-write status check so the
+        # transaction-level fencing assertion is the guard under test.
+        worker_context.control_status = lambda: "running"
+        return _sandbox_result(
+            completion_marker=_completion_marker(sandbox_payload["source_code"])
+        )
+
+    handler = factual_verification_tasks._build_handler(reclaim_during_sandbox)
+
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        handler(payload, None, context)
+
+    with db.learning_connection() as connection:
+        claim = connection.execute(
+            "SELECT evidence_level FROM factual_knowledge WHERE id=?",
+            (knowledge_id,),
+        ).fetchone()
+        count = connection.execute(
+            "SELECT COUNT(*) FROM factual_tests WHERE knowledge_id=? AND test_name=?",
+            (knowledge_id, "stale lease test"),
+        ).fetchone()[0]
+    assert claim["evidence_level"] == "L1_sourced"
+    assert count == 0
 
 
 def test_successful_exact_version_sandbox_run_promotes_l1_to_l2(learning_store, monkeypatch):
