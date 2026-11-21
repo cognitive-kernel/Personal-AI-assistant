@@ -9,10 +9,12 @@ import hashlib
 import json
 import re
 import sqlite3
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from .db import learning_connection
-from .task_worker import TaskContext
+
+if TYPE_CHECKING:
+    from .task_worker import TaskContext
 
 Channel = Literal["research_web", "peer_ai", "sandbox"]
 TerminalStatus = Literal["succeeded", "failed", "skipped"]
@@ -88,14 +90,11 @@ def reserve_channel_run(
             if task_context is not None:
                 if expected_task_type is None or expected_payload is None:
                     raise CandidateChannelError("Task ownership contract is required for fenced channel reservation.")
-                try:
-                    task_context.assert_current(
-                        connection,
-                        expected_task_type=expected_task_type,
-                        expected_payload=expected_payload,
-                    )
-                except Exception as exc:
-                    raise CandidateChannelError("Stale or unauthorized task cannot reserve a candidate channel.") from exc
+                task_context.assert_current(
+                    connection,
+                    expected_task_type=expected_task_type,
+                    expected_payload=expected_payload,
+                )
             candidate = connection.execute(
                 """SELECT id, content, content_sha256, status
                    FROM temporary_knowledge_candidates WHERE id=?""",
@@ -186,14 +185,11 @@ def finish_channel_run(
             if task_context is not None:
                 if expected_task_type is None or expected_payload is None:
                     raise CandidateChannelError("Task ownership contract is required for fenced channel completion.")
-                try:
-                    task_context.assert_current(
-                        connection,
-                        expected_task_type=expected_task_type,
-                        expected_payload=expected_payload,
-                    )
-                except Exception as exc:
-                    raise CandidateChannelError("Stale or unauthorized task cannot finish a candidate channel.") from exc
+                task_context.assert_current(
+                    connection,
+                    expected_task_type=expected_task_type,
+                    expected_payload=expected_payload,
+                )
             row = connection.execute(
                 "SELECT * FROM learning_candidate_channel_runs WHERE id=?",
                 (run_id,),
