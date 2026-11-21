@@ -136,10 +136,12 @@ class AutonomousEngineeringAPIRoute(APIRoute):
                     retryable=False,
                     safe_details={"validation_errors": errors},
                 )
-            except Exception:
+            except Exception as exc:
                 correlation_id = uuid.uuid4().hex
-                _STATUS_LOGGER.exception(
-                    "Autonomous Engineering API failed; correlation_id=%s", correlation_id
+                _STATUS_LOGGER.error(
+                    "Autonomous Engineering API failed; exception_type=%s correlation_id=%s",
+                    type(exc).__name__,
+                    correlation_id,
                 )
                 return _structured_error_response(
                     status_code=500,
@@ -148,6 +150,7 @@ class AutonomousEngineeringAPIRoute(APIRoute):
                     headers={"X-Correlation-ID": correlation_id},
                     code="AUTONOMOUS_ENGINEERING_INTERNAL_ERROR",
                     retryable=False,
+                    safe_details={"exception_type": type(exc).__name__},
                 )
 
         return structured_handler
