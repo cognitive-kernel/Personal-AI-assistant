@@ -2277,3 +2277,10 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - The Broker status path is read-only. Cleanup removes telemetry only and refuses while pending task/owner/PR/cleanup markers or a live/unverified checkpoint exist. The Windows Broker acquires both durable-state and checkpoint-store locks.
 - Residuals: TaskRuntime domain handlers other than the learning-job path still need a separate mutation inventory/fencing pass. The standalone `publish` subcommand in the protected cycle controller does not acquire `repository_execution_lock`; no current workflow calls it, but it must not be used concurrently with a run. The protected controller file was not modified.
 - Target-host verification and independent security review remain separate gates. No active autonomous Runner workflow was started during this audit.
+
+
+## 2026-11-22 — PR #820 exact-head UI revalidation
+
+- Re-ran the failed Windows full-test job for unchanged code head `133db4ce6d300b8e982d45d5fec1ed13aa6c6a39`. The rerun passed: Windows 2462 passed/16 skipped/74 deselected; Ubuntu 2464 passed/14 skipped/74 deselected; Windows storage regressions 11 passed/2 skipped; Browser E2E, Dependency Audit and CodeQL passed.
+- The initial Windows failure was `tests/test_task_routes.py::test_task_api_refuses_to_delete_running_tasks`, which is outside PR #820's changed files. The same commit passed on rerun; no test edits, skips, or weakening were introduced. Keep this as a possible timing-sensitive test to monitor.
+- PR #820 remains open and Draft. This is hosted exact-head evidence only; manual Windows target-host acceptance, crash/restart preservation and owner review remain open.
