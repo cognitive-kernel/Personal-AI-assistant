@@ -1,6 +1,6 @@
 (() => {
  "use strict";
- function createLocalCore() {
+ function createLocalDashboardCore() {
   const el = id => document.getElementById(id);
   async function api(path, options = {}) {
    const response = await fetch(path, {
@@ -21,7 +21,7 @@
   return Object.freeze({version: 1, el, api, appendText});
  }
  const core = window.dashboardCore && window.dashboardCore.version === 1
-  ? window.dashboardCore : createLocalCore();
+  ? window.dashboardCore : createLocalDashboardCore();
  const {el, api, appendText} = core;
  const root = el("learning-candidates");
  const refresh = el("refresh-learning-candidates");
