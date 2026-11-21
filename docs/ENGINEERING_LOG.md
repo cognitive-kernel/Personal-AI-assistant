@@ -1,3 +1,23 @@
+## 2026-11-21 — Autonomous dashboard stale-response recovery
+
+### Root cause and evidence
+- A review of `app/static/autonomous-engineering.js` found two independent last-response-wins defects. `refreshRuns()` applied every completed response without checking whether a newer status/run refresh had started. `refreshProgress()` returned immediately when another request was in flight, silently dropping changes to the selected period or date range.
+- The failed autonomous job `44869748773` is not retrievable from the current Actions API connection. Its recovery workflow `44869862321` did retrieve the trigger classification and reported `ADMISSION_REJECTED`: the triggering run failed during durable manual-task persistence, not during Codex task execution. Recovery dispatched no duplicate run and preserved the existing pending task, owner, and checkpoint. The original PowerShell exception details remain unavailable; no specific throw site is asserted.
+
+### Corrective change
+- Run history and status rendering now share a monotonically increasing generation. A delayed full-history response or error is ignored after a newer status snapshot or history refresh has begun.
+- Progress refreshes now coalesce into a single-flight queue. A new period/date selection is retained while the previous request completes, stale responses are discarded, and only the newest selection is allowed to update the chart and metrics.
+- The console reports the exact durable blocker categories returned by the broker while keeping task contents and machine paths private.
+- Added Chromium regressions that deliberately hold an older request, issue a newer selection/refresh, and then release the stale response out of order; another test checks pending-task blocker visibility and safe resume availability.
+
+### Validation boundary
+- Focused queue/dispatch/recovery Python tests passed locally; Python compilation and JavaScript syntax checks passed.
+- Browser regressions are added but not yet executed locally because the Playwright Chromium binary could not be downloaded in this environment (DNS resolution failure). Exact-head GitHub Browser E2E and full CI remain required.
+- No pending task, runner-owned state, checkpoint, user database, or main-branch content was changed. The existing durable-task safety refusal remains in place; this change does not abandon or overwrite prior work.
+- Target-host Windows UI, service/ACL, live Runner/Ollama/Codex behavior, and human accessibility review remain unverified.
+
+---
+
 ## 2026-11-17 — Automatic Playwright provisioning and autonomous-cycle timing
 
 ### Root cause
