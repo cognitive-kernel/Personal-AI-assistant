@@ -226,6 +226,8 @@ def handle_candidate_review(
                 channels.record_review_attempt(
                     candidate_id, channel="peer_ai", status="failed",
                     details={"error_type": type(exc).__name__},
+                    task_context=context, expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+                    expected_payload=payload,
                 )
             except Exception as db_exc:
                 raise RetryableTaskError("Could not persist peer-review failure.") from db_exc
@@ -407,6 +409,8 @@ def handle_candidate_sandbox_review(
             channels.record_review_attempt(
                 candidate_id, channel="sandbox", status="sandbox_unconfigured",
                 details={"reason": reason, "request_id": request_id},
+                task_context=context, expected_task_type=LEARNING_SANDBOX_REVIEW_TASK_TYPE,
+                expected_payload=payload,
             )
         except Exception as exc:
             raise RetryableTaskError("Could not persist sandbox unavailability.") from exc
@@ -512,6 +516,8 @@ def handle_candidate_sandbox_review(
                  "executed": executed_count, "passed": sum(item.get("passed") is True for item in outcomes),
                  "outcomes": outcomes,
                  "interpretation": "Human-attested expected stdout was compared exactly; this is bounded evidence, not universal truth and never promotes the candidate."},
+        task_context=context, expected_task_type=LEARNING_SANDBOX_REVIEW_TASK_TYPE,
+        expected_payload=payload,
     )
     ledger_result = {
         "candidate_id": candidate_id, "content_sha256": actual_hash, "test_plan_sha256": actual_plan_hash,
