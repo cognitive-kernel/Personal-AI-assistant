@@ -225,6 +225,29 @@ def codex_heartbeat_console_line(elapsed_seconds: float, event_count: int) -> st
         f"jsonl_events={max(0, int(event_count))} state={state}"
     )
 
+def recover_final_agent_message_report(
+    report_path: str | Path,
+    final_agent_message: str | None,
+    *,
+    turn_completed: bool,
+    turn_failed: bool,
+) -> bool:
+    """Recover a missing --output-last-message file from a successful JSONL turn."""
+    if not turn_completed or turn_failed or not isinstance(final_agent_message, str):
+        return False
+    message = final_agent_message.strip()
+    if not message:
+        return False
+    report = Path(report_path)
+    try:
+        if report.is_file() and report.stat().st_size > 0:
+            return False
+        report.write_text(message + "\\n", encoding="utf-8")
+    except OSError:
+        return False
+    return True
+
+
 def run_codex(args: argparse.Namespace) -> int:
     executable = shutil.which("codex")
     if not executable:
@@ -305,6 +328,9 @@ def run_codex(args: argparse.Namespace) -> int:
     codex_started_at = time.monotonic()
     next_heartbeat_at = codex_started_at + CODEX_PROGRESS_HEARTBEAT_SECONDS
     event_count = 0
+    final_agent_message: str | None = None
+    final_turn_completed = False
+    final_turn_failed = False
     stream_closed = False
     try:
         while not stream_closed:
@@ -334,6 +360,23 @@ def run_codex(args: argparse.Namespace) -> int:
                 continue
             if not isinstance(event, dict):
                 continue
+            event_type = event.get("type")
+            if event_type == "turn.started":
+                final_agent_message = None
+                final_turn_completed = False
+                final_turn_failed = False
+            elif event_type == "turn.completed":
+                final_turn_completed = True
+            elif event_type in {"turn.failed", "error"}:
+                final_turn_failed = True
+            item = event.get("item")
+            if isinstance(item, dict):
+                if event_type == "item.completed" and item.get("type") == "agent_message":
+                    message = item.get("text")
+                    if isinstance(message, str):
+                        final_agent_message = message
+                elif item.get("type") == "error":
+                    final_turn_failed = True
             event_count += 1
             if getattr(args, "require_command_output", None) or getattr(args, "expected_agent_message", None):
                 if (
@@ -379,6 +422,16 @@ def run_codex(args: argparse.Namespace) -> int:
             return_code = return_code or 1
         if input_broken and return_code == 0:
             return_code = 1
+        if return_code == 0 and recover_final_agent_message_report(
+            args.report,
+            final_agent_message,
+            turn_completed=final_turn_completed,
+            turn_failed=final_turn_failed,
+        ):
+            print(
+                "Codex final report recovered from the successful JSONL agent_message event.",
+                flush=True,
+            )
         expected_output = getattr(args, "require_command_output", None)
         expected_message = getattr(args, "expected_agent_message", None)
         evidence_path = getattr(args, "events_report", None)
