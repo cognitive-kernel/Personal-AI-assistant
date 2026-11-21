@@ -48,7 +48,8 @@ def test_domain_execution_epoch_rejects_old_worker_after_reclaim(execution_store
     with pytest.raises(LearningExecutionLeaseLostError, match="no longer current"):
         assert_current(first)
     assert_current(second)
-    assert fail_if_current(first, "stale worker failure") is False
+    with pytest.raises(LearningExecutionLeaseLostError):
+        fail_if_current(first, "stale worker failure")
 
     stored = learning.get_job(job["id"])
     assert stored["status"] == "running"
