@@ -2251,3 +2251,11 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 ### CI correction: dispatch test doubles
 
 - Exact-head CI completed 2,466 tests successfully and found one test-only failure: a legacy `_run` fake did not accept the new opt-in `raise_os_error` keyword used only by workflow dispatch. Updated all dispatch-safety fakes in that file to accept the optional keyword; production behavior is unchanged. The full suite must pass again on the new HEAD.
+
+
+## 2026-11-21 — Uniform structured API errors for Autonomous Engineering
+
+- Extended the API router with a route-level error boundary. HTTP errors, request-validation errors, and unexpected exceptions now return additive `code`, `message`, `correlation_id`, `retryable`, and `safe_details` fields plus matching `X-*` headers while preserving the existing `detail` field for compatibility.
+- Validation details expose only field location/message/type and never echo submitted values. Unexpected exceptions are logged with correlation ID and returned as a redacted 500. Existing explicit dispatch headers are preserved.
+- Removed raw GitHub CLI stderr from the run-delete error response; only a bounded safe warning (run ID, return code, stderr-present boolean) is logged.
+- Added API contract tests for HTTPException compatibility, validation redaction, and unexpected-exception redaction. Exact-head CI is required.
