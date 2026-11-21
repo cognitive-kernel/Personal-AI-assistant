@@ -758,7 +758,8 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) ->
             status_code=502,
             detail=(
                 f"ارسال Workflow ناموفق بود (exit code {result.returncode}). "
-                "شناسهٔ پیگیری: " + correlation_id
+                "پیش از تلاش مجدد، سوابق اجرا را بازخوانی کنید. شناسهٔ پیگیری: "
+                + correlation_id
             ),
             headers={
                 "X-Correlation-ID": correlation_id,
