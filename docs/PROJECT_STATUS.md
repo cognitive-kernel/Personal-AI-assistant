@@ -493,3 +493,8 @@ Exact tested code head: ab703a284752c80531e9f25e0b7ad53a04c453a0.
 Evidence: Tests/Windows regressions https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863471 ; Browser E2E https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863440 ; Dependency audit https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863452 ; CodeQL https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863507 .
 
 The subsequent documentation-only evidence update does not change runtime code and is followed by a fresh exact-head CI run. Target-host cross-account ACL verification, non-admin sandbox smoke/soak, crash/restart acceptance, and independent security review remain pending. Durable Pause remains enabled; no Runner, service, or autonomous process was started.
+
+
+## 2026-11-21 — UI resilience tests
+
+- Branch `test/autonomous-engineering-ui-resilience-20261121` adds browser E2E coverage for RTL/keyboard skip-link behavior and horizontal overflow at mobile, tablet, and desktop widths, plus isolation when the progress module fails to load. This is test-only; production UI modules are unchanged. Exact-head browser E2E and full CI are pending.
