@@ -527,3 +527,12 @@ The subsequent documentation-only evidence update does not change runtime code a
 
 - Remaining modularity debt is explicitly tracked in Issue #290: the legacy 518-line `app/static/ai-learning.js` was removed with its obsolete page assets and replaced by the package-owned `app/ai_learning/static/app.js` plus versioned core/courses/runs/lessons/controls/search modules. The active learning path/curriculum controller `app/static/learning.js` (about 502 lines) still needs cohesion review and, where responsibilities are distinct, further decomposition. The autonomous engineering console has been decomposed into core/runs/status/controls/progress modules; its orchestrator contains only version checks and independent startup/refresh scheduling. This remaining debt prevents declaring the no-god-module objective complete.
 
+
+
+## 2026-11-21 — جداسازی خرابی هستهٔ UI (PR زنجیره‌ای در حال اعتبارسنجی)
+
+- اسکریپت inline باقی‌ماندهٔ نامزدهای یادگیری به `learning-candidates.js` منتقل شد؛ منطق feature دیگر داخل `index.html` نیست.
+- `dashboardCore v1` غیرقابل‌جایگزینی شد و هر feature یک fallback محلی محدود به API/DOM primitives دارد؛ خرابی asset مشترک نباید مانع initialize شدن featureهای مستقل شود.
+- ماژول‌های lessons/overview و orchestrator یادگیری در صورت خرابی همسایه‌ها fail-soft می‌شوند؛ زیرماژول‌های autonomous engineering نیز fallback مستقل دارند.
+- تست static و browser E2E برای قطع عمدی درخواست `dashboard-core.js` اضافه شده است.
+- CI exact-head هنوز اجرا نشده؛ صحت عملی همه دکمه‌ها و مسیرهای API تا تکمیل browser E2E تأییدشده محسوب نمی‌شود.
