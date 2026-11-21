@@ -245,5 +245,10 @@
 
   return Object.freeze({renderTasks,runBulkTaskAction});
  }
- window.taskCardsFactory = Object.freeze({version:1,createTaskCards});
+ Object.defineProperty(window, "taskCardsFactory", {
+  value: Object.freeze({version:1,createTaskCards}),
+  enumerable: true,
+  configurable: false,
+  writable: false
+ });
 })();
