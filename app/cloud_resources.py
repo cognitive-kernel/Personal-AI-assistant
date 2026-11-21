@@ -78,6 +78,43 @@ def _connect() -> sqlite3.Connection:
     return connection
 
 
+def _prepare_task_ownership_check(
+    connection: sqlite3.Connection,
+    task_context: Any | None,
+    expected_task_type: str | None,
+    expected_payload: dict[str, Any] | None,
+) -> None:
+    if task_context is None or (
+        expected_task_type is None and expected_payload is None
+    ):
+        return
+    if expected_task_type is None or expected_payload is None:
+        raise CloudResourceError("Cloud discovery task ownership contract is incomplete.")
+    # Task ownership lives in the learning database, while cloud-resource
+    # records use a dedicated database. Attach the task store before beginning
+    # the transaction so the owner check and cloud write share one transaction.
+    connection.execute(
+        "ATTACH DATABASE ? AS task_store",
+        (str(defaults.learning_db_path),),
+    )
+
+
+def _assert_task_ownership(
+    connection: sqlite3.Connection,
+    task_context: Any | None,
+    expected_task_type: str | None,
+    expected_payload: dict[str, Any] | None,
+) -> None:
+    if task_context is not None and (
+        expected_task_type is not None or expected_payload is not None
+    ):
+        task_context.assert_current(
+            connection,
+            expected_task_type=expected_task_type,
+            expected_payload=expected_payload,
+        )
+
+
 def initialize_store() -> int:
     """Initialize the dedicated cloud-resource database using versioned migrations."""
     return initialize_database_file(
@@ -492,17 +529,13 @@ def _update_run(
     expected_payload: dict[str, Any] | None = None,
 ) -> None:
     with closing(_connect()) as connection:
+        _prepare_task_ownership_check(
+            connection, task_context, expected_task_type, expected_payload
+        )
         connection.execute("BEGIN IMMEDIATE")
-        if task_context is not None and (
-            expected_task_type is not None or expected_payload is not None
-        ):
-            if expected_task_type is None or expected_payload is None:
-                raise CloudResourceError("Cloud discovery task ownership contract is incomplete.")
-            task_context.assert_current(
-                connection,
-                expected_task_type=expected_task_type,
-                expected_payload=expected_payload,
-            )
+        _assert_task_ownership(
+            connection, task_context, expected_task_type, expected_payload
+        )
         connection.execute(
             """UPDATE cloud_resource_discovery_runs
                SET finished_at=CURRENT_TIMESTAMP, status=?, queries_attempted=?,
@@ -645,17 +678,13 @@ def discover_resources(
     initialize_store()
     search = discover_fn or web_sources.discover_sources
     with closing(_connect()) as connection:
+        _prepare_task_ownership_check(
+            connection, task_context, expected_task_type, expected_payload
+        )
         connection.execute("BEGIN IMMEDIATE")
-        if task_context is not None and (
-            expected_task_type is not None or expected_payload is not None
-        ):
-            if expected_task_type is None or expected_payload is None:
-                raise CloudResourceError("Cloud discovery task ownership contract is incomplete.")
-            task_context.assert_current(
-                connection,
-                expected_task_type=expected_task_type,
-                expected_payload=expected_payload,
-            )
+        _assert_task_ownership(
+            connection, task_context, expected_task_type, expected_payload
+        )
         cursor = connection.execute(
             "INSERT INTO cloud_resource_discovery_runs(status) VALUES ('running')"
         )
@@ -788,17 +817,13 @@ def discover_resources(
                 )
 
         with closing(_connect()) as connection:
+            _prepare_task_ownership_check(
+                connection, task_context, expected_task_type, expected_payload
+            )
             connection.execute("BEGIN IMMEDIATE")
-            if task_context is not None and (
-                expected_task_type is not None or expected_payload is not None
-            ):
-                if expected_task_type is None or expected_payload is None:
-                    raise CloudResourceError("Cloud discovery task ownership contract is incomplete.")
-                task_context.assert_current(
-                    connection,
-                    expected_task_type=expected_task_type,
-                    expected_payload=expected_payload,
-                )
+            _assert_task_ownership(
+                connection, task_context, expected_task_type, expected_payload
+            )
             for candidate in unique.values():
                 previous = connection.execute(
                     "SELECT id, content_sha256 FROM cloud_resource_candidates WHERE source_url=?",
