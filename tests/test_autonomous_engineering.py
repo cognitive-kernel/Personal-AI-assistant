@@ -125,7 +125,7 @@ def test_dispatch_uses_only_the_configured_workflow_and_main(monkeypatch):
     monkeypatch.setattr(agent, "collect_status", lambda: {"ready": True, "github": {"runs_available": True}})
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
 
-    def fake_run(command, timeout=8):
+    def fake_run(command, timeout=8, *, raise_os_error=False):
         calls.append(command)
         return subprocess.CompletedProcess(command, 0, "", "")
 
@@ -498,7 +498,7 @@ def test_github_snapshot_fails_closed_when_run_list_is_unavailable(monkeypatch):
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
     calls = []
 
-    def fake_run(command, timeout=8):
+    def fake_run(command, timeout=8, *, raise_os_error=False):
         calls.append(command)
         if command[1:3] == ["auth", "status"]:
             return subprocess.CompletedProcess(command, 0, "", "")
@@ -568,7 +568,7 @@ def test_save_settings_updates_model_and_hourly_interval(monkeypatch):
         "model_metadata_available": True, "model_context_supported": True, "model_supports_tools": True,
     })
 
-    def fake_run(command, timeout=8):
+    def fake_run(command, timeout=8, *, raise_os_error=False):
         calls.append(command)
         if command[1:3] == ["variable", "list"]:
             return subprocess.CompletedProcess(command, 0, "[]", "")
@@ -611,7 +611,7 @@ def test_save_settings_rolls_back_previous_repository_values_after_partial_failu
         "model_metadata_available": True, "model_context_supported": True, "model_supports_tools": True,
     })
 
-    def fake_run(command, timeout=8):
+    def fake_run(command, timeout=8, *, raise_os_error=False):
         calls.append(command)
         if command[1:3] == ["variable", "list"]:
             state = [
@@ -668,7 +668,7 @@ def test_save_settings_rolls_back_a_write_that_failed_after_remote_acceptance(mo
         "model_metadata_available": True, "model_context_supported": True, "model_supports_tools": True,
     })
 
-    def fake_run(command, timeout=8):
+    def fake_run(command, timeout=8, *, raise_os_error=False):
         nonlocal interval_update_attempted
         calls.append(command)
         if command[1:3] == ["variable", "list"]:
@@ -727,7 +727,7 @@ def test_github_snapshot_does_not_invent_a_model_when_no_repository_variable_is_
     monkeypatch.delenv("AUTONOMOUS_ENGINEERING_MODEL", raising=False)
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
 
-    def fake_run(command, timeout=8):
+    def fake_run(command, timeout=8, *, raise_os_error=False):
         if command[1:3] == ["auth", "status"]:
             return subprocess.CompletedProcess(command, 0, "", "")
         if command[1:3] == ["run", "list"]:
@@ -767,7 +767,7 @@ def test_autonomous_workflow_requires_saved_model_without_a_hardcoded_fallback()
 def test_github_snapshot_reads_saved_model_and_frequency(monkeypatch):
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
 
-    def fake_run(command, timeout=8):
+    def fake_run(command, timeout=8, *, raise_os_error=False):
         if command[1:3] == ["auth", "status"]:
             return subprocess.CompletedProcess(command, 0, "", "")
         if command[1:3] == ["run", "list"]:
@@ -1147,7 +1147,7 @@ def test_dispatch_forwards_manual_task_as_a_single_untrusted_field(monkeypatch):
     })
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
 
-    def fake_run(command, timeout=8):
+    def fake_run(command, timeout=8, *, raise_os_error=False):
         calls.append(command)
         if command[1:2] == ["api"]:
             return subprocess.CompletedProcess(command, 0, "[]", "")
@@ -1277,7 +1277,7 @@ def test_github_snapshot_inspects_same_run_window_as_schedule_gate(monkeypatch):
         "headBranch": "main",
     })
 
-    def fake_run(command, timeout=8):
+    def fake_run(command, timeout=8, *, raise_os_error=False):
         calls.append(command)
         if command[1:3] == ["auth", "status"]:
             return subprocess.CompletedProcess(command, 0, "", "")
@@ -1305,7 +1305,7 @@ def test_cancel_finds_active_run_after_ten_newer_completed_runs(monkeypatch):
     ]
     runs[-1] = {"databaseId": 999, "status": "in_progress"}
 
-    def fake_run(command, timeout=8):
+    def fake_run(command, timeout=8, *, raise_os_error=False):
         calls.append(command)
         if command[1:3] == ["auth", "status"]:
             return subprocess.CompletedProcess(command, 0, "", "")
@@ -2238,7 +2238,7 @@ def test_empty_dispatch_resumes_verified_checkpoint(monkeypatch):
     monkeypatch.setattr(agent, "collect_status", lambda: _readiness_with_checkpoint(checkpoint))
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
 
-    def fake_run(command, timeout=8):
+    def fake_run(command, timeout=8, *, raise_os_error=False):
         calls.append(command)
         return subprocess.CompletedProcess(command, 0, "", "")
 
@@ -2267,3 +2267,88 @@ def test_dispatch_fails_closed_when_checkpoint_integrity_is_unverified(monkeypat
 
     assert error.value.status_code == 409
     assert "یکپارچگی" in error.value.detail
+
+
+def test_dispatch_failure_exposes_correlation_id_and_redacts_cli_secrets(monkeypatch, caplog):
+    token = "ghp_123456789012345678901234567890"
+    monkeypatch.setattr(
+        agent, "collect_status",
+        lambda: {"ready": True, "github": {"runs_available": True, "recent_runs": []}},
+    )
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    calls = []
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        return subprocess.CompletedProcess(command, 1, "", f"HTTP 401 Bearer {token}")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    with pytest.raises(HTTPException) as error:
+        agent.dispatch_autonomous_engineering()
+
+    assert len(calls) == 2
+    assert error.value.status_code == 502
+    assert error.value.headers["X-Error-Code"] == "WORKFLOW_DISPATCH_FAILED"
+    assert error.value.headers["X-Retryable"] == "false"
+    correlation_id = error.value.headers["X-Correlation-ID"]
+    assert len(correlation_id) == 32
+    assert correlation_id in error.value.detail
+    assert "exit code 1" in error.value.detail
+    assert "پیش از تلاش مجدد" in error.value.detail
+    assert token not in caplog.text
+    assert "stderr_sha256=" in caplog.text
+    assert token not in caplog.text
+
+
+
+def test_dispatch_launch_error_is_definitive_and_retryable(monkeypatch):
+    monkeypatch.setattr(
+        agent, "collect_status",
+        lambda: {"ready": True, "github": {"runs_available": True, "recent_runs": []}},
+    )
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        assert raise_os_error is True
+        raise FileNotFoundError("gh executable disappeared after lookup")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    with pytest.raises(HTTPException) as error:
+        agent.dispatch_autonomous_engineering()
+
+    assert error.value.status_code == 503
+    assert error.value.headers["X-Error-Code"] == "WORKFLOW_DISPATCH_LAUNCH_FAILED"
+    assert error.value.headers["X-Retryable"] == "true"
+    assert error.value.headers["X-Correlation-ID"] in error.value.detail
+    assert "می‌توانید دوباره تلاش کنید" in error.value.detail
+    assert "ممکن است GitHub درخواست را دریافت کرده باشد" not in error.value.detail
+
+def test_dispatch_timeout_reports_ambiguous_outcome_without_encouraging_retry(monkeypatch):
+    monkeypatch.setattr(
+        agent, "collect_status",
+        lambda: {"ready": True, "github": {"runs_available": True, "recent_runs": []}},
+    )
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        return None
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    with pytest.raises(HTTPException) as error:
+        agent.dispatch_autonomous_engineering()
+
+    assert error.value.status_code == 502
+    assert error.value.headers["X-Error-Code"] == "WORKFLOW_DISPATCH_OUTCOME_UNKNOWN"
+    assert error.value.headers["X-Retryable"] == "false"
+    assert error.value.headers["X-Correlation-ID"] in error.value.detail
+    assert "نامشخص" in error.value.detail
+    assert "پیش از تلاش مجدد" in error.value.detail
