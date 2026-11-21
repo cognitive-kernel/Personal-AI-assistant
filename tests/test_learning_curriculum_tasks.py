@@ -10,7 +10,7 @@ def learning_store(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
-    monkeypatch.setattr(learning, "_enqueue_learning_job", lambda job_id: {"id": 10000 + job_id})
+    monkeypatch.setattr(learning, "_enqueue_learning_job", lambda job_id, **_kwargs: {"id": 10000 + job_id})
 
 
 class RecordingContext:
