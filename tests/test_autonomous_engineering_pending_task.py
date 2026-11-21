@@ -206,3 +206,19 @@ def test_workflow_pins_local_durable_state_to_one_runner_and_rejects_dropped_man
     assert "Another Runner already owns the autonomous-state-owner label" in provision
     assert "A manual task was not accepted because autonomous engineering is paused" in workflow
     assert "A manual task was not accepted because another run is active or queued" in workflow
+
+
+def test_owner_record_reader_separates_structural_validation_from_task_digest_matching():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    module = (root / "scripts" / "AutonomousEngineeringTaskState.psm1").read_text(encoding="utf-8")
+    reader_start = module.index("function Get-AutonomousTaskOwnerRecord")
+    reader_end = module.index("function Repair-AutonomousTaskOwnerRecord", reader_start)
+    reader = module[reader_start:reader_end]
+
+    assert "[AllowEmptyString()][string]$Task" in reader
+    assert "if (-not [string]::IsNullOrEmpty($Task))" in reader
+    assert reader.index("schema_version") < reader.index("if (-not [string]::IsNullOrEmpty($Task))")
+    assert "Get-AutonomousTaskDigest -Task $Task" in reader
+    assert "digest does not match the durable task" in reader
