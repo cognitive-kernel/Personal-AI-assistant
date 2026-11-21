@@ -3604,6 +3604,101 @@ def test_autonomous_engineering_console_renders_and_reports_local_status():
         browser.close()
 
 
+def test_autonomous_engineering_ui_blocks_dispatch_below_codex_context_minimum():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    status_payload = {
+        "ready": False,
+        "can_dispatch": False,
+        "checks": {
+            "ollama_online": True,
+            "model_installed": True,
+            "model_selectable": True,
+            "model_context_metadata_available": True,
+            "model_context_supported": False,
+            "model_supports_tools": True,
+            "codex_installed": True,
+            "runner_running": True,
+            "github_cli_authenticated": True,
+            "github_runs_available": True,
+            "progress_storage_accessible": True,
+            "durable_state_available": True,
+        },
+        "model": "gpt-oss:20b",
+        "models": ["gpt-oss:20b"],
+        "selectable_models": ["gpt-oss:20b"],
+        "model_context_length": 131072,
+        "model_recommended_context_length": 11656,
+        "model_required_context_length": 65536,
+        "model_context_supported": False,
+        "model_context_error": "Codex requires at least 65536 context tokens; the current hardware-safe allocation is 11656.",
+        "model_capabilities": ["completion", "tools"],
+        "model_supports_tools": True,
+        "model_metadata_error": None,
+        "interval_hours": 24,
+        "execution_mode": "continuous",
+        "paused": False,
+        "github": {"recent_runs": [], "settings": {"model": "gpt-oss:20b"}},
+        "codex": {"installed": True, "version": "codex test"},
+        "runner": {"running": True, "process_detected": True},
+        "pending_work": {
+            "available": True,
+            "blocked": False,
+            "markers": {
+                "pending_task": False,
+                "pending_owner": False,
+                "pending_pr": False,
+                "cleanup_in_progress": False,
+            },
+            "checkpoint": {"available": False, "verified": True},
+            "reason": None,
+        },
+        "local_only_inference": True,
+    }
+    progress_payload = {
+        "current": None,
+        "history": [],
+        "latest_snapshot": None,
+        "events": [],
+        "available": True,
+        "storage_configured": True,
+    }
+    browser_errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route(
+            "**/api/autonomous-engineering/status",
+            lambda route: route.fulfill(status=200, json=status_payload),
+        )
+        page.route(
+            "**/api/autonomous-engineering/progress**",
+            lambda route: route.fulfill(status=200, json=progress_payload),
+        )
+        page.route(
+            "**/api/autonomous-engineering/runs",
+            lambda route: route.fulfill(status=200, json={"runs": []}),
+        )
+        response = page.goto(
+            base_url.rstrip("/") + "/autonomous-engineering",
+            wait_until="domcontentloaded",
+        )
+        assert response is not None and response.status == 200
+        page.wait_for_function(
+            "() => document.querySelector('#model-detail')?.textContent.includes('حداقل لازم برای Codex')",
+            timeout=10000,
+        )
+        detail = page.locator("#model-detail").inner_text()
+        assert "65,536" in detail
+        assert "11,656" in detail
+        assert page.locator("#dispatch-agent").is_disabled()
+        assert page.locator("#send-agent-task").is_disabled()
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
 def test_autonomous_engineering_manual_task_form_dispatches_bounded_input():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
