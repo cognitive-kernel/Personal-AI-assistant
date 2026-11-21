@@ -147,7 +147,13 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     main = (root / "app" / "static" / "index.html").read_text(encoding="utf-8")
     learning = (root / "app" / "ai_learning" / "static" / "index.html").read_text(encoding="utf-8")
     agent_page = (root / "app" / "static" / "autonomous-engineering.html").read_text(encoding="utf-8")
-    agent_script = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
+    static = root / "app" / "static"
+    agent_script = (static / "autonomous-engineering.js").read_text(encoding="utf-8")
+    status_script = (static / "autonomous-engineering-status.js").read_text(encoding="utf-8")
+    controls_script = (static / "autonomous-engineering-controls.js").read_text(encoding="utf-8")
+    runs_script = (static / "autonomous-engineering-runs.js").read_text(encoding="utf-8")
+    progress_script = (static / "autonomous-engineering-progress.js").read_text(encoding="utf-8")
+    core_script = (static / "autonomous-engineering-core.js").read_text(encoding="utf-8")
 
     assert 'href="/autonomous-engineering"' in main
     assert 'href="/autonomous-engineering"' in learning
@@ -162,13 +168,13 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="checkpoint-state"' in agent_page
     assert 'id="checkpoint-detail"' in agent_page
     assert 'id="manual-task-state"' in agent_page
-    assert "data.pending_work" in agent_script
-    assert "checkpoint.verified" in agent_script
-    assert "function canStartManualTask()" in agent_script
-    assert "if (!canStartManualTask())" in agent_script
+    assert "data.pending_work" in status_script
+    assert "checkpoint.verified" in status_script
+    assert "function canStartManualTask()" in status_script
+    assert "taskButton.disabled = !canStartManualTask()" in status_script
     assert "فقط Runner و Broker به فایل‌های محافظت‌شده دسترسی مستقیم دارند" in agent_page
     assert "حساب‌های برنامه از کانال محلی محدود استفاده می‌کنند" in agent_page
-    assert "checks.github_runs_available" in agent_script
+    assert "checks.github_runs_available" in status_script
     assert 'id="interval-hours"' in page
     assert 'id="execution-mode"' in page
     assert 'value="continuous"' in page
@@ -180,13 +186,13 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="send-agent-task"' in page
     assert 'id="save-agent-settings"' in page
     assert 'id="storage-state"' in page
-    assert "checks.progress_storage_accessible" in agent_script
+    assert "checks.progress_storage_accessible" in status_script
     assert "gpt-oss:20b" not in page
-    assert 'هیچ مدل اصلی قابل انتخابی از Ollama شناسایی نشد' in agent_script
-    assert "model_context_length" in agent_script
-    assert "model_supports_tools" in agent_script
-    assert "model_selectable" in agent_script
-    assert "نسخهٔ داخلی Context" in agent_script
+    assert 'هیچ مدل اصلی قابل انتخابی از Ollama شناسایی نشد' in status_script
+    assert "model_context_length" in status_script
+    assert "model_supports_tools" in status_script
+    assert "model_selectable" in status_script
+    assert "نسخهٔ داخلی Context" in status_script
 
 
 def test_autonomous_engineering_routes_are_registered():
@@ -751,7 +757,7 @@ def test_autonomous_workflow_requires_saved_model_without_a_hardcoded_fallback()
     assert "variable get AUTONOMOUS_ENGINEERING_MODEL" in (
         root / "scripts" / "provision_autonomous_runner.ps1"
     ).read_text(encoding="utf-8")
-    dashboard = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
+    dashboard = (root / "app" / "static" / "autonomous-engineering-status.js").read_text(encoding="utf-8")
     assert "ابتدا مدل نصب‌شده را انتخاب کنید" in dashboard
     assert "installed.includes(selectedModel)" in dashboard
     assert "هنوز مدلی ذخیره نشده است" in dashboard
@@ -928,7 +934,9 @@ def test_progress_reader_rejects_invalid_custom_date_range():
 def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     root = Path(__file__).resolve().parents[1]
     page = (root / "app" / "static" / "autonomous-engineering.html").read_text(encoding="utf-8")
-    script = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
+    script = (root / "app" / "static" / "autonomous-engineering-progress.js").read_text(encoding="utf-8")
+    controls = (root / "app" / "static" / "autonomous-engineering-controls.js").read_text(encoding="utf-8")
+    orchestrator = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
     workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
     operations = (root / "docs" / "operations" / "CODEX_AUTONOMOUS_ENGINEERING.md").read_text(encoding="utf-8")
     master_prompt = (root / "docs" / "MASTER_ENGINEERING_PROMPT.md").read_text(encoding="utf-8")
@@ -944,7 +952,10 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert 'id="progress-end"' in page
     assert 'id="progress-events"' in page
     assert "current.plan_percent" in script
-    assert "شروع صف پیوسته" in script
+    assert 'id="dispatch-agent"' in page
+    assert "اجرای یک چرخهٔ خودکار از صف مهندسی" in page
+    assert 'dispatchButton.addEventListener("click"' in controls
+    assert 'request("dispatch", {method: "POST"})' in controls
     assert "PR را برای بازبینی مالک باز می‌گذارد" in page
     assert "هرگز آن را خودکار ادغام نمی‌کند" in page
     assert "The controller never calls GitHub's PR merge API." in operations
@@ -1023,7 +1034,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "Set-AutonomousDirectoryTreeAcl" in acl_script
     assert '"S-1-5-19"' in acl_script
     assert "PersonalAIAssistantStateBroker" in runner_check
-    assert 'window.setInterval(refreshProgress, 5000)' in script
+    assert 'window.setInterval(() => void progress.refresh(), 5000)' in orchestrator
     assert "createElementNS" in script
 
 
@@ -1829,39 +1840,41 @@ def test_collect_status_does_not_queue_probes_when_shared_pool_is_saturated(monk
 
 
 def test_dashboard_script_bounds_and_coalesces_status_refreshes():
-    root = Path(__file__).resolve().parents[1]
-    script = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
+    static = Path(__file__).resolve().parents[1] / "app" / "static"
+    orchestrator = (static / "autonomous-engineering.js").read_text(encoding="utf-8")
+    core = (static / "autonomous-engineering-core.js").read_text(encoding="utf-8")
+    status = (static / "autonomous-engineering-status.js").read_text(encoding="utf-8")
+    controls = (static / "autonomous-engineering-controls.js").read_text(encoding="utf-8")
+    progress = (static / "autonomous-engineering-progress.js").read_text(encoding="utf-8")
 
-    assert "new AbortController()" in script
-    assert "statusRefreshPromise" in script
-    assert "function refresh(force = false)" in script
-    assert "await refresh(true)" in script
-    assert "dispatchPendingUntil" in script
-    assert "if (settingsSaving) return" in script
-    assert "if (!canStartDispatch())" in script
-    assert "if (statusRefreshPromise) return statusRefreshPromise" in script
-    assert "async function refreshAfterMutation()" in script
-    assert "const timeoutMs = path === \"status\" ? 40000" in script
-    assert "path.startsWith(\"progress\") ? 20000 : 120000" in script
-    assert 'window.setInterval(refresh, 30000)' in script
-    assert 'window.setInterval(refreshProgress, 5000)' in script
-    assert 'window.setTimeout(refresh, 2500)' not in script
-    assert 'finally {\n      dispatchButton.disabled = false;' not in script
-    assert "let dispatchSubmitting = false" in script
-    assert script.count("dispatchSubmitting = true") == 2
-    assert "function syncDispatchControls()" in script
-    assert "taskButton.disabled = !canStartManualTask()" in script
-    assert "function canStartManualTask()" in script
-    assert "function canStartDispatch()" in script
-    assert "let statusKnown = false" in script
-    assert "statusKnown && lastCanDispatch" in script
-    assert "statusKnown = false;" in script
-    assert "item.point[line.key] !== null" in script
-    assert "engineeringPercent !== null" in script
-    assert "window.setTimeout(syncDispatchControls, 30000)" in script
-    assert "timeoutError.ambiguous = true" in script
-    assert "error.ambiguous || error.status >= 500" in script
-    assert "function lockDispatchVisibilityWindow()" in script
+    assert "new AbortController()" in core
+    assert 'const timeoutMs = path === "status" ? 40000' in core
+    assert 'path.startsWith("progress") ? 20000 : 120000' in core
+    assert "timeoutError.ambiguous = true" in core
+    assert "statusRefreshPromise" in status
+    assert "function refresh(force = false)" in status
+    assert "if (force) return refreshAfterMutation()" in status
+    assert "dispatchPendingUntil" in status
+    assert "if (settingsSaving) return" in controls
+    assert "if (!status.canStartDispatch()) return" in controls
+    assert "status.setDispatchSubmitting(true)" in controls
+    assert "status.setDispatchSubmitting(false)" in controls
+    assert "setDispatchSubmitting(value)" in status
+    assert "if (statusRefreshPromise) return statusRefreshPromise" in status
+    assert "async function refreshAfterMutation()" in status
+    assert "function syncDispatchControls()" in status
+    assert "taskButton.disabled = !canStartManualTask()" in status
+    assert "function canStartManualTask()" in status
+    assert "function canStartDispatch()" in status
+    assert "statusKnown && lastCanDispatch" in status
+    assert "window.setTimeout(syncDispatchControls, 30000)" in status
+    assert "item.point[line.key] !== null" in progress
+    assert "engineeringPercent !== null" in progress
+    assert 'window.setInterval(() => void status.refresh(), 30000)' in orchestrator
+    assert 'window.setInterval(() => void progress.refresh(), 5000)' in orchestrator
+    assert "window.setTimeout(refresh, 2500)" not in orchestrator + status + controls
+    assert "dispatchButton.disabled = false" not in controls
+
 
 def test_autonomous_run_administration_routes_are_registered():
     paths = {route.path for route in agent.router.routes}
@@ -2055,7 +2068,7 @@ def test_cleanup_refuses_active_run_or_pending_task(monkeypatch, tmp_path):
 def test_run_management_controls_are_present_and_wired():
     root = Path(__file__).resolve().parents[1]
     page = (root / "app" / "static" / "autonomous-engineering.html").read_text(encoding="utf-8")
-    script = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
+    script = (root / "app" / "static" / "autonomous-engineering-runs.js").read_text(encoding="utf-8")
     assert 'id="refresh-runs"' in page
     assert 'id="cleanup-agent-temp"' in page
     assert 'id="cleanup-agent-status"' in page
@@ -2155,7 +2168,7 @@ def test_run_logs_include_persisted_codex_reason_and_failure_stage(monkeypatch):
 
 def test_dashboard_renders_failure_summary_and_codex_diagnostic_details():
     script = (
-        Path(__file__).resolve().parents[1] / "app" / "static" / "autonomous-engineering.js"
+        Path(__file__).resolve().parents[1] / "app" / "static" / "autonomous-engineering-runs.js"
     ).read_text(encoding="utf-8")
 
     assert "علت خطا: " in script
