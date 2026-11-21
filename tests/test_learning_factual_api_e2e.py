@@ -31,7 +31,7 @@ def test_learning_api_to_worker_persists_factual_claim_with_provenance(tmp_path,
     )
     source_hash = hashlib.sha256(source_chunk.encode("utf-8")).hexdigest()
 
-    def discover(job_id, _topic):
+    def discover(job_id, _topic, *, execution_lease=None, task_context=None):
         with db.learning_connection() as conn:
             conn.execute(
                 "INSERT INTO learning_source_text(job_id, content) VALUES (?, ?)",
