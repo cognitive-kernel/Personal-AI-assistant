@@ -160,15 +160,18 @@ def test_ai_learning_page_contains_shared_main_navigation():
 
 
 def test_ai_learning_page_has_one_loopback_protected_route_owner():
-    from app.main import app
+    from app.ai_learning.ui import router as ai_learning_ui_router
 
     routes = [
-        route for route in app.routes
+        route for route in ai_learning_ui_router.routes
         if getattr(route, "path", None) == "/ai-learning"
     ]
     assert len(routes) == 1
     assert routes[0].name == "learning_dashboard"
     assert routes[0].dependant.dependencies
+
+    main_source = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text(encoding="utf-8")
+    assert "app.include_router(ai_learning_ui_router)" in main_source
 
 
 def test_ai_learning_modules_have_versioned_contracts_and_bounded_ownership():
@@ -199,8 +202,8 @@ def test_ai_learning_modules_have_versioned_contracts_and_bounded_ownership():
     assert "loadCourses(created.id)" in courses
     assert "Promise.resolve().then(()=>runHistoryLoader(requestedCourseId)).catch" in courses
     assert "searchRequestSequence" in search
-    assert 'import("./core.js?v="+MODULE_VERSION)' in entry
-    assert 'import("./courses.js?v="+MODULE_VERSION)' in entry
+    assert 'importWithTimeout("./core.js?v="+MODULE_VERSION)' in entry
+    assert 'importWithTimeout("./courses.js?v="+MODULE_VERSION)' in entry
     assert "function createFallbackCore()" in entry
     assert "function loadFeature(" in entry
     assert "courses.setLessonLoader(lessons?.loadLessons" in entry
