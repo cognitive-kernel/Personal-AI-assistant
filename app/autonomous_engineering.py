@@ -106,6 +106,8 @@ def _run(command: list[str], timeout: int = 8) -> subprocess.CompletedProcess[st
             command,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             check=False,
             shell=False,
