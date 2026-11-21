@@ -4960,3 +4960,199 @@ def test_ai_learning_discards_lesson_list_after_switching_courses():
         assert page.locator("#lessons .lesson").count() == 0
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_autonomous_progress_refresh_applies_latest_selected_period_after_slow_response():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    status_payload = {
+        "ready": False,
+        "checks": {},
+        "github": {"recent_runs": [], "settings": {}},
+        "pending_work": {"available": False, "blocked": True, "markers": {}},
+        "codex": {}, "runner": {}, "models": [], "selectable_models": [],
+        "paused": False, "execution_mode": "continuous", "interval_hours": 24,
+    }
+    state = {"daily_route": None, "weekly_requests": 0}
+    browser_errors = []
+
+    def fulfill_json(route, value):
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(value))
+
+    def progress_route(route):
+        query = route.request.url.partition("?")[2]
+        period = next((item.partition("=")[2] for item in query.split("&") if item.startswith("period=")), "")
+        if period == "daily" and state["daily_route"] is None:
+            state["daily_route"] = route
+            return
+        if period == "weekly":
+            state["weekly_requests"] += 1
+            fulfill_json(route, {
+                "current": None,
+                "history": [{"period": "2026-W47", "date": "2026-11-20", "engineering_percent": 31, "overall_percent": 27}],
+                "latest_snapshot": {"engineering_percent": 31, "overall_percent": 27},
+                "events": [], "storage_configured": True,
+            })
+            return
+        fulfill_json(route, {
+            "current": None,
+            "history": [{"period": "2026-11-20", "date": "2026-11-20", "engineering_percent": 12, "overall_percent": 10}],
+            "latest_snapshot": {"engineering_percent": 12, "overall_percent": 10},
+            "events": [], "storage_configured": True,
+        })
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/api/autonomous-engineering/status", lambda route: fulfill_json(route, status_payload))
+        page.route("**/api/autonomous-engineering/runs", lambda route: fulfill_json(route, {"runs": []}))
+        page.route("**/api/autonomous-engineering/progress**", progress_route)
+
+        response = page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        page.locator("details.progress-details > summary").click()
+        page.wait_for_function("() => document.querySelector('#progress-period') !== null")
+        for _ in range(50):
+            if state["daily_route"] is not None:
+                break
+            page.wait_for_timeout(20)
+        assert state["daily_route"] is not None, "The initial daily progress request was not observed."
+
+        page.locator("#progress-period").select_option("weekly")
+        state["daily_route"].fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({
+                "current": None,
+                "history": [{"period": "2026-11-20", "date": "2026-11-20", "engineering_percent": 12, "overall_percent": 10}],
+                "latest_snapshot": {"engineering_percent": 12, "overall_percent": 10},
+                "events": [], "storage_configured": True,
+            }),
+        )
+        page.wait_for_function("() => document.querySelectorAll('#progress-chart text').length > 0", timeout=10000)
+        page.wait_for_function("() => Array.from(document.querySelectorAll('#progress-chart text')).some(node => node.textContent === '2026-W47')", timeout=10000)
+        assert state["weekly_requests"] >= 1, "The latest period selection was dropped while the prior request was pending."
+        assert page.locator("#engineering-progress").inner_text() == "31.00%"
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+def test_autonomous_run_history_discards_older_response_after_newer_refresh():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    status_payload = {
+        "ready": False,
+        "checks": {},
+        "github": {"recent_runs": [], "settings": {}},
+        "pending_work": {"available": False, "blocked": True, "markers": {}},
+        "codex": {}, "runner": {}, "models": [], "selectable_models": [],
+        "paused": False, "execution_mode": "continuous", "interval_hours": 24,
+    }
+    state = {"run_routes": []}
+    browser_errors = []
+
+    def fulfill_json(route, value):
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(value))
+
+    def status_route(route):
+        fulfill_json(route, status_payload)
+
+    def runs_route(route):
+        state["run_routes"].append(route)
+        if len(state["run_routes"]) >= 2:
+            fulfill_json(route, {"runs": [{
+                "id": 200, "status": "completed", "conclusion": "success",
+                "display_title": "Newer run", "created_at": "2026-11-21T05:00:00Z",
+                "url": "https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/200",
+            }]})
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/api/autonomous-engineering/status", status_route)
+        page.route("**/api/autonomous-engineering/runs", runs_route)
+        page.route("**/api/autonomous-engineering/progress**", lambda route: fulfill_json(route, {
+            "current": None, "history": [], "latest_snapshot": None,
+            "events": [], "storage_configured": True,
+        }))
+
+        response = page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        page.wait_for_function("() => document.querySelector('#refresh-agent')?.disabled === false")
+        for _ in range(50):
+            if state["run_routes"]:
+                break
+            page.wait_for_timeout(20)
+        assert len(state["run_routes"]) >= 1, "Initial run-history request was not observed."
+
+        page.locator("#refresh-agent").click()
+        page.wait_for_function("() => document.querySelector('#refresh-agent')?.disabled === false")
+        page.wait_for_function("() => document.querySelector('#recent-runs')?.textContent.includes('Newer run')", timeout=10000)
+        assert len(state["run_routes"]) >= 2, "The newer run-history request was not observed."
+
+        state["run_routes"][0].fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"runs": [{
+                "id": 100, "status": "completed", "conclusion": "failure",
+                "display_title": "Older run", "created_at": "2026-11-20T05:00:00Z",
+                "url": "https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/100",
+            }]}),
+        )
+        page.wait_for_timeout(150)
+        assert "Newer run" in page.locator("#recent-runs").inner_text()
+        assert "Older run" not in page.locator("#recent-runs").inner_text()
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+def test_autonomous_dashboard_explains_durable_pending_task_blockers():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    status_payload = {
+        "ready": True,
+        "can_dispatch": True,
+        "checks": {},
+        "github": {"recent_runs": [], "settings": {}},
+        "pending_work": {
+            "available": True,
+            "blocked": True,
+            "markers": {"pending_task": True, "pending_owner": True, "pending_pr": False, "cleanup_in_progress": False},
+            "checkpoint": {"available": False, "verified": True},
+            "reason": "pending_task, pending_owner",
+        },
+        "codex": {}, "runner": {}, "models": [], "selectable_models": [],
+        "paused": False, "execution_mode": "continuous", "interval_hours": 24,
+    }
+
+    def fulfill_json(route, value):
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(value))
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.route("**/api/autonomous-engineering/status", lambda route: fulfill_json(route, status_payload))
+        page.route("**/api/autonomous-engineering/runs", lambda route: fulfill_json(route, {"runs": []}))
+        page.route("**/api/autonomous-engineering/progress**", lambda route: fulfill_json(route, {
+            "current": None, "history": [], "latest_snapshot": None,
+            "events": [], "storage_configured": True,
+        }))
+
+        response = page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        state = page.locator("#manual-task-state")
+        state.wait_for(timeout=10000)
+        page.wait_for_function("() => document.querySelector('#manual-task-state')?.textContent.includes('فرادادهٔ مالکیت Runner')")
+        assert "وظیفهٔ ذخیره‌شده" in state.inner_text()
+        assert "فرادادهٔ مالکیت Runner" in state.inner_text()
+        assert page.locator("#send-agent-task").is_disabled()
+        assert page.locator("#dispatch-agent").is_enabled(), "Resume/reconcile must remain available while new-task submission is blocked."
+        browser.close()
