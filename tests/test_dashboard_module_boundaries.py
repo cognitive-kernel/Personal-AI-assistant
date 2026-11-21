@@ -338,9 +338,11 @@ def test_remaining_large_ui_modules_are_not_misreported_as_complete():
     status = (ROOT / "docs" / "PROJECT_STATUS.md").read_text(encoding="utf-8")
     engineering_log = (ROOT / "docs" / "ENGINEERING_LOG.md").read_text(encoding="utf-8")
 
-    for name in ("ai-learning.js", "learning.js"):
-        assert name in status
-        assert name in engineering_log
+    assert not (STATIC / "ai-learning.js").exists()
+    assert "app/ai_learning/static/app.js" in status
+    assert "learning.js" in status
+    assert "learning.js" in engineering_log
+    assert "ai-learning.js" in engineering_log  # Historical root-cause record, not an active module.
     assert "prevents declaring the no-god-module objective complete" in status
     orchestrator = (STATIC / "autonomous-engineering.js").read_text(encoding="utf-8")
     assert len(orchestrator.splitlines()) <= 40
