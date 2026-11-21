@@ -52,14 +52,16 @@ def select_context_window(
     model_weight_bytes: int,
     available_memory_bytes: int,
     requested_context_tokens: int | None = None,
+    minimum_context_tokens: int = 1,
     reserve_bytes: int | None = None,
     model_is_loaded: bool = False,
     running_context_tokens: int | None = None,
 ) -> dict[str, int | bool | None]:
     """Select the exact safe context from model metadata and current host capacity.
 
-    No application-level token floor or ceiling is imposed. The model's declared
-    context length and measured memory budget are the only operational limits.
+    The optional minimum is a workload-specific admission requirement. Generic
+    callers may retain the default of one token; coding workflows should pass
+    their documented minimum and fail closed when the host cannot provide it.
     KV-cache memory is budgeted at four bytes per element as a conservative
     upper bound because Ollama does not consistently expose its runtime dtype.
     """
@@ -78,6 +80,12 @@ def select_context_window(
         or requested_context_tokens <= 0
     ):
         raise OllamaModelMetadataError("Requested context must be a positive integer.")
+    if (
+        isinstance(minimum_context_tokens, bool)
+        or not isinstance(minimum_context_tokens, int)
+        or minimum_context_tokens <= 0
+    ):
+        raise OllamaModelMetadataError("Minimum context must be a positive integer.")
     if not isinstance(model_is_loaded, bool):
         raise OllamaModelMetadataError("model_is_loaded must be a boolean.")
     if model_is_loaded and (
@@ -150,11 +158,21 @@ def select_context_window(
         )
 
     requested = requested_context_tokens
+    if hardware_maximum < minimum_context_tokens:
+        raise OllamaModelMetadataError(
+            f"Hardware-safe context {hardware_maximum} is below the required minimum "
+            f"{minimum_context_tokens} tokens."
+        )
     selected = min(requested if requested is not None else maximum, maximum, hardware_maximum)
+    if selected < minimum_context_tokens:
+        raise OllamaModelMetadataError(
+            f"Selected context {selected} is below the required minimum {minimum_context_tokens} tokens."
+        )
     return {
         "maximum_context_tokens": maximum,
         "hardware_maximum_context_tokens": hardware_maximum,
         "requested_context_tokens": requested,
+        "minimum_context_tokens": minimum_context_tokens,
         "selected_context_tokens": selected,
         "kv_cache_bytes_per_token": bytes_per_token,
         "model_weight_bytes": model_weight_bytes,
