@@ -81,6 +81,42 @@ def test_stale_task_epoch_cannot_write_learning_escalation(learning_task_store):
         ).fetchone()[0]
     assert count == 0
 
+
+def test_lease_reclaimed_during_learning_generation_blocks_failure_settlement(
+    learning_task_store, monkeypatch,
+):
+    job = learning.create_job("Fence learning job after generation lease loss")
+    context, task = _claimed_context(job["id"])
+    request_calls = {"count": 0}
+
+    monkeypatch.setattr(
+        learning,
+        "_discover_and_store_sources",
+        lambda job_id, topic, *, task_context=None: ("Stable source context", "web_search"),
+    )
+
+    def reclaim_during_generation(*args, **kwargs):
+        request_calls["count"] += 1
+        with db.learning_connection() as conn:
+            conn.execute(
+                "UPDATE task_queue SET lease_expires_at='2000-01-01T00:00:00.000000+00:00' WHERE id=?",
+                (task["id"],),
+            )
+        reclaimed = task_manager.claim_next_task("worker-1")
+        assert reclaimed is not None
+        assert reclaimed["lease_epoch"] > context.lease_epoch
+        raise RuntimeError("simulated model failure after lease reclamation")
+
+    monkeypatch.setattr(learning, "_request", reclaim_during_generation)
+
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        learning.run_job(job["id"], task_context=context)
+
+    assert request_calls["count"] == 1
+    saved = learning.get_job(job["id"])
+    assert saved["status"] == "running"
+    assert not saved["lesson"]
+
 def test_learning_task_missing_domain_record_is_permanent(learning_task_store):
     context, _task = _claimed_context(999999)
 
