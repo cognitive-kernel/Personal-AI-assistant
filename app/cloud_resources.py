@@ -22,6 +22,7 @@ from .cloud_provider_adapters import extract_resource_claims
 from .cloud_resource_policy import assess_candidate
 from .schema_registry import CLOUD_RESOURCE_MIGRATIONS, initialize_database_file
 from . import task_manager, web_sources
+from .task_worker import TaskInterrupted
 
 CLOUD_DISCOVERY_TASK_TYPE = "cloud.discover_resources"
 MAX_RESULTS_PER_QUERY = 5
@@ -1578,9 +1579,24 @@ def handle_discovery_task(
             expected_payload=payload,
         )
     except Exception:
-        # Keep the daily chain alive even when a task is paused/cancelled or discovery fails.
+        # A reclaimed stale worker must not enqueue follow-up work. Paused/cancelled
+        # tasks intentionally keep the daily schedule alive under the scheduler policy.
+        try:
+            context.assert_current(
+                expected_task_type=CLOUD_DISCOVERY_TASK_TYPE,
+                expected_payload=payload,
+            )
+        except TaskInterrupted:
+            _schedule_next_daily_run()
+            raise
+        except task_manager.TaskManagerError:
+            raise
         _schedule_next_daily_run()
         raise
+    context.assert_current(
+        expected_task_type=CLOUD_DISCOVERY_TASK_TYPE,
+        expected_payload=payload,
+    )
     next_task, next_run = _schedule_next_daily_run()
     return {
         **report,
