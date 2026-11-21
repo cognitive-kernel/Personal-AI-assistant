@@ -282,9 +282,11 @@ def _store_edge_review(
 ) -> dict[str, Any]:
     with learning_connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
-        if context is not None:
+        if context is not None and (
+            expected_task_type is not None or expected_payload is not None
+        ):
             if expected_task_type is None or expected_payload is None:
-                raise ValueError("Task ownership contract is required for graph review persistence.")
+                raise ValueError("Task ownership contract is incomplete for graph review persistence.")
             context.assert_current(
                 connection,
                 expected_task_type=expected_task_type,
