@@ -2246,3 +2246,8 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Review of PR #817 identified that _run collapsed OSError (the CLI never started) and TimeoutExpired (the request may already have reached GitHub) into the same None result. Treating both as ambiguous incorrectly blocked a safe retry after a definite local launch failure.
 - Added an opt-in raise_os_error mode used only by the workflow-dispatch call; all other _run callers retain their existing fail-closed behavior. A launch error now returns a correlated WORKFLOW_DISPATCH_LAUNCH_FAILED response marked retryable, while timeout remains ambiguous and non-retryable.
 - Added a regression that simulates the executable disappearing after lookup and asserts the distinct safe response. Exact-head CI remains required.
+
+
+### CI correction: dispatch test doubles
+
+- Exact-head CI completed 2,466 tests successfully and found one test-only failure: a legacy `_run` fake did not accept the new opt-in `raise_os_error` keyword used only by workflow dispatch. Updated all dispatch-safety fakes in that file to accept the optional keyword; production behavior is unchanged. The full suite must pass again on the new HEAD.
