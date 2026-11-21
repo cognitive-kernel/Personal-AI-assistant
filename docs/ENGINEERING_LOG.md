@@ -2103,3 +2103,12 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Added regression tests proving the task and smoke profiles remain separate. Exact-head CI and a real Windows Runner task are required before claiming this addresses the underlying inference failure.
 
 - Follow-up regression found after PR #782 merge: the new heartbeat persisted Persian text correctly for the dashboard but also printed it directly to the Windows Actions console. On the Runner's active code page this raised `UnicodeEncodeError` during the Codex smoke and aborted the smoke process before any model/tool conclusion. Console heartbeat output is now ASCII-only while persisted dashboard activity remains Persian; added regression tests for both heartbeat states. This fix is included in the still-open PR #783 branch so the stream-profile change is not merged with the console regression.
+
+
+## 2026-11-21 — Durable task ownership fencing (in progress)
+
+- Root cause: task ownership previously depended on a reusable worker ID and lease expiry; after reclaim, a stale process using the same ID could pass owner-string validation. The task queue also combined storage, lease lifecycle, controls, and shared contracts in one large module.
+- Change in branch `fix/durable-task-ownership-fencing-20261121`: split queue contracts/storage/lease/control behind the stable `app.task_manager` facade; add additive learning-schema migration 48 for monotonic `lease_epoch`; increment epoch atomically on claim; require owner+epoch+expiry checks for worker mutations; assign each TaskWorker instance a unique owner token; propagate the epoch through TaskContext and runtime.
+- Added regression coverage for same-label reclaim, stale mutation rejection, worker-token uniqueness, and existing restart/retry/control behavior.
+- Validation status: exact-head GitHub CI has not yet run. The prior closed PR #747 is not used as proof: its old head had 24 full-suite failures and the real-Docker sandbox job timed out; those failures included unrelated baseline drift and must not be hidden.
+- Residual scope: domain-level learning transaction fencing, full UI isolation/failure recovery, and target-host Windows acceptance remain open. No database migration has been run against user data; the migration is only defined in code and is additive.
