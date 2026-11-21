@@ -2267,3 +2267,60 @@ def test_dispatch_fails_closed_when_checkpoint_integrity_is_unverified(monkeypat
 
     assert error.value.status_code == 409
     assert "یکپارچگی" in error.value.detail
+
+
+def test_dispatch_failure_exposes_correlation_id_and_redacts_cli_secrets(monkeypatch, caplog):
+    token = "ghp_123456789012345678901234567890"
+    monkeypatch.setattr(
+        agent, "collect_status",
+        lambda: {"ready": True, "github": {"runs_available": True, "recent_runs": []}},
+    )
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    calls = []
+
+    def fake_run(command, timeout=8):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        return subprocess.CompletedProcess(command, 1, "", f"HTTP 401 Bearer {token}")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    with pytest.raises(HTTPException) as error:
+        agent.dispatch_autonomous_engineering()
+
+    assert len(calls) == 2
+    assert error.value.status_code == 502
+    assert error.value.headers["X-Error-Code"] == "WORKFLOW_DISPATCH_FAILED"
+    assert error.value.headers["X-Retryable"] == "false"
+    correlation_id = error.value.headers["X-Correlation-ID"]
+    assert len(correlation_id) == 32
+    assert correlation_id in error.value.detail
+    assert "exit code 1" in error.value.detail
+    assert token not in caplog.text
+    assert "[REDACTED]" in caplog.text
+
+
+def test_dispatch_timeout_reports_ambiguous_outcome_without_encouraging_retry(monkeypatch):
+    monkeypatch.setattr(
+        agent, "collect_status",
+        lambda: {"ready": True, "github": {"runs_available": True, "recent_runs": []}},
+    )
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    def fake_run(command, timeout=8):
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        return None
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    with pytest.raises(HTTPException) as error:
+        agent.dispatch_autonomous_engineering()
+
+    assert error.value.status_code == 502
+    assert error.value.headers["X-Error-Code"] == "WORKFLOW_DISPATCH_OUTCOME_UNKNOWN"
+    assert error.value.headers["X-Retryable"] == "false"
+    assert error.value.headers["X-Correlation-ID"] in error.value.detail
+    assert "نامشخص" in error.value.detail
+    assert "پیش از تلاش مجدد" in error.value.detail
