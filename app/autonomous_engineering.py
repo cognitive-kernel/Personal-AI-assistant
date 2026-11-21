@@ -115,7 +115,7 @@ class AutonomousEngineeringAPIRoute(APIRoute):
                 return _structured_error_response(
                     status_code=exc.status_code,
                     message=message,
-                    detail=exc.detail if isinstance(exc.detail, (str, list, dict)) else message,
+                    detail=message,
                     headers=exc.headers,
                     safe_details=getattr(exc, "safe_details", None),
                 )
@@ -1253,8 +1253,16 @@ def delete_autonomous_engineering_run(run_id: int) -> dict[str, Any]:
         timeout=20,
     )
     if not result or result.returncode != 0:
-        detail = (result.stderr or result.stdout or "")[-1000:] if result else ""
-        raise HTTPException(status_code=502, detail="حذف اجرا توسط GitHub تأیید نشد. " + detail)
+        _STATUS_LOGGER.warning(
+            "GitHub run deletion failed; run_id=%s returncode=%s stderr_present=%s",
+            trusted_run_id,
+            result.returncode if result else None,
+            bool(result and result.stderr),
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="حذف اجرای GitHub تأیید نشد؛ وضعیت سرویس را بازخوانی کنید.",
+        )
     return {"deleted": True, "run_id": trusted_run_id, "message": "اجرای پایان‌یافته از تاریخچهٔ GitHub حذف شد."}
 
 
