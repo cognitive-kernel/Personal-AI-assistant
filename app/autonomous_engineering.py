@@ -87,6 +87,13 @@ def _structured_error_response(
         "X-Error-Code": error_code,
         "X-Retryable": "true" if can_retry else "false",
     })
+    _STATUS_LOGGER.warning(
+        "Autonomous Engineering API error; status_code=%s code=%s retryable=%s correlation_id=%s",
+        status_code,
+        error_code,
+        can_retry,
+        correlation_id,
+    )
     return JSONResponse(
         status_code=status_code,
         content={
