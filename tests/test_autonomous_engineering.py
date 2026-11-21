@@ -2298,7 +2298,8 @@ def test_dispatch_failure_exposes_correlation_id_and_redacts_cli_secrets(monkeyp
     assert correlation_id in error.value.detail
     assert "exit code 1" in error.value.detail
     assert token not in caplog.text
-    assert "[REDACTED]" in caplog.text
+    assert "stderr_sha256=" in caplog.text
+    assert token not in caplog.text
 
 
 def test_dispatch_timeout_reports_ambiguous_outcome_without_encouraging_retry(monkeypatch):
