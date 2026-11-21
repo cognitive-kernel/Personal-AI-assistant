@@ -2224,3 +2224,11 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 ## 2026-11-21 — Autonomous UI modules rebased onto learning evidence head
 - PR #808 now builds directly on PR #807's updated head. The module files and their tests were carried forward unchanged; the engineering log retains both preceding PR records.
 - Exact-head validation is being rerun against this ancestry before the stacked PR is promoted.
+
+
+## 2026-11-21 — Recover missing Codex final report from the completed JSONL turn
+
+- Evidence from failed workflow run [44907149358](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44907149358): attempt 1 ran for 205.1 seconds; attempt 2 ran for 2,872.6 seconds and received 146 JSONL events. The process exited successfully, but the controller rejected the absent/invalid `--output-last-message` completion marker and exhausted its two-attempt budget. The durable task/checkpoint was retained.
+- Root-cause gap in the controller: production `run_codex` consumed the JSONL stream for progress telemetry but discarded completed `agent_message` events; the cycle controller then relied exclusively on the separate report file. Thus a successfully completed JSONL turn had no report-recovery path if that file was missing or empty.
+- Fix: retain only the last completed `agent_message` in the current turn, track successful `turn.completed` versus failure events, and recover the report only when the process exits successfully, the turn completed without a failure event, the final message is non-empty, and the `--output-last-message` file is absent or empty. Existing non-empty report files are never overwritten; failed/incomplete turns are never promoted.
+- Regression tests cover successful fallback, fail-closed behavior for incomplete/failed/empty turns, and preservation of an existing report. Exact-head CI and a real Windows Runner execution are still required; this patch is not yet accepted as a verified fix.
