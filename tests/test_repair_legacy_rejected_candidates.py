@@ -157,3 +157,17 @@ def test_repair_refuses_to_create_or_initialize_a_missing_database(tmp_path, mon
         repair_legacy_rejected_candidates()
 
     assert not missing.exists()
+
+
+def test_legacy_repair_supports_relative_database_paths(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(db.defaults, "learning_db_path", "learning.db")
+    result = repair_legacy_rejected_candidates()
+
+    assert result["mode"] == "dry_run"
+    assert result["scanned"] == 0
+    assert result["updated"] == 0
