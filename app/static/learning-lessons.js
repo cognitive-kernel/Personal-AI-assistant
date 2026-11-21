@@ -8,7 +8,7 @@
    ...options
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.detail || ("HTTP " + response.status));
+  if (!response.ok) { const error = new Error(payload.detail || ("HTTP " + response.status)); error.status = response.status; throw error; }
   return payload;
  }
  const delay = ms => new Promise(resolve => window.setTimeout(resolve, ms));
