@@ -5631,3 +5631,85 @@ def test_autonomous_dispatch_error_exposes_code_and_correlation_id_after_status_
         assert page.locator("#dispatch-agent").is_disabled(), "Retryable dispatch failure must keep the visibility lock."
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_autonomous_engineering_model_pull_requires_consent_and_reports_progress():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    model = "example/model:latest"
+    state = {"posted": None, "polls": 0}
+    status_payload = {
+        "ready": False, "can_dispatch": False,
+        "checks": {
+            "ollama_online": True, "model_installed": False, "model_selectable": False,
+            "model_context_metadata_available": False, "model_context_supported": False,
+            "model_supports_tools": False, "model_tools_metadata_available": False,
+            "model_is_codex_context_variant": False, "codex_installed": False,
+            "runner_running": True, "github_cli_authenticated": True,
+            "github_runs_available": True, "progress_storage_accessible": True,
+        },
+        "model": "", "models": [], "selectable_models": [],
+        "model_context_length": None, "model_recommended_context_length": None,
+        "model_tools_verification_method": "probe_required",
+        "interval_hours": 24, "execution_mode": "continuous", "paused": False,
+        "pending_work": {
+            "available": True, "blocked": False,
+            "markers": {"pending_task": False, "pending_owner": False, "pending_pr": False, "cleanup_in_progress": False},
+            "checkpoint": {"available": False, "verified": True}, "reason": None,
+        },
+        "github": {"recent_runs": [], "settings": {"model": ""}},
+        "codex": {"installed": False, "version": None},
+        "local_only_inference": True,
+    }
+    dialogs = []
+    browser_errors = []
+
+    def start_pull(route):
+        state["posted"] = route.request.post_data_json
+        route.fulfill(status=202, json={
+            "job_id": "a" * 32, "model": model, "status": "queued",
+            "progress": 0, "message": "queued", "error": None,
+        })
+
+    def poll_pull(route):
+        state["polls"] += 1
+        if state["polls"] == 1:
+            route.fulfill(status=200, json={
+                "job_id": "a" * 32, "model": model, "status": "running",
+                "progress": 50, "message": "در حال دانلود", "error": None,
+            })
+        else:
+            route.fulfill(status=200, json={
+                "job_id": "a" * 32, "model": model, "status": "completed",
+                "progress": 100, "message": "نصب و بررسی شد", "error": None,
+            })
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.on("dialog", lambda dialog: (dialogs.append(dialog.message), dialog.accept()))
+        page.route("**/api/autonomous-engineering/status", lambda route: route.fulfill(status=200, json=status_payload))
+        page.route("**/api/autonomous-engineering/runs**", lambda route: route.fulfill(status=200, json={"runs": []}))
+        page.route("**/api/autonomous-engineering/progress**", lambda route: route.fulfill(
+            status=200,
+            json={"current": None, "history": [], "latest_snapshot": None, "events": [], "storage_configured": True},
+        ))
+        page.route("**/api/autonomous-engineering/models/pull", start_pull)
+        page.route("**/api/autonomous-engineering/models/pull/" + "a" * 32, poll_pull)
+
+        response = page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        page.locator("#custom-model").fill(model)
+        page.locator("#pull-model").click()
+        page.wait_for_function(
+            "() => document.querySelector('#model-pull-status')?.textContent.includes('با موفقیت نصب شد')",
+            timeout=10000,
+        )
+        assert dialogs and model in dialogs[0]
+        assert state["posted"] == {"model": model}
+        assert state["polls"] >= 2
+        assert page.locator("#pull-model").is_enabled()
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
