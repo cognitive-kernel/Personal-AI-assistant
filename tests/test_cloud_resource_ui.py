@@ -5,40 +5,49 @@ def test_cloud_resource_ui_exposes_discovery_and_review_controls_safely():
     page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
         encoding="utf-8"
     )
-
-    assert 'id="cloud-resources-section"' in page
-    assert 'id="cloud-refresh"' in page
-    assert 'id="cloud-discover"' in page
-    assert 'id="cloud-candidates"' in page
-    assert 'id="cloud-candidate-limit"' in page
-    assert 'id="cloud-manual-form"' in page
-    assert 'api("/api/cloud-resources/manual"' in page
-    assert 'method:"DELETE"' in page
-    assert 'value="10" selected' in page
-    assert 'api("/api/cloud-resources?limit="+candidateLimit)' in page
-    assert '/api/cloud-resources/discover' in page
-    assert '"/api/cloud-resources/"+candidate.id+"/review"' in page
-    assert 'expected_content_sha256:candidate.content_sha256' in page
-    assert 'link.rel="noopener noreferrer"' in page
-    assert 'source.protocol!=="https:"' in page
-    assert 'candidate.observed_claims||[]' in page
-    assert 'document.createElement("details")' in page
-    assert 'summary.textContent="جزئیات شواهد و ادعاها ("' in page
-    assert 'card.append(details,deleteActions); container.append(card);' in page
-    assert 'candidate.eligibility_assessment' in page
-    assert 'candidate.source_authority==="recognized_official_domain"' in page
-    assert 'دامنهٔ رسمی شناخته‌شده' in page
-    assert 'execution_authorized' in page
-    assert 'claim.evidence_quote' in page
-    assert '"/claims/"+claim.id+"/review"' in page
-    assert 'sendClaimReview("accepted")' in page
-    assert 'sendClaimReview("rejected")' in page
-    assert 'ادعاهای استخراج‌شده از متن (هنوز تأییدنشده)' in page
-    # External source text must be rendered as text, never injected as markup.
     core = (Path(__file__).parents[1] / "app" / "static" / "dashboard-core.js").read_text(
         encoding="utf-8"
     )
-    assert '<script src="/static/dashboard-core.js"></script>' in page
-    assert 'node.textContent = text' in core
-    assert 'innerHTML' not in page
-    assert 'innerHTML' not in core
+    module = (Path(__file__).parents[1] / "app" / "static" / "cloud-resources.js").read_text(
+        encoding="utf-8"
+    )
+    source = page + "\\n" + core + "\\n" + module
+
+    assert 'src="/static/dashboard-core.js"' in page
+    assert 'src="/static/cloud-resources.js"' in page
+    assert "window.dashboardCore = Object.freeze({" in core
+    assert "version: 1" in core
+    assert "dashboardCore.{api,el,appendText}" in module
+    assert "core.version!==1" in module
+
+    assert 'id="cloud-resources-section"' in source
+    assert 'id="cloud-refresh"' in source
+    assert 'id="cloud-discover"' in source
+    assert 'id="cloud-candidates"' in source
+    assert 'id="cloud-candidate-limit"' in source
+    assert 'id="cloud-manual-form"' in source
+    assert 'api("/api/cloud-resources/manual"' in source
+    assert 'method:"DELETE"' in source
+    assert 'value="10" selected' in source
+    assert 'api("/api/cloud-resources?limit="+candidateLimit)' in source
+    assert '/api/cloud-resources/discover' in source
+    assert '"/api/cloud-resources/"+candidate.id+"/review"' in source
+    assert 'expected_content_sha256:candidate.content_sha256' in source
+    assert 'link.rel="noopener noreferrer"' in source
+    assert 'source.protocol!=="https:"' in source
+    assert 'candidate.observed_claims||[]' in source
+    assert 'document.createElement("details")' in source
+    assert 'summary.textContent="جزئیات شواهد و ادعاها ("' in source
+    assert 'card.append(details,deleteActions); container.append(card);' in source
+    assert 'candidate.eligibility_assessment' in source
+    assert 'candidate.source_authority==="recognized_official_domain"' in source
+    assert 'دامنهٔ رسمی شناخته‌شده' in source
+    assert 'execution_authorized' in source
+    assert 'claim.evidence_quote' in source
+    assert '"/claims/"+claim.id+"/review"' in source
+    assert 'sendClaimReview("accepted")' in source
+    assert 'sendClaimReview("rejected")' in source
+    assert 'ادعاهای استخراج‌شده از متن (هنوز تأییدنشده)' in source
+    # External source text must be rendered as text, never injected as markup.
+    assert 'node.textContent = text;' in core
+    assert 'innerHTML' not in source

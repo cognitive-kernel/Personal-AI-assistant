@@ -66,3 +66,32 @@ def test_core_theme_tokens_meet_wcag_text_contrast():
             f"{theme_name} focus indicator on surface has contrast "
             f"{focus_ratio:.2f}:1; expected at least 3:1"
         )
+
+
+def test_dark_storage_alert_code_remains_readable():
+    css = CSS_PATH.read_text(encoding="utf-8")
+    selector = ':root[data-theme="dark"] .storage-alert code'
+    match = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", css, re.DOTALL)
+    assert match, "Dark theme must define explicit storage-alert code colors."
+
+    foreground = re.search(r"color\s*:\s*(#[0-9a-fA-F]{3,6})\s*;", match.group(1))
+    background = re.search(r"background(?:-color)?\s*:\s*(#[0-9a-fA-F]{3,6})\s*;?", match.group(1))
+    assert foreground and background, "Storage-alert code needs explicit foreground and background colors."
+
+    ratio = _contrast(foreground.group(1), background.group(1))
+    assert ratio >= 4.5, (
+        f"Dark-theme storage-alert code contrast is {ratio:.2f}:1; expected at least 4.5:1"
+    )
+
+
+def test_dark_mode_status_colors_remain_readable_on_standalone_learning_pages():
+    root = CSS_PATH.parents[2]
+    cases = [
+        (root / "app" / "ai_learning" / "static" / "style.css", ".success"),
+    ]
+    for css_path, success_selector in cases:
+        css = css_path.read_text(encoding="utf-8")
+        assert "@media(prefers-color-scheme:dark){.error{color:#ff8a8a}" in css
+        assert f"{success_selector}{{color:#86efac}}" in css
+        assert _contrast("#ff8a8a", "#121212") >= 4.5
+        assert _contrast("#86efac", "#121212") >= 4.5

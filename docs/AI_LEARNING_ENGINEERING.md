@@ -28,6 +28,15 @@ The optional module gathers structured knowledge for later use by Personal-AI-as
 - app/ai_learning/browser_extension/: Manifest V3 bridge with minimal host permissions, explicit user submission and manual capture of the latest visible answer.
 - tests/test_ai_learning_*.py: unit and integration tests that do not require internet, a real account or a live model.
 
+
+## Browser UI ownership and request lifecycle
+
+- `app/ai_learning/ui.py` is the sole owner of the `/ai-learning` page route. It enforces the loopback dependency and serves only the feature package's `index.html`, versioned JavaScript modules and `style.css` through an explicit asset allowlist.
+- `app/main.py` must not define a second `/ai-learning` route. The superseded `app/static/ai-learning.*` page, script and stylesheet were removed so source tests cannot accidentally validate a page that users do not receive.
+- Course-list, course-detail, run-history, background-progress, global-control and retrieval-search responses are fenced by the feature module that owns them. A late response or error from an older request must not overwrite newer state, including when the selected course ID has not changed. Creating a course selects the returned course ID rather than relying on list order.
+- The destructive reset contract is shared by the UI and API; the UI must send the exact server phrase, not merely display a client-side confirmation.
+- The active UI is split into `core.js`, `courses.js`, `runs.js`, `lessons.js`, `controls.js` and `search.js`; `app.js` is a bounded orchestrator. Feature modules are dynamically loaded with `Promise.allSettled`, a five-second per-module timeout, versioned factories and injected contracts. The entry point provides a fallback core, disables only controls owned by a failed module, and continues initializing independent features. See `docs/AI_LEARNING_MODULES.md`; do not reintroduce static feature-to-feature imports or a parallel legacy page.
+
 ## Code quality requirements
 
 - Python 3.11+, type hints on public boundaries, small functions and explicit names.
@@ -73,7 +82,7 @@ The management dashboard exposes global pause and resume controls. The pause fla
 - Approved topics can be selected and submitted for lesson capture in a durable batch of up to 10,000 topics; each topic is stored as an independent FIFO run before browser work begins. Per-topic and per-lesson pause/resume controls preserve saved content. Global pause is persisted in SQLite. On startup the worker automatically dispatches the oldest queued/interrupted run unless global pause remains active; the dashboard also exposes a manual resume/recovery action.
 - Each topic exposes its lessons, version history, captured Markdown and raw response, and source links. Sources extracted from ChatGPT output are stored in the isolated `sources` table with `unverified` status until checked. A link appearing in a lesson is not proof that its contents were consulted.
 - Lesson versions with blank or insubstantial content must not be accepted as completed. Bulk review skips versions with no substantive body. Editing creates a new content version, preserving history. A mistakenly published version can be unpublished without deleting its content.
-- The destructive reset control requires typing `RESET`, preserves course definitions, and clears captured topics, lessons, versions, source rows (through foreign-key cascades), run history, chunks and query traces. It refuses to run while the browser worker is active.
+- The destructive reset control requires typing the exact phrase `RESET AI LEARNING DATA`; the browser sends that value in the `confirmation` field and the API validates it independently. It preserves course definitions and clears captured topics, lessons, versions, source rows (through foreign-key cascades), run history, chunks and query traces. It refuses to run while the browser worker is active.
 - The queue remains single-worker, but a durable SQLite owner lease, fencing epoch and heartbeat now coordinate processes sharing the same local database and browser profile. A process cannot requeue a `running` record while another process holds a valid lease; after expiry, recovery may reclaim the record. This does not coordinate separate hosts or network filesystems. A prompt interrupted before its response is committed may be reissued on recovery. The Chrome extension is retained because it remains a documented fallback and is covered by permission/packaging tests; no legacy code was removed without evidence that it was unused.
 
 

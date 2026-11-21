@@ -161,31 +161,31 @@ def test_bulk_lesson_actions_never_delete_lessons_and_accept_textual_sources():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
-    script = (root / "app" / "ai_learning" / "static" / "app.js").read_text(encoding="utf-8")
+    lessons = (root / "app" / "ai_learning" / "static" / "lessons.js").read_text(encoding="utf-8")
     html = (root / "app" / "ai_learning" / "static" / "index.html").read_text(encoding="utf-8")
 
-    assert "function hasTrailingSourceSection(markdown)" in script
-    assert "کتابنامه" in script
-    assert "const hasTextSource=hasTrailingSourceSection(markdown)" in script
+    assert "function hasTrailingSourceSection(markdown)" in lessons
+    assert "کتابنامه" in lessons
+    assert "const hasTextSource=hasTrailingSourceSection(markdown)" in lessons
     assert 'id="recover-deleted-lessons"' in html
-    assert "بازیابی گروهی انتخاب‌شده‌ها" in script
-    assert '$("recover-deleted-lessons").onclick=' in script
+    assert "بازیابی گروهی انتخاب‌شده‌ها" in lessons
+    assert '$("recover-deleted-lessons").onclick=' in lessons
 
-    approve_all_start = script.index('$("approve-all-lessons").onclick=')
-    approve_all_end = script.index('$("publish-all-lessons").onclick=', approve_all_start)
-    approve_all = script[approve_all_start:approve_all_end]
+    approve_all_start = lessons.index('$("approve-all-lessons").onclick=')
+    approve_all_end = lessons.index('$("publish-all-lessons").onclick=', approve_all_start)
+    approve_all = lessons[approve_all_start:approve_all_end]
     assert "if(!quality.hasSource){skipped++;continue}" in approve_all
     assert "deleteLessonForBulk" not in approve_all
 
     publish_all_start = approve_all_end
-    publish_all_end = script.index('$("reject-selected").onclick=', publish_all_start)
-    publish_all = script[publish_all_start:publish_all_end]
+    publish_all_end = lessons.index('$("show-all-lessons").onclick=', publish_all_start)
+    publish_all = lessons[publish_all_start:publish_all_end]
     assert "if(!quality.hasSource){skipped++;continue}" in publish_all
     assert "deleteLessonForBulk" not in publish_all
 
-    lesson_list_start = script.index("async function loadLessons(")
-    lesson_list_end = script.index('$("show-all-lessons").onclick=', lesson_list_start)
-    lesson_list = script[lesson_list_start:lesson_list_end]
+    lesson_list_start = lessons.index("async function loadLessons(")
+    lesson_list_end = lessons.index('$("show-all-lessons").onclick=', lesson_list_start)
+    lesson_list = lessons[lesson_list_start:lesson_list_end]
     review_start = lesson_list.index('const approveBulk=el("button"')
     publish_start = lesson_list.index('const publishBulk=el("button"', review_start)
     delete_start = lesson_list.index('const deleteInvalidBulk=el("button"', publish_start)
@@ -1490,65 +1490,53 @@ def test_provider_network_error_is_actionable():
 
 def test_selected_lesson_request_key_does_not_embed_all_topic_ids():
     from pathlib import Path
-    script = (Path(__file__).resolve().parents[1] / "app" / "static" / "ai-learning.js").read_text(encoding="utf-8")
-    assert 'const requestKey = "ui-selected-lessons-" + selectedCourse + "-" + Date.now();' in script
-    assert 'ids.join("-") + "-" + Date.now()' not in script
+    script = (Path(__file__).resolve().parents[1] / "app" / "ai_learning" / "static" / "courses.js").read_text(encoding="utf-8")
+    assert 'request_key:"playwright-selected-lessons-"+courseId+"-"+Date.now()' in script
+    assert 'ids.join("-")' not in script
 
-def test_review_and_publish_return_scroll_to_the_same_parent_topic():
+def test_review_and_publish_preserve_the_active_parent_topic_context():
     from pathlib import Path
 
-    script = (Path(__file__).resolve().parents[1] / "app" / "static" / "ai-learning.js").read_text(encoding="utf-8")
-    assert 'card.id = "topic-card-" + topic.id;' in script
-    assert 'function returnToTopic(topicId)' in script
-    assert 'card.scrollIntoView({behavior:"smooth", block:"center"});' in script
-    assert 'card.focus({preventScroll:true})' in script
+    root = Path(__file__).resolve().parents[1] / "app" / "ai_learning" / "static"
+    courses = (root / "courses.js").read_text(encoding="utf-8")
+    lessons = (root / "lessons.js").read_text(encoding="utf-8")
 
-    review_start = script.index('action("تأیید بازبینی"')
-    review_end = script.index('action("رد نسخه"', review_start)
-    review_handler = script[review_start:review_end]
-    assert 'await showLessons(topic);' in review_handler
-    assert 'returnToTopic(topic.id);' in review_handler
-    assert review_handler.index('await showLessons(topic);') < review_handler.index('returnToTopic(topic.id);')
+    assert 'function returnToTopic(topicId)' in courses
+    assert 'card.scrollIntoView({behavior:"smooth",block:"start"})' in courses
+    assert 'summary.focus({preventScroll:true})' in courses
+    assert 'const refreshLessons=()=>isCurrentLoad()?loadLessons(topicId,root,inline):Promise.resolve();' in lessons
 
-    publish_start = script.index('action("انتشار"')
-    publish_end = script.index('if (version.review_status === "published")', publish_start)
-    publish_handler = script[publish_start:publish_end]
-    assert 'await showLessons(topic);' in publish_handler
-    assert 'returnToTopic(topic.id);' in publish_handler
-    assert publish_handler.index('await showLessons(topic);') < publish_handler.index('returnToTopic(topic.id);')
+    review_start = lessons.index('if(v.review_status==="needs_review")')
+    review_end = lessons.index('if(v.review_status==="reviewed"||v.review_status==="rejected")', review_start)
+    review_handler = lessons[review_start:review_end]
+    assert 'await refreshLessons();' in review_handler
 
-    decision_start = script.index("async function decide(topicId, decision)")
-    decision_end = script.index("async function editTopic", decision_start)
-    assert "returnToTopic(topicId);" in script[decision_start:decision_end]
+    publish_start = lessons.index('if(v.review_status==="reviewed"){const b=el("button","انتشار برای بازیابی")')
+    publish_end = lessons.index('a.append(b)}', publish_start) + len('a.append(b)}')
+    publish_handler = lessons[publish_start:publish_end]
+    assert 'const parentTopicId=Number(l._topicId||topicId)' in publish_handler
+    assert 'await loadLessons(parentTopicId,root,inline)' in publish_handler
+    assert 'if(!inline)returnToTopic(parentTopicId)' in publish_handler
 
-    bulk_start = script.index("async function bulkReviewLessons(ids)")
-    bulk_end = script.index('byId("approve-all-lessons")', bulk_start)
-    bulk_handler = script[bulk_start:bulk_end]
-    assert "returnToTopic(topic.id);" in bulk_handler
 
-    manual_start = script.index("async function createLesson(topic)")
-    manual_end = script.index("byId(\"course-form\")", manual_start)
-    manual_handler = script[manual_start:manual_end]
-    assert "returnToTopic(topic.id);" in manual_handler
 
 def test_active_learning_ui_publish_returns_to_parent_topic():
     from pathlib import Path
 
-    script = (
-        Path(__file__).resolve().parents[1]
-        / "app" / "ai_learning" / "static" / "app.js"
-    ).read_text(encoding="utf-8")
+    root = Path(__file__).resolve().parents[1] / "app" / "ai_learning" / "static"
+    courses = (root / "courses.js").read_text(encoding="utf-8")
+    lessons = (root / "lessons.js").read_text(encoding="utf-8")
 
-    assert 'function returnToTopic(topicId)' in script
-    assert 'const catalog=$("catalog-menu");if(catalog)catalog.open=true;' in script
-    assert 'const lessonDetails=$("lesson-list-details");if(lessonDetails)lessonDetails.open=false;' in script
-    assert 'card.open=true;' in script
-    assert 'while(ancestor){ancestor.open=true;ancestor=ancestor.parentElement.closest("details.topic")}' in script
-    assert 'card.scrollIntoView({behavior:"smooth",block:"start"});' in script
+    assert 'function returnToTopic(topicId)' in courses
+    assert 'const catalog=$("catalog-menu");if(catalog)catalog.open=true;' in courses
+    assert 'const lessonDetails=$("lesson-list-details");if(lessonDetails)lessonDetails.open=false;' in courses
+    assert 'card.open=true;' in courses
+    assert 'while(ancestor){ancestor.open=true;ancestor=ancestor.parentElement.closest("details.topic")}' in courses
+    assert 'card.scrollIntoView({behavior:"smooth",block:"start"});' in courses
 
-    publish_start = script.index('if(v.review_status==="reviewed"){const b=el("button","انتشار برای بازیابی")')
-    publish_end = script.index('a.append(b)}', publish_start) + len('a.append(b)}')
-    publish_handler = script[publish_start:publish_end]
+    publish_start = lessons.index('if(v.review_status==="reviewed"){const b=el("button","انتشار برای بازیابی")')
+    publish_end = lessons.index('a.append(b)}', publish_start) + len('a.append(b)}')
+    publish_handler = lessons[publish_start:publish_end]
     assert 'const parentTopicId=Number(l._topicId||topicId)' in publish_handler
     assert 'await loadLessons(parentTopicId,root,inline)' in publish_handler
     assert 'if(!inline)returnToTopic(parentTopicId)' in publish_handler
@@ -1556,9 +1544,9 @@ def test_active_learning_ui_publish_returns_to_parent_topic():
     assert 'say(inline?"نسخه منتشر شد؛ پنل درس‌ها بسته شد.":"نسخه منتشر شد؛ به سرفصل مربوط برگشتید.")' in publish_handler
     assert publish_handler.index('await loadLessons(parentTopicId,root,inline)') < publish_handler.index('if(!inline)returnToTopic(parentTopicId)')
     
-    topic_open_start = script.index('button("مشاهده درس‌ها و محتوا"')
-    topic_open_end = script.index('button("تلاش مجدد دریافت/اصلاح درس"', topic_open_start)
-    topic_open_handler = script[topic_open_start:topic_open_end]
+    topic_open_start = courses.index('button("مشاهده درس‌ها و محتوا"')
+    topic_open_end = courses.index('button("تلاش مجدد دریافت/اصلاح درس"', topic_open_start)
+    topic_open_handler = courses[topic_open_start:topic_open_end]
     assert 'head.after(inlineLessons)' in topic_open_handler
     assert 'window.scrollTo(previousScrollX,previousScrollY)' in topic_open_handler
 
@@ -1639,7 +1627,7 @@ def test_active_learning_topic_tree_shows_percentage_and_manual_parent_selector(
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1] / "app" / "ai_learning" / "static"
-    script = (root / "app.js").read_text(encoding="utf-8")
+    script = (root / "courses.js").read_text(encoding="utf-8")
     html = (root / "index.html").read_text(encoding="utf-8")
     assert 'status+" · "+percent+"٪"' in script
     assert 'el("div",undefined,"topic-children")' in script

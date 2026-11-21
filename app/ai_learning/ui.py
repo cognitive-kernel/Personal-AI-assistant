@@ -8,7 +8,8 @@ from ..task_routes import require_loopback_client
 
 router = APIRouter(tags=["ai-learning-ui"], dependencies=[Depends(require_loopback_client)])
 _ROOT = Path(__file__).resolve().parent / "static"
-_ASSETS = {"app.js": "text/javascript", "style.css": "text/css"}
+_ASSETS = {name: "text/javascript" for name in ("app.js", "core.js", "courses.js", "runs.js", "lessons.js", "controls.js", "search.js")}
+_ASSETS["style.css"] = "text/css"
 
 @router.get("/ai-learning", include_in_schema=False)
 def learning_dashboard() -> FileResponse:

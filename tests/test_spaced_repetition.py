@@ -90,13 +90,16 @@ def test_learning_ui_exposes_spaced_repetition_controls():
     page = (Path(__file__).parents[1] / "app" / "static" / "learning.js").read_text(
         encoding="utf-8"
     )
+    overview = (Path(__file__).parents[1] / "app" / "static" / "learning-overview.js").read_text(
+        encoding="utf-8"
+    )
     index = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
         encoding="utf-8"
     )
     assert 'id="refresh-due-reviews"' in index
     assert "نمایش مرورهای سررسیدشده" in index
     assert "ثبت مرور و زمان‌بندی بعدی" in page
-    assert '"/api/learning/reviews/due?limit=100"' in page
+    assert '"/api/learning/reviews/due?limit=100"' in overview
     assert '"/api/learning/paths/" + path.id + "/topics/" + topic.id + "/reviews"' in page
 
 def test_learning_task_audit_history_formats_each_event_kind():
@@ -105,13 +108,16 @@ def test_learning_task_audit_history_formats_each_event_kind():
     page = (Path(__file__).parents[1] / "app" / "static" / "learning.js").read_text(
         encoding="utf-8"
     )
-    assert "function formatTaskAuditEventChange(event)" in page
-    assert 'case "status_changed"' in page
-    assert 'case "priority_changed"' in page
-    assert 'case "scheduled"' in page
-    assert 'case "created"' in page
-    assert '"اولویت: " + (event.old_priority ?? "—")' in page
-    assert '"زمان‌بندی: " + (event.old_scheduled_at || "—")' in page
+    core = (Path(__file__).parents[1] / "app" / "static" / "learning-core.js").read_text(
+        encoding="utf-8"
+    )
+    assert "function formatTaskAuditEventChange(event)" in core
+    assert 'case "status_changed"' in core
+    assert 'case "priority_changed"' in core
+    assert 'case "scheduled"' in core
+    assert 'case "created"' in core
+    assert '"اولویت: " + (event.old_priority ?? "—")' in core
+    assert '"زمان‌بندی: " + (event.old_scheduled_at || "—")' in core
     assert "const change = formatTaskAuditEventChange(event);" in page
     assert 'olderEventsButton.textContent = "بارگذاری رویدادهای قدیمی‌تر"' in page
     assert '"/events?limit=100" + cursor' in page

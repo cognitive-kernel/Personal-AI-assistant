@@ -1,3 +1,32 @@
+## 2026-11-21 — Main dashboard and AI-learning UI decomposition
+
+### Root cause
+- The root dashboard `app/static/index.html` contained roughly 134 KB of inline JavaScript and tightly coupled chat, task, knowledge, storage, model settings, cloud resources, sandbox, and learning workflows.
+- `app/ai_learning/static/app.js` held the AI-learning course, lesson, run, control, and search flows in one 56 KB script. This made ownership, failure isolation, and independent regression tests difficult.
+- The old `/ai-learning` static page duplicated the optional module UI and created competing route/asset ownership.
+
+### Correction
+- Replaced the root dashboard shell with the versioned feature-module composition: chat, knowledge, storage, tasks, engineering assistance, experience memory, cloud resources/accounts, settings, sandbox, system health, theme, navigation, browser learning, and the learning core/lessons/overview/review modules.
+- Kept `dashboard-core.js` as the shared version-1 contract and retained the P0 learning-candidate section with its evidence-preservation semantics. Moved candidate rendering/loading out of inline HTML into its own `learning-candidates.js` feature module.
+- Replaced the AI-learning monolith with a small loader and six versioned modules (core, courses, runs, lessons, controls, search). The module UI router now serves the module assets by explicit allow-list.
+- Removed the duplicate legacy `/ai-learning` route so the optional module router owns the page and static assets.
+- Kept each module bounded; largest root learning module is approximately 502 lines and the AI-learning modules are each below 270 lines. Root HTML now contains only a short inline bootstrap instead of the former 134 KB block.
+- Added browser race regressions for storage, progress, course changes, runs, settings, cloud limits, factual review, and AI-learning fallback; retained all PR #805/#807 browser regressions.
+- Added module dependency/order, shared-core contract, selector, lifecycle, fallback, and accessibility/UI acceptance tests and supporting architecture documentation.
+
+### Compatibility and data safety
+- This PR is stacked on PR #808 (autonomous console modules), PR #807 (preserve rejected learning evidence), and PR #805 (stale-response/pending-state fixes).
+- No feature data, user database, task state, checkpoint, Runner state, or credentials were changed. The old static AI-learning files are removed only after the canonical loopback-protected module router is enabled.
+- No live database was initialized, migrated, or repaired. The P0 recovery command remains dry-run by default.
+- No merge, deployment, or target-host configuration change was performed.
+
+### Validation requirements
+- Exact-head full Python suites on Windows and Linux, Browser E2E, storage regressions, dependency audit, CodeQL, and dashboard module-boundary tests must pass.
+- Manual owner acceptance still required for RTL layout at desktop/mobile widths, keyboard/screen-reader navigation, all forms and controls, AI-learning course/lesson flows, chat, tasks, storage/restore, model pulling, and failure/refresh recovery.
+- The UI audit intentionally tracks remaining large modules outside this dashboard scope; this PR does not claim the entire repository has no large files or that all project workflows are complete.
+
+---
+
 ## 2026-11-21 — Autonomous engineering UI feature isolation
 
 ### Root cause

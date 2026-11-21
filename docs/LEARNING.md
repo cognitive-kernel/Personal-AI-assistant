@@ -68,7 +68,7 @@
 | دانش factual و انتقال وضعیت | `app/factual_knowledge.py` |
 | صف بازبینی منبع/ادعا | `app/factual_verification_routes.py`, `app/factual_verification_tasks.py`, `app/claim_review.py` |
 | بازیابی دانش در پاسخ پژوهشی | `app/chat_research.py` |
-| رابط یادگیری | `app/static/learning.js` و `app/static/index.html` |
+| رابط یادگیری | `app/static/learning-core.js`, `learning-lessons.js`, `learning-overview.js`, `learning.js` (مسیرها/برنامه درسی), `learning-review.js`, `browser-learning.js`, `index.html` |
 | قرارداد و مهاجرت schema | `app/schema_registry.py` |
 | پرامپت‌های بازبینی | `prompts/learning-review.fa.md`, `prompts/learning-review.en.md` |
 | تولید/اعتبارسنجی artifactهای یادگیری | `scripts/generate_learning_artifacts.py` |
