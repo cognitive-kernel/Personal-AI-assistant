@@ -5802,5 +5802,6 @@ def test_autonomous_engineering_model_pull_failure_restores_control_and_shows_di
         status_text = page.locator("#model-pull-status").inner_text()
         assert "OLLAMA_MODEL_PULL_UNAVAILABLE" in status_text
         assert "Ollama is temporarily unavailable." in status_text
+        assert "model-pull-correlation-test-820" in page.locator("#agent-message").inner_text()
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
