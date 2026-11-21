@@ -1131,6 +1131,12 @@ def _read_run_diagnostics(run_id: int) -> dict[str, Any] | None:
 def _workflow_failure_summary(value: str, failures: list[dict[str, Any]]) -> str | None:
     """Prefer the controller's root-cause line over generic shell exit messages."""
     lines = [line.strip() for line in _sanitize_workflow_log(value).splitlines() if line.strip()]
+    if any("Warning: no last agent message" in line for line in lines):
+        return (
+            "Codex did not emit a final agent message; the output-last-message report was empty, "
+            "so the controller could not validate a completion marker. Preserve the durable "
+            "task/checkpoint and inspect the Codex turn's terminal events before retrying."
+        )
     preferred = []
     for line in lines:
         marker = "Autonomous engineering cycle failed:"
