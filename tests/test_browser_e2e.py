@@ -6669,6 +6669,11 @@ def test_dashboard_feature_modules_boot_without_the_shared_dashboard_core_asset(
         assert page.evaluate("Boolean(window.learningOverview && window.learningOverview.version === 1)")
         assert page.locator("#refresh-tasks").count() == 1
         assert page.locator("#refresh-storage-health").count() == 1
+        assert page.evaluate("Boolean(window.taskDashboard && window.taskDashboard.version === 1)")
+        assert page.evaluate("Boolean(window.taskViewFactory && window.taskViewFactory.version === 1)")
+        assert page.evaluate("Boolean(window.taskCardsFactory && window.taskCardsFactory.version === 1)")
+        page.evaluate("window.taskDashboard.refresh()")
+        page.wait_for_function("document.getElementById('tasks-output').textContent.includes('وظایف نمایش‌داده‌شده')", timeout=15000)
         assert blocked_core_requests, "dashboard-core.js request was not intercepted"
         assert not any(
             "dashboardCore" in error or "learningCore" in error or "autonomousEngineeringCore" in error
