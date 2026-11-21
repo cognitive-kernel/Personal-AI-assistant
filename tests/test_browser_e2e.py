@@ -5013,7 +5013,7 @@ def test_autonomous_progress_refresh_applies_latest_selected_period_after_slow_r
 
         response = page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
         assert response is not None and response.status == 200
-        page.locator("details.progress-details > summary").click()
+        page.get_by_text("نمودار تاریخی پیشرفت پروژه", exact=True).click()
         page.wait_for_function("() => document.querySelector('#progress-period') !== null")
         for _ in range(50):
             if state["daily_route"] is not None:
