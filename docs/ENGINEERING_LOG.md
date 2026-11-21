@@ -2170,3 +2170,9 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Autonomous-engineering submodules have local fallbacks for their small transport/DOM core; a missing shared core no longer disables every submodule.
 - Added static boundary checks and a browser E2E case that aborts the shared-core asset request and checks that core feature globals and controls still initialize.
 - Validation status: exact-head browser E2E/full suite pending; no UI action is claimed tested until the workflow completes.
+
+
+### Task dashboard responsibility split
+
+- Split the former 400+ line task feature script into `tasks-view.js` (summary/filter/selection state), `tasks-cards.js` (card rendering, history, per-task actions), and a small `tasks.js` orchestrator (refresh sequencing, polling, and event wiring).
+- The submodules expose frozen versioned contracts; the orchestrator validates both before initializing. Browser E2E now invokes task refresh with `dashboard-core.js` deliberately blocked.
