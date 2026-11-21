@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi.testclient import TestClient
 
-from app import cloud_resources, db, learning, task_manager
+from app import cloud_resources, db, learning, task_manager, task_queue_store
 from app.learning_tasks import enqueue_learning_task
 from app.main import app
 from app.task_routes import cancel_task as cancel_task_route
@@ -166,7 +166,7 @@ def test_fastapi_runtime_executes_durable_learning_task_and_shuts_down(tmp_path,
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
 
-    def fake_run_job(job_id):
+    def fake_run_job(job_id, task_context=None):
         with db.learning_connection() as conn:
             conn.execute(
                 "UPDATE learning_jobs SET status='completed', error=NULL, "
@@ -207,7 +207,7 @@ def test_startup_recovers_running_learning_record_without_task(tmp_path, monkeyp
     with db.learning_connection() as conn:
         conn.execute("UPDATE learning_jobs SET status='running' WHERE id=?", (job["id"],))
 
-    def fake_run_job(job_id):
+    def fake_run_job(job_id, task_context=None):
         with db.learning_connection() as conn:
             conn.execute(
                 "UPDATE learning_jobs SET status='completed', error=NULL, "
@@ -355,7 +355,7 @@ def test_task_api_refuses_to_delete_running_tasks(tmp_path, monkeypatch):
 def test_task_api_rejects_oversized_payload_before_persistence(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
-    monkeypatch.setattr(task_manager, "MAX_TASK_PAYLOAD_BYTES", 64)
+    monkeypatch.setattr(task_queue_store, "MAX_TASK_PAYLOAD_BYTES", 64)
 
     with TestClient(app, client=("127.0.0.1", 12345)) as client:
         response = client.post(
