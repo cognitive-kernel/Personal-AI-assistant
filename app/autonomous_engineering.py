@@ -102,7 +102,9 @@ def _repository() -> str:
     return value if owner and name and "/" not in name else _DEFAULT_REPOSITORY
 
 
-def _run(command: list[str], timeout: int = 8) -> subprocess.CompletedProcess[str] | None:
+def _run(
+    command: list[str], timeout: int = 8, *, raise_os_error: bool = False,
+) -> subprocess.CompletedProcess[str] | None:
     try:
         return subprocess.run(
             command,
@@ -114,7 +116,11 @@ def _run(command: list[str], timeout: int = 8) -> subprocess.CompletedProcess[st
             check=False,
             shell=False,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except subprocess.TimeoutExpired:
+        return None
+    except OSError:
+        if raise_os_error:
+            raise
         return None
 
 
@@ -715,13 +721,33 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) ->
             status_code=409,
             detail="یک PR مهندسی خودکار هنوز باز است؛ ابتدا همان PR را بازبینی و تعیین‌تکلیف کنید.",
         )
-    result = _run(
-        [
-            gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main",
-            "--field", f"manual_task={manual_task}",
-        ],
-        timeout=20,
-    )
+    try:
+        result = _run(
+            [
+                gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main",
+                "--field", f"manual_task={manual_task}",
+            ],
+            timeout=20,
+            raise_os_error=True,
+        )
+    except OSError:
+        correlation_id = uuid.uuid4().hex
+        _STATUS_LOGGER.error(
+            "Autonomous workflow dispatch could not start; correlation_id=%s",
+            correlation_id,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "GitHub CLI اجرا نشد؛ نصب و دسترسی اجرای آن را بررسی کنید. پس از رفع مشکل، "
+                "می‌توانید دوباره تلاش کنید. شناسهٔ پیگیری: " + correlation_id
+            ),
+            headers={
+                "X-Correlation-ID": correlation_id,
+                "X-Error-Code": "WORKFLOW_DISPATCH_LAUNCH_FAILED",
+                "X-Retryable": "true",
+            },
+        )
     if result is None:
         correlation_id = uuid.uuid4().hex
         _STATUS_LOGGER.warning(
