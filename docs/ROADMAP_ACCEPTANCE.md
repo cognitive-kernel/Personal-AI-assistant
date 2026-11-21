@@ -25,10 +25,10 @@ This file is the release-gate ledger for tracking issue [#290](https://github.co
 
 ### Current focused PR evidence (all unmerged)
 
-- PR #817 — `45f0076ec82ee462890c072e0d47d2239914b573`: dispatch launch-vs-timeout classification and uniform API error envelope. One earlier exact-head run found a legacy mock-signature failure after the new keyword was added; the mock was corrected. The current exact-head Tests, Browser E2E, Dependency Audit and CodeQL runs are queued; do not reuse older results.
-- PR #818 — `e1fa88e9060cac16bf2061aac3eb7b0b73fc12dd`: Codex final-report recovery when an existing report contains invalid UTF-8. Exact-head Tests, Browser E2E, Dependency Audit and CodeQL all passed. Target-host smoke remains separate.
-- PR #819 — `a1d34ff1c9476c21738c7fffa7ad37f0d38cb582`: learning-job domain fencing and stale-escalation regression. Exact-head Browser E2E, Dependency Audit and CodeQL passed; Tests remain queued. Draft; other task adapters are out of scope and explicitly open.
-- PR #820 — `1074b4cb59dfc9abf1d1c0371863b0018076e0ef`: UI module-warning persistence, structured error display, dispatch message ordering, responsive/fault-isolation/model-pull E2E, and the control/API inventory. Exact-head CodeQL passed; Tests, Browser E2E and Dependency Audit remain queued. Draft.
+- PR #817 — current PR head (verify in GitHub metadata): dispatch launch-vs-timeout classification and uniform API error envelope. One earlier exact-head run found a legacy mock-signature failure after the new keyword was added; the mock was corrected. The current exact-head Tests, Browser E2E, Dependency Audit and CodeQL runs are queued; do not reuse older results.
+- PR #818 — current PR head (verify in GitHub metadata): Codex final-report recovery when an existing report contains invalid UTF-8. Exact-head Tests, Browser E2E, Dependency Audit and CodeQL all passed. Target-host smoke remains separate.
+- PR #819 — current PR head (verify in GitHub metadata): learning-job domain fencing and stale-escalation regression. Exact-head Browser E2E, Dependency Audit and CodeQL passed; Tests remain queued. Draft; other task adapters are out of scope and explicitly open.
+- PR #820 — current PR head (verify in GitHub metadata): UI module-warning persistence, structured error display, dispatch message ordering, responsive/fault-isolation/model-pull E2E, and the control/API inventory. Exact-head CodeQL passed; Tests, Browser E2E and Dependency Audit remain queued. Draft.
 
 ### Previously merged foundations
 
