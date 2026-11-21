@@ -2183,3 +2183,10 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Split auto-capture consent state and its enable/revoke/refresh actions into `experience-memory-consent.js`; it has its own local transport/DOM fallback and a frozen versioned export.
 - The experience list/curation/search module no longer owns consent state. Failure in consent UI does not disable memory search, history, or curation; failure in the list does not prevent consent revocation.
 - Added static boundary and ordering tests; browser E2E remains the end-to-end evidence gate.
+
+
+### Cloud resource discovery/card boundary
+
+- Separated cloud candidate card rendering, evidence/claim review controls, and delete actions into `cloud-resource-cards.js`; the discovery/orchestration module retains request sequencing, manual source submission, discovery-task polling, and read-only planning.
+- The orchestrator validates the card factory contract and degrades candidate rendering without disabling manual submission, discovery, or planning controls.
+- Added script-order and contract tests plus browser initialization coverage when the dashboard shared core asset is unavailable.
