@@ -256,6 +256,11 @@ def handle_learning_job(
     if isinstance(job_id, bool) or not isinstance(job_id, int) or job_id < 1:
         raise PermanentTaskError("learning task payload requires a positive integer job_id")
 
+    context.assert_current(
+        expected_task_type=LEARNING_TASK_TYPE,
+        expected_payload={"job_id": job_id},
+    )
+
     try:
         job = learning.get_job(job_id)
     except KeyError as exc:
