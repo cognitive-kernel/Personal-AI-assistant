@@ -5428,14 +5428,14 @@ def test_autonomous_dashboard_pause_and_resume_controls_follow_server_state():
             "() => document.querySelector('#pause-agent')?.disabled === true && document.querySelector('#resume-agent')?.disabled === false",
             timeout=10000,
         )
-        assert page.locator("#agent-message").inner_text() == "safe pause confirmed"
+        assert page.locator("#agent-readiness").inner_text() == "توقف ایمن فعال است"
 
         resume.click()
         page.wait_for_function(
             "() => document.querySelector('#pause-agent')?.disabled === false && document.querySelector('#resume-agent')?.disabled === true",
             timeout=10000,
         )
-        assert page.locator("#agent-message").inner_text() == "resume confirmed"
+        assert page.locator("#agent-readiness").inner_text() == "آمادهٔ ارسال Workflow"
         assert state["pause_calls"] == 1
         assert state["resume_calls"] == 1
         assert state["status_reads"] >= 3
