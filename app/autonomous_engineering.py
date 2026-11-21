@@ -946,9 +946,73 @@ def resume_autonomous_engineering() -> dict[str, Any]:
     result = _run([gh, "variable", "set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body", "false", "--repo", _repository()], timeout=15)
     if not result or result.returncode != 0:
         raise HTTPException(status_code=502, detail="ثبت ادامه در GitHub ناموفق بود.")
-    dispatched = _run([gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main"], timeout=20)
-    if not dispatched or dispatched.returncode != 0:
-        raise HTTPException(status_code=502, detail="ادامه ثبت شد اما اجرای چرخه به GitHub ارسال نشد.")
+    try:
+        dispatched = _run(
+            [gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main"],
+            timeout=20,
+            raise_os_error=True,
+        )
+    except OSError:
+        correlation_id = uuid.uuid4().hex
+        _STATUS_LOGGER.error(
+            "Autonomous resume dispatch could not start; correlation_id=%s",
+            correlation_id,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "ادامه ثبت شد اما GitHub CLI اجرا نشد؛ نصب و دسترسی اجرای آن را بررسی کنید. "
+                "پس از رفع مشکل می‌توانید دوباره تلاش کنید. شناسهٔ پیگیری: " + correlation_id
+            ),
+            headers={
+                "X-Correlation-ID": correlation_id,
+                "X-Error-Code": "WORKFLOW_RESUME_DISPATCH_LAUNCH_FAILED",
+                "X-Retryable": "true",
+            },
+        )
+    if dispatched is None:
+        correlation_id = uuid.uuid4().hex
+        _STATUS_LOGGER.warning(
+            "Autonomous resume dispatch outcome is unknown; correlation_id=%s",
+            correlation_id,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "ادامه ثبت شد اما نتیجهٔ ارسال Workflow نامشخص است؛ ممکن است GitHub اجرا را در صف گذاشته باشد. "
+                "پیش از تلاش دوباره، تاریخچهٔ اجراها را بازخوانی کنید. شناسهٔ پیگیری: " + correlation_id
+            ),
+            headers={
+                "X-Correlation-ID": correlation_id,
+                "X-Error-Code": "WORKFLOW_RESUME_DISPATCH_OUTCOME_UNKNOWN",
+                "X-Retryable": "false",
+            },
+        )
+    if dispatched.returncode != 0:
+        correlation_id = uuid.uuid4().hex
+        safe_stderr = _sanitize_workflow_log(str(dispatched.stderr or ""))
+        stderr_fingerprint = (
+            hashlib.sha256(safe_stderr.encode("utf-8")).hexdigest()[:16]
+            if safe_stderr else "empty"
+        )
+        _STATUS_LOGGER.error(
+            "Autonomous resume dispatch failed; correlation_id=%s exit_code=%s stderr_sha256=%s",
+            correlation_id,
+            dispatched.returncode,
+            stderr_fingerprint,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"ثبت ادامه انجام شد اما ارسال Workflow ناموفق بود (exit code {dispatched.returncode}). "
+                "پیش از تلاش دوباره، تاریخچهٔ اجراها را بازخوانی کنید. شناسهٔ پیگیری: " + correlation_id
+            ),
+            headers={
+                "X-Correlation-ID": correlation_id,
+                "X-Error-Code": "WORKFLOW_RESUME_DISPATCH_FAILED",
+                "X-Retryable": "false",
+            },
+        )
     return {"accepted": True, "paused": False, "message": "ادامه از وضعیت ذخیره‌شده درخواست شد."}
 
 
