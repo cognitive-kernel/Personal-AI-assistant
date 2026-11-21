@@ -1406,7 +1406,7 @@ def test_ollama_status_returns_every_installed_model_without_inserting_defaults(
     assert result["model_installed"] is True
     assert result["model_metadata_available"] is True
     assert result["model_context_supported"] is False
-    assert "requires at least 65536" in result["model_context_error"]
+    assert "KV-cache metadata" in result["model_context_error"]
 
 
 def test_ollama_status_keeps_server_online_when_selected_model_metadata_fails(monkeypatch):
