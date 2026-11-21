@@ -180,6 +180,9 @@ if ($VerifyOnly) {
     if (-not [int64]::TryParse([string]$env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH, [ref]$selectedContext) -or $selectedContext -le 0) {
         throw "The selected Codex context was not persisted as a positive verified allocation for runtime verification."
     }
+    if ($selectedContext -lt 65536) {
+        throw "Persisted Codex context $selectedContext is below the required 65536 tokens."
+    }
     $modelInfo = Get-ModelInfo -ModelName $codexModel
     Assert-ToolCallingCapability -Info $modelInfo -ModelName $codexModel
     $maximum = Get-MaximumContext -Info $modelInfo
