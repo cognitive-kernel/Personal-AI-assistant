@@ -483,7 +483,7 @@ def test_run_codex_recovers_invalid_report_from_successful_jsonl_turn(tmp_path, 
             "type": "item.completed",
             "item": {
                 "type": "agent_message",
-                "text": "Task and tests are complete.\\nTASK_COMPLETE",
+                "text": "Task and tests are complete.\nTASK_COMPLETE",
             },
         },
         {"type": "turn.completed"},
@@ -499,7 +499,7 @@ def test_run_codex_recovers_invalid_report_from_successful_jsonl_turn(tmp_path, 
     class FakeProcess:
         def __init__(self):
             self.stdin = io.StringIO()
-            self.stdout = io.StringIO("".join(json.dumps(event) + "\\n" for event in events))
+            self.stdout = io.StringIO("".join(json.dumps(event) + "\n" for event in events))
             self.pid = 12345
 
         def poll(self):
@@ -532,5 +532,5 @@ def test_run_codex_recovers_invalid_report_from_successful_jsonl_turn(tmp_path, 
 
     assert result == 0
     assert report.read_text(encoding="utf-8") == (
-        "Task and tests are complete.\\nTASK_COMPLETE\\n"
+        "Task and tests are complete.\nTASK_COMPLETE\n"
     )
