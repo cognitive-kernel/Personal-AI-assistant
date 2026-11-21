@@ -5731,6 +5731,7 @@ def test_autonomous_engineering_model_pull_requires_consent_and_reports_progress
         )
         page.wait_for_function("() => document.querySelector('#pull-model')?.disabled === false", timeout=10000)
         assert dialogs and model in dialogs[0]
+        assert page.locator("#model-pull-status").inner_text().startswith(f"مدل {model} با موفقیت نصب شد")
         assert state["posted"] == {"model": model}
         assert state["polls"] >= 2
         assert page.locator("#pull-model").is_enabled()
