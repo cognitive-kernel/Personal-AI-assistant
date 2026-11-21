@@ -8,6 +8,7 @@ def test_chat_ui_uses_persistent_research_queue_and_polls_task_result():
     page = (STATIC / "index.html").read_text(encoding="utf-8")
     chat = (STATIC / "chat.js").read_text(encoding="utf-8")
     tasks = (STATIC / "tasks.js").read_text(encoding="utf-8")
+    task_cards = (STATIC / "tasks-cards.js").read_text(encoding="utf-8")
 
     assert '"/api/research/tasks"' in chat
     assert '"/api/tasks/"+taskId' in chat
@@ -18,17 +19,17 @@ def test_chat_ui_uses_persistent_research_queue_and_polls_task_result():
     assert 'new URLSearchParams({limit:"50"})' in tasks
     assert 'query.set("cursor",taskNextCursor)' in tasks
     assert 'id="load-more-tasks"' in page
-    assert '"/api/tasks/"+task.id+"/pause"' in tasks
-    assert '"/api/tasks/"+task.id+"/resume"' in tasks
-    assert '"/api/tasks/"+task.id+"/cancel"' in tasks
+    assert '"/api/tasks/"+task.id+"/pause"' in task_cards
+    assert '"/api/tasks/"+task.id+"/resume"' in task_cards
+    assert '"/api/tasks/"+task.id+"/cancel"' in task_cards
     assert 'در حال پاسخ‌گویی' not in page + chat + tasks
 
 
 def test_task_manager_ui_exposes_confirmed_deletion_for_inactive_tasks():
     page = (STATIC / "index.html").read_text(encoding="utf-8")
-    tasks = (STATIC / "tasks.js").read_text(encoding="utf-8")
+    task_cards = (STATIC / "tasks-cards.js").read_text(encoding="utf-8")
     assert 'id="task-manager-section"' in page
-    assert 'textContent="حذف وظیفه"' in tasks
-    assert 'api("/api/tasks/"+encodeURIComponent(task.id),{method:"DELETE"})' in tasks
-    assert '["queued","paused","cancelled","succeeded","failed"].includes(task.status)' in tasks
-    assert 'window.confirm("وظیفهٔ #"+task.id' in tasks
+    assert 'textContent="حذف وظیفه"' in task_cards
+    assert 'api("/api/tasks/"+encodeURIComponent(task.id),{method:"DELETE"})' in task_cards
+    assert '["queued","paused","cancelled","succeeded","failed"].includes(task.status)' in task_cards
+    assert 'window.confirm("وظیفهٔ #"+task.id' in task_cards
