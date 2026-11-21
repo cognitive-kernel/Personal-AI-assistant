@@ -997,3 +997,10 @@ Exact tested code head: ab703a284752c80531e9f25e0b7ad53a04c453a0.
 Evidence: Tests/Windows regressions https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863471 ; Browser E2E https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863440 ; Dependency audit https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863452 ; CodeQL https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863507 .
 
 The subsequent documentation-only evidence update does not change runtime code and is followed by a fresh exact-head CI run. Target-host cross-account ACL verification, non-admin sandbox smoke/soak, crash/restart acceptance, and independent security review remain pending. Durable Pause remains enabled; no Runner, service, or autonomous process was started.
+
+
+### تکمیل fencing برای زمان‌بندی مسیر یادگیری
+
+- ایجاد job بعدی، تغییر وضعیت topic مسیر، ثبت task بعدی و escalation نیز در تراکنش نوشتن، lease و payload همان task مبدأ را اعتبارسنجی می‌کنند.
+- ایجاد task اکنون می‌تواند از connection تراکنش موجود استفاده کند؛ در نتیجه بررسی مالکیت و درج task در یک تراکنش انجام می‌شوند.
+- بازیابی task تکراری با مقایسه task ID/epoch ثبت‌شده و lease زنده انجام می‌شود؛ task فعال دیگر نمی‌تواند job را به صف برگرداند.
