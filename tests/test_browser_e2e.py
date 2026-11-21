@@ -6552,7 +6552,7 @@ def test_ai_learning_core_module_failure_uses_fallback_without_blocking_features
         )
         page.route("**/api/ai-learning/**", learning_api_route)
         page.goto(base_url.rstrip("/") + "/ai-learning", wait_until="domcontentloaded")
-        page.locator('#course-select option[value="42"]').wait_for(timeout=10000)
+        page.locator('#course-select option[value="42"]').wait_for(state="attached", timeout=10000)
         assert page.locator("#course-select").input_value() == "42"
 
         page.locator("#search-query").fill("fallback")
@@ -6632,7 +6632,7 @@ def test_ai_learning_lesson_module_failure_does_not_block_course_and_search_ui()
         )
         page.route("**/api/ai-learning/**", learning_api_route)
         page.goto(base_url.rstrip("/") + "/ai-learning", wait_until="domcontentloaded")
-        page.locator('#course-select option[value="42"]').wait_for(timeout=10000)
+        page.locator('#course-select option[value="42"]').wait_for(state="attached", timeout=10000)
         page.locator("#catalog-menu > summary").click()
         page.locator("#topics details.topic > summary").wait_for(timeout=10000)
         page.locator("#topics details.topic > summary").first.click()
