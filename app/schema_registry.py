@@ -1445,6 +1445,14 @@ LEARNING_MIGRATIONS = (
             )""",
         ),
     ),
+    Migration(
+        48,
+        "fenced-task-queue-worker-ownership",
+        (
+            "ALTER TABLE task_queue ADD COLUMN lease_epoch INTEGER NOT NULL DEFAULT 0 CHECK(lease_epoch >= 0)",
+            "CREATE INDEX idx_task_queue_lease_owner_epoch ON task_queue(lease_owner, lease_epoch)",
+        ),
+    ),
 )
 
 
