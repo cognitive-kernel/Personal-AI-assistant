@@ -2261,3 +2261,19 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Review of the full control inventory found that Settings, manual task, model pull, Pause, Resume and Cancel success messages were set before an authoritative status refresh; the refresh could immediately overwrite the result. Dispatch had the same issue and was already corrected in this branch.
 - All these handlers now refresh authoritative status first and then render the final success message. Failure paths retain their existing refresh-then-error ordering. No API/state semantics changed.
 - Browser assertions now verify Settings/manual-task/Pause/Resume success feedback and a Cancel sequence that first fails, recovers, then succeeds and disables the control when the active run disappears.
+
+
+## 2026-11-21 — PR #820 exact-head validation and browser-test syntax repair
+
+- The browser E2E run initially exposed a Python syntax error in a multiline JavaScript expression at `tests/test_browser_e2e.py:4061`. The JavaScript source was changed to a triple-quoted Python string; no browser behavior or application code was changed for this syntax repair.
+- Exact code head `255f821639b9b5403abfc43c9ec0c889d812c836` passed all four GitHub workflows: tests [#44930929256](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44930929256), browser E2E [#44930929297](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44930929297), CodeQL [#44930929282](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44930929282), and dependency audit [#44930929328](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44930929328).
+- Ubuntu full suite: 2464 passed, 14 skipped, 74 deselected. Windows full suite: 2462 passed, 16 skipped, 74 deselected. Browser E2E: 67 passed. Windows storage regressions: 11 passed, 2 skipped. Markdown links passed for 107 files; AST import-cycle check reported no cycles.
+- The application changes remain limited to the UI modules and browser tests; no workflow, backend persistence, Runner state, checkpoint, task or user data was changed. This proves repository CI for the exact code head, not target-host or live-provider acceptance.
+
+## 2026-11-21 — Gate B state-ownership re-audit
+
+- PR #799 is already merged and supplies queue-level monotonic lease-epoch fencing. Do not duplicate its migration or lease manager.
+- Autonomous Engineering's operational state paths were traced: manual task persistence and owner reconciliation run under the shared durable-state lock; the controller run path owns the repository execution lock; the checkpoint watcher owns the checkpoint-store lock for its lifetime; recovery verifies process identity, immutable base SHA, patch byte count and `git apply --check --binary`; PR publication persists exact head/base/run/task metadata before exact-SHA CI; cleanup follows a human merge and exact post-merge validation.
+- The Broker status path is read-only. Cleanup removes telemetry only and refuses while pending task/owner/PR/cleanup markers or a live/unverified checkpoint exist. The Windows Broker acquires both durable-state and checkpoint-store locks.
+- Residuals: TaskRuntime domain handlers other than the learning-job path still need a separate mutation inventory/fencing pass. The standalone `publish` subcommand in the protected cycle controller does not acquire `repository_execution_lock`; no current workflow calls it, but it must not be used concurrently with a run. The protected controller file was not modified.
+- Target-host verification and independent security review remain separate gates. No active autonomous Runner workflow was started during this audit.

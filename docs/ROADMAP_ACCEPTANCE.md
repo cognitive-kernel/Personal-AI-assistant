@@ -300,3 +300,14 @@ Append evidence only after it has actually been produced.
 ## 2026-11-01 — Post-merge CI confirmation for PR #671
 
 The current `main` SHA `2a5c83bf0ba924f4a2c8f206338a04872562d72d` has completed all three post-merge workflows successfully: tests [#41239355370](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355370), dashboard/browser smoke [#41239355374](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355374), and dependency audit [#41239355466](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355466). Windows storage regressions passed within the tests workflow. This verifies CI for this SHA; it does not satisfy target-host operations, live-model/human evaluation, manual accessibility, staging/rollback, or independent security review.
+
+
+## Revalidation update — 2026-11-21 (supersedes the pending PR #817–#820 snapshot above)
+
+- **Gate A — UI inventory/behavior mapping:** implementation and exact-head CI passed for code head `255f821639b9b5403abfc43c9ec0c889d812c836`; the documentation-only follow-up in this commit requires a fresh exact-head run.
+- **Gate B — state ownership/data safety:** PR #799 is merged and its monotonic queue lease fencing is present. The Autonomous Engineering state path uses the shared durable-state lock, repository execution lock, checkpoint-store lifetime lock, task digest/owner-attempt record, exact PR head/base record, human-merge verification, and idempotent post-merge cleanup. Gate B remains **partial** because other TaskRuntime domain writers still need fencing, and the standalone `publish` CLI branch bypasses repository execution locking (no workflow callsite; protected controller file left unchanged).
+- **Gate C — structured errors:** PR #817 has all four exact-head checks green; PR #820 UI consumer tests preserve error code/correlation/retryable metadata and the final dispatch error. PRs remain unmerged.
+- **Gate D — browser resilience:** exact code head #820 passed 67 Chromium E2E tests, including RTL/keyboard skip link, 390/768/1440px overflow, progress-module failure isolation, structured 503 diagnostics, and model-pull outcomes. Full suites passed on Ubuntu and Windows as recorded in PROJECT_STATUS.
+- **Gate E — target host/human acceptance:** still blocked; no target Windows Runner, local service, live Ollama/Codex, crash/restart or soak was started. Manual keyboard/screen-reader/contrast review remains open.
+- PR #819 latest head `f7895430f26b6959bb42950cf8f61c418b3e0336` has three checks green and Full tests in progress; do not infer success from the previous failed head.
+- Documentation follow-up changes this PR's head; rerun exact-head CI before any promotion. No merge or deployment is authorized by this evidence.

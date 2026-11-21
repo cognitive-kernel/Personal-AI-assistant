@@ -134,3 +134,24 @@ API ابتدا active run را رد می‌کند و سپس Broker/state markers
 ### چرخهٔ پیام موفقیت پس از mutation
 
 تمام کنترل‌های تغییردهندهٔ state (ذخیرهٔ تنظیمات، pull مدل، manual task، dispatch، Pause، Resume و Cancel) ابتدا وضعیت authoritative را بازخوانی و سپس پیام نهایی موفقیت را نمایش می‌دهند؛ بنابراین polling پیام نتیجه را بازنویسی نمی‌کند. در مسیر خطا نیز refresh قبل از نمایش خطا انجام می‌شود. E2E برای Settings، manual task، Pause/Resume و Cancel موفق/ناموفق این ترتیب را بررسی می‌کند.
+
+
+## 9. مالکیت durable state و جدول انتقال
+
+| انتقال | مالک مجاز | قفل/اعتبارسنجی | اثر پایدار | رفتار شکست |
+|---|---|---|---|---|
+| ثبت task دستی | workflow/controller تحت هویت Runner | `durable_state_lock` مشترک Python/PowerShell؛ اعتبارسنجی طول/محتوا؛ ثبت digest و owner metadata | فایل task و رکورد owner با run/attempt/source/claim_count به‌صورت atomic replace | در state ناخوانا، digest نامعتبر یا lock timeout هیچ task قدیمی بازنویسی نمی‌شود |
+| admission و claim | schedule-gate سپس workflow | بررسی runهای active/queued؛ رد PR باز؛ زیر durable lock، reconcile و validate مالکیت task و digest | owner به run_id + run_attempt متصل می‌شود | اجرای تکراری سرکوب می‌شود؛ task pending حفظ می‌شود |
+| اجرای worktree | همان run/attempt | `repository_execution_lock` مبتنی بر OS lock؛ قفل در مرگ process آزاد می‌شود | فقط یک controller مالک worktree است | اجرای دوم fail-closed؛ checkpoint و worktree دست‌نخورده |
+| snapshot/checkpoint | watcher همان run/task | `checkpoint_store_lock`؛ watcher این قفل را در کل عمر نگه می‌دارد؛ metadata شامل base SHA، run/task و PID/start-time است | patch باینری، plan و metadata به‌صورت atomic؛ index فقط به checkpoint تأییدشده اشاره می‌کند | watcher دوم نمی‌تواند store را overwrite کند؛ خطای readiness به‌صورت marker مستقل ثبت می‌شود |
+| recovery/restore | controller پس از گرفتن repository lock | توقف فقط process با PID + creation-time + command identity دقیق؛ سپس checkpoint lock؛ بررسی base SHA و patch byte count و `git apply --check --binary` | فقط patchی که دقیقاً روی base مجاز اعمال‌پذیر است restore می‌شود | هر ابهام یا mismatch باعث حفظ checkpoint و توقف recovery می‌شود |
+| انتشار PR | controller همان run | repository lock در مسیر عادی run؛ durable lock هنگام ثبت pending PR؛ بررسی PR author/repository/branch/head/base | pending PR شامل number/url/head SHA/base SHA/branch/run/task، قبل از CI ذخیره می‌شود | تغییر head/base یا CI ناموفق task را pending نگه می‌دارد؛ merge خودکار وجود ندارد |
+| پذیرش پس از merge | مالک انسانی + controller | merged_by باید User واقعی باشد؛ head/branch/url/base/merge SHA دقیق؛ main باید روی همان merge SHA بماند؛ post-merge tests/browser/audit | فقط پس از تأیید دوباره، checkpoint و pending state پاک می‌شوند | هر اختلافی مانع cleanup و dispatch بعدی می‌شود |
+| cleanup Broker | Broker/service | durable-state lock و checkpoint-store lock؛ رد در صورت pending marker یا checkpoint فعال/تأییدنشده | فقط telemetry موقت حذف می‌شود؛ history، baseline، checkpoint و task/PR markers حفظ می‌شوند | conflict به UI برمی‌گردد؛ state پایدار پاک نمی‌شود |
+| UI polling و mutation | UI فقط projection؛ API/workflow مرجع نهایی | server-side admission؛ sequence/single-flight برای پاسخ‌های قدیمی؛ retry خودکار dispatch ممنوع | UI فقط پیام و view را به‌روزرسانی می‌کند؛ مالک state نیست | stale response نباید کنترل/پیام جدیدتر را overwrite کند |
+
+### شکاف‌های باقی‌ماندهٔ Gate B
+
+1. PR #799 فقط queue-level owner/epoch را fence می‌کند. PR #819 مسیر اصلی `learning.run_job` و escalation را به transaction-level assertion متصل می‌کند؛ curriculum، candidate review، factual verification، research، sandbox، cloud discovery، programming و سایر domain writers هنوز باید جداگانه audit و fence شوند.
+2. زیر‌دستور دستی `publish` در `scripts/autonomous_engineering_cycle.py` قبل از ورود به `repository_execution_lock` dispatch می‌شود. در workflow فعلی callsite ندارد و مسیر عادی `run` قفل را می‌گیرد؛ بااین‌حال اجرای دستی آن در زمان run هم‌زمان ایمن نیست. فایل controller در این مرحله محافظت‌شده است و تغییر داده نشده است.
+3. قفل‌ها و تست‌های CI، پذیرش واقعی ACL هویت سرویس Windows، crash/restart، soak، Ollama/Codex و مرور انسانی را جایگزین نمی‌کنند.

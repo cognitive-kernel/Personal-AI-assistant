@@ -109,7 +109,7 @@
 - طبق `docs/PROJECT_STATUS.md`، PR #799 قرارداد lease/epoch، افزایش epoch هنگام claim، اعتبارسنجی owner+epoch+expiry و تست‌های worker قدیمی را اضافه کرده است. همان سند هنوز گیت‌های تکمیل اتصال fencing به تمام mutationهای دامنه‌ای و پذیرش زندهٔ Windows را باز می‌داند.
 - در نتیجه، UIE-01 به معنی «فقدان fencing» نیست؛ معنای دقیق آن **نیاز به ممیزی پوشش end-to-end fencing و مالکیت execution در همهٔ مرزها** است. قبل از هر تغییر، باید commit ادغام‌شدهٔ #799 و تمام call siteهای آن بررسی شوند و فقط شکاف‌های اثبات‌شده اصلاح شوند.
 - اجرای autonomous قبلی [run 44907149358](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44907149358) اکنون completed/failed است. لاگ job نشان می‌دهد دو تلاش Codex اجرا شده و خطای نهایی اعتبارسنجی گزارش بوده است: `Codex report must contain exactly one valid completion marker (found 0)`. task به‌عنوان verified منتشر نشده و طبق پیام کنترلر برای recovery نگه داشته شده است. این evidence باید در تحلیل قرارداد خروجی Codex و recovery لحاظ شود.
-- PR مستنداتی #814 در حال گذراندن Full Windows test suite و تست اصلی است؛ تا پایان همهٔ checkها ادغام انجام نشده است.
+- PR مستنداتی [#814](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/814) ادغام شده است؛ merge commit برابر `4eb6593a6beb70c7aa6423d8951cc3a88eeabb2d` است.
 
 **اثر بر برنامه:** Gate B باید با ممیزی کد موجود پس از PR #799 آغاز شود؛ ابتدا state transition و مسیرهای mutation را inventory کن، پوشش lease epoch و قفل‌ها را با تست اثبات کن، سپس تنها شکاف‌های باقی‌مانده را اصلاح کن. پیاده‌سازی تکراری fencing ممنوع است.
 
@@ -129,3 +129,12 @@
 ### خطای ساختاریافته و شناسهٔ پیگیری در UI
 
 ممیزی Gate C نشان داد helper مشترک درخواست، headerهای `X-Error-Code`، `X-Correlation-ID` و `X-Retryable` را دور می‌انداخت. همچنین handler اجرای بدون متن پیام خطا را قبل از refresh وضعیت می‌نوشت و refresh آن را بازنویسی می‌کرد. اکنون metadata امن خطا حفظ و در پیام نمایش داده می‌شود؛ dispatch/resume/manual-task از `retryable` برای حفظ قفل جلوگیری از ارسال تکراری استفاده می‌کنند و retry خودکار انجام نمی‌شود. refresh وضعیت پیش از نمایش پیام نهایی انجام می‌شود. آزمون Chromium خطای 503 را با code و correlation ID تزریق و نمایش پایدار آن را بررسی می‌کند.
+
+
+## راستی‌آزمایی exact-head — PR #820 (2026-11-21)
+
+- head کد `255f821639b9b5403abfc43c9ec0c889d812c836` تمام چهار workflow را با موفقیت گذراند: tests [44930929256](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44930929256)، browser E2E [44930929297](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44930929297)، CodeQL [44930929282](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44930929282)، dependency audit [44930929328](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44930929328).
+- Ubuntu: 2464 passed/14 skipped/74 deselected؛ Windows: 2462 passed/16 skipped/74 deselected؛ Chromium: 67 passed؛ Windows storage: 11 passed/2 skipped.
+- PR #814 قبلاً ادغام شده است؛ وضعیت قدیمی «در حال گذراندن CI» در الحاقیهٔ قبلی با merge commit واقعی جایگزین شد.
+- PR #819 در head `f7895430f26b6959bb42950cf8f61c418b3e0336` هنوز Full tests را می‌گذراند؛ موفقیت آن تا دریافت نتیجهٔ همان SHA ادعا نمی‌شود.
+- این تغییرات فقط مستندات‌اند و برای head جدید PR #820 اجرای دوبارهٔ CI لازم است. پذیرش Windows target و بازبینی انسانی همچنان باز است.

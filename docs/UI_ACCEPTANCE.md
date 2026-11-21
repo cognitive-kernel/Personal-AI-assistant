@@ -38,3 +38,18 @@ Mark repository-level items complete only after the exact PR head CI passes. Bro
 
 - [x] Dedicated local autonomous-engineering console at `/autonomous-engineering`, with read-only app-account diagnostics, explicit workflow dispatch/cancel controls, structured Codex plan progress, immutable main-scorecard history, bounded activity log, and separate Runner-account preflight. Exact-head PR #680 head `c7ec867df63baac9dec74b736b65a64284a525e4`: 1,840 tests passed/48 deselected, deterministic retrieval benchmark passed, claim-to-test coverage 10/10, Windows storage regressions passed, Chromium dashboard smoke passed, and dependency audit passed. Actual Windows Runner registration, non-admin service account, ACL execution, 64k Ollama context/performance soak, and independent security review remain external gates.
 - [x] Shared primary navigation on the AI-learning and autonomous-engineering pages; exact-head unit and Chromium dashboard smoke checks passed on PR #680 head `c7ec867df63baac9dec74b736b65a64284a525e4`.
+
+
+## Autonomous Engineering — first-module revalidation (2026-11-21)
+
+- [x] RTL/keyboard skip-link and responsive overflow regression at 390px, 768px and 1440px.
+- [x] Fault isolation: a missing progress module does not prevent Status, Controls or Runs from initializing; its alert remains visible during status polling.
+- [x] Structured 503 diagnostics preserve error code, correlation ID and retryability; refresh ordering does not overwrite the final error/success message.
+- [x] Model-pull success/failure and mutation-message ordering covered by Chromium.
+- [x] Exact code head `255f821639b9b5403abfc43c9ec0c889d812c836`: Ubuntu 2464 passed/14 skipped/74 deselected; Windows 2462 passed/16 skipped/74 deselected; Browser E2E 67 passed; Windows storage 11 passed/2 skipped; Dependency Audit and CodeQL passed.
+- [ ] Fresh exact-head CI after this documentation follow-up commit.
+- [ ] Windows target-host Runner service identity, Broker ACL/UAC, crash/restart and checkpoint recovery.
+- [ ] Live Ollama model pull and bounded Codex execution on the target host.
+- [ ] Full manual keyboard/screen-reader/contrast review and long-duration soak.
+
+Automated CI is repository-level evidence only. It does not authorize merge, deployment, or a claim of target-host acceptance.

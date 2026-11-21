@@ -1,15 +1,16 @@
 # وضعیت یکپارچهٔ پروژه
 
-## 2026-11-21 — اصلاح مالکیت صف اجرا و fencing (PR #799، در حال اعتبارسنجی)
+## 2026-11-21 — وضعیت زندهٔ بازبینی Autonomous Engineering و UI
 
-- شاخهٔ بازسازی‌شده از main فعلی `bc1d273bdece690b5067a70b2deea8aa77ed7e28` ساخته شده است؛ PR [#799](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/799) به‌صورت Draft باز است.
-- علت ریشه‌ای: مالکیت task فقط با رشتهٔ قابل‌بازیافت `lease_owner` و زمان انقضا سنجیده می‌شد؛ worker قدیمی با شناسهٔ تکراری می‌توانست پس از reclaim هنوز mutation انجام دهد. همچنین task manager مسئولیت‌های storage، lease، control و قرارداد داده را در یک فایل ۶۴۵ خطی جمع کرده بود.
-- اصلاح در PR: ماژول‌های جدا برای قرارداد، ذخیره‌سازی، چرخهٔ lease و کنترل؛ facade سازگار `app.task_manager`؛ migration افزایشی ۴۸ برای `lease_epoch`؛ افزایش epoch هنگام claim در تراکنش؛ اعتبارسنجی owner+epoch+expiry برای mutation؛ توکن یکتای هر نمونهٔ worker؛ انتقال epoch در TaskContext.
-- تست‌های regression برای reclaim با worker label یکسان، رد mutation با epoch قدیمی، یکتایی توکن worker و بازیابی checkpoint اضافه شده‌اند.
-- وضعیت CI exact-head: هنوز اجرا/نتیجه‌ای از GitHub Actions در دسترس نیست؛ هیچ موفقیتی ادعا نمی‌شود.
-- دامنهٔ باز: fencing در تراکنش‌های دامنه‌ای learning job/method/quality gate هنوز باید به تمام مسیرهای mutation متصل شود؛ UI fault isolation و اجرای کامل ماژول‌ها نیز همچنان باز است.
-- تست میزبان Windows، crash/restart واقعی، soak، restore/rollback و بازبینی امنیتی مستقل انجام‌شده محسوب نمی‌شوند. هیچ migration روی دیتابیس کاربر اجرا نشده و هیچ merge انجام نشده است.
-
+- مبنای زندهٔ `main`: `91b7e062e21d06d774c2f1f394bc72e4eb69af2c`. این بخش جایگزین snapshot قدیمی PR #799 در ابتدای سند است.
+- PR [#799](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/799) با merge commit `852423ae8b862b834e007eada0033d087a37cd83` در main است؛ lease epoch افزایشی، اعتبارسنجی owner+epoch+expiry و تفکیک task manager را دوباره پیاده‌سازی نکنید.
+- PR مستنداتی [#814](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/814) با merge commit `4eb6593a6beb70c7aa6423d8951cc3a88eeabb2d` ادغام شده است؛ ارجاع قبلی به «در حال گذراندن CI» دیگر معتبر نیست.
+- PR [#817](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/817)، head `da21976d810c8a2b0fceaae9c12282cf9e9166b3`: هر چهار workflow یعنی tests، browser-e2e، dependency-audit و CodeQL موفق؛ PR باز و ادغام‌نشده است.
+- PR [#818](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/818)، head `e1fa88e9060cac16bf2061aac3eb7b0b73fc12dd`: هر چهار workflow موفق؛ PR باز و ادغام‌نشده است.
+- PR [#819](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/819)، head فعلی `f7895430f26b6959bb42950cf8f61c418b3e0336`: browser-e2e، dependency-audit و CodeQL موفق؛ Full tests هنوز در حال اجراست. در head قبلی یک mock دوآرگومانی با قرارداد جدید context ناسازگار بود؛ تست اکنون context را دریافت و در همان تراکنش assert می‌کند.
+- PR [#820](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/820)، head کد `255f821639b9b5403abfc43c9ec0c889d812c836`: تمام چهار workflow موفق. Ubuntu: **2464 passed، 14 skipped، 74 deselected**؛ Windows: **2462 passed، 16 skipped، 74 deselected**؛ Browser E2E: **67 passed**؛ Windows storage regressions: **11 passed، 2 skipped**؛ Markdown link check برای 107 فایل موفق و AST import-cycle checker بدون چرخه. اجراها: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44930929256)، [browser](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44930929297)، [CodeQL](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44930929282)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44930929328).
+- Gate B هنوز کامل نیست: fencing صف در #799 ادغام شده و #819 مسیر اصلی learning job را پوشش می‌دهد؛ سایر TaskRuntime domain writers هنوز نیازمند inventory/fencing هستند. در مسیر Autonomous Engineering نیز قفل durable state، قفل repository execution، checkpoint-store lock، owner record، pending PR و post-merge cleanup بررسی شده‌اند. یک مسیر CLI دستی `publish` در `scripts/autonomous_engineering_cycle.py` پیش از ورود به repository execution lock اجرا می‌شود؛ در workflow فعلی callsite ندارد، اما نباید هم‌زمان با اجرای دیگر استفاده شود. این فایل در محدودهٔ فایل‌های محافظت‌شده است و در این تغییر دست‌کاری نشده است.
+- هیچ PR ادغام یا deploy نشده؛ Runner، سرویس محلی، task پایدار، checkpoint، فایل owner، history و دادهٔ کاربر تغییر داده نشده‌اند. پذیرش روی Windows target، هویت سرویس/ACL، crash-restart، Ollama/Codex زنده، soak و بررسی دستی accessibility همچنان pending است.
 
 ## 2026-11-15 — اصلاح طبقه‌بندی شکست و بازیابی چرخهٔ خودکار
 
