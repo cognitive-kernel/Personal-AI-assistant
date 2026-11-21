@@ -80,16 +80,20 @@ def test_sandbox_feature_has_an_isolated_versioned_module_and_startup_refresh():
 def test_experience_memory_is_an_isolated_module_with_explicit_core_contract():
     page = (STATIC / "index.html").read_text(encoding="utf-8")
     module = (STATIC / "experience-memory.js").read_text(encoding="utf-8")
+    consent = (STATIC / "experience-memory-consent.js").read_text(encoding="utf-8")
 
+    assert 'src="/static/experience-memory-consent.js"' in page
     assert 'src="/static/experience-memory.js"' in page
     assert "const experienceStatuses" not in page
     assert "async function refreshExperiences()" in module
-    assert "async function refreshExperienceAutoCaptureConsent()" in module
-    assert "window.dashboardCore&&window.dashboardCore.version===1?window.dashboardCore:createLocalDashboardCore()" in module
-    assert "const {api,el,appendText}=core;" in module
-    assert "refreshExperienceAutoCaptureConsent();" in module
-    assert module.rstrip().endswith("})();")
+    assert "renderExperienceItems" in module
+    assert "async function refreshExperienceAutoCaptureConsent()" in consent
+    assert "window.dashboardCore&&window.dashboardCore.version===1?window.dashboardCore:createLocalDashboardCore()" in consent
+    assert "experienceConsentRefreshSequence" in consent
+    assert "refreshExperienceAutoCaptureConsent();" in consent
+    assert consent.rstrip().endswith("})();")
     assert "innerHTML" not in module
+    assert "innerHTML" not in consent
 
 
 def test_engineering_assistance_is_loaded_as_an_independent_feature_module():
