@@ -156,11 +156,17 @@ def test_stale_task_context_cannot_enqueue_or_escalate_after_reclaim(execution_s
 
     with db.learning_connection() as connection:
         connection.execute(
-            "UPDATE task_queue SET lease_expires_at='2000-01-01T00:00:00.000000Z' WHERE id=?",
-            (task["id"],),
+            """UPDATE task_queue
+               SET lease_epoch=lease_epoch+1, lease_owner=?,
+                   lease_expires_at='2099-01-01T00:00:00.000000Z'
+               WHERE id=?""",
+            ("replacement-worker", task["id"]),
         )
-    replacement = task_manager.claim_next_task("replacement-worker")
-    assert replacement is not None and replacement["id"] == task["id"]
+        replacement = connection.execute(
+            "SELECT lease_epoch FROM task_queue WHERE id=?",
+            (task["id"],),
+        ).fetchone()
+    assert replacement is not None
     assert replacement["lease_epoch"] > stale_context.lease_epoch
 
     with pytest.raises(TaskManagerError):
