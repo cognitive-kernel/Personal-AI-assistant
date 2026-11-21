@@ -45,7 +45,7 @@
 - قفل‌ها باید cross-process و در Windows target قابل اثبات باشند؛ thread lock به‌تنهایی کافی نیست.
 - recovery فقط پس از تشخیص نوع شکست و تأیید نبود owner زنده/فعال انجام شود. شکست preflight، admission، UI یا CI نباید به‌اشتباه failure اجرای Codex شمرده شود.
 
-قبل از refactor، همهٔ مسیرهای mutation و call siteها را پیدا کن و یک state transition table بساز. برای هر transition: precondition، owner، transaction/lock، postcondition، retry semantics و audit event ثبت شود.
+**baseline موجود را دوباره پیاده‌سازی نکن:** PR شمارهٔ [799](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/799) در main ادغام شده و lease epoch افزایشی، اعتبارسنجی owner+epoch+expiry و تفکیک task manager را وارد کد کرده است. ابتدا diff و merge commit آن (`852423ae8b862b834e007eada0033d087a37cd83`) را بررسی کن. هدف Gate B ممیزی پوشش واقعی تمام mutationها و مرزهای UI/API/Broker/Runner و تکمیل شکاف‌های اثبات‌شده است؛ بازنویسی موازی یا تکرار fencing موجود ممنوع است. مستندات تاریخی ممکن است از وضعیت live عقب باشند؛ وضعیت PRها را از GitHub تأیید کن.\n\nقبل از refactor، همهٔ مسیرهای mutation و call siteها را پیدا کن و یک state transition table بساز. برای هر transition: precondition، owner، transaction/lock، postcondition، retry semantics و audit event ثبت شود.
 
 ### 2.2 معماری ماژولار واقعی
 
@@ -163,7 +163,7 @@
 - خطاهای permanent، transient، admission، infrastructure، task failure و validation failure تفکیک شوند.
 - retry count، total deadline، per-attempt timeout و circuit breaker شفاف و قابل تست باشند.
 - پس از شکست، task/checkpoint و شواهد حفظ شوند و هیچ وضعیت success کاذب ثبت نشود.
-- process tree و descendants باید پیش از retry کاملاً drain شوند.
+- process tree و descendants باید پیش از retry کاملاً drain شوند.\n- شکست مستندشدهٔ run `44907149358` را به‌عنوان regression ورودی بررسی کن: دو تلاش Codex اجرا شدند، سپس validator به‌علت نبود دقیقاً یک completion marker معتبر (`found 0`) شکست خورد؛ task منتشر یا verified نشد و برای recovery باقی ماند. علت را صرفاً به «Codex exit code 1» تقلیل نده. event stream، final report contract، parser/validator و retry feedback را با evidence دنبال کن و تستی اضافه کن که report ناقص/بدون marker و report دارای marker تکراری را رد کند و report معتبر را بپذیرد.
 
 ### 5.4 UI fault isolation
 
