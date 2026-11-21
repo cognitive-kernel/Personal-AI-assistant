@@ -542,7 +542,10 @@ def test_task_dashboard_has_separate_view_card_and_orchestration_responsibilitie
     assert view_tag < cards_tag < orchestrator_tag
     assert "createTaskView" in view and "updateTaskDashboard" in view
     assert "createTaskCards" in cards and "renderTasks" in cards
+    assert "Object.defineProperty(window, \"taskCardsFactory\"" in cards
+    assert "Object.defineProperty(window, \"taskViewFactory\"" in view
     assert "refreshTasks" in orchestrator and "taskCardsFactory" in orchestrator
+    assert "Object.defineProperty(window,\"taskDashboard\"" in orchestrator
     assert len(orchestrator.splitlines()) < 120
     assert len(view.splitlines()) < 130
     assert len(cards.splitlines()) < 280
