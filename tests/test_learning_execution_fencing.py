@@ -3,7 +3,12 @@ from __future__ import annotations
 import pytest
 
 from app import db, learning, task_manager
-from app.learning_tasks import handle_learning_job
+from app.learning_tasks import (
+    LEARNING_TASK_TYPE,
+    _record_learning_escalation,
+    enqueue_learning_task,
+    handle_learning_job,
+)
 from app.learning_execution import (
     LearningExecutionLeaseLostError,
     assert_current,
@@ -11,7 +16,6 @@ from app.learning_execution import (
     fail_if_current,
 )
 from app.task_worker import TaskContext
-from app.learning_tasks import LEARNING_TASK_TYPE
 from app.task_manager import TaskManagerError
 
 
@@ -131,3 +135,55 @@ def test_duplicate_queue_task_does_not_steal_live_learning_execution(execution_s
     assert stored["execution_owner"] == first_lease.owner
     assert stored["execution_task_id"] == first_task["id"]
     assert stored["execution_task_epoch"] == first_claim["lease_epoch"]
+
+
+def test_stale_task_context_cannot_enqueue_or_escalate_after_reclaim(execution_store):
+    first_job = learning.create_job("Original authorized learning job")
+    next_job = learning.create_job("Next learning job")
+    task = task_manager.create_task(
+        LEARNING_TASK_TYPE,
+        {"job_id": first_job["id"]},
+        dedupe_key="learning-job-owner-reclaim",
+    )
+    first_claim = task_manager.claim_next_task("same-worker-label")
+    assert first_claim is not None and first_claim["id"] == task["id"]
+    stale_context = TaskContext(
+        task_id=task["id"],
+        worker_id="same-worker-label",
+        lease_epoch=first_claim["lease_epoch"],
+    )
+
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE task_queue SET lease_expires_at='2000-01-01T00:00:00.000000Z' WHERE id=?",
+            (task["id"],),
+        )
+    replacement = task_manager.claim_next_task("replacement-worker")
+    assert replacement is not None and replacement["id"] == task["id"]
+    assert replacement["lease_epoch"] > stale_context.lease_epoch
+
+    with pytest.raises(TaskManagerError):
+        enqueue_learning_task(
+            next_job["id"],
+            task_context=stale_context,
+            authority_job_id=first_job["id"],
+        )
+    assert task_manager.get_task_by_dedupe_key(
+        f"learning-job:{next_job['id']}"
+    ) is None
+
+    with pytest.raises(TaskManagerError):
+        _record_learning_escalation(
+            task["id"],
+            first_job["id"],
+            "stale_attempt",
+            "must not be written by the old owner",
+            task_context=stale_context,
+            authority_job_id=first_job["id"],
+        )
+    with db.learning_connection() as connection:
+        escalation = connection.execute(
+            "SELECT id FROM learning_escalations WHERE task_id=?",
+            (task["id"],),
+        ).fetchone()
+    assert escalation is None
