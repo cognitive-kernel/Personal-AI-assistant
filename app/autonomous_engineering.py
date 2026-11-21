@@ -6,13 +6,13 @@ import json
 import logging
 import os
 import platform
+import re
 import shutil
 import subprocess
+import threading
 import time
 import urllib.error
 import urllib.request
-import re
-import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor, wait
 from pathlib import Path
