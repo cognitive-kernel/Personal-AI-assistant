@@ -5548,7 +5548,7 @@ def test_autonomous_engineering_progress_module_failure_isolated_from_other_modu
         page.on("pageerror", lambda error: browser_errors.append(str(error)))
         page.route("**/static/autonomous-engineering-progress.js", lambda route: route.abort())
         page.route("**/api/autonomous-engineering/status", lambda route: route.fulfill(status=200, json=status_payload))
-        page.route("**/api/autonomous-engineering/runs", mock_runs)
+        page.route("**/api/autonomous-engineering/runs**", mock_runs)
         response = page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
         assert response is not None and response.status == 200
         page.wait_for_function(
