@@ -2240,3 +2240,10 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Added browser regressions for RTL layout and keyboard skip-link access at 390px, 768px, and 1440px widths, including horizontal-overflow checks.
 - Added fault-isolation coverage that deliberately blocks only the progress module and verifies status, controls, and run-history modules still initialize without uncaught browser exceptions.
 - This is test-only coverage; no UI implementation or working module was changed. Exact-head browser E2E and full CI remain pending.
+
+
+## 2026-11-21 — Keep module-load warnings visible during asynchronous status refresh
+
+- The new fault-isolation browser test exposed a real UI defect: the main module reported a missing feature module through `#agent-message`, but the independent status poll overwrote that message after it completed. A user could lose the only indication that part of the console had failed to load.
+- The main module now renders a separate persistent `#agent-module-warning` alert using the existing notice style and accessible `role=alert`/`aria-live` semantics. Status polling continues to own `#agent-message`; working modules remain independent.
+- The browser regression now verifies that the progress module can fail while status, controls, and run history still initialize, and that the warning remains visible after status refresh. No module execution or task state is changed by the warning.
