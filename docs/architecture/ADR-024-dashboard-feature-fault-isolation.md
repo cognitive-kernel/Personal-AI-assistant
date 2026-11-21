@@ -17,6 +17,7 @@ The dashboard had extracted most feature logic from `index.html`, but almost eve
 4. Learning lessons and overview modules have local learning-core fallbacks. The learning path orchestrator treats lesson and overview modules as optional capabilities: one module failure does not prevent the rest of the path UI from initializing.
 5. Each autonomous-engineering submodule has its own fallback for the small `autonomousEngineeringCore v1` transport/DOM contract. The orchestrator reports missing capabilities without disabling successfully loaded siblings.
 6. Feature-owned state, refresh sequencing, event listeners, and domain operations remain in their own module. Fallbacks do not contain domain logic.
+7. The task dashboard is split by responsibility into a view module (summary/filter/selection), a card module (rendering/history/actions), and a small orchestrator (refresh sequencing/polling/event wiring). Their frozen versioned contracts are validated before use.
 
 ## Invariants
 
@@ -24,6 +25,7 @@ The dashboard had extracted most feature logic from `index.html`, but almost eve
 - A failure in one learning submodule must not stop the path orchestrator or unrelated learning panels.
 - The shared kernel cannot be silently overwritten by another script.
 - No module uses unsafe `innerHTML` for user- or API-provided content.
+- Task UI view/card module failures are contained to the task feature and do not stop sibling dashboard features.
 - Fallback code is limited to generic transport/DOM primitives; feature state and behavior remain feature-owned.
 
 ## Validation
