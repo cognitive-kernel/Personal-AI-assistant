@@ -257,8 +257,8 @@ def test_pause_sets_durable_repository_variable(monkeypatch):
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
     monkeypatch.setattr(
         agent, "_run",
-        lambda command, timeout=8, *, raise_os_error=False: (
-            calls.append((command, raise_os_error))
+        lambda command, timeout=8: (
+            calls.append(command)
             or subprocess.CompletedProcess(command, 0, "", "")
         ),
     )
@@ -276,7 +276,13 @@ def test_pause_sets_durable_repository_variable(monkeypatch):
 def test_resume_clears_pause_and_dispatches_without_legacy_failure_counter(monkeypatch):
     calls = []
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
-    monkeypatch.setattr(agent, "_run", lambda command, timeout=8: calls.append(command) or subprocess.CompletedProcess(command, 0, "", ""))
+    monkeypatch.setattr(
+        agent, "_run",
+        lambda command, timeout=8, *, raise_os_error=False: (
+            calls.append((command, raise_os_error))
+            or subprocess.CompletedProcess(command, 0, "", "")
+        ),
+    )
 
     result = agent.resume_autonomous_engineering()
 
