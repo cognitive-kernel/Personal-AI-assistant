@@ -2240,3 +2240,9 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - The learning task handler now validates the exact `learning.run_job` payload and passes its `TaskContext` into the domain runner. The runner validates owner, epoch, active status, task type, and `job_id` inside the same `BEGIN IMMEDIATE` transaction as job claim, source/evidence persistence, preparation-failure settlement, and final lesson/evidence/candidate writes. A stale owner cannot write any of those records.
 - Added a regression that expires and reclaims a task with the same worker label, then proves the old context cannot change the learning job, lesson, or evidence rows.
 - Scope is deliberately limited to the primary learning-job adapter; candidate-review, curriculum, factual-verification and other domain handlers remain in the Gate-B inventory and must be audited separately. No user database migration or live task was run. Exact-head CI and Windows target-host acceptance are pending.
+
+
+### Follow-up: fence escalation side effects
+
+- The same stale-epoch review found that a worker could record a `learning_escalations` row after a model error even when its lease had been reclaimed. `_record_learning_escalation` now accepts the handler's `TaskContext` and validates the exact task claim inside its write transaction; reconciliation-only calls without a worker context retain their existing behavior.
+- Added a second regression proving a stale context cannot create a human-review escalation. Other task adapters remain outside this narrowly scoped PR.
