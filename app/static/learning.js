@@ -6,13 +6,18 @@
  const history=window.learningHistory;
  const curriculum=window.learningCurriculum;
  const fallback=document.getElementById("paths-output");
- if(!core||core.version!==1||!lessons||lessons.version!==1||!overview||overview.version!==1){
-  if(fallback)fallback.textContent="ماژول مسیرهای یادگیری به قراردادهای learningCore، learningLessons و learningOverview نیاز دارد.";
+ if(!core||core.version!==1){
+  if(fallback)fallback.textContent="ماژول مسیرهای یادگیری به قرارداد learningCore v1 نیاز دارد.";
   return;
  }
+ const lessonsAvailable=Boolean(lessons&&lessons.version===1&&
+  typeof lessons.startLesson==="function"&&typeof lessons.stopLesson==="function");
+ const overviewAvailable=Boolean(overview&&overview.version===1&&
+  typeof overview.refreshDueReviews==="function");
  const {el:learningEl,api:learningApi}=core;
- const {startLesson,stopLesson}=lessons;
- const refreshDueLearningReviews=overview.refreshDueReviews;
+ const startLesson=lessonsAvailable?lessons.startLesson:null;
+ const stopLesson=lessonsAvailable?lessons.stopLesson:null;
+ const refreshDueLearningReviews=overviewAvailable?overview.refreshDueReviews:async()=>{};
  let learningPathsLoadSequence = 0;
  async function loadLearningPaths() {
   const requestSequence = ++learningPathsLoadSequence;
@@ -267,15 +272,23 @@
        });
        reviewOutput.textContent = "مرور ثبت شد. مرور بعدی: " + result.due_at +
         " (فاصله: " + result.interval_days + " روز). " + result.note;
-       await refreshDueLearningReviews();
+       if (overviewAvailable) await refreshDueLearningReviews();
       } catch (error) {
        reviewOutput.textContent = "ثبت مرور ناموفق بود: " + error.message;
       } finally {
        reviewButton.disabled = false;
       }
      });
-     start.addEventListener("click", () => startLesson(path, topic, start, stop, output));
-     stop.addEventListener("click", () => stopLesson(path, topic, stop, output));
+     if (lessonsAvailable) {
+      start.addEventListener("click", () => startLesson(path, topic, start, stop, output));
+      stop.addEventListener("click", () => stopLesson(path, topic, stop, output));
+     } else {
+      start.disabled = true;
+      stop.disabled = true;
+      start.title = "ماژول تولید درس در دسترس نیست.";
+      stop.title = "ماژول تولید درس در دسترس نیست.";
+      output.textContent = "ماژول تولید و توقف درس در دسترس نیست؛ وضعیت مسیر و سایر کنترل‌ها فعال هستند.";
+     }
      row.append(label, status, score, save, start, stop, reviewLabel, reviewButton, reviewOutput, historyOutput, output);
      details.append(row);
     });
