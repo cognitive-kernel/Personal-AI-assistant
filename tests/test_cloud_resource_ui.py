@@ -11,10 +11,15 @@ def test_cloud_resource_ui_exposes_discovery_and_review_controls_safely():
     module = (Path(__file__).parents[1] / "app" / "static" / "cloud-resources.js").read_text(
         encoding="utf-8"
     )
-    source = page + "\\n" + core + "\\n" + module
+    cards = (Path(__file__).parents[1] / "app" / "static" / "cloud-resource-cards.js").read_text(
+        encoding="utf-8"
+    )
+    source = page + "\\n" + core + "\\n" + module + "\\n" + cards
 
     assert 'src="/static/dashboard-core.js"' in page
+    assert 'src="/static/cloud-resource-cards.js"' in page
     assert 'src="/static/cloud-resources.js"' in page
+    assert page.index('src="/static/cloud-resource-cards.js"') < page.index('src="/static/cloud-resources.js"')
     assert "Object.defineProperty(window, \"dashboardCore\"" in core
     assert "configurable: false" in core and "writable: false" in core
     assert "version: 1" in core
@@ -39,7 +44,9 @@ def test_cloud_resource_ui_exposes_discovery_and_review_controls_safely():
     assert 'candidate.observed_claims||[]' in source
     assert 'document.createElement("details")' in source
     assert 'summary.textContent="جزئیات شواهد و ادعاها ("' in source
-    assert 'card.append(details,deleteActions); container.append(card);' in source
+    assert 'card.append(details,deleteActions); container.append(card);' in cards
+    assert 'Object.defineProperty(window,"cloudResourceCardsFactory"' in cards
+    assert 'createCloudResourceCards' in cards
     assert 'candidate.eligibility_assessment' in source
     assert 'candidate.source_authority==="recognized_official_domain"' in source
     assert 'دامنهٔ رسمی شناخته‌شده' in source
