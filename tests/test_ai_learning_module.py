@@ -315,11 +315,11 @@ def test_rejected_topic_is_removed_from_retrieval(isolated_store):
     assert service.search_knowledge("Parameterized injection")["count"] == 0
 
 
-def test_feature_flags_are_off_by_default(monkeypatch):
+def test_feature_flags_enable_capture_by_default_but_keep_retrieval_off(monkeypatch):
     from app.ai_learning import config
     monkeypatch.delenv("AI_LEARNING_ENABLED", raising=False)
     monkeypatch.delenv("AI_LEARNING_RETRIEVAL_ENABLED", raising=False)
-    assert config.is_enabled() is False
+    assert config.is_enabled() is True
     assert config.retrieval_is_enabled() is False
 
 def test_outline_import_creates_pending_topics_and_preserves_raw_response(isolated_store, monkeypatch):

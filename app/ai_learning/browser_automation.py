@@ -18,7 +18,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable
 
-from . import service
+from . import config, service
 from ..browser_runtime import (
     BrowserRuntimeSetupError,
     ensure_managed_chromium,
@@ -1750,8 +1750,21 @@ def recover_pending_runs() -> dict[str, Any]:
     return result
 
 
+def watchdog_has_work() -> bool:
+    """Cheaply decide whether runtime maintenance should enter the recovery path."""
+    if not config.is_enabled() or _SHUTTING_DOWN:
+        return False
+    return service.has_watchdog_work()
+
+
 def recover_orphaned_runs() -> dict[str, Any]:
-    """Run the single leased dispatcher/recovery path from the maintenance watchdog."""
+    """Recover persisted runs only while the optional AI-learning feature is enabled."""
+    # Enforce the feature gate at the operation boundary as well as in the caller.
+    # This prevents accidental internal calls from opening the AI-learning database
+    # or emitting watchdog events while the optional module is disabled.
+    if not config.is_enabled():
+        return {"status": "disabled", "active": False}
+
     from .db import initialize_store
 
     _ensure_process_identity()
@@ -1759,12 +1772,16 @@ def recover_orphaned_runs() -> dict[str, Any]:
         return {"status": "shutting_down", "active": False}
     initialize_store()
     result = _dispatch_next_persisted_run()
-    _log_event(
-        "orphaned_run_watchdog_recovery",
-        status=result.get("status"),
-        run_id=result.get("run_id"),
-        recovered_run_ids=result.get("recovered_run_ids", []),
-    )
+    recovered_run_ids = result.get("recovered_run_ids", [])
+    # An idle poll is not an operational event. Keep the log useful by recording
+    # only state transitions, recoveries, and non-idle outcomes.
+    if result.get("status") != "idle" or recovered_run_ids:
+        _log_event(
+            "orphaned_run_watchdog_recovery",
+            status=result.get("status"),
+            run_id=result.get("run_id"),
+            recovered_run_ids=recovered_run_ids,
+        )
     return result
 
 

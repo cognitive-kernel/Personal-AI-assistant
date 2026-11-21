@@ -313,7 +313,10 @@ def _maintain_learning_runtime() -> None:
         logger.exception("Browser-learning dispatch failed; it will retry next interval.")
     if ai_learning_config.is_enabled():
         try:
-            ai_learning_browser_automation.recover_orphaned_runs()
+            # A read-only preflight avoids lease claims and queue dispatch while idle.
+            # The full recovery path runs only for due queued work or an orphaned run.
+            if ai_learning_browser_automation.watchdog_has_work():
+                ai_learning_browser_automation.recover_orphaned_runs()
         except Exception:
             logger.exception("Orphaned AI-learning run recovery failed; it will retry next interval.")
 
@@ -353,10 +356,9 @@ def startup() -> None:
     # Recover only explicit, persisted AI-learning runs. This never auto-generates
     # new topics/lessons and respects the durable global pause flag.
     if ai_learning_config.is_enabled():
-        # Browser dependencies are optional until this feature is enabled. Check
-        # and provision them asynchronously so the local dashboard remains
-        # responsive during a first-run package/browser download.
-        ai_learning_browser_automation.schedule_browser_runtime_bootstrap()
+        # Recover only explicit persisted work at startup. Playwright/Chrome are
+        # initialized lazily by the first real capture, not just because the
+        # optional AI-learning feature is enabled.
         try:
             ai_learning_browser_automation.recover_pending_runs()
         except Exception:

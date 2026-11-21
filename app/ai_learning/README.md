@@ -4,9 +4,10 @@ This package is optional and isolated. It must not replace the existing chat mod
 
 ## Feature gates
 
-- AI_LEARNING_ENABLED=0 (default): management API is disabled; startup does not initialize the module database.
-- AI_LEARNING_ENABLED=1: enables the management API and initializes only AI_LEARNING_DB_PATH (default data/ai_learning.db).
+- AI_LEARNING_ENABLED=1 (default): enables the management API, initializes only AI_LEARNING_DB_PATH (default data/ai_learning.db), and recovers explicitly persisted runs.
+- AI_LEARNING_ENABLED=0: disables the management API and prevents startup/watchdog database work.
 - AI_LEARNING_RETRIEVAL_ENABLED=1: additionally enables lexical search over explicitly published content. It has no effect unless the module itself is enabled.
+- The persisted-run watchdog has an independent guard at its operation boundary: when `AI_LEARNING_ENABLED=0`, it returns `disabled` before opening the AI-learning database, claiming a lease, dispatching work, or writing a watchdog event. With the feature enabled, its 30-second maintenance preflight is a read-only query; it does not claim a lease or enter dispatch/recovery while the queue is idle, paused, cooling down, or owned by a live worker. Browser dependencies are initialized lazily when a real capture starts.
 
 Do not expose the host service beyond loopback. The host application intentionally has no remote authentication.
 
@@ -96,7 +97,7 @@ Login requirements, human verification, missing Chrome/Playwright dependencies, 
 
 ## Persisted queue recovery and quality regression checks
 
-The AI-learning run records in SQLite are the source of truth for explicitly submitted outline/lesson work. When `AI_LEARNING_ENABLED=1`, application startup initializes the isolated store and attempts to dispatch the oldest persisted `queued` run whose `next_retry_at` is due, or an interrupted `running` run, unless global pause is active. The 30-second learning-runtime maintenance callback also dispatches due scheduled retries. The dispatcher drains remaining persisted runs after each worker finishes. Recovery reuses the saved prompt and run ID; it does not restore the exact ChatGPT tab state, and ChatGPT may need to generate the answer again. The browser still runs as an in-process thread, but the shared SQLite lease serializes ownership across application processes using the same local AI-learning DB and Chrome profile. This does not make SQLite a multi-host distributed queue.
+The AI-learning run records in SQLite are the source of truth for explicitly submitted outline/lesson work. When `AI_LEARNING_ENABLED=1`, application startup initializes the isolated store and attempts to dispatch the oldest persisted `queued` run whose `next_retry_at` is due, or an interrupted `running` run, unless global pause is active. The 30-second learning-runtime maintenance callback first runs a read-only preflight and enters dispatch/recovery only when due queued work or a persisted running run exists and no live worker lease, global pause, or provider cooldown blocks it. An idle queue does not trigger lease claims, worker dispatch, browser initialization, or watchdog event logs. Chrome/Playwright setup occurs lazily inside the first actual capture. The dispatcher drains remaining persisted runs after each worker finishes. Recovery reuses the saved prompt and run ID; it does not restore the exact ChatGPT tab state, and ChatGPT may need to generate the answer again. The browser still runs as an in-process thread, but the shared SQLite lease serializes ownership across application processes using the same local AI-learning DB and Chrome profile. This does not make SQLite a multi-host distributed queue.
 
 The offline quality evaluator in `app/ai_learning/evaluation.py` measures expected retrieval hits, forbidden result-ID leakage, Persian/Arabic text normalization, expected answer-concept coverage, explicitly forbidden phrases, answer minimum length and expected source-link coverage. It has no external-model dependency and is intended for deterministic regression tests, not a proof of factual correctness. Human review remains required before publishing knowledge. Run it through the regular test suite with `pytest tests/test_ai_learning_evaluation.py tests/test_ai_learning_queue_recovery.py`.
 
