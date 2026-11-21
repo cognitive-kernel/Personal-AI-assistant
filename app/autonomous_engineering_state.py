@@ -186,7 +186,7 @@ def execution_state_directory(
     machine_state = machine_state_fn or _machine_configured_state_directory
     process_configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
     home = _current_home_directory() if not is_windows() else None
-    if not is_windows():
+    if not is_windows() and os.name != "nt":
         # Once the machine broker is installed, its protected configuration is
         # authoritative for every local account. Do not attempt per-user legacy
         # migration from an ordinary dashboard session.
