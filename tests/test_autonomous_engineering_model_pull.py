@@ -163,7 +163,7 @@ def test_dashboard_exposes_model_pull_controls_and_progress():
 
     root = Path(__file__).resolve().parents[1]
     html = (root / "app" / "static" / "autonomous-engineering.html").read_text(encoding="utf-8")
-    script = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
+    script = (root / "app" / "static" / "autonomous-engineering-controls.js").read_text(encoding="utf-8")
 
     assert 'id="pull-model"' in html
     assert 'id="model-pull-status"' in html

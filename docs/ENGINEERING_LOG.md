@@ -1,3 +1,23 @@
+## 2026-11-21 — Autonomous engineering UI feature isolation
+
+### Root cause
+- The autonomous engineering console had one JavaScript file coupling transport, status polling, task dispatch, model setup, run log/cleanup, and progress chart rendering. This increased the blast radius of UI errors and obscured feature ownership.
+- Status single-flight mutation handoff and run-history request sequencing existed, but were embedded in the monolith and lacked an enforced dependency/selector contract.
+
+### Correction
+- Split the console into a transport core, status/readiness owner, action/control owner, run-history/log/cleanup owner, and progress/chart owner.
+- The page loads feature modules in dependency order. Each module publishes a frozen version-1 contract and owns local handlers/state. The remaining orchestrator is a 26-line startup and polling scheduler.
+- Preserve request timeouts, ambiguous-dispatch handling, status single-flight/mutation refresh, run-history sequencing, and progress refresh queueing.
+- Pending durable blockers are shown with safe labels derived from broker markers; task contents and local paths remain private.
+- Added architecture, dependency-order, selector-contract and regression tests.
+
+### Validation boundary
+- This UI refactor does not change workflow admission, persistence, lease ownership, or the Broker protocol.
+- Exact-head full tests, Browser E2E, dependency audit, CodeQL and Windows storage regressions remain required.
+- No live Runner, task state, checkpoint, database, or user data was changed. No merge or deployment is performed.
+
+---
+
 ## 2026-11-21 — Preserve rejected learning evidence (P0)
 
 ### Confirmed defect
@@ -2181,3 +2201,8 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 ## 2026-11-21 — Learning evidence PR retargeted after dashboard merge
 - PR #807 now targets `main` after PR #805 was merged. Its base includes the tested autonomous-dashboard refresh changes; the evidence-preservation patch and its regression tests remain unchanged.
 - This commit records the re-targeting so the full validation matrix, including main-target CodeQL, runs against the current PR head.
+
+
+## 2026-11-21 — Autonomous UI modules rebased onto learning evidence head
+- PR #808 now builds directly on PR #807's updated head. The module files and their tests were carried forward unchanged; the engineering log retains both preceding PR records.
+- Exact-head validation is being rerun against this ancestry before the stacked PR is promoted.
