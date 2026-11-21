@@ -129,3 +129,8 @@ API ابتدا active run را رد می‌کند و سپس Broker/state markers
 - PR #820: خطای پایدار ماژول، error metadata، dispatch message ordering، responsive/fault-isolation/model-pull E2E؛ draft و CI لازم است.
 - هیچ‌یک از این PRها تا عبور exact-head CI و پذیرش میزبان هدف نباید صرفاً بر اساس کد/تست mock ادغام شوند.
 - در این ممیزی task، checkpoint، تاریخچه، PR یا دادهٔ کاربر حذف یا بازنویسی نشده است.
+
+
+### چرخهٔ پیام موفقیت پس از mutation
+
+تمام کنترل‌های تغییردهندهٔ state (ذخیرهٔ تنظیمات، pull مدل، manual task، dispatch، Pause، Resume و Cancel) ابتدا وضعیت authoritative را بازخوانی و سپس پیام نهایی موفقیت را نمایش می‌دهند؛ بنابراین polling پیام نتیجه را بازنویسی نمی‌کند. در مسیر خطا نیز refresh قبل از نمایش خطا انجام می‌شود. E2E برای Settings، manual task، Pause/Resume و Cancel موفق/ناموفق این ترتیب را بررسی می‌کند.
