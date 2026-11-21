@@ -138,7 +138,23 @@ def _source_metadata_for_checkpoint(sources: list[dict[str, Any]]) -> list[dict[
     ]
 
 
-def _persist_source_body(task_id: int, source: dict[str, Any], body: str) -> None:
+def _assert_curriculum_task_context(connection, task_context, task_id: int, topic: str) -> None:
+    """Bind curriculum domain writes to the exact live task lease and topic."""
+    if task_context is None:
+        return
+    if task_context.task_id != task_id:
+        raise ValueError("Curriculum task context does not match the source/path task ID.")
+    task_context.assert_current(
+        connection,
+        expected_task_type=CURRICULUM_TASK_TYPE,
+        expected_payload={"topic": topic},
+    )
+
+
+def _persist_source_body(
+    task_id: int, source: dict[str, Any], body: str, *,
+    task_context: TaskContext | None = None, topic: str | None = None,
+) -> None:
     if not isinstance(body, str) or not body.strip():
         return
     provenance = {
@@ -149,6 +165,11 @@ def _persist_source_body(task_id: int, source: dict[str, Any], body: str) -> Non
         "retrieved_at": source.get("retrieved_at"),
     }
     with learning_connection() as connection:
+        if task_context is not None:
+            connection.execute("BEGIN IMMEDIATE")
+            if not isinstance(topic, str) or not topic.strip():
+                raise ValueError("A curriculum topic is required when fencing source persistence.")
+            _assert_curriculum_task_context(connection, task_context, task_id, topic)
         connection.execute(
             """INSERT OR IGNORE INTO learning_research_source_text(
                    task_id, source_url, content_sha256, content, provenance_json
@@ -217,7 +238,9 @@ def _collect_sources(
         source["retrieved_at"] = datetime.now(timezone.utc).isoformat()
         source["content"] = body
         source["content_complete"] = True
-        _persist_source_body(context.task_id, source, body)
+        _persist_source_body(
+            context.task_id, source, body, task_context=context, topic=topic
+        )
     preserved_outline = (
         checkpoint.get("outline")
         if isinstance(checkpoint, dict) and isinstance(checkpoint.get("outline"), dict)
@@ -995,6 +1018,7 @@ def _persist_researched_path(
     model: str,
     model_selection: dict[str, Any],
     refresh_of_path_id: int | None = None,
+    task_context: TaskContext | None = None,
 ) -> tuple[int, str]:
     topic_sha256 = hashlib.sha256(topic.encode("utf-8")).hexdigest()
     slug = f"researched-{task_id}-{topic_sha256[:12]}"
@@ -1009,6 +1033,10 @@ def _persist_researched_path(
     )
     with learning_connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
+        if task_context is not None:
+            if task_context.task_id != task_id:
+                raise ValueError("Curriculum task context does not match the research path task ID.")
+            _assert_curriculum_task_context(connection, task_context, task_id, topic)
         connection.execute(
             "INSERT OR IGNORE INTO learning_paths(curriculum_slug, title) VALUES (?, ?)",
             (slug, outline["title"]),
@@ -1414,7 +1442,7 @@ def handle_curriculum_task(
     path_id, outline_sha256 = _persist_researched_path(
         task_id=context.task_id, topic=topic, outline=outline,
         sources=sources, model=model, model_selection=model_selection,
-        refresh_of_path_id=refresh_of_path_id,
+        refresh_of_path_id=refresh_of_path_id, task_context=context,
     )
     context.checkpoint({
         "phase": "curriculum_persisted", "topic_sha256": topic_sha256,
