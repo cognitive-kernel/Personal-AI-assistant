@@ -5,6 +5,7 @@ import re
 import sqlite3
 from contextlib import asynccontextmanager
 import logging
+import uuid
 from pathlib import Path
 from urllib.parse import urlsplit
 from typing import Any, Literal
@@ -106,6 +107,45 @@ async def log_http_error_explanation(request, call_next):
             logger.info("توضیح فارسی 404 | مسیر: %s | دلیل: %s", path, explanation)
         else:
             logger.warning("توضیح فارسی 404 | مسیر: %s | دلیل: %s", path, explanation)
+    path = request.url.path
+    if (
+        path.startswith("/api/autonomous-engineering/")
+        or path == "/api/autonomous-engineering"
+    ) and response.status_code in {404, 405} and not response.headers.get("X-Error-Code"):
+        correlation_id = uuid.uuid4().hex
+        status_code = response.status_code
+        code = (
+            "AUTONOMOUS_ENGINEERING_NOT_FOUND"
+            if status_code == 404
+            else "AUTONOMOUS_ENGINEERING_METHOD_NOT_ALLOWED"
+        )
+        message = (
+            "مسیر در ماژول Autonomous Engineering پیدا نشد."
+            if status_code == 404
+            else "روش HTTP برای این مسیر پشتیبانی نمی‌شود."
+        )
+        logger.warning(
+            "Autonomous Engineering unmatched route; status_code=%s code=%s correlation_id=%s",
+            status_code,
+            code,
+            correlation_id,
+        )
+        return JSONResponse(
+            status_code=status_code,
+            content={
+                "detail": message,
+                "code": code,
+                "message": message,
+                "correlation_id": correlation_id,
+                "retryable": False,
+                "safe_details": {},
+            },
+            headers={
+                "X-Correlation-ID": correlation_id,
+                "X-Error-Code": code,
+                "X-Retryable": "false",
+            },
+        )
     return response
 
 
