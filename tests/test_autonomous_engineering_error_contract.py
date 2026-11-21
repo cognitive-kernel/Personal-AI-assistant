@@ -28,6 +28,10 @@ def _client_with_error_routes() -> TestClient:
     def validate(payload: _RequestPayload):
         return {"task": payload.task}
 
+    @router.get("/unavailable")
+    def unavailable():
+        raise HTTPException(status_code=503, detail="Upstream service is temporarily unavailable.")
+
     @router.get("/internal")
     def internal():
         raise RuntimeError("secret-token-must-not-reach-the-client")
@@ -54,7 +58,7 @@ def test_http_exception_uses_structured_error_contract_and_preserves_headers():
 
 
 def test_request_validation_error_uses_safe_structured_details_without_echoing_input():
-    response = _client_with_error_routes().post("/validate", json={"unexpected": "private-value"})
+    response = _client_with_error_routes().post("/validate", json={"task": {"secret": "private-value"}})
 
     assert response.status_code == 422
     payload = response.json()
@@ -79,3 +83,16 @@ def test_unexpected_exception_is_redacted_and_correlated():
     assert payload["safe_details"] == {"exception_type": "RuntimeError"}
     assert "secret-token-must-not-reach-the-client" not in response.text
     assert response.headers["X-Correlation-ID"] == payload["correlation_id"]
+
+
+def test_retryable_http_status_gets_generated_error_code_and_correlation_id():
+    response = _client_with_error_routes().get("/unavailable")
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["code"] == "AUTONOMOUS_ENGINEERING_UNAVAILABLE"
+    assert payload["message"] == "Upstream service is temporarily unavailable."
+    assert payload["retryable"] is True
+    assert payload["correlation_id"]
+    assert response.headers["X-Correlation-ID"] == payload["correlation_id"]
+    assert response.headers["X-Retryable"] == "true"
