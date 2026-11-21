@@ -1,6 +1,6 @@
 import pytest
 
-from app import db, learning, ollama, task_manager
+from app import db, learning, learning_tasks, ollama, task_manager
 from app.learning_tasks import (
     LEARNING_TASK_TYPE,
     cancel_learning_job,
@@ -26,6 +26,101 @@ def _claimed_context(job_id):
     assert claimed["id"] == task["id"]
     return TaskContext(task_id=task["id"], worker_id="worker-1", lease_epoch=claimed["lease_epoch"]), task
 
+
+
+def test_stale_task_epoch_cannot_mutate_learning_job_domain_row(learning_task_store):
+    job = learning.create_job("Fence stale learning job writer")
+    context, task = _claimed_context(job["id"])
+
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE task_queue SET lease_expires_at='2000-01-01T00:00:00.000000+00:00' WHERE id=?",
+            (task["id"],),
+        )
+
+    reclaimed = task_manager.claim_next_task("worker-1")
+    assert reclaimed is not None
+    assert reclaimed["id"] == task["id"]
+    assert reclaimed["lease_epoch"] > context.lease_epoch
+
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        learning.run_job(job["id"], task_context=context)
+
+    saved = learning.get_job(job["id"])
+    assert saved["status"] == "queued"
+    assert not saved["lesson"]
+    with db.learning_connection() as conn:
+        evidence_count = conn.execute(
+            "SELECT COUNT(*) FROM learning_evidence WHERE job_id=?", (job["id"],)
+        ).fetchone()[0]
+    assert evidence_count == 0
+
+
+def test_stale_task_epoch_cannot_write_learning_escalation(learning_task_store):
+    job = learning.create_job("Fence stale learning escalation writer")
+    context, task = _claimed_context(job["id"])
+
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE task_queue SET lease_expires_at='2000-01-01T00:00:00.000000+00:00' WHERE id=?",
+            (task["id"],),
+        )
+    reclaimed = task_manager.claim_next_task("worker-1")
+    assert reclaimed is not None and reclaimed["lease_epoch"] > context.lease_epoch
+
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        learning_tasks._record_learning_escalation(
+            task["id"], job["id"], "permanent_failure",
+            "Stale worker must not create a human-review escalation.",
+            task_context=context,
+        )
+
+    with db.learning_connection() as conn:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM learning_escalations WHERE task_id=?", (task["id"],)
+        ).fetchone()[0]
+    assert count == 0
+
+
+def test_lease_reclaimed_during_learning_generation_blocks_failure_settlement(
+    learning_task_store, monkeypatch,
+):
+    job = learning.create_job("Fence learning job after generation lease loss")
+    context, task = _claimed_context(job["id"])
+    request_calls = {"count": 0}
+
+    monkeypatch.setattr(
+        learning,
+        "_discover_and_store_sources",
+        lambda job_id, topic, *, task_context=None: ("Stable source context", "web_search"),
+    )
+
+    def reclaim_during_generation(*args, **kwargs):
+        request_calls["count"] += 1
+        with db.learning_connection() as conn:
+            conn.execute(
+                "UPDATE task_queue SET lease_expires_at='2000-01-01T00:00:00.000000+00:00' WHERE id=?",
+                (task["id"],),
+            )
+        reclaimed = task_manager.claim_next_task("worker-1")
+        assert reclaimed is not None
+        assert reclaimed["lease_epoch"] > context.lease_epoch
+        raise RuntimeError("simulated model failure after lease reclamation")
+
+    monkeypatch.setattr(learning, "_request", reclaim_during_generation)
+
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        learning.run_job(job["id"], task_context=context)
+
+    assert request_calls["count"] == 1
+    saved = learning.get_job(job["id"])
+    assert saved["status"] == "running"
+    assert not saved["lesson"]
+    with db.learning_connection() as conn:
+        current_epoch = conn.execute(
+            "SELECT lease_epoch FROM task_queue WHERE id=?", (task["id"],)
+        ).fetchone()[0]
+    assert current_epoch > context.lease_epoch
 
 def test_learning_task_missing_domain_record_is_permanent(learning_task_store):
     context, _task = _claimed_context(999999)
@@ -57,6 +152,8 @@ def test_learning_task_handler_persists_real_learning_outcome(
     job = learning.create_job("Task handler outcome")
 
     def fake_run_job(job_id, *, task_context=None):
+        assert task_context is not None
+        assert task_context.task_id > 0
         with db.learning_connection() as conn:
             conn.execute(
                 "UPDATE learning_jobs SET status='completed', updated_at=CURRENT_TIMESTAMP WHERE id=?",

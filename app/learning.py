@@ -201,7 +201,20 @@ def create_job(
         raise LearningError("Learning job could not be created.")
     return get_job(job_id)
 
-def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
+def _assert_learning_task_context(connection, task_context, job_id: int) -> None:
+    """Fence every durable learning-job write to its exact live queue claim."""
+    if task_context is None:
+        return
+    task_context.assert_current(
+        connection,
+        expected_task_type="learning.run_job",
+        expected_payload={"job_id": job_id},
+    )
+
+
+def _discover_and_store_sources(
+    job_id: int, topic: str, *, task_context=None,
+) -> tuple[str, str]:
     """Fetch bounded public web evidence before generation, falling back safely when unavailable."""
     from .web_sources import discover_sources
 
@@ -218,6 +231,8 @@ def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
 
     if not documents:
         with learning_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            _assert_learning_task_context(conn, task_context, job_id)
             conn.execute("""INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
                 SELECT ?, 'web_search', ?, NULL, ?
                 WHERE NOT EXISTS (
@@ -245,6 +260,8 @@ def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
     combined = "\n\n".join(chunks)[:max_chars]
     if not combined:
         with learning_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            _assert_learning_task_context(conn, task_context, job_id)
             conn.execute("""INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
                 SELECT ?, 'web_search', ?, NULL, ?
                 WHERE NOT EXISTS (
@@ -254,6 +271,8 @@ def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
         return "", "model_knowledge_no_external_source"
 
     with learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        _assert_learning_task_context(conn, task_context, job_id)
         conn.execute("""INSERT INTO learning_source_text(job_id, content) VALUES (?, ?)
             ON CONFLICT(job_id) DO UPDATE SET content=excluded.content""", (job_id, combined))
         conn.execute("UPDATE learning_jobs SET source_kind='web_retrieved', updated_at=CURRENT_TIMESTAMP WHERE id=?", (job_id,))
@@ -806,8 +825,10 @@ def _select_learning_generation_model(
     }
 
 
-def run_job(job_id: int) -> None:
+def run_job(job_id: int, *, task_context=None) -> None:
     with learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        _assert_learning_task_context(conn, task_context, job_id)
         # Atomically claim a queued job. Multiple workers may call run_job for the
         # same ID after a retry/reconciliation race; only one may start inference.
         claim = conn.execute(
@@ -861,7 +882,7 @@ def run_job(job_id: int) -> None:
         # (for example, SQLite errors while persisting web evidence). Keep the job
         # terminally observable instead of leaving it stuck in "running" forever.
         if not source_text and source_kind == "model_knowledge_no_external_source":
-            source_text, source_kind = _discover_and_store_sources(job_id, topic)
+            source_text, source_kind = _discover_and_store_sources(job_id, topic, task_context=task_context)
         verified_factual_context = _verified_factual_context_for_topic(topic)
         failure_warnings = _failure_warnings_for_topic(topic, limit=3)
         settings = get_settings()
@@ -884,6 +905,8 @@ def run_job(job_id: int) -> None:
     except Exception as exc:
         safe_error = f"Learning preparation failed ({type(exc).__name__})."
         with learning_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            _assert_learning_task_context(conn, task_context, job_id)
             conn.execute(
                 """UPDATE learning_jobs
                    SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP
@@ -1263,6 +1286,8 @@ def run_job(job_id: int) -> None:
                 quality["verification_status"] = "needs_review"
 
         with learning_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            _assert_learning_task_context(conn, task_context, job_id)
             current = conn.execute("SELECT status FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
             # If the user stopped the path while Ollama was generating, discard this result.
             if current is None or current["status"] != "running":
@@ -1363,6 +1388,8 @@ def run_job(job_id: int) -> None:
             # heuristic score is low. It remains provenance-labelled and untrusted.
     except Exception as exc:
         with learning_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            _assert_learning_task_context(conn, task_context, job_id)
             conn.execute("UPDATE learning_jobs SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'",
                          (str(exc)[:1000], job_id))
         raise LearningError(f"Learning job {job_id} failed: {exc}") from exc

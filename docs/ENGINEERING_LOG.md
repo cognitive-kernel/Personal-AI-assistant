@@ -2232,3 +2232,22 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Root-cause gap in the controller: production `run_codex` consumed the JSONL stream for progress telemetry but discarded completed `agent_message` events; the cycle controller then relied exclusively on the separate report file. Thus a successfully completed JSONL turn had no report-recovery path if that file was missing or empty.
 - Fix: retain only the last completed `agent_message` in the current turn, track successful `turn.completed` versus failure events, and recover the report only when the process exits successfully, the turn completed without a failure event, the final message is non-empty, and the `--output-last-message` file is absent or empty. Existing non-empty report files are never overwritten; failed/incomplete turns are never promoted.
 - Regression tests cover successful fallback, fail-closed behavior for incomplete/failed/empty turns, and preservation of an existing report. Exact-head CI and a real Windows Runner execution are still required; this patch is not yet accepted as a verified fix.
+
+
+## 2026-11-21 — Fence learning-job domain writes with the queue lease epoch
+
+- Gate-B audit found that PR #799 correctly fenced `task_queue` mutations, but `TaskContext.assert_current()` and the exact task-type/payload contract were not wired into the primary `learning.run_job` domain writer. A worker reclaimed under a newer epoch could therefore still reach independent `learning_jobs`/evidence writes after a stale preflight check.
+- The learning task handler now validates the exact `learning.run_job` payload and passes its `TaskContext` into the domain runner. The runner validates owner, epoch, active status, task type, and `job_id` inside the same `BEGIN IMMEDIATE` transaction as job claim, source/evidence persistence, preparation-failure settlement, and final lesson/evidence/candidate writes. A stale owner cannot write any of those records.
+- Added a regression that expires and reclaims a task with the same worker label, then proves the old context cannot change the learning job, lesson, or evidence rows.
+- Scope is deliberately limited to the primary learning-job adapter; candidate-review, curriculum, factual-verification and other domain handlers remain in the Gate-B inventory and must be audited separately. No user database migration or live task was run. Exact-head CI and Windows target-host acceptance are pending.
+
+
+### Follow-up: fence escalation side effects
+
+- The same stale-epoch review found that a worker could record a `learning_escalations` row after a model error even when its lease had been reclaimed. `_record_learning_escalation` now accepts the handler's `TaskContext` and validates the exact task claim inside its write transaction; reconciliation-only calls without a worker context retain their existing behavior.
+- Added a second regression proving a stale context cannot create a human-review escalation. Other task adapters remain outside this narrowly scoped PR.
+
+
+### Mid-generation lease-loss regression
+
+- Added a regression that reclaims the learning task during the model request itself (after the domain job has entered `running`). The old worker then raises a simulated model error; the failure-settlement transaction must reject the stale epoch and leave the domain job untouched for the new owner to recover.
