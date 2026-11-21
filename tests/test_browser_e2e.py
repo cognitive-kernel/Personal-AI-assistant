@@ -5716,6 +5716,7 @@ def test_autonomous_engineering_model_pull_requires_consent_and_reports_progress
         browser.close()
 
 
+# Keep browser acceptance checks attached to the latest UI inventory commit.
 def test_autonomous_engineering_model_pull_failure_restores_control_and_shows_diagnostic():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
