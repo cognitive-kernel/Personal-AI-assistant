@@ -29,8 +29,8 @@
         body: JSON.stringify({model, interval_hours: intervalHours, execution_mode: executionMode})
       });
       $("custom-model").value = "";
-      setMessage(result.message || "تنظیمات ذخیره شد.", "success");
       await status.refresh(true);
+      setMessage(result.message || "تنظیمات ذخیره شد.", "success");
     } catch (error) {
       const detail = error.message || "ذخیرهٔ تنظیمات ناموفق بود.";
       await status.refresh(true);
@@ -118,8 +118,8 @@
       });
       status.lockDispatchVisibilityWindow();
       $("manual-task").value = "";
-      setMessage(result.message || "وظیفه برای عامل ارسال شد.", "success");
       await status.refresh(true);
+      setMessage(result.message || "وظیفه برای عامل ارسال شد.", "success");
     } catch (error) {
       if (error.ambiguous || error.retryable || error.status >= 500) status.lockDispatchVisibilityWindow();
       const detail = error.message || "ارسال وظیفه ناموفق بود.";
