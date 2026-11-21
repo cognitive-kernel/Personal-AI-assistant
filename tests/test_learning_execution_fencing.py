@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app import db, learning, task_manager
+from app.learning_tasks import handle_learning_job
 from app.learning_execution import (
     LearningExecutionLeaseLostError,
     assert_current,
@@ -10,6 +11,7 @@ from app.learning_execution import (
     fail_if_current,
 )
 from app.task_worker import TaskContext
+from app.learning_tasks import LEARNING_TASK_TYPE
 from app.task_manager import TaskManagerError
 
 
@@ -86,9 +88,46 @@ def test_learning_execution_epoch_migration_is_additive(execution_store):
             (job["id"],),
         ).fetchone()
         indexes = {row["name"] for row in connection.execute("PRAGMA index_list(learning_jobs)")}
-    assert {"execution_owner", "execution_epoch"} <= columns
+    assert {"execution_owner", "execution_epoch", "execution_task_id", "execution_task_epoch"} <= columns
     assert stored["status"] == "queued"
     assert stored["topic"] == "Migration preserves existing jobs"
     assert stored["execution_owner"] is None
     assert stored["execution_epoch"] == 0
-    assert "idx_learning_jobs_execution_owner_epoch" in indexes
+    assert {"idx_learning_jobs_execution_owner_epoch", "idx_learning_jobs_execution_task"} <= indexes
+
+
+def test_duplicate_queue_task_does_not_steal_live_learning_execution(execution_store):
+    job = learning.create_job("Concurrent duplicate learning task")
+    first_task = task_manager.create_task(
+        LEARNING_TASK_TYPE, {"job_id": job["id"]}, dedupe_key="learning-owner-first"
+    )
+    first_claim = task_manager.claim_next_task("worker-first")
+    assert first_claim is not None and first_claim["id"] == first_task["id"]
+    first_context = TaskContext(
+        task_id=first_task["id"],
+        worker_id="worker-first",
+        lease_epoch=first_claim["lease_epoch"],
+    )
+    first_lease = claim_execution(
+        job["id"], "task:first", task_context=first_context
+    )
+    assert first_lease is not None
+
+    second_task = task_manager.create_task(
+        LEARNING_TASK_TYPE, {"job_id": job["id"]}, dedupe_key="learning-owner-second"
+    )
+    second_claim = task_manager.claim_next_task("worker-second")
+    assert second_claim is not None and second_claim["id"] == second_task["id"]
+    second_context = TaskContext(
+        task_id=second_task["id"],
+        worker_id="worker-second",
+        lease_epoch=second_claim["lease_epoch"],
+    )
+
+    result = handle_learning_job({"job_id": job["id"]}, None, second_context)
+    assert result["already_running"] is True
+    stored = learning.get_job(job["id"])
+    assert stored["status"] == "running"
+    assert stored["execution_owner"] == first_lease.owner
+    assert stored["execution_task_id"] == first_task["id"]
+    assert stored["execution_task_epoch"] == first_claim["lease_epoch"]
