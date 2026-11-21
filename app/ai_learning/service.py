@@ -537,6 +537,54 @@ def _assert_worker_lease_in_transaction(
         raise WorkerLeaseLostError("AI-learning browser worker lease was lost before the write committed.")
 
 
+def has_watchdog_work() -> bool:
+    """Return whether periodic maintenance has actionable durable AI-learning work.
+
+    This is a read-only preflight: it does not claim the browser lease, mutate run
+    state, dispatch a worker, or initialize the browser runtime. It deliberately
+    skips checks while a live worker owns the lease, while the global workflow is
+    paused, or while the provider retry cooldown has not elapsed.
+    """
+    with connection() as conn:
+        control = conn.execute(
+            """SELECT paused,
+                      CASE WHEN retry_after IS NOT NULL AND retry_after>CURRENT_TIMESTAMP
+                           THEN 1 ELSE 0 END AS retry_pending,
+                      CASE WHEN worker_lease_owner IS NOT NULL
+                                    AND worker_lease_until>CURRENT_TIMESTAMP
+                           THEN 1 ELSE 0 END AS worker_active
+               FROM ai_learning_control WHERE id=1"""
+        ).fetchone()
+        if (
+            control is None
+            or bool(control["paused"])
+            or bool(control["retry_pending"])
+            or bool(control["worker_active"])
+        ):
+            return False
+
+        candidate = conn.execute(
+            """SELECT 1
+               FROM runs r
+               JOIN courses c ON c.id=r.course_id
+               WHERE c.status <> 'archived'
+                 AND (
+                    r.status='running'
+                    OR (
+                        r.status='queued'
+                        AND (r.next_retry_at IS NULL OR r.next_retry_at<=CURRENT_TIMESTAMP)
+                        AND NOT EXISTS (
+                            SELECT 1 FROM run_topics rt
+                            JOIN topics t ON t.id=rt.topic_id
+                            WHERE rt.run_id=r.id AND t.processing_status='paused'
+                        )
+                    )
+                 )
+               LIMIT 1"""
+        ).fetchone()
+    return candidate is not None
+
+
 def get_learning_control() -> dict[str, Any]:
     """Return durable pause state and provider cooldown for ChatGPT learning workflows."""
     with connection() as conn:

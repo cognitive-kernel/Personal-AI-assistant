@@ -1,3 +1,21 @@
+## 2026-11-21 — AI-learning watchdog obeys the feature gate
+
+### Root cause
+- The maintenance caller in `app/main.py` already checks `AI_LEARNING_ENABLED`, but `browser_automation.recover_orphaned_runs()` had no independent guard. An accidental internal call could therefore initialize the separate AI-learning store and inspect/dispatch persisted runs while the optional feature was disabled.
+- Every no-op `idle` poll was written as an `orphaned_run_watchdog_recovery` event, producing a misleading heartbeat every 30 seconds even when no run was recovered.
+
+### Correction
+- Enforce `config.is_enabled()` at the recovery operation boundary, before process identity work or database initialization. Disabled returns `{"status":"disabled","active":false}` without touching the store, leases, workers, or event log.
+- Suppress event-log writes for `idle` polls; keep logging non-idle outcomes and actual recovered run IDs.
+- Make worker-recovery tests explicitly set the feature flag on in their isolated fixture, and add regressions for disabled direct calls, silent idle checks, and disabled maintenance callers.
+
+### Evidence boundary
+- The supplied log proves that the running process reached the recovery function and recorded an idle result. In the reviewed `main` source, the maintenance caller invokes it only when `AI_LEARNING_ENABLED` evaluates true; the effective process environment was not available from that log alone.
+- `GET /api/ai-learning/status` reports the effective `enabled` flag. The subsystem now defaults to enabled; setting `AI_LEARNING_ENABLED=0` explicitly disables it. Restart the server after changing the environment.
+- No course, run, lesson, database, or user data was modified. No merge or deployment is performed.
+
+---
+
 ## 2026-11-21 — Autonomous engineering UI feature isolation
 
 ### Root cause

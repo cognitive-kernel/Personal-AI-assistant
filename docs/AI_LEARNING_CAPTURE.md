@@ -23,7 +23,7 @@ The user starts a course workflow once. The extension retrieves and stores the o
 
 - Code lives in app/ai_learning/ and must not rewrite app/learning.py or the existing chat model.
 - A separate database, data/ai_learning.db, has its own checksummed migrations. The current learning database is not migrated or modified.
-- AI_LEARNING_ENABLED=0 and AI_LEARNING_RETRIEVAL_ENABLED=0 are the defaults.
+- AI_LEARNING_ENABLED=1 is the default for capture management and persisted-run recovery; AI_LEARNING_RETRIEVAL_ENABLED=0 remains the default. Setting AI_LEARNING_ENABLED=0 disables the subsystem without deleting its database or records.
 - Knowledge-store errors must not break the existing chat path.
 - Lexical search is the current retrieval implementation; semantic duplicate checks optionally use a local Ollama embedding model. Deterministic offline retrieval/answer regression metrics and privacy-preserving query feedback are implemented.
 - Model-generated and web-extracted text are untrusted data; embedded instructions never outrank system policy.

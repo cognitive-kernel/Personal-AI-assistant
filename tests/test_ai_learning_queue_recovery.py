@@ -22,6 +22,8 @@ def _claim_worker_lease_in_child(barrier, results):
 
 @pytest.fixture
 def isolated_store(tmp_path, monkeypatch):
+    # Direct worker/recovery tests explicitly run with the optional feature enabled.
+    monkeypatch.setenv("AI_LEARNING_ENABLED", "1")
     monkeypatch.setenv("AI_LEARNING_DB_PATH", str(tmp_path / "ai_learning.db"))
     initialize_store()
     monkeypatch.setattr(browser_automation, "_ACTIVE", False)
@@ -391,6 +393,22 @@ def test_startup_recovery_does_not_requeue_an_active_in_process_run(isolated_sto
     assert service.get_run(run["id"])["status"] == "running"
 
 
+def test_watchdog_preflight_skips_idle_or_paused_or_live_worker(isolated_store):
+    assert service.has_watchdog_work() is False
+
+    course = service.create_course(title="پیش‌بررسی صف یادگیری")
+    run = service.create_run(course["id"], run_type="outline", request_key="watchdog-preflight")
+    assert service.has_watchdog_work() is True
+
+    service.set_learning_paused(True)
+    assert service.has_watchdog_work() is False
+    service.set_learning_paused(False)
+
+    epoch = service.claim_worker_lease("preflight-test-owner")
+    assert epoch is not None
+    assert service.has_watchdog_work() is False
+
+
 def test_runtime_watchdog_recovers_orphaned_run_after_worker_disappears(isolated_store, monkeypatch):
     course = service.create_course(title="بازیابی دورهٔ رهاشده")
     run = service.create_run(course["id"], run_type="outline", request_key="runtime-orphan")
@@ -440,7 +458,7 @@ def test_runtime_watchdog_never_clears_shutdown_or_restarts_chrome(isolated_stor
     assert service.get_run(run["id"])["status"] == "running"
 
 
-def test_learning_runtime_maintenance_invokes_orphan_recovery(monkeypatch):
+def test_learning_runtime_maintenance_invokes_recovery_only_after_work_preflight(monkeypatch):
     from app import main
 
     calls = []
@@ -458,14 +476,114 @@ def test_learning_runtime_maintenance_invokes_orphan_recovery(monkeypatch):
     monkeypatch.setattr(main.ai_learning_config, "is_enabled", lambda: True)
     monkeypatch.setattr(
         main.ai_learning_browser_automation,
+        "watchdog_has_work",
+        lambda: calls.append("preflight") or True,
+    )
+    monkeypatch.setattr(
+        main.ai_learning_browser_automation,
         "recover_orphaned_runs",
         lambda: calls.append("recovery") or {"status": "idle", "active": False},
     )
 
     main._maintain_learning_runtime()
 
-    assert calls == ["knowledge", "browser_recovery", "browser_dispatch", "recovery"]
+    assert calls == ["knowledge", "browser_recovery", "browser_dispatch", "preflight", "recovery"]
 
+
+def test_learning_runtime_maintenance_skips_recovery_when_ai_learning_is_idle(monkeypatch):
+    from app import main
+
+    calls = []
+    monkeypatch.setattr(main, "reconcile_queued_learning_tasks", lambda: None)
+    monkeypatch.setattr(main.learning, "maintain_factual_knowledge", lambda: None)
+    monkeypatch.setattr(main.learning_curriculum_tasks, "maintain_release_watch", lambda **_kwargs: {"queued": 0})
+    monkeypatch.setattr(main.browser_learning, "recover_interrupted_courses", lambda: None)
+    monkeypatch.setattr(main.browser_learning, "dispatch_next_course", lambda: {"status": "idle"})
+    monkeypatch.setattr(main.ai_learning_config, "is_enabled", lambda: True)
+    monkeypatch.setattr(
+        main.ai_learning_browser_automation,
+        "watchdog_has_work",
+        lambda: calls.append("preflight") or False,
+    )
+    monkeypatch.setattr(
+        main.ai_learning_browser_automation,
+        "recover_orphaned_runs",
+        lambda: pytest.fail("idle AI-learning must not enter the recovery/dispatch path"),
+    )
+
+    main._maintain_learning_runtime()
+
+    assert calls == ["preflight"]
+
+
+
+
+
+def test_runtime_watchdog_is_a_noop_when_optional_ai_learning_is_disabled(isolated_store, monkeypatch):
+    from app.ai_learning import config
+    from app.ai_learning import db
+
+    monkeypatch.setattr(config, "is_enabled", lambda: False)
+    monkeypatch.setattr(
+        db, "initialize_store",
+        lambda: pytest.fail("disabled watchdog must not initialize the AI-learning database"),
+    )
+    monkeypatch.setattr(
+        browser_automation, "_ensure_process_identity",
+        lambda: pytest.fail("disabled watchdog must return before touching worker identity"),
+    )
+    monkeypatch.setattr(
+        browser_automation, "_dispatch_next_persisted_run",
+        lambda: pytest.fail("disabled watchdog must not inspect or dispatch persisted runs"),
+    )
+    monkeypatch.setattr(
+        browser_automation, "_log_event",
+        lambda *_args, **_kwargs: pytest.fail("disabled watchdog must not emit events"),
+    )
+
+    result = browser_automation.recover_orphaned_runs()
+
+    assert result == {"status": "disabled", "active": False}
+
+
+def test_runtime_watchdog_does_not_log_an_idle_poll(isolated_store, monkeypatch):
+    events = []
+    monkeypatch.setattr(
+        browser_automation,
+        "_dispatch_next_persisted_run",
+        lambda: {"status": "idle", "active": False, "run_id": None, "recovered_run_ids": []},
+    )
+    monkeypatch.setattr(
+        browser_automation,
+        "_log_event",
+        lambda event, **fields: events.append((event, fields)),
+    )
+
+    result = browser_automation.recover_orphaned_runs()
+
+    assert result["status"] == "idle"
+    assert events == []
+
+
+def test_learning_runtime_maintenance_skips_ai_learning_watchdog_when_disabled(monkeypatch):
+    from app import main
+
+    calls = []
+    monkeypatch.setattr(main, "reconcile_queued_learning_tasks", lambda: None)
+    monkeypatch.setattr(main.learning, "maintain_factual_knowledge", lambda: None)
+    monkeypatch.setattr(main.learning_curriculum_tasks, "maintain_release_watch", lambda **_kwargs: {"queued": 0})
+    monkeypatch.setattr(main.browser_learning, "recover_interrupted_courses", lambda: None)
+    monkeypatch.setattr(main.browser_learning, "dispatch_next_course", lambda: {"status": "idle"})
+    monkeypatch.setattr(main.ai_learning_config, "is_enabled", lambda: False)
+    monkeypatch.setattr(
+        main.ai_learning_browser_automation,
+        "recover_orphaned_runs",
+        lambda: calls.append("watchdog") or {"status": "idle"},
+    )
+
+    main._maintain_learning_runtime()
+
+    assert calls == []
 
 
 def test_manual_resume_finds_run_outside_dashboard_course_limit(isolated_store, monkeypatch):

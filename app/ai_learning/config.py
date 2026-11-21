@@ -9,7 +9,7 @@ def _enabled(name: str, *, default: bool = False) -> bool:
     return value.strip().casefold() in {"1", "true", "yes", "on"}
 
 def is_enabled() -> bool:
-    return _enabled("AI_LEARNING_ENABLED", default=False)
+    return _enabled("AI_LEARNING_ENABLED", default=True)
 
 def retrieval_is_enabled() -> bool:
     return is_enabled() and _enabled("AI_LEARNING_RETRIEVAL_ENABLED", default=False)
