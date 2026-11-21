@@ -744,11 +744,13 @@ def test_stale_cloud_discovery_task_cannot_upsert_candidates(tmp_path, monkeypat
         worker_id=worker_id,
         lease_epoch=claimed["lease_epoch"],
     )
+    query_count = 0
     reclaimed = False
 
     def discover(_query, *, limit):
-        nonlocal reclaimed
-        if not reclaimed:
+        nonlocal query_count, reclaimed
+        query_count += 1
+        if query_count == len(cloud_resources.DISCOVERY_QUERIES):
             with db.learning_connection() as connection:
                 connection.execute(
                     "UPDATE task_queue SET lease_expires_at=? WHERE id=?",
@@ -773,6 +775,7 @@ def test_stale_cloud_discovery_task_cannot_upsert_candidates(tmp_path, monkeypat
         candidate_count = connection.execute(
             "SELECT COUNT(*) FROM cloud_resource_candidates"
         ).fetchone()[0]
+    assert reclaimed is True
     assert candidate_count == 0
 
 
