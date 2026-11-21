@@ -2246,3 +2246,8 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 
 - The same stale-epoch review found that a worker could record a `learning_escalations` row after a model error even when its lease had been reclaimed. `_record_learning_escalation` now accepts the handler's `TaskContext` and validates the exact task claim inside its write transaction; reconciliation-only calls without a worker context retain their existing behavior.
 - Added a second regression proving a stale context cannot create a human-review escalation. Other task adapters remain outside this narrowly scoped PR.
+
+
+### Mid-generation lease-loss regression
+
+- Added a regression that reclaims the learning task during the model request itself (after the domain job has entered `running`). The old worker then raises a simulated model error; the failure-settlement transaction must reject the stale epoch and leave the domain job untouched for the new owner to recover.
