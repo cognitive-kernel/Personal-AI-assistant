@@ -4,7 +4,28 @@
  */
 (() => {
  "use strict";
- const core=window.dashboardCore;
+ function createLocalDashboardCore() {
+ const el = id => document.getElementById(id);
+ async function api(path, options = {}) {
+  const response = await fetch(path, {
+   headers: {"Content-Type": "application/json", ...(options.headers || {})},
+   ...options
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.detail || ("HTTP " + response.status));
+  return payload;
+ }
+ function appendText(parent, tag, text, className) {
+  const node = document.createElement(tag);
+  node.textContent = text;
+  if (className) node.className = className;
+  parent.append(node);
+  return node;
+ }
+ return Object.freeze({version: 1, el, api, appendText});
+}
+
+ const core=window.dashboardCore && window.dashboardCore.version===1 ? window.dashboardCore : createLocalDashboardCore();
  if(!core||core.version!==1||typeof core.api!=="function"||typeof core.el!=="function"||typeof core.appendText!=="function"){
   const output=document.getElementById("cloud-output");
   if(output) output.textContent="ماژول منابع ابری بارگذاری نشد: قرارداد هستهٔ داشبورد در دسترس نیست.";
