@@ -2176,3 +2176,10 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 
 - Split the former 400+ line task feature script into `tasks-view.js` (summary/filter/selection state), `tasks-cards.js` (card rendering, history, per-task actions), and a small `tasks.js` orchestrator (refresh sequencing, polling, and event wiring).
 - The submodules expose frozen versioned contracts; the orchestrator validates both before initializing. Browser E2E now invokes task refresh with `dashboard-core.js` deliberately blocked.
+
+
+### Experience-memory consent boundary
+
+- Split auto-capture consent state and its enable/revoke/refresh actions into `experience-memory-consent.js`; it has its own local transport/DOM fallback and a frozen versioned export.
+- The experience list/curation/search module no longer owns consent state. Failure in consent UI does not disable memory search, history, or curation; failure in the list does not prevent consent revocation.
+- Added static boundary and ordering tests; browser E2E remains the end-to-end evidence gate.
