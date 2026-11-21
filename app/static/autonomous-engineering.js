@@ -11,6 +11,8 @@
   const taskForm = $("agent-task-form");
   const taskButton = $("send-agent-task");
   let lastPendingWork = null;
+  // Every run-list writer shares one generation so older requests cannot repaint newer state.
+  let runsRefreshSequence = 0;
   const labels = {
     ollama: $("ollama-state"), model: $("model-state"), codex: $("codex-state"),
     runner: $("runner-state"), github: $("github-state"), storage: $("storage-state")
@@ -164,13 +166,18 @@
     }
   }
   async function refreshRuns() {
+    const sequence = ++runsRefreshSequence;
     try {
       const data = await request("runs");
+      if (sequence !== runsRefreshSequence) return;
       renderRuns(data.runs);
     } catch (error) {
+      if (sequence !== runsRefreshSequence) return;
       const host = $("recent-runs");
+      host.querySelectorAll("[data-run-history-error]").forEach(item => item.remove());
       const note = document.createElement("p");
       note.className = "muted";
+      note.dataset.runHistoryError = "true";
       note.textContent = "دریافت تاریخچهٔ کامل اجراها ناموفق بود: " + (error.message || "خطای نامشخص");
       host.append(note);
     }
@@ -481,8 +488,31 @@
         checkpointState.textContent = "checkpoint معلقی وجود ندارد";
         checkpointDetail.textContent = "فضای وضعیت بررسی شد و checkpoint بازیابی‌نشده‌ای ثبت نشده است.";
       }
+      const blockerLabels = {
+        pending_task: "وظیفهٔ ذخیره‌شده",
+        pending_owner: "فرادادهٔ مالکیت Runner",
+        pending_pr: "PR تعیین‌تکلیف‌نشده",
+        cleanup_in_progress: "عملیات پاک‌سازی ناتمام",
+        checkpoint: "checkpoint بازیابی‌شدنی یا تأییدنشده",
+      };
+      const blockerKeys = new Set(
+        Object.entries(lastPendingWork.markers || {})
+          .filter(([, present]) => present === true)
+          .map(([key]) => key)
+      );
+      if (checkpoint && (checkpoint.available === true || checkpoint.verified === false)) {
+        blockerKeys.add("checkpoint");
+      }
+      if (typeof lastPendingWork.reason === "string") {
+        lastPendingWork.reason.split(",").map(value => value.trim()).filter(Boolean)
+          .forEach(key => blockerKeys.add(key));
+      }
+      const blockerSummary = [...blockerKeys]
+        .map(key => blockerLabels[key])
+        .filter(Boolean)
+        .join("، ");
       $("manual-task-state").textContent = lastPendingWork.blocked
-        ? "کار پایدار قبلی باقی مانده است؛ ارسال وظیفهٔ جدید غیرفعال است. دکمهٔ اجرای چرخه بدون متن، مسیر ادامه یا تطبیق همان کار است."
+        ? "وظیفهٔ جدید مسدود است" + (blockerSummary ? "؛ علت ثبت‌شده: " + blockerSummary : "؛ علت دقیق از سرویس وضعیت قابل تشخیص نیست") + ". ارسال وظیفهٔ جدید غیرفعال است. دکمهٔ اجرای چرخه بدون متن، مسیر ادامه یا تطبیق همان کار است."
         : "وظیفهٔ جدید فقط وقتی پذیرفته می‌شود که هیچ task، PR یا checkpoint قبلی باقی نمانده باشد.";
       if (checkpoint && checkpoint.available === true) {
         dispatchButton.textContent = checkpoint.verified === true
@@ -511,6 +541,8 @@
       cancelButton.disabled = !active;
       pauseButton.disabled = Boolean(data.paused);
       resumeButton.disabled = !data.paused;
+      // Invalidate any older full-history request before rendering this newer status snapshot.
+      runsRefreshSequence += 1;
       renderRuns(data.github && data.github.recent_runs);
       void refreshRuns();
       setMessage(data.paused ? "صف مهندسی متوقف است؛ برای ادامه از آخرین وضعیت، دکمهٔ ادامه را بزنید." : (ready ? "پیش‌نیازهای حساب برنامه آماده‌اند؛ Workflow پیش‌نیازهای حساب Runner را جداگانه بررسی می‌کند." : "برای فعال‌شدن اجرا، موارد ناقص را در راهنمای راه‌اندازی تکمیل کنید."), data.paused || ready ? "success" : "");
@@ -705,7 +737,9 @@
     }
   });
 
-  let progressBusy = false;
+  let progressRefreshInFlight = false;
+  let progressRefreshPending = false;
+  let progressRefreshSequence = 0;
   const svgNS = "http://www.w3.org/2000/svg";
   function svgNode(name, attrs, text) {
     const node = document.createElementNS(svgNS, name);
@@ -774,83 +808,116 @@
       host.append(item);
     }
   }
+  function invalidateProgressRefresh() {
+    // Filter edits invalidate any response for the previous selection without auto-applying a partial range.
+    progressRefreshSequence += 1;
+    progressRefreshPending = false;
+  }
   async function refreshProgress() {
-    if (progressBusy) return;
-    progressBusy = true;
-    const period = $("progress-period").value;
-    const params = new URLSearchParams({period});
-    if (period === "custom") {
-      const start = $("progress-start").value, end = $("progress-end").value;
-      if (!start || !end) {
-        $("progress-chart-caption").textContent = "تاریخ شروع و پایان را انتخاب کنید.";
-        progressBusy = false;
-        return;
-      }
-      params.set("start_date", start);
-      params.set("end_date", end);
-    }
+    // Queue the newest selection instead of dropping refreshes while a request is in flight.
+    progressRefreshSequence += 1;
+    progressRefreshPending = true;
+    if (progressRefreshInFlight) return;
+    progressRefreshInFlight = true;
     try {
-      const data = await request("progress?" + params.toString());
-      if (data.error) throw new Error(data.error);
-      const current = data.current;
-      if (current) {
-        if (current.plan_percent !== null && current.plan_percent !== undefined && Number.isFinite(Number(current.plan_percent))) {
-          const percent = Math.max(0, Math.min(100, Number(current.plan_percent)));
-          $("cycle-progress-value").textContent = percent + "%";
-          $("cycle-progress").value = percent;
-        } else {
-          $("cycle-progress-value").textContent = "—";
-          $("cycle-progress").value = 0;
+      while (progressRefreshPending) {
+        progressRefreshPending = false;
+        const sequence = progressRefreshSequence;
+        const period = $("progress-period").value;
+        const params = new URLSearchParams({period});
+        if (period === "custom") {
+          const start = $("progress-start").value, end = $("progress-end").value;
+          if (!start || !end) {
+            if (sequence === progressRefreshSequence) {
+              $("progress-chart-caption").textContent = "تاریخ شروع و پایان را انتخاب کنید.";
+            }
+            continue;
+          }
+          params.set("start_date", start);
+          params.set("end_date", end);
         }
-        const statusLabels = {
-          awaiting_review: "وضعیت قدیمی؛ در انتظار همگام‌سازی",
-          running: "در حال اجرا",
-          queued: "در صف اجرا",
-          completed: "پایان اجرا",
-          failed: "ناموفق"
-        };
-        const status = statusLabels[current.status] || String(current.status || "");
-        $("current-phase").textContent = String(current.phase_label || "مرحلهٔ جاری") + (status ? " · " + status : "");
-        $("current-activity").textContent = String(current.activity || "فعالیت جاری ثبت نشده است.");
-        $("plan-progress").textContent = Number(current.plan_total) > 0
-          ? "پیشرفت برنامه: " + Number(current.plan_completed || 0) + " از " + Number(current.plan_total) + " گام"
-          : "درصد دقیق برنامه تا زمان ثبت گام‌های عامل در دسترس نیست.";
-      } else {
-        $("cycle-progress-value").textContent = "—";
-        $("cycle-progress").value = 0;
-        $("current-phase").textContent = "چرخهٔ فعالی گزارش نشده است.";
-        $("current-activity").textContent = "با شروع اجرای عامل، فعالیت جاری در این قسمت نمایش داده می‌شود.";
-        $("plan-progress").textContent = "";
+        try {
+          const data = await request("progress?" + params.toString());
+          // Never allow a response for a previous period/date range to repaint current UI.
+          if (sequence !== progressRefreshSequence) continue;
+          if (data.error) throw new Error(data.error);
+          const current = data.current;
+          if (current) {
+            if (current.plan_percent !== null && current.plan_percent !== undefined && Number.isFinite(Number(current.plan_percent))) {
+              const percent = Math.max(0, Math.min(100, Number(current.plan_percent)));
+              $("cycle-progress-value").textContent = percent + "%";
+              $("cycle-progress").value = percent;
+            } else {
+              $("cycle-progress-value").textContent = "—";
+              $("cycle-progress").value = 0;
+            }
+            const statusLabels = {
+              awaiting_review: "وضعیت قدیمی؛ در انتظار همگام‌سازی",
+              running: "در حال اجرا",
+              queued: "در صف اجرا",
+              completed: "پایان اجرا",
+              failed: "ناموفق"
+            };
+            const status = statusLabels[current.status] || String(current.status || "");
+            $("current-phase").textContent = String(current.phase_label || "مرحلهٔ جاری") + (status ? " · " + status : "");
+            $("current-activity").textContent = String(current.activity || "فعالیت جاری ثبت نشده است.");
+            $("plan-progress").textContent = Number(current.plan_total) > 0
+              ? "پیشرفت برنامه: " + Number(current.plan_completed || 0) + " از " + Number(current.plan_total) + " گام"
+              : "درصد دقیق برنامه تا زمان ثبت گام‌های عامل در دسترس نیست.";
+          } else {
+            $("cycle-progress-value").textContent = "—";
+            $("cycle-progress").value = 0;
+            $("current-phase").textContent = "چرخهٔ فعالی گزارش نشده است.";
+            $("current-activity").textContent = "با شروع اجرای عامل، فعالیت جاری در این قسمت نمایش داده می‌شود.";
+            $("plan-progress").textContent = "";
+          }
+          const snapshots = data.history || [];
+          const latest = data.latest_snapshot || (snapshots.length ? snapshots[snapshots.length - 1] : null);
+          const engineeringPercent = latest && latest.engineering_percent;
+          const overallPercent = latest && latest.overall_percent;
+          $("engineering-progress").textContent = engineeringPercent !== null && engineeringPercent !== undefined &&
+            Number.isFinite(Number(engineeringPercent)) && Number(engineeringPercent) >= 0 && Number(engineeringPercent) <= 100
+            ? Number(engineeringPercent).toFixed(2) + "%" : "—";
+          $("overall-progress").textContent = overallPercent !== null && overallPercent !== undefined &&
+            Number.isFinite(Number(overallPercent)) && Number(overallPercent) >= 0 && Number(overallPercent) <= 100
+            ? Number(overallPercent).toFixed(2) + "%" : "—";
+          $("progress-updated").textContent = current && current.updated_at
+            ? "آخرین رویداد: " + new Date(current.updated_at).toLocaleTimeString()
+            : data.storage_configured
+              ? "فضای ثبت آماده است؛ در انتظار اجرای عامل"
+              : "فضای ثبت پیشرفت آماده نیست؛ راه‌اندازی یک‌باره لازم است";
+          renderProgressChart(snapshots);
+          renderProgressEvents(data.events);
+        } catch (error) {
+          if (sequence === progressRefreshSequence) {
+            $("progress-chart-caption").textContent = error.message || "دریافت دادهٔ پیشرفت ناموفق بود.";
+          }
+        }
       }
-      const snapshots = data.history || [];
-      const latest = data.latest_snapshot || (snapshots.length ? snapshots[snapshots.length - 1] : null);
-      const engineeringPercent = latest && latest.engineering_percent;
-      const overallPercent = latest && latest.overall_percent;
-      $("engineering-progress").textContent = engineeringPercent !== null && engineeringPercent !== undefined &&
-        Number.isFinite(Number(engineeringPercent)) && Number(engineeringPercent) >= 0 && Number(engineeringPercent) <= 100
-        ? Number(engineeringPercent).toFixed(2) + "%" : "—";
-      $("overall-progress").textContent = overallPercent !== null && overallPercent !== undefined &&
-        Number.isFinite(Number(overallPercent)) && Number(overallPercent) >= 0 && Number(overallPercent) <= 100
-        ? Number(overallPercent).toFixed(2) + "%" : "—";
-      $("progress-updated").textContent = current && current.updated_at
-        ? "آخرین رویداد: " + new Date(current.updated_at).toLocaleTimeString()
-        : data.storage_configured
-          ? "فضای ثبت آماده است؛ در انتظار اجرای عامل"
-          : "فضای ثبت پیشرفت آماده نیست؛ راه‌اندازی یک‌باره لازم است";
-      renderProgressChart(snapshots);
-      renderProgressEvents(data.events);
-    } catch (error) {
-      $("progress-chart-caption").textContent = error.message || "دریافت دادهٔ پیشرفت ناموفق بود.";
     } finally {
-      progressBusy = false;
+      progressRefreshInFlight = false;
+      // A refresh can be queued as the loop is settling; do not lose that final request.
+      if (progressRefreshPending) void refreshProgress();
     }
   }
   $("progress-period").addEventListener("change", () => {
     const custom = $("progress-period").value === "custom";
     $("progress-start-wrap").hidden = !custom;
     $("progress-end-wrap").hidden = !custom;
-    if (!custom) refreshProgress();
+    if (custom) {
+      invalidateProgressRefresh();
+      $("progress-chart-caption").textContent = "تاریخ شروع و پایان را انتخاب و سپس بازه را اعمال کنید.";
+    } else {
+      refreshProgress();
+    }
   });
+  for (const id of ["progress-start", "progress-end"]) {
+    $(id).addEventListener("change", () => {
+      if ($("progress-period").value !== "custom") return;
+      invalidateProgressRefresh();
+      $("progress-chart-caption").textContent = "برای نمایش بازهٔ انتخاب‌شده، دکمهٔ اعمال بازه را بزنید.";
+    });
+  }
   $("refresh-progress").addEventListener("click", refreshProgress);
   $("refresh-agent").addEventListener("click", refresh);
   refresh();
