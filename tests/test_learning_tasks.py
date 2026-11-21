@@ -1,6 +1,6 @@
 import pytest
 
-from app import db, learning, ollama, task_manager
+from app import db, learning, learning_tasks, ollama, task_manager
 from app.learning_tasks import (
     LEARNING_TASK_TYPE,
     cancel_learning_job,
@@ -54,6 +54,32 @@ def test_stale_task_epoch_cannot_mutate_learning_job_domain_row(learning_task_st
             "SELECT COUNT(*) FROM learning_evidence WHERE job_id=?", (job["id"],)
         ).fetchone()[0]
     assert evidence_count == 0
+
+
+def test_stale_task_epoch_cannot_write_learning_escalation(learning_task_store):
+    job = learning.create_job("Fence stale learning escalation writer")
+    context, task = _claimed_context(job["id"])
+
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE task_queue SET lease_expires_at='2000-01-01T00:00:00.000000+00:00' WHERE id=?",
+            (task["id"],),
+        )
+    reclaimed = task_manager.claim_next_task("worker-1")
+    assert reclaimed is not None and reclaimed["lease_epoch"] > context.lease_epoch
+
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        learning_tasks._record_learning_escalation(
+            task["id"], job["id"], "permanent_failure",
+            "Stale worker must not create a human-review escalation.",
+            task_context=context,
+        )
+
+    with db.learning_connection() as conn:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM learning_escalations WHERE task_id=?", (task["id"],)
+        ).fetchone()[0]
+    assert count == 0
 
 def test_learning_task_missing_domain_record_is_permanent(learning_task_store):
     context, _task = _claimed_context(999999)
