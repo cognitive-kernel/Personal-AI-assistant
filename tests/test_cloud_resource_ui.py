@@ -15,7 +15,8 @@ def test_cloud_resource_ui_exposes_discovery_and_review_controls_safely():
 
     assert 'src="/static/dashboard-core.js"' in page
     assert 'src="/static/cloud-resources.js"' in page
-    assert "window.dashboardCore = Object.freeze({" in core
+    assert "Object.defineProperty(window, \"dashboardCore\"" in core
+    assert "configurable: false" in core and "writable: false" in core
     assert "version: 1" in core
     assert "dashboardCore.{api,el,appendText}" in module
     assert "core.version!==1" in module
