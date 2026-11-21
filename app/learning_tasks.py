@@ -102,6 +102,33 @@ def enqueue_learning_task(
     )
     return recovery
 
+def reconcile_queued_learning_tasks() -> int:
+    """Repair each queued/running learning record independently.
+
+    A single malformed record or transient enqueue failure must not starve later
+    jobs or prevent application startup. Failed records are logged and retried
+    by the next startup/maintenance reconciliation cycle.
+    """
+    with learning_connection() as conn:
+        rows = conn.execute(
+            "SELECT id FROM learning_jobs WHERE status IN ('queued', 'running') ORDER BY id"
+        ).fetchall()
+    reconciled = 0
+    for row in rows:
+        job_id = int(row["id"])
+        try:
+            enqueue_learning_task(job_id)
+        except Exception:
+            logger.exception(
+                "Could not reconcile durable learning task for job %s; it will be retried.",
+                job_id,
+            )
+            continue
+        reconciled += 1
+    return reconciled
+
+
+
 def _record_learning_escalation(
     task_id: int,
     job_id: int,
@@ -140,6 +167,117 @@ def _record_learning_escalation(
             (task_id,),
         ).fetchone()
     return dict(row)
+
+def list_learning_escalations(
+    status: str = "pending",
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """List durable human-review items, prioritizing task priority and recency."""
+    if status not in {"pending", "reviewed", "dismissed"}:
+        raise ValueError("Unsupported escalation status.")
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
+        raise ValueError("limit must be between 1 and 200.")
+    with learning_connection() as conn:
+        rows = conn.execute(
+            """SELECT e.id, e.task_id, e.job_id, e.reason, e.status, e.attempts,
+                      e.max_attempts, e.error_summary, e.review_note, e.created_at,
+                      e.updated_at, e.reviewed_at, t.priority, t.status AS task_status,
+                      j.topic, j.status AS learning_status
+               FROM learning_escalations e
+               JOIN task_queue t ON t.id=e.task_id
+               JOIN learning_jobs j ON j.id=e.job_id
+               WHERE e.status=?
+               ORDER BY t.priority DESC, e.created_at DESC, e.id DESC
+               LIMIT ?""",
+            (status, limit),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def resolve_learning_escalation(
+    escalation_id: int,
+    status: str,
+    review_note: str = "",
+) -> dict[str, Any]:
+    """Resolve a pending escalation without altering the underlying lesson or evidence."""
+    if isinstance(escalation_id, bool) or not isinstance(escalation_id, int) or escalation_id < 1:
+        raise ValueError("escalation_id must be a positive integer.")
+    if status not in {"reviewed", "dismissed"}:
+        raise ValueError("Escalation status must be reviewed or dismissed.")
+    if not isinstance(review_note, str) or len(review_note) > 2000:
+        raise ValueError("Review note must be a string of at most 2000 characters.")
+    with learning_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM learning_escalations WHERE id=?",
+            (escalation_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(escalation_id)
+        if row["status"] != "pending":
+            if row["status"] == status and row["review_note"] == review_note.strip():
+                return dict(row)
+            raise ValueError("Escalation has already been resolved.")
+        conn.execute(
+            """UPDATE learning_escalations
+               SET status=?, review_note=?, updated_at=CURRENT_TIMESTAMP,
+                   reviewed_at=CURRENT_TIMESTAMP
+               WHERE id=? AND status='pending'""",
+            (status, review_note.strip(), escalation_id),
+        )
+        updated = conn.execute(
+            "SELECT * FROM learning_escalations WHERE id=?",
+            (escalation_id,),
+        ).fetchone()
+    return dict(updated)
+
+
+def cancel_learning_task(job_id: int) -> dict[str, Any] | None:
+    """Cancel whichever durable queue task currently owns this learning job."""
+    if isinstance(job_id, bool) or not isinstance(job_id, int) or job_id < 1:
+        raise ValueError("job_id must be a positive integer")
+
+    base_key = f"learning-job:{job_id}"
+    candidates = [
+        task_manager.get_task_by_dedupe_key(base_key),
+        task_manager.get_task_by_dedupe_key(f"{base_key}:recovery:1"),
+    ]
+    active = [
+        task for task in candidates
+        if task is not None and task["status"] not in task_manager.TERMINAL_STATUSES
+    ]
+    # A recovery task may be active after the original task has failed. Cancelling
+    # only the historical base task would leave the recovery worker running.
+    if active:
+        return task_manager.request_cancel(int(active[-1]["id"]))
+    return candidates[0] or candidates[1]
+
+
+def cancel_learning_job(job_id: int) -> dict[str, Any] | None:
+    """Synchronize generic task-API cancellation with the learning-domain record."""
+    if isinstance(job_id, bool) or not isinstance(job_id, int) or job_id < 1:
+        raise ValueError("job_id must be a positive integer")
+    task = task_manager.get_task_by_dedupe_key(f"learning-job:{job_id}")
+    if task is None:
+        return None
+
+    try:
+        job = learning.get_job(job_id)
+    except KeyError:
+        # The task can still be cancelled safely if its domain row was removed.
+        return cancel_learning_task(job_id)
+
+    if job["status"] not in _TERMINAL_LEARNING_STATUSES:
+        with learning_connection() as conn:
+            conn.execute(
+                """UPDATE learning_jobs
+                   SET status='cancelled', error='لغو از API مدیریت وظایف',
+                       updated_at=CURRENT_TIMESTAMP
+                   WHERE id=? AND status IN ('queued', 'running', 'failed')""",
+                (job_id,),
+            )
+    return cancel_learning_task(job_id)
+
+
 
 def handle_learning_job(
     payload: dict[str, Any],
