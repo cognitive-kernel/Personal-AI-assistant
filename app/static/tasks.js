@@ -75,5 +75,6 @@
  el("bulk-resume-tasks").addEventListener("click",()=>cards.runBulkTaskAction("resume"));
  el("bulk-cancel-tasks").addEventListener("click",()=>cards.runBulkTaskAction("cancel"));
  el("load-more-tasks").addEventListener("click",()=>refreshTasks({append:true}));
+ Object.defineProperty(window,"taskDashboard",{value:Object.freeze({version:1,refresh:refreshTasks}),enumerable:true,configurable:false,writable:false});
  refreshTasks();
 })();
