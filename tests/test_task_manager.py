@@ -606,7 +606,7 @@ def test_task_checkpoint_and_result_records_are_bounded_before_state_changes(
     assert unchanged["checkpoint"] is None
     assert unchanged["result"] is None
 
-    monkeypatch.setattr(task_lease_manager, "MAX_TASK_RECORD_BYTES", 1024)
+    monkeypatch.setattr(task_manager_core, "MAX_TASK_RECORD_BYTES", 1024)
     completed = task_manager.complete_task(
         task["id"], "bounded-worker", {"ok": True}, lease_epoch=claimed["lease_epoch"]
     )
