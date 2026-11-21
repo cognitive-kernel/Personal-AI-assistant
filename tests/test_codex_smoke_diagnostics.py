@@ -493,6 +493,12 @@ def test_run_codex_recovers_invalid_report_from_successful_jsonl_turn(tmp_path, 
         def __enter__(self):
             return self
 
+        def assign_and_resume(self, process):
+            return None
+
+        def terminate_remaining_processes(self, exit_code):
+            return False
+
         def close(self):
             return None
 
