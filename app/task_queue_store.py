@@ -47,6 +47,7 @@ def create_task(
     max_attempts: int = 1,
     scheduled_at: datetime | None = None,
     dedupe_key: str | None = None,
+    connection: sqlite3.Connection | None = None,
 ) -> dict[str, Any]:
     if not isinstance(task_type, str) or not task_type.strip() or len(task_type.strip()) > MAX_TASK_TYPE_CHARS:
         raise ValueError(f"task_type must be a non-empty string of at most {MAX_TASK_TYPE_CHARS} characters.")
@@ -67,7 +68,7 @@ def create_task(
     normalized_type = task_type.strip()
     normalized_key = dedupe_key.strip() if dedupe_key is not None else None
     due = _timestamp(scheduled_at)
-    with db.learning_connection() as conn:
+    def insert_or_get(conn: sqlite3.Connection) -> dict[str, Any]:
         try:
             cursor = conn.execute(
                 """INSERT INTO task_queue(
@@ -94,7 +95,12 @@ def create_task(
                 raise ValueError(
                     "dedupe_key already exists for a different task definition."
                 )
-    return _task(row)  # type: ignore[return-value]
+        return _task(row)  # type: ignore[return-value]
+
+    if connection is not None:
+        return insert_or_get(connection)
+    with db.learning_connection() as conn:
+        return insert_or_get(conn)
 
 def get_task(task_id: int) -> dict[str, Any] | None:
     with db.learning_connection() as conn:
