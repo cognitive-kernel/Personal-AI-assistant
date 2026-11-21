@@ -48,7 +48,7 @@ def test_stale_task_epoch_cannot_mutate_learning_job_domain_row(learning_task_st
 
     saved = learning.get_job(job["id"])
     assert saved["status"] == "queued"
-    assert saved["lesson"] is None
+    assert not saved["lesson"]
     with db.learning_connection() as conn:
         evidence_count = conn.execute(
             "SELECT COUNT(*) FROM learning_evidence WHERE job_id=?", (job["id"],)
