@@ -20,10 +20,12 @@
   parent.append(node);
   return node;
  }
- window.dashboardCore = Object.freeze({
-  version: 1,
-  el,
-  api,
-  appendText
- });
+ if (!Object.prototype.hasOwnProperty.call(window, "dashboardCore")) {
+  Object.defineProperty(window, "dashboardCore", {
+   value: Object.freeze({version: 1, el, api, appendText}),
+   enumerable: true,
+   configurable: false,
+   writable: false
+  });
+ }
 })();
