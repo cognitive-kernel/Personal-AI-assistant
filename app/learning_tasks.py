@@ -272,6 +272,7 @@ def handle_learning_job(
     # A task is reclaimed only after its previous lease expires. A stale learning
     # status must therefore be reset before this newly claimed attempt can resume it.
     if status in {"failed", "running"}:
+        from . import learning_execution
         with learning_connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             context.assert_current(
@@ -279,10 +280,17 @@ def handle_learning_job(
                 expected_task_type=LEARNING_TASK_TYPE,
                 expected_payload={"job_id": job_id},
             )
+            if status == "running" and learning_execution.has_live_queue_owner(conn, job_id):
+                return {
+                    "job_id": job_id,
+                    "learning_status": "running",
+                    "already_running": True,
+                }
             conn.execute(
                 """UPDATE learning_jobs
-                   SET status='queued', execution_owner=NULL, error=NULL,
-                       updated_at=CURRENT_TIMESTAMP
+                   SET status='queued', execution_owner=NULL,
+                       execution_task_id=NULL, execution_task_epoch=NULL,
+                       error=NULL, updated_at=CURRENT_TIMESTAMP
                    WHERE id=? AND status IN ('failed', 'running')""",
                 (job_id,),
             )
