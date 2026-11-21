@@ -404,3 +404,46 @@ def test_autonomous_codex_smoke_uses_only_non_admin_sandbox_modes_and_is_bounded
     assert 'echo ok>$probeFileName && type $probeFileName && del $probeFileName' in smoke
     assert "--require-command-fragment \"echo\" --require-command-fragment \"type\" --require-command-fragment \"del\"" in smoke
     assert "Unsandboxed execution is prohibited" in smoke
+
+
+def test_missing_codex_report_is_recovered_from_successful_jsonl_agent_message(tmp_path):
+    report = tmp_path / "codex-report.md"
+
+    recovered = progress.recover_final_agent_message_report(
+        report,
+        "Implementation and regression tests are complete.\nTASK_COMPLETE",
+        turn_completed=True,
+        turn_failed=False,
+    )
+
+    assert recovered is True
+    assert report.read_text(encoding="utf-8") == (
+        "Implementation and regression tests are complete.\nTASK_COMPLETE\n"
+    )
+
+
+def test_jsonl_report_recovery_requires_a_successful_completed_turn(tmp_path):
+    report = tmp_path / "codex-report.md"
+
+    assert not progress.recover_final_agent_message_report(
+        report, "TASK_COMPLETE", turn_completed=False, turn_failed=False,
+    )
+    assert not progress.recover_final_agent_message_report(
+        report, "TASK_COMPLETE", turn_completed=True, turn_failed=True,
+    )
+    assert not progress.recover_final_agent_message_report(
+        report, "   ", turn_completed=True, turn_failed=False,
+    )
+    assert not report.exists()
+
+
+def test_jsonl_report_recovery_never_overwrites_existing_output_last_message(tmp_path):
+    report = tmp_path / "codex-report.md"
+    report.write_text("Existing report without marker.", encoding="utf-8")
+
+    recovered = progress.recover_final_agent_message_report(
+        report, "TASK_COMPLETE", turn_completed=True, turn_failed=False,
+    )
+
+    assert recovered is False
+    assert report.read_text(encoding="utf-8") == "Existing report without marker."
