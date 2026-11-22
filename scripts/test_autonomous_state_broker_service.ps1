@@ -332,9 +332,11 @@ with repository_execution_lock("broker-lock-ci", "1"):
     )
     $repoRoot = Split-Path -Parent $PSScriptRoot
     $pythonPath = (Get-Command python -ErrorAction Stop).Source
+    $lockStdoutPath = Join-Path $env:TEMP ("broker-repository-lock-stdout-" + [guid]::NewGuid().ToString("N") + ".txt")
+    $lockStderrPath = Join-Path $env:TEMP ("broker-repository-lock-stderr-" + [guid]::NewGuid().ToString("N") + ".txt")
     $lockProcess = Start-Process -FilePath $pythonPath -ArgumentList @(
         $repositoryLockScriptPath, $repositoryLockReadyPath, $stateRoot, $repoRoot
-    ) -PassThru -NoNewWindow
+    ) -PassThru -NoNewWindow -RedirectStandardOutput $lockStdoutPath -RedirectStandardError $lockStderrPath
     try {
         $lockDeadline = [DateTime]::UtcNow.AddSeconds(10)
         while (-not (Test-Path -LiteralPath $repositoryLockReadyPath) -and [DateTime]::UtcNow -lt $lockDeadline) {
@@ -355,14 +357,17 @@ else:
 '@
         $repositoryLockProbe | & python -
         if ($LASTEXITCODE -ne 0) { throw "The broker did not respect the Python Runner repository lock." }
-        if (-not $lockProcess.WaitForExit(10000) -or $lockProcess.ExitCode -ne 0) {
-            throw "The Python repository-lock holder did not exit cleanly."
+        if (-not $lockProcess.WaitForExit(10000)) {
+            throw "The Python repository-lock holder timed out. stdout: $(Get-Content -LiteralPath $lockStdoutPath -Raw -ErrorAction SilentlyContinue) stderr: $(Get-Content -LiteralPath $lockStderrPath -Raw -ErrorAction SilentlyContinue)"
+        }
+        if ($lockProcess.ExitCode -ne 0) {
+            throw "The Python repository-lock holder exited with code $($lockProcess.ExitCode). stdout: $(Get-Content -LiteralPath $lockStdoutPath -Raw -ErrorAction SilentlyContinue) stderr: $(Get-Content -LiteralPath $lockStderrPath -Raw -ErrorAction SilentlyContinue)"
         }
     } finally {
         if ($lockProcess -and -not $lockProcess.HasExited) {
             Stop-Process -Id $lockProcess.Id -Force -ErrorAction SilentlyContinue
         }
-        Remove-Item -LiteralPath $repositoryLockScriptPath, $repositoryLockReadyPath -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $repositoryLockScriptPath, $repositoryLockReadyPath, $lockStdoutPath, $lockStderrPath -Force -ErrorAction SilentlyContinue
     }
 
     # A progress writer may run before the workflow acquires the repository
