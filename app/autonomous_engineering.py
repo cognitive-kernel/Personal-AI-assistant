@@ -500,6 +500,7 @@ def collect_status() -> dict[str, Any]:
     interval_hours = settings.get("interval_hours", _DEFAULT_INTERVAL_HOURS)
     execution_mode = settings.get("execution_mode", "continuous")
     paused = bool(settings.get("paused", False))
+    enabled = bool(settings.get("enabled", True))
     checks = {
         "ollama_online": ollama["online"],
         "model_installed": ollama["model_installed"],
@@ -527,10 +528,20 @@ def collect_status() -> dict[str, Any]:
         and item.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"}
         for item in active_runs
     )
-    can_dispatch = ready and not paused and not active
+    can_dispatch = ready and enabled and not paused and not active
+    module_state = (
+        "draining" if not enabled and active
+        else "finished" if not enabled and not paused
+        else "stopped" if not enabled
+        else "paused" if paused
+        else "running"
+    )
     return {
         "ready": ready,
         "can_dispatch": can_dispatch,
+        "enabled": enabled,
+        "active": active,
+        "module_state": module_state,
         "checks": checks,
         "pending_work": pending_work,
         "ollama": ollama,
@@ -775,6 +786,8 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) ->
     readiness = collect_status()
     if not readiness.get("github", {}).get("runs_available", False):
         raise HTTPException(status_code=503, detail="وضعیت اجراهای GitHub قابل دریافت نیست؛ اجرای جدید به‌صورت ایمن متوقف شد.")
+    if not readiness.get("enabled", True):
+        raise HTTPException(status_code=409, detail="ماژول مهندسی پایان یافته است؛ ابتدا شروع را فعال کنید.")
     if readiness.get("paused", False):
         raise HTTPException(status_code=409, detail="صف مهندسی در وضعیت توقف ایمن است؛ ابتدا ادامه را فعال کنید.")
     if not readiness["ready"]:
@@ -921,6 +934,65 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) ->
     }
 
 
+@router.post("/start", status_code=202)
+def start_autonomous_engineering() -> dict[str, Any]:
+    """Enable future runs and dispatch one bounded cycle without clearing a pause."""
+    gh = _authenticated_gh()
+    _save_repository_variables(gh, (("AUTONOMOUS_ENGINEERING_ENABLED", "true"),))
+    return dispatch_autonomous_engineering()
+
+
+@router.get("/lifecycle")
+def autonomous_engineering_lifecycle() -> dict[str, Any]:
+    """Return a lightweight lifecycle projection without local Ollama/Codex probes."""
+    snapshot = _github_snapshot()
+    settings = snapshot.get("settings") if isinstance(snapshot.get("settings"), dict) else {}
+    if (
+        snapshot.get("cli_installed") is not True
+        or snapshot.get("authenticated") is not True
+        or snapshot.get("runs_available") is not True
+    ):
+        return {
+            "available": False,
+            "state": "unavailable",
+            "message": "وضعیت GitHub CLI، احراز هویت یا اجراهای Workflow قابل تأیید نیست.",
+        }
+    enabled = bool(settings.get("enabled", True))
+    paused = bool(settings.get("paused", False))
+    active_runs = [
+        item for item in snapshot.get("recent_runs", [])
+        if isinstance(item, dict)
+        and item.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"}
+    ]
+    active = bool(active_runs)
+    state = (
+        "draining" if not enabled and active
+        else "finished" if not enabled and not paused
+        else "stopped" if not enabled
+        else "paused" if paused
+        else "running"
+    )
+    return {
+        "available": True,
+        "state": state,
+        "enabled": enabled,
+        "paused": paused,
+        "active": active,
+        "active_runs": len(active_runs),
+        "message": (
+            "اجرای جاری در حال اتمام است؛ چرخهٔ جدیدی آغاز نخواهد شد."
+            if state == "draining" else
+            "صف مهندسی در مکث است."
+            if state == "paused" else
+            "ماژول مهندسی پایان یافته است."
+            if state == "finished" else
+            "ماژول مهندسی متوقف شده است."
+            if state == "stopped" else
+            "ماژول مهندسی فعال است."
+        ),
+    }
+
+
 @router.post("/pause")
 def pause_autonomous_engineering() -> dict[str, Any]:
     gh = shutil.which("gh")
@@ -943,9 +1015,13 @@ def resume_autonomous_engineering() -> dict[str, Any]:
     auth = _run([gh, "auth", "status", "--hostname", "github.com"], timeout=8)
     if not auth or auth.returncode != 0:
         raise HTTPException(status_code=503, detail="دسترسی GitHub در حساب برنامه آماده نیست.")
-    result = _run([gh, "variable", "set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body", "false", "--repo", _repository()], timeout=15)
-    if not result or result.returncode != 0:
-        raise HTTPException(status_code=502, detail="ثبت ادامه در GitHub ناموفق بود.")
+    _save_repository_variables(
+        gh,
+        (
+            ("AUTONOMOUS_ENGINEERING_ENABLED", "true"),
+            ("AUTONOMOUS_ENGINEERING_PAUSED", "false"),
+        ),
+    )
     try:
         dispatched = _run(
             [gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main"],
@@ -1014,6 +1090,54 @@ def resume_autonomous_engineering() -> dict[str, Any]:
             },
         )
     return {"accepted": True, "paused": False, "message": "ادامه از وضعیت ذخیره‌شده درخواست شد."}
+
+
+@router.post("/finish")
+def finish_autonomous_engineering() -> dict[str, Any]:
+    """Disable future cycles while allowing an already-running cycle to finish."""
+    gh = _authenticated_gh()
+    _save_repository_variables(
+        gh,
+        (
+            ("AUTONOMOUS_ENGINEERING_ENABLED", "false"),
+            ("AUTONOMOUS_ENGINEERING_PAUSED", "false"),
+        ),
+    )
+    return {
+        "accepted": True,
+        "enabled": False,
+        "message": "پایان تدریجی ثبت شد؛ اجرای جاری می‌تواند کامل شود و چرخهٔ جدید آغاز نمی‌شود.",
+    }
+
+
+@router.post("/force-stop")
+def force_stop_autonomous_engineering() -> dict[str, Any]:
+    """Disable future cycles, persist pause, and request cancellation of the active GitHub run."""
+    gh = _authenticated_gh()
+    _save_repository_variables(
+        gh,
+        (
+            ("AUTONOMOUS_ENGINEERING_ENABLED", "false"),
+            ("AUTONOMOUS_ENGINEERING_PAUSED", "true"),
+        ),
+    )
+    try:
+        cancelled = cancel_autonomous_engineering()
+    except HTTPException as exc:
+        if exc.status_code != 409:
+            raise
+        cancelled = {"accepted": False, "run_id": None}
+    return {
+        "accepted": True,
+        "enabled": False,
+        "paused": True,
+        "run_id": cancelled.get("run_id"),
+        "message": (
+            "توقف اجباری ثبت شد و لغو اجرای فعال به GitHub ارسال شد."
+            if cancelled.get("accepted") else
+            "ماژول متوقف شد؛ اجرای فعالی برای لغو وجود نداشت."
+        ),
+    }
 
 
 @router.post("/cancel")
