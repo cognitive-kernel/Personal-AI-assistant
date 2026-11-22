@@ -21,7 +21,14 @@ LEARNING_TASK_TYPE = "learning.run_job"
 _TERMINAL_LEARNING_STATUSES = {"completed", "rejected", "cancelled"}
 
 
-def enqueue_learning_task(job_id: int, *, priority: int = 0) -> dict[str, Any]:
+def enqueue_learning_task(
+    job_id: int,
+    *,
+    priority: int = 0,
+    task_context: TaskContext | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Enqueue or boundedly recover a learning job without discarding queue history."""
     if isinstance(job_id, bool) or not isinstance(job_id, int) or job_id < 1:
         raise ValueError("job_id must be a positive integer")
@@ -32,7 +39,8 @@ def enqueue_learning_task(job_id: int, *, priority: int = 0) -> dict[str, Any]:
     if existing is None:
         return task_manager.create_task(
             LEARNING_TASK_TYPE, payload, priority=priority, max_attempts=3,
-            dedupe_key=base_key,
+            dedupe_key=base_key, task_context=task_context,
+            expected_task_type=expected_task_type, expected_payload=expected_payload,
         )
     if existing["status"] not in task_manager.TERMINAL_STATUSES:
         return existing
@@ -55,7 +63,8 @@ def enqueue_learning_task(job_id: int, *, priority: int = 0) -> dict[str, Any]:
     if recovery is None:
         return task_manager.create_task(
             LEARNING_TASK_TYPE, payload, priority=priority, max_attempts=3,
-            dedupe_key=recovery_key,
+            dedupe_key=recovery_key, task_context=task_context,
+            expected_task_type=expected_task_type, expected_payload=expected_payload,
         )
     if recovery["status"] not in task_manager.TERMINAL_STATUSES:
         return recovery
@@ -108,6 +117,9 @@ def _record_learning_escalation(
     job_id: int,
     reason: str,
     error_summary: str = "",
+    task_context: TaskContext | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create one durable human-review record per terminal learning task."""
     task = task_manager.get_task(task_id)
@@ -117,6 +129,15 @@ def _record_learning_escalation(
     max_attempts = max(1, int(task.get("max_attempts", 1)))
     summary = str(error_summary or "")[:1000]
     with learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        if task_context is not None:
+            if expected_task_type is None or expected_payload is None:
+                raise ValueError("Learning escalation task ownership contract is incomplete.")
+            task_context.assert_current(
+                conn,
+                expected_task_type=expected_task_type,
+                expected_payload=expected_payload,
+            )
         conn.execute(
             """INSERT INTO learning_escalations(
                    task_id, job_id, reason, attempts, max_attempts, error_summary
@@ -263,7 +284,10 @@ def handle_learning_job(
                 context.task_id, job_id, "quality_rejected", job.get("error") or "Lesson did not pass quality checks."
             )
         if status == "completed" and job.get("path_topic_id") is not None:
-            learning.queue_next_researched_path_topic(int(job["path_topic_id"]))
+            learning.queue_next_researched_path_topic(
+                int(job["path_topic_id"]), task_context=context,
+                expected_task_type=LEARNING_TASK_TYPE, expected_payload=payload,
+            )
         return {"job_id": job_id, "learning_status": status, "already_terminal": True}
 
     # A task is reclaimed only after its previous lease expires. A stale learning
@@ -271,6 +295,12 @@ def handle_learning_job(
     if status in {"failed", "running"}:
         context.control_status()  # Verify this worker still owns a live task lease.
         with learning_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            context.assert_current(
+                conn,
+                expected_task_type=LEARNING_TASK_TYPE,
+                expected_payload=payload,
+            )
             conn.execute(
                 """UPDATE learning_jobs
                    SET status='queued', error=NULL, updated_at=CURRENT_TIMESTAMP
@@ -287,7 +317,10 @@ def handle_learning_job(
 
     context.checkpoint({"phase": "learning_queued", "job_id": job_id})
     try:
-        learning.run_job(job_id)
+        learning.run_job(
+            job_id, task_context=context, expected_task_type=LEARNING_TASK_TYPE,
+            expected_payload=payload,
+        )
     except learning.LearningError as exc:
         cause = exc.__cause__
         task = task_manager.get_task(context.task_id) or {}
@@ -304,18 +337,24 @@ def handle_learning_job(
             _record_learning_escalation(
                 context.task_id, job_id, "permanent_failure",
                 f"Non-retryable model error: {type(cause).__name__}",
+                task_context=context, expected_task_type=LEARNING_TASK_TYPE,
+                expected_payload=payload,
             )
             raise PermanentTaskError("Learning model configuration or policy is invalid.") from exc
         if isinstance(cause, (ValueError, TypeError, KeyError, AssertionError, sqlite3.IntegrityError)):
             _record_learning_escalation(
                 context.task_id, job_id, "permanent_failure",
                 f"Non-retryable learning error: {type(cause).__name__}",
+                task_context=context, expected_task_type=LEARNING_TASK_TYPE,
+                expected_payload=payload,
             )
             raise PermanentTaskError("Learning job failed because of invalid input or an internal invariant.") from exc
         if attempts >= max_attempts:
             _record_learning_escalation(
                 context.task_id, job_id, "attempts_exhausted",
                 f"Learning execution failed after {attempts} attempt(s): {type(cause).__name__ if cause else type(exc).__name__}",
+                task_context=context, expected_task_type=LEARNING_TASK_TYPE,
+                expected_payload=payload,
             )
         raise RetryableTaskError("Learning job execution failed; retry may succeed.") from exc
 
@@ -331,5 +370,8 @@ def handle_learning_job(
             f"Learning job {job_id} returned without a terminal result (status={status!r})"
         )
     if status == "completed" and result.get("path_topic_id") is not None:
-        learning.queue_next_researched_path_topic(int(result["path_topic_id"]))
+        learning.queue_next_researched_path_topic(
+            int(result["path_topic_id"]), task_context=context,
+            expected_task_type=LEARNING_TASK_TYPE, expected_payload=payload,
+        )
     return {"job_id": job_id, "learning_status": status, "already_terminal": False}
