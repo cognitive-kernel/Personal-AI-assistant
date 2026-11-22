@@ -46,7 +46,7 @@ Mark repository-level items complete only after the exact PR head CI passes. Bro
 | Gate | معیار | وضعیت |
 |---|---|---|
 | A — Inventory/reproduction | نگاشت هر کنترل UI به API، مالک state، transition و regression | inventory ثبت شده در `docs/UI_AUTONOMOUS_ENGINEERING_INVENTORY_2026-11-22.fa.md`؛ reproduction میزبان هنوز pending |
-| B — Ownership/fencing/recovery | ترتیب repository → durable-state → checkpoint، owner/epoch fencing، fail-closed cleanup و recovery | lease epoch و fencing در main؛ broker cleanup lock و تست Python/Windows در PR #834؛ ممیزی تمام mutation call-siteها و crash recovery pending |
+| B — Ownership/fencing/recovery | ترتیب repository → durable-state → checkpoint، owner/epoch fencing، fail-closed cleanup و recovery | lease epoch و fencing در main؛ PR #834 قفل repository را داخل broker اعمال می‌کند، writerهای progress پیش از قفل را با file-share guard متوقف می‌کند و انتشار PR را به فرزند cycle controller قفل‌دار محدود می‌کند؛ ممیزی تمام mutation call-siteها و crash recovery pending |
 | C — Error/diagnostics | خطای ساختاریافته و گزارش Codex معتبر/ناقص | PR #817 و PR #827 در main ادغام شده‌اند؛ producer واقعی و UI header integration در PR #834 در انتظار CI |
 | D — UI state machine | status/run/progress single-flight، feedback پایدار، module fault isolation، کنترل‌های pause/resume/cancel/finish | کد در PR #834؛ پذیرش exact-head pending |
 | E — Browser E2E | مسیرهای موفق، خطا، stale response، cancel، cleanup، keyboard و responsive | تست‌ها موجود/افزوده شده‌اند؛ اجرای exact-head pending |
