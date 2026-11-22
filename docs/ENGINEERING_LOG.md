@@ -2240,3 +2240,8 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - `learning.run_job` now validates the exact current `learning.run_job` owner/epoch/type/payload inside its initial job-claim transaction, every source-evidence write transaction, preparation-failure settlement, final lesson/evidence/knowledge transaction, and failure settlement. `learning_tasks.handle_learning_job` passes the TaskContext contract through the entire runner and fences learning status recovery/escalation writes.
 - Durable inference-budget reservations now validate the same task contract in their existing `BEGIN IMMEDIATE` transaction. Child task creation supports an optional parent TaskContext contract and validates it in the task-queue insert transaction. Re-research path scheduling passes the parent contract through job creation, topic status update and child task creation; queued jobs with missing task records can be safely re-enqueued by the current parent.
 - Curriculum handlers pass their task authority into researched-path child scheduling. Existing direct/manual APIs and startup reconciliation remain compatible when no parent context is supplied. Added stale-owner regressions for job claim, source fallback evidence, budget reservation, child job creation and child task insertion. Exact-head CI is pending; no model was run and no existing lesson/source/checkpoint was deleted.
+
+
+## 2026-11-22 — Learning recovery queue fencing addendum
+
+- The one bounded recovery-exhaustion path in `enqueue_learning_task()` now also validates the current parent task contract inside the transaction that marks the learning job failed and writes the human-review escalation. Startup reconciliation without a parent task remains scheduler-owned and unchanged.
