@@ -499,3 +499,10 @@ The subsequent documentation-only evidence update does not change runtime code a
 
 - `cloud.discover_resources` now validates its task owner/epoch, exact task type and payload in the same `BEGIN IMMEDIATE` transaction as discovery-run creation, candidate/claim upserts and run finalization. The learning/task database is attached to the dedicated cloud database connection for the ownership check; the transaction prevents a reclaim race during the cloud write.
 - Reclaimed stale workers cannot enqueue the next daily run. Added a stale-lease fault-injection regression. Exact-head CI is pending; this does not close other cloud-resource API mutations or all Gate-B task writers.
+
+
+## 2026-11-22 — Cloud discovery lease follow-up (PR #823 stacked on #825)
+
+- Child daily scheduling now uses parent-aware atomic task creation; pause/cancel is handled only after the task manager has durably released the parent lease. Stale/expired owners cannot schedule follow-up tasks.
+- Cloud discovery runs now persist their task/worker/epoch identity. A scheduler-owned reconciler closes only runs whose exact lease is no longer active; legacy unowned runs are preserved.
+- Added stale scheduling, cooperative interruption and abandoned-run regressions. PR #823 is stacked on prerequisite PR #825 because it uses the parent-aware `task_manager.create_task()` contract. Exact-head CI is pending.
