@@ -73,8 +73,9 @@
     const requestSequence = ++runsRequestSequence;
     try {
       const data = await request("runs");
-      if (requestSequence !== runsRequestSequence) return;
+      if (requestSequence !== runsRequestSequence) return true;
       renderRuns(data.runs);
+      return true;
     } catch (error) {
       if (requestSequence !== runsRequestSequence) return;
       const host = $("recent-runs");
@@ -82,6 +83,7 @@
       note.className = "muted";
       note.textContent = "دریافت تاریخچهٔ کامل اجراها ناموفق بود: " + (error.message || "خطای نامشخص");
       host.replaceChildren(note);
+      return false;
     }
   }
 
