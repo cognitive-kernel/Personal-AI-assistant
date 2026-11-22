@@ -727,7 +727,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                                 string progressStatus = current != null && current.TryGetValue("status", out rawStatus)
                                     ? Convert.ToString(rawStatus).Trim().ToLowerInvariant()
                                     : "";
-                                string[] terminalProgressStates = { "completed", "failed", "cancelled", "skipped", "blocked" };
+                                string[] terminalProgressStates = { "completed", "succeeded", "success", "complete", "failed", "cancelled", "skipped", "blocked" };
                                 if (current == null || !Array.Exists(terminalProgressStates, item =>
                                     String.Equals(item, progressStatus, StringComparison.Ordinal)))
                                     blockers.Add("active_progress_run");
