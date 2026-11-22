@@ -136,7 +136,9 @@ def list_module_controls() -> list[dict[str, Any]]:
             state = str(row["state"]) if row is not None else "running"
             counts = _counts_for_module(connection, module["task_types"])
             display_state = (
-                "finished" if state == "draining" and counts["active"] == 0 else state
+                "finished" if state == "draining" and counts["active"] == 0 and counts["pending"] == 0
+                else "finished_pending" if state == "draining" and counts["active"] == 0
+                else state
             )
             result.append({
                 "id": module["id"],
