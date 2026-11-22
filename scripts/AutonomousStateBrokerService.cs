@@ -197,7 +197,8 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         Dictionary<string, object> request = _json.DeserializeObject(line) as Dictionary<string, object>;
         if (request == null ||
             !request.ContainsKey("version") || Convert.ToInt32(request["version"]) != 1 ||
-            !request.ContainsKey("method") || !request.ContainsKey("path"))
+            !request.ContainsKey("method") || !request.ContainsKey("path") ||
+            request.Keys.Any(key => key != "version" && key != "method" && key != "path" && key != "body"))
         {
             WriteResponse(pipe, 400, Error("invalid_request"));
             return;
@@ -205,9 +206,22 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
 
         string method = Convert.ToString(request["method"]).ToUpperInvariant();
         string path = Convert.ToString(request["path"]);
-        if (request.ContainsKey("body"))
+        object rawBody;
+        Dictionary<string, object> body = request.TryGetValue("body", out rawBody)
+            ? rawBody as Dictionary<string, object> : null;
+        bool taskEndpoint = path == "/v1/tasks/pending" || path == "/v1/tasks/archived" ||
+            path == "/v1/tasks/archive" || path == "/v1/tasks/restore";
+        if (request.ContainsKey("body") && (!taskEndpoint || body == null))
         {
             WriteResponse(pipe, 400, Error("request_body_not_supported"));
+            return;
+        }
+        if (taskEndpoint)
+        {
+            object taskResult;
+            int taskStatus;
+            HandlePendingTaskRequest(method, path, body, out taskStatus, out taskResult);
+            WriteResponse(pipe, taskStatus, taskResult);
             return;
         }
 
@@ -253,6 +267,280 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         }
 
         WriteResponse(pipe, 404, Error("not_found"));
+    }
+
+
+    private static string Sha256(byte[] value)
+    {
+        using (SHA256 hash = SHA256.Create())
+        {
+            byte[] digest = hash.ComputeHash(value);
+            StringBuilder result = new StringBuilder(digest.Length * 2);
+            foreach (byte item in digest) result.Append(item.ToString("x2"));
+            return result.ToString();
+        }
+    }
+
+    private static byte[] CanonicalTaskBytes(byte[] value)
+    {
+        string text = new UTF8Encoding(false, true).GetString(value);
+        return Encoding.UTF8.GetBytes(text.Replace("\r\n", "\n").Replace("\r", "\n"));
+    }
+
+    private Dictionary<string, object> ReadPendingTaskRecord()
+    {
+        string taskPath = Path.Combine(_stateDirectory, "pending-manual-task.txt");
+        string ownerPath = Path.Combine(_stateDirectory, "pending-manual-task-owner.json");
+        if (!SafeFileExists(taskPath)) return null;
+        FileInfo taskInfo = new FileInfo(taskPath);
+        if (taskInfo.Length < 1 || taskInfo.Length > 8192)
+            throw new InvalidDataException("Pending task size is invalid.");
+        byte[] taskBytes = File.ReadAllBytes(taskPath);
+        byte[] ownerBytes;
+        try { ownerBytes = File.ReadAllBytes(ownerPath); }
+        catch { throw new InvalidDataException("Pending task owner metadata is missing or unreadable."); }
+        if (ownerBytes.Length > 65536)
+            throw new InvalidDataException("Pending task owner metadata is oversized.");
+        Dictionary<string, object> owner;
+        try { owner = new JavaScriptSerializer().DeserializeObject(
+            new UTF8Encoding(false, true).GetString(ownerBytes)) as Dictionary<string, object>; }
+        catch { throw new InvalidDataException("Pending task owner metadata is malformed."); }
+        if (owner == null) throw new InvalidDataException("Pending task owner metadata is invalid.");
+        object schema, taskHash, ownerRun, ownerAttempt, submittedRun, submittedAttempt, createdAt, claimedAt, count, source;
+        if (!owner.TryGetValue("schema_version", out schema) || Convert.ToInt32(schema) != 1 ||
+            !owner.TryGetValue("task_sha256", out taskHash) ||
+            !String.Equals(Convert.ToString(taskHash), Sha256(CanonicalTaskBytes(taskBytes)), StringComparison.Ordinal) ||
+            !owner.TryGetValue("owner_run_id", out ownerRun) || String.IsNullOrWhiteSpace(Convert.ToString(ownerRun)) ||
+            !owner.TryGetValue("owner_attempt", out ownerAttempt) || Convert.ToInt32(ownerAttempt) < 1 ||
+            !owner.TryGetValue("submitted_run_id", out submittedRun) || String.IsNullOrWhiteSpace(Convert.ToString(submittedRun)) ||
+            !owner.TryGetValue("submitted_attempt", out submittedAttempt) || Convert.ToInt32(submittedAttempt) < 1 ||
+            !owner.TryGetValue("created_at", out createdAt) || !owner.TryGetValue("claimed_at", out claimedAt) ||
+            !owner.TryGetValue("claim_count", out count) || Convert.ToInt32(count) < 1 ||
+            !owner.TryGetValue("source", out source) ||
+            !new[] { "manual_dispatch", "recovery", "legacy_migration" }.Contains(Convert.ToString(source)))
+            throw new InvalidDataException("Pending task owner metadata does not match schema v1.");
+        string taskDigest = Sha256(taskBytes);
+        string taskIdSeed = taskDigest + "|" + Convert.ToString(submittedRun) + "|" +
+            Convert.ToString(submittedAttempt) + "|" + Convert.ToString(createdAt);
+        string taskId = Sha256(Encoding.UTF8.GetBytes(taskIdSeed));
+        List<string> blockers = PendingTaskBlockers();
+        string revision = Sha256(Encoding.UTF8.GetBytes(
+            taskDigest + "|" + Sha256(ownerBytes) + "|" + String.Join(",", blockers.ToArray())
+        ));
+        return new Dictionary<string, object> {
+            { "task_id", taskId }, { "revision", revision }, { "task_bytes", taskBytes },
+            { "owner_bytes", ownerBytes }, { "owner", owner }, { "blockers", blockers }
+        };
+    }
+
+    private List<string> PendingTaskBlockers()
+    {
+        List<string> blockers = new List<string>();
+        if (SafeFileExists(Path.Combine(_stateDirectory, "pending-autonomous-pr.json")))
+            blockers.Add("pending_pr");
+        if (SafeFileExists(Path.Combine(_stateDirectory, "pending-state-cleanup.json")))
+            blockers.Add("cleanup_in_progress");
+        if (SafeFileExists(Path.Combine(_stateDirectory, "latest-worktree-checkpoint.json")) ||
+            Directory.GetFiles(_stateDirectory, "worktree-checkpoint-*").Length > 0 ||
+            Directory.GetFiles(_stateDirectory, "worktree-plan-*").Length > 0)
+            blockers.Add("checkpoint_present_or_unknown");
+        string currentPath = Path.Combine(_stateDirectory, "current.json");
+        if (SafeFileExists(currentPath))
+        {
+            Dictionary<string, object> current = ReadJsonFile("current.json", 256000) as Dictionary<string, object>;
+            object rawStatus;
+            string status = current != null && current.TryGetValue("status", out rawStatus)
+                ? Convert.ToString(rawStatus).Trim().ToLowerInvariant() : "";
+            string[] terminal = { "completed", "succeeded", "success", "complete", "failed", "cancelled", "skipped", "blocked" };
+            if (current == null || !Array.Exists(terminal, item => item == status))
+                blockers.Add("active_or_unknown_run");
+        }
+        return blockers;
+    }
+
+    private object ListPendingTasks()
+    {
+        return WithStateLock(delegate
+        {
+            Dictionary<string, object> record = ReadPendingTaskRecord();
+            if (record == null) return new Dictionary<string, object> {
+                { "available", true }, { "tasks", new object[0] }
+            };
+            Dictionary<string, object> owner = (Dictionary<string, object>)record["owner"];
+            return new Dictionary<string, object> {
+                { "available", true },
+                { "tasks", new object[] { new Dictionary<string, object> {
+                    { "task_id", record["task_id"] }, { "revision", record["revision"] },
+                    { "status", "pending" }, { "created_at", owner["created_at"] },
+                    { "owner_run_id", owner["owner_run_id"] }, { "owner_attempt", owner["owner_attempt"] },
+                    { "source", owner["source"] }, { "blocked", ((List<string>)record["blockers"]).Count > 0 },
+                    { "blockers", ((List<string>)record["blockers"]).ToArray() }
+                }}}
+            };
+        }, 2000);
+    }
+
+    private object ListArchivedTasks()
+    {
+        return WithStateLock(delegate
+        {
+            string root = Path.Combine(_stateDirectory, "archived-pending-tasks");
+            if (!Directory.Exists(root)) Directory.CreateDirectory(root);
+            List<object> tasks = new List<object>();
+            foreach (string directory in Directory.GetDirectories(root))
+            {
+                string id = Path.GetFileName(directory);
+                if (!System.Text.RegularExpressions.Regex.IsMatch(id, "^[a-f0-9]{64}$"))
+                    throw new InvalidDataException("Archive contains an unknown entry.");
+                string taskPath = Path.Combine(directory, "task.txt");
+                string ownerPath = Path.Combine(directory, "owner.json");
+                string manifestPath = Path.Combine(directory, "manifest.json");
+                if (!SafeFileExists(taskPath) || !SafeFileExists(ownerPath) || !SafeFileExists(manifestPath))
+                    throw new InvalidDataException("Archived task package is incomplete.");
+                byte[] task = File.ReadAllBytes(taskPath), owner = File.ReadAllBytes(ownerPath);
+                Dictionary<string, object> manifest = ReadJsonFile(Path.Combine("archived-pending-tasks", id, "manifest.json"), 65536) as Dictionary<string, object>;
+                if (manifest == null || Convert.ToString(manifest.ContainsKey("task_id") ? manifest["task_id"] : "") != id ||
+                    Convert.ToString(manifest.ContainsKey("task_sha256") ? manifest["task_sha256"] : "") != Sha256(task) ||
+                    Convert.ToString(manifest.ContainsKey("owner_sha256") ? manifest["owner_sha256"] : "") != Sha256(owner))
+                    throw new InvalidDataException("Archived task manifest is inconsistent.");
+                string revision = Sha256(Encoding.UTF8.GetBytes(
+                    Sha256(task) + "|" + Sha256(owner) + "|" + _json.Serialize(manifest)
+                ));
+                Dictionary<string, object> ownerObject = new JavaScriptSerializer().DeserializeObject(
+                    Encoding.UTF8.GetString(owner)) as Dictionary<string, object>;
+                tasks.Add(new Dictionary<string, object> {
+                    { "task_id", id }, { "revision", revision },
+                    { "status", manifest.ContainsKey("restored_at") ? "restored" : "archived" },
+                    { "created_at", ownerObject != null && ownerObject.ContainsKey("created_at") ? ownerObject["created_at"] : null },
+                    { "archived_at", manifest.ContainsKey("archived_at") ? manifest["archived_at"] : null },
+                    { "restorable", !manifest.ContainsKey("restored_at") }
+                });
+            }
+            return new Dictionary<string, object> { { "available", true }, { "tasks", tasks.ToArray() } };
+        }, 2000);
+    }
+
+    private void WriteAtomic(string path, byte[] bytes)
+    {
+        string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            using (FileStream stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                stream.Write(bytes, 0, bytes.Length);
+                stream.Flush(true);
+            }
+            if (File.Exists(path)) File.Replace(temporary, path, null);
+            else File.Move(temporary, path);
+        }
+        finally { try { if (File.Exists(temporary)) File.Delete(temporary); } catch { } }
+    }
+
+    private object MutatePendingTask(string method, Dictionary<string, object> body)
+    {
+        string taskId = Convert.ToString(body["task_id"]);
+        string revision = Convert.ToString(body["revision"]);
+        return WithRepositoryExecutionLock(delegate
+        {
+            return WithStateLock(delegate
+            {
+                return WithCheckpointStoreLock(delegate
+                {
+                    if (method == "POST" && body.ContainsKey("task_id"))
+                    {
+                        if (SafeFileExists(Path.Combine(_stateDirectory, "pending-state-cleanup.json")))
+                            throw new InvalidDataException("cleanup_in_progress");
+                        if (SafeFileExists(Path.Combine(_stateDirectory, "pending-autonomous-pr.json")))
+                            throw new InvalidDataException("pending_pr");
+                        if (SafeFileExists(Path.Combine(_stateDirectory, "latest-worktree-checkpoint.json")) ||
+                            Directory.GetFiles(_stateDirectory, "worktree-checkpoint-*").Length > 0 ||
+                            Directory.GetFiles(_stateDirectory, "worktree-plan-*").Length > 0)
+                            throw new InvalidDataException("checkpoint_present_or_unknown");
+                        Dictionary<string, object> record = ReadPendingTaskRecord();
+                        if (record == null || Convert.ToString(record["task_id"]) != taskId)
+                            throw new InvalidDataException("stale_task");
+                        if (Convert.ToString(record["revision"]) != revision)
+                            throw new InvalidDataException("stale_revision");
+                        List<string> blockers = (List<string>)record["blockers"];
+                        if (blockers.Count > 0) throw new InvalidDataException(String.Join(",", blockers.ToArray()));
+                        string root = Path.Combine(_stateDirectory, "archived-pending-tasks");
+                        Directory.CreateDirectory(root);
+                        string final = Path.Combine(root, taskId);
+                        if (!Directory.Exists(final))
+                        {
+                            string stage = Path.Combine(root, ".stage-" + Guid.NewGuid().ToString("N"));
+                            Directory.CreateDirectory(stage);
+                            WriteAtomic(Path.Combine(stage, "task.txt"), (byte[])record["task_bytes"]);
+                            WriteAtomic(Path.Combine(stage, "owner.json"), (byte[])record["owner_bytes"]);
+                            Dictionary<string, object> manifest = new Dictionary<string, object> {
+                                { "schema_version", 1 }, { "task_id", taskId }, { "archived_at", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0 },
+                                { "task_sha256", Sha256((byte[])record["task_bytes"]) },
+                                { "owner_sha256", Sha256((byte[])record["owner_bytes"]) }
+                            };
+                            WriteAtomic(Path.Combine(stage, "manifest.json"), Encoding.UTF8.GetBytes(_json.Serialize(manifest) + "\n"));
+                            Directory.Move(stage, final);
+                        }
+                        File.Delete(Path.Combine(_stateDirectory, "pending-manual-task.txt"));
+                        File.Delete(Path.Combine(_stateDirectory, "pending-manual-task-owner.json"));
+                        return new Dictionary<string, object> { { "task_id", taskId }, { "status", "archived" }, { "preserved", true } };
+                    }
+                    throw new InvalidDataException("unsupported_task_operation");
+                }, 250);
+            }, 2000);
+        }, 250);
+    }
+
+    private void HandlePendingTaskRequest(
+        string method, string path, Dictionary<string, object> body,
+        out int status, out object payload
+    )
+    {
+        status = 200;
+        payload = null;
+        bool listPending = method == "GET" && path == "/v1/tasks/pending";
+        bool listArchived = method == "GET" && path == "/v1/tasks/archived";
+        bool archive = method == "POST" && path == "/v1/tasks/archive";
+        bool restore = method == "POST" && path == "/v1/tasks/restore";
+        if (!(listPending || listArchived || archive || restore) ||
+            (listPending || listArchived) && body != null ||
+            (archive || restore) && (body == null || body.Count != 2 ||
+                !body.ContainsKey("task_id") || !body.ContainsKey("revision") ||
+                !System.Text.RegularExpressions.Regex.IsMatch(Convert.ToString(body["task_id"]), "^[a-f0-9]{64}$") ||
+                !System.Text.RegularExpressions.Regex.IsMatch(Convert.ToString(body["revision"]), "^[a-f0-9]{64}$")))
+        {
+            status = 400; payload = Error("invalid_task_request"); return;
+        }
+        try
+        {
+            if (listPending) payload = ListPendingTasks();
+            else if (listArchived) payload = ListArchivedTasks();
+            else if (archive) payload = MutatePendingTask(method, body);
+            else
+            {
+                status = 501;
+                payload = Error("restore_not_implemented_on_windows");
+                return;
+            }
+        }
+        catch (System.TimeoutException)
+        {
+            status = 409;
+            payload = new Dictionary<string, object> {
+                { "conflict", true }, { "message", "A task lifecycle lock is held by an active writer." },
+                { "blockers", new[] { "state_lock_or_writer_active" } }
+            };
+        }
+        catch (InvalidDataException ex)
+        {
+            status = 409;
+            payload = new Dictionary<string, object> {
+                { "conflict", true }, { "message", ex.Message }, { "blockers", new[] { ex.Message } }
+            };
+        }
+        catch (IOException)
+        {
+            status = 503; payload = Error("task_state_unavailable");
+        }
     }
 
     private void LogWorkerException(Exception exception)
