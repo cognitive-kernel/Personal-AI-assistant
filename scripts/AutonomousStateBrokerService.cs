@@ -288,6 +288,72 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         return Encoding.UTF8.GetBytes(text.Replace("\r\n", "\n").Replace("\r", "\n"));
     }
 
+
+    private static bool IsPositiveInteger(object value)
+    {
+        if (value == null || value is Boolean) return false;
+        try { return Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture) > 0; }
+        catch { return false; }
+    }
+
+    private static bool IsPositiveFiniteNumber(object value)
+    {
+        if (value == null || value is Boolean) return false;
+        try
+        {
+            double number = Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture);
+            return !Double.IsNaN(number) && !Double.IsInfinity(number) && number > 0;
+        }
+        catch { return false; }
+    }
+
+    private static bool IsLowerHex(string value, int length)
+    {
+        if (value == null || value.Length != length) return false;
+        foreach (char ch in value)
+            if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'))) return false;
+        return true;
+    }
+
+    private Dictionary<string, object> ParseAndValidateTaskOwner(byte[] taskBytes, byte[] ownerBytes)
+    {
+        Dictionary<string, object> owner;
+        try
+        {
+            owner = new JavaScriptSerializer { MaxJsonLength = 65536 }.DeserializeObject(
+                new UTF8Encoding(false, true).GetString(ownerBytes)
+            ) as Dictionary<string, object>;
+            // Validate UTF-8 task bytes before hashing or exposing metadata.
+            new UTF8Encoding(false, true).GetString(taskBytes);
+        }
+        catch { throw new InvalidDataException("Pending task owner metadata is unreadable."); }
+        object schema, taskHash, ownerRun, submittedRun, source, ownerAttempt, submittedAttempt,
+            createdAt, claimedAt, claimCount;
+        if (owner == null ||
+            !owner.TryGetValue("schema_version", out schema) || schema is Boolean || Convert.ToInt32(schema) != 1 ||
+            !owner.TryGetValue("task_sha256", out taskHash) || !(taskHash is string) ||
+            !IsLowerHex((string)taskHash, 64) ||
+            !String.Equals((string)taskHash, Sha256(CanonicalTaskBytes(taskBytes)), StringComparison.Ordinal) ||
+            !owner.TryGetValue("owner_run_id", out ownerRun) || !(ownerRun is string) || String.IsNullOrWhiteSpace((string)ownerRun) ||
+            !owner.TryGetValue("submitted_run_id", out submittedRun) || !(submittedRun is string) || String.IsNullOrWhiteSpace((string)submittedRun) ||
+            !owner.TryGetValue("source", out source) || !(source is string) ||
+            !new[] { "manual_dispatch", "recovery", "legacy_migration" }.Contains((string)source) ||
+            !owner.TryGetValue("owner_attempt", out ownerAttempt) || !IsPositiveInteger(ownerAttempt) ||
+            !owner.TryGetValue("submitted_attempt", out submittedAttempt) || !IsPositiveInteger(submittedAttempt) ||
+            !owner.TryGetValue("claim_count", out claimCount) || !IsPositiveInteger(claimCount) ||
+            !owner.TryGetValue("created_at", out createdAt) || !IsPositiveFiniteNumber(createdAt) ||
+            !owner.TryGetValue("claimed_at", out claimedAt) || !IsPositiveFiniteNumber(claimedAt))
+            throw new InvalidDataException("Pending task owner metadata does not match schema v1.");
+        foreach (string key in new[] { "correlation_id", "submitted_correlation_id" })
+        {
+            object value;
+            if (owner.TryGetValue(key, out value) &&
+                (!(value is string) || !IsLowerHex((string)value, 32)))
+                throw new InvalidDataException("Pending task owner correlation metadata is invalid.");
+        }
+        return owner;
+    }
+
     private Dictionary<string, object> ReadPendingTaskRecord()
     {
         string taskPath = Path.Combine(_stateDirectory, "pending-manual-task.txt");
@@ -302,24 +368,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         catch { throw new InvalidDataException("Pending task owner metadata is missing or unreadable."); }
         if (ownerBytes.Length > 65536)
             throw new InvalidDataException("Pending task owner metadata is oversized.");
-        Dictionary<string, object> owner;
-        try { owner = new JavaScriptSerializer().DeserializeObject(
-            new UTF8Encoding(false, true).GetString(ownerBytes)) as Dictionary<string, object>; }
-        catch { throw new InvalidDataException("Pending task owner metadata is malformed."); }
-        if (owner == null) throw new InvalidDataException("Pending task owner metadata is invalid.");
-        object schema, taskHash, ownerRun, ownerAttempt, submittedRun, submittedAttempt, createdAt, claimedAt, count, source;
-        if (!owner.TryGetValue("schema_version", out schema) || Convert.ToInt32(schema) != 1 ||
-            !owner.TryGetValue("task_sha256", out taskHash) ||
-            !String.Equals(Convert.ToString(taskHash), Sha256(CanonicalTaskBytes(taskBytes)), StringComparison.Ordinal) ||
-            !owner.TryGetValue("owner_run_id", out ownerRun) || String.IsNullOrWhiteSpace(Convert.ToString(ownerRun)) ||
-            !owner.TryGetValue("owner_attempt", out ownerAttempt) || Convert.ToInt32(ownerAttempt) < 1 ||
-            !owner.TryGetValue("submitted_run_id", out submittedRun) || String.IsNullOrWhiteSpace(Convert.ToString(submittedRun)) ||
-            !owner.TryGetValue("submitted_attempt", out submittedAttempt) || Convert.ToInt32(submittedAttempt) < 1 ||
-            !owner.TryGetValue("created_at", out createdAt) || !owner.TryGetValue("claimed_at", out claimedAt) ||
-            !owner.TryGetValue("claim_count", out count) || Convert.ToInt32(count) < 1 ||
-            !owner.TryGetValue("source", out source) ||
-            !new[] { "manual_dispatch", "recovery", "legacy_migration" }.Contains(Convert.ToString(source)))
-            throw new InvalidDataException("Pending task owner metadata does not match schema v1.");
+        Dictionary<string, object> owner = ParseAndValidateTaskOwner(taskBytes, ownerBytes);
         string taskDigest = Sha256(taskBytes);
         byte[] identityBytes = new byte[taskBytes.Length + 1 + ownerBytes.Length];
         Buffer.BlockCopy(taskBytes, 0, identityBytes, 0, taskBytes.Length);
@@ -411,8 +460,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                 string revision = Sha256(Encoding.UTF8.GetBytes(
                     Sha256(task) + "|" + Sha256(owner) + "|" + archivedAt + "|" + restoredAt
                 ));
-                Dictionary<string, object> ownerObject = new JavaScriptSerializer().DeserializeObject(
-                    Encoding.UTF8.GetString(owner)) as Dictionary<string, object>;
+                Dictionary<string, object> ownerObject = ParseAndValidateTaskOwner(task, owner);
                 tasks.Add(new Dictionary<string, object> {
                     { "task_id", id }, { "revision", revision },
                     { "status", manifest.ContainsKey("restored_at_ms") ? "restored" : "archived" },
@@ -543,14 +591,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                     ));
                     if (!String.Equals(currentRevision, revision, StringComparison.Ordinal))
                         throw new InvalidDataException("stale_revision");
-                    Dictionary<string, object> ownerRecord;
-                    try { ownerRecord = new JavaScriptSerializer().DeserializeObject(
-                        new UTF8Encoding(false, true).GetString(owner)) as Dictionary<string, object>; }
-                    catch { throw new InvalidDataException("archive_owner_invalid"); }
-                    object ownerTaskHash;
-                    if (ownerRecord == null || !ownerRecord.TryGetValue("task_sha256", out ownerTaskHash) ||
-                        Convert.ToString(ownerTaskHash) != Sha256(CanonicalTaskBytes(task)))
-                        throw new InvalidDataException("archive_owner_mismatch");
+                    ParseAndValidateTaskOwner(task, owner);
                     WriteAtomic(Path.Combine(_stateDirectory, "pending-manual-task.txt"), task);
                     WriteAtomic(Path.Combine(_stateDirectory, "pending-manual-task-owner.json"), owner);
                     manifest["restored_at_ms"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
