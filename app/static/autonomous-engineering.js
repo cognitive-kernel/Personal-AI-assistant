@@ -1,5 +1,6 @@
 (() => {
   "use strict";
+  if (window.autonomousEngineeringApp && window.autonomousEngineeringApp.version === 1) return;
   function showModuleWarning(message) {
     const host = document.getElementById("agent-message");
     if (!host) return;
@@ -24,15 +25,62 @@
     return;
   }
   const missing = [];
-  if (status && status.version === 1) {
-    void status.refresh(); window.setInterval(() => void status.refresh(), 30000);
-  } else missing.push("وضعیت");
+  if (!status || status.version !== 1) missing.push("وضعیت");
   if (!controls || controls.version !== 1) missing.push("کنترل");
-  if (runs && runs.version === 1) {
-    void runs.refresh(); window.setInterval(() => void runs.refresh(), 30000);
-  } else missing.push("تاریخچه اجرا");
-  if (progress && progress.version === 1) {
-    void progress.refresh(); window.setInterval(() => void progress.refresh(), 5000);
-  } else missing.push("پیشرفت");
+  if (!runs || runs.version !== 1) missing.push("تاریخچه اجرا");
+  if (!progress || progress.version !== 1) missing.push("پیشرفت");
+
+  const stopPollers = [];
+  function stopPolling() {
+    while (stopPollers.length) {
+      const stop = stopPollers.pop();
+      try { stop(); } catch (_) {}
+    }
+  }
+  function startPolling() {
+    if (stopPollers.length) return;
+    if (status && status.version === 1) {
+      stopPollers.push(core.startPolling({
+        intervalMs: 30000, maxIntervalMs: 300000,
+        refresh: () => status.refresh()
+      }));
+    }
+    if (runs && runs.version === 1) {
+      stopPollers.push(core.startPolling({
+        intervalMs: 30000, maxIntervalMs: 300000,
+        refresh: () => runs.refresh()
+      }));
+    }
+    if (progress && progress.version === 1) {
+      stopPollers.push(core.startPolling({
+        intervalMs: 5000, maxIntervalMs: 120000,
+        refresh: () => progress.refresh()
+      }));
+    }
+  }
+
   if (missing.length) showModuleWarning("برخی قابلیت‌های کنسول بارگذاری نشدند: " + missing.join("، "));
+  function onPageHide() {
+    stopPolling();
+    if (status && typeof status.stop === "function") status.stop();
+  }
+  function onPageShow(event) {
+    if (event.persisted) {
+      if (status && typeof status.resume === "function") status.resume();
+      startPolling();
+    }
+  }
+  startPolling();
+  window.addEventListener("pagehide", onPageHide);
+  window.addEventListener("pageshow", onPageShow);
+  window.autonomousEngineeringApp = Object.freeze({
+    version: 1,
+    stop() {
+      stopPolling();
+      if (status && typeof status.stop === "function") status.stop();
+      if (controls && typeof controls.stop === "function") controls.stop();
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("pageshow", onPageShow);
+    }
+  });
 })();
