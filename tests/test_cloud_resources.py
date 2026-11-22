@@ -936,6 +936,45 @@ def test_discovery_handler_keeps_daily_chain_after_cooperative_pause(tmp_path, m
     assert scheduled == 1
 
 
+def test_discovery_handler_keeps_daily_chain_when_pause_races_with_child_insert(
+    tmp_path, monkeypatch
+):
+    _configure_paths(tmp_path, monkeypatch)
+    payload = {"trigger": "manual"}
+    task = task_manager.create_task(
+        cloud_resources.CLOUD_DISCOVERY_TASK_TYPE, payload, max_attempts=3
+    )
+    worker_id = "cloud-discovery-schedule-pause-worker"
+    claimed = task_manager.claim_next_task(worker_id)
+    assert claimed is not None and claimed["id"] == task["id"]
+    context = TaskContext(
+        task_id=task["id"],
+        worker_id=worker_id,
+        lease_epoch=claimed["lease_epoch"],
+    )
+
+    def pause_before_child_insert(**_kwargs):
+        task_manager.request_pause(task["id"])
+        return {
+            "run_id": 1, "status": "completed", "queries_attempted": 5,
+            "sources_seen": 5, "candidates_upserted": 1, "error_summary": None,
+        }
+
+    monkeypatch.setattr(
+        cloud_resources, "discover_resources", pause_before_child_insert
+    )
+    with pytest.raises(TaskInterrupted):
+        cloud_resources.handle_discovery_task(payload, None, context)
+
+    assert task_manager.get_task(task["id"])["status"] == "paused"
+    with db.learning_connection() as connection:
+        scheduled = connection.execute(
+            "SELECT COUNT(*) FROM task_queue WHERE task_type=? AND dedupe_key LIKE 'cloud-discovery:%'",
+            (cloud_resources.CLOUD_DISCOVERY_TASK_TYPE,),
+        ).fetchone()[0]
+    assert scheduled == 1
+
+
 def test_cloud_discovery_migrations_can_initialize_a_fresh_database():
     with sqlite3.connect(":memory:") as connection:
         from app.schema_migrations import MigrationRunner
