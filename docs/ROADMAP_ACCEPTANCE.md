@@ -311,3 +311,13 @@ The current `main` SHA `2a5c83bf0ba924f4a2c8f206338a04872562d72d` has completed 
 - **Gate E — target host/human acceptance:** still blocked; no target Windows Runner, local service, live Ollama/Codex, crash/restart or soak was started. Manual keyboard/screen-reader/contrast review remains open.
 - PR #819 latest head `f7895430f26b6959bb42950cf8f61c418b3e0336` has three checks green and Full tests in progress; do not infer success from the previous failed head.
 - Documentation follow-up changes this PR's head; rerun exact-head CI before any promotion. No merge or deployment is authorized by this evidence.
+
+
+## 2026-11-22 — Autonomous Engineering first-module gates
+
+- A: inventory و event/API/state mapping ثبت شده؛ fault matrix و مرور دستی کنترل‌ها باز.
+- B: queue lease baseline #799 و domain fencing #837 در main؛ #836 broker lock ordering و parent-bound publication را اضافه می‌کند. target-host ACL/lock و crash recovery باز.
+- C: structured API errors از #817 و UI parser موجود؛ correlation propagation تا run/job/task باز.
+- D: modular UI و stale-response/polling protections در #836؛ exact-head CI پس از follow-up pending.
+- E: Chromium deterministic coverage و trace/screenshot/diagnostic artifact در head جدید؛ CI pending.
+- G/H/J: Windows target-host، crash/restart و owner acceptance pending؛ CI به‌تنهایی تکمیل عملیاتی نیست.

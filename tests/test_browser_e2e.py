@@ -6080,3 +6080,119 @@ def test_autonomous_engineering_text_and_control_contrast_meets_wcag_aa():
         assert contrast(styles["secondary"][2], white) >= 3.0
         browser.close()
 
+
+
+def test_autonomous_engineering_custom_request_timeout_and_trace_artifact():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    artifact_dir = Path(os.environ.get("AUTONOMOUS_E2E_ARTIFACT_DIR", "test-results/autonomous-engineering"))
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    trace_path = artifact_dir / "autonomous-engineering-trace.zip"
+    screenshot_path = artifact_dir / "autonomous-engineering-dashboard.png"
+    diagnostics_path = artifact_dir / "autonomous-engineering-browser-diagnostics.json"
+    diagnostics = {"console_errors": [], "page_errors": [], "failed_requests": [], "http_errors": []}
+    status_payload = {
+        "ready": False, "can_dispatch": False,
+        "checks": {
+            "ollama_online": True, "model_installed": False, "model_selectable": False,
+            "model_context_metadata_available": False, "model_context_supported": False,
+            "model_supports_tools": False, "model_tools_metadata_available": False,
+            "model_is_codex_context_variant": False, "codex_installed": False,
+            "runner_running": True, "github_cli_authenticated": True,
+            "github_runs_available": True, "progress_storage_accessible": True,
+        },
+        "model": "", "models": [], "selectable_models": [],
+        "model_context_length": None, "model_recommended_context_length": None,
+        "model_tools_verification_method": "probe_required",
+        "interval_hours": 24, "execution_mode": "continuous", "paused": False,
+        "pending_work": {
+            "available": True, "blocked": False,
+            "markers": {"pending_task": False, "pending_owner": False, "pending_pr": False, "cleanup_in_progress": False},
+            "checkpoint": {"available": False, "verified": True}, "reason": None,
+        },
+        "github": {"recent_runs": [], "settings": {"model": ""}},
+        "codex": {"installed": False, "version": None}, "local_only_inference": True,
+    }
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        context = browser.new_context(viewport={"width": 1280, "height": 900})
+        context.tracing.start(screenshots=True, snapshots=True, sources=True)
+        page = context.new_page()
+        page.on("console", lambda message: diagnostics["console_errors"].append(message.text)
+                if message.type == "error" else None)
+        page.on("pageerror", lambda error: diagnostics["page_errors"].append(str(error)))
+        page.on("requestfailed", lambda request: diagnostics["failed_requests"].append({
+            "url": request.url, "failure": request.failure,
+        }))
+        page.on("response", lambda response: diagnostics["http_errors"].append({
+            "url": response.url, "status": response.status,
+        }) if response.status >= 400 else None)
+        try:
+            page.route("**/api/autonomous-engineering/status",
+                       lambda route: route.fulfill(status=200, json=status_payload))
+            page.route("**/api/autonomous-engineering/runs**",
+                       lambda route: route.fulfill(status=200, json={"runs": []}))
+            page.route("**/api/autonomous-engineering/progress**",
+                       lambda route: route.fulfill(status=200, json={
+                           "current": None, "history": [], "latest_snapshot": None,
+                           "events": [], "storage_configured": True,
+                       }))
+            response = page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+            assert response is not None and response.status == 200
+            page.wait_for_function(
+                "() => window.autonomousEngineeringCore?.version === 1 && window.autonomousEngineeringApp?.version === 1",
+                timeout=10000,
+            )
+            page.wait_for_function(
+                "() => document.querySelector('#agent-readiness')?.textContent.trim()",
+                timeout=10000,
+            )
+            result = page.evaluate("""async () => {
+              window.autonomousEngineeringApp.stop();
+              await new Promise(resolve => window.setTimeout(resolve, 50));
+              const originalFetch = window.fetch;
+              let aborted = false;
+              let forwardedTimeoutOption = null;
+              window.fetch = (_url, options) => {
+                forwardedTimeoutOption = Object.prototype.hasOwnProperty.call(options, "timeoutMs");
+                return new Promise((_resolve, reject) => {
+                  options.signal.addEventListener("abort", () => {
+                    aborted = true;
+                    reject(new DOMException("The operation was aborted.", "AbortError"));
+                  }, {once: true});
+                });
+              };
+              const started = performance.now();
+              const request = window.autonomousEngineeringCore.request(
+                "models/pull/timeout-probe", {timeoutMs: 40}
+              ).then(
+                () => ({completed: true, error: null}),
+                error => ({completed: true, error: {ambiguous: error.ambiguous === true, message: error.message}})
+              );
+              const outcome = await Promise.race([
+                request,
+                new Promise(resolve => window.setTimeout(() => resolve({completed: false}), 1000))
+              ]);
+              window.fetch = originalFetch;
+              return {...outcome, aborted, forwardedTimeoutOption, elapsedMs: performance.now() - started};
+            }""")
+            assert result["completed"] is True, "The custom request timeout was ignored."
+            assert result["aborted"] is True, "The request AbortController did not fire."
+            assert result["forwardedTimeoutOption"] is False, "timeoutMs leaked into Fetch RequestInit."
+            assert result["error"] and result["error"]["ambiguous"] is True
+            assert result["elapsedMs"] < 500
+            assert diagnostics["page_errors"] == []
+            page.screenshot(path=str(screenshot_path), full_page=True)
+        finally:
+            try:
+                if not screenshot_path.exists():
+                    page.screenshot(path=str(screenshot_path), full_page=True)
+            except Exception as exc:
+                diagnostics["screenshot_error"] = str(exc)
+            try:
+                context.tracing.stop(path=str(trace_path))
+            except Exception as exc:
+                diagnostics["trace_error"] = str(exc)
+            diagnostics_path.write_text(json.dumps(diagnostics, ensure_ascii=False, indent=2), encoding="utf-8")
+            browser.close()

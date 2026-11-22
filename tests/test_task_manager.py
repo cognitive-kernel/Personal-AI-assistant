@@ -5,6 +5,7 @@ import pytest
 from app.task_manager import TaskManagerError
 
 from app import db, task_manager, task_manager_core, task_queue_store, task_lease_manager
+from app.task_worker import TaskContext
 
 
 @pytest.fixture
@@ -24,6 +25,38 @@ def _claim_task_in_fresh_process(paths, worker_id):
     child_db.defaults.learning_db_path = paths[1]
     claimed = child_task_manager.claim_next_task(worker_id, lease_seconds=30)
     return claimed["id"] if claimed is not None else None
+
+
+def test_stale_parent_cannot_create_child_task(task_store):
+    payload = {"job_id": 41}
+    parent = task_manager.create_task("learning.run_job", payload, max_attempts=3)
+    claimed = task_manager.claim_next_task("parent-worker")
+    assert claimed is not None and claimed["id"] == parent["id"]
+    context = TaskContext(
+        task_id=parent["id"],
+        worker_id="parent-worker",
+        lease_epoch=claimed["lease_epoch"],
+    )
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE task_queue SET lease_expires_at=? WHERE id=?",
+            ("2000-01-01T00:00:00.000000+00:00", parent["id"]),
+        )
+    reclaimed = task_manager.claim_next_task("parent-worker")
+    assert reclaimed is not None and reclaimed["id"] == parent["id"]
+    assert reclaimed["lease_epoch"] > context.lease_epoch
+
+    with pytest.raises(TaskManagerError, match="epoch is stale"):
+        task_manager.create_task(
+            "learning.run_job",
+            {"job_id": 42},
+            task_context=context,
+            expected_task_type="learning.run_job",
+            expected_payload=payload,
+        )
+
+    tasks = task_manager.list_tasks(limit=10)
+    assert [item["id"] for item in tasks] == [parent["id"]]
 
 
 def test_task_lifecycle_persists_payload_checkpoint_and_result(task_store):

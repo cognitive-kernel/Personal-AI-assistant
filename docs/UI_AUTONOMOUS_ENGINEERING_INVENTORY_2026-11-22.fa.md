@@ -179,3 +179,71 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 - تست‌های cleanup هر دو ماژول مصرف‌کنندهٔ state directory را به مسیر موقت یکسان متصل می‌کنند.
 - تست معماری checkpoint lock اکنون implementation واقعی زیر `app/` و compatibility facade زیر `scripts/` را جداگانه بررسی می‌کند.
 - این اصلاحات در branch `fix/autonomous-engineering-first-module-validation-20261122` از head قبلی #834 ساخته شده‌اند. هنوز exact-head CI ندارند و merge نشده‌اند.
+
+
+---
+
+## Live audit update — 2026-11-22 پس از ادغام PR #837
+
+### مبنا و وضعیت PRها
+- main پس از squash merge شماره #837 روی SHA 9d97d2e3fa8f72429e6bb5510192ba70a6d376d8 است. PR #837 از head دقیق 80c126734123a5e84596d320ff625278495764e0 ادغام شد.
+- CI head #837: Linux 2511 passed / 14 skipped / 69 deselected؛ Windows 2509 passed / 16 skipped / 69 deselected؛ Windows storage، Browser/dashboard smoke، real Docker sandbox، CodeQL و dependency audit موفق.
+- #819 و #821–#826 به‌عنوان source PRهای #837 بسته شدند؛ branchهایشان حذف نشده‌اند. #820 و #834 به‌عنوان نسخه‌های قبلی UI در #836 حفظ و بسته شدند. #833 و #835 به علت شکست تست‌های lifecycle بسته شدند. #828، #829، #831 و #832 نیز بسته‌اند.
+- تنها PR باز در snapshot فعلی #836 است؛ Draft. head قبلی آن fc8b039dce7c8ea642ee850a5e0de99ecd8fefc5 تمام CI را گذراند: Linux 2491/14/77، Windows 2489/16/77، Windows storage، Browser E2E/dashboard-smoke، CodeQL، Analyze و pip-audit. head ترکیبی جدید باید دوباره CI شود.
+- هیچ branch منبع، task، checkpoint، دادهٔ durable، ACL یا state اجرای فعال حذف نشده است.
+
+### Inventory کنترل‌ها و APIها
+| selector/control | event | API | state owner / رفتار |
+|---|---|---|---|
+| #refresh-agent | click | GET /status | readiness، pending work و checkpoint؛ read-only |
+| #agent-settings-form | submit | POST /settings | model/mode/interval |
+| #pull-model | click + consent | POST /models/pull؛ GET /models/pull/{job_id} | مدل‌دانلود؛ قفل دکمه تا terminal state |
+| #agent-task-form / #send-agent-task | submit | POST /dispatch با task | task دستی؛ digest و owner durable |
+| #dispatch-agent | click | POST /dispatch بدون body | dispatch/resume؛ timeout مبهم retry کور ندارد |
+| #pause-agent | click | POST /pause | توقف admission/چرخهٔ بعدی، نه kill قطعی اجرای جاری |
+| #resume-agent | click | POST /resume | resume و dispatch کنترل‌شده |
+| #cancel-agent | click + confirm | POST /cancel | لغو run فعال؛ task/checkpoint حفظ می‌شود |
+| #refresh-runs | click | GET /runs | sequence guard برای رد پاسخ قدیمی |
+| delegated actions در #recent-runs | click | GET /runs/{id}/logs؛ DELETE /runs/{id} | logs و حذف فقط run پایان‌یافته |
+| #cleanup-agent-temp | click + confirm | POST /cleanup | preflight و lock order؛ دادهٔ durable حفظ می‌شود |
+| #progress-period، #progress-start، #progress-end | change | GET /progress | coalesced refresh و رد پاسخ stale |
+| #refresh-progress | click | GET /progress | chart/events و scorecard |
+
+۲۲ کنترل/ورودی تعاملی اصلی به‌علاوهٔ delegated actions تاریخچه وجود دارد. status، checkpoint، metrics و پیام‌ها read-only هستند. ترتیب JS: core → runs → status → controls → progress → orchestrator؛ هر feature قرارداد version-1 مستقل دارد.
+
+### جدول state transition
+| transition | precondition | owner/lock | postcondition |
+|---|---|---|---|
+| Ready → dispatch | status/GitHub معتبر؛ no active run یا pending task/owner/PR/checkpoint؛ readiness معتبر | API admission، workflow concurrency، durable-state lock | task/owner با digest ثبت می‌شود؛ dispatch مبهم دوباره ارسال نمی‌شود |
+| Queued → Running | workflow gate و concurrency slot | self-hosted Windows Runner؛ repository lock و task lease epoch | همان task اجرا می‌شود؛ worker stale نمی‌تواند write کند |
+| Running → checkpointed | controller و watcher متعلق به همان run/task | repository lock و checkpoint-store lock؛ atomic metadata/index | checkpoint قابل verify/resume باقی می‌ماند |
+| Running → retry | شکست طبقه‌بندی‌شده و بودجهٔ retry | controller/process-tree owner | همان task/branch/checkpoint ادامه می‌یابد؛ task جدید انتخاب نمی‌شود |
+| Running → PR pending | completion marker، local tests و exact-head CI سبز | child publisher با parent lock و durable-state lock | pending PR ثبت می‌شود؛ review مالک لازم است |
+| PR pending → accepted | merge exact reviewed head و post-merge CI | owner/recovery با تطبیق head/base/merge SHA | فقط بعد از این نقطه task/checkpoint قابل settle است |
+| Pause → Resume | pause persisted و reconciliation | GitHub repository variable و workflow gate | dispatch جدید پس از resume |
+| Active → Cancelled | run فعال دقیق شناسایی شود | GitHub Actions cancellation | task/checkpoint برای recovery باقی می‌مانند |
+| Cleanup → blocked/completed | no active owner، no pending marker، checkpoint inactive/verified | repository → durable-state → checkpoint؛ Windows broker نیز repository lock می‌گیرد | فقط telemetry موقت پاک می‌شود |
+
+### Reproduction، root cause و gaps
+- Browser suite روی head قبلی #836 شامل ۷۲ تست مستقل بود: render/readiness، dispatch، model pull، two-tab duplicate prevention، cancel، pause/resume، logs/delete/cleanup، stale status/run/progress، checkpoint blockers، structured errors، module fault isolation، polling visibility/backoff/jitter، RTL/mobile/keyboard و WCAG.
+- workflow قبلی trace/screenshot artifact نگه نمی‌داشت؛ head جدید trace ZIP، screenshot dashboard و diagnostics مربوط به console/page/request/HTTP failure را ذخیره و upload می‌کند.
+- کد قبلی options.timeoutMs را می‌گرفت ولی به AbortController نمی‌داد؛ timeout polling مدل به default ۱۲۰ ثانیه وابسته می‌شد. fix و browser regression برای timeout سفارشی ۴۰ms در head جدید اضافه شده‌اند؛ CI آن pending است.
+- cleanup Windows پیش‌تر repository execution lock را در خود Named Pipe broker enforce نمی‌کرد. #836 lock order repository → durable-state → checkpoint را در broker اجرا می‌کند. byte صفر برای lock رزرو و metadata از byte یک ذخیره می‌شود؛ publish child نیز parent PID/run/host را بررسی می‌کند.
+- structured error parser، error code و correlation header را تا UI می‌رساند؛ correlation ID تا workflow dispatch/run/job/task هنوز end-to-end اثبات نشده است.
+- Browser E2E deterministic و API-intercepted است؛ target-host UI واقعی نیست. Windows Runner/Ollama/Codex، ACL، crash/restart، restore/rollback و owner acceptance هنوز NOT RUN هستند.
+
+### Gate status
+| Gate | وضعیت |
+|---|---|
+| A inventory/reproduction | mapping ثبت شد؛ fault matrix و مرور دستی همهٔ کنترل‌ها باز |
+| B state/lease/lock | #837 در main؛ #836 lock order و parent guard؛ target Windows/ACL و audit خارج از scope باز |
+| C errors/diagnostics | UI structured error حاضر؛ correlation propagation تا run/job/task باز |
+| D UI state machine | modules، stale guards، backoff/visibility، queue؛ CI head جدید pending |
+| E Playwright | deterministic coverage؛ trace artifact اضافه شد، CI pending |
+| F exact-head CI | head قبلی سبز؛ head جدید pending |
+| G Windows target | pending |
+| H crash/restart | pending |
+| I docs/rollback | inventory/ADR/roadmap به‌روزرسانی؛ restore evidence باز |
+| J owner acceptance | pending؛ PR #836 Draft می‌ماند |
+
+در زمان ممیزی workflow فعال main شماره 44995223588 در حال اجرای یک task مستقل بود؛ لغو یا دستکاری نشد. دسترسی به فایل‌سیستم میزبان شخصی، pause variable، Broker محلی و نصب واقعی Ollama/Codex در این اتصال وجود ندارد؛ این موارد NOT RUN هستند.

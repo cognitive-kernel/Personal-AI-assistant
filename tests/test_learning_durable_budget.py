@@ -1,6 +1,7 @@
 import pytest
 
-from app import db, learning
+from app import db, learning, task_manager
+from app.task_worker import TaskContext
 from app.learning_durable_budget import (
     LearningBudgetError,
     get_job_budget,
@@ -14,6 +15,39 @@ def learning_store(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
     return tmp_path
+
+
+def test_stale_learning_task_cannot_reserve_durable_budget(learning_store):
+    job = learning.create_job("Stale budget reservation")
+    payload = {"job_id": job["id"]}
+    task = task_manager.create_task("learning.run_job", payload, max_attempts=3)
+    worker_id = "budget-worker"
+    claimed = task_manager.claim_next_task(worker_id)
+    assert claimed is not None and claimed["id"] == task["id"]
+    context = TaskContext(
+        task_id=task["id"],
+        worker_id=worker_id,
+        lease_epoch=claimed["lease_epoch"],
+    )
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE task_queue SET lease_expires_at=? WHERE id=?",
+            ("2000-01-01T00:00:00.000000+00:00", task["id"]),
+        )
+    reclaimed = task_manager.claim_next_task(worker_id)
+    assert reclaimed is not None and reclaimed["id"] == task["id"]
+    assert reclaimed["lease_epoch"] > context.lease_epoch
+
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        reserve_job_budget(
+            job["id"], "initial_generation", calls=1, predict_tokens=1200,
+            task_context=context, expected_task_type="learning.run_job",
+            expected_payload=payload,
+        )
+
+    snapshot = get_job_budget(job["id"])
+    assert snapshot["calls_used"] == 0
+    assert snapshot["predict_tokens_reserved"] == 0
 
 
 def test_job_budget_is_shared_across_generation_and_review_stages(learning_store):

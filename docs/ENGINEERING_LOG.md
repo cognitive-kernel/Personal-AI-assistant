@@ -1,3 +1,15 @@
+## 2026-11-22 — Autonomous Engineering UI inventory و hardening
+
+- PR #837 با head 80c126734123a5e84596d320ff625278495764e0 در main با squash commit 9d97d2e3fa8f72429e6bb5510192ba70a6d376d8 ادغام شد؛ Linux 2511/14/69 و Windows 2509/16/69، Windows storage، Browser/dashboard smoke، Docker sandbox، CodeQL و dependency audit موفق.
+- #819 و #821–#826 به‌عنوان source PRهای #837 بسته شدند؛ branchها حفظ شدند. #820/#834 در #836 حفظ و بسته شدند. #833/#835 به علت CI شکست‌خورده بسته شدند. تنها PR باز #836 است.
+- Inventory کنترل‌ها، APIها، state owner و transition در docs/UI_AUTONOMOUS_ENGINEERING_INVENTORY_2026-11-22.fa.md ثبت شد.
+- Windows broker cleanup پیش‌تر repository lock را enforce نمی‌کرد؛ #836 lock order را در خود broker اعمال می‌کند. metadata قفل به offset یک منتقل و parent publisher guard اضافه شده است.
+- request helper مقدار options.timeoutMs را نادیده می‌گرفت؛ اصلاح و browser regression در head جدید اضافه شد. workflow اکنون trace ZIP، screenshot و console/network diagnostics را artifact می‌کند.
+- head قبلی #836 با Linux 2491/14/77، Windows 2489/16/77، Browser E2E، Windows storage، CodeQL، Analyze و pip-audit سبز بود. head جدید exact CI pending است.
+- correlation ID تا run/job/task و target-host Windows/ACL، Ollama/Codex، crash/restart، restore/rollback و owner acceptance هنوز اثبات نشده‌اند. هیچ task/checkpoint/database/ACL حذف نشده و workflow فعال main لغو یا دستکاری نشده است.
+
+---
+
 ## 2026-11-21 — AI-learning watchdog obeys the feature gate
 
 ### Root cause

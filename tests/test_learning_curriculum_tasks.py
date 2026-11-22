@@ -3,6 +3,7 @@ import json
 import pytest
 
 from app import db, learning, learning_curriculum_tasks, task_manager, web_sources
+from app.task_worker import TaskContext
 
 
 @pytest.fixture
@@ -10,7 +11,7 @@ def learning_store(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
-    monkeypatch.setattr(learning, "_enqueue_learning_job", lambda job_id: {"id": 10000 + job_id})
+    monkeypatch.setattr(learning, "_enqueue_learning_job", lambda job_id, **_kwargs: {"id": 10000 + job_id})
 
 
 class RecordingContext:
@@ -18,6 +19,13 @@ class RecordingContext:
         self.task_id = task_id
         self.checkpoint_data = checkpoint_data
         self.checkpoints = []
+        self.assertions = []
+
+    def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+        self.assertions.append({
+            "task_type": expected_task_type,
+            "payload": expected_payload,
+        })
 
     def checkpoint(self, value):
         self.checkpoint_data = value
@@ -48,6 +56,31 @@ def _outline():
         "next_focus": "",
         "topic_metadata": {},
     }
+
+
+def _stale_curriculum_context(topic: str):
+    task = task_manager.create_task(
+        learning_curriculum_tasks.CURRICULUM_TASK_TYPE,
+        {"topic": topic, "batch_size": 20, "source_text": ""},
+        max_attempts=3,
+    )
+    worker_id = "curriculum-fence-worker"
+    claimed = task_manager.claim_next_task(worker_id)
+    assert claimed is not None and claimed["id"] == task["id"]
+    context = TaskContext(
+        task_id=task["id"],
+        worker_id=worker_id,
+        lease_epoch=claimed["lease_epoch"],
+    )
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE task_queue SET lease_expires_at=? WHERE id=?",
+            ("2000-01-01T00:00:00.000000+00:00", task["id"]),
+        )
+    reclaimed = task_manager.claim_next_task(worker_id)
+    assert reclaimed is not None and reclaimed["id"] == task["id"]
+    assert reclaimed["lease_epoch"] > context.lease_epoch
+    return context, task
 
 
 def _source(index):
@@ -234,6 +267,7 @@ def test_research_task_persists_sources_outline_and_starts_only_first_lesson(
     assert path["topics"][0]["status"] == "in_progress"
     assert all(item["status"] == "pending" for item in path["topics"][1:])
     assert context.checkpoint_data["phase"] == "curriculum_persisted"
+    assert any(item["task_type"] == learning_curriculum_tasks.CURRICULUM_TASK_TYPE for item in context.assertions)
     assert context.checkpoint_data["queries"] == learning_curriculum_tasks._research_queries("موضوع فنی")
     assert context.checkpoint_data["completed_queries"] == learning_curriculum_tasks._research_queries("موضوع فنی")
 
@@ -969,7 +1003,7 @@ def test_every_retained_source_is_reviewed_across_resumable_curriculum_batches(l
     )
     monkeypatch.setattr(
         learning, "start_researched_path_learning",
-        lambda _path_id, allow_retry=False: {"queued_count": 0, "job_ids": [], "status": "complete"},
+        lambda _path_id, allow_retry=False, **_kwargs: {"queued_count": 0, "job_ids": [], "status": "complete"},
     )
     topic_pages = []
     for batch in range(2):
@@ -1089,6 +1123,56 @@ def test_topic_metadata_does_not_truncate_long_release_histories_or_source_lists
     assert metadata["applicability"]["versions"] == versions
     assert metadata["applicability"]["release_years"] == years
     assert metadata["source_urls"] == urls
+
+
+def test_stale_curriculum_lease_cannot_persist_source_body(learning_store):
+    topic = "Fence curriculum source body"
+    context, task = _stale_curriculum_context(topic)
+    source = {
+        "title": "Fenced source",
+        "url": "https://docs.example.test/fenced",
+        "sha256": "a" * 64,
+    }
+
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        learning_curriculum_tasks._persist_source_body(
+            task["id"], source, "source body",
+            task_context=context, topic=topic,
+        )
+
+    with db.learning_connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM learning_research_source_text WHERE task_id=?",
+            (task["id"],),
+        ).fetchone()[0]
+    assert count == 0
+
+
+def test_stale_curriculum_lease_cannot_persist_researched_path(learning_store):
+    topic = "Fence researched curriculum path"
+    context, task = _stale_curriculum_context(topic)
+
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        learning_curriculum_tasks._persist_researched_path(
+            task_id=task["id"],
+            topic=topic,
+            outline=_outline(),
+            sources=[],
+            model="gpt-oss:20b",
+            model_selection={"selected_model": "gpt-oss:20b"},
+            task_context=context,
+        )
+
+    slug = (
+        f"researched-{task['id']}-"
+        f"{__import__('hashlib').sha256(topic.encode('utf-8')).hexdigest()[:12]}"
+    )
+    with db.learning_connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM learning_paths WHERE curriculum_slug=?",
+            (slug,),
+        ).fetchone()[0]
+    assert count == 0
 
 
 def test_complete_source_bodies_are_persisted_and_every_text_chunk_is_reviewable(learning_store):

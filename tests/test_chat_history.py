@@ -1,4 +1,7 @@
-from app import chat_history, db
+import pytest
+
+from app import chat_history, db, task_manager
+from app.task_worker import TaskContext
 
 
 def _configure_databases(tmp_path, monkeypatch):
@@ -34,6 +37,51 @@ def test_conversations_and_messages_persist_independently(tmp_path, monkeypatch)
         {"role": "user", "content": "سلام"},
         {"role": "assistant", "content": "سلام، چطور می‌توانم کمک کنم؟"},
     ]
+
+
+def test_stale_research_task_cannot_append_assistant_message(tmp_path, monkeypatch):
+    _configure_databases(tmp_path, monkeypatch)
+    task_manager.initialize_task_store()
+    conversation = chat_history.create_conversation()
+    payload = {
+        "message": "Explain database transaction isolation.",
+        "history": [],
+        "conversation_id": conversation["id"],
+    }
+    task = task_manager.create_task("research.answer", payload, max_attempts=3)
+    worker_id = "research-chat-worker"
+    claimed = task_manager.claim_next_task(worker_id)
+    assert claimed is not None and claimed["id"] == task["id"]
+    context = TaskContext(
+        task_id=task["id"],
+        worker_id=worker_id,
+        lease_epoch=claimed["lease_epoch"],
+    )
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE task_queue SET lease_expires_at=? WHERE id=?",
+            ("2000-01-01T00:00:00.000000+00:00", task["id"]),
+        )
+    reclaimed = task_manager.claim_next_task(worker_id)
+    assert reclaimed is not None and reclaimed["id"] == task["id"]
+    assert reclaimed["lease_epoch"] > context.lease_epoch
+
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        chat_history.append_assistant_message(
+            conversation["id"],
+            "A stale response must not be appended.",
+            task_id=task["id"],
+            task_context=context,
+            expected_task_type="research.answer",
+            expected_payload=payload,
+        )
+
+    with db.settings_connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM chat_messages WHERE task_id=?",
+            (task["id"],),
+        ).fetchone()[0]
+    assert count == 0
 
 
 def test_delete_conversation_removes_only_selected_conversation(tmp_path, monkeypatch):
@@ -84,6 +132,10 @@ def test_research_worker_persists_assistant_reply(tmp_path, monkeypatch):
 
         def checkpoint(self, value):
             return {"checkpoint": value, "status": "running"}
+
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            assert expected_task_type == "research.answer"
+            assert expected_payload["conversation_id"] == conversation["id"]
 
     monkeypatch.setattr(chat_research, "answer", lambda message, history, checkpoint=None: "پاسخ پایدار")
     result = research_tasks.handle_research_task(

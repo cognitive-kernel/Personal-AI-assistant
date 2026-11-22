@@ -51,3 +51,20 @@ Target-host Windows service/ACL, long-running soak, and actual crash/restart che
 ## Residual scope
 
 This ADR establishes queue-level fencing. Domain transactions that mutate learning jobs, method attempts, or quality gates must additionally validate the exact task type and payload authority inside their own database transaction. That integration is a separate required acceptance item; this ADR does not claim that every domain write is already fenced.
+
+
+## 2026-11-22 addendum — Domain transaction fencing
+
+The queue-level lease contract above is the baseline, not proof that domain records are automatically protected. PR #837 applied the second layer to task-owned domain mutations and is merged into main as 9d97d2e3fa8f72429e6bb5510192ba70a6d376d8 (validated head 80c126734123a5e84596d320ff625278495764e0):
+
+- Each domain adapter validates the exact task type and payload through the current TaskContext inside the same BEGIN IMMEDIATE transaction as its write.
+- Parent-to-child queue insertion validates the parent lease in task_queue_store.create_task before inserting the child.
+- Covered domains in the integration branch: learning jobs/evidence/budgets/escalations, researched curriculum source/path persistence and child lessons, factual verification, knowledge lifecycle/graph, cloud discovery candidates/run state, experience/research records, and sandbox practical assessment.
+- A stale/reclaimed owner is rejected before the domain mutation. Existing queue completion, pause/cancel, retry and checkpoint semantics remain owned by the #799 task manager/TaskContext implementation.
+
+The exact source-file map and state-transition table are in docs/DOMAIN_TASK_WRITE_FENCING_AUDIT_2026-11-22.fa.md. Exact-head CI passed: Linux 2511 passed/14 skipped/69 deselected; Windows 2509 passed/16 skipped/69 deselected; Windows storage, Browser E2E, real Docker sandbox, CodeQL and dependency audit passed. Target-host Windows/Runner, ACL, crash/restart and owner gates remain open. The audit scope is the listed task-owned domains, not every domain write in the repository.
+
+
+### CI evidence update — 2026-11-22
+
+The domain-write extension in PR #837 passed exact-head Linux and Windows full suites, Windows storage regressions and real Docker sandbox integration, plus CodeQL, dependency audit and browser/dashboard smoke. The validated head was 80c126734123a5e84596d320ff625278495764e0; it was squash-merged as 9d97d2e3fa8f72429e6bb5510192ba70a6d376d8. Operational acceptance still requires target-host Windows/ACL, real provider, crash/restart and owner gates.

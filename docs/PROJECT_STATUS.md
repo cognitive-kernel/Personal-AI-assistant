@@ -1,3 +1,13 @@
+## 2026-11-22 — وضعیت جاری پس از تعیین تکلیف PRها
+
+- main روی 9d97d2e3fa8f72429e6bb5510192ba70a6d376d8 است. PR #837 از head 80c126734123a5e84596d320ff625278495764e0 با squash ادغام شد؛ Linux 2511/14/69، Windows 2509/16/69، Windows storage، Browser/dashboard smoke، real Docker sandbox، CodeQL و dependency audit موفق.
+- #819 و #821–#826 به‌عنوان sourceهای #837 بسته شدند؛ #820/#834 با حفظ تغییرات UI در #836 بسته شدند؛ #833/#835 به‌دلیل شکست lifecycle tests بسته شدند؛ #828/#829/#831/#832 نیز بسته‌اند. هیچ branchی حذف نشده است.
+- تنها PR باز #836 است؛ Draft. head قبلی fc8b039dce7c8ea642ee850a5e0de99ecd8fefc5 تمام checks را گذراند: Linux 2491/14/77 و Windows 2489/16/77، به‌علاوهٔ Browser E2E، Windows storage، CodeQL، Analyze و pip-audit. head جدید پس از sync main و اصلاح timeout/trace نیازمند CI مجدد است.
+- Gate A inventory و state-transition mapping ثبت شده؛ Gate B #837 در main و #836 cleanup lock/parent guard را اضافه می‌کند. correlation propagation، target-host Windows UI/Runner/Ollama/Codex، crash/restart، restore/rollback و owner acceptance باز هستند.
+- هیچ task، checkpoint، database، ACL یا durable state حذف/بازنویسی نشده است. workflow فعال main 44995223588 دست‌نخورده باقی ماند. PR #836 تا exact-head CI و target-host/owner acceptance در Draft می‌ماند.
+
+---
+
 # وضعیت یکپارچهٔ پروژه
 
 ## Snapshot زنده — 2026-11-22

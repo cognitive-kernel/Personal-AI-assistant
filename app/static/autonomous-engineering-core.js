@@ -9,15 +9,23 @@
   }
   async function request(path, options) {
     const controller = new AbortController();
-    const timeoutMs = path === "status" ? 40000 : path.startsWith("progress") ? 20000 : 120000;
+    const defaultTimeoutMs = path === "status" ? 40000 : path.startsWith("progress") ? 20000 : 120000;
+    const requestedTimeoutMs = options && options.timeoutMs;
+    if (requestedTimeoutMs !== undefined &&
+        (!Number.isSafeInteger(requestedTimeoutMs) || requestedTimeoutMs < 1 || requestedTimeoutMs > 120000)) {
+      throw new RangeError("Invalid autonomous-engineering request timeout.");
+    }
+    const timeoutMs = requestedTimeoutMs === undefined ? defaultTimeoutMs : requestedTimeoutMs;
+    const requestOptions = {...(options || {})};
+    delete requestOptions.timeoutMs;
     const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch("/api/autonomous-engineering/" + path, {
-        ...(options || {}),
+        ...requestOptions,
         headers: {
           "Accept": "application/json",
-          ...(options && options.body ? {"Content-Type": "application/json"} : {}),
-          ...(options && options.headers || {})
+          ...(requestOptions.body ? {"Content-Type": "application/json"} : {}),
+          ...(requestOptions.headers || {})
         },
         signal: controller.signal
       });

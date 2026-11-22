@@ -63,3 +63,17 @@ Mark repository-level items complete only after the exact PR head CI passes. Bro
 ## Autonomous Engineering — polling lifecycle follow-up (2026-11-22)
 
 - [ ] Polling controller uses bounded exponential backoff, bounded jitter, visibility-aware scheduling, single-flight refresh, per-request timeout through the shared request helper, and explicit teardown on `pagehide`/app stop. It covers Status, Runs, Progress and model-pull status; model-pull GET errors retry up to five consecutive failures without cancelling the server-side job. Chromium regressions are `test_autonomous_engineering_polling_uses_visibility_backoff_jitter_and_cleanup` and `test_autonomous_engineering_model_pull_requires_consent_and_reports_progress`. Exact-head CI is pending.
+
+
+## 2026-11-22 — Autonomous Engineering console
+
+- [x] UI control/event/API/state inventory و transition map ثبت شد.
+- [x] PR #837 domain-write fencing در main ادغام شد؛ Linux 2511/14/69 و Windows 2509/16/69، Windows storage، Browser E2E، Docker sandbox، CodeQL و dependency audit سبز.
+- [x] PR #836 head قبلی Linux 2491/14/77 و Windows 2489/16/77، Browser E2E، Windows storage، CodeQL، Analyze و dependency audit را گذراند.
+- [x] ماژول‌های transport/status/controls/runs/progress و regressionهای stale-response، polling، multi-tab، model-pull، structured error، RTL/mobile/keyboard و WCAG موجودند.
+- [ ] exact-head CI برای timeout fix و browser trace artifact.
+- [ ] fault matrix کامل و correlation ID تا workflow run/job/task.
+- [ ] manual keyboard/screen-reader و rendered-state contrast review.
+- [ ] Windows target-host UI/Runner/Ollama/Codex، crash/restart، restore/rollback و owner approval.
+
+Browser E2E از APIهای deterministic/stubbed استفاده می‌کند و جایگزین پذیرش واقعی میزبان نیست.

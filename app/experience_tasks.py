@@ -111,7 +111,7 @@ def handler_from_environment() -> Callable[
     [dict[str, Any], dict[str, Any] | None, TaskContext], dict[str, Any]
 ] | None:
     """Expose the experience runner only when the administrator-configured sandbox exists."""
-    sandbox_handler = sandbox_tasks.handler_from_environment()
+    sandbox_handler = sandbox_tasks.handler_from_environment(expected_task_type=EXPERIENCE_TEST_TASK_TYPE)
     if sandbox_handler is None:
         return None
 
@@ -189,6 +189,9 @@ def handler_from_environment() -> Callable[
             test_results=all_results,
             takeaway=item.get("takeaway", ""),
             _controlled_run=True,
+            task_context=context,
+            expected_task_type=EXPERIENCE_TEST_TASK_TYPE,
+            expected_payload=payload,
         )
         context.checkpoint({
             "phase": "experience_test_recorded",
