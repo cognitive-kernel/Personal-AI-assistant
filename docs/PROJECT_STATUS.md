@@ -525,3 +525,10 @@ The subsequent documentation-only evidence update does not change runtime code a
 
 - PR #819 now covers candidate-review web/peer evidence persistence and attempt records in addition to channel ledger and failure-experience writes. Every writer receives the exact review task contract and checks the live lease inside its `BEGIN IMMEDIATE` transaction before insert/update. Sandbox attempt records use the sandbox-review task contract.
 - Added stale-owner tests for attempt, evidence and peer-consultation writes. Direct/manual helper compatibility is preserved when task context is omitted. Exact-head CI is pending for the new branch head.
+
+
+## 2026-11-22 — Candidate review evidence and budget lease fencing
+
+- Review of PR #819 found two task-owned persistence surfaces that needed explicit regression evidence: the shared per-job/global budget reservation made before web/peer review actions, and evidence/peer artifacts written after external provider calls. `reserve_job_budget()` now accepts the parent TaskContext and validates owner/epoch/type/payload inside its existing `BEGIN IMMEDIATE` transaction; candidate-review handlers pass that contract.
+- The web evidence insert, evidence reclassification, peer consultation insert, peer-cited evidence insert and channel attempt ledger all already carry the same TaskContext and validate it inside their own write transaction. Added fault-injection coverage that reclaims the task during web discovery and peer response, then proves no evidence, peer consultation, attempt, or budget reservation is written by the stale epoch.
+- Exact-head CI is pending; no candidate was promoted and no existing evidence was deleted.
