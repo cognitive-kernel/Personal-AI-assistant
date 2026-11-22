@@ -33,6 +33,7 @@
 
   function renderModule(module) {
     const card = element("article", "module-control-card");
+    card.dataset.moduleId = module.id;
     const heading = element("div", "module-control-heading");
     const title = element("h3", "", module.name);
     const state = element("span", "module-control-state", stateLabels[module.display_state] || stateLabels[module.state] || module.state);
