@@ -5453,6 +5453,12 @@ def test_background_module_controls_render_and_drive_real_lifecycle_api():
         page = browser.new_page()
         page.on("pageerror", lambda error: browser_errors.append(str(error)))
         page.on("dialog", lambda dialog: dialog.accept())
+        # The E2E database is shared by browser tests; establish a known
+        # admission state before asserting the pause transition.
+        started = page.request.post(
+            base_url.rstrip("/") + "/api/tasks/modules/cloud-discovery/start"
+        )
+        assert started.status == 200
         response = _goto_section(page, base_url, "task-manager-section")
         assert response is not None and response.status == 200
 
