@@ -212,9 +212,8 @@ def control_module(module_id: str, action: str) -> dict[str, Any]:
         elif action == "force_stop":
             next_state = "stopped"
             connection.execute(
-                f"""UPDATE task_queue SET status='cancelled', lease_owner=NULL,
-                    lease_expires_at=NULL, updated_at=CURRENT_TIMESTAMP
-                    WHERE task_type IN ({placeholders}) AND status IN ('queued','paused')""",
+                f"""UPDATE task_queue SET status='paused', updated_at=CURRENT_TIMESTAMP
+                    WHERE task_type IN ({placeholders}) AND status='queued'""",
                 task_types,
             )
             connection.execute(
@@ -240,7 +239,7 @@ def control_module(module_id: str, action: str) -> dict[str, Any]:
         "pause": "مکث ثبت شد؛ وظایف فعال در نقطهٔ کنترل امن متوقف و checkpoint آن‌ها حفظ می‌شود.",
         "resume": "ادامه ثبت شد؛ وظایف مکث‌شده دوباره وارد صف می‌شوند.",
         "finish": "پایان تدریجی ثبت شد؛ کارهای فعال اجازهٔ اتمام دارند و وظایف جدید آغاز نمی‌شوند.",
-        "force_stop": "درخواست توقف اجباری ثبت شد؛ وظایف صف‌شده لغو و وظایف فعال به‌صورت تعاونی لغو می‌شوند.",
+        "force_stop": "توقف اجباری ثبت شد؛ وظایف منتظر برای ادامهٔ بعدی مکث و وظایف فعال برای لغو تعاونی علامت‌گذاری شدند.",
     }[action]
     if action == "force_stop":
         item["force_stop_semantics"] = (
