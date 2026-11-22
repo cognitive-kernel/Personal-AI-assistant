@@ -71,6 +71,26 @@ class GitHubActionsClient:
                 f"GitHub Actions API request failed: {type(exc).__name__}: {exc}"
             ) from exc
 
+    def lifecycle_settings(self) -> dict[str, Any]:
+        """Read current repository lifecycle variables; never trust trigger-time snapshots."""
+        result = self.request("GET", "/actions/variables?per_page=100")
+        variables = result.get("variables") if isinstance(result, dict) else None
+        if not isinstance(variables, list) or any(not isinstance(item, dict) for item in variables):
+            raise RuntimeError("GitHub returned an invalid repository-variable list for lifecycle recovery.")
+        values = {
+            str(item.get("name")): str(item.get("value", ""))
+            for item in variables
+            if isinstance(item.get("name"), str)
+        }
+        mode = values.get("AUTONOMOUS_ENGINEERING_MODE", "continuous").strip().lower()
+        if mode not in {"continuous", "scheduled"}:
+            raise RuntimeError("Autonomous Engineering execution mode is invalid; recovery is blocked.")
+        return {
+            "mode": mode,
+            "enabled": values.get("AUTONOMOUS_ENGINEERING_ENABLED", "true").strip().lower() == "true",
+            "paused": values.get("AUTONOMOUS_ENGINEERING_PAUSED", "false").strip().lower() == "true",
+        }
+
     def jobs(self, run_id: int) -> list[dict[str, Any]]:
         jobs: list[dict[str, Any]] = []
         page = 1
@@ -156,15 +176,6 @@ def report(title: str, message: str, *, error: bool = False) -> None:
 
 
 def main() -> int:
-    mode = os.getenv("EXECUTION_MODE", "continuous").strip().lower()
-    paused = os.getenv("PAUSED", "false").strip().lower() == "true"
-    if mode != "continuous":
-        report("Recovery not enabled", "Scheduled mode does not automatically retry failed runs.")
-        return 0
-    if paused:
-        report("Recovery paused", "The durable Pause setting is active; no run was dispatched.")
-        return 0
-
     repository = os.environ.get("GH_REPO", "").strip()
     token = os.environ.get("GH_TOKEN", "").strip()
     try:
@@ -177,6 +188,17 @@ def main() -> int:
 
     try:
         client = GitHubActionsClient(repository, token)
+        lifecycle = client.lifecycle_settings()
+        if lifecycle["mode"] != "continuous":
+            report("Recovery not enabled", "Scheduled mode does not automatically retry failed runs.")
+            return 0
+        if not lifecycle["enabled"]:
+            report("Recovery finished", "Autonomous Engineering is disabled; no recovery run was dispatched.")
+            return 0
+        if lifecycle["paused"]:
+            report("Recovery paused", "The durable Pause setting is active; no run was dispatched.")
+            return 0
+
         current_jobs = client.jobs(failed_run_id)
         current_classification = classify_failed_run(current_jobs)
         if current_classification == UNKNOWN:
@@ -227,6 +249,15 @@ def main() -> int:
             f"Observed {streak} consecutive task-execution failure(s); retrying after {delay_seconds} seconds.",
         )
         time.sleep(delay_seconds)
+        # Re-read lifecycle variables after backoff so Finish/Pause cannot be
+        # bypassed by a recovery job that was already queued.
+        lifecycle = client.lifecycle_settings()
+        if lifecycle["mode"] != "continuous" or not lifecycle["enabled"] or lifecycle["paused"]:
+            report(
+                "Recovery suppressed",
+                "Autonomous Engineering was paused, finished, or switched to scheduled mode during backoff; no run was dispatched.",
+            )
+            return 0
         # Re-check ownership after backoff; a newer run may have superseded this event.
         client.retryable_failure_streak(failed_run_id, current_jobs)
         client.request(
