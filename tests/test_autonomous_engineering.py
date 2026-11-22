@@ -274,6 +274,10 @@ def test_autonomous_engineering_routes_are_registered():
 def test_autonomous_engineering_lifecycle_endpoints_use_distinct_durable_states(monkeypatch):
     writes = []
     monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "collect_status", lambda: {
+        "ready": True, "paused": False, "active": False,
+        "github": {"runs_available": True},
+    })
     monkeypatch.setattr(agent, "_save_repository_variables", lambda gh, updates: writes.append((gh, updates)))
     monkeypatch.setattr(agent, "dispatch_autonomous_engineering", lambda: {"accepted": True, "started": True})
     started = agent.start_autonomous_engineering()
