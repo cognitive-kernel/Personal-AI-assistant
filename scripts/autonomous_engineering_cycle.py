@@ -312,6 +312,8 @@ def persist_run_diagnostic(
             # Keep the more specific Codex/test/CI diagnosis as the latest
             # visible reason instead of replacing it with the controller wrapper.
             return True
+        correlation_id = os.getenv("AUTONOMOUS_ENGINEERING_CORRELATION_ID", "").strip().lower()
+        job_name = os.getenv("GITHUB_JOB", "").strip()
         entry = {
             "run_attempt": str(run_attempt),
             "task": task if isinstance(task, int) and not isinstance(task, bool) else None,
@@ -322,6 +324,10 @@ def persist_run_diagnostic(
             "detail": _sanitize_run_diagnostic_text(detail),
             "recorded_at": datetime.now(timezone.utc).isoformat(),
         }
+        if re.fullmatch(r"[a-f0-9]{32}", correlation_id):
+            entry["correlation_id"] = correlation_id
+        if job_name:
+            entry["job"] = job_name
         entry["detail"] = str(entry["detail"])[:6000]
         diagnostics.append(entry)
         payload = {
@@ -329,6 +335,7 @@ def persist_run_diagnostic(
             "run_id": str(run_id),
             "updated_at": entry["recorded_at"],
             "diagnostics": diagnostics[-8:],
+            **({"correlation_id": correlation_id} if re.fullmatch(r"[a-f0-9]{32}", correlation_id) else {}),
         }
         temporary = directory / f".{run_id}-{run_attempt}-{os.getpid()}.tmp"
         temporary.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -488,7 +495,7 @@ def run_cycle(args: argparse.Namespace) -> int:
             if args.mode == "continuous":
                 api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {
                     "ref": "main",
-                    "inputs": {"manual_task": ""},
+                    "inputs": {"manual_task": "", "correlation_id": args.correlation_id},
                 })
             return 0
         if current_pending.get("state") == "open":
@@ -836,6 +843,7 @@ def main() -> int:
     cycle = subs.add_parser("run")
     cycle.add_argument("--run-id", required=True)
     cycle.add_argument("--run-attempt", default="1")
+    cycle.add_argument("--correlation-id", default="")
     cycle.add_argument("--model", required=True)
     cycle.add_argument("--prompt", required=True)
     cycle.add_argument("--mode", choices=("scheduled", "continuous"), required=True)
@@ -846,6 +854,10 @@ def main() -> int:
     pub.add_argument("--sha", required=True)
     pub.add_argument("--base-sha", required=True)
     args = parser.parse_args()
+    if args.command == "run" and args.correlation_id:
+        if not re.fullmatch(r"[a-f0-9]{32}", args.correlation_id):
+            raise SystemExit("A valid 32-character correlation ID is required.")
+        os.environ["AUTONOMOUS_ENGINEERING_CORRELATION_ID"] = args.correlation_id
     if args.command == "publish":
         return publish_command(args)
     with repository_execution_lock(args.run_id, args.run_attempt):
