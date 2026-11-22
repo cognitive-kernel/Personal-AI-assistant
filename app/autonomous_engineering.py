@@ -1,23 +1,28 @@
 """Local diagnostics and explicit controls for the Ollama-backed GitHub engineering agent."""
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
 import platform
+import re
 import shutil
 import subprocess
+import threading
 import time
 import urllib.error
 import urllib.request
-import re
-import threading
+import uuid
 from concurrent.futures import ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import Any
 
 import psutil
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
@@ -46,6 +51,117 @@ _STATUS_EXECUTOR = ThreadPoolExecutor(
 _STATUS_EXECUTOR_SLOTS = threading.BoundedSemaphore(_STATUS_EXECUTOR_MAX_WORKERS)
 _STATUS_LOGGER = logging.getLogger(__name__)
 
+_HTTP_ERROR_CODES = {
+    400: "AUTONOMOUS_ENGINEERING_BAD_REQUEST",
+    401: "AUTONOMOUS_ENGINEERING_UNAUTHORIZED",
+    403: "AUTONOMOUS_ENGINEERING_FORBIDDEN",
+    404: "AUTONOMOUS_ENGINEERING_NOT_FOUND",
+    408: "AUTONOMOUS_ENGINEERING_TIMEOUT",
+    409: "AUTONOMOUS_ENGINEERING_CONFLICT",
+    422: "AUTONOMOUS_ENGINEERING_VALIDATION_FAILED",
+    429: "AUTONOMOUS_ENGINEERING_RATE_LIMITED",
+    500: "AUTONOMOUS_ENGINEERING_INTERNAL_ERROR",
+    502: "AUTONOMOUS_ENGINEERING_UPSTREAM_ERROR",
+    503: "AUTONOMOUS_ENGINEERING_UNAVAILABLE",
+    504: "AUTONOMOUS_ENGINEERING_TIMEOUT",
+}
+_RETRYABLE_HTTP_STATUSES = {408, 425, 429, 500, 502, 503, 504}
+
+
+def _structured_error_response(
+    *, status_code: int, message: str, detail: Any, headers: dict[str, str] | None = None,
+    code: str | None = None, retryable: bool | None = None, safe_details: dict[str, Any] | None = None,
+) -> JSONResponse:
+    response_headers = dict(headers or {})
+    correlation_id = response_headers.get("X-Correlation-ID") or uuid.uuid4().hex
+    error_code = response_headers.get("X-Error-Code") or code or _HTTP_ERROR_CODES.get(
+        status_code, "AUTONOMOUS_ENGINEERING_HTTP_ERROR"
+    )
+    retry_header = response_headers.get("X-Retryable")
+    can_retry = (
+        retry_header.casefold() == "true" if retry_header is not None
+        else (status_code in _RETRYABLE_HTTP_STATUSES if retryable is None else retryable)
+    )
+    response_headers.update({
+        "X-Correlation-ID": correlation_id,
+        "X-Error-Code": error_code,
+        "X-Retryable": "true" if can_retry else "false",
+    })
+    _STATUS_LOGGER.warning(
+        "Autonomous Engineering API error; status_code=%s code=%s retryable=%s correlation_id=%s",
+        status_code,
+        error_code,
+        can_retry,
+        correlation_id,
+    )
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "detail": detail,
+            "code": error_code,
+            "message": message,
+            "correlation_id": correlation_id,
+            "retryable": can_retry,
+            "safe_details": safe_details if isinstance(safe_details, dict) else {},
+        },
+        headers=response_headers,
+    )
+
+
+class AutonomousEngineeringAPIRoute(APIRoute):
+    """Keep all Autonomous Engineering API failures on one safe diagnostic contract."""
+
+    def get_route_handler(self):
+        original_handler = super().get_route_handler()
+
+        async def structured_handler(request):
+            try:
+                return await original_handler(request)
+            except HTTPException as exc:
+                message = exc.detail if isinstance(exc.detail, str) else "درخواست ناموفق بود."
+                return _structured_error_response(
+                    status_code=exc.status_code,
+                    message=message,
+                    detail=message,
+                    headers=exc.headers,
+                    safe_details=getattr(exc, "safe_details", None),
+                )
+            except RequestValidationError as exc:
+                errors = []
+                for error in exc.errors():
+                    location = error.get("loc", ())
+                    errors.append({
+                        "loc": [str(part) for part in location if isinstance(part, (str, int))],
+                        "msg": str(error.get("msg") or "Invalid value"),
+                        "type": str(error.get("type") or "validation_error"),
+                    })
+                return _structured_error_response(
+                    status_code=422,
+                    message="ورودی درخواست معتبر نیست.",
+                    detail=errors,
+                    code="AUTONOMOUS_ENGINEERING_VALIDATION_FAILED",
+                    retryable=False,
+                    safe_details={"validation_errors": errors},
+                )
+            except Exception as exc:
+                correlation_id = uuid.uuid4().hex
+                _STATUS_LOGGER.error(
+                    "Autonomous Engineering API failed; exception_type=%s correlation_id=%s",
+                    type(exc).__name__,
+                    correlation_id,
+                )
+                return _structured_error_response(
+                    status_code=500,
+                    message="خطای داخلی سرویس رخ داد؛ شناسهٔ پیگیری را برای بررسی ارائه کنید.",
+                    detail="خطای داخلی سرویس رخ داد.",
+                    headers={"X-Correlation-ID": correlation_id},
+                    code="AUTONOMOUS_ENGINEERING_INTERNAL_ERROR",
+                    retryable=False,
+                    safe_details={"exception_type": type(exc).__name__},
+                )
+
+        return structured_handler
+
 
 def _is_windows() -> bool:
     """Expose the platform boundary so cleanup behavior can be tested portably."""
@@ -63,6 +179,7 @@ def _storage_and_pending_work_status() -> dict[str, Any]:
 router = APIRouter(
     prefix="/api/autonomous-engineering",
     tags=["autonomous-engineering"],
+    route_class=AutonomousEngineeringAPIRoute,
     dependencies=[Depends(require_loopback_client)],
 )
 
@@ -100,7 +217,9 @@ def _repository() -> str:
     return value if owner and name and "/" not in name else _DEFAULT_REPOSITORY
 
 
-def _run(command: list[str], timeout: int = 8) -> subprocess.CompletedProcess[str] | None:
+def _run(
+    command: list[str], timeout: int = 8, *, raise_os_error: bool = False,
+) -> subprocess.CompletedProcess[str] | None:
     try:
         return subprocess.run(
             command,
@@ -112,7 +231,11 @@ def _run(command: list[str], timeout: int = 8) -> subprocess.CompletedProcess[st
             check=False,
             shell=False,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except subprocess.TimeoutExpired:
+        return None
+    except OSError:
+        if raise_os_error:
+            raise
         return None
 
 
@@ -713,15 +836,78 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) ->
             status_code=409,
             detail="یک PR مهندسی خودکار هنوز باز است؛ ابتدا همان PR را بازبینی و تعیین‌تکلیف کنید.",
         )
-    result = _run(
-        [
-            gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main",
-            "--field", f"manual_task={manual_task}",
-        ],
-        timeout=20,
-    )
-    if not result or result.returncode != 0:
-        raise HTTPException(status_code=502, detail="درخواست اجرای Workflow به GitHub ارسال نشد.")
+    try:
+        result = _run(
+            [
+                gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main",
+                "--field", f"manual_task={manual_task}",
+            ],
+            timeout=20,
+            raise_os_error=True,
+        )
+    except OSError:
+        correlation_id = uuid.uuid4().hex
+        _STATUS_LOGGER.error(
+            "Autonomous workflow dispatch could not start; correlation_id=%s",
+            correlation_id,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "GitHub CLI اجرا نشد؛ نصب و دسترسی اجرای آن را بررسی کنید. پس از رفع مشکل، "
+                "می‌توانید دوباره تلاش کنید. شناسهٔ پیگیری: " + correlation_id
+            ),
+            headers={
+                "X-Correlation-ID": correlation_id,
+                "X-Error-Code": "WORKFLOW_DISPATCH_LAUNCH_FAILED",
+                "X-Retryable": "true",
+            },
+        )
+    if result is None:
+        correlation_id = uuid.uuid4().hex
+        _STATUS_LOGGER.warning(
+            "Autonomous workflow dispatch outcome is unknown; correlation_id=%s",
+            correlation_id,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "نتیجهٔ ارسال Workflow نامشخص است؛ ممکن است GitHub درخواست را دریافت کرده باشد. "
+                "پیش از تلاش مجدد، سوابق اجرا را بازخوانی کنید. شناسهٔ پیگیری: "
+                + correlation_id
+            ),
+            headers={
+                "X-Correlation-ID": correlation_id,
+                "X-Error-Code": "WORKFLOW_DISPATCH_OUTCOME_UNKNOWN",
+                "X-Retryable": "false",
+            },
+        )
+    if result.returncode != 0:
+        correlation_id = uuid.uuid4().hex
+        safe_stderr = _sanitize_workflow_log(str(result.stderr or ""))
+        stderr_fingerprint = (
+            hashlib.sha256(safe_stderr.encode("utf-8")).hexdigest()[:16]
+            if safe_stderr else "empty"
+        )
+        _STATUS_LOGGER.error(
+            "Autonomous workflow dispatch failed; correlation_id=%s exit_code=%s stderr_sha256=%s",
+            correlation_id,
+            result.returncode,
+            stderr_fingerprint,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"ارسال Workflow ناموفق بود (exit code {result.returncode}). "
+                "پیش از تلاش مجدد، سوابق اجرا را بازخوانی کنید. شناسهٔ پیگیری: "
+                + correlation_id
+            ),
+            headers={
+                "X-Correlation-ID": correlation_id,
+                "X-Error-Code": "WORKFLOW_DISPATCH_FAILED",
+                "X-Retryable": "false",
+            },
+        )
     return {
         "accepted": True,
         "repository": _repository(),
@@ -760,9 +946,73 @@ def resume_autonomous_engineering() -> dict[str, Any]:
     result = _run([gh, "variable", "set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body", "false", "--repo", _repository()], timeout=15)
     if not result or result.returncode != 0:
         raise HTTPException(status_code=502, detail="ثبت ادامه در GitHub ناموفق بود.")
-    dispatched = _run([gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main"], timeout=20)
-    if not dispatched or dispatched.returncode != 0:
-        raise HTTPException(status_code=502, detail="ادامه ثبت شد اما اجرای چرخه به GitHub ارسال نشد.")
+    try:
+        dispatched = _run(
+            [gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main"],
+            timeout=20,
+            raise_os_error=True,
+        )
+    except OSError:
+        correlation_id = uuid.uuid4().hex
+        _STATUS_LOGGER.error(
+            "Autonomous resume dispatch could not start; correlation_id=%s",
+            correlation_id,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "ادامه ثبت شد اما GitHub CLI اجرا نشد؛ نصب و دسترسی اجرای آن را بررسی کنید. "
+                "پس از رفع مشکل می‌توانید دوباره تلاش کنید. شناسهٔ پیگیری: " + correlation_id
+            ),
+            headers={
+                "X-Correlation-ID": correlation_id,
+                "X-Error-Code": "WORKFLOW_RESUME_DISPATCH_LAUNCH_FAILED",
+                "X-Retryable": "true",
+            },
+        )
+    if dispatched is None:
+        correlation_id = uuid.uuid4().hex
+        _STATUS_LOGGER.warning(
+            "Autonomous resume dispatch outcome is unknown; correlation_id=%s",
+            correlation_id,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "ادامه ثبت شد اما نتیجهٔ ارسال Workflow نامشخص است؛ ممکن است GitHub اجرا را در صف گذاشته باشد. "
+                "پیش از تلاش دوباره، تاریخچهٔ اجراها را بازخوانی کنید. شناسهٔ پیگیری: " + correlation_id
+            ),
+            headers={
+                "X-Correlation-ID": correlation_id,
+                "X-Error-Code": "WORKFLOW_RESUME_DISPATCH_OUTCOME_UNKNOWN",
+                "X-Retryable": "false",
+            },
+        )
+    if dispatched.returncode != 0:
+        correlation_id = uuid.uuid4().hex
+        safe_stderr = _sanitize_workflow_log(str(dispatched.stderr or ""))
+        stderr_fingerprint = (
+            hashlib.sha256(safe_stderr.encode("utf-8")).hexdigest()[:16]
+            if safe_stderr else "empty"
+        )
+        _STATUS_LOGGER.error(
+            "Autonomous resume dispatch failed; correlation_id=%s exit_code=%s stderr_sha256=%s",
+            correlation_id,
+            dispatched.returncode,
+            stderr_fingerprint,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"ثبت ادامه انجام شد اما ارسال Workflow ناموفق بود (exit code {dispatched.returncode}). "
+                "پیش از تلاش دوباره، تاریخچهٔ اجراها را بازخوانی کنید. شناسهٔ پیگیری: " + correlation_id
+            ),
+            headers={
+                "X-Correlation-ID": correlation_id,
+                "X-Error-Code": "WORKFLOW_RESUME_DISPATCH_FAILED",
+                "X-Retryable": "false",
+            },
+        )
     return {"accepted": True, "paused": False, "message": "ادامه از وضعیت ذخیره‌شده درخواست شد."}
 
 
@@ -945,6 +1195,12 @@ def _read_run_diagnostics(run_id: int) -> dict[str, Any] | None:
 def _workflow_failure_summary(value: str, failures: list[dict[str, Any]]) -> str | None:
     """Prefer the controller's root-cause line over generic shell exit messages."""
     lines = [line.strip() for line in _sanitize_workflow_log(value).splitlines() if line.strip()]
+    if any("Warning: no last agent message" in line for line in lines):
+        return (
+            "Codex did not emit a final agent message; the output-last-message report was empty, "
+            "so the controller could not validate a completion marker. Preserve the durable "
+            "task/checkpoint and inspect the Codex turn's terminal events before retrying."
+        )
     preferred = []
     for line in lines:
         marker = "Autonomous engineering cycle failed:"
@@ -1077,8 +1333,16 @@ def delete_autonomous_engineering_run(run_id: int) -> dict[str, Any]:
         timeout=20,
     )
     if not result or result.returncode != 0:
-        detail = (result.stderr or result.stdout or "")[-1000:] if result else ""
-        raise HTTPException(status_code=502, detail="حذف اجرا توسط GitHub تأیید نشد. " + detail)
+        _STATUS_LOGGER.warning(
+            "GitHub run deletion failed; run_id=%s returncode=%s stderr_present=%s",
+            trusted_run_id,
+            result.returncode if result else None,
+            bool(result and result.stderr),
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="حذف اجرای GitHub تأیید نشد؛ وضعیت سرویس را بازخوانی کنید.",
+        )
     return {"deleted": True, "run_id": trusted_run_id, "message": "اجرای پایان‌یافته از تاریخچهٔ GitHub حذف شد."}
 
 
