@@ -2288,3 +2288,12 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Added an HTTP integration regression against the real `/api/autonomous-engineering/dispatch` route. It proves the structured response body and `X-Error-Code`, `X-Correlation-ID`, and `X-Retryable` headers are produced by the backend route class now present on main, rather than only mocked in the browser test.
 - Browser coverage retains RTL, keyboard, responsive layout, module fault isolation, and pause/resume feedback checks.
 - Codex review could not complete because the GitHub review quota was exhausted. Manual review and exact-head CI remain required; no task or checkpoint state is modified.
+
+
+### 2026-11-22 — Windows repository-lock owner metadata
+
+- Exact-head #834 browser E2E، CodeQL، Analyze، pip-audit و bootstrapهای سه سیستم‌عامل را گذراند؛ Linux test suite سه failure و Windows storage regressions دو failure داشتند.
+- علت محصولی Windows: parent byte صفر فایل repository lock را با msvcrt قفل می‌کرد و child برای اعتبارسنجی مالک همان byte را می‌خواند؛ Windows خواندن byte قفل‌شده را با PermissionError رد کرد.
+- owner JSON به محدودهٔ بعد از byte صفر منتقل شد؛ byte صفر همچنان primitive مشترک قفل Python/C# باقی می‌ماند.
+- دو failure لینوکس مربوط به تست‌ها بود: patch نشدن execution_state_directory در ماژول lock برای تست cleanup و assertion متنی قدیمی دربارهٔ compatibility facade checkpoint lock؛ هر دو تست اصلاح شدند.
+- تغییرات در branch جایگزین fix/autonomous-engineering-first-module-validation-20261122 آماده شده‌اند. هنوز CI دقیق روی branch جدید اجرا نشده و merge ممنوع است تا CI کامل و پذیرش Windows target انجام شود.
