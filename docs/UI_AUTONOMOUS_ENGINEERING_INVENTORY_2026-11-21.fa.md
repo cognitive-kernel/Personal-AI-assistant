@@ -161,5 +161,5 @@ API ابتدا active run را رد می‌کند و سپس Broker/state markers
 
 - شاخهٔ follow-up جایگزین `setInterval` ثابت با controller مشترک شده است: status و runs هر ۳۰ ثانیه، progress هر ۵ ثانیه؛ خطاها با exponential backoff تا سقف ۵ دقیقه/۲ دقیقه و jitter محدود زمان‌بندی می‌شوند.
 - صفحهٔ hidden polling را متوقف می‌کند؛ visible شدن refresh فوری انجام می‌دهد. `pagehide` و `autonomousEngineeringApp.stop()` timer و listenerهای polling را پاک می‌کنند؛ بازگشت از bfcache از طریق `pageshow` polling را فعال می‌کند.
-- هر refresh از timeout موجود در `core.request()` استفاده می‌کند و status/runs/progress نتیجهٔ خطا را به controller می‌دهند.
+- هر refresh از timeout موجود در `core.request()` استفاده می‌کند و status/runs/progress نتیجهٔ خطا را به controller می‌دهند. monitor وضعیت مدل نیز از controller با interval پایهٔ ۱٫۵ ثانیه، سقف ۱۵ ثانیه، jitter و حداکثر پنج خطای متوالی استفاده می‌کند؛ خطای polling باعث لغو job دانلود سمت سرور نمی‌شود. `controls.stop()` monitor مدل و `status.stop()` timer قفل dispatch را پاک می‌کنند.
 - تست Chromium: `test_autonomous_engineering_polling_uses_visibility_backoff_jitter_and_cleanup`. Exact-head CI pending؛ تا زمان سبزشدن همهٔ workflowها این Gate بسته نیست.
