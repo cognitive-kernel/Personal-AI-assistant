@@ -173,6 +173,189 @@ function Get-AllocatedContext {
     return $allocated
 }
 
+function Remove-LegacyCodexContextVariants {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$CurrentModel)
+
+    # Older preflight versions created one permanent Ollama tag per context
+    # size (for example, <base>-codex-ctx16384). The current stable tag is
+    # <base>-codex-ctx; remove only the legacy numeric aliases.
+    try {
+        $catalog = Invoke-RestMethod -Uri "$baseUrl/api/tags" -Method Get -TimeoutSec 10 -MaximumRedirection 0
+        $runtime = Invoke-RestMethod -Uri "$baseUrl/api/ps" -Method Get -TimeoutSec 10 -MaximumRedirection 0
+    } catch {
+        throw "Could not safely inspect Ollama before legacy Codex model cleanup. $($_.Exception.Message)"
+    }
+
+    $loadedNames = @(
+        $runtime.models |
+            Where-Object { $_ -and $_.name } |
+            ForEach-Object { ([string]$_.name).ToLowerInvariant() }
+    )
+    $legacyModels = @(
+        $catalog.models |
+            Where-Object {
+                $_ -and $_.name -and
+                ([string]$_.name -match '(?i)-codex-ctx[0-9]+
+    $codexModel = $Model
+    $selectedContext = 0L
+    if (-not [int64]::TryParse([string]$env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH, [ref]$selectedContext) -or $selectedContext -le 0) {
+        throw "The selected Codex context was not persisted as a positive verified allocation for runtime verification."
+    }
+    $modelInfo = Get-ModelInfo -ModelName $codexModel
+    Assert-ToolCallingCapability -Info $modelInfo -ModelName $codexModel
+    $maximum = Get-MaximumContext -Info $modelInfo
+    if ($selectedContext -gt $maximum) {
+        throw "The persisted Codex context $selectedContext exceeds the model maximum $maximum."
+    }
+    $savedContext = [regex]::Match(
+        [string]$modelInfo.modelfile,
+        '(?im)^\s*PARAMETER\s+num_ctx\s+(\d+)\s*$'
+    )
+    if (-not $savedContext.Success -or [int64]$savedContext.Groups[1].Value -ne $selectedContext) {
+        throw "Persistent model '$codexModel' does not retain the selected num_ctx $selectedContext."
+    }
+} else {
+    if ($Model -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]*(?::[A-Za-z0-9._-]+)?$') {
+        throw "Model name contains unsupported characters; refusing to construct a persistent Codex model variant."
+    }
+    if ($Model -match '(?i)-codex-ctx(?:[0-9]+)?$') {
+        throw "The selected model is an internal Codex context variant. Select the original Ollama model to prevent nested variants."
+    }
+
+    $baseModel = $Model
+    $modelInfo = Get-ModelInfo -ModelName $baseModel
+    Assert-ToolCallingCapability -Info $modelInfo -ModelName $baseModel
+    $maximum = Get-MaximumContext -Info $modelInfo
+    if ($maximum -le 0) {
+        throw "Selected model maximum context is not a positive verified value."
+    }
+
+    $requestedContext = $null
+    $manualContext = [string]$env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH
+    if (-not [string]::IsNullOrWhiteSpace($manualContext)) {
+        $parsedContext = 0L
+        if (-not [int64]::TryParse($manualContext, [ref]$parsedContext) -or $parsedContext -le 0) {
+            throw "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH must be a positive integer."
+        }
+        $requestedContext = [Nullable[long]]$parsedContext
+        $selectionMode = "requested-and-safely-clamped"
+    } else {
+        $selectionMode = "automatic"
+    }
+
+    $contextSelection = Get-AutomaticContext -Info $modelInfo -ModelName $baseModel -RequestedContext $requestedContext
+    $selectedContext = [int64]$contextSelection.selected_context_tokens
+    if ($selectedContext -le 0 -or $selectedContext -gt $maximum) {
+        throw "Selected context $selectedContext is outside the supported Codex range for model maximum $maximum."
+    }
+
+    Write-Host "Model maximum context: $($contextSelection.maximum_context_tokens) tokens"
+    Write-Host "Hardware-safe context ceiling: $($contextSelection.hardware_maximum_context_tokens) tokens"
+    Write-Host "Available physical RAM: $($contextSelection.available_memory_bytes) bytes"
+    Write-Host "Installed model weight size: $($contextSelection.model_weight_bytes) bytes"
+    Write-Host "Estimated KV cache: $($contextSelection.kv_cache_bytes_per_token) bytes/token"
+    Write-Host "Reserved system RAM: $($contextSelection.reserve_bytes) bytes"
+    Write-Host "Model/runtime overhead budget: $($contextSelection.overhead_bytes) bytes"
+    if ($null -ne $requestedContext) {
+        Write-Host "Requested context: $requestedContext tokens"
+    }
+    Write-Host "Final context: min(requested, model maximum, safe hardware capacity, Codex catalog maximum) = $selectedContext tokens"
+
+    $codexModel = "$baseModel-codex-ctx"
+    $existingInfo = $null
+    try {
+        $existingInfo = Get-ModelInfo -ModelName $codexModel
+    } catch { }
+    $existingContext = [regex]::Match(
+        [string]$existingInfo.modelfile,
+        '(?im)^\s*PARAMETER\s+num_ctx\s+(\d+)\s*$'
+    )
+    $existingMatch = $existingContext.Success -and [int64]$existingContext.Groups[1].Value -eq $selectedContext
+
+    if (-not $existingMatch) {
+        $createBody = @{
+            model = $codexModel
+            from = $baseModel
+            parameters = @{ num_ctx = $selectedContext }
+            stream = $false
+        } | ConvertTo-Json -Depth 5 -Compress
+        try {
+            $null = Invoke-RestMethod -Uri "$baseUrl/api/create" -Method Post -ContentType "application/json" -Body $createBody -TimeoutSec $TimeoutSeconds -MaximumRedirection 0
+        } catch {
+            throw "Ollama could not create persistent Codex model '$codexModel' at context $selectedContext. $($_.Exception.Message)"
+        }
+    }
+
+    $modelInfo = Get-ModelInfo -ModelName $codexModel
+    Assert-ToolCallingCapability -Info $modelInfo -ModelName $codexModel
+    $savedContext = [regex]::Match(
+        [string]$modelInfo.modelfile,
+        '(?im)^\s*PARAMETER\s+num_ctx\s+(\d+)\s*$'
+    )
+    if (-not $savedContext.Success -or [int64]$savedContext.Groups[1].Value -ne $selectedContext) {
+        throw "Persistent model '$codexModel' does not declare the selected num_ctx $selectedContext."
+    }
+
+    if ($env:GITHUB_ENV) {
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_MODEL=$codexModel" -Encoding utf8
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH=$selectedContext" -Encoding utf8
+    } else {
+        $env:AUTONOMOUS_ENGINEERING_MODEL = $codexModel
+        $env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH = [string]$selectedContext
+    }
+    Write-Host "Context selection mode: $selectionMode"
+}
+
+$warmupBody = @{
+    model = $codexModel
+    prompt = "Reply with OK."
+    stream = $false
+    keep_alive = "10m"
+} | ConvertTo-Json -Depth 4 -Compress
+try {
+    $null = Invoke-RestMethod -Uri "$baseUrl/api/generate" -Method Post -ContentType "application/json" -Body $warmupBody -TimeoutSec $TimeoutSeconds -MaximumRedirection 0
+} catch {
+    throw "Ollama could not load persistent Codex model '$codexModel' at context $selectedContext. $($_.Exception.Message)"
+}
+
+$allocated = Get-AllocatedContext -ModelName $codexModel
+Write-Host "Ollama model passed to Codex: $codexModel"
+Write-Host "Persistent Codex model: $codexModel"
+Write-Host "Model maximum context: $maximum tokens"
+Write-Host "Selected Codex context: $selectedContext tokens"
+Write-Host "Ollama allocated runtime context: $allocated tokens"
+if ($allocated -ne $selectedContext) {
+    throw "Ollama allocated $allocated tokens for '$codexModel', but the verified selection is exactly $selectedContext. No Codex task may proceed."
+}
+Remove-LegacyCodexContextVariants -CurrentModel $codexModel
+Write-Host "OLLAMA_RUNTIME_CONTEXT_OK"
+) -and
+                -not ([string]$_.name).Equals($CurrentModel, [System.StringComparison]::OrdinalIgnoreCase)
+            }
+    )
+
+    foreach ($legacy in $legacyModels) {
+        $legacyName = [string]$legacy.name
+        if ($loadedNames -contains $legacyName.ToLowerInvariant()) {
+            Write-Warning "Preserving loaded legacy Codex model '$legacyName'; it will be reconsidered after it is no longer in use."
+            continue
+        }
+
+        $deleteBody = @{ model = $legacyName } | ConvertTo-Json -Compress
+        try {
+            $null = Invoke-RestMethod -Uri "$baseUrl/api/delete" -Method Post -ContentType "application/json" -Body $deleteBody -TimeoutSec 30 -MaximumRedirection 0
+            Write-Host "Removed obsolete Codex context variant: $legacyName"
+        } catch {
+            throw "Ollama could not remove obsolete Codex context variant '$legacyName'. $($_.Exception.Message)"
+        }
+    }
+
+    if ($legacyModels.Count -eq 0) {
+        Write-Host "No obsolete numeric Codex context variants were found."
+    }
+}
+
 if ($VerifyOnly) {
     $codexModel = $Model
     $selectedContext = 0L
