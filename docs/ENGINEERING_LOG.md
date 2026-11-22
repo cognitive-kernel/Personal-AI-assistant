@@ -2280,3 +2280,13 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Review found that a non-empty report containing invalid UTF-8 was classified as an I/O failure, preventing the already validated successful JSONL final message from repairing it.
 - Treat Unicode decoding failure as an invalid temporary report; preserve the existing fail-closed requirements for the final turn and exactly-one completion marker. Filesystem I/O failures still stop recovery.
 - Added a regression using invalid UTF-8 bytes and verifying replacement only from a successful final message with one valid marker. Exact-head CI and target-host acceptance remain required.
+
+## 2026-11-22 — Durable lifecycle controls for background modules
+
+- Added an explicit registry for every feature-managed TaskRuntime type: research, learning, cloud discovery, programming, sandbox, experience testing, and factual verification. A regression test requires exact coverage of `FEATURE_MANAGED_TASK_TYPES`.
+- Added an additive module-state migration and loopback-only API. Module state is checked inside the same queue transaction as task claim, preventing a claim from racing past pause, drain, or force-stop.
+- Added independent Start, Pause, Resume, Finish/Drain, and Force Stop controls to the task dashboard. Finish lets active tasks complete and preserves queued work; Pause preserves checkpoints; Force Stop cancels waiting tasks and requests cooperative cancellation of active tasks.
+- Force Stop intentionally does not kill Python threads. It uses the existing checkpoint/heartbeat cancellation contract; uncooperative work remains visible as pending cancellation rather than being falsely reported as terminated.
+- No existing task payload, result, checkpoint, lease epoch, or unrelated module state is rewritten by the module controls.
+- Separate lifecycle owners (AI-learning Playwright, Autonomous Engineering GitHub Actions, and the opt-in backup scheduler) are not falsely represented as managed by this TaskRuntime registry. Their adapters remain follow-up scope.
+- Validation is pending exact-head CI and target-host acceptance; no migration has been run against user databases.
