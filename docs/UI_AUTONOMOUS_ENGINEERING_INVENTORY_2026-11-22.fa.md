@@ -41,7 +41,7 @@ UI مستقیماً فایل‌های durable، checkpoint یا Runner را تغ
 | بازخوانی سوابق | `GET /runs` | GitHub API قابل دسترسی | read-only؛ stale response باید کنار گذاشته شود |
 | مشاهده گزارش | `GET /runs/{run_id}/logs` | run ID باید متعلق به repository/workflow مورد انتظار باشد | job/step failure، diagnostic ذخیره‌شده و log sanitize‌شده نمایش داده می‌شود |
 | حذف اجرای قدیمی | `DELETE /runs/{run_id}` | فقط run با status=completed | فقط history entry GitHub حذف می‌شود؛ run فعال قابل حذف نیست |
-| پاک‌سازی دادهٔ موقت | `POST /cleanup` | نبود run فعال؛ ابتدا و دوباره پس از گرفتن repository execution lock بررسی می‌شود؛ سپس lockهای durable-state و checkpoint گرفته می‌شوند | فقط temporary progress data حذف می‌شود؛ history، baseline، checkpoint و pending ownership marker حفظ می‌شوند؛ اگر Runner مالک worktree باشد 409 برمی‌گردد |
+| پاک‌سازی دادهٔ موقت | `POST /cleanup` | preflight GitHub؛ روی POSIX قفل repository → durable-state → checkpoint و recheck؛ روی Windows broker خودش همین ترتیب قفل را می‌گیرد تا pipe client مستقیم نتواند آن را دور بزند | history، baseline، checkpoint و pending ownership marker حفظ می‌شوند؛ Windows فقط stateهای تحت مالکیت broker را پاک می‌کند و فایل‌های runtime در worktree را حفظ می‌کند تا پس از آزادشدن lock حذف نشوند |
 | بازخوانی پیشرفت | `GET /progress?period=...` | read-only؛ custom date باید معتبر باشد | snapshot/history/events خوانده می‌شوند؛ فیلتر تاریخ جدید باید بر پاسخ قدیمی غلبه کند |
 
 ### رفتار polling
@@ -88,7 +88,7 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 | خطاهای API بدون شناسهٔ قابل پیگیری | routeها فقط detail عمومی یا exception خام داشتند و UI correlation metadata قابل اتکا نداشت | PR #817 در main قرارداد امن `code/message/correlation_id/retryable/safe_details` و headerهای `X-Error-Code`, `X-Correlation-ID`, `X-Retryable` را اضافه کرد |
 | گزارش Codex خالی/UTF-8 خراب با وجود turn موفق | مسیر بازیابی به گزارش موقت سالم وابسته بود و JSONL نهایی معتبر را به‌درستی بازیابی نمی‌کرد | PR #827 در main بازیابی محدود از final agent message و completion marker معتبر را اضافه کرد؛ turn ناموفق/ناقص همچنان fail-closed است |
 | UI diagnostics از headerها استفاده نمی‌کرد | transport لایهٔ UI فقط detail را مصرف می‌کرد و کد/شناسه/قابلیت retry را از دست می‌داد | PR #834 parser را به body و headerها متصل می‌کند؛ regression واقعی API افزوده شده است |
-| cleanup admission race | cleanup قبلاً فهرست active GitHub runs را قبل از گرفتن قفل می‌خواند؛ یک workflow تازه می‌توانست بین آن بررسی و حذف فایل‌های progress شروع شود | PR #834 cleanup را زیر همان repository execution lock اجرا می‌کند، ترتیب قفل را repository → durable-state → checkpoint نگه می‌دارد و فهرست runها را بعد از lock دوباره بررسی می‌کند؛ دو regression برای lock-busy و recheck اضافه شده است |
+| cleanup admission race | client اپلیکیشن به‌تنهایی قفل repository را می‌گرفت؛ کلاینت محلی دیگری می‌توانست مستقیماً pipe broker را صدا بزند و cleanup را بدون آن قفل اجرا کند | PR #834 قفل repository را داخل C# broker و پیش از durable-state/checkpoint اعمال می‌کند؛ تست Windows live با نگه‌داشتن قفل از Python Runner، تلاش مستقیم pipe cleanup را باید با blocker `repository_execution_active` رد کند. POSIX همچنان قفل repository را در route می‌گیرد و سپس state/checkpoint را قفل می‌کند |
 | پاسخ status قدیمی می‌توانست بعد از mutation نمایش داده شود | poll قبل از mutation ممکن بود پس از پاسخ جدید UI را overwrite کند | status module در PR UI از single-flight و refresh-after-mutation استفاده می‌کند؛ E2Eهای stale response باید exact-head سبز شوند |
 | شکست load یک فایل JS می‌توانست وضعیت صفحه را مبهم کند | bootstrap باید خرابی یک ماژول را مستقل و قابل مشاهده نگه دارد | PR #834 هشدار load failure را assertive و مستقل از polling می‌کند |
 | stop/pause semantics ممکن است با suspend اشتباه گرفته شود | GitHub workflow از UI pause variable را می‌خواند؛ process جاری به‌صورت ناامن kill یا suspend نمی‌شود | UI باید pause را «توقف امن پس از مرز جاری» معرفی کند؛ cancel جداگانه برای لغو run فعال است |
@@ -98,7 +98,7 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 | Gate | وضعیت | دلیل |
 |---|---|---|
 | A — inventory/reproduction | در حال تکمیل | این inventory و جدول transitions ثبت شده؛ مرور نهایی تمام branchها و اجرای reproduction روی target host لازم است |
-| B — state ownership/fencing/recovery | جزئی؛ یک race مهم اصلاح‌شده، audit کلی pending | main شامل lease epoch و owner+epoch fencing است؛ PR #834 cleanup را با repository execution lock serialize و race بین active-run check و cleanup را می‌بندد؛ هنوز تمام mutation call-siteهای Runner/Broker و crash recovery باید با state transition table و تست پوشش داده شوند |
+| B — state ownership/fencing/recovery | جزئی؛ cleanup lock order و recovery بررسی می‌شوند، ممیزی call-siteها pending | main شامل lease epoch و owner+epoch fencing است؛ PR #834 قفل repository را در خود broker اعمال می‌کند و ترتیب repository → durable-state → checkpoint را حفظ می‌کند؛ POSIX runtime cleanup نیز زیر checkpoint lock است؛ Windows runtime files بعد از آزادشدن broker lock حذف نمی‌شوند؛ ممیزی کامل mutationها و crash recovery هنوز لازم است |
 | C — structured errors/Codex diagnostics | baseline merged؛ regression UI در CI | PR #817 و #827 merged؛ PR #834 integration test و exact-head CI pending |
 | D — UI state machine/fault isolation | پیاده‌سازی در PR #834؛ پذیرش pending | status/run/progress stale-request و module-load fault cases باید روی exact head سبز شوند |
 | E — Playwright E2E | pending exact-head | تست‌های موجود و افزوده‌شده باید روی PR #834 اجرا شوند؛ نتیجه هنوز ادعا نمی‌شود |
@@ -116,3 +116,11 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 4. crash/restart و restore/rollback را با task/checkpoint موجود آزمایش کن؛ هیچ task یا checkpoint را برای پاک‌سازی آزمایشی حذف نکن.
 5. پس از تکمیل Gate A–I، مالک UI را تأیید می‌کند؛ فقط سپس PR آمادهٔ merge می‌شود.
 6. تا پایان ماژول Autonomous Engineering، PR #833 و توسعهٔ سایر ماژول‌ها در حالت Draft می‌مانند.
+
+### اصلاحات Gate B که در PR #834 اضافه شده‌اند
+
+- Windows broker برای `POST /v1/cleanup` خودش `repository-execution.lock` را پیش از `autonomous-durable-state.lock` و `autonomous-checkpoint-store.lock` می‌گیرد؛ بنابراین کلاینت مستقیم pipe نمی‌تواند قفل UI را دور بزند.
+- تست live Windows، قفل repository را با همان Python helper مورد استفادهٔ Runner می‌گیرد و درخواست مستقیم broker را در زمان قفل باید با `repository_execution_active` رد کند.
+- روی Windows، broker قفل را قبل از آزادکردن اجرا و پاک‌سازی state می‌گیرد؛ فایل‌های runtime داخل worktree پس از بازگشت broker در اپلیکیشن حذف نمی‌شوند، چون حذف پس از آزادشدن قفل race ایجاد می‌کند. این فایل‌ها در Windows عمداً در فهرست preserved می‌مانند.
+- روی POSIX، route قفل repository را می‌گیرد، سپس cleanup زیر durable-state و checkpoint-store lock انجام می‌شود و runtime files در همان بازهٔ repository lock حذف می‌شوند.
+- خطای CI ناشی از `ModuleNotFoundError: scripts` با افزودن `scripts/__init__.py` و قرار دادن `scripts*` در package discovery رفع شده است؛ تست import و Windows service integration روی exact head باید تأییدش کند.
