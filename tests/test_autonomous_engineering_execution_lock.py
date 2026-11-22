@@ -335,3 +335,43 @@ def test_posix_progress_owner_kills_codex_descendants_after_supervisor_crash(mon
         )
     except psutil.NoSuchProcess:
         pass
+
+def test_publish_parent_guard_requires_the_locked_cycle_controller(
+    monkeypatch, shared_state_tmp_path: Path,
+):
+    from app.autonomous_engineering_execution_lock import require_parent_repository_execution_lock
+
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path))
+    with pytest.raises(RuntimeError, match="must run as a child"):
+        require_parent_repository_execution_lock("run-guard-test")
+
+    code = (
+        "from app.autonomous_engineering_execution_lock import "
+        "require_parent_repository_execution_lock; "
+        "require_parent_repository_execution_lock('run-guard-test')"
+    )
+    with repository_execution_lock("run-guard-test", "1"):
+        child = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=Path(__file__).resolve().parents[1],
+            env=os.environ.copy(),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+    assert child.returncode == 0, child.stderr
+
+    wrong_run = code.replace("run-guard-test", "different-run")
+    with repository_execution_lock("run-guard-test", "2"):
+        child = subprocess.run(
+            [sys.executable, "-c", wrong_run],
+            cwd=Path(__file__).resolve().parents[1],
+            env=os.environ.copy(),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+    assert child.returncode != 0
+    assert "not owned by the active cycle controller" in child.stderr
