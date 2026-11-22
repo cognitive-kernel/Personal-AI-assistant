@@ -715,6 +715,24 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                             if (checkpoint == null || Convert.ToBoolean(checkpoint["available"]) ||
                                 (checkpoint.ContainsKey("verified") && !Convert.ToBoolean(checkpoint["verified"])))
                                 blockers.Add("latest-worktree-checkpoint");
+
+                            // The workflow writes current.json before the run-scoped
+                            // repository lock is acquired. Treat a live or unknown
+                            // progress state as a blocker even when the lock is free.
+                            string currentProgressPath = Path.Combine(_stateDirectory, "current.json");
+                            if (SafeFileExists(currentProgressPath))
+                            {
+                                Dictionary<string, object> current = ReadJsonFile("current.json", 256000) as Dictionary<string, object>;
+                                object rawStatus;
+                                string progressStatus = current != null && current.TryGetValue("status", out rawStatus)
+                                    ? Convert.ToString(rawStatus).Trim().ToLowerInvariant()
+                                    : "";
+                                string[] terminalProgressStates = { "completed", "failed", "cancelled", "skipped", "blocked" };
+                                if (current == null || !Array.Exists(terminalProgressStates, item =>
+                                    String.Equals(item, progressStatus, StringComparison.Ordinal)))
+                                    blockers.Add("active_progress_run");
+                            }
+
                             if (blockers.Count > 0)
                                 return new Dictionary<string, object> {
                                     { "conflict", true }, { "blockers", blockers.ToArray() },
