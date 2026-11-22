@@ -217,6 +217,7 @@ def test_main_suppresses_recovery_if_finish_or_pause_happens_during_backoff(monk
     reports = []
     states = [
         {"mode": "continuous", "enabled": True, "paused": False},
+        {"mode": "continuous", "enabled": True, "paused": False},
         {"mode": "continuous", "enabled": False, "paused": False},
     ]
 
