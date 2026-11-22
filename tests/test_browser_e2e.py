@@ -5473,7 +5473,7 @@ def test_background_module_controls_render_and_drive_real_lifecycle_api():
         state = cloud.locator(".module-control-state")
         cloud.locator('button[data-action="pause"]').click()
         page.wait_for_function(
-            "() => document.querySelector('[data-module-id=\\"cloud-discovery\\"] .module-control-state')?.dataset.state === 'paused'",
+            "() => document.querySelector('[data-module-id=cloud-discovery] .module-control-state')?.dataset.state === 'paused'",
             timeout=10000,
         )
         assert state.inner_text() == "مکث"
@@ -5484,22 +5484,22 @@ def test_background_module_controls_render_and_drive_real_lifecycle_api():
 
         cloud.locator('button[data-action="resume"]').click()
         page.wait_for_function(
-            "() => document.querySelector('[data-module-id=\\"cloud-discovery\\"] .module-control-state')?.dataset.state === 'running'",
+            "() => document.querySelector('[data-module-id=cloud-discovery] .module-control-state')?.dataset.state === 'running'",
             timeout=10000,
         )
         cloud.locator('button[data-action="finish"]').click()
         page.wait_for_function(
-            "() => document.querySelector('[data-module-id=\\"cloud-discovery\\"] .module-control-state')?.dataset.state === 'finished'",
+            "() => document.querySelector('[data-module-id=cloud-discovery] .module-control-state')?.dataset.state === 'finished'",
             timeout=10000,
         )
         cloud.locator('button[data-action="start"]').click()
         page.wait_for_function(
-            "() => document.querySelector('[data-module-id=\\"cloud-discovery\\"] .module-control-state')?.dataset.state === 'running'",
+            "() => document.querySelector('[data-module-id=cloud-discovery] .module-control-state')?.dataset.state === 'running'",
             timeout=10000,
         )
         cloud.locator('button[data-action="force_stop"]').click()
         page.wait_for_function(
-            "() => document.querySelector('[data-module-id=\\"cloud-discovery\\"] .module-control-state')?.dataset.state === 'stopped'",
+            "() => document.querySelector('[data-module-id=cloud-discovery] .module-control-state')?.dataset.state === 'stopped'",
             timeout=10000,
         )
 
