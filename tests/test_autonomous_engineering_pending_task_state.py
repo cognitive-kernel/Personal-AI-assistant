@@ -35,6 +35,23 @@ def test_task_owner_is_persisted_validated_and_reclaimed_idempotently(tmp_path: 
     assert first == repeated
 
 
+def test_task_owner_correlation_id_survives_recovery_claim(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    task = "Trace this durable task across recovery"
+    correlation_id = "a" * 32
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CORRELATION_ID", correlation_id)
+    with durable_state_lock(tmp_path):
+        original = claim_pending_task_owner_unlocked(
+            tmp_path, task, "2101", 1, source="manual_dispatch",
+        )
+        recovered = claim_pending_task_owner_unlocked(
+            tmp_path, task, "2102", 2, source="recovery",
+        )
+    assert original["correlation_id"] == correlation_id
+    assert original["submitted_correlation_id"] == correlation_id
+    assert recovered["correlation_id"] == correlation_id
+    assert recovered["submitted_correlation_id"] == correlation_id
+
+
 def test_task_owner_recovery_claim_advances_owner_without_rewriting_submission(tmp_path: Path):
     task = "Recover a previously interrupted run"
     with durable_state_lock(tmp_path):
