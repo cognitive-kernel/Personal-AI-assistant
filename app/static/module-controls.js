@@ -16,7 +16,8 @@
     draining: "در حال پایان",
     stopped: "متوقف",
     finished: "پایان‌یافته",
-    finished_pending: "پایان کار فعال؛ صف محفوظ"
+    finished_pending: "پایان کار فعال؛ صف محفوظ",
+    unavailable: "وضعیت نامشخص"
   };
   const actions = [
     { id: "start", label: "شروع", title: "فعال‌سازی پردازش وظایف صف‌شده و جدید؛ کارهای مکث‌شده جداگانه ادامه داده نمی‌شوند." },
@@ -46,12 +47,14 @@
 
     const counts = module.task_counts || {};
     const summary = element("p", "module-control-counts",
-      "در صف: " + (counts.queued || 0) +
-      " · فعال: " + (counts.active || 0) +
-      " · مکث‌شده: " + (counts.paused || 0) +
-      " · لغوشده: " + (counts.cancelled || 0) +
-      " · موفق: " + (counts.succeeded || 0) +
-      " · ناموفق: " + (counts.failed || 0)
+      module.external
+        ? "اجراهای فعال: " + (counts.active || 0)
+        : "در صف: " + (counts.queued || 0) +
+          " · فعال: " + (counts.active || 0) +
+          " · مکث‌شده: " + (counts.paused || 0) +
+          " · لغوشده: " + (counts.cancelled || 0) +
+          " · موفق: " + (counts.succeeded || 0) +
+          " · ناموفق: " + (counts.failed || 0)
     );
     card.append(summary);
 
@@ -64,7 +67,14 @@
       const stateValue = module.state;
       const active = Number(counts.active || 0);
       const pending = Number(counts.pending || 0);
-      button.disabled = busyModules.has(module.id) ||
+      const externalDisabled = module.external && (
+        (action.id === "start" && ["running", "paused", "draining"].includes(stateValue)) ||
+        (action.id === "pause" && stateValue !== "running") ||
+        (action.id === "resume" && !["paused", "stopped"].includes(stateValue)) ||
+        (action.id === "finish" && !["running", "paused"].includes(stateValue)) ||
+        (action.id === "force_stop" && ["stopped", "finished"].includes(stateValue) && active === 0)
+      );
+      const taskDisabled = !module.external && (
         (action.id === "start" && stateValue === "running") ||
         (action.id === "pause" && stateValue !== "running") ||
         (action.id === "resume" &&
@@ -72,7 +82,9 @@
           Number(counts.paused || 0) === 0 &&
           Number(counts.pause_requested || 0) === 0) ||
         (action.id === "finish" && stateValue !== "running") ||
-        (action.id === "force_stop" && stateValue === "stopped" && active === 0 && pending === 0);
+        (action.id === "force_stop" && stateValue === "stopped" && active === 0 && pending === 0)
+      );
+      button.disabled = busyModules.has(module.id) || Boolean(externalDisabled || taskDisabled);
       button.addEventListener("click", () => void performAction(module, action.id));
       toolbar.append(button);
     }
@@ -80,35 +92,87 @@
     return card;
   }
 
+  function renderUnavailableAutonomousModule(message) {
+    const card = element("article", "module-control-card");
+    card.dataset.moduleId = "autonomous-engineering";
+    const heading = element("div", "module-control-heading");
+    heading.append(
+      element("h3", "", "مهندسی خودکار"),
+      element("span", "module-control-state", stateLabels.unavailable)
+    );
+    heading.lastChild.dataset.state = "unavailable";
+    card.append(heading);
+    card.append(element("p", "muted", "چرخهٔ مستقل GitHub Actions، Runner و Codex"));
+    card.append(element("p", "module-control-counts", message));
+    const toolbar = element("div", "module-control-actions");
+    for (const action of actions) {
+      const button = element("button", action.id === "force_stop" ? "danger" : "secondary", action.label);
+      button.type = "button";
+      button.disabled = true;
+      button.title = "تا زمانی که وضعیت واقعی GitHub قابل تأیید نباشد، کنترل غیرفعال است.";
+      toolbar.append(button);
+    }
+    card.append(toolbar);
+    return card;
+  }
+
+  function renderAutonomousModule(status) {
+    const active = Number(status.active_runs || 0);
+    return renderModule({
+      id: "autonomous-engineering",
+      name: "مهندسی خودکار",
+      description: "چرخهٔ مستقل GitHub Actions، Runner و Codex",
+      state: status.state,
+      display_state: status.state,
+      external: true,
+      controlBase: "/api/autonomous-engineering",
+      task_counts: { active, pending: 0, queued: 0, paused: 0, pause_requested: 0 }
+    });
+  }
+
   async function refresh() {
     refreshButton.disabled = true;
-    try {
-      const result = await api("/api/tasks/modules");
-      if (!result || !Array.isArray(result.modules)) throw new Error("ساختار پاسخ فهرست ماژول‌ها معتبر نیست.");
-      container.replaceChildren(...result.modules.map(renderModule));
-      output.textContent = "وضعیت ماژول‌ها به‌روز شد.";
-    } catch (error) {
-      output.textContent = "دریافت وضعیت ماژول‌ها ناموفق بود: " + (error.message || "خطای نامشخص");
-    } finally {
-      refreshButton.disabled = false;
+    const [taskResult, autonomousResult] = await Promise.allSettled([
+      api("/api/tasks/modules"),
+      api("/api/autonomous-engineering/lifecycle")
+    ]);
+    const cards = [];
+    if (taskResult.status === "fulfilled" && Array.isArray(taskResult.value?.modules)) {
+      cards.push(...taskResult.value.modules.map(renderModule));
+    } else {
+      output.textContent = "دریافت وضعیت ماژول‌های صف پایدار ناموفق بود.";
     }
+    if (autonomousResult.status === "fulfilled" && autonomousResult.value?.available === true) {
+      cards.push(renderAutonomousModule(autonomousResult.value));
+    } else {
+      const message = autonomousResult.status === "fulfilled"
+        ? autonomousResult.value?.message || "وضعیت GitHub قابل تأیید نیست."
+        : autonomousResult.reason?.message || "دریافت وضعیت GitHub ناموفق بود.";
+      cards.push(renderUnavailableAutonomousModule(message));
+    }
+    container.replaceChildren(...cards);
+    if (taskResult.status === "fulfilled") output.textContent = "وضعیت ماژول‌ها به‌روز شد.";
+    refreshButton.disabled = false;
   }
 
   async function performAction(module, action) {
     if (busyModules.has(module.id)) return;
     if (action === "force_stop" && !window.confirm(
-      "تمام وظایف منتظر این ماژول لغو شوند و برای وظایف فعال درخواست لغو ثبت شود؟ پردازش فعال در اولین نقطهٔ کنترل تعاونی متوقف می‌شود."
+      module.external
+        ? "چرخه‌های بعدی مهندسی غیرفعال و اجرای فعال GitHub Actions برای لغو علامت‌گذاری شود؟ پایان پردازهٔ Runner باید جداگانه تأیید شود."
+        : "تمام وظایف منتظر این ماژول لغو شوند و برای وظایف فعال درخواست لغو ثبت شود؟ پردازش فعال در اولین نقطهٔ کنترل تعاونی متوقف می‌شود."
     )) return;
 
     busyModules.add(module.id);
     output.textContent = "در حال اجرای فرمان «" + action + "» برای " + module.name + "…";
     let finalMessage = "";
     try {
-      const result = await api(
-        "/api/tasks/modules/" + encodeURIComponent(module.id) + "/" + action,
-        { method: "POST" }
-      );
-      finalMessage = result.module?.message || "فرمان ماژول ثبت شد.";
+      const actionPath = action === "force_stop" ? "force-stop" : action;
+      const endpoint = module.controlBase
+        ? module.controlBase + "/" + actionPath
+        : "/api/tasks/modules/" + encodeURIComponent(module.id) + "/" + action;
+      const result = await api(endpoint, { method: "POST" });
+      finalMessage = result.module?.message || result.message || "فرمان ماژول ثبت شد.";
     } catch (error) {
       finalMessage = "فرمان ماژول اجرا نشد: " + (error.message || "خطای نامشخص");
     } finally {
