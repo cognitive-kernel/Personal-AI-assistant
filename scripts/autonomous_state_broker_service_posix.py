@@ -411,6 +411,42 @@ class RestrictedStateBroker:
                 os.close(descriptor)
         return self._with_state_lock(perform)
 
+    def _with_task_mutation_locks(self, operation):
+        from autonomous_pending_task_lifecycle import LifecycleConflict
+
+        def with_lock(filename: str, blocker: str, callback):
+            flags = os.O_CREAT | os.O_RDWR
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            descriptor = os.open(self.state_dir / filename, flags, 0o600)
+            try:
+                try:
+                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError as exc:
+                    raise LifecycleConflict(
+                        "A task lifecycle writer lock is active.", [blocker],
+                    ) from exc
+                try:
+                    return callback()
+                finally:
+                    fcntl.flock(descriptor, fcntl.LOCK_UN)
+            finally:
+                os.close(descriptor)
+
+        # Match the Windows service and Runner global order:
+        # repository execution -> durable state -> checkpoint store.
+        return with_lock(
+            "repository-execution.lock",
+            "repository_execution_active",
+            lambda: self._with_state_lock(
+                lambda: with_lock(
+                    "autonomous-checkpoint-store.lock",
+                    "checkpoint_writer_active",
+                    operation,
+                )
+            ),
+        )
+
     def dispatch(self, request: Any) -> tuple[int, Any]:
         if not isinstance(request, dict) or request.get("version") != 1:
             raise BrokerFailure(400, "invalid_request")
@@ -448,13 +484,17 @@ class RestrictedStateBroker:
                     })
                 if method == "POST" and path == "/v1/tasks/archive":
                     assert validated is not None
-                    return 200, self._with_state_lock(
-                        lambda: archive_task(self.state_dir, validated["task_id"], validated["revision"])
+                    return 200, self._with_task_mutation_locks(
+                        lambda: archive_task(
+                            self.state_dir, validated["task_id"], validated["revision"], locks_held=True,
+                        )
                     )
                 if method == "POST" and path == "/v1/tasks/restore":
                     assert validated is not None
-                    return 200, self._with_state_lock(
-                        lambda: restore_task(self.state_dir, validated["task_id"], validated["revision"])
+                    return 200, self._with_task_mutation_locks(
+                        lambda: restore_task(
+                            self.state_dir, validated["task_id"], validated["revision"], locks_held=True,
+                        )
                     )
             except LifecycleConflict as exc:
                 return 409, {"conflict": True, "message": str(exc), "blockers": exc.blockers}
