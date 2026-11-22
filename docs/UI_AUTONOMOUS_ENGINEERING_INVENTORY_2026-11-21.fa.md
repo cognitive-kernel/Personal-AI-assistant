@@ -12,7 +12,7 @@ API prefix: `/api/autonomous-engineering`
 |---|---|---|---|
 | Core | `autonomous-engineering-core.js` | ندارد | انتخاب DOM، پیام عمومی، fetch با timeout و خطای مشترک |
 | Status | `autonomous-engineering-status.js` | Core | readiness، مدل‌ها، pending/checkpoint، مجازبودن dispatch و وضعیت Pause/Resume/Cancel |
-| Controls | `autonomous-engineering-controls.js` | Core + Status | ذخیره تنظیمات، pull مدل، ارسال task، dispatch، pause/resume/cancel |
+| Controls | `autonomous-engineering-controls.js` | Core + Status | ذخیره تنظیمات، pull مدل با polling مقاوم، ارسال task، dispatch، pause/resume/cancel |
 | Runs | `autonomous-engineering-runs.js` | Core | تاریخچه، گزارش و تشخیص خطا، حذف اجرای پایان‌یافته، cleanup |
 | Progress | `autonomous-engineering-progress.js` | Core | پیشرفت جاری، نمودار scorecard، رویدادها و فیلتر تاریخ |
 | Bootstrap | `autonomous-engineering.js` | همهٔ ماژول‌ها | بررسی نسخه/وجود ماژول‌ها، polling مستقل با backoff/jitter و lifecycle cleanup |
