@@ -5505,3 +5505,62 @@ def test_background_module_controls_render_and_drive_real_lifecycle_api():
 
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+def test_module_resume_remains_available_for_paused_tasks_after_start():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    browser_errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.on("dialog", lambda dialog: dialog.accept())
+        response = _goto_section(page, base_url, "task-manager-section")
+        assert response is not None and response.status == 200
+
+        page.wait_for_function(
+            "() => document.querySelectorAll('#module-controls-container [data-module-id]').length === 7",
+            timeout=15000,
+        )
+        cloud = page.locator('[data-module-id="cloud-discovery"]')
+
+        # Keep the lane paused while creating work so the background worker
+        # cannot claim it during this UI-state regression.
+        assert page.request.post(
+            base_url.rstrip("/") + "/api/tasks/modules/cloud-discovery/start"
+        ).status_code == 200
+        assert page.request.post(
+            base_url.rstrip("/") + "/api/tasks/modules/cloud-discovery/pause"
+        ).status_code == 200
+        queued = page.request.post(
+            base_url.rstrip("/") + "/api/cloud-resources/discover"
+        )
+        assert queued.status_code == 202
+        assert page.request.post(
+            base_url.rstrip("/") + "/api/tasks/modules/cloud-discovery/pause"
+        ).status_code == 200
+
+        page.locator("#refresh-module-controls").click()
+        page.wait_for_function(
+            "() => document.querySelector('[data-module-id=cloud-discovery] .module-control-state')?.dataset.state === 'paused'",
+            timeout=10000,
+        )
+        assert cloud.locator(".module-control-counts").inner_text().find("مکث‌شده: 1") >= 0
+
+        cloud.locator('button[data-action="start"]').click()
+        page.wait_for_function(
+            "() => document.querySelector('[data-module-id=cloud-discovery] .module-control-state')?.dataset.state === 'running'",
+            timeout=10000,
+        )
+        assert cloud.locator('button[data-action="resume"]').is_enabled()
+
+        # Do not resume the task in this regression: force-stop the paused task
+        # so the test never dispatches external cloud discovery.
+        cloud.locator('button[data-action="force_stop"]').click()
+        page.wait_for_function(
+            "() => document.querySelector('[data-module-id=cloud-discovery] .module-control-state')?.dataset.state === 'stopped'",
+            timeout=10000,
+        )
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
