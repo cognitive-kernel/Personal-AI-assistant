@@ -2839,7 +2839,7 @@ def test_browser_programming_assistance_queues_polls_and_recovers_from_api_failu
             "instruction": "Implement a small add function.",
             "context": "Use Python and keep the implementation minimal.",
         }]
-        assert state["polls"] >= 2
+        assert state["polls"] >= 3
         assert output.inner_text() == generated_reply
         assert "کد اجرا نشده و هیچ آزمونی اجرا نشده است" in status.inner_text()
         assert submit.is_enabled()
@@ -5697,6 +5697,10 @@ def test_autonomous_engineering_model_pull_requires_consent_and_reports_progress
     def poll_pull(route):
         state["polls"] += 1
         if state["polls"] == 1:
+            route.fulfill(status=503, json={
+                "detail": "Temporary model-pull status outage.",
+            })
+        elif state["polls"] == 2:
             route.fulfill(status=200, json={
                 "job_id": "a" * 32, "model": model, "status": "running",
                 "progress": 50, "message": "در حال دانلود", "error": None,
