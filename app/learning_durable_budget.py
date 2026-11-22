@@ -31,6 +31,9 @@ def reserve_job_budget(
     max_predict_tokens: int = DEFAULT_MAX_PREDICT_TOKENS,
     max_global_calls_per_day: int = DEFAULT_GLOBAL_MAX_CALLS_PER_DAY,
     max_global_predict_tokens_per_day: int = DEFAULT_GLOBAL_MAX_PREDICT_TOKENS_PER_DAY,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Atomically reserve a stage once against per-job and daily global ceilings."""
     for name, value, minimum, maximum in (
@@ -56,6 +59,14 @@ def reserve_job_budget(
     try:
         with learning_connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            if task_context is not None:
+                if expected_task_type is None or expected_payload is None:
+                    raise LearningBudgetError("Budget reservation task ownership contract is incomplete.")
+                task_context.assert_current(
+                    connection,
+                    expected_task_type=expected_task_type,
+                    expected_payload=expected_payload,
+                )
             connection.execute(
                 """INSERT OR IGNORE INTO learning_pipeline_budgets(
                        job_id, max_calls, max_predict_tokens
