@@ -1955,7 +1955,9 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     progress = (static / "autonomous-engineering-progress.js").read_text(encoding="utf-8")
 
     assert "new AbortController()" in core
-    assert 'const timeoutMs = path === "status" ? 40000' in core
+    assert 'const defaultTimeoutMs = path === "status" ? 40000' in core
+    assert "requestedTimeoutMs > 120000" in core
+    assert "const timeoutMs = requestedTimeoutMs === undefined ? defaultTimeoutMs : requestedTimeoutMs" in core
     assert 'path.startsWith("progress") ? 20000 : 120000' in core
     assert "timeoutError.ambiguous = true" in core
     assert "statusRefreshPromise" in status
