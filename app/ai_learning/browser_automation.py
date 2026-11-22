@@ -1791,17 +1791,17 @@ def recover_orphaned_runs() -> dict[str, Any]:
 def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
     """Persist an outline request, then dispatch it under the shared browser lease."""
     _ensure_process_identity()
-    control = service.get_learning_control()
-    if control["paused"]:
-        raise ValueError("مکث سراسری فعال است؛ برای شروع یا ادامه ابتدا «ادامه / بازیابی» را بزنید.")
-    if control.get("draining", False):
-        raise ValueError("ماژول در حال پایان است؛ برای شروع کار جدید ابتدا «شروع» را بزنید.")
-    if control.get("retry_pending", False):
-        raise ValueError(
-            "به‌دلیل خطای موقت ChatGPT، صف تا " + str(control["retry_after"])
-            + " در مکث خودکار است؛ تلاش بعدی بدون نیاز به بازکردن دستی Chrome انجام می‌شود."
-        )
     with _LOCK:
+        control = service.get_learning_control()
+        if control["paused"]:
+            raise ValueError("مکث سراسری فعال است؛ برای شروع یا ادامه ابتدا «ادامه / بازیابی» را بزنید.")
+        if control.get("draining", False):
+            raise ValueError("ماژول در حال پایان است؛ برای شروع کار جدید ابتدا «شروع» را بزنید.")
+        if control.get("retry_pending", False):
+            raise ValueError(
+                "به‌دلیل خطای موقت ChatGPT، صف تا " + str(control["retry_after"])
+                + " در مکث خودکار است؛ تلاش بعدی بدون نیاز به بازکردن دستی Chrome انجام می‌شود."
+            )
         if _ACTIVE:
             raise ValueError("یک کار مرورگر در حال اجراست؛ تا پایان آن صبر کنید.")
         run = service.create_run(
@@ -1838,14 +1838,14 @@ def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, for
     """Persist every selected topic as its own FIFO run before dispatching browser work."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
     _ensure_process_identity()
-    control = service.get_learning_control()
-    globally_paused = control["paused"]
-    if control.get("draining", False):
-        raise ValueError("ماژول در حال پایان است؛ برای شروع کار جدید ابتدا «شروع» را بزنید.")
     requested_ids = list(dict.fromkeys(int(item) for item in topic_ids))
     if not requested_ids:
         raise ValueError("حداقل یک سرفصل برای دریافت درس انتخاب کنید.")
     with _LOCK:
+        control = service.get_learning_control()
+        globally_paused = control["paused"]
+        if control.get("draining", False):
+            raise ValueError("ماژول در حال پایان است؛ برای شروع کار جدید ابتدا «شروع» را بزنید.")
         course = service.get_course(course_id)
         course_topics = {int(topic["id"]): topic for topic in course.get("topics", [])}
         missing = [item for item in requested_ids if item not in course_topics]
@@ -2050,8 +2050,8 @@ def pause_learning() -> dict[str, Any]:
 def finish_learning() -> dict[str, Any]:
     """Drain the browser-learning queue without interrupting the current run."""
     _ensure_process_identity()
-    state = service.set_learning_draining(True, "پایان تدریجی توسط کاربر")
     with _LOCK:
+        state = service.set_learning_draining(True, "پایان تدریجی توسط کاربر")
         active_run_id = _ACTIVE_RUN_ID
     queued_ids = service.list_run_ids_by_status("queued")
     running_ids = service.list_run_ids_by_status("running")
