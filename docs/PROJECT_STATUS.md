@@ -1,14 +1,40 @@
+## 2026-11-22 — وضعیت جاری پس از تعیین تکلیف PRها
+
+- main روی 9d97d2e3fa8f72429e6bb5510192ba70a6d376d8 است. PR #837 از head 80c126734123a5e84596d320ff625278495764e0 با squash ادغام شد؛ Linux 2511/14/69، Windows 2509/16/69، Windows storage، Browser/dashboard smoke، real Docker sandbox، CodeQL و dependency audit موفق.
+- #819 و #821–#826 به‌عنوان sourceهای #837 بسته شدند؛ #820/#834 با حفظ تغییرات UI در #836 بسته شدند؛ #833/#835 به‌دلیل شکست lifecycle tests بسته شدند؛ #828/#829/#831/#832 نیز بسته‌اند. هیچ branchی حذف نشده است.
+- تنها PR باز #836 است؛ Draft. head قبلی fc8b039dce7c8ea642ee850a5e0de99ecd8fefc5 تمام checks را گذراند: Linux 2491/14/77 و Windows 2489/16/77، به‌علاوهٔ Browser E2E، Windows storage، CodeQL، Analyze و pip-audit. head جدید پس از sync main و اصلاح timeout/trace نیازمند CI مجدد است.
+- Gate A inventory و state-transition mapping ثبت شده؛ Gate B #837 در main و #836 cleanup lock/parent guard را اضافه می‌کند. correlation propagation، target-host Windows UI/Runner/Ollama/Codex، crash/restart، restore/rollback و owner acceptance باز هستند.
+- هیچ task، checkpoint، database، ACL یا durable state حذف/بازنویسی نشده است. workflow فعال main 44995223588 دست‌نخورده باقی ماند. PR #836 تا exact-head CI و target-host/owner acceptance در Draft می‌ماند.
+
+---
+
 # وضعیت یکپارچهٔ پروژه
 
-## 2026-11-21 — اصلاح مالکیت صف اجرا و fencing (PR #799، در حال اعتبارسنجی)
+## Snapshot زنده — 2026-11-22
 
-- شاخهٔ بازسازی‌شده از main فعلی `bc1d273bdece690b5067a70b2deea8aa77ed7e28` ساخته شده است؛ PR [#799](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/799) به‌صورت Draft باز است.
+- `main` فعلی: `0367a3ebfd92ac196bb096f1a45cbfed5a61985d`.
+- PR #799 (lease epoch و owner+epoch fencing) ادغام شده است؛ commit ادغام: `852423ae8b862b834e007eada0033d087a37cd83`.
+- PR #817 (structured API errors) ادغام شده است.
+- PR #827 (بازیابی گزارش Codex از JSONL معتبر) ادغام شده است؛ PR قدیمی #818 که با main تعارض داشت، با توضیح superseded بسته شد.
+- روی SHA فعلی main، tests، browser-e2e، dependency-audit و CodeQL همگی completed/success هستند: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44979290739)، [browser-e2e](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44979290773)، [dependency-audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44979290835)، [CodeQL](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44979290781).
+- اجرای workflow با نام `Autonomous local Ollama engineering` در [run 44979290758](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44979290758) موفق تمام شد، اما job اجرای Codex به‌علت pause gate اجرا نشد؛ بنابراین این run، تست واقعی Codex/Ollama یا پذیرش Windows target نیست. workflow recovery نیز skipped بود.
+- PR #834 برای UI/cleanup ماژول Autonomous Engineering در حالت Draft نگه داشته شده است؛ inventory و state-transition matrix در `docs/UI_AUTONOMOUS_ENGINEERING_INVENTORY_2026-11-22.fa.md` ثبت شده است. وابستگی runtime اپلیکیشن به namespace غیرقابل‌نصب `scripts` حذف شده و lock helperهای مشترک به بستهٔ `app` منتقل شده‌اند؛ فایل‌های CLI فقط compatibility wrapper هستند و build configuration تغییر نکرده است. CI exact-head جدید در صف اجراست؛ target-host acceptance همچنان pending است.
+- PR #833 کنترل‌های TaskRuntime برای سایر ماژول‌ها را در حالت Draft نگه داشته‌ایم؛ طبق اولویت master prompt، تا تکمیل Gateهای Autonomous Engineering نباید آن را merge یا جلوتر برد.
+- PRهای #819 تا #826 هنوز باز هستند و base آن‌ها SHA قدیمی `91b7e062e21d06d774c2f1f394bc72e4eb69af2c` است؛ موفقیت CI روی head قدیمی به main فعلی قابل تعمیم نیست. پیش از هر merge باید rebase/revalidation و review مستقل انجام شود.
+- وضعیت Gateهای A–J در inventory مورخ 2026-11-22 آمده است. Gate B یک race مهم cleanup را در PR #834 هدف گرفته: cleanup زیر repository execution lock و با recheck دوبارهٔ GitHub runها انجام می‌شود. این اصلاح هنوز CI نشده است.
+- Windows target، ACL واقعی دو حساب، اجرای واقعی Ollama/Codex، crash/restart، restore/rollback و پذیرش مالک هنوز pending هستند. هیچ migration روی دیتابیس کاربر اجرا نشده و هیچ task/checkpoint کاربر تغییر داده نشده است.
+
+## Historical snapshot — 2026-11-21
+
+## تاریخی — snapshot مورخ 2026-11-21 دربارهٔ PR #799 (بعداً ادغام شد)
+
+- در زمان این snapshot، شاخه از main با SHA `bc1d273bdece690b5067a70b2deea8aa77ed7e28` ساخته و PR [#799](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/799) به‌صورت Draft باز بود؛ PR در 2026-11-21 با merge commit `852423ae8b862b834e007eada0033d087a37cd83` ادغام شد.
 - علت ریشه‌ای: مالکیت task فقط با رشتهٔ قابل‌بازیافت `lease_owner` و زمان انقضا سنجیده می‌شد؛ worker قدیمی با شناسهٔ تکراری می‌توانست پس از reclaim هنوز mutation انجام دهد. همچنین task manager مسئولیت‌های storage، lease، control و قرارداد داده را در یک فایل ۶۴۵ خطی جمع کرده بود.
 - اصلاح در PR: ماژول‌های جدا برای قرارداد، ذخیره‌سازی، چرخهٔ lease و کنترل؛ facade سازگار `app.task_manager`؛ migration افزایشی ۴۸ برای `lease_epoch`؛ افزایش epoch هنگام claim در تراکنش؛ اعتبارسنجی owner+epoch+expiry برای mutation؛ توکن یکتای هر نمونهٔ worker؛ انتقال epoch در TaskContext.
 - تست‌های regression برای reclaim با worker label یکسان، رد mutation با epoch قدیمی، یکتایی توکن worker و بازیابی checkpoint اضافه شده‌اند.
 - وضعیت CI exact-head: هنوز اجرا/نتیجه‌ای از GitHub Actions در دسترس نیست؛ هیچ موفقیتی ادعا نمی‌شود.
 - دامنهٔ باز: fencing در تراکنش‌های دامنه‌ای learning job/method/quality gate هنوز باید به تمام مسیرهای mutation متصل شود؛ UI fault isolation و اجرای کامل ماژول‌ها نیز همچنان باز است.
-- تست میزبان Windows، crash/restart واقعی، soak، restore/rollback و بازبینی امنیتی مستقل انجام‌شده محسوب نمی‌شوند. هیچ migration روی دیتابیس کاربر اجرا نشده و هیچ merge انجام نشده است.
+- تست میزبان Windows، crash/restart واقعی، soak، restore/rollback و بازبینی امنیتی مستقل در آن snapshot انجام‌شده محسوب نمی‌شدند. merge بعدی PR #799 به معنی تکمیل این پذیرش‌های عملیاتی نیست؛ هیچ migration روی دیتابیس کاربر اجرا نشده است.
 
 
 ## 2026-11-15 — اصلاح طبقه‌بندی شکست و بازیابی چرخهٔ خودکار
@@ -494,35 +520,20 @@ Evidence: Tests/Windows regressions https://github.com/cognitive-kernel/Personal
 
 The subsequent documentation-only evidence update does not change runtime code and is followed by a fresh exact-head CI run. Target-host cross-account ACL verification, non-admin sandbox smoke/soak, crash/restart acceptance, and independent security review remain pending. Durable Pause remains enabled; no Runner, service, or autonomous process was started.
 
-- Gate-C backend follow-up in PR #817: all Autonomous Engineering API route failures now use the structured error envelope (`code`, `message`, `correlation_id`, `retryable`, `safe_details`) with matching headers; validation input values and unexpected exception details are redacted. Raw GitHub stderr is no longer returned by run deletion. New contract tests added; exact-head CI pending.
+- Gate-C backend follow-up در PR #817 ادغام شده است (merge commit `a5855e9230f8758f21be91b8586946d195d015f6`): خطاهای API از envelope ساختاریافته و headerهای correlation/retry استفاده می‌کنند؛ داده‌های ورودی و جزئیات exception ناشناس‌سازی می‌شوند و stderr خام GitHub به UI بازگردانده نمی‌شود.
 
 
 ## 2026-11-22 — Gate-C diagnostics and dispatch follow-up (PR #817)
 
 - Windows Runner execution `44932980718` / job `137009509972` failed after two Codex attempts: attempt 2 produced no final `agent_message`, the output-last-message report was empty, and completion-marker validation failed. The durable task was preserved and not marked complete; no artifact was produced.
-- The Autonomous Engineering dashboard now reports this as a distinct Codex no-final-message failure instead of showing only the generic bounded-retry error. `/resume` dispatch now marks timeouts ambiguous and non-retryable, while definite CLI launch failures are retryable with a correlation ID. Unmatched 404/405 errors under the module prefix now follow the structured error contract.
-- Regression tests were added for these cases. Exact-head CI for the resulting PR #817 head is pending; Gate C is not closed, and no target-host acceptance is claimed.
+- اجرای ناموفق Windows Runner به‌علت نبود final `agent_message`، گزارش خالی و عدم ثبت completion marker رخ داد؛ task/checkpoint حذف یا complete نشد.
+- PR قدیمی #818 ادغام نشد و بسته شد؛ PR جایگزین #827 در 2026-11-22 با merge commit `0367a3ebfd92ac196bb096f1a45cbfed5a61985d` ادغام شد و بازیابی محدود از JSONL معتبر را اضافه کرد. این ادغام، خطای اجرای واقعی Codex روی Windows را به‌تنهایی اثبات‌شده حل‌شده نمی‌کند.
+- PR #834 اصلاحات UI feedback، حفاظت cleanup با repository lock، تست HTTP برای producer واقعی خطای API و رفع بسته‌بندی importهای `scripts` را دنبال می‌کند؛ CI exact-head جدید و Gateهای عملیاتی هنوز باز هستند.
 
 
-## 2026-11-22 — یکپارچه‌سازی Gate B برای fencing نوشتن‌های دامنه‌ای (PR #837)
+## وضعیت اعتبارسنجی زنده — 2026-11-22
 
-- PR Draft [#837](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/837) از current main در SHA 0367a3ebfd92ac196bb096f1a45cbfed5a61985d ساخته شد و تغییرات هم‌پوشان #819 و #821–#826 را در یک branch ادغام می‌کند.
-- baseline صف و lease از PR #799 حفظ شده است؛ epoch افزایشی، owner token و expiry دوباره پیاده‌سازی نشده‌اند.
-- پوشش دامنه‌ای شامل learning/curriculum، factual verification، knowledge lifecycle/graph، cloud discovery، experience/research و sandbox practical است. child-task creation نیز پیش از INSERT، parent task را در همان تراکنش اعتبارسنجی می‌کند.
-- فایل‌های مشترک به‌صورت صریح ترکیب شدند: نسخهٔ parent-task contract در learning از #825، regressionهای stale epoch از #819، fencing source/path curriculum از #819 به‌علاوهٔ child scheduling از #825، patch یکتای task_queue_store از #823/#825، و دو تغییر مستقل experience_tasks از #824/#826.
-- جدول transition و محدودهٔ audit در docs/DOMAIN_TASK_WRITE_FENCING_AUDIT_2026-11-22.fa.md ثبت شده است.
-- Exact-head CI روی PR #837 هنوز pending است؛ هیچ‌یک از تغییرات Gate B ادغام نشده‌اند. PRهای منبع و branchهای آن‌ها تا تأیید CI و تطبیق reviewها حذف نمی‌شوند.
-- Target-host Windows Runner، ACL چندحسابی، Ollama/Codex واقعی و crash/restart همچنان gateهای خارجی‌اند؛ این PR به‌تنهایی operational acceptance نیست.
-
-
-## 2026-11-22 — نتیجهٔ exact-head CI برای PR #837
-
-PR #837 در head 908e9e3a79b03146a3b560c1d65f7361c1efffab همهٔ workflowهای مخزن را گذراند:
-
-- Linux full suite: 2511 passed, 14 skipped, 69 deselected.
-- Windows full suite: 2509 passed, 16 skipped, 69 deselected.
-- Windows storage regressions و real Docker sandbox integration: موفق.
-- Browser/dashboard smoke، CodeQL، Analyze، pip-audit و bootstrapهای سه سیستم‌عامل: موفق.
-- شکست اجرای اول فقط test-double ناسازگار در تست experience بود؛ با پذیرش keyword task type اصلاح شد و اجرای مجدد exact head موفق شد.
-
-PR #837 همچنان Draft و merge نشده است؛ target-host Windows، چندحسابی/ACL، Ollama/Codex واقعی، crash/restart و تأیید مالک خارج از CI باقی مانده‌اند. PRهای منبع #819 و #821–#826 تا ثبت این شواهد و تطبیق review threadها branchهایشان حفظ می‌شوند.
+- PR #834 در head `02ede5f4ccd20aace3d8e2db531d0998bd842dc3`: Browser E2E، CodeQL، Analyze، pip-audit و سه bootstrap موفق؛ Linux full suite با ۳ failure و Windows storage regressions با ۲ failure. Full Windows suite هنگام ثبت هنوز در حال اجرا بود.
+- اصلاح Windows byte-range lock و دو اصلاح تست در branch جایگزین `fix/autonomous-engineering-first-module-validation-20261122` از همان head آماده شده‌اند؛ قبل از بازکردن PR جایگزین، CI دقیق اجرا نشده است.
+- PR #823 نیز اصلاح نهایی pause/cancel هنگام ثبت وضعیت discovery را در branch خود دارد؛ CI دقیق آن اجرا نشده است.
+- هیچ‌یک از این تغییرات merge نشده‌اند. اجرای Runner/Ollama/Codex واقعی، crash/restart و تأیید Windows target و مالک همچنان gateهای باز هستند.

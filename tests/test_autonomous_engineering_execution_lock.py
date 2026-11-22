@@ -13,10 +13,8 @@ import pytest
 from scripts.autonomous_engineering_process_job import WindowsProcessJob
 from scripts import autonomous_engineering_codex_runner as codex_runner
 
-from scripts.autonomous_engineering_execution_lock import (
-    execution_state_directory,
-    repository_execution_lock,
-)
+from app.autonomous_engineering_execution_lock import repository_execution_lock
+from app.autonomous_engineering_state import execution_state_directory
 
 
 def test_execution_lock_records_owner_metadata_and_releases_after_scope(
@@ -30,7 +28,9 @@ def test_execution_lock_records_owner_metadata_and_releases_after_scope(
     # locked file; inspect its diagnostic metadata after ownership is released.
     import json
 
-    metadata = json.loads((shared_state_tmp_path / "repository-execution.lock").read_text(encoding="utf-8"))
+    lock_bytes = (shared_state_tmp_path / "repository-execution.lock").read_bytes()
+    assert lock_bytes[:1] == b"0"
+    metadata = json.loads(lock_bytes[1:].decode("utf-8"))
     assert metadata["pid"] == os.getpid()
     assert metadata["run_id"] == "run-1"
     assert metadata["run_attempt"] == "attempt-2"
@@ -337,3 +337,54 @@ def test_posix_progress_owner_kills_codex_descendants_after_supervisor_crash(mon
         )
     except psutil.NoSuchProcess:
         pass
+
+def test_publish_parent_guard_requires_the_locked_cycle_controller(
+    monkeypatch, shared_state_tmp_path: Path,
+):
+    from app.autonomous_engineering_execution_lock import require_parent_repository_execution_lock
+
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path))
+    with pytest.raises(RuntimeError, match="must run as a child"):
+        require_parent_repository_execution_lock("run-guard-test")
+
+    code = (
+        "from app.autonomous_engineering_execution_lock import "
+        "require_parent_repository_execution_lock; "
+        "require_parent_repository_execution_lock('run-guard-test')"
+    )
+    with repository_execution_lock("run-guard-test", "1"):
+        child = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=Path(__file__).resolve().parents[1],
+            env=os.environ.copy(),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+    assert child.returncode == 0, child.stderr
+
+    second_code = code.replace("run-guard-test", "second-run")
+    wrong_run = second_code.replace("second-run", "different-run")
+    with repository_execution_lock("second-run", "2"):
+        child = subprocess.run(
+            [sys.executable, "-c", second_code],
+            cwd=Path(__file__).resolve().parents[1],
+            env=os.environ.copy(),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+        assert child.returncode == 0, child.stderr
+        child = subprocess.run(
+            [sys.executable, "-c", wrong_run],
+            cwd=Path(__file__).resolve().parents[1],
+            env=os.environ.copy(),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+    assert child.returncode != 0
+    assert "not owned by the active cycle controller" in child.stderr

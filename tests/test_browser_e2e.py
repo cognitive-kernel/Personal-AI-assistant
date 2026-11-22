@@ -2839,6 +2839,7 @@ def test_browser_programming_assistance_queues_polls_and_recovers_from_api_failu
             "instruction": "Implement a small add function.",
             "context": "Use Python and keep the implementation minimal.",
         }]
+        # One running response followed by one terminal response is sufficient.
         assert state["polls"] >= 2
         assert output.inner_text() == generated_reply
         assert "کد اجرا نشده و هیچ آزمونی اجرا نشده است" in status.inner_text()
@@ -3673,6 +3674,10 @@ def test_autonomous_engineering_manual_task_form_dispatches_bounded_input():
         with page.expect_request("**/api/autonomous-engineering/dispatch") as request_info:
             page.locator("#send-agent-task").click()
         assert request_info.value.post_data_json == {"task": task}
+        page.wait_for_function(
+            "() => document.querySelector('#agent-message')?.textContent.includes('وظیفهٔ دستی ارسال شد.')",
+            timeout=10000,
+        )
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
 
@@ -3838,6 +3843,7 @@ def test_autonomous_engineering_model_picker_requires_explicit_selection_and_sav
             "execution_mode": "continuous",
         }
         assert model_picker.input_value() == "gpt-oss:20b"
+        assert page.locator("#agent-message").inner_text() == "تنظیمات ذخیره شد."
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
 
@@ -3956,12 +3962,12 @@ def test_autonomous_dashboard_keeps_dispatch_disabled_after_accepted_run():
         browser.close()
 
 
-def test_autonomous_dashboard_reenables_cancel_after_server_rejection():
+def test_autonomous_dashboard_cancel_recovers_after_rejection_and_succeeds():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
         pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
-    state = {"cancel_calls": 0, "status_reads": 0}
+    state = {"cancel_calls": 0, "status_reads": 0, "cancelled": False}
     browser_errors = []
 
     def status_payload():
@@ -3994,7 +4000,7 @@ def test_autonomous_dashboard_reenables_cancel_after_server_rejection():
             "execution_mode": "continuous",
             "paused": False,
             "github": {
-                "recent_runs": [{
+                "recent_runs": [] if state["cancelled"] else [{
                     "id": 987655, "status": "in_progress", "conclusion": None,
                     "created_at": "2026-11-16T08:00:00Z",
                     "url": "https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/987655",
@@ -4023,7 +4029,11 @@ def test_autonomous_dashboard_reenables_cancel_after_server_rejection():
 
         def reject_cancel(route):
             state["cancel_calls"] += 1
-            route.fulfill(status=503, json={"detail": "temporary cancel failure"})
+            if state["cancel_calls"] == 1:
+                route.fulfill(status=503, json={"detail": "temporary cancel failure"})
+                return
+            state["cancelled"] = True
+            route.fulfill(status=200, json={"message": "active run cancellation requested"})
 
         page.route("**/api/autonomous-engineering/cancel", reject_cancel)
         response = page.goto(
@@ -4046,8 +4056,16 @@ def test_autonomous_dashboard_reenables_cancel_after_server_rejection():
             }""",
             timeout=10000,
         )
-        assert state["cancel_calls"] == 1
-        assert state["status_reads"] >= 2
+        assert "temporary cancel failure" in page.locator("#agent-message").inner_text()
+        cancel.click()
+        page.wait_for_function(
+            """() => document.querySelector('#cancel-agent')?.disabled === true &&
+                document.querySelector('#agent-message')?.textContent.includes('active run cancellation requested')""",
+            timeout=10000,
+        )
+        assert state["cancel_calls"] == 2
+        assert state["cancelled"] is True
+        assert state["status_reads"] >= 3
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
 
@@ -4133,7 +4151,7 @@ def test_autonomous_dashboard_run_logs_delete_and_cleanup_controls():
             status=200,
             json={"current": None, "history": [], "latest_snapshot": None, "events": [], "storage_configured": True},
         ))
-        page.route("**/api/autonomous-engineering/runs", mock_runs)
+        page.route("**/api/autonomous-engineering/runs**", mock_runs)
         page.route("**/api/autonomous-engineering/runs/701/logs", mock_logs)
         page.route("**/api/autonomous-engineering/runs/701", mock_delete)
         page.route("**/api/autonomous-engineering/cleanup", mock_cleanup)
@@ -5429,6 +5447,7 @@ def test_autonomous_dashboard_pause_and_resume_controls_follow_server_state():
             timeout=10000,
         )
         assert page.locator("#agent-readiness").inner_text() == "توقف ایمن فعال است"
+        assert page.locator("#agent-message").inner_text() == "safe pause confirmed"
 
         resume.click()
         page.wait_for_function(
@@ -5436,8 +5455,744 @@ def test_autonomous_dashboard_pause_and_resume_controls_follow_server_state():
             timeout=10000,
         )
         assert page.locator("#agent-readiness").inner_text() == "آمادهٔ ارسال Workflow"
+        assert page.locator("#agent-message").inner_text() == "resume confirmed"
         assert state["pause_calls"] == 1
         assert state["resume_calls"] == 1
         assert state["status_reads"] >= 3
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_autonomous_engineering_rtl_mobile_layout_and_keyboard_skip_link():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    status_payload = {
+        "ready": True,
+        "can_dispatch": True,
+        "checks": {
+            "ollama_online": True, "model_installed": True, "model_selectable": True,
+            "model_context_metadata_available": True, "model_context_supported": True,
+            "model_supports_tools": True, "model_tools_metadata_available": True,
+            "model_is_codex_context_variant": False, "codex_installed": False,
+            "runner_running": True, "github_cli_authenticated": True,
+            "github_runs_available": True, "progress_storage_accessible": True,
+        },
+        "model": "model:latest", "models": ["model:latest"],
+        "selectable_models": ["model:latest"], "model_context_length": 65536,
+        "model_recommended_context_length": 32768,
+        "model_tools_verification_method": "ollama_model_capabilities",
+        "interval_hours": 24, "execution_mode": "continuous", "paused": False,
+        "pending_work": {
+            "available": True, "blocked": False,
+            "markers": {"pending_task": False, "pending_owner": False, "pending_pr": False, "cleanup_in_progress": False},
+            "checkpoint": {"available": False, "verified": True}, "reason": None,
+        },
+        "github": {"recent_runs": [], "settings": {"model": "model:latest"}},
+        "codex": {"installed": False, "version": None},
+        "local_only_inference": True,
+    }
+    browser_errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": 390, "height": 844})
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/api/autonomous-engineering/status", lambda route: route.fulfill(status=200, json=status_payload))
+        page.route("**/api/autonomous-engineering/runs", lambda route: route.fulfill(status=200, json={"runs": []}))
+        page.route("**/api/autonomous-engineering/progress**", lambda route: route.fulfill(
+            status=200,
+            json={"current": None, "history": [], "latest_snapshot": None, "events": [], "storage_configured": True},
+        ))
+
+        response = page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        assert page.locator("html").get_attribute("dir") == "rtl"
+        page.keyboard.press("Tab")
+        skip_link = page.locator(".skip-link")
+        assert skip_link.evaluate("(element) => document.activeElement === element")
+        box = skip_link.bounding_box()
+        assert box is not None and box["y"] >= 0
+        page.keyboard.press("Enter")
+        assert page.evaluate("window.location.hash") == "#main-content"
+
+        for width in (390, 768, 1440):
+            page.set_viewport_size({"width": width, "height": 900})
+            page.wait_for_timeout(50)
+            overflow = page.evaluate(
+                "() => document.documentElement.scrollWidth - document.documentElement.clientWidth"
+            )
+            assert overflow <= 1, f"Unexpected horizontal page overflow at {width}px: {overflow}px"
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+def test_autonomous_engineering_progress_module_failure_isolated_from_other_modules():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    status_payload = {
+        "ready": True,
+        "can_dispatch": True,
+        "checks": {
+            "ollama_online": True, "model_installed": True, "model_selectable": True,
+            "model_context_metadata_available": True, "model_context_supported": True,
+            "model_supports_tools": True, "model_tools_metadata_available": True,
+            "model_is_codex_context_variant": False, "codex_installed": False,
+            "runner_running": True, "github_cli_authenticated": True,
+            "github_runs_available": True, "progress_storage_accessible": True,
+        },
+        "model": "model:latest", "models": ["model:latest"],
+        "selectable_models": ["model:latest"], "model_context_length": 65536,
+        "model_recommended_context_length": 32768,
+        "model_tools_verification_method": "ollama_model_capabilities",
+        "interval_hours": 24, "execution_mode": "continuous", "paused": False,
+        "pending_work": {
+            "available": True, "blocked": False,
+            "markers": {"pending_task": False, "pending_owner": False, "pending_pr": False, "cleanup_in_progress": False},
+            "checkpoint": {"available": False, "verified": True}, "reason": None,
+        },
+        "github": {"recent_runs": [], "settings": {"model": "model:latest"}},
+        "codex": {"installed": False, "version": None},
+        "local_only_inference": True,
+    }
+    state = {"runs_reads": 0}
+    browser_errors = []
+
+    def mock_runs(route):
+        state["runs_reads"] += 1
+        route.fulfill(status=200, json={"runs": []})
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/static/autonomous-engineering-progress.js", lambda route: route.abort())
+        page.route("**/api/autonomous-engineering/status", lambda route: route.fulfill(status=200, json=status_payload))
+        page.route("**/api/autonomous-engineering/runs**", mock_runs)
+        response = page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        page.wait_for_function(
+            "() => document.querySelector('#agent-readiness')?.textContent !== 'در حال بررسی'",
+            timeout=10000,
+        )
+        page.wait_for_function(
+            "() => document.querySelector('#dispatch-agent')?.disabled === false",
+            timeout=10000,
+        )
+        for _ in range(100):
+            if state["runs_reads"]:
+                break
+            page.wait_for_timeout(50)
+        assert state["runs_reads"] >= 1, "The independent run-history module did not initialize."
+        warning = page.locator("#agent-module-warning")
+        assert "پیشرفت" in warning.inner_text()
+        assert warning.get_attribute("role") == "alert"
+        assert warning.get_attribute("aria-live") == "assertive"
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+def test_autonomous_dispatch_error_exposes_code_and_correlation_id_after_status_refresh():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    status_payload = {
+        "ready": True, "can_dispatch": True,
+        "checks": {
+            "ollama_online": True, "model_installed": True, "model_selectable": True,
+            "model_context_metadata_available": True, "model_context_supported": True,
+            "model_supports_tools": True, "model_tools_metadata_available": True,
+            "model_is_codex_context_variant": False, "codex_installed": False,
+            "runner_running": True, "github_cli_authenticated": True,
+            "github_runs_available": True, "progress_storage_accessible": True,
+        },
+        "model": "model:latest", "models": ["model:latest"],
+        "selectable_models": ["model:latest"], "model_context_length": 65536,
+        "model_recommended_context_length": 32768,
+        "model_tools_verification_method": "ollama_model_capabilities",
+        "interval_hours": 24, "execution_mode": "continuous", "paused": False,
+        "pending_work": {
+            "available": True, "blocked": False,
+            "markers": {"pending_task": False, "pending_owner": False, "pending_pr": False, "cleanup_in_progress": False},
+            "checkpoint": {"available": False, "verified": True}, "reason": None,
+        },
+        "github": {"recent_runs": [], "settings": {"model": "model:latest"}},
+        "codex": {"installed": False, "version": None},
+        "local_only_inference": True,
+    }
+    browser_errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/api/autonomous-engineering/status", lambda route: route.fulfill(status=200, json=status_payload))
+        page.route("**/api/autonomous-engineering/runs**", lambda route: route.fulfill(status=200, json={"runs": []}))
+        page.route("**/api/autonomous-engineering/progress**", lambda route: route.fulfill(
+            status=200,
+            json={"current": None, "history": [], "latest_snapshot": None, "events": [], "storage_configured": True},
+        ))
+        page.route("**/api/autonomous-engineering/dispatch", lambda route: route.fulfill(
+            status=503,
+            headers={
+                "X-Correlation-ID": "dispatch-correlation-test-820",
+                "X-Error-Code": "WORKFLOW_DISPATCH_LAUNCH_FAILED",
+                "X-Retryable": "true",
+            },
+            json={"detail": "GitHub CLI could not be started."},
+        ))
+        response = page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        page.wait_for_function("() => document.querySelector('#dispatch-agent')?.disabled === false", timeout=10000)
+        page.locator("#dispatch-agent").click()
+        page.wait_for_function(
+            "() => document.querySelector('#agent-message')?.textContent.includes('dispatch-correlation-test-820')",
+            timeout=10000,
+        )
+        message = page.locator("#agent-message").inner_text()
+        assert "WORKFLOW_DISPATCH_LAUNCH_FAILED" in message
+        assert "GitHub CLI could not be started." in message
+        assert page.locator("#dispatch-agent").is_disabled(), "Retryable dispatch failure must keep the visibility lock."
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+def test_autonomous_engineering_model_pull_requires_consent_and_reports_progress():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    model = "example/model:latest"
+    state = {"posted": None, "polls": 0}
+    status_payload = {
+        "ready": False, "can_dispatch": False,
+        "checks": {
+            "ollama_online": True, "model_installed": False, "model_selectable": False,
+            "model_context_metadata_available": False, "model_context_supported": False,
+            "model_supports_tools": False, "model_tools_metadata_available": False,
+            "model_is_codex_context_variant": False, "codex_installed": False,
+            "runner_running": True, "github_cli_authenticated": True,
+            "github_runs_available": True, "progress_storage_accessible": True,
+        },
+        "model": "", "models": [], "selectable_models": [],
+        "model_context_length": None, "model_recommended_context_length": None,
+        "model_tools_verification_method": "probe_required",
+        "interval_hours": 24, "execution_mode": "continuous", "paused": False,
+        "pending_work": {
+            "available": True, "blocked": False,
+            "markers": {"pending_task": False, "pending_owner": False, "pending_pr": False, "cleanup_in_progress": False},
+            "checkpoint": {"available": False, "verified": True}, "reason": None,
+        },
+        "github": {"recent_runs": [], "settings": {"model": ""}},
+        "codex": {"installed": False, "version": None},
+        "local_only_inference": True,
+    }
+    dialogs = []
+    browser_errors = []
+
+    def start_pull(route):
+        state["posted"] = route.request.post_data_json
+        route.fulfill(status=202, json={
+            "job_id": "a" * 32, "model": model, "status": "queued",
+            "progress": 0, "message": "queued", "error": None,
+        })
+
+    def poll_pull(route):
+        state["polls"] += 1
+        if state["polls"] == 1:
+            route.fulfill(status=503, json={
+                "detail": "Temporary model-pull status outage.",
+            })
+        elif state["polls"] == 2:
+            route.fulfill(status=200, json={
+                "job_id": "a" * 32, "model": model, "status": "running",
+                "progress": 50, "message": "در حال دانلود", "error": None,
+            })
+        else:
+            route.fulfill(status=200, json={
+                "job_id": "a" * 32, "model": model, "status": "completed",
+                "progress": 100, "message": "نصب و بررسی شد", "error": None,
+            })
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.on("dialog", lambda dialog: (dialogs.append(dialog.message), dialog.accept()))
+        page.route("**/api/autonomous-engineering/status", lambda route: route.fulfill(status=200, json=status_payload))
+        page.route("**/api/autonomous-engineering/runs**", lambda route: route.fulfill(status=200, json={"runs": []}))
+        page.route("**/api/autonomous-engineering/progress**", lambda route: route.fulfill(
+            status=200,
+            json={"current": None, "history": [], "latest_snapshot": None, "events": [], "storage_configured": True},
+        ))
+        page.route("**/api/autonomous-engineering/models/pull", start_pull)
+        page.route("**/api/autonomous-engineering/models/pull/" + "a" * 32, poll_pull)
+
+        response = page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        page.locator("#custom-model").fill(model)
+        page.locator("#pull-model").click()
+        page.wait_for_function(
+            "() => document.querySelector('#model-pull-status')?.textContent.includes('با موفقیت نصب شد')",
+            timeout=10000,
+        )
+        page.wait_for_function("() => document.querySelector('#pull-model')?.disabled === false", timeout=10000)
+        assert dialogs and model in dialogs[0]
+        assert page.locator("#model-pull-status").inner_text().startswith(f"مدل {model} با موفقیت نصب شد")
+        assert state["posted"] == {"model": model}
+        assert state["polls"] >= 2
+        assert page.locator("#pull-model").is_enabled()
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+# Keep browser acceptance checks attached to the latest UI inventory commit.
+def test_autonomous_engineering_model_pull_failure_restores_control_and_shows_diagnostic():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    status_payload = {
+        "ready": False, "can_dispatch": False,
+        "checks": {
+            "ollama_online": True, "model_installed": False, "model_selectable": False,
+            "model_context_metadata_available": False, "model_context_supported": False,
+            "model_supports_tools": False, "model_tools_metadata_available": False,
+            "model_is_codex_context_variant": False, "codex_installed": False,
+            "runner_running": True, "github_cli_authenticated": True,
+            "github_runs_available": True, "progress_storage_accessible": True,
+        },
+        "model": "", "models": [], "selectable_models": [],
+        "model_context_length": None, "model_recommended_context_length": None,
+        "model_tools_verification_method": "probe_required",
+        "interval_hours": 24, "execution_mode": "continuous", "paused": False,
+        "pending_work": {
+            "available": True, "blocked": False,
+            "markers": {"pending_task": False, "pending_owner": False, "pending_pr": False, "cleanup_in_progress": False},
+            "checkpoint": {"available": False, "verified": True}, "reason": None,
+        },
+        "github": {"recent_runs": [], "settings": {"model": ""}},
+        "codex": {"installed": False, "version": None},
+        "local_only_inference": True,
+    }
+    browser_errors = []
+    dialogs = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.on("dialog", lambda dialog: (dialogs.append(dialog.message), dialog.accept()))
+        page.route("**/api/autonomous-engineering/status", lambda route: route.fulfill(status=200, json=status_payload))
+        page.route("**/api/autonomous-engineering/runs**", lambda route: route.fulfill(status=200, json={"runs": []}))
+        page.route("**/api/autonomous-engineering/progress**", lambda route: route.fulfill(
+            status=200,
+            json={"current": None, "history": [], "latest_snapshot": None, "events": [], "storage_configured": True},
+        ))
+        page.route("**/api/autonomous-engineering/models/pull", lambda route: route.fulfill(
+            status=503,
+            headers={
+                "X-Correlation-ID": "model-pull-correlation-test-820",
+                "X-Error-Code": "OLLAMA_MODEL_PULL_UNAVAILABLE",
+                "X-Retryable": "true",
+            },
+            json={"detail": "Ollama is temporarily unavailable."},
+        ))
+        response = page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        page.locator("#custom-model").fill("example/model:latest")
+        page.locator("#pull-model").click()
+        page.wait_for_function(
+            "() => document.querySelector('#model-pull-status')?.textContent.includes('model-pull-correlation-test-820')",
+            timeout=10000,
+        )
+        page.wait_for_function("() => document.querySelector('#pull-model')?.disabled === false", timeout=10000)
+        assert dialogs and "example/model:latest" in dialogs[0]
+        status_text = page.locator("#model-pull-status").inner_text()
+        assert "OLLAMA_MODEL_PULL_UNAVAILABLE" in status_text
+        assert "Ollama is temporarily unavailable." in status_text
+        assert "model-pull-correlation-test-820" in page.locator("#agent-message").inner_text()
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+@pytest.mark.browser_e2e
+def test_autonomous_engineering_polling_uses_visibility_backoff_jitter_and_cleanup():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        response = page.goto(
+            base_url.rstrip("/") + "/autonomous-engineering",
+            wait_until="domcontentloaded",
+        )
+        assert response is not None and response.status == 200
+        page.wait_for_function(
+            "() => window.autonomousEngineeringCore?.startPolling && window.autonomousEngineeringApp?.stop",
+            timeout=10000,
+        )
+        result = page.evaluate("""async () => {
+          window.autonomousEngineeringApp.stop();
+          let hidden = true;
+          Object.defineProperty(document, "hidden", {
+            configurable: true,
+            get: () => hidden
+          });
+          const originalRandom = Math.random;
+          Math.random = () => 1;
+          const calls = [];
+          const stop = window.autonomousEngineeringCore.startPolling({
+            intervalMs: 250,
+            maxIntervalMs: 1000,
+            jitterRatio: 0.2,
+            refresh: async () => {
+              calls.push(performance.now());
+              return false;
+            }
+          });
+          const wait = ms => new Promise(resolve => window.setTimeout(resolve, ms));
+          await wait(350);
+          const whileHidden = calls.length;
+          hidden = false;
+          document.dispatchEvent(new Event("visibilitychange"));
+          await wait(550);
+          const beforeFirstRetry = calls.length;
+          await wait(100);
+          const afterFirstRetry = calls.length;
+          await wait(900);
+          const beforeSecondRetry = calls.length;
+          await wait(150);
+          const afterSecondRetry = calls.length;
+          stop();
+          hidden = true;
+          document.dispatchEvent(new Event("visibilitychange"));
+          await wait(1100);
+          const afterStop = calls.length;
+          Math.random = originalRandom;
+          return {
+            whileHidden, beforeFirstRetry, afterFirstRetry,
+            beforeSecondRetry, afterSecondRetry, afterStop,
+            firstDelay: calls.length > 1 ? calls[1] - calls[0] : null,
+            secondDelay: calls.length > 2 ? calls[2] - calls[1] : null
+          };
+        }""")
+        assert result["whileHidden"] == 0
+        assert result["beforeFirstRetry"] == 1
+        assert result["afterFirstRetry"] == 2
+        assert result["beforeSecondRetry"] == 2
+        assert result["afterSecondRetry"] == 3
+        assert result["afterStop"] == 3
+        assert 550 <= result["firstDelay"] <= 700
+        assert 950 <= result["secondDelay"] <= 1100
+        browser.close()
+
+
+def test_autonomous_engineering_two_tabs_do_not_dispatch_same_work_twice():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    state = {"dispatches": 0}
+    browser_errors = []
+
+    def status_payload():
+        return {
+            "ready": True,
+            "can_dispatch": True,
+            "checks": {
+                "ollama_online": True,
+                "model_installed": True,
+                "model_selectable": True,
+                "model_context_metadata_available": True,
+                "model_context_supported": True,
+                "model_supports_tools": True,
+                "model_tools_metadata_available": True,
+                "model_is_codex_context_variant": False,
+                "codex_installed": False,
+                "runner_running": True,
+                "github_cli_authenticated": True,
+                "github_runs_available": True,
+                "progress_storage_accessible": True,
+            },
+            "model": "model:latest",
+            "models": ["model:latest"],
+            "selectable_models": ["model:latest"],
+            "model_context_length": 65536,
+            "model_recommended_context_length": 32768,
+            "model_tools_verification_method": "ollama_model_capabilities",
+            "interval_hours": 24,
+            "execution_mode": "continuous",
+            "paused": False,
+            "pending_work": {
+                "available": True,
+                "blocked": False,
+                "markers": {
+                    "pending_task": False,
+                    "pending_owner": False,
+                    "pending_pr": False,
+                    "cleanup_in_progress": False,
+                },
+                "checkpoint": {"available": False, "verified": True},
+                "reason": None,
+            },
+            "github": {"recent_runs": [], "settings": {"model": "model:latest"}},
+            "codex": {"installed": False, "version": None},
+            "local_only_inference": True,
+        }
+
+    def mock_status(route):
+        route.fulfill(status=200, json=status_payload())
+
+    def mock_progress(route):
+        route.fulfill(status=200, json={
+            "current": None, "history": [], "latest_snapshot": None,
+            "events": [], "storage_configured": True,
+        })
+
+    def mock_dispatch(route):
+        state["dispatches"] += 1
+        if state["dispatches"] == 1:
+            route.fulfill(status=202, json={
+                "accepted": True,
+                "manual_task_submitted": False,
+                "message": "درخواست اجرای چرخهٔ خودکار ارسال شد.",
+            })
+            return
+        message = "درخواست اجرای دیگری در حال ثبت است؛ از ارسال هم‌زمان در چند زبانه خودداری کنید."
+        route.fulfill(
+            status=409,
+            headers={
+                "X-Error-Code": "AUTONOMOUS_DISPATCH_IN_PROGRESS",
+                "X-Correlation-ID": "two-tab-dispatch-duplicate",
+                "X-Retryable": "false",
+            },
+            json={
+                "detail": message,
+                "code": "AUTONOMOUS_DISPATCH_IN_PROGRESS",
+                "message": message,
+                "correlation_id": "two-tab-dispatch-duplicate",
+                "retryable": False,
+                "safe_details": {},
+            },
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        first_tab = browser.new_page()
+        second_tab = browser.new_page()
+        for page in (first_tab, second_tab):
+            page.on("pageerror", lambda error: browser_errors.append(str(error)))
+            page.route("**/api/autonomous-engineering/status", mock_status)
+            page.route("**/api/autonomous-engineering/progress**", mock_progress)
+            page.route("**/api/autonomous-engineering/dispatch", mock_dispatch)
+            response = page.goto(
+                base_url.rstrip("/") + "/autonomous-engineering",
+                wait_until="domcontentloaded",
+            )
+            assert response is not None and response.status == 200
+            page.wait_for_function(
+                "() => document.querySelector('#dispatch-agent')?.disabled === false",
+                timeout=10000,
+            )
+
+        first_tab.locator("#dispatch-agent").click()
+        first_tab.wait_for_function(
+            "() => document.querySelector('#dispatch-agent')?.disabled === true",
+            timeout=10000,
+        )
+        second_tab.locator("#dispatch-agent").click()
+        second_tab.wait_for_function(
+            "() => document.querySelector('#agent-message')?.textContent.includes('ارسال هم‌زمان')",
+            timeout=10000,
+        )
+
+        assert state["dispatches"] == 2
+        assert first_tab.locator("#dispatch-agent").is_disabled()
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+
+
+def test_autonomous_engineering_text_and_control_contrast_meets_wcag_aa():
+    import re
+
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    def luminance(color):
+        values = [int(value) / 255 for value in re.findall(r"\d+", color)[:3]]
+        linear = [
+            value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+            for value in values
+        ]
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+    def contrast(foreground, background):
+        left, right = luminance(foreground), luminance(background)
+        return (max(left, right) + 0.05) / (min(left, right) + 0.05)
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        response = page.goto(
+            base_url.rstrip("/") + "/autonomous-engineering",
+            wait_until="domcontentloaded",
+        )
+        assert response is not None and response.status == 200
+        styles = page.evaluate("""() => {
+            const svg = document.querySelector('#progress-chart');
+            const axis = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            axis.classList.add('chart-axis');
+            svg.appendChild(axis);
+            const item = document.createElement('li');
+            const small = document.createElement('small');
+            item.appendChild(small);
+            document.querySelector('#progress-events').appendChild(item);
+            const read = (element, property) => getComputedStyle(element)[property];
+            const status = document.querySelector('.status-card p');
+            const legend = document.querySelector('.legend-overall');
+            const primary = document.querySelector('#dispatch-agent');
+            const field = document.querySelector('#custom-model');
+            const secondary = document.querySelector('#refresh-runs');
+            const result = {
+                chartAxis: read(axis, 'fill'),
+                legend: read(legend, 'color'),
+                status: [read(status, 'color'), read(status.parentElement, 'backgroundColor')],
+                progressSmall: read(small, 'color'),
+                primary: [read(primary, 'color'), read(primary, 'backgroundColor')],
+                field: [read(field, 'color'), read(field, 'backgroundColor'), read(field, 'borderColor')],
+                secondary: [read(secondary, 'color'), read(secondary, 'backgroundColor'), read(secondary, 'borderColor')]
+            };
+            axis.remove();
+            item.remove();
+            return result;
+        }""")
+
+        white = "rgb(255, 255, 255)"
+        assert contrast(styles["chartAxis"], white) >= 4.5
+        assert contrast(styles["legend"], white) >= 4.5
+        assert contrast(styles["status"][0], styles["status"][1]) >= 4.5
+        assert contrast(styles["progressSmall"], white) >= 4.5
+        assert contrast(styles["primary"][0], styles["primary"][1]) >= 4.5
+        assert contrast(styles["field"][0], styles["field"][1]) >= 4.5
+        assert contrast(styles["secondary"][0], styles["secondary"][1]) >= 4.5
+        assert contrast(styles["field"][2], white) >= 3.0
+        assert contrast(styles["secondary"][2], white) >= 3.0
+        browser.close()
+
+
+
+def test_autonomous_engineering_custom_request_timeout_and_trace_artifact():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    artifact_dir = Path(os.environ.get("AUTONOMOUS_E2E_ARTIFACT_DIR", "test-results/autonomous-engineering"))
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    trace_path = artifact_dir / "autonomous-engineering-trace.zip"
+    screenshot_path = artifact_dir / "autonomous-engineering-dashboard.png"
+    diagnostics_path = artifact_dir / "autonomous-engineering-browser-diagnostics.json"
+    diagnostics = {"console_errors": [], "page_errors": [], "failed_requests": [], "http_errors": []}
+    status_payload = {
+        "ready": False, "can_dispatch": False,
+        "checks": {
+            "ollama_online": True, "model_installed": False, "model_selectable": False,
+            "model_context_metadata_available": False, "model_context_supported": False,
+            "model_supports_tools": False, "model_tools_metadata_available": False,
+            "model_is_codex_context_variant": False, "codex_installed": False,
+            "runner_running": True, "github_cli_authenticated": True,
+            "github_runs_available": True, "progress_storage_accessible": True,
+        },
+        "model": "", "models": [], "selectable_models": [],
+        "model_context_length": None, "model_recommended_context_length": None,
+        "model_tools_verification_method": "probe_required",
+        "interval_hours": 24, "execution_mode": "continuous", "paused": False,
+        "pending_work": {
+            "available": True, "blocked": False,
+            "markers": {"pending_task": False, "pending_owner": False, "pending_pr": False, "cleanup_in_progress": False},
+            "checkpoint": {"available": False, "verified": True}, "reason": None,
+        },
+        "github": {"recent_runs": [], "settings": {"model": ""}},
+        "codex": {"installed": False, "version": None}, "local_only_inference": True,
+    }
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        context = browser.new_context(viewport={"width": 1280, "height": 900})
+        context.tracing.start(screenshots=True, snapshots=True, sources=True)
+        page = context.new_page()
+        page.on("console", lambda message: diagnostics["console_errors"].append(message.text)
+                if message.type == "error" else None)
+        page.on("pageerror", lambda error: diagnostics["page_errors"].append(str(error)))
+        page.on("requestfailed", lambda request: diagnostics["failed_requests"].append({
+            "url": request.url, "failure": request.failure,
+        }))
+        page.on("response", lambda response: diagnostics["http_errors"].append({
+            "url": response.url, "status": response.status,
+        }) if response.status >= 400 else None)
+        try:
+            page.route("**/api/autonomous-engineering/status",
+                       lambda route: route.fulfill(status=200, json=status_payload))
+            page.route("**/api/autonomous-engineering/runs**",
+                       lambda route: route.fulfill(status=200, json={"runs": []}))
+            page.route("**/api/autonomous-engineering/progress**",
+                       lambda route: route.fulfill(status=200, json={
+                           "current": None, "history": [], "latest_snapshot": None,
+                           "events": [], "storage_configured": True,
+                       }))
+            response = page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+            assert response is not None and response.status == 200
+            page.wait_for_function(
+                "() => window.autonomousEngineeringCore?.version === 1 && window.autonomousEngineeringApp?.version === 1",
+                timeout=10000,
+            )
+            page.wait_for_function(
+                "() => document.querySelector('#agent-readiness')?.textContent.trim()",
+                timeout=10000,
+            )
+            result = page.evaluate("""async () => {
+              window.autonomousEngineeringApp.stop();
+              await new Promise(resolve => window.setTimeout(resolve, 50));
+              const originalFetch = window.fetch;
+              let aborted = false;
+              let forwardedTimeoutOption = null;
+              window.fetch = (_url, options) => {
+                forwardedTimeoutOption = Object.prototype.hasOwnProperty.call(options, "timeoutMs");
+                return new Promise((_resolve, reject) => {
+                  options.signal.addEventListener("abort", () => {
+                    aborted = true;
+                    reject(new DOMException("The operation was aborted.", "AbortError"));
+                  }, {once: true});
+                });
+              };
+              const started = performance.now();
+              const request = window.autonomousEngineeringCore.request(
+                "models/pull/timeout-probe", {timeoutMs: 40}
+              ).then(
+                () => ({completed: true, error: null}),
+                error => ({completed: true, error: {ambiguous: error.ambiguous === true, message: error.message}})
+              );
+              const outcome = await Promise.race([
+                request,
+                new Promise(resolve => window.setTimeout(() => resolve({completed: false}), 1000))
+              ]);
+              window.fetch = originalFetch;
+              return {...outcome, aborted, forwardedTimeoutOption, elapsedMs: performance.now() - started};
+            }""")
+            assert result["completed"] is True, "The custom request timeout was ignored."
+            assert result["aborted"] is True, "The request AbortController did not fire."
+            assert result["forwardedTimeoutOption"] is False, "timeoutMs leaked into Fetch RequestInit."
+            assert result["error"] and result["error"]["ambiguous"] is True
+            assert result["elapsedMs"] < 500
+            assert diagnostics["page_errors"] == []
+            page.screenshot(path=str(screenshot_path), full_page=True)
+        finally:
+            try:
+                if not screenshot_path.exists():
+                    page.screenshot(path=str(screenshot_path), full_page=True)
+            except Exception as exc:
+                diagnostics["screenshot_error"] = str(exc)
+            try:
+                context.tracing.stop(path=str(trace_path))
+            except Exception as exc:
+                diagnostics["trace_error"] = str(exc)
+            diagnostics_path.write_text(json.dumps(diagnostics, ensure_ascii=False, indent=2), encoding="utf-8")
+            browser.close()

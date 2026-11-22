@@ -51,6 +51,13 @@ def _validate_owner_record(record: Any, task: str) -> dict[str, Any]:
             for key in timestamp_fields
         )
         or record["source"] not in _ALLOWED_SOURCES
+        or any(
+            key in record and (
+                not isinstance(record[key], str)
+                or not re.fullmatch(r"[a-f0-9]{32}", record[key])
+            )
+            for key in ("correlation_id", "submitted_correlation_id")
+        )
     ):
         raise RuntimeError(
             "Pending task owner metadata violates schema v1; preserving it."
@@ -86,6 +93,9 @@ def claim_pending_task_owner_unlocked(
 
     state_directory.mkdir(parents=True, exist_ok=True)
     owner_path = pending_task_owner_path(state_directory)
+    correlation_id = os.getenv("AUTONOMOUS_ENGINEERING_CORRELATION_ID", "").strip().lower()
+    if correlation_id and not re.fullmatch(r"[a-f0-9]{32}", correlation_id):
+        raise ValueError("The workflow correlation ID must be 32 lowercase hexadecimal characters.")
     now = time.time()
     try:
         existing = json.loads(owner_path.read_text(encoding="utf-8"))
@@ -106,9 +116,16 @@ def claim_pending_task_owner_unlocked(
             "claimed_at": now,
             "claim_count": 1,
             "source": source,
+            **({"correlation_id": correlation_id, "submitted_correlation_id": correlation_id} if correlation_id else {}),
         }
     else:
         record = _validate_owner_record(existing, task)
+        if correlation_id:
+            record = {
+                **record,
+                "correlation_id": correlation_id,
+                "submitted_correlation_id": record.get("submitted_correlation_id") or correlation_id,
+            }
         if record["owner_run_id"] != run_id or record["owner_attempt"] != run_attempt:
             record = {
                 **record,

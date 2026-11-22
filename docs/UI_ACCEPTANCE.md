@@ -38,3 +38,42 @@ Mark repository-level items complete only after the exact PR head CI passes. Bro
 
 - [x] Dedicated local autonomous-engineering console at `/autonomous-engineering`, with read-only app-account diagnostics, explicit workflow dispatch/cancel controls, structured Codex plan progress, immutable main-scorecard history, bounded activity log, and separate Runner-account preflight. Exact-head PR #680 head `c7ec867df63baac9dec74b736b65a64284a525e4`: 1,840 tests passed/48 deselected, deterministic retrieval benchmark passed, claim-to-test coverage 10/10, Windows storage regressions passed, Chromium dashboard smoke passed, and dependency audit passed. Actual Windows Runner registration, non-admin service account, ACL execution, 64k Ollama context/performance soak, and independent security review remain external gates.
 - [x] Shared primary navigation on the AI-learning and autonomous-engineering pages; exact-head unit and Chromium dashboard smoke checks passed on PR #680 head `c7ec867df63baac9dec74b736b65a64284a525e4`.
+
+## Autonomous Engineering UI acceptance gates — 2026-11-22
+
+این بخش مخصوص کنسول Autonomous Engineering است و جایگزین پذیرش عمومی سایر صفحات نیست.
+
+| Gate | معیار | وضعیت |
+|---|---|---|
+| A — Inventory/reproduction | نگاشت هر کنترل UI به API، مالک state، transition و regression | inventory ثبت شده در `docs/UI_AUTONOMOUS_ENGINEERING_INVENTORY_2026-11-22.fa.md`؛ reproduction میزبان هنوز pending |
+| B — Ownership/fencing/recovery | ترتیب repository → durable-state → checkpoint، owner/epoch fencing، fail-closed cleanup و recovery | lease epoch و fencing در main؛ PR #834 قفل repository را داخل broker اعمال می‌کند، writerهای progress پیش از قفل را با file-share guard متوقف می‌کند و انتشار PR را به فرزند cycle controller قفل‌دار محدود می‌کند؛ ممیزی تمام mutation call-siteها و crash recovery pending |
+| C — Error/diagnostics | خطای ساختاریافته و گزارش Codex معتبر/ناقص | PR #817 و PR #827 در main ادغام شده‌اند؛ producer واقعی و UI header integration در PR #834 در انتظار CI |
+| D — UI state machine | status/run/progress single-flight، feedback پایدار، module fault isolation، کنترل‌های pause/resume/cancel/finish | کد در PR #834؛ پذیرش exact-head pending |
+| E — Browser E2E | مسیرهای موفق، خطا، stale response، cancel، cleanup، keyboard و responsive | تست‌ها موجود/افزوده شده‌اند؛ اجرای exact-head pending |
+| F — Exact-head CI | Linux/Windows tests، browser E2E، dependency audit، CodeQL | pending؛ هیچ نتیجهٔ SHA قدیمی به head جدید تعمیم داده نمی‌شود |
+| G — Windows target host | اجرای واقعی UI با LocalService broker، Runner، Ollama و Codex | pending؛ CI شبیه‌سازی جایگزین میزبان هدف نیست |
+| H — Crash/restart | قطع process/service در حین task و بازیابی همان checkpoint/worktree | pending؛ هیچ checkpoint آزمایشی حذف نشده است |
+| I — Docs/rollback | inventory، ADR، runbook، restore/rollback و ثبت شناسهٔ اجراها | inventory و ADR در PRها؛ runbook و شواهد restore/rollback pending |
+| J — Owner acceptance | مالک UI را روی target host بررسی و تأیید کند | pending؛ تا آن زمان PRها Draft و merge ممنوع |
+
+**مرز ایمنی cleanup:** Windows broker خودش repository lock را می‌گیرد و فقط stateهای تحت مالکیت خود را پاک می‌کند. فایل‌های runtime داخل worktree در Windows حفظ می‌شوند تا بعد از آزادشدن broker lock حذف نشوند. روی POSIX cleanup زیر repository، durable-state و checkpoint lock انجام می‌شود.
+
+**سیاست ادغام:** CI سبز به‌تنهایی به معنی Gate G/H/J نیست. طبق prompt اختصاصی UI، تا تکمیل Gateهای لازم و تأیید مالک، PR #834 و PR کنترل‌های ماژول‌ها نباید ادغام شوند.
+
+## Autonomous Engineering — polling lifecycle follow-up (2026-11-22)
+
+- [ ] Polling controller uses bounded exponential backoff, bounded jitter, visibility-aware scheduling, single-flight refresh, per-request timeout through the shared request helper, and explicit teardown on `pagehide`/app stop. It covers Status, Runs, Progress and model-pull status; model-pull GET errors retry up to five consecutive failures without cancelling the server-side job. Chromium regressions are `test_autonomous_engineering_polling_uses_visibility_backoff_jitter_and_cleanup` and `test_autonomous_engineering_model_pull_requires_consent_and_reports_progress`. Exact-head CI is pending.
+
+
+## 2026-11-22 — Autonomous Engineering console
+
+- [x] UI control/event/API/state inventory و transition map ثبت شد.
+- [x] PR #837 domain-write fencing در main ادغام شد؛ Linux 2511/14/69 و Windows 2509/16/69، Windows storage، Browser E2E، Docker sandbox، CodeQL و dependency audit سبز.
+- [x] PR #836 head قبلی Linux 2491/14/77 و Windows 2489/16/77، Browser E2E، Windows storage، CodeQL، Analyze و dependency audit را گذراند.
+- [x] ماژول‌های transport/status/controls/runs/progress و regressionهای stale-response، polling، multi-tab، model-pull، structured error، RTL/mobile/keyboard و WCAG موجودند.
+- [ ] exact-head CI برای timeout fix و browser trace artifact.
+- [ ] fault matrix کامل و correlation ID تا workflow run/job/task.
+- [ ] manual keyboard/screen-reader و rendered-state contrast review.
+- [ ] Windows target-host UI/Runner/Ollama/Codex، crash/restart، restore/rollback و owner approval.
+
+Browser E2E از APIهای deterministic/stubbed استفاده می‌کند و جایگزین پذیرش واقعی میزبان نیست.

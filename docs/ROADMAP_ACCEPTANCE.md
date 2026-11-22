@@ -7,6 +7,46 @@ This file is the release-gate ledger for tracking issue [#290](https://github.co
 **Reviewed repository baseline (2026-11-01):** `main` is `2a5c83bf0ba924f4a2c8f206338a04872562d72d` after PR #664, #667, #668, #669, #670 and #671. Post-merge CI on `6f601e8cc210419392bfbd1affb9590db978dd3a` passed: tests [#41212956247](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956247) — **1801 passed, 47 deselected**, Windows storage regressions, Markdown validation (88 files), import-cycle checks and deterministic benchmark (10/10); Chromium browser E2E [#41212956268](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956268) and dependency audit [#41212956295](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956295) also passed. PR #668 exact head `0bcd2a93bbf4516f180ac9fc3d8c647380545ade` passed tests, Windows storage, dashboard smoke, browser E2E and dependency audit; merged as `eec03b39e53399bb8ee21a15b9e8cb4930159c25`. PR #669 exact head `bedf5f54bb55dd2cf64b267b9b5561436820ac61` passed 1807 tests/47 deselected, Windows storage, dashboard smoke, browser E2E, dependency audit, 90 Markdown files, import-cycle checks and benchmark 10/10; merged as `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6`. Current-main post-merge tests [#41216212310](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212310), browser E2E [#41216212276](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212276), and dependency audit [#41216212245](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212245) completed successfully.
 
 
+
+
+## Current re-audit — 2026-11-21 (Autonomous Engineering first module)
+
+**Current reviewed main baseline:** `91b7e062e21d06d774c2f1f394bc72e4eb69af2c`. The 2026-11-01 baseline and older evidence below are historical and are not evidence for this current SHA. This section records the first focused module only; it does not close the parent program or imply overall UI/release completion.
+
+### Module acceptance gates
+
+| Gate | Current result | Evidence / remaining requirement |
+|---|---|---|
+| A — UI inventory and behavior mapping | **Implemented in review branch; exact-head CI pending** | `docs/UI_AUTONOMOUS_ENGINEERING_INVENTORY_2026-11-21.fa.md` maps controls, API schemas, state transitions, polling, retries, duplicate-dispatch gates and tests. Existing modules remain separated (Core, Status, Controls, Runs, Progress, Bootstrap). PR #820 adds RTL/keyboard/responsive, module-fault isolation, structured-error display, and model-pull success/failure E2E. |
+| B — task/domain ownership and data safety | **Partially implemented; other handlers open** | PR #799 is merged and fences durable task-queue lease epochs. Draft PR #819 passes the exact `TaskContext` into `learning.run_job` and validates owner/epoch/task type/payload inside the same write transactions for job claim, source/evidence persistence, failure settlement, final lesson/evidence/candidate writes and escalation. Candidate-review, curriculum, factual-verification and other domain mutation handlers still require a separate inventory/fencing pass. |
+| C — API errors and diagnostics | **Implemented in review branches; exact-head CI pending** | PR #817 adds a route-level structured error contract for HTTP, validation and unexpected failures: `code`, `message`, `correlation_id`, `retryable`, `safe_details`, plus headers; validation input and unexpected exception details are redacted. PR #820 consumes body/header metadata in the shared UI request helper and preserves the final dispatch error after status refresh. |
+| D — browser E2E and resilience | **Expanded; exact-head CI pending** | Existing coverage includes status/readiness, manual dispatch, model selection, accepted-dispatch lockout, cancel rejection, logs/delete/cleanup, failure diagnostics, stale progress/history responses, pending-work blockers and Pause/Resume. PR #820 adds keyboard skip-link, RTL, 390/768/1440px overflow, module fault isolation, correlation/retry diagnostics and model-pull success/failure. |
+| E — release and target-host acceptance | **Blocked** | No Windows target-host Runner was started during this implementation pass. Real service identity/UAC/Broker ACL, process restart/crash recovery, live Ollama model pull, pause/resume/cancel, cleanup under real state, soak/load, staging restore/rollback and manual screen-reader/contrast review remain unverified. No merge/deploy is authorized by CI alone. |
+
+### Current focused PR evidence (all unmerged)
+
+Status below is a point-in-time snapshot. The GitHub PR check list is authoritative for each latest head; results from an earlier commit must not be reused after code/test changes.
+
+- PR #817 — dispatch launch-vs-timeout classification and uniform API error envelope. The legacy mock-signature failure found on an earlier head was corrected. All four checks for the current branch head (Tests, Browser E2E, Dependency Audit, CodeQL) are queued.
+- PR #818 — recovery of missing/invalid Codex final reports using only a successful final JSONL `agent_message` with exactly one valid completion marker. All four checks pass on its current head.
+- PR #819 — learning-job domain fencing, escalation fencing, and a regression for lease reclamation during model generation. The latest head adds the mid-generation regression; all four checks for that head are queued. Earlier-head results are not reusable.
+- PR #820 — UI module-warning persistence, structured error display, action-message ordering, responsive/fault-isolation/model-pull E2E, and the control/API inventory. The latest head adds success/failure feedback assertions; all four checks for that head are queued. Earlier-head results are not reusable.
+
+### Previously merged foundations
+
+PR #799 (task lease fencing), #808 (Autonomous Engineering UI module split), #815 (Codex JSONL report recovery) and #816 (Pause/Resume browser coverage) are merged into the reviewed main baseline. Their merge status does not close the additional gates above.
+
+### Program-wide blockers that remain open
+
+- Issue #52 independent security review; CodeQL is not a substitute for an independent reviewer.
+- Pinned live Persian/English model evaluation and human adjudication.
+- Full target-host Windows baseline, soak, crash/restart recovery and staging restore/rollback evidence.
+- Manual screen-reader, contrast and complete keyboard traversal review.
+- Branch protection/required-check administration and post-merge CI on the eventual merge SHA.
+- Gate-B fencing for task handlers beyond the primary learning-job adapter.
+
+**Decision:** keep PRs #817–#820 unmerged until exact-head required checks pass. Keep the first module and the parent Issue #290 open until the remaining external/runtime gates have named evidence. Do not report the program as 100% complete.
+
 ## Weighted completion score
 
 See [ACCEPTANCE_SCORECARD.md](ACCEPTANCE_SCORECARD.md) for the explicit weights, stage mapping, engineering-only denominator, external acceptance denominator, and provisional evidence-based calculation. The score is not a release decision.
@@ -260,3 +300,24 @@ Append evidence only after it has actually been produced.
 ## 2026-11-01 — Post-merge CI confirmation for PR #671
 
 The current `main` SHA `2a5c83bf0ba924f4a2c8f206338a04872562d72d` has completed all three post-merge workflows successfully: tests [#41239355370](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355370), dashboard/browser smoke [#41239355374](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355374), and dependency audit [#41239355466](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355466). Windows storage regressions passed within the tests workflow. This verifies CI for this SHA; it does not satisfy target-host operations, live-model/human evaluation, manual accessibility, staging/rollback, or independent security review.
+
+
+## Revalidation update — 2026-11-21 (supersedes the pending PR #817–#820 snapshot above)
+
+- **Gate A — UI inventory/behavior mapping:** implementation and exact-head CI passed for code head `255f821639b9b5403abfc43c9ec0c889d812c836`; the documentation-only follow-up in this commit requires a fresh exact-head run.
+- **Gate B — state ownership/data safety:** PR #799 is merged and its monotonic queue lease fencing is present. The Autonomous Engineering state path uses the shared durable-state lock, repository execution lock, checkpoint-store lifetime lock, task digest/owner-attempt record, exact PR head/base record, human-merge verification, and idempotent post-merge cleanup. Gate B remains **partial** because other TaskRuntime domain writers still need fencing, and the standalone `publish` CLI branch bypasses repository execution locking (no workflow callsite; protected controller file left unchanged).
+- **Gate C — structured errors:** PR #817 has all four exact-head checks green; PR #820 UI consumer tests preserve error code/correlation/retryable metadata and the final dispatch error. PRs remain unmerged.
+- **Gate D — browser resilience:** exact code head #820 passed 67 Chromium E2E tests, including RTL/keyboard skip link, 390/768/1440px overflow, progress-module failure isolation, structured 503 diagnostics, and model-pull outcomes. Full suites passed on Ubuntu and Windows as recorded in PROJECT_STATUS.
+- **Gate E — target host/human acceptance:** still blocked; no target Windows Runner, local service, live Ollama/Codex, crash/restart or soak was started. Manual keyboard/screen-reader/contrast review remains open.
+- PR #819 latest head `f7895430f26b6959bb42950cf8f61c418b3e0336` has three checks green and Full tests in progress; do not infer success from the previous failed head.
+- Documentation follow-up changes this PR's head; rerun exact-head CI before any promotion. No merge or deployment is authorized by this evidence.
+
+
+## 2026-11-22 — Autonomous Engineering first-module gates
+
+- A: inventory و event/API/state mapping ثبت شده؛ fault matrix و مرور دستی کنترل‌ها باز.
+- B: queue lease baseline #799 و domain fencing #837 در main؛ #836 broker lock ordering و parent-bound publication را اضافه می‌کند. target-host ACL/lock و crash recovery باز.
+- C: structured API errors از #817 و UI parser موجود؛ correlation propagation تا run/job/task باز.
+- D: modular UI و stale-response/polling protections در #836؛ exact-head CI پس از follow-up pending.
+- E: Chromium deterministic coverage و trace/screenshot/diagnostic artifact در head جدید؛ CI pending.
+- G/H/J: Windows target-host، crash/restart و owner acceptance pending؛ CI به‌تنهایی تکمیل عملیاتی نیست.

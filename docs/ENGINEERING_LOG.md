@@ -1,3 +1,15 @@
+## 2026-11-22 — Autonomous Engineering UI inventory و hardening
+
+- PR #837 با head 80c126734123a5e84596d320ff625278495764e0 در main با squash commit 9d97d2e3fa8f72429e6bb5510192ba70a6d376d8 ادغام شد؛ Linux 2511/14/69 و Windows 2509/16/69، Windows storage، Browser/dashboard smoke، Docker sandbox، CodeQL و dependency audit موفق.
+- #819 و #821–#826 به‌عنوان source PRهای #837 بسته شدند؛ branchها حفظ شدند. #820/#834 در #836 حفظ و بسته شدند. #833/#835 به علت CI شکست‌خورده بسته شدند. تنها PR باز #836 است.
+- Inventory کنترل‌ها، APIها، state owner و transition در docs/UI_AUTONOMOUS_ENGINEERING_INVENTORY_2026-11-22.fa.md ثبت شد.
+- Windows broker cleanup پیش‌تر repository lock را enforce نمی‌کرد؛ #836 lock order را در خود broker اعمال می‌کند. metadata قفل به offset یک منتقل و parent publisher guard اضافه شده است.
+- request helper مقدار options.timeoutMs را نادیده می‌گرفت؛ اصلاح و browser regression در head جدید اضافه شد. workflow اکنون trace ZIP، screenshot و console/network diagnostics را artifact می‌کند.
+- head قبلی #836 با Linux 2491/14/77، Windows 2489/16/77، Browser E2E، Windows storage، CodeQL، Analyze و pip-audit سبز بود. head جدید exact CI pending است.
+- correlation ID تا run/job/task و target-host Windows/ACL، Ollama/Codex، crash/restart، restore/rollback و owner acceptance هنوز اثبات نشده‌اند. هیچ task/checkpoint/database/ACL حذف نشده و workflow فعال main لغو یا دستکاری نشده است.
+
+---
+
 ## 2026-11-21 — AI-learning watchdog obeys the feature gate
 
 ### Root cause
@@ -2281,19 +2293,19 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Treat Unicode decoding failure as an invalid temporary report; preserve the existing fail-closed requirements for the final turn and exactly-one completion marker. Filesystem I/O failures still stop recovery.
 - Added a regression using invalid UTF-8 bytes and verifying replacement only from a successful final message with one valid marker. Exact-head CI and target-host acceptance remain required.
 
+## 2026-11-22 — Autonomous Engineering UI resilience on current main
 
-### 2026-11-22 — Integrate domain task-write fencing from PRs #819 and #821–#826
-
-- Created Draft PR #837 from exact current main 0367a3ebfd92ac196bb096f1a45cbfed5a61985d, combining the Gate-B domain fencing work without reimplementing the queue-level epoch contract merged in #799.
-- Integrated learning/curriculum, factual verification, knowledge lifecycle/graph, cloud discovery, experience/research, and sandbox practical task writes. Parent-aware child creation is validated inside the same SQLite transaction as insertion.
-- Resolved overlapping changes explicitly: #825 parent-task implementations selected for learning.py/learning_tasks.py; #819 stale-epoch regressions retained; #819 curriculum source/path fences combined with #825 child scheduling; identical #823/#825 task-queue patch included once; #824 experience update fence combined with #826 typed sandbox handler; current main handler registrations preserved in app/main.py.
-- Added docs/DOMAIN_TASK_WRITE_FENCING_AUDIT_2026-11-22.fa.md with the transition table, file ownership, test inventory, residual scope and non-destructive constraints.
-- Exact-head CI is pending. No PR has been merged and no source branch or durable user/task/checkpoint data has been deleted.
+- Ported the isolated Autonomous Engineering UI feedback and fault-isolation changes onto the current main baseline after PR #817 and the Codex report-recovery replacement PR #827 were merged.
+- Structured API error metadata is consumed by the UI; terminal action feedback remains visible after authoritative status refresh; module-load failures are surfaced without status polling overwriting the warning.
+- Added an HTTP integration regression against the real `/api/autonomous-engineering/dispatch` route. It proves the structured response body and `X-Error-Code`, `X-Correlation-ID`, and `X-Retryable` headers are produced by the backend route class now present on main, rather than only mocked in the browser test.
+- Browser coverage retains RTL, keyboard, responsive layout, module fault isolation, and pause/resume feedback checks.
+- Codex review could not complete because the GitHub review quota was exhausted. Manual review and exact-head CI remain required; no task or checkpoint state is modified.
 
 
-### 2026-11-22 — Exact-head CI passed for domain task-write fencing
+### 2026-11-22 — Windows repository-lock owner metadata
 
-- PR #837 head 908e9e3a79b03146a3b560c1d65f7361c1efffab passed Linux (2511 passed, 14 skipped, 69 deselected) and Windows (2509 passed, 16 skipped, 69 deselected) full suites.
-- Windows storage regressions, real Docker sandbox integration, dashboard/browser smoke, CodeQL, Analyze, pip-audit and Ubuntu/macOS/Windows managed bootstrap all passed.
-- The first integration run exposed one outdated test double in tests/test_experience_tasks.py that did not accept the new typed sandbox-handler keyword. The test double was corrected; the exact-head rerun passed. No production-code rollback was needed.
-- PR #837 remains Draft and unmerged. Target-host Windows/ACL, real Ollama/Codex, crash/restart and owner acceptance remain external gates.
+- Exact-head #834 browser E2E، CodeQL، Analyze، pip-audit و bootstrapهای سه سیستم‌عامل را گذراند؛ Linux test suite سه failure و Windows storage regressions دو failure داشتند.
+- علت محصولی Windows: parent byte صفر فایل repository lock را با msvcrt قفل می‌کرد و child برای اعتبارسنجی مالک همان byte را می‌خواند؛ Windows خواندن byte قفل‌شده را با PermissionError رد کرد.
+- owner JSON به محدودهٔ بعد از byte صفر منتقل شد؛ byte صفر همچنان primitive مشترک قفل Python/C# باقی می‌ماند.
+- دو failure لینوکس مربوط به تست‌ها بود: patch نشدن execution_state_directory در ماژول lock برای تست cleanup و assertion متنی قدیمی دربارهٔ compatibility facade checkpoint lock؛ هر دو تست اصلاح شدند.
+- تغییرات در branch جایگزین fix/autonomous-engineering-first-module-validation-20261122 آماده شده‌اند. هنوز CI دقیق روی branch جدید اجرا نشده و merge ممنوع است تا CI کامل و پذیرش Windows target انجام شود.

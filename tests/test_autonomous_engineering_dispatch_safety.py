@@ -10,6 +10,11 @@ from app import autonomous_engineering as agent
 from app import autonomous_engineering_progress as progress
 
 
+@pytest.fixture(autouse=True)
+def _reset_dispatch_admission_state(monkeypatch):
+    monkeypatch.setattr(agent, "_LAST_DISPATCH_ACCEPTED_AT", 0.0)
+
+
 def _ready(monkeypatch):
     monkeypatch.setattr(agent, "collect_status", lambda: {
         "ready": True,
@@ -294,3 +299,83 @@ def test_empty_dispatch_remains_available_to_resume_persisted_work(monkeypatch):
     workflow_call = next(command for command in calls if command[1:3] == ["workflow", "run"])
     assert "--field" in workflow_call
     assert "manual_task=" in workflow_call
+
+
+def _ready_for_dispatch_admission(monkeypatch):
+    monkeypatch.setattr(agent, "collect_status", lambda: {
+        "ready": True,
+        "paused": False,
+        "pending_work": {
+            "available": True,
+            "blocked": False,
+            "checkpoint": {"available": False, "verified": True},
+        },
+        "github": {"runs_available": True, "recent_runs": []},
+    })
+    monkeypatch.setattr(agent.shutil, "which", lambda _name: "gh")
+    monkeypatch.setattr(agent, "_has_open_autonomous_pr", lambda _gh: False)
+
+
+def test_concurrent_dispatch_requests_are_serialized_across_tabs(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    _ready_for_dispatch_admission(monkeypatch)
+    workflow_started = Event()
+    release_workflow = Event()
+    workflow_calls = []
+
+    def fake_run(command, timeout=8, **_kwargs):
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "authenticated", "")
+        if command[1:3] == ["workflow", "run"]:
+            workflow_calls.append(command)
+            workflow_started.set()
+            assert release_workflow.wait(timeout=5)
+            return subprocess.CompletedProcess(command, 0, "created", "")
+        raise AssertionError(f"Unexpected command: {command!r}")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(
+            agent.dispatch_autonomous_engineering,
+            agent.ManualTaskRequest(task="same task from two tabs"),
+        )
+        assert workflow_started.wait(timeout=3)
+        with pytest.raises(HTTPException) as conflict:
+            agent.dispatch_autonomous_engineering(
+                agent.ManualTaskRequest(task="same task from two tabs")
+            )
+        assert conflict.value.status_code == 409
+        assert conflict.value.headers["X-Error-Code"] == "AUTONOMOUS_DISPATCH_IN_PROGRESS"
+        release_workflow.set()
+        assert first.result(timeout=5)["accepted"] is True
+
+    assert len(workflow_calls) == 1
+
+
+def test_recently_accepted_dispatch_blocks_second_tab_when_github_run_list_lags(monkeypatch):
+    _ready_for_dispatch_admission(monkeypatch)
+    workflow_calls = []
+
+    def fake_run(command, timeout=8, **_kwargs):
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "authenticated", "")
+        if command[1:3] == ["workflow", "run"]:
+            workflow_calls.append(command)
+            return subprocess.CompletedProcess(command, 0, "created", "")
+        raise AssertionError(f"Unexpected command: {command!r}")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    first = agent.dispatch_autonomous_engineering(
+        agent.ManualTaskRequest(task="same task from two tabs")
+    )
+    assert first["accepted"] is True
+
+    with pytest.raises(HTTPException) as conflict:
+        agent.dispatch_autonomous_engineering(
+            agent.ManualTaskRequest(task="same task from two tabs")
+        )
+    assert conflict.value.status_code == 409
+    assert conflict.value.headers["X-Error-Code"] == "AUTONOMOUS_DISPATCH_RECENTLY_ACCEPTED"
+    assert len(workflow_calls) == 1

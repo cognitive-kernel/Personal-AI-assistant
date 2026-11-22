@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+from contextlib import nullcontext
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,6 +11,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.testclient import TestClient
 
 from app import autonomous_engineering as agent
 from app import main as main_module
@@ -17,6 +19,7 @@ from app import main as main_module
 
 @pytest.fixture(autouse=True)
 def _stub_durable_pending_work_status(monkeypatch):
+    monkeypatch.setattr(agent, "_LAST_DISPATCH_ACCEPTED_AT", 0.0)
     monkeypatch.setattr(agent, "pending_work_status", lambda: {
         "available": True,
         "blocked": False,
@@ -175,10 +178,13 @@ def test_dispatch_uses_only_the_configured_workflow_and_main(monkeypatch):
     result = agent.dispatch_autonomous_engineering()
 
     assert result["accepted"] is True
+    correlation_id = result["correlation_id"]
+    assert len(correlation_id) == 32
     assert calls[0][1:] == ["auth", "status", "--hostname", "github.com"]
     assert calls[1][1:] == [
         "workflow", "run", "autonomous-codex-engineering.yml",
         "--repo", "cognitive-kernel/Personal-AI-assistant", "--ref", "main",
+        "--field", "correlation_id=" + correlation_id,
         "--field", "manual_task=",
     ]
 
@@ -287,8 +293,11 @@ def test_resume_clears_pause_and_dispatches_without_legacy_failure_counter(monke
     result = agent.resume_autonomous_engineering()
 
     assert result["paused"] is False
+    assert len(result["correlation_id"]) == 32
     assert calls[1][0][2:5] == ["set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body"]
     assert calls[2][0][1:3] == ["workflow", "run"]
+    assert "--field" in calls[2][0]
+    assert "correlation_id=" + result["correlation_id"] in calls[2][0]
     assert calls[2][1] is True
     assert all("AUTONOMOUS_ENGINEERING_FAILURE_STREAK" not in call[0] for call in calls)
 
@@ -1136,7 +1145,9 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "Set-AutonomousDirectoryTreeAcl" in acl_script
     assert '"S-1-5-19"' in acl_script
     assert "PersonalAIAssistantStateBroker" in runner_check
-    assert 'window.setInterval(() => void progress.refresh(), 5000)' in orchestrator
+    assert "core.startPolling({" in orchestrator
+    assert "intervalMs: 5000" in orchestrator
+    assert "refresh: () => progress.refresh()" in orchestrator
     assert "createElementNS" in script
 
 
@@ -1261,7 +1272,10 @@ def test_dispatch_forwards_manual_task_as_a_single_untrusted_field(monkeypatch):
     result = agent.dispatch_autonomous_engineering(agent.ManualTaskRequest(task=task))
 
     assert result["accepted"] is True
+    assert len(result["correlation_id"]) == 32
     assert calls[-1][-2:] == ["--field", "manual_task=" + task]
+    assert calls[-1][-4] == "--field"
+    assert calls[-1][-3] == "correlation_id=" + result["correlation_id"]
 
 
 def test_manual_task_rejects_null_byte_and_excessive_length():
@@ -1950,7 +1964,9 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     progress = (static / "autonomous-engineering-progress.js").read_text(encoding="utf-8")
 
     assert "new AbortController()" in core
-    assert 'const timeoutMs = path === "status" ? 40000' in core
+    assert 'const defaultTimeoutMs = path === "status" ? 40000' in core
+    assert "requestedTimeoutMs > 120000" in core
+    assert "const timeoutMs = requestedTimeoutMs === undefined ? defaultTimeoutMs : requestedTimeoutMs" in core
     assert 'path.startsWith("progress") ? 20000 : 120000' in core
     assert "timeoutError.ambiguous = true" in core
     assert "statusRefreshPromise" in status
@@ -1969,11 +1985,16 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     assert "function canStartManualTask()" in status
     assert "function canStartDispatch()" in status
     assert "statusKnown && lastCanDispatch" in status
-    assert "window.setTimeout(syncDispatchControls, 30000)" in status
+    assert "dispatchUnlockTimer = window.setTimeout" in status
+    assert "function armDispatchUnlockTimer()" in status
     assert "item.point[line.key] !== null" in progress
     assert "engineeringPercent !== null" in progress
-    assert 'window.setInterval(() => void status.refresh(), 30000)' in orchestrator
-    assert 'window.setInterval(() => void progress.refresh(), 5000)' in orchestrator
+    assert "intervalMs: 30000" in orchestrator
+    assert "refresh: () => status.refresh()" in orchestrator
+    assert "window.setInterval(" not in orchestrator
+    assert "intervalMs: 5000, maxIntervalMs: 120000" in orchestrator
+    assert "refresh: () => progress.refresh()" in orchestrator
+    assert "core.startPolling({" in orchestrator
     assert "window.setTimeout(refresh, 2500)" not in orchestrator + status + controls
     assert "dispatchButton.disabled = false" not in controls
 
@@ -2129,6 +2150,8 @@ def test_cleanup_removes_only_ephemeral_progress_files_and_preserves_durable_sta
     runtime_dir.mkdir()
     from app import autonomous_engineering_progress as progress
     monkeypatch.setattr(agent, "execution_state_directory", lambda: tmp_path)
+    from app import autonomous_engineering_execution_lock as execution_lock
+    monkeypatch.setattr(execution_lock, "execution_state_directory", lambda: tmp_path)
     monkeypatch.setattr(agent, "_agent_runtime_directory", lambda: runtime_dir)
     for name in ("events.jsonl", "current.json", "history.jsonl", "scorecard-baseline.json", "worktree-checkpoint-123-1.patch"):
         (tmp_path / name).write_text("preserve-or-remove", encoding="utf-8")
@@ -2150,9 +2173,12 @@ def test_cleanup_removes_only_ephemeral_progress_files_and_preserves_durable_sta
 
 
 def test_cleanup_refuses_active_run_or_pending_task(monkeypatch, tmp_path):
+    from app import autonomous_engineering_execution_lock as execution_lock
+
     monkeypatch.setattr(agent, "_is_windows", lambda: False)
     monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
     monkeypatch.setattr(agent, "execution_state_directory", lambda: tmp_path)
+    monkeypatch.setattr(execution_lock, "execution_state_directory", lambda: tmp_path)
     (tmp_path / "events.jsonl").write_text("keep", encoding="utf-8")
     monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [{"status": "in_progress"}])
     with pytest.raises(HTTPException) as active_error:
@@ -2469,3 +2495,206 @@ def test_dispatch_timeout_reports_ambiguous_outcome_without_encouraging_retry(mo
     assert error.value.headers["X-Correlation-ID"] in error.value.detail
     assert "نامشخص" in error.value.detail
     assert "پیش از تلاش مجدد" in error.value.detail
+
+
+
+def test_successful_dispatch_correlates_ui_request_and_workflow_input(monkeypatch):
+    correlation_id = "d" * 32
+    calls = []
+    monkeypatch.setattr(agent, "_LAST_DISPATCH_ACCEPTED_AT", 0.0)
+    monkeypatch.setattr(agent, "collect_status", lambda: {
+        "ready": True,
+        "github": {"runs_available": True, "recent_runs": []},
+        "pending_work": {"available": True, "blocked": False, "markers": {}},
+    })
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    response = TestClient(main_module.app, client=("127.0.0.1", 12345)).post(
+        "/api/autonomous-engineering/dispatch",
+        json={},
+        headers={"X-Correlation-ID": correlation_id},
+    )
+
+    assert response.status_code == 202
+    assert response.headers["X-Correlation-ID"] == correlation_id
+    assert response.json()["correlation_id"] == correlation_id
+    assert calls[-1][-4:] == [
+        "--field", "correlation_id=" + correlation_id,
+        "--field", "manual_task=",
+    ]
+
+
+def test_real_autonomous_dispatch_http_error_exposes_structured_diagnostics(monkeypatch):
+    monkeypatch.setattr(agent, "collect_status", lambda: {
+        "ready": False,
+        "paused": False,
+        "github": {"runs_available": True, "recent_runs": []},
+    })
+
+    response = TestClient(main_module.app, client=("127.0.0.1", 12345)).post(
+        "/api/autonomous-engineering/dispatch",
+        json={},
+    )
+
+    assert response.status_code == 409
+    payload = response.json()
+    assert payload["code"] == "AUTONOMOUS_ENGINEERING_CONFLICT"
+    assert payload["retryable"] is False
+    assert payload["correlation_id"]
+    assert payload["message"]
+    assert payload["safe_details"] == {}
+    assert response.headers["X-Error-Code"] == payload["code"]
+    assert response.headers["X-Correlation-ID"] == payload["correlation_id"]
+    assert response.headers["X-Retryable"] == "false"
+
+
+def test_cleanup_refuses_when_repository_execution_lock_is_owned(monkeypatch):
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [])
+    if agent._is_windows():
+        from app.autonomous_engineering_state_broker import StateBrokerConflict
+
+        monkeypatch.setattr(
+            agent,
+            "cleanup_shared_progress_data",
+            lambda: (_ for _ in ()).throw(
+                StateBrokerConflict("repository lock busy", ["repository_execution_active"])
+            ),
+        )
+    else:
+        monkeypatch.setattr(
+            agent,
+            "repository_execution_lock",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                RuntimeError("Another autonomous execution owns this repository worktree.")
+            ),
+        )
+    if not agent._is_windows():
+        monkeypatch.setattr(
+            agent,
+            "_cleanup_autonomous_engineering_temporary_data_locked",
+            lambda: pytest.fail("cleanup must not run while another execution owns the worktree"),
+        )
+
+    response = TestClient(main_module.app, client=("127.0.0.1", 12345)).post(
+        "/api/autonomous-engineering/cleanup",
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "AUTONOMOUS_ENGINEERING_CONFLICT"
+
+
+def test_cleanup_rechecks_active_workflow_after_acquiring_repository_lock(monkeypatch):
+    calls = {"runs": 0, "cleanup": 0}
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+
+    def workflow_runs(gh):
+        calls["runs"] += 1
+        return [] if calls["runs"] == 1 else [{"status": "in_progress"}]
+
+    monkeypatch.setattr(agent, "_workflow_runs", workflow_runs)
+    monkeypatch.setattr(agent, "repository_execution_lock", lambda *args, **kwargs: nullcontext())
+
+    def cleanup():
+        calls["cleanup"] += 1
+        return {"cleaned": True}
+
+    monkeypatch.setattr(agent, "_cleanup_autonomous_engineering_temporary_data_locked", cleanup)
+
+    response = TestClient(main_module.app, client=("127.0.0.1", 12345)).post(
+        "/api/autonomous-engineering/cleanup",
+    )
+
+    if agent._is_windows():
+        assert response.status_code == 200
+        assert calls == {"runs": 1, "cleanup": 1}
+    else:
+        assert response.status_code == 409
+        assert response.json()["code"] == "AUTONOMOUS_ENGINEERING_CONFLICT"
+        assert calls == {"runs": 2, "cleanup": 0}
+
+def test_windows_cleanup_delegates_locking_to_broker_without_client_self_lock(monkeypatch):
+    monkeypatch.setattr(agent, "_is_windows", lambda: True)
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [])
+    monkeypatch.setattr(
+        agent,
+        "repository_execution_lock",
+        lambda *args, **kwargs: pytest.fail("Windows broker must acquire the shared repository lock"),
+    )
+    monkeypatch.setattr(agent, "cleanup_shared_progress_data", lambda: {"cleaned": True})
+
+    response = TestClient(main_module.app, client=("127.0.0.1", 12345)).post(
+        "/api/autonomous-engineering/cleanup",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["cleaned"] is True
+
+def test_windows_cleanup_preserves_worktree_runtime_files_after_broker_release(monkeypatch, tmp_path):
+    monkeypatch.setattr(agent, "_is_windows", lambda: True)
+    runtime_dir = tmp_path / "worktree"
+    runtime_dir.mkdir()
+    for name in agent._RUNTIME_CLEANUP_FILES:
+        (runtime_dir / name).write_text("runtime", encoding="utf-8")
+    monkeypatch.setattr(agent, "_agent_runtime_directory", lambda: runtime_dir)
+    monkeypatch.setattr(
+        agent,
+        "cleanup_shared_progress_data",
+        lambda: {
+            "cleaned": True,
+            "files_removed": 2,
+            "bytes_removed": 12,
+            "failed_files": [],
+            "preserved": ["history.jsonl", "checkpoint files"],
+        },
+    )
+
+    result = agent._cleanup_autonomous_engineering_temporary_data_locked()
+
+    assert result["cleaned"] is True
+    assert result["files_removed"] == 2
+    assert set(agent._RUNTIME_CLEANUP_FILES) <= set(result["preserved"])
+    assert all((runtime_dir / name).is_file() for name in agent._RUNTIME_CLEANUP_FILES)
+
+def test_posix_cleanup_lock_order_is_repository_then_state_then_checkpoint(monkeypatch, tmp_path):
+    from contextlib import contextmanager
+
+    calls = []
+    monkeypatch.setattr(agent, "_is_windows", lambda: False)
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [])
+    monkeypatch.setattr(agent, "execution_state_directory", lambda: tmp_path)
+    monkeypatch.setattr(agent, "_agent_runtime_directory", lambda: tmp_path / "worktree")
+    (tmp_path / "worktree").mkdir()
+
+    @contextmanager
+    def repository_lock(*_args, **_kwargs):
+        calls.append("repository")
+        yield
+
+    @contextmanager
+    def state_lock(*_args, **_kwargs):
+        calls.append("durable-state")
+        yield
+
+    @contextmanager
+    def checkpoint_lock(*_args, **_kwargs):
+        calls.append("checkpoint")
+        yield
+
+    monkeypatch.setattr(agent, "repository_execution_lock", repository_lock)
+    monkeypatch.setattr(agent, "durable_state_lock", state_lock)
+    monkeypatch.setattr(agent, "checkpoint_store_lock", checkpoint_lock)
+
+    response = TestClient(main_module.app, client=("127.0.0.1", 12345)).post(
+        "/api/autonomous-engineering/cleanup",
+    )
+
+    assert response.status_code == 200
+    assert calls == ["repository", "durable-state", "checkpoint"]

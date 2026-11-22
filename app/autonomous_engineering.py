@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 import psutil
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
@@ -35,6 +35,8 @@ from .autonomous_engineering_progress import (
 )
 from .ollama_context import maximum_context_tokens, resolve_model_architecture, supports_tool_calling
 from .autonomous_engineering_state import durable_state_lock, execution_state_directory
+from .autonomous_engineering_checkpoint_lock import checkpoint_store_lock
+from .autonomous_engineering_execution_lock import repository_execution_lock
 from .autonomous_engineering_model_pull import get_model_pull, start_model_pull
 
 _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
@@ -51,6 +53,13 @@ _STATUS_EXECUTOR = ThreadPoolExecutor(
 _STATUS_EXECUTOR_SLOTS = threading.BoundedSemaphore(_STATUS_EXECUTOR_MAX_WORKERS)
 _STATUS_LOGGER = logging.getLogger(__name__)
 
+# Serialize UI-originated workflow dispatches within the local API process. The
+# durable pending-task marker and GitHub workflow concurrency remain the
+# cross-process/restart safety layer.
+_DISPATCH_REQUEST_LOCK = threading.Lock()
+_DISPATCH_VISIBILITY_GRACE_SECONDS = 15.0
+_LAST_DISPATCH_ACCEPTED_AT = 0.0
+
 _HTTP_ERROR_CODES = {
     400: "AUTONOMOUS_ENGINEERING_BAD_REQUEST",
     401: "AUTONOMOUS_ENGINEERING_UNAUTHORIZED",
@@ -66,6 +75,7 @@ _HTTP_ERROR_CODES = {
     504: "AUTONOMOUS_ENGINEERING_TIMEOUT",
 }
 _RETRYABLE_HTTP_STATUSES = {408, 425, 429, 500, 502, 503, 504}
+_CORRELATION_ID_PATTERN = re.compile(r"^[a-f0-9]{32}$")
 
 
 def _structured_error_response(
@@ -115,15 +125,20 @@ class AutonomousEngineeringAPIRoute(APIRoute):
         original_handler = super().get_route_handler()
 
         async def structured_handler(request):
+            supplied_id = str(request.headers.get("X-Correlation-ID") or "").strip().lower()
+            correlation_id = supplied_id if _CORRELATION_ID_PATTERN.fullmatch(supplied_id) else uuid.uuid4().hex
+            request.state.correlation_id = correlation_id
             try:
-                return await original_handler(request)
+                response = await original_handler(request)
             except HTTPException as exc:
                 message = exc.detail if isinstance(exc.detail, str) else "درخواست ناموفق بود."
+                headers = dict(exc.headers or {})
+                headers.setdefault("X-Correlation-ID", correlation_id)
                 return _structured_error_response(
                     status_code=exc.status_code,
                     message=message,
                     detail=message,
-                    headers=exc.headers,
+                    headers=headers,
                     safe_details=getattr(exc, "safe_details", None),
                 )
             except RequestValidationError as exc:
@@ -139,12 +154,12 @@ class AutonomousEngineeringAPIRoute(APIRoute):
                     status_code=422,
                     message="ورودی درخواست معتبر نیست.",
                     detail=errors,
+                    headers={"X-Correlation-ID": correlation_id},
                     code="AUTONOMOUS_ENGINEERING_VALIDATION_FAILED",
                     retryable=False,
                     safe_details={"validation_errors": errors},
                 )
             except Exception as exc:
-                correlation_id = uuid.uuid4().hex
                 _STATUS_LOGGER.error(
                     "Autonomous Engineering API failed; exception_type=%s correlation_id=%s",
                     type(exc).__name__,
@@ -159,6 +174,8 @@ class AutonomousEngineeringAPIRoute(APIRoute):
                     retryable=False,
                     safe_details={"exception_type": type(exc).__name__},
                 )
+            response.headers.setdefault("X-Correlation-ID", correlation_id)
+            return response
 
         return structured_handler
 
@@ -768,7 +785,53 @@ def _has_open_autonomous_pr(gh: str) -> bool:
 
 
 @router.post("/dispatch", status_code=202)
-def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) -> dict[str, Any]:
+def dispatch_autonomous_engineering(
+    payload: ManualTaskRequest | None = None,
+    request: Request = None,
+) -> dict[str, Any]:
+    global _LAST_DISPATCH_ACCEPTED_AT
+    request_state = getattr(request, "state", None)
+    correlation_id = getattr(request_state, "correlation_id", None)
+    if not isinstance(correlation_id, str) or not _CORRELATION_ID_PATTERN.fullmatch(correlation_id):
+        correlation_id = uuid.uuid4().hex
+    if not _DISPATCH_REQUEST_LOCK.acquire(blocking=False):
+        raise HTTPException(
+            status_code=409,
+            detail="درخواست اجرای دیگری در حال ثبت است؛ از ارسال هم‌زمان در چند زبانه خودداری کنید.",
+            headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "AUTONOMOUS_DISPATCH_IN_PROGRESS", "X-Retryable": "false"},
+        )
+    try:
+        if (
+            _LAST_DISPATCH_ACCEPTED_AT
+            and time.monotonic() - _LAST_DISPATCH_ACCEPTED_AT < _DISPATCH_VISIBILITY_GRACE_SECONDS
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="درخواست اجرای قبلی تازه پذیرفته شده یا نتیجهٔ آن نامشخص است؛ پیش از ارسال دوباره، سوابق اجرا را بازخوانی کنید.",
+                headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "AUTONOMOUS_DISPATCH_RECENTLY_ACCEPTED", "X-Retryable": "false"},
+            )
+        try:
+            result = _dispatch_autonomous_engineering_locked(payload, correlation_id=correlation_id)
+        except HTTPException as exc:
+            exc.headers = dict(exc.headers or {})
+            exc.headers.setdefault("X-Correlation-ID", correlation_id)
+            if exc.headers.get("X-Error-Code") == "WORKFLOW_DISPATCH_OUTCOME_UNKNOWN":
+                _LAST_DISPATCH_ACCEPTED_AT = time.monotonic()
+            raise
+        if result.get("accepted") is True:
+            _LAST_DISPATCH_ACCEPTED_AT = time.monotonic()
+        return result
+    finally:
+        _DISPATCH_REQUEST_LOCK.release()
+
+
+def _dispatch_autonomous_engineering_locked(
+    payload: ManualTaskRequest | None = None,
+    *,
+    correlation_id: str | None = None,
+) -> dict[str, Any]:
+    if not isinstance(correlation_id, str) or not _CORRELATION_ID_PATTERN.fullmatch(correlation_id):
+        correlation_id = uuid.uuid4().hex
     manual_task = payload.task.strip() if payload else ""
     if "\x00" in manual_task:
         raise HTTPException(status_code=422, detail="متن وظیفه شامل نویسهٔ نامعتبر است.")
@@ -840,13 +903,13 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) ->
         result = _run(
             [
                 gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main",
+                "--field", f"correlation_id={correlation_id}",
                 "--field", f"manual_task={manual_task}",
             ],
             timeout=20,
             raise_os_error=True,
         )
     except OSError:
-        correlation_id = uuid.uuid4().hex
         _STATUS_LOGGER.error(
             "Autonomous workflow dispatch could not start; correlation_id=%s",
             correlation_id,
@@ -864,7 +927,6 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) ->
             },
         )
     if result is None:
-        correlation_id = uuid.uuid4().hex
         _STATUS_LOGGER.warning(
             "Autonomous workflow dispatch outcome is unknown; correlation_id=%s",
             correlation_id,
@@ -883,7 +945,6 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) ->
             },
         )
     if result.returncode != 0:
-        correlation_id = uuid.uuid4().hex
         safe_stderr = _sanitize_workflow_log(str(result.stderr or ""))
         stderr_fingerprint = (
             hashlib.sha256(safe_stderr.encode("utf-8")).hexdigest()[:16]
@@ -913,6 +974,7 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) ->
         "repository": _repository(),
         "workflow": _WORKFLOW,
         "manual_task_submitted": bool(manual_task),
+        "correlation_id": correlation_id,
         "message": (
             "وظیفهٔ دستی ارسال شد؛ شروع واقعی را در GitHub Actions تأیید کنید."
             if manual_task else
@@ -936,7 +998,11 @@ def pause_autonomous_engineering() -> dict[str, Any]:
 
 
 @router.post("/resume")
-def resume_autonomous_engineering() -> dict[str, Any]:
+def resume_autonomous_engineering(request: Request = None) -> dict[str, Any]:
+    request_state = getattr(request, "state", None)
+    correlation_id = getattr(request_state, "correlation_id", None)
+    if not isinstance(correlation_id, str) or not _CORRELATION_ID_PATTERN.fullmatch(correlation_id):
+        correlation_id = uuid.uuid4().hex
     gh = shutil.which("gh")
     if not gh:
         raise HTTPException(status_code=503, detail="GitHub CLI نصب نشده است.")
@@ -948,12 +1014,11 @@ def resume_autonomous_engineering() -> dict[str, Any]:
         raise HTTPException(status_code=502, detail="ثبت ادامه در GitHub ناموفق بود.")
     try:
         dispatched = _run(
-            [gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main"],
+            [gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main", "--field", f"correlation_id={correlation_id}"],
             timeout=20,
             raise_os_error=True,
         )
     except OSError:
-        correlation_id = uuid.uuid4().hex
         _STATUS_LOGGER.error(
             "Autonomous resume dispatch could not start; correlation_id=%s",
             correlation_id,
@@ -971,7 +1036,6 @@ def resume_autonomous_engineering() -> dict[str, Any]:
             },
         )
     if dispatched is None:
-        correlation_id = uuid.uuid4().hex
         _STATUS_LOGGER.warning(
             "Autonomous resume dispatch outcome is unknown; correlation_id=%s",
             correlation_id,
@@ -989,7 +1053,6 @@ def resume_autonomous_engineering() -> dict[str, Any]:
             },
         )
     if dispatched.returncode != 0:
-        correlation_id = uuid.uuid4().hex
         safe_stderr = _sanitize_workflow_log(str(dispatched.stderr or ""))
         stderr_fingerprint = (
             hashlib.sha256(safe_stderr.encode("utf-8")).hexdigest()[:16]
@@ -1013,7 +1076,7 @@ def resume_autonomous_engineering() -> dict[str, Any]:
                 "X-Retryable": "false",
             },
         )
-    return {"accepted": True, "paused": False, "message": "ادامه از وضعیت ذخیره‌شده درخواست شد."}
+    return {"accepted": True, "paused": False, "correlation_id": correlation_id, "message": "ادامه از وضعیت ذخیره‌شده درخواست شد."}
 
 
 @router.post("/cancel")
@@ -1346,15 +1409,7 @@ def delete_autonomous_engineering_run(run_id: int) -> dict[str, Any]:
     return {"deleted": True, "run_id": trusted_run_id, "message": "اجرای پایان‌یافته از تاریخچهٔ GitHub حذف شد."}
 
 
-@router.post("/cleanup")
-def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
-    gh = _authenticated_gh()
-    runs = _workflow_runs(gh)
-    if any(item.get("status") in _ACTIVE_RUN_STATES for item in runs):
-        raise HTTPException(
-            status_code=409,
-            detail="عامل هنوز اجرای فعال یا در صف دارد؛ پاک‌سازی داده‌های موقت تا پایان اجرا مجاز نیست.",
-        )
+def _cleanup_autonomous_engineering_temporary_data_locked() -> dict[str, Any]:
     removed = 0
     removed_bytes = 0
     failed_files: list[str] = []
@@ -1387,25 +1442,26 @@ def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
         try:
             if directory.is_dir():
                 with durable_state_lock(directory, timeout_seconds=2):
-                    blockers = [name for name in marker_names if (directory / name).exists()]
-                    if blockers:
-                        raise HTTPException(
-                            status_code=409,
-                            detail="وضعیت پایدار عامل هنوز تعیین‌تکلیف نشده است؛ پاک‌سازی انجام نشد: " + ", ".join(blockers),
-                        )
-                    for name in _PROGRESS_CLEANUP_FILES:
-                        path = directory / name
-                        try:
-                            if not path.is_file() or path.is_symlink():
+                    with checkpoint_store_lock(directory, timeout_seconds=2):
+                        blockers = [name for name in marker_names if (directory / name).exists()]
+                        if blockers:
+                            raise HTTPException(
+                                status_code=409,
+                                detail="وضعیت پایدار عامل هنوز تعیین‌تکلیف نشده است؛ پاک‌سازی انجام نشد: " + ", ".join(blockers),
+                            )
+                        for name in _PROGRESS_CLEANUP_FILES:
+                            path = directory / name
+                            try:
+                                if not path.is_file() or path.is_symlink():
+                                    continue
+                                size = path.stat().st_size
+                                path.unlink()
+                                removed += 1
+                                removed_bytes += size
+                            except FileNotFoundError:
                                 continue
-                            size = path.stat().st_size
-                            path.unlink()
-                            removed += 1
-                            removed_bytes += size
-                        except FileNotFoundError:
-                            continue
-                        except OSError:
-                            failed_files.append(str(path))
+                            except OSError:
+                                failed_files.append(str(path))
         except HTTPException:
             raise
         except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
@@ -1414,32 +1470,82 @@ def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
                 detail=f"پاک‌سازی امن فضای موقت ممکن نشد؛ checkpointها و وضعیت پایدار عامل حفظ شدند ({type(exc).__name__}).",
             ) from exc
 
-    # These three names are the controller's declared worktree runtime files;
-    # durable checkpoints and all pending task/PR ownership files are excluded.
-    runtime_directory = _agent_runtime_directory()
-    for name in _RUNTIME_CLEANUP_FILES:
-        path = runtime_directory / name
-        try:
-            if not path.is_file() or path.is_symlink():
+    # On Windows the LocalService broker owns the shared repository lock and
+    # cannot safely hand that lock back to this process. It cleans the protected
+    # state files itself; worktree runtime files are preserved rather than
+    # deleted after the broker releases its lock. POSIX cleanup runs under the
+    # caller's repository lock and may remove these files safely.
+    runtime_files_preserved: list[str] = []
+    if _is_windows():
+        runtime_files_preserved = list(_RUNTIME_CLEANUP_FILES)
+    else:
+        runtime_directory = _agent_runtime_directory()
+        for name in _RUNTIME_CLEANUP_FILES:
+            path = runtime_directory / name
+            try:
+                if not path.is_file() or path.is_symlink():
+                    continue
+                size = path.stat().st_size
+                path.unlink()
+                removed += 1
+                removed_bytes += size
+            except FileNotFoundError:
                 continue
-            size = path.stat().st_size
-            path.unlink()
-            removed += 1
-            removed_bytes += size
-        except FileNotFoundError:
-            continue
-        except OSError:
-            failed_files.append(str(path))
+            except OSError:
+                failed_files.append(str(path))
 
+    preserved = [
+        "history.jsonl",
+        "scorecard-baseline.json",
+        "checkpoint files",
+        "pending task/PR markers",
+        *runtime_files_preserved,
+    ]
     return {
         "cleaned": not failed_files,
         "files_removed": removed,
         "bytes_removed": removed_bytes,
         "failed_files": failed_files,
-        "preserved": ["history.jsonl", "scorecard-baseline.json", "checkpoint files", "pending task/PR markers"],
+        "preserved": preserved,
         "message": (
-            "پاک‌سازی کامل شد؛ تاریخچه، checkpointها و وضعیت پایدار عامل حفظ شدند."
+            "پاک‌سازی داده‌های امن انجام شد؛ تاریخچه، checkpointها و وضعیت پایدار عامل حفظ شدند."
+            + (" فایل‌های runtime داخل worktree در Windows برای جلوگیری از race حفظ شدند." if runtime_files_preserved else "")
             if not failed_files
             else "پاک‌سازی ناقص بود؛ بعضی فایل‌های موقت به‌دلیل خطای دسترسی حذف نشدند."
         ),
     }
+
+@router.post("/cleanup")
+def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
+    gh = _authenticated_gh()
+
+    def ensure_no_active_workflow() -> None:
+        runs = _workflow_runs(gh)
+        if any(item.get("status") in _ACTIVE_RUN_STATES for item in runs):
+            raise HTTPException(
+                status_code=409,
+                detail="عامل هنوز اجرای فعال یا در صف دارد؛ پاک‌سازی داده‌های موقت تا پایان اجرا مجاز نیست.",
+            )
+
+    ensure_no_active_workflow()
+    try:
+        if _is_windows():
+            # The Windows broker owns the repository -> durable-state ->
+            # checkpoint-store lock order itself. Do not acquire the same
+            # repository lock in this client process or the broker would deadlock.
+            return _cleanup_autonomous_engineering_temporary_data_locked()
+        # POSIX uses the same repository lock as the Runner, then the helper
+        # acquires durable-state and checkpoint-store locks in that order.
+        with repository_execution_lock("ui-cleanup", "1"):
+            ensure_no_active_workflow()
+            return _cleanup_autonomous_engineering_temporary_data_locked()
+    except RuntimeError as exc:
+        if "Another autonomous execution owns this repository worktree" in str(exc):
+            raise HTTPException(
+                status_code=409,
+                detail="اجرای دیگری مالک worktree است؛ پاک‌سازی تا آزادشدن قفل انجام نمی‌شود.",
+            ) from exc
+        raise HTTPException(
+            status_code=503,
+            detail=f"قفل یا پاک‌سازی امن فضای عامل در دسترس نیست ({type(exc).__name__}).",
+        ) from exc

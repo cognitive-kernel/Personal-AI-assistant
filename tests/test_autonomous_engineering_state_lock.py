@@ -235,12 +235,14 @@ def test_durable_and_checkpoint_locks_share_one_platform_primitive():
     root = Path(__file__).resolve().parents[1]
     scripts = root / "scripts"
     state_lock = (scripts / "autonomous_engineering_state_lock.py").read_text(encoding="utf-8")
-    checkpoint_lock = (scripts / "autonomous_engineering_checkpoint_lock.py").read_text(encoding="utf-8")
+    checkpoint_lock = (root / "app" / "autonomous_engineering_checkpoint_lock.py").read_text(encoding="utf-8")
+    script_checkpoint_lock = (scripts / "autonomous_engineering_checkpoint_lock.py").read_text(encoding="utf-8")
     primitive_facade = (scripts / "autonomous_engineering_file_lock.py").read_text(encoding="utf-8")
     primitive = (root / "app" / "autonomous_engineering_state.py").read_text(encoding="utf-8")
 
     assert "exclusive_file_lock" in state_lock
     assert "exclusive_file_lock" in checkpoint_lock
+    assert "from app.autonomous_engineering_checkpoint_lock import" in script_checkpoint_lock
     assert "exclusive_file_lock" in primitive_facade
     assert "msvcrt" not in state_lock + checkpoint_lock
     assert "fcntl" not in state_lock + checkpoint_lock

@@ -128,7 +128,8 @@ assert snapshot["current"]["phase_label"] == "CI live broker pipe test"
 assert len(snapshot["history"]) == 1
 assert len(snapshot["events"]) == 1
 pending = broker.pending_work()
-assert pending["available"] is True and pending["blocked"] is False
+assert pending["available"] is True and pending["blocked"] is True
+assert "active_progress_run" in pending["reason"]
 diagnostics = broker.diagnostics(12345)
 assert diagnostics and str(diagnostics["run_id"]) == "12345"
 '@
@@ -237,11 +238,150 @@ else:
     $inactiveProbe = @'
 from app import autonomous_engineering_state_broker as broker
 pending = broker.pending_work()
-assert pending["available"] is True and pending["blocked"] is False
+assert pending["available"] is True and pending["blocked"] is True
+assert "active_progress_run" in pending["reason"]
 assert pending["checkpoint"] == {"available": False, "verified": True}
 '@
     $inactiveProbe | & python -
     if ($LASTEXITCODE -ne 0) { throw "The Windows Broker did not honor the inactive checkpoint pointer." }
+
+    # The workflow records a live progress snapshot before taking the
+    # repository lock. Cleanup must fail closed even while that lock is free.
+    $activeProgressProbe = @'
+from app import autonomous_engineering_state_broker as broker
+from app.autonomous_engineering_state_broker import StateBrokerConflict
+try:
+    broker.cleanup()
+except StateBrokerConflict as exc:
+    assert "active_progress_run" in exc.blockers
+else:
+    raise SystemExit("Broker cleanup ignored a live pre-lock current.json progress state.")
+'@
+    $activeProgressProbe | & python -
+    if ($LASTEXITCODE -ne 0) { throw "The Windows Broker did not block cleanup for a live progress state." }
+
+    $current.status = "completed"
+    $current.phase_label = "CI run completed"
+    [System.IO.File]::WriteAllText(
+        (Join-Path $stateRoot "current.json"),
+        (ConvertTo-Json -InputObject $current -Compress),
+        [System.Text.UTF8Encoding]::new($false)
+    )
+    $completedProgressProbe = @'
+from app import autonomous_engineering_state_broker as broker
+pending = broker.pending_work()
+assert pending["available"] is True and pending["blocked"] is False
+assert pending["checkpoint"] == {"available": False, "verified": True}
+'@
+    $completedProgressProbe | & python -
+    if ($LASTEXITCODE -ne 0) { throw "The Windows Broker did not clear the active-progress blocker for a terminal run." }
+
+    # The broker must interoperate with the exact Python byte-range lock used
+    # by the Runner, including direct pipe clients that bypass the dashboard.
+    $repositoryLockScriptPath = Join-Path $env:TEMP ("broker-repository-lock-" + [guid]::NewGuid().ToString("N") + ".py")
+    $repositoryLockReadyPath = Join-Path $env:TEMP ("broker-repository-lock-ready-" + [guid]::NewGuid().ToString("N") + ".txt")
+    $repositoryLockScript = @'
+import os, sys, time
+from pathlib import Path
+os.environ["AUTONOMOUS_ENGINEERING_PROGRESS_DIR"] = sys.argv[2]
+sys.path.insert(0, sys.argv[3])
+from scripts.autonomous_engineering_execution_lock import repository_execution_lock
+with repository_execution_lock("broker-lock-ci", "1"):
+    Path(sys.argv[1]).write_text("locked", encoding="utf-8")
+    time.sleep(3)
+'@
+    [System.IO.File]::WriteAllText(
+        $repositoryLockScriptPath,
+        $repositoryLockScript,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+    $repoRoot = Split-Path -Parent $PSScriptRoot
+    $pythonPath = (Get-Command python -ErrorAction Stop).Source
+    $lockProcess = Start-Process -FilePath $pythonPath -ArgumentList @(
+        $repositoryLockScriptPath, $repositoryLockReadyPath, $stateRoot, $repoRoot
+    ) -PassThru -NoNewWindow
+    try {
+        $lockDeadline = [DateTime]::UtcNow.AddSeconds(10)
+        while (-not (Test-Path -LiteralPath $repositoryLockReadyPath) -and [DateTime]::UtcNow -lt $lockDeadline) {
+            Start-Sleep -Milliseconds 50
+        }
+        if (-not (Test-Path -LiteralPath $repositoryLockReadyPath)) {
+            throw "The Python Runner did not acquire the repository execution lock."
+        }
+        $repositoryLockProbe = @'
+from app import autonomous_engineering_state_broker as broker
+from app.autonomous_engineering_state_broker import StateBrokerConflict
+try:
+    broker.cleanup()
+except StateBrokerConflict as exc:
+    assert "repository_execution_active" in exc.blockers
+else:
+    raise SystemExit("Broker cleanup ignored the Python Runner repository lock.")
+'@
+        $repositoryLockProbe | & python -
+        if ($LASTEXITCODE -ne 0) { throw "The broker did not respect the Python Runner repository lock." }
+        if (-not $lockProcess.WaitForExit(10000) -or $lockProcess.ExitCode -ne 0) {
+            throw "The Python repository-lock holder did not exit cleanly."
+        }
+    } finally {
+        if ($lockProcess -and -not $lockProcess.HasExited) {
+            Stop-Process -Id $lockProcess.Id -Force -ErrorAction SilentlyContinue
+        }
+        Remove-Item -LiteralPath $repositoryLockScriptPath, $repositoryLockReadyPath -Force -ErrorAction SilentlyContinue
+    }
+
+    # A progress writer may run before the workflow acquires the repository
+    # lock. The broker must refuse cleanup while a non-cooperating writer has
+    # the exact temporary file open, without deleting any other progress file.
+    $progressWriterScriptPath = Join-Path $env:TEMP ("broker-progress-writer-" + [guid]::NewGuid().ToString("N") + ".py")
+    $progressWriterReadyPath = Join-Path $env:TEMP ("broker-progress-writer-ready-" + [guid]::NewGuid().ToString("N") + ".txt")
+    $progressWriterScript = @'
+import os, sys, time
+from pathlib import Path
+state_root, ready_path = sys.argv[1], sys.argv[2]
+with open(os.path.join(state_root, "current.json.tmp"), "w", encoding="utf-8") as stream:
+    stream.write("writer-active")
+    stream.flush()
+    Path(ready_path).write_text("locked", encoding="utf-8")
+    time.sleep(3)
+'@
+    [System.IO.File]::WriteAllText(
+        $progressWriterScriptPath,
+        $progressWriterScript,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+    $writerProcess = Start-Process -FilePath $pythonPath -ArgumentList @(
+        $progressWriterScriptPath, $stateRoot, $progressWriterReadyPath
+    ) -PassThru -NoNewWindow
+    try {
+        $writerDeadline = [DateTime]::UtcNow.AddSeconds(10)
+        while (-not (Test-Path -LiteralPath $progressWriterReadyPath) -and [DateTime]::UtcNow -lt $writerDeadline) {
+            Start-Sleep -Milliseconds 50
+        }
+        if (-not (Test-Path -LiteralPath $progressWriterReadyPath)) {
+            throw "The progress writer did not open its temporary file."
+        }
+        $progressWriterProbe = @'
+from app import autonomous_engineering_state_broker as broker
+from app.autonomous_engineering_state_broker import StateBrokerConflict
+try:
+    broker.cleanup()
+except StateBrokerConflict as exc:
+    assert "progress_writer_active" in exc.blockers
+else:
+    raise SystemExit("Broker cleanup raced a live progress writer.")
+'@
+        $progressWriterProbe | & python -
+        if ($LASTEXITCODE -ne 0) { throw "The broker did not block cleanup for an active progress writer." }
+        if (-not $writerProcess.WaitForExit(10000) -or $writerProcess.ExitCode -ne 0) {
+            throw "The progress writer did not exit cleanly."
+        }
+    } finally {
+        if ($writerProcess -and -not $writerProcess.HasExited) {
+            Stop-Process -Id $writerProcess.Id -Force -ErrorAction SilentlyContinue
+        }
+        Remove-Item -LiteralPath $progressWriterScriptPath, $progressWriterReadyPath -Force -ErrorAction SilentlyContinue
+    }
 
     # Cleanup must also fail while a watcher owns the store lock, even before
     # a new pointer is published.

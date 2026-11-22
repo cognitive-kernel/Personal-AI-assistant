@@ -72,11 +72,29 @@ def now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _with_run_correlation(record: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(record)
+    correlation_id = os.getenv("AUTONOMOUS_ENGINEERING_CORRELATION_ID", "").strip().lower()
+    if re.fullmatch(r"[a-f0-9]{32}", correlation_id):
+        payload.setdefault("correlation_id", correlation_id)
+    job = os.getenv("GITHUB_JOB", "").strip()
+    if job:
+        payload.setdefault("job", job)
+    job_id = os.getenv("AUTONOMOUS_ENGINEERING_JOB_ID", "").strip()
+    if job_id.isdigit():
+        payload.setdefault("job_id", int(job_id))
+    step_id = os.getenv("AUTONOMOUS_ENGINEERING_STEP_ID", "").strip()
+    if step_id:
+        payload.setdefault("step_id", step_id)
+    return payload
+
+
 def store_dir() -> Path:
     return execution_state_directory()
 
 
 def append_event(record: dict[str, Any]) -> None:
+    record = _with_run_correlation(record)
     directory = store_dir()
     directory.mkdir(parents=True, exist_ok=True)
     events = directory / "events.jsonl"
@@ -90,6 +108,7 @@ def append_event(record: dict[str, Any]) -> None:
 
 
 def append_history(record: dict[str, Any]) -> None:
+    record = _with_run_correlation(record)
     directory = store_dir()
     directory.mkdir(parents=True, exist_ok=True)
     history = directory / "history.jsonl"
@@ -106,7 +125,7 @@ def persist(record: dict[str, Any]) -> bool:
     directory = store_dir()
     try:
         directory.mkdir(parents=True, exist_ok=True)
-        payload = {**record, "updated_at": now()}
+        payload = {**_with_run_correlation(record), "updated_at": now()}
         temporary = directory / "current.json.tmp"
         temporary.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
         temporary.replace(directory / "current.json")

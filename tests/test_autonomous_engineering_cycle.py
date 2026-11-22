@@ -9,6 +9,13 @@ import pytest
 from scripts import autonomous_engineering_cycle as cycle
 
 
+@pytest.fixture(autouse=True)
+def allow_direct_publish_state_machine_tests(monkeypatch: pytest.MonkeyPatch):
+    from scripts import autonomous_engineering_pull_requests as pull_requests
+
+    monkeypatch.setattr(pull_requests, "require_parent_repository_execution_lock", lambda run_id: None)
+
+
 def test_timed_stage_reports_started_and_elapsed_duration(monkeypatch, capsys):
     timestamps = iter((10.0, 12.5))
     monkeypatch.setattr(cycle.time, "monotonic", lambda: next(timestamps))
@@ -1668,6 +1675,11 @@ def test_persist_run_diagnostic_appends_redacted_report_details(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ):
     monkeypatch.setattr(cycle, "_autonomous_state_dir", lambda: tmp_path)
+    correlation_id = "c" * 32
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CORRELATION_ID", correlation_id)
+    monkeypatch.setenv("GITHUB_JOB", "codex")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_JOB_ID", "987654321")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_STEP_ID", "autonomous-engineering-cycle")
 
     assert cycle.persist_run_diagnostic(
         "12345", "1", task=1, attempt=2,
@@ -1684,6 +1696,11 @@ def test_persist_run_diagnostic_appends_redacted_report_details(
     saved = json.loads((tmp_path / "run-diagnostics" / "12345.json").read_text(encoding="utf-8"))
     assert saved["schema_version"] == 1
     assert saved["run_id"] == "12345"
+    assert saved["correlation_id"] == correlation_id
+    assert saved["diagnostics"][0]["correlation_id"] == correlation_id
+    assert saved["diagnostics"][0]["job"] == "codex"
+    assert saved["diagnostics"][0]["job_id"] == 987654321
+    assert saved["diagnostics"][0]["step_id"] == "autonomous-engineering-cycle"
     assert len(saved["diagnostics"]) == 1
     detail = saved["diagnostics"][0]["detail"]
     assert "sandbox policy rejected" in detail

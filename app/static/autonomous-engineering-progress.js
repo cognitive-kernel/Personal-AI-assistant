@@ -76,7 +76,7 @@
   async function refreshProgress({queueIfBusy = false} = {}) {
     if (progressBusy) {
       if (queueIfBusy) progressRefreshQueued = true;
-      return;
+      return true;
     }
     progressBusy = true;
     const period = $("progress-period").value;
@@ -88,7 +88,7 @@
       if (!start || !end) {
         $("progress-chart-caption").textContent = "تاریخ شروع و پایان را انتخاب کنید.";
         progressBusy = false;
-        return;
+        return true;
       }
       if (start > end) {
         $("progress-chart-caption").textContent = "تاریخ شروع باید قبل از تاریخ پایان باشد.";
@@ -152,12 +152,14 @@
           : "فضای ثبت پیشرفت آماده نیست؛ راه‌اندازی یک‌باره لازم است";
       renderProgressChart(snapshots);
       renderProgressEvents(data.events);
+      return true;
     } catch (error) {
       if (!selectionIsCurrent()) {
         progressRefreshQueued = true;
         return;
       }
       $("progress-chart-caption").textContent = error.message || "دریافت دادهٔ پیشرفت ناموفق بود.";
+      return false;
     } finally {
       progressBusy = false;
       if (progressRefreshQueued) {

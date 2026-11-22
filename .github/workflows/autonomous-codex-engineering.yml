@@ -1,6 +1,6 @@
 name: Autonomous local Ollama engineering
 
-run-name: Autonomous local Ollama engineering${{ inputs.recovery_attempt > 0 && format(' [recovery:{0}]', inputs.recovery_attempt) || '' }}
+run-name: Autonomous local Ollama engineering${{ inputs.recovery_attempt > 0 && format(' [recovery:{0}]', inputs.recovery_attempt) || '' }}${{ inputs.correlation_id && format(' [correlation:{0}]', inputs.correlation_id) || '' }}
 
 on:
   push:
@@ -11,6 +11,11 @@ on:
     inputs:
       manual_task:
         description: "Optional bounded engineering task supplied by the repository owner"
+        required: false
+        type: string
+        default: ""
+      correlation_id:
+        description: "Opaque 32-character correlation ID linking UI, workflow, run, job and durable task records"
         required: false
         type: string
         default: ""
@@ -145,12 +150,79 @@ jobs:
       AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH: ${{ inputs.context_length || vars.AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH || '' }}
       AUTONOMOUS_ENGINEERING_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE || 'continuous' }}
       AUTONOMOUS_ENGINEERING_REQUIRE_MACHINE_STATE_DIR: 'true'
+      AUTONOMOUS_ENGINEERING_CORRELATION_ID: ${{ inputs.correlation_id || '' }}
     steps:
       - name: Check out trusted main branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: main
           persist-credentials: false
+
+      - name: Initialize and publish the run correlation ID
+        id: correlation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $correlationId = ([string]$env:AUTONOMOUS_ENGINEERING_CORRELATION_ID).Trim().ToLowerInvariant()
+          if ($correlationId -notmatch '^[a-f0-9]{32}\z') {
+            $stateDir = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")
+            if ([string]::IsNullOrWhiteSpace($stateDir)) {
+              $stateDir = Join-Path $env:PROGRAMDATA "PersonalAIAssistant\autonomous-engineering"
+            }
+            $stateDir = [Environment]::ExpandEnvironmentVariables($stateDir.Trim())
+            $ownerPath = Join-Path $stateDir "pending-manual-task-owner.json"
+            if (Test-Path -LiteralPath $ownerPath -PathType Leaf) {
+              try {
+                $owner = Get-Content -LiteralPath $ownerPath -Raw -Encoding utf8 | ConvertFrom-Json
+                $savedId = [string]$owner.submitted_correlation_id
+                if ($savedId -match '^[a-f0-9]{32}\z') { $correlationId = $savedId }
+              } catch {
+                Write-Warning "Existing task correlation metadata could not be read; a new run ID will be generated without changing task state."
+              }
+            }
+          }
+          if ($correlationId -notmatch '^[a-f0-9]{32}\z') { $correlationId = [guid]::NewGuid().ToString("N") }
+          $env:AUTONOMOUS_ENGINEERING_CORRELATION_ID = $correlationId
+          "AUTONOMOUS_ENGINEERING_CORRELATION_ID=$correlationId" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+          $jobId = ""
+          try {
+            $apiBase = [string]$env:GITHUB_API_URL
+            if ([string]::IsNullOrWhiteSpace($apiBase)) { $apiBase = "https://api.github.com" }
+            $headers = @{
+              Authorization = "Bearer $env:GH_TOKEN"
+              Accept = "application/vnd.github+json"
+              "X-GitHub-Api-Version" = "2022-11-28"
+            }
+            $jobsUri = "$apiBase/repos/$env:GH_REPO/actions/runs/$env:GITHUB_RUN_ID/jobs?per_page=100"
+            for ($attempt = 0; $attempt -lt 3 -and [string]::IsNullOrWhiteSpace($jobId); $attempt++) {
+              $jobList = Invoke-RestMethod -Method Get -Uri $jobsUri -Headers $headers -TimeoutSec 10
+              $currentJob = $jobList.jobs | Where-Object { $_.name -eq $env:GITHUB_JOB } | Sort-Object started_at | Select-Object -Last 1
+              if ($null -ne $currentJob -and [long]$currentJob.id -gt 0) {
+                $jobId = [string]$currentJob.id
+              } elseif ($attempt -lt 2) {
+                Start-Sleep -Seconds 2
+              }
+            }
+          } catch {
+            Write-Warning "The numeric GitHub job ID could not be resolved; run ID and job name remain available."
+          }
+          if (-not [string]::IsNullOrWhiteSpace($jobId)) {
+            $env:AUTONOMOUS_ENGINEERING_JOB_ID = $jobId
+            "AUTONOMOUS_ENGINEERING_JOB_ID=$jobId" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          }
+          @(
+            "## Autonomous Engineering correlation",
+            "",
+            "- Correlation ID: $correlationId",
+            "- Workflow run: $env:GITHUB_RUN_ID (attempt $env:GITHUB_RUN_ATTEMPT)",
+            "- Job: $env:GITHUB_JOB",
+            "- Job ID: $jobId",
+            "- Step ID: correlation"
+          ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
       - name: Bootstrap project-local managed Python runtime for this Runner job
         shell: powershell
@@ -756,15 +828,17 @@ jobs:
           if ($paused) { Write-Host "Safe pause is active; no new engineering task will start." }
 
       - name: Execute one isolated task, validate, and publish for owner review
+        id: execute
         if: steps.pause.outputs.paused != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          AUTONOMOUS_ENGINEERING_STEP_ID: autonomous-engineering-cycle
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
           $env:PATH = "$env:GITHUB_WORKSPACE\.venv\Scripts;$env:PATH"
-          python scripts/autonomous_engineering_cycle.py run --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$env:RUNNER_TEMP\codex-prompt.md" --mode "$env:AUTONOMOUS_ENGINEERING_MODE"
+          python scripts/autonomous_engineering_cycle.py run --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --correlation-id "$env:AUTONOMOUS_ENGINEERING_CORRELATION_ID" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$env:RUNNER_TEMP\codex-prompt.md" --mode "$env:AUTONOMOUS_ENGINEERING_MODE"
           if ($LASTEXITCODE -ne 0) { throw "Autonomous task, tests, exact-SHA validation, or PR publication failed" }
 
       - name: Verify persistent Ollama context after autonomous Codex task

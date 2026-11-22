@@ -65,3 +65,13 @@ jobs:
           if [ -f "${{ runner.temp }}/personal-ai-e2e/app.pid" ]; then
             kill "$(cat "${{ runner.temp }}/personal-ai-e2e/app.pid")" || true
           fi
+      - name: Upload autonomous engineering browser evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: autonomous-engineering-browser-evidence-${{ github.run_id }}
+          path: |
+            test-results/autonomous-engineering/
+            ${{ runner.temp }}/personal-ai-e2e/app.log
+          if-no-files-found: warn
+          retention-days: 14

@@ -4,7 +4,7 @@
 
 - مخزن: `cognitive-kernel/Personal-AI-assistant`
 - مبنای دقیق: `main` در SHA `0367a3ebfd92ac196bb096f1a45cbfed5a61985d`
-- PR یکپارچه‌سازی: [#837](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/837)، Draft
+- PR یکپارچه‌سازی: [#837](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/837)، merged؛ validated head 80c126734123a5e84596d320ff625278495764e0، squash commit 9d97d2e3fa8f72429e6bb5510192ba70a6d376d8
 - این تغییر ادامهٔ baseline ادغام‌شدهٔ [#799](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/799) است؛ merge commit آن `852423ae8b862b834e007eada0033d087a37cd83` است.
 - هدف، بازنویسی صف یا lease نیست؛ هدف اتصال قرارداد موجود owner + lease epoch + expiry به mutationهای دامنه‌ای و child-task scheduling است.
 
@@ -52,21 +52,21 @@
 
 ## وضعیت شواهد
 
-- branch از current main ساخته شده و نسبت به آن 42 فایل تغییر دارد؛ branch عقب‌ماندگی نسبت به main ندارد.
-- PR #837 Draft است؛ exact-head Linux/Windows test suite، Windows storage، Browser E2E، CodeQL و dependency audit هنوز باید روی head نهایی آن اجرا و ثبت شوند.
-- هیچ‌یک از این تغییرات در main ادغام نشده‌اند.
+- PR #837 با 47 فایل تغییر در main ادغام شده است؛ branchهای منبع #819 و #821–#826 حفظ شده‌اند.
+- PR #837 merged است و exact-head CI روی SHA 80c126734123a5e84596d320ff625278495764e0 موفق شد.
+- تغییرات دامنه‌ای ممیزی‌شده اکنون در main ادغام شده‌اند؛ target-host acceptance همچنان جداگانه pending است.
 - این ممیزی به‌تنهایی اثبات target-host نیست: Windows Runner واقعی، ACL چندحسابی، Ollama/Codex واقعی، crash/restart و تأیید مالک همچنان gateهای جدا هستند.
 
 ## محدودیت و عدم تخریب
 
 - هیچ migration، task، checkpoint، learning record، candidate، experience history یا PR موجودی حذف نشده است.
-- هیچ branch منبع #819 یا #821–#826 حذف نشده است؛ تا عبور PR #837 از CI و تطبیق reviewها، آن‌ها به‌عنوان منبع قابل بازیابی نگه داشته می‌شوند.
+- هیچ branch منبع #819 یا #821–#826 حذف نشده است؛ آن‌ها به‌عنوان منبع قابل بازیابی نگه داشته می‌شوند.
 - این سند ادعا نمی‌کند تمام mutationهای کل مخزن audit شده‌اند؛ دامنهٔ آن mutationهای تغییرکرده در PRهای Gate B فوق است. ممیزی کامل call-siteهای خارج از این دامنه و target-host هنوز باز است.
 
 
 ## الحاقیهٔ شواهد CI — 2026-11-22
 
-PR #837 در exact head با SHA 908e9e3a79b03146a3b560c1d65f7361c1efffab تمام کنترل‌های مخزن را گذراند:
+PR #837 در exact head با SHA 80c126734123a5e84596d320ff625278495764e0 تمام کنترل‌های مخزن را گذراند:
 
 - Linux: 2511 passed, 14 skipped, 69 deselected.
 - Windows: 2509 passed, 16 skipped, 69 deselected.
@@ -76,4 +76,4 @@ PR #837 در exact head با SHA 908e9e3a79b03146a3b560c1d65f7361c1efffab تما
 - CodeQL، Analyze Python/JavaScript، pip-audit و bootstrapهای Ubuntu/macOS/Windows: موفق.
 - یک شکست در اجرای اولیه فقط به mock قدیمی تست experience مربوط بود؛ mock برای پارامتر task type اصلاح شد و exact-head rerun سبز شد.
 
-69 تست browser E2E از full-suite به‌صورت جداگانه اجرا می‌شوند؛ 5 تست sandbox نیز در workflow اختصاصی Docker اجرا شده‌اند. CI سبز فقط شواهد PR head است؛ تغییرات هنوز در main ادغام نشده‌اند و target-host Windows/Runner، crash/restart و تأیید مالک همچنان gateهای باز هستند.
+69 تست browser E2E از full-suite به‌صورت جداگانه اجرا می‌شوند؛ 5 تست sandbox نیز در workflow اختصاصی Docker اجرا شده‌اند. CI سبز فقط شواهد PR head است؛ تغییرات اکنون در main ادغام شده‌اند، اما target-host Windows/Runner، crash/restart و تأیید مالک همچنان gateهای باز هستند.

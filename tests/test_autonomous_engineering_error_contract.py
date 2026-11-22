@@ -30,6 +30,10 @@ def _client_with_error_routes() -> TestClient:
     def validate(payload: _RequestPayload):
         return {"task": payload.task}
 
+    @router.get("/success")
+    def success():
+        return {"accepted": True}
+
     @router.get("/unavailable")
     def unavailable():
         raise HTTPException(status_code=503, detail="Upstream service is temporarily unavailable.")
@@ -85,6 +89,19 @@ def test_unexpected_exception_is_redacted_and_correlated():
     assert payload["safe_details"] == {"exception_type": "RuntimeError"}
     assert "secret-token-must-not-reach-the-client" not in response.text
     assert response.headers["X-Correlation-ID"] == payload["correlation_id"]
+
+
+def test_successful_route_echoes_valid_correlation_id_and_rejects_untrusted_format():
+    client = _client_with_error_routes()
+    supplied = "a" * 32
+    response = client.get("/success", headers={"X-Correlation-ID": supplied})
+    assert response.status_code == 200
+    assert response.headers["X-Correlation-ID"] == supplied
+
+    invalid = client.get("/success", headers={"X-Correlation-ID": "not-a-correlation-id"})
+    generated = invalid.headers["X-Correlation-ID"]
+    assert len(generated) == 32
+    assert all(character in "0123456789abcdef" for character in generated)
 
 
 def test_retryable_http_status_gets_generated_error_code_and_correlation_id():
