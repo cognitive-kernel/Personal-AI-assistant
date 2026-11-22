@@ -500,3 +500,8 @@ The subsequent documentation-only evidence update does not change runtime code a
 - `learning.run_job` source, budget, final result and failure writes are now lease-fenced in their respective transactions. Learning task status recovery and escalation writes also validate the current parent task.
 - `task_manager.create_task` accepts an optional parent TaskContext contract for atomic child-task insertion. Researched curriculum child-job creation, topic status updates and task enqueue now propagate the parent contract; a queued job missing its queue task can be re-enqueued safely by the current parent.
 - Added stale-owner regressions for learning job claim, source evidence, budget reservations, child job creation and child task insertion. Exact-head CI is pending; remaining Gate-B domains are still being audited.
+
+
+## 2026-11-22 — Learning recovery queue fencing addendum
+
+- The one bounded recovery-exhaustion path in `enqueue_learning_task()` now also validates the current parent task contract inside the transaction that marks the learning job failed and writes the human-review escalation. Startup reconciliation without a parent task remains scheduler-owned and unchanged.
