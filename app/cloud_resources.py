@@ -22,6 +22,7 @@ from .cloud_provider_adapters import extract_resource_claims
 from .cloud_resource_policy import assess_candidate
 from .schema_registry import CLOUD_RESOURCE_MIGRATIONS, initialize_database_file
 from . import task_manager, web_sources
+from .task_worker import TaskInterrupted
 
 CLOUD_DISCOVERY_TASK_TYPE = "cloud.discover_resources"
 MAX_RESULTS_PER_QUERY = 5
@@ -77,12 +78,130 @@ def _connect() -> sqlite3.Connection:
     return connection
 
 
+def _prepare_task_ownership_check(
+    connection: sqlite3.Connection,
+    task_context: Any | None,
+    expected_task_type: str | None,
+    expected_payload: dict[str, Any] | None,
+) -> None:
+    if task_context is None or (
+        expected_task_type is None and expected_payload is None
+    ):
+        return
+    if expected_task_type is None or expected_payload is None:
+        raise CloudResourceError("Cloud discovery task ownership contract is incomplete.")
+    # Task ownership lives in the learning database, while cloud-resource
+    # records use a dedicated database. Attach the task store before beginning
+    # the transaction so the owner check and cloud write share one transaction.
+    connection.execute(
+        "ATTACH DATABASE ? AS task_store",
+        (str(defaults.learning_db_path),),
+    )
+
+
+def _assert_task_ownership(
+    connection: sqlite3.Connection,
+    task_context: Any | None,
+    expected_task_type: str | None,
+    expected_payload: dict[str, Any] | None,
+) -> None:
+    if task_context is not None and (
+        expected_task_type is not None or expected_payload is not None
+    ):
+        task_context.assert_current(
+            connection,
+            expected_task_type=expected_task_type,
+            expected_payload=expected_payload,
+        )
+
+
 def initialize_store() -> int:
     """Initialize the dedicated cloud-resource database using versioned migrations."""
     return initialize_database_file(
         defaults.cloud_resources_db_path,
         CLOUD_RESOURCE_MIGRATIONS,
     )
+
+
+def _settle_cooperative_discovery_interruption(task_context: Any) -> None:
+    """Finish a requested pause/cancel only while the original lease is still current."""
+    task = task_manager.get_task(task_context.task_id)
+    if task is None or int(task["lease_epoch"]) != int(task_context.lease_epoch):
+        raise task_manager.TaskManagerError(
+            "Cloud discovery interruption no longer belongs to this worker lease."
+        )
+    if task["status"] in {"pause_requested", "cancel_requested"}:
+        if (
+            task.get("lease_owner") != task_context.worker_id
+            or not task.get("lease_expires_at")
+            or task["lease_expires_at"] <= task_manager._timestamp()
+        ):
+            raise task_manager.TaskManagerError(
+                "Cloud discovery interruption cannot settle an expired or reclaimed lease."
+            )
+        try:
+            task_context.checkpoint({"phase": "cloud_discovery_interrupted"})
+        except TaskInterrupted:
+            pass
+        task = task_manager.get_task(task_context.task_id)
+    if (
+        task is None
+        or int(task["lease_epoch"]) != int(task_context.lease_epoch)
+        or task["status"] not in {"paused", "cancelled"}
+        or task.get("lease_owner") is not None
+        or task.get("lease_expires_at") is not None
+    ):
+        raise task_manager.TaskManagerError(
+            "Cloud discovery interruption was not durably settled by the task manager."
+        )
+
+
+def _reconcile_abandoned_discovery_runs() -> int:
+    """Settle discovery runs whose exact task lease is no longer authoritative.
+
+    This is a scheduler-owned reconciliation: it never writes task state and only
+    closes a run after its recorded task/worker/epoch can no longer own a live lease.
+    Legacy runs without task metadata are intentionally left untouched.
+    """
+    with closing(_connect()) as connection:
+        connection.execute(
+            "ATTACH DATABASE ? AS task_store",
+            (str(defaults.learning_db_path),),
+        )
+        connection.execute("BEGIN IMMEDIATE")
+        rows = connection.execute(
+            """SELECT id, task_id, task_worker_id, task_lease_epoch
+               FROM cloud_resource_discovery_runs
+               WHERE status='running' AND task_id IS NOT NULL
+                 AND task_worker_id IS NOT NULL AND task_lease_epoch IS NOT NULL"""
+        ).fetchall()
+        now = task_manager._timestamp()
+        abandoned: list[int] = []
+        for run in rows:
+            task = connection.execute(
+                """SELECT status, lease_owner, lease_epoch, lease_expires_at
+                   FROM task_store.task_queue WHERE id=?""",
+                (int(run["task_id"]),),
+            ).fetchone()
+            if (
+                task is None
+                or int(task["lease_epoch"]) != int(run["task_lease_epoch"])
+                or task["lease_owner"] != run["task_worker_id"]
+                or task["status"] not in {"running", "pause_requested", "cancel_requested"}
+                or task["lease_expires_at"] is None
+                or task["lease_expires_at"] <= now
+            ):
+                abandoned.append(int(run["id"]))
+        for run_id in abandoned:
+            connection.execute(
+                """UPDATE cloud_resource_discovery_runs
+                   SET status='failed', finished_at=CURRENT_TIMESTAMP,
+                       error_summary='discovery_abandoned:task_lease_lost'
+                   WHERE id=? AND status='running'""",
+                (run_id,),
+            )
+        connection.commit()
+    return len(abandoned)
 
 
 KAGGLE_PROVIDER_ID = "kaggle"
@@ -486,8 +605,18 @@ def _update_run(
     candidates_upserted: int,
     query_results: list[dict[str, Any]],
     error_summary: str | None,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
 ) -> None:
     with closing(_connect()) as connection:
+        _prepare_task_ownership_check(
+            connection, task_context, expected_task_type, expected_payload
+        )
+        connection.execute("BEGIN IMMEDIATE")
+        _assert_task_ownership(
+            connection, task_context, expected_task_type, expected_payload
+        )
         connection.execute(
             """UPDATE cloud_resource_discovery_runs
                SET finished_at=CURRENT_TIMESTAMP, status=?, queries_attempted=?,
@@ -622,13 +751,31 @@ def discover_resources(
     *,
     discover_fn: Callable[..., list[web_sources.SourceDocument]] | None = None,
     checkpoint: Callable[[dict[str, Any]], Any] | None = None,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Search a bounded set of topics and persist source-backed candidates as unreviewed."""
     initialize_store()
+    _reconcile_abandoned_discovery_runs()
     search = discover_fn or web_sources.discover_sources
     with closing(_connect()) as connection:
+        _prepare_task_ownership_check(
+            connection, task_context, expected_task_type, expected_payload
+        )
+        connection.execute("BEGIN IMMEDIATE")
+        _assert_task_ownership(
+            connection, task_context, expected_task_type, expected_payload
+        )
         cursor = connection.execute(
-            "INSERT INTO cloud_resource_discovery_runs(status) VALUES ('running')"
+            """INSERT INTO cloud_resource_discovery_runs(
+                   status, task_id, task_worker_id, task_lease_epoch
+               ) VALUES ('running', ?, ?, ?)""",
+            (
+                task_context.task_id if task_context is not None else None,
+                task_context.worker_id if task_context is not None else None,
+                task_context.lease_epoch if task_context is not None else None,
+            ),
         )
         run_id = int(cursor.lastrowid)
         connection.commit()
@@ -759,6 +906,13 @@ def discover_resources(
                 )
 
         with closing(_connect()) as connection:
+            _prepare_task_ownership_check(
+                connection, task_context, expected_task_type, expected_payload
+            )
+            connection.execute("BEGIN IMMEDIATE")
+            _assert_task_ownership(
+                connection, task_context, expected_task_type, expected_payload
+            )
             for candidate in unique.values():
                 previous = connection.execute(
                     "SELECT id, content_sha256 FROM cloud_resource_candidates WHERE source_url=?",
@@ -870,26 +1024,72 @@ def discover_resources(
             )
     except Exception as exc:
         errors.append(f"discovery_aborted:{type(exc).__name__}")
-        _update_run(
-            run_id,
-            status="partial" if unique else "failed",
-            queries_attempted=queries_attempted,
-            sources_seen=sources_seen,
-            candidates_upserted=0,
-            query_results=query_results,
-            error_summary="; ".join(errors),
-        )
+        if isinstance(exc, TaskInterrupted):
+            # Some interruption paths are raised by a write guard before checkpoint().
+            # Settle those only while the original lease is still current; an already
+            # settled or reclaimed task is handled by the exact epoch check below.
+            if task_context is not None:
+                _settle_cooperative_discovery_interruption(task_context)
+                _reconcile_abandoned_discovery_runs()
+            else:
+                _update_run(
+                    run_id,
+                    status="failed",
+                    queries_attempted=queries_attempted,
+                    sources_seen=sources_seen,
+                    candidates_upserted=0,
+                    query_results=query_results,
+                    error_summary="discovery_interrupted",
+                )
+            raise
+        try:
+            _update_run(
+                run_id,
+                status="partial" if unique else "failed",
+                queries_attempted=queries_attempted,
+                sources_seen=sources_seen,
+                candidates_upserted=0,
+                query_results=query_results,
+                error_summary="; ".join(errors),
+                task_context=task_context, expected_task_type=expected_task_type,
+                expected_payload=expected_payload,
+            )
+        except task_manager.TaskManagerError:
+            # A stale worker cannot settle its own run. The scheduler reconciler
+            # will mark it failed from the durable task/epoch record.
+            try:
+                _reconcile_abandoned_discovery_runs()
+            except Exception:
+                pass
+            raise
         raise
 
-    _update_run(
-        run_id,
-        status=status,
-        queries_attempted=queries_attempted,
-        sources_seen=sources_seen,
-        candidates_upserted=len(unique),
-        query_results=query_results,
-        error_summary="; ".join(errors) if errors else None,
-    )
+    try:
+        _update_run(
+            run_id,
+            status=status,
+            queries_attempted=queries_attempted,
+            sources_seen=sources_seen,
+            candidates_upserted=len(unique),
+            query_results=query_results,
+            error_summary="; ".join(errors) if errors else None,
+            task_context=task_context, expected_task_type=expected_task_type,
+            expected_payload=expected_payload,
+        )
+    except TaskInterrupted:
+        # The finalization write guard can raise before TaskContext.checkpoint() settles a pause/cancel.
+        # Settle only against the original live lease, then reconcile the run row.
+        if task_context is not None:
+            try:
+                _settle_cooperative_discovery_interruption(task_context)
+            finally:
+                _reconcile_abandoned_discovery_runs()
+        raise
+    except task_manager.TaskManagerError:
+        # Do not leave a run in "running" after its owner lease was reclaimed.
+        if task_context is not None:
+            _reconcile_abandoned_discovery_runs()
+        raise
     return {
         "run_id": run_id,
         "status": status,
@@ -1450,6 +1650,7 @@ def review_claim(
 
 def latest_discovery_run() -> dict[str, Any] | None:
     initialize_store()
+    _reconcile_abandoned_discovery_runs()
     with closing(_connect()) as connection:
         row = connection.execute(
             """SELECT * FROM cloud_resource_discovery_runs
@@ -1507,7 +1708,12 @@ def ensure_daily_discovery_scheduled() -> dict[str, Any]:
     return _enqueue_with_key(recovery_key, trigger="scheduled", scheduled_at=now)
 
 
-def _schedule_next_daily_run() -> tuple[dict[str, Any], datetime]:
+def _schedule_next_daily_run(
+    *,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], datetime]:
     next_run = datetime.now(timezone.utc) + timedelta(days=1)
     next_key = f"cloud-discovery:{next_run.date().isoformat()}"
     next_task = task_manager.create_task(
@@ -1517,6 +1723,9 @@ def _schedule_next_daily_run() -> tuple[dict[str, Any], datetime]:
         max_attempts=1,
         scheduled_at=next_run,
         dedupe_key=next_key,
+        task_context=task_context,
+        expected_task_type=expected_task_type,
+        expected_payload=expected_payload,
     )
     return next_task, next_run
 
@@ -1528,12 +1737,44 @@ def handle_discovery_task(
 ) -> dict[str, Any]:
     """Run discovery under durable task controls and schedule the next daily pass."""
     try:
-        report = discover_resources(checkpoint=context.checkpoint)
-    except Exception:
-        # Keep the daily chain alive even when a task is paused/cancelled or discovery fails.
+        report = discover_resources(
+            checkpoint=context.checkpoint,
+            task_context=context,
+            expected_task_type=CLOUD_DISCOVERY_TASK_TYPE,
+            expected_payload=payload,
+        )
+    except TaskInterrupted:
+        # A cooperative pause/cancel has already been durably settled by the task
+        # manager. Preserve the daily chain without pretending the released lease
+        # still authorizes a child insert.
         _schedule_next_daily_run()
         raise
-    next_task, next_run = _schedule_next_daily_run()
+    except Exception:
+        # A live owner may chain a follow-up only when the owner check and child
+        # insert are atomic. A reclaimed/expired owner fails closed.
+        try:
+            _schedule_next_daily_run(
+                task_context=context,
+                expected_task_type=CLOUD_DISCOVERY_TASK_TYPE,
+                expected_payload=payload,
+            )
+        except TaskInterrupted:
+            _settle_cooperative_discovery_interruption(context)
+            _schedule_next_daily_run()
+            raise
+        raise
+    try:
+        next_task, next_run = _schedule_next_daily_run(
+            task_context=context,
+            expected_task_type=CLOUD_DISCOVERY_TASK_TYPE,
+            expected_payload=payload,
+        )
+    except TaskInterrupted:
+        # A pause/cancel can arrive after discovery finishes but before the
+        # atomic child insert. Settle it, then preserve the daily chain.
+        _settle_cooperative_discovery_interruption(context)
+        _schedule_next_daily_run()
+        raise
     return {
         **report,
         "next_scheduled_task_id": next_task["id"],
