@@ -937,6 +937,15 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) ->
 @router.post("/start", status_code=202)
 def start_autonomous_engineering() -> dict[str, Any]:
     """Enable future runs and dispatch one bounded cycle without clearing a pause."""
+    readiness = collect_status()
+    if not readiness.get("github", {}).get("runs_available", False):
+        raise HTTPException(status_code=503, detail="وضعیت اجراهای GitHub قابل دریافت نیست؛ ماژول فعال نشد.")
+    if readiness.get("paused", False):
+        raise HTTPException(status_code=409, detail="ماژول در مکث است؛ برای ادامه از فرمان Resume استفاده کنید.")
+    if not readiness.get("ready", False):
+        raise HTTPException(status_code=409, detail="پیش‌نیازهای عامل کامل نیست؛ ماژول فعال نشد.")
+    if readiness.get("active", False):
+        raise HTTPException(status_code=409, detail="یک اجرای مهندسی فعال یا در صف وجود دارد.")
     gh = _authenticated_gh()
     _save_repository_variables(gh, (("AUTONOMOUS_ENGINEERING_ENABLED", "true"),))
     return dispatch_autonomous_engineering()
