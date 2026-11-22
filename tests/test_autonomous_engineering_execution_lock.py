@@ -362,8 +362,19 @@ def test_publish_parent_guard_requires_the_locked_cycle_controller(
         )
     assert child.returncode == 0, child.stderr
 
-    wrong_run = code.replace("run-guard-test", "different-run")
-    with repository_execution_lock("run-guard-test", "2"):
+    second_code = code.replace("run-guard-test", "second-run")
+    wrong_run = second_code.replace("second-run", "different-run")
+    with repository_execution_lock("second-run", "2"):
+        child = subprocess.run(
+            [sys.executable, "-c", second_code],
+            cwd=Path(__file__).resolve().parents[1],
+            env=os.environ.copy(),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+        assert child.returncode == 0, child.stderr
         child = subprocess.run(
             [sys.executable, "-c", wrong_run],
             cwd=Path(__file__).resolve().parents[1],
