@@ -6007,3 +6007,75 @@ def test_autonomous_engineering_two_tabs_do_not_dispatch_same_work_twice():
         assert first_tab.locator("#dispatch-agent").is_disabled()
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+
+
+def test_autonomous_engineering_text_and_control_contrast_meets_wcag_aa():
+    import re
+
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    def luminance(color):
+        values = [int(value) / 255 for value in re.findall(r"\\d+", color)[:3]]
+        linear = [
+            value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+            for value in values
+        ]
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+    def contrast(foreground, background):
+        left, right = luminance(foreground), luminance(background)
+        return (max(left, right) + 0.05) / (min(left, right) + 0.05)
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        response = page.goto(
+            base_url.rstrip("/") + "/autonomous-engineering",
+            wait_until="domcontentloaded",
+        )
+        assert response is not None and response.status == 200
+        styles = page.evaluate("""() => {
+            const svg = document.querySelector('#progress-chart');
+            const axis = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            axis.classList.add('chart-axis');
+            svg.appendChild(axis);
+            const item = document.createElement('li');
+            const small = document.createElement('small');
+            item.appendChild(small);
+            document.querySelector('#progress-events').appendChild(item);
+            const read = (element, property) => getComputedStyle(element)[property];
+            const status = document.querySelector('.status-card p');
+            const legend = document.querySelector('.legend-overall');
+            const primary = document.querySelector('#dispatch-agent');
+            const field = document.querySelector('#custom-model');
+            const secondary = document.querySelector('#refresh-runs');
+            const result = {
+                chartAxis: read(axis, 'fill'),
+                legend: read(legend, 'color'),
+                status: [read(status, 'color'), read(status.parentElement, 'backgroundColor')],
+                progressSmall: read(small, 'color'),
+                primary: [read(primary, 'color'), read(primary, 'backgroundColor')],
+                field: [read(field, 'color'), read(field, 'backgroundColor'), read(field, 'borderColor')],
+                secondary: [read(secondary, 'color'), read(secondary, 'backgroundColor'), read(secondary, 'borderColor')]
+            };
+            axis.remove();
+            item.remove();
+            return result;
+        }""")
+
+        white = "rgb(255, 255, 255)"
+        assert contrast(styles["chartAxis"], white) >= 4.5
+        assert contrast(styles["legend"], white) >= 4.5
+        assert contrast(styles["status"][0], styles["status"][1]) >= 4.5
+        assert contrast(styles["progressSmall"], white) >= 4.5
+        assert contrast(styles["primary"][0], styles["primary"][1]) >= 4.5
+        assert contrast(styles["field"][0], styles["field"][1]) >= 4.5
+        assert contrast(styles["secondary"][0], styles["secondary"][1]) >= 4.5
+        assert contrast(styles["field"][2], white) >= 3.0
+        assert contrast(styles["secondary"][2], white) >= 3.0
+        browser.close()
+
