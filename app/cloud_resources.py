@@ -1727,17 +1727,29 @@ def handle_discovery_task(
     except Exception:
         # A live owner may chain a follow-up only when the owner check and child
         # insert are atomic. A reclaimed/expired owner fails closed.
-        _schedule_next_daily_run(
+        try:
+            _schedule_next_daily_run(
+                task_context=context,
+                expected_task_type=CLOUD_DISCOVERY_TASK_TYPE,
+                expected_payload=payload,
+            )
+        except TaskInterrupted:
+            _settle_cooperative_discovery_interruption(context)
+            _schedule_next_daily_run()
+            raise
+        raise
+    try:
+        next_task, next_run = _schedule_next_daily_run(
             task_context=context,
             expected_task_type=CLOUD_DISCOVERY_TASK_TYPE,
             expected_payload=payload,
         )
+    except TaskInterrupted:
+        # A pause/cancel can arrive after discovery finishes but before the
+        # atomic child insert. Settle it, then preserve the daily chain.
+        _settle_cooperative_discovery_interruption(context)
+        _schedule_next_daily_run()
         raise
-    next_task, next_run = _schedule_next_daily_run(
-        task_context=context,
-        expected_task_type=CLOUD_DISCOVERY_TASK_TYPE,
-        expected_payload=payload,
-    )
     return {
         **report,
         "next_scheduled_task_id": next_task["id"],
