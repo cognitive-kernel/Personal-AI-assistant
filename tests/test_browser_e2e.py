@@ -6019,7 +6019,7 @@ def test_autonomous_engineering_text_and_control_contrast_meets_wcag_aa():
         pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     def luminance(color):
-        values = [int(value) / 255 for value in re.findall(r"\\d+", color)[:3]]
+        values = [int(value) / 255 for value in re.findall(r"\d+", color)[:3]]
         linear = [
             value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
             for value in values
