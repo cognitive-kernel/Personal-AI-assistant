@@ -136,6 +136,10 @@ def test_manual_task_persistence_is_inside_the_single_owned_runner_job():
     assert correlation_step < python_bootstrap < node_setup < persist_step < ollama_preflight
     assert "      correlation_id:" in workflow
     assert "AUTONOMOUS_ENGINEERING_CORRELATION_ID" in workflow
+    assert "AUTONOMOUS_ENGINEERING_JOB_ID" in workflow
+    assert "id: correlation" in workflow
+    assert "id: execute" in workflow
+    assert "AUTONOMOUS_ENGINEERING_STEP_ID: autonomous-engineering-cycle" in workflow
     assert '--correlation-id "$env:AUTONOMOUS_ENGINEERING_CORRELATION_ID"' in workflow
 
     assert "A manual task was not accepted because autonomous engineering is paused" in gate_job
