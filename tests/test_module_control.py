@@ -93,7 +93,7 @@ def test_finish_drains_active_work_without_claiming_or_deleting_queued_work(modu
         if item["id"] == "cloud-discovery"
     )
     assert status["state"] == "draining"
-    assert status["display_state"] == "finished"
+    assert status["display_state"] == "finished_pending"
     assert task_manager.get_task(waiting["id"])["status"] == "queued"
 
 
