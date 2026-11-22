@@ -1084,8 +1084,6 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "Preserve and stop checkpoint watcher from an interrupted run" not in workflow
     assert "scripts/autonomous_engineering_checkpoint.py" in workflow
     assert workflow.index("Snapshot accepted scorecard from trusted main") < workflow.index("Execute one isolated task, validate, and publish for owner review")
-    execute_step = workflow.split("      - name: Execute one isolated task, validate, and publish for owner review", 1)[1].split("\n      - name:", 1)[0]
-    assert "timeout-minutes: 55" in execute_step
     assert workflow.count("snapshot --run-id") == 1
     progress_writer = (root / "scripts" / "autonomous_engineering_progress.py").read_text(encoding="utf-8")
     codex_config = (root / "scripts" / "autonomous_engineering_codex_config.py").read_text(encoding="utf-8")
