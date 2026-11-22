@@ -1502,3 +1502,71 @@ def test_outline_followup_persists_all_approved_topics_before_browser_work(isola
     assert queued_topic_ids == {int(topic["id"]) for topic in topics}
     assert service.has_queued_run_for_course(course["id"]) is True
 
+def test_drain_blocks_new_worker_but_preserves_current_lease_and_queued_run(isolated_store):
+    course = service.create_course(title="پایان تدریجی صف")
+    queued = service.create_run(course["id"], run_type="outline", request_key="drain-queued-run")
+    owner = "drain-current-worker"
+    epoch = service.claim_worker_lease(owner, lease_seconds=90)
+    assert epoch is not None
+
+    draining = service.set_learning_draining(True, "test drain")
+    assert draining["draining"] is True
+    assert service.owns_worker_lease(owner, epoch) is True
+    assert service.release_worker_lease(owner, epoch) is True
+    assert service.claim_worker_lease("new-worker", lease_seconds=90) is None
+
+    result = browser_automation._dispatch_next_persisted_run()
+    assert result["status"] == "draining"
+    assert service.get_run(queued["id"])["status"] == "queued"
+
+    resumed = service.set_learning_paused(False)
+    assert resumed["draining"] is False
+    assert service.claim_worker_lease("new-worker", lease_seconds=90) is not None
+
+
+def test_finish_learning_allows_active_run_to_finish_and_preserves_queue(isolated_store, monkeypatch):
+    course = service.create_course(title="پایان امن اجرای فعال")
+    active = service.create_run(course["id"], run_type="outline", request_key="drain-active-run")
+    queued = service.create_run(course["id"], run_type="outline", request_key="drain-next-run")
+    service.start_run(active["id"])
+    owner = "active-drain-worker"
+    epoch = service.claim_worker_lease(owner, lease_seconds=90)
+    assert epoch is not None
+    monkeypatch.setattr(browser_automation, "_ACTIVE", True)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", active["id"])
+    monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", course["id"])
+    monkeypatch.setattr(browser_automation, "_WORKER_OWNER", owner)
+    monkeypatch.setattr(browser_automation, "_WORKER_LEASE_EPOCH", epoch)
+
+    result = browser_automation.finish_learning()
+
+    assert result["status"] == "draining"
+    assert result["active_run_id"] == active["id"]
+    assert service.get_run(active["id"])["status"] == "running"
+    assert service.get_run(queued["id"])["status"] == "queued"
+    assert service.get_learning_control()["draining"] is True
+    assert service.owns_worker_lease(owner, epoch) is True
+    assert service.release_worker_lease(owner, epoch) is True
+
+
+def test_force_stop_cancels_active_run_without_deleting_queued_work(isolated_store, monkeypatch):
+    course = service.create_course(title="توقف اجباری با حفظ صف")
+    active = service.create_run(course["id"], run_type="outline", request_key="force-stop-active")
+    queued = service.create_run(course["id"], run_type="outline", request_key="force-stop-queued")
+    service.start_run(active["id"])
+    event = threading.Event()
+    monkeypatch.setattr(browser_automation, "_ACTIVE", True)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", active["id"])
+    monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", course["id"])
+    monkeypatch.setattr(browser_automation, "_CANCEL_EVENTS", {active["id"]: event})
+
+    result = browser_automation.force_stop_learning()
+
+    assert result["status"] == "stopped"
+    assert active["id"] in result["cancelled_run_ids"]
+    assert event.is_set()
+    assert service.get_run(active["id"])["status"] == "cancelled"
+    assert service.get_run(queued["id"])["status"] == "queued"
+    control = service.get_learning_control()
+    assert control["paused"] is True
+    assert control["draining"] is False
