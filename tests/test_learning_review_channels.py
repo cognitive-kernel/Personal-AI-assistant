@@ -4,7 +4,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from app import db, learning, learning_review_channels as review, task_manager, sandbox, sandbox_consent
+from app import db, learning, learning_durable_budget, learning_review_channels as review, task_manager, sandbox, sandbox_consent
 from app.learning_review_tasks import handle_candidate_review
 from app.main import app
 from app.task_worker import TaskContext
@@ -82,7 +82,7 @@ def test_stale_review_worker_cannot_persist_web_or_peer_artifacts(review_store, 
     from app.learning_review_tasks import LEARNING_REVIEW_TASK_TYPE
 
     task_manager.initialize_task_store()
-    candidate_id, _job_id = _candidate()
+    candidate_id, job_id = _candidate()
     payload = {
         "candidate_id": candidate_id,
         "query": "Python built-in types",
@@ -110,6 +110,29 @@ def test_stale_review_worker_cannot_persist_web_or_peer_artifacts(review_store, 
         reclaimed = task_manager.claim_next_task(context.worker_id)
         assert reclaimed is not None and reclaimed["id"] == context.task_id
         assert reclaimed["lease_epoch"] > context.lease_epoch
+
+    budget_task, budget_context = claimed_context("stale-review-budget")
+    reclaim(budget_context)
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        learning_durable_budget.reserve_job_budget(
+            job_id, "candidate_review_web_stale",
+            calls=1, predict_tokens=1800,
+            task_context=budget_context,
+            expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+            expected_payload=payload,
+        )
+    with db.learning_connection() as connection:
+        budget_rows = connection.execute(
+            "SELECT COUNT(*) FROM learning_pipeline_budgets WHERE job_id=?",
+            (job_id,),
+        ).fetchone()[0]
+        reservation_rows = connection.execute(
+            "SELECT COUNT(*) FROM learning_pipeline_budget_reservations WHERE job_id=?",
+            (job_id,),
+        ).fetchone()[0]
+    assert budget_rows == 0
+    assert reservation_rows == 0
+    assert task_manager.get_task(budget_task["id"])["lease_epoch"] > budget_context.lease_epoch
 
     web_task, web_context = claimed_context("stale-web-review")
     monkeypatch.setattr(
