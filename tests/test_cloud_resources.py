@@ -909,18 +909,20 @@ def test_discovery_handler_keeps_daily_chain_after_cooperative_pause(tmp_path, m
         worker_id=worker_id,
         lease_epoch=claimed["lease_epoch"],
     )
-    task_manager.request_pause(task["id"])
+    def discover_and_pause(_query, *, limit):
+        task_manager.request_pause(task["id"])
+        return [_document()]
 
-    def pause_at_checkpoint(*, checkpoint=None, **_kwargs):
-        checkpoint({"phase": "paused"})
-        raise AssertionError("checkpoint should raise TaskInterrupted")
-
-    monkeypatch.setattr(cloud_resources, "discover_resources", pause_at_checkpoint)
+    monkeypatch.setattr(web_sources, "discover_sources", discover_and_pause)
     with pytest.raises(TaskInterrupted):
         cloud_resources.handle_discovery_task(payload, None, context)
 
     saved = task_manager.get_task(task["id"])
     assert saved["status"] == "paused"
+    abandoned = cloud_resources.latest_discovery_run()
+    assert abandoned is not None
+    assert abandoned["status"] == "failed"
+    assert abandoned["error_summary"] == "discovery_abandoned:task_lease_lost"
     with db.learning_connection() as connection:
         scheduled = connection.execute(
             "SELECT COUNT(*) FROM task_queue WHERE task_type=? AND dedupe_key LIKE 'cloud-discovery:%'",
