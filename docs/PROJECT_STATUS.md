@@ -493,3 +493,10 @@ Exact tested code head: ab703a284752c80531e9f25e0b7ad53a04c453a0.
 Evidence: Tests/Windows regressions https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863471 ; Browser E2E https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863440 ; Dependency audit https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863452 ; CodeQL https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863507 .
 
 The subsequent documentation-only evidence update does not change runtime code and is followed by a fresh exact-head CI run. Target-host cross-account ACL verification, non-admin sandbox smoke/soak, crash/restart acceptance, and independent security review remain pending. Durable Pause remains enabled; no Runner, service, or autonomous process was started.
+
+
+## 2026-11-22 — Learning runner and child scheduling fencing (PR pending)
+
+- `learning.run_job` source, budget, final result and failure writes are now lease-fenced in their respective transactions. Learning task status recovery and escalation writes also validate the current parent task.
+- `task_manager.create_task` accepts an optional parent TaskContext contract for atomic child-task insertion. Researched curriculum child-job creation, topic status updates and task enqueue now propagate the parent contract; a queued job missing its queue task can be re-enqueued safely by the current parent.
+- Added stale-owner regressions for learning job claim, source evidence, budget reservations, child job creation and child task insertion. Exact-head CI is pending; remaining Gate-B domains are still being audited.
