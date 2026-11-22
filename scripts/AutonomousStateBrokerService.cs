@@ -552,14 +552,14 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                                 Convert.ToString(savedManifest.ContainsKey("owner_sha256") ? savedManifest["owner_sha256"] : "") != Sha256(savedOwner))
                                 throw new InvalidDataException("archive_retry_integrity_mismatch");
                             ParseAndValidateTaskOwner(savedTask, savedOwner);
-                            string activeTaskPath = Path.Combine(_stateDirectory, "pending-manual-task.txt");
-                            string activeOwnerPath = Path.Combine(_stateDirectory, "pending-manual-task-owner.json");
-                            if (SafeFileExists(activeTaskPath) && !File.ReadAllBytes(activeTaskPath).SequenceEqual(savedTask))
+                            string recoveryActiveTaskPath = Path.Combine(_stateDirectory, "pending-manual-task.txt");
+                            string recoveryActiveOwnerPath = Path.Combine(_stateDirectory, "pending-manual-task-owner.json");
+                            if (SafeFileExists(recoveryActiveTaskPath) && !File.ReadAllBytes(recoveryActiveTaskPath).SequenceEqual(savedTask))
                                 throw new InvalidDataException("archive_recovery_task_mismatch");
-                            if (SafeFileExists(activeOwnerPath) && !File.ReadAllBytes(activeOwnerPath).SequenceEqual(savedOwner))
+                            if (SafeFileExists(recoveryActiveOwnerPath) && !File.ReadAllBytes(recoveryActiveOwnerPath).SequenceEqual(savedOwner))
                                 throw new InvalidDataException("archive_recovery_owner_mismatch");
-                            if (SafeFileExists(activeTaskPath)) File.Delete(activeTaskPath);
-                            if (SafeFileExists(activeOwnerPath)) File.Delete(activeOwnerPath);
+                            if (SafeFileExists(recoveryActiveTaskPath)) File.Delete(recoveryActiveTaskPath);
+                            if (SafeFileExists(recoveryActiveOwnerPath)) File.Delete(recoveryActiveOwnerPath);
                             return new Dictionary<string, object> {
                                 { "task_id", taskId }, { "status", "archived" }, { "preserved", true }
                             };
@@ -609,14 +609,14 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                             }
                             finally { try { if (Directory.Exists(stage)) Directory.Delete(stage, true); } catch { } }
                         }
-                        string activeTaskPath = Path.Combine(_stateDirectory, "pending-manual-task.txt");
-                        string activeOwnerPath = Path.Combine(_stateDirectory, "pending-manual-task-owner.json");
-                        if (SafeFileExists(activeTaskPath) && !File.ReadAllBytes(activeTaskPath).SequenceEqual(taskBytes))
+                        string recoveryActiveTaskPath = Path.Combine(_stateDirectory, "pending-manual-task.txt");
+                        string recoveryActiveOwnerPath = Path.Combine(_stateDirectory, "pending-manual-task-owner.json");
+                        if (SafeFileExists(recoveryActiveTaskPath) && !File.ReadAllBytes(recoveryActiveTaskPath).SequenceEqual(taskBytes))
                             throw new InvalidDataException("archive_recovery_task_mismatch");
-                        if (SafeFileExists(activeOwnerPath) && !File.ReadAllBytes(activeOwnerPath).SequenceEqual(ownerBytes))
+                        if (SafeFileExists(recoveryActiveOwnerPath) && !File.ReadAllBytes(recoveryActiveOwnerPath).SequenceEqual(ownerBytes))
                             throw new InvalidDataException("archive_recovery_owner_mismatch");
-                        if (SafeFileExists(activeTaskPath)) File.Delete(activeTaskPath);
-                        if (SafeFileExists(activeOwnerPath)) File.Delete(activeOwnerPath);
+                        if (SafeFileExists(recoveryActiveTaskPath)) File.Delete(activeTaskPath);
+                        if (SafeFileExists(recoveryActiveOwnerPath)) File.Delete(activeOwnerPath);
                         return new Dictionary<string, object> { { "task_id", taskId }, { "status", "archived" }, { "preserved", true } };
                     }
                     throw new InvalidDataException("unsupported_task_operation");
