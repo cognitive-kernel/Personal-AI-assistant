@@ -2280,3 +2280,11 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Review found that a non-empty report containing invalid UTF-8 was classified as an I/O failure, preventing the already validated successful JSONL final message from repairing it.
 - Treat Unicode decoding failure as an invalid temporary report; preserve the existing fail-closed requirements for the final turn and exactly-one completion marker. Filesystem I/O failures still stop recovery.
 - Added a regression using invalid UTF-8 bytes and verifying replacement only from a successful final message with one valid marker. Exact-head CI and target-host acceptance remain required.
+
+## 2026-11-22 — Autonomous Engineering UI resilience on current main
+
+- Ported the isolated Autonomous Engineering UI feedback and fault-isolation changes onto the current main baseline after PR #817 and the Codex report-recovery replacement PR #827 were merged.
+- Structured API error metadata is consumed by the UI; terminal action feedback remains visible after authoritative status refresh; module-load failures are surfaced without status polling overwriting the warning.
+- Added an HTTP integration regression against the real `/api/autonomous-engineering/dispatch` route. It proves the structured response body and `X-Error-Code`, `X-Correlation-ID`, and `X-Retryable` headers are produced by the backend route class now present on main, rather than only mocked in the browser test.
+- Browser coverage retains RTL, keyboard, responsive layout, module fault isolation, and pause/resume feedback checks.
+- Codex review could not complete because the GitHub review quota was exhausted. Manual review and exact-head CI remain required; no task or checkpoint state is modified.
