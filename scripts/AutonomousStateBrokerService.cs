@@ -522,6 +522,9 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                             Directory.GetFiles(_stateDirectory, "worktree-checkpoint-*").Length > 0 ||
                             Directory.GetFiles(_stateDirectory, "worktree-plan-*").Length > 0)
                             throw new InvalidDataException("checkpoint_present_or_unknown");
+                        List<string> activeStateBlockers = PendingTaskBlockers();
+                        if (activeStateBlockers.Count > 0)
+                            throw new InvalidDataException(String.Join(",", activeStateBlockers.ToArray()));
                         string recoveryRoot = EnsureTaskArchiveRoot();
                         string recoveryPackage = Path.Combine(recoveryRoot, taskId);
                         if (Directory.Exists(recoveryPackage))
