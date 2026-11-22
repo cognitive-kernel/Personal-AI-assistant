@@ -99,15 +99,15 @@
       await monitorModelPull(job.job_id);
     } catch (error) {
       modelPullActive = false;
-      pullModelStatus.textContent = error.message || "دانلود مدل ناموفق بود.";
+      pullModelStatus.textContent = error.message || "وضعیت دانلود مدل قابل دریافت نیست؛ شناسهٔ عملیات حفظ شد.";
       setMessage(pullModelStatus.textContent, "error");
     } finally {
-      pullModelButton.disabled = false;
-      if (!modelPullActive) cancelModelPullButton.disabled = true;
+      pullModelButton.disabled = Boolean(activeModelPullJobId);
+      cancelModelPullButton.disabled = !activeModelPullJobId || modelPullActive;
     }
   });
   cancelModelPullButton.addEventListener("click", async () => {
-    if (!modelPullActive || !activeModelPullJobId) return;
+    if (!activeModelPullJobId) return;
     if (!window.confirm("درخواست توقف دانلود مدل ارسال شود؟ مدل‌های نصب‌شده حذف نمی‌شوند.")) return;
     cancelModelPullButton.disabled = true;
     try {
@@ -117,6 +117,21 @@
       );
       pullModelStatus.textContent = result.message || "درخواست توقف دانلود ارسال شد.";
       setMessage(pullModelStatus.textContent, "success");
+      if (result.status === "cancelled" || result.status === "completed" || result.status === "failed") {
+        activeModelPullJobId = null;
+        modelPullActive = false;
+        pullModelButton.disabled = false;
+        cancelModelPullButton.disabled = true;
+      } else if (!modelPullActive) {
+        modelPullActive = true;
+        pullModelButton.disabled = true;
+        void monitorModelPull(activeModelPullJobId).catch(monitorError => {
+          modelPullActive = false;
+          pullModelStatus.textContent = monitorError.message || "وضعیت دانلود همچنان قابل دریافت نیست.";
+          cancelModelPullButton.disabled = !activeModelPullJobId;
+          setMessage(pullModelStatus.textContent, "error");
+        });
+      }
     } catch (error) {
       cancelModelPullButton.disabled = false;
       setMessage(error.message || "درخواست توقف دانلود ناموفق بود.", "error");
