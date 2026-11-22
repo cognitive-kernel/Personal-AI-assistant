@@ -77,6 +77,127 @@ def test_web_research_persists_context_without_promoting_candidate(review_store,
     assert len(evidence["source_sha256"]) == 64
 
 
+def test_stale_review_worker_cannot_persist_web_or_peer_artifacts(review_store, monkeypatch):
+    from app import web_sources
+    from app.learning_review_tasks import LEARNING_REVIEW_TASK_TYPE
+
+    task_manager.initialize_task_store()
+    candidate_id, _job_id = _candidate()
+    payload = {
+        "candidate_id": candidate_id,
+        "query": "Python built-in types",
+        "web_mode": "search",
+    }
+
+    def claimed_context(worker_id):
+        task = task_manager.create_task(
+            LEARNING_REVIEW_TASK_TYPE, payload, max_attempts=3
+        )
+        claimed = task_manager.claim_next_task(worker_id)
+        assert claimed is not None and claimed["id"] == task["id"]
+        return task, TaskContext(
+            task_id=task["id"],
+            worker_id=worker_id,
+            lease_epoch=claimed["lease_epoch"],
+        )
+
+    def reclaim(context):
+        with db.learning_connection() as connection:
+            connection.execute(
+                "UPDATE task_queue SET lease_expires_at=? WHERE id=?",
+                ("2000-01-01T00:00:00.000000+00:00", context.task_id),
+            )
+        reclaimed = task_manager.claim_next_task(context.worker_id)
+        assert reclaimed is not None and reclaimed["id"] == context.task_id
+        assert reclaimed["lease_epoch"] > context.lease_epoch
+
+    web_task, web_context = claimed_context("stale-web-review")
+    monkeypatch.setattr(
+        web_sources,
+        "discover_sources",
+        lambda _query, limit: (
+            reclaim(web_context)
+            or [web_sources.SourceDocument(
+                url="https://docs.python.org/3/library/stdtypes.html",
+                title="Python built-in types",
+                text="A source excerpt returned after the original review lease was reclaimed.",
+            )]
+        ),
+    )
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        review.research_candidate_online(
+            candidate_id, payload["query"], limit=1,
+            task_context=web_context,
+            expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+            expected_payload=payload,
+        )
+
+    peer_task, peer_context = claimed_context("stale-peer-review")
+    monkeypatch.setenv(
+        "PEER_AI_PROVIDERS_JSON",
+        json.dumps([{
+            "provider": "test-peer",
+            "base_url": "https://peer.example.test",
+            "model": "review-model",
+        }]),
+    )
+    monkeypatch.setattr(
+        review,
+        "_validate_peer_endpoint",
+        lambda _url: ("https", "peer.example.test", "93.184.216.34"),
+    )
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self, _limit):
+            answer = json.dumps({
+                "stance": "mixed", "claims": [], "citations": [],
+                "limitations": [], "applications": [], "testable_tests": [],
+            })
+            return json.dumps({
+                "usage": {"prompt_tokens": 10, "completion_tokens": 10},
+                "choices": [{"message": {"content": answer}}],
+            }).encode("utf-8")
+
+    class FakeOpener:
+        def open(self, _request, timeout):
+            reclaim(peer_context)
+            return FakeResponse()
+
+    monkeypatch.setattr(review, "_build_peer_opener", lambda *_handlers: FakeOpener())
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        review.consult_configured_peer_ais(
+            candidate_id, limit=1,
+            task_context=peer_context,
+            expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+            expected_payload=payload,
+        )
+
+    with db.learning_connection() as connection:
+        evidence_count = connection.execute(
+            "SELECT COUNT(*) FROM knowledge_review_evidence WHERE candidate_id=?",
+            (candidate_id,),
+        ).fetchone()[0]
+        attempt_count = connection.execute(
+            "SELECT COUNT(*) FROM knowledge_review_attempts WHERE candidate_id=?",
+            (candidate_id,),
+        ).fetchone()[0]
+        peer_count = connection.execute(
+            "SELECT COUNT(*) FROM knowledge_peer_consultations WHERE candidate_id=?",
+            (candidate_id,),
+        ).fetchone()[0]
+    assert evidence_count == 0
+    assert attempt_count == 0
+    assert peer_count == 0
+    assert task_manager.get_task(web_task["id"])["lease_epoch"] > web_context.lease_epoch
+    assert task_manager.get_task(peer_task["id"])["lease_epoch"] > peer_context.lease_epoch
+
+
 def test_missing_peer_configuration_is_recorded_without_failure_or_promotion(review_store, monkeypatch):
     candidate_id, _job_id = _candidate()
     monkeypatch.delenv("PEER_AI_PROVIDERS_JSON", raising=False)
