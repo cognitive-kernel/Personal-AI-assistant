@@ -43,24 +43,68 @@
   const pullModelButton = $("pull-model");
   const pullModelStatus = $("model-pull-status");
   let modelPullActive = false;
-  async function monitorModelPull(jobId) {
-    while (modelPullActive) {
-      const state = await request("models/pull/" + encodeURIComponent(jobId));
-      const percent = Number.isSafeInteger(state.progress) ? " · " + state.progress + "%" : "";
-      pullModelStatus.textContent = String(state.message || "در حال دریافت مدل…") + percent;
-      if (state.status === "completed") {
+  let stopModelPullPolling = null;
+  let cancelModelPullMonitor = null;
+  function monitorModelPull(jobId) {
+    return new Promise((resolve, reject) => {
+      let failures = 0;
+      let settled = false;
+      let pollerStop = null;
+      const finish = (error, state) => {
+        if (settled) return;
+        settled = true;
+        if (pollerStop) pollerStop();
+        if (stopModelPullPolling === pollerStop) stopModelPullPolling = null;
+        if (cancelModelPullMonitor === cancel) cancelModelPullMonitor = null;
         modelPullActive = false;
-        pullModelStatus.textContent = "مدل " + state.model + " با موفقیت نصب شد؛ در حال بازخوانی فهرست مدل‌ها…";
-        await status.refresh(true);
-        setMessage(pullModelStatus.textContent, "success");
-        return;
-      }
-      if (state.status === "failed") {
-        modelPullActive = false;
-        throw new Error(state.error || state.message || "دانلود مدل ناموفق بود.");
-      }
-      await new Promise(resolve => window.setTimeout(resolve, 1500));
-    }
+        if (error) reject(error);
+        else resolve(state || null);
+      };
+      const cancel = () => finish(null, null);
+      cancelModelPullMonitor = cancel;
+      pollerStop = core.startPolling({
+        intervalMs: 1500,
+        maxIntervalMs: 15000,
+        jitterRatio: 0.2,
+        refresh: async () => {
+          if (!modelPullActive) {
+            finish(null, null);
+            return true;
+          }
+          try {
+            const state = await request(
+              "models/pull/" + encodeURIComponent(jobId),
+              {timeoutMs: 15000}
+            );
+            failures = 0;
+            if (!state || !["queued", "running", "completed", "failed"].includes(state.status)) {
+              throw new Error("وضعیت دریافت مدل از سرویس معتبر نیست.");
+            }
+            const percent = Number.isSafeInteger(state.progress) ? " · " + state.progress + "%" : "";
+            pullModelStatus.textContent = String(state.message || "در حال دریافت مدل…") + percent;
+            if (state.status === "completed") {
+              pullModelStatus.textContent = "مدل " + state.model + " با موفقیت نصب شد؛ در حال بازخوانی فهرست مدل‌ها…";
+              await status.refresh(true);
+              setMessage(pullModelStatus.textContent, "success");
+              finish(null, state);
+            } else if (state.status === "failed") {
+              finish(new Error(state.error || state.message || "دانلود مدل ناموفق بود."));
+            }
+            return true;
+          } catch (error) {
+            failures += 1;
+            if (failures >= 5) {
+              finish(error);
+              return true;
+            }
+            pullModelStatus.textContent =
+              "ارتباط با سرویس دریافت مدل موقتاً ناموفق بود؛ تلاش مجدد " + failures + " از 5.";
+            return false;
+          }
+        }
+      });
+      stopModelPullPolling = pollerStop;
+    });
   }
   pullModelButton.addEventListener("click", async () => {
     if (modelPullActive) return;
@@ -78,7 +122,8 @@
         method: "POST",
         body: JSON.stringify({model})
       });
-      await monitorModelPull(job.job_id);
+      const finalState = await monitorModelPull(job.job_id);
+      if (!finalState) return;
     } catch (error) {
       modelPullActive = false;
       pullModelStatus.textContent = error.message || "دانلود مدل ناموفق بود.";
@@ -192,5 +237,12 @@
   });
 
 
-  window.autonomousEngineeringControls = Object.freeze({version: 1});
+  function stop() {
+    if (cancelModelPullMonitor) cancelModelPullMonitor();
+    else if (stopModelPullPolling) stopModelPullPolling();
+    cancelModelPullMonitor = null;
+    stopModelPullPolling = null;
+    modelPullActive = false;
+  }
+  window.autonomousEngineeringControls = Object.freeze({version: 1, stop});
 })();
