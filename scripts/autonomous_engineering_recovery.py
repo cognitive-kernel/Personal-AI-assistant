@@ -264,6 +264,15 @@ def main() -> int:
             return 0
         # Re-check ownership after backoff; a newer run may have superseded this event.
         client.retryable_failure_streak(failed_run_id, current_jobs)
+        # The history scan can take time; re-read the control flags immediately
+        # before dispatch so a concurrent Finish/Pause wins over this retry.
+        lifecycle = client.lifecycle_settings()
+        if lifecycle["mode"] != "continuous" or not lifecycle["enabled"] or lifecycle["paused"]:
+            report(
+                "Recovery suppressed",
+                "Autonomous Engineering was paused, finished, or switched to scheduled mode before dispatch; no run was sent.",
+            )
+            return 0
         client.request(
             "POST",
             f"/actions/workflows/{WORKFLOW_FILE}/dispatches",
