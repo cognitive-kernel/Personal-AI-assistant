@@ -228,6 +228,9 @@ def archive_task(state: Path, task_id: str, revision: str, *, locks_held: bool =
         manifest = _json(manifest_raw, "archive_manifest_invalid")
         if manifest.get("source_revision") != revision:
             raise LifecycleConflict("Archive retry revision is stale.", ["stale_revision"])
+        blockers = _mutation_blockers(state, locks_held=locks_held)
+        if blockers:
+            raise LifecycleConflict("Archive recovery was refused by safety guards.", blockers)
         active_task = _regular(task_path, MAX_TASK_BYTES)
         active_owner = _regular(owner_path, 64 * 1024)
         if active_task not in (None, saved_task) or active_owner not in (None, saved_owner):
