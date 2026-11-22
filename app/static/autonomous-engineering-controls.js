@@ -12,6 +12,7 @@
   const cancelButton = $("cancel-agent");
   const pauseButton = $("pause-agent");
   const resumeButton = $("resume-agent");
+  const finishButton = $("finish-agent");
   let settingsSaving = false;
   settingsForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -41,8 +42,10 @@
     }
   });
   const pullModelButton = $("pull-model");
+  const cancelModelPullButton = $("cancel-model-pull");
   const pullModelStatus = $("model-pull-status");
   let modelPullActive = false;
+  let activeModelPullJobId = null;
   async function monitorModelPull(jobId) {
     while (modelPullActive) {
       const state = await request("models/pull/" + encodeURIComponent(jobId));
@@ -50,15 +53,28 @@
       pullModelStatus.textContent = String(state.message || "در حال دریافت مدل…") + percent;
       if (state.status === "completed") {
         modelPullActive = false;
+        activeModelPullJobId = null;
+        cancelModelPullButton.disabled = true;
         pullModelStatus.textContent = "مدل " + state.model + " با موفقیت نصب شد؛ در حال بازخوانی فهرست مدل‌ها…";
         setMessage(pullModelStatus.textContent, "success");
         await status.refresh(true);
         return;
       }
+      if (state.status === "cancelled") {
+        modelPullActive = false;
+        activeModelPullJobId = null;
+        cancelModelPullButton.disabled = true;
+        pullModelStatus.textContent = state.message || "درخواست توقف دانلود تکمیل شد؛ مدل‌های موجود حفظ شدند.";
+        setMessage(pullModelStatus.textContent, "success");
+        return;
+      }
       if (state.status === "failed") {
         modelPullActive = false;
+        activeModelPullJobId = null;
+        cancelModelPullButton.disabled = true;
         throw new Error(state.error || state.message || "دانلود مدل ناموفق بود.");
       }
+      if (state.status === "cancelling") cancelModelPullButton.disabled = true;
       await new Promise(resolve => window.setTimeout(resolve, 1500));
     }
   }
@@ -78,6 +94,8 @@
         method: "POST",
         body: JSON.stringify({model})
       });
+      activeModelPullJobId = job.job_id;
+      cancelModelPullButton.disabled = false;
       await monitorModelPull(job.job_id);
     } catch (error) {
       modelPullActive = false;
@@ -85,6 +103,23 @@
       setMessage(pullModelStatus.textContent, "error");
     } finally {
       pullModelButton.disabled = false;
+      if (!modelPullActive) cancelModelPullButton.disabled = true;
+    }
+  });
+  cancelModelPullButton.addEventListener("click", async () => {
+    if (!modelPullActive || !activeModelPullJobId) return;
+    if (!window.confirm("درخواست توقف دانلود مدل ارسال شود؟ مدل‌های نصب‌شده حذف نمی‌شوند.")) return;
+    cancelModelPullButton.disabled = true;
+    try {
+      const result = await request(
+        "models/pull/" + encodeURIComponent(activeModelPullJobId) + "/cancel",
+        {method: "POST"}
+      );
+      pullModelStatus.textContent = result.message || "درخواست توقف دانلود ارسال شد.";
+      setMessage(pullModelStatus.textContent, "success");
+    } catch (error) {
+      cancelModelPullButton.disabled = false;
+      setMessage(error.message || "درخواست توقف دانلود ناموفق بود.", "error");
     }
   });
   taskForm.addEventListener("submit", async (event) => {
@@ -171,6 +206,19 @@
     } catch (error) {
       if (error.ambiguous || error.status >= 500) status.lockDispatchVisibilityWindow();
       const detail = error.message || "ادامهٔ صف ثبت نشد.";
+      await status.refresh(true);
+      setMessage(detail, "error");
+    }
+  });
+  finishButton.addEventListener("click", async () => {
+    if (!window.confirm("پس از پایان وظیفهٔ جاری، چرخهٔ جدیدی آغاز نشود؟")) return;
+    finishButton.disabled = true;
+    try {
+      const result = await request("pause", {method: "POST"});
+      await status.refresh(true);
+      setMessage(result.message || "پایان ایمن پس از وظیفهٔ جاری ثبت شد.", "success");
+    } catch (error) {
+      const detail = error.message || "پایان ایمن ثبت نشد.";
       await status.refresh(true);
       setMessage(detail, "error");
     }
