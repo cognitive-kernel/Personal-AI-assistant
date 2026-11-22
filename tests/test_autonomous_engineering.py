@@ -2561,3 +2561,21 @@ def test_cleanup_rechecks_active_workflow_after_acquiring_repository_lock(monkey
         assert response.status_code == 409
         assert response.json()["code"] == "AUTONOMOUS_ENGINEERING_CONFLICT"
         assert calls == {"runs": 2, "cleanup": 0}
+
+def test_windows_cleanup_delegates_locking_to_broker_without_client_self_lock(monkeypatch):
+    monkeypatch.setattr(agent, "_is_windows", lambda: True)
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [])
+    monkeypatch.setattr(
+        agent,
+        "repository_execution_lock",
+        lambda *args, **kwargs: pytest.fail("Windows broker must acquire the shared repository lock"),
+    )
+    monkeypatch.setattr(agent, "cleanup_shared_progress_data", lambda: {"cleaned": True})
+
+    response = TestClient(main_module.app, client=("127.0.0.1", 12345)).post(
+        "/api/autonomous-engineering/cleanup",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["cleaned"] is True
