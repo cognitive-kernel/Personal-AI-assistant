@@ -47,6 +47,9 @@ def create_task(
     max_attempts: int = 1,
     scheduled_at: datetime | None = None,
     dedupe_key: str | None = None,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not isinstance(task_type, str) or not task_type.strip() or len(task_type.strip()) > MAX_TASK_TYPE_CHARS:
         raise ValueError(f"task_type must be a non-empty string of at most {MAX_TASK_TYPE_CHARS} characters.")
@@ -68,6 +71,17 @@ def create_task(
     normalized_key = dedupe_key.strip() if dedupe_key is not None else None
     due = _timestamp(scheduled_at)
     with db.learning_connection() as conn:
+        if task_context is not None:
+            if expected_task_type is None or expected_payload is None:
+                raise ValueError("Parent task ownership contract is required for child task creation.")
+            conn.execute("BEGIN IMMEDIATE")
+            task_context.assert_current(
+                conn,
+                expected_task_type=expected_task_type,
+                expected_payload=expected_payload,
+            )
+        elif expected_task_type is not None or expected_payload is not None:
+            raise ValueError("Parent task context is required when an ownership contract is supplied.")
         try:
             cursor = conn.execute(
                 """INSERT INTO task_queue(
