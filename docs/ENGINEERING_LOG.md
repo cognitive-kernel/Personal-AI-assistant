@@ -2269,6 +2269,41 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Regression tests cover missing final agent message, resume timeout/launch failure, structured unmatched 404/405, and non-Autonomous route isolation. Exact-head CI is pending. No workflow, task, checkpoint, branch, or user data was cancelled or deleted.
 
 
+## 2026-11-21 — Correlated diagnostics for autonomous Workflow dispatch failures
+
+- UIE-02 reproduction: `POST /api/autonomous-engineering/dispatch` converted every `gh workflow run` failure into the same generic HTTP 502 message. The browser therefore could not distinguish a definitive CLI rejection from a timeout where GitHub may already have accepted the request, and there was no correlation identifier for support logs.
+- Fix: attach a UUID correlation ID and stable error code to dispatch failures; log only sanitized/truncated CLI stderr on definitive nonzero exit; classify a missing process result as an ambiguous outcome. The UI detail explicitly tells the operator to refresh run history before retrying. Both paths set `X-Retryable: false` to prevent unsafe blind retries.
+- Regression tests verify safe redaction, correlation headers, stable error codes, and ambiguous-timeout messaging. Exact-head CI is pending; no dispatch was sent while developing this patch.
+
+
+### 2026-11-21 — Distinguish GitHub CLI launch failure from dispatch timeout
+
+- Review of PR #817 identified that _run collapsed OSError (the CLI never started) and TimeoutExpired (the request may already have reached GitHub) into the same None result. Treating both as ambiguous incorrectly blocked a safe retry after a definite local launch failure.
+- Added an opt-in raise_os_error mode used only by the workflow-dispatch call; all other _run callers retain their existing fail-closed behavior. A launch error now returns a correlated WORKFLOW_DISPATCH_LAUNCH_FAILED response marked retryable, while timeout remains ambiguous and non-retryable.
+- Added a regression that simulates the executable disappearing after lookup and asserts the distinct safe response. Exact-head CI remains required.
+
+
+### CI correction: dispatch test doubles
+
+- Exact-head CI completed 2,466 tests successfully and found one test-only failure: a legacy `_run` fake did not accept the new opt-in `raise_os_error` keyword used only by workflow dispatch. Updated all dispatch-safety fakes in that file to accept the optional keyword; production behavior is unchanged. The full suite must pass again on the new HEAD.
+
+
+## 2026-11-21 — Uniform structured API errors for Autonomous Engineering
+
+- Extended the API router with a route-level error boundary. HTTP errors, request-validation errors, and unexpected exceptions now return additive `code`, `message`, `correlation_id`, `retryable`, and `safe_details` fields plus matching `X-*` headers while preserving the existing `detail` field for compatibility.
+- Validation details expose only field location/message/type and never echo submitted values. Unexpected exceptions are logged with correlation ID and returned as a redacted 500. Existing explicit dispatch headers are preserved.
+- Removed raw GitHub CLI stderr from the run-delete error response; only a bounded safe warning (run ID, return code, stderr-present boolean) is logged.
+- Added API contract tests for HTTPException compatibility, validation redaction, and unexpected-exception redaction. Exact-head CI is required.
+
+
+## 2026-11-22 — Codex no-final-message diagnosis and dispatch error boundary
+
+- Reproduced from Windows Runner workflow `44932980718`, job `137009509972`: attempt 1 ran for about 25 minutes and emitted 95 JSONL events; attempt 2 ran for about 6 minutes and emitted 26 events, then the Runner reported `Warning: no last agent message` and wrote an empty `--output-last-message` report. The controller rejected the report because it contained no completion marker and stopped after its bounded two-attempt budget. The task was not discarded or published as verified; no artifact was produced.
+- The dashboard's workflow-failure summarizer now recognizes that exact warning and prioritizes a clear diagnosis over the generic retry-budget error. It explicitly tells the operator to preserve the durable task/checkpoint and inspect terminal events before retrying; it does not claim to repair the Codex stream.
+- The `/resume` endpoint now distinguishes a definitive local CLI launch failure (correlated, retryable) from an ambiguous dispatch timeout (correlated, non-retryable) and a nonzero CLI result (correlated, non-retryable), preventing an automatic duplicate workflow dispatch. Unmatched 404/405 responses under `/api/autonomous-engineering` now use the same structured error contract; unrelated API routes retain their existing responses.
+- Regression tests cover missing final agent message, resume timeout/launch failure, structured unmatched 404/405, and non-Autonomous route isolation. Exact-head CI is pending. No workflow, task, checkpoint, branch, or user data was cancelled or deleted.
+
+
 ### Follow-up hardening — invalid non-empty report handling
 
 - The validator reports `found 0` for both an absent report and a non-empty report with no valid marker. Recovery therefore now preserves an existing report only when it already contains exactly one valid completion marker. Otherwise it may replace that temporary report only when the final JSONL `agent_message` itself contains exactly one valid marker and the Codex turn completed successfully without failure events.
