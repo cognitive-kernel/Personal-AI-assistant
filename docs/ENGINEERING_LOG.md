@@ -2290,3 +2290,13 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - No existing task payload, result, checkpoint, lease epoch, or unrelated module state is rewritten by the module controls.
 - Separate lifecycle owners (AI-learning Playwright, Autonomous Engineering GitHub Actions, and the opt-in backup scheduler) are not falsely represented as managed by this TaskRuntime registry. Their adapters remain follow-up scope.
 - Validation is pending exact-head CI and target-host acceptance; no migration has been run against user databases.
+
+## 2026-11-22 — Extend lifecycle controls to independent background owners
+
+- Extended the TaskRuntime module dashboard from seven task-backed modules to nine visible owners by adding adapters for the separate AI-learning Playwright worker and the opt-in backup scheduler. External adapters call their real owner APIs; they do not mutate TaskRuntime rows.
+- Added AI-learning database migration 8 with a durable `draining` flag. Finish blocks new runs while preserving the active worker lease and allowing the current run to finish; queued runs remain intact. Start/Resume clears the drain. Force Stop marks the active run cancelled and preserves queued runs; the worker observes cancellation cooperatively.
+- Serialized AI-learning run admission and Finish under the existing process lock to prevent a new run from slipping in after the drain transition. Watchdog and lease admission both respect the durable drain state, while an already-owned worker can renew its lease to finish.
+- Added backup scheduler status and lifecycle adapters. Stop signals the scheduler and waits for an in-progress snapshot; it never kills a database snapshot mid-write. Start/Resume is disabled until `DATABASE_BACKUP_INTERVAL_HOURS` is explicitly configured.
+- Added a per-job Ollama model-pull cancel endpoint and UI control. It closes only the selected download stream, reports `cancelling` until the worker unwinds, and does not delete existing models. If the HTTP connection is still being established, cancellation remains pending until the bounded network operation returns.
+- Autonomous Engineering now has Start/Dispatch, Pause, Resume, Finish-after-current-task, and Force Stop/Cancel controls in its own UI. Finish intentionally uses the existing safe pause boundary; neither action kills the runner or removes checkpoint state.
+- Updated module E2E expectations and added AI-learning drain/force-stop, backup scheduler, and Ollama cancellation regressions. Exact-head CI and Windows target-host acceptance are pending; no user database has been migrated or modified.
