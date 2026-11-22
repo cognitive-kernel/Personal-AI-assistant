@@ -52,7 +52,8 @@ def _learning_status() -> dict[str, Any]:
 
     control = service.get_learning_control()
     queued_count = len(service.list_run_ids_by_status("queued"))
-    active = bool(control.get("worker_active"))
+    running_count = len(service.list_run_ids_by_status("running"))
+    active = bool(control.get("worker_active")) or bool(running_count)
     if control.get("draining"):
         state = "draining" if active else ("finished_pending" if queued_count else "finished")
     elif control.get("paused"):
@@ -65,7 +66,7 @@ def _learning_status() -> dict[str, Any]:
         "description": "کارهای پایدار ChatGPT UI؛ داده‌ها و درس‌های ذخیره‌شده مستقل از کنترل اجرا هستند",
         "state": state,
         "display_state": state,
-        "task_counts": _counts(queued=queued_count, active=1 if active else 0),
+        "task_counts": _counts(queued=queued_count, active=running_count),
         "accepting_tasks": not control.get("paused") and not control.get("draining"),
         "disabled_actions": [],
         "message": control.get("reason") or "",
