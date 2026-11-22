@@ -15,7 +15,7 @@ API prefix: `/api/autonomous-engineering`
 | Controls | `autonomous-engineering-controls.js` | Core + Status | ذخیره تنظیمات، pull مدل، ارسال task، dispatch، pause/resume/cancel |
 | Runs | `autonomous-engineering-runs.js` | Core | تاریخچه، گزارش و تشخیص خطا، حذف اجرای پایان‌یافته، cleanup |
 | Progress | `autonomous-engineering-progress.js` | Core | پیشرفت جاری، نمودار scorecard، رویدادها و فیلتر تاریخ |
-| Bootstrap | `autonomous-engineering.js` | همهٔ ماژول‌ها | بررسی نسخه/وجود ماژول‌ها و راه‌اندازی polling مستقل |
+| Bootstrap | `autonomous-engineering.js` | همهٔ ماژول‌ها | بررسی نسخه/وجود ماژول‌ها، polling مستقل با backoff/jitter و lifecycle cleanup |
 
 ماژول‌های مستقل Runs و Progress برای اجرا به Status وابسته نیستند. Controls عمداً بدون Status فعال نمی‌شود. شکست بارگذاری یک ماژول باید در alert مستقل `#agent-module-warning` بماند و پیام سلامت `#agent-message` را که Status به‌روزرسانی می‌کند بازنویسی نکند.
 
@@ -155,3 +155,11 @@ API ابتدا active run را رد می‌کند و سپس Broker/state markers
 1. PR #799 فقط queue-level owner/epoch را fence می‌کند. PR #819 مسیر اصلی `learning.run_job` و escalation را به transaction-level assertion متصل می‌کند؛ curriculum، candidate review، factual verification، research، sandbox، cloud discovery، programming و سایر domain writers هنوز باید جداگانه audit و fence شوند.
 2. زیر‌دستور دستی `publish` در `scripts/autonomous_engineering_cycle.py` قبل از ورود به `repository_execution_lock` dispatch می‌شود. در workflow فعلی callsite ندارد و مسیر عادی `run` قفل را می‌گیرد؛ بااین‌حال اجرای دستی آن در زمان run هم‌زمان ایمن نیست. فایل controller در این مرحله محافظت‌شده است و تغییر داده نشده است.
 3. قفل‌ها و تست‌های CI، پذیرش واقعی ACL هویت سرویس Windows، crash/restart، soak، Ollama/Codex و مرور انسانی را جایگزین نمی‌کنند.
+
+
+## 7. Gate D — polling lifecycle follow-up (2026-11-22)
+
+- شاخهٔ follow-up جایگزین `setInterval` ثابت با controller مشترک شده است: status و runs هر ۳۰ ثانیه، progress هر ۵ ثانیه؛ خطاها با exponential backoff تا سقف ۵ دقیقه/۲ دقیقه و jitter محدود زمان‌بندی می‌شوند.
+- صفحهٔ hidden polling را متوقف می‌کند؛ visible شدن refresh فوری انجام می‌دهد. `pagehide` و `autonomousEngineeringApp.stop()` timer و listenerهای polling را پاک می‌کنند؛ بازگشت از bfcache از طریق `pageshow` polling را فعال می‌کند.
+- هر refresh از timeout موجود در `core.request()` استفاده می‌کند و status/runs/progress نتیجهٔ خطا را به controller می‌دهند.
+- تست Chromium: `test_autonomous_engineering_polling_uses_visibility_backoff_jitter_and_cleanup`. Exact-head CI pending؛ تا زمان سبزشدن همهٔ workflowها این Gate بسته نیست.
