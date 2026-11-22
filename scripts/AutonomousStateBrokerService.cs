@@ -609,14 +609,14 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                             }
                             finally { try { if (Directory.Exists(stage)) Directory.Delete(stage, true); } catch { } }
                         }
-                        string recoveryActiveTaskPath = Path.Combine(_stateDirectory, "pending-manual-task.txt");
-                        string recoveryActiveOwnerPath = Path.Combine(_stateDirectory, "pending-manual-task-owner.json");
-                        if (SafeFileExists(recoveryActiveTaskPath) && !File.ReadAllBytes(recoveryActiveTaskPath).SequenceEqual(taskBytes))
+                        string finalActiveTaskPath = Path.Combine(_stateDirectory, "pending-manual-task.txt");
+                        string finalActiveOwnerPath = Path.Combine(_stateDirectory, "pending-manual-task-owner.json");
+                        if (SafeFileExists(finalActiveTaskPath) && !File.ReadAllBytes(finalActiveTaskPath).SequenceEqual(taskBytes))
                             throw new InvalidDataException("archive_recovery_task_mismatch");
-                        if (SafeFileExists(recoveryActiveOwnerPath) && !File.ReadAllBytes(recoveryActiveOwnerPath).SequenceEqual(ownerBytes))
+                        if (SafeFileExists(finalActiveOwnerPath) && !File.ReadAllBytes(finalActiveOwnerPath).SequenceEqual(ownerBytes))
                             throw new InvalidDataException("archive_recovery_owner_mismatch");
-                        if (SafeFileExists(recoveryActiveTaskPath)) File.Delete(activeTaskPath);
-                        if (SafeFileExists(recoveryActiveOwnerPath)) File.Delete(activeOwnerPath);
+                        if (SafeFileExists(finalActiveTaskPath)) File.Delete(finalActiveTaskPath);
+                        if (SafeFileExists(finalActiveOwnerPath)) File.Delete(finalActiveOwnerPath);
                         return new Dictionary<string, object> { { "task_id", taskId }, { "status", "archived" }, { "preserved", true } };
                     }
                     throw new InvalidDataException("unsupported_task_operation");
