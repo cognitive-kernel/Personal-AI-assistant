@@ -17,6 +17,7 @@ from . import (
     learning_knowledge_graph_tasks,
     learning_review_tasks,
     learning_tasks,
+    module_control,
     programming_tasks,
     research_planner,
     research_tasks,
@@ -221,4 +222,21 @@ def reschedule_task(task_id: int, request: TaskScheduleRequest) -> dict[str, Any
     except TaskManagerError as exc:
         _raise_task_error(exc)
     except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/modules")
+def list_background_modules() -> dict[str, Any]:
+    """Return background-module lifecycle state and task counts without payloads."""
+    return {"modules": module_control.list_module_controls()}
+
+
+@router.post("/modules/{module_id}/{action}")
+def control_background_module(module_id: str, action: str) -> dict[str, Any]:
+    """Apply a durable module-level start/pause/resume/finish/force-stop action."""
+    try:
+        return {"module": module_control.control_module(module_id, action)}
+    except module_control.ModuleNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Background module not found.") from exc
+    except module_control.ModuleControlError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
