@@ -294,14 +294,32 @@
   }
 
   $("refresh-agent").addEventListener("click", refresh);
+  function armDispatchUnlockTimer() {
+    if (dispatchUnlockTimer !== null) window.clearTimeout(dispatchUnlockTimer);
+    dispatchUnlockTimer = null;
+    const remaining = dispatchPendingUntil - Date.now();
+    if (remaining <= 0) {
+      syncDispatchControls();
+      return;
+    }
+    dispatchUnlockTimer = window.setTimeout(() => {
+      dispatchUnlockTimer = null;
+      syncDispatchControls();
+    }, remaining);
+  }
   function stop() {
     if (dispatchUnlockTimer !== null) window.clearTimeout(dispatchUnlockTimer);
     dispatchUnlockTimer = null;
+  }
+  function resume() {
+    armDispatchUnlockTimer();
+    syncDispatchControls();
   }
   window.autonomousEngineeringStatus = Object.freeze({
     version: 1,
     refresh,
     stop,
+    resume,
     canStartDispatch,
     canStartManualTask,
     getPendingWork: () => lastPendingWork,
