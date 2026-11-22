@@ -783,6 +783,26 @@ def test_stale_cloud_discovery_task_cannot_upsert_candidates(tmp_path, monkeypat
     assert latest["error_summary"] == "discovery_abandoned:task_lease_lost"
 
 
+def test_direct_discovery_interruption_settles_run_without_task_context(
+    tmp_path, monkeypatch
+):
+    _configure_paths(tmp_path, monkeypatch)
+
+    def interrupt(_checkpoint):
+        raise TaskInterrupted("direct discovery cancelled")
+
+    with pytest.raises(TaskInterrupted, match="direct discovery cancelled"):
+        cloud_resources.discover_resources(
+            discover_fn=lambda _query, *, limit: [],
+            checkpoint=interrupt,
+        )
+
+    latest = cloud_resources.latest_discovery_run()
+    assert latest is not None
+    assert latest["status"] == "failed"
+    assert latest["error_summary"] == "discovery_interrupted"
+
+
 def test_daily_discovery_enqueue_is_idempotent(tmp_path, monkeypatch):
     _configure_paths(tmp_path, monkeypatch)
 
