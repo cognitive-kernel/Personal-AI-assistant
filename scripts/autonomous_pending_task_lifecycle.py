@@ -87,9 +87,9 @@ def _state_blockers(state: Path) -> list[str]:
     current_raw = _regular(state / "current.json", 256_000)
     if current_raw is not None:
         current = _json(current_raw, "current_progress_unreadable")
-        run_id, status = current.get("run_id"), current.get("status")
+        status = current.get("status")
         terminal = {"completed", "succeeded", "success", "complete", "failed", "cancelled", "skipped", "blocked"}
-        if run_id is not None and (not isinstance(status, str) or status.lower() not in terminal):
+        if not isinstance(status, str) or status.lower() not in terminal:
             blockers.append("active_or_unknown_run")
     if _regular(state / "latest-worktree-checkpoint.json", 16 * 1024) is not None:
         blockers.append("checkpoint_present_or_unknown")
