@@ -31,8 +31,15 @@ def test_learning_api_to_worker_persists_factual_claim_with_provenance(tmp_path,
     )
     source_hash = hashlib.sha256(source_chunk.encode("utf-8")).hexdigest()
 
-    def discover(job_id, _topic):
+    def discover(job_id, _topic, *, task_context=None, expected_task_type=None, expected_payload=None):
+        assert task_context is not None
         with db.learning_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            task_context.assert_current(
+                conn,
+                expected_task_type=expected_task_type,
+                expected_payload=expected_payload,
+            )
             conn.execute(
                 "INSERT INTO learning_source_text(job_id, content) VALUES (?, ?)",
                 (job_id, source_chunk),
@@ -260,6 +267,9 @@ def test_learning_api_to_worker_persists_factual_claim_with_provenance(tmp_path,
         class ReviewContext:
             task_id = 991
             def checkpoint(self, _value): pass
+
+            def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+                return None
 
         review_result = handle_candidate_review(
             {"candidate_id": int(candidate["id"]), "query": "Python list behavior", "web_mode": "search"},
