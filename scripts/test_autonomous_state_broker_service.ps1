@@ -10,6 +10,7 @@ $serviceRoot = Join-Path $env:ProgramData "PersonalAIAssistant\StateBroker-CI"
 $serviceExe = Join-Path $serviceRoot "PersonalAIAssistant.StateBroker.exe"
 $stateRoot = Join-Path $env:ProgramData ("PersonalAIAssistant\Broker-CI-" + [guid]::NewGuid().ToString("N"))
 $oldMachineStatePath = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")
+$oldProcessStatePath = $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR
 $oldDiagnosticsSetting = [Environment]::GetEnvironmentVariable("AUTONOMOUS_STATE_BROKER_DIAGNOSTICS", "Machine")
 $currentSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $brokerSid = "S-1-5-19"
@@ -31,6 +32,7 @@ try {
     & icacls.exe $serviceRoot /grant:r "*$($brokerSid):(OI)(CI)RX" /T /C /Q | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Could not grant LocalService read/execute access to the test service binary." }
     [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", $stateRoot, "Machine")
+    $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR = $stateRoot
     [Environment]::SetEnvironmentVariable("AUTONOMOUS_STATE_BROKER_DIAGNOSTICS", "1", "Machine")
 
     $current = @{
@@ -650,6 +652,7 @@ assert request("GET", "/v1/tasks/archived")["tasks"][0]["status"] == "restored"
         $oldMachineStatePath,
         "Machine"
     )
+    $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR = $oldProcessStatePath
     [Environment]::SetEnvironmentVariable(
         "AUTONOMOUS_STATE_BROKER_DIAGNOSTICS",
         $oldDiagnosticsSetting,
