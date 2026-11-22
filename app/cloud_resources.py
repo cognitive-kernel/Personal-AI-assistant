@@ -1030,7 +1030,17 @@ def discover_resources(
             # settled or reclaimed task is handled by the exact epoch check below.
             if task_context is not None:
                 _settle_cooperative_discovery_interruption(task_context)
-            _reconcile_abandoned_discovery_runs()
+                _reconcile_abandoned_discovery_runs()
+            else:
+                _update_run(
+                    run_id,
+                    status="failed",
+                    queries_attempted=queries_attempted,
+                    sources_seen=sources_seen,
+                    candidates_upserted=0,
+                    query_results=query_results,
+                    error_summary="discovery_interrupted",
+                )
             raise
         try:
             _update_run(
