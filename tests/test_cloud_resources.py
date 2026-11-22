@@ -258,7 +258,7 @@ def test_cloud_resource_store_uses_its_own_versioned_database(tmp_path, monkeypa
         } <= tables
         assert connection.execute(
             "SELECT MAX(version) FROM schema_migrations"
-        ).fetchone()[0] == 7
+        ).fetchone()[0] == 8
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
@@ -1097,7 +1097,7 @@ def test_cloud_resource_v1_upgrade_invalidates_legacy_approval(tmp_path):
         )
         connection.commit()
 
-    assert initialize_database_file(path, CLOUD_RESOURCE_MIGRATIONS) == 7
+    assert initialize_database_file(path, CLOUD_RESOURCE_MIGRATIONS) == 8
     with sqlite3.connect(path) as connection:
         row = connection.execute(
             """SELECT review_status, availability_status, quota_json, terms_url,
