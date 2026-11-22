@@ -7,6 +7,7 @@
   const cancelButton = $("cancel-agent");
   const pauseButton = $("pause-agent");
   const resumeButton = $("resume-agent");
+  const finishButton = $("finish-agent");
   const taskButton = $("send-agent-task");
   let lastPendingWork = null;
   const labels = {
@@ -266,6 +267,7 @@
       cancelButton.disabled = !active;
       pauseButton.disabled = Boolean(data.paused);
       resumeButton.disabled = !data.paused;
+      if (finishButton) finishButton.disabled = !active || Boolean(data.paused);
       // Run history refreshes independently and after committed mutations.
       // Rendering this status snapshot here bypasses its request sequence and
       // can overwrite a newer, explicitly refreshed run list with stale data.
@@ -281,6 +283,7 @@
       cancelButton.disabled = true;
       pauseButton.disabled = true;
       resumeButton.disabled = true;
+      if (finishButton) finishButton.disabled = true;
     } finally {
       $("refresh-agent").disabled = false;
     }
