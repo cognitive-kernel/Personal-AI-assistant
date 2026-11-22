@@ -2605,3 +2605,40 @@ def test_windows_cleanup_preserves_worktree_runtime_files_after_broker_release(m
     assert result["files_removed"] == 2
     assert set(agent._RUNTIME_CLEANUP_FILES) <= set(result["preserved"])
     assert all((runtime_dir / name).is_file() for name in agent._RUNTIME_CLEANUP_FILES)
+
+def test_posix_cleanup_lock_order_is_repository_then_state_then_checkpoint(monkeypatch, tmp_path):
+    from contextlib import contextmanager
+
+    calls = []
+    monkeypatch.setattr(agent, "_is_windows", lambda: False)
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [])
+    monkeypatch.setattr(agent, "execution_state_directory", lambda: tmp_path)
+    monkeypatch.setattr(agent, "_agent_runtime_directory", lambda: tmp_path / "worktree")
+    (tmp_path / "worktree").mkdir()
+
+    @contextmanager
+    def repository_lock(*_args, **_kwargs):
+        calls.append("repository")
+        yield
+
+    @contextmanager
+    def state_lock(*_args, **_kwargs):
+        calls.append("durable-state")
+        yield
+
+    @contextmanager
+    def checkpoint_lock(*_args, **_kwargs):
+        calls.append("checkpoint")
+        yield
+
+    monkeypatch.setattr(agent, "repository_execution_lock", repository_lock)
+    monkeypatch.setattr(agent, "durable_state_lock", state_lock)
+    monkeypatch.setattr(agent, "checkpoint_store_lock", checkpoint_lock)
+
+    response = TestClient(main_module.app, client=("127.0.0.1", 12345)).post(
+        "/api/autonomous-engineering/cleanup",
+    )
+
+    assert response.status_code == 200
+    assert calls == ["repository", "durable-state", "checkpoint"]
