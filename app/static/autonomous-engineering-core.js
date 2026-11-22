@@ -24,8 +24,21 @@
       let payload = {};
       try { payload = await response.json(); } catch (_) {}
       if (!response.ok) {
-        const failure = new Error(payload.detail || "درخواست ناموفق بود.");
+        const detail = typeof payload.detail === "string"
+          ? payload.detail
+          : (typeof payload.message === "string" ? payload.message : "درخواست ناموفق بود.");
+        const failure = new Error(detail);
         failure.status = response.status;
+        failure.code = payload.code || response.headers.get("X-Error-Code") || null;
+        failure.correlationId = payload.correlation_id || response.headers.get("X-Correlation-ID") || null;
+        failure.retryable = payload.retryable === true || response.headers.get("X-Retryable") === "true";
+        failure.safeDetails = payload.safe_details && typeof payload.safe_details === "object"
+          ? payload.safe_details
+          : null;
+        const diagnostics = [];
+        if (failure.code) diagnostics.push("کد: " + String(failure.code));
+        if (failure.correlationId) diagnostics.push("شناسهٔ پیگیری: " + String(failure.correlationId));
+        if (diagnostics.length) failure.message += " · " + diagnostics.join(" · ");
         throw failure;
       }
       return payload;
