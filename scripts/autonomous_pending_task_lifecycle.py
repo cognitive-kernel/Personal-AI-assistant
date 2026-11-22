@@ -63,17 +63,14 @@ def _safe_owner(task: bytes, owner_raw: bytes | None) -> dict[str, Any]:
     if owner_raw is None:
         raise LifecycleConflict("Pending task owner metadata is missing.", ["owner_metadata_missing"])
     owner = _json(owner_raw, "owner_metadata_unreadable")
-    if (
-        owner.get("schema_version") != 1
-        or owner.get("task_sha256") != _digest(task.replace(b"\r\n", b"\n").replace(b"\r", b"\n"))
-        or not isinstance(owner.get("owner_run_id"), str)
-        or not owner.get("owner_run_id")
-        or isinstance(owner.get("owner_attempt"), bool)
-        or not isinstance(owner.get("owner_attempt"), int)
-        or owner["owner_attempt"] < 1
-    ):
-        raise LifecycleConflict("Pending task owner metadata does not match the task.", ["owner_metadata_mismatch"])
-    return owner
+    try:
+        from autonomous_engineering_pending_task_state import _validate_owner_record
+        return _validate_owner_record(owner, task.decode("utf-8"))
+    except (RuntimeError, UnicodeDecodeError, ImportError) as exc:
+        raise LifecycleConflict(
+            "Pending task owner metadata does not match the task.",
+            ["owner_metadata_mismatch"],
+        ) from exc
 
 
 def _revision(task: bytes, owner_raw: bytes, manifest: dict[str, Any] | None = None) -> str:
@@ -103,9 +100,12 @@ def _read_active_state(state: Path) -> list[str]:
             blockers.append("active_or_unknown_run")
     checkpoint_index = _regular(state / "latest-worktree-checkpoint.json", 16 * 1024)
     if checkpoint_index is not None:
-        index = _json(checkpoint_index, "checkpoint_index_unreadable")
-        if index.get("active") is not False:
-            blockers.append("checkpoint_active_or_unknown")
+        # This lifecycle store does not relocate checkpoint/plan artifacts.
+        # Until a verified task-to-checkpoint package transaction exists, any
+        # pointer or artifact blocks mutation, including inactive/legacy state.
+        blockers.append("checkpoint_present_or_unknown")
+    if any(state.glob("worktree-checkpoint-*")) or any(state.glob("worktree-plan-*")):
+        blockers.append("checkpoint_artifacts_present")
     return blockers
 
 
