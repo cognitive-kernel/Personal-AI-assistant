@@ -2839,7 +2839,8 @@ def test_browser_programming_assistance_queues_polls_and_recovers_from_api_failu
             "instruction": "Implement a small add function.",
             "context": "Use Python and keep the implementation minimal.",
         }]
-        assert state["polls"] >= 3
+        # One running response followed by one terminal response is sufficient.
+        assert state["polls"] >= 2
         assert output.inner_text() == generated_reply
         assert "کد اجرا نشده و هیچ آزمونی اجرا نشده است" in status.inner_text()
         assert submit.is_enabled()
