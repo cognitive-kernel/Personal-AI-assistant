@@ -60,6 +60,7 @@
   }
   let statusRefreshPromise = null;
   let dispatchPendingUntil = 0;
+  let dispatchUnlockTimer = null;
   let dispatchSubmitting = false;
   let lastCanDispatch = false;
   let lastActiveRun = false;
@@ -91,7 +92,11 @@
   }
   function lockDispatchVisibilityWindow() {
     dispatchPendingUntil = Date.now() + 30000;
-    window.setTimeout(syncDispatchControls, 30000);
+    if (dispatchUnlockTimer !== null) window.clearTimeout(dispatchUnlockTimer);
+    dispatchUnlockTimer = window.setTimeout(() => {
+      dispatchUnlockTimer = null;
+      syncDispatchControls();
+    }, 30000);
   }
   function refresh(force = false) {
     if (force) return refreshAfterMutation();
@@ -289,9 +294,14 @@
   }
 
   $("refresh-agent").addEventListener("click", refresh);
+  function stop() {
+    if (dispatchUnlockTimer !== null) window.clearTimeout(dispatchUnlockTimer);
+    dispatchUnlockTimer = null;
+  }
   window.autonomousEngineeringStatus = Object.freeze({
     version: 1,
     refresh,
+    stop,
     canStartDispatch,
     canStartManualTask,
     getPendingWork: () => lastPendingWork,
