@@ -13,10 +13,8 @@ import pytest
 from scripts.autonomous_engineering_process_job import WindowsProcessJob
 from scripts import autonomous_engineering_codex_runner as codex_runner
 
-from scripts.autonomous_engineering_execution_lock import (
-    execution_state_directory,
-    repository_execution_lock,
-)
+from app.autonomous_engineering_execution_lock import repository_execution_lock
+from app.autonomous_engineering_state import execution_state_directory
 
 
 def test_execution_lock_records_owner_metadata_and_releases_after_scope(
