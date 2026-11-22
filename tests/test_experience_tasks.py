@@ -114,7 +114,7 @@ def test_stale_experience_task_cannot_persist_test_result(tmp_path, monkeypatch)
         experience_tasks, "_verify_live_source_evidence",
         lambda value: [
             {
-                "url": evidence["url"],
+                **evidence,
                 "live_content_sha256": "c" * 64,
                 "excerpt_sha256": "d" * 64,
             }
