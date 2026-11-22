@@ -502,3 +502,12 @@ The subsequent documentation-only evidence update does not change runtime code a
 - Windows Runner execution `44932980718` / job `137009509972` failed after two Codex attempts: attempt 2 produced no final `agent_message`, the output-last-message report was empty, and completion-marker validation failed. The durable task was preserved and not marked complete; no artifact was produced.
 - The Autonomous Engineering dashboard now reports this as a distinct Codex no-final-message failure instead of showing only the generic bounded-retry error. `/resume` dispatch now marks timeouts ambiguous and non-retryable, while definite CLI launch failures are retryable with a correlation ID. Unmatched 404/405 errors under the module prefix now follow the structured error contract.
 - Regression tests were added for these cases. Exact-head CI for the resulting PR #817 head is pending; Gate C is not closed, and no target-host acceptance is claimed.
+
+## 2026-11-22 — Cross-module lifecycle controls
+
+- PR #833 adds durable Start, Pause, Resume, Finish/Drain, and Force Stop controls for the seven feature-managed TaskRuntime modules, including Cloud Resource Search.
+- PR #835 (dependent on #833) adds a separate lifecycle adapter and shared dashboard card for Autonomous Engineering's GitHub Actions workflow.
+- PR #833 and PR #835 remain Draft pending exact-head CI and the required Windows target-host acceptance. Neither PR is merged.
+- The TaskRuntime Force Stop uses cooperative cancellation at task checkpoints/heartbeats; it does not kill Python threads. Autonomous Engineering Force Stop requests GitHub workflow cancellation; it does not prove Runner process-tree termination.
+- AI-learning's Playwright worker, Browser Learning's course worker, and the opt-in database backup scheduler remain separate lifecycle owners and are not yet covered by the shared controls. Do not mark the all-module request complete until their adapters and tests are implemented after the Autonomous Engineering target-host gate.
+- Existing task payloads, results, checkpoints, and user databases have not been intentionally modified by this work.
