@@ -4,7 +4,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from app import db, learning, learning_review_channels as review, task_manager, sandbox, sandbox_consent
+from app import db, learning, learning_durable_budget, learning_review_channels as review, task_manager, sandbox, sandbox_consent
 from app.learning_review_tasks import handle_candidate_review
 from app.main import app
 from app.task_worker import TaskContext
@@ -75,6 +75,150 @@ def test_web_research_persists_context_without_promoting_candidate(review_store,
     assert evidence["evidence_kind"] == "context"
     assert evidence["source_url"].startswith("https://")
     assert len(evidence["source_sha256"]) == 64
+
+
+def test_stale_review_worker_cannot_persist_web_or_peer_artifacts(review_store, monkeypatch):
+    from app import web_sources
+    from app.learning_review_tasks import LEARNING_REVIEW_TASK_TYPE
+
+    task_manager.initialize_task_store()
+    candidate_id, job_id = _candidate()
+    payload = {
+        "candidate_id": candidate_id,
+        "query": "Python built-in types",
+        "web_mode": "search",
+    }
+
+    def claimed_context(worker_id):
+        task = task_manager.create_task(
+            LEARNING_REVIEW_TASK_TYPE, payload, max_attempts=3
+        )
+        claimed = task_manager.claim_next_task(worker_id)
+        assert claimed is not None and claimed["id"] == task["id"]
+        return task, TaskContext(
+            task_id=task["id"],
+            worker_id=worker_id,
+            lease_epoch=claimed["lease_epoch"],
+        )
+
+    def reclaim(context):
+        with db.learning_connection() as connection:
+            connection.execute(
+                "UPDATE task_queue SET lease_expires_at=? WHERE id=?",
+                ("2000-01-01T00:00:00.000000+00:00", context.task_id),
+            )
+        reclaimed = task_manager.claim_next_task(context.worker_id)
+        assert reclaimed is not None and reclaimed["id"] == context.task_id
+        assert reclaimed["lease_epoch"] > context.lease_epoch
+
+    budget_task, budget_context = claimed_context("stale-review-budget")
+    reclaim(budget_context)
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        learning_durable_budget.reserve_job_budget(
+            job_id, "candidate_review_web_stale",
+            calls=1, predict_tokens=1800,
+            task_context=budget_context,
+            expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+            expected_payload=payload,
+        )
+    with db.learning_connection() as connection:
+        budget_rows = connection.execute(
+            "SELECT COUNT(*) FROM learning_pipeline_budgets WHERE job_id=?",
+            (job_id,),
+        ).fetchone()[0]
+        reservation_rows = connection.execute(
+            "SELECT COUNT(*) FROM learning_pipeline_budget_reservations WHERE job_id=?",
+            (job_id,),
+        ).fetchone()[0]
+    assert budget_rows == 0
+    assert reservation_rows == 0
+    assert task_manager.get_task(budget_task["id"])["lease_epoch"] > budget_context.lease_epoch
+
+    web_task, web_context = claimed_context("stale-web-review")
+    monkeypatch.setattr(
+        web_sources,
+        "discover_sources",
+        lambda _query, limit: (
+            reclaim(web_context)
+            or [web_sources.SourceDocument(
+                url="https://docs.python.org/3/library/stdtypes.html",
+                title="Python built-in types",
+                text="A source excerpt returned after the original review lease was reclaimed.",
+            )]
+        ),
+    )
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        review.research_candidate_online(
+            candidate_id, payload["query"], limit=1,
+            task_context=web_context,
+            expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+            expected_payload=payload,
+        )
+
+    peer_task, peer_context = claimed_context("stale-peer-review")
+    monkeypatch.setenv(
+        "PEER_AI_PROVIDERS_JSON",
+        json.dumps([{
+            "provider": "test-peer",
+            "base_url": "https://peer.example.test",
+            "model": "review-model",
+        }]),
+    )
+    monkeypatch.setattr(
+        review,
+        "_validate_peer_endpoint",
+        lambda _url: ("https", "peer.example.test", "93.184.216.34"),
+    )
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self, _limit):
+            answer = json.dumps({
+                "stance": "mixed", "claims": [], "citations": [],
+                "limitations": [], "applications": [], "testable_tests": [],
+            })
+            return json.dumps({
+                "usage": {"prompt_tokens": 10, "completion_tokens": 10},
+                "choices": [{"message": {"content": answer}}],
+            }).encode("utf-8")
+
+    class FakeOpener:
+        def open(self, _request, timeout):
+            reclaim(peer_context)
+            return FakeResponse()
+
+    monkeypatch.setattr(review, "_build_peer_opener", lambda *_handlers: FakeOpener())
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        review.consult_configured_peer_ais(
+            candidate_id, limit=1,
+            task_context=peer_context,
+            expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+            expected_payload=payload,
+        )
+
+    with db.learning_connection() as connection:
+        evidence_count = connection.execute(
+            "SELECT COUNT(*) FROM knowledge_review_evidence WHERE candidate_id=?",
+            (candidate_id,),
+        ).fetchone()[0]
+        attempt_count = connection.execute(
+            "SELECT COUNT(*) FROM knowledge_review_attempts WHERE candidate_id=?",
+            (candidate_id,),
+        ).fetchone()[0]
+        peer_count = connection.execute(
+            "SELECT COUNT(*) FROM knowledge_peer_consultations WHERE candidate_id=?",
+            (candidate_id,),
+        ).fetchone()[0]
+    assert evidence_count == 0
+    assert attempt_count == 0
+    assert peer_count == 0
+    assert task_manager.get_task(web_task["id"])["lease_epoch"] > web_context.lease_epoch
+    assert task_manager.get_task(peer_task["id"])["lease_epoch"] > peer_context.lease_epoch
 
 
 def test_missing_peer_configuration_is_recorded_without_failure_or_promotion(review_store, monkeypatch):
@@ -268,6 +412,8 @@ def test_candidate_review_worker_runs_channels_independently_and_never_promotes(
     class Context:
         task_id = 101
         def checkpoint(self, value): checkpoints.append(value)
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
 
     monkeypatch.setattr(review, "research_candidate_online", lambda *args, **kwargs: {"status": "unavailable"})
     monkeypatch.setattr(review, "consult_configured_peer_ais", lambda *args, **kwargs: {"status": "unconfigured"})
@@ -320,6 +466,8 @@ def test_shared_pipeline_budget_blocks_review_actions_when_job_budget_is_exhaust
     class Context:
         task_id = 808
         def checkpoint(self, value): pass
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
 
     result = handle_candidate_review(
         {"candidate_id": candidate_id, "query": "Python candidate review", "web_mode": "search"},
@@ -378,6 +526,8 @@ def test_candidate_sandbox_review_requires_consent_configuration_and_reviewed_pl
     class Context:
         task_id = 205
         def checkpoint(self, value): pass
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
         def control_status(self): return "running"
     with pytest.raises(PermanentTaskError, match="test plan changed"):
         handle_candidate_sandbox_review(task["payload"], None, Context())
@@ -410,6 +560,8 @@ def test_candidate_sandbox_worker_runs_reviewed_test_code_and_never_promotes(rev
     class Context:
         task_id = 202
         def checkpoint(self, value): pass
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
         def control_status(self): return "running"
 
     result = handle_candidate_sandbox_review(
@@ -463,6 +615,8 @@ def test_candidate_sandbox_records_missing_docker_as_unavailable_not_failed(revi
     class Context:
         task_id = 203
         def checkpoint(self, value): pass
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
         def control_status(self): return "running"
 
     result = handle_candidate_sandbox_review(
@@ -504,6 +658,8 @@ def test_cancelled_sandbox_run_does_not_create_test_failure_experience(review_st
     class Context:
         task_id = 206
         def checkpoint(self, value): pass
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
         def control_status(self): return "running"
 
     result = handle_candidate_sandbox_review(
@@ -541,6 +697,8 @@ def test_candidate_sandbox_expected_stdout_mismatch_is_a_failed_test(review_stor
     class Context:
         task_id = 204
         def checkpoint(self, value): pass
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
         def control_status(self): return "running"
 
     result = handle_candidate_sandbox_review(
@@ -600,6 +758,8 @@ def test_failed_web_and_peer_channels_become_idempotent_searchable_warnings(revi
     class Context:
         task_id = 901
         def checkpoint(self, value): checkpoints.append(value)
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
 
     monkeypatch.setattr(review, "research_candidate_online", lambda *args, **kwargs: {
         "status": "failed", "error_type": "SourceFetchError"
@@ -692,6 +852,8 @@ def test_sandbox_worker_revalidates_curated_oracle_before_execution(review_store
     class Context:
         task_id = 902
         def checkpoint(self, value): pass
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
         def control_status(self): return "running"
 
     with pytest.raises(PermanentTaskError, match="Curated oracle validation failed closed"):
@@ -778,6 +940,8 @@ def test_review_retry_reclaims_running_channel_and_charges_each_attempt_once(rev
     class Context:
         task_id = 909
         def checkpoint(self, value): pass
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
 
     payload = {"candidate_id": candidate_id, "query": "Python retry recovery", "web_mode": "search"}
     with pytest.raises(RetryableTaskError, match="ledger is temporarily unavailable"):
@@ -920,6 +1084,8 @@ def test_sandbox_retry_after_terminal_ledger_write_failure_is_bounded_and_idempo
     class Context:
         task_id = 991
         def checkpoint(self, value): pass
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
         def control_status(self): return "running"
 
     payload = {
@@ -1016,6 +1182,8 @@ def test_sandbox_failure_experience_persistence_retries_without_rerunning_test(
     class Context:
         task_id = 992
         def checkpoint(self, value): pass
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
         def control_status(self): return "running"
 
     payload = {
