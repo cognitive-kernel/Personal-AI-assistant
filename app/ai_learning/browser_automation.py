@@ -1596,6 +1596,9 @@ def _dispatch_next_persisted_run() -> dict[str, Any]:
         if control["paused"]:
             _release_worker_lease()
             return {"status": "paused", "active": False}
+        if control.get("draining", False):
+            _release_worker_lease()
+            return {"status": "draining", "active": False}
         if control.get("retry_pending", False):
             _release_worker_lease()
             return {
@@ -1791,6 +1794,8 @@ def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
     control = service.get_learning_control()
     if control["paused"]:
         raise ValueError("مکث سراسری فعال است؛ برای شروع یا ادامه ابتدا «ادامه / بازیابی» را بزنید.")
+    if control.get("draining", False):
+        raise ValueError("ماژول در حال پایان است؛ برای شروع کار جدید ابتدا «شروع» را بزنید.")
     if control.get("retry_pending", False):
         raise ValueError(
             "به‌دلیل خطای موقت ChatGPT، صف تا " + str(control["retry_after"])
@@ -1833,7 +1838,10 @@ def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, for
     """Persist every selected topic as its own FIFO run before dispatching browser work."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
     _ensure_process_identity()
-    globally_paused = service.get_learning_control()["paused"]
+    control = service.get_learning_control()
+    globally_paused = control["paused"]
+    if control.get("draining", False):
+        raise ValueError("ماژول در حال پایان است؛ برای شروع کار جدید ابتدا «شروع» را بزنید.")
     requested_ids = list(dict.fromkeys(int(item) for item in topic_ids))
     if not requested_ids:
         raise ValueError("حداقل یک سرفصل برای دریافت درس انتخاب کنید.")
@@ -2037,6 +2045,68 @@ def pause_learning() -> dict[str, Any]:
         raise
     _log_event("learning_paused", active_run_id=active_run_id, active_course_id=_ACTIVE_COURSE_ID)
     return {**state, "active": bool(state.get("worker_active")), "active_run_id": active_run_id}
+
+
+def finish_learning() -> dict[str, Any]:
+    """Drain the browser-learning queue without interrupting the current run."""
+    _ensure_process_identity()
+    state = service.set_learning_draining(True, "پایان تدریجی توسط کاربر")
+    with _LOCK:
+        active_run_id = _ACTIVE_RUN_ID
+    queued_ids = service.list_run_ids_by_status("queued")
+    active = bool(state.get("worker_active"))
+    status = "draining" if active else ("finished_pending" if queued_ids else "finished")
+    _log_event(
+        "learning_draining",
+        active_run_id=active_run_id,
+        queued_run_count=len(queued_ids),
+    )
+    return {
+        **state,
+        "status": status,
+        "active": active,
+        "active_run_id": active_run_id,
+        "queued_run_count": len(queued_ids),
+        "message": (
+            "کار فعال اجازه دارد کامل شود؛ کارهای صف‌شده محفوظ می‌مانند و کار جدید آغاز نمی‌شود."
+        ),
+    }
+
+
+def force_stop_learning() -> dict[str, Any]:
+    """Cancel active browser runs and pause admission without deleting queued work."""
+    _ensure_process_identity()
+    state = service.set_learning_paused(True, "توقف اجباری توسط کاربر")
+    with _LOCK:
+        active_run_id = _ACTIVE_RUN_ID
+        active_event = _CANCEL_EVENTS.get(active_run_id) if active_run_id is not None else None
+        if active_event is not None:
+            active_event.set()
+    cancelled_ids: list[int] = []
+    for run_id in service.list_run_ids_by_status("running"):
+        cancelled = service.cancel_run(int(run_id))
+        if cancelled.get("status") == "cancelled":
+            cancelled_ids.append(int(run_id))
+    queued_ids = service.list_run_ids_by_status("queued")
+    _log_event(
+        "learning_force_stop_requested",
+        active_run_id=active_run_id,
+        cancelled_run_ids=cancelled_ids,
+        queued_run_count=len(queued_ids),
+    )
+    return {
+        **state,
+        "status": "stopping" if state.get("worker_active") else "stopped",
+        "active": bool(state.get("worker_active")),
+        "active_run_id": active_run_id,
+        "cancelled_run_ids": cancelled_ids,
+        "queued_run_count": len(queued_ids),
+        "message": (
+            "اجرای فعال برای لغو علامت‌گذاری شد؛ درخواست‌های صف‌شده حفظ شده‌اند و با ادامه دوباره قابل اجرا هستند."
+        ),
+    }
+
+
 
 
 def resume_learning(course_id: int | None = None) -> dict[str, Any]:
