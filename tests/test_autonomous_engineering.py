@@ -1130,7 +1130,9 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "manual_task:" in workflow
     assert "inputs.manual_task" in workflow
     assert "pending-manual-task.txt" in workflow
-    assert "actions/variables" not in workflow
+    assert 'gh api --method PUT "repos/$env:GH_REPO/actions/variables' not in workflow
+    assert 'gh api --method POST "repos/$env:GH_REPO/actions/variables' not in workflow
+    assert 'gh api --method PATCH "repos/$env:GH_REPO/actions/variables' not in workflow
     assert "[string]$RunnerAccount" in acl_script
     assert "AppAccount" not in acl_script
     assert "Set-AutonomousDirectoryTreeAcl" in acl_script
