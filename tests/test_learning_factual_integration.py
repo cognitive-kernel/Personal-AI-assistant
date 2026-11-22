@@ -25,7 +25,7 @@ def test_python_lesson_review_persists_claims_as_unverified_factual_knowledge(
     source_hash = hashlib.sha256(source_chunk.encode("utf-8")).hexdigest()
     source_text = source_chunk
 
-    def discover(_job_id, _topic):
+    def discover(_job_id, _topic, *, task_context=None, expected_task_type=None, expected_payload=None):
         with db.learning_connection() as conn:
             conn.execute(
                 """INSERT INTO learning_evidence(
