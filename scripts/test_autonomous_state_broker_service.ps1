@@ -583,7 +583,7 @@ assert result["files_removed"] >= 2
         $taskBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($taskText)
         $taskHashProvider = [System.Security.Cryptography.SHA256]::Create()
         try {
-            $taskHash = [Convert]::ToHexString($taskHashProvider.ComputeHash($taskBytes)).ToLowerInvariant()
+            $taskHash = [BitConverter]::ToString($taskHashProvider.ComputeHash($taskBytes)).Replace("-", "").ToLowerInvariant()
         } finally {
             $taskHashProvider.Dispose()
         }
