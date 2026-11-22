@@ -2305,3 +2305,11 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 
 
 - Compatibility follow-up: direct/manual `discover_resources()` callers that supply a checkpoint callback but no TaskContext retain their existing API; an interruption settles that unowned run as `failed` with `discovery_interrupted` rather than leaving a permanent `running` row. A focused regression covers this path.
+
+
+### 2026-11-22 — Settle pause/cancel during final cloud-run update
+
+- A pause/cancel can arrive after the candidate transaction commits but before the final discovery-run update. The final _update_run() ownership guard then raises TaskInterrupted outside the earlier discovery try/except; TaskWorker correctly assumes that exception was already settled by TaskContext.checkpoint(), so the control request could remain pending and the run could remain marked running.
+- Final run finalization now catches that interruption, verifies the original task ID/worker/epoch, settles the request through TaskContext.checkpoint(), and reconciles the abandoned run. A stale/reclaimed owner also triggers run reconciliation without permitting a stale write.
+- Added a fault-injection regression that requests pause only after confirming the candidate transaction committed and immediately before the final run update; it verifies a paused task, failed/reconciled run, and preserved daily schedule.
+- Exact-head CI is pending; this change remains Draft and unmerged.
