@@ -239,7 +239,6 @@ if ($VerifyOnly) {
     }
     Write-Host "Final context: min(requested, model maximum, safe hardware capacity, Codex catalog maximum) = $selectedContext tokens"
 
-    # Reuse one persistent tag per base model; update num_ctx in place when the safe allocation changes.
     $codexModel = "$baseModel-codex-ctx"
     $existingInfo = $null
     try {
@@ -350,8 +349,7 @@ Write-Host "OLLAMA_RUNTIME_CONTEXT_OK"
     }
     Write-Host "Final context: min(requested, model maximum, safe hardware capacity, Codex catalog maximum) = $selectedContext tokens"
 
-    # Reuse one persistent tag per base model; update num_ctx in place when the safe allocation changes.
-    $codexModel = "$baseModel-codex-ctx"
+    $codexModel = "$baseModel-codex-ctx$selectedContext"
     $existingInfo = $null
     try {
         $existingInfo = Get-ModelInfo -ModelName $codexModel
