@@ -314,6 +314,8 @@ def persist_run_diagnostic(
             return True
         correlation_id = os.getenv("AUTONOMOUS_ENGINEERING_CORRELATION_ID", "").strip().lower()
         job_name = os.getenv("GITHUB_JOB", "").strip()
+        job_id = os.getenv("AUTONOMOUS_ENGINEERING_JOB_ID", "").strip()
+        step_id = os.getenv("AUTONOMOUS_ENGINEERING_STEP_ID", "").strip()
         entry = {
             "run_attempt": str(run_attempt),
             "task": task if isinstance(task, int) and not isinstance(task, bool) else None,
@@ -328,6 +330,10 @@ def persist_run_diagnostic(
             entry["correlation_id"] = correlation_id
         if job_name:
             entry["job"] = job_name
+        if job_id.isdigit():
+            entry["job_id"] = int(job_id)
+        if step_id:
+            entry["step_id"] = step_id
         entry["detail"] = str(entry["detail"])[:6000]
         diagnostics.append(entry)
         payload = {
