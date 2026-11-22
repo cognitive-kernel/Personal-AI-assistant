@@ -975,7 +975,7 @@ def test_every_retained_source_is_reviewed_across_resumable_curriculum_batches(l
     )
     monkeypatch.setattr(
         learning, "start_researched_path_learning",
-        lambda _path_id, allow_retry=False: {"queued_count": 0, "job_ids": [], "status": "complete"},
+        lambda _path_id, allow_retry=False, **_kwargs: {"queued_count": 0, "job_ids": [], "status": "complete"},
     )
     topic_pages = []
     for batch in range(2):
