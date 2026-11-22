@@ -298,7 +298,7 @@ try {
         throw "Workflow run attempt is invalid; refusing to claim the pending task."
     }
     if ($existingTaskFound) {
-        $ownerRecord = Repair-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $existingTask -RunId ([string]$env:GITHUB_RUN_ID) -RunAttempt $runAttempt -Source "legacy_migration" -CorrelationId ([string]$env:AUTONOMOUS_ENGINEERING_CORRELATION_ID)
+        $ownerRecord = Repair-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $existingTask -RunId ([string]$env:GITHUB_RUN_ID) -RunAttempt $runAttempt -Source "legacy_migration"
     } else {
         $ownerRecord = Get-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task ""
         if ($null -ne $ownerRecord) {
@@ -328,9 +328,56 @@ try {
         RunAttempt = $runAttempt
         Source = $ownerSource
         Existing = $ownerRecord
-        CorrelationId = [string]$env:AUTONOMOUS_ENGINEERING_CORRELATION_ID
     }
     $null = Write-AutonomousTaskOwnerRecord @ownerArgs
+
+    $correlationId = ([string]$env:AUTONOMOUS_ENGINEERING_CORRELATION_ID).Trim().ToLowerInvariant()
+    if ($correlationId -match '^[a-f0-9]{32}
+    $replacementBackups = $null
+} catch {
+    if ($null -ne $replacementBackups) {
+        if ($replacementBackups.Task -and (Test-Path -LiteralPath $replacementBackups.Task)) {
+            if (Test-Path -LiteralPath $pendingPath) {
+                Remove-Item -LiteralPath $pendingPath -Force -ErrorAction SilentlyContinue
+            }
+            Move-Item -LiteralPath $replacementBackups.Task -Destination $pendingPath -ErrorAction SilentlyContinue
+        }
+        if ($replacementBackups.Owner -and (Test-Path -LiteralPath $replacementBackups.Owner)) {
+            if (Test-Path -LiteralPath $taskOwnerPath) {
+                Remove-Item -LiteralPath $taskOwnerPath -Force -ErrorAction SilentlyContinue
+            }
+            Move-Item -LiteralPath $replacementBackups.Owner -Destination $taskOwnerPath -ErrorAction SilentlyContinue
+        }
+    }
+    throw
+} finally {
+    if ($stateLockOwned) {
+        $stateLockStream.Unlock(0, 1)
+    }
+    $stateLockStream.Dispose()
+}
+) {
+        $persistedOwner = Get-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $manualTask
+        if ($null -eq $persistedOwner) {
+            throw "The durable task owner record disappeared before correlation metadata could be attached."
+        }
+        $persistedOwner | Add-Member -NotePropertyName correlation_id -NotePropertyValue $correlationId -Force
+        if (-not $persistedOwner.PSObject.Properties["submitted_correlation_id"] -or [string]::IsNullOrEmpty([string]$persistedOwner.submitted_correlation_id)) {
+            $persistedOwner | Add-Member -NotePropertyName submitted_correlation_id -NotePropertyValue $correlationId -Force
+        }
+        $correlationTemporary = Join-Path $stateDir ("pending-manual-task-owner-correlation-" + $env:GITHUB_RUN_ID + "-" + $runAttempt + ".tmp")
+        try {
+            $correlationJson = $persistedOwner | ConvertTo-Json -Depth 5 -Compress
+            [System.IO.File]::WriteAllText(
+                $correlationTemporary, $correlationJson, [System.Text.UTF8Encoding]::new($false)
+            )
+            Move-Item -LiteralPath $correlationTemporary -Destination $taskOwnerPath -Force
+        } finally {
+            if (Test-Path -LiteralPath $correlationTemporary) {
+                Remove-Item -LiteralPath $correlationTemporary -Force
+            }
+        }
+    }
 
     Write-Host "Manual task persisted to the durable runner state before prerequisite checks."
     $replacementBackups = $null
