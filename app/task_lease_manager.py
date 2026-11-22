@@ -73,31 +73,43 @@ def claim_next_task(
                WHERE status='running' AND lease_expires_at <= ? AND attempts >= max_attempts""",
             (now_text, now_text),
         )
-        if normalized_types is not None:
-            # Read module admission in the same BEGIN IMMEDIATE transaction as
-            # the task claim. A concurrent pause/finish/stop therefore cannot
-            # slip between a separate state check and the claim write.
-            from .module_control import enabled_task_types
-
-            normalized_types = enabled_task_types(conn, normalized_types)
-            if not normalized_types:
-                return None
-        type_clause = ""
+        query = """SELECT id FROM task_queue
+                    WHERE ((status='queued' AND scheduled_at <= ?)
+                       OR (status='running' AND lease_expires_at <= ? AND attempts < max_attempts))"""
         query_params: tuple[Any, ...] = (now_text, now_text)
         if normalized_types is not None:
-            placeholders = ",".join("?" for _ in normalized_types)
-            type_clause += f" AND task_type IN ({placeholders})"
-            query_params = (*query_params, *normalized_types)
+            # Read both admission and drain-recovery permissions in the same
+            # BEGIN IMMEDIATE transaction as the task claim. During drain, new
+            # queued work is blocked but an expired lease for already-active
+            # work can still be recovered from its durable checkpoint.
+            from .module_control import enabled_task_types, recoverable_task_types
+
+            admitted_types = enabled_task_types(conn, normalized_types)
+            recoverable_types = recoverable_task_types(conn, normalized_types)
+            queue_filter = " AND 0"
+            running_filter = " AND 0"
+            query_params = (now_text,)
+            if admitted_types:
+                placeholders = ",".join("?" for _ in admitted_types)
+                queue_filter = f" AND task_type IN ({placeholders})"
+                query_params = (*query_params, *admitted_types)
+            query_params = (*query_params, now_text)
+            if recoverable_types:
+                placeholders = ",".join("?" for _ in recoverable_types)
+                running_filter = f" AND task_type IN ({placeholders})"
+                query_params = (*query_params, *recoverable_types)
+            query = (
+                """SELECT id FROM task_queue WHERE
+                   ((status='queued' AND scheduled_at <= ?""" + queue_filter + """)
+                    OR (status='running' AND lease_expires_at <= ? AND attempts < max_attempts"""
+                + running_filter + """))"""
+            )
         if normalized_excluded is not None:
             placeholders = ",".join("?" for _ in normalized_excluded)
-            type_clause += f" AND task_type NOT IN ({placeholders})"
+            query += f" AND task_type NOT IN ({placeholders})"
             query_params = (*query_params, *normalized_excluded)
         row = conn.execute(
-            """SELECT id FROM task_queue
-               WHERE ((status='queued' AND scheduled_at <= ?)
-                  OR (status='running' AND lease_expires_at <= ? AND attempts < max_attempts))"""
-            + type_clause +
-            " ORDER BY priority DESC, scheduled_at ASC, id ASC LIMIT 1",
+            query + " ORDER BY priority DESC, scheduled_at ASC, id ASC LIMIT 1",
             query_params,
         ).fetchone()
         if row is None:
