@@ -45,19 +45,20 @@ def repository_execution_lock(run_id: str, run_attempt: str) -> Iterator[None]:
                     "This run exited without touching its checkpoint or working tree."
                 ) from exc
         acquired = True
-        handle.seek(0)
-        handle.truncate()
-        handle.write(
-            json.dumps(
-                {
-                    "pid": os.getpid(),
-                    "run_id": run_id,
-                    "run_attempt": run_attempt,
-                    "host": socket.gethostname(),
-                    "acquired_at": time.time(),
-                }
-            ).encode("utf-8")
-        )
+        owner_metadata = json.dumps(
+            {
+                "pid": os.getpid(),
+                "run_id": run_id,
+                "run_attempt": run_attempt,
+                "host": socket.gethostname(),
+                "acquired_at": time.time(),
+            }
+        ).encode("utf-8")
+        # Byte zero is the cross-platform lock. Keep readable owner metadata after it:
+        # Windows byte-range locks reject reads that overlap the locked byte.
+        handle.seek(1)
+        handle.write(owner_metadata)
+        handle.truncate(1 + len(owner_metadata))
         handle.flush()
         yield
     finally:
@@ -108,7 +109,7 @@ def require_parent_repository_execution_lock(run_id: str) -> None:
         if not held_by_another_process:
             raise RuntimeError("PR publication must run as a child of the locked cycle controller.")
 
-        handle.seek(0)
+        handle.seek(1)
         try:
             owner = json.loads(handle.read(4096).decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
