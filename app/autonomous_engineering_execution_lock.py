@@ -25,14 +25,15 @@ def repository_execution_lock(run_id: str, run_attempt: str) -> Iterator[None]:
     handle = _open_repository_lock_file(lock_path, create=True)
     acquired = False
     try:
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            # Byte zero is reserved for the cross-platform lock on every OS.
+            handle.write(b"0")
+            handle.flush()
+        handle.seek(0)
         if os.name == "nt":
             import msvcrt
 
-            handle.seek(0, os.SEEK_END)
-            if handle.tell() == 0:
-                handle.write(b"0")
-                handle.flush()
-            handle.seek(0)
             try:
                 msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
             except OSError as exc:
@@ -86,7 +87,7 @@ def require_parent_repository_execution_lock(run_id: str) -> None:
     """Require this subprocess to be launched by the cycle process holding the shared lock."""
     lock_path = execution_state_directory() / "repository-execution.lock"
     try:
-        handle = _open_repository_lock_file(lock_path, create=False)
+        handle = _open_repository_lock_file(lock_path, create=True)
     except OSError as exc:
         raise RuntimeError("The repository execution lock owner cannot be verified.") from exc
 
