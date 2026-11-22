@@ -221,7 +221,7 @@ def list_archived(state: Path) -> list[dict[str, Any]]:
         result.append({
             "task_id": entry.name,
             "revision": revision,
-            "status": "restored" if manifest.get("restored_at") else "archived",
+            "status": "restored" if manifest.get("restored_at_ms") is not None else "archived",
             "created_at": owner.get("created_at"),
             "archived_at": manifest.get("archived_at"),
             "source": owner.get("source"),
@@ -233,6 +233,28 @@ def list_archived(state: Path) -> list[dict[str, Any]]:
 def archive_task(state: Path, task_id: str, revision: str) -> dict[str, Any]:
     if not re.fullmatch(r"[a-f0-9]{64}", task_id or "") or not re.fullmatch(r"[a-f0-9]{64}", revision or ""):
         raise LifecycleConflict("Invalid task identity or revision.", ["invalid_identity"])
+    root = _archive_root(state)
+    final = root / task_id
+    task_path, owner_path = state / TASK_FILE, state / OWNER_FILE
+    if final.exists():
+        saved_task = _regular(final / "task.txt", MAX_TASK_BYTES)
+        saved_owner = _regular(final / "owner.json", 64 * 1024)
+        if saved_task is None or saved_owner is None:
+            raise LifecycleConflict("Existing archive entry is incomplete.", ["archive_package_incomplete"])
+        active_task = _regular(task_path, MAX_TASK_BYTES)
+        active_owner = _regular(owner_path, 64 * 1024)
+        if active_task is not None and active_task != saved_task:
+            raise LifecycleConflict("Archive recovery found a different pending task.", ["archive_collision"])
+        if active_owner is not None and active_owner != saved_owner:
+            raise LifecycleConflict("Archive recovery found different owner metadata.", ["archive_collision"])
+        if active_task is not None or active_owner is not None:
+            if active_task is None and active_owner is not None:
+                raise LifecycleConflict("Archive recovery found an orphan owner record.", ["archive_recovery_ambiguous"])
+            if active_task is not None:
+                task_path.unlink()
+            if active_owner is not None:
+                owner_path.unlink()
+        return {"task_id": task_id, "status": "archived", "preserved": True}
     pending = list_pending(state)
     if len(pending) != 1 or pending[0]["task_id"] != task_id:
         raise LifecycleConflict("Pending task identity is stale.", ["stale_task"])
@@ -241,20 +263,10 @@ def archive_task(state: Path, task_id: str, revision: str) -> dict[str, Any]:
     blockers = _mutation_blockers(state)
     if blockers:
         raise LifecycleConflict("Task archive was refused by safety guards.", blockers)
-    task_path, owner_path = state / TASK_FILE, state / OWNER_FILE
     task, owner_raw = _regular(task_path, MAX_TASK_BYTES), _regular(owner_path, 64 * 1024)
     if task is None or owner_raw is None:
         raise LifecycleConflict("Pending task changed during archive.", ["task_changed"])
-    root = _archive_root(state)
-    final = root / task_id
-    if final.exists():
-        archived = next((x for x in list_archived(state) if x["task_id"] == task_id), None)
-        if archived is None:
-            raise LifecycleConflict("Existing archive entry is invalid.", ["archive_collision"])
-        if task != (final / "task.txt").read_bytes() or owner_raw != (final / "owner.json").read_bytes():
-            raise LifecycleConflict("Archive collision does not match pending state.", ["archive_collision"])
-    else:
-        stage = Path(tempfile.mkdtemp(prefix=".stage-", dir=str(root)))
+    stage = Path(tempfile.mkdtemp(prefix=".stage-", dir=str(root)))
         try:
             os.chmod(stage, 0o700)
             _atomic_write(stage / "task.txt", task)
@@ -287,8 +299,12 @@ def restore_task(state: Path, task_id: str, revision: str) -> dict[str, Any]:
         raise LifecycleConflict("Archived task is unavailable.", ["stale_task"])
     if archived["revision"] != revision:
         raise LifecycleConflict("Archived task revision is stale.", ["stale_revision"])
-    if _regular(state / TASK_FILE, MAX_TASK_BYTES) is not None or _regular(state / OWNER_FILE, 64 * 1024) is not None:
+    active_task = _regular(state / TASK_FILE, MAX_TASK_BYTES)
+    active_owner = _regular(state / OWNER_FILE, 64 * 1024)
+    if active_task is not None and active_task != task:
         raise LifecycleConflict("The pending task slot is occupied.", ["pending_slot_occupied"])
+    if active_owner is not None and active_owner != owner_raw:
+        raise LifecycleConflict("The pending owner slot is occupied.", ["pending_slot_occupied"])
     blockers = _mutation_blockers(state)
     if blockers:
         raise LifecycleConflict("Task restore was refused by safety guards.", blockers)
@@ -304,8 +320,10 @@ def restore_task(state: Path, task_id: str, revision: str) -> dict[str, Any]:
         raise LifecycleConflict("Archived task integrity check failed.", ["archive_integrity_mismatch"])
     # Write task first; if owner write fails, the intact archive remains the
     # recovery source and subsequent calls fail closed rather than overwrite it.
-    _atomic_write(state / TASK_FILE, task)
-    _atomic_write(state / OWNER_FILE, owner_raw)
+    if active_task is None:
+        _atomic_write(state / TASK_FILE, task)
+    if active_owner is None:
+        _atomic_write(state / OWNER_FILE, owner_raw)
     manifest["restored_at_ms"] = int(time.time() * 1000)
     _atomic_write(package / "manifest.json", _canonical(manifest) + b"\n")
     return {"task_id": task_id, "status": "restored", "preserved": True}
