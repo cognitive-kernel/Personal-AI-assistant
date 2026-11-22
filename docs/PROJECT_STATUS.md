@@ -493,3 +493,9 @@ Exact tested code head: ab703a284752c80531e9f25e0b7ad53a04c453a0.
 Evidence: Tests/Windows regressions https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863471 ; Browser E2E https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863440 ; Dependency audit https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863452 ; CodeQL https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/43629863507 .
 
 The subsequent documentation-only evidence update does not change runtime code and is followed by a fresh exact-head CI run. Target-host cross-account ACL verification, non-admin sandbox smoke/soak, crash/restart acceptance, and independent security review remain pending. Durable Pause remains enabled; no Runner, service, or autonomous process was started.
+
+
+## 2026-11-22 — Sandbox practical assessment task fencing (PR pending)
+
+- Practical assessment inserts and curriculum mastery updates are now lease-fenced inside their SQLite transaction. The sandbox handler factory is explicitly bound to the task type that registered it; experience tests use `experience.run_test`, while generic Python/language runners use their own task types.
+- Added stale-owner persistence and handler propagation regressions. Exact-head CI is pending; this closes the practical-grading write path only.
