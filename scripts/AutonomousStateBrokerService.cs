@@ -433,16 +433,28 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         }, 2000);
     }
 
+    private string EnsureTaskArchiveRoot()
+    {
+        string root = Path.Combine(_stateDirectory, "archived-pending-tasks");
+        Directory.CreateDirectory(root);
+        DirectoryInfo info = new DirectoryInfo(root);
+        if ((info.Attributes & FileAttributes.ReparsePoint) != 0)
+            throw new InvalidDataException("Task archive root cannot be a reparse point.");
+        return root;
+    }
+
     private object ListArchivedTasks()
     {
         return WithStateLock(delegate
         {
-            string root = Path.Combine(_stateDirectory, "archived-pending-tasks");
-            if (!Directory.Exists(root)) Directory.CreateDirectory(root);
+            string root = EnsureTaskArchiveRoot();
             List<object> tasks = new List<object>();
             foreach (string directory in Directory.GetDirectories(root))
             {
                 string id = Path.GetFileName(directory);
+                DirectoryInfo packageInfo = new DirectoryInfo(directory);
+                if ((packageInfo.Attributes & FileAttributes.ReparsePoint) != 0)
+                    throw new InvalidDataException("Archive package cannot be a reparse point.");
                 if (!System.Text.RegularExpressions.Regex.IsMatch(id, "^[a-f0-9]{64}$"))
                     throw new InvalidDataException("Archive contains an unknown entry.");
                 string taskPath = Path.Combine(directory, "task.txt");
@@ -517,8 +529,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                             throw new InvalidDataException("stale_revision");
                         List<string> blockers = (List<string>)record["blockers"];
                         if (blockers.Count > 0) throw new InvalidDataException(String.Join(",", blockers.ToArray()));
-                        string root = Path.Combine(_stateDirectory, "archived-pending-tasks");
-                        Directory.CreateDirectory(root);
+                        string root = EnsureTaskArchiveRoot();
                         string final = Path.Combine(root, taskId);
                         if (!Directory.Exists(final))
                         {
@@ -555,8 +566,11 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             {
                 return WithCheckpointStoreLock(delegate
                 {
-                    string root = Path.Combine(_stateDirectory, "archived-pending-tasks");
+                    string root = EnsureTaskArchiveRoot();
                     string package = Path.Combine(root, taskId);
+                    if (Directory.Exists(package) &&
+                        (new DirectoryInfo(package).Attributes & FileAttributes.ReparsePoint) != 0)
+                        throw new InvalidDataException("Archive package cannot be a reparse point.");
                     string taskPath = Path.Combine(package, "task.txt");
                     string ownerPath = Path.Combine(package, "owner.json");
                     string manifestPath = Path.Combine(package, "manifest.json");
@@ -569,10 +583,9 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                     if (SafeFileExists(Path.Combine(_stateDirectory, "pending-autonomous-pr.json")) ||
                         SafeFileExists(Path.Combine(_stateDirectory, "pending-state-cleanup.json")))
                         throw new InvalidDataException("pending_pr_or_cleanup");
-                    if (SafeFileExists(Path.Combine(_stateDirectory, "latest-worktree-checkpoint.json")) ||
-                        Directory.GetFiles(_stateDirectory, "worktree-checkpoint-*").Length > 0 ||
-                        Directory.GetFiles(_stateDirectory, "worktree-plan-*").Length > 0)
-                        throw new InvalidDataException("checkpoint_present_or_unknown");
+                    List<string> restoreBlockers = PendingTaskBlockers();
+                    if (restoreBlockers.Count > 0)
+                        throw new InvalidDataException(String.Join(",", restoreBlockers.ToArray()));
                     Dictionary<string, object> manifest = ReadJsonFile(
                         Path.Combine("archived-pending-tasks", taskId, "manifest.json"), 65536
                     ) as Dictionary<string, object>;
