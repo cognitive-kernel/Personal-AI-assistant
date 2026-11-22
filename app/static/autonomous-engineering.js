@@ -62,6 +62,7 @@
   if (missing.length) showModuleWarning("برخی قابلیت‌های کنسول بارگذاری نشدند: " + missing.join("، "));
   function onPageHide() {
     stopPolling();
+    if (status && typeof status.stop === "function") status.stop();
   }
   function onPageShow(event) {
     if (event.persisted) startPolling();
@@ -73,6 +74,8 @@
     version: 1,
     stop() {
       stopPolling();
+      if (status && typeof status.stop === "function") status.stop();
+      if (controls && typeof controls.stop === "function") controls.stop();
       window.removeEventListener("pagehide", onPageHide);
       window.removeEventListener("pageshow", onPageShow);
     }
