@@ -9,7 +9,7 @@ import pytest
 
 from app import cloud_resources, db, task_manager, web_sources
 from app.cloud_resources import CloudResourceError
-from app.task_worker import TaskContext
+from app.task_worker import TaskContext, TaskInterrupted
 from app.schema_migrations import MigrationRunner
 from app.schema_registry import CLOUD_RESOURCE_MIGRATIONS, initialize_database_file
 
