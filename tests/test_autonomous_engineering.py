@@ -162,6 +162,20 @@ def test_dispatch_requires_authenticated_github_cli(monkeypatch):
     assert error.value.status_code == 503
 
 
+
+def test_dispatch_refuses_to_start_a_finished_autonomous_module(monkeypatch):
+    monkeypatch.setattr(agent, "collect_status", lambda: {
+        "enabled": False,
+        "ready": True,
+        "paused": False,
+        "github": {"recent_runs": [], "runs_available": True},
+    })
+    with pytest.raises(HTTPException) as error:
+        agent.dispatch_autonomous_engineering()
+    assert error.value.status_code == 409
+    assert "پایان یافته" in error.value.detail
+
+
 def test_dispatch_uses_only_the_configured_workflow_and_main(monkeypatch):
     calls = []
     monkeypatch.setattr(agent, "collect_status", lambda: {"ready": True, "github": {"runs_available": True}})
