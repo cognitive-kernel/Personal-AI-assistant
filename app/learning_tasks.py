@@ -281,7 +281,9 @@ def handle_learning_job(
     if status in _TERMINAL_LEARNING_STATUSES:
         if status == "rejected":
             _record_learning_escalation(
-                context.task_id, job_id, "quality_rejected", job.get("error") or "Lesson did not pass quality checks."
+                context.task_id, job_id, "quality_rejected", job.get("error") or "Lesson did not pass quality checks.",
+                task_context=context, expected_task_type=LEARNING_TASK_TYPE,
+                expected_payload=payload,
             )
         if status == "completed" and job.get("path_topic_id") is not None:
             learning.queue_next_researched_path_topic(
@@ -332,6 +334,8 @@ def handle_learning_job(
                     _record_learning_escalation(
                         context.task_id, job_id, "attempts_exhausted",
                         f"Model request failed after {attempts} attempt(s): {type(cause).__name__}",
+                        task_context=context, expected_task_type=LEARNING_TASK_TYPE,
+                        expected_payload=payload,
                     )
                 raise RetryableTaskError("Learning model request failed; retry may succeed.") from exc
             _record_learning_escalation(
@@ -364,6 +368,8 @@ def handle_learning_job(
         _record_learning_escalation(
             context.task_id, job_id, "quality_rejected",
             result.get("error") or "Lesson did not pass quality checks.",
+            task_context=context, expected_task_type=LEARNING_TASK_TYPE,
+            expected_payload=payload,
         )
     if status not in _TERMINAL_LEARNING_STATUSES:
         raise learning.LearningError(
