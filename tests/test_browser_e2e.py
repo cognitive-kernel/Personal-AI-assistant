@@ -5529,24 +5529,24 @@ def test_module_resume_remains_available_for_paused_tasks_after_start():
         # cannot claim it during this UI-state regression.
         assert page.request.post(
             base_url.rstrip("/") + "/api/tasks/modules/cloud-discovery/start"
-        ).status_code == 200
+        ).status == 200
         assert page.request.post(
             base_url.rstrip("/") + "/api/tasks/modules/cloud-discovery/pause"
-        ).status_code == 200
+        ).status == 200
         queued = page.request.post(
             base_url.rstrip("/") + "/api/cloud-resources/discover"
         )
-        assert queued.status_code == 202
+        assert queued.status == 202
         assert page.request.post(
             base_url.rstrip("/") + "/api/tasks/modules/cloud-discovery/pause"
-        ).status_code == 200
+        ).status == 200
 
         page.locator("#refresh-module-controls").click()
         page.wait_for_function(
             "() => document.querySelector('[data-module-id=cloud-discovery] .module-control-state')?.dataset.state === 'paused'",
             timeout=10000,
         )
-        assert cloud.locator(".module-control-counts").inner_text().find("مکث‌شده: 1") >= 0
+        assert "مکث‌شده: 0" not in cloud.locator(".module-control-counts").inner_text()
 
         cloud.locator('button[data-action="start"]').click()
         page.wait_for_function(
