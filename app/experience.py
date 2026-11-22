@@ -243,6 +243,9 @@ def update_experience(
     test_results: list[dict[str, Any]] | None = None,
     takeaway: str | None = None,
     _controlled_run: bool = False,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Update a record. Verification is reserved for the internal controlled runner."""
     init_experience_tables()
@@ -269,6 +272,17 @@ def update_experience(
         raise ValueError("takeaway must be at most 10000 characters.")
 
     with learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        if task_context is not None and (
+            expected_task_type is not None or expected_payload is not None
+        ):
+            if expected_task_type is None or expected_payload is None:
+                raise ValueError("Experience task ownership contract is incomplete.")
+            task_context.assert_current(
+                conn,
+                expected_task_type=expected_task_type,
+                expected_payload=expected_payload,
+            )
         row = conn.execute("SELECT * FROM learning_experiences WHERE id=?", (experience_id,)).fetchone()
         if row is None:
             raise KeyError(experience_id)
