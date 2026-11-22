@@ -567,3 +567,57 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 #programming-assist-output { white-space: pre-wrap; overflow-wrap: anywhere; }
 :root[data-theme="dark"] .chat-message { border-color: #3b4b62; background: var(--surface-muted, #172338); }
 :root[data-theme="dark"] #settings-form fieldset { border-color: #3b4b62; }
+
+/* Isolated controls for durable background modules. */
+.module-control-panel {
+  margin-block: 14px 20px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface-muted);
+}
+.module-control-panel > h3 { margin-top: 0; }
+.module-control-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+.module-control-card {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.module-control-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.module-control-heading h3 { margin: 0; }
+.module-control-state {
+  flex: 0 0 auto;
+  padding: 2px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface-muted);
+  font-size: .82rem;
+  font-weight: 700;
+}
+.module-control-state[data-state="running"] { color: #166534; border-color: #86c99a; background: #effaf1; }
+.module-control-state[data-state="paused"] { color: #854d0e; border-color: #e8c77c; background: #fff9e9; }
+.module-control-state[data-state="draining"] { color: #1d4ed8; border-color: #9ab4f5; background: #eff4ff; }
+.module-control-state[data-state="stopped"],
+.module-control-state[data-state="finished"] { color: #475569; }
+.module-control-counts { color: var(--muted); font-size: .86rem; margin-block: 8px; }
+.module-control-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.module-control-actions button { margin: 0; }
+.module-control-actions button.danger { color: #991b1b; border-color: #e2a0a0; background: #fff7f7; }
+.module-control-actions button.danger:hover { background: #feecec; }
+@media (max-width: 420px) {
+  .module-control-actions button { flex: 1 1 calc(50% - 5px); }
+  .module-control-heading { flex-wrap: wrap; }
+}
