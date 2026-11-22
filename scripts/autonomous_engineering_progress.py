@@ -80,6 +80,12 @@ def _with_run_correlation(record: dict[str, Any]) -> dict[str, Any]:
     job = os.getenv("GITHUB_JOB", "").strip()
     if job:
         payload.setdefault("job", job)
+    job_id = os.getenv("AUTONOMOUS_ENGINEERING_JOB_ID", "").strip()
+    if job_id.isdigit():
+        payload.setdefault("job_id", int(job_id))
+    step_id = os.getenv("AUTONOMOUS_ENGINEERING_STEP_ID", "").strip()
+    if step_id:
+        payload.setdefault("step_id", step_id)
     return payload
 
 
