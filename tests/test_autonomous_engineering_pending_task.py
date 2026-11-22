@@ -46,6 +46,8 @@ def test_powershell_reconciles_github_pr_state_before_rejecting_a_replacement_ta
     assert 'quarantine-$replacementStamp' in script
     assert 'compare/$mergeSha...main' in script
     assert 'Repair-AutonomousPendingStateCleanup -StateDirectory $stateDir' in script
+    assert 'submitted_correlation_id' in script
+    assert 'Add-Member -NotePropertyName correlation_id' in script
 
 
 def test_different_manual_task_cannot_replace_existing_pending_task():
