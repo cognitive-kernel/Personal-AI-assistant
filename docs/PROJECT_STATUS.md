@@ -502,3 +502,14 @@ The subsequent documentation-only evidence update does not change runtime code a
 - Windows Runner execution `44932980718` / job `137009509972` failed after two Codex attempts: attempt 2 produced no final `agent_message`, the output-last-message report was empty, and completion-marker validation failed. The durable task was preserved and not marked complete; no artifact was produced.
 - The Autonomous Engineering dashboard now reports this as a distinct Codex no-final-message failure instead of showing only the generic bounded-retry error. `/resume` dispatch now marks timeouts ambiguous and non-retryable, while definite CLI launch failures are retryable with a correlation ID. Unmatched 404/405 errors under the module prefix now follow the structured error contract.
 - Regression tests were added for these cases. Exact-head CI for the resulting PR #817 head is pending; Gate C is not closed, and no target-host acceptance is claimed.
+
+
+## 2026-11-22 — یکپارچه‌سازی Gate B برای fencing نوشتن‌های دامنه‌ای (PR #837)
+
+- PR Draft [#837](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/837) از current main در SHA 0367a3ebfd92ac196bb096f1a45cbfed5a61985d ساخته شد و تغییرات هم‌پوشان #819 و #821–#826 را در یک branch ادغام می‌کند.
+- baseline صف و lease از PR #799 حفظ شده است؛ epoch افزایشی، owner token و expiry دوباره پیاده‌سازی نشده‌اند.
+- پوشش دامنه‌ای شامل learning/curriculum، factual verification، knowledge lifecycle/graph، cloud discovery، experience/research و sandbox practical است. child-task creation نیز پیش از INSERT، parent task را در همان تراکنش اعتبارسنجی می‌کند.
+- فایل‌های مشترک به‌صورت صریح ترکیب شدند: نسخهٔ parent-task contract در learning از #825، regressionهای stale epoch از #819، fencing source/path curriculum از #819 به‌علاوهٔ child scheduling از #825، patch یکتای task_queue_store از #823/#825، و دو تغییر مستقل experience_tasks از #824/#826.
+- جدول transition و محدودهٔ audit در docs/DOMAIN_TASK_WRITE_FENCING_AUDIT_2026-11-22.fa.md ثبت شده است.
+- Exact-head CI روی PR #837 هنوز pending است؛ هیچ‌یک از تغییرات Gate B ادغام نشده‌اند. PRهای منبع و branchهای آن‌ها تا تأیید CI و تطبیق reviewها حذف نمی‌شوند.
+- Target-host Windows Runner، ACL چندحسابی، Ollama/Codex واقعی و crash/restart همچنان gateهای خارجی‌اند؛ این PR به‌تنهایی operational acceptance نیست.
