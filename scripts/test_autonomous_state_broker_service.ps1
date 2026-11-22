@@ -321,9 +321,14 @@ from pathlib import Path
 os.environ["AUTONOMOUS_ENGINEERING_PROGRESS_DIR"] = sys.argv[2]
 sys.path.insert(0, sys.argv[3])
 from scripts.autonomous_engineering_execution_lock import repository_execution_lock
-with repository_execution_lock("broker-lock-ci", "1"):
-    Path(sys.argv[1]).write_text("locked", encoding="utf-8")
-    time.sleep(3)
+try:
+    with repository_execution_lock("broker-lock-ci", "1"):
+        Path(sys.argv[1]).write_text("locked", encoding="utf-8")
+        time.sleep(3)
+    Path(sys.argv[4]).write_text("0", encoding="ascii")
+except BaseException as exc:
+    Path(sys.argv[4]).write_text("1:" + repr(exc), encoding="utf-8")
+    raise
 '@
     [System.IO.File]::WriteAllText(
         $repositoryLockScriptPath,
@@ -334,8 +339,9 @@ with repository_execution_lock("broker-lock-ci", "1"):
     $pythonPath = (Get-Command python -ErrorAction Stop).Source
     $lockStdoutPath = Join-Path $env:TEMP ("broker-repository-lock-stdout-" + [guid]::NewGuid().ToString("N") + ".txt")
     $lockStderrPath = Join-Path $env:TEMP ("broker-repository-lock-stderr-" + [guid]::NewGuid().ToString("N") + ".txt")
+    $lockExitStatusPath = Join-Path $env:TEMP ("broker-repository-lock-exit-" + [guid]::NewGuid().ToString("N") + ".txt")
     $lockProcess = Start-Process -FilePath $pythonPath -ArgumentList @(
-        $repositoryLockScriptPath, $repositoryLockReadyPath, $stateRoot, $repoRoot
+        $repositoryLockScriptPath, $repositoryLockReadyPath, $stateRoot, $repoRoot, $lockExitStatusPath
     ) -PassThru -NoNewWindow -RedirectStandardOutput $lockStdoutPath -RedirectStandardError $lockStderrPath
     try {
         $lockDeadline = [DateTime]::UtcNow.AddSeconds(10)
@@ -360,19 +366,18 @@ else:
         if (-not $lockProcess.WaitForExit(10000)) {
             throw "The Python repository-lock holder timed out. stdout: $(Get-Content -LiteralPath $lockStdoutPath -Raw -ErrorAction SilentlyContinue) stderr: $(Get-Content -LiteralPath $lockStderrPath -Raw -ErrorAction SilentlyContinue)"
         }
-        $lockProcess.Refresh()
-        $lockExitCode = $lockProcess.ExitCode
-        if ($null -eq $lockExitCode) {
-            throw "The Python repository-lock holder exited, but Windows did not expose its exit code. ProcessId: $($lockProcess.Id). stdout: $(Get-Content -LiteralPath $lockStdoutPath -Raw -ErrorAction SilentlyContinue) stderr: $(Get-Content -LiteralPath $lockStderrPath -Raw -ErrorAction SilentlyContinue)"
+        if (-not (Test-Path -LiteralPath $lockExitStatusPath -PathType Leaf)) {
+            throw "The Python repository-lock holder exited without publishing its completion status. ProcessId: $($lockProcess.Id). stdout: $(Get-Content -LiteralPath $lockStdoutPath -Raw -ErrorAction SilentlyContinue) stderr: $(Get-Content -LiteralPath $lockStderrPath -Raw -ErrorAction SilentlyContinue)"
         }
-        if ([int]$lockExitCode -ne 0) {
-            throw "The Python repository-lock holder exited with code $lockExitCode. stdout: $(Get-Content -LiteralPath $lockStdoutPath -Raw -ErrorAction SilentlyContinue) stderr: $(Get-Content -LiteralPath $lockStderrPath -Raw -ErrorAction SilentlyContinue)"
+        $lockExitStatus = Get-Content -LiteralPath $lockExitStatusPath -Raw
+        if ($lockExitStatus -ne "0") {
+            throw "The Python repository-lock holder failed: $lockExitStatus. stdout: $(Get-Content -LiteralPath $lockStdoutPath -Raw -ErrorAction SilentlyContinue) stderr: $(Get-Content -LiteralPath $lockStderrPath -Raw -ErrorAction SilentlyContinue)"
         }
     } finally {
         if ($lockProcess -and -not $lockProcess.HasExited) {
             Stop-Process -Id $lockProcess.Id -Force -ErrorAction SilentlyContinue
         }
-        Remove-Item -LiteralPath $repositoryLockScriptPath, $repositoryLockReadyPath, $lockStdoutPath, $lockStderrPath -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $repositoryLockScriptPath, $repositoryLockReadyPath, $lockStdoutPath, $lockStderrPath, $lockExitStatusPath -Force -ErrorAction SilentlyContinue
     }
 
     # A progress writer may run before the workflow acquires the repository
