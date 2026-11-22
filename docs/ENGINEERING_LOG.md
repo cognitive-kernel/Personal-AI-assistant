@@ -2285,7 +2285,8 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 
 - Added an explicit registry for every feature-managed TaskRuntime type: research, learning, cloud discovery, programming, sandbox, experience testing, and factual verification. A regression test requires exact coverage of `FEATURE_MANAGED_TASK_TYPES`.
 - Added an additive module-state migration and loopback-only API. Module state is checked inside the same queue transaction as task claim, preventing a claim from racing past pause, drain, or force-stop.
-- Added independent Start, Pause, Resume, Finish/Drain, and Force Stop controls to the task dashboard. Finish lets active tasks complete and preserves queued work; Pause preserves checkpoints; Force Stop cancels waiting tasks and requests cooperative cancellation of active tasks.
+- Added independent Start, Pause, Resume, Finish/Drain, and Force Stop controls to the task dashboard. Finish lets active tasks complete and preserves queued work; Pause preserves checkpoints; Force Stop preserves waiting tasks as paused for later resume and requests cooperative cancellation of active tasks.
+- Drain blocks new queued work but permits recovery of an expired lease for a task that was already active, so a worker crash cannot strand its checkpoint.
 - Force Stop intentionally does not kill Python threads. It uses the existing checkpoint/heartbeat cancellation contract; uncooperative work remains visible as pending cancellation rather than being falsely reported as terminated.
 - No existing task payload, result, checkpoint, lease epoch, or unrelated module state is rewritten by the module controls.
 - Separate lifecycle owners (AI-learning Playwright, Autonomous Engineering GitHub Actions, and the opt-in backup scheduler) are not falsely represented as managed by this TaskRuntime registry. Their adapters remain follow-up scope.
