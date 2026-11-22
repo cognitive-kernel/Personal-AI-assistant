@@ -93,6 +93,10 @@ def require_parent_repository_execution_lock(run_id: str) -> None:
 
     held_by_another_process = False
     try:
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"0")
+            handle.flush()
         handle.seek(0)
         if os.name == "nt":
             import msvcrt
