@@ -2267,3 +2267,13 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - The dashboard's workflow-failure summarizer now recognizes that exact warning and prioritizes a clear diagnosis over the generic retry-budget error. It explicitly tells the operator to preserve the durable task/checkpoint and inspect terminal events before retrying; it does not claim to repair the Codex stream.
 - The `/resume` endpoint now distinguishes a definitive local CLI launch failure (correlated, retryable) from an ambiguous dispatch timeout (correlated, non-retryable) and a nonzero CLI result (correlated, non-retryable), preventing an automatic duplicate workflow dispatch. Unmatched 404/405 responses under `/api/autonomous-engineering` now use the same structured error contract; unrelated API routes retain their existing responses.
 - Regression tests cover missing final agent message, resume timeout/launch failure, structured unmatched 404/405, and non-Autonomous route isolation. Exact-head CI is pending. No workflow, task, checkpoint, branch, or user data was cancelled or deleted.
+
+## 2026-11-22 — Durable lifecycle controls for background modules
+
+- Added an explicit registry for every feature-managed TaskRuntime type: research, learning, cloud discovery, programming, sandbox, experience testing, and factual verification. A regression test requires exact coverage of `FEATURE_MANAGED_TASK_TYPES`.
+- Added an additive module-state migration and loopback-only API. Module state is checked inside the same queue transaction as task claim, preventing a claim from racing past pause, drain, or force-stop.
+- Added independent Start, Pause, Resume, Finish/Drain, and Force Stop controls to the task dashboard. Finish lets active tasks complete and preserves queued work; Pause preserves checkpoints; Force Stop cancels waiting tasks and requests cooperative cancellation of active tasks.
+- Force Stop intentionally does not kill Python threads. It uses the existing checkpoint/heartbeat cancellation contract; uncooperative work remains visible as pending cancellation rather than being falsely reported as terminated.
+- No existing task payload, result, checkpoint, lease epoch, or unrelated module state is rewritten by the module controls.
+- Separate lifecycle owners (AI-learning Playwright, Autonomous Engineering GitHub Actions, and the opt-in backup scheduler) are not falsely represented as managed by this TaskRuntime registry. Their adapters remain follow-up scope.
+- Validation is pending exact-head CI and target-host acceptance; no migration has been run against user databases.
