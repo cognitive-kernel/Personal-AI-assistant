@@ -2267,3 +2267,48 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - The dashboard's workflow-failure summarizer now recognizes that exact warning and prioritizes a clear diagnosis over the generic retry-budget error. It explicitly tells the operator to preserve the durable task/checkpoint and inspect terminal events before retrying; it does not claim to repair the Codex stream.
 - The `/resume` endpoint now distinguishes a definitive local CLI launch failure (correlated, retryable) from an ambiguous dispatch timeout (correlated, non-retryable) and a nonzero CLI result (correlated, non-retryable), preventing an automatic duplicate workflow dispatch. Unmatched 404/405 responses under `/api/autonomous-engineering` now use the same structured error contract; unrelated API routes retain their existing responses.
 - Regression tests cover missing final agent message, resume timeout/launch failure, structured unmatched 404/405, and non-Autonomous route isolation. Exact-head CI is pending. No workflow, task, checkpoint, branch, or user data was cancelled or deleted.
+
+
+## 2026-11-21 — Autonomous Engineering UI resilience acceptance
+
+- Existing browser coverage already exercises initial render/local status, bounded manual dispatch, explicit model selection, accepted-dispatch lockout, cancel rejection recovery, run logs/delete/cleanup, failure diagnosis, stale progress/history responses, durable pending-work blockers, and Pause/Resume state.
+- Added browser regressions for RTL layout and keyboard skip-link access at 390px, 768px, and 1440px widths, including horizontal-overflow checks.
+- Added fault-isolation coverage that deliberately blocks only the progress module and verifies status, controls, and run-history modules still initialize without uncaught browser exceptions.
+- The initial addition was test-only; a follow-up in this branch corrected the warning lifecycle without changing the behavior of healthy modules. Exact-head browser E2E and full CI remain pending.
+
+
+## 2026-11-21 — Keep module-load warnings visible during asynchronous status refresh
+
+- The new fault-isolation browser test exposed a real UI defect: the main module reported a missing feature module through `#agent-message`, but the independent status poll overwrote that message after it completed. A user could lose the only indication that part of the console had failed to load.
+- The main module now renders a separate persistent `#agent-module-warning` alert using the existing notice style and accessible `role=alert`/`aria-live` semantics. Status polling continues to own `#agent-message`; working modules remain independent.
+- The browser regression now verifies that the progress module can fail while status, controls, and run history still initialize, and that the warning remains visible after status refresh. No module execution or task state is changed by the warning.
+
+
+## 2026-11-21 — Preserve structured dispatch errors in the UI
+
+- Gate-C review found that the shared UI request helper discarded backend error headers (`X-Error-Code`, `X-Correlation-ID`, `X-Retryable`), and the no-body dispatch handler wrote its error before an authoritative status refresh that immediately overwrote it.
+- The shared request helper now retains `code`, `correlationId`, `retryable`, and bounded `safeDetails` metadata, and includes the safe code/correlation ID in the displayed message. Dispatch/resume/manual-task retry lockout now respects the retryable flag; no automatic retry is introduced.
+- Dispatch success and failure both refresh authoritative status before setting the final user message, so the result is not overwritten. A Chromium regression simulates a 503 launch failure and verifies the error code, correlation ID, and retry lock remain visible.
+
+
+## 2026-11-21 — Preserve successful action feedback after status polling
+
+- Review of the full control inventory found that Settings, manual task, model pull, Pause, Resume and Cancel success messages were set before an authoritative status refresh; the refresh could immediately overwrite the result. Dispatch had the same issue and was already corrected in this branch.
+- All these handlers now refresh authoritative status first and then render the final success message. Failure paths retain their existing refresh-then-error ordering. No API/state semantics changed.
+- Browser assertions now verify Settings/manual-task/Pause/Resume success feedback and a Cancel sequence that first fails, recovers, then succeeds and disables the control when the active run disappears.
+
+
+## 2026-11-21 — PR #820 exact-head validation and browser-test syntax repair
+
+- The browser E2E run initially exposed a Python syntax error in a multiline JavaScript expression at `tests/test_browser_e2e.py:4061`. The JavaScript source was changed to a triple-quoted Python string; no browser behavior or application code was changed for this syntax repair.
+- Exact code head `255f821639b9b5403abfc43c9ec0c889d812c836` passed all four GitHub workflows: tests [#44930929256](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44930929256), browser E2E [#44930929297](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44930929297), CodeQL [#44930929282](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44930929282), and dependency audit [#44930929328](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44930929328).
+- Ubuntu full suite: 2464 passed, 14 skipped, 74 deselected. Windows full suite: 2462 passed, 16 skipped, 74 deselected. Browser E2E: 67 passed. Windows storage regressions: 11 passed, 2 skipped. Markdown links passed for 107 files; AST import-cycle check reported no cycles.
+- The application changes remain limited to the UI modules and browser tests; no workflow, backend persistence, Runner state, checkpoint, task or user data was changed. This proves repository CI for the exact code head, not target-host or live-provider acceptance.
+
+
+## 2026-11-22 — PR #829 rebased onto the structured API error boundary
+
+- PR #817 was merged to `main` as `a5855e9230f8758f21be91b8586946d195d015f6`; Autonomous Engineering API errors now have the structured response producer required by the UI consumer.
+- PR #820's UI changes were carried to replacement Draft PR #829 on current main. The new head is `d98bfab43f13f128e757a09a4d7292d450eeb416`; tests, browser E2E, dependency audit and CodeQL are queued. The old PR #820 remains open/Draft until replacement validation is complete.
+- PR #820 Codex review's diagnostic-producer finding was based on its old main base; PR #817 now provides that producer. A fresh review is required on #829's exact head.
+- No target-host Runner, Ollama or Codex execution was started; task/checkpoint state remains untouched. Target-host acceptance remains open.
