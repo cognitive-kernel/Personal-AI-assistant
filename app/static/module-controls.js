@@ -157,7 +157,25 @@
   }
 
   refreshButton.addEventListener("click", () => void refresh());
-  document.addEventListener("DOMContentLoaded", () => {
-    if (!taskManagerSection.hidden) void refresh();
-  }, { once: true });
+
+  let initialRefreshStarted = false;
+  let visibilityObserver = null;
+  function refreshWhenVisible() {
+    if (!taskManagerSection || taskManagerSection.hidden || initialRefreshStarted) return;
+    initialRefreshStarted = true;
+    if (visibilityObserver) visibilityObserver.disconnect();
+    void refresh();
+  }
+
+  if (taskManagerSection && typeof MutationObserver !== "undefined") {
+    visibilityObserver = new MutationObserver(refreshWhenVisible);
+    visibilityObserver.observe(taskManagerSection, {
+      attributes: true,
+      attributeFilter: ["hidden"],
+    });
+  }
+  // The page router may reveal this section before or after this script executes.
+  // Check immediately and observe the hidden attribute so both orders are safe.
+  refreshWhenVisible();
+  document.addEventListener("DOMContentLoaded", refreshWhenVisible, { once: true });
 })();
