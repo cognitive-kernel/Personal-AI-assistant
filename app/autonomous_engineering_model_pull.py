@@ -187,8 +187,8 @@ def start_model_pull(model: str) -> dict[str, Any]:
     if not _MODEL_PATTERN.fullmatch(selected) or selected.endswith(("/", ":")):
         raise ValueError("شناسهٔ مدل Ollama معتبر نیست.")
     with _LOCK:
-        if _ACTIVE_JOB and _JOBS.get(_ACTIVE_JOB, {}).get("status") in {"queued", "running"}:
-            raise RuntimeError("یک دانلود مدل Ollama در حال انجام است.")
+        if _ACTIVE_JOB and _JOBS.get(_ACTIVE_JOB, {}).get("status") in {"queued", "running", "cancelling"}:
+            raise RuntimeError("یک دانلود مدل Ollama در حال انجام است یا درخواست توقف آن هنوز نهایی نشده است.")
         job_id = uuid.uuid4().hex
         now = time.time()
         state = {
