@@ -298,7 +298,7 @@ try {
         throw "Workflow run attempt is invalid; refusing to claim the pending task."
     }
     if ($existingTaskFound) {
-        $ownerRecord = Repair-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $existingTask -RunId ([string]$env:GITHUB_RUN_ID) -RunAttempt $runAttempt -Source "legacy_migration"
+        $ownerRecord = Repair-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $existingTask -RunId ([string]$env:GITHUB_RUN_ID) -RunAttempt $runAttempt -Source "legacy_migration" -CorrelationId ([string]$env:AUTONOMOUS_ENGINEERING_CORRELATION_ID)
     } else {
         $ownerRecord = Get-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task ""
         if ($null -ne $ownerRecord) {
@@ -328,6 +328,7 @@ try {
         RunAttempt = $runAttempt
         Source = $ownerSource
         Existing = $ownerRecord
+        CorrelationId = [string]$env:AUTONOMOUS_ENGINEERING_CORRELATION_ID
     }
     $null = Write-AutonomousTaskOwnerRecord @ownerArgs
 
