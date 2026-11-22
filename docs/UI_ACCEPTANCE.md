@@ -60,3 +60,8 @@ Automated CI is repository-level evidence only. It does not authorize merge, dep
 - Code head `133db4ce6d300b8e982d45d5fec1ed13aa6c6a39` passed exact-head hosted checks after a rerun of the Windows full-test job: Ubuntu `2464 passed, 14 skipped, 74 deselected`; Windows `2462 passed, 16 skipped, 74 deselected`; Windows storage regressions `11 passed, 2 skipped`; Browser E2E, Dependency Audit and CodeQL passed.
 - The first Windows attempt failed at `tests/test_task_routes.py::test_task_api_refuses_to_delete_running_tasks`; the same job on the same code SHA passed on rerun. That test file is not changed by PR #820, and no test was weakened or edited to obtain the pass. Record this as an intermittent test failure to monitor, not as a product-code fix.
 - This evidence validates the code head above only. Any subsequent documentation-only commit requires its own exact-head CI; Windows target-host/Runner/Ollama/Codex acceptance remains open.
+
+
+## Autonomous Engineering — polling lifecycle follow-up (2026-11-22)
+
+- [ ] Polling controller uses bounded exponential backoff, bounded jitter, visibility-aware scheduling, single-flight refresh, per-request timeout through the shared request helper, and explicit teardown on `pagehide`/app stop; Chromium regression is `test_autonomous_engineering_polling_uses_visibility_backoff_jitter_and_cleanup`. Exact-head CI is pending.
