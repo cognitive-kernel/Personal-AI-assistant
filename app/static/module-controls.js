@@ -96,19 +96,19 @@
 
     busyModules.add(module.id);
     output.textContent = "در حال اجرای فرمان «" + action + "» برای " + module.name + "…";
+    let finalMessage = "";
     try {
       const result = await api(
         "/api/tasks/modules/" + encodeURIComponent(module.id) + "/" + action,
         { method: "POST" }
       );
-      await refresh();
-      output.textContent = result.module?.message || "فرمان ماژول ثبت شد.";
+      finalMessage = result.module?.message || "فرمان ماژول ثبت شد.";
     } catch (error) {
-      await refresh();
-      output.textContent = "فرمان ماژول اجرا نشد: " + (error.message || "خطای نامشخص");
+      finalMessage = "فرمان ماژول اجرا نشد: " + (error.message || "خطای نامشخص");
     } finally {
       busyModules.delete(module.id);
       await refresh();
+      output.textContent = finalMessage;
     }
   }
 
