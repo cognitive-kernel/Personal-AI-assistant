@@ -2495,6 +2495,37 @@ def test_dispatch_timeout_reports_ambiguous_outcome_without_encouraging_retry(mo
 
 
 
+def test_successful_dispatch_correlates_ui_request_and_workflow_input(monkeypatch):
+    correlation_id = "d" * 32
+    calls = []
+    monkeypatch.setattr(agent, "_LAST_DISPATCH_ACCEPTED_AT", 0.0)
+    monkeypatch.setattr(agent, "collect_status", lambda: {
+        "ready": True,
+        "github": {"runs_available": True, "recent_runs": []},
+        "pending_work": {"available": True, "blocked": False, "markers": {}},
+    })
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    response = TestClient(main_module.app, client=("127.0.0.1", 12345)).post(
+        "/api/autonomous-engineering/dispatch",
+        json={},
+        headers={"X-Correlation-ID": correlation_id},
+    )
+
+    assert response.status_code == 202
+    assert response.headers["X-Correlation-ID"] == correlation_id
+    assert response.json()["correlation_id"] == correlation_id
+    assert calls[-1][-4:] == [
+        "--field", "correlation_id=" + correlation_id,
+        "--field", "manual_task=",
+    ]
+
+
 def test_real_autonomous_dispatch_http_error_exposes_structured_diagnostics(monkeypatch):
     monkeypatch.setattr(agent, "collect_status", lambda: {
         "ready": False,
