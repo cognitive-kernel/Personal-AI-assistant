@@ -429,7 +429,7 @@ class RestrictedStateBroker:
             "/v1/tasks/archive", "/v1/tasks/restore",
         }
         if path in task_paths:
-            from autonomous_engineering_state_broker_contract import validate_task_request
+            from app.autonomous_engineering_state_broker_contract import validate_task_request
             try:
                 validated = validate_task_request(method, path, body)
             except ValueError as exc:
