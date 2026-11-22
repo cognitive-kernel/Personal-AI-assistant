@@ -57,7 +57,8 @@ def _learning_status() -> dict[str, Any]:
     if control.get("draining"):
         state = "draining" if active else ("finished_pending" if queued_count else "finished")
     elif control.get("paused"):
-        state = "stopping" if active else "paused"
+        forced = str(control.get("reason") or "").startswith("توقف اجباری")
+        state = "stopping" if active else ("stopped" if forced else "paused")
     else:
         state = "running"
     return {
