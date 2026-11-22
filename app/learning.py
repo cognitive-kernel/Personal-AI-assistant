@@ -159,6 +159,7 @@ def create_job(
         # Acquire the SQLite write reservation before checking for an active job.
         if path_topic_id is not None and task_context is None:
             conn.execute("BEGIN IMMEDIATE")
+        if path_topic_id is not None:
             topic_row = conn.execute(
                 "SELECT id FROM learning_path_topics WHERE id=?", (path_topic_id,)
             ).fetchone()
