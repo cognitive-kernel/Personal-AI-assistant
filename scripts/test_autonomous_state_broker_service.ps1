@@ -10,33 +10,33 @@ $testTempRoot = if (-not [String]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
 }
 New-Item -ItemType Directory -Path $testTempRoot -Force | Out-Null
 $serviceSource = Join-Path $testTempRoot "AutonomousStateBrokerService.exe"
-if (-not (Test-Path -LiteralPath $serviceSource -PathType Leaf)) {
-    $frameworkCandidates = @(
-        (Join-Path $env:WINDIR "Microsoft.NET\\Framework64\\v4.0.30319"),
-        (Join-Path $env:WINDIR "Microsoft.NET\\Framework\\v4.0.30319")
-    )
-    $frameworkRoot = $frameworkCandidates | Where-Object {
-        Test-Path -LiteralPath (Join-Path $_ "csc.exe") -PathType Leaf
-    } | Select-Object -First 1
-    if (-not $frameworkRoot) {
-        throw "The compiled Windows state broker executable is missing and the .NET Framework C# compiler was not found."
-    }
-    $source = Join-Path $PSScriptRoot "AutonomousStateBrokerService.cs"
-    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
-        throw "Windows state broker source was not found: $source"
-    }
-    $references = @("System.Core.dll", "System.ServiceProcess.dll", "System.Web.Extensions.dll")
-    $pipeAccess = Join-Path $frameworkRoot "System.IO.Pipes.AccessControl.dll"
-    if (Test-Path -LiteralPath $pipeAccess) { $references += "System.IO.Pipes.AccessControl.dll" }
-    $arguments = @("/nologo", "/target:exe", "/out:$serviceSource")
-    foreach ($reference in $references) {
-        $arguments += "/reference:" + (Join-Path $frameworkRoot $reference)
-    }
-    $arguments += $source
-    & (Join-Path $frameworkRoot "csc.exe") @arguments
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $serviceSource -PathType Leaf)) {
-        throw "Windows state broker did not compile."
-    }
+# Always compile the broker from the checked-out source. Reusing an existing
+# executable in TEMP/RUNNER_TEMP can silently test stale service code.
+$frameworkCandidates = @(
+    (Join-Path $env:WINDIR "Microsoft.NET\\Framework64\\v4.0.30319"),
+    (Join-Path $env:WINDIR "Microsoft.NET\\Framework\\v4.0.30319")
+)
+$frameworkRoot = $frameworkCandidates | Where-Object {
+    Test-Path -LiteralPath (Join-Path $_ "csc.exe") -PathType Leaf
+} | Select-Object -First 1
+if (-not $frameworkRoot) {
+    throw "The .NET Framework C# compiler was not found."
+}
+$source = Join-Path $PSScriptRoot "AutonomousStateBrokerService.cs"
+if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+    throw "Windows state broker source was not found: $source"
+}
+$references = @("System.Core.dll", "System.ServiceProcess.dll", "System.Web.Extensions.dll")
+$pipeAccess = Join-Path $frameworkRoot "System.IO.Pipes.AccessControl.dll"
+if (Test-Path -LiteralPath $pipeAccess) { $references += "System.IO.Pipes.AccessControl.dll" }
+$arguments = @("/nologo", "/target:exe", "/out:$serviceSource")
+foreach ($reference in $references) {
+    $arguments += "/reference:" + (Join-Path $frameworkRoot $reference)
+}
+$arguments += $source
+& (Join-Path $frameworkRoot "csc.exe") @arguments
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $serviceSource -PathType Leaf)) {
+    throw "Windows state broker did not compile from the current checkout."
 }
 
 $serviceRoot = Join-Path $env:ProgramData "PersonalAIAssistant\StateBroker-CI"
