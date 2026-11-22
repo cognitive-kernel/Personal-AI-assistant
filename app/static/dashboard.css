@@ -613,6 +613,7 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 .module-control-state[data-state="stopped"],
 .module-control-state[data-state="finished"] { color: #475569; }
 .module-control-counts { color: var(--muted); font-size: .86rem; margin-block: 8px; }
+.module-control-note { color: var(--muted); font-size: .84rem; margin-block: 8px; }
 .module-control-actions { display: flex; flex-wrap: wrap; gap: 5px; }
 .module-control-actions button { margin: 0; }
 .module-control-actions button.danger { color: #991b1b; border-color: #e2a0a0; background: #fff7f7; }
