@@ -160,6 +160,21 @@ def resume_learning(request: LearningResume) -> dict[str, Any]:
     return _call(browser_automation.resume_learning, request.course_id)
 
 
+@router.post("/start")
+def start_learning_module() -> dict[str, Any]:
+    return _call(browser_automation.resume_learning, None)
+
+
+@router.post("/finish")
+def finish_learning_module() -> dict[str, Any]:
+    return _call(browser_automation.finish_learning)
+
+
+@router.post("/force-stop")
+def force_stop_learning_module() -> dict[str, Any]:
+    return _call(browser_automation.force_stop_learning)
+
+
 @router.post("/browser/outline", status_code=202)
 def start_browser_outline(request: BrowserOutlineStart) -> dict[str, Any]:
     return _call(browser_automation.start_outline, request.course_id, request.request_key)
