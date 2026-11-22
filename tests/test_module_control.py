@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from app import db, module_control, task_manager
 from app.main import app
+from app.task_routes import FEATURE_MANAGED_TASK_TYPES
 
 
 @pytest.fixture
@@ -158,3 +159,7 @@ def test_module_control_api_is_loopback_only_and_returns_no_task_payloads(module
     remote_client = TestClient(app, client=("192.0.2.20", 12345))
     forbidden = remote_client.get("/api/tasks/modules")
     assert forbidden.status_code == 403
+
+
+def test_module_registry_covers_every_feature_managed_task_type():
+    assert set(module_control.TASK_TYPE_TO_MODULE) == set(FEATURE_MANAGED_TASK_TYPES)
