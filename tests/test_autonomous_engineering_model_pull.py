@@ -215,6 +215,8 @@ def test_model_pull_cancellation_closes_only_its_stream_and_preserves_existing_m
     assert cancelling is not None
     assert cancelling["status"] == "cancelling"
     assert stream.closed is True
+    with pytest.raises(RuntimeError, match="در حال انجام است"):
+        pull.start_model_pull("another/model:latest")
 
     deadline = time.monotonic() + 2
     state = pull.get_model_pull(job["job_id"])
