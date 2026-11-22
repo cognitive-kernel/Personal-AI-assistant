@@ -22,7 +22,7 @@ Module state is persisted in the additive `module_controls` table. The default f
 | Pause | paused | Queued tasks become paused; active tasks receive pause_requested and stop at a safe checkpoint |
 | Resume | running | Paused tasks return to queued; pending pause requests are cleared |
 | Finish (drain) | draining | No new task is claimed; active tasks may finish; queued tasks remain intact |
-| Force stop | stopped | Queued/paused tasks become cancelled; active tasks receive cancel_requested |
+| Force stop | stopped | Queued tasks remain paused for later resume; active tasks receive cancel_requested |
 
 Task claim filtering reads module state inside the same `BEGIN IMMEDIATE` transaction as the claim. A concurrent pause, drain, or stop therefore cannot race between a separate admission check and the queue claim.
 
@@ -30,7 +30,7 @@ All task status transitions pass through the existing `task_queue` table and its
 
 ## Force-stop boundary
 
-Python worker threads are not asynchronously killed. That is unsafe for shared SQLite connections, locks, subprocess ownership, and in-flight domain transactions. Force stop cancels waiting work immediately and signals active work through the existing cooperative cancellation protocol. An active handler stops at its next checkpoint or heartbeat; an uncooperative handler remains visibly pending rather than being falsely reported as stopped.
+Python worker threads are not asynchronously killed. That is unsafe for shared SQLite connections, locks, subprocess ownership, and in-flight domain transactions. Force stop preserves waiting work as paused and signals active work through the existing cooperative cancellation protocol; the active run becomes cancelled only when its worker observes the request at a checkpoint or heartbeat. An active handler stops at its next checkpoint or heartbeat; an uncooperative handler remains visibly pending rather than being falsely reported as stopped.
 
 The UI must describe this boundary and show active/cancel-requested counts.
 
