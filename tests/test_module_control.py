@@ -118,6 +118,10 @@ def test_force_stop_cancels_waiting_tasks_and_cooperatively_stops_active_task(mo
     assert settled["status"] == "cancelled"
     assert settled["checkpoint"] == {"cursor": "safe-boundary"}
 
+    resumed = module_control.control_module("cloud-discovery", "resume")
+    assert resumed["state"] == "running"
+    assert task_manager.get_task(waiting["id"])["status"] == "queued"
+
 
 def test_start_does_not_implicitly_resume_previously_paused_tasks(module_store):
     task = task_manager.create_task("cloud.discover_resources", {"manual": True})
