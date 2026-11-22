@@ -958,7 +958,7 @@ def test_github_snapshot_reads_saved_model_and_frequency(monkeypatch):
                 '[{"name":"AUTONOMOUS_ENGINEERING_MODEL","value":"qwen3:14b"},'
                 '{"name":"AUTONOMOUS_ENGINEERING_INTERVAL_HOURS","value":"12"},'
                 '{"name":"AUTONOMOUS_ENGINEERING_MODE","value":"continuous"},'
-                '{"name":"AUTONOMOUS_ENGINEERING_ENABLED","value":"true"}]',
+                '{"name":"AUTONOMOUS_ENGINEERING_ENABLED","value":"false"}]',
                 "",
             )
         raise AssertionError(command)
@@ -967,7 +967,7 @@ def test_github_snapshot_reads_saved_model_and_frequency(monkeypatch):
 
     result = agent._github_snapshot()
 
-    assert result["settings"] == {"model": "qwen3:14b", "interval_hours": 12, "execution_mode": "continuous", "paused": False, "enabled": True}
+    assert result["settings"] == {"model": "qwen3:14b", "interval_hours": 12, "execution_mode": "continuous", "paused": False, "enabled": False}
 
 
 
@@ -1191,6 +1191,8 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "AUTONOMOUS_ENGINEERING_PAUSED" in workflow
     assert "AUTONOMOUS_ENGINEERING_ENABLED" in workflow
     assert "Autonomous engineering is finished" in workflow
+    assert 'gh api "repos/$env:GH_REPO/actions/variables?per_page=100"' in workflow
+    assert "Could not recheck durable Autonomous Engineering lifecycle variables" in workflow
     assert "AUTONOMOUS_ENGINEERING_INTERVAL_HOURS" in workflow
     assert "types: [closed]" not in workflow
     assert "TASK_COMPLETE" in cycle_controller and "QUEUE_EMPTY" in cycle_controller
