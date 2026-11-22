@@ -321,10 +321,12 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             !new[] { "manual_dispatch", "recovery", "legacy_migration" }.Contains(Convert.ToString(source)))
             throw new InvalidDataException("Pending task owner metadata does not match schema v1.");
         string taskDigest = Sha256(taskBytes);
-        string taskIdSeed = taskDigest + "|" + Convert.ToString(submittedRun) + "|" +
-            Convert.ToString(submittedAttempt) + "|" + Convert.ToString(createdAt);
-        string taskId = Sha256(Encoding.UTF8.GetBytes(taskIdSeed));
+        byte[] identityBytes = new byte[taskBytes.Length + 1 + ownerBytes.Length];
+        Buffer.BlockCopy(taskBytes, 0, identityBytes, 0, taskBytes.Length);
+        Buffer.BlockCopy(ownerBytes, 0, identityBytes, taskBytes.Length + 1, ownerBytes.Length);
+        string taskId = Sha256(identityBytes);
         List<string> blockers = PendingTaskBlockers();
+        blockers.Sort(StringComparer.Ordinal);
         string revision = Sha256(Encoding.UTF8.GetBytes(
             taskDigest + "|" + Sha256(ownerBytes) + "|" + String.Join(",", blockers.ToArray())
         ));
@@ -404,17 +406,19 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                     Convert.ToString(manifest.ContainsKey("task_sha256") ? manifest["task_sha256"] : "") != Sha256(task) ||
                     Convert.ToString(manifest.ContainsKey("owner_sha256") ? manifest["owner_sha256"] : "") != Sha256(owner))
                     throw new InvalidDataException("Archived task manifest is inconsistent.");
+                string archivedAt = Convert.ToString(manifest.ContainsKey("archived_at_ms") ? manifest["archived_at_ms"] : "", System.Globalization.CultureInfo.InvariantCulture);
+                string restoredAt = Convert.ToString(manifest.ContainsKey("restored_at_ms") ? manifest["restored_at_ms"] : "", System.Globalization.CultureInfo.InvariantCulture);
                 string revision = Sha256(Encoding.UTF8.GetBytes(
-                    Sha256(task) + "|" + Sha256(owner) + "|" + _json.Serialize(manifest)
+                    Sha256(task) + "|" + Sha256(owner) + "|" + archivedAt + "|" + restoredAt
                 ));
                 Dictionary<string, object> ownerObject = new JavaScriptSerializer().DeserializeObject(
                     Encoding.UTF8.GetString(owner)) as Dictionary<string, object>;
                 tasks.Add(new Dictionary<string, object> {
                     { "task_id", id }, { "revision", revision },
-                    { "status", manifest.ContainsKey("restored_at") ? "restored" : "archived" },
+                    { "status", manifest.ContainsKey("restored_at_ms") ? "restored" : "archived" },
                     { "created_at", ownerObject != null && ownerObject.ContainsKey("created_at") ? ownerObject["created_at"] : null },
-                    { "archived_at", manifest.ContainsKey("archived_at") ? manifest["archived_at"] : null },
-                    { "restorable", !manifest.ContainsKey("restored_at") }
+                    { "archived_at", manifest.ContainsKey("archived_at_ms") ? manifest["archived_at_ms"] : null },
+                    { "restorable", !manifest.ContainsKey("restored_at_ms") }
                 });
             }
             return new Dictionary<string, object> { { "available", true }, { "tasks", tasks.ToArray() } };
@@ -474,7 +478,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                             WriteAtomic(Path.Combine(stage, "task.txt"), (byte[])record["task_bytes"]);
                             WriteAtomic(Path.Combine(stage, "owner.json"), (byte[])record["owner_bytes"]);
                             Dictionary<string, object> manifest = new Dictionary<string, object> {
-                                { "schema_version", 1 }, { "task_id", taskId }, { "archived_at", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0 },
+                                { "schema_version", 1 }, { "task_id", taskId }, { "archived_at_ms", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() },
                                 { "task_sha256", Sha256((byte[])record["task_bytes"]) },
                                 { "owner_sha256", Sha256((byte[])record["owner_bytes"]) }
                             };
@@ -525,7 +529,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                     ) as Dictionary<string, object>;
                     if (manifest == null || Convert.ToInt32(manifest.ContainsKey("schema_version") ? manifest["schema_version"] : 0) != 1 ||
                         Convert.ToString(manifest.ContainsKey("task_id") ? manifest["task_id"] : "") != taskId ||
-                        manifest.ContainsKey("restored_at"))
+                        manifest.ContainsKey("restored_at_ms"))
                         throw new InvalidDataException("archive_manifest_invalid_or_already_restored");
                     byte[] task = File.ReadAllBytes(taskPath);
                     byte[] owner = File.ReadAllBytes(ownerPath);
@@ -533,8 +537,9 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                         Convert.ToString(manifest.ContainsKey("task_sha256") ? manifest["task_sha256"] : "") != Sha256(task) ||
                         Convert.ToString(manifest.ContainsKey("owner_sha256") ? manifest["owner_sha256"] : "") != Sha256(owner))
                         throw new InvalidDataException("archive_integrity_mismatch");
+                    string archivedAt = Convert.ToString(manifest.ContainsKey("archived_at_ms") ? manifest["archived_at_ms"] : "", System.Globalization.CultureInfo.InvariantCulture);
                     string currentRevision = Sha256(Encoding.UTF8.GetBytes(
-                        Sha256(task) + "|" + Sha256(owner) + "|" + _json.Serialize(manifest)
+                        Sha256(task) + "|" + Sha256(owner) + "|" + archivedAt + "|"
                     ));
                     if (!String.Equals(currentRevision, revision, StringComparison.Ordinal))
                         throw new InvalidDataException("stale_revision");
@@ -548,7 +553,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                         throw new InvalidDataException("archive_owner_mismatch");
                     WriteAtomic(Path.Combine(_stateDirectory, "pending-manual-task.txt"), task);
                     WriteAtomic(Path.Combine(_stateDirectory, "pending-manual-task-owner.json"), owner);
-                    manifest["restored_at"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
+                    manifest["restored_at_ms"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                     WriteAtomic(manifestPath, Encoding.UTF8.GetBytes(_json.Serialize(manifest) + "\n"));
                     return new Dictionary<string, object> {
                         { "task_id", taskId }, { "status", "restored" }, { "preserved", true }
