@@ -558,6 +558,20 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             if (Convert.ToBoolean(checkpoint["available"]) ||
                 (checkpoint.ContainsKey("verified") && !Convert.ToBoolean(checkpoint["verified"])))
                 blockers.Add("checkpoint");
+
+            string currentPath = Path.Combine(_stateDirectory, "current.json");
+            if (SafeFileExists(currentPath))
+            {
+                Dictionary<string, object> current = ReadJsonFile("current.json", 256000) as Dictionary<string, object>;
+                object rawStatus;
+                string progressStatus = current != null && current.TryGetValue("status", out rawStatus)
+                    ? Convert.ToString(rawStatus).Trim().ToLowerInvariant()
+                    : "";
+                string[] terminalProgressStates = { "completed", "succeeded", "success", "complete", "failed", "cancelled", "skipped", "blocked" };
+                if (current == null || !Array.Exists(terminalProgressStates, item =>
+                    String.Equals(item, progressStatus, StringComparison.Ordinal)))
+                    blockers.Add("active_progress_run");
+            }
             return new Dictionary<string, object> {
                 { "available", true },
                 { "blocked", blockers.Count > 0 },
