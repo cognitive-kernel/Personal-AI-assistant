@@ -1,6 +1,6 @@
 # ADR-021: Durable lifecycle controls for background task modules
 
-- Status: Proposed; implementation and exact-head CI pending
+- Status: Implemented in PR #833; exact-head CI and target-host acceptance pending
 - Date: 2026-11-22
 - Scope: feature-managed modules executed by the shared durable TaskRuntime
 
