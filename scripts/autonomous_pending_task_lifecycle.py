@@ -167,7 +167,7 @@ def list_pending(state: Path) -> list[dict[str, Any]]:
     assert owner_raw is not None
     blockers = _state_blockers(state)
     return [{
-        "task_id": _digest(task + b"\\0" + owner_raw),
+        "task_id": _digest(task + b"\0" + owner_raw),
         "revision": _revision(task, owner_raw, blockers),
         "status": "pending",
         "created_at": owner.get("created_at"),
@@ -263,7 +263,7 @@ def archive_task(state: Path, task_id: str, revision: str) -> dict[str, Any]:
             "task_sha256": _digest(task),
             "owner_sha256": _digest(owner_raw),
         }
-        _atomic_write(stage / "manifest.json", _canonical(manifest) + b"\\n")
+        _atomic_write(stage / "manifest.json", _canonical(manifest) + b"\n")
         os.replace(stage, final)
     finally:
         if stage.exists():
@@ -303,5 +303,5 @@ def restore_task(state: Path, task_id: str, revision: str) -> dict[str, Any]:
     if active_owner is None:
         _atomic_write(state / OWNER_FILE, owner_raw)
     manifest["restored_at_ms"] = int(time.time() * 1000)
-    _atomic_write(package / "manifest.json", _canonical(manifest) + b"\\n")
+    _atomic_write(package / "manifest.json", _canonical(manifest) + b"\n")
     return {"task_id": task_id, "status": "restored", "preserved": True}
