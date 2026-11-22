@@ -230,7 +230,8 @@ def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
     assert "do not reset or discard the existing worktree/checkpoint" in retry_text
     assert "do not repeat implementation or rerun broad tests" in retry_text
     assert "Fix the root cause, add or update regression tests" not in retry_text
-    assert cycle.TASK_RETRY_POLICY.max_elapsed_seconds == 45 * 60
+    assert cycle.CODEX_RETRY_POLICY.max_elapsed_seconds == 45 * 60
+    assert cycle.TASK_RETRY_POLICY.max_elapsed_seconds == 90 * 60
     assert "on its own final line" in retry_text
     assert "TASK_COMPLETE, QUEUE_EMPTY, TASK_BLOCKED" in retry_text
     assert "Continue the SAME task" in retry_text
