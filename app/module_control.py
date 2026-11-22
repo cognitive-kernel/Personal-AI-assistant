@@ -151,6 +151,9 @@ def list_module_controls() -> list[dict[str, Any]]:
                 "accepting_tasks": state == "running",
                 "can_force_stop": state != "stopped" or counts["active"] > 0 or counts["pending"] > 0,
             })
+    from . import module_lifecycle_adapters
+
+    result.extend(module_lifecycle_adapters.list_external_module_controls())
     return result
 
 
@@ -163,11 +166,18 @@ def control_module(module_id: str, action: str) -> dict[str, Any]:
     - finish: drain active work; leave queued work untouched and unclaimed.
     - force_stop: cancel queued work and request cooperative cancellation of active work.
     """
-    module = MODULE_BY_ID.get(module_id)
-    if module is None:
-        raise ModuleNotFoundError(f"Unknown module: {module_id}")
     if action not in MODULE_ACTIONS:
         raise ModuleControlError("Unsupported module action.")
+    module = MODULE_BY_ID.get(module_id)
+    if module is None:
+        from . import module_lifecycle_adapters
+
+        if module_id in module_lifecycle_adapters.EXTERNAL_MODULE_IDS:
+            try:
+                return module_lifecycle_adapters.control_external_module(module_id, action)
+            except module_lifecycle_adapters.ExternalModuleControlError as exc:
+                raise ModuleControlError(str(exc)) from exc
+        raise ModuleNotFoundError(f"Unknown module: {module_id}")
     task_types = module["task_types"]
     placeholders = ",".join("?" for _ in task_types)
 
