@@ -1675,6 +1675,9 @@ def test_persist_run_diagnostic_appends_redacted_report_details(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ):
     monkeypatch.setattr(cycle, "_autonomous_state_dir", lambda: tmp_path)
+    correlation_id = "c" * 32
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CORRELATION_ID", correlation_id)
+    monkeypatch.setenv("GITHUB_JOB", "codex")
 
     assert cycle.persist_run_diagnostic(
         "12345", "1", task=1, attempt=2,
@@ -1691,6 +1694,9 @@ def test_persist_run_diagnostic_appends_redacted_report_details(
     saved = json.loads((tmp_path / "run-diagnostics" / "12345.json").read_text(encoding="utf-8"))
     assert saved["schema_version"] == 1
     assert saved["run_id"] == "12345"
+    assert saved["correlation_id"] == correlation_id
+    assert saved["diagnostics"][0]["correlation_id"] == correlation_id
+    assert saved["diagnostics"][0]["job"] == "codex"
     assert len(saved["diagnostics"]) == 1
     detail = saved["diagnostics"][0]["detail"]
     assert "sandbox policy rejected" in detail
