@@ -1409,31 +1409,46 @@ def _cleanup_autonomous_engineering_temporary_data_locked() -> dict[str, Any]:
                 detail=f"پاک‌سازی امن فضای موقت ممکن نشد؛ checkpointها و وضعیت پایدار عامل حفظ شدند ({type(exc).__name__}).",
             ) from exc
 
-    # These three names are the controller's declared worktree runtime files;
-    # durable checkpoints and all pending task/PR ownership files are excluded.
-    runtime_directory = _agent_runtime_directory()
-    for name in _RUNTIME_CLEANUP_FILES:
-        path = runtime_directory / name
-        try:
-            if not path.is_file() or path.is_symlink():
+    # On Windows the LocalService broker owns the shared repository lock and
+    # cannot safely hand that lock back to this process. It cleans the protected
+    # state files itself; worktree runtime files are preserved rather than
+    # deleted after the broker releases its lock. POSIX cleanup runs under the
+    # caller's repository lock and may remove these files safely.
+    runtime_files_preserved: list[str] = []
+    if _is_windows():
+        runtime_files_preserved = list(_RUNTIME_CLEANUP_FILES)
+    else:
+        runtime_directory = _agent_runtime_directory()
+        for name in _RUNTIME_CLEANUP_FILES:
+            path = runtime_directory / name
+            try:
+                if not path.is_file() or path.is_symlink():
+                    continue
+                size = path.stat().st_size
+                path.unlink()
+                removed += 1
+                removed_bytes += size
+            except FileNotFoundError:
                 continue
-            size = path.stat().st_size
-            path.unlink()
-            removed += 1
-            removed_bytes += size
-        except FileNotFoundError:
-            continue
-        except OSError:
-            failed_files.append(str(path))
+            except OSError:
+                failed_files.append(str(path))
 
+    preserved = [
+        "history.jsonl",
+        "scorecard-baseline.json",
+        "checkpoint files",
+        "pending task/PR markers",
+        *runtime_files_preserved,
+    ]
     return {
         "cleaned": not failed_files,
         "files_removed": removed,
         "bytes_removed": removed_bytes,
         "failed_files": failed_files,
-        "preserved": ["history.jsonl", "scorecard-baseline.json", "checkpoint files", "pending task/PR markers"],
+        "preserved": preserved,
         "message": (
-            "پاک‌سازی کامل شد؛ تاریخچه، checkpointها و وضعیت پایدار عامل حفظ شدند."
+            "پاک‌سازی داده‌های امن انجام شد؛ تاریخچه، checkpointها و وضعیت پایدار عامل حفظ شدند."
+            + (" فایل‌های runtime داخل worktree در Windows برای جلوگیری از race حفظ شدند." if runtime_files_preserved else "")
             if not failed_files
             else "پاک‌سازی ناقص بود؛ بعضی فایل‌های موقت به‌دلیل خطای دسترسی حذف نشدند."
         ),
