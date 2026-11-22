@@ -251,6 +251,61 @@ def test_autonomous_engineering_routes_are_registered():
     assert "/api/autonomous-engineering/cancel" in api_paths
     assert "/api/autonomous-engineering/pause" in api_paths
     assert "/api/autonomous-engineering/resume" in api_paths
+    assert "/api/autonomous-engineering/start" in api_paths
+    assert "/api/autonomous-engineering/finish" in api_paths
+    assert "/api/autonomous-engineering/force-stop" in api_paths
+    assert "/api/autonomous-engineering/lifecycle" in api_paths
+
+
+def test_autonomous_engineering_lifecycle_endpoints_use_distinct_durable_states(monkeypatch):
+    writes = []
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_save_repository_variables", lambda gh, updates: writes.append((gh, updates)))
+    monkeypatch.setattr(agent, "dispatch_autonomous_engineering", lambda: {"accepted": True, "started": True})
+    started = agent.start_autonomous_engineering()
+    assert started["accepted"] is True
+    assert writes[-1] == ("gh", (("AUTONOMOUS_ENGINEERING_ENABLED", "true"),))
+
+    finished = agent.finish_autonomous_engineering()
+    assert finished["enabled"] is False
+    assert writes[-1] == ("gh", (
+        ("AUTONOMOUS_ENGINEERING_ENABLED", "false"),
+        ("AUTONOMOUS_ENGINEERING_PAUSED", "false"),
+    ))
+
+    monkeypatch.setattr(agent, "cancel_autonomous_engineering", lambda: {"accepted": True, "run_id": 123})
+    stopped = agent.force_stop_autonomous_engineering()
+    assert stopped["enabled"] is False and stopped["paused"] is True
+    assert stopped["run_id"] == 123
+    assert writes[-1] == ("gh", (
+        ("AUTONOMOUS_ENGINEERING_ENABLED", "false"),
+        ("AUTONOMOUS_ENGINEERING_PAUSED", "true"),
+    ))
+
+
+def test_autonomous_engineering_lifecycle_reports_drain_and_finish_states(monkeypatch):
+    monkeypatch.setattr(agent, "_github_snapshot", lambda: {
+        "cli_installed": True,
+        "authenticated": True,
+        "runs_available": True,
+        "recent_runs": [{"id": 123, "status": "in_progress"}],
+        "settings": {"enabled": False, "paused": False},
+    })
+    draining = agent.autonomous_engineering_lifecycle()
+    assert draining["state"] == "draining"
+    assert draining["active"] is True
+
+    monkeypatch.setattr(agent, "_github_snapshot", lambda: {
+        "cli_installed": True,
+        "authenticated": True,
+        "runs_available": True,
+        "recent_runs": [],
+        "settings": {"enabled": False, "paused": False},
+    })
+    finished = agent.autonomous_engineering_lifecycle()
+    assert finished["state"] == "finished"
+    assert finished["active"] is False
+
 
 def test_pause_sets_durable_repository_variable(monkeypatch):
     calls = []
@@ -287,9 +342,11 @@ def test_resume_clears_pause_and_dispatches_without_legacy_failure_counter(monke
     result = agent.resume_autonomous_engineering()
 
     assert result["paused"] is False
-    assert calls[1][0][2:5] == ["set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body"]
-    assert calls[2][0][1:3] == ["workflow", "run"]
-    assert calls[2][1] is True
+    assert calls[1][0][1:3] == ["variable", "list"]
+    assert calls[2][0][2:5] == ["set", "AUTONOMOUS_ENGINEERING_ENABLED", "--body"]
+    assert calls[3][0][2:5] == ["set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body"]
+    assert calls[4][0][1:3] == ["workflow", "run"]
+    assert calls[4][1] is True
     assert all("AUTONOMOUS_ENGINEERING_FAILURE_STREAK" not in call[0] for call in calls)
 
 
@@ -301,6 +358,8 @@ def test_resume_dispatch_timeout_is_ambiguous_and_non_retryable(monkeypatch):
         calls.append((command, raise_os_error))
         if command[1:3] == ["auth", "status"]:
             return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["variable", "list"]:
+            return subprocess.CompletedProcess(command, 0, "[]", "")
         if command[1:3] == ["variable", "set"]:
             return subprocess.CompletedProcess(command, 0, "", "")
         assert raise_os_error is True
@@ -326,6 +385,8 @@ def test_resume_dispatch_launch_failure_is_retryable(monkeypatch):
     def fake_run(command, timeout=8, *, raise_os_error=False):
         if command[1:3] == ["auth", "status"] or command[1:3] == ["variable", "set"]:
             return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["variable", "list"]:
+            return subprocess.CompletedProcess(command, 0, "[]", "")
         assert raise_os_error is True
         raise FileNotFoundError("gh executable disappeared")
 
@@ -879,7 +940,8 @@ def test_github_snapshot_reads_saved_model_and_frequency(monkeypatch):
                 command, 0,
                 '[{"name":"AUTONOMOUS_ENGINEERING_MODEL","value":"qwen3:14b"},'
                 '{"name":"AUTONOMOUS_ENGINEERING_INTERVAL_HOURS","value":"12"},'
-                '{"name":"AUTONOMOUS_ENGINEERING_MODE","value":"continuous"}]',
+                '{"name":"AUTONOMOUS_ENGINEERING_MODE","value":"continuous"},'
+                '{"name":"AUTONOMOUS_ENGINEERING_ENABLED","value":"true"}]',
                 "",
             )
         raise AssertionError(command)
@@ -888,7 +950,7 @@ def test_github_snapshot_reads_saved_model_and_frequency(monkeypatch):
 
     result = agent._github_snapshot()
 
-    assert result["settings"] == {"model": "qwen3:14b", "interval_hours": 12, "execution_mode": "continuous", "paused": False}
+    assert result["settings"] == {"model": "qwen3:14b", "interval_hours": 12, "execution_mode": "continuous", "paused": False, "enabled": True}
 
 
 
