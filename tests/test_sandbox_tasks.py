@@ -2,7 +2,8 @@ import hashlib
 
 import pytest
 
-from app import learning_practical, sandbox_tasks
+from app import db, learning, learning_practical, sandbox_tasks, task_manager
+from app.task_worker import TaskContext
 from app.sandbox import SandboxResult
 
 
@@ -27,6 +28,66 @@ def _configure(monkeypatch, tmp_path):
     monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", str(executable))
     monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.12-slim@sha256:" + "a" * 64)
     return executable
+
+
+def test_stale_sandbox_task_cannot_persist_practical_assessment(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    task_manager.initialize_task_store()
+    job = learning.create_job("Python fundamentals")
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE learning_jobs SET status='completed', lesson='Python lesson' WHERE id=?",
+            (job["id"],),
+        )
+    exercise_id = learning_practical.EXERCISE_ID
+    report = learning_practical.build_grade_report(
+        exercise_id,
+        [
+            {"case_id": case["id"], "passed": True}
+            for case in learning_practical._TEST_CASES[exercise_id]
+        ],
+    )
+    payload = {
+        "source_code": "print('hello')",
+        "learning_practical": {"exercise_id": exercise_id, "job_id": job["id"]},
+    }
+    task = task_manager.create_task(
+        sandbox_tasks.SANDBOX_TASK_TYPE, payload, max_attempts=3
+    )
+    worker_id = "sandbox-practical-worker"
+    claimed = task_manager.claim_next_task(worker_id)
+    assert claimed is not None and claimed["id"] == task["id"]
+    context = TaskContext(
+        task_id=task["id"],
+        worker_id=worker_id,
+        lease_epoch=claimed["lease_epoch"],
+    )
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE task_queue SET lease_expires_at=? WHERE id=?",
+            ("2000-01-01T00:00:00.000000+00:00", task["id"]),
+        )
+    reclaimed = task_manager.claim_next_task(worker_id)
+    assert reclaimed is not None and reclaimed["id"] == task["id"]
+    assert reclaimed["lease_epoch"] > context.lease_epoch
+
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        learning_practical.record_practical_attempt(
+            job["id"], exercise_id, report, payload["source_code"],
+            idempotency_key=f"sandbox-practical-task:{task['id']}",
+            task_context=context,
+            expected_task_type=sandbox_tasks.SANDBOX_TASK_TYPE,
+            expected_payload=payload,
+        )
+
+    with db.learning_connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM assessment_attempts WHERE job_id=?",
+            (job["id"],),
+        ).fetchone()[0]
+    assert count == 0
 
 
 def test_sandbox_handler_is_disabled_by_default(monkeypatch):
@@ -300,18 +361,26 @@ def test_practical_sandbox_handler_uses_stable_task_idempotency_key(monkeypatch,
     captured = {}
     expected = {"attempt_id": 9, "score": 100.0, "idempotent_replay": False}
 
-    def fake_record(job_id, exercise_id, report, source_code, *, idempotency_key=None):
+    def fake_record(
+        job_id, exercise_id, report, source_code, *, idempotency_key=None,
+        task_context=None, expected_task_type=None, expected_payload=None,
+    ):
         captured.update(
             job_id=job_id,
             exercise_id=exercise_id,
             report=report,
             source_code=source_code,
             idempotency_key=idempotency_key,
+            task_context=task_context,
+            expected_task_type=expected_task_type,
+            expected_payload=expected_payload,
         )
         return expected
 
     monkeypatch.setattr(learning_practical, "record_practical_attempt", fake_record)
-    handler = sandbox_tasks.handler_from_environment()
+    handler = sandbox_tasks.handler_from_environment(
+        expected_task_type=sandbox_tasks.SANDBOX_TASK_TYPE
+    )
     context = FakeContext()
     result = handler(
         {
@@ -327,4 +396,13 @@ def test_practical_sandbox_handler_uses_stable_task_idempotency_key(monkeypatch,
 
     assert captured["job_id"] == 7
     assert captured["idempotency_key"] == f"sandbox-practical-task:{context.task_id}"
+    assert captured["task_context"] is context
+    assert captured["expected_task_type"] == sandbox_tasks.SANDBOX_TASK_TYPE
+    assert captured["expected_payload"] == {
+        "source_code": "print(1 + 2)",
+        "learning_practical": {
+            "exercise_id": learning_practical.EXERCISE_ID,
+            "job_id": 7,
+        },
+    }
     assert result["practical_assessment"] == expected
