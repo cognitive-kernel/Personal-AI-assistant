@@ -227,6 +227,7 @@ def request(method: str, path: str, *, timeout_ms: int = 3500, body: dict[str, A
             timeout_ms=timeout_ms,
             error_type=StateBrokerError,
             conflict_type=StateBrokerConflict,
+            body=body,
         )
     request_envelope = {"version": 1, "method": method, "path": path}
     if body is not None:
