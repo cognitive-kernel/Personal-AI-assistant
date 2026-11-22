@@ -25,7 +25,7 @@ def test_learning_api_job_to_factual_claim_preserves_provenance_without_promotio
     )
     source_hash = hashlib.sha256(source_chunk.encode("utf-8")).hexdigest()
 
-    def discover(job_id, _topic):
+    def discover(job_id, _topic, *, task_context=None, expected_task_type=None, expected_payload=None):
         with db.learning_connection() as connection:
             connection.execute(
                 """INSERT INTO learning_evidence(
@@ -43,7 +43,7 @@ def test_learning_api_job_to_factual_claim_preserves_provenance_without_promotio
     }
     monkeypatch.setattr(learning, "_discover_and_store_sources", discover)
     monkeypatch.setattr(
-        learning, "_enqueue_learning_job", lambda _job_id: {"id": 987654}
+        learning, "_enqueue_learning_job", lambda _job_id, **_kwargs: {"id": 987654}
     )
     monkeypatch.setattr(
         learning,
