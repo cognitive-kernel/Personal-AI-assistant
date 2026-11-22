@@ -1,6 +1,22 @@
 # وضعیت یکپارچهٔ پروژه
 
-## 2026-11-21 — اصلاح مالکیت صف اجرا و fencing (PR #799، در حال اعتبارسنجی)
+## Snapshot زنده — 2026-11-22
+
+- `main` فعلی: `0367a3ebfd92ac196bb096f1a45cbfed5a61985d`.
+- PR #799 (lease epoch و owner+epoch fencing) ادغام شده است؛ commit ادغام: `852423ae8b862b834e007eada0033d087a37cd83`.
+- PR #817 (structured API errors) ادغام شده است.
+- PR #827 (بازیابی گزارش Codex از JSONL معتبر) ادغام شده است؛ PR قدیمی #818 که با main تعارض داشت، با توضیح superseded بسته شد.
+- روی SHA فعلی main، tests، browser-e2e، dependency-audit و CodeQL همگی completed/success هستند: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44979290739)، [browser-e2e](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44979290773)، [dependency-audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44979290835)، [CodeQL](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44979290781).
+- اجرای workflow با نام `Autonomous local Ollama engineering` در [run 44979290758](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/44979290758) موفق تمام شد، اما job اجرای Codex به‌علت pause gate اجرا نشد؛ بنابراین این run، تست واقعی Codex/Ollama یا پذیرش Windows target نیست. workflow recovery نیز skipped بود.
+- PR #834 برای UI/cleanup ماژول Autonomous Engineering باز و ready-for-review است؛ inventory و state-transition matrix در `docs/UI_AUTONOMOUS_ENGINEERING_INVENTORY_2026-11-22.fa.md` ثبت شده است. CI exact-head و target-host acceptance هنوز تأیید نشده‌اند.
+- PR #833 کنترل‌های TaskRuntime برای سایر ماژول‌ها را در حالت Draft نگه داشته‌ایم؛ طبق اولویت master prompt، تا تکمیل Gateهای Autonomous Engineering نباید آن را merge یا جلوتر برد.
+- PRهای #819 تا #826 هنوز باز هستند و base آن‌ها SHA قدیمی `91b7e062e21d06d774c2f1f394bc72e4eb69af2c` است؛ موفقیت CI روی head قدیمی به main فعلی قابل تعمیم نیست. پیش از هر merge باید rebase/revalidation و review مستقل انجام شود.
+- وضعیت Gateهای A–J در inventory مورخ 2026-11-22 آمده است. Gate B یک race مهم cleanup را در PR #834 هدف گرفته: cleanup زیر repository execution lock و با recheck دوبارهٔ GitHub runها انجام می‌شود. این اصلاح هنوز CI نشده است.
+- Windows target، ACL واقعی دو حساب، اجرای واقعی Ollama/Codex، crash/restart، restore/rollback و پذیرش مالک هنوز pending هستند. هیچ migration روی دیتابیس کاربر اجرا نشده و هیچ task/checkpoint کاربر تغییر داده نشده است.
+
+## Historical snapshot — 2026-11-21
+
+## تاریخی — snapshot مورخ 2026-11-21 دربارهٔ PR #799 (بعداً superseded شد)
 
 - شاخهٔ بازسازی‌شده از main فعلی `bc1d273bdece690b5067a70b2deea8aa77ed7e28` ساخته شده است؛ PR [#799](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/799) به‌صورت Draft باز است.
 - علت ریشه‌ای: مالکیت task فقط با رشتهٔ قابل‌بازیافت `lease_owner` و زمان انقضا سنجیده می‌شد؛ worker قدیمی با شناسهٔ تکراری می‌توانست پس از reclaim هنوز mutation انجام دهد. همچنین task manager مسئولیت‌های storage، lease، control و قرارداد داده را در یک فایل ۶۴۵ خطی جمع کرده بود.
