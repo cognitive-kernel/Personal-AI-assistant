@@ -178,10 +178,13 @@ def test_dispatch_uses_only_the_configured_workflow_and_main(monkeypatch):
     result = agent.dispatch_autonomous_engineering()
 
     assert result["accepted"] is True
+    correlation_id = result["correlation_id"]
+    assert len(correlation_id) == 32
     assert calls[0][1:] == ["auth", "status", "--hostname", "github.com"]
     assert calls[1][1:] == [
         "workflow", "run", "autonomous-codex-engineering.yml",
         "--repo", "cognitive-kernel/Personal-AI-assistant", "--ref", "main",
+        "--field", "correlation_id=" + correlation_id,
         "--field", "manual_task=",
     ]
 
@@ -1266,7 +1269,10 @@ def test_dispatch_forwards_manual_task_as_a_single_untrusted_field(monkeypatch):
     result = agent.dispatch_autonomous_engineering(agent.ManualTaskRequest(task=task))
 
     assert result["accepted"] is True
+    assert len(result["correlation_id"]) == 32
     assert calls[-1][-2:] == ["--field", "manual_task=" + task]
+    assert calls[-1][-4] == "--field"
+    assert calls[-1][-3] == "correlation_id=" + result["correlation_id"]
 
 
 def test_manual_task_rejects_null_byte_and_excessive_length():
