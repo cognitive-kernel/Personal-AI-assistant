@@ -403,6 +403,7 @@ def test_posix_broker_pending_task_archive_restore_preserves_bytes(posix_broker)
     saved = archive_listing["tasks"][0]
     assert saved["task_id"] == item["task_id"]
     assert saved["status"] == "archived"
+    assert saved["source"] == "manual_dispatch"
     package = state_dir / "archived-pending-tasks" / item["task_id"]
     assert (package / "task.txt").read_bytes() == task_bytes
     assert (package / "owner.json").read_bytes() == owner_bytes
