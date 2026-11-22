@@ -128,7 +128,8 @@ assert snapshot["current"]["phase_label"] == "CI live broker pipe test"
 assert len(snapshot["history"]) == 1
 assert len(snapshot["events"]) == 1
 pending = broker.pending_work()
-assert pending["available"] is True and pending["blocked"] is False
+assert pending["available"] is True and pending["blocked"] is True
+assert "active_progress_run" in pending["reason"]
 diagnostics = broker.diagnostics(12345)
 assert diagnostics and str(diagnostics["run_id"]) == "12345"
 '@
@@ -237,7 +238,8 @@ else:
     $inactiveProbe = @'
 from app import autonomous_engineering_state_broker as broker
 pending = broker.pending_work()
-assert pending["available"] is True and pending["blocked"] is False
+assert pending["available"] is True and pending["blocked"] is True
+assert "active_progress_run" in pending["reason"]
 assert pending["checkpoint"] == {"available": False, "verified": True}
 '@
     $inactiveProbe | & python -
@@ -265,6 +267,14 @@ else:
         (ConvertTo-Json -InputObject $current -Compress),
         [System.Text.UTF8Encoding]::new($false)
     )
+    $completedProgressProbe = @'
+from app import autonomous_engineering_state_broker as broker
+pending = broker.pending_work()
+assert pending["available"] is True and pending["blocked"] is False
+assert pending["checkpoint"] == {"available": False, "verified": True}
+'@
+    $completedProgressProbe | & python -
+    if ($LASTEXITCODE -ne 0) { throw "The Windows Broker did not clear the active-progress blocker for a terminal run." }
 
     # The broker must interoperate with the exact Python byte-range lock used
     # by the Runner, including direct pipe clients that bypass the dashboard.
