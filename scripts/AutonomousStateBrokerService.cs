@@ -832,6 +832,15 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                             }
                             catch (IOException)
                             {
+                                for (int i = 0; i < cleanupHandles.Count; i++)
+                                {
+                                    try
+                                    {
+                                        if (!existedBefore[i] && cleanupHandles[i].Length == 0)
+                                            File.Delete(cleanupPaths[i]);
+                                    }
+                                    catch { }
+                                }
                                 return new Dictionary<string, object> {
                                     { "conflict", true },
                                     { "blockers", new[] { "progress_writer_active" } },
