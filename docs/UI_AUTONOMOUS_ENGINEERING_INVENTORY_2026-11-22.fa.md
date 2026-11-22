@@ -131,3 +131,36 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 - تابع `require_parent_repository_execution_lock` در بستهٔ `app` قفل OS را به‌صورت non-blocking بررسی و metadata مالک را با `os.getppid()`، `run_id` و hostname تطبیق می‌دهد؛ فراخوانی مستقیم CLI بدون parent lock یا با run ID متفاوت رد می‌شود.
 - `scripts/autonomous_engineering_execution_lock.py` فقط compatibility wrapper است؛ implementation مشترک در بستهٔ `app` قرار دارد.
 - تست subprocess، فراخوانی مستقیم و run ID نامطابق را رد و فرزند controller قفل‌دار را قبول می‌کند. این guard به‌جای تغییر فایل‌های محافظت‌شدهٔ cycle controller اضافه شده است.
+
+
+## الحاقیهٔ راستی‌آزمایی زنده — 2026-11-22
+
+### مبنای مخزن و تعیین تکلیف PRها
+- `main` اکنون روی `0367a3ebfd92ac196bb096f1a45cbfed5a61985d` است؛ این commit، PR #827 را ادغام کرده و مبنای قبلی `91b7e062e21d06d774c2f1f394bc72e4eb69af2c` را جلو برده است.
+- پس از بررسی head/base، فایل‌های تغییرکرده و ancestry، سه PR تکراری بسته شدند؛ branchها حذف نشدند:
+  - #829 به‌عنوان تکرار اصلاحات UI که در #834 روی main فعلی بازپایه‌گذاری شده‌اند بسته شد؛ تولیدکنندهٔ خطای ساختاریافتهٔ backend از PR #817 از قبل در main است.
+  - #831 بسته شد؛ head آن سه commit پشت head نهایی #823 بود و هیچ تغییر مستقلی نسبت به #823 نداشت.
+  - #832 بسته شد؛ head و base SHA آن دقیقاً با #828 یکسان بود.
+- اکنون ۱۲ PR باز باقی است. همهٔ PRهای بدون CI کامل یا دارای خطای بررسی به Draft تبدیل شده‌اند تا merge ناخواسته رخ ندهد:
+  - #834: اصلاح UI و قفل cleanup؛ Draft، head `4205d471bfba5318c267959f09ce44f8c0695a20`، base=main. CodeQL، Analyze، pip-audit و dashboard-smoke موفق‌اند؛ test، Full Windows و bootstrapها هنوز queued هستند. این وضعیت CI کامل نیست.
+  - #820: نسخهٔ قدیمی‌تر اصلاح UI و مستندات ممیزی/roadmap؛ Draft. بخش کد UI با #834 هم‌پوشانی دارد، اما اسناد تاریخی منحصربه‌فرد آن هنوز به #834 منتقل/تطبیق داده نشده‌اند؛ تا حفظ آن اطلاعات بسته نشود.
+  - #828: اصلاح polling با backoff، jitter، visibility و teardown؛ Draft و وابسته به branch غیر-main `test/autonomous-engineering-ui-resilience-20261121`. Exact-head CI شکست دارد: چهار تست، از جمله assertionهای متنی شکننده و انتظار تعداد poll بیشتر از رخداد واقعی؛ dashboard-smoke نیز timeout دارد. تغییرات polling آن هنوز در #834 ادغام نشده‌اند.
+  - #819: fencing گستردهٔ learning domain؛ Draft. دامنهٔ آن با #825 هم‌پوشانی دارد، ولی فایل‌های candidate/review channel در #819 منحصربه‌فردند. review comment حل‌نشده دربارهٔ persistence شواهد توسط worker stale دارد؛ ادعای پاسخ در thread به‌تنهایی جای exact-head CI را نمی‌گیرد.
+  - #821: factual verification fencing؛ Draft، exact-head checks/status در دسترس نیست.
+  - #822: knowledge lifecycle و graph fencing؛ Draft، exact-head checks/status در دسترس نیست.
+  - #823: cloud discovery fencing؛ Draft. شامل ancestor کد #831 است؛ reviewهای قبلی pause/finalization و migration assertions باید با head فعلی بازبینی شوند؛ exact-head CI هنوز اثبات نشده.
+  - #824: experience و research fencing؛ Draft، exact-head checks/status در دسترس نیست.
+  - #825: learning runner و child-task fencing؛ Draft. با #819 در چند فایل مشترک است ولی scopeهای مستقل دارد؛ exact-head checks/status در دسترس نیست.
+  - #826: sandbox practical assessment fencing؛ Draft، exact-head checks/status در دسترس نیست.
+  - #833: lifecycle کنترل‌های TaskRuntime و workerهای مستقل؛ Draft و خارج از اولویت تا پایان ماژول مهندسی. آخرین CI شامل ۷ شکست تست است: assertionهای migration قدیمی (نسخه‌های ۷/۴۸ در برابر ۸/۴۹)، TypeError در module-control و نبود پوشهٔ backup در fixture؛ dashboard-smoke نیز در انتظار card count timeout شده است.
+  - #835: lifecycle مستقل Autonomous Engineering؛ Draft و وابسته به #833. CI شکست دارد: assertionهای migration، تست قرارداد recovery که هنوز متغیر `EXECUTION_MODE` را انتظار دارد، و dashboard-smoke با timeout در انتظار تعداد cardها.
+- PRهای #819 و #821 تا #826 همگی بر base قدیمی `91b7e062...` ساخته شده‌اند؛ قبل از هر merge باید با main فعلی مقایسه و exact-head CI مجدداً اجرا شود. هیچ‌کدام از آن‌ها به دلیل نبود check-run به‌عنوان سبز تلقی نمی‌شوند.
+- هیچ PRی در این مرحله merge نشد؛ هیچ task، checkpoint، داده یا branchی حذف نشد.
+
+### شواهد و اصلاح اولویت Gateها
+- #834 روی head فعلی بخشی از CI را گذرانده، اما تمام workflowها هنوز کامل نشده‌اند؛ پذیرش Windows target، Runner/Ollama/Codex واقعی، crash/restart و تأیید مالک همچنان انجام‌نشده‌اند.
+- شکست‌های #833 و #835 مربوط به مسیر کنترل ماژول‌های دیگرند و نباید با دستکاری/تضعیف تست‌ها یا تغییر migrationهای موجود برای سبزکردن سریع رفع شوند. ابتدا باید نسخهٔ migration هر store و fixtureهای تستی به‌صورت مستقل بررسی شوند.
+- #828 شواهد ارزشمندی دربارهٔ polling lifecycle دارد؛ چون branch آن stacked است، باید فقط تغییرات واقعی polling و تست‌های رفتاری آن به branch مبتنی بر main منتقل شوند، نه کل diff وابسته به PR #820.
+- Gate A: inventory و state-transition table اولیه موجود است؛ تکمیل selector/event/API mapping، reproductionهای واقعی و ثبت نتیجهٔ تمام controls هنوز لازم است.
+- Gate B: queue-level lease fencing از PR #799 در main وجود دارد؛ domain write fencing در #819 و #821 تا #826 هنوز باز و اثبات‌نشده است. cleanup-lock اصلاح‌شدهٔ #834 نیز تا exact-head Windows integration و target-host acceptance پذیرفته‌شده محسوب نمی‌شود.
+- Gate C تا F فقط بخشی از baseline را دارند؛ Gate G و H نیازمند میزبان Windows مالک هستند؛ Gate J نیازمند مشاهده و تأیید مستقیم UI توسط مالک است.
