@@ -164,3 +164,18 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 - Gate A: inventory و state-transition table اولیه موجود است؛ تکمیل selector/event/API mapping، reproductionهای واقعی و ثبت نتیجهٔ تمام controls هنوز لازم است.
 - Gate B: queue-level lease fencing از PR #799 در main وجود دارد؛ domain write fencing در #819 و #821 تا #826 هنوز باز و اثبات‌نشده است. cleanup-lock اصلاح‌شدهٔ #834 نیز تا exact-head Windows integration و target-host acceptance پذیرفته‌شده محسوب نمی‌شود.
 - Gate C تا F فقط بخشی از baseline را دارند؛ Gate G و H نیازمند میزبان Windows مالک هستند؛ Gate J نیازمند مشاهده و تأیید مستقیم UI توسط مالک است.
+
+
+## الحاقیهٔ اعتبارسنجی Windows و اصلاح خطاهای CI — 2026-11-22
+
+### نتیجهٔ exact-head قبلی #834
+- Browser E2E (Playwright) موفق شد؛ CodeQL، Analyze، pip-audit و bootstrapهای Linux/macOS/Windows نیز موفق بودند.
+- job لینوکس `test` شکست خورد: ۲ تست cleanup به دلیل patch نشدن وابستگی `execution_state_directory` در ماژول lock به مسیر سیستم `/usr/local/share/PersonalAIAssistant` رفتند؛ یک assertion متنی نیز facade قدیمی checkpoint lock را به‌اشتباه انتظار داشت.
+- `windows-storage-regressions` شکست خورد: فرایند فرزند هنگام خواندن metadata از همان byteای که parent با `msvcrt.locking` قفل کرده بود `PermissionError` گرفت؛ assertion facade checkpoint lock نیز stale بود.
+- Full test suite ویندوز در زمان ثبت این الحاقیه هنوز در حال اجرا بود؛ هیچ نتیجهٔ موفقی برای آن فرض نشده است.
+
+### اصلاحات آماده‌شده در branch جایگزین
+- metadata مالک repository lock اکنون از byte شمارهٔ ۱ خوانده/نوشته می‌شود و byte صفر فقط برای قفل cross-process باقی می‌ماند؛ این کار خواندن metadata توسط child را بدون تداخل با byte-range lock ویندوز ممکن می‌کند و با قفل byte صفر C# broker سازگار می‌ماند.
+- تست‌های cleanup هر دو ماژول مصرف‌کنندهٔ state directory را به مسیر موقت یکسان متصل می‌کنند.
+- تست معماری checkpoint lock اکنون implementation واقعی زیر `app/` و compatibility facade زیر `scripts/` را جداگانه بررسی می‌کند.
+- این اصلاحات در branch `fix/autonomous-engineering-first-module-validation-20261122` از head قبلی #834 ساخته شده‌اند. هنوز exact-head CI ندارند و merge نشده‌اند.
