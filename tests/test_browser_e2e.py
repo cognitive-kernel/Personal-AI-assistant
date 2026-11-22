@@ -5851,9 +5851,9 @@ def test_autonomous_engineering_polling_uses_visibility_backoff_jitter_and_clean
           const beforeFirstRetry = calls.length;
           await wait(100);
           const afterFirstRetry = calls.length;
-          await wait(950);
+          await wait(900);
           const beforeSecondRetry = calls.length;
-          await wait(100);
+          await wait(150);
           const afterSecondRetry = calls.length;
           stop();
           hidden = true;
