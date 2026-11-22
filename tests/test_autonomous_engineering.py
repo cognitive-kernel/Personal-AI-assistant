@@ -2554,9 +2554,10 @@ def test_cleanup_rechecks_active_workflow_after_acquiring_repository_lock(monkey
         "/api/autonomous-engineering/cleanup",
     )
 
-    assert response.status_code == 200 if agent._is_windows() else 409
     if agent._is_windows():
+        assert response.status_code == 200
         assert calls == {"runs": 1, "cleanup": 1}
     else:
+        assert response.status_code == 409
         assert response.json()["code"] == "AUTONOMOUS_ENGINEERING_CONFLICT"
         assert calls == {"runs": 2, "cleanup": 0}
