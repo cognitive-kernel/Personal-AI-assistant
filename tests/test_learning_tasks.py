@@ -1,6 +1,6 @@
 import pytest
 
-from app import db, learning, ollama, task_manager
+from app import db, learning, ollama, task_manager, web_sources
 from app.learning_tasks import (
     LEARNING_TASK_TYPE,
     cancel_learning_job,
@@ -91,6 +91,45 @@ def test_stale_parent_cannot_create_researched_child_job(learning_task_store):
         count = connection.execute(
             "SELECT COUNT(*) FROM learning_jobs WHERE path_topic_id=?",
             (topic_id,),
+        ).fetchone()[0]
+    assert count == 0
+
+
+def test_stale_learning_task_cannot_persist_source_discovery_fallback(
+    learning_task_store, monkeypatch
+):
+    job = learning.create_job("Stale source discovery")
+    payload = {"job_id": job["id"]}
+    task = task_manager.create_task(LEARNING_TASK_TYPE, payload, max_attempts=3)
+    worker_id = "source-discovery-worker"
+    claimed = task_manager.claim_next_task(worker_id)
+    assert claimed is not None and claimed["id"] == task["id"]
+    context = TaskContext(
+        task_id=task["id"],
+        worker_id=worker_id,
+        lease_epoch=claimed["lease_epoch"],
+    )
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE task_queue SET lease_expires_at=? WHERE id=?",
+            ("2000-01-01T00:00:00.000000+00:00", task["id"]),
+        )
+    reclaimed = task_manager.claim_next_task(worker_id)
+    assert reclaimed is not None and reclaimed["id"] == task["id"]
+    assert reclaimed["lease_epoch"] > context.lease_epoch
+    monkeypatch.setattr(web_sources, "discover_sources", lambda *_args, **_kwargs: [])
+
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        learning._discover_and_store_sources(
+            job["id"], job["topic"], task_context=context,
+            expected_task_type=LEARNING_TASK_TYPE,
+            expected_payload=payload,
+        )
+
+    with db.learning_connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM learning_evidence WHERE job_id=?",
+            (job["id"],),
         ).fetchone()[0]
     assert count == 0
 
