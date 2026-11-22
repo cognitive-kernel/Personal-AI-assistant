@@ -16,7 +16,10 @@
     draining: "در حال پایان",
     stopped: "متوقف",
     finished: "پایان‌یافته",
-    finished_pending: "پایان کار فعال؛ صف محفوظ"
+    finished_pending: "پایان کار فعال؛ صف محفوظ",
+    stopping: "در حال توقف",
+    unavailable: "وضعیت نامشخص",
+    disabled: "غیرفعال"
   };
   const actions = [
     { id: "start", label: "شروع", title: "فعال‌سازی پردازش وظایف صف‌شده و جدید؛ کارهای مکث‌شده جداگانه ادامه داده نمی‌شوند." },
@@ -65,6 +68,7 @@
       const active = Number(counts.active || 0);
       const pending = Number(counts.pending || 0);
       button.disabled = busyModules.has(module.id) ||
+        (Array.isArray(module.disabled_actions) && module.disabled_actions.includes(action.id)) ||
         (action.id === "start" && stateValue === "running") ||
         (action.id === "pause" && stateValue !== "running") ||
         (action.id === "resume" &&
