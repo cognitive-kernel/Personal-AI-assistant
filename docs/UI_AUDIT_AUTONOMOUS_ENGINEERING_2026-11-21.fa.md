@@ -146,5 +146,5 @@
 
 - `autonomous-engineering-core.js` یک polling controller مشترک با single-flight، exponential backoff محدود، jitter محدود و حداکثر فاصلهٔ مشخص ارائه می‌کند.
 - هنگام hidden شدن صفحه timer حذف می‌شود و با visible شدن refresh فوری انجام می‌شود؛ `stop()` و `pagehide` timer و listenerهای visibility را پاک می‌کنند و `pageshow` در بازگشت از bfcache polling را دوباره فعال می‌کند.
-- refreshهای Status/Runs/Progress نتیجهٔ موفق/ناموفق را به polling controller بازمی‌گردانند تا backoff واقعی اعمال شود؛ timeout هر درخواست از helper مشترک حفظ شده است.
+- refreshهای Status/Runs/Progress و monitor وضعیت دانلود مدل نتیجهٔ موفق/ناموفق را به polling controller بازمی‌گردانند تا backoff واقعی اعمال شود. خطای GET مدل حداکثر پنج بار متوالی با backoff محدود retry می‌شود و job دانلود سمت سرور لغو نمی‌شود. timer قفل visibility در Status و monitor مدل در teardown صریح پاک می‌شوند؛ timeout هر درخواست از helper مشترک حفظ شده است.
 - رگرسیون Chromium زمان‌بندی hidden/visible، backoff، jitter و عدم اجرای refresh پس از cleanup را می‌سنجد. تا پایان exact-head CI این مورد پذیرفته‌شده محسوب نمی‌شود.
