@@ -610,7 +610,11 @@ from pathlib import Path
 from app.autonomous_engineering_state_broker import request, StateBrokerConflict
 
 state = Path(__import__("os").environ["AUTONOMOUS_ENGINEERING_PROGRESS_DIR"])
+task_path = state / "pending-manual-task.txt"
 owner_only = state / "pending-manual-task-owner.json"
+saved_task = task_path.read_bytes()
+saved_owner = owner_only.read_bytes()
+task_path.unlink()
 owner_only.write_text("{}", encoding="utf-8")
 try:
     request("GET", "/v1/tasks/pending")
@@ -619,7 +623,8 @@ except StateBrokerConflict as exc:
 else:
     raise SystemExit("Windows broker ignored orphaned pending-task owner metadata.")
 finally:
-    owner_only.unlink(missing_ok=True)
+    owner_only.write_bytes(saved_owner)
+    task_path.write_bytes(saved_task)
 
 pending = request("GET", "/v1/tasks/pending")
 assert pending["available"] is True and len(pending["tasks"]) == 1
