@@ -172,6 +172,8 @@ def test_dashboard_exposes_model_pull_controls_and_progress():
     assert 'id="pull-model"' in html
     assert 'id="cancel-model-pull"' in html
     assert 'id="model-pull-status"' in html
+    assert 'id="finish-agent"' in html
+    assert 'finishButton.addEventListener("click"' in script
     assert 'request("models/pull"' in script
     assert '"/cancel"' in script
     assert 'request("models/pull/"' in script
