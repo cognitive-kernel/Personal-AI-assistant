@@ -101,15 +101,6 @@ def validate_practical_job(job_id: int, exercise_id: str) -> dict[str, Any]:
     if exercise is None:
         raise KeyError(exercise_id)
     with learning_connection() as conn:
-        conn.execute("BEGIN IMMEDIATE")
-        if task_context is not None:
-            if expected_task_type is None or expected_payload is None:
-                raise ValueError("Practical sandbox task ownership contract is incomplete.")
-            task_context.assert_current(
-                conn,
-                expected_task_type=expected_task_type,
-                expected_payload=expected_payload,
-            )
         job = conn.execute(
             """SELECT j.id, j.status, j.topic, j.path_topic_id, p.curriculum_slug
                FROM learning_jobs AS j
@@ -289,6 +280,15 @@ def record_practical_attempt(
         }
 
     with learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        if task_context is not None:
+            if expected_task_type is None or expected_payload is None:
+                raise ValueError("Practical sandbox task ownership contract is incomplete.")
+            task_context.assert_current(
+                conn,
+                expected_task_type=expected_task_type,
+                expected_payload=expected_payload,
+            )
         job = conn.execute(
             """SELECT j.status, j.topic, j.path_topic_id, p.curriculum_slug
                FROM learning_jobs AS j
