@@ -98,7 +98,7 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 | Gate | وضعیت | دلیل |
 |---|---|---|
 | A — inventory/reproduction | در حال تکمیل | این inventory و جدول transitions ثبت شده؛ مرور نهایی تمام branchها و اجرای reproduction روی target host لازم است |
-| B — state ownership/fencing/recovery | جزئی؛ cleanup lock order و recovery بررسی می‌شوند، ممیزی call-siteها pending | main شامل lease epoch و owner+epoch fencing است؛ PR #834 قفل repository را در خود broker اعمال می‌کند و ترتیب repository → durable-state → checkpoint را حفظ می‌کند؛ POSIX runtime cleanup نیز زیر checkpoint lock است؛ Windows runtime files بعد از آزادشدن broker lock حذف نمی‌شوند؛ ممیزی کامل mutationها و crash recovery هنوز لازم است |
+| B — state ownership/fencing/recovery | جزئی؛ cleanup lock order و recovery بررسی می‌شوند، ممیزی call-siteها pending | main شامل lease epoch و owner+epoch fencing است؛ PR #834 قفل repository را در خود broker اعمال می‌کند و ترتیب repository → durable-state → checkpoint را حفظ می‌کند؛ چون workflow پیش از repository lock در current.json می‌نویسد، broker وضعیت فعال/نامعلوم current.json را رد می‌کند و فایل‌های progress مجاز را با FileShare فقط Read/Delete قفل می‌کند تا writer غیرهمکار هم نتواند وسط cleanup بنویسد؛ تست Windows هر دو race را پوشش می‌دهد؛ POSIX runtime cleanup نیز زیر checkpoint lock است؛ Windows runtime files بعد از آزادشدن broker lock حذف نمی‌شوند؛ ممیزی کامل mutationها و crash recovery هنوز لازم است |
 | C — structured errors/Codex diagnostics | baseline merged؛ regression UI در CI | PR #817 و #827 merged؛ PR #834 integration test و exact-head CI pending |
 | D — UI state machine/fault isolation | پیاده‌سازی در PR #834؛ پذیرش pending | status/run/progress stale-request و module-load fault cases باید روی exact head سبز شوند |
 | E — Playwright E2E | pending exact-head | تست‌های موجود و افزوده‌شده باید روی PR #834 اجرا شوند؛ نتیجه هنوز ادعا نمی‌شود |
@@ -120,7 +120,7 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 ### اصلاحات Gate B که در PR #834 اضافه شده‌اند
 
 - Windows broker برای `POST /v1/cleanup` خودش `repository-execution.lock` را پیش از `autonomous-durable-state.lock` و `autonomous-checkpoint-store.lock` می‌گیرد؛ بنابراین کلاینت مستقیم pipe نمی‌تواند قفل UI را دور بزند.
-- تست live Windows، قفل repository را با همان Python helper مورد استفادهٔ Runner می‌گیرد و درخواست مستقیم broker را در زمان قفل باید با `repository_execution_active` رد کند.
+- تست live Windows، قفل repository را با همان Python helper مورد استفادهٔ Runner می‌گیرد و درخواست مستقیم broker را در زمان قفل باید با `repository_execution_active` رد کند؛ همچنین یک Python progress writer فایل `current.json.tmp` را باز نگه می‌دارد و broker باید با `progress_writer_active` cleanup را بدون حذف فایل‌ها رد کند.
 - روی Windows، broker قفل را قبل از آزادکردن اجرا و پاک‌سازی state می‌گیرد؛ فایل‌های runtime داخل worktree پس از بازگشت broker در اپلیکیشن حذف نمی‌شوند، چون حذف پس از آزادشدن قفل race ایجاد می‌کند. این فایل‌ها در Windows عمداً در فهرست preserved می‌مانند.
 - روی POSIX، route قفل repository را می‌گیرد، سپس cleanup زیر durable-state و checkpoint-store lock انجام می‌شود و runtime files در همان بازهٔ repository lock حذف می‌شوند.
 - خطای CI ناشی از `ModuleNotFoundError: scripts` با انتقال repository/checkpoint lock helperها به بستهٔ قابل‌نصب `app` و تبدیل فایل‌های scripts به compatibility wrapper رفع شده است؛ `pyproject.toml` و package discovery دست‌نخورده مانده‌اند. تست import و Windows service integration روی exact head باید تأییدش کند.
