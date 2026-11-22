@@ -88,7 +88,7 @@ def _backup_status() -> dict[str, Any]:
         "display_state": "stopping" if active and not status.get("running") else state,
         "task_counts": _counts(active=1 if active else 0),
         "accepting_tasks": bool(status.get("running")),
-        "disabled_actions": [] if status.get("configured") else ["start", "resume"],
+        "disabled_actions": [] if status.get("configured") else sorted(_ACTIONS),
         "interval_hours": status.get("interval_hours"),
         "last_backup_id": status.get("last_backup_id"),
         "last_backup_status": status.get("last_backup_status"),
