@@ -157,6 +157,12 @@ def get_task_events(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@router.get("/modules")
+def list_background_modules() -> dict[str, Any]:
+    """Return background-module lifecycle state and task counts without payloads."""
+    return {"modules": module_control.list_module_controls()}
+
+
 @router.get("/{task_id}")
 def get_task(task_id: int) -> dict[str, Any]:
     task = task_manager.get_task(task_id)
@@ -223,12 +229,6 @@ def reschedule_task(task_id: int, request: TaskScheduleRequest) -> dict[str, Any
         _raise_task_error(exc)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
-@router.get("/modules")
-def list_background_modules() -> dict[str, Any]:
-    """Return background-module lifecycle state and task counts without payloads."""
-    return {"modules": module_control.list_module_controls()}
 
 
 @router.post("/modules/{module_id}/{action}")
