@@ -268,6 +268,9 @@ def test_learning_api_to_worker_persists_factual_claim_with_provenance(tmp_path,
             task_id = 991
             def checkpoint(self, _value): pass
 
+            def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+                return None
+
         review_result = handle_candidate_review(
             {"candidate_id": int(candidate["id"]), "query": "Python list behavior", "web_mode": "search"},
             None,
