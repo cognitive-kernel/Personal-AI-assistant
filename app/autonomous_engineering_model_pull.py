@@ -18,8 +18,14 @@ _MODEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$")
 _MAX_PROGRESS_LINE_BYTES = 1024 * 1024
 _LOCK = threading.Lock()
 _JOBS: dict[str, dict[str, Any]] = {}
+_CANCEL_EVENTS: dict[str, threading.Event] = {}
+_RESPONSES: dict[str, Any] = {}
 _ACTIVE_JOB: str | None = None
 _MAX_RETAINED_JOBS = 20
+
+
+class ModelPullCancelled(RuntimeError):
+    """Raised when the local Ollama pull stream is cooperatively closed."""
 
 
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -48,13 +54,19 @@ def _update(job_id: str, **values: Any) -> None:
             return
         state.update(values)
         state["updated_at"] = time.time()
-        if state["status"] in {"completed", "failed"} and _ACTIVE_JOB == job_id:
-            _ACTIVE_JOB = None
+        if state["status"] in {"completed", "failed", "cancelled"}:
+            _CANCEL_EVENTS.pop(job_id, None)
+            if _ACTIVE_JOB == job_id:
+                _ACTIVE_JOB = None
 
 
 def _run_pull(job_id: str, model: str) -> None:
     _update(job_id, status="running", message="اتصال به Ollama و دریافت مدل آغاز شد.")
     try:
+        with _LOCK:
+            cancel_event = _CANCEL_EVENTS[job_id]
+        if cancel_event.is_set():
+            raise ModelPullCancelled()
         base_url = _base_url()
         request = urllib.request.Request(
             base_url + "/api/pull",
@@ -67,8 +79,13 @@ def _run_pull(job_id: str, model: str) -> None:
             _NoRedirectHandler(),
         )
         saw_success = False
-        with opener.open(request, timeout=60) as response:
+        response = opener.open(request, timeout=60)
+        with _LOCK:
+            _RESPONSES[job_id] = response
+        try:
             while True:
+                if cancel_event.is_set():
+                    raise ModelPullCancelled()
                 line = response.readline(_MAX_PROGRESS_LINE_BYTES + 1)
                 if not line:
                     break
@@ -99,6 +116,12 @@ def _run_pull(job_id: str, model: str) -> None:
                     progress=percent,
                     message=status[:160],
                 )
+        finally:
+            with _LOCK:
+                _RESPONSES.pop(job_id, None)
+            response.close()
+        if cancel_event.is_set():
+            raise ModelPullCancelled()
         if not saw_success:
             raise RuntimeError("Ollama closed the download stream before confirming success.")
         verify_request = urllib.request.Request(
@@ -120,21 +143,40 @@ def _run_pull(job_id: str, model: str) -> None:
         expected_names = {model, model + ":latest"} if ":" not in model else {model}
         if not expected_names.intersection(installed_names):
             raise RuntimeError("Ollama reported success but the selected model is not present in its local inventory.")
+        if cancel_event.is_set():
+            raise ModelPullCancelled()
         _update(job_id, status="completed", progress=100, message="دانلود، نصب و حضور مدل در Ollama تأیید شد.", error=None)
+    except ModelPullCancelled:
+        _update(
+            job_id,
+            status="cancelled",
+            message="درخواست توقف دانلود ثبت شد؛ هیچ مدل موجودی حذف نشده است.",
+            error=None,
+        )
     except urllib.error.HTTPError as exc:
-        _update(
-            job_id,
-            status="failed",
-            message="Ollama درخواست دانلود مدل را نپذیرفت.",
-            error=f"HTTP {exc.code}",
-        )
+        with _LOCK:
+            cancelled = _CANCEL_EVENTS.get(job_id)
+        if cancelled is not None and cancelled.is_set():
+            _update(job_id, status="cancelled", message="دانلود به درخواست کاربر متوقف شد؛ مدل‌های موجود حفظ شدند.", error=None)
+        else:
+            _update(
+                job_id,
+                status="failed",
+                message="Ollama درخواست دانلود مدل را نپذیرفت.",
+                error=f"HTTP {exc.code}",
+            )
     except (OSError, TimeoutError, urllib.error.URLError, ValueError, RuntimeError) as exc:
-        _update(
-            job_id,
-            status="failed",
-            message="دانلود مدل کامل نشد.",
-            error=(str(exc) if isinstance(exc, RuntimeError) and str(exc).startswith("Ollama ") else type(exc).__name__)[:240],
-        )
+        with _LOCK:
+            cancelled = _CANCEL_EVENTS.get(job_id)
+        if cancelled is not None and cancelled.is_set():
+            _update(job_id, status="cancelled", message="دانلود به درخواست کاربر متوقف شد؛ مدل‌های موجود حفظ شدند.", error=None)
+        else:
+            _update(
+                job_id,
+                status="failed",
+                message="دانلود مدل کامل نشد.",
+                error=(str(exc) if isinstance(exc, RuntimeError) and str(exc).startswith("Ollama ") else type(exc).__name__)[:240],
+            )
     except Exception as exc:  # Defensive boundary for the background worker.
         _update(job_id, status="failed", message="دانلود مدل کامل نشد.", error=type(exc).__name__)
 
@@ -160,6 +202,7 @@ def start_model_pull(model: str) -> dict[str, Any]:
             "updated_at": now,
         }
         _JOBS[job_id] = state
+        _CANCEL_EVENTS[job_id] = threading.Event()
         _ACTIVE_JOB = job_id
         for old_id in list(_JOBS)[:-_MAX_RETAINED_JOBS]:
             if old_id != _ACTIVE_JOB:
@@ -175,3 +218,29 @@ def get_model_pull(job_id: str) -> dict[str, Any] | None:
     with _LOCK:
         state = _JOBS.get(job_id)
         return _public_state(state) if state else None
+
+
+def cancel_model_pull(job_id: str) -> dict[str, Any] | None:
+    """Request cooperative cancellation of one active Ollama stream without deleting models."""
+    if not isinstance(job_id, str) or not re.fullmatch(r"[0-9a-f]{32}", job_id):
+        return None
+    with _LOCK:
+        state = _JOBS.get(job_id)
+        if state is None:
+            return None
+        if state["status"] in {"completed", "failed", "cancelled"}:
+            return _public_state(state)
+        event = _CANCEL_EVENTS.get(job_id)
+        response = _RESPONSES.get(job_id)
+        if event is not None:
+            event.set()
+        state["status"] = "cancelling"
+        state["message"] = "درخواست توقف ارسال شد؛ اتصال دانلود در اولین نقطهٔ امن بسته می‌شود."
+        state["updated_at"] = time.time()
+        result = _public_state(state)
+    if response is not None:
+        try:
+            response.close()
+        except Exception:
+            pass
+    return result
