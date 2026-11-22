@@ -80,3 +80,22 @@ def test_backup_scheduler_cannot_start_without_explicit_interval(lifecycle_store
     monkeypatch.setattr(db.defaults, "database_backup_interval_hours", 0)
     with pytest.raises(module_control.ModuleControlError, match="DATABASE_BACKUP_INTERVAL_HOURS"):
         module_control.control_module("backup-scheduler", "start")
+
+def test_external_module_lifecycle_api_uses_loopback_guard_and_owner_adapter(lifecycle_stores, monkeypatch):
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    monkeypatch.setattr(db.defaults, "database_backup_interval_hours", 0)
+    client = TestClient(app, client=("127.0.0.1", 12345))
+    listed = client.get("/api/tasks/modules")
+    assert listed.status_code == 200
+    ids = {item["id"] for item in listed.json()["modules"]}
+    assert {"ai-learning-browser", "backup-scheduler"} <= ids
+
+    finished = client.post("/api/tasks/modules/ai-learning-browser/finish")
+    assert finished.status_code == 200
+    assert finished.json()["module"]["state"] == "finished"
+
+    remote = TestClient(app, client=("192.0.2.50", 12345))
+    forbidden = remote.post("/api/tasks/modules/ai-learning-browser/start")
+    assert forbidden.status_code == 403
