@@ -1028,7 +1028,8 @@ def discover_resources(
             # Some interruption paths are raised by a write guard before checkpoint().
             # Settle those only while the original lease is still current; an already
             # settled or reclaimed task is handled by the exact epoch check below.
-            _settle_cooperative_discovery_interruption(task_context)
+            if task_context is not None:
+                _settle_cooperative_discovery_interruption(task_context)
             _reconcile_abandoned_discovery_runs()
             raise
         try:
