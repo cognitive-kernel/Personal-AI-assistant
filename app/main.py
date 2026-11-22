@@ -403,10 +403,10 @@ def startup() -> None:
     system_handlers = {
         cloud_resources.CLOUD_DISCOVERY_TASK_TYPE: cloud_resources.handle_discovery_task,
     }
-    sandbox_handler = sandbox_tasks.handler_from_environment()
+    sandbox_handler = sandbox_tasks.handler_from_environment(expected_task_type=sandbox_tasks.SANDBOX_TASK_TYPE)
     if sandbox_handler is not None:
         programming_handlers[sandbox_tasks.SANDBOX_TASK_TYPE] = sandbox_handler
-    sandbox_language_handler = sandbox_tasks.handler_from_environment(allow_language_runners=True)
+    sandbox_language_handler = sandbox_tasks.handler_from_environment(allow_language_runners=True, expected_task_type=sandbox_tasks.SANDBOX_LANGUAGE_TASK_TYPE)
     if sandbox_language_handler is not None:
         programming_handlers[sandbox_tasks.SANDBOX_LANGUAGE_TASK_TYPE] = sandbox_language_handler
     experience_test_handler = experience_tasks.handler_from_environment()
