@@ -30,8 +30,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          EXECUTION_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE || 'continuous' }}
-          PAUSED: ${{ vars.AUTONOMOUS_ENGINEERING_PAUSED || 'false' }}
           FAILED_RUN_ID: ${{ github.event.workflow_run.id }}
         shell: bash
         run: |
