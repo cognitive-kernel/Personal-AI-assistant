@@ -522,6 +522,35 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                             Directory.GetFiles(_stateDirectory, "worktree-checkpoint-*").Length > 0 ||
                             Directory.GetFiles(_stateDirectory, "worktree-plan-*").Length > 0)
                             throw new InvalidDataException("checkpoint_present_or_unknown");
+                        string recoveryRoot = EnsureTaskArchiveRoot();
+                        string recoveryPackage = Path.Combine(recoveryRoot, taskId);
+                        if (Directory.Exists(recoveryPackage))
+                        {
+                            if ((new DirectoryInfo(recoveryPackage).Attributes & FileAttributes.ReparsePoint) != 0)
+                                throw new InvalidDataException("Archive package cannot be a reparse point.");
+                            string savedTaskPath = Path.Combine(recoveryPackage, "task.txt");
+                            string savedOwnerPath = Path.Combine(recoveryPackage, "owner.json");
+                            Dictionary<string, object> savedManifest = ReadJsonFile(
+                                Path.Combine("archived-pending-tasks", taskId, "manifest.json"), 65536
+                            ) as Dictionary<string, object>;
+                            if (!SafeFileExists(savedTaskPath) || !SafeFileExists(savedOwnerPath) ||
+                                savedManifest == null ||
+                                Convert.ToString(savedManifest.ContainsKey("source_revision") ? savedManifest["source_revision"] : "") != revision)
+                                throw new InvalidDataException("archive_retry_revision_or_package_invalid");
+                            byte[] savedTask = File.ReadAllBytes(savedTaskPath);
+                            byte[] savedOwner = File.ReadAllBytes(savedOwnerPath);
+                            string activeTaskPath = Path.Combine(_stateDirectory, "pending-manual-task.txt");
+                            string activeOwnerPath = Path.Combine(_stateDirectory, "pending-manual-task-owner.json");
+                            if (SafeFileExists(activeTaskPath) && !File.ReadAllBytes(activeTaskPath).SequenceEqual(savedTask))
+                                throw new InvalidDataException("archive_recovery_task_mismatch");
+                            if (SafeFileExists(activeOwnerPath) && !File.ReadAllBytes(activeOwnerPath).SequenceEqual(savedOwner))
+                                throw new InvalidDataException("archive_recovery_owner_mismatch");
+                            if (SafeFileExists(activeTaskPath)) File.Delete(activeTaskPath);
+                            if (SafeFileExists(activeOwnerPath)) File.Delete(activeOwnerPath);
+                            return new Dictionary<string, object> {
+                                { "task_id", taskId }, { "status", "archived" }, { "preserved", true }
+                            };
+                        }
                         Dictionary<string, object> record = ReadPendingTaskRecord();
                         if (record == null || Convert.ToString(record["task_id"]) != taskId)
                             throw new InvalidDataException("stale_task");
