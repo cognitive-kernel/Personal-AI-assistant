@@ -155,6 +155,9 @@ MIGRATIONS: tuple[tuple[int, str, tuple[str, ...]], ...] = (
         "ALTER TABLE ai_learning_control ADD COLUMN worker_lease_until TEXT",
         "ALTER TABLE ai_learning_control ADD COLUMN worker_lease_epoch INTEGER NOT NULL DEFAULT 0 CHECK(worker_lease_epoch >= 0)",
     )),
+    (8, "ai-learning-drain-control", (
+        "ALTER TABLE ai_learning_control ADD COLUMN draining INTEGER NOT NULL DEFAULT 0 CHECK(draining IN (0,1))",
+    )),
 )
 
 class StoreSchemaError(RuntimeError):
