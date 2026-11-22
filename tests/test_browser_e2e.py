@@ -5457,12 +5457,12 @@ def test_background_module_controls_render_and_drive_real_lifecycle_api():
         assert response is not None and response.status == 200
 
         page.wait_for_function(
-            "() => document.querySelectorAll('#module-controls-container [data-module-id]').length === 7",
+            "() => document.querySelectorAll('#module-controls-container [data-module-id]').length === 8",
             timeout=15000,
         )
         expected_modules = {
             "research", "learning", "cloud-discovery", "programming",
-            "sandbox", "experience", "factual-verification",
+            "sandbox", "experience", "factual-verification", "autonomous-engineering",
         }
         rendered = set(page.locator("#module-controls-container [data-module-id]").evaluate_all(
             "nodes => nodes.map(node => node.dataset.moduleId)"
@@ -5520,7 +5520,7 @@ def test_module_resume_remains_available_for_paused_tasks_after_start():
         assert response is not None and response.status == 200
 
         page.wait_for_function(
-            "() => document.querySelectorAll('#module-controls-container [data-module-id]').length === 7",
+            "() => document.querySelectorAll('#module-controls-container [data-module-id]').length === 8",
             timeout=15000,
         )
         cloud = page.locator('[data-module-id="cloud-discovery"]')
