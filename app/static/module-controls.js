@@ -36,6 +36,28 @@
     return node;
   }
 
+  function actionDescription(module, action) {
+    if (module.id === "backup-scheduler") {
+      return {
+        start: "فعال‌سازی زمان‌بند؛ نخستین snapshot پس از یک بازهٔ کامل اجرا می‌شود.",
+        pause: "توقف برنامهٔ snapshotهای بعدی پس از تکمیل snapshot جاری.",
+        resume: "فعال‌سازی دوبارهٔ زمان‌بند پشتیبان‌گیری.",
+        finish: "تکمیل snapshot جاری و سپس پایان زمان‌بند.",
+        force_stop: "ارسال فوری درخواست توقف؛ snapshot در حال اجرا به‌صورت ناامن قطع نمی‌شود."
+      }[action.id];
+    }
+    if (module.id === "ai-learning-browser") {
+      return {
+        start: "برداشتن مکث/پایان و شروع قدیمی‌ترین اجرای صف‌شده.",
+        pause: "مکث سراسری و نگه‌داشتن اجرای فعال برای بازیابی امن.",
+        resume: "ادامه از صف پایدار و بازیابی اجرای قبلی.",
+        finish: "اجازهٔ اتمام اجرای جاری و جلوگیری از شروع اجرای بعدی.",
+        force_stop: "لغو تعاونی اجرای فعال؛ اجراهای صف‌شده برای ادامهٔ بعدی محفوظ می‌مانند."
+      }[action.id];
+    }
+    return action.title;
+  }
+
   function renderModule(module) {
     const card = element("article", "module-control-card");
     card.dataset.moduleId = module.id;
@@ -46,6 +68,13 @@
     heading.append(title, state);
     card.append(heading);
     card.append(element("p", "muted", module.description));
+    if (module.message) card.append(element("p", "module-control-note", module.message));
+    if (Number.isInteger(module.interval_hours)) {
+      card.append(element("p", "module-control-counts", "بازهٔ پشتیبان‌گیری: " + module.interval_hours + " ساعت"));
+    }
+    if (module.last_backup_status && module.last_backup_status !== "never") {
+      card.append(element("p", "module-control-counts", "آخرین snapshot: " + module.last_backup_status));
+    }
 
     const counts = module.task_counts || {};
     const summary = element("p", "module-control-counts",
@@ -62,7 +91,7 @@
     for (const action of actions) {
       const button = element("button", action.id === "force_stop" ? "danger" : "secondary", action.label);
       button.type = "button";
-      button.title = action.title;
+      button.title = actionDescription(module, action) || action.title;
       button.dataset.action = action.id;
       const stateValue = module.state;
       const active = Number(counts.active || 0);
@@ -100,9 +129,14 @@
 
   async function performAction(module, action) {
     if (busyModules.has(module.id)) return;
-    if (action === "force_stop" && !window.confirm(
-      "وظایف منتظر برای ادامهٔ بعدی مکث شوند و برای وظایف فعال درخواست لغو ثبت شود؟ پردازش فعال در اولین نقطهٔ کنترل تعاونی متوقف می‌شود."
-    )) return;
+    if (action === "force_stop") {
+      const confirmation = module.id === "backup-scheduler"
+        ? "درخواست توقف زمان‌بند ثبت شود؟ snapshot در حال اجرا، در صورت وجود، باید ایمن کامل شود."
+        : module.id === "ai-learning-browser"
+          ? "اجرای فعال یادگیری لغو تعاونی شود؟ اجراهای صف‌شده برای ادامهٔ بعدی حفظ می‌شوند."
+          : "وظایف منتظر برای ادامهٔ بعدی مکث شوند و برای وظایف فعال درخواست لغو ثبت شود؟ پردازش فعال در اولین نقطهٔ کنترل تعاونی متوقف می‌شود.";
+      if (!window.confirm(confirmation)) return;
+    }
 
     busyModules.add(module.id);
     output.textContent = "در حال اجرای فرمان «" + action + "» برای " + module.name + "…";
