@@ -108,7 +108,7 @@ def test_stale_experience_task_cannot_persist_test_result(tmp_path, monkeypatch)
             "image": "python:test",
         }
 
-    monkeypatch.setattr(sandbox_tasks, "handler_from_environment", lambda: sandbox_handler)
+    monkeypatch.setattr(sandbox_tasks, "handler_from_environment", lambda **_kwargs: sandbox_handler)
     monkeypatch.setattr(sandbox_tasks.sandbox_consent, "is_enabled", lambda: True)
     monkeypatch.setattr(
         experience_tasks, "_verify_live_source_evidence",
