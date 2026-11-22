@@ -271,6 +271,7 @@
       // can overwrite a newer, explicitly refreshed run list with stale data.
 
       setMessage(data.paused ? "صف مهندسی متوقف است؛ برای ادامه از آخرین وضعیت، دکمهٔ ادامه را بزنید." : (ready ? "پیش‌نیازهای حساب برنامه آماده‌اند؛ Workflow پیش‌نیازهای حساب Runner را جداگانه بررسی می‌کند." : "برای فعال‌شدن اجرا، موارد ناقص را در راهنمای راه‌اندازی تکمیل کنید."), data.paused || ready ? "success" : "");
+      return true;
     } catch (error) {
       statusKnown = false;
       lastPendingWork = null;
@@ -281,6 +282,7 @@
       cancelButton.disabled = true;
       pauseButton.disabled = true;
       resumeButton.disabled = true;
+      return false;
     } finally {
       $("refresh-agent").disabled = false;
     }
