@@ -60,13 +60,21 @@
   }
 
   if (missing.length) showModuleWarning("برخی قابلیت‌های کنسول بارگذاری نشدند: " + missing.join("، "));
-  startPolling();
-  window.addEventListener("pagehide", stopPolling);
-  window.addEventListener("pageshow", event => {
+  function onPageHide() {
+    stopPolling();
+  }
+  function onPageShow(event) {
     if (event.persisted) startPolling();
-  });
+  }
+  startPolling();
+  window.addEventListener("pagehide", onPageHide);
+  window.addEventListener("pageshow", onPageShow);
   window.autonomousEngineeringApp = Object.freeze({
     version: 1,
-    stop: stopPolling
+    stop() {
+      stopPolling();
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("pageshow", onPageShow);
+    }
   });
 })();
