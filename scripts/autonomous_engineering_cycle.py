@@ -612,10 +612,13 @@ def run_cycle(args: argparse.Namespace) -> int:
             f"اجرای نشست تازه برای همان وظیفه؛ تلاش {attempt}",
         )
         watcher = start_checkpoint_watcher(base_sha, args.run_id, task)
+        codex_attempt_started = time.monotonic()
         try:
-            remaining = TASK_RETRY_POLICY.remaining_seconds(elapsed)
+            task_remaining = TASK_RETRY_POLICY.remaining_seconds(time.monotonic() - started)
+            codex_remaining = CODEX_RETRY_POLICY.remaining_seconds(codex_elapsed_seconds)
+            remaining = min(task_remaining, codex_remaining)
             if remaining <= 0:
-                raise RuntimeError("Task retry budget expired before Codex could start; preserving the current task state.")
+                raise RuntimeError("Codex or task execution budget expired before Codex could start; preserving the current task state.")
             with timed_stage(f"codex_attempt_{attempt}"):
                 result = run([
                     sys.executable, "scripts/autonomous_engineering_progress.py", "codex",
@@ -624,6 +627,7 @@ def run_cycle(args: argparse.Namespace) -> int:
                 ], timeout_seconds=min(CODEX_TASK_TIMEOUT_SECONDS + 30, remaining))
         finally:
             stop_checkpoint_watcher(watcher, base_sha, args.run_id, task)
+            codex_elapsed_seconds += time.monotonic() - codex_attempt_started
         if result.returncode:
             report_detail = _read_report_diagnostic(report)
             persist_run_diagnostic(
