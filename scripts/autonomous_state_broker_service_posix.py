@@ -498,6 +498,14 @@ class RestrictedStateBroker:
                     )
             except LifecycleConflict as exc:
                 return 409, {"conflict": True, "message": str(exc), "blockers": exc.blockers}
+            except BrokerFailure as exc:
+                if exc.code == "state_lock_timeout":
+                    return 409, {
+                        "conflict": True,
+                        "message": "The durable task state lock is held by an active writer.",
+                        "blockers": ["durable_state_writer_active"],
+                    }
+                raise
             raise BrokerFailure(404, "not_found")
         if "body" in request:
             raise BrokerFailure(400, "request_body_not_supported")
