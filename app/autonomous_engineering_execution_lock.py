@@ -10,13 +10,19 @@ from typing import Iterator
 from .autonomous_engineering_state import execution_state_directory
 
 
+def _open_repository_lock_file(lock_path, *, create: bool):
+    flags = os.O_RDWR | (os.O_CREAT if create else 0)
+    descriptor = os.open(lock_path, flags, 0o600)
+    return os.fdopen(descriptor, "r+b")
+
+
 @contextmanager
 def repository_execution_lock(run_id: str, run_attempt: str) -> Iterator[None]:
     """Own the repository worktree exclusively across processes and sessions."""
     state_dir = execution_state_directory()
     state_dir.mkdir(parents=True, exist_ok=True)
     lock_path = state_dir / "repository-execution.lock"
-    handle = lock_path.open("a+b")
+    handle = _open_repository_lock_file(lock_path, create=True)
     acquired = False
     try:
         if os.name == "nt":
@@ -80,7 +86,7 @@ def require_parent_repository_execution_lock(run_id: str) -> None:
     """Require this subprocess to be launched by the cycle process holding the shared lock."""
     lock_path = execution_state_directory() / "repository-execution.lock"
     try:
-        handle = lock_path.open("a+b")
+        handle = _open_repository_lock_file(lock_path, create=False)
     except OSError as exc:
         raise RuntimeError("The repository execution lock owner cannot be verified.") from exc
 
