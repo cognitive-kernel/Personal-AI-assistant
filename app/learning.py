@@ -1853,11 +1853,22 @@ def list_jobs(limit: int = 50) -> list[dict[str, Any]]:
         ids = [row["id"] for row in conn.execute("SELECT id FROM learning_jobs ORDER BY id DESC LIMIT ?", (max(1, min(200, limit)),)).fetchall()]
     return [get_job(job_id) for job_id in ids]
 
-def _enqueue_learning_job(job_id: int) -> dict[str, Any]:
+def _enqueue_learning_job(
+    job_id: int,
+    *,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     # Import lazily to keep the task adapter's dependency on this module acyclic.
     from .learning_tasks import enqueue_learning_task
 
-    return enqueue_learning_task(job_id)
+    return enqueue_learning_task(
+        job_id,
+        task_context=task_context,
+        expected_task_type=expected_task_type,
+        expected_payload=expected_payload,
+    )
 
 
 def _cancel_learning_job_task(job_id: int) -> dict[str, Any] | None:
@@ -2283,7 +2294,12 @@ def stop_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
 
 
 def start_researched_path_learning(
-    path_id: int, *, allow_retry: bool = False
+    path_id: int,
+    *,
+    allow_retry: bool = False,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Queue only the first unfinished lesson; later lessons follow terminal success."""
     path = get_learning_path(path_id)
@@ -2300,9 +2316,18 @@ def start_researched_path_learning(
                 (topic["id"],),
             ).fetchone()
         if latest is not None and latest["status"] in {"queued", "running"}:
+            active_task = None
+            if latest["status"] == "queued":
+                active_task = _enqueue_learning_job(
+                    int(latest["id"]),
+                    task_context=task_context,
+                    expected_task_type=expected_task_type,
+                    expected_payload=expected_payload,
+                )
             return {
                 "path_id": path_id, "queued_count": 0, "job_ids": [],
                 "status": "already_active", "active_job_id": int(latest["id"]),
+                "task_id": active_task.get("id") if active_task else None,
                 "skipped_completed_count": skipped_completed,
                 "message": "درس جاری در حال اجرا یا در صف است؛ درس بعدی تا پایان آن شروع نمی‌شود.",
             }
@@ -2315,14 +2340,34 @@ def start_researched_path_learning(
                 "blocked_topic": topic["topic"],
                 "message": "ادامهٔ صف به‌دلیل ناموفق‌بودن درس قبلی متوقف است؛ برای تلاش دوباره، شروع مسیر را انتخاب کنید.",
             }
-        job = create_job(topic["topic"], path_topic_id=int(topic["id"]))
+        job = create_job(
+            topic["topic"],
+            path_topic_id=int(topic["id"]),
+            task_context=task_context,
+            expected_task_type=expected_task_type,
+            expected_payload=expected_payload,
+        )
         with learning_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if task_context is not None:
+                if expected_task_type is None or expected_payload is None:
+                    raise ValueError("Researched path scheduling requires a complete parent task contract.")
+                task_context.assert_current(
+                    conn,
+                    expected_task_type=expected_task_type,
+                    expected_payload=expected_payload,
+                )
             conn.execute(
                 "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP "
                 "WHERE id=? AND path_id=? AND status!='completed'",
                 (topic["id"], path_id),
             )
-        task = _enqueue_learning_job(int(job["id"]))
+        task = _enqueue_learning_job(
+            int(job["id"]),
+            task_context=task_context,
+            expected_task_type=expected_task_type,
+            expected_payload=expected_payload,
+        )
         return {
             "path_id": path_id,
             "queued_count": 1,
@@ -2339,7 +2384,13 @@ def start_researched_path_learning(
     }
 
 
-def queue_next_researched_path_topic(path_topic_id: int) -> dict[str, Any] | None:
+def queue_next_researched_path_topic(
+    path_topic_id: int,
+    *,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     """Advance a researched path only after its current lesson completed successfully."""
     with learning_connection() as conn:
         row = conn.execute(
@@ -2355,7 +2406,13 @@ def queue_next_researched_path_topic(path_topic_id: int) -> dict[str, Any] | Non
         ).fetchone()
     if is_researched is None:
         return None
-    return start_researched_path_learning(path_id, allow_retry=False)
+    return start_researched_path_learning(
+        path_id,
+        allow_retry=False,
+        task_context=task_context,
+        expected_task_type=expected_task_type,
+        expected_payload=expected_payload,
+    )
 
 
 def start_path_learning(path_id: int) -> dict[str, Any]:
