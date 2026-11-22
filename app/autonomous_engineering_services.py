@@ -286,11 +286,13 @@ def github_snapshot(*, run_command, which, repository, workflow, default_interva
             "authenticated": False,
             "recent_runs": [],
             "runs_available": False,
+            "settings_available": False,
         }
     auth = run_command([gh, "auth", "status", "--hostname", "github.com"], timeout=8)
     authenticated = bool(auth and auth.returncode == 0)
     recent_runs: list[dict[str, Any]] = []
     runs_available = False
+    settings_available = False
     settings = {"model": "", "interval_hours": default_interval_hours, "execution_mode": "continuous", "paused": False, "enabled": True}
     if authenticated:
         # The run inventory and repository settings are independent reads.
@@ -342,10 +344,11 @@ def github_snapshot(*, run_command, which, repository, workflow, default_interva
         if variables and variables.returncode == 0:
             try:
                 values = json.loads(variables.stdout)
-                if isinstance(values, list):
+                if isinstance(values, list) and all(isinstance(item, dict) for item in values):
+                    settings_available = True
                     configured = {
                         str(item.get("name")): str(item.get("value", ""))
-                        for item in values if isinstance(item, dict)
+                        for item in values if isinstance(item.get("name"), str)
                     }
                     candidate_model = configured.get("AUTONOMOUS_ENGINEERING_MODEL", "")
                     candidate_interval = configured.get("AUTONOMOUS_ENGINEERING_INTERVAL_HOURS", "")
@@ -367,6 +370,7 @@ def github_snapshot(*, run_command, which, repository, workflow, default_interva
         "authenticated": authenticated,
         "recent_runs": recent_runs,
         "runs_available": runs_available,
+        "settings_available": settings_available,
         "settings": settings,
     }
 
