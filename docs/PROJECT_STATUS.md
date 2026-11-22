@@ -1,3 +1,14 @@
+## 2026-11-22 — وضعیت زنده پس از ادغام API error boundary
+
+- مبنای فعلی `main`: `a5855e9230f8758f21be91b8586946d195d015f6`؛ PR #817 با روش squash ادغام شد و error envelope ساختاریافته برای Autonomous Engineering در main قرار گرفت.
+- PR #818 به‌دلیل تداخل در `docs/ENGINEERING_LOG.md` پس از ادغام #817 قابل ادغام مستقیم نبود. نسخهٔ جایگزین #827 روی main فعلی ساخته شد؛ head `648373c4cc52cd701b4d255ec198275485e7defa`؛ Browser E2E و CodeQL موفق‌اند، Tests و Dependency Audit هنوز queued هستند.
+- PR #820 برای رفع تداخل مبنا و استفاده از API error boundary جدید، در PR جایگزین #829 بازسازی شد؛ head `d98bfab43f13f128e757a09a4d7292d450eeb416`؛ هر چهار workflow در صف اجرا هستند. PR قدیمی #820 هنوز Draft و باز است.
+- PRهای #819 و #821 تا #826 همچنان در بررسی Gate B هستند؛ هیچ نتیجه‌ای از SHA قدیمی به head جدید تعمیم داده نمی‌شود.
+- پذیرش Windows target، سرویس Runner، Ollama/Codex واقعی، crash/restart، ACL و بازبینی دستی دسترس‌پذیری هنوز انجام نشده‌اند. CI به‌تنهایی مجوز انتشار یا پذیرش عملیاتی نیست.
+- هیچ task، checkpoint، دادهٔ کاربر، workflow فعال یا اجرای Runner لغو یا پاک نشده است.
+
+---
+
 # وضعیت یکپارچهٔ پروژه
 
 ## 2026-11-21 — اصلاح مالکیت صف اجرا و fencing (PR #799، در حال اعتبارسنجی)
