@@ -62,3 +62,18 @@
 - هیچ migration، task، checkpoint، learning record، candidate، experience history یا PR موجودی حذف نشده است.
 - هیچ branch منبع #819 یا #821–#826 حذف نشده است؛ تا عبور PR #837 از CI و تطبیق reviewها، آن‌ها به‌عنوان منبع قابل بازیابی نگه داشته می‌شوند.
 - این سند ادعا نمی‌کند تمام mutationهای کل مخزن audit شده‌اند؛ دامنهٔ آن mutationهای تغییرکرده در PRهای Gate B فوق است. ممیزی کامل call-siteهای خارج از این دامنه و target-host هنوز باز است.
+
+
+## الحاقیهٔ شواهد CI — 2026-11-22
+
+PR #837 در exact head با SHA 908e9e3a79b03146a3b560c1d65f7361c1efffab تمام کنترل‌های مخزن را گذراند:
+
+- Linux: 2511 passed, 14 skipped, 69 deselected.
+- Windows: 2509 passed, 16 skipped, 69 deselected.
+- Windows storage regressions: موفق.
+- Real Docker sandbox integration: موفق.
+- Browser/dashboard smoke: موفق.
+- CodeQL، Analyze Python/JavaScript، pip-audit و bootstrapهای Ubuntu/macOS/Windows: موفق.
+- یک شکست در اجرای اولیه فقط به mock قدیمی تست experience مربوط بود؛ mock برای پارامتر task type اصلاح شد و exact-head rerun سبز شد.
+
+69 تست browser E2E از full-suite به‌صورت جداگانه اجرا می‌شوند؛ 5 تست sandbox نیز در workflow اختصاصی Docker اجرا شده‌اند. CI سبز فقط شواهد PR head است؛ تغییرات هنوز در main ادغام نشده‌اند و target-host Windows/Runner، crash/restart و تأیید مالک همچنان gateهای باز هستند.
