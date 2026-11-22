@@ -513,3 +513,12 @@ The subsequent documentation-only evidence update does not change runtime code a
 - PR #820 code head `133db4ce6d300b8e982d45d5fec1ed13aa6c6a39` passed the rerun of the full Windows suite (2462 passed, 16 skipped, 74 deselected), Ubuntu suite (2464 passed, 14 skipped, 74 deselected), Windows storage regressions (11 passed, 2 skipped), Browser E2E, Dependency Audit and CodeQL.
 - The first Windows test attempt had one failure in unchanged `tests/test_task_routes.py::test_task_api_refuses_to_delete_running_tasks`; rerunning that same job on the same SHA passed. No test or product code was changed for that failure. Monitor for recurrence.
 - This does not close Gates G/H/J: real Windows Runner/Ollama/Codex acceptance, crash/restart checkpoint preservation and owner approval are still required. PR remains Draft and unmerged.
+
+- Gate-C backend follow-up in PR #817: all Autonomous Engineering API route failures now use the structured error envelope (`code`, `message`, `correlation_id`, `retryable`, `safe_details`) with matching headers; validation input values and unexpected exception details are redacted. Raw GitHub stderr is no longer returned by run deletion. New contract tests added; exact-head CI pending.
+
+
+## 2026-11-22 — Gate-C diagnostics and dispatch follow-up (PR #817)
+
+- Windows Runner execution `44932980718` / job `137009509972` failed after two Codex attempts: attempt 2 produced no final `agent_message`, the output-last-message report was empty, and completion-marker validation failed. The durable task was preserved and not marked complete; no artifact was produced.
+- The Autonomous Engineering dashboard now reports this as a distinct Codex no-final-message failure instead of showing only the generic bounded-retry error. `/resume` dispatch now marks timeouts ambiguous and non-retryable, while definite CLI launch failures are retryable with a correlation ID. Unmatched 404/405 errors under the module prefix now follow the structured error contract.
+- Regression tests were added for these cases. Exact-head CI for the resulting PR #817 head is pending; Gate C is not closed, and no target-host acceptance is claimed.
