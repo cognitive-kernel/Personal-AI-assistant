@@ -1077,8 +1077,8 @@ def discover_resources(
             expected_payload=expected_payload,
         )
     except TaskInterrupted:
-        # A pause/cancel can arrive after candidate commit but before run finalization.
-        # The write guard raises before TaskContext.checkpoint() can settle the request.
+        # The finalization write guard can raise before TaskContext.checkpoint() settles a pause/cancel.
+        # Settle only against the original live lease, then reconcile the run row.
         if task_context is not None:
             try:
                 _settle_cooperative_discovery_interruption(task_context)
