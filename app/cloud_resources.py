@@ -991,6 +991,11 @@ def discover_resources(
             )
     except Exception as exc:
         errors.append(f"discovery_aborted:{type(exc).__name__}")
+        if isinstance(exc, TaskInterrupted):
+            # checkpoint() has already settled pause/cancel and released the lease.
+            # Reconcile the run from the durable task row; do not mutate it as owner.
+            _reconcile_abandoned_discovery_runs()
+            raise
         try:
             _update_run(
                 run_id,
