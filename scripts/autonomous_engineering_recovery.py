@@ -83,12 +83,16 @@ class GitHubActionsClient:
             if isinstance(item.get("name"), str)
         }
         mode = values.get("AUTONOMOUS_ENGINEERING_MODE", "continuous").strip().lower()
+        enabled_value = values.get("AUTONOMOUS_ENGINEERING_ENABLED", "true").strip().lower()
+        paused_value = values.get("AUTONOMOUS_ENGINEERING_PAUSED", "false").strip().lower()
         if mode not in {"continuous", "scheduled"}:
             raise RuntimeError("Autonomous Engineering execution mode is invalid; recovery is blocked.")
+        if enabled_value not in {"true", "false"} or paused_value not in {"true", "false"}:
+            raise RuntimeError("Autonomous Engineering lifecycle variable is invalid; recovery is blocked.")
         return {
             "mode": mode,
-            "enabled": values.get("AUTONOMOUS_ENGINEERING_ENABLED", "true").strip().lower() == "true",
-            "paused": values.get("AUTONOMOUS_ENGINEERING_PAUSED", "false").strip().lower() == "true",
+            "enabled": enabled_value == "true",
+            "paused": paused_value == "true",
         }
 
     def jobs(self, run_id: int) -> list[dict[str, Any]]:
