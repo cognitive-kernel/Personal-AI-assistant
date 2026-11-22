@@ -113,12 +113,13 @@ def _probe_lock(state: Path, filename: str) -> bool:
         os.close(descriptor)
 
 
-def _mutation_blockers(state: Path) -> list[str]:
+def _mutation_blockers(state: Path, *, locks_held: bool = False) -> list[str]:
     blockers = _state_blockers(state)
-    if not _probe_lock(state, "repository-execution.lock"):
-        blockers.append("repository_execution_active")
-    if not _probe_lock(state, "autonomous-checkpoint-store.lock"):
-        blockers.append("checkpoint_writer_active")
+    if not locks_held:
+        if not _probe_lock(state, "repository-execution.lock"):
+            blockers.append("repository_execution_active")
+        if not _probe_lock(state, "autonomous-checkpoint-store.lock"):
+            blockers.append("checkpoint_writer_active")
     return sorted(set(blockers))
 
 
@@ -211,7 +212,7 @@ def list_archived(state: Path) -> list[dict[str, Any]]:
     return result
 
 
-def archive_task(state: Path, task_id: str, revision: str) -> dict[str, Any]:
+def archive_task(state: Path, task_id: str, revision: str, *, locks_held: bool = False) -> dict[str, Any]:
     if not re.fullmatch(r"[a-f0-9]{64}", task_id or "") or not re.fullmatch(r"[a-f0-9]{64}", revision or ""):
         raise LifecycleConflict("Invalid task identity or revision.", ["invalid_identity"])
     root = _archive_root(state)
@@ -242,7 +243,7 @@ def archive_task(state: Path, task_id: str, revision: str) -> dict[str, Any]:
         raise LifecycleConflict("Pending task identity is stale.", ["stale_task"])
     if pending[0]["revision"] != revision:
         raise LifecycleConflict("Pending task revision is stale.", ["stale_revision"])
-    blockers = _mutation_blockers(state)
+    blockers = _mutation_blockers(state, locks_held=locks_held)
     if blockers:
         raise LifecycleConflict("Task archive was refused by safety guards.", blockers)
     task = _regular(task_path, MAX_TASK_BYTES)
@@ -273,7 +274,7 @@ def archive_task(state: Path, task_id: str, revision: str) -> dict[str, Any]:
     return {"task_id": task_id, "status": "archived", "preserved": True}
 
 
-def restore_task(state: Path, task_id: str, revision: str) -> dict[str, Any]:
+def restore_task(state: Path, task_id: str, revision: str, *, locks_held: bool = False) -> dict[str, Any]:
     if not re.fullmatch(r"[a-f0-9]{64}", task_id or "") or not re.fullmatch(r"[a-f0-9]{64}", revision or ""):
         raise LifecycleConflict("Invalid task identity or revision.", ["invalid_identity"])
     archived = next((item for item in list_archived(state) if item["task_id"] == task_id), None)
@@ -295,7 +296,7 @@ def restore_task(state: Path, task_id: str, revision: str) -> dict[str, Any]:
     active_owner = _regular(state / OWNER_FILE, 64 * 1024)
     if active_task not in (None, task) or active_owner not in (None, owner_raw):
         raise LifecycleConflict("The pending task slot is occupied.", ["pending_slot_occupied"])
-    blockers = _mutation_blockers(state)
+    blockers = _mutation_blockers(state, locks_held=locks_held)
     if blockers:
         raise LifecycleConflict("Task restore was refused by safety guards.", blockers)
     if active_task is None:
