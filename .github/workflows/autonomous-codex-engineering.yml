@@ -829,7 +829,6 @@ jobs:
 
       - name: Execute one isolated task, validate, and publish for owner review
         id: execute
-        timeout-minutes: 55
         if: steps.pause.outputs.paused != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
