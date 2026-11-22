@@ -195,7 +195,7 @@ def _open_pipe(kernel32, deadline: float):
         raise StateBrokerError(f"Windows state broker is unavailable (WinError {error}).")
 
 
-def request(method: str, path: str, *, timeout_ms: int = 3500) -> Any:
+def request(method: str, path: str, *, timeout_ms: int = 3500, body: dict[str, Any] | None = None) -> Any:
     """Call one fixed broker endpoint; all pipe I/O is bounded by timeout_ms."""
     if isinstance(timeout_ms, bool) or not isinstance(timeout_ms, int) or not 250 <= timeout_ms <= 30000:
         raise ValueError("State-broker timeout must be an integer between 250 and 30000 milliseconds.")
@@ -211,6 +211,12 @@ def request(method: str, path: str, *, timeout_ms: int = 3500) -> Any:
     ) or (
         method == "POST" and path == "/v1/cleanup"
     )
+    if not allowed and path in {"/v1/tasks/pending", "/v1/tasks/archived", "/v1/tasks/archive", "/v1/tasks/restore"}:
+        from .autonomous_engineering_state_broker_contract import validate_task_request
+        validate_task_request(method, path, body)
+        allowed = True
+    elif body is not None:
+        raise ValueError("This state-broker endpoint does not accept a request body.")
     if not allowed:
         raise ValueError("Unsupported state-broker endpoint.")
     if os.name != "nt":
@@ -222,10 +228,10 @@ def request(method: str, path: str, *, timeout_ms: int = 3500) -> Any:
             error_type=StateBrokerError,
             conflict_type=StateBrokerConflict,
         )
-    payload = json.dumps(
-        {"version": 1, "method": method, "path": path},
-        separators=(",", ":"),
-    ).encode("utf-8") + b"\n"
+    request_envelope = {"version": 1, "method": method, "path": path}
+    if body is not None:
+        request_envelope["body"] = body
+    payload = json.dumps(request_envelope, separators=(",", ":")).encode("utf-8") + b"\n"
     if len(payload) > _MAX_REQUEST_BYTES:
         raise ValueError("State-broker request is too large.")
 
