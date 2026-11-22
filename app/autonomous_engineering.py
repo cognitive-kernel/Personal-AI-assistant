@@ -35,8 +35,8 @@ from .autonomous_engineering_progress import (
 )
 from .ollama_context import maximum_context_tokens, resolve_model_architecture, supports_tool_calling
 from .autonomous_engineering_state import durable_state_lock, execution_state_directory
-from scripts.autonomous_engineering_checkpoint_lock import checkpoint_store_lock
-from scripts.autonomous_engineering_execution_lock import repository_execution_lock
+from .autonomous_engineering_checkpoint_lock import checkpoint_store_lock
+from .autonomous_engineering_execution_lock import repository_execution_lock
 from .autonomous_engineering_model_pull import get_model_pull, start_model_pull
 
 _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
