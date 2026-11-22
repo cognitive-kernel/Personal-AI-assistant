@@ -360,8 +360,13 @@ else:
         if (-not $lockProcess.WaitForExit(10000)) {
             throw "The Python repository-lock holder timed out. stdout: $(Get-Content -LiteralPath $lockStdoutPath -Raw -ErrorAction SilentlyContinue) stderr: $(Get-Content -LiteralPath $lockStderrPath -Raw -ErrorAction SilentlyContinue)"
         }
-        if ($lockProcess.ExitCode -ne 0) {
-            throw "The Python repository-lock holder exited with code $($lockProcess.ExitCode). stdout: $(Get-Content -LiteralPath $lockStdoutPath -Raw -ErrorAction SilentlyContinue) stderr: $(Get-Content -LiteralPath $lockStderrPath -Raw -ErrorAction SilentlyContinue)"
+        $lockProcess.Refresh()
+        $lockExitCode = $lockProcess.ExitCode
+        if ($null -eq $lockExitCode) {
+            throw "The Python repository-lock holder exited, but Windows did not expose its exit code. ProcessId: $($lockProcess.Id). stdout: $(Get-Content -LiteralPath $lockStdoutPath -Raw -ErrorAction SilentlyContinue) stderr: $(Get-Content -LiteralPath $lockStderrPath -Raw -ErrorAction SilentlyContinue)"
+        }
+        if ([int]$lockExitCode -ne 0) {
+            throw "The Python repository-lock holder exited with code $lockExitCode. stdout: $(Get-Content -LiteralPath $lockStdoutPath -Raw -ErrorAction SilentlyContinue) stderr: $(Get-Content -LiteralPath $lockStderrPath -Raw -ErrorAction SilentlyContinue)"
         }
     } finally {
         if ($lockProcess -and -not $lockProcess.HasExited) {
@@ -696,12 +701,22 @@ assert request("GET", "/v1/tasks/archived")["tasks"][0]["status"] == "restored"
         $oldDiagnosticsSetting,
         "Machine"
     )
-    if (Test-Path -LiteralPath $stateRoot) {
-        & icacls.exe $stateRoot /grant:r "*$($currentSid):(OI)(CI)F" /T /C /Q | Out-Null
-        Remove-Item -LiteralPath $stateRoot -Recurse -Force -ErrorAction SilentlyContinue
-    }
-    if (Test-Path -LiteralPath $serviceRoot) {
-        & icacls.exe $serviceRoot /grant:r "*$($currentSid):(OI)(CI)F" /T /C /Q | Out-Null
-        Remove-Item -LiteralPath $serviceRoot -Recurse -Force -ErrorAction SilentlyContinue
+    foreach ($cleanupRoot in @($stateRoot, $serviceRoot)) {
+        if (Test-Path -LiteralPath $cleanupRoot) {
+            # These are unique, test-owned directories. The broker deliberately
+            # transfers ownership to its service identity; reclaim only these
+            # disposable fixtures before deleting them.
+            & takeown.exe /F $cleanupRoot /R /D Y | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                & icacls.exe $cleanupRoot /grant:r "*$($currentSid):(OI)(CI)F" /T /C /Q | Out-Null
+                if ($LASTEXITCODE -eq 0) {
+                    Remove-Item -LiteralPath $cleanupRoot -Recurse -Force -ErrorAction SilentlyContinue
+                } else {
+                    Write-Warning "Could not restore test-runner access to disposable test directory '$cleanupRoot'."
+                }
+            } else {
+                Write-Warning "Could not reclaim ownership of disposable test directory '$cleanupRoot'."
+            }
+        }
     }
 }
