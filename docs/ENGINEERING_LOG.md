@@ -2254,3 +2254,6 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 
 - A second pause/cancel window exists after discovery completes but before the next daily task is inserted. The parent-aware `create_task()` contract raises `TaskInterrupted` when control state changes in that exact transaction. The handler now settles the original owner/epoch through `TaskContext.checkpoint()` before preserving the daily chain; if ownership was reclaimed or expired, it fails closed and does not schedule.
 - Added a separate regression for pause racing with the atomic child insert, in addition to pause at the final cloud write boundary. Exact-head CI is pending.
+
+
+- Compatibility follow-up: direct/manual `discover_resources()` callers that supply a checkpoint callback but no TaskContext retain their existing API; an interruption settles that unowned run as `failed` with `discovery_interrupted` rather than leaving a permanent `running` row. A focused regression covers this path.
