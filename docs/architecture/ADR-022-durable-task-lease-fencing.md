@@ -63,3 +63,8 @@ The queue-level lease contract above is the baseline, not proof that domain reco
 - A stale/reclaimed owner is rejected before the domain mutation. Existing queue completion, pause/cancel, retry and checkpoint semantics remain owned by the #799 task manager/TaskContext implementation.
 
 The exact source-file map and state-transition table are in docs/DOMAIN_TASK_WRITE_FENCING_AUDIT_2026-11-22.fa.md. This addendum remains proposed until exact-head CI passes and the target-host Windows/Runner and crash/restart gates are accepted. It does not claim that all domain writes across the repository have been audited.
+
+
+### CI evidence update — 2026-11-22
+
+The domain-write extension in Draft PR #837 passed exact-head Linux and Windows full suites, Windows storage regressions and real Docker sandbox integration, plus CodeQL, dependency audit and browser/dashboard smoke. The validated head at the time of this record was 908e9e3a79b03146a3b560c1d65f7361c1efffab. The ADR remains proposed for operational acceptance until the branch is integrated and target-host Windows/ACL, real provider, crash/restart and owner gates are completed.
