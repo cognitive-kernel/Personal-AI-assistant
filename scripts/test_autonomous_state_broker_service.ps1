@@ -385,15 +385,21 @@ else:
     # the exact temporary file open, without deleting any other progress file.
     $progressWriterScriptPath = Join-Path $env:TEMP ("broker-progress-writer-" + [guid]::NewGuid().ToString("N") + ".py")
     $progressWriterReadyPath = Join-Path $env:TEMP ("broker-progress-writer-ready-" + [guid]::NewGuid().ToString("N") + ".txt")
+    $progressWriterStatusPath = Join-Path $env:TEMP ("broker-progress-writer-status-" + [guid]::NewGuid().ToString("N") + ".txt")
     $progressWriterScript = @'
 import os, sys, time
 from pathlib import Path
-state_root, ready_path = sys.argv[1], sys.argv[2]
-with open(os.path.join(state_root, "current.json.tmp"), "w", encoding="utf-8") as stream:
-    stream.write("writer-active")
-    stream.flush()
-    Path(ready_path).write_text("locked", encoding="utf-8")
-    time.sleep(3)
+state_root, ready_path, status_path = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    with open(os.path.join(state_root, "current.json.tmp"), "w", encoding="utf-8") as stream:
+        stream.write("writer-active")
+        stream.flush()
+        Path(ready_path).write_text("locked", encoding="utf-8")
+        time.sleep(3)
+    Path(status_path).write_text("0", encoding="ascii")
+except BaseException as exc:
+    Path(status_path).write_text("1:" + repr(exc), encoding="utf-8")
+    raise
 '@
     [System.IO.File]::WriteAllText(
         $progressWriterScriptPath,
@@ -401,7 +407,7 @@ with open(os.path.join(state_root, "current.json.tmp"), "w", encoding="utf-8") a
         [System.Text.UTF8Encoding]::new($false)
     )
     $writerProcess = Start-Process -FilePath $pythonPath -ArgumentList @(
-        $progressWriterScriptPath, $stateRoot, $progressWriterReadyPath
+        $progressWriterScriptPath, $stateRoot, $progressWriterReadyPath, $progressWriterStatusPath
     ) -PassThru -NoNewWindow
     try {
         $writerDeadline = [DateTime]::UtcNow.AddSeconds(10)
@@ -423,14 +429,21 @@ else:
 '@
         $progressWriterProbe | & python -
         if ($LASTEXITCODE -ne 0) { throw "The broker did not block cleanup for an active progress writer." }
-        if (-not $writerProcess.WaitForExit(10000) -or $writerProcess.ExitCode -ne 0) {
-            throw "The progress writer did not exit cleanly."
+        if (-not $writerProcess.WaitForExit(10000)) {
+            throw "The progress writer timed out. ProcessId: $($writerProcess.Id)"
+        }
+        if (-not (Test-Path -LiteralPath $progressWriterStatusPath -PathType Leaf)) {
+            throw "The progress writer exited without publishing its completion status. ProcessId: $($writerProcess.Id)"
+        }
+        $progressWriterStatus = Get-Content -LiteralPath $progressWriterStatusPath -Raw
+        if ($progressWriterStatus -ne "0") {
+            throw "The progress writer failed: $progressWriterStatus"
         }
     } finally {
         if ($writerProcess -and -not $writerProcess.HasExited) {
             Stop-Process -Id $writerProcess.Id -Force -ErrorAction SilentlyContinue
         }
-        Remove-Item -LiteralPath $progressWriterScriptPath, $progressWriterReadyPath -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $progressWriterScriptPath, $progressWriterReadyPath, $progressWriterStatusPath -Force -ErrorAction SilentlyContinue
     }
 
     # Cleanup must also fail while a watcher owns the store lock, even before
