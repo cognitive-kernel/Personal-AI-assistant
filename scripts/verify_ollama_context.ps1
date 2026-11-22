@@ -370,5 +370,7 @@ Write-Host "Ollama allocated runtime context: $allocated tokens"
 if ($allocated -ne $selectedContext) {
     throw "Ollama allocated $allocated tokens for '$codexModel', but the verified selection is exactly $selectedContext. No Codex task may proceed."
 }
-Remove-LegacyCodexContextVariants -BaseModel $baseModel -CurrentModel $codexModel
+if (-not $VerifyOnly) {
+    Remove-LegacyCodexContextVariants -BaseModel $baseModel -CurrentModel $codexModel
+}
 Write-Host "OLLAMA_RUNTIME_CONTEXT_OK"
