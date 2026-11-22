@@ -350,8 +350,10 @@ def github_snapshot(*, run_command, which, repository, workflow, default_interva
                     candidate_model = configured.get("AUTONOMOUS_ENGINEERING_MODEL", "")
                     candidate_interval = configured.get("AUTONOMOUS_ENGINEERING_INTERVAL_HOURS", "")
                     candidate_mode = configured.get("AUTONOMOUS_ENGINEERING_MODE", "continuous")
-                    settings["paused"] = configured.get("AUTONOMOUS_ENGINEERING_PAUSED", "false").lower() == "true"
-                    settings["enabled"] = configured.get("AUTONOMOUS_ENGINEERING_ENABLED", "true").lower() == "true"
+                    paused_value = configured.get("AUTONOMOUS_ENGINEERING_PAUSED", "false").strip().lower()
+                    enabled_value = configured.get("AUTONOMOUS_ENGINEERING_ENABLED", "true").strip().lower()
+                    settings["paused"] = paused_value != "false"
+                    settings["enabled"] = enabled_value == "true"
                     if model_pattern.fullmatch(candidate_model):
                         settings["model"] = candidate_model
                     if candidate_interval.isdigit() and int(candidate_interval) in allowed_interval_hours:
