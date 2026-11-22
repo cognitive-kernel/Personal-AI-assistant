@@ -5811,6 +5811,7 @@ def test_autonomous_engineering_model_pull_failure_restores_control_and_shows_di
         browser.close()
 
 
+@pytest.mark.browser_e2e
 def test_autonomous_engineering_polling_uses_visibility_backoff_jitter_and_cleanup():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
