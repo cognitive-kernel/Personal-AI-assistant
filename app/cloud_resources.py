@@ -1064,17 +1064,32 @@ def discover_resources(
             raise
         raise
 
-    _update_run(
-        run_id,
-        status=status,
-        queries_attempted=queries_attempted,
-        sources_seen=sources_seen,
-        candidates_upserted=len(unique),
-        query_results=query_results,
-        error_summary="; ".join(errors) if errors else None,
-        task_context=task_context, expected_task_type=expected_task_type,
-        expected_payload=expected_payload,
-    )
+    try:
+        _update_run(
+            run_id,
+            status=status,
+            queries_attempted=queries_attempted,
+            sources_seen=sources_seen,
+            candidates_upserted=len(unique),
+            query_results=query_results,
+            error_summary="; ".join(errors) if errors else None,
+            task_context=task_context, expected_task_type=expected_task_type,
+            expected_payload=expected_payload,
+        )
+    except TaskInterrupted:
+        # A pause/cancel can arrive after candidate commit but before run finalization.
+        # The write guard raises before TaskContext.checkpoint() can settle the request.
+        if task_context is not None:
+            try:
+                _settle_cooperative_discovery_interruption(task_context)
+            finally:
+                _reconcile_abandoned_discovery_runs()
+        raise
+    except task_manager.TaskManagerError:
+        # Do not leave a run in "running" after its owner lease was reclaimed.
+        if task_context is not None:
+            _reconcile_abandoned_discovery_runs()
+        raise
     return {
         "run_id": run_id,
         "status": status,

@@ -956,6 +956,48 @@ def test_discovery_handler_keeps_daily_chain_after_cooperative_pause(tmp_path, m
     assert scheduled == 1
 
 
+def test_final_run_update_pause_is_settled_after_candidate_commit(tmp_path, monkeypatch):
+    _configure_paths(tmp_path, monkeypatch)
+    payload = {"trigger": "manual"}
+    task = task_manager.create_task(
+        cloud_resources.CLOUD_DISCOVERY_TASK_TYPE, payload, max_attempts=3
+    )
+    worker_id = "cloud-discovery-finalize-pause-worker"
+    claimed = task_manager.claim_next_task(worker_id)
+    assert claimed is not None and claimed["id"] == task["id"]
+    context = TaskContext(
+        task_id=task["id"],
+        worker_id=worker_id,
+        lease_epoch=claimed["lease_epoch"],
+    )
+    original_update_run = cloud_resources._update_run
+
+    def pause_after_candidate_commit(run_id, **kwargs):
+        # This wrapper runs only at finalization, after the candidate transaction.
+        assert cloud_resources.list_candidates()
+        task_manager.request_pause(task["id"])
+        return original_update_run(run_id, **kwargs)
+
+    monkeypatch.setattr(web_sources, "discover_sources", lambda _query, limit=5: [_document()])
+    monkeypatch.setattr(cloud_resources, "_update_run", pause_after_candidate_commit)
+
+    with pytest.raises(TaskInterrupted):
+        cloud_resources.handle_discovery_task(payload, None, context)
+
+    saved = task_manager.get_task(task["id"])
+    assert saved["status"] == "paused"
+    run = cloud_resources.latest_discovery_run()
+    assert run is not None
+    assert run["status"] == "failed"
+    assert run["error_summary"] == "discovery_abandoned:task_lease_lost"
+    with db.learning_connection() as connection:
+        scheduled = connection.execute(
+            "SELECT COUNT(*) FROM task_queue WHERE task_type=? AND dedupe_key LIKE 'cloud-discovery:%'",
+            (cloud_resources.CLOUD_DISCOVERY_TASK_TYPE,),
+        ).fetchone()[0]
+    assert scheduled == 1
+
+
 def test_discovery_handler_keeps_daily_chain_when_pause_races_with_child_insert(
     tmp_path, monkeypatch
 ):
