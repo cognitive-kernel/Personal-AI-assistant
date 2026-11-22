@@ -2839,7 +2839,7 @@ def test_browser_programming_assistance_queues_polls_and_recovers_from_api_failu
             "instruction": "Implement a small add function.",
             "context": "Use Python and keep the implementation minimal.",
         }]
-        assert state["polls"] >= 2
+        assert state["polls"] >= 3
         assert output.inner_text() == generated_reply
         assert "کد اجرا نشده و هیچ آزمونی اجرا نشده است" in status.inner_text()
         assert submit.is_enabled()
@@ -5697,6 +5697,10 @@ def test_autonomous_engineering_model_pull_requires_consent_and_reports_progress
     def poll_pull(route):
         state["polls"] += 1
         if state["polls"] == 1:
+            route.fulfill(status=503, json={
+                "detail": "Temporary model-pull status outage.",
+            })
+        elif state["polls"] == 2:
             route.fulfill(status=200, json={
                 "job_id": "a" * 32, "model": model, "status": "running",
                 "progress": 50, "message": "در حال دانلود", "error": None,
@@ -5804,6 +5808,79 @@ def test_autonomous_engineering_model_pull_failure_restores_control_and_shows_di
         assert "Ollama is temporarily unavailable." in status_text
         assert "model-pull-correlation-test-820" in page.locator("#agent-message").inner_text()
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+@pytest.mark.browser_e2e
+def test_autonomous_engineering_polling_uses_visibility_backoff_jitter_and_cleanup():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        response = page.goto(
+            base_url.rstrip("/") + "/autonomous-engineering",
+            wait_until="domcontentloaded",
+        )
+        assert response is not None and response.status == 200
+        page.wait_for_function(
+            "() => window.autonomousEngineeringCore?.startPolling && window.autonomousEngineeringApp?.stop",
+            timeout=10000,
+        )
+        result = page.evaluate("""async () => {
+          window.autonomousEngineeringApp.stop();
+          let hidden = true;
+          Object.defineProperty(document, "hidden", {
+            configurable: true,
+            get: () => hidden
+          });
+          const originalRandom = Math.random;
+          Math.random = () => 1;
+          const calls = [];
+          const stop = window.autonomousEngineeringCore.startPolling({
+            intervalMs: 250,
+            maxIntervalMs: 1000,
+            jitterRatio: 0.2,
+            refresh: async () => {
+              calls.push(performance.now());
+              return false;
+            }
+          });
+          const wait = ms => new Promise(resolve => window.setTimeout(resolve, ms));
+          await wait(350);
+          const whileHidden = calls.length;
+          hidden = false;
+          document.dispatchEvent(new Event("visibilitychange"));
+          await wait(550);
+          const beforeFirstRetry = calls.length;
+          await wait(100);
+          const afterFirstRetry = calls.length;
+          await wait(900);
+          const beforeSecondRetry = calls.length;
+          await wait(150);
+          const afterSecondRetry = calls.length;
+          stop();
+          hidden = true;
+          document.dispatchEvent(new Event("visibilitychange"));
+          await wait(1100);
+          const afterStop = calls.length;
+          Math.random = originalRandom;
+          return {
+            whileHidden, beforeFirstRetry, afterFirstRetry,
+            beforeSecondRetry, afterSecondRetry, afterStop,
+            firstDelay: calls.length > 1 ? calls[1] - calls[0] : null,
+            secondDelay: calls.length > 2 ? calls[2] - calls[1] : null
+          };
+        }""")
+        assert result["whileHidden"] == 0
+        assert result["beforeFirstRetry"] == 1
+        assert result["afterFirstRetry"] == 2
+        assert result["beforeSecondRetry"] == 2
+        assert result["afterSecondRetry"] == 3
+        assert result["afterStop"] == 3
+        assert 550 <= result["firstDelay"] <= 700
+        assert 950 <= result["secondDelay"] <= 1100
         browser.close()
 
 
