@@ -190,7 +190,7 @@ def test_model_pull_cancellation_closes_only_its_stream_and_preserves_existing_m
             released.wait(timeout=2)
             if self.closed:
                 raise OSError("download stream closed")
-            return b'{"status":"success"}\\n'
+            return b'{"status":"success"}\n'
 
         def close(self):
             self.closed = True
