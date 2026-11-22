@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.testclient import TestClient
 
 from app import autonomous_engineering as agent
 from app import main as main_module
@@ -2469,3 +2470,28 @@ def test_dispatch_timeout_reports_ambiguous_outcome_without_encouraging_retry(mo
     assert error.value.headers["X-Correlation-ID"] in error.value.detail
     assert "نامشخص" in error.value.detail
     assert "پیش از تلاش مجدد" in error.value.detail
+
+
+
+def test_real_autonomous_dispatch_http_error_exposes_structured_diagnostics(monkeypatch):
+    monkeypatch.setattr(agent, "collect_status", lambda: {
+        "ready": False,
+        "paused": False,
+        "github": {"runs_available": True, "recent_runs": []},
+    })
+
+    response = TestClient(main_module.app, client=("127.0.0.1", 12345)).post(
+        "/api/autonomous-engineering/dispatch",
+        json={},
+    )
+
+    assert response.status_code == 409
+    payload = response.json()
+    assert payload["code"] == "AUTONOMOUS_ENGINEERING_CONFLICT"
+    assert payload["retryable"] is False
+    assert payload["correlation_id"]
+    assert payload["message"]
+    assert payload["safe_details"] == {}
+    assert response.headers["X-Error-Code"] == payload["code"]
+    assert response.headers["X-Correlation-ID"] == payload["correlation_id"]
+    assert response.headers["X-Retryable"] == "false"
