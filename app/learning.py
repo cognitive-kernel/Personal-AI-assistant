@@ -130,6 +130,9 @@ def create_job(
     source_text: str | None = None,
     path_topic_id: int | None = None,
     lesson_review: dict[str, Any] | None = None,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     topic = topic.strip()
     if not topic or len(topic) > 300:
@@ -143,10 +146,20 @@ def create_job(
     existing_source_mismatch = False
     job_id: int | None = None
     with learning_connection() as conn:
+        if task_context is not None:
+            if expected_task_type is None or expected_payload is None:
+                raise ValueError("Learning job creation requires a complete parent task contract.")
+            conn.execute("BEGIN IMMEDIATE")
+            task_context.assert_current(
+                conn,
+                expected_task_type=expected_task_type,
+                expected_payload=expected_payload,
+            )
         # Path-topic creation is idempotent under concurrent start/resume requests.
         # Acquire the SQLite write reservation before checking for an active job.
-        if path_topic_id is not None:
+        if path_topic_id is not None and task_context is None:
             conn.execute("BEGIN IMMEDIATE")
+        if path_topic_id is not None:
             topic_row = conn.execute(
                 "SELECT id FROM learning_path_topics WHERE id=?", (path_topic_id,)
             ).fetchone()
@@ -201,7 +214,14 @@ def create_job(
         raise LearningError("Learning job could not be created.")
     return get_job(job_id)
 
-def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
+def _discover_and_store_sources(
+    job_id: int,
+    topic: str,
+    *,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
+) -> tuple[str, str]:
     """Fetch bounded public web evidence before generation, falling back safely when unavailable."""
     from .web_sources import discover_sources
 
@@ -218,6 +238,13 @@ def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
 
     if not documents:
         with learning_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if task_context is not None:
+                task_context.assert_current(
+                    conn,
+                    expected_task_type=expected_task_type,
+                    expected_payload=expected_payload,
+                )
             conn.execute("""INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
                 SELECT ?, 'web_search', ?, NULL, ?
                 WHERE NOT EXISTS (
@@ -245,6 +272,13 @@ def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
     combined = "\n\n".join(chunks)[:max_chars]
     if not combined:
         with learning_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if task_context is not None:
+                task_context.assert_current(
+                    conn,
+                    expected_task_type=expected_task_type,
+                    expected_payload=expected_payload,
+                )
             conn.execute("""INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
                 SELECT ?, 'web_search', ?, NULL, ?
                 WHERE NOT EXISTS (
@@ -254,6 +288,13 @@ def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
         return "", "model_knowledge_no_external_source"
 
     with learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        if task_context is not None:
+            task_context.assert_current(
+                conn,
+                expected_task_type=expected_task_type,
+                expected_payload=expected_payload,
+            )
         conn.execute("""INSERT INTO learning_source_text(job_id, content) VALUES (?, ?)
             ON CONFLICT(job_id) DO UPDATE SET content=excluded.content""", (job_id, combined))
         conn.execute("UPDATE learning_jobs SET source_kind='web_retrieved', updated_at=CURRENT_TIMESTAMP WHERE id=?", (job_id,))
@@ -806,8 +847,23 @@ def _select_learning_generation_model(
     }
 
 
-def run_job(job_id: int) -> None:
+def run_job(
+    job_id: int,
+    *,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
+) -> None:
     with learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        if task_context is not None:
+            if expected_task_type is None or expected_payload is None:
+                raise ValueError("Learning run requires a complete task ownership contract.")
+            task_context.assert_current(
+                conn,
+                expected_task_type=expected_task_type,
+                expected_payload=expected_payload,
+            )
         # Atomically claim a queued job. Multiple workers may call run_job for the
         # same ID after a retry/reconciliation race; only one may start inference.
         claim = conn.execute(
@@ -861,7 +917,10 @@ def run_job(job_id: int) -> None:
         # (for example, SQLite errors while persisting web evidence). Keep the job
         # terminally observable instead of leaving it stuck in "running" forever.
         if not source_text and source_kind == "model_knowledge_no_external_source":
-            source_text, source_kind = _discover_and_store_sources(job_id, topic)
+            source_text, source_kind = _discover_and_store_sources(
+                job_id, topic, task_context=task_context,
+                expected_task_type=expected_task_type, expected_payload=expected_payload,
+            )
         verified_factual_context = _verified_factual_context_for_topic(topic)
         failure_warnings = _failure_warnings_for_topic(topic, limit=3)
         settings = get_settings()
@@ -884,6 +943,13 @@ def run_job(job_id: int) -> None:
     except Exception as exc:
         safe_error = f"Learning preparation failed ({type(exc).__name__})."
         with learning_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if task_context is not None:
+                task_context.assert_current(
+                    conn,
+                    expected_task_type=expected_task_type,
+                    expected_payload=expected_payload,
+                )
             conn.execute(
                 """UPDATE learning_jobs
                    SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP
@@ -1009,7 +1075,9 @@ def run_job(job_id: int) -> None:
         # Resolve model policy before reserving durable inference budget. A failed
         # discovery/eligibility check must not consume a model-call reservation.
         durable_initial_budget = reserve_job_budget(
-            job_id, "initial_generation", calls=1, predict_tokens=3900
+            job_id, "initial_generation", calls=1, predict_tokens=3900,
+            task_context=task_context, expected_task_type=expected_task_type,
+            expected_payload=expected_payload,
         )
         if not durable_initial_budget["reserved"] or durable_initial_budget.get("already_reserved"):
             raise LearningError(
@@ -1080,7 +1148,9 @@ def run_job(job_id: int) -> None:
         durable_repair_budget = {"reserved": False, "reason": "quality_accepted"}
         if not quality["accepted"]:
             durable_repair_budget = reserve_job_budget(
-                job_id, "quality_repair", calls=1, predict_tokens=3900
+                job_id, "quality_repair", calls=1, predict_tokens=3900,
+                task_context=task_context, expected_task_type=expected_task_type,
+                expected_payload=expected_payload,
             )
         if (
             not quality["accepted"]
@@ -1197,7 +1267,9 @@ def run_job(job_id: int) -> None:
                     from .learning_durable_budget import reserve_job_budget
 
                     review_budget = reserve_job_budget(
-                        job_id, "claim_review", calls=1, predict_tokens=1000
+                        job_id, "claim_review", calls=1, predict_tokens=1000,
+                        task_context=task_context, expected_task_type=expected_task_type,
+                        expected_payload=expected_payload,
                     )
                     if not review_budget["reserved"] or review_budget.get("already_reserved"):
                         claim_review_result = {
@@ -1263,6 +1335,13 @@ def run_job(job_id: int) -> None:
                 quality["verification_status"] = "needs_review"
 
         with learning_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if task_context is not None:
+                task_context.assert_current(
+                    conn,
+                    expected_task_type=expected_task_type,
+                    expected_payload=expected_payload,
+                )
             current = conn.execute("SELECT status FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
             # If the user stopped the path while Ollama was generating, discard this result.
             if current is None or current["status"] != "running":
@@ -1363,6 +1442,13 @@ def run_job(job_id: int) -> None:
             # heuristic score is low. It remains provenance-labelled and untrusted.
     except Exception as exc:
         with learning_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if task_context is not None:
+                task_context.assert_current(
+                    conn,
+                    expected_task_type=expected_task_type,
+                    expected_payload=expected_payload,
+                )
             conn.execute("UPDATE learning_jobs SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'",
                          (str(exc)[:1000], job_id))
         raise LearningError(f"Learning job {job_id} failed: {exc}") from exc
@@ -1768,11 +1854,22 @@ def list_jobs(limit: int = 50) -> list[dict[str, Any]]:
         ids = [row["id"] for row in conn.execute("SELECT id FROM learning_jobs ORDER BY id DESC LIMIT ?", (max(1, min(200, limit)),)).fetchall()]
     return [get_job(job_id) for job_id in ids]
 
-def _enqueue_learning_job(job_id: int) -> dict[str, Any]:
+def _enqueue_learning_job(
+    job_id: int,
+    *,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     # Import lazily to keep the task adapter's dependency on this module acyclic.
     from .learning_tasks import enqueue_learning_task
 
-    return enqueue_learning_task(job_id)
+    return enqueue_learning_task(
+        job_id,
+        task_context=task_context,
+        expected_task_type=expected_task_type,
+        expected_payload=expected_payload,
+    )
 
 
 def _cancel_learning_job_task(job_id: int) -> dict[str, Any] | None:
@@ -2198,7 +2295,12 @@ def stop_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
 
 
 def start_researched_path_learning(
-    path_id: int, *, allow_retry: bool = False
+    path_id: int,
+    *,
+    allow_retry: bool = False,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Queue only the first unfinished lesson; later lessons follow terminal success."""
     path = get_learning_path(path_id)
@@ -2215,9 +2317,18 @@ def start_researched_path_learning(
                 (topic["id"],),
             ).fetchone()
         if latest is not None and latest["status"] in {"queued", "running"}:
+            active_task = None
+            if latest["status"] == "queued":
+                active_task = _enqueue_learning_job(
+                    int(latest["id"]),
+                    task_context=task_context,
+                    expected_task_type=expected_task_type,
+                    expected_payload=expected_payload,
+                )
             return {
                 "path_id": path_id, "queued_count": 0, "job_ids": [],
                 "status": "already_active", "active_job_id": int(latest["id"]),
+                "task_id": active_task.get("id") if active_task else None,
                 "skipped_completed_count": skipped_completed,
                 "message": "درس جاری در حال اجرا یا در صف است؛ درس بعدی تا پایان آن شروع نمی‌شود.",
             }
@@ -2230,14 +2341,34 @@ def start_researched_path_learning(
                 "blocked_topic": topic["topic"],
                 "message": "ادامهٔ صف به‌دلیل ناموفق‌بودن درس قبلی متوقف است؛ برای تلاش دوباره، شروع مسیر را انتخاب کنید.",
             }
-        job = create_job(topic["topic"], path_topic_id=int(topic["id"]))
+        job = create_job(
+            topic["topic"],
+            path_topic_id=int(topic["id"]),
+            task_context=task_context,
+            expected_task_type=expected_task_type,
+            expected_payload=expected_payload,
+        )
         with learning_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if task_context is not None:
+                if expected_task_type is None or expected_payload is None:
+                    raise ValueError("Researched path scheduling requires a complete parent task contract.")
+                task_context.assert_current(
+                    conn,
+                    expected_task_type=expected_task_type,
+                    expected_payload=expected_payload,
+                )
             conn.execute(
                 "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP "
                 "WHERE id=? AND path_id=? AND status!='completed'",
                 (topic["id"], path_id),
             )
-        task = _enqueue_learning_job(int(job["id"]))
+        task = _enqueue_learning_job(
+            int(job["id"]),
+            task_context=task_context,
+            expected_task_type=expected_task_type,
+            expected_payload=expected_payload,
+        )
         return {
             "path_id": path_id,
             "queued_count": 1,
@@ -2254,7 +2385,13 @@ def start_researched_path_learning(
     }
 
 
-def queue_next_researched_path_topic(path_topic_id: int) -> dict[str, Any] | None:
+def queue_next_researched_path_topic(
+    path_topic_id: int,
+    *,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     """Advance a researched path only after its current lesson completed successfully."""
     with learning_connection() as conn:
         row = conn.execute(
@@ -2270,7 +2407,13 @@ def queue_next_researched_path_topic(path_topic_id: int) -> dict[str, Any] | Non
         ).fetchone()
     if is_researched is None:
         return None
-    return start_researched_path_learning(path_id, allow_retry=False)
+    return start_researched_path_learning(
+        path_id,
+        allow_retry=False,
+        task_context=task_context,
+        expected_task_type=expected_task_type,
+        expected_payload=expected_payload,
+    )
 
 
 def start_path_learning(path_id: int) -> dict[str, Any]:
