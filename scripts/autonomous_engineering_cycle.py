@@ -120,7 +120,7 @@ CYCLE_LIMIT = 6 * 60 * 60
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 5 * 60
 TEST_SUITE_TIMEOUT_SECONDS = 15 * 60
 PULL_REQUEST_VALIDATION_TIMEOUT_SECONDS = 25 * 60
-TASK_RETRY_POLICY = RetryPolicy(max_attempts=2, max_elapsed_seconds=2 * 60 * 60)
+TASK_RETRY_POLICY = RetryPolicy(max_attempts=2, max_elapsed_seconds=45 * 60)
 
 
 @contextmanager
