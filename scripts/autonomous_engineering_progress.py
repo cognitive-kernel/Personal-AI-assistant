@@ -225,6 +225,9 @@ def codex_heartbeat_console_line(elapsed_seconds: float, event_count: int) -> st
         f"jsonl_events={max(0, int(event_count))} state={state}"
     )
 
+_CODEX_COMPLETION_MARKERS = re.compile(r"(?m)^(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)\s*$")
+
+
 def recover_final_agent_message_report(
     report_path: str | Path,
     final_agent_message: str | None,
@@ -232,15 +235,21 @@ def recover_final_agent_message_report(
     turn_completed: bool,
     turn_failed: bool,
 ) -> bool:
-    """Recover a missing --output-last-message file from a successful JSONL turn."""
+    """Recover a missing or invalid report from a successful JSONL final message."""
     if not turn_completed or turn_failed or not isinstance(final_agent_message, str):
         return False
     message = final_agent_message.strip()
-    if not message:
+    if len(_CODEX_COMPLETION_MARKERS.findall(message)) != 1:
         return False
     report = Path(report_path)
     try:
-        if report.is_file() and report.stat().st_size > 0:
+        try:
+            existing = report.read_text(encoding="utf-8-sig") if report.is_file() else ""
+        except UnicodeError:
+            # A corrupt temporary report is invalid, not a reason to discard
+            # the independently validated final message from the JSONL turn.
+            existing = ""
+        if len(_CODEX_COMPLETION_MARKERS.findall(existing)) == 1:
             return False
         report.write_text(message + "\n", encoding="utf-8")
     except OSError:
