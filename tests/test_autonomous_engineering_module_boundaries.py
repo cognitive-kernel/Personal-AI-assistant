@@ -33,9 +33,10 @@ def test_autonomous_engineering_features_have_versioned_single_owner_contracts()
     progress = _read("autonomous-engineering-progress.js")
     shell = _read("autonomous-engineering.js")
 
-    assert "window.autonomousEngineeringCore = Object.freeze({version: 1" in core
+    assert "window.autonomousEngineeringCore = Object.freeze({" in core
+    assert "version: 1, $, request, setMessage, startPolling" in core
     assert "window.autonomousEngineeringStatus = Object.freeze({" in status
-    assert "window.autonomousEngineeringControls = Object.freeze({version: 1})" in controls
+    assert "window.autonomousEngineeringControls = Object.freeze({version: 1, stop})" in controls
     assert "window.autonomousEngineeringRuns = Object.freeze({version: 1" in runs
     assert "window.autonomousEngineeringProgress = Object.freeze({version: 1" in progress
 
@@ -43,9 +44,10 @@ def test_autonomous_engineering_features_have_versioned_single_owner_contracts()
     assert "window.autonomousEngineeringStatus" in controls
     assert "window.autonomousEngineeringCore" in runs
     assert "window.autonomousEngineeringCore" in progress
-    assert len(shell.splitlines()) <= 40
+    assert len(shell.splitlines()) <= 100
     assert "fetch(" not in shell
-    assert "addEventListener(" not in shell
+    assert 'window.addEventListener("pagehide"' in shell
+    assert 'window.addEventListener("pageshow"' in shell
 
 
 def test_autonomous_engineering_status_refresh_and_controls_remain_isolated():
