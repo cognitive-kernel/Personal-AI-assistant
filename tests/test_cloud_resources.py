@@ -978,8 +978,14 @@ def test_final_run_update_pause_is_settled_after_candidate_commit(tmp_path, monk
         task_manager.request_pause(task["id"])
         return original_update_run(run_id, **kwargs)
 
+    scheduled = []
+
+    def schedule_next_daily_run(*, task_context=None):
+        scheduled.append(task_context)
+
     monkeypatch.setattr(web_sources, "discover_sources", lambda _query, limit=5: [_document()])
     monkeypatch.setattr(cloud_resources, "_update_run", pause_after_candidate_commit)
+    monkeypatch.setattr(cloud_resources, "_schedule_next_daily_run", schedule_next_daily_run)
 
     with pytest.raises(TaskInterrupted):
         cloud_resources.handle_discovery_task(payload, None, context)
@@ -990,12 +996,7 @@ def test_final_run_update_pause_is_settled_after_candidate_commit(tmp_path, monk
     assert run is not None
     assert run["status"] == "failed"
     assert run["error_summary"] == "discovery_abandoned:task_lease_lost"
-    with db.learning_connection() as connection:
-        scheduled = connection.execute(
-            "SELECT COUNT(*) FROM task_queue WHERE task_type=? AND dedupe_key LIKE 'cloud-discovery:%'",
-            (cloud_resources.CLOUD_DISCOVERY_TASK_TYPE,),
-        ).fetchone()[0]
-    assert scheduled == 1
+    assert len(scheduled) == 1
 
 
 def test_discovery_handler_keeps_daily_chain_when_pause_races_with_child_insert(
