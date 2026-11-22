@@ -49,6 +49,10 @@
         if (diagnostics.length) failure.message += " · " + diagnostics.join(" · ");
         throw failure;
       }
+      const responseCorrelationId = response.headers.get("X-Correlation-ID");
+      if (responseCorrelationId && payload && typeof payload === "object" && !Array.isArray(payload) && !payload.correlation_id) {
+        payload.correlation_id = responseCorrelationId;
+      }
       return payload;
     } catch (error) {
       if (error && error.name === "AbortError") {
