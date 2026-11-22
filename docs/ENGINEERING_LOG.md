@@ -2285,3 +2285,10 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - The review task adapter now propagates its TaskContext through web research, peer-AI consultation, unavailable/failure attempt records and candidate evidence writes. Sandbox review attempt records are also fenced with the `learning.sandbox_candidate` contract. Read-only source discovery remains outside the write transaction; lease is revalidated immediately before persistence.
 - Added stale-epoch regressions for review attempts, review evidence, peer consultation records, candidate channel reservations/completions and failure experiences. Existing direct/manual channel functions remain compatible when no task context is supplied.
 - Gate B remains open for factual verification (separate PR #821), knowledge lifecycle/graph (separate PR #822), cloud discovery, experience test results, research/programming and other writers, curriculum child-job scheduling and release-watch maintenance. Exact-head CI for the updated PR #819 head is pending.
+
+
+## 2026-11-22 — Candidate review evidence and budget lease fencing
+
+- Review of PR #819 found two task-owned persistence surfaces that needed explicit regression evidence: the shared per-job/global budget reservation made before web/peer review actions, and evidence/peer artifacts written after external provider calls. `reserve_job_budget()` now accepts the parent TaskContext and validates owner/epoch/type/payload inside its existing `BEGIN IMMEDIATE` transaction; candidate-review handlers pass that contract.
+- The web evidence insert, evidence reclassification, peer consultation insert, peer-cited evidence insert and channel attempt ledger all already carry the same TaskContext and validate it inside their own write transaction. Added fault-injection coverage that reclaims the task during web discovery and peer response, then proves no evidence, peer consultation, attempt, or budget reservation is written by the stale epoch.
+- Exact-head CI is pending; no candidate was promoted and no existing evidence was deleted.
