@@ -14,7 +14,8 @@
     paused: "مکث",
     draining: "در حال پایان",
     stopped: "متوقف",
-    finished: "پایان‌یافته"
+    finished: "پایان‌یافته",
+    finished_pending: "پایان کار فعال؛ صف محفوظ"
   };
   const actions = [
     { id: "start", label: "شروع", title: "فعال‌سازی دریافت وظایف جدید؛ کارهای مکث‌شده جداگانه ادامه داده نمی‌شوند." },
