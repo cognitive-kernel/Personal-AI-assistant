@@ -332,31 +332,7 @@ try {
     $null = Write-AutonomousTaskOwnerRecord @ownerArgs
 
     $correlationId = ([string]$env:AUTONOMOUS_ENGINEERING_CORRELATION_ID).Trim().ToLowerInvariant()
-    if ($correlationId -match '^[a-f0-9]{32}
-    $replacementBackups = $null
-} catch {
-    if ($null -ne $replacementBackups) {
-        if ($replacementBackups.Task -and (Test-Path -LiteralPath $replacementBackups.Task)) {
-            if (Test-Path -LiteralPath $pendingPath) {
-                Remove-Item -LiteralPath $pendingPath -Force -ErrorAction SilentlyContinue
-            }
-            Move-Item -LiteralPath $replacementBackups.Task -Destination $pendingPath -ErrorAction SilentlyContinue
-        }
-        if ($replacementBackups.Owner -and (Test-Path -LiteralPath $replacementBackups.Owner)) {
-            if (Test-Path -LiteralPath $taskOwnerPath) {
-                Remove-Item -LiteralPath $taskOwnerPath -Force -ErrorAction SilentlyContinue
-            }
-            Move-Item -LiteralPath $replacementBackups.Owner -Destination $taskOwnerPath -ErrorAction SilentlyContinue
-        }
-    }
-    throw
-} finally {
-    if ($stateLockOwned) {
-        $stateLockStream.Unlock(0, 1)
-    }
-    $stateLockStream.Dispose()
-}
-) {
+    if ($correlationId -match '^[a-f0-9]{32}\z') {
         $persistedOwner = Get-AutonomousTaskOwnerRecord -Path $taskOwnerPath -Task $manualTask
         if ($null -eq $persistedOwner) {
             throw "The durable task owner record disappeared before correlation metadata could be attached."
