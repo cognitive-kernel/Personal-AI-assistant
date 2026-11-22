@@ -26,7 +26,11 @@ _IMAGE_REF = re.compile(
 _ALLOWED_PAYLOAD_KEYS = {"source_code", "timeout_seconds", "max_output_bytes", "learning_practical"}
 
 
-def handler_from_environment(*, allow_language_runners: bool = False) -> Callable[
+def handler_from_environment(
+    *,
+    allow_language_runners: bool = False,
+    expected_task_type: str | None = None,
+) -> Callable[
     [dict[str, Any], dict[str, Any] | None, TaskContext], dict[str, Any]
 ] | None:
     """Return a handler only after explicit opt-in and valid local configuration."""
@@ -248,6 +252,14 @@ def handler_from_environment(*, allow_language_runners: bool = False) -> Callabl
                     grading_report,
                     learner_source_code,
                     idempotency_key=f"sandbox-practical-task:{context.task_id}",
+                    **(
+                        {
+                            "task_context": context,
+                            "expected_task_type": expected_task_type,
+                            "expected_payload": payload,
+                        }
+                        if expected_task_type is not None else {}
+                    ),
                 )
             except (KeyError, TypeError, ValueError, OSError) as exc:
                 raise RuntimeError("Practical grading output could not be validated or recorded.") from exc
