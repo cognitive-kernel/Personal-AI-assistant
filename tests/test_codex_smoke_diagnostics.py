@@ -171,6 +171,14 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert context_script.count('OLLAMA_RUNTIME_CONTEXT_OK') == 1
     assert 'if ($allocated -ne $selectedContext)' in context_script
     assert 'if ($allocated -lt $selectedContext)' not in context_script
+    assert "function Remove-LegacyCodexContextVariants" in context_script
+    assert "[regex]::Escape($BaseModel) + '-codex-ctx[0-9]+$'" in context_script
+    assert "Remove-LegacyCodexContextVariants -BaseModel $baseModel -CurrentModel $codexModel" in context_script
+    assert "if (-not $VerifyOnly)" in context_script
+    assert '$baseUrl/api/delete' in context_script
+    assert "Preserving loaded legacy Codex model" in context_script
+    assert context_script.index('if ($allocated -ne $selectedContext)') < context_script.index('Remove-LegacyCodexContextVariants -BaseModel $baseModel')
+    assert context_script.index('Remove-LegacyCodexContextVariants -BaseModel $baseModel') < context_script.index('OLLAMA_RUNTIME_CONTEXT_OK')
     assert '-le 0' in context_script
     assert 'AUTONOMOUS_ENGINEERING_MODEL=$codexModel' in context_script
     assert '-VerifyOnly' in diagnostic
@@ -324,7 +332,7 @@ def test_codex_command_uses_owner_aware_supervisor_and_distinct_budgets(monkeypa
 
     assert smoke_command[1].endswith("autonomous_engineering_codex_runner.py")
     assert smoke_command[smoke_command.index("--timeout-seconds") + 1] == "300"
-    assert task_command[task_command.index("--timeout-seconds") + 1] == "3600"
+    assert task_command[task_command.index("--timeout-seconds") + 1] == "1800"
     assert smoke_command[smoke_command.index("--parent-chain") + 1]
     managed_command = config.codex_command("codex", task_args, parent_job_managed=True)
     assert "--parent-job-managed" in managed_command

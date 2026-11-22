@@ -244,7 +244,7 @@ def codex_heartbeat_console_line(elapsed_seconds: float, event_count: int) -> st
         f"jsonl_events={max(0, int(event_count))} state={state}"
     )
 
-_CODEX_COMPLETION_MARKERS = re.compile(r"(?m)^(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)\s*$")
+_CODEX_COMPLETION_MARKERS = re.compile(r"(?im)^\s*(?:[-*]\s*)?(?:`{1,3}\s*)?(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)(?:\s*`{1,3})?[.!]?\s*$")
 
 
 def recover_final_agent_message_report(

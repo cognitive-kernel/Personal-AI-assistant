@@ -173,6 +173,71 @@ function Get-AllocatedContext {
     return $allocated
 }
 
+
+function Remove-LegacyCodexContextVariants {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$BaseModel,
+        [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$CurrentModel
+    )
+
+    # Older versions created one permanent model tag per selected context.
+    # Only remove numeric aliases belonging to this exact base model; never
+    # touch the base model, the stable current tag, other model families, or
+    # a variant that is currently loaded by Ollama.
+    try {
+        $catalog = Invoke-RestMethod -Uri "$baseUrl/api/tags" -Method Get -TimeoutSec 10 -MaximumRedirection 0
+        $runtime = Invoke-RestMethod -Uri "$baseUrl/api/ps" -Method Get -TimeoutSec 10 -MaximumRedirection 0
+    } catch {
+        throw "Could not safely inspect Ollama before legacy Codex model cleanup. $($_.Exception.Message)"
+    }
+
+    $loadedNames = @(
+        $runtime.models |
+            Where-Object { $_ -and $_.name } |
+            ForEach-Object { ([string]$_.name).ToLowerInvariant() }
+    )
+    $legacyPattern = '(?i)^' + [regex]::Escape($BaseModel) + '-codex-ctx[0-9]+$'
+    $legacyModels = @(
+        $catalog.models |
+            Where-Object {
+                $_ -and $_.name -and
+                ([string]$_.name -match $legacyPattern) -and
+                -not ([string]$_.name).Equals($CurrentModel, [System.StringComparison]::OrdinalIgnoreCase)
+            }
+    )
+
+    foreach ($legacy in $legacyModels) {
+        $legacyName = [string]$legacy.name
+        if ($loadedNames -contains $legacyName.ToLowerInvariant()) {
+            Write-Warning "Preserving loaded legacy Codex model '$legacyName'; cleanup will retry on a later preflight."
+            continue
+        }
+
+        $legacyInfo = Get-ModelInfo -ModelName $legacyName
+        $savedContext = [regex]::Match(
+            [string]$legacyInfo.modelfile,
+            '(?im)^\s*PARAMETER\s+num_ctx\s+(\d+)\s*$'
+        )
+        if (-not $savedContext.Success) {
+            Write-Warning "Preserving '$legacyName' because it does not contain the expected generated num_ctx parameter."
+            continue
+        }
+
+        $deleteBody = @{ model = $legacyName } | ConvertTo-Json -Compress
+        try {
+            $null = Invoke-RestMethod -Uri "$baseUrl/api/delete" -Method Post -ContentType "application/json" -Body $deleteBody -TimeoutSec 30 -MaximumRedirection 0
+            Write-Host "Removed obsolete Codex context variant: $legacyName"
+        } catch {
+            throw "Ollama could not remove obsolete Codex context variant '$legacyName'. $($_.Exception.Message)"
+        }
+    }
+
+    if ($legacyModels.Count -eq 0) {
+        Write-Host "No obsolete numeric Codex context variants were found for '$BaseModel'."
+    }
+}
+
 if ($VerifyOnly) {
     $codexModel = $Model
     $selectedContext = 0L
@@ -304,5 +369,8 @@ Write-Host "Selected Codex context: $selectedContext tokens"
 Write-Host "Ollama allocated runtime context: $allocated tokens"
 if ($allocated -ne $selectedContext) {
     throw "Ollama allocated $allocated tokens for '$codexModel', but the verified selection is exactly $selectedContext. No Codex task may proceed."
+}
+if (-not $VerifyOnly) {
+    Remove-LegacyCodexContextVariants -BaseModel $baseModel -CurrentModel $codexModel
 }
 Write-Host "OLLAMA_RUNTIME_CONTEXT_OK"

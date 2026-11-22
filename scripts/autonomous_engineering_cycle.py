@@ -115,12 +115,13 @@ PROTECTED = {
     "scripts/autonomous_engineering_pending_task.py",
     "scripts/persist_autonomous_manual_task.ps1",
 }
-MARKERS = re.compile(r"(?m)^(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)\s*$")
+MARKERS = re.compile(r"(?im)^\s*(?:[-*]\s*)?(?:`{1,3}\s*)?(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)(?:\s*`{1,3})?[.!]?\s*$")
 CYCLE_LIMIT = 6 * 60 * 60
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 5 * 60
 TEST_SUITE_TIMEOUT_SECONDS = 15 * 60
 PULL_REQUEST_VALIDATION_TIMEOUT_SECONDS = 25 * 60
-TASK_RETRY_POLICY = RetryPolicy(max_attempts=2, max_elapsed_seconds=2 * 60 * 60)
+TASK_RETRY_POLICY = RetryPolicy(max_attempts=2, max_elapsed_seconds=90 * 60)
+CODEX_RETRY_POLICY = RetryPolicy(max_attempts=2, max_elapsed_seconds=45 * 60)
 
 
 @contextmanager
@@ -544,6 +545,7 @@ def run_cycle(args: argparse.Namespace) -> int:
 
     report = Path(os.environ.get("RUNNER_TEMP", str(ROOT))) / f"codex-report-{task}.md"
     attempt = 0
+    codex_elapsed_seconds = 0.0
     failure_feedback = ""
     trusted_head = base_sha
     published_pr: dict[str, Any] | None = None
@@ -566,15 +568,33 @@ def run_cycle(args: argparse.Namespace) -> int:
                 f"Task {task} reached its bounded retry budget ({reason}); "
                 "the task was not discarded or published as verified and will be resumed by recovery."
             )
+        if not CODEX_RETRY_POLICY.allows_attempt(attempt, codex_elapsed_seconds):
+            reason = CODEX_RETRY_POLICY.exhaustion_reason(attempt, codex_elapsed_seconds)
+            record(
+                args.run_id, args.run_attempt, "retry",
+                f"وظیفهٔ {task} برای بازیابی در اجرای بعدی نگه داشته شد",
+                f"بودجهٔ نشست‌های Codex تمام شد: {reason} وضعیت پایدار و checkpoint موجود حفظ می‌شوند",
+            )
+            raise RuntimeError(
+                f"Task {task} reached its bounded Codex execution budget ({reason}); "
+                "the task was not discarded or published as verified and will be resumed by recovery."
+            )
         attempt += 1
         active_prompt = Path(args.prompt)
         if failure_feedback:
             active_prompt = Path(os.environ.get("RUNNER_TEMP", str(ROOT))) / f"codex-retry-prompt-{task}-{attempt}.md"
             original = Path(args.prompt).read_text(encoding="utf-8")
+            report_only_retry = "did not contain exactly one valid completion marker" in failure_feedback
+            repair_instruction = (
+                "This is a report-finalization repair. Inspect the existing plan, diff, and report; do not repeat completed implementation or rerun broad tests. "
+                "If verification evidence already exists, write the concise final report and its single required marker.\n"
+                if report_only_retry
+                else "Fix the root cause, add or update regression tests, then report TASK_COMPLETE only after your own relevant tests pass.\n"
+            )
             active_prompt.write_text(
                 original + "\n\n## Required repair after failed verification\n"
                 + "This is a fresh session for the SAME task. Do not select or start another task.\n"
-                + failure_feedback + "\nFix the root cause, add or update regression tests, then report TASK_COMPLETE only after your own relevant tests pass.\n",
+                + failure_feedback + "\n" + repair_instruction,
                 encoding="utf-8",
             )
         elif restored_checkpoint:
@@ -592,10 +612,13 @@ def run_cycle(args: argparse.Namespace) -> int:
             f"اجرای نشست تازه برای همان وظیفه؛ تلاش {attempt}",
         )
         watcher = start_checkpoint_watcher(base_sha, args.run_id, task)
+        codex_attempt_started = time.monotonic()
         try:
-            remaining = TASK_RETRY_POLICY.remaining_seconds(elapsed)
+            task_remaining = TASK_RETRY_POLICY.remaining_seconds(time.monotonic() - started)
+            codex_remaining = CODEX_RETRY_POLICY.remaining_seconds(codex_elapsed_seconds)
+            remaining = min(task_remaining, codex_remaining)
             if remaining <= 0:
-                raise RuntimeError("Task retry budget expired before Codex could start; preserving the current task state.")
+                raise RuntimeError("Codex or task execution budget expired before Codex could start; preserving the current task state.")
             with timed_stage(f"codex_attempt_{attempt}"):
                 result = run([
                     sys.executable, "scripts/autonomous_engineering_progress.py", "codex",
@@ -604,6 +627,7 @@ def run_cycle(args: argparse.Namespace) -> int:
                 ], timeout_seconds=min(CODEX_TASK_TIMEOUT_SECONDS + 30, remaining))
         finally:
             stop_checkpoint_watcher(watcher, base_sha, args.run_id, task)
+            codex_elapsed_seconds += time.monotonic() - codex_attempt_started
         if result.returncode:
             report_detail = _read_report_diagnostic(report)
             persist_run_diagnostic(
@@ -633,6 +657,7 @@ def run_cycle(args: argparse.Namespace) -> int:
                 f"Attempt {attempt}: {exc}\n"
                 "The Codex --output-last-message report did not contain exactly one valid completion marker. "
                 "Continue the SAME task; do not reset or discard the existing worktree/checkpoint and do not choose another task.\n"
+                "First inspect .agent-progress.json, the current git diff, and the existing report. If the implementation and plan are already complete, do not repeat implementation or rerun broad tests; write a concise evidence report and add the required terminal marker. If anything is incomplete, finish only the remaining plan item.\n"
                 "Write your final report through the supplied --output-last-message file. End that report with exactly one of these plain-text markers on its own final line, without a Markdown code fence or punctuation: TASK_COMPLETE, QUEUE_EMPTY, TASK_BLOCKED.\n"
                 "Use TASK_COMPLETE only after the selected task, required regression tests, and engineering documentation are complete; use TASK_BLOCKED only with a concrete blocker; use QUEUE_EMPTY only when no actionable task remains and there is no unfinished checkpoint.\n"
             )

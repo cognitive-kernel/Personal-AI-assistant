@@ -23,7 +23,7 @@ def task_marker(report: Path, markers) -> str:
             "Codex report must contain exactly one valid completion marker "
             f"(found {len(matches)})."
         )
-    return matches[0]
+    return matches[0].upper()
 
 
 def changed_paths(*, checked, runtime_files) -> list[str]:

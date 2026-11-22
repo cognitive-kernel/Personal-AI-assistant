@@ -186,7 +186,7 @@ def test_windows_codex_supervisor_job_handle_is_pinned_in_owner(tmp_path: Path):
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows Job Object ownership is Windows-only")
 def test_windows_owner_handle_reaps_codex_descendants_after_supervisor_crash(tmp_path: Path):
-    owner = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    wrapper_pid_file = tmp_path / "codex-supervisor.pid"
     child_pid_file = tmp_path / "orphaned-codex-child.pid"
     child_code = "import time; time.sleep(60)"
     codex_code = (
@@ -195,33 +195,46 @@ def test_windows_owner_handle_reaps_codex_descendants_after_supervisor_crash(tmp
         "open(" + repr(str(child_pid_file)) + ",'w').write(str(p.pid)); "
         "time.sleep(60)"
     )
-    owner_chain = [{
-        "pid": owner.pid,
-        "started_at": float(psutil.Process(owner.pid).create_time()),
-    }]
-    wrapper = subprocess.Popen(
-        [
-            sys.executable, str(Path(codex_runner.__file__).resolve()),
-            "--timeout-seconds", "30",
-            "--parent-chain", json.dumps(owner_chain),
-            "--", sys.executable, "-c", codex_code,
-        ],
-        cwd=Path(__file__).resolve().parents[1],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+    runner_path = str(Path(codex_runner.__file__).resolve())
+    workspace = str(Path(__file__).resolve().parents[1])
+    owner_code = "\n".join([
+        "import json, os, subprocess, sys, time",
+        "from pathlib import Path",
+        "import psutil",
+        "owner_chain = json.dumps([{'pid': os.getpid(), 'started_at': float(psutil.Process(os.getpid()).create_time())}])",
+        "wrapper = subprocess.Popen([sys.executable, " + repr(runner_path) + ", '--timeout-seconds', '30', '--parent-chain', owner_chain, '--', sys.executable, '-c', " + repr(codex_code) + "], cwd=" + repr(workspace) + ", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)",
+        "Path(" + repr(str(wrapper_pid_file)) + ").write_text(str(wrapper.pid))",
+        "time.sleep(60)",
+    ])
+    owner = subprocess.Popen(
+        [sys.executable, "-c", owner_code],
+        cwd=workspace,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
+    wrapper_pid = None
     child_pid = None
     try:
         deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and not wrapper_pid_file.is_file():
+            if owner.poll() is not None:
+                raise AssertionError("The owner exited before launching the Codex supervisor.")
+            time.sleep(0.05)
+        assert wrapper_pid_file.is_file(), "The owner did not launch the Codex supervisor."
+        wrapper_pid = int(wrapper_pid_file.read_text(encoding="utf-8"))
+
+        deadline = time.monotonic() + 10
         while time.monotonic() < deadline and not child_pid_file.is_file():
-            if wrapper.poll() is not None:
+            if not psutil.pid_exists(wrapper_pid):
                 raise AssertionError("Codex supervisor exited before launching its child.")
             time.sleep(0.05)
         assert child_pid_file.is_file(), "Codex child did not start under the owner-held job."
         child_pid = int(child_pid_file.read_text(encoding="utf-8"))
-        wrapper.kill()
-        wrapper.wait(timeout=5)
+
+        psutil.Process(wrapper_pid).kill()
+        psutil.Process(wrapper_pid).wait(timeout=5)
         assert psutil.Process(child_pid).is_running(), "Owner-held Job Object did not survive supervisor crash."
+
         owner.terminate()
         owner.wait(timeout=5)
         try:
@@ -234,10 +247,16 @@ def test_windows_owner_handle_reaps_codex_descendants_after_supervisor_crash(tmp
         if owner.poll() is None:
             owner.kill()
             owner.wait(timeout=5)
-        if wrapper.poll() is None:
-            wrapper.kill()
-            wrapper.wait(timeout=5)
-
+        if wrapper_pid and psutil.pid_exists(wrapper_pid):
+            try:
+                psutil.Process(wrapper_pid).kill()
+            except psutil.NoSuchProcess:
+                pass
+        if child_pid and psutil.pid_exists(child_pid):
+            try:
+                psutil.Process(child_pid).kill()
+            except psutil.NoSuchProcess:
+                pass
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows controller-owned Job Object contract.")
 def test_windows_progress_owner_kills_codex_descendants_after_supervisor_crash(monkeypatch, tmp_path: Path):
