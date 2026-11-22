@@ -2579,3 +2579,29 @@ def test_windows_cleanup_delegates_locking_to_broker_without_client_self_lock(mo
 
     assert response.status_code == 200
     assert response.json()["cleaned"] is True
+
+def test_windows_cleanup_preserves_worktree_runtime_files_after_broker_release(monkeypatch, tmp_path):
+    monkeypatch.setattr(agent, "_is_windows", lambda: True)
+    runtime_dir = tmp_path / "worktree"
+    runtime_dir.mkdir()
+    for name in agent._RUNTIME_CLEANUP_FILES:
+        (runtime_dir / name).write_text("runtime", encoding="utf-8")
+    monkeypatch.setattr(agent, "_agent_runtime_directory", lambda: runtime_dir)
+    monkeypatch.setattr(
+        agent,
+        "cleanup_shared_progress_data",
+        lambda: {
+            "cleaned": True,
+            "files_removed": 2,
+            "bytes_removed": 12,
+            "failed_files": [],
+            "preserved": ["history.jsonl", "checkpoint files"],
+        },
+    )
+
+    result = agent._cleanup_autonomous_engineering_temporary_data_locked()
+
+    assert result["cleaned"] is True
+    assert result["files_removed"] == 2
+    assert set(agent._RUNTIME_CLEANUP_FILES) <= set(result["preserved"])
+    assert all((runtime_dir / name).is_file() for name in agent._RUNTIME_CLEANUP_FILES)
