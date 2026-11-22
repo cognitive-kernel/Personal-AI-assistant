@@ -72,11 +72,11 @@
         (action.id === "start" && stateValue === "running") ||
         (action.id === "pause" && stateValue !== "running") ||
         (action.id === "resume" &&
-          !["paused", "draining"].includes(stateValue) &&
+          !["paused", "draining", "stopped"].includes(stateValue) &&
           Number(counts.paused || 0) === 0 &&
           Number(counts.pause_requested || 0) === 0) ||
         (action.id === "finish" && stateValue !== "running") ||
-        (action.id === "force_stop" && stateValue === "stopped" && active === 0 && pending === 0);
+        (action.id === "force_stop" && stateValue === "stopped" && active === 0);
       button.addEventListener("click", () => void performAction(module, action.id));
       toolbar.append(button);
     }
