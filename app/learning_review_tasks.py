@@ -137,6 +137,8 @@ def handle_candidate_review(
             budget = learning_durable_budget.reserve_job_budget(
                 int(row["job_id"]), f"candidate_review_{channel}_{attempt_budget_suffix}",
                 calls=budget_calls, predict_tokens=budget_tokens,
+                task_context=context, expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+                expected_payload=payload,
             )
         except learning_durable_budget.LearningBudgetError as exc:
             raise RetryableTaskError("Shared learning pipeline budget is temporarily unavailable.") from exc
