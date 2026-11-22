@@ -421,6 +421,7 @@ def collect_status() -> dict[str, Any]:
         "authenticated": False,
         "recent_runs": [],
         "runs_available": False,
+        "settings_available": False,
         "settings": {
             "model": "",
             "interval_hours": _DEFAULT_INTERVAL_HOURS,
@@ -514,6 +515,7 @@ def collect_status() -> dict[str, Any]:
         "runner_running": runner["running"],
         "github_cli_authenticated": github["authenticated"],
         "github_runs_available": github.get("runs_available", False),
+        "github_settings_available": github.get("settings_available", True),
         "progress_storage_accessible": progress_storage,
         "durable_state_available": pending_work.get("available") is True,
     }
@@ -960,6 +962,7 @@ def autonomous_engineering_lifecycle() -> dict[str, Any]:
         snapshot.get("cli_installed") is not True
         or snapshot.get("authenticated") is not True
         or snapshot.get("runs_available") is not True
+        or snapshot.get("settings_available", True) is not True
     ):
         return {
             "available": False,
