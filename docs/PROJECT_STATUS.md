@@ -519,3 +519,11 @@ The subsequent documentation-only evidence update does not change runtime code a
 - اجرای ناموفق Windows Runner به‌علت نبود final `agent_message`، گزارش خالی و عدم ثبت completion marker رخ داد؛ task/checkpoint حذف یا complete نشد.
 - PR قدیمی #818 ادغام نشد و بسته شد؛ PR جایگزین #827 در 2026-11-22 با merge commit `0367a3ebfd92ac196bb096f1a45cbfed5a61985d` ادغام شد و بازیابی محدود از JSONL معتبر را اضافه کرد. این ادغام، خطای اجرای واقعی Codex روی Windows را به‌تنهایی اثبات‌شده حل‌شده نمی‌کند.
 - PR #834 اصلاحات UI feedback، حفاظت cleanup با repository lock، تست HTTP برای producer واقعی خطای API و رفع بسته‌بندی importهای `scripts` را دنبال می‌کند؛ CI exact-head جدید و Gateهای عملیاتی هنوز باز هستند.
+
+
+## وضعیت اعتبارسنجی زنده — 2026-11-22
+
+- PR #834 در head `02ede5f4ccd20aace3d8e2db531d0998bd842dc3`: Browser E2E، CodeQL، Analyze، pip-audit و سه bootstrap موفق؛ Linux full suite با ۳ failure و Windows storage regressions با ۲ failure. Full Windows suite هنگام ثبت هنوز در حال اجرا بود.
+- اصلاح Windows byte-range lock و دو اصلاح تست در branch جایگزین `fix/autonomous-engineering-first-module-validation-20261122` از همان head آماده شده‌اند؛ قبل از بازکردن PR جایگزین، CI دقیق اجرا نشده است.
+- PR #823 نیز اصلاح نهایی pause/cancel هنگام ثبت وضعیت discovery را در branch خود دارد؛ CI دقیق آن اجرا نشده است.
+- هیچ‌یک از این تغییرات merge نشده‌اند. اجرای Runner/Ollama/Codex واقعی، crash/restart و تأیید Windows target و مالک همچنان gateهای باز هستند.
