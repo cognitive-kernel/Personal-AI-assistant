@@ -158,6 +158,11 @@ def _atomic_write(path: Path, raw: bytes) -> None:
 def list_pending(state: Path) -> list[dict[str, Any]]:
     task = _regular(state / TASK_FILE, MAX_TASK_BYTES)
     if task is None:
+        if _regular(state / OWNER_FILE, 64 * 1024) is not None:
+            raise LifecycleConflict(
+                "Pending task owner metadata exists without its task.",
+                ["owner_metadata_without_task"],
+            )
         return []
     try:
         task.decode("utf-8")
