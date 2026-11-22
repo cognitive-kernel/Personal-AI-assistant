@@ -167,3 +167,36 @@ def test_module_control_api_is_loopback_only_and_returns_no_task_payloads(module
 
 def test_module_registry_covers_every_feature_managed_task_type():
     assert set(module_control.TASK_TYPE_TO_MODULE) == set(FEATURE_MANAGED_TASK_TYPES)
+
+def test_finish_recovers_expired_active_lease_but_never_claims_new_queued_work(module_store):
+    active = task_manager.create_task("cloud.discover_resources", {"item": "active"})
+    waiting = task_manager.create_task("cloud.discover_resources", {"item": "waiting"})
+    claimed = task_manager.claim_next_task(
+        "cloud-worker", task_types=("cloud.discover_resources",)
+    )
+    task_manager.save_checkpoint(
+        active["id"], claimed["lease_owner"], {"cursor": "resume-active"},
+        lease_epoch=claimed["lease_epoch"],
+    )
+    module_control.control_module("cloud-discovery", "finish")
+
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE task_queue SET lease_expires_at='2000-01-01T00:00:00.000000' WHERE id=?",
+            (active["id"],),
+        )
+
+    recovered = task_manager.claim_next_task(
+        "recovery-worker", task_types=("cloud.discover_resources",)
+    )
+    assert recovered["id"] == active["id"]
+    assert recovered["lease_epoch"] > claimed["lease_epoch"]
+    assert recovered["checkpoint"] == {"cursor": "resume-active"}
+    assert task_manager.get_task(waiting["id"])["status"] == "queued"
+
+    completed = task_manager.complete_task(
+        active["id"], recovered["lease_owner"], {"recovered": True},
+        lease_epoch=recovered["lease_epoch"],
+    )
+    assert completed["status"] == "succeeded"
+    assert task_manager.get_task(waiting["id"])["status"] == "queued"
