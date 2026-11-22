@@ -167,6 +167,6 @@ def test_dashboard_exposes_model_pull_controls_and_progress():
 
     assert 'id="pull-model"' in html
     assert 'id="model-pull-status"' in html
-    assert 'request("models/pull"' in script
-    assert 'request("models/pull/"' in script
+    assert 'request("models/pull",' in script
+    assert '"models/pull/" + encodeURIComponent(jobId)' in script
     assert "دانلود و نصب مدل انتخاب‌شده" in html
