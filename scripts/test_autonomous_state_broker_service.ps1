@@ -243,6 +243,29 @@ assert pending["checkpoint"] == {"available": False, "verified": True}
     $inactiveProbe | & python -
     if ($LASTEXITCODE -ne 0) { throw "The Windows Broker did not honor the inactive checkpoint pointer." }
 
+    # The workflow records a live progress snapshot before taking the
+    # repository lock. Cleanup must fail closed even while that lock is free.
+    $activeProgressProbe = @'
+from app import autonomous_engineering_state_broker as broker
+from app.autonomous_engineering_state_broker import StateBrokerConflict
+try:
+    broker.cleanup()
+except StateBrokerConflict as exc:
+    assert "active_progress_run" in exc.blockers
+else:
+    raise SystemExit("Broker cleanup ignored a live pre-lock current.json progress state.")
+'@
+    $activeProgressProbe | & python -
+    if ($LASTEXITCODE -ne 0) { throw "The Windows Broker did not block cleanup for a live progress state." }
+
+    $current.status = "completed"
+    $current.phase_label = "CI run completed"
+    [System.IO.File]::WriteAllText(
+        (Join-Path $stateRoot "current.json"),
+        (ConvertTo-Json -InputObject $current -Compress),
+        [System.Text.UTF8Encoding]::new($false)
+    )
+
     # The broker must interoperate with the exact Python byte-range lock used
     # by the Runner, including direct pipe clients that bypass the dashboard.
     $repositoryLockScriptPath = Join-Path $env:TEMP ("broker-repository-lock-" + [guid]::NewGuid().ToString("N") + ".py")
