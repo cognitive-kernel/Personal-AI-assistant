@@ -123,6 +123,39 @@ def initialize_store() -> int:
     )
 
 
+def _settle_cooperative_discovery_interruption(task_context: Any) -> None:
+    """Finish a requested pause/cancel only while the original lease is still current."""
+    task = task_manager.get_task(task_context.task_id)
+    if task is None or int(task["lease_epoch"]) != int(task_context.lease_epoch):
+        raise task_manager.TaskManagerError(
+            "Cloud discovery interruption no longer belongs to this worker lease."
+        )
+    if task["status"] in {"pause_requested", "cancel_requested"}:
+        if (
+            task.get("lease_owner") != task_context.worker_id
+            or not task.get("lease_expires_at")
+            or task["lease_expires_at"] <= task_manager._timestamp()
+        ):
+            raise task_manager.TaskManagerError(
+                "Cloud discovery interruption cannot settle an expired or reclaimed lease."
+            )
+        try:
+            task_context.checkpoint({"phase": "cloud_discovery_interrupted"})
+        except TaskInterrupted:
+            pass
+        task = task_manager.get_task(task_context.task_id)
+    if (
+        task is None
+        or int(task["lease_epoch"]) != int(task_context.lease_epoch)
+        or task["status"] not in {"paused", "cancelled"}
+        or task.get("lease_owner") is not None
+        or task.get("lease_expires_at") is not None
+    ):
+        raise task_manager.TaskManagerError(
+            "Cloud discovery interruption was not durably settled by the task manager."
+        )
+
+
 def _reconcile_abandoned_discovery_runs() -> int:
     """Settle discovery runs whose exact task lease is no longer authoritative.
 
@@ -992,8 +1025,10 @@ def discover_resources(
     except Exception as exc:
         errors.append(f"discovery_aborted:{type(exc).__name__}")
         if isinstance(exc, TaskInterrupted):
-            # checkpoint() has already settled pause/cancel and released the lease.
-            # Reconcile the run from the durable task row; do not mutate it as owner.
+            # Some interruption paths are raised by a write guard before checkpoint().
+            # Settle those only while the original lease is still current; an already
+            # settled or reclaimed task is handled by the exact epoch check below.
+            _settle_cooperative_discovery_interruption(task_context)
             _reconcile_abandoned_discovery_runs()
             raise
         try:
