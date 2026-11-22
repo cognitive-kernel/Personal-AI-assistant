@@ -76,9 +76,13 @@ def test_progress_records_include_workflow_correlation_and_job(monkeypatch):
     correlation_id = "b" * 32
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CORRELATION_ID", correlation_id)
     monkeypatch.setenv("GITHUB_JOB", "codex")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_JOB_ID", "987654321")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_STEP_ID", "autonomous-engineering-cycle")
 
     record = progress._with_run_correlation({"run_id": "12345", "phase": "coding"})
 
     assert record["correlation_id"] == correlation_id
     assert record["job"] == "codex"
+    assert record["job_id"] == 987654321
+    assert record["step_id"] == "autonomous-engineering-cycle"
     assert record["run_id"] == "12345"
