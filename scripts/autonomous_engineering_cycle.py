@@ -495,7 +495,7 @@ def run_cycle(args: argparse.Namespace) -> int:
             if args.mode == "continuous":
                 api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {
                     "ref": "main",
-                    "inputs": {"manual_task": "", "correlation_id": args.correlation_id},
+                    "inputs": {"manual_task": "", "correlation_id": getattr(args, "correlation_id", "")},
                 })
             return 0
         if current_pending.get("state") == "open":
@@ -820,7 +820,7 @@ def run_cycle(args: argparse.Namespace) -> int:
         if args.mode == "continuous":
             api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {
                 "ref": "main",
-                "inputs": {"manual_task": ""},
+                "inputs": {"manual_task": "", "correlation_id": getattr(args, "correlation_id", "")},
             })
             print(f"Owner-merged task {task} accepted as PR #{pr_number}; next cycle dispatched from main: {pr_url}")
         else:
