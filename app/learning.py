@@ -1074,7 +1074,9 @@ def run_job(
         # Resolve model policy before reserving durable inference budget. A failed
         # discovery/eligibility check must not consume a model-call reservation.
         durable_initial_budget = reserve_job_budget(
-            job_id, "initial_generation", calls=1, predict_tokens=3900
+            job_id, "initial_generation", calls=1, predict_tokens=3900,
+            task_context=task_context, expected_task_type=expected_task_type,
+            expected_payload=expected_payload,
         )
         if not durable_initial_budget["reserved"] or durable_initial_budget.get("already_reserved"):
             raise LearningError(
@@ -1145,7 +1147,9 @@ def run_job(
         durable_repair_budget = {"reserved": False, "reason": "quality_accepted"}
         if not quality["accepted"]:
             durable_repair_budget = reserve_job_budget(
-                job_id, "quality_repair", calls=1, predict_tokens=3900
+                job_id, "quality_repair", calls=1, predict_tokens=3900,
+                task_context=task_context, expected_task_type=expected_task_type,
+                expected_payload=expected_payload,
             )
         if (
             not quality["accepted"]
@@ -1262,7 +1266,9 @@ def run_job(
                     from .learning_durable_budget import reserve_job_budget
 
                     review_budget = reserve_job_budget(
-                        job_id, "claim_review", calls=1, predict_tokens=1000
+                        job_id, "claim_review", calls=1, predict_tokens=1000,
+                        task_context=task_context, expected_task_type=expected_task_type,
+                        expected_payload=expected_payload,
                     )
                     if not review_budget["reserved"] or review_budget.get("already_reserved"):
                         claim_review_result = {
