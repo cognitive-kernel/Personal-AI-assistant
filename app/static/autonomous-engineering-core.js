@@ -55,5 +55,71 @@
     }
   }
 
-  window.autonomousEngineeringCore = Object.freeze({version: 1, $, request, setMessage});
+  function startPolling({intervalMs, maxIntervalMs, refresh, jitterRatio = 0.15}) {
+    if (!Number.isFinite(intervalMs) || intervalMs < 250 ||
+        !Number.isFinite(maxIntervalMs) || maxIntervalMs < intervalMs ||
+        typeof refresh !== "function" ||
+        !Number.isFinite(jitterRatio) || jitterRatio < 0 || jitterRatio > 0.5) {
+      throw new TypeError("Invalid autonomous-engineering polling configuration.");
+    }
+    let stopped = false;
+    let inFlight = false;
+    let timerId = null;
+    let failures = 0;
+
+    function schedule(delayMs) {
+      if (stopped || document.hidden) return;
+      if (timerId !== null) window.clearTimeout(timerId);
+      const jitter = delayMs > 0
+        ? Math.floor(delayMs * ((Math.random() * 2 - 1) * jitterRatio))
+        : 0;
+      const boundedDelay = Math.min(maxIntervalMs, Math.max(0, delayMs + jitter));
+      timerId = window.setTimeout(tick, boundedDelay);
+    }
+
+    async function tick() {
+      timerId = null;
+      if (stopped || document.hidden || inFlight) return;
+      inFlight = true;
+      let succeeded = false;
+      try {
+        succeeded = (await refresh()) !== false;
+      } catch (_) {
+        succeeded = false;
+      } finally {
+        inFlight = false;
+      }
+      if (stopped) return;
+      if (succeeded) {
+        failures = 0;
+        schedule(intervalMs);
+      } else {
+        failures = Math.min(failures + 1, 8);
+        schedule(Math.min(maxIntervalMs, intervalMs * (2 ** failures)));
+      }
+    }
+
+    function onVisibilityChange() {
+      if (document.hidden) {
+        if (timerId !== null) window.clearTimeout(timerId);
+        timerId = null;
+      } else {
+        schedule(0);
+      }
+    }
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    schedule(0);
+    return function stopPolling() {
+      if (stopped) return;
+      stopped = true;
+      if (timerId !== null) window.clearTimeout(timerId);
+      timerId = null;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }
+
+  window.autonomousEngineeringCore = Object.freeze({
+    version: 1, $, request, setMessage, startPolling
+  });
 })();
