@@ -113,7 +113,7 @@ API ابتدا active run را رد می‌کند و سپس Broker/state markers
 
 ## 7. موارد باز برای تکمیل و پذیرش
 
-1. exact-head CI برای PRهای #817 تا #820 روی headهای فعلی بررسی شد؛ هر چهار workflow در هر چهار PR (tests، browser-e2e، dependency-audit و CodeQL) موفق‌اند. این نتیجه فقط CI مخزن را اثبات می‌کند و پذیرش target-host را جایگزین نمی‌کند.
+1. snapshot وضعیت GitHub در 2026-11-22: PRهای #817 و #818 روی headهای فعلی هر چهار workflow موفق دارند؛ head جدید PR #819 (`a0e247d08dabb6f3aa4ef3451b6fa8f885419524`) هنوز در انتظار چهار workflow است؛ کد PR #820 روی `3d9499574c347607ca08ee79080d19286cc19a99` هر چهار workflow را گذرانده، اما commit مستنداتی جدید `22ce582f815b3bffd3f8216623d82d6323546448` هنوز workflow تازه‌ای ندارد. این شواهد پذیرش target-host را جایگزین نمی‌کند.
 2. تأیید و ادغام error envelope یکنواخت PR #817 پس از exact-head CI؛ سپس بررسی سازگاری همهٔ consumerها و حفظ قرارداد backward-compatible `detail`.
 3. اجرای پذیرش واقعی روی Windows Runner service identity: Broker ACL/UAC، restart/crash، Pause/Resume/Cancel، checkpoint recovery، cleanup با/بدون active run و مشاهدهٔ log واقعی.
 4. آزمون مدل pull در مرورگر mock شده است؛ آزمون عملی با Ollama محلی و مدل واقعی باید روی میزبان هدف انجام شود.
@@ -125,8 +125,8 @@ API ابتدا active run را رد می‌کند و سپس Broker/state markers
 - مبنای main در زمان ممیزی: `91b7e062e21d06d774c2f1f394bc72e4eb69af2c`.
 - PR #817: head فعلی `722e007d1c8f56d2fd24081633eede556d30ef5f`؛ هر چهار workflow exact-head موفق. review نهایی Codex بدون finding باز است و تمام threadهای inline پس از بررسی کد/تست‌ها resolve شده‌اند. PR باز و unmerged است.
 - PR #818: head فعلی `e1fa88e9060cac16bf2061aac3eb7b0b73fc12dd`؛ بازیابی report نامعتبر/UTF-8 خراب فقط از پیام نهایی JSONL معتبر و turn موفق انجام می‌شود؛ هر چهار workflow exact-head موفق و review Codex بدون finding باز است. PR باز و unmerged است.
-- PR #819: head فعلی `93d96cb3b2b61178c567e5b3d117402e0d234249`؛ هر چهار workflow exact-head موفق‌اند. این فقط بخشی از Gate B است و سایر domain writers همچنان scope مستقل دارند.
-- PR #820: head فعلی `3d9499574c347607ca08ee79080d19286cc19a99`؛ هشدار مستقل ماژول، error metadata، ترتیب پیام‌های action و E2Eهای RTL/keyboard/responsive/fault-isolation/model-pull؛ هر چهار workflow exact-head موفق‌اند. PR همچنان Draft است؛ review Codex برای head فعلی درخواست شده و هنوز نتیجه‌اش ثبت نشده است.
+- PR #819: head قبلی `93d96cb3b2b61178c567e5b3d117402e0d234249` هر چهار workflow را گذرانده بود؛ head جدید `a0e247d08dabb6f3aa4ef3451b6fa8f885419524` در انتظار tests، browser-e2e، dependency-audit و CodeQL است. این فقط بخشی از Gate B است و سایر domain writers همچنان scope مستقل دارند.
+- PR #820: کد head `3d9499574c347607ca08ee79080d19286cc19a99` چهار workflow موفق دارد؛ سپس فقط همین inventory در commit `22ce582f815b3bffd3f8216623d82d6323546448` به‌روزرسانی شد. این commit مستنداتی است و workflow تازه‌ای برای آن دیده نمی‌شود. PR همچنان Draft است؛ review Codex برای کد head قبلی در حال اجراست و نتیجه‌اش هنوز ثبت نشده است.
 - هیچ‌یک از این PRها تا عبور exact-head CI و پذیرش میزبان هدف نباید صرفاً بر اساس کد/تست mock ادغام شوند.
 - در این ممیزی task، checkpoint، تاریخچه، PR یا دادهٔ کاربر حذف یا بازنویسی نشده است.
 
