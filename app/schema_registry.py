@@ -1453,6 +1453,18 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_task_queue_lease_owner_epoch ON task_queue(lease_owner, lease_epoch)",
         ),
     ),
+    Migration(
+        49,
+        "durable-background-module-controls",
+        (
+            """CREATE TABLE module_controls (
+                module_id TEXT PRIMARY KEY CHECK(length(trim(module_id)) BETWEEN 1 AND 80),
+                state TEXT NOT NULL CHECK(state IN ('running','paused','draining','stopped')),
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_module_controls_state ON module_controls(state, updated_at)",
+        ),
+    ),
 )
 
 
