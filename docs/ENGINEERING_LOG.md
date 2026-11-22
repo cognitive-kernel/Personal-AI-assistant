@@ -2248,3 +2248,9 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - The daily child task is now created with the parent task contract in the same `BEGIN IMMEDIATE` transaction (using the parent-aware `create_task` API from prerequisite PR #825). Cooperative pause/cancel is handled separately after the task manager durably settles the parent; only this explicit interruption path continues the daily schedule without pretending the released lease is live. Generic failures chain only if the current parent still passes the atomic owner check.
 - Cloud discovery schema migration 8 records task ID, worker ID and lease epoch on each task-owned run. A scheduler-owned reconciler marks only runs whose exact recorded lease is no longer active as failed with a bounded `discovery_abandoned:task_lease_lost` code. Legacy runs without task metadata are deliberately untouched. The reconciler never mutates task-queue state.
 - Added regressions for stale owner after discovery completion (no child task), cooperative pause (daily chain retained and run settled), stale-run reconciliation, and migration version 8. Exact-head CI is pending.
+
+
+## 2026-11-22 — Cloud discovery interruption race at child-task admission
+
+- A second pause/cancel window exists after discovery completes but before the next daily task is inserted. The parent-aware `create_task()` contract raises `TaskInterrupted` when control state changes in that exact transaction. The handler now settles the original owner/epoch through `TaskContext.checkpoint()` before preserving the daily chain; if ownership was reclaimed or expired, it fails closed and does not schedule.
+- Added a separate regression for pause racing with the atomic child insert, in addition to pause at the final cloud write boundary. Exact-head CI is pending.
