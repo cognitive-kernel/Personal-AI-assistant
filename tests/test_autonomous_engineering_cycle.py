@@ -227,6 +227,8 @@ def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
     retry_text = retry_prompt.read_text(encoding="utf-8")
     assert calls["codex"] == 2
     assert "exactly one valid completion marker" in retry_text
+    assert "do not reset or discard the existing worktree/checkpoint" in retry_text
+    assert cycle.TASK_RETRY_POLICY.max_elapsed_seconds == 45 * 60
     assert "on its own final line" in retry_text
     assert "TASK_COMPLETE, QUEUE_EMPTY, TASK_BLOCKED" in retry_text
     assert "Continue the SAME task" in retry_text
