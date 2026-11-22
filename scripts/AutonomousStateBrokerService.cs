@@ -8,6 +8,7 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using System.ServiceProcess;
 using System.Text;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
@@ -490,6 +491,73 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         }, 250);
     }
 
+
+    private object RestoreArchivedTask(Dictionary<string, object> body)
+    {
+        string taskId = Convert.ToString(body["task_id"]);
+        string revision = Convert.ToString(body["revision"]);
+        return WithRepositoryExecutionLock(delegate
+        {
+            return WithStateLock(delegate
+            {
+                return WithCheckpointStoreLock(delegate
+                {
+                    string root = Path.Combine(_stateDirectory, "archived-pending-tasks");
+                    string package = Path.Combine(root, taskId);
+                    string taskPath = Path.Combine(package, "task.txt");
+                    string ownerPath = Path.Combine(package, "owner.json");
+                    string manifestPath = Path.Combine(package, "manifest.json");
+                    if (!Directory.Exists(package) || !SafeFileExists(taskPath) ||
+                        !SafeFileExists(ownerPath) || !SafeFileExists(manifestPath))
+                        throw new InvalidDataException("stale_task");
+                    if (SafeFileExists(Path.Combine(_stateDirectory, "pending-manual-task.txt")) ||
+                        SafeFileExists(Path.Combine(_stateDirectory, "pending-manual-task-owner.json")))
+                        throw new InvalidDataException("pending_slot_occupied");
+                    if (SafeFileExists(Path.Combine(_stateDirectory, "pending-autonomous-pr.json")) ||
+                        SafeFileExists(Path.Combine(_stateDirectory, "pending-state-cleanup.json")))
+                        throw new InvalidDataException("pending_pr_or_cleanup");
+                    if (SafeFileExists(Path.Combine(_stateDirectory, "latest-worktree-checkpoint.json")) ||
+                        Directory.GetFiles(_stateDirectory, "worktree-checkpoint-*").Length > 0 ||
+                        Directory.GetFiles(_stateDirectory, "worktree-plan-*").Length > 0)
+                        throw new InvalidDataException("checkpoint_present_or_unknown");
+                    Dictionary<string, object> manifest = ReadJsonFile(
+                        Path.Combine("archived-pending-tasks", taskId, "manifest.json"), 65536
+                    ) as Dictionary<string, object>;
+                    if (manifest == null || Convert.ToInt32(manifest.ContainsKey("schema_version") ? manifest["schema_version"] : 0) != 1 ||
+                        Convert.ToString(manifest.ContainsKey("task_id") ? manifest["task_id"] : "") != taskId ||
+                        manifest.ContainsKey("restored_at"))
+                        throw new InvalidDataException("archive_manifest_invalid_or_already_restored");
+                    byte[] task = File.ReadAllBytes(taskPath);
+                    byte[] owner = File.ReadAllBytes(ownerPath);
+                    if (task.Length < 1 || task.Length > 8192 || owner.Length > 65536 ||
+                        Convert.ToString(manifest.ContainsKey("task_sha256") ? manifest["task_sha256"] : "") != Sha256(task) ||
+                        Convert.ToString(manifest.ContainsKey("owner_sha256") ? manifest["owner_sha256"] : "") != Sha256(owner))
+                        throw new InvalidDataException("archive_integrity_mismatch");
+                    string currentRevision = Sha256(Encoding.UTF8.GetBytes(
+                        Sha256(task) + "|" + Sha256(owner) + "|" + _json.Serialize(manifest)
+                    ));
+                    if (!String.Equals(currentRevision, revision, StringComparison.Ordinal))
+                        throw new InvalidDataException("stale_revision");
+                    Dictionary<string, object> ownerRecord;
+                    try { ownerRecord = new JavaScriptSerializer().DeserializeObject(
+                        new UTF8Encoding(false, true).GetString(owner)) as Dictionary<string, object>; }
+                    catch { throw new InvalidDataException("archive_owner_invalid"); }
+                    object ownerTaskHash;
+                    if (ownerRecord == null || !ownerRecord.TryGetValue("task_sha256", out ownerTaskHash) ||
+                        Convert.ToString(ownerTaskHash) != Sha256(CanonicalTaskBytes(task)))
+                        throw new InvalidDataException("archive_owner_mismatch");
+                    WriteAtomic(Path.Combine(_stateDirectory, "pending-manual-task.txt"), task);
+                    WriteAtomic(Path.Combine(_stateDirectory, "pending-manual-task-owner.json"), owner);
+                    manifest["restored_at"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
+                    WriteAtomic(manifestPath, Encoding.UTF8.GetBytes(_json.Serialize(manifest) + "\n"));
+                    return new Dictionary<string, object> {
+                        { "task_id", taskId }, { "status", "restored" }, { "preserved", true }
+                    };
+                }, 250);
+            }, 2000);
+        }, 250);
+    }
+
     private void HandlePendingTaskRequest(
         string method, string path, Dictionary<string, object> body,
         out int status, out object payload
@@ -515,12 +583,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             if (listPending) payload = ListPendingTasks();
             else if (listArchived) payload = ListArchivedTasks();
             else if (archive) payload = MutatePendingTask(method, body);
-            else
-            {
-                status = 501;
-                payload = Error("restore_not_implemented_on_windows");
-                return;
-            }
+            else payload = RestoreArchivedTask(body);
         }
         catch (System.TimeoutException)
         {
