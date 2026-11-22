@@ -633,6 +633,7 @@ def run_cycle(args: argparse.Namespace) -> int:
                 f"Attempt {attempt}: {exc}\n"
                 "The Codex --output-last-message report did not contain exactly one valid completion marker. "
                 "Continue the SAME task; do not reset or discard the existing worktree/checkpoint and do not choose another task.\n"
+                "First inspect .agent-progress.json, the current git diff, and the existing report. If the implementation and plan are already complete, do not repeat implementation or rerun broad tests; write a concise evidence report and add the required terminal marker. If anything is incomplete, finish only the remaining plan item.\n"
                 "Write your final report through the supplied --output-last-message file. End that report with exactly one of these plain-text markers on its own final line, without a Markdown code fence or punctuation: TASK_COMPLETE, QUEUE_EMPTY, TASK_BLOCKED.\n"
                 "Use TASK_COMPLETE only after the selected task, required regression tests, and engineering documentation are complete; use TASK_BLOCKED only with a concrete blocker; use QUEUE_EMPTY only when no actionable task remains and there is no unfinished checkpoint.\n"
             )
