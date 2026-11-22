@@ -70,7 +70,8 @@ function Get-AutonomousTaskOwnerRecord {
         -not ($record.source -is [string]) -or
         [string]$record.source -notin @("manual_dispatch", "recovery", "legacy_migration") -or
         ($null -ne $record.PSObject.Properties["correlation_id"] -and [string]$record.correlation_id -notmatch '^[a-f0-9]{32}\z') -or
-        ($null -ne $record.PSObject.Properties["submitted_correlation_id"] -and [string]$record.submitted_correlation_id -notmatch '^[a-f0-9]{32}\z')    ) {
+        ($null -ne $record.PSObject.Properties["submitted_correlation_id"] -and [string]$record.submitted_correlation_id -notmatch '^[a-f0-9]{32}\z')
+    ) {
         throw "Pending task owner metadata violates schema v1; preserving it."
     }
     # Structural checks are independent from task identity checks. The caller may not
@@ -1247,7 +1248,7 @@ function Write-AutonomousTaskOwnerRecord {
         if ($CorrelationId -match '^[a-f0-9]{32}$') {
             if ($record.PSObject.Properties["correlation_id"]) {
                 if ($record.PSObject.Properties["correlation_id"]) {
-                $record.correlation_id = $CorrelationId
+                $record | Add-Member -NotePropertyName correlation_id -NotePropertyValue $CorrelationId -Force
             } else {
                 $record | Add-Member -NotePropertyName correlation_id -NotePropertyValue $CorrelationId
             }
@@ -1257,7 +1258,7 @@ function Write-AutonomousTaskOwnerRecord {
             if (-not $record.PSObject.Properties["submitted_correlation_id"] -or [string]::IsNullOrEmpty([string]$record.submitted_correlation_id)) {
                 if ($record.PSObject.Properties["submitted_correlation_id"]) {
                     if ($record.PSObject.Properties["submitted_correlation_id"]) {
-                    $record.submitted_correlation_id = $CorrelationId
+                    $record | Add-Member -NotePropertyName submitted_correlation_id -NotePropertyValue $CorrelationId -Force
                 } else {
                     $record | Add-Member -NotePropertyName submitted_correlation_id -NotePropertyValue $CorrelationId
                 }
