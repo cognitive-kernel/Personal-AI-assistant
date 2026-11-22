@@ -121,6 +121,7 @@ DEFAULT_COMMAND_TIMEOUT_SECONDS = 5 * 60
 TEST_SUITE_TIMEOUT_SECONDS = 15 * 60
 PULL_REQUEST_VALIDATION_TIMEOUT_SECONDS = 25 * 60
 TASK_RETRY_POLICY = RetryPolicy(max_attempts=2, max_elapsed_seconds=45 * 60)
+CODEX_RETRY_POLICY = RetryPolicy(max_attempts=2, max_elapsed_seconds=45 * 60)
 
 
 @contextmanager
@@ -544,6 +545,7 @@ def run_cycle(args: argparse.Namespace) -> int:
 
     report = Path(os.environ.get("RUNNER_TEMP", str(ROOT))) / f"codex-report-{task}.md"
     attempt = 0
+    codex_elapsed_seconds = 0.0
     failure_feedback = ""
     trusted_head = base_sha
     published_pr: dict[str, Any] | None = None
