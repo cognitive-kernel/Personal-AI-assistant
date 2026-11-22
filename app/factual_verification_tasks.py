@@ -451,6 +451,12 @@ def _build_handler(
         }
         summary_json = _bounded_summary_json(summary)
         with learning_connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            context.assert_current(
+                connection,
+                expected_task_type=FACTUAL_VERIFY_TASK_TYPE,
+                expected_payload=payload,
+            )
             current = connection.execute(
                 """SELECT claim_hash, evidence_level, lifecycle_status,
                           domain_name, environment_name, environment_version
