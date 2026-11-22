@@ -1925,6 +1925,17 @@ CLOUD_RESOURCE_MIGRATIONS = (
             "CREATE INDEX idx_cloud_selection_decisions_candidate ON cloud_resource_selection_decisions(candidate_id, evaluated_at DESC)",
         ),
     ),
+    Migration(
+        8,
+        "cloud-discovery-task-lease-reconciliation",
+        (
+            "ALTER TABLE cloud_resource_discovery_runs ADD COLUMN task_id INTEGER",
+            "ALTER TABLE cloud_resource_discovery_runs ADD COLUMN task_worker_id TEXT",
+            "ALTER TABLE cloud_resource_discovery_runs ADD COLUMN task_lease_epoch INTEGER",
+            "CREATE INDEX idx_cloud_discovery_runs_task ON cloud_resource_discovery_runs(task_id, status)",
+        ),
+    ),
+
 
 )
 
