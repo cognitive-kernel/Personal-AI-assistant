@@ -164,7 +164,7 @@ def control_module(module_id: str, action: str) -> dict[str, Any]:
     - pause: pause queued work and request a safe checkpoint from active tasks.
     - resume: accept work and resume paused/pause-requested tasks.
     - finish: drain active work; leave queued work untouched and unclaimed.
-    - force_stop: cancel queued work and request cooperative cancellation of active work.
+    - force_stop: preserve queued work as paused and request cooperative cancellation of active work.
     """
     if action not in MODULE_ACTIONS:
         raise ModuleControlError("Unsupported module action.")
