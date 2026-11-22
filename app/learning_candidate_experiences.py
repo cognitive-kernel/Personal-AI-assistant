@@ -9,9 +9,12 @@ import hashlib
 import json
 import re
 import sqlite3
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .db import init_databases, learning_connection
+
+if TYPE_CHECKING:
+    from .task_worker import TaskContext
 
 
 def _validate_relationship_id(value: Any, field: str) -> int | None:
@@ -42,6 +45,23 @@ def _resolve_related_knowledge_id(candidate_id: int, supplied_id: int | None) ->
         return int(lesson["id"]) if lesson is not None else None
 
 
+def _assert_task_context(
+    connection,
+    task_context: TaskContext | None,
+    expected_task_type: str | None,
+    expected_payload: dict[str, Any] | None,
+) -> None:
+    if task_context is None:
+        return
+    if expected_task_type is None or expected_payload is None:
+        raise ValueError("Task ownership contract is required for fenced experience persistence.")
+    task_context.assert_current(
+        connection,
+        expected_task_type=expected_task_type,
+        expected_payload=expected_payload,
+    )
+
+
 def record_candidate_test_failure(
     candidate_id: int,
     *,
@@ -51,6 +71,9 @@ def record_candidate_test_failure(
     outcomes: list[dict[str, Any]],
     related_knowledge_id: int | None = None,
     related_consensus_id: int | None = None,
+    task_context: TaskContext | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
         raise ValueError("candidate_id must be a positive integer.")
@@ -109,6 +132,7 @@ def record_candidate_test_failure(
     )
     with learning_connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
+        _assert_task_context(connection, task_context, expected_task_type, expected_payload)
         existing = connection.execute(
             "SELECT id, status FROM learning_experiences WHERE topic=? AND problem=? AND hypothesis=?",
             (title, problem, hypothesis),
@@ -139,6 +163,9 @@ def record_candidate_channel_failure(
     error_type: str = "unknown",
     related_knowledge_id: int | None = None,
     related_consensus_id: int | None = None,
+    task_context: TaskContext | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Persist an idempotent web/peer channel failure as a cautionary, searchable experience."""
     if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
@@ -204,6 +231,7 @@ def record_candidate_channel_failure(
     )
     with learning_connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
+        _assert_task_context(connection, task_context, expected_task_type, expected_payload)
         existing = connection.execute(
             "SELECT id FROM learning_experiences WHERE topic=? AND problem=? AND hypothesis=?",
             (title, problem, hypothesis),
