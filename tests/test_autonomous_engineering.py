@@ -335,7 +335,9 @@ def test_resume_clears_pause_and_dispatches_without_legacy_failure_counter(monke
         agent, "_run",
         lambda command, timeout=8, *, raise_os_error=False: (
             calls.append((command, raise_os_error))
-            or subprocess.CompletedProcess(command, 0, "", "")
+            or subprocess.CompletedProcess(
+                command, 0, "[]" if command[1:3] == ["variable", "list"] else "", ""
+            )
         ),
     )
 
@@ -902,6 +904,7 @@ def test_github_snapshot_does_not_invent_a_model_when_no_repository_variable_is_
     monkeypatch.setattr(agent, "_run", fake_run)
     result = agent._github_snapshot()
     assert result["settings"]["model"] == ""
+    assert result["settings"]["enabled"] is True
 
 
 def test_autonomous_workflow_requires_saved_model_without_a_hardcoded_fallback():
@@ -1172,6 +1175,8 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert '"draft": False' in pr_lifecycle
     assert "complete_pending_pr" in cycle_controller
     assert "AUTONOMOUS_ENGINEERING_PAUSED" in workflow
+    assert "AUTONOMOUS_ENGINEERING_ENABLED" in workflow
+    assert "Autonomous engineering is finished" in workflow
     assert "AUTONOMOUS_ENGINEERING_INTERVAL_HOURS" in workflow
     assert "types: [closed]" not in workflow
     assert "TASK_COMPLETE" in cycle_controller and "QUEUE_EMPTY" in cycle_controller
