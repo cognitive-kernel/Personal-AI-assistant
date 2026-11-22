@@ -1,6 +1,6 @@
 # Pending-task Broker Contract v1
 
-Status: Implemented contract target; UI remains disabled.
+Status: In progress; this document defines the target wire contract. UI remains disabled.
 
 ## Transport envelope
 
