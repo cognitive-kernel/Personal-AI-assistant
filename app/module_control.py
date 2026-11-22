@@ -104,6 +104,26 @@ def enabled_task_types(connection, task_types: tuple[str, ...]) -> tuple[str, ..
     )
 
 
+def recoverable_task_types(connection, task_types: tuple[str, ...]) -> tuple[str, ...]:
+    """Allow expired active work to recover during drain, but never admit queued work."""
+    module_ids = tuple(sorted({
+        TASK_TYPE_TO_MODULE[item] for item in task_types if item in TASK_TYPE_TO_MODULE
+    }))
+    if not module_ids:
+        return task_types
+    placeholders = ",".join("?" for _ in module_ids)
+    rows = connection.execute(
+        f"SELECT module_id, state FROM module_controls WHERE module_id IN ({placeholders})",
+        module_ids,
+    ).fetchall()
+    states = {str(row["module_id"]): str(row["state"]) for row in rows}
+    return tuple(
+        task_type for task_type in task_types
+        if task_type not in TASK_TYPE_TO_MODULE
+        or states.get(TASK_TYPE_TO_MODULE[task_type], "running") in {"running", "draining"}
+    )
+
+
 def _counts_for_module(connection, task_types: tuple[str, ...]) -> dict[str, int]:
     placeholders = ",".join("?" for _ in task_types)
     rows = connection.execute(
