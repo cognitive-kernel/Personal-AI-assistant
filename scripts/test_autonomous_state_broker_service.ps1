@@ -507,6 +507,95 @@ assert result["files_removed"] >= 2
         throw "The Broker cleanup endpoint removed retained checkpoint data."
     }
 
+
+    # Exercise the shared pending-task lifecycle protocol against the live
+    # Windows named-pipe service. Temporarily isolate the checkpoint fixture;
+    # restore its exact bytes after the lifecycle test.
+    $savedCheckpointPatch = [System.IO.File]::ReadAllBytes($checkpointPatch)
+    $savedCheckpointMetadata = [System.IO.File]::ReadAllBytes($checkpointMetadataPath)
+    $savedCheckpointIndex = [System.IO.File]::ReadAllBytes($checkpointIndexPath)
+    try {
+        Remove-Item -LiteralPath $checkpointPatch, $checkpointMetadataPath, $checkpointIndexPath -Force
+        $taskText = "Windows broker lifecycle integration probe"
+        $taskBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($taskText)
+        $taskHashProvider = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $taskHash = [Convert]::ToHexString($taskHashProvider.ComputeHash($taskBytes)).ToLowerInvariant()
+        } finally {
+            $taskHashProvider.Dispose()
+        }
+        $taskOwner = [ordered]@{
+            schema_version = 1
+            task_sha256 = $taskHash
+            submitted_run_id = "987654"
+            submitted_attempt = 1
+            owner_run_id = "987654"
+            owner_attempt = 1
+            created_at = 1763500000.0
+            claimed_at = 1763500000.0
+            claim_count = 1
+            source = "manual_dispatch"
+        }
+        [System.IO.File]::WriteAllBytes((Join-Path $stateRoot "pending-manual-task.txt"), $taskBytes)
+        [System.IO.File]::WriteAllText(
+            (Join-Path $stateRoot "pending-manual-task-owner.json"),
+            (ConvertTo-Json -InputObject $taskOwner -Depth 5 -Compress),
+            [System.Text.UTF8Encoding]::new($false)
+        )
+        $lifecycleProbe = @'
+from pathlib import Path
+from app.autonomous_engineering_state_broker import request, StateBrokerConflict
+
+state = Path(__import__("os").environ["AUTONOMOUS_ENGINEERING_PROGRESS_DIR"])
+pending = request("GET", "/v1/tasks/pending")
+assert pending["available"] is True and len(pending["tasks"]) == 1
+item = pending["tasks"][0]
+assert item["status"] == "pending" and item["blocked"] is False
+try:
+    request("POST", "/v1/tasks/archive", body={"task_id": item["task_id"], "revision": "0" * 64})
+except StateBrokerConflict as exc:
+    assert "stale_revision" in exc.blockers
+else:
+    raise SystemExit("Windows broker accepted a stale task revision.")
+
+(state / "pending-autonomous-pr.json").write_text('{"number":123}', encoding="utf-8")
+try:
+    request("POST", "/v1/tasks/archive", body={"task_id": item["task_id"], "revision": item["revision"]})
+except StateBrokerConflict as exc:
+    assert "pending_pr" in exc.blockers
+else:
+    raise SystemExit("Windows broker archived a task with a pending PR.")
+finally:
+    (state / "pending-autonomous-pr.json").unlink()
+
+archived = request("POST", "/v1/tasks/archive", body={"task_id": item["task_id"], "revision": item["revision"]})
+assert archived["status"] == "archived" and archived["preserved"] is True
+assert not (state / "pending-manual-task.txt").exists()
+assert not (state / "pending-manual-task-owner.json").exists()
+saved = request("GET", "/v1/tasks/archived")["tasks"]
+assert len(saved) == 1 and saved[0]["task_id"] == item["task_id"]
+assert saved[0]["status"] == "archived"
+package = state / "archived-pending-tasks" / item["task_id"]
+assert (package / "task.txt").read_bytes() == b"Windows broker lifecycle integration probe"
+assert (package / "owner.json").is_file()
+
+restored = request("POST", "/v1/tasks/restore", body={"task_id": saved[0]["task_id"], "revision": saved[0]["revision"]})
+assert restored["status"] == "restored" and restored["preserved"] is True
+assert (state / "pending-manual-task.txt").read_bytes() == b"Windows broker lifecycle integration probe"
+assert request("GET", "/v1/tasks/archived")["tasks"][0]["status"] == "restored"
+'@
+        $lifecycleProbe | & python -
+        if ($LASTEXITCODE -ne 0) { throw "Windows pending-task broker archive/restore integration failed." }
+    } finally {
+        foreach ($name in @("pending-manual-task.txt", "pending-manual-task-owner.json", "pending-autonomous-pr.json")) {
+            $path = Join-Path $stateRoot $name
+            if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
+        }
+        [System.IO.File]::WriteAllBytes($checkpointPatch, $savedCheckpointPatch)
+        [System.IO.File]::WriteAllBytes($checkpointMetadataPath, $savedCheckpointMetadata)
+        [System.IO.File]::WriteAllBytes($checkpointIndexPath, $savedCheckpointIndex)
+    }
+
     # Every worker must create its own pipe instance. Fail if any worker
     # recorded an exception, even when another worker served the sequential probes.
     $workerDiagnosticsPath = Join-Path $stateRoot "service-errors.log"
