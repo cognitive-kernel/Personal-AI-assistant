@@ -464,9 +464,12 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                     throw new InvalidDataException("Archived task package is incomplete.");
                 byte[] task = File.ReadAllBytes(taskPath), owner = File.ReadAllBytes(ownerPath);
                 Dictionary<string, object> manifest = ReadJsonFile(Path.Combine("archived-pending-tasks", id, "manifest.json"), 65536) as Dictionary<string, object>;
-                if (manifest == null || Convert.ToString(manifest.ContainsKey("task_id") ? manifest["task_id"] : "") != id ||
+                if (manifest == null ||
+                    Convert.ToInt32(manifest.ContainsKey("schema_version") ? manifest["schema_version"] : 0) != 1 ||
+                    Convert.ToString(manifest.ContainsKey("task_id") ? manifest["task_id"] : "") != id ||
                     Convert.ToString(manifest.ContainsKey("task_sha256") ? manifest["task_sha256"] : "") != Sha256(task) ||
-                    Convert.ToString(manifest.ContainsKey("owner_sha256") ? manifest["owner_sha256"] : "") != Sha256(owner))
+                    Convert.ToString(manifest.ContainsKey("owner_sha256") ? manifest["owner_sha256"] : "") != Sha256(owner) ||
+                    !IsLowerHex(Convert.ToString(manifest.ContainsKey("source_revision") ? manifest["source_revision"] : ""), 64))
                     throw new InvalidDataException("Archived task manifest is inconsistent.");
                 string archivedAt = Convert.ToString(manifest.ContainsKey("archived_at_ms") ? manifest["archived_at_ms"] : "", System.Globalization.CultureInfo.InvariantCulture);
                 string restoredAt = Convert.ToString(manifest.ContainsKey("restored_at_ms") ? manifest["restored_at_ms"] : "", System.Globalization.CultureInfo.InvariantCulture);
@@ -538,10 +541,17 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                             ) as Dictionary<string, object>;
                             if (!SafeFileExists(savedTaskPath) || !SafeFileExists(savedOwnerPath) ||
                                 savedManifest == null ||
+                                Convert.ToInt32(savedManifest.ContainsKey("schema_version") ? savedManifest["schema_version"] : 0) != 1 ||
+                                Convert.ToString(savedManifest.ContainsKey("task_id") ? savedManifest["task_id"] : "") != taskId ||
                                 Convert.ToString(savedManifest.ContainsKey("source_revision") ? savedManifest["source_revision"] : "") != revision)
                                 throw new InvalidDataException("archive_retry_revision_or_package_invalid");
                             byte[] savedTask = File.ReadAllBytes(savedTaskPath);
                             byte[] savedOwner = File.ReadAllBytes(savedOwnerPath);
+                            if (savedTask.Length < 1 || savedTask.Length > 8192 || savedOwner.Length > 65536 ||
+                                Convert.ToString(savedManifest.ContainsKey("task_sha256") ? savedManifest["task_sha256"] : "") != Sha256(savedTask) ||
+                                Convert.ToString(savedManifest.ContainsKey("owner_sha256") ? savedManifest["owner_sha256"] : "") != Sha256(savedOwner))
+                                throw new InvalidDataException("archive_retry_integrity_mismatch");
+                            ParseAndValidateTaskOwner(savedTask, savedOwner);
                             string activeTaskPath = Path.Combine(_stateDirectory, "pending-manual-task.txt");
                             string activeOwnerPath = Path.Combine(_stateDirectory, "pending-manual-task-owner.json");
                             if (SafeFileExists(activeTaskPath) && !File.ReadAllBytes(activeTaskPath).SequenceEqual(savedTask))
