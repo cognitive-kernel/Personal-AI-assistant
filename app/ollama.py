@@ -427,7 +427,7 @@ def _find_running_model_entry(running_models: Any, model: str) -> dict[str, Any]
             or (
                 isinstance(item.get("name"), str)
                 and item["name"].startswith(variant_prefix)
-                and item["name"][len(variant_prefix):].isdigit()
+                and (not item["name"][len(variant_prefix):] or item["name"][len(variant_prefix):].isdigit())
             )
         )
     ), None)

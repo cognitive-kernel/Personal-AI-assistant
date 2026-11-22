@@ -122,7 +122,7 @@ if ([string]::IsNullOrWhiteSpace($Model)) {
 if ([string]::IsNullOrWhiteSpace($Model)) {
     throw "No saved AUTONOMOUS_ENGINEERING_MODEL repository variable exists. Save an installed model in the autonomous-engineering dashboard first."
 }
-if ($Model -match "(?i)-codex-ctx[0-9]+$") {
+if ($Model -match "(?i)-codex-ctx([0-9]+)?$") {
     throw "The saved model is an internal Codex context variant. Save the original Ollama model in the dashboard."
 }
 $ollamaModels = @(Get-AutonomousOllamaModelCatalog -TimeoutSeconds 8)

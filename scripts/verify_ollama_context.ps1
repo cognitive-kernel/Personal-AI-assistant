@@ -89,7 +89,7 @@ function Get-AutomaticContext {
     $runningMatches = @($runtime.models | Where-Object {
         $_ -and $_.name -and (
             ([string]$_.name).Equals($ModelName, [System.StringComparison]::OrdinalIgnoreCase) -or
-            ([string]$_.name) -match ("(?i)^" + [regex]::Escape($ModelName) + "-codex-ctx[0-9]+$")
+            ([string]$_.name) -match ("(?i)^" + [regex]::Escape($ModelName) + "-codex-ctx(?:[0-9]+)?$")
         )
     })
     if ($runningMatches.Count -gt 1) {
@@ -196,7 +196,7 @@ if ($VerifyOnly) {
     if ($Model -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]*(?::[A-Za-z0-9._-]+)?$') {
         throw "Model name contains unsupported characters; refusing to construct a persistent Codex model variant."
     }
-    if ($Model -match '(?i)-codex-ctx[0-9]+$') {
+    if ($Model -match '(?i)-codex-ctx(?:[0-9]+)?$') {
         throw "The selected model is an internal Codex context variant. Select the original Ollama model to prevent nested variants."
     }
 
@@ -239,7 +239,7 @@ if ($VerifyOnly) {
     }
     Write-Host "Final context: min(requested, model maximum, safe hardware capacity, Codex catalog maximum) = $selectedContext tokens"
 
-    $codexModel = "$baseModel-codex-ctx$selectedContext"
+    $codexModel = "$baseModel-codex-ctx"
     $existingInfo = $null
     try {
         $existingInfo = Get-ModelInfo -ModelName $codexModel
