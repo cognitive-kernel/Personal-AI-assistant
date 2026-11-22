@@ -65,7 +65,7 @@ jobs:
             echo "Autonomous engineering is finished; no new task will start."
             exit 0
           fi
-          if [[ "$PAUSED" == "true" ]]; then
+          if [[ "$PAUSED" != "false" ]]; then
             if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$MANUAL_TASK" ]]; then
               echo "A manual task was not accepted because autonomous engineering is paused; no durable state was changed." >&2
               exit 1
@@ -772,10 +772,18 @@ jobs:
             $parts = [string]$line -split "`t", 2
             if ($parts.Count -eq 2) { $values[$parts[0]] = $parts[1] }
           }
-          $paused = ([string]$values["AUTONOMOUS_ENGINEERING_PAUSED"]).ToLowerInvariant() -eq "true"
+          $pausedValue = ([string]$values["AUTONOMOUS_ENGINEERING_PAUSED"]).ToLowerInvariant()
+          if ($pausedValue -notin @("true", "false")) {
+            throw "Autonomous Engineering pause variable is invalid; task start is blocked."
+          }
+          $paused = $pausedValue -eq "true"
           $enabled = $true
           if ($values.ContainsKey("AUTONOMOUS_ENGINEERING_ENABLED")) {
-            $enabled = ([string]$values["AUTONOMOUS_ENGINEERING_ENABLED"]).ToLowerInvariant() -eq "true"
+            $enabledValue = ([string]$values["AUTONOMOUS_ENGINEERING_ENABLED"]).ToLowerInvariant()
+            if ($enabledValue -notin @("true", "false")) {
+              throw "Autonomous Engineering enabled variable is invalid; task start is blocked."
+            }
+            $enabled = $enabledValue -eq "true"
           }
           $blocked = $paused -or (-not $enabled)
           "paused=$($blocked.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
