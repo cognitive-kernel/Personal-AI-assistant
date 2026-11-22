@@ -18,6 +18,7 @@ def request_unix(
     timeout_ms: int,
     error_type: Type[RuntimeError],
     conflict_type: Type[RuntimeError],
+    body: dict[str, Any] | None = None,
 ) -> Any:
     from .autonomous_engineering_state_broker_config import configured_socket_path
 
@@ -31,12 +32,18 @@ def request_unix(
     ) or (
         method == "POST" and path == "/v1/cleanup"
     )
+    if not allowed and path in {"/v1/tasks/pending", "/v1/tasks/archived", "/v1/tasks/archive", "/v1/tasks/restore"}:
+        from .autonomous_engineering_state_broker_contract import validate_task_request
+        validate_task_request(method, path, body)
+        allowed = True
+    elif body is not None:
+        raise ValueError("This state-broker endpoint does not accept a request body.")
     if not allowed:
         raise ValueError("Unsupported state-broker endpoint.")
-    payload = json.dumps(
-        {"version": 1, "method": method, "path": path},
-        separators=(",", ":"),
-    ).encode("utf-8") + b"\n"
+    request_envelope = {"version": 1, "method": method, "path": path}
+    if body is not None:
+        request_envelope["body"] = body
+    payload = json.dumps(request_envelope, separators=(",", ":")).encode("utf-8") + b"\n"
     if len(payload) > _MAX_REQUEST_BYTES:
         raise ValueError("State-broker request is too large.")
 
