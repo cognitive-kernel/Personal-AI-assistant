@@ -19,6 +19,7 @@ from app import main as main_module
 
 @pytest.fixture(autouse=True)
 def _stub_durable_pending_work_status(monkeypatch):
+    monkeypatch.setattr(agent, "_LAST_DISPATCH_ACCEPTED_AT", 0.0)
     monkeypatch.setattr(agent, "pending_work_status", lambda: {
         "available": True,
         "blocked": False,
