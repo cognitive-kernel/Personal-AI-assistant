@@ -423,10 +423,13 @@ def test_autonomous_recovery_uses_the_durable_policy_module():
     policy = (root / "scripts" / "autonomous_engineering_recovery.py").read_text(encoding="utf-8")
 
     assert "workflow_run:" in recovery
-    assert "AUTONOMOUS_ENGINEERING_PAUSED" in recovery
     assert "scripts/autonomous_engineering_recovery.py" in recovery
-    assert "EXECUTION_MODE:" in recovery
+    assert "GH_TOKEN:" in recovery
     assert "FAILED_RUN_ID:" in recovery
+    assert "AUTONOMOUS_ENGINEERING_ENABLED" in policy
+    assert "AUTONOMOUS_ENGINEERING_PAUSED" in policy
+    assert "lifecycle_settings" in policy
+    assert "Recovery suppressed" in policy
     assert "AUTONOMOUS_ENGINEERING_FAILURE_STREAK" not in policy
     assert "manual_task" in policy
     assert "retryable_failure_streak" in policy
