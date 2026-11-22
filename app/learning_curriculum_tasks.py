@@ -1232,7 +1232,10 @@ def handle_curriculum_task(
         persisted_path = learning.get_learning_path(path_id)
         if not persisted_path.get("research") or persisted_path["research"].get("outline_sha256") != saved_hash:
             raise PermanentTaskError("The persisted curriculum does not match its recovery checkpoint.")
-        queue_result = learning.start_researched_path_learning(path_id, allow_retry=False)
+        queue_result = learning.start_researched_path_learning(
+            path_id, allow_retry=False, task_context=context,
+            expected_task_type=CURRICULUM_TASK_TYPE, expected_payload=payload,
+        )
         return {
             "path_id": path_id, "title": outline["title"], "topics": outline["topics"],
             "topic_count": len(outline["topics"]), "notes": outline["notes"],
@@ -1422,7 +1425,10 @@ def handle_curriculum_task(
         "path_id": path_id, "outline_sha256": outline_sha256, "outline": outline,
         "sources": _source_metadata_for_checkpoint(sources), "model": model, "model_selection": model_selection,
     })
-    queue_result = learning.start_researched_path_learning(path_id, allow_retry=False)
+    queue_result = learning.start_researched_path_learning(
+        path_id, allow_retry=False, task_context=context,
+        expected_task_type=CURRICULUM_TASK_TYPE, expected_payload=payload,
+    )
     return {
         "path_id": path_id, "title": outline["title"], "topics": outline["topics"],
         "topic_count": len(outline["topics"]), "notes": outline["notes"],
