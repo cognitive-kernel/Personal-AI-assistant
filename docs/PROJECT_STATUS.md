@@ -506,3 +506,9 @@ The subsequent documentation-only evidence update does not change runtime code a
 - Child daily scheduling now uses parent-aware atomic task creation; pause/cancel is handled only after the task manager has durably released the parent lease. Stale/expired owners cannot schedule follow-up tasks.
 - Cloud discovery runs now persist their task/worker/epoch identity. A scheduler-owned reconciler closes only runs whose exact lease is no longer active; legacy unowned runs are preserved.
 - Added stale scheduling, cooperative interruption and abandoned-run regressions. PR #823 carries the small parent-aware `task_manager.create_task()` API addition itself, so it remains independently based on main; the same compatible API is also present in PR #825. Exact-head CI is pending.
+
+
+## 2026-11-22 — Cloud discovery interruption race at child-task admission
+
+- A second pause/cancel window exists after discovery completes but before the next daily task is inserted. The parent-aware `create_task()` contract raises `TaskInterrupted` when control state changes in that exact transaction. The handler now settles the original owner/epoch through `TaskContext.checkpoint()` before preserving the daily chain; if ownership was reclaimed or expired, it fails closed and does not schedule.
+- Added a separate regression for pause racing with the atomic child insert, in addition to pause at the final cloud write boundary. Exact-head CI is pending.
