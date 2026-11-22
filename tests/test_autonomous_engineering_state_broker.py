@@ -301,3 +301,18 @@ def test_broker_live_windows_integration_rejects_worker_loop_diagnostics():
 
     assert '$workerDiagnosticsPath = Join-Path $stateRoot "service-errors.log"' in service_test
     assert "recorded unexpected exceptions" in service_test
+
+def test_broker_cleanup_enforces_repository_state_and_checkpoint_lock_order():
+    service = (ROOT / "scripts" / "AutonomousStateBrokerService.cs").read_text(encoding="utf-8")
+    cleanup_start = service.index("private object CleanupProgress()")
+    repository_lock = service.index("WithRepositoryExecutionLock", cleanup_start)
+    state_lock = service.index("WithStateLock", repository_lock)
+    checkpoint_lock = service.index("WithCheckpointStoreLock", state_lock)
+    repository_lock_method = service.index("private object WithRepositoryExecutionLock")
+
+    assert cleanup_start < repository_lock < state_lock < checkpoint_lock < repository_lock_method
+    assert 'Path.Combine(_stateDirectory, "repository-execution.lock")' in service
+    assert "stream.Lock(0, 1)" in service
+    assert "stream.Unlock(0, 1)" in service
+    assert '"repository_execution_active"' in service
+    assert "An autonomous Runner owns the repository execution lock" in service
