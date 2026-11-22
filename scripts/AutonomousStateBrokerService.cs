@@ -498,6 +498,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                     { "task_id", id }, { "revision", revision },
                     { "status", manifest.ContainsKey("restored_at_ms") ? "restored" : "archived" },
                     { "created_at", ownerObject != null && ownerObject.ContainsKey("created_at") ? ownerObject["created_at"] : null },
+                    { "source", ownerObject["source"] },
                     { "archived_at", manifest.ContainsKey("archived_at_ms") ? manifest["archived_at_ms"] : null },
                     { "restorable", !manifest.ContainsKey("restored_at_ms") }
                 });
