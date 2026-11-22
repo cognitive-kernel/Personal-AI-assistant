@@ -571,10 +571,17 @@ def run_cycle(args: argparse.Namespace) -> int:
         if failure_feedback:
             active_prompt = Path(os.environ.get("RUNNER_TEMP", str(ROOT))) / f"codex-retry-prompt-{task}-{attempt}.md"
             original = Path(args.prompt).read_text(encoding="utf-8")
+            report_only_retry = "did not contain exactly one valid completion marker" in failure_feedback
+            repair_instruction = (
+                "This is a report-finalization repair. Inspect the existing plan, diff, and report; do not repeat completed implementation or rerun broad tests. "
+                "If verification evidence already exists, write the concise final report and its single required marker.\n"
+                if report_only_retry
+                else "Fix the root cause, add or update regression tests, then report TASK_COMPLETE only after your own relevant tests pass.\n"
+            )
             active_prompt.write_text(
                 original + "\n\n## Required repair after failed verification\n"
                 + "This is a fresh session for the SAME task. Do not select or start another task.\n"
-                + failure_feedback + "\nFix the root cause, add or update regression tests, then report TASK_COMPLETE only after your own relevant tests pass.\n",
+                + failure_feedback + "\n" + repair_instruction,
                 encoding="utf-8",
             )
         elif restored_checkpoint:
