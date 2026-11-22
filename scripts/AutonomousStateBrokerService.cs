@@ -386,6 +386,15 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         };
     }
 
+    private bool HasStateArtifacts(string searchPattern)
+    {
+        // Only fixed, broker-owned patterns are accepted here; no request value
+        // is ever used as a filesystem path or search pattern.
+        foreach (FileSystemInfo entry in new DirectoryInfo(_stateDirectory).EnumerateFileSystemInfos(searchPattern))
+            return true;
+        return false;
+    }
+
     private List<string> PendingTaskBlockers()
     {
         List<string> blockers = new List<string>();
@@ -394,8 +403,8 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         if (SafeFileExists(Path.Combine(_stateDirectory, "pending-state-cleanup.json")))
             blockers.Add("cleanup_in_progress");
         if (SafeFileExists(Path.Combine(_stateDirectory, "latest-worktree-checkpoint.json")) ||
-            Directory.GetFiles(_stateDirectory, "worktree-checkpoint-*").Length > 0 ||
-            Directory.GetFiles(_stateDirectory, "worktree-plan-*").Length > 0)
+            HasStateArtifacts("worktree-checkpoint-*") ||
+            HasStateArtifacts("worktree-plan-*"))
             blockers.Add("checkpoint_present_or_unknown");
         string currentPath = Path.Combine(_stateDirectory, "current.json");
         if (SafeFileExists(currentPath))
@@ -449,10 +458,13 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         {
             string root = EnsureTaskArchiveRoot();
             List<object> tasks = new List<object>();
-            foreach (string directory in Directory.GetDirectories(root))
+            foreach (FileSystemInfo entry in new DirectoryInfo(root).EnumerateFileSystemInfos())
             {
-                string id = Path.GetFileName(directory);
-                DirectoryInfo packageInfo = new DirectoryInfo(directory);
+                DirectoryInfo packageInfo = entry as DirectoryInfo;
+                if (packageInfo == null)
+                    throw new InvalidDataException("Archive contains an unknown entry.");
+                string directory = packageInfo.FullName;
+                string id = packageInfo.Name;
                 if ((packageInfo.Attributes & FileAttributes.ReparsePoint) != 0)
                     throw new InvalidDataException("Archive package cannot be a reparse point.");
                 if (!System.Text.RegularExpressions.Regex.IsMatch(id, "^[a-f0-9]{64}$"))
@@ -522,8 +534,8 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                         if (SafeFileExists(Path.Combine(_stateDirectory, "pending-autonomous-pr.json")))
                             throw new InvalidDataException("pending_pr");
                         if (SafeFileExists(Path.Combine(_stateDirectory, "latest-worktree-checkpoint.json")) ||
-                            Directory.GetFiles(_stateDirectory, "worktree-checkpoint-*").Length > 0 ||
-                            Directory.GetFiles(_stateDirectory, "worktree-plan-*").Length > 0)
+                            HasStateArtifacts("worktree-checkpoint-*") ||
+                            HasStateArtifacts("worktree-plan-*"))
                             throw new InvalidDataException("checkpoint_present_or_unknown");
                         List<string> activeStateBlockers = PendingTaskBlockers();
                         if (activeStateBlockers.Count > 0)
