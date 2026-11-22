@@ -35,6 +35,7 @@ from .autonomous_engineering_progress import (
 )
 from .ollama_context import maximum_context_tokens, resolve_model_architecture, supports_tool_calling
 from .autonomous_engineering_state import durable_state_lock, execution_state_directory
+from scripts.autonomous_engineering_checkpoint_lock import checkpoint_store_lock
 from scripts.autonomous_engineering_execution_lock import repository_execution_lock
 from .autonomous_engineering_model_pull import get_model_pull, start_model_pull
 
@@ -1380,25 +1381,26 @@ def _cleanup_autonomous_engineering_temporary_data_locked() -> dict[str, Any]:
         try:
             if directory.is_dir():
                 with durable_state_lock(directory, timeout_seconds=2):
-                    blockers = [name for name in marker_names if (directory / name).exists()]
-                    if blockers:
-                        raise HTTPException(
-                            status_code=409,
-                            detail="وضعیت پایدار عامل هنوز تعیین‌تکلیف نشده است؛ پاک‌سازی انجام نشد: " + ", ".join(blockers),
-                        )
-                    for name in _PROGRESS_CLEANUP_FILES:
-                        path = directory / name
-                        try:
-                            if not path.is_file() or path.is_symlink():
+                    with checkpoint_store_lock(directory, timeout_seconds=2):
+                        blockers = [name for name in marker_names if (directory / name).exists()]
+                        if blockers:
+                            raise HTTPException(
+                                status_code=409,
+                                detail="وضعیت پایدار عامل هنوز تعیین‌تکلیف نشده است؛ پاک‌سازی انجام نشد: " + ", ".join(blockers),
+                            )
+                        for name in _PROGRESS_CLEANUP_FILES:
+                            path = directory / name
+                            try:
+                                if not path.is_file() or path.is_symlink():
+                                    continue
+                                size = path.stat().st_size
+                                path.unlink()
+                                removed += 1
+                                removed_bytes += size
+                            except FileNotFoundError:
                                 continue
-                            size = path.stat().st_size
-                            path.unlink()
-                            removed += 1
-                            removed_bytes += size
-                        except FileNotFoundError:
-                            continue
-                        except OSError:
-                            failed_files.append(str(path))
+                            except OSError:
+                                failed_files.append(str(path))
         except HTTPException:
             raise
         except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
@@ -1449,11 +1451,15 @@ def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
                 detail="عامل هنوز اجرای فعال یا در صف دارد؛ پاک‌سازی داده‌های موقت تا پایان اجرا مجاز نیست.",
             )
 
-    # Lock order is repository -> durable state -> checkpoint store, matching
-    # the Runner. Recheck GitHub after acquiring the shared worktree lock to
-    # close the race between the first workflow listing and cleanup.
     ensure_no_active_workflow()
     try:
+        if _is_windows():
+            # The Windows broker owns the repository -> durable-state ->
+            # checkpoint-store lock order itself. Do not acquire the same
+            # repository lock in this client process or the broker would deadlock.
+            return _cleanup_autonomous_engineering_temporary_data_locked()
+        # POSIX uses the same repository lock as the Runner, then the helper
+        # acquires durable-state and checkpoint-store locks in that order.
         with repository_execution_lock("ui-cleanup", "1"):
             ensure_no_active_workflow()
             return _cleanup_autonomous_engineering_temporary_data_locked()
