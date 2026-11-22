@@ -97,7 +97,7 @@ def test_finish_drains_active_work_without_claiming_or_deleting_queued_work(modu
     assert task_manager.get_task(waiting["id"])["status"] == "queued"
 
 
-def test_force_stop_cancels_waiting_tasks_and_cooperatively_stops_active_task(module_store):
+def test_force_stop_preserves_waiting_tasks_and_cooperatively_stops_active_task(module_store):
     active = task_manager.create_task("cloud.discover_resources", {"item": "active"})
     waiting = task_manager.create_task("cloud.discover_resources", {"item": "waiting"})
     claimed = task_manager.claim_next_task(
