@@ -654,6 +654,7 @@ assert not (state / "pending-manual-task-owner.json").exists()
 saved = request("GET", "/v1/tasks/archived")["tasks"]
 assert len(saved) == 1 and saved[0]["task_id"] == item["task_id"]
 assert saved[0]["status"] == "archived"
+assert saved[0]["source"] == "manual_dispatch"
 package = state / "archived-pending-tasks" / item["task_id"]
 assert (package / "task.txt").read_bytes() == b"Windows broker lifecycle integration probe"
 assert (package / "owner.json").is_file()
