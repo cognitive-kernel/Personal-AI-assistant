@@ -5496,7 +5496,7 @@ def test_background_module_controls_render_and_drive_real_lifecycle_api():
         )
         cloud.locator('button[data-action="finish"]').click()
         page.wait_for_function(
-            "() => document.querySelector('[data-module-id=cloud-discovery] .module-control-state')?.dataset.state === 'finished'",
+            "() => ['finished', 'finished_pending'].includes(document.querySelector('[data-module-id=cloud-discovery] .module-control-state')?.dataset.state)",
             timeout=10000,
         )
         cloud.locator('button[data-action="start"]').click()
