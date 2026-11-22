@@ -293,8 +293,11 @@ def test_resume_clears_pause_and_dispatches_without_legacy_failure_counter(monke
     result = agent.resume_autonomous_engineering()
 
     assert result["paused"] is False
+    assert len(result["correlation_id"]) == 32
     assert calls[1][0][2:5] == ["set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body"]
     assert calls[2][0][1:3] == ["workflow", "run"]
+    assert "--field" in calls[2][0]
+    assert "correlation_id=" + result["correlation_id"] in calls[2][0]
     assert calls[2][1] is True
     assert all("AUTONOMOUS_ENGINEERING_FAILURE_STREAK" not in call[0] for call in calls)
 
