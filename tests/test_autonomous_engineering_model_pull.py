@@ -170,8 +170,10 @@ def test_dashboard_exposes_model_pull_controls_and_progress():
     script = (root / "app" / "static" / "autonomous-engineering-controls.js").read_text(encoding="utf-8")
 
     assert 'id="pull-model"' in html
+    assert 'id="cancel-model-pull"' in html
     assert 'id="model-pull-status"' in html
     assert 'request("models/pull"' in script
+    assert '"/cancel"' in script
     assert 'request("models/pull/"' in script
     assert "دانلود و نصب مدل انتخاب‌شده" in html
 
