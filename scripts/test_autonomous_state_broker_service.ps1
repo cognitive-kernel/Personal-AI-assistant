@@ -320,6 +320,59 @@ else:
         Remove-Item -LiteralPath $repositoryLockScriptPath, $repositoryLockReadyPath -Force -ErrorAction SilentlyContinue
     }
 
+    # A progress writer may run before the workflow acquires the repository
+    # lock. The broker must refuse cleanup while a non-cooperating writer has
+    # the exact temporary file open, without deleting any other progress file.
+    $progressWriterScriptPath = Join-Path $env:TEMP ("broker-progress-writer-" + [guid]::NewGuid().ToString("N") + ".py")
+    $progressWriterReadyPath = Join-Path $env:TEMP ("broker-progress-writer-ready-" + [guid]::NewGuid().ToString("N") + ".txt")
+    $progressWriterScript = @'
+import os, sys, time
+from pathlib import Path
+state_root, ready_path = sys.argv[1], sys.argv[2]
+with open(os.path.join(state_root, "current.json.tmp"), "w", encoding="utf-8") as stream:
+    stream.write("writer-active")
+    stream.flush()
+    Path(ready_path).write_text("locked", encoding="utf-8")
+    time.sleep(3)
+'@
+    [System.IO.File]::WriteAllText(
+        $progressWriterScriptPath,
+        $progressWriterScript,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+    $writerProcess = Start-Process -FilePath $pythonPath -ArgumentList @(
+        $progressWriterScriptPath, $stateRoot, $progressWriterReadyPath
+    ) -PassThru -NoNewWindow
+    try {
+        $writerDeadline = [DateTime]::UtcNow.AddSeconds(10)
+        while (-not (Test-Path -LiteralPath $progressWriterReadyPath) -and [DateTime]::UtcNow -lt $writerDeadline) {
+            Start-Sleep -Milliseconds 50
+        }
+        if (-not (Test-Path -LiteralPath $progressWriterReadyPath)) {
+            throw "The progress writer did not open its temporary file."
+        }
+        $progressWriterProbe = @'
+from app import autonomous_engineering_state_broker as broker
+from app.autonomous_engineering_state_broker import StateBrokerConflict
+try:
+    broker.cleanup()
+except StateBrokerConflict as exc:
+    assert "progress_writer_active" in exc.blockers
+else:
+    raise SystemExit("Broker cleanup raced a live progress writer.")
+'@
+        $progressWriterProbe | & python -
+        if ($LASTEXITCODE -ne 0) { throw "The broker did not block cleanup for an active progress writer." }
+        if (-not $writerProcess.WaitForExit(10000) -or $writerProcess.ExitCode -ne 0) {
+            throw "The progress writer did not exit cleanly."
+        }
+    } finally {
+        if ($writerProcess -and -not $writerProcess.HasExited) {
+            Stop-Process -Id $writerProcess.Id -Force -ErrorAction SilentlyContinue
+        }
+        Remove-Item -LiteralPath $progressWriterScriptPath, $progressWriterReadyPath -Force -ErrorAction SilentlyContinue
+    }
+
     # Cleanup must also fail while a watcher owns the store lock, even before
     # a new pointer is published.
     $checkpointLockPath = Join-Path $stateRoot "autonomous-checkpoint-store.lock"
