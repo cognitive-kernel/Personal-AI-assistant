@@ -89,7 +89,7 @@ function Get-AutomaticContext {
     $runningMatches = @($runtime.models | Where-Object {
         $_ -and $_.name -and (
             ([string]$_.name).Equals($ModelName, [System.StringComparison]::OrdinalIgnoreCase) -or
-            ([string]$_.name) -match ("(?i)^" + [regex]::Escape($ModelName) + "-codex-ctx[0-9]+$")
+            ([string]$_.name) -match ("(?i)^" + [regex]::Escape($ModelName) + "-codex-ctx(?:[0-9]+)?$")
         )
     })
     if ($runningMatches.Count -gt 1) {
@@ -239,7 +239,8 @@ if ($VerifyOnly) {
     }
     Write-Host "Final context: min(requested, model maximum, safe hardware capacity, Codex catalog maximum) = $selectedContext tokens"
 
-    $codexModel = "$baseModel-codex-ctx$selectedContext"
+    # Reuse one persistent tag per base model; update num_ctx in place when the safe allocation changes.
+    $codexModel = "$baseModel-codex-ctx"
     $existingInfo = $null
     try {
         $existingInfo = Get-ModelInfo -ModelName $codexModel
