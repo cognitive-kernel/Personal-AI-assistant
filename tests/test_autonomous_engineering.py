@@ -1139,7 +1139,9 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "Set-AutonomousDirectoryTreeAcl" in acl_script
     assert '"S-1-5-19"' in acl_script
     assert "PersonalAIAssistantStateBroker" in runner_check
-    assert 'window.setInterval(() => void progress.refresh(), 5000)' in orchestrator
+    assert "core.startPolling({" in orchestrator
+    assert "intervalMs: 5000" in orchestrator
+    assert "refresh: () => progress.refresh()" in orchestrator
     assert "createElementNS" in script
 
 
@@ -1972,10 +1974,13 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     assert "function canStartManualTask()" in status
     assert "function canStartDispatch()" in status
     assert "statusKnown && lastCanDispatch" in status
-    assert "window.setTimeout(syncDispatchControls, 30000)" in status
+    assert "dispatchUnlockTimer = window.setTimeout" in status
+    assert "function armDispatchUnlockTimer()" in status
     assert "item.point[line.key] !== null" in progress
     assert "engineeringPercent !== null" in progress
-    assert 'window.setInterval(() => void status.refresh(), 30000)' in orchestrator
+    assert "intervalMs: 30000" in orchestrator
+    assert "refresh: () => status.refresh()" in orchestrator
+    assert "window.setInterval(" not in orchestrator
     assert 'window.setInterval(() => void progress.refresh(), 5000)' in orchestrator
     assert "window.setTimeout(refresh, 2500)" not in orchestrator + status + controls
     assert "dispatchButton.disabled = false" not in controls
