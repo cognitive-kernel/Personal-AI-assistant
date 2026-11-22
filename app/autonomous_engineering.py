@@ -998,7 +998,11 @@ def pause_autonomous_engineering() -> dict[str, Any]:
 
 
 @router.post("/resume")
-def resume_autonomous_engineering() -> dict[str, Any]:
+def resume_autonomous_engineering(request: Request = None) -> dict[str, Any]:
+    request_state = getattr(request, "state", None)
+    correlation_id = getattr(request_state, "correlation_id", None)
+    if not isinstance(correlation_id, str) or not _CORRELATION_ID_PATTERN.fullmatch(correlation_id):
+        correlation_id = uuid.uuid4().hex
     gh = shutil.which("gh")
     if not gh:
         raise HTTPException(status_code=503, detail="GitHub CLI نصب نشده است.")
@@ -1010,12 +1014,11 @@ def resume_autonomous_engineering() -> dict[str, Any]:
         raise HTTPException(status_code=502, detail="ثبت ادامه در GitHub ناموفق بود.")
     try:
         dispatched = _run(
-            [gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main"],
+            [gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main", "--field", f"correlation_id={correlation_id}"],
             timeout=20,
             raise_os_error=True,
         )
     except OSError:
-        correlation_id = uuid.uuid4().hex
         _STATUS_LOGGER.error(
             "Autonomous resume dispatch could not start; correlation_id=%s",
             correlation_id,
@@ -1033,7 +1036,6 @@ def resume_autonomous_engineering() -> dict[str, Any]:
             },
         )
     if dispatched is None:
-        correlation_id = uuid.uuid4().hex
         _STATUS_LOGGER.warning(
             "Autonomous resume dispatch outcome is unknown; correlation_id=%s",
             correlation_id,
@@ -1051,7 +1053,6 @@ def resume_autonomous_engineering() -> dict[str, Any]:
             },
         )
     if dispatched.returncode != 0:
-        correlation_id = uuid.uuid4().hex
         safe_stderr = _sanitize_workflow_log(str(dispatched.stderr or ""))
         stderr_fingerprint = (
             hashlib.sha256(safe_stderr.encode("utf-8")).hexdigest()[:16]
@@ -1075,7 +1076,7 @@ def resume_autonomous_engineering() -> dict[str, Any]:
                 "X-Retryable": "false",
             },
         )
-    return {"accepted": True, "paused": False, "message": "ادامه از وضعیت ذخیره‌شده درخواست شد."}
+    return {"accepted": True, "paused": False, "correlation_id": correlation_id, "message": "ادامه از وضعیت ذخیره‌شده درخواست شد."}
 
 
 @router.post("/cancel")
