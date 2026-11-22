@@ -291,7 +291,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
 
     private static bool IsPositiveInteger(object value)
     {
-        if (value == null || value is Boolean) return false;
+        if (!(value is Int32) && !(value is Int64)) return false;
         try { return Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture) > 0; }
         catch { return false; }
     }
@@ -330,7 +330,8 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         object schema, taskHash, ownerRun, submittedRun, source, ownerAttempt, submittedAttempt,
             createdAt, claimedAt, claimCount;
         if (owner == null ||
-            !owner.TryGetValue("schema_version", out schema) || schema is Boolean || Convert.ToInt32(schema) != 1 ||
+            !owner.TryGetValue("schema_version", out schema) || schema is Boolean ||
+            (!(schema is Int32) && !(schema is Int64)) || Convert.ToInt32(schema) != 1 ||
             !owner.TryGetValue("task_sha256", out taskHash) || !(taskHash is string) ||
             !IsLowerHex((string)taskHash, 64) ||
             !String.Equals((string)taskHash, Sha256(CanonicalTaskBytes(taskBytes)), StringComparison.Ordinal) ||
@@ -647,6 +648,10 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             };
         }
         catch (IOException)
+        {
+            status = 503; payload = Error("task_state_unavailable");
+        }
+        catch (Exception)
         {
             status = 503; payload = Error("task_state_unavailable");
         }
