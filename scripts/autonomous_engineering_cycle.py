@@ -115,7 +115,7 @@ PROTECTED = {
     "scripts/autonomous_engineering_pending_task.py",
     "scripts/persist_autonomous_manual_task.ps1",
 }
-MARKERS = re.compile(r"(?m)^(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)\s*$")
+MARKERS = re.compile(r"(?im)^\\s*(?:[-*]\\s*)?(?:`{1,3}\\s*)?(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)(?:\\s*`{1,3})?[.!]?\\s*$")
 CYCLE_LIMIT = 6 * 60 * 60
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 5 * 60
 TEST_SUITE_TIMEOUT_SECONDS = 15 * 60
