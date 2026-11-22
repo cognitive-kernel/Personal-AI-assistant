@@ -48,6 +48,7 @@ jobs:
           INTERVAL_HOURS: ${{ vars.AUTONOMOUS_ENGINEERING_INTERVAL_HOURS || '24' }}
           EXECUTION_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE || 'continuous' }}
           PAUSED: ${{ vars.AUTONOMOUS_ENGINEERING_PAUSED || 'false' }}
+          ENABLED: ${{ vars.AUTONOMOUS_ENGINEERING_ENABLED || 'true' }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           CURRENT_RUN_ID: ${{ github.run_id }}
@@ -55,6 +56,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ "$ENABLED" != "true" ]]; then
+            if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$MANUAL_TASK" ]]; then
+              echo "A manual task was not accepted because autonomous engineering has been finished; no durable state was changed." >&2
+              exit 1
+            fi
+            echo "run_now=false" >> "$GITHUB_OUTPUT"
+            echo "Autonomous engineering is finished; no new task will start."
+            exit 0
+          fi
           if [[ "$PAUSED" == "true" ]]; then
             if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$MANUAL_TASK" ]]; then
               echo "A manual task was not accepted because autonomous engineering is paused; no durable state was changed." >&2
@@ -749,11 +759,18 @@ jobs:
         id: pause
         env:
           PAUSED: ${{ vars.AUTONOMOUS_ENGINEERING_PAUSED || 'false' }}
+          ENABLED: ${{ vars.AUTONOMOUS_ENGINEERING_ENABLED || 'true' }}
         shell: powershell
         run: |
           $paused = ([string]$env:PAUSED).ToLowerInvariant() -eq "true"
-          "paused=$($paused.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          if ($paused) { Write-Host "Safe pause is active; no new engineering task will start." }
+          $enabled = ([string]$env:ENABLED).ToLowerInvariant() -eq "true"
+          $blocked = $paused -or (-not $enabled)
+          "paused=$($blocked.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          if (-not $enabled) {
+            Write-Host "Autonomous engineering has been finished; no new task will start."
+          } elseif ($paused) {
+            Write-Host "Safe pause is active; no new engineering task will start."
+          }
 
       - name: Execute one isolated task, validate, and publish for owner review
         if: steps.pause.outputs.paused != 'true'
