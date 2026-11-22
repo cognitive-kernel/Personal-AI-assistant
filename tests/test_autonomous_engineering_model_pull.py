@@ -12,10 +12,14 @@ from app import autonomous_engineering_model_pull as pull
 def reset_pull_state():
     with pull._LOCK:
         pull._JOBS.clear()
+        pull._CANCEL_EVENTS.clear()
+        pull._RESPONSES.clear()
         pull._ACTIVE_JOB = None
     yield
     with pull._LOCK:
         pull._JOBS.clear()
+        pull._CANCEL_EVENTS.clear()
+        pull._RESPONSES.clear()
         pull._ACTIVE_JOB = None
 
 
@@ -170,3 +174,68 @@ def test_dashboard_exposes_model_pull_controls_and_progress():
     assert 'request("models/pull"' in script
     assert 'request("models/pull/"' in script
     assert "دانلود و نصب مدل انتخاب‌شده" in html
+
+def test_model_pull_cancellation_closes_only_its_stream_and_preserves_existing_models(monkeypatch):
+    import threading
+
+    response_ready = threading.Event()
+    released = threading.Event()
+
+    class BlockingResponse:
+        def __init__(self):
+            self.closed = False
+
+        def readline(self, _limit):
+            response_ready.set()
+            released.wait(timeout=2)
+            if self.closed:
+                raise OSError("download stream closed")
+            return b'{"status":"success"}\\n'
+
+        def close(self):
+            self.closed = True
+            released.set()
+
+    stream = BlockingResponse()
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            assert request.full_url.endswith("/api/pull")
+            return stream
+
+    monkeypatch.setattr(pull, "_base_url", lambda: "http://127.0.0.1:11434")
+    monkeypatch.setattr(pull.urllib.request, "build_opener", lambda *args: FakeOpener())
+
+    job = pull.start_model_pull("example/model:latest")
+    assert response_ready.wait(timeout=1)
+
+    cancelling = pull.cancel_model_pull(job["job_id"])
+    assert cancelling is not None
+    assert cancelling["status"] == "cancelling"
+    assert stream.closed is True
+
+    deadline = time.monotonic() + 2
+    state = pull.get_model_pull(job["job_id"])
+    while state and state["status"] not in {"completed", "failed", "cancelled"} and time.monotonic() < deadline:
+        time.sleep(0.01)
+        state = pull.get_model_pull(job["job_id"])
+
+    assert state is not None
+    assert state["status"] == "cancelled"
+    assert pull._ACTIVE_JOB is None
+
+
+def test_model_pull_cancel_endpoint_exposes_cooperative_stop(monkeypatch):
+    from app import autonomous_engineering as agent
+
+    expected = {"job_id": "a" * 32, "status": "cancelling", "message": "stop requested"}
+    monkeypatch.setattr(agent, "cancel_model_pull", lambda job_id: expected if job_id == "a" * 32 else None)
+
+    assert agent.autonomous_engineering_cancel_model_pull("a" * 32) == expected
+
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as missing:
+        agent.autonomous_engineering_cancel_model_pull("b" * 32)
+    assert missing.value.status_code == 404
+
