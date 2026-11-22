@@ -758,12 +758,25 @@ jobs:
       - name: Recheck durable pause state immediately before task start
         id: pause
         env:
-          PAUSED: ${{ vars.AUTONOMOUS_ENGINEERING_PAUSED || 'false' }}
-          ENABLED: ${{ vars.AUTONOMOUS_ENGINEERING_ENABLED || 'true' }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         shell: powershell
         run: |
-          $paused = ([string]$env:PAUSED).ToLowerInvariant() -eq "true"
-          $enabled = ([string]$env:ENABLED).ToLowerInvariant() -eq "true"
+          $ErrorActionPreference = "Stop"
+          $variableLines = @(& gh api "repos/$env:GH_REPO/actions/variables?per_page=100" --jq '.variables[] | select(.name == "AUTONOMOUS_ENGINEERING_PAUSED" or .name == "AUTONOMOUS_ENGINEERING_ENABLED") | [.name, .value] | @tsv')
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not recheck durable Autonomous Engineering lifecycle variables before task start."
+          }
+          $values = @{}
+          foreach ($line in $variableLines) {
+            $parts = [string]$line -split "`t", 2
+            if ($parts.Count -eq 2) { $values[$parts[0]] = $parts[1] }
+          }
+          $paused = ([string]$values["AUTONOMOUS_ENGINEERING_PAUSED"]).ToLowerInvariant() -eq "true"
+          $enabled = $true
+          if ($values.ContainsKey("AUTONOMOUS_ENGINEERING_ENABLED")) {
+            $enabled = ([string]$values["AUTONOMOUS_ENGINEERING_ENABLED"]).ToLowerInvariant() -eq "true"
+          }
           $blocked = $paused -or (-not $enabled)
           "paused=$($blocked.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           if (-not $enabled) {
