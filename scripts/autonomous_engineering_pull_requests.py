@@ -6,6 +6,8 @@ import re
 from typing import Any, Callable
 from urllib.parse import quote
 
+from app.autonomous_engineering_execution_lock import require_parent_repository_execution_lock
+
 
 def find_open_autonomous_pr(token: str, repo: str, *, api: Callable[..., Any]) -> dict[str, Any] | None:
     pulls = api(token, repo, "GET", "pulls?state=open&per_page=100")
@@ -189,6 +191,7 @@ def publish_pull_request(
     durable_state_lock: Callable[..., Any], state_directory: Callable[[], Any],
     save_pending_pr_unlocked: Callable[..., Any], dispatch_and_wait_all: Callable[..., Any],
 ) -> dict[str, Any]:
+    require_parent_repository_execution_lock(run_id)
     checked(["git", "push", "origin", f"HEAD:refs/heads/{branch}"], env=git_auth_env(token))
     owner = repo.split("/", 1)[0]
 
