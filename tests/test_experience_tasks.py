@@ -1,6 +1,7 @@
 import pytest
 
-from app import experience_tasks, sandbox_tasks
+from app import db, experience, experience_tasks, sandbox_tasks, task_manager
+from app.task_worker import TaskContext
 from app.sandbox import SandboxResult
 from types import SimpleNamespace
 
@@ -17,6 +18,9 @@ class FakeContext:
 
     def control_status(self):
         return self.status
+
+    def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+        return None
 
 
 def _configure(monkeypatch, tmp_path):
@@ -41,6 +45,85 @@ def _experience(status="identified"):
         "test_results": [],
         "takeaway": "",
     }
+
+
+def test_stale_experience_task_cannot_persist_test_result(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    task_manager.initialize_task_store()
+    item = experience.create_experience(
+        "Stale experience test",
+        "A stale task must not alter versioned experience evidence.",
+        "The controlled test result is written only by the current task owner.",
+    )
+    item = experience.update_experience(
+        item["id"],
+        source_evidence=[{
+            "url": "https://docs.python.org/3/library/",
+            "claim": "Documented Python behavior",
+            "excerpt": "Documented behavior",
+        }],
+        test_plan=[{"test": "lease-fenced test"}],
+        test_results=[],
+    )
+    payload = {
+        "experience_id": item["id"],
+        "test_name": "lease-fenced test",
+        "source_code": "assert True",
+        "timeout_seconds": 5,
+        "max_output_bytes": 1000,
+    }
+    task = task_manager.create_task(
+        experience_tasks.EXPERIENCE_TEST_TASK_TYPE, payload, max_attempts=3
+    )
+    worker_id = "experience-test-worker"
+    claimed = task_manager.claim_next_task(worker_id)
+    assert claimed is not None and claimed["id"] == task["id"]
+    context = TaskContext(
+        task_id=task["id"],
+        worker_id=worker_id,
+        lease_epoch=claimed["lease_epoch"],
+    )
+
+    def sandbox_handler(_payload, _checkpoint, worker_context):
+        with db.learning_connection() as connection:
+            connection.execute(
+                "UPDATE task_queue SET lease_expires_at=? WHERE id=?",
+                ("2000-01-01T00:00:00.000000+00:00", task["id"]),
+            )
+        reclaimed = task_manager.claim_next_task(worker_id)
+        assert reclaimed is not None and reclaimed["id"] == task["id"]
+        assert reclaimed["lease_epoch"] > worker_context.lease_epoch
+        # Exercise the transaction-level guard rather than relying only on the
+        # cooperative status check immediately before persistence.
+        worker_context.control_status = lambda: "running"
+        return {
+            "execution_status": "succeeded",
+            "exit_code": 0,
+            "stdout": "assertion passed",
+            "stderr": "",
+            "source_sha256": "a" * 64,
+            "duration_ms": 1,
+            "image": "python:test",
+        }
+
+    monkeypatch.setattr(sandbox_tasks, "handler_from_environment", lambda: sandbox_handler)
+    monkeypatch.setattr(sandbox_tasks.sandbox_consent, "is_enabled", lambda: True)
+    monkeypatch.setattr(
+        experience_tasks, "_verify_live_source_evidence",
+        lambda value: value["source_evidence"],
+    )
+    handler = experience_tasks.handler_from_environment()
+    assert handler is not None
+
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        handler(payload, None, context)
+
+    saved = experience.get_experience(item["id"])
+    assert saved["version"] == item["version"]
+    assert saved["status"] == "identified"
+    assert saved["test_results"] == []
 
 
 def test_runner_requires_configured_sandbox_and_assertion(monkeypatch):
