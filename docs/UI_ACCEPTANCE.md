@@ -64,4 +64,4 @@ Automated CI is repository-level evidence only. It does not authorize merge, dep
 
 ## Autonomous Engineering — polling lifecycle follow-up (2026-11-22)
 
-- [ ] Polling controller uses bounded exponential backoff, bounded jitter, visibility-aware scheduling, single-flight refresh, per-request timeout through the shared request helper, and explicit teardown on `pagehide`/app stop; Chromium regression is `test_autonomous_engineering_polling_uses_visibility_backoff_jitter_and_cleanup`. Exact-head CI is pending.
+- [ ] Polling controller uses bounded exponential backoff, bounded jitter, visibility-aware scheduling, single-flight refresh, per-request timeout through the shared request helper, and explicit teardown on `pagehide`/app stop. It covers Status, Runs, Progress and model-pull status; model-pull GET errors retry up to five consecutive failures without cancelling the server-side job. Chromium regressions are `test_autonomous_engineering_polling_uses_visibility_backoff_jitter_and_cleanup` and `test_autonomous_engineering_model_pull_requires_consent_and_reports_progress`. Exact-head CI is pending.
