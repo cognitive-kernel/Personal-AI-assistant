@@ -60,6 +60,7 @@
   }
   let statusRefreshPromise = null;
   let dispatchPendingUntil = 0;
+  let dispatchUnlockTimer = null;
   let dispatchSubmitting = false;
   let lastCanDispatch = false;
   let lastActiveRun = false;
@@ -91,7 +92,11 @@
   }
   function lockDispatchVisibilityWindow() {
     dispatchPendingUntil = Date.now() + 30000;
-    window.setTimeout(syncDispatchControls, 30000);
+    if (dispatchUnlockTimer !== null) window.clearTimeout(dispatchUnlockTimer);
+    dispatchUnlockTimer = window.setTimeout(() => {
+      dispatchUnlockTimer = null;
+      syncDispatchControls();
+    }, 30000);
   }
   function refresh(force = false) {
     if (force) return refreshAfterMutation();
@@ -271,6 +276,7 @@
       // can overwrite a newer, explicitly refreshed run list with stale data.
 
       setMessage(data.paused ? "صف مهندسی متوقف است؛ برای ادامه از آخرین وضعیت، دکمهٔ ادامه را بزنید." : (ready ? "پیش‌نیازهای حساب برنامه آماده‌اند؛ Workflow پیش‌نیازهای حساب Runner را جداگانه بررسی می‌کند." : "برای فعال‌شدن اجرا، موارد ناقص را در راهنمای راه‌اندازی تکمیل کنید."), data.paused || ready ? "success" : "");
+      return true;
     } catch (error) {
       statusKnown = false;
       lastPendingWork = null;
@@ -281,15 +287,39 @@
       cancelButton.disabled = true;
       pauseButton.disabled = true;
       resumeButton.disabled = true;
+      return false;
     } finally {
       $("refresh-agent").disabled = false;
     }
   }
 
   $("refresh-agent").addEventListener("click", refresh);
+  function armDispatchUnlockTimer() {
+    if (dispatchUnlockTimer !== null) window.clearTimeout(dispatchUnlockTimer);
+    dispatchUnlockTimer = null;
+    const remaining = dispatchPendingUntil - Date.now();
+    if (remaining <= 0) {
+      syncDispatchControls();
+      return;
+    }
+    dispatchUnlockTimer = window.setTimeout(() => {
+      dispatchUnlockTimer = null;
+      syncDispatchControls();
+    }, remaining);
+  }
+  function stop() {
+    if (dispatchUnlockTimer !== null) window.clearTimeout(dispatchUnlockTimer);
+    dispatchUnlockTimer = null;
+  }
+  function resume() {
+    armDispatchUnlockTimer();
+    syncDispatchControls();
+  }
   window.autonomousEngineeringStatus = Object.freeze({
     version: 1,
     refresh,
+    stop,
+    resume,
     canStartDispatch,
     canStartManualTask,
     getPendingWork: () => lastPendingWork,
