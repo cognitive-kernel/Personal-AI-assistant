@@ -513,3 +513,16 @@ The subsequent documentation-only evidence update does not change runtime code a
 - جدول transition و محدودهٔ audit در docs/DOMAIN_TASK_WRITE_FENCING_AUDIT_2026-11-22.fa.md ثبت شده است.
 - Exact-head CI روی PR #837 هنوز pending است؛ هیچ‌یک از تغییرات Gate B ادغام نشده‌اند. PRهای منبع و branchهای آن‌ها تا تأیید CI و تطبیق reviewها حذف نمی‌شوند.
 - Target-host Windows Runner، ACL چندحسابی، Ollama/Codex واقعی و crash/restart همچنان gateهای خارجی‌اند؛ این PR به‌تنهایی operational acceptance نیست.
+
+
+## 2026-11-22 — نتیجهٔ exact-head CI برای PR #837
+
+PR #837 در head 908e9e3a79b03146a3b560c1d65f7361c1efffab همهٔ workflowهای مخزن را گذراند:
+
+- Linux full suite: 2511 passed, 14 skipped, 69 deselected.
+- Windows full suite: 2509 passed, 16 skipped, 69 deselected.
+- Windows storage regressions و real Docker sandbox integration: موفق.
+- Browser/dashboard smoke، CodeQL، Analyze، pip-audit و bootstrapهای سه سیستم‌عامل: موفق.
+- شکست اجرای اول فقط test-double ناسازگار در تست experience بود؛ با پذیرش keyword task type اصلاح شد و اجرای مجدد exact head موفق شد.
+
+PR #837 همچنان Draft و merge نشده است؛ target-host Windows، چندحسابی/ACL، Ollama/Codex واقعی، crash/restart و تأیید مالک خارج از CI باقی مانده‌اند. PRهای منبع #819 و #821–#826 تا ثبت این شواهد و تطبیق review threadها branchهایشان حفظ می‌شوند.
