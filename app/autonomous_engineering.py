@@ -787,7 +787,7 @@ def _has_open_autonomous_pr(gh: str) -> bool:
 @router.post("/dispatch", status_code=202)
 def dispatch_autonomous_engineering(
     payload: ManualTaskRequest | None = None,
-    request: Request | None = None,
+    request: Request = None,
 ) -> dict[str, Any]:
     global _LAST_DISPATCH_ACCEPTED_AT
     request_state = getattr(request, "state", None)
