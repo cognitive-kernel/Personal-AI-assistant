@@ -35,7 +35,7 @@ from .autonomous_engineering_progress import (
 )
 from .ollama_context import maximum_context_tokens, resolve_model_architecture, supports_tool_calling
 from .autonomous_engineering_state import durable_state_lock, execution_state_directory
-from .autonomous_engineering_model_pull import get_model_pull, start_model_pull
+from .autonomous_engineering_model_pull import cancel_model_pull, get_model_pull, start_model_pull
 
 _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
 _STATUS_PROBE_CONTEXT = threading.local()
@@ -581,6 +581,14 @@ def autonomous_engineering_pull_model(payload: ModelPullRequest) -> dict[str, An
 @router.get("/models/pull/{job_id}")
 def autonomous_engineering_model_pull_status(job_id: str) -> dict[str, Any]:
     state = get_model_pull(job_id)
+    if state is None:
+        raise HTTPException(status_code=404, detail="شناسهٔ عملیات دانلود مدل معتبر یا موجود نیست.")
+    return state
+
+
+@router.post("/models/pull/{job_id}/cancel")
+def autonomous_engineering_cancel_model_pull(job_id: str) -> dict[str, Any]:
+    state = cancel_model_pull(job_id)
     if state is None:
         raise HTTPException(status_code=404, detail="شناسهٔ عملیات دانلود مدل معتبر یا موجود نیست.")
     return state
