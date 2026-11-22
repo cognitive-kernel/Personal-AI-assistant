@@ -98,6 +98,7 @@
   </div>
   <div class="toolbar">
     <button id="pull-model" type="button" class="secondary">دانلود و نصب مدل انتخاب‌شده</button>
+    <button id="cancel-model-pull" type="button" class="secondary" disabled>توقف دانلود مدل</button>
     <button id="save-agent-settings" type="submit">ذخیرهٔ تنظیمات</button>
   </div>
   <p id="model-pull-status" class="hint" role="status" aria-live="polite">دانلود مدل فقط پس از انتخاب و تأیید شما آغاز می‌شود و به سرویس فعال Ollama نیاز دارد.</p>
@@ -120,6 +121,7 @@
 <button id="pause-agent" type="button" class="secondary" disabled>توقف ایمن</button>
 <button id="resume-agent" type="button" class="secondary" disabled>ادامه از آخرین وضعیت</button>
 <button id="cancel-agent" type="button" class="secondary" disabled>لغو اضطراری اجرای فعال</button>
+<button id="finish-agent" type="button" class="secondary" disabled>پایان ایمن پس از وظیفهٔ جاری</button>
 </div>
 <p class="hint">در حالت زمان‌بندی‌شده، عامل طبق فاصلهٔ انتخابی اجرا می‌شود. در حالت پیوسته، پس از شروع اولیه، هر وظیفه پس از موفقیت آزمون‌های محلی و سه گردش‌کار مستقل GitHub با تطبیق SHA دقیق، به‌صورت PR برای بازبینی مالک منتشر می‌شود. کنترلر آن را ادغام نمی‌کند؛ پس از ادغام دستی و موفقیت کنترل‌های پس از ادغام، چرخهٔ بعدی از main تازه آغاز می‌شود. تعداد کل وظایف محدود نیست. اجرای دستی وقتی فعال می‌شود که Ollama، مدل، Runner، احراز هویت GitHub و فضای ثبت پیشرفت آماده باشند. شروع واقعی را در فهرست اجراها مشاهده کنید.</p>
 <div class="run-admin-toolbar">
