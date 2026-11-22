@@ -65,7 +65,10 @@
     if (status && typeof status.stop === "function") status.stop();
   }
   function onPageShow(event) {
-    if (event.persisted) startPolling();
+    if (event.persisted) {
+      if (status && typeof status.resume === "function") status.resume();
+      startPolling();
+    }
   }
   startPolling();
   window.addEventListener("pagehide", onPageHide);
