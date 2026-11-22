@@ -243,6 +243,60 @@ assert pending["checkpoint"] == {"available": False, "verified": True}
     $inactiveProbe | & python -
     if ($LASTEXITCODE -ne 0) { throw "The Windows Broker did not honor the inactive checkpoint pointer." }
 
+    # The broker must interoperate with the exact Python byte-range lock used
+    # by the Runner, including direct pipe clients that bypass the dashboard.
+    $repositoryLockScriptPath = Join-Path $env:TEMP ("broker-repository-lock-" + [guid]::NewGuid().ToString("N") + ".py")
+    $repositoryLockReadyPath = Join-Path $env:TEMP ("broker-repository-lock-ready-" + [guid]::NewGuid().ToString("N") + ".txt")
+    $repositoryLockScript = @'
+import os, sys, time
+from pathlib import Path
+os.environ["AUTONOMOUS_ENGINEERING_PROGRESS_DIR"] = sys.argv[2]
+sys.path.insert(0, sys.argv[3])
+from scripts.autonomous_engineering_execution_lock import repository_execution_lock
+with repository_execution_lock("broker-lock-ci", "1"):
+    Path(sys.argv[1]).write_text("locked", encoding="utf-8")
+    time.sleep(3)
+'@
+    [System.IO.File]::WriteAllText(
+        $repositoryLockScriptPath,
+        $repositoryLockScript,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+    $repoRoot = Split-Path -Parent $PSScriptRoot
+    $pythonPath = (Get-Command python -ErrorAction Stop).Source
+    $lockProcess = Start-Process -FilePath $pythonPath -ArgumentList @(
+        $repositoryLockScriptPath, $repositoryLockReadyPath, $stateRoot, $repoRoot
+    ) -PassThru -NoNewWindow
+    try {
+        $lockDeadline = [DateTime]::UtcNow.AddSeconds(10)
+        while (-not (Test-Path -LiteralPath $repositoryLockReadyPath) -and [DateTime]::UtcNow -lt $lockDeadline) {
+            Start-Sleep -Milliseconds 50
+        }
+        if (-not (Test-Path -LiteralPath $repositoryLockReadyPath)) {
+            throw "The Python Runner did not acquire the repository execution lock."
+        }
+        $repositoryLockProbe = @'
+from app import autonomous_engineering_state_broker as broker
+from app.autonomous_engineering_state_broker import StateBrokerConflict
+try:
+    broker.cleanup()
+except StateBrokerConflict as exc:
+    assert "repository_execution_active" in exc.blockers
+else:
+    raise SystemExit("Broker cleanup ignored the Python Runner repository lock.")
+'@
+        $repositoryLockProbe | & python -
+        if ($LASTEXITCODE -ne 0) { throw "The broker did not respect the Python Runner repository lock." }
+        if (-not $lockProcess.WaitForExit(10000) -or $lockProcess.ExitCode -ne 0) {
+            throw "The Python repository-lock holder did not exit cleanly."
+        }
+    } finally {
+        if ($lockProcess -and -not $lockProcess.HasExited) {
+            Stop-Process -Id $lockProcess.Id -Force -ErrorAction SilentlyContinue
+        }
+        Remove-Item -LiteralPath $repositoryLockScriptPath, $repositoryLockReadyPath -Force -ErrorAction SilentlyContinue
+    }
+
     # Cleanup must also fail while a watcher owns the store lock, even before
     # a new pointer is published.
     $checkpointLockPath = Join-Path $stateRoot "autonomous-checkpoint-store.lock"
