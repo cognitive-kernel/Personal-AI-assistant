@@ -35,6 +35,7 @@ from .autonomous_engineering_progress import (
 )
 from .ollama_context import maximum_context_tokens, resolve_model_architecture, supports_tool_calling
 from .autonomous_engineering_state import durable_state_lock, execution_state_directory
+from scripts.autonomous_engineering_execution_lock import repository_execution_lock
 from .autonomous_engineering_model_pull import get_model_pull, start_model_pull
 
 _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
@@ -1346,15 +1347,7 @@ def delete_autonomous_engineering_run(run_id: int) -> dict[str, Any]:
     return {"deleted": True, "run_id": trusted_run_id, "message": "اجرای پایان‌یافته از تاریخچهٔ GitHub حذف شد."}
 
 
-@router.post("/cleanup")
-def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
-    gh = _authenticated_gh()
-    runs = _workflow_runs(gh)
-    if any(item.get("status") in _ACTIVE_RUN_STATES for item in runs):
-        raise HTTPException(
-            status_code=409,
-            detail="عامل هنوز اجرای فعال یا در صف دارد؛ پاک‌سازی داده‌های موقت تا پایان اجرا مجاز نیست.",
-        )
+def _cleanup_autonomous_engineering_temporary_data_locked() -> dict[str, Any]:
     removed = 0
     removed_bytes = 0
     failed_files: list[str] = []
@@ -1443,3 +1436,34 @@ def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
             else "پاک‌سازی ناقص بود؛ بعضی فایل‌های موقت به‌دلیل خطای دسترسی حذف نشدند."
         ),
     }
+
+@router.post("/cleanup")
+def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
+    gh = _authenticated_gh()
+
+    def ensure_no_active_workflow() -> None:
+        runs = _workflow_runs(gh)
+        if any(item.get("status") in _ACTIVE_RUN_STATES for item in runs):
+            raise HTTPException(
+                status_code=409,
+                detail="عامل هنوز اجرای فعال یا در صف دارد؛ پاک‌سازی داده‌های موقت تا پایان اجرا مجاز نیست.",
+            )
+
+    # Lock order is repository -> durable state -> checkpoint store, matching
+    # the Runner. Recheck GitHub after acquiring the shared worktree lock to
+    # close the race between the first workflow listing and cleanup.
+    ensure_no_active_workflow()
+    try:
+        with repository_execution_lock("ui-cleanup", "1"):
+            ensure_no_active_workflow()
+            return _cleanup_autonomous_engineering_temporary_data_locked()
+    except RuntimeError as exc:
+        if "Another autonomous execution owns this repository worktree" in str(exc):
+            raise HTTPException(
+                status_code=409,
+                detail="اجرای دیگری مالک worktree است؛ پاک‌سازی تا آزادشدن قفل انجام نمی‌شود.",
+            ) from exc
+        raise HTTPException(
+            status_code=503,
+            detail=f"قفل یا پاک‌سازی امن فضای عامل در دسترس نیست ({type(exc).__name__}).",
+        ) from exc
