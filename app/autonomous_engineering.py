@@ -53,6 +53,13 @@ _STATUS_EXECUTOR = ThreadPoolExecutor(
 _STATUS_EXECUTOR_SLOTS = threading.BoundedSemaphore(_STATUS_EXECUTOR_MAX_WORKERS)
 _STATUS_LOGGER = logging.getLogger(__name__)
 
+# Serialize UI-originated workflow dispatches within the local API process. The
+# durable pending-task marker and GitHub workflow concurrency remain the
+# cross-process/restart safety layer.
+_DISPATCH_REQUEST_LOCK = threading.Lock()
+_DISPATCH_VISIBILITY_GRACE_SECONDS = 15.0
+_LAST_DISPATCH_ACCEPTED_AT = 0.0
+
 _HTTP_ERROR_CODES = {
     400: "AUTONOMOUS_ENGINEERING_BAD_REQUEST",
     401: "AUTONOMOUS_ENGINEERING_UNAUTHORIZED",
@@ -771,6 +778,39 @@ def _has_open_autonomous_pr(gh: str) -> bool:
 
 @router.post("/dispatch", status_code=202)
 def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) -> dict[str, Any]:
+    global _LAST_DISPATCH_ACCEPTED_AT
+    if not _DISPATCH_REQUEST_LOCK.acquire(blocking=False):
+        raise HTTPException(
+            status_code=409,
+            detail="درخواست اجرای دیگری در حال ثبت است؛ از ارسال هم‌زمان در چند زبانه خودداری کنید.",
+            headers={"X-Error-Code": "AUTONOMOUS_DISPATCH_IN_PROGRESS", "X-Retryable": "false"},
+        )
+    try:
+        if (
+            _LAST_DISPATCH_ACCEPTED_AT
+            and time.monotonic() - _LAST_DISPATCH_ACCEPTED_AT < _DISPATCH_VISIBILITY_GRACE_SECONDS
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="درخواست اجرای قبلی تازه پذیرفته شده یا نتیجهٔ آن نامشخص است؛ پیش از ارسال دوباره، سوابق اجرا را بازخوانی کنید.",
+                headers={"X-Error-Code": "AUTONOMOUS_DISPATCH_RECENTLY_ACCEPTED", "X-Retryable": "false"},
+            )
+        try:
+            result = _dispatch_autonomous_engineering_locked(payload)
+        except HTTPException as exc:
+            if (exc.headers or {}).get("X-Error-Code") == "WORKFLOW_DISPATCH_OUTCOME_UNKNOWN":
+                _LAST_DISPATCH_ACCEPTED_AT = time.monotonic()
+            raise
+        if result.get("accepted") is True:
+            _LAST_DISPATCH_ACCEPTED_AT = time.monotonic()
+        return result
+    finally:
+        _DISPATCH_REQUEST_LOCK.release()
+
+
+def _dispatch_autonomous_engineering_locked(
+    payload: ManualTaskRequest | None = None,
+) -> dict[str, Any]:
     manual_task = payload.task.strip() if payload else ""
     if "\x00" in manual_task:
         raise HTTPException(status_code=422, detail="متن وظیفه شامل نویسهٔ نامعتبر است.")
