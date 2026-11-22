@@ -28,7 +28,9 @@ def test_execution_lock_records_owner_metadata_and_releases_after_scope(
     # locked file; inspect its diagnostic metadata after ownership is released.
     import json
 
-    metadata = json.loads((shared_state_tmp_path / "repository-execution.lock").read_text(encoding="utf-8"))
+    lock_bytes = (shared_state_tmp_path / "repository-execution.lock").read_bytes()
+    assert lock_bytes[:1] == b"0"
+    metadata = json.loads(lock_bytes[1:].decode("utf-8"))
     assert metadata["pid"] == os.getpid()
     assert metadata["run_id"] == "run-1"
     assert metadata["run_attempt"] == "attempt-2"
