@@ -226,6 +226,12 @@ def test_context_preflight_uses_deterministic_variant_from_selected_base_model()
     assert '$existingContext.Success' in script
     assert "if ($Model -match '(?i)-codex-ctx(?:[0-9]+)?" in script
     assert "Select the original Ollama model to prevent nested variants" in script
+    assert "function Remove-LegacyCodexContextVariants" in script
+    assert "-codex-ctx[0-9]+$" in script
+    assert '"/api/delete"' not in script
+    assert '$baseUrl/api/delete' in script
+    assert 'Preserving loaded legacy Codex model' in script
+    assert 'Remove-LegacyCodexContextVariants -CurrentModel $codexModel' in script
     root = Path(__file__).resolve().parents[1]
     provision = (root / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
     app_check = (root / "scripts" / "check_autonomous_agent.ps1").read_text(encoding="utf-8")
