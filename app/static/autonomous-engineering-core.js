@@ -73,7 +73,8 @@
       const jitter = delayMs > 0
         ? Math.floor(delayMs * ((Math.random() * 2 - 1) * jitterRatio))
         : 0;
-      timerId = window.setTimeout(tick, Math.max(0, delayMs + jitter));
+      const boundedDelay = Math.min(maxIntervalMs, Math.max(0, delayMs + jitter));
+      timerId = window.setTimeout(tick, boundedDelay);
     }
 
     async function tick() {
