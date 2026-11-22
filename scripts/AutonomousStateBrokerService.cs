@@ -689,76 +689,120 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
 
     private object CleanupProgress()
     {
-        return WithStateLock(delegate
+        try
         {
-            try
+            // Lock order matches the Runner: repository -> durable state -> checkpoint store.
+            // The broker enforces this itself because local pipe clients can call cleanup
+            // without passing through the dashboard's GitHub active-run preflight.
+            return WithRepositoryExecutionLock(delegate
             {
-                return WithCheckpointStoreLock(delegate
+                return WithStateLock(delegate
                 {
-                    string[] markerNames = {
-                        "pending-manual-task.txt",
-                        "pending-manual-task-owner.json",
-                        "pending-autonomous-pr.json",
-                        "pending-state-cleanup.json"
-                    };
-                    List<string> blockers = new List<string>();
-                    foreach (string name in markerNames)
-                        if (SafeFileExists(Path.Combine(_stateDirectory, name))) blockers.Add(name);
-                    Dictionary<string, object> checkpoint = ReadCheckpointSummary() as Dictionary<string, object>;
-                    if (checkpoint == null || Convert.ToBoolean(checkpoint["available"]) ||
-                        (checkpoint.ContainsKey("verified") && !Convert.ToBoolean(checkpoint["verified"])))
-                        blockers.Add("latest-worktree-checkpoint");
-                    if (blockers.Count > 0)
-                        return new Dictionary<string, object> {
-                            { "conflict", true }, { "blockers", blockers.ToArray() },
-                            { "message", "Durable task/checkpoint state is pending; cleanup was refused." }
-                        };
-
-                    string[] cleanupNames = {
-                        "events.jsonl",
-                        "current.json",
-                        "events.jsonl.tmp",
-                        "current.json.tmp",
-                        "history.jsonl.tmp",
-                        "scorecard-state.json.tmp",
-                        "scorecard-baseline.json.tmp"
-                    };
-                    int removed = 0;
-                    long removedBytes = 0;
-                    List<string> failed = new List<string>();
-                    foreach (string name in cleanupNames)
+                    try
                     {
-                        string path = Path.Combine(_stateDirectory, name);
-                        try
+                        return WithCheckpointStoreLock(delegate
                         {
-                            if (!SafeFileExists(path)) continue;
-                            long size = new FileInfo(path).Length;
-                            File.Delete(path);
-                            removed++;
-                            removedBytes += size;
-                        }
-                        catch (FileNotFoundException) { }
-                        catch { failed.Add(name); }
+                            string[] markerNames = {
+                                "pending-manual-task.txt",
+                                "pending-manual-task-owner.json",
+                                "pending-autonomous-pr.json",
+                                "pending-state-cleanup.json"
+                            };
+                            List<string> blockers = new List<string>();
+                            foreach (string name in markerNames)
+                                if (SafeFileExists(Path.Combine(_stateDirectory, name))) blockers.Add(name);
+                            Dictionary<string, object> checkpoint = ReadCheckpointSummary() as Dictionary<string, object>;
+                            if (checkpoint == null || Convert.ToBoolean(checkpoint["available"]) ||
+                                (checkpoint.ContainsKey("verified") && !Convert.ToBoolean(checkpoint["verified"])))
+                                blockers.Add("latest-worktree-checkpoint");
+                            if (blockers.Count > 0)
+                                return new Dictionary<string, object> {
+                                    { "conflict", true }, { "blockers", blockers.ToArray() },
+                                    { "message", "Durable task/checkpoint state is pending; cleanup was refused." }
+                                };
+
+                            string[] cleanupNames = {
+                                "events.jsonl",
+                                "current.json",
+                                "events.jsonl.tmp",
+                                "current.json.tmp",
+                                "history.jsonl.tmp",
+                                "scorecard-state.json.tmp",
+                                "scorecard-baseline.json.tmp"
+                            };
+                            int removed = 0;
+                            long removedBytes = 0;
+                            List<string> failed = new List<string>();
+                            foreach (string name in cleanupNames)
+                            {
+                                string filePath = Path.Combine(_stateDirectory, name);
+                                try
+                                {
+                                    if (!SafeFileExists(filePath)) continue;
+                                    long size = new FileInfo(filePath).Length;
+                                    File.Delete(filePath);
+                                    removed++;
+                                    removedBytes += size;
+                                }
+                                catch (FileNotFoundException) { }
+                                catch { failed.Add(name); }
+                            }
+                            return new Dictionary<string, object> {
+                                { "conflict", false },
+                                { "cleaned", failed.Count == 0 },
+                                { "files_removed", removed },
+                                { "bytes_removed", removedBytes },
+                                { "failed_files", failed.ToArray() },
+                                { "preserved", new[] { "history.jsonl", "scorecard-baseline.json", "checkpoint files", "pending task/PR markers" } }
+                            };
+                        }, 250);
                     }
-                    return new Dictionary<string, object> {
-                        { "conflict", false },
-                        { "cleaned", failed.Count == 0 },
-                        { "files_removed", removed },
-                        { "bytes_removed", removedBytes },
-                        { "failed_files", failed.ToArray() },
-                        { "preserved", new[] { "history.jsonl", "scorecard-baseline.json", "checkpoint files", "pending task/PR markers" } }
-                    };
-                }, 250);
-            }
-            catch (System.TimeoutException)
+                    catch (System.TimeoutException)
+                    {
+                        return new Dictionary<string, object> {
+                            { "conflict", true },
+                            { "blockers", new[] { "checkpoint_writer_active" } },
+                            { "message", "A checkpoint watcher owns the durable checkpoint store; cleanup was refused." }
+                        };
+                    }
+                }, 2000);
+            }, 250);
+        }
+        catch (System.TimeoutException)
+        {
+            return new Dictionary<string, object> {
+                { "conflict", true },
+                { "blockers", new[] { "repository_execution_active" } },
+                { "message", "An autonomous Runner owns the repository execution lock; cleanup was refused." }
+            };
+        }
+    }
+
+    private object WithRepositoryExecutionLock(Func<object> operation, int timeoutMilliseconds)
+    {
+        string lockPath = Path.Combine(_stateDirectory, "repository-execution.lock");
+        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMilliseconds);
+        using (FileStream stream = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite))
+        {
+            if (stream.Length == 0)
             {
-                return new Dictionary<string, object> {
-                    { "conflict", true },
-                    { "blockers", new[] { "checkpoint_writer_active" } },
-                    { "message", "A checkpoint watcher owns the durable checkpoint store; cleanup was refused." }
-                };
+                stream.WriteByte(0);
+                stream.Flush(true);
             }
-        }, 2000);
+            bool owned = false;
+            while (!owned)
+            {
+                try { stream.Lock(0, 1); owned = true; }
+                catch (IOException)
+                {
+                    if (DateTime.UtcNow >= deadline)
+                        throw new System.TimeoutException("Repository execution lock timeout.");
+                    Thread.Sleep(50);
+                }
+            }
+            try { return operation(); }
+            finally { try { stream.Unlock(0, 1); } catch { } }
+        }
     }
 
     private object WithCheckpointStoreLock(Func<object> operation, int timeoutMilliseconds)
