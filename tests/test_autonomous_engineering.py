@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+from contextlib import nullcontext
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -2495,3 +2496,53 @@ def test_real_autonomous_dispatch_http_error_exposes_structured_diagnostics(monk
     assert response.headers["X-Error-Code"] == payload["code"]
     assert response.headers["X-Correlation-ID"] == payload["correlation_id"]
     assert response.headers["X-Retryable"] == "false"
+
+
+def test_cleanup_refuses_when_repository_execution_lock_is_owned(monkeypatch):
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [])
+    monkeypatch.setattr(
+        agent,
+        "repository_execution_lock",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            RuntimeError("Another autonomous execution owns this repository worktree.")
+        ),
+    )
+    monkeypatch.setattr(
+        agent,
+        "_cleanup_autonomous_engineering_temporary_data_locked",
+        lambda: pytest.fail("cleanup must not run while another execution owns the worktree"),
+    )
+
+    response = TestClient(main_module.app, client=("127.0.0.1", 12345)).post(
+        "/api/autonomous-engineering/cleanup",
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "AUTONOMOUS_ENGINEERING_CONFLICT"
+
+
+def test_cleanup_rechecks_active_workflow_after_acquiring_repository_lock(monkeypatch):
+    calls = {"runs": 0, "cleanup": 0}
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+
+    def workflow_runs(gh):
+        calls["runs"] += 1
+        return [] if calls["runs"] == 1 else [{"status": "in_progress"}]
+
+    monkeypatch.setattr(agent, "_workflow_runs", workflow_runs)
+    monkeypatch.setattr(agent, "repository_execution_lock", lambda *args, **kwargs: nullcontext())
+
+    def cleanup():
+        calls["cleanup"] += 1
+        return {"cleaned": True}
+
+    monkeypatch.setattr(agent, "_cleanup_autonomous_engineering_temporary_data_locked", cleanup)
+
+    response = TestClient(main_module.app, client=("127.0.0.1", 12345)).post(
+        "/api/autonomous-engineering/cleanup",
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "AUTONOMOUS_ENGINEERING_CONFLICT"
+    assert calls == {"runs": 2, "cleanup": 0}
