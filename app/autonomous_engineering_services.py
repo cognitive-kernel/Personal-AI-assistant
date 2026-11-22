@@ -291,7 +291,7 @@ def github_snapshot(*, run_command, which, repository, workflow, default_interva
     authenticated = bool(auth and auth.returncode == 0)
     recent_runs: list[dict[str, Any]] = []
     runs_available = False
-    settings = {"model": "", "interval_hours": default_interval_hours, "execution_mode": "continuous", "paused": False}
+    settings = {"model": "", "interval_hours": default_interval_hours, "execution_mode": "continuous", "paused": False, "enabled": True}
     if authenticated:
         # The run inventory and repository settings are independent reads.
         # Fetch them concurrently so one slow GitHub CLI call does not add its
@@ -351,6 +351,7 @@ def github_snapshot(*, run_command, which, repository, workflow, default_interva
                     candidate_interval = configured.get("AUTONOMOUS_ENGINEERING_INTERVAL_HOURS", "")
                     candidate_mode = configured.get("AUTONOMOUS_ENGINEERING_MODE", "continuous")
                     settings["paused"] = configured.get("AUTONOMOUS_ENGINEERING_PAUSED", "false").lower() == "true"
+                    settings["enabled"] = configured.get("AUTONOMOUS_ENGINEERING_ENABLED", "true").lower() == "true"
                     if model_pattern.fullmatch(candidate_model):
                         settings["model"] = candidate_model
                     if candidate_interval.isdigit() and int(candidate_interval) in allowed_interval_hours:
