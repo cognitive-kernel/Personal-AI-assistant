@@ -9,6 +9,13 @@ import pytest
 from scripts import autonomous_engineering_cycle as cycle
 
 
+@pytest.fixture(autouse=True)
+def allow_direct_publish_state_machine_tests(monkeypatch: pytest.MonkeyPatch):
+    from scripts import autonomous_engineering_pull_requests as pull_requests
+
+    monkeypatch.setattr(pull_requests, "require_parent_repository_execution_lock", lambda run_id: None)
+
+
 def test_timed_stage_reports_started_and_elapsed_duration(monkeypatch, capsys):
     timestamps = iter((10.0, 12.5))
     monkeypatch.setattr(cycle.time, "monotonic", lambda: next(timestamps))
