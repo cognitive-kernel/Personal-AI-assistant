@@ -2267,3 +2267,16 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - The dashboard's workflow-failure summarizer now recognizes that exact warning and prioritizes a clear diagnosis over the generic retry-budget error. It explicitly tells the operator to preserve the durable task/checkpoint and inspect terminal events before retrying; it does not claim to repair the Codex stream.
 - The `/resume` endpoint now distinguishes a definitive local CLI launch failure (correlated, retryable) from an ambiguous dispatch timeout (correlated, non-retryable) and a nonzero CLI result (correlated, non-retryable), preventing an automatic duplicate workflow dispatch. Unmatched 404/405 responses under `/api/autonomous-engineering` now use the same structured error contract; unrelated API routes retain their existing responses.
 - Regression tests cover missing final agent message, resume timeout/launch failure, structured unmatched 404/405, and non-Autonomous route isolation. Exact-head CI is pending. No workflow, task, checkpoint, branch, or user data was cancelled or deleted.
+
+
+### Follow-up hardening — invalid non-empty report handling
+
+- The validator reports `found 0` for both an absent report and a non-empty report with no valid marker. Recovery therefore now preserves an existing report only when it already contains exactly one valid completion marker. Otherwise it may replace that temporary report only when the final JSONL `agent_message` itself contains exactly one valid marker and the Codex turn completed successfully without failure events.
+- Regression tests cover invalid non-empty replacement, preservation of an already valid report, and rejection of missing/duplicate markers in the JSONL message.
+
+
+### 2026-11-21 — Recover from an undecodable temporary Codex report
+
+- Review found that a non-empty report containing invalid UTF-8 was classified as an I/O failure, preventing the already validated successful JSONL final message from repairing it.
+- Treat Unicode decoding failure as an invalid temporary report; preserve the existing fail-closed requirements for the final turn and exactly-one completion marker. Filesystem I/O failures still stop recovery.
+- Added a regression using invalid UTF-8 bytes and verifying replacement only from a successful final message with one valid marker. Exact-head CI and target-host acceptance remain required.
