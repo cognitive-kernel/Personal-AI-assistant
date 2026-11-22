@@ -125,11 +125,35 @@ def append_user_message(conversation_id: int, content: str) -> dict[str, Any]:
 
 
 def append_assistant_message(
-    conversation_id: int, content: str, *, task_id: int | None = None
+    conversation_id: int,
+    content: str,
+    *,
+    task_id: int | None = None,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     if not isinstance(content, str) or not content.strip():
         raise ValueError("Assistant response must not be empty.")
     with db.settings_connection() as conn:
+        if task_context is not None and (
+            expected_task_type is not None or expected_payload is not None
+        ):
+            if expected_task_type is None or expected_payload is None:
+                raise ValueError("Research chat task ownership contract is incomplete.")
+            conn.execute(
+                "ATTACH DATABASE ? AS task_store",
+                (str(db.defaults.learning_db_path),),
+            )
+        conn.execute("BEGIN IMMEDIATE")
+        if task_context is not None and (
+            expected_task_type is not None or expected_payload is not None
+        ):
+            task_context.assert_current(
+                conn,
+                expected_task_type=expected_task_type,
+                expected_payload=expected_payload,
+            )
         if conn.execute(
             "SELECT 1 FROM chat_conversations WHERE id = ?", (conversation_id,)
         ).fetchone() is None:

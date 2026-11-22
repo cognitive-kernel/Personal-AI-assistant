@@ -76,6 +76,9 @@ def record_candidate_review(
     input_sha256: str | None = None,
     output_sha256: str | None = None,
     _trusted_adapter: bool = False,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Append immutable, content-bound evidence; caller-supplied verdicts are not proof."""
     init_databases()
@@ -136,6 +139,16 @@ def record_candidate_review(
 
     with learning_connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
+        if task_context is not None and (
+            expected_task_type is not None or expected_payload is not None
+        ):
+            if expected_task_type is None or expected_payload is None:
+                raise ValueError("Task ownership contract is incomplete for candidate review persistence.")
+            task_context.assert_current(
+                connection,
+                expected_task_type=expected_task_type,
+                expected_payload=expected_payload,
+            )
         candidate = _candidate_row(connection, candidate_id)
         if candidate["status"] == "failed" and str(candidate["failure_reason"] or "").startswith("rejected_after_review:"):
             raise ValueError("Candidate was rejected after review; create a new versioned candidate to reassess it.")
@@ -478,7 +491,13 @@ def promote_candidate(candidate_id: int, *, expected_candidate_sha256: str) -> d
 
 
 
-def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str, Any]:
+def validate_candidate_with_models(
+    candidate_id: int,
+    context=None,
+    *,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Fetch multiple sources and obtain two digest-distinct local model reviews.
 
     This is a bounded queue-worker operation. Missing sources/models or disagreement
@@ -676,6 +695,8 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
                         verdict=verdict, reviewer_id=actual_reviewer_id,
                         note=source_note[:2000], source_url=document["url"],
                         source_sha256=document["sha256"],
+                        task_context=context, expected_task_type=expected_task_type,
+                        expected_payload=expected_payload,
                     )
                 except ValueError:
                     # A live page changed between fetch and persistence; don't trust the stale snapshot.
@@ -690,6 +711,8 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
                 verdict=overall, reviewer_id=actual_reviewer_id,
                 model_id=actual_model_id, note=note,
                 input_sha256=input_hash, output_sha256=output_hash, _trusted_adapter=True,
+                task_context=context, expected_task_type=expected_task_type,
+                expected_payload=expected_payload,
             )
             model_results.append({
                 "model": provider_result["model"], "provider_id": provider_result["provider_id"],
@@ -705,6 +728,8 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
                 verdict="inconclusive", reviewer_id=fallback_reviewer_id,
                 model_id=fallback_model_id, note=failure,
                 input_sha256=input_hash, output_sha256=failure_hash, _trusted_adapter=True,
+                task_context=context, expected_task_type=expected_task_type,
+                expected_payload=expected_payload,
             )
             model_results.append({
                 "model": reviewer["model"], "provider_id": reviewer["provider_id"],
@@ -733,8 +758,21 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
             verdict="supports", reviewer_id="multi-model-source-consistency-v1",
             note="Two digest-distinct reviewer models independently supported the lesson against current source pages.",
             input_sha256=test_input_hash, output_sha256=test_output_hash, _trusted_adapter=True,
+            task_context=context, expected_task_type=expected_task_type,
+            expected_payload=expected_payload,
         )
         with learning_connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            if context is not None and (
+                expected_task_type is not None or expected_payload is not None
+            ):
+                if expected_task_type is None or expected_payload is None:
+                    raise ValueError("Task ownership contract is incomplete for candidate validation settlement.")
+                context.assert_current(
+                    connection,
+                    expected_task_type=expected_task_type,
+                    expected_payload=expected_payload,
+                )
             connection.execute(
                 """UPDATE temporary_knowledge_candidates
                    SET status='passed', test_results_json=?, failure_reason='',
@@ -751,6 +789,16 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
         )
         with learning_connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            if context is not None and (
+                expected_task_type is not None or expected_payload is not None
+            ):
+                if expected_task_type is None or expected_payload is None:
+                    raise ValueError("Task ownership contract is incomplete for candidate rejection settlement.")
+                context.assert_current(
+                    connection,
+                    expected_task_type=expected_task_type,
+                    expected_payload=expected_payload,
+                )
             previous_job = connection.execute(
                 "SELECT error FROM learning_jobs WHERE id=?", (candidate["job_id"],)
             ).fetchone()

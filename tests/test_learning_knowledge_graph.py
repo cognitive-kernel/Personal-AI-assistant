@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import db, learning, learning_knowledge_graph, learning_knowledge_graph_tasks
-from app.task_worker import TaskInterrupted
+from app import db, learning, learning_knowledge_graph, learning_knowledge_graph_tasks, task_manager
+from app.task_worker import TaskContext, TaskInterrupted
 
 
 @pytest.fixture
@@ -69,6 +69,53 @@ def test_graph_edge_proposal_requires_retained_knowledge(graph_store):
     assert edge["source_sha256"] == hashlib.sha256(
         b"The source directly describes how stale cache entries can result after writes."
     ).hexdigest()
+
+
+def test_stale_graph_task_cannot_store_review_result(graph_store):
+    source_id, target_id = graph_store
+    excerpt = "The source directly describes how stale cache entries can result after writes."
+    edge = learning_knowledge_graph.propose_edge(
+        source_id, target_id, relation_type="causes",
+        source_url="https://docs.example.test/cache", source_excerpt=excerpt,
+    )
+    payload = {"edge_id": edge["id"], "source_sha256": edge["source_sha256"]}
+    task = task_manager.create_task(
+        learning_knowledge_graph_tasks.KNOWLEDGE_GRAPH_REVIEW_TASK_TYPE,
+        payload, max_attempts=3,
+    )
+    worker_id = "knowledge-graph-worker"
+    claimed = task_manager.claim_next_task(worker_id)
+    assert claimed is not None and claimed["id"] == task["id"]
+    context = TaskContext(
+        task_id=task["id"],
+        worker_id=worker_id,
+        lease_epoch=claimed["lease_epoch"],
+    )
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE task_queue SET lease_expires_at=? WHERE id=?",
+            ("2000-01-01T00:00:00.000000+00:00", task["id"]),
+        )
+    reclaimed = task_manager.claim_next_task(worker_id)
+    assert reclaimed is not None and reclaimed["id"] == task["id"]
+    assert reclaimed["lease_epoch"] > context.lease_epoch
+
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        learning_knowledge_graph._store_edge_review(
+            edge["id"], edge["source_sha256"], "accepted",
+            {"status": "accepted", "reviews": []},
+            context=context,
+            expected_task_type=learning_knowledge_graph_tasks.KNOWLEDGE_GRAPH_REVIEW_TASK_TYPE,
+            expected_payload=payload,
+        )
+
+    with db.learning_connection() as connection:
+        saved = connection.execute(
+            "SELECT status, review_json FROM learning_knowledge_graph_edges WHERE id=?",
+            (edge["id"],),
+        ).fetchone()
+    assert saved["status"] == "proposed"
+    assert saved["review_json"] is None
 
 
 def test_graph_edge_requires_two_model_reviews_and_live_source(graph_store, monkeypatch):
@@ -279,11 +326,16 @@ def test_graph_review_task_handler_passes_task_context_to_service(monkeypatch):
     context.checkpoint = lambda value: context.checkpoints.append(value)
     captured = {}
 
-    def fake_review_edge(edge_id, *, expected_source_sha256, context=None):
+    def fake_review_edge(
+        edge_id, *, expected_source_sha256, context=None,
+        expected_task_type=None, expected_payload=None,
+    ):
         captured.update({
             "edge_id": edge_id,
             "source_hash": expected_source_sha256,
             "context": context,
+            "task_type": expected_task_type,
+            "payload": expected_payload,
         })
         return {"edge_id": edge_id, "status": "accepted"}
 
@@ -295,7 +347,11 @@ def test_graph_review_task_handler_passes_task_context_to_service(monkeypatch):
     )
 
     assert result["status"] == "accepted"
-    assert captured == {"edge_id": 7, "source_hash": "a" * 64, "context": context}
+    assert captured == {
+        "edge_id": 7, "source_hash": "a" * 64, "context": context,
+        "task_type": learning_knowledge_graph_tasks.KNOWLEDGE_GRAPH_REVIEW_TASK_TYPE,
+        "payload": {"edge_id": 7, "source_sha256": "a" * 64},
+    }
     assert [item["stage"] for item in context.checkpoints] == [
         "graph_edge_review_started",
         "graph_edge_review_finished",

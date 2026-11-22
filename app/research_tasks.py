@@ -71,5 +71,12 @@ def handle_research_task(
         raise PermanentTaskError("Research model configuration or policy is invalid.") from exc
     context.checkpoint({"phase": "research_task_completed", "message_sha256": message_hash})
     if conversation_id is not None:
-        chat_history.append_assistant_message(conversation_id, reply, task_id=context.task_id)
+        chat_history.append_assistant_message(
+            conversation_id,
+            reply,
+            task_id=context.task_id,
+            task_context=context,
+            expected_task_type=RESEARCH_TASK_TYPE,
+            expected_payload=payload,
+        )
     return {"reply": reply, "message_sha256": message_hash}

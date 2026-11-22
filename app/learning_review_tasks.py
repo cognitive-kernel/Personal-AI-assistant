@@ -93,7 +93,9 @@ def handle_candidate_review(
     def run_channel(channel: str, action) -> dict[str, Any]:
         try:
             reservation = learning_candidate_channels.reserve_channel_run(
-                candidate_id, channel, channel_key, reclaim_running=True
+                candidate_id, channel, channel_key, reclaim_running=True,
+                task_context=context, expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+                expected_payload=payload,
             )
         except learning_candidate_channels.CandidateChannelStorageError as exc:
             raise RetryableTaskError("Candidate channel ledger is temporarily unavailable.") from exc
@@ -111,6 +113,8 @@ def handle_candidate_review(
                     channel=channel,
                     status=channel_status,
                     error_type=str(value.get("error_type", value.get("reason", "unknown"))),
+                    task_context=context, expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+                    expected_payload=payload,
                 )
             except Exception as exc:
                 # The ledger result is already durable. Retrying is safe: the terminal
@@ -133,6 +137,8 @@ def handle_candidate_review(
             budget = learning_durable_budget.reserve_job_budget(
                 int(row["job_id"]), f"candidate_review_{channel}_{attempt_budget_suffix}",
                 calls=budget_calls, predict_tokens=budget_tokens,
+                task_context=context, expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+                expected_payload=payload,
             )
         except learning_durable_budget.LearningBudgetError as exc:
             raise RetryableTaskError("Shared learning pipeline budget is temporarily unavailable.") from exc
@@ -146,6 +152,8 @@ def handle_candidate_review(
                     reservation["id"], "skipped", result=skipped,
                     error_code="budget_exhausted",
                     attempt_generation=reservation["attempt_generation"],
+                    task_context=context, expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+                    expected_payload=payload,
                 )
             except learning_candidate_channels.CandidateChannelStorageError as exc:
                 raise RetryableTaskError("Candidate channel ledger is temporarily unavailable.") from exc
@@ -169,6 +177,8 @@ def handle_candidate_review(
                 reservation["id"], terminal, result=value,
                 error_code="channel_failed" if terminal == "failed" else None,
                 attempt_generation=reservation["attempt_generation"],
+                task_context=context, expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+                expected_payload=payload,
             )
         except learning_candidate_channels.CandidateChannelStorageError as exc:
             raise RetryableTaskError("Candidate channel ledger is temporarily unavailable.") from exc
@@ -183,16 +193,24 @@ def handle_candidate_review(
                 return channels.record_review_attempt(
                     candidate_id, channel="web_research", status="unconfigured",
                     details={"reason": "disabled_by_local_user"},
+                    task_context=context, expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+                    expected_payload=payload,
                 )
             except Exception as exc:
                 raise RetryableTaskError("Could not record disabled web-review state.") from exc
         try:
-            return channels.research_candidate_online(candidate_id, query.strip(), limit=3)
+            return channels.research_candidate_online(
+                candidate_id, query.strip(), limit=3,
+                task_context=context, expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+                expected_payload=payload,
+            )
         except Exception as exc:
             try:
                 channels.record_review_attempt(
                     candidate_id, channel="web_research", status="failed",
                     details={"error_type": type(exc).__name__},
+                    task_context=context, expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+                    expected_payload=payload,
                 )
             except Exception as db_exc:
                 raise RetryableTaskError("Could not persist web-review failure.") from db_exc
@@ -200,12 +218,18 @@ def handle_candidate_review(
 
     def review_peer() -> dict[str, Any]:
         try:
-            return channels.consult_configured_peer_ais(candidate_id, limit=3)
+            return channels.consult_configured_peer_ais(
+                candidate_id, limit=3,
+                task_context=context, expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+                expected_payload=payload,
+            )
         except Exception as exc:
             try:
                 channels.record_review_attempt(
                     candidate_id, channel="peer_ai", status="failed",
                     details={"error_type": type(exc).__name__},
+                    task_context=context, expected_task_type=LEARNING_REVIEW_TASK_TYPE,
+                    expected_payload=payload,
                 )
             except Exception as db_exc:
                 raise RetryableTaskError("Could not persist peer-review failure.") from db_exc
@@ -356,6 +380,8 @@ def handle_candidate_sandbox_review(
             candidate_id, "sandbox",
             f"sandbox:{request_id}:{actual_hash[:12]}:{actual_plan_hash[:12]}",
             reclaim_running=True,
+            task_context=context, expected_task_type=LEARNING_SANDBOX_REVIEW_TASK_TYPE,
+            expected_payload=payload,
         )
     except learning_candidate_channels.CandidateChannelStorageError as exc:
         raise RetryableTaskError("Candidate sandbox ledger is temporarily unavailable.") from exc
@@ -373,6 +399,8 @@ def handle_candidate_sandbox_review(
                     candidate_id, topic=str(row["topic"] or f"Candidate {candidate_id}"),
                     content_sha256=actual_hash, test_plan_sha256=actual_plan_hash,
                     outcomes=saved.get("outcomes", []),
+                    task_context=context, expected_task_type=LEARNING_SANDBOX_REVIEW_TASK_TYPE,
+                    expected_payload=payload,
                 )
             except Exception as exc:
                 raise RetryableTaskError("Sandbox failure exists, but its learning experience could not be persisted.") from exc
@@ -383,6 +411,8 @@ def handle_candidate_sandbox_review(
             channels.record_review_attempt(
                 candidate_id, channel="sandbox", status="sandbox_unconfigured",
                 details={"reason": reason, "request_id": request_id},
+                task_context=context, expected_task_type=LEARNING_SANDBOX_REVIEW_TASK_TYPE,
+                expected_payload=payload,
             )
         except Exception as exc:
             raise RetryableTaskError("Could not persist sandbox unavailability.") from exc
@@ -395,6 +425,8 @@ def handle_candidate_sandbox_review(
             learning_candidate_channels.finish_channel_run(
                 reservation["id"], "skipped", result=skipped_result,
                 error_code=reason, attempt_generation=reservation["attempt_generation"],
+                task_context=context, expected_task_type=LEARNING_SANDBOX_REVIEW_TASK_TYPE,
+                expected_payload=payload,
             )
         except learning_candidate_channels.CandidateChannelStorageError as exc:
             raise RetryableTaskError("Sandbox ledger is temporarily unavailable.") from exc
@@ -486,6 +518,8 @@ def handle_candidate_sandbox_review(
                  "executed": executed_count, "passed": sum(item.get("passed") is True for item in outcomes),
                  "outcomes": outcomes,
                  "interpretation": "Human-attested expected stdout was compared exactly; this is bounded evidence, not universal truth and never promotes the candidate."},
+        task_context=context, expected_task_type=LEARNING_SANDBOX_REVIEW_TASK_TYPE,
+        expected_payload=payload,
     )
     ledger_result = {
         "candidate_id": candidate_id, "content_sha256": actual_hash, "test_plan_sha256": actual_plan_hash,
@@ -502,6 +536,8 @@ def handle_candidate_sandbox_review(
             result=ledger_result,
             error_code="sandbox_test_failed" if terminal_status == "failed" else None,
             attempt_generation=reservation["attempt_generation"],
+            task_context=context, expected_task_type=LEARNING_SANDBOX_REVIEW_TASK_TYPE,
+            expected_payload=payload,
         )
     except learning_candidate_channels.CandidateChannelStorageError as exc:
         raise RetryableTaskError("Sandbox ledger is temporarily unavailable.") from exc
@@ -517,6 +553,8 @@ def handle_candidate_sandbox_review(
                 content_sha256=actual_hash,
                 test_plan_sha256=actual_plan_hash,
                 outcomes=outcomes,
+                task_context=context, expected_task_type=LEARNING_SANDBOX_REVIEW_TASK_TYPE,
+                expected_payload=payload,
             )
         except Exception as exc:
             raise RetryableTaskError("Sandbox failure was recorded, but its learning experience could not be persisted.") from exc

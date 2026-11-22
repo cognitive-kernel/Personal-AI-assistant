@@ -27,9 +27,31 @@ _ALLOWED_ATTEMPT_STATUSES = {
     "completed", "unavailable", "unconfigured", "failed", "no_examples", "sandbox_unconfigured",
 }
 
+def _assert_task_context(
+    connection,
+    task_context: Any | None,
+    expected_task_type: str | None,
+    expected_payload: dict[str, Any] | None,
+) -> None:
+    if task_context is None or (
+        expected_task_type is None and expected_payload is None
+    ):
+        return
+    if expected_task_type is None or expected_payload is None:
+        raise ValueError("Task ownership contract is incomplete for candidate review persistence.")
+    task_context.assert_current(
+        connection,
+        expected_task_type=expected_task_type,
+        expected_payload=expected_payload,
+    )
+
+
 def record_review_attempt(
     candidate_id: int, *, channel: str, status: str,
     provider: str = "", details: dict[str, Any] | None = None,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Persist an outcome for every verification channel, including unavailable ones."""
     if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
@@ -49,6 +71,8 @@ def record_review_attempt(
         raise ValueError("details exceed the storage limit.")
     init_databases()
     with learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        _assert_task_context(conn, task_context, expected_task_type, expected_payload)
         candidate_state = conn.execute(
             """SELECT trust_level, learning_status, supersedes_candidate_id, replaced_by_candidate_id
                FROM temporary_knowledge_candidates WHERE id=?""", (candidate_id,)
@@ -68,7 +92,15 @@ def record_review_attempt(
 
 
 
-def research_candidate_online(candidate_id: int, query: str, *, limit: int = 3) -> dict[str, Any]:
+def research_candidate_online(
+    candidate_id: int,
+    query: str,
+    *,
+    limit: int = 3,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Search and store bounded public-source evidence for a temporary candidate.
 
     Failure to reach the internet is recorded in the returned diagnostics and never
@@ -96,6 +128,8 @@ def research_candidate_online(candidate_id: int, query: str, *, limit: int = 3) 
         record_review_attempt(
             candidate_id, channel="web_research", status="unavailable",
             details={"query": query.strip(), "error_type": type(exc).__name__},
+            task_context=task_context, expected_task_type=expected_task_type,
+            expected_payload=expected_payload,
         )
         return {
             "candidate_id": candidate_id, "query": query.strip(), "stored": 0,
@@ -106,6 +140,8 @@ def research_candidate_online(candidate_id: int, query: str, *, limit: int = 3) 
     review_sources: list[dict[str, str]] = []
     stored_source_digests: dict[str, str] = {}
     with learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        _assert_task_context(conn, task_context, expected_task_type, expected_payload)
         for document in documents:
             url = str(getattr(document, "url", "")).strip()
             title = str(getattr(document, "title", "")).strip()[:500]
@@ -161,6 +197,8 @@ def research_candidate_online(candidate_id: int, query: str, *, limit: int = 3) 
                     if isinstance(url, str) and url in stored_source_digests:
                         classified.setdefault(url, set()).add(verdict)
             with learning_connection() as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                _assert_task_context(conn, task_context, expected_task_type, expected_payload)
                 for url, verdicts in classified.items():
                     if verdicts == {"supported"}:
                         kind = "supporting"
@@ -188,6 +226,8 @@ def research_candidate_online(candidate_id: int, query: str, *, limit: int = 3) 
         candidate_id, channel="web_research", status="completed",
         details={"query": query.strip(), "stored": stored, "found": len(documents),
                  "claim_review": claim_review},
+        task_context=task_context, expected_task_type=expected_task_type,
+        expected_payload=expected_payload,
     )
     return {
         "candidate_id": candidate_id, "query": query.strip(), "stored": stored,
@@ -208,6 +248,9 @@ def record_peer_consultation(
     stance: str = "mixed",
     independence_note: str = "",
     prompt_version: str = PEER_REVIEW_PROMPT_VERSION,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Persist an external AI's answer and provenance without treating it as truth."""
     if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
@@ -239,6 +282,8 @@ def record_peer_consultation(
     digest = hashlib.sha256(response.encode("utf-8")).hexdigest()
     init_databases()
     with learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        _assert_task_context(conn, task_context, expected_task_type, expected_payload)
         if conn.execute(
             "SELECT 1 FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
         ).fetchone() is None:
@@ -331,7 +376,14 @@ class _RejectPeerRedirectHandler(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[str, Any]:
+def consult_configured_peer_ais(
+    candidate_id: int,
+    *,
+    limit: int = 3,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Ask configured OpenAI-compatible peer endpoints to critique a candidate.
 
     Configure PEER_AI_PROVIDERS_JSON as a JSON array of objects containing
@@ -357,6 +409,8 @@ def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[st
         record_review_attempt(
             candidate_id, channel="peer_ai", status="unconfigured",
             details={"consulted": 0, "reason": "PEER_AI_PROVIDERS_JSON_not_set"},
+            task_context=task_context, expected_task_type=expected_task_type,
+            expected_payload=expected_payload,
         )
         return {"candidate_id": candidate_id, "status": "unconfigured", "consulted": 0, "errors": []}
     try:
@@ -492,6 +546,8 @@ def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[st
                 citations=citations[:100],
                 stance=stance,
                 prompt_version=PEER_REVIEW_PROMPT_VERSION,
+                task_context=task_context, expected_task_type=expected_task_type,
+                expected_payload=expected_payload,
                 independence_note=(
                     "Automatically consulted through a configured OpenAI-compatible endpoint. "
                     "Training-data and organizational independence have not been established."
@@ -518,6 +574,8 @@ def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[st
                             f"URL cited by peer provider {provider} was fetched independently. "
                             "Fetch success does not establish that the page supports the cited claim."
                         ),
+                        task_context=task_context, expected_task_type=expected_task_type,
+                        expected_payload=expected_payload,
                     )
                 except Exception:
                     # Keep the peer response but do not treat an unreachable citation as evidence.
@@ -536,6 +594,8 @@ def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[st
             "provider_usage": provider_usage,
             "provider_cost_estimates": provider_cost_estimates,
         },
+        task_context=task_context, expected_task_type=expected_task_type,
+        expected_payload=expected_payload,
     )
     return {
         "candidate_id": candidate_id,
@@ -556,6 +616,9 @@ def record_review_evidence(
     excerpt: str,
     source_title: str = "",
     reliability_note: str = "",
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Store a source excerpt with an explicit, revisable evidence classification."""
     if evidence_kind not in _ALLOWED_EVIDENCE_KINDS:
@@ -571,6 +634,8 @@ def record_review_evidence(
     digest = hashlib.sha256(excerpt.encode("utf-8")).hexdigest()
     init_databases()
     with learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        _assert_task_context(conn, task_context, expected_task_type, expected_payload)
         if conn.execute(
             "SELECT 1 FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
         ).fetchone() is None:

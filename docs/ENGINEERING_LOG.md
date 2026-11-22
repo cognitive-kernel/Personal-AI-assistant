@@ -2280,3 +2280,20 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Review found that a non-empty report containing invalid UTF-8 was classified as an I/O failure, preventing the already validated successful JSONL final message from repairing it.
 - Treat Unicode decoding failure as an invalid temporary report; preserve the existing fail-closed requirements for the final turn and exactly-one completion marker. Filesystem I/O failures still stop recovery.
 - Added a regression using invalid UTF-8 bytes and verifying replacement only from a successful final message with one valid marker. Exact-head CI and target-host acceptance remain required.
+
+
+### 2026-11-22 — Integrate domain task-write fencing from PRs #819 and #821–#826
+
+- Created Draft PR #837 from exact current main 0367a3ebfd92ac196bb096f1a45cbfed5a61985d, combining the Gate-B domain fencing work without reimplementing the queue-level epoch contract merged in #799.
+- Integrated learning/curriculum, factual verification, knowledge lifecycle/graph, cloud discovery, experience/research, and sandbox practical task writes. Parent-aware child creation is validated inside the same SQLite transaction as insertion.
+- Resolved overlapping changes explicitly: #825 parent-task implementations selected for learning.py/learning_tasks.py; #819 stale-epoch regressions retained; #819 curriculum source/path fences combined with #825 child scheduling; identical #823/#825 task-queue patch included once; #824 experience update fence combined with #826 typed sandbox handler; current main handler registrations preserved in app/main.py.
+- Added docs/DOMAIN_TASK_WRITE_FENCING_AUDIT_2026-11-22.fa.md with the transition table, file ownership, test inventory, residual scope and non-destructive constraints.
+- Exact-head CI is pending. No PR has been merged and no source branch or durable user/task/checkpoint data has been deleted.
+
+
+### 2026-11-22 — Exact-head CI passed for domain task-write fencing
+
+- PR #837 head 908e9e3a79b03146a3b560c1d65f7361c1efffab passed Linux (2511 passed, 14 skipped, 69 deselected) and Windows (2509 passed, 16 skipped, 69 deselected) full suites.
+- Windows storage regressions, real Docker sandbox integration, dashboard/browser smoke, CodeQL, Analyze, pip-audit and Ubuntu/macOS/Windows managed bootstrap all passed.
+- The first integration run exposed one outdated test double in tests/test_experience_tasks.py that did not accept the new typed sandbox-handler keyword. The test double was corrected; the exact-head rerun passed. No production-code rollback was needed.
+- PR #837 remains Draft and unmerged. Target-host Windows/ACL, real Ollama/Codex, crash/restart and owner acceptance remain external gates.

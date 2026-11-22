@@ -194,6 +194,9 @@ def record_practical_attempt(
     report: dict[str, Any],
     source_code: str,
     idempotency_key: str | None = None,
+    task_context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Persist a completed sandbox grade once, even if its durable task is retried."""
     if isinstance(job_id, bool) or not isinstance(job_id, int) or job_id < 1:
@@ -277,6 +280,15 @@ def record_practical_attempt(
         }
 
     with learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        if task_context is not None:
+            if expected_task_type is None or expected_payload is None:
+                raise ValueError("Practical sandbox task ownership contract is incomplete.")
+            task_context.assert_current(
+                conn,
+                expected_task_type=expected_task_type,
+                expected_payload=expected_payload,
+            )
         job = conn.execute(
             """SELECT j.status, j.topic, j.path_topic_id, p.curriculum_slug
                FROM learning_jobs AS j

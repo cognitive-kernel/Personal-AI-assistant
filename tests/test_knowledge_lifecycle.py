@@ -5,7 +5,8 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from app import db, learning, knowledge_lifecycle
+from app import db, learning, knowledge_lifecycle, task_manager
+from app.task_worker import TaskContext
 from app.main import app
 
 
@@ -36,6 +37,55 @@ def _candidate(job_id: int, *, status: str = "awaiting_test") -> tuple[int, str]
              digest, json.dumps({"accepted": True}), status, "[]"),
         )
         return int(cursor.lastrowid), digest
+
+
+def test_stale_validation_task_cannot_append_candidate_review(lifecycle_store):
+    job = learning.create_job("Stale lifecycle review")
+    candidate_id, digest = _candidate(job["id"])
+    payload = {"candidate_id": candidate_id, "candidate_sha256": digest}
+    task = task_manager.create_task(
+        "learning.validate_candidate", payload, max_attempts=3
+    )
+    worker_id = "knowledge-lifecycle-worker"
+    claimed = task_manager.claim_next_task(worker_id)
+    assert claimed is not None and claimed["id"] == task["id"]
+    context = TaskContext(
+        task_id=task["id"],
+        worker_id=worker_id,
+        lease_epoch=claimed["lease_epoch"],
+    )
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE task_queue SET lease_expires_at=? WHERE id=?",
+            ("2000-01-01T00:00:00.000000+00:00", task["id"]),
+        )
+    reclaimed = task_manager.claim_next_task(worker_id)
+    assert reclaimed is not None and reclaimed["id"] == task["id"]
+    assert reclaimed["lease_epoch"] > context.lease_epoch
+
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        knowledge_lifecycle.record_candidate_review(
+            candidate_id,
+            candidate_sha256=digest,
+            review_kind="ai_review",
+            verdict="supports",
+            reviewer_id="reviewer-one",
+            model_id="reviewer-model",
+            note="This review note is long enough to pass the required minimum length.",
+            input_sha256="a" * 64,
+            output_sha256="b" * 64,
+            _trusted_adapter=True,
+            task_context=context,
+            expected_task_type="learning.validate_candidate",
+            expected_payload=payload,
+        )
+
+    with db.learning_connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM knowledge_candidate_reviews WHERE candidate_id=?",
+            (candidate_id,),
+        ).fetchone()[0]
+    assert count == 0
 
 
 def test_candidate_readiness_fails_closed_without_evidence(lifecycle_store):

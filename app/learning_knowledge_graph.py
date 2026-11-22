@@ -112,6 +112,8 @@ def review_edge(
     *,
     expected_source_sha256: str,
     context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Live-check evidence and two reviewers, honoring durable task controls between operations."""
     if isinstance(edge_id, bool) or not isinstance(edge_id, int) or edge_id < 1:
@@ -148,12 +150,14 @@ def review_edge(
     normalize = lambda value: re.sub(r"\s+", " ", value).strip()
     if normalize(excerpt) not in normalize(str(document.text)):
         _task_checkpoint(context, "graph_edge_review_store", edge_id, status="proposed")
-        return _store_edge_review(edge_id, expected_source_sha256, "proposed", {
+        return _store_edge_review(
+            edge_id, expected_source_sha256, "proposed", {
             "status": "inconclusive",
             "reason": "The stored excerpt is no longer present on the live source page.",
             "source_live_sha256": hashlib.sha256(str(document.text).encode("utf-8")).hexdigest(),
             "reviews": [],
-        })
+        }, context=context, expected_task_type=expected_task_type,
+            expected_payload=expected_payload)
 
     _task_checkpoint(context, "graph_edge_reviewer_discovery", edge_id)
     settings = get_settings()
@@ -165,11 +169,13 @@ def review_edge(
     _task_checkpoint(context, "graph_edge_reviewers_ready", edge_id, reviewer_count=len(reviewers))
     if len(reviewers) < 2:
         _task_checkpoint(context, "graph_edge_review_store", edge_id, status="proposed")
-        return _store_edge_review(edge_id, expected_source_sha256, "proposed", {
+        return _store_edge_review(
+            edge_id, expected_source_sha256, "proposed", {
             "status": "inconclusive",
             "reason": "Two attributable, digest-distinct reviewers are not available; no graph edge was accepted or rejected.",
             "reviews": [],
-        })
+        }, context=context, expected_task_type=expected_task_type,
+            expected_payload=expected_payload)
 
     prompt_base = {
         "task": "Adjudicate one proposed relation between two retained knowledge items.",
@@ -257,11 +263,35 @@ def review_edge(
         "policy_version": "learning-knowledge-graph-review-v1",
     }
     _task_checkpoint(context, "graph_edge_review_store", edge_id, status=status)
-    return _store_edge_review(edge_id, expected_source_sha256, status, report)
+    return _store_edge_review(
+        edge_id, expected_source_sha256, status, report,
+        context=context, expected_task_type=expected_task_type,
+        expected_payload=expected_payload,
+    )
 
 
-def _store_edge_review(edge_id: int, source_hash: str, status: str, report: dict[str, Any]) -> dict[str, Any]:
+def _store_edge_review(
+    edge_id: int,
+    source_hash: str,
+    status: str,
+    report: dict[str, Any],
+    *,
+    context: Any | None = None,
+    expected_task_type: str | None = None,
+    expected_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     with learning_connection() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        if context is not None and (
+            expected_task_type is not None or expected_payload is not None
+        ):
+            if expected_task_type is None or expected_payload is None:
+                raise ValueError("Task ownership contract is incomplete for graph review persistence.")
+            context.assert_current(
+                connection,
+                expected_task_type=expected_task_type,
+                expected_payload=expected_payload,
+            )
         connection.execute(
             """UPDATE learning_knowledge_graph_edges
                SET status=?, review_json=?, reviewed_at=CURRENT_TIMESTAMP

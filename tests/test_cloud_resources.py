@@ -9,6 +9,7 @@ import pytest
 
 from app import cloud_resources, db, task_manager, web_sources
 from app.cloud_resources import CloudResourceError
+from app.task_worker import TaskContext, TaskInterrupted
 from app.schema_migrations import MigrationRunner
 from app.schema_registry import CLOUD_RESOURCE_MIGRATIONS, initialize_database_file
 
@@ -257,7 +258,7 @@ def test_cloud_resource_store_uses_its_own_versioned_database(tmp_path, monkeypa
         } <= tables
         assert connection.execute(
             "SELECT MAX(version) FROM schema_migrations"
-        ).fetchone()[0] == 7
+        ).fetchone()[0] == 8
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
@@ -729,6 +730,79 @@ def test_discovery_records_safe_provider_codes_without_raw_error_messages(tmp_pa
 
 
 
+def test_stale_cloud_discovery_task_cannot_upsert_candidates(tmp_path, monkeypatch):
+    _configure_paths(tmp_path, monkeypatch)
+    payload = {"trigger": "manual"}
+    task = task_manager.create_task(
+        cloud_resources.CLOUD_DISCOVERY_TASK_TYPE, payload, max_attempts=3
+    )
+    worker_id = "cloud-discovery-worker"
+    claimed = task_manager.claim_next_task(worker_id)
+    assert claimed is not None and claimed["id"] == task["id"]
+    context = TaskContext(
+        task_id=task["id"],
+        worker_id=worker_id,
+        lease_epoch=claimed["lease_epoch"],
+    )
+    query_count = 0
+    reclaimed = False
+
+    def discover(_query, *, limit):
+        nonlocal query_count, reclaimed
+        query_count += 1
+        if query_count == len(cloud_resources.DISCOVERY_QUERIES):
+            with db.learning_connection() as connection:
+                connection.execute(
+                    "UPDATE task_queue SET lease_expires_at=? WHERE id=?",
+                    ("2000-01-01T00:00:00.000000+00:00", task["id"]),
+                )
+            new_claim = task_manager.claim_next_task(worker_id)
+            assert new_claim is not None and new_claim["id"] == task["id"]
+            assert new_claim["lease_epoch"] > context.lease_epoch
+            reclaimed = True
+        return [_document()]
+
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        cloud_resources.discover_resources(
+            discover_fn=discover,
+            checkpoint=context.checkpoint,
+            task_context=context,
+            expected_task_type=cloud_resources.CLOUD_DISCOVERY_TASK_TYPE,
+            expected_payload=payload,
+        )
+
+    with cloud_resources._connect() as connection:
+        candidate_count = connection.execute(
+            "SELECT COUNT(*) FROM cloud_resource_candidates"
+        ).fetchone()[0]
+    assert reclaimed is True
+    assert candidate_count == 0
+    latest = cloud_resources.latest_discovery_run()
+    assert latest is not None
+    assert latest["status"] == "failed"
+    assert latest["error_summary"] == "discovery_abandoned:task_lease_lost"
+
+
+def test_direct_discovery_interruption_settles_run_without_task_context(
+    tmp_path, monkeypatch
+):
+    _configure_paths(tmp_path, monkeypatch)
+
+    def interrupt(_checkpoint):
+        raise TaskInterrupted("direct discovery cancelled")
+
+    with pytest.raises(TaskInterrupted, match="direct discovery cancelled"):
+        cloud_resources.discover_resources(
+            discover_fn=lambda _query, *, limit: [],
+            checkpoint=interrupt,
+        )
+
+    latest = cloud_resources.latest_discovery_run()
+    assert latest is not None
+    assert latest["status"] == "failed"
+    assert latest["error_summary"] == "discovery_interrupted"
+
+
 def test_daily_discovery_enqueue_is_idempotent(tmp_path, monkeypatch):
     _configure_paths(tmp_path, monkeypatch)
 
@@ -757,26 +831,43 @@ def test_daily_discovery_recovers_a_pre_run_cancelled_task(tmp_path, monkeypatch
 
 def test_discovery_handler_schedules_next_daily_pass(tmp_path, monkeypatch):
     _configure_paths(tmp_path, monkeypatch)
+    captured = {}
     monkeypatch.setattr(
         cloud_resources,
         "discover_resources",
-        lambda checkpoint=None: {
-            "run_id": 1,
-            "status": "completed",
-            "queries_attempted": 3,
-            "sources_seen": 2,
-            "candidates_upserted": 2,
-            "error_summary": None,
-        },
+        lambda checkpoint=None, task_context=None, expected_task_type=None, expected_payload=None: (
+            captured.update({
+                "checkpoint": checkpoint,
+                "task_context": task_context,
+                "task_type": expected_task_type,
+                "payload": expected_payload,
+            })
+            or {
+                "run_id": 1,
+                "status": "completed",
+                "queries_attempted": 3,
+                "sources_seen": 2,
+                "candidates_upserted": 2,
+                "error_summary": None,
+            }
+        ),
     )
 
     class Context:
         def checkpoint(self, data):
             return data
 
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            assert expected_task_type == cloud_resources.CLOUD_DISCOVERY_TASK_TYPE
+            assert expected_payload == {"trigger": "manual"}
+
     result = cloud_resources.handle_discovery_task(
         {"trigger": "manual"}, None, Context()
     )
+    assert captured["checkpoint"] is not None
+    assert captured["task_context"] is not None
+    assert captured["task_type"] == cloud_resources.CLOUD_DISCOVERY_TASK_TYPE
+    assert captured["payload"] == {"trigger": "manual"}
     next_task = task_manager.get_task(result["next_scheduled_task_id"])
     assert next_task["task_type"] == cloud_resources.CLOUD_DISCOVERY_TASK_TYPE
     assert next_task["status"] == "queued"
@@ -784,10 +875,173 @@ def test_discovery_handler_schedules_next_daily_pass(tmp_path, monkeypatch):
     assert datetime.fromisoformat(result["next_scheduled_at"]).tzinfo is not None
 
 
+def test_discovery_handler_does_not_schedule_after_lease_reclaim(tmp_path, monkeypatch):
+    _configure_paths(tmp_path, monkeypatch)
+    payload = {"trigger": "manual"}
+    task = task_manager.create_task(
+        cloud_resources.CLOUD_DISCOVERY_TASK_TYPE, payload, max_attempts=3
+    )
+    worker_id = "cloud-discovery-handler-worker"
+    claimed = task_manager.claim_next_task(worker_id)
+    assert claimed is not None and claimed["id"] == task["id"]
+    context = TaskContext(
+        task_id=task["id"],
+        worker_id=worker_id,
+        lease_epoch=claimed["lease_epoch"],
+    )
+
+    def lose_lease(**_kwargs):
+        with db.learning_connection() as connection:
+            connection.execute(
+                "UPDATE task_queue SET lease_expires_at=? WHERE id=?",
+                ("2000-01-01T00:00:00.000000+00:00", task["id"]),
+            )
+        reclaimed = task_manager.claim_next_task(worker_id)
+        assert reclaimed is not None and reclaimed["lease_epoch"] > context.lease_epoch
+        return {
+            "run_id": 1, "status": "completed", "queries_attempted": 1,
+            "sources_seen": 1, "candidates_upserted": 1, "error_summary": None,
+        }
+
+    monkeypatch.setattr(cloud_resources, "discover_resources", lose_lease)
+    with pytest.raises(task_manager.TaskManagerError, match="epoch is stale"):
+        cloud_resources.handle_discovery_task(payload, None, context)
+
+    with db.learning_connection() as connection:
+        scheduled = connection.execute(
+            "SELECT COUNT(*) FROM task_queue WHERE task_type=? AND dedupe_key LIKE 'cloud-discovery:%'",
+            (cloud_resources.CLOUD_DISCOVERY_TASK_TYPE,),
+        ).fetchone()[0]
+    assert scheduled == 0
+
+
+def test_discovery_handler_keeps_daily_chain_after_cooperative_pause(tmp_path, monkeypatch):
+    _configure_paths(tmp_path, monkeypatch)
+    payload = {"trigger": "manual"}
+    task = task_manager.create_task(
+        cloud_resources.CLOUD_DISCOVERY_TASK_TYPE, payload, max_attempts=3
+    )
+    worker_id = "cloud-discovery-pause-worker"
+    claimed = task_manager.claim_next_task(worker_id)
+    assert claimed is not None and claimed["id"] == task["id"]
+    context = TaskContext(
+        task_id=task["id"],
+        worker_id=worker_id,
+        lease_epoch=claimed["lease_epoch"],
+    )
+    query_count = 0
+
+    def discover_and_pause(_query, *, limit):
+        nonlocal query_count
+        query_count += 1
+        if query_count == len(cloud_resources.DISCOVERY_QUERIES):
+            task_manager.request_pause(task["id"])
+        return [_document()]
+
+    monkeypatch.setattr(web_sources, "discover_sources", discover_and_pause)
+    with pytest.raises(TaskInterrupted):
+        cloud_resources.handle_discovery_task(payload, None, context)
+
+    saved = task_manager.get_task(task["id"])
+    assert saved["status"] == "paused"
+    abandoned = cloud_resources.latest_discovery_run()
+    assert abandoned is not None
+    assert abandoned["status"] == "failed"
+    assert abandoned["error_summary"] == "discovery_abandoned:task_lease_lost"
+    with db.learning_connection() as connection:
+        scheduled = connection.execute(
+            "SELECT COUNT(*) FROM task_queue WHERE task_type=? AND dedupe_key LIKE 'cloud-discovery:%'",
+            (cloud_resources.CLOUD_DISCOVERY_TASK_TYPE,),
+        ).fetchone()[0]
+    assert scheduled == 1
+
+
+def test_final_run_update_pause_is_settled_after_candidate_commit(tmp_path, monkeypatch):
+    _configure_paths(tmp_path, monkeypatch)
+    payload = {"trigger": "manual"}
+    task = task_manager.create_task(
+        cloud_resources.CLOUD_DISCOVERY_TASK_TYPE, payload, max_attempts=3
+    )
+    worker_id = "cloud-discovery-finalize-pause-worker"
+    claimed = task_manager.claim_next_task(worker_id)
+    assert claimed is not None and claimed["id"] == task["id"]
+    context = TaskContext(
+        task_id=task["id"],
+        worker_id=worker_id,
+        lease_epoch=claimed["lease_epoch"],
+    )
+    original_update_run = cloud_resources._update_run
+
+    def pause_after_candidate_commit(run_id, **kwargs):
+        # This wrapper runs only at finalization, after the candidate transaction.
+        assert cloud_resources.list_candidates()
+        task_manager.request_pause(task["id"])
+        return original_update_run(run_id, **kwargs)
+
+    scheduled = []
+
+    def schedule_next_daily_run(*, task_context=None):
+        scheduled.append(task_context)
+
+    monkeypatch.setattr(web_sources, "discover_sources", lambda _query, limit=5: [_document()])
+    monkeypatch.setattr(cloud_resources, "_update_run", pause_after_candidate_commit)
+    monkeypatch.setattr(cloud_resources, "_schedule_next_daily_run", schedule_next_daily_run)
+
+    with pytest.raises(TaskInterrupted):
+        cloud_resources.handle_discovery_task(payload, None, context)
+
+    saved = task_manager.get_task(task["id"])
+    assert saved["status"] == "paused"
+    run = cloud_resources.latest_discovery_run()
+    assert run is not None
+    assert run["status"] == "failed"
+    assert run["error_summary"] == "discovery_abandoned:task_lease_lost"
+    assert len(scheduled) == 1
+
+
+def test_discovery_handler_keeps_daily_chain_when_pause_races_with_child_insert(
+    tmp_path, monkeypatch
+):
+    _configure_paths(tmp_path, monkeypatch)
+    payload = {"trigger": "manual"}
+    task = task_manager.create_task(
+        cloud_resources.CLOUD_DISCOVERY_TASK_TYPE, payload, max_attempts=3
+    )
+    worker_id = "cloud-discovery-schedule-pause-worker"
+    claimed = task_manager.claim_next_task(worker_id)
+    assert claimed is not None and claimed["id"] == task["id"]
+    context = TaskContext(
+        task_id=task["id"],
+        worker_id=worker_id,
+        lease_epoch=claimed["lease_epoch"],
+    )
+
+    def pause_before_child_insert(**_kwargs):
+        task_manager.request_pause(task["id"])
+        return {
+            "run_id": 1, "status": "completed", "queries_attempted": 5,
+            "sources_seen": 5, "candidates_upserted": 1, "error_summary": None,
+        }
+
+    monkeypatch.setattr(
+        cloud_resources, "discover_resources", pause_before_child_insert
+    )
+    with pytest.raises(TaskInterrupted):
+        cloud_resources.handle_discovery_task(payload, None, context)
+
+    assert task_manager.get_task(task["id"])["status"] == "paused"
+    with db.learning_connection() as connection:
+        scheduled = connection.execute(
+            "SELECT COUNT(*) FROM task_queue WHERE task_type=? AND dedupe_key LIKE 'cloud-discovery:%'",
+            (cloud_resources.CLOUD_DISCOVERY_TASK_TYPE,),
+        ).fetchone()[0]
+    assert scheduled == 1
+
+
 def test_cloud_discovery_migrations_can_initialize_a_fresh_database():
     with sqlite3.connect(":memory:") as connection:
         from app.schema_migrations import MigrationRunner
-        assert MigrationRunner(CLOUD_RESOURCE_MIGRATIONS).apply(connection) == 7
+        assert MigrationRunner(CLOUD_RESOURCE_MIGRATIONS).apply(connection) == 8
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
@@ -886,7 +1140,7 @@ def test_cloud_resource_v1_upgrade_invalidates_legacy_approval(tmp_path):
         )
         connection.commit()
 
-    assert initialize_database_file(path, CLOUD_RESOURCE_MIGRATIONS) == 7
+    assert initialize_database_file(path, CLOUD_RESOURCE_MIGRATIONS) == 8
     with sqlite3.connect(path) as connection:
         row = connection.execute(
             """SELECT review_status, availability_status, quota_json, terms_url,
