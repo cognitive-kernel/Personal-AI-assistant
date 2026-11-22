@@ -45,6 +45,9 @@ def test_main_blocks_admission_rejection_without_dispatch(monkeypatch):
         def __init__(self, repository, token):
             pass
 
+        def lifecycle_settings(self):
+            return {"mode": "continuous", "enabled": True, "paused": False}
+
         def jobs(self, run_id):
             return _failed_admission_jobs()
 
@@ -70,6 +73,9 @@ def test_main_does_not_dispatch_for_a_preflight_failure(monkeypatch):
     class FakeClient:
         def __init__(self, repository, token):
             pass
+
+        def lifecycle_settings(self):
+            return {"mode": "continuous", "enabled": True, "paused": False}
 
         def jobs(self, run_id):
             return [
@@ -104,6 +110,9 @@ def test_main_opens_breaker_as_a_failed_recovery_result(monkeypatch):
         def __init__(self, repository, token):
             pass
 
+        def lifecycle_settings(self):
+            return {"mode": "continuous", "enabled": True, "paused": False}
+
         def jobs(self, run_id):
             return _failed_execution_jobs()
 
@@ -130,6 +139,9 @@ def test_main_dispatches_only_an_empty_recovery_task_below_threshold(monkeypatch
         def __init__(self, repository, token):
             pass
 
+        def lifecycle_settings(self):
+            return {"mode": "continuous", "enabled": True, "paused": False}
+
         def jobs(self, run_id):
             return _failed_execution_jobs()
 
@@ -154,17 +166,83 @@ def test_main_dispatches_only_an_empty_recovery_task_below_threshold(monkeypatch
     ]
 
 
-def test_main_honors_scheduled_mode_and_durable_pause_before_api_access(monkeypatch):
+def test_main_honors_live_scheduled_mode_pause_and_finished_state_before_job_fetch(monkeypatch):
     _configure_environment(monkeypatch)
-    monkeypatch.setenv("EXECUTION_MODE", "scheduled")
-    monkeypatch.setattr(recovery, "GitHubActionsClient", lambda *args: (_ for _ in ()).throw(AssertionError("API must not be called")))
+    states = [
+        {"mode": "scheduled", "enabled": True, "paused": False},
+        {"mode": "continuous", "enabled": True, "paused": True},
+        {"mode": "continuous", "enabled": False, "paused": False},
+    ]
+
+    class FakeClient:
+        def __init__(self, repository, token):
+            pass
+
+        def lifecycle_settings(self):
+            return states.pop(0)
+
+        def jobs(self, run_id):
+            raise AssertionError("A disabled, paused, or scheduled module must not inspect or dispatch a failed run.")
+
+    monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
     monkeypatch.setattr(recovery, "report", lambda *args, **kwargs: None)
 
     assert recovery.main() == 0
-
-    monkeypatch.setenv("EXECUTION_MODE", "continuous")
-    monkeypatch.setenv("PAUSED", "true")
     assert recovery.main() == 0
+    assert recovery.main() == 0
+
+
+
+def test_lifecycle_settings_reads_current_repository_variables_and_defaults_enabled():
+    client = recovery.GitHubActionsClient.__new__(recovery.GitHubActionsClient)
+    calls = []
+
+    def fake_request(method, path, payload=None):
+        calls.append((method, path, payload))
+        return {"variables": [
+            {"name": "AUTONOMOUS_ENGINEERING_MODE", "value": "continuous"},
+            {"name": "AUTONOMOUS_ENGINEERING_PAUSED", "value": "false"},
+        ]}
+
+    client.request = fake_request
+    assert client.lifecycle_settings() == {
+        "mode": "continuous", "enabled": True, "paused": False
+    }
+    assert calls == [("GET", "/actions/variables?per_page=100", None)]
+
+
+def test_main_suppresses_recovery_if_finish_or_pause_happens_during_backoff(monkeypatch):
+    _configure_environment(monkeypatch)
+    calls = []
+    reports = []
+    states = [
+        {"mode": "continuous", "enabled": True, "paused": False},
+        {"mode": "continuous", "enabled": False, "paused": False},
+    ]
+
+    class FakeClient:
+        def __init__(self, repository, token):
+            pass
+
+        def lifecycle_settings(self):
+            return states.pop(0)
+
+        def jobs(self, run_id):
+            return _failed_execution_jobs()
+
+        def retryable_failure_streak(self, run_id, jobs):
+            return 1
+
+        def request(self, *args, **kwargs):
+            calls.append((args, kwargs))
+
+    monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
+    monkeypatch.setattr(recovery.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(recovery, "report", lambda *args, **kwargs: reports.append((args, kwargs)))
+
+    assert recovery.main() == 0
+    assert calls == []
+    assert reports[-1][0][0] == "Recovery suppressed"
 
 
 def test_history_counter_uses_job_contracts_and_ignores_admission_failures():
@@ -224,6 +302,9 @@ def test_current_admission_rejection_does_not_hide_an_already_open_breaker(monke
         def __init__(self, repository, token):
             pass
 
+        def lifecycle_settings(self):
+            return {"mode": "continuous", "enabled": True, "paused": False}
+
         def jobs(self, run_id):
             return _failed_admission_jobs()
 
@@ -268,6 +349,9 @@ def test_main_does_not_dispatch_for_a_superseded_recovery_event(monkeypatch):
         def __init__(self, repository, token):
             pass
 
+        def lifecycle_settings(self):
+            return {"mode": "continuous", "enabled": True, "paused": False}
+
         def jobs(self, run_id):
             return _failed_execution_jobs()
 
@@ -292,6 +376,9 @@ def test_main_rechecks_ownership_after_backoff_before_dispatch(monkeypatch):
     class FakeClient:
         def __init__(self, repository, token):
             self.checks = 0
+
+        def lifecycle_settings(self):
+            return {"mode": "continuous", "enabled": True, "paused": False}
 
         def jobs(self, run_id):
             return _failed_execution_jobs()
