@@ -1678,6 +1678,8 @@ def test_persist_run_diagnostic_appends_redacted_report_details(
     correlation_id = "c" * 32
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CORRELATION_ID", correlation_id)
     monkeypatch.setenv("GITHUB_JOB", "codex")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_JOB_ID", "987654321")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_STEP_ID", "autonomous-engineering-cycle")
 
     assert cycle.persist_run_diagnostic(
         "12345", "1", task=1, attempt=2,
@@ -1697,6 +1699,8 @@ def test_persist_run_diagnostic_appends_redacted_report_details(
     assert saved["correlation_id"] == correlation_id
     assert saved["diagnostics"][0]["correlation_id"] == correlation_id
     assert saved["diagnostics"][0]["job"] == "codex"
+    assert saved["diagnostics"][0]["job_id"] == 987654321
+    assert saved["diagnostics"][0]["step_id"] == "autonomous-engineering-cycle"
     assert len(saved["diagnostics"]) == 1
     detail = saved["diagnostics"][0]["detail"]
     assert "sandbox policy rejected" in detail
