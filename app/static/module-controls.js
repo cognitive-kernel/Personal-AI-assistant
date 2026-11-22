@@ -19,7 +19,7 @@
     finished_pending: "پایان کار فعال؛ صف محفوظ"
   };
   const actions = [
-    { id: "start", label: "شروع", title: "فعال‌سازی دریافت وظایف جدید؛ کارهای مکث‌شده جداگانه ادامه داده نمی‌شوند." },
+    { id: "start", label: "شروع", title: "فعال‌سازی پردازش وظایف صف‌شده و جدید؛ کارهای مکث‌شده جداگانه ادامه داده نمی‌شوند." },
     { id: "pause", label: "مکث", title: "توقف در نقطهٔ امن و حفظ checkpoint وظایف فعال." },
     { id: "resume", label: "ادامه", title: "فعال‌سازی ماژول و بازگرداندن وظایف مکث‌شده به صف." },
     { id: "finish", label: "پایان تدریجی", title: "اجازهٔ اتمام کارهای فعال و جلوگیری از شروع کار جدید." },
@@ -67,7 +67,10 @@
       button.disabled = busyModules.has(module.id) ||
         (action.id === "start" && stateValue === "running") ||
         (action.id === "pause" && stateValue !== "running") ||
-        (action.id === "resume" && stateValue === "running") ||
+        (action.id === "resume" &&
+          !["paused", "draining"].includes(stateValue) &&
+          Number(counts.paused || 0) === 0 &&
+          Number(counts.pause_requested || 0) === 0) ||
         (action.id === "finish" && stateValue !== "running") ||
         (action.id === "force_stop" && stateValue === "stopped" && active === 0 && pending === 0);
       button.addEventListener("click", () => void performAction(module, action.id));
