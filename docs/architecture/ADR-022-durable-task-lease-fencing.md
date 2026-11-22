@@ -51,3 +51,15 @@ Target-host Windows service/ACL, long-running soak, and actual crash/restart che
 ## Residual scope
 
 This ADR establishes queue-level fencing. Domain transactions that mutate learning jobs, method attempts, or quality gates must additionally validate the exact task type and payload authority inside their own database transaction. That integration is a separate required acceptance item; this ADR does not claim that every domain write is already fenced.
+
+
+## 2026-11-22 addendum — Domain transaction fencing
+
+The queue-level lease contract above is the baseline, not proof that domain records are automatically protected. Draft PR #837 applies the second layer to task-owned domain mutations:
+
+- Each domain adapter validates the exact task type and payload through the current TaskContext inside the same BEGIN IMMEDIATE transaction as its write.
+- Parent-to-child queue insertion validates the parent lease in task_queue_store.create_task before inserting the child.
+- Covered domains in the integration branch: learning jobs/evidence/budgets/escalations, researched curriculum source/path persistence and child lessons, factual verification, knowledge lifecycle/graph, cloud discovery candidates/run state, experience/research records, and sandbox practical assessment.
+- A stale/reclaimed owner is rejected before the domain mutation. Existing queue completion, pause/cancel, retry and checkpoint semantics remain owned by the #799 task manager/TaskContext implementation.
+
+The exact source-file map and state-transition table are in docs/DOMAIN_TASK_WRITE_FENCING_AUDIT_2026-11-22.fa.md. This addendum remains proposed until exact-head CI passes and the target-host Windows/Runner and crash/restart gates are accepted. It does not claim that all domain writes across the repository have been audited.
