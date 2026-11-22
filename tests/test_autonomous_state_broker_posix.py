@@ -344,3 +344,104 @@ def test_posix_broker_reports_empty_checkpoint_when_current_progress_is_absent(p
     assert pending["available"] is True
     assert pending["blocked"] is False
     assert pending["checkpoint"] == {"available": False, "verified": True}
+
+
+def _write_pending_task_fixture(state_dir: Path, task: str = "preserve this task"):
+    import hashlib
+
+    task_bytes = task.encode("utf-8")
+    (state_dir / "pending-manual-task.txt").write_bytes(task_bytes)
+    owner = {
+        "schema_version": 1,
+        "task_sha256": hashlib.sha256(task_bytes).hexdigest(),
+        "submitted_run_id": "12345",
+        "submitted_attempt": 1,
+        "owner_run_id": "12345",
+        "owner_attempt": 1,
+        "created_at": 1763500000.0,
+        "claimed_at": 1763500000.0,
+        "claim_count": 1,
+        "source": "manual_dispatch",
+    }
+    owner_raw = json.dumps(owner, sort_keys=True).encode("utf-8")
+    (state_dir / "pending-manual-task-owner.json").write_bytes(owner_raw)
+
+
+def test_posix_broker_fails_closed_when_owner_metadata_has_no_task(posix_broker):
+    state_dir, _socket_path, broker = posix_broker
+    (state_dir / "pending-manual-task-owner.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(broker.StateBrokerConflict) as conflict:
+        broker.request("GET", "/v1/tasks/pending")
+    assert "owner_metadata_without_task" in conflict.value.blockers
+    assert (state_dir / "pending-manual-task-owner.json").exists()
+
+
+def test_posix_broker_pending_task_archive_restore_preserves_bytes(posix_broker):
+    state_dir, _socket_path, broker = posix_broker
+    _write_pending_task_fixture(state_dir)
+    task_bytes = (state_dir / "pending-manual-task.txt").read_bytes()
+    owner_bytes = (state_dir / "pending-manual-task-owner.json").read_bytes()
+
+    pending = broker.request("GET", "/v1/tasks/pending")
+    assert pending["available"] is True
+    assert len(pending["tasks"]) == 1
+    item = pending["tasks"][0]
+    assert item["status"] == "pending"
+    assert "preserve this task" not in repr(pending)
+    assert str(state_dir) not in repr(pending)
+
+    archived = broker.request(
+        "POST", "/v1/tasks/archive",
+        body={"task_id": item["task_id"], "revision": item["revision"]},
+    )
+    assert archived == {"task_id": item["task_id"], "status": "archived", "preserved": True}
+    assert not (state_dir / "pending-manual-task.txt").exists()
+    assert not (state_dir / "pending-manual-task-owner.json").exists()
+
+    archive_listing = broker.request("GET", "/v1/tasks/archived")
+    saved = archive_listing["tasks"][0]
+    assert saved["task_id"] == item["task_id"]
+    assert saved["status"] == "archived"
+    assert saved["source"] == "manual_dispatch"
+    package = state_dir / "archived-pending-tasks" / item["task_id"]
+    assert (package / "task.txt").read_bytes() == task_bytes
+    assert (package / "owner.json").read_bytes() == owner_bytes
+
+    restored = broker.request(
+        "POST", "/v1/tasks/restore",
+        body={"task_id": saved["task_id"], "revision": saved["revision"]},
+    )
+    assert restored == {"task_id": item["task_id"], "status": "restored", "preserved": True}
+    assert (state_dir / "pending-manual-task.txt").read_bytes() == task_bytes
+    assert (state_dir / "pending-manual-task-owner.json").read_bytes() == owner_bytes
+    assert broker.request("GET", "/v1/tasks/archived")["tasks"][0]["status"] == "restored"
+
+
+def test_posix_broker_task_archive_rejects_stale_revision_and_active_execution(posix_broker):
+    state_dir, _socket_path, broker = posix_broker
+    _write_pending_task_fixture(state_dir)
+    item = broker.request("GET", "/v1/tasks/pending")["tasks"][0]
+
+    with pytest.raises(broker.StateBrokerConflict, match="revision is stale"):
+        broker.request(
+            "POST", "/v1/tasks/archive",
+            body={"task_id": item["task_id"], "revision": "0" * 64},
+        )
+    assert (state_dir / "pending-manual-task.txt").exists()
+
+    lock_path = state_dir / "repository-execution.lock"
+    lock_path.write_bytes(b"0")
+    import fcntl
+    with lock_path.open("r+b") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            with pytest.raises(broker.StateBrokerConflict) as conflict:
+                broker.request(
+                    "POST", "/v1/tasks/archive",
+                    body={"task_id": item["task_id"], "revision": item["revision"]},
+                )
+            assert "repository_execution_active" in conflict.value.blockers
+            assert (state_dir / "pending-manual-task.txt").exists()
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)

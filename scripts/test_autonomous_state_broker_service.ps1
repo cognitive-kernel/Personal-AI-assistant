@@ -1,15 +1,49 @@
 $ErrorActionPreference = "Stop"
 
 $serviceName = "PersonalAIAssistantStateBroker"
-$serviceSource = Join-Path $env:RUNNER_TEMP "AutonomousStateBrokerService.exe"
+$testTempRoot = if (-not [String]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
+    $env:RUNNER_TEMP
+} elseif (-not [String]::IsNullOrWhiteSpace($env:TEMP)) {
+    Join-Path $env:TEMP "PersonalAIAssistant-StateBrokerTest"
+} else {
+    Join-Path ([IO.Path]::GetTempPath()) "PersonalAIAssistant-StateBrokerTest"
+}
+New-Item -ItemType Directory -Path $testTempRoot -Force | Out-Null
+$serviceSource = Join-Path $testTempRoot "AutonomousStateBrokerService.exe"
 if (-not (Test-Path -LiteralPath $serviceSource -PathType Leaf)) {
-    throw "The compiled Windows state broker executable is missing."
+    $frameworkCandidates = @(
+        (Join-Path $env:WINDIR "Microsoft.NET\\Framework64\\v4.0.30319"),
+        (Join-Path $env:WINDIR "Microsoft.NET\\Framework\\v4.0.30319")
+    )
+    $frameworkRoot = $frameworkCandidates | Where-Object {
+        Test-Path -LiteralPath (Join-Path $_ "csc.exe") -PathType Leaf
+    } | Select-Object -First 1
+    if (-not $frameworkRoot) {
+        throw "The compiled Windows state broker executable is missing and the .NET Framework C# compiler was not found."
+    }
+    $source = Join-Path $PSScriptRoot "AutonomousStateBrokerService.cs"
+    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+        throw "Windows state broker source was not found: $source"
+    }
+    $references = @("System.Core.dll", "System.ServiceProcess.dll", "System.Web.Extensions.dll")
+    $pipeAccess = Join-Path $frameworkRoot "System.IO.Pipes.AccessControl.dll"
+    if (Test-Path -LiteralPath $pipeAccess) { $references += "System.IO.Pipes.AccessControl.dll" }
+    $arguments = @("/nologo", "/target:exe", "/out:$serviceSource")
+    foreach ($reference in $references) {
+        $arguments += "/reference:" + (Join-Path $frameworkRoot $reference)
+    }
+    $arguments += $source
+    & (Join-Path $frameworkRoot "csc.exe") @arguments
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $serviceSource -PathType Leaf)) {
+        throw "Windows state broker did not compile."
+    }
 }
 
 $serviceRoot = Join-Path $env:ProgramData "PersonalAIAssistant\StateBroker-CI"
 $serviceExe = Join-Path $serviceRoot "PersonalAIAssistant.StateBroker.exe"
 $stateRoot = Join-Path $env:ProgramData ("PersonalAIAssistant\Broker-CI-" + [guid]::NewGuid().ToString("N"))
 $oldMachineStatePath = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")
+$oldProcessStatePath = $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR
 $oldDiagnosticsSetting = [Environment]::GetEnvironmentVariable("AUTONOMOUS_STATE_BROKER_DIAGNOSTICS", "Machine")
 $currentSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $brokerSid = "S-1-5-19"
@@ -31,6 +65,7 @@ try {
     & icacls.exe $serviceRoot /grant:r "*$($brokerSid):(OI)(CI)RX" /T /C /Q | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Could not grant LocalService read/execute access to the test service binary." }
     [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", $stateRoot, "Machine")
+    $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR = $stateRoot
     [Environment]::SetEnvironmentVariable("AUTONOMOUS_STATE_BROKER_DIAGNOSTICS", "1", "Machine")
 
     $current = @{
@@ -286,9 +321,14 @@ from pathlib import Path
 os.environ["AUTONOMOUS_ENGINEERING_PROGRESS_DIR"] = sys.argv[2]
 sys.path.insert(0, sys.argv[3])
 from scripts.autonomous_engineering_execution_lock import repository_execution_lock
-with repository_execution_lock("broker-lock-ci", "1"):
-    Path(sys.argv[1]).write_text("locked", encoding="utf-8")
-    time.sleep(3)
+try:
+    with repository_execution_lock("broker-lock-ci", "1"):
+        Path(sys.argv[1]).write_text("locked", encoding="utf-8")
+        time.sleep(3)
+    Path(sys.argv[4]).write_text("0", encoding="ascii")
+except BaseException as exc:
+    Path(sys.argv[4]).write_text("1:" + repr(exc), encoding="utf-8")
+    raise
 '@
     [System.IO.File]::WriteAllText(
         $repositoryLockScriptPath,
@@ -297,9 +337,12 @@ with repository_execution_lock("broker-lock-ci", "1"):
     )
     $repoRoot = Split-Path -Parent $PSScriptRoot
     $pythonPath = (Get-Command python -ErrorAction Stop).Source
+    $lockStdoutPath = Join-Path $env:TEMP ("broker-repository-lock-stdout-" + [guid]::NewGuid().ToString("N") + ".txt")
+    $lockStderrPath = Join-Path $env:TEMP ("broker-repository-lock-stderr-" + [guid]::NewGuid().ToString("N") + ".txt")
+    $lockExitStatusPath = Join-Path $env:TEMP ("broker-repository-lock-exit-" + [guid]::NewGuid().ToString("N") + ".txt")
     $lockProcess = Start-Process -FilePath $pythonPath -ArgumentList @(
-        $repositoryLockScriptPath, $repositoryLockReadyPath, $stateRoot, $repoRoot
-    ) -PassThru -NoNewWindow
+        $repositoryLockScriptPath, $repositoryLockReadyPath, $stateRoot, $repoRoot, $lockExitStatusPath
+    ) -PassThru -NoNewWindow -RedirectStandardOutput $lockStdoutPath -RedirectStandardError $lockStderrPath
     try {
         $lockDeadline = [DateTime]::UtcNow.AddSeconds(10)
         while (-not (Test-Path -LiteralPath $repositoryLockReadyPath) -and [DateTime]::UtcNow -lt $lockDeadline) {
@@ -320,14 +363,21 @@ else:
 '@
         $repositoryLockProbe | & python -
         if ($LASTEXITCODE -ne 0) { throw "The broker did not respect the Python Runner repository lock." }
-        if (-not $lockProcess.WaitForExit(10000) -or $lockProcess.ExitCode -ne 0) {
-            throw "The Python repository-lock holder did not exit cleanly."
+        if (-not $lockProcess.WaitForExit(10000)) {
+            throw "The Python repository-lock holder timed out. stdout: $(Get-Content -LiteralPath $lockStdoutPath -Raw -ErrorAction SilentlyContinue) stderr: $(Get-Content -LiteralPath $lockStderrPath -Raw -ErrorAction SilentlyContinue)"
+        }
+        if (-not (Test-Path -LiteralPath $lockExitStatusPath -PathType Leaf)) {
+            throw "The Python repository-lock holder exited without publishing its completion status. ProcessId: $($lockProcess.Id). stdout: $(Get-Content -LiteralPath $lockStdoutPath -Raw -ErrorAction SilentlyContinue) stderr: $(Get-Content -LiteralPath $lockStderrPath -Raw -ErrorAction SilentlyContinue)"
+        }
+        $lockExitStatus = Get-Content -LiteralPath $lockExitStatusPath -Raw
+        if ($lockExitStatus -ne "0") {
+            throw "The Python repository-lock holder failed: $lockExitStatus. stdout: $(Get-Content -LiteralPath $lockStdoutPath -Raw -ErrorAction SilentlyContinue) stderr: $(Get-Content -LiteralPath $lockStderrPath -Raw -ErrorAction SilentlyContinue)"
         }
     } finally {
         if ($lockProcess -and -not $lockProcess.HasExited) {
             Stop-Process -Id $lockProcess.Id -Force -ErrorAction SilentlyContinue
         }
-        Remove-Item -LiteralPath $repositoryLockScriptPath, $repositoryLockReadyPath -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $repositoryLockScriptPath, $repositoryLockReadyPath, $lockStdoutPath, $lockStderrPath, $lockExitStatusPath -Force -ErrorAction SilentlyContinue
     }
 
     # A progress writer may run before the workflow acquires the repository
@@ -335,15 +385,21 @@ else:
     # the exact temporary file open, without deleting any other progress file.
     $progressWriterScriptPath = Join-Path $env:TEMP ("broker-progress-writer-" + [guid]::NewGuid().ToString("N") + ".py")
     $progressWriterReadyPath = Join-Path $env:TEMP ("broker-progress-writer-ready-" + [guid]::NewGuid().ToString("N") + ".txt")
+    $progressWriterStatusPath = Join-Path $env:TEMP ("broker-progress-writer-status-" + [guid]::NewGuid().ToString("N") + ".txt")
     $progressWriterScript = @'
 import os, sys, time
 from pathlib import Path
-state_root, ready_path = sys.argv[1], sys.argv[2]
-with open(os.path.join(state_root, "current.json.tmp"), "w", encoding="utf-8") as stream:
-    stream.write("writer-active")
-    stream.flush()
-    Path(ready_path).write_text("locked", encoding="utf-8")
-    time.sleep(3)
+state_root, ready_path, status_path = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    with open(os.path.join(state_root, "current.json.tmp"), "w", encoding="utf-8") as stream:
+        stream.write("writer-active")
+        stream.flush()
+        Path(ready_path).write_text("locked", encoding="utf-8")
+        time.sleep(3)
+    Path(status_path).write_text("0", encoding="ascii")
+except BaseException as exc:
+    Path(status_path).write_text("1:" + repr(exc), encoding="utf-8")
+    raise
 '@
     [System.IO.File]::WriteAllText(
         $progressWriterScriptPath,
@@ -351,7 +407,7 @@ with open(os.path.join(state_root, "current.json.tmp"), "w", encoding="utf-8") a
         [System.Text.UTF8Encoding]::new($false)
     )
     $writerProcess = Start-Process -FilePath $pythonPath -ArgumentList @(
-        $progressWriterScriptPath, $stateRoot, $progressWriterReadyPath
+        $progressWriterScriptPath, $stateRoot, $progressWriterReadyPath, $progressWriterStatusPath
     ) -PassThru -NoNewWindow
     try {
         $writerDeadline = [DateTime]::UtcNow.AddSeconds(10)
@@ -373,14 +429,21 @@ else:
 '@
         $progressWriterProbe | & python -
         if ($LASTEXITCODE -ne 0) { throw "The broker did not block cleanup for an active progress writer." }
-        if (-not $writerProcess.WaitForExit(10000) -or $writerProcess.ExitCode -ne 0) {
-            throw "The progress writer did not exit cleanly."
+        if (-not $writerProcess.WaitForExit(10000)) {
+            throw "The progress writer timed out. ProcessId: $($writerProcess.Id)"
+        }
+        if (-not (Test-Path -LiteralPath $progressWriterStatusPath -PathType Leaf)) {
+            throw "The progress writer exited without publishing its completion status. ProcessId: $($writerProcess.Id)"
+        }
+        $progressWriterStatus = Get-Content -LiteralPath $progressWriterStatusPath -Raw
+        if ($progressWriterStatus -ne "0") {
+            throw "The progress writer failed: $progressWriterStatus"
         }
     } finally {
         if ($writerProcess -and -not $writerProcess.HasExited) {
             Stop-Process -Id $writerProcess.Id -Force -ErrorAction SilentlyContinue
         }
-        Remove-Item -LiteralPath $progressWriterScriptPath, $progressWriterReadyPath -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $progressWriterScriptPath, $progressWriterReadyPath, $progressWriterStatusPath -Force -ErrorAction SilentlyContinue
     }
 
     # Cleanup must also fail while a watcher owns the store lock, even before
@@ -507,6 +570,112 @@ assert result["files_removed"] >= 2
         throw "The Broker cleanup endpoint removed retained checkpoint data."
     }
 
+
+    # Exercise the shared pending-task lifecycle protocol against the live
+    # Windows named-pipe service. Temporarily isolate the checkpoint fixture;
+    # restore its exact bytes after the lifecycle test.
+    $savedCheckpointPatch = [System.IO.File]::ReadAllBytes($checkpointPatch)
+    $savedCheckpointMetadata = [System.IO.File]::ReadAllBytes($checkpointMetadataPath)
+    $savedCheckpointIndex = [System.IO.File]::ReadAllBytes($checkpointIndexPath)
+    try {
+        Remove-Item -LiteralPath $checkpointPatch, $checkpointMetadataPath, $checkpointIndexPath -Force
+        $taskText = "Windows broker lifecycle integration probe"
+        $taskBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($taskText)
+        $taskHashProvider = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $taskHash = [Convert]::ToHexString($taskHashProvider.ComputeHash($taskBytes)).ToLowerInvariant()
+        } finally {
+            $taskHashProvider.Dispose()
+        }
+        $taskOwner = [ordered]@{
+            schema_version = 1
+            task_sha256 = $taskHash
+            submitted_run_id = "987654"
+            submitted_attempt = 1
+            owner_run_id = "987654"
+            owner_attempt = 1
+            created_at = 1763500000.0
+            claimed_at = 1763500000.0
+            claim_count = 1
+            source = "manual_dispatch"
+        }
+        [System.IO.File]::WriteAllBytes((Join-Path $stateRoot "pending-manual-task.txt"), $taskBytes)
+        [System.IO.File]::WriteAllText(
+            (Join-Path $stateRoot "pending-manual-task-owner.json"),
+            (ConvertTo-Json -InputObject $taskOwner -Depth 5 -Compress),
+            [System.Text.UTF8Encoding]::new($false)
+        )
+        $lifecycleProbe = @'
+from pathlib import Path
+from app.autonomous_engineering_state_broker import request, StateBrokerConflict
+
+state = Path(__import__("os").environ["AUTONOMOUS_ENGINEERING_PROGRESS_DIR"])
+task_path = state / "pending-manual-task.txt"
+owner_only = state / "pending-manual-task-owner.json"
+saved_task = task_path.read_bytes()
+saved_owner = owner_only.read_bytes()
+task_path.unlink()
+owner_only.write_text("{}", encoding="utf-8")
+try:
+    request("GET", "/v1/tasks/pending")
+except StateBrokerConflict as exc:
+    assert "owner_metadata_without_task" in exc.blockers
+else:
+    raise SystemExit("Windows broker ignored orphaned pending-task owner metadata.")
+finally:
+    owner_only.write_bytes(saved_owner)
+    task_path.write_bytes(saved_task)
+
+pending = request("GET", "/v1/tasks/pending")
+assert pending["available"] is True and len(pending["tasks"]) == 1
+item = pending["tasks"][0]
+assert item["status"] == "pending" and item["blocked"] is False
+try:
+    request("POST", "/v1/tasks/archive", body={"task_id": item["task_id"], "revision": "0" * 64})
+except StateBrokerConflict as exc:
+    assert "stale_revision" in exc.blockers
+else:
+    raise SystemExit("Windows broker accepted a stale task revision.")
+
+(state / "pending-autonomous-pr.json").write_text('{"number":123}', encoding="utf-8")
+try:
+    request("POST", "/v1/tasks/archive", body={"task_id": item["task_id"], "revision": item["revision"]})
+except StateBrokerConflict as exc:
+    assert "pending_pr" in exc.blockers
+else:
+    raise SystemExit("Windows broker archived a task with a pending PR.")
+finally:
+    (state / "pending-autonomous-pr.json").unlink()
+
+archived = request("POST", "/v1/tasks/archive", body={"task_id": item["task_id"], "revision": item["revision"]})
+assert archived["status"] == "archived" and archived["preserved"] is True
+assert not (state / "pending-manual-task.txt").exists()
+assert not (state / "pending-manual-task-owner.json").exists()
+saved = request("GET", "/v1/tasks/archived")["tasks"]
+assert len(saved) == 1 and saved[0]["task_id"] == item["task_id"]
+assert saved[0]["status"] == "archived"
+assert saved[0]["source"] == "manual_dispatch"
+package = state / "archived-pending-tasks" / item["task_id"]
+assert (package / "task.txt").read_bytes() == b"Windows broker lifecycle integration probe"
+assert (package / "owner.json").is_file()
+
+restored = request("POST", "/v1/tasks/restore", body={"task_id": saved[0]["task_id"], "revision": saved[0]["revision"]})
+assert restored["status"] == "restored" and restored["preserved"] is True
+assert (state / "pending-manual-task.txt").read_bytes() == b"Windows broker lifecycle integration probe"
+assert request("GET", "/v1/tasks/archived")["tasks"][0]["status"] == "restored"
+'@
+        $lifecycleProbe | & python -
+        if ($LASTEXITCODE -ne 0) { throw "Windows pending-task broker archive/restore integration failed." }
+    } finally {
+        foreach ($name in @("pending-manual-task.txt", "pending-manual-task-owner.json", "pending-autonomous-pr.json")) {
+            $path = Join-Path $stateRoot $name
+            if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
+        }
+        [System.IO.File]::WriteAllBytes($checkpointPatch, $savedCheckpointPatch)
+        [System.IO.File]::WriteAllBytes($checkpointMetadataPath, $savedCheckpointMetadata)
+        [System.IO.File]::WriteAllBytes($checkpointIndexPath, $savedCheckpointIndex)
+    }
+
     # Every worker must create its own pipe instance. Fail if any worker
     # recorded an exception, even when another worker served the sequential probes.
     $workerDiagnosticsPath = Join-Path $stateRoot "service-errors.log"
@@ -561,17 +730,28 @@ assert result["files_removed"] >= 2
         $oldMachineStatePath,
         "Machine"
     )
+    $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR = $oldProcessStatePath
     [Environment]::SetEnvironmentVariable(
         "AUTONOMOUS_STATE_BROKER_DIAGNOSTICS",
         $oldDiagnosticsSetting,
         "Machine"
     )
-    if (Test-Path -LiteralPath $stateRoot) {
-        & icacls.exe $stateRoot /grant:r "*$($currentSid):(OI)(CI)F" /T /C /Q | Out-Null
-        Remove-Item -LiteralPath $stateRoot -Recurse -Force -ErrorAction SilentlyContinue
-    }
-    if (Test-Path -LiteralPath $serviceRoot) {
-        & icacls.exe $serviceRoot /grant:r "*$($currentSid):(OI)(CI)F" /T /C /Q | Out-Null
-        Remove-Item -LiteralPath $serviceRoot -Recurse -Force -ErrorAction SilentlyContinue
+    foreach ($cleanupRoot in @($stateRoot, $serviceRoot)) {
+        if (Test-Path -LiteralPath $cleanupRoot) {
+            # These are unique, test-owned directories. The broker deliberately
+            # transfers ownership to its service identity; reclaim only these
+            # disposable fixtures before deleting them.
+            & takeown.exe /F $cleanupRoot /R /D Y | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                & icacls.exe $cleanupRoot /grant:r "*$($currentSid):(OI)(CI)F" /T /C /Q | Out-Null
+                if ($LASTEXITCODE -eq 0) {
+                    Remove-Item -LiteralPath $cleanupRoot -Recurse -Force -ErrorAction SilentlyContinue
+                } else {
+                    Write-Warning "Could not restore test-runner access to disposable test directory '$cleanupRoot'."
+                }
+            } else {
+                Write-Warning "Could not reclaim ownership of disposable test directory '$cleanupRoot'."
+            }
+        }
     }
 }

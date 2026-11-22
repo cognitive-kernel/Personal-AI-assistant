@@ -411,15 +411,104 @@ class RestrictedStateBroker:
                 os.close(descriptor)
         return self._with_state_lock(perform)
 
+    def _with_task_mutation_locks(self, operation):
+        from autonomous_pending_task_lifecycle import LifecycleConflict
+
+        def with_lock(filename: str, blocker: str, callback):
+            flags = os.O_CREAT | os.O_RDWR
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            descriptor = os.open(self.state_dir / filename, flags, 0o600)
+            try:
+                try:
+                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError as exc:
+                    raise LifecycleConflict(
+                        "A task lifecycle writer lock is active.", [blocker],
+                    ) from exc
+                try:
+                    return callback()
+                finally:
+                    fcntl.flock(descriptor, fcntl.LOCK_UN)
+            finally:
+                os.close(descriptor)
+
+        # Match the Windows service and Runner global order:
+        # repository execution -> durable state -> checkpoint store.
+        return with_lock(
+            "repository-execution.lock",
+            "repository_execution_active",
+            lambda: self._with_state_lock(
+                lambda: with_lock(
+                    "autonomous-checkpoint-store.lock",
+                    "checkpoint_writer_active",
+                    operation,
+                )
+            ),
+        )
+
     def dispatch(self, request: Any) -> tuple[int, Any]:
         if not isinstance(request, dict) or request.get("version") != 1:
             raise BrokerFailure(400, "invalid_request")
-        if set(request) != {"version", "method", "path"}:
+        if set(request) not in (
+            {"version", "method", "path"},
+            {"version", "method", "path", "body"},
+        ):
             raise BrokerFailure(400, "request_fields_not_supported")
         method, path = request.get("method"), request.get("path")
         if not isinstance(method, str) or not isinstance(path, str):
             raise BrokerFailure(400, "invalid_request")
         method = method.upper()
+        body = request.get("body")
+        task_paths = {
+            "/v1/tasks/pending", "/v1/tasks/archived",
+            "/v1/tasks/archive", "/v1/tasks/restore",
+        }
+        if path in task_paths:
+            from app.autonomous_engineering_state_broker_contract import validate_task_request
+            try:
+                validated = validate_task_request(method, path, body)
+            except ValueError as exc:
+                raise BrokerFailure(400, "invalid_task_request") from exc
+            from autonomous_pending_task_lifecycle import (
+                LifecycleConflict, archive_task, list_archived, list_pending, restore_task,
+            )
+            try:
+                if method == "GET" and path == "/v1/tasks/pending":
+                    return 200, self._with_state_lock(lambda: {
+                        "available": True, "tasks": list_pending(self.state_dir),
+                    })
+                if method == "GET" and path == "/v1/tasks/archived":
+                    return 200, self._with_state_lock(lambda: {
+                        "available": True, "tasks": list_archived(self.state_dir),
+                    })
+                if method == "POST" and path == "/v1/tasks/archive":
+                    assert validated is not None
+                    return 200, self._with_task_mutation_locks(
+                        lambda: archive_task(
+                            self.state_dir, validated["task_id"], validated["revision"], locks_held=True,
+                        )
+                    )
+                if method == "POST" and path == "/v1/tasks/restore":
+                    assert validated is not None
+                    return 200, self._with_task_mutation_locks(
+                        lambda: restore_task(
+                            self.state_dir, validated["task_id"], validated["revision"], locks_held=True,
+                        )
+                    )
+            except LifecycleConflict as exc:
+                return 409, {"conflict": True, "message": str(exc), "blockers": exc.blockers}
+            except BrokerFailure as exc:
+                if exc.code == "state_lock_timeout":
+                    return 409, {
+                        "conflict": True,
+                        "message": "The durable task state lock is held by an active writer.",
+                        "blockers": ["durable_state_writer_active"],
+                    }
+                raise
+            raise BrokerFailure(404, "not_found")
+        if "body" in request:
+            raise BrokerFailure(400, "request_body_not_supported")
         if method == "GET" and path == "/v1/health":
             try:
                 return 200, self.health()
