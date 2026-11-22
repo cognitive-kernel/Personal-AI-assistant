@@ -2290,3 +2290,13 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - No existing task payload, result, checkpoint, lease epoch, or unrelated module state is rewritten by the module controls.
 - Separate lifecycle owners (AI-learning Playwright, Autonomous Engineering GitHub Actions, and the opt-in backup scheduler) are not falsely represented as managed by this TaskRuntime registry. Their adapters remain follow-up scope.
 - Validation is pending exact-head CI and target-host acceptance; no migration has been run against user databases.
+
+## 2026-11-22 — Autonomous Engineering lifecycle adapter (PR #835)
+
+- Added a backward-compatible `AUTONOMOUS_ENGINEERING_ENABLED` repository variable; absence defaults to enabled so existing installations retain their current schedule behavior.
+- Added separate lifecycle states and endpoints: Start enables and dispatches, Pause blocks the next task while allowing an active bounded run to settle, Resume clears pause and dispatches from durable state, Finish disables future cycles while allowing the current run to settle, and Force Stop disables future cycles and requests cancellation of the active GitHub Actions run.
+- Added a lightweight lifecycle status endpoint for the shared module-control panel. It reads GitHub lifecycle/run state without invoking the slower Ollama, Codex, or Runner readiness probes.
+- The workflow now gates scheduled/manual triggers on the enabled flag and re-reads live lifecycle variables immediately before starting a task. A failed live-state read fails closed.
+- Force Stop is explicitly reported as a GitHub cancellation request; it is not reported as proof that the Windows Runner process tree has exited. Process-tree and checkpoint recovery acceptance on the target Windows Runner remains mandatory.
+- The shared dashboard now includes the Autonomous Engineering card alongside the seven TaskRuntime-managed modules. AI-learning Playwright, Browser Learning, and the opt-in backup scheduler remain separate lifecycle owners and are not yet represented as controlled.
+- PR #835 depends on PR #833. Exact-head CI and target-host acceptance are pending; no merge or target-host success is claimed.
