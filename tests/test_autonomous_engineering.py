@@ -2154,9 +2154,12 @@ def test_cleanup_removes_only_ephemeral_progress_files_and_preserves_durable_sta
 
 
 def test_cleanup_refuses_active_run_or_pending_task(monkeypatch, tmp_path):
+    from app import autonomous_engineering_execution_lock as execution_lock
+
     monkeypatch.setattr(agent, "_is_windows", lambda: False)
     monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
     monkeypatch.setattr(agent, "execution_state_directory", lambda: tmp_path)
+    monkeypatch.setattr(execution_lock, "execution_state_directory", lambda: tmp_path)
     (tmp_path / "events.jsonl").write_text("keep", encoding="utf-8")
     monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [{"status": "in_progress"}])
     with pytest.raises(HTTPException) as active_error:
