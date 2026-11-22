@@ -434,16 +434,124 @@ def test_jsonl_report_recovery_requires_a_successful_completed_turn(tmp_path):
     assert not progress.recover_final_agent_message_report(
         report, "   ", turn_completed=True, turn_failed=False,
     )
+    assert not progress.recover_final_agent_message_report(
+        report, "No completion marker was emitted.", turn_completed=True, turn_failed=False,
+    )
+    assert not progress.recover_final_agent_message_report(
+        report, "TASK_COMPLETE\nQUEUE_EMPTY", turn_completed=True, turn_failed=False,
+    )
     assert not report.exists()
 
 
-def test_jsonl_report_recovery_never_overwrites_existing_output_last_message(tmp_path):
+def test_jsonl_report_recovery_replaces_invalid_nonempty_output_with_valid_final_message(tmp_path):
     report = tmp_path / "codex-report.md"
-    report.write_text("Existing report without marker.", encoding="utf-8")
+    report.write_text("Existing report without a completion marker.", encoding="utf-8")
 
     recovered = progress.recover_final_agent_message_report(
-        report, "TASK_COMPLETE", turn_completed=True, turn_failed=False,
+        report, "Recovered final report.\nTASK_COMPLETE",
+        turn_completed=True, turn_failed=False,
+    )
+
+    assert recovered is True
+    assert report.read_text(encoding="utf-8") == "Recovered final report.\nTASK_COMPLETE\n"
+
+
+def test_jsonl_report_recovery_replaces_undecodable_existing_report(tmp_path):
+    report = tmp_path / "codex-report.md"
+    report.write_bytes(b"Existing report with invalid UTF-8: \xff\xfe")
+
+    recovered = progress.recover_final_agent_message_report(
+        report, "Recovered final report.\nTASK_COMPLETE",
+        turn_completed=True, turn_failed=False,
+    )
+
+    assert recovered is True
+    assert report.read_text(encoding="utf-8") == "Recovered final report.\nTASK_COMPLETE\n"
+
+
+def test_jsonl_report_recovery_never_overwrites_an_already_valid_output_last_message(tmp_path):
+    report = tmp_path / "codex-report.md"
+    report.write_text("Existing verified report.\nTASK_COMPLETE\n", encoding="utf-8")
+
+    recovered = progress.recover_final_agent_message_report(
+        report, "New report.\nTASK_COMPLETE", turn_completed=True, turn_failed=False,
     )
 
     assert recovered is False
-    assert report.read_text(encoding="utf-8") == "Existing report without marker."
+    assert report.read_text(encoding="utf-8") == "Existing verified report.\nTASK_COMPLETE\n"
+
+
+def test_run_codex_recovers_invalid_report_from_successful_jsonl_turn(tmp_path, monkeypatch):
+    import io
+    import json
+    from argparse import Namespace
+
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("Complete the bounded task.", encoding="utf-8")
+    report = tmp_path / "codex-report.md"
+    report.write_text("A non-empty report without a valid marker.", encoding="utf-8")
+    events = [
+        {"type": "turn.started"},
+        {
+            "type": "item.completed",
+            "item": {
+                "type": "agent_message",
+                "text": "Task and tests are complete.\nTASK_COMPLETE",
+            },
+        },
+        {"type": "turn.completed"},
+    ]
+
+    class FakeJob:
+        CREATE_SUSPENDED = 0
+
+        def __enter__(self):
+            return self
+
+        def assign_and_resume(self, process):
+            return None
+
+        def terminate_remaining_processes(self, exit_code):
+            return False
+
+        def close(self):
+            return None
+
+    class FakeProcess:
+        def __init__(self):
+            self.stdin = io.StringIO()
+            self.stdout = io.StringIO("".join(json.dumps(event) + "\n" for event in events))
+            self.pid = 12345
+
+        def poll(self):
+            return 0
+
+        def wait(self):
+            return 0
+
+    process = FakeProcess()
+    monkeypatch.setattr(progress.shutil, "which", lambda _: "codex")
+    monkeypatch.setattr(progress, "codex_arguments", lambda model, path: [])
+    monkeypatch.setattr(progress, "codex_command", lambda *args, **kwargs: ["codex"])
+    monkeypatch.setattr(progress.subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(progress, "WindowsProcessJob", FakeJob)
+    monkeypatch.setattr(progress, "terminate_process_group", lambda pid: False)
+    monkeypatch.setattr(progress, "persist", lambda record: None)
+    monkeypatch.setattr(progress, "plan_state", lambda: (0, 0, None))
+    monkeypatch.setattr(progress, "plan_percentage", lambda completed, total: None)
+    monkeypatch.setattr(progress, "PLAN_FILE", tmp_path / ".agent-progress.json")
+
+    result = progress.run_codex(Namespace(
+        prompt=str(prompt),
+        report=str(report),
+        model="test-model",
+        run_id="12345",
+        run_attempt="1",
+        require_command_output=None,
+        expected_agent_message=None,
+    ))
+
+    assert result == 0
+    assert report.read_text(encoding="utf-8") == (
+        "Task and tests are complete.\nTASK_COMPLETE\n"
+    )
