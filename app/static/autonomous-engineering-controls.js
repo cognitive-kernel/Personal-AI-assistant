@@ -214,7 +214,7 @@
       const result = await request("resume", {method: "POST"});
       status.lockDispatchVisibilityWindow();
       await status.refresh(true);
-      setMessage(result.message || "ادامهٔ صف درخواست شد.", "success");
+      setMessage((result.message || "ادامهٔ صف درخواست شد.") + (result.correlation_id ? " · شناسهٔ پیگیری: " + result.correlation_id : ""), "success");
     } catch (error) {
       if (error.ambiguous || error.retryable || error.status >= 500) status.lockDispatchVisibilityWindow();
       const detail = error.message || "ادامهٔ صف ثبت نشد.";
