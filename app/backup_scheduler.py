@@ -24,6 +24,11 @@ class BackupScheduler:
         self._interval_seconds = interval_hours * 3600
         self._backup_root = Path(backup_root).expanduser().resolve()
         self._stop_event = threading.Event()
+        self._backup_active = threading.Event()
+        self._state_lock = threading.Lock()
+        self._last_backup_id: str | None = None
+        self._last_backup_status = "never"
+        self._last_error: str | None = None
         self._thread = threading.Thread(
             target=self._run,
             name="database-backup-scheduler",
@@ -33,6 +38,17 @@ class BackupScheduler:
     @property
     def is_alive(self) -> bool:
         return self._thread.is_alive()
+
+    def status(self) -> dict[str, object]:
+        with self._state_lock:
+            return {
+                "running": self.is_alive,
+                "backup_active": self._backup_active.is_set(),
+                "last_backup_id": self._last_backup_id,
+                "last_backup_status": self._last_backup_status,
+                "last_error": self._last_error,
+                "interval_seconds": self._interval_seconds,
+            }
 
     def start(self) -> None:
         self._thread.start()
@@ -48,19 +64,54 @@ class BackupScheduler:
         while not self._stop_event.wait(self._interval_seconds):
             backup_id = datetime.now(timezone.utc).strftime("snapshot-%Y%m%dT%H%M%S%fZ")
             destination = self._backup_root / backup_id
+            self._backup_active.set()
+            with self._state_lock:
+                self._last_backup_id = backup_id
+                self._last_backup_status = "running"
+                self._last_error = None
             try:
                 manifest = backup_configured_databases(destination)
                 roles = sorted(manifest.get("databases", {}).keys())
                 if roles != ["cloud_resources", "learning", "settings"]:
                     raise RuntimeError("Scheduled backup did not include all configured stores.")
+                with self._state_lock:
+                    self._last_backup_status = "completed"
                 logger.info("Scheduled database backup completed: %s", backup_id)
-            except Exception:
+            except Exception as exc:
                 # A scheduled backup failure must not crash the application.
+                with self._state_lock:
+                    self._last_backup_status = "failed"
+                    self._last_error = type(exc).__name__
                 logger.exception("Scheduled database backup failed.")
+            finally:
+                self._backup_active.clear()
 
 
 _scheduler: BackupScheduler | None = None
 _scheduler_lock = threading.Lock()
+
+
+
+def get_backup_scheduler_status() -> dict[str, object]:
+    """Return scheduler state without exposing backup paths or database contents."""
+    interval = defaults.database_backup_interval_hours
+    with _scheduler_lock:
+        current = _scheduler
+        running = current is not None and current.is_alive
+        details = current.status() if current is not None else {
+            "running": False,
+            "backup_active": False,
+            "last_backup_id": None,
+            "last_backup_status": "never",
+            "last_error": None,
+            "interval_seconds": interval * 3600 if interval else 0,
+        }
+    return {
+        "configured": interval > 0,
+        "interval_hours": interval,
+        "state": "running" if running else ("stopped" if interval > 0 else "disabled"),
+        **details,
+    }
 
 
 def start_backup_scheduler(interval_hours: int | None = None) -> bool:
