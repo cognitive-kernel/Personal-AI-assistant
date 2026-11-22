@@ -133,6 +133,10 @@ def test_research_worker_persists_assistant_reply(tmp_path, monkeypatch):
         def checkpoint(self, value):
             return {"checkpoint": value, "status": "running"}
 
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            assert expected_task_type == "research.answer"
+            assert expected_payload["conversation_id"] == conversation["id"]
+
     monkeypatch.setattr(chat_research, "answer", lambda message, history, checkpoint=None: "پاسخ پایدار")
     result = research_tasks.handle_research_task(
         {"message": "سلام", "history": [], "conversation_id": conversation["id"]},
