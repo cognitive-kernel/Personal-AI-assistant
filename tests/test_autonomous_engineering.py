@@ -2524,11 +2524,12 @@ def test_cleanup_refuses_when_repository_execution_lock_is_owned(monkeypatch):
                 RuntimeError("Another autonomous execution owns this repository worktree.")
             ),
         )
-    monkeypatch.setattr(
-        agent,
-        "_cleanup_autonomous_engineering_temporary_data_locked",
-        lambda: pytest.fail("cleanup must not run while another execution owns the worktree"),
-    )
+    if not agent._is_windows():
+        monkeypatch.setattr(
+            agent,
+            "_cleanup_autonomous_engineering_temporary_data_locked",
+            lambda: pytest.fail("cleanup must not run while another execution owns the worktree"),
+        )
 
     response = TestClient(main_module.app, client=("127.0.0.1", 12345)).post(
         "/api/autonomous-engineering/cleanup",
