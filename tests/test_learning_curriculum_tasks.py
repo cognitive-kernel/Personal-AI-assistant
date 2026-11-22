@@ -27,6 +27,9 @@ class RecordingContext:
         self.checkpoints.append(value)
         return {"status": "running", "checkpoint": value}
 
+    def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+        return None
+
 
 def _outline():
     return {
