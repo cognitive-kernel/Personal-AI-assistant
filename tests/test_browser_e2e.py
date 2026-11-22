@@ -5441,3 +5441,67 @@ def test_autonomous_dashboard_pause_and_resume_controls_follow_server_state():
         assert state["status_reads"] >= 3
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_background_module_controls_render_and_drive_real_lifecycle_api():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    browser_errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.on("dialog", lambda dialog: dialog.accept())
+        response = _goto_section(page, base_url, "task-manager-section")
+        assert response is not None and response.status == 200
+
+        page.wait_for_function(
+            "() => document.querySelectorAll('#module-controls-container [data-module-id]').length === 7",
+            timeout=15000,
+        )
+        expected_modules = {
+            "research", "learning", "cloud-discovery", "programming",
+            "sandbox", "experience", "factual-verification",
+        }
+        rendered = set(page.locator("#module-controls-container [data-module-id]").evaluate_all(
+            "nodes => nodes.map(node => node.dataset.moduleId)"
+        ))
+        assert rendered == expected_modules
+
+        cloud = page.locator('[data-module-id="cloud-discovery"]')
+        state = cloud.locator(".module-control-state")
+        cloud.locator('button[data-action="pause"]').click()
+        page.wait_for_function(
+            "() => document.querySelector('[data-module-id=\\"cloud-discovery\\"] .module-control-state')?.dataset.state === 'paused'",
+            timeout=10000,
+        )
+        assert state.inner_text() == "مکث"
+
+        # Pausing cloud discovery must not change the independent research module.
+        research_state = page.locator('[data-module-id="research"] .module-control-state')
+        assert research_state.get_attribute("data-state") == "running"
+
+        cloud.locator('button[data-action="resume"]').click()
+        page.wait_for_function(
+            "() => document.querySelector('[data-module-id=\\"cloud-discovery\\"] .module-control-state')?.dataset.state === 'running'",
+            timeout=10000,
+        )
+        cloud.locator('button[data-action="finish"]').click()
+        page.wait_for_function(
+            "() => document.querySelector('[data-module-id=\\"cloud-discovery\\"] .module-control-state')?.dataset.state === 'finished'",
+            timeout=10000,
+        )
+        cloud.locator('button[data-action="start"]').click()
+        page.wait_for_function(
+            "() => document.querySelector('[data-module-id=\\"cloud-discovery\\"] .module-control-state')?.dataset.state === 'running'",
+            timeout=10000,
+        )
+        cloud.locator('button[data-action="force_stop"]').click()
+        page.wait_for_function(
+            "() => document.querySelector('[data-module-id=\\"cloud-discovery\\"] .module-control-state')?.dataset.state === 'stopped'",
+            timeout=10000,
+        )
+
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
