@@ -1981,7 +1981,9 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     assert "intervalMs: 30000" in orchestrator
     assert "refresh: () => status.refresh()" in orchestrator
     assert "window.setInterval(" not in orchestrator
-    assert 'window.setInterval(() => void progress.refresh(), 5000)' in orchestrator
+    assert "intervalMs: 5000, maxIntervalMs: 120000" in orchestrator
+    assert "refresh: () => progress.refresh()" in orchestrator
+    assert "core.startPolling({" in orchestrator
     assert "window.setTimeout(refresh, 2500)" not in orchestrator + status + controls
     assert "dispatchButton.disabled = false" not in controls
 
