@@ -447,7 +447,7 @@ def claim_worker_lease(owner: str, *, lease_seconds: int = 90) -> int | None:
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
         row = conn.execute(
-            """SELECT paused,worker_lease_owner,worker_lease_until,worker_lease_epoch
+            """SELECT paused,draining,worker_lease_owner,worker_lease_until,worker_lease_epoch
                FROM ai_learning_control WHERE id=1"""
         ).fetchone()
         if row is None or bool(row["paused"]):
@@ -457,6 +457,8 @@ def claim_worker_lease(owner: str, *, lease_seconds: int = 90) -> int | None:
         ).fetchone()[0])
         current_owner = row["worker_lease_owner"]
         if active and current_owner != owner:
+            return None
+        if not active and bool(row["draining"]):
             return None
         epoch = int(row["worker_lease_epoch"] or 0)
         if not active:
@@ -547,7 +549,7 @@ def has_watchdog_work() -> bool:
     """
     with connection() as conn:
         control = conn.execute(
-            """SELECT paused,
+            """SELECT paused,draining,
                       CASE WHEN retry_after IS NOT NULL AND retry_after>CURRENT_TIMESTAMP
                            THEN 1 ELSE 0 END AS retry_pending,
                       CASE WHEN worker_lease_owner IS NOT NULL
@@ -558,6 +560,7 @@ def has_watchdog_work() -> bool:
         if (
             control is None
             or bool(control["paused"])
+            or bool(control["draining"])
             or bool(control["retry_pending"])
             or bool(control["worker_active"])
         ):
@@ -589,7 +592,7 @@ def get_learning_control() -> dict[str, Any]:
     """Return durable pause state and provider cooldown for ChatGPT learning workflows."""
     with connection() as conn:
         row = conn.execute(
-            """SELECT paused,updated_at,reason,retry_after,retry_reason,worker_lease_until,
+            """SELECT paused,draining,updated_at,reason,retry_after,retry_reason,worker_lease_until,
                       CASE WHEN retry_after IS NOT NULL AND retry_after>CURRENT_TIMESTAMP
                            THEN 1 ELSE 0 END AS retry_pending,
                       CASE WHEN worker_lease_owner IS NOT NULL
@@ -602,6 +605,7 @@ def get_learning_control() -> dict[str, Any]:
         ).fetchone()
     return {
         "paused": bool(row["paused"]),
+        "draining": bool(row["draining"]),
         "updated_at": row["updated_at"],
         "reason": row["reason"],
         "retry_after": row["retry_after"],
@@ -618,8 +622,21 @@ def set_learning_paused(paused: bool, reason: str = "") -> dict[str, Any]:
     reason = str(reason or "")[:300]
     with connection() as conn:
         conn.execute(
-            "UPDATE ai_learning_control SET paused=?,updated_at=CURRENT_TIMESTAMP,reason=? WHERE id=1",
+            "UPDATE ai_learning_control SET paused=?,draining=0,updated_at=CURRENT_TIMESTAMP,reason=? WHERE id=1",
             (1 if paused else 0, reason if paused else ""),
+        )
+    return get_learning_control()
+
+def set_learning_draining(draining: bool, reason: str = "") -> dict[str, Any]:
+    """Stop admission of new browser runs while allowing the current run to finish."""
+    if type(draining) is not bool:
+        raise ValueError("draining must be a boolean.")
+    reason = str(reason or "")[:300]
+    with connection() as conn:
+        conn.execute(
+            """UPDATE ai_learning_control
+               SET paused=0,draining=?,updated_at=CURRENT_TIMESTAMP,reason=? WHERE id=1""",
+            (1 if draining else 0, reason if draining else ""),
         )
     return get_learning_control()
 
