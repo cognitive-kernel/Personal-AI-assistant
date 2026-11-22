@@ -38,16 +38,24 @@ The UI must describe this boundary and show active/cancel-requested counts.
 
 The module-control endpoints inherit the existing loopback-only task API dependency. No remote control endpoint is introduced. Task payloads and private result bodies are never returned by the module status API.
 
-## Out of scope / separate runtimes
+## Independent lifecycle adapters
 
-This registry covers the feature-managed TaskRuntime types only. Synchronous chat requests, AI-learning's independent Playwright worker, Autonomous Engineering's GitHub Actions workflow, and the opt-in backup scheduler have separate lifecycle owners and must be integrated through their own safe adapters; they must not be represented as controlled by this registry until those adapters exist.
+The dashboard also lists services with separate execution owners, but each action delegates to that owner rather than writing to the shared TaskRuntime queue:
+
+- AI-learning Playwright worker: durable `draining` state is added through AI-learning migration 8. Finish blocks new dispatch while allowing the current run and its lease to complete. Pause cooperatively requeues active work. Force stop cancels active run records, keeps queued run records, and waits for the worker to observe cancellation. Start/Resume clears pause/drain and uses the existing durable dispatcher.
+- Opt-in backup scheduler: status and actions delegate to `BackupScheduler`. Pause/Finish/Force Stop signal the scheduler to stop after any in-progress snapshot; a SQLite snapshot is never killed mid-write. Force Stop reports `stopping` if the bounded wait expires. Start/Resume remain disabled until `DATABASE_BACKUP_INTERVAL_HOURS` is configured.
+- Ollama model pull: the model download has a per-job cooperative cancel endpoint. It closes only that job's streaming response and never removes an installed model. If the connection is still being established, the status remains `cancelling` until the network operation unwinds.
+- Autonomous Engineering: its dedicated UI already owns Start/Dispatch, Pause, Resume, and Force Stop/Cancel through the GitHub Actions API. A separate Finish control is exposed as the same safe boundary operation as Pause; neither action kills a runner process or deletes its checkpoint.
+
+Synchronous chat requests and other request/response operations are not background modules and are not given fake lifecycle controls. The dashboard reports unavailable/disabled external owners explicitly instead of claiming that they are running.
 
 ## Acceptance
 
-- Migration is additive and leaves existing queue rows unchanged.
+- Migration 49 for TaskRuntime module controls and AI-learning migration 8 are additive; existing task/run/checkpoint/result rows remain intact.
 - Every feature-managed task type belongs to exactly one registry module.
-- Pausing/stopping one module cannot block claims for another.
+- Pausing/stopping one TaskRuntime module cannot block claims for another.
 - Finish drains active work without deleting or cancelling queued work.
-- Force stop preserves checkpoints and uses cooperative cancellation.
-- Loopback API, unit tests, browser E2E, Windows CI, and exact-head CodeQL/dependency checks pass.
+- Force stop preserves checkpoints and uses cooperative cancellation; it never asynchronously kills shared Python threads.
+- AI-learning drain/force-stop, backup scheduler stop-after-snapshot, and Ollama pull cancellation have owner-specific regression tests.
+- Loopback API, unit tests, browser E2E, Windows CI, exact-head CodeQL, and dependency checks pass.
 - Target-host acceptance remains a separate gate; CI alone is not target-host verification.
