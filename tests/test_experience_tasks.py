@@ -112,7 +112,14 @@ def test_stale_experience_task_cannot_persist_test_result(tmp_path, monkeypatch)
     monkeypatch.setattr(sandbox_tasks.sandbox_consent, "is_enabled", lambda: True)
     monkeypatch.setattr(
         experience_tasks, "_verify_live_source_evidence",
-        lambda value: value["source_evidence"],
+        lambda value: [
+            {
+                "url": evidence["url"],
+                "live_content_sha256": "c" * 64,
+                "excerpt_sha256": "d" * 64,
+            }
+            for evidence in value["source_evidence"]
+        ],
     )
     handler = experience_tasks.handler_from_environment()
     assert handler is not None
