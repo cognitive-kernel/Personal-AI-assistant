@@ -80,7 +80,7 @@ API ابتدا active run را رد می‌کند و سپس Broker/state markers
 - Progress: انتخاب period/date در زمان پاسخ دوباره اعتبارسنجی می‌شود؛ درخواست متناظر با انتخاب جدید صف می‌شود.
 - Model pull: polling هر 1.5 ثانیه تا completed/failed.
 - Core اکنون `code`, `correlation_id`, `retryable`, `safe_details` را از JSON و headerهای `X-Error-Code`, `X-Correlation-ID`, `X-Retryable` می‌خواند و code/correlation امن را به پیام UI می‌افزاید. retry خودکار انجام نمی‌شود.
-- PR #817 در شاخهٔ بررسی، برای تمام routeهای API یک error envelope یکنواخت شامل code/message/correlation_id/retryable/safe_details و headerهای متناظر اضافه می‌کند؛ خطاهای validation و exceptionهای غیرمنتظره نیز بدون echo ورودی یا جزئیات خام redacted می‌شوند. این تغییر تا عبور exact-head CI هنوز پذیرفته‌شده محسوب نمی‌شود.
+- PR #817 در head `722e007d1c8f56d2fd24081633eede556d30ef5f` برای routeهای API error envelope یکنواخت شامل code/message/correlation_id/retryable/safe_details و headerهای متناظر دارد؛ خطاهای validation و exceptionهای غیرمنتظره redacted می‌شوند. هر چهار workflow exact-head موفق‌اند؛ یافته‌های review دربارهٔ launch/timeout، resume retryability و unmatched route پس از بررسی کد و تست‌ها resolve شدند. PR هنوز unmerged است.
 
 ## 6. پوشش تست موجود
 
@@ -113,7 +113,7 @@ API ابتدا active run را رد می‌کند و سپس Broker/state markers
 
 ## 7. موارد باز برای تکمیل و پذیرش
 
-1. اجرای exact-head CI برای PRهای #817–#820 و رفع هر شکست پیش از promotion.
+1. exact-head CI برای PRهای #817 تا #820 روی headهای فعلی بررسی شد؛ هر چهار workflow در هر چهار PR (tests، browser-e2e، dependency-audit و CodeQL) موفق‌اند. این نتیجه فقط CI مخزن را اثبات می‌کند و پذیرش target-host را جایگزین نمی‌کند.
 2. تأیید و ادغام error envelope یکنواخت PR #817 پس از exact-head CI؛ سپس بررسی سازگاری همهٔ consumerها و حفظ قرارداد backward-compatible `detail`.
 3. اجرای پذیرش واقعی روی Windows Runner service identity: Broker ACL/UAC، restart/crash، Pause/Resume/Cancel، checkpoint recovery، cleanup با/بدون active run و مشاهدهٔ log واقعی.
 4. آزمون مدل pull در مرورگر mock شده است؛ آزمون عملی با Ollama محلی و مدل واقعی باید روی میزبان هدف انجام شود.
@@ -123,10 +123,10 @@ API ابتدا active run را رد می‌کند و سپس Broker/state markers
 ## 8. وضعیت تغییرات و مرز promotion
 
 - مبنای main در زمان ممیزی: `91b7e062e21d06d774c2f1f394bc72e4eb69af2c`.
-- PR #817: تشخیص قطعی launch failure در برابر timeout مبهم و correlation diagnostics؛ یک failure در mock تست کشف و اصلاح شده و CI جدید لازم است.
-- PR #818: بازیابی Codex report از JSONL در صورت UTF-8 خراب؛ exact-head CI لازم است.
-- PR #819: fencing تراکنش‌های اصلی learning job و escalation با lease epoch؛ draft و CI لازم است.
-- PR #820: خطای پایدار ماژول، error metadata، dispatch message ordering، responsive/fault-isolation/model-pull E2E؛ draft و CI لازم است.
+- PR #817: head فعلی `722e007d1c8f56d2fd24081633eede556d30ef5f`؛ هر چهار workflow exact-head موفق. review نهایی Codex بدون finding باز است و تمام threadهای inline پس از بررسی کد/تست‌ها resolve شده‌اند. PR باز و unmerged است.
+- PR #818: head فعلی `e1fa88e9060cac16bf2061aac3eb7b0b73fc12dd`؛ بازیابی report نامعتبر/UTF-8 خراب فقط از پیام نهایی JSONL معتبر و turn موفق انجام می‌شود؛ هر چهار workflow exact-head موفق و review Codex بدون finding باز است. PR باز و unmerged است.
+- PR #819: head فعلی `93d96cb3b2b61178c567e5b3d117402e0d234249`؛ هر چهار workflow exact-head موفق‌اند. این فقط بخشی از Gate B است و سایر domain writers همچنان scope مستقل دارند.
+- PR #820: head فعلی `3d9499574c347607ca08ee79080d19286cc19a99`؛ هشدار مستقل ماژول، error metadata، ترتیب پیام‌های action و E2Eهای RTL/keyboard/responsive/fault-isolation/model-pull؛ هر چهار workflow exact-head موفق‌اند. PR همچنان Draft است؛ review Codex برای head فعلی درخواست شده و هنوز نتیجه‌اش ثبت نشده است.
 - هیچ‌یک از این PRها تا عبور exact-head CI و پذیرش میزبان هدف نباید صرفاً بر اساس کد/تست mock ادغام شوند.
 - در این ممیزی task، checkpoint، تاریخچه، PR یا دادهٔ کاربر حذف یا بازنویسی نشده است.
 
