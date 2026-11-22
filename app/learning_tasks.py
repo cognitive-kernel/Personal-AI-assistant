@@ -73,6 +73,15 @@ def enqueue_learning_task(
     # task is terminal but the learning record is still non-terminal, fail visibly
     # and leave an auditable human-review item instead of looping on every restart.
     with learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        if task_context is not None:
+            if expected_task_type is None or expected_payload is None:
+                raise ValueError("Learning recovery escalation requires a complete parent task contract.")
+            task_context.assert_current(
+                conn,
+                expected_task_type=expected_task_type,
+                expected_payload=expected_payload,
+            )
         conn.execute(
             """UPDATE learning_jobs
                SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP
@@ -82,6 +91,8 @@ def enqueue_learning_task(
     _record_learning_escalation(
         int(recovery["id"]), job_id, "attempts_exhausted",
         "The original task and its single recovery task are terminal while the learning job remains non-terminal.",
+        task_context=task_context, expected_task_type=expected_task_type,
+        expected_payload=expected_payload,
     )
     return recovery
 
