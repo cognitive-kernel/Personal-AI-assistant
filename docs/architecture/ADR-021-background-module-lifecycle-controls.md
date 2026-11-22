@@ -24,7 +24,7 @@ Module state is persisted in the additive `module_controls` table. The default f
 | Finish (drain) | draining | No new task is claimed; active tasks may finish; queued tasks remain intact |
 | Force stop | stopped | Queued tasks remain paused for later resume; active tasks receive cancel_requested |
 
-Task claim filtering reads module state inside the same `BEGIN IMMEDIATE` transaction as the claim. A concurrent pause, drain, or stop therefore cannot race between a separate admission check and the queue claim.
+Task claim filtering reads module state inside the same `BEGIN IMMEDIATE` transaction as the claim. A concurrent pause, drain, or stop therefore cannot race between a separate admission check and the queue claim. During drain, queued tasks are not admitted, but expired leases for already-running tasks remain recoverable so a worker crash cannot strand the active task or its checkpoint.
 
 All task status transitions pass through the existing `task_queue` table and its audit triggers. Checkpoint JSON, result JSON, task payloads, lease epochs, and unrelated module rows are not rewritten by module control actions.
 
