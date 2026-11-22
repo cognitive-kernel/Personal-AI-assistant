@@ -268,6 +268,8 @@ def test_candidate_review_worker_runs_channels_independently_and_never_promotes(
     class Context:
         task_id = 101
         def checkpoint(self, value): checkpoints.append(value)
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
 
     monkeypatch.setattr(review, "research_candidate_online", lambda *args, **kwargs: {"status": "unavailable"})
     monkeypatch.setattr(review, "consult_configured_peer_ais", lambda *args, **kwargs: {"status": "unconfigured"})
@@ -320,6 +322,8 @@ def test_shared_pipeline_budget_blocks_review_actions_when_job_budget_is_exhaust
     class Context:
         task_id = 808
         def checkpoint(self, value): pass
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
 
     result = handle_candidate_review(
         {"candidate_id": candidate_id, "query": "Python candidate review", "web_mode": "search"},
@@ -378,6 +382,8 @@ def test_candidate_sandbox_review_requires_consent_configuration_and_reviewed_pl
     class Context:
         task_id = 205
         def checkpoint(self, value): pass
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
         def control_status(self): return "running"
     with pytest.raises(PermanentTaskError, match="test plan changed"):
         handle_candidate_sandbox_review(task["payload"], None, Context())
@@ -410,6 +416,8 @@ def test_candidate_sandbox_worker_runs_reviewed_test_code_and_never_promotes(rev
     class Context:
         task_id = 202
         def checkpoint(self, value): pass
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
         def control_status(self): return "running"
 
     result = handle_candidate_sandbox_review(
@@ -463,6 +471,8 @@ def test_candidate_sandbox_records_missing_docker_as_unavailable_not_failed(revi
     class Context:
         task_id = 203
         def checkpoint(self, value): pass
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
         def control_status(self): return "running"
 
     result = handle_candidate_sandbox_review(
@@ -504,6 +514,8 @@ def test_cancelled_sandbox_run_does_not_create_test_failure_experience(review_st
     class Context:
         task_id = 206
         def checkpoint(self, value): pass
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
         def control_status(self): return "running"
 
     result = handle_candidate_sandbox_review(
@@ -541,6 +553,8 @@ def test_candidate_sandbox_expected_stdout_mismatch_is_a_failed_test(review_stor
     class Context:
         task_id = 204
         def checkpoint(self, value): pass
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
         def control_status(self): return "running"
 
     result = handle_candidate_sandbox_review(
@@ -600,6 +614,8 @@ def test_failed_web_and_peer_channels_become_idempotent_searchable_warnings(revi
     class Context:
         task_id = 901
         def checkpoint(self, value): checkpoints.append(value)
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
 
     monkeypatch.setattr(review, "research_candidate_online", lambda *args, **kwargs: {
         "status": "failed", "error_type": "SourceFetchError"
@@ -692,6 +708,8 @@ def test_sandbox_worker_revalidates_curated_oracle_before_execution(review_store
     class Context:
         task_id = 902
         def checkpoint(self, value): pass
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
         def control_status(self): return "running"
 
     with pytest.raises(PermanentTaskError, match="Curated oracle validation failed closed"):
@@ -778,6 +796,8 @@ def test_review_retry_reclaims_running_channel_and_charges_each_attempt_once(rev
     class Context:
         task_id = 909
         def checkpoint(self, value): pass
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
 
     payload = {"candidate_id": candidate_id, "query": "Python retry recovery", "web_mode": "search"}
     with pytest.raises(RetryableTaskError, match="ledger is temporarily unavailable"):
@@ -920,6 +940,8 @@ def test_sandbox_retry_after_terminal_ledger_write_failure_is_bounded_and_idempo
     class Context:
         task_id = 991
         def checkpoint(self, value): pass
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
         def control_status(self): return "running"
 
     payload = {
@@ -1016,6 +1038,8 @@ def test_sandbox_failure_experience_persistence_retries_without_rerunning_test(
     class Context:
         task_id = 992
         def checkpoint(self, value): pass
+        def assert_current(self, connection=None, *, expected_task_type=None, expected_payload=None):
+            return None
         def control_status(self): return "running"
 
     payload = {
