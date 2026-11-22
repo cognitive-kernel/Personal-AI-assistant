@@ -179,14 +179,9 @@ def list_pending(state: Path) -> list[dict[str, Any]]:
     owner_raw = _regular(state / OWNER_FILE, 64 * 1024)
     owner = _safe_owner(task, owner_raw)
     assert owner_raw is not None
-    task_id = _digest(_canonical({
-        "task_sha256": _digest(task),
-        "submitted_run_id": owner.get("submitted_run_id"),
-        "submitted_attempt": owner.get("submitted_attempt"),
-        "created_at": owner.get("created_at"),
-    }))
+    task_id = _digest(task + b"\\0" + owner_raw)
     blockers = _read_active_state(state)
-    revision = _revision(task, owner_raw, {"blockers": blockers})
+    revision = _digest((_digest(task) + "|" + _digest(owner_raw) + "|" + ",".join(sorted(blockers))).encode("utf-8"))
     return [{
         "task_id": task_id,
         "revision": revision,
@@ -218,7 +213,11 @@ def list_archived(state: Path) -> list[dict[str, Any]]:
         owner = _safe_owner(task, owner_raw)
         if manifest.get("schema_version") != SCHEMA_VERSION or manifest.get("task_id") != entry.name:
             raise LifecycleConflict("Archived task manifest is inconsistent.", ["archive_manifest_mismatch"])
-        revision = _revision(task, owner_raw, manifest)
+        revision = _digest((
+            _digest(task) + "|" + _digest(owner_raw) + "|" +
+            str(manifest.get("archived_at_ms", "")) + "|" +
+            str(manifest.get("restored_at_ms", ""))
+        ).encode("utf-8"))
         result.append({
             "task_id": entry.name,
             "revision": revision,
@@ -263,7 +262,7 @@ def archive_task(state: Path, task_id: str, revision: str) -> dict[str, Any]:
             manifest = {
                 "schema_version": SCHEMA_VERSION,
                 "task_id": task_id,
-                "archived_at": time.time(),
+                "archived_at_ms": int(time.time() * 1000),
                 "task_sha256": _digest(task),
                 "owner_sha256": _digest(owner_raw),
             }
@@ -307,6 +306,6 @@ def restore_task(state: Path, task_id: str, revision: str) -> dict[str, Any]:
     # recovery source and subsequent calls fail closed rather than overwrite it.
     _atomic_write(state / TASK_FILE, task)
     _atomic_write(state / OWNER_FILE, owner_raw)
-    manifest["restored_at"] = time.time()
+    manifest["restored_at_ms"] = int(time.time() * 1000)
     _atomic_write(package / "manifest.json", _canonical(manifest) + b"\n")
     return {"task_id": task_id, "status": "restored", "preserved": True}
