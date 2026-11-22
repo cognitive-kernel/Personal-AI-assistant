@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 import psutil
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
@@ -75,6 +75,7 @@ _HTTP_ERROR_CODES = {
     504: "AUTONOMOUS_ENGINEERING_TIMEOUT",
 }
 _RETRYABLE_HTTP_STATUSES = {408, 425, 429, 500, 502, 503, 504}
+_CORRELATION_ID_PATTERN = re.compile(r"^[a-f0-9]{32}$")
 
 
 def _structured_error_response(
@@ -124,15 +125,20 @@ class AutonomousEngineeringAPIRoute(APIRoute):
         original_handler = super().get_route_handler()
 
         async def structured_handler(request):
+            supplied_id = str(request.headers.get("X-Correlation-ID") or "").strip().lower()
+            correlation_id = supplied_id if _CORRELATION_ID_PATTERN.fullmatch(supplied_id) else uuid.uuid4().hex
+            request.state.correlation_id = correlation_id
             try:
-                return await original_handler(request)
+                response = await original_handler(request)
             except HTTPException as exc:
                 message = exc.detail if isinstance(exc.detail, str) else "درخواست ناموفق بود."
+                headers = dict(exc.headers or {})
+                headers.setdefault("X-Correlation-ID", correlation_id)
                 return _structured_error_response(
                     status_code=exc.status_code,
                     message=message,
                     detail=message,
-                    headers=exc.headers,
+                    headers=headers,
                     safe_details=getattr(exc, "safe_details", None),
                 )
             except RequestValidationError as exc:
@@ -148,12 +154,12 @@ class AutonomousEngineeringAPIRoute(APIRoute):
                     status_code=422,
                     message="ورودی درخواست معتبر نیست.",
                     detail=errors,
+                    headers={"X-Correlation-ID": correlation_id},
                     code="AUTONOMOUS_ENGINEERING_VALIDATION_FAILED",
                     retryable=False,
                     safe_details={"validation_errors": errors},
                 )
             except Exception as exc:
-                correlation_id = uuid.uuid4().hex
                 _STATUS_LOGGER.error(
                     "Autonomous Engineering API failed; exception_type=%s correlation_id=%s",
                     type(exc).__name__,
@@ -168,6 +174,8 @@ class AutonomousEngineeringAPIRoute(APIRoute):
                     retryable=False,
                     safe_details={"exception_type": type(exc).__name__},
                 )
+            response.headers.setdefault("X-Correlation-ID", correlation_id)
+            return response
 
         return structured_handler
 
@@ -777,13 +785,20 @@ def _has_open_autonomous_pr(gh: str) -> bool:
 
 
 @router.post("/dispatch", status_code=202)
-def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) -> dict[str, Any]:
+def dispatch_autonomous_engineering(
+    payload: ManualTaskRequest | None = None,
+    request: Request | None = None,
+) -> dict[str, Any]:
     global _LAST_DISPATCH_ACCEPTED_AT
+    request_state = getattr(request, "state", None)
+    correlation_id = getattr(request_state, "correlation_id", None)
+    if not isinstance(correlation_id, str) or not _CORRELATION_ID_PATTERN.fullmatch(correlation_id):
+        correlation_id = uuid.uuid4().hex
     if not _DISPATCH_REQUEST_LOCK.acquire(blocking=False):
         raise HTTPException(
             status_code=409,
             detail="درخواست اجرای دیگری در حال ثبت است؛ از ارسال هم‌زمان در چند زبانه خودداری کنید.",
-            headers={"X-Error-Code": "AUTONOMOUS_DISPATCH_IN_PROGRESS", "X-Retryable": "false"},
+            headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "AUTONOMOUS_DISPATCH_IN_PROGRESS", "X-Retryable": "false"},
         )
     try:
         if (
@@ -793,12 +808,14 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) ->
             raise HTTPException(
                 status_code=409,
                 detail="درخواست اجرای قبلی تازه پذیرفته شده یا نتیجهٔ آن نامشخص است؛ پیش از ارسال دوباره، سوابق اجرا را بازخوانی کنید.",
-                headers={"X-Error-Code": "AUTONOMOUS_DISPATCH_RECENTLY_ACCEPTED", "X-Retryable": "false"},
+                headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "AUTONOMOUS_DISPATCH_RECENTLY_ACCEPTED", "X-Retryable": "false"},
             )
         try:
-            result = _dispatch_autonomous_engineering_locked(payload)
+            result = _dispatch_autonomous_engineering_locked(payload, correlation_id=correlation_id)
         except HTTPException as exc:
-            if (exc.headers or {}).get("X-Error-Code") == "WORKFLOW_DISPATCH_OUTCOME_UNKNOWN":
+            exc.headers = dict(exc.headers or {})
+            exc.headers.setdefault("X-Correlation-ID", correlation_id)
+            if exc.headers.get("X-Error-Code") == "WORKFLOW_DISPATCH_OUTCOME_UNKNOWN":
                 _LAST_DISPATCH_ACCEPTED_AT = time.monotonic()
             raise
         if result.get("accepted") is True:
@@ -810,7 +827,11 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) ->
 
 def _dispatch_autonomous_engineering_locked(
     payload: ManualTaskRequest | None = None,
+    *,
+    correlation_id: str | None = None,
 ) -> dict[str, Any]:
+    if not isinstance(correlation_id, str) or not _CORRELATION_ID_PATTERN.fullmatch(correlation_id):
+        correlation_id = uuid.uuid4().hex
     manual_task = payload.task.strip() if payload else ""
     if "\x00" in manual_task:
         raise HTTPException(status_code=422, detail="متن وظیفه شامل نویسهٔ نامعتبر است.")
@@ -882,13 +903,13 @@ def _dispatch_autonomous_engineering_locked(
         result = _run(
             [
                 gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main",
+                "--field", f"correlation_id={correlation_id}",
                 "--field", f"manual_task={manual_task}",
             ],
             timeout=20,
             raise_os_error=True,
         )
     except OSError:
-        correlation_id = uuid.uuid4().hex
         _STATUS_LOGGER.error(
             "Autonomous workflow dispatch could not start; correlation_id=%s",
             correlation_id,
@@ -906,7 +927,6 @@ def _dispatch_autonomous_engineering_locked(
             },
         )
     if result is None:
-        correlation_id = uuid.uuid4().hex
         _STATUS_LOGGER.warning(
             "Autonomous workflow dispatch outcome is unknown; correlation_id=%s",
             correlation_id,
@@ -925,7 +945,6 @@ def _dispatch_autonomous_engineering_locked(
             },
         )
     if result.returncode != 0:
-        correlation_id = uuid.uuid4().hex
         safe_stderr = _sanitize_workflow_log(str(result.stderr or ""))
         stderr_fingerprint = (
             hashlib.sha256(safe_stderr.encode("utf-8")).hexdigest()[:16]
@@ -955,6 +974,7 @@ def _dispatch_autonomous_engineering_locked(
         "repository": _repository(),
         "workflow": _WORKFLOW,
         "manual_task_submitted": bool(manual_task),
+        "correlation_id": correlation_id,
         "message": (
             "وظیفهٔ دستی ارسال شد؛ شروع واقعی را در GitHub Actions تأیید کنید."
             if manual_task else
