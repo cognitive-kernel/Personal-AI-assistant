@@ -909,8 +909,13 @@ def test_discovery_handler_keeps_daily_chain_after_cooperative_pause(tmp_path, m
         worker_id=worker_id,
         lease_epoch=claimed["lease_epoch"],
     )
+    query_count = 0
+
     def discover_and_pause(_query, *, limit):
-        task_manager.request_pause(task["id"])
+        nonlocal query_count
+        query_count += 1
+        if query_count == len(cloud_resources.DISCOVERY_QUERIES):
+            task_manager.request_pause(task["id"])
         return [_document()]
 
     monkeypatch.setattr(web_sources, "discover_sources", discover_and_pause)
