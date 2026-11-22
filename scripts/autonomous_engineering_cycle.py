@@ -568,6 +568,17 @@ def run_cycle(args: argparse.Namespace) -> int:
                 f"Task {task} reached its bounded retry budget ({reason}); "
                 "the task was not discarded or published as verified and will be resumed by recovery."
             )
+        if not CODEX_RETRY_POLICY.allows_attempt(attempt, codex_elapsed_seconds):
+            reason = CODEX_RETRY_POLICY.exhaustion_reason(attempt, codex_elapsed_seconds)
+            record(
+                args.run_id, args.run_attempt, "retry",
+                f"وظیفهٔ {task} برای بازیابی در اجرای بعدی نگه داشته شد",
+                f"بودجهٔ نشست‌های Codex تمام شد: {reason} وضعیت پایدار و checkpoint موجود حفظ می‌شوند",
+            )
+            raise RuntimeError(
+                f"Task {task} reached its bounded Codex execution budget ({reason}); "
+                "the task was not discarded or published as verified and will be resumed by recovery."
+            )
         attempt += 1
         active_prompt = Path(args.prompt)
         if failure_feedback:
