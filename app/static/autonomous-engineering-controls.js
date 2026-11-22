@@ -164,7 +164,7 @@
       status.lockDispatchVisibilityWindow();
       $("manual-task").value = "";
       await status.refresh(true);
-      setMessage(result.message || "وظیفه برای عامل ارسال شد.", "success");
+      setMessage((result.message || "وظیفه برای عامل ارسال شد.") + (result.correlation_id ? " · شناسهٔ پیگیری: " + result.correlation_id : ""), "success");
     } catch (error) {
       if (error.ambiguous || error.retryable || error.status >= 500) status.lockDispatchVisibilityWindow();
       const detail = error.message || "ارسال وظیفه ناموفق بود.";
@@ -185,7 +185,7 @@
       const result = await request("dispatch", {method: "POST"});
       status.lockDispatchVisibilityWindow();
       await status.refresh(true);
-      setMessage(result.message || "درخواست ارسال شد.", "success");
+      setMessage((result.message || "درخواست ارسال شد.") + (result.correlation_id ? " · شناسهٔ پیگیری: " + result.correlation_id : ""), "success");
     } catch (error) {
       if (error.ambiguous || error.retryable || error.status >= 500) status.lockDispatchVisibilityWindow();
       const detail = error.message || "ارسال درخواست ناموفق بود.";
