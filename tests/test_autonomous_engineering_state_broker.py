@@ -316,3 +316,6 @@ def test_broker_cleanup_enforces_repository_state_and_checkpoint_lock_order():
     assert "stream.Unlock(0, 1)" in service
     assert '"repository_execution_active"' in service
     assert "An autonomous Runner owns the repository execution lock" in service
+    assert 'Path.Combine(_stateDirectory, "current.json")' in service
+    assert '"active_progress_run"' in service
+    assert "current.json progress state" in service
