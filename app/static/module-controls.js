@@ -74,7 +74,7 @@
       const active = Number(counts.active || 0);
       const pending = Number(counts.pending || 0);
       const externalDisabled = module.external && (
-        (action.id === "start" && ["running", "paused", "draining"].includes(stateValue)) ||
+        (action.id === "start" && ["running", "paused", "draining", "stopped"].includes(stateValue)) ||
         (action.id === "pause" && stateValue !== "running") ||
         (action.id === "resume" && !["paused", "stopped"].includes(stateValue)) ||
         (action.id === "finish" && !["running", "paused"].includes(stateValue)) ||
