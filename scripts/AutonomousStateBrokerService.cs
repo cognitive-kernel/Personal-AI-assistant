@@ -531,22 +531,50 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                         if (blockers.Count > 0) throw new InvalidDataException(String.Join(",", blockers.ToArray()));
                         string root = EnsureTaskArchiveRoot();
                         string final = Path.Combine(root, taskId);
-                        if (!Directory.Exists(final))
+                        byte[] taskBytes = (byte[])record["task_bytes"];
+                        byte[] ownerBytes = (byte[])record["owner_bytes"];
+                        if (Directory.Exists(final))
+                        {
+                            if ((new DirectoryInfo(final).Attributes & FileAttributes.ReparsePoint) != 0)
+                                throw new InvalidDataException("Archive package cannot be a reparse point.");
+                            string savedTaskPath = Path.Combine(final, "task.txt");
+                            string savedOwnerPath = Path.Combine(final, "owner.json");
+                            Dictionary<string, object> savedManifest = ReadJsonFile(
+                                Path.Combine("archived-pending-tasks", taskId, "manifest.json"), 65536
+                            ) as Dictionary<string, object>;
+                            if (!SafeFileExists(savedTaskPath) || !SafeFileExists(savedOwnerPath) ||
+                                savedManifest == null ||
+                                Convert.ToString(savedManifest.ContainsKey("source_revision") ? savedManifest["source_revision"] : "") != revision ||
+                                !File.ReadAllBytes(savedTaskPath).SequenceEqual(taskBytes) ||
+                                !File.ReadAllBytes(savedOwnerPath).SequenceEqual(ownerBytes))
+                                throw new InvalidDataException("archive_collision_or_stale_revision");
+                        }
+                        else
                         {
                             string stage = Path.Combine(root, ".stage-" + Guid.NewGuid().ToString("N"));
                             Directory.CreateDirectory(stage);
-                            WriteAtomic(Path.Combine(stage, "task.txt"), (byte[])record["task_bytes"]);
-                            WriteAtomic(Path.Combine(stage, "owner.json"), (byte[])record["owner_bytes"]);
-                            Dictionary<string, object> manifest = new Dictionary<string, object> {
-                                { "schema_version", 1 }, { "task_id", taskId }, { "archived_at_ms", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() },
-                                { "task_sha256", Sha256((byte[])record["task_bytes"]) },
-                                { "owner_sha256", Sha256((byte[])record["owner_bytes"]) }
-                            };
-                            WriteAtomic(Path.Combine(stage, "manifest.json"), Encoding.UTF8.GetBytes(_json.Serialize(manifest) + "\n"));
-                            Directory.Move(stage, final);
+                            try
+                            {
+                                WriteAtomic(Path.Combine(stage, "task.txt"), taskBytes);
+                                WriteAtomic(Path.Combine(stage, "owner.json"), ownerBytes);
+                                Dictionary<string, object> manifest = new Dictionary<string, object> {
+                                    { "schema_version", 1 }, { "task_id", taskId }, { "source_revision", revision },
+                                    { "archived_at_ms", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() },
+                                    { "task_sha256", Sha256(taskBytes) }, { "owner_sha256", Sha256(ownerBytes) }
+                                };
+                                WriteAtomic(Path.Combine(stage, "manifest.json"), Encoding.UTF8.GetBytes(_json.Serialize(manifest) + "\n"));
+                                Directory.Move(stage, final);
+                            }
+                            finally { try { if (Directory.Exists(stage)) Directory.Delete(stage, true); } catch { } }
                         }
-                        File.Delete(Path.Combine(_stateDirectory, "pending-manual-task.txt"));
-                        File.Delete(Path.Combine(_stateDirectory, "pending-manual-task-owner.json"));
+                        string activeTaskPath = Path.Combine(_stateDirectory, "pending-manual-task.txt");
+                        string activeOwnerPath = Path.Combine(_stateDirectory, "pending-manual-task-owner.json");
+                        if (SafeFileExists(activeTaskPath) && !File.ReadAllBytes(activeTaskPath).SequenceEqual(taskBytes))
+                            throw new InvalidDataException("archive_recovery_task_mismatch");
+                        if (SafeFileExists(activeOwnerPath) && !File.ReadAllBytes(activeOwnerPath).SequenceEqual(ownerBytes))
+                            throw new InvalidDataException("archive_recovery_owner_mismatch");
+                        if (SafeFileExists(activeTaskPath)) File.Delete(activeTaskPath);
+                        if (SafeFileExists(activeOwnerPath)) File.Delete(activeOwnerPath);
                         return new Dictionary<string, object> { { "task_id", taskId }, { "status", "archived" }, { "preserved", true } };
                     }
                     throw new InvalidDataException("unsupported_task_operation");
@@ -577,9 +605,6 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                     if (!Directory.Exists(package) || !SafeFileExists(taskPath) ||
                         !SafeFileExists(ownerPath) || !SafeFileExists(manifestPath))
                         throw new InvalidDataException("stale_task");
-                    if (SafeFileExists(Path.Combine(_stateDirectory, "pending-manual-task.txt")) ||
-                        SafeFileExists(Path.Combine(_stateDirectory, "pending-manual-task-owner.json")))
-                        throw new InvalidDataException("pending_slot_occupied");
                     if (SafeFileExists(Path.Combine(_stateDirectory, "pending-autonomous-pr.json")) ||
                         SafeFileExists(Path.Combine(_stateDirectory, "pending-state-cleanup.json")))
                         throw new InvalidDataException("pending_pr_or_cleanup");
@@ -606,8 +631,14 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                     if (!String.Equals(currentRevision, revision, StringComparison.Ordinal))
                         throw new InvalidDataException("stale_revision");
                     ParseAndValidateTaskOwner(task, owner);
-                    WriteAtomic(Path.Combine(_stateDirectory, "pending-manual-task.txt"), task);
-                    WriteAtomic(Path.Combine(_stateDirectory, "pending-manual-task-owner.json"), owner);
+                    string activeTaskPath = Path.Combine(_stateDirectory, "pending-manual-task.txt");
+                    string activeOwnerPath = Path.Combine(_stateDirectory, "pending-manual-task-owner.json");
+                    if (SafeFileExists(activeTaskPath) && !File.ReadAllBytes(activeTaskPath).SequenceEqual(task))
+                        throw new InvalidDataException("pending_slot_occupied");
+                    if (SafeFileExists(activeOwnerPath) && !File.ReadAllBytes(activeOwnerPath).SequenceEqual(owner))
+                        throw new InvalidDataException("pending_owner_slot_occupied");
+                    if (!SafeFileExists(activeTaskPath)) WriteAtomic(activeTaskPath, task);
+                    if (!SafeFileExists(activeOwnerPath)) WriteAtomic(activeOwnerPath, owner);
                     manifest["restored_at_ms"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                     WriteAtomic(manifestPath, Encoding.UTF8.GetBytes(_json.Serialize(manifest) + "\n"));
                     return new Dictionary<string, object> {
