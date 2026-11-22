@@ -69,3 +69,16 @@ def test_codex_heartbeat_console_line_reports_received_events():
     assert "elapsed_minutes=4" in line
     assert "jsonl_events=7" in line
     assert "state=receiving_events" in line
+
+
+
+def test_progress_records_include_workflow_correlation_and_job(monkeypatch):
+    correlation_id = "b" * 32
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CORRELATION_ID", correlation_id)
+    monkeypatch.setenv("GITHUB_JOB", "codex")
+
+    record = progress._with_run_correlation({"run_id": "12345", "phase": "coding"})
+
+    assert record["correlation_id"] == correlation_id
+    assert record["job"] == "codex"
+    assert record["run_id"] == "12345"
