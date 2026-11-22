@@ -124,3 +124,10 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 - روی Windows، broker قفل را قبل از آزادکردن اجرا و پاک‌سازی state می‌گیرد؛ فایل‌های runtime داخل worktree پس از بازگشت broker در اپلیکیشن حذف نمی‌شوند، چون حذف پس از آزادشدن قفل race ایجاد می‌کند. این فایل‌ها در Windows عمداً در فهرست preserved می‌مانند.
 - روی POSIX، route قفل repository را می‌گیرد، سپس cleanup زیر durable-state و checkpoint-store lock انجام می‌شود و runtime files در همان بازهٔ repository lock حذف می‌شوند.
 - خطای CI ناشی از `ModuleNotFoundError: scripts` با انتقال repository/checkpoint lock helperها به بستهٔ قابل‌نصب `app` و تبدیل فایل‌های scripts به compatibility wrapper رفع شده است؛ `pyproject.toml` و package discovery دست‌نخورده مانده‌اند. تست import و Windows service integration روی exact head باید تأییدش کند.
+
+### قفل مسیر انتشار PR
+
+- انتشار PR از CLI زیرفرمان `publish` فقط باید توسط subprocess فرزند همان cycle controller انجام شود که قفل repository را با همان `run_id` نگه داشته است.
+- تابع `require_parent_repository_execution_lock` در بستهٔ `app` قفل OS را به‌صورت non-blocking بررسی و metadata مالک را با `os.getppid()`، `run_id` و hostname تطبیق می‌دهد؛ فراخوانی مستقیم CLI بدون parent lock یا با run ID متفاوت رد می‌شود.
+- `scripts/autonomous_engineering_execution_lock.py` فقط compatibility wrapper است؛ implementation مشترک در بستهٔ `app` قرار دارد.
+- تست subprocess، فراخوانی مستقیم و run ID نامطابق را رد و فرزند controller قفل‌دار را قبول می‌کند. این guard به‌جای تغییر فایل‌های محافظت‌شدهٔ cycle controller اضافه شده است.
