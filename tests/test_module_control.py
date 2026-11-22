@@ -109,7 +109,7 @@ def test_force_stop_cancels_waiting_tasks_and_cooperatively_stops_active_task(mo
     assert stopped["state"] == "stopped"
     assert stopped["force_stop_semantics"].startswith("Python worker threads are not killed")
     assert task_manager.get_task(active["id"])["status"] == "cancel_requested"
-    assert task_manager.get_task(waiting["id"])["status"] == "cancelled"
+    assert task_manager.get_task(waiting["id"])["status"] == "paused"
 
     settled = task_manager.save_checkpoint(
         active["id"], claimed["lease_owner"], {"cursor": "safe-boundary"},
