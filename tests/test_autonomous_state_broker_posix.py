@@ -367,6 +367,16 @@ def _write_pending_task_fixture(state_dir: Path, task: str = "preserve this task
     (state_dir / "pending-manual-task-owner.json").write_bytes(owner_raw)
 
 
+def test_posix_broker_fails_closed_when_owner_metadata_has_no_task(posix_broker):
+    state_dir, _socket_path, broker = posix_broker
+    (state_dir / "pending-manual-task-owner.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(broker.StateBrokerConflict) as conflict:
+        broker.request("GET", "/v1/tasks/pending")
+    assert "owner_metadata_without_task" in conflict.value.blockers
+    assert (state_dir / "pending-manual-task-owner.json").exists()
+
+
 def test_posix_broker_pending_task_archive_restore_preserves_bytes(posix_broker):
     state_dir, _socket_path, broker = posix_broker
     _write_pending_task_fixture(state_dir)
