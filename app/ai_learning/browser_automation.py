@@ -2054,11 +2054,13 @@ def finish_learning() -> dict[str, Any]:
     with _LOCK:
         active_run_id = _ACTIVE_RUN_ID
     queued_ids = service.list_run_ids_by_status("queued")
-    active = bool(state.get("worker_active"))
+    running_ids = service.list_run_ids_by_status("running")
+    active = bool(state.get("worker_active")) or bool(running_ids)
     status = "draining" if active else ("finished_pending" if queued_ids else "finished")
     _log_event(
         "learning_draining",
         active_run_id=active_run_id,
+        running_run_count=len(running_ids),
         queued_run_count=len(queued_ids),
     )
     return {
@@ -2066,6 +2068,7 @@ def finish_learning() -> dict[str, Any]:
         "status": status,
         "active": active,
         "active_run_id": active_run_id,
+        "running_run_count": len(running_ids),
         "queued_run_count": len(queued_ids),
         "message": (
             "کار فعال اجازه دارد کامل شود؛ کارهای صف‌شده محفوظ می‌مانند و کار جدید آغاز نمی‌شود."
