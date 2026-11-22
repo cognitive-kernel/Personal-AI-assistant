@@ -73,6 +73,15 @@ def claim_next_task(
                WHERE status='running' AND lease_expires_at <= ? AND attempts >= max_attempts""",
             (now_text, now_text),
         )
+        if normalized_types is not None:
+            # Read module admission in the same BEGIN IMMEDIATE transaction as
+            # the task claim. A concurrent pause/finish/stop therefore cannot
+            # slip between a separate state check and the claim write.
+            from .module_control import enabled_task_types
+
+            normalized_types = enabled_task_types(conn, normalized_types)
+            if not normalized_types:
+                return None
         type_clause = ""
         query_params: tuple[Any, ...] = (now_text, now_text)
         if normalized_types is not None:
