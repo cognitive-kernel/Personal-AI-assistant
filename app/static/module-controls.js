@@ -4,8 +4,9 @@
   const container = document.getElementById("module-controls-container");
   const output = document.getElementById("module-controls-output");
   const refreshButton = document.getElementById("refresh-module-controls");
+  const taskManagerSection = document.getElementById("task-manager-section");
   const dashboard = window.dashboardCore;
-  if (!container || !output || !refreshButton || !dashboard || typeof dashboard.api !== "function") return;
+  if (!container || !output || !refreshButton || !taskManagerSection || !dashboard || typeof dashboard.api !== "function") return;
 
   const { api } = dashboard;
   const busyModules = new Set();
@@ -115,5 +116,7 @@
   }
 
   refreshButton.addEventListener("click", () => void refresh());
-  void refresh();
+  document.addEventListener("DOMContentLoaded", () => {
+    if (!taskManagerSection.hidden) void refresh();
+  }, { once: true });
 })();
