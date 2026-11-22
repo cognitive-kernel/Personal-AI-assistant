@@ -359,7 +359,12 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
     {
         string taskPath = Path.Combine(_stateDirectory, "pending-manual-task.txt");
         string ownerPath = Path.Combine(_stateDirectory, "pending-manual-task-owner.json");
-        if (!SafeFileExists(taskPath)) return null;
+        if (!SafeFileExists(taskPath))
+        {
+            if (SafeFileExists(ownerPath))
+                throw new InvalidDataException("owner_metadata_without_task");
+            return null;
+        }
         FileInfo taskInfo = new FileInfo(taskPath);
         if (taskInfo.Length < 1 || taskInfo.Length > 8192)
             throw new InvalidDataException("Pending task size is invalid.");
