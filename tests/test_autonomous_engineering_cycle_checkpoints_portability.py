@@ -36,15 +36,18 @@ def test_posix_checkpoint_watcher_uses_a_new_session_and_shared_state(tmp_path: 
         def poll(self):
             return None
 
+    inherited_pythonpath = str(tmp_path / "ambient-modules")
+    purelib = str(tmp_path / ".venv" / "site-packages")
+    platlib = str(tmp_path / ".venv" / "native-site-packages")
     os_module = SimpleNamespace(
         name="posix",
-        environ=os.environ,
+        environ={"PYTHONPATH": inherited_pythonpath},
         path=os.path,
         pathsep=os.pathsep,
     )
     sys_module = SimpleNamespace(executable=str(tmp_path / "python"))
     sysconfig_module = SimpleNamespace(
-        get_paths=lambda: {"purelib": str(tmp_path / ".venv" / "site-packages")}
+        get_paths=lambda: {"purelib": purelib, "platlib": platlib}
     )
     time_module = SimpleNamespace(monotonic=lambda: 0.0, sleep=lambda _seconds: None)
 
@@ -81,9 +84,14 @@ def test_posix_checkpoint_watcher_uses_a_new_session_and_shared_state(tmp_path: 
     assert captured["command"][0] == str(tmp_path / "python")
     assert captured["kwargs"]["start_new_session"] is True
     assert "creationflags" not in captured["kwargs"]
-    assert captured["kwargs"]["env"]["PYTHONPATH"].split(os.pathsep)[0] == str(
-        tmp_path / ".venv" / "site-packages"
-    )
+    pythonpath = captured["kwargs"]["env"]["PYTHONPATH"].split(os.pathsep)
+    assert pythonpath == [
+        str(tmp_path),
+        purelib,
+        platlib,
+        inherited_pythonpath,
+    ]
+    assert captured["kwargs"]["cwd"] == tmp_path
 
 
 def test_posix_checkpoint_restore_and_clear_are_not_disabled_without_programdata():

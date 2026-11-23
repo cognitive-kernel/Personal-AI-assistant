@@ -34,12 +34,25 @@ def start_checkpoint_watcher(base_sha: str, run_id: str, task: int, *, os_module
     # the watcher's os.getpid() agree, while exposing this venv's dependencies.
     watcher_executable = getattr(sys_module, "_base_executable", sys_module.executable)
     watcher_env = os_module.environ.copy()
-    venv_site_packages = sysconfig_module.get_paths().get("purelib")
-    if venv_site_packages:
-        existing_pythonpath = watcher_env.get("PYTHONPATH", "")
-        watcher_env["PYTHONPATH"] = os_module.pathsep.join(
-            item for item in (venv_site_packages, existing_pythonpath) if item
-        )
+
+    # The base interpreter does not process the virtualenv's editable-install
+    # .pth file merely because its site-packages directory is placed on
+    # PYTHONPATH. Add the checkout root explicitly so compatibility shims in
+    # scripts/ can import the application-owned app/ package in this child.
+    runtime_paths = sysconfig_module.get_paths()
+    python_paths = [str(root.resolve())]
+    for key in ("purelib", "platlib"):
+        candidate = runtime_paths.get(key)
+        if candidate and candidate not in python_paths:
+            python_paths.append(candidate)
+
+    # Retain caller-provided entries, but let the trusted checkout and the
+    # selected virtualenv dependencies take precedence over ambient modules.
+    existing_pythonpath = watcher_env.get("PYTHONPATH", "")
+    for candidate in existing_pythonpath.split(os_module.pathsep):
+        if candidate and candidate not in python_paths:
+            python_paths.append(candidate)
+    watcher_env["PYTHONPATH"] = os_module.pathsep.join(python_paths)
     command = [
         watcher_executable, str(checkpoint_script), "watch",
         "--base-sha", base_sha, "--run-id", run_id, "--task", str(task),
