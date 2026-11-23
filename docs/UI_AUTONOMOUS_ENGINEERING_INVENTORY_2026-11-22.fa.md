@@ -267,3 +267,40 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 - These results close repository CI gates only. Local Windows UI/Runner/Ollama/Codex acceptance remains pending.
 
 ---
+
+
+---
+
+## الحاقیهٔ 2026-11-24 — ممیزی مجدد بر اساس وضعیت فعلی main
+
+این الحاقیه وضعیت تاریخی inventory مورخ 2026-11-22 را بازنویسی نمی‌کند؛ موارد زیر snapshot جدید و مرجع جاری برای ادامهٔ کار هستند.
+
+### یافته‌های جدید و اصلاحات
+
+| حوزه | یافته | اصلاح/وضعیت |
+|---|---|---|
+| UI status refresh | دو mutation می‌توانستند پس از یک poll مشترک، درخواست‌های status هم‌زمان بفرستند و snapshot قدیمی‌تر را جایگزین کنند | PR #864 این refreshها را سریالی می‌کند؛ exact-head CI کامل موفق است |
+| Broker provisioning | timeout پردازهٔ Python/PowerShell والد، تضمین نمی‌کند UAC-elevated child متوقف شود؛ قفل والد ممکن است آزاد شود درحالی‌که فرزند هنوز ACL/service را تغییر می‌دهد | finding در review PR #863 ثبت شد؛ PR #865 قفل machine-wide را داخل child اضافه کرده؛ exact-head CI و Windows integration هنوز pending هستند |
+| Safe Pause | مرحلهٔ پیش از task مقدار vars.AUTONOMOUS_ENGINEERING_PAUSED را از workflow context می‌خواند؛ run منتظر concurrency ممکن است snapshot قدیمی داشته باشد | PR #866 مقدار جاری را از Actions Variables API پس از گرفتن concurrency slot می‌خواند؛ exact-head CI pending است |
+| Emergency Cancel | انتخاب اولین run فعال از فهرست newest-first ممکن بود run تازه‌صف‌شده را لغو کند و run قدیمی‌ترِ درحال‌اجرا را باقی بگذارد | PR #867 اولویت را به in_progress می‌دهد؛ exact-head CI pending است |
+
+### وضعیت Gateها
+
+- **A — Inventory و reproduction:** inventory و state-transition mapping موجود است؛ بازتولیدهای میزبان واقعی و بررسی همهٔ کنترل‌ها هنوز تکمیل نشده‌اند.
+- **B — Ownership/fencing/recovery:** lease epoch و owner fencing در main وجود دارند؛ ممیزی تمام domain mutation call-siteها، رفتار owner قدیمی، crash/restart و recovery واقعی هنوز لازم است. قفل elevated Broker در PR #865 هنوز پذیرفته نشده است.
+- **C — Error contract/observability:** structured errors و correlation پایه موجودند؛ خطاهای timeout/ambiguous و correlation باید در مسیرهای جدید نیز exact-head و target-host تأیید شوند.
+- **D — UI state machine:** اصلاح refresh race در PR #864 روی exact head با CI کامل موفق شده؛ Pause live gate و Cancel priority در PRهای #866/#867 هنوز CI pending دارند.
+- **E — Browser E2E:** PR #864 روی head دقیق Browser E2E را گذرانده؛ PRهای جدید هنوز نیازمند اجرای مجدد روی head نهایی هستند.
+- **F — Exact-head CI:** فقط PR #864 در این snapshot تمام workflowهای لازم را روی head دقیق گذرانده است. وضعیت PRهای #863 و #865–#867 باید جداگانه و روی آخرین SHA بررسی شود.
+- **G — Windows target host:** pending؛ نیازمند حساب غیرادمین، UAC، LocalService Broker، Runner واقعی/ناموجود، ACL و Ollama/Codex واقعی.
+- **H — Crash/restart/recovery:** pending؛ باید parent timeout با child Elevated زنده، crash در حین تغییر ACL، restart و حفظ checkpoint روی Windows واقعی آزمایش شوند.
+- **I — Documentation/rollback:** این الحاقیه و docs/UI_ACCEPTANCE.md به‌روز شدند؛ runbook دقیق بازیابی abandoned mutex و شواهد restore/rollback هنوز لازم است.
+- **J — Owner acceptance:** pending؛ همهٔ PRها Draft باقی می‌مانند و هیچ merge خودکاری انجام نمی‌شود.
+
+### محدودیت و ایمنی
+
+- وضعیت CI یک PR یا SHA به PR دیگر یا به main تعمیم داده نمی‌شود.
+- Browser E2E و Windows hosted CI جایگزین پذیرش میزبان واقعی نیستند.
+- هیچ task، owner metadata، checkpoint، database، ACL، Runner registration یا workflow پایدار حذف یا بازنویسی نشده است.
+- پیش از merge باید تمام checkها روی exact head سبز باشند و گیت‌های target-host/owner acceptance تکمیل شوند.
+
