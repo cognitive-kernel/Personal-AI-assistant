@@ -1072,7 +1072,7 @@ def _ensure_state_broker() -> bool:
     system = platform.system()
     from app.autonomous_engineering_state_broker import health
 
-    if health():
+    if health(timeout_ms=30000):
         return True
 
     if system == "Windows":
@@ -1152,7 +1152,7 @@ def _ensure_state_broker() -> bool:
             flush=True,
         )
         return False
-    if not health():
+    if not health(timeout_ms=30000):
         print("Broker پس از نصب از کانال محلی پاسخ سالم نداد؛ برنامه در حالت محدود اجرا می‌شود.", file=sys.stderr, flush=True)
         return False
     return True
