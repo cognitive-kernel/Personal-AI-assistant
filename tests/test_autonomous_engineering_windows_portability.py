@@ -182,7 +182,15 @@ def test_machine_state_broker_health_checks_the_full_state_tree_acl_manifest():
     assert 'SetEnvironmentVariable(\n        "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS"' in ensure
     assert 'SetEnvironmentVariable(\n        "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS"' in provision
     assert 'SetEnvironmentVariable(\n    "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS"' in configure
-    assert 'health(timeout_ms: int = 3500)' in client
+    assert 'health(timeout_ms: int = 3500, verify: bool = False)' in client
+    assert '"/v1/health/verify"' in client
+    assert 'path == "/v1/health/verify"' in service
+    assert 'TimeSpan.FromSeconds(15)' in service
+    assert 'VerifyStorageAccessCached(forceVerification)' in service
+    assert 'health(timeout_ms=30000, verify=True)' in run
+    assert 'Path "/v1/health/verify"' in ensure
+    assert 'Path "/v1/health/verify"' in _read("scripts/AutonomousStateBrokerInstall.psm1")
+    assert '"/v1/health/verify"' in _read("scripts/AutonomousStateBroker.psm1")
     assert 'value.get("acl_ready") is True' in client
     assert 'health(timeout_ms=30000)' in run
     assert 'TimeoutMilliseconds 30000' in ensure
