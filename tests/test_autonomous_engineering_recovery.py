@@ -370,3 +370,35 @@ def test_live_pause_api_failure_fails_closed():
 
     with pytest.raises(RuntimeError, match="Could not verify the live durable Pause setting"):
         recovery._live_pause_enabled(DeniedClient())
+
+
+def test_main_rechecks_live_pause_after_backoff_before_dispatch(monkeypatch):
+    _configure_environment(monkeypatch)
+    calls = []
+    reports = []
+
+    class FakeClient:
+        def __init__(self, repository, token):
+            self.pause_reads = 0
+
+        def request(self, method, path, payload=None):
+            if method == "GET" and path == "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED":
+                self.pause_reads += 1
+                return {"value": "false" if self.pause_reads == 1 else "true"}
+            calls.append((method, path, payload))
+            return {}
+
+        def jobs(self, run_id):
+            return _failed_execution_jobs()
+
+        def retryable_failure_streak(self, run_id, jobs):
+            return 1
+
+    monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
+    monkeypatch.setattr(recovery.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(recovery, "report", lambda *args, **kwargs: reports.append((args, kwargs)))
+
+    assert recovery.main() == 0
+    assert calls == []
+    assert reports[-1][0][0] == "Recovery paused"
+    assert "became active during backoff" in reports[-1][0][1]
