@@ -23,12 +23,21 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     if (-not [string]::IsNullOrWhiteSpace($RunnerRoot)) {
         $argumentLine += ' -RunnerRoot "' + $RunnerRoot.Replace('"', '""') + '"'
     }
+
+    # Prevent modules from a different PowerShell edition/version from loading
+    # during child startup, before this script can control module discovery.
+    # The child inherits this host's inbox modules only; the caller environment
+    # is restored even when UAC is declined or process creation fails.
+    $previousModulePath = $env:PSModulePath
     try {
+        $env:PSModulePath = Join-Path $PSHOME "Modules"
         $child = Start-Process -FilePath $hostExecutable -Verb RunAs -ArgumentList $argumentLine -Wait -PassThru -ErrorAction Stop
         exit $child.ExitCode
     } catch {
         Write-Error "Administrator approval is required to install the machine state broker. $($_.Exception.Message)"
         exit 1
+    } finally {
+        $env:PSModulePath = $previousModulePath
     }
 }
 
