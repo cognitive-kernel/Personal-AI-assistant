@@ -6192,8 +6192,23 @@ def test_autonomous_engineering_custom_request_timeout_and_trace_artifact():
                 request,
                 new Promise(resolve => window.setTimeout(() => resolve({completed: false}), 1000))
               ]);
+              window.fetch = (_url, options) => {
+                const networkCorrelationId = options.headers.get("X-Correlation-ID");
+                return Promise.reject(new TypeError("Failed to fetch")).catch(error => {
+                  error.testCorrelationId = networkCorrelationId;
+                  throw error;
+                });
+              };
+              const networkFailure = await window.autonomousEngineeringCore.request("status").then(
+                () => null,
+                error => ({
+                  ambiguous: error.ambiguous === true,
+                  correlationId: error.correlationId || null,
+                  message: error.message
+                })
+              );
               window.fetch = originalFetch;
-              return {...outcome, aborted, forwardedTimeoutOption, sentCorrelationId, elapsedMs: performance.now() - started};
+              return {...outcome, aborted, forwardedTimeoutOption, sentCorrelationId, networkFailure, elapsedMs: performance.now() - started};
             }""")
             assert result["completed"] is True, "The custom request timeout was ignored."
             assert result["aborted"] is True, "The request AbortController did not fire."
@@ -6204,6 +6219,10 @@ def test_autonomous_engineering_custom_request_timeout_and_trace_artifact():
             assert all(char in "0123456789abcdef" for char in correlation_id)
             assert result["error"]["correlationId"] == correlation_id
             assert correlation_id in result["error"]["message"]
+            network_failure = result["networkFailure"]
+            assert network_failure and network_failure["ambiguous"] is True
+            assert isinstance(network_failure["correlationId"], str) and len(network_failure["correlationId"]) == 32
+            assert network_failure["correlationId"] in network_failure["message"]
             assert result["elapsedMs"] < 500
             assert diagnostics["page_errors"] == []
             page.screenshot(path=str(screenshot_path), full_page=True)
