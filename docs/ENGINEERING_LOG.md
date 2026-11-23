@@ -1,3 +1,12 @@
+## 2026-11-24 — mark explicit resume separately from automatic workflow chaining
+
+- Scheduled mode must allow an owner-requested one-shot resume without allowing a continuous-mode workflow snapshot to create an automatic chain.
+- Added the boolean workflow_dispatch input resume_once. The application Resume endpoint sets it explicitly; cycle chaining and recovery dispatches do not.
+- The live workflow gate and cycle controller now allow an empty workflow_dispatch in scheduled mode only when resume_once is true. Manual tasks remain allowed; push/schedule and recovery attempts are blocked.
+- Added regressions for one-shot resume, unmarked empty dispatch rejection, and manual-task admission in scheduled mode.
+
+---
+
 ## 2026-11-24 — recheck live execution mode across queued automatic and recovery runs
 
 ### Root cause
