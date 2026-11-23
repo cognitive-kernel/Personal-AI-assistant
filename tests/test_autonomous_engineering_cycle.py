@@ -1802,3 +1802,54 @@ def test_marker_only_task_blocked_retries_same_task_and_persists_real_explanatio
     assert "Concrete blocker" in entries[-1]["detail"]
     assert "Concrete blocker" in entries[-1]["summary"]
     assert prompt.read_text(encoding="utf-8") == "Complete the selected task."
+
+
+def test_cycle_controller_rechecks_live_pause_after_repository_lock(monkeypatch):
+    from contextlib import contextmanager
+
+    events = []
+
+    @contextmanager
+    def fake_lock(run_id, run_attempt):
+        events.append("lock_enter")
+        try:
+            yield
+        finally:
+            events.append("lock_exit")
+
+    monkeypatch.setattr(cycle, "repository_execution_lock", fake_lock)
+    monkeypatch.setattr(
+        cycle, "api",
+        lambda token, repo, method, path: events.append("live_pause_read") or {"value": "true"},
+    )
+    monkeypatch.setattr(cycle, "run_cycle", lambda args: pytest.fail("A paused task must not start"))
+    monkeypatch.setattr(cycle.sys, "argv", [
+        "autonomous_engineering_cycle.py", "run",
+        "--run-id", "123", "--run-attempt", "1",
+        "--correlation-id", "a" * 32,
+        "--model", "test-model", "--prompt", "prompt.md", "--mode", "continuous",
+    ])
+    monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("GH_REPO", "owner/repository")
+
+    assert cycle.main() == 0
+    assert events == ["lock_enter", "live_pause_read", "lock_exit"]
+
+
+def test_cycle_live_pause_missing_variable_defaults_false(monkeypatch):
+    def missing_variable(token, repo, method, path):
+        raise RuntimeError("GitHub API GET actions/variables/AUTONOMOUS_ENGINEERING_PAUSED failed (404): not found")
+
+    monkeypatch.setattr(cycle, "api", missing_variable)
+
+    assert cycle._live_pause_enabled("test-token", "owner/repository") is False
+
+
+def test_cycle_live_pause_api_failure_fails_closed(monkeypatch):
+    def denied(token, repo, method, path):
+        raise RuntimeError("GitHub API GET actions/variables/AUTONOMOUS_ENGINEERING_PAUSED failed (403): forbidden")
+
+    monkeypatch.setattr(cycle, "api", denied)
+
+    with pytest.raises(RuntimeError, match="Could not verify the live durable Pause setting"):
+        cycle._live_pause_enabled("test-token", "owner/repository")
