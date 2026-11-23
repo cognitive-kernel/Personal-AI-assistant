@@ -24,7 +24,7 @@ def test_windows_broker_setup_uses_the_selected_compatible_host(monkeypatch, tmp
     monkeypatch.setattr(setup, "_broker_is_healthy", lambda: next(health))
     monkeypatch.setattr(setup, "_repository_root", lambda: tmp_path)
     monkeypatch.setattr(setup.platform, "system", lambda: "Windows")
-    command = [r"C:\\PowerShell\\pwsh.exe", "-NoLogo", "-File", str(tmp_path / "ensure.ps1")]
+    command = [r"C:\PowerShell\pwsh.exe", "-NoLogo", "-File", str(tmp_path / "ensure.ps1")]
     monkeypatch.setattr(setup, "_windows_setup_command", lambda root: (command, "Core 8.x"))
     captured = {}
 
