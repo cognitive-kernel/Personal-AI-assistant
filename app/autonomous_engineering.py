@@ -4,17 +4,20 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import os
 import platform
 import re
 import shutil
 import subprocess
 import threading
+import tempfile
 import time
 import urllib.error
 import urllib.request
 import uuid
 from concurrent.futures import ThreadPoolExecutor, wait
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +37,7 @@ from .autonomous_engineering_progress import (
     storage_accessible,
 )
 from .ollama_context import maximum_context_tokens, resolve_model_architecture, supports_tool_calling
-from .autonomous_engineering_state import durable_state_lock, execution_state_directory
+from .autonomous_engineering_state import durable_state_lock, execution_state_directory, exclusive_file_lock
 from .autonomous_engineering_checkpoint_lock import checkpoint_store_lock
 from .autonomous_engineering_execution_lock import repository_execution_lock
 from .autonomous_engineering_model_pull import get_model_pull, start_model_pull
@@ -53,12 +56,173 @@ _STATUS_EXECUTOR = ThreadPoolExecutor(
 _STATUS_EXECUTOR_SLOTS = threading.BoundedSemaphore(_STATUS_EXECUTOR_MAX_WORKERS)
 _STATUS_LOGGER = logging.getLogger(__name__)
 
-# Serialize UI-originated workflow dispatches within the local API process. The
-# durable pending-task marker and GitHub workflow concurrency remain the
-# cross-process/restart safety layer.
+# The thread lock protects same-process callers; the OS file lock and
+# durable admission marker protect independent API workers and process restarts.
 _DISPATCH_REQUEST_LOCK = threading.Lock()
-_DISPATCH_VISIBILITY_GRACE_SECONDS = 15.0
-_LAST_DISPATCH_ACCEPTED_AT = 0.0
+_DISPATCH_ADMISSION_LOCK_TIMEOUT_SECONDS = 0.0
+_DISPATCH_ACCEPTED_GRACE_SECONDS = 30.0
+_DISPATCH_UNKNOWN_GRACE_SECONDS = 120.0
+_DISPATCH_ADMISSION_LOCK_NAME = "autonomous-engineering-dispatch-admission.lock"
+_DISPATCH_ADMISSION_MARKER_NAME = "autonomous-engineering-dispatch-admission.json"
+
+
+def _dispatch_admission_directory() -> Path:
+    return execution_state_directory()
+
+
+@contextmanager
+def _dispatch_admission_lock():
+    state_dir = _dispatch_admission_directory()
+    try:
+        with exclusive_file_lock(
+            state_dir / _DISPATCH_ADMISSION_LOCK_NAME,
+            timeout_seconds=_DISPATCH_ADMISSION_LOCK_TIMEOUT_SECONDS,
+            timeout_message="Another process is already admitting an autonomous-engineering dispatch.",
+        ):
+            yield state_dir
+    except TimeoutError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "AUTONOMOUS_ENGINEERING_DISPATCH_IN_PROGRESS",
+                "message": "A dispatch admission is already running in another API process. Refresh status before retrying.",
+                "retryable": False,
+            },
+            headers={"X-Error-Code": "AUTONOMOUS_ENGINEERING_DISPATCH_IN_PROGRESS", "X-Retryable": "false"},
+        ) from exc
+
+
+def _dispatch_admission_marker_path(state_dir: Path) -> Path:
+    return state_dir / _DISPATCH_ADMISSION_MARKER_NAME
+
+
+def _read_dispatch_admission_marker(state_dir: Path) -> dict[str, Any] | None:
+    path = _dispatch_admission_marker_path(state_dir)
+    if path.is_symlink():
+        raise RuntimeError("The dispatch admission marker is a symbolic link; dispatch is blocked safely.")
+    if not path.exists():
+        return None
+    if not path.is_file():
+        raise RuntimeError("The dispatch admission marker is not a regular file; dispatch is blocked safely.")
+    try:
+        marker = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("The dispatch admission marker is unreadable or malformed; dispatch is blocked safely.") from exc
+    if not isinstance(marker, dict) or marker.get("schema_version") != 1:
+        raise RuntimeError("The dispatch admission marker has an unsupported schema; dispatch is blocked safely.")
+    correlation_id = marker.get("correlation_id")
+    status = marker.get("status")
+    created_at = marker.get("created_at")
+    expires_at = marker.get("expires_at")
+    if (
+        not isinstance(correlation_id, str)
+        or not correlation_id.strip()
+        or len(correlation_id) > 128
+        or status not in {"dispatching", "accepted", "unknown"}
+        or isinstance(created_at, bool)
+        or not isinstance(created_at, (int, float))
+        or not math.isfinite(float(created_at))
+        or isinstance(expires_at, bool)
+        or not isinstance(expires_at, (int, float))
+        or not math.isfinite(float(expires_at))
+    ):
+        raise RuntimeError("The dispatch admission marker failed validation; dispatch is blocked safely.")
+    if float(expires_at) <= time.time():
+        return None
+    return marker
+
+
+def _raise_if_recent_dispatch(state_dir: Path) -> None:
+    marker = _read_dispatch_admission_marker(state_dir)
+    if marker is None:
+        return
+    retry_after = max(1, int(math.ceil(float(marker["expires_at"]) - time.time())))
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "code": "AUTONOMOUS_ENGINEERING_DISPATCH_RECENTLY_ACCEPTED",
+            "message": "A recent workflow dispatch is still inside its visibility/reconciliation window. Refresh Runs before retrying.",
+            "retryable": False,
+            "correlation_id": marker["correlation_id"],
+            "dispatch_status": marker["status"],
+        },
+        headers={
+            "Retry-After": str(retry_after),
+            "X-Error-Code": "AUTONOMOUS_ENGINEERING_DISPATCH_RECENTLY_ACCEPTED",
+            "X-Retryable": "false",
+        },
+    )
+
+
+def _write_dispatch_admission_marker(
+    state_dir: Path,
+    correlation_id: str,
+    status: str,
+    *,
+    ttl_seconds: float,
+) -> None:
+    if status not in {"dispatching", "accepted", "unknown"}:
+        raise ValueError("Unsupported dispatch admission marker status.")
+    path = _dispatch_admission_marker_path(state_dir)
+    if path.is_symlink():
+        raise RuntimeError("The dispatch admission marker is a symbolic link; dispatch is blocked safely.")
+    now = time.time()
+    marker = {
+        "schema_version": 1,
+        "correlation_id": correlation_id,
+        "status": status,
+        "created_at": now,
+        "expires_at": now + max(1.0, float(ttl_seconds)),
+    }
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=".autonomous-dispatch-admission-",
+        suffix=".tmp",
+        dir=state_dir,
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(marker, handle, ensure_ascii=False, sort_keys=True)
+            handle.write("\\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.chmod(temporary, 0o600)
+        except OSError:
+            if os.name != "nt":
+                raise
+        os.replace(temporary, path)
+        if os.name != "nt":
+            directory_fd = os.open(state_dir, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _clear_dispatch_admission_marker(state_dir: Path, correlation_id: str) -> None:
+    path = _dispatch_admission_marker_path(state_dir)
+    if path.is_symlink():
+        raise RuntimeError("The dispatch admission marker became a symbolic link; it was not removed.")
+    if not path.exists():
+        return
+    try:
+        marker = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("The dispatch admission marker could not be verified; it was not removed.") from exc
+    if not isinstance(marker, dict) or marker.get("correlation_id") != correlation_id:
+        return
+    path.unlink()
+    if os.name != "nt":
+        directory_fd = os.open(state_dir, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+
+
 
 _HTTP_ERROR_CODES = {
     400: "AUTONOMOUS_ENGINEERING_BAD_REQUEST",
