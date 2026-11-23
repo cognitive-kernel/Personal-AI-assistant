@@ -150,6 +150,16 @@ try {
         Set-Acl -LiteralPath $aclProbeRoot -AclObject $probeAcl -ErrorAction Stop
 
         Set-AutonomousDirectoryTreeAcl -Path $aclProbeRoot -ModifySids @("S-1-5-20", $brokerSid) -OwnerSid $brokerSid -InstallerSid $currentSid
+        $installerCanReadFinalProbeAcl = $false
+        try {
+            Get-Acl -LiteralPath $aclProbeRoot -ErrorAction Stop | Out-Null
+            $installerCanReadFinalProbeAcl = $true
+        } catch {
+            $installerCanReadFinalProbeAcl = $false
+        }
+        if ($installerCanReadFinalProbeAcl) {
+            throw "The protected ACL probe unexpectedly retained installer read access after finalization."
+        }
     } finally {
         $probeEntry = Get-ChildItem -LiteralPath (Split-Path -Parent $aclProbeRoot) -Force -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -ceq (Split-Path -Leaf $aclProbeRoot) } |
@@ -162,6 +172,15 @@ try {
     }
 
     Set-AutonomousDirectoryTreeAcl -Path $stateRoot -ModifySids @($currentSid, $brokerSid) -OwnerSid $brokerSid -InstallerSid $currentSid
+    $stateAcl = Get-Acl -LiteralPath $stateRoot -ErrorAction Stop
+    $stateAclSids = @(
+        $stateAcl.Access | ForEach-Object {
+            $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+        } | Select-Object -Unique
+    )
+    if ($stateAclSids.Count -ne 2 -or $stateAclSids -notcontains $currentSid -or $stateAclSids -notcontains $brokerSid) {
+        throw "The final shared-state ACL does not contain exactly the Runner and broker identities."
+    }
 
     New-Service -Name $serviceName -BinaryPathName ('"' + $serviceExe + '"') -DisplayName "Personal AI Assistant State Broker CI" -StartupType Manual | Out-Null
     $serviceCreated = $true
