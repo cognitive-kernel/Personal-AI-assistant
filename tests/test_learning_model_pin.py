@@ -145,6 +145,7 @@ def test_startup_does_not_install_ollama_or_start_its_service(monkeypatch):
     bootstrap = _load_bootstrap()
     monkeypatch.setattr(bootstrap, "_configured_llm_provider", lambda _purpose: "ollama")
     monkeypatch.setattr(bootstrap, "_read_saved_setting", lambda _key, default: default)
+    monkeypatch.setattr(bootstrap, "_configured_model_setting", lambda _key, _env, fallback: fallback)
     monkeypatch.setattr(bootstrap, "_find_ollama", lambda: None)
     monkeypatch.setattr(
         bootstrap,
@@ -165,6 +166,7 @@ def test_startup_reports_unavailable_ollama_server_without_starting_it(monkeypat
     bootstrap = _load_bootstrap()
     monkeypatch.setattr(bootstrap, "_configured_llm_provider", lambda _purpose: "ollama")
     monkeypatch.setattr(bootstrap, "_read_saved_setting", lambda _key, default: default)
+    monkeypatch.setattr(bootstrap, "_configured_model_setting", lambda _key, _env, fallback: fallback)
     monkeypatch.setattr(bootstrap, "_find_ollama", lambda: "ollama")
     monkeypatch.setattr(
         bootstrap,
