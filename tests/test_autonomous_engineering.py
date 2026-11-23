@@ -1435,6 +1435,12 @@ def test_cancel_finds_active_run_after_ten_newer_completed_runs(monkeypatch):
             return subprocess.CompletedProcess(command, 0, "", "")
         if command[1:3] == ["run", "list"]:
             return subprocess.CompletedProcess(command, 0, json.dumps(runs), "")
+        if command[1:3] == ["run", "view"]:
+            run_id = command[3]
+            state = "queued" if run_id == "222" else "in_progress"
+            return subprocess.CompletedProcess(
+                command, 0, json.dumps({"jobs": [{"name": "codex", "status": state}]}), ""
+            )
         if command[1:3] == ["run", "cancel"]:
             return subprocess.CompletedProcess(command, 0, "", "")
         raise AssertionError(command)
@@ -2760,3 +2766,36 @@ def test_cancel_falls_back_to_queued_run_when_no_run_is_in_progress(monkeypatch)
 
     assert result["run_id"] == 333
     assert calls[-1][3] == "333"
+
+
+def test_cancel_inspects_codex_job_when_newer_workflow_run_is_only_at_schedule_gate(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    runs = [
+        {"databaseId": 222, "status": "in_progress"},
+        {"databaseId": 111, "status": "in_progress"},
+    ]
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "list"]:
+            return subprocess.CompletedProcess(command, 0, json.dumps(runs), "")
+        if command[1:3] == ["run", "view"]:
+            run_id = command[3]
+            state = "queued" if run_id == "222" else "in_progress"
+            return subprocess.CompletedProcess(
+                command, 0, json.dumps({"jobs": [{"name": "codex", "status": state}]}), ""
+            )
+        if command[1:3] == ["run", "cancel"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    result = agent.cancel_autonomous_engineering()
+
+    assert result["run_id"] == 111
+    assert [command[3] for command in calls if command[1:3] == ["run", "view"]] == ["222", "111"]
+    assert calls[-1][3] == "111"
