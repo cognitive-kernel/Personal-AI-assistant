@@ -186,7 +186,7 @@ def setup_state_broker() -> dict[str, Any]:
                     safe_details={"runtime": runtime, "exit_code": result.returncode},
                 )
             log_path = (
-                str(Path(os.environ.get("ProgramData", r"C:\\ProgramData")) / "PersonalAIAssistant" / "Logs" / "state-broker-setup.log")
+                str(Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "PersonalAIAssistant" / "Logs" / "state-broker-setup.log")
                 if system == "Windows"
                 else None
             )
