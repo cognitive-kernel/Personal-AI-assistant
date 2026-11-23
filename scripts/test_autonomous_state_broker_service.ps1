@@ -9,34 +9,19 @@ $testTempRoot = if (-not [String]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
     Join-Path ([IO.Path]::GetTempPath()) "PersonalAIAssistant-StateBrokerTest"
 }
 New-Item -ItemType Directory -Path $testTempRoot -Force | Out-Null
-$serviceSource = Join-Path $testTempRoot "AutonomousStateBrokerService.exe"
-# Always compile the broker from the checked-out source. Reusing an existing
-# executable in TEMP/RUNNER_TEMP can silently test stale service code.
-$frameworkCandidates = @(
-    (Join-Path $env:WINDIR "Microsoft.NET\\Framework64\\v4.0.30319"),
-    (Join-Path $env:WINDIR "Microsoft.NET\\Framework\\v4.0.30319")
-)
-$frameworkRoot = $frameworkCandidates | Where-Object {
-    Test-Path -LiteralPath (Join-Path $_ "csc.exe") -PathType Leaf
-} | Select-Object -First 1
-if (-not $frameworkRoot) {
-    throw "The .NET Framework C# compiler was not found."
+$servicePackage = Join-Path $PSScriptRoot "bin\\PersonalAIAssistant.StateBroker.exe"
+$serviceHashFile = $servicePackage + ".sha256"
+if (-not (Test-Path -LiteralPath $servicePackage -PathType Leaf) -or
+    -not (Test-Path -LiteralPath $serviceHashFile -PathType Leaf)) {
+    throw "The CI-built Windows broker package or SHA-256 manifest is missing."
 }
-$source = Join-Path $PSScriptRoot "AutonomousStateBrokerService.cs"
-if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
-    throw "Windows state broker source was not found: $source"
+$expectedHash = (Get-Content -LiteralPath $serviceHashFile -Raw -ErrorAction Stop).Trim()
+if ($expectedHash -notmatch '^[0-9a-fA-F]{64}$') {
+    throw "The CI-built Windows broker SHA-256 manifest is malformed."
 }
-$references = @("System.Core.dll", "System.ServiceProcess.dll", "System.Web.Extensions.dll")
-$pipeAccess = Join-Path $frameworkRoot "System.IO.Pipes.AccessControl.dll"
-if (Test-Path -LiteralPath $pipeAccess) { $references += "System.IO.Pipes.AccessControl.dll" }
-$arguments = @("/nologo", "/target:exe", "/out:$serviceSource")
-foreach ($reference in $references) {
-    $arguments += "/reference:" + (Join-Path $frameworkRoot $reference)
-}
-$arguments += $source
-& (Join-Path $frameworkRoot "csc.exe") @arguments
-if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $serviceSource -PathType Leaf)) {
-    throw "Windows state broker did not compile from the current checkout."
+$packageHash = (Get-FileHash -LiteralPath $servicePackage -Algorithm SHA256 -ErrorAction Stop).Hash
+if (-not [string]::Equals($packageHash, $expectedHash, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "The CI-built Windows broker package failed SHA-256 verification."
 }
 
 $serviceRoot = Join-Path $env:ProgramData "PersonalAIAssistant\StateBroker-CI"
@@ -62,7 +47,7 @@ try {
     }
 
     New-Item -ItemType Directory -Path $serviceRoot, $stateRoot, (Join-Path $stateRoot "run-diagnostics") -Force | Out-Null
-    Copy-Item -LiteralPath $serviceSource -Destination $serviceExe -Force
+    Copy-Item -LiteralPath $servicePackage -Destination $serviceExe -Force
     & icacls.exe $serviceRoot /grant:r "*$($brokerSid):(OI)(CI)RX" /T /C /Q | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Could not grant LocalService read/execute access to the test service binary." }
     [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", $stateRoot, "Machine")
