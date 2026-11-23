@@ -1916,3 +1916,71 @@ def test_cycle_live_mode_api_failure_fails_closed(monkeypatch):
 
     with pytest.raises(RuntimeError, match="Could not verify the live execution mode"):
         cycle._live_execution_mode("test-token", "owner/repository")
+
+
+def test_cycle_controller_allows_explicit_one_shot_resume_in_scheduled_mode(monkeypatch):
+    from contextlib import contextmanager
+
+    @contextmanager
+    def fake_lock(run_id, run_attempt):
+        yield
+
+    def fake_api(token, repo, method, path):
+        if path.endswith("AUTONOMOUS_ENGINEERING_PAUSED"):
+            return {"value": "false"}
+        if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
+            return {"value": "scheduled"}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(cycle, "repository_execution_lock", fake_lock)
+    monkeypatch.setattr(cycle, "api", fake_api)
+    monkeypatch.setattr(cycle, "run_cycle", lambda args: 23)
+    monkeypatch.setattr(cycle.sys, "argv", [
+        "autonomous_engineering_cycle.py", "run",
+        "--run-id", "123", "--run-attempt", "1",
+        "--correlation-id", "c" * 32,
+        "--model", "test-model", "--prompt", "prompt.md", "--mode", "continuous",
+    ])
+    monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("GH_REPO", "owner/repository")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT", "0")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_RESUME_ONCE", "true")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_MANUAL_TASK", "")
+
+    assert cycle.main() == 23
+
+
+def test_cycle_controller_blocks_unmarked_empty_dispatch_in_scheduled_mode(monkeypatch):
+    from contextlib import contextmanager
+
+    events = []
+
+    @contextmanager
+    def fake_lock(run_id, run_attempt):
+        yield
+
+    def fake_api(token, repo, method, path):
+        if path.endswith("AUTONOMOUS_ENGINEERING_PAUSED"):
+            return {"value": "false"}
+        if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
+            return {"value": "scheduled"}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(cycle, "repository_execution_lock", fake_lock)
+    monkeypatch.setattr(cycle, "api", fake_api)
+    monkeypatch.setattr(cycle, "run_cycle", lambda args: pytest.fail("An unmarked empty dispatch must not start"))
+    monkeypatch.setattr(cycle.sys, "argv", [
+        "autonomous_engineering_cycle.py", "run",
+        "--run-id", "123", "--run-attempt", "1",
+        "--correlation-id", "d" * 32,
+        "--model", "test-model", "--prompt", "prompt.md", "--mode", "continuous",
+    ])
+    monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("GH_REPO", "owner/repository")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT", "0")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_RESUME_ONCE", "false")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_MANUAL_TASK", "")
+
+    assert cycle.main() == 0
