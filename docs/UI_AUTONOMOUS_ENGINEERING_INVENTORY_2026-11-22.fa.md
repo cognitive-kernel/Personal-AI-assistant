@@ -309,7 +309,7 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 ### حاقیهٔ Safe Pause و Execution Mode — 2026-11-24
 
 - کنترل workflow پس از گرفتن concurrency slot، مقدار زندهٔ Pause و Execution Mode را می‌خواند.
-- کنترلر Python پس از گرفتن repository execution lock و پیش از durable-state recovery یا شروع task هر دو مقدار را دوباره می‌خواند.
+- کنترلر Python پس از گرفتن repository execution lock و پیش از durable-state recovery یا شروع task هر دو مقدار را دوباره می‌خواند و پیش از dispatch چرخهٔ بعدی پس از ادغام مالک نیز آن‌ها را بررسی می‌کند.
 - Recovery نیز mode و Pause را پیش از طبقه‌بندی retry و بار دیگر پس از backoff، درست پیش از dispatch، بررسی می‌کند.
 - نبود متغیر Pause (HTTP 404) به معنی false و نبود متغیر mode به معنی continuous است؛ خطای API یا مقدار نامعتبر fail-closed است.
 - در حالت scheduled، runهای خودکار push/schedule و recovery که پشت concurrency منتظر مانده‌اند اجرا نمی‌شوند؛ task دستی مجاز است و Resume فقط با ورودی صریح resume_once یک اجرای خالی را مجاز می‌کند. Pause پس از شروع task، task جاری را قطع نمی‌کند؛ فقط شروع task/recovery بعدی را متوقف می‌کند. exact-head CI این تغییرات هنوز pending است.
