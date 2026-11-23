@@ -151,7 +151,10 @@ try {
 
         Set-AutonomousDirectoryTreeAcl -Path $aclProbeRoot -ModifySids @("S-1-5-20", $brokerSid) -OwnerSid $brokerSid -InstallerSid $currentSid
     } finally {
-        if (Test-Path -LiteralPath $aclProbeRoot -PathType Container) {
+        $probeEntry = Get-ChildItem -LiteralPath (Split-Path -Parent $aclProbeRoot) -Force -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -ceq (Split-Path -Leaf $aclProbeRoot) } |
+            Select-Object -First 1
+        if ($probeEntry -and $probeEntry.PSIsContainer) {
             & takeown.exe /F $aclProbeRoot /R /A | Out-Null
             & icacls.exe $aclProbeRoot /grant ("*$($currentSid):(OI)(CI)F") /T /C /Q | Out-Null
             Remove-Item -LiteralPath $aclProbeRoot -Recurse -Force -ErrorAction SilentlyContinue
