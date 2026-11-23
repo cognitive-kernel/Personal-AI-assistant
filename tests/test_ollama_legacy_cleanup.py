@@ -9,11 +9,15 @@ from scripts.ollama_legacy_cleanup import (
 
 
 class FakeOllama:
-    def __init__(self, names, *, loaded=(), modelfiles=None, keep_after_delete=()):
+    def __init__(
+        self, names, *, loaded=(), modelfiles=None, keep_after_delete=(),
+        load_on_show=(),
+    ):
         self.names = list(names)
         self.loaded = list(loaded)
         self.modelfiles = dict(modelfiles or {})
         self.keep_after_delete = set(keep_after_delete)
+        self.load_on_show = set(load_on_show)
         self.calls = []
 
     def request(self, method, path, body=None, timeout=10.0):
@@ -26,6 +30,8 @@ class FakeOllama:
             name = body["model"]
             if name not in self.names:
                 raise OllamaCleanupError("unknown model")
+            if name in self.load_on_show and name not in self.loaded:
+                self.loaded.append(name)
             return {"modelfile": self.modelfiles.get(name, "")}
         if method == "DELETE" and path == "/api/delete":
             name = body["model"]
@@ -182,4 +188,26 @@ def test_cleanup_fails_if_ollama_still_lists_a_deleted_alias():
         )
 
     assert [call for call in api.calls if call[0] == "DELETE"]
+    assert alias in api.names
+
+
+def test_cleanup_rechecks_runtime_before_deleting_an_alias_that_becomes_loaded():
+    alias = "base:7b-codex-ctx8192"
+    api = FakeOllama(
+        [alias],
+        modelfiles={
+            alias: "FROM /blob/base\\nPARAMETER num_ctx 8192\\n",
+        },
+        load_on_show=[alias],
+    )
+
+    result = cleanup_legacy_context_variants(
+        "base:7b",
+        request_json=api.request,
+        sleep=lambda _seconds: None,
+    )
+
+    assert result["preserved_loaded"] == [alias]
+    assert result["removed_models"] == []
+    assert not [call for call in api.calls if call[0] == "DELETE"]
     assert alias in api.names
