@@ -1067,6 +1067,86 @@ def _ensure_ollama() -> None:
             raise RuntimeError("مدل‌های موردنیاز پس از دریافت در Ollama دیده نشدند: " + ", ".join(absent))
 
 
+def _powershell_candidates() -> list[str]:
+    """Find installed PowerShell engines without assuming one installation path."""
+    candidates: list[str] = []
+    for command_name in ("pwsh.exe", "pwsh", "powershell.exe", "powershell"):
+        executable = shutil.which(command_name)
+        if executable and executable not in candidates:
+            candidates.append(executable)
+
+    if platform.system() == "Windows":
+        windir = os.environ.get("WINDIR", r"C:\\Windows").strip()
+        program_roots = [
+            os.environ.get("ProgramW6432", "").strip(),
+            os.environ.get("ProgramFiles", "").strip(),
+        ]
+        for root in program_roots:
+            if root:
+                candidate = Path(root) / "PowerShell" / "7" / "pwsh.exe"
+                if candidate.is_file():
+                    resolved = str(candidate)
+                    if resolved not in candidates:
+                        candidates.append(resolved)
+        if windir:
+            candidate = Path(windir) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+            if candidate.is_file():
+                resolved = str(candidate)
+                if resolved not in candidates:
+                    candidates.append(resolved)
+
+    return candidates
+
+
+def _find_compatible_powershell() -> tuple[str, str] | None:
+    """Return the first installed, supported PowerShell engine and its version.
+
+    Prefer PowerShell 7 when present, then fall back to Windows PowerShell 5.1.
+    A candidate is accepted only after the executable reports a supported
+    edition/version; the name on PATH is not treated as proof of compatibility.
+    """
+    probe = (
+        "$edition = [string]$PSVersionTable.PSEdition; "
+        "$version = [version]$PSVersionTable.PSVersion; "
+        "if (($edition -eq 'Desktop' -and $version -ge [version]'5.1') -or "
+        "($edition -eq 'Core' -and $version -ge [version]'7.0')) { "
+        "Write-Output ('PAA_PS|' + $edition + '|' + $version.ToString()) "
+        "} else { exit 41 }"
+    )
+    report_pattern = re.compile(r"^PAA_PS\\|(Desktop|Core)\\|([0-9]+\\.[0-9]+(?:\\.[0-9]+){0,2})$")
+    for executable in _powershell_candidates():
+        try:
+            result = subprocess.run(
+                [
+                    executable,
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    probe,
+                ],
+                cwd=ROOT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                capture_output=True,
+                timeout=6,
+                check=False,
+                shell=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if result.returncode != 0:
+            continue
+        for line in (result.stdout or "").splitlines():
+            match = report_pattern.fullmatch(line.strip())
+            if match:
+                edition = match.group(1)
+                version = match.group(2)
+                return executable, f"{edition} {version}"
+    return None
+
+
 def _ensure_state_broker() -> bool:
     """Check/install the machine broker through the native platform adapter."""
     system = platform.system()
@@ -1084,22 +1164,24 @@ def _ensure_state_broker() -> bool:
                 flush=True,
             )
             return False
-        powershell = shutil.which("powershell.exe") or shutil.which("powershell")
+        powershell = _find_compatible_powershell()
         if not powershell:
-            windir = os.environ.get("WINDIR")
-            if windir:
-                candidate = Path(windir) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
-                if candidate.is_file():
-                    powershell = str(candidate)
-        if not powershell:
-            print("Windows PowerShell در دسترس نیست؛ Broker نصب نشد.", file=sys.stderr, flush=True)
+            print(
+                "PowerShell سازگار (Windows PowerShell 5.1 یا PowerShell 7+) پیدا نشد؛ "
+                "Broker نصب نشد و برنامه در حالت محدود ادامه می‌یابد.",
+                file=sys.stderr,
+                flush=True,
+            )
             return False
+        executable, runtime = powershell
         print(
-            "بررسی فضای پیشرفت مشترک: Broker آماده نیست؛ راه‌اندازی امن با درخواست مجوز مدیر ...",
+            f"بررسی فضای پیشرفت مشترک: Broker آماده نیست؛ راه‌اندازی امن با {runtime} "
+            "و درخواست مجوز مدیر ...",
             flush=True,
         )
         command = [
-            powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)
+            executable, "-NoLogo", "-NoProfile", "-NonInteractive",
+            "-ExecutionPolicy", "Bypass", "-File", str(script)
         ]
         capture_output = True
     elif system in {"Linux", "Darwin"}:
