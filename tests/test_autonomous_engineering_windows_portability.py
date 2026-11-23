@@ -84,11 +84,15 @@ def test_shared_state_tree_acl_is_recursive_and_only_grants_runner_and_local_ser
     assert "$pendingDirectories.Push($root)" in acl_function
     assert "$items.Add($directoryInfo)" in acl_function
     assert "EnumerateFileSystemEntries" in acl_function
-    assert acl_function.index("EnumerateFileSystemEntries") < acl_function.index("takeown.exe")
-    assert acl_function.index("EnumerateFileSystemEntries") < acl_function.index("icacls.exe")
-    assert "/grant:r $installerGrant /C /Q" in acl_function
+    directory_walk = acl_function[acl_function.index("while ($pendingDirectories"):acl_function.index("# Files are touched")]
+    assert directory_walk.index("ReparsePoint") < directory_walk.index("& $takeown.Source /F $directory")
+    assert directory_walk.index("& $takeown.Source /F $directory") < directory_walk.index("EnumerateFileSystemEntries")
+    assert "$touched.Add($directoryInfo)" in directory_walk
+    assert "if (-not $completed)" in acl_function
+    assert "$cleanupTargets = @($touched" in acl_function
+    assert "/grant:r $installerGrant /C /Q" not in acl_function
     assert "/grant:r $installerGrant /T" not in acl_function
-    assert "/F $root /R" not in acl_function
+    assert "/R" not in acl_function
     assert "$allowed = @($ModifySids | Select-Object -Unique)" in module
     assert "$acl.SetOwner([Security.Principal.SecurityIdentifier]$OwnerSid)" in module
     assert "OwnerSid" in script and '"S-1-5-19"' in script
