@@ -34,7 +34,7 @@ Import-Module (Join-Path $scriptRoot "AutonomousStateBroker.psm1") -Force
 Import-Module (Join-Path $scriptRoot "AutonomousStateBrokerInstall.psm1") -Force
 
 $serviceName = "PersonalAIAssistantStateBroker"
-$brokerServiceSid = "S-1-5-19"
+$brokerServiceSid = Get-AutonomousWindowsWellKnownSid -SidType LocalServiceSid
 
 # Do not touch ACLs or stop services when a Runner job is active.
 $activeWorkers = @(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object { $_.Name -ieq "Runner.Worker.exe" })
