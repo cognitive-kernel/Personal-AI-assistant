@@ -225,3 +225,10 @@ checkpoint files. No human login name, group name, home directory, or fixed hard
 identifier is configured by the operator. Model context is selected from runtime
 metadata and available memory/compute resources, not a hard-coded GPU/CPU model.
 State-root resolution does not require a login home directory. The current home is consulted only to discover a legacy per-user state tree for one-time migration; if the service identity has no home, the shared site-data root still resolves normally.
+
+## Live safe-pause enforcement
+
+The workflow-context variable is only an early admission hint; it is not treated as the authoritative current value. Before a new Codex task starts, the workflow reads the current repository Actions variable after acquiring the Codex concurrency slot. The Python cycle controller reads it again after acquiring the repository execution lock and before it enters durable-state recovery or starts a task. The recovery coordinator also reads the live variable before classifying a retry and again after its backoff immediately before dispatch.
+
+An absent repository variable (HTTP 404) means the documented default false. Any other API failure, malformed response, or value other than true/false fails closed and prevents a new task/recovery dispatch. A pause received after a task has already begun does not terminate that task; it prevents the next task from starting after the current safe boundary.
+
