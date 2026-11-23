@@ -314,13 +314,15 @@ function Restore-AutonomousDirectoryTreeAcl {
     )
     $failures = New-Object 'System.Collections.Generic.List[string]'
     foreach ($entry in $restoreTargets) {
+        $entryPath = if ($null -ne $entry.Item) { [string]$entry.Item.FullName } else { "<unknown>" }
         try {
-            if ($null -eq $entry.Item -or $null -eq $entry.Acl) {
+            if ($null -eq $entry.Item -or $null -eq $entry.Acl -or
+                [string]::IsNullOrWhiteSpace($entryPath)) {
                 throw "The ACL rollback journal contains an invalid entry."
             }
-            Set-Acl -LiteralPath $entry.Item.FullName -AclObject $entry.Acl -ErrorAction Stop
+            Set-Acl -LiteralPath $entryPath -AclObject $entry.Acl -ErrorAction Stop
         } catch {
-            $failures.Add("$($entry.Item.FullName) ($($_.Exception.GetType().Name))")
+            $failures.Add("$entryPath ($($_.Exception.GetType().Name))")
         }
     }
     if ($failures.Count -gt 0) {
