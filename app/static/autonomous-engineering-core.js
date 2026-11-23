@@ -77,9 +77,13 @@
         timeoutError.correlationId = correlationId;
         throw timeoutError;
       }
-      if (error && !Number.isInteger(error.status)) {
+      if (error && typeof error === "object" && !Number.isInteger(error.status)) {
         error.ambiguous = true;
         if (!error.correlationId) error.correlationId = correlationId;
+        const errorMessage = typeof error.message === "string" ? error.message : "";
+        if (!errorMessage.includes(correlationId)) {
+          error.message = (errorMessage ? errorMessage + " · " : "") + "شناسهٔ پیگیری: " + correlationId;
+        }
       }
       throw error;
     } finally {
