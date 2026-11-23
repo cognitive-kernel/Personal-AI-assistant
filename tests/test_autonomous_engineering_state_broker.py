@@ -283,13 +283,13 @@ def test_broker_pipe_open_waits_for_busy_instance(monkeypatch):
 def test_broker_pipe_acl_grants_local_service_minimal_server_instance_rights():
     service = (ROOT / "scripts" / "AutonomousStateBrokerService.cs").read_text(encoding="utf-8")
 
-    local_service = service.index('new SecurityIdentifier("S-1-5-19")')
+    local_service = service.index("new SecurityIdentifier(WellKnownSidType.LocalServiceSid, null)")
     server_rights = service.index(
         "PipeAccessRights.CreateNewInstance | PipeAccessRights.ReadWrite",
         local_service,
     )
-    authenticated_users = service.index('new SecurityIdentifier("S-1-5-11")')
-    network_deny = service.index('new SecurityIdentifier("S-1-5-2")')
+    authenticated_users = service.index("new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null)")
+    network_deny = service.index("new SecurityIdentifier(WellKnownSidType.NetworkSid, null)")
 
     assert network_deny < local_service < server_rights < authenticated_users
     assert "AccessControlType.Deny" in service[network_deny:local_service]
