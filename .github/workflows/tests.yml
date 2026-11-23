@@ -334,6 +334,39 @@ jobs:
           }
           Write-Host "Reparse-point rejection completed before any ownership or ACL changes."
 
+          $rollbackRoot = Join-Path $env:RUNNER_TEMP ("autonomous-state-acl-rollback-" + [guid]::NewGuid().ToString("N"))
+          $rollbackNested = Join-Path $rollbackRoot "nested"
+          New-Item -ItemType Directory -Path $rollbackNested -Force | Out-Null
+          $rollbackFile = Join-Path $rollbackNested "preserved.json"
+          [System.IO.File]::WriteAllText($rollbackFile, '{"rollback":true}')
+          $rollbackPaths = @($rollbackRoot, $rollbackNested, $rollbackFile)
+          $originalDescriptors = @{}
+          foreach ($path in $rollbackPaths) {
+            $originalDescriptors[$path] = (Get-Acl -LiteralPath $path).Sddl
+          }
+          try {
+            $aclSnapshot = Set-AutonomousDirectoryTreeAcl -Path $rollbackRoot -ModifySids @($currentSid, $brokerSid) -OwnerSid $currentSid -InstallerSid $currentSid -PassThru
+            if ($null -eq $aclSnapshot -or @($aclSnapshot.Entries).Count -ne 3) {
+              throw "The ACL transaction did not return a complete rollback journal."
+            }
+            Restore-AutonomousDirectoryTreeAcl -Snapshot $aclSnapshot
+            foreach ($path in $rollbackPaths) {
+              $restoredDescriptor = (Get-Acl -LiteralPath $path).Sddl
+              if ($restoredDescriptor -ne $originalDescriptors[$path]) {
+                throw "The original ACL descriptor was not restored for $path."
+              }
+            }
+            if ([System.IO.File]::ReadAllText($rollbackFile) -ne '{"rollback":true}') {
+              throw "ACL rollback changed existing file contents."
+            }
+          } finally {
+            if (Test-Path -LiteralPath $rollbackRoot) {
+              & icacls.exe $rollbackRoot /grant:r "*$($currentSid):(OI)(CI)F" /T /C /Q | Out-Null
+              Remove-Item -LiteralPath $rollbackRoot -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
+          Write-Host "Transactional ACL snapshot and exact rollback passed."
+
       - name: Exercise the live LocalService broker and Python named-pipe client
         shell: pwsh
         run: |
