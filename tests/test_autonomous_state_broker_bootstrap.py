@@ -4,27 +4,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_machine_state_broker_is_checked_before_app_startup():
+def test_machine_state_broker_startup_preflight_is_read_only():
     source = (ROOT / "run.py").read_text(encoding="utf-8")
     bootstrap = source[source.index("def _ensure_state_broker"):source.index("\ndef main()")]
     main = source[source.index("def main()"):]
 
     assert "def _ensure_state_broker() -> bool:" in bootstrap
     assert "from app.autonomous_engineering_state_broker import health" in bootstrap
-    assert 'if system == "Windows":' in bootstrap
-    assert 'elif system in {"Linux", "Darwin"}:' in bootstrap
-    assert 'ROOT / "scripts" / "ensure_autonomous_state_broker.ps1"' in bootstrap
-    assert 'ROOT / "scripts" / "ensure_autonomous_state_broker_posix.py"' in bootstrap
-    assert '"-ExecutionPolicy"' in bootstrap
-    assert '"-File"' in bootstrap
-    assert "shell=False" in bootstrap
-    assert "capture_output = False" in bootstrap
-    assert "if health(timeout_ms=30000, verify=True):" in bootstrap
-    assert "if not health(timeout_ms=30000, verify=True):" in bootstrap
-    assert "state-broker-setup.log" in bootstrap
-    assert 'request("GET", "/v1/health/verify", timeout_ms=30000)' in bootstrap
+    assert "health(timeout_ms=30000, verify=True)" in bootstrap
+    assert "Start-Process" not in bootstrap
+    assert "ensure_autonomous_state_broker.ps1" not in bootstrap
+    assert "ensure_autonomous_state_broker_posix.py" not in bootstrap
+    assert "subprocess.run" not in bootstrap
     assert main.index("_ensure_dependencies(dev)") < main.index("from dotenv import load_dotenv")
-    assert main.index("load_dotenv(ROOT / \".env\", override=False)") < main.index("_ensure_state_broker()")
+    assert main.index('load_dotenv(ROOT / ".env", override=False)') < main.index("_ensure_state_broker()")
     assert main.index("_ensure_state_broker()") < main.index("_ensure_ollama()")
     assert main.index("_ensure_state_broker()") < main.index("uvicorn")
 
