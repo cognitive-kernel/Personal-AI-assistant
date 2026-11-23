@@ -256,3 +256,14 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 - پاسخ موفق/ناموفق، timeout و خطای شبکه همان شناسه را در payload/error و متن feedback UI نگه می‌دارند؛ در نتیجه timeout مبهم dispatch نیز شناسهٔ قابل جست‌وجو دارد.
 - API آن را به ورودی workflow منتقل می‌کند؛ workflow run/job، progress diagnostics و durable task owner metadata همان correlation ID را ثبت می‌کنند.
 - Regressionهای مرورگر برای dispatch دستی و round-trip شناسه، timeout و خطای شبکه اضافه شده‌اند. exact-head CI و target-host پذیرش هنوز معیار نهایی هستند.
+
+
+## 2026-11-23 addendum — validation evidence
+
+- Exact implementation code SHA: `d993038033d5d15cca4a4a6c63c979c081c89aad`.
+- Ubuntu full suite: 2,555 passed; Windows full suite: 2,550 passed; Windows storage regressions and Python bootstrap across Windows/Ubuntu/macOS passed.
+- Browser E2E passed with all six UI assets returning HTTP 200 and zero unexpected browser errors; artifact #14797757907.
+- CodeQL and dependency audit passed.
+- These results close repository CI gates only. Local Windows UI/Runner/Ollama/Codex acceptance remains pending.
+
+---
