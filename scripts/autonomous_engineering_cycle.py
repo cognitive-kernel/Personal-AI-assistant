@@ -848,12 +848,13 @@ def run_cycle(args: argparse.Namespace) -> int:
         )
         snapshot(args.run_id, args.run_attempt)
         request_file.unlink(missing_ok=True)
-        if args.mode == "continuous":
-            api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {
-                "ref": "main",
-                "inputs": {"manual_task": "", "correlation_id": getattr(args, "correlation_id", "")},
-            })
+        if _dispatch_next_cycle_if_enabled(token, repo, args):
             print(f"Owner-merged task {task} accepted as PR #{pr_number}; next cycle dispatched from main: {pr_url}")
+        elif args.mode == "continuous":
+            print(
+                f"Owner-merged task {task} accepted as PR #{pr_number}; no next cycle was dispatched "
+                f"because live mode/Pause blocked it or could not be verified: {pr_url}"
+            )
         else:
             print(f"Owner-merged task {task} accepted as PR #{pr_number}; scheduled mode resumes at its next interval: {pr_url}")
         return 0
@@ -904,6 +905,24 @@ def _live_execution_mode(token: str, repo: str) -> str:
     if value not in {"continuous", "scheduled"}:
         raise RuntimeError("GitHub returned an invalid execution mode; no automatic task will start.")
     return value
+
+
+def _dispatch_next_cycle_if_enabled(token: str, repo: str, args: Any) -> bool:
+    if getattr(args, "mode", None) != "continuous":
+        return False
+    try:
+        if _live_execution_mode(token, repo) != "continuous":
+            return False
+        if _live_pause_enabled(token, repo):
+            return False
+    except RuntimeError as exc:
+        print(f"Live mode/Pause could not be verified; suppressing next-cycle dispatch: {exc}")
+        return False
+    api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {
+        "ref": "main",
+        "inputs": {"manual_task": "", "correlation_id": getattr(args, "correlation_id", "")},
+    })
+    return True
 
 
 def main() -> int:
