@@ -116,8 +116,10 @@ def find_compatible_powershell(
     probe = (
         "$edition = [string]$PSVersionTable.PSEdition; "
         "$version = [version]$PSVersionTable.PSVersion; "
-        "if (($edition -eq 'Desktop' -and $version -ge [version]'5.1') -or "
-        "($edition -eq 'Core' -and $version -ge [version]'7.0')) { "
+        "$prerelease = [string]$PSVersionTable.Prerelease; "
+        "if ([string]::IsNullOrWhiteSpace($prerelease) -and "
+        "(($edition -eq 'Desktop' -and $version -ge [version]'5.1') -or "
+        "($edition -eq 'Core' -and $version -ge [version]'7.0'))) { "
         "Write-Output ('PAA_PS|' + $edition + '|' + $version.ToString()) "
         "} else { exit 41 }"
     )
