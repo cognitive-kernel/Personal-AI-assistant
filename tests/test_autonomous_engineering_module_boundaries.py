@@ -50,6 +50,20 @@ def test_autonomous_engineering_features_have_versioned_single_owner_contracts()
     assert 'window.addEventListener("pageshow"' in shell
 
 
+
+def test_autonomous_engineering_transport_sends_secure_correlation_ids_and_keeps_them_on_timeout():
+    core = _read("autonomous-engineering-core.js")
+
+    assert "function createCorrelationId()" in core
+    assert "cryptoApi.randomUUID()" in core
+    assert "cryptoApi.getRandomValues(bytes)" in core
+    assert "const bytes = new Uint8Array(16)" in core
+    assert 'requestHeaders.set("X-Correlation-ID", correlationId)' in core
+    assert "failure.correlationId = payload.correlation_id || response.headers.get(\"X-Correlation-ID\") || correlationId" in core
+    assert "timeoutError.correlationId = correlationId" in core
+    assert "شناسهٔ پیگیری: " in core
+
+
 def test_autonomous_engineering_status_refresh_and_controls_remain_isolated():
     status = _read("autonomous-engineering-status.js")
     controls = _read("autonomous-engineering-controls.js")
