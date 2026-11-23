@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import multiprocessing
+import os
+import shutil
 import subprocess
+import time
+import uuid
 
 import pytest
 
@@ -148,3 +152,87 @@ def test_broker_setup_lock_excludes_a_second_process(monkeypatch, tmp_path):
             result_queue.close()
             result_queue.join_thread()
         assert child.exitcode == 0
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows named-mutex ownership is platform-specific")
+def test_elevated_child_mutex_survives_parent_exit_and_reports_abandoned_owner(tmp_path):
+    powershell = shutil.which("powershell") or shutil.which("pwsh")
+    if not powershell:
+        pytest.skip("A supported PowerShell host is unavailable")
+
+    mutex_name = "Global\\PersonalAIAssistant.StateBrokerSetup.Test." + uuid.uuid4().hex
+    marker = str(tmp_path / "mutex-held.txt").replace("'", "''")
+    hold_script = (
+        "$mutex = [System.Threading.Mutex]::new($false, '" + mutex_name + "'); "
+        "if (-not $mutex.WaitOne(0)) { exit 3 }; "
+        "[System.IO.File]::WriteAllText('" + marker + "', 'held'); "
+        "Start-Sleep -Seconds 30"
+    )
+    child = subprocess.Popen(
+        [powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", hold_script],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and not os.path.exists(marker):
+            if child.poll() is not None:
+                stdout, stderr = child.communicate(timeout=2)
+                pytest.fail(f"Mutex-owning child exited early: {stdout} {stderr}")
+            time.sleep(0.05)
+        assert os.path.exists(marker), "Mutex-owning child did not acquire the named mutex"
+
+        competing_script = (
+            "$mutex = [System.Threading.Mutex]::new($false, '" + mutex_name + "'); "
+            "try { "
+            "$acquired = $mutex.WaitOne(0); "
+            "if ($acquired) { $mutex.ReleaseMutex(); exit 4 }; "
+            "exit 2 "
+            "} finally { $mutex.Dispose() }"
+        )
+        competing = subprocess.run(
+            [powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", competing_script],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        assert competing.returncode == 2, competing.stdout + competing.stderr
+
+        # Terminating the non-owner test process cannot release the child-owned
+        # mutex. Only terminating the owner makes the next acquisition abandoned.
+        child.terminate()
+        child.wait(timeout=5)
+        abandoned_script = (
+            "$mutex = [System.Threading.Mutex]::new($false, '" + mutex_name + "'); "
+            "try { "
+            "try { "
+            "$acquired = $mutex.WaitOne(0); "
+            "if ($acquired) { $mutex.ReleaseMutex(); exit 4 }; "
+            "exit 2 "
+            "} catch [System.Threading.AbandonedMutexException] { "
+            "$mutex.ReleaseMutex(); exit 0 "
+            "} "
+            "} finally { $mutex.Dispose() }"
+        )
+        abandoned = subprocess.run(
+            [powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", abandoned_script],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        assert abandoned.returncode == 0, abandoned.stdout + abandoned.stderr
+    finally:
+        if child.poll() is None:
+            child.terminate()
+            try:
+                child.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                child.kill()
+                child.wait(timeout=5)
+        if child.stdout:
+            child.stdout.close()
+        if child.stderr:
+            child.stderr.close()
