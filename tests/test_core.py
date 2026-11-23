@@ -1021,3 +1021,49 @@ def test_gpu_disabled_forces_cpu_option_on_inference_payload(monkeypatch):
     result = ollama._request("/api/chat", {"model": "test", "options": {"num_ctx": 1024}})
     assert result["message"]["content"] == "ok"
     assert captured["payload"]["options"]["num_gpu"] == 0
+
+
+def test_startup_keeps_local_ui_available_when_runtime_prerequisites_are_unavailable(monkeypatch, capsys):
+    import subprocess
+
+    bootstrap = _load_startup_bootstrap()
+    captured = {}
+    monkeypatch.setattr(bootstrap, "_inside_project_venv", lambda: True)
+    monkeypatch.setattr(bootstrap, "_ensure_dependencies", lambda _dev: None)
+    monkeypatch.setattr(bootstrap, "_ensure_state_broker", lambda: False)
+
+    def fail_ollama():
+        raise RuntimeError("Ollama is unavailable")
+
+    monkeypatch.setattr(bootstrap, "_ensure_ollama", fail_ollama)
+    monkeypatch.setattr(bootstrap.sys, "argv", ["run.py"])
+
+    def fake_run(command, **_kwargs):
+        captured["command"] = command
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(bootstrap, "_run", fake_run)
+
+    assert bootstrap.main() == 0
+    assert captured["command"][1:3] == ["-m", "uvicorn"]
+    output = capsys.readouterr()
+    assert "حالت محدود" in output.err or "حالت محدود" in output.out
+
+
+def test_check_only_reports_unavailable_runtime_prerequisites_without_starting_ui(monkeypatch):
+    bootstrap = _load_startup_bootstrap()
+    monkeypatch.setattr(bootstrap, "_inside_project_venv", lambda: True)
+    monkeypatch.setattr(bootstrap, "_ensure_dependencies", lambda _dev: None)
+    monkeypatch.setattr(bootstrap, "_ensure_state_broker", lambda: False)
+    monkeypatch.setattr(
+        bootstrap, "_ensure_ollama",
+        lambda: (_ for _ in ()).throw(RuntimeError("Ollama is unavailable")),
+    )
+    monkeypatch.setattr(bootstrap.sys, "argv", ["run.py", "--check-only"])
+    monkeypatch.setattr(
+        bootstrap, "_run",
+        lambda *_args, **_kwargs: pytest.fail("check-only must not start Uvicorn"),
+    )
+
+    assert bootstrap.main() == 2
+
