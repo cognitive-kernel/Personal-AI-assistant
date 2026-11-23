@@ -18,8 +18,8 @@ from app import main as main_module
 
 
 @pytest.fixture(autouse=True)
-def _stub_durable_pending_work_status(monkeypatch):
-    monkeypatch.setattr(agent, "_LAST_DISPATCH_ACCEPTED_AT", 0.0)
+def _stub_durable_pending_work_status(monkeypatch, tmp_path):
+    monkeypatch.setattr(agent, "_dispatch_admission_directory", lambda: tmp_path / "dispatch-state")
     monkeypatch.setattr(agent, "pending_work_status", lambda: {
         "available": True,
         "blocked": False,
@@ -2513,7 +2513,6 @@ def test_dispatch_timeout_reports_ambiguous_outcome_without_encouraging_retry(mo
 def test_successful_dispatch_correlates_ui_request_and_workflow_input(monkeypatch):
     correlation_id = "d" * 32
     calls = []
-    monkeypatch.setattr(agent, "_LAST_DISPATCH_ACCEPTED_AT", 0.0)
     monkeypatch.setattr(agent, "collect_status", lambda: {
         "ready": True,
         "github": {"runs_available": True, "recent_runs": []},
