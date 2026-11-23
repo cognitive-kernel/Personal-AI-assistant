@@ -101,3 +101,21 @@ Browser E2E از APIهای deterministic/stubbed استفاده می‌کند و
 - PR #846 Draft می‌ماند تا Gateهای میزبان واقعی تأیید شوند؛ PR #847 mirror بسته شده و branch آن حفظ شده است.
 
 ---
+
+
+## 2026-11-24 — current Autonomous Engineering first-module acceptance snapshot
+
+- PR [#864](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/864), exact head `8303afa5d44f104c6e9a5d569868f3db248023b0), completed all repository CI successfully:
+  - Linux suite: 2,576 passed, 14 skipped, 79 deselected.
+  - Windows suite: 2,571 passed, 19 skipped, 79 deselected.
+  - Windows storage regressions, Browser E2E, CodeQL, dependency audit, and managed Python bootstrap on Windows/Ubuntu/macOS passed.
+  - Browser E2E run: [45274156612](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45274156612); tests run: [45274156477](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45274156477).
+- PR #864 adds serialization for post-mutation status refreshes. It remains Draft and is not merged.
+- Additional safety fixes are under exact-head validation:
+  - [#865](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/865): machine-wide mutex held by the elevated State Broker child, addressing parent-timeout/orphan-child overlap; stacked on PR #863.
+  - [#866](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/866): live repository Pause-variable read after workflow concurrency admission, rather than relying on a stale workflow-context snapshot.
+  - [#867](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/867): cancellation prefers an executing workflow over a newer queued workflow.
+- PR #863 remains Draft; the elevated-child timeout finding is separately recorded in its review. PRs #865–#867 remain Draft; their CI must be evaluated against their latest exact heads, not earlier commits.
+- Repository CI is not target-host acceptance. Windows non-admin UI startup, UAC, actual Runner identity/ACL, real Ollama/Codex execution, pause/resume/cancel, parent-timeout/elevated-child behavior, crash/restart, checkpoint preservation, keyboard/screen-reader and visual accessibility review, and owner acceptance remain pending.
+- No PR was merged and no local service, ACL, Runner registration, task, checkpoint, database, or durable state was changed during this validation work.
+
