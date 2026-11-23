@@ -1076,7 +1076,7 @@ def resume_autonomous_engineering(request: Request = None) -> dict[str, Any]:
                 "X-Retryable": "false",
             },
         )
-    return {"accepted": True, "paused": False, "correlation_id": correlation_id, "message": "ادامه از وضعیت ذخیره‌شده درخواست شد."}
+    return {"accepted": True, "paused": False, "correlation_id": correlation_id, "message": "ادامه از وضعیت ذخیره‌شده درخواست شد؛ در حالت زمان‌بندی‌شده این اجرا یک‌باره است."}
 
 
 @router.post("/cancel")
