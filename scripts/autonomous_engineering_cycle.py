@@ -887,6 +887,25 @@ def _live_pause_enabled(token: str, repo: str) -> bool:
     return value == "true"
 
 
+def _live_execution_mode(token: str, repo: str) -> str:
+    if not token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
+        raise RuntimeError("A valid workflow token and repository are required to verify the live execution mode.")
+    try:
+        setting = api(token, repo, "GET", "actions/variables/AUTONOMOUS_ENGINEERING_MODE")
+    except RuntimeError as exc:
+        if "failed (404)" in str(exc):
+            return "continuous"
+        raise RuntimeError(
+            "Could not verify the live execution mode; no automatic task will start."
+        ) from exc
+    if not isinstance(setting, dict):
+        raise RuntimeError("GitHub returned an invalid execution mode; no automatic task will start.")
+    value = str(setting.get("value") or "").strip().lower()
+    if value not in {"continuous", "scheduled"}:
+        raise RuntimeError("GitHub returned an invalid execution mode; no automatic task will start.")
+    return value
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     subs = parser.add_subparsers(dest="command", required=True)
@@ -913,11 +932,23 @@ def main() -> int:
     with repository_execution_lock(args.run_id, args.run_attempt):
         with timed_stage("cycle_total"):
             try:
-                if _live_pause_enabled(
-                    os.environ.get("GH_TOKEN", "").strip(),
-                    os.environ.get("GH_REPO", "").strip(),
-                ):
+                token = os.environ.get("GH_TOKEN", "").strip()
+                repo = os.environ.get("GH_REPO", "").strip()
+                if _live_pause_enabled(token, repo):
                     print("Safe pause became active after repository execution admission; no task was started.")
+                    return 0
+                live_mode = _live_execution_mode(token, repo)
+                event_name = os.environ.get("GITHUB_EVENT_NAME", "").strip().lower()
+                try:
+                    recovery_attempt = int(os.environ.get("AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT", "0"))
+                except ValueError as exc:
+                    raise RuntimeError("Recovery attempt metadata is invalid; no task will start.") from exc
+                if recovery_attempt < 0:
+                    raise RuntimeError("Recovery attempt metadata is invalid; no task will start.")
+                if live_mode == "scheduled" and (
+                    event_name in {"push", "schedule"} or recovery_attempt > 0
+                ):
+                    print("Live execution mode is scheduled; this automatic/recovery trigger will not start a task.")
                     return 0
                 return run_cycle(args)
             except Exception as exc:
