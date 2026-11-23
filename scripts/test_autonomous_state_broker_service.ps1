@@ -150,14 +150,21 @@ try {
         Set-Acl -LiteralPath $aclProbeRoot -AclObject $probeAcl -ErrorAction Stop
 
         Set-AutonomousDirectoryTreeAcl -Path $aclProbeRoot -ModifySids @("S-1-5-20", $brokerSid) -OwnerSid $brokerSid -InstallerSid $currentSid
-        $probeFinalAcl = Get-Acl -LiteralPath $aclProbeRoot -ErrorAction Stop
-        $probeFinalSids = @(
-            $probeFinalAcl.Access | ForEach-Object {
-                $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
-            } | Select-Object -Unique
-        )
-        if ($probeFinalSids.Count -ne 2 -or $probeFinalSids -notcontains "S-1-5-20" -or $probeFinalSids -notcontains $brokerSid) {
-            throw "The protected ACL probe did not finish with exactly the requested service identities."
+        $probeFinalAcl = $null
+        try {
+            $probeFinalAcl = Get-Acl -LiteralPath $aclProbeRoot -ErrorAction Stop
+        } catch {
+            if ($_.Exception.Message -notmatch "(?i)access is denied|unauthorized") { throw }
+        }
+        if ($probeFinalAcl) {
+            $probeFinalSids = @(
+                $probeFinalAcl.Access | ForEach-Object {
+                    $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+                } | Select-Object -Unique
+            )
+            if ($probeFinalSids.Count -ne 2 -or $probeFinalSids -notcontains "S-1-5-20" -or $probeFinalSids -notcontains $brokerSid) {
+                throw "The protected ACL probe did not finish with exactly the requested service identities."
+            }
         }
     } finally {
         $probeEntry = Get-ChildItem -LiteralPath (Split-Path -Parent $aclProbeRoot) -Force -ErrorAction SilentlyContinue |
