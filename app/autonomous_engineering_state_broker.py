@@ -10,6 +10,7 @@ from ctypes import wintypes
 from typing import Any
 
 _PIPE_NAME = r"\\.\pipe\PersonalAIAssistant.StateBroker.v1"
+_WINDOWS = os.name == "nt"
 _GENERIC_READ = 0x80000000
 _GENERIC_WRITE = 0x40000000
 _OPEN_EXISTING = 3
@@ -292,12 +293,14 @@ def request(method: str, path: str, *, timeout_ms: int = 3500, body: dict[str, A
 def health(*, timeout_ms: int = 3500) -> bool:
     try:
         value = request("GET", "/v1/health", timeout_ms=timeout_ms)
-        return (
-            isinstance(value, dict)
-            and value.get("ready") is True
-            and value.get("storage_ready") is True
-            and value.get("acl_ready") is True
-        )
+        if not isinstance(value, dict) or value.get("ready") is not True:
+            return False
+        # Windows extends the broker health contract with a full NTFS ACL scan.
+        # POSIX retains its native service health contract and must not be gated
+        # on Windows-only response fields.
+        if _WINDOWS:
+            return value.get("storage_ready") is True and value.get("acl_ready") is True
+        return True
     except (OSError, RuntimeError, ValueError):
         return False
 
