@@ -234,7 +234,7 @@ try {
     try {
         Invoke-AutonomousStateBroker -Method GET -Path "/v1/health" -TimeoutMilliseconds 30000 | Out-Null
     } catch {
-        if ($_.Exception.Message -match "\\b503\\b") {
+        if ($_.Exception.Message -match "503") {
             $driftDetected = $true
         } else {
             throw
