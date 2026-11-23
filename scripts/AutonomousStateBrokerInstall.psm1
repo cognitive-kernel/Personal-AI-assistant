@@ -79,8 +79,10 @@ function Install-AutonomousStateBrokerService {
 
         Import-Module (Join-Path $PSScriptRoot "AutonomousStateBroker.psm1") -Force
         $health = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health" -TimeoutMilliseconds 30000
-        if ($null -eq $health -or $health.ready -ne $true -or $health.schema_version -ne 1) {
-            throw "The state broker service started but failed its protected storage health check."
+        if ($null -eq $health -or $health.ready -ne $true -or
+            $health.storage_ready -ne $true -or $health.acl_ready -ne $true -or
+            $health.schema_version -ne 1) {
+            throw "The state broker service started but failed its protected storage and ACL health checks."
         }
         if ($backupExe -and (Test-Path -LiteralPath $backupExe)) {
             Remove-Item -LiteralPath $backupExe -Force -ErrorAction Stop
