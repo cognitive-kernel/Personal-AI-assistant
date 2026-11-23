@@ -307,7 +307,7 @@ def test_windows_powershell_discovery_prefers_powerShell_7(monkeypatch):
         "powershell": None,
     }
     monkeypatch.setattr(hardware.shutil, "which", lambda name: candidates.get(name))
-    assert hardware._find_windows_powershell() == candidates["pwsh.exe"]
+    assert hardware._windows_powershell_candidates() == [candidates["pwsh.exe"], candidates["powershell.exe"]]
 
 
 def test_windows_powershell_discovery_falls_back_to_windows_powershell_5_1(monkeypatch):
@@ -324,6 +324,36 @@ def test_windows_powershell_discovery_falls_back_to_windows_powershell_5_1(monke
 def test_windows_powershell_discovery_returns_none_when_missing(monkeypatch):
     monkeypatch.setattr(hardware.shutil, "which", lambda _name: None)
     assert hardware._find_windows_powershell() is None
+
+
+
+
+def test_windows_gpu_telemetry_falls_back_when_powerShell_7_fails(monkeypatch):
+    import json
+
+    monkeypatch.setattr(hardware.os, "name", "nt")
+    paths = [
+        r"C:\Program Files\PowerShell\7\pwsh.exe",
+        r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+    ]
+    monkeypatch.setattr(hardware, "_windows_powershell_candidates", lambda: paths)
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append(command[0])
+        if command[0] == paths[0]:
+            return None
+        return json.dumps({
+            "Adapters": [{"Name": "Fallback GPU", "PNPDeviceID": "PCI\\VEN_8086", "AdapterRAM": 1073741824}],
+            "Counters": [],
+        })
+
+    monkeypatch.setattr(hardware, "_run_gpu_command", run)
+    result = hardware._detect_windows_gpus()
+
+    assert calls == paths
+    assert len(result) == 1
+    assert result[0]["name"] == "Fallback GPU"
 
 
 
