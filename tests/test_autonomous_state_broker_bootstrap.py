@@ -43,6 +43,12 @@ def test_windows_broker_setup_discovers_runner_identity_and_path():
     assert '[string]$RunnerAccount = ""' in provision
     assert '[string]$RunnerRoot = ""' in provision
     assert "Start-Process" in ensure and "-Verb RunAs" in ensure
+    elevation = ensure[:ensure.index("$brokerLogDirectory")]
+    assert '$previousModulePath = $env:PSModulePath' in elevation
+    assert '$env:PSModulePath = Join-Path $PSHOME "Modules"' in elevation
+    assert elevation.index('$env:PSModulePath = Join-Path $PSHOME "Modules"') < elevation.index("Start-Process")
+    assert '$env:PSModulePath = $previousModulePath' in elevation
+    assert "finally {" in elevation
     assert "$modifySids = @($brokerServiceSid)" in ensure
     assert "$modifySids += $runner.Sid" in ensure
     assert "foreach ($runner in $allRunnerServices)" in ensure
