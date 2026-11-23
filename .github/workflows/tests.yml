@@ -323,7 +323,15 @@ jobs:
       - name: Exercise the packaged broker under Windows PowerShell Desktop
         shell: powershell
         run: |
-          & "$env:GITHUB_WORKSPACE\\scripts\\test_autonomous_state_broker_service.ps1"
+          $activeHost = [string](Get-Process -Id $PID -ErrorAction Stop).Path
+          if (-not (Test-Path -LiteralPath $activeHost -PathType Leaf)) {
+            throw "Windows PowerShell Desktop did not expose its active executable path."
+          }
+          $childEdition = & $activeHost -NoLogo -NoProfile -NonInteractive -Command '$PSVersionTable.PSEdition'
+          if ($LASTEXITCODE -ne 0 -or $childEdition -notmatch "Desktop") {
+            throw "Windows PowerShell Desktop could not relaunch its own executable."
+          }
+          & (Join-Path $env:GITHUB_WORKSPACE "scripts/test_autonomous_state_broker_service.ps1")
 
       - name: Test shared Ollama runtime API contract
         shell: pwsh
