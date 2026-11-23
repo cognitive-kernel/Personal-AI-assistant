@@ -2517,3 +2517,9 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - The previous `run.py` startup path could download and execute the Ollama installer, start an existing Ollama runtime, and pull configured models without a fresh user action. This contradicted the local-first/explicit-consent policy.
 - Startup now only discovers the installed Ollama CLI, performs a bounded read-only `ollama list` readiness check, and verifies that the configured models already exist. Missing Ollama, a stopped service, or missing models marks only the Ollama capability unavailable; the local dashboard still starts. The user installs/starts Ollama separately and uses the dashboard's explicit model-download action when needed.
 - Regression tests now assert that startup never downloads an installer, starts a service, or pulls a model.
+
+### Workflow integrity and setup-lock hardening — 2026-11-24
+
+- A second inspection of `.github/workflows/tests.yml` found a duplicate `windows-storage-regressions`/ `runtime-bootstrap` block and orphaned PowerShell lines after the runtime job. The duplicate block was removed; a static regression now asserts each job appears exactly once and no orphaned broker-build fragment follows the final job.
+- Broker setup serialization now combines a thread guard with an OS byte-range/file lock in the per-user temporary directory. The OS lock spans the entire install/repair transaction and is released by the kernel on process exit. A spawned-process regression verifies a second process cannot enter while the first holds the lock. Durable task, repository, and checkpoint locks remain separate and unchanged.
+- This lock serializes app processes for the same OS user; it is not represented as a machine-wide distributed lock or a replacement for the existing durable-state lock.
