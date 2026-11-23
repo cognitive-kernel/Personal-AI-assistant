@@ -165,7 +165,7 @@ def setup_state_broker() -> dict[str, Any]:
             combined = ((result.stdout or "") + "\n" + (result.stderr or "")).casefold()
             if system == "Windows" and any(
                 phrase in combined
-                for phrase in ("canceled by the user", "cancelled by the user", "operation was canceled")
+                for phrase in ("canceled by the user", "cancelled by the user", "operation was canceled", "1223", "0x4c7")
             ):
                 raise BrokerSetupError(
                     "درخواست مجوز مدیر لغو شد؛ هیچ موفقیتی برای نصب Broker ثبت نشده است. "
