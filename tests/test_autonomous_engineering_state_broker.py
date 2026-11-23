@@ -324,14 +324,15 @@ def test_broker_cleanup_enforces_repository_state_and_checkpoint_lock_order():
     assert "A progress writer is active" in service
 
 
-def test_python_broker_health_requires_storage_and_acl_integrity(monkeypatch):
+def test_python_broker_health_preserves_posix_and_extends_windows_contract(monkeypatch):
     captured = {}
 
     def healthy_request(method, path, **kwargs):
         captured.update(method=method, path=path, kwargs=kwargs)
-        return {"ready": True, "storage_ready": True, "acl_ready": True}
+        return {"ready": True}
 
     monkeypatch.setattr(broker, "request", healthy_request)
+    monkeypatch.setattr(broker, "_WINDOWS", False)
     assert broker.health(timeout_ms=30000) is True
     assert captured == {
         "method": "GET",
@@ -340,7 +341,29 @@ def test_python_broker_health_requires_storage_and_acl_integrity(monkeypatch):
     }
 
     monkeypatch.setattr(
-        broker, "request",
-        lambda *_args, **_kwargs: {"ready": True, "storage_ready": True, "acl_ready": False},
+        broker,
+        "request",
+        lambda *_args, **_kwargs: {
+            "ready": True, "storage_ready": True, "acl_ready": True,
+        },
+    )
+    monkeypatch.setattr(broker, "_WINDOWS", True)
+    assert broker.health(timeout_ms=30000) is True
+
+    monkeypatch.setattr(
+        broker,
+        "request",
+        lambda *_args, **_kwargs: {
+            "ready": True, "storage_ready": True, "acl_ready": False,
+        },
+    )
+    assert broker.health(timeout_ms=30000) is False
+
+    monkeypatch.setattr(
+        broker,
+        "request",
+        lambda *_args, **_kwargs: {
+            "ready": True, "storage_ready": False, "acl_ready": True,
+        },
     )
     assert broker.health(timeout_ms=30000) is False
