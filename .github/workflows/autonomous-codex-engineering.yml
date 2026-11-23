@@ -34,6 +34,11 @@ on:
         required: false
         type: number
         default: 0
+      resume_once:
+        description: "Allow one explicit empty-task resume while scheduled mode is active"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -152,6 +157,8 @@ jobs:
       AUTONOMOUS_ENGINEERING_REQUIRE_MACHINE_STATE_DIR: 'true'
       AUTONOMOUS_ENGINEERING_CORRELATION_ID: ${{ inputs.correlation_id || '' }}
       AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT: ${{ inputs.recovery_attempt || 0 }}
+      AUTONOMOUS_ENGINEERING_RESUME_ONCE: ${{ inputs.resume_once || false }}
+      AUTONOMOUS_ENGINEERING_MANUAL_TASK: ${{ inputs.manual_task || '' }}
       AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT: ${{ inputs.recovery_attempt || 0 }}
     steps:
       - name: Check out trusted main branch
@@ -826,6 +833,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           MANUAL_TASK: ${{ inputs.manual_task || '' }}
           RECOVERY_ATTEMPT: ${{ inputs.recovery_attempt || 0 }}
+          RESUME_ONCE: ${{ inputs.resume_once || false }}
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
@@ -868,9 +876,15 @@ jobs:
           }
           $paused = $pausedValue -eq "true"
           $skip = $paused
+          $automaticTrigger = $env:EVENT_NAME -in @("push", "schedule")
+          $recoveryTrigger = $recoveryAttempt -gt 0
+          $unmarkedEmptyDispatch = (
+            $env:EVENT_NAME -eq "workflow_dispatch" -and
+            [string]::IsNullOrWhiteSpace($env:MANUAL_TASK) -and
+            $env:RESUME_ONCE -ne "true"
+          )
           if (-not $skip -and $modeValue -eq "scheduled" -and
-              (($env:EVENT_NAME -in @("push", "schedule")) -or $recoveryAttempt -gt 0) -and
-              [string]::IsNullOrWhiteSpace($env:MANUAL_TASK)) {
+              ($automaticTrigger -or $recoveryTrigger -or $unmarkedEmptyDispatch)) {
             $skip = $true
           }
           $output = "paused=$($paused.ToString().ToLowerInvariant())" + "`n" +
