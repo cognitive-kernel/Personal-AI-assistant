@@ -119,3 +119,12 @@ Browser E2E از APIهای deterministic/stubbed استفاده می‌کند و
 - Repository CI is not target-host acceptance. Windows non-admin UI startup, UAC, actual Runner identity/ACL, real Ollama/Codex execution, pause/resume/cancel, parent-timeout/elevated-child behavior, crash/restart, checkpoint preservation, keyboard/screen-reader and visual accessibility review, and owner acceptance remain pending.
 - No PR was merged and no local service, ACL, Runner registration, task, checkpoint, database, or durable state was changed during this validation work.
 
+
+
+### Safe Pause admission hardening — 2026-11-24
+
+- The pre-task workflow gate now reads the live Actions variable after concurrency admission; the cycle controller repeats that check after acquiring the repository execution lock and before durable-state recovery/task start.
+- Automatic recovery no longer trusts a workflow-context PAUSED snapshot. It reads the live variable before retry classification and again after backoff immediately before dispatch.
+- Missing variable (404) means default false; API errors and malformed values fail closed.
+- PR #866 contains these changes. Its exact-head CI is pending; no real task/recovery workflow was dispatched for this validation.
+
