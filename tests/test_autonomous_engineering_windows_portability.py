@@ -421,7 +421,7 @@ def test_broker_installer_cleans_staging_and_restores_existing_service_on_stop_f
     assert stage_start < stop_service < stage_catch < cleanup
     assert "if ($wasRunning)" in install[stage_catch:cleanup]
     assert "Start-Service -Name $serviceName -ErrorAction SilentlyContinue" in install[stage_catch:cleanup]
-    assert "$previousServicePath" in install
+    assert "$existingServicePath" in install
     assert "The previous state-broker service configuration" in install
     assert "'binPath=' $binaryPath" in install
 
