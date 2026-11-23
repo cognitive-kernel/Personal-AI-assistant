@@ -43,6 +43,7 @@ $brokerServiceSid = "S-1-5-19"
 $runnerServiceCandidates = @(Get-CimInstance Win32_Service -ErrorAction Stop | Where-Object {
     $_.PathName -match '(?i)RunnerService\.exe'
 })
+$allRunnerServices = @()
 $resolvedRunnerServices = @()
 foreach ($candidate in $runnerServiceCandidates) {
     $rawPath = [string]$candidate.PathName
@@ -55,20 +56,22 @@ foreach ($candidate in $runnerServiceCandidates) {
     }
     $executable = [System.IO.Path]::GetFullPath($match.Groups["exe"].Value)
     $root = [System.IO.Path]::GetFullPath((Split-Path -Parent (Split-Path -Parent $executable)))
+    $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $candidate.StartName
+    $discoveredRunner = [pscustomobject]@{
+        Service = $candidate
+        Executable = $executable
+        Root = $root
+        Sid = $runnerSid
+    }
+    $allRunnerServices += $discoveredRunner
     if ([string]::IsNullOrWhiteSpace($RunnerRoot) -or
         $root.Equals([System.IO.Path]::GetFullPath($RunnerRoot), [StringComparison]::OrdinalIgnoreCase)) {
-        $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $candidate.StartName
-        $resolvedRunnerServices += [pscustomobject]@{
-            Service = $candidate
-            Executable = $executable
-            Root = $root
-            Sid = $runnerSid
-        }
+        $resolvedRunnerServices += $discoveredRunner
     }
 }
 
-if (-not [string]::IsNullOrWhiteSpace($RunnerRoot) -and $resolvedRunnerServices.Count -eq 0) {
-    throw "No installed Runner service matches the supplied RunnerRoot. No state permissions were changed."
+if (-not [string]::IsNullOrWhiteSpace($RunnerRoot) -and $resolvedRunnerServices.Count -ne 1) {
+    throw "Expected exactly one installed Runner service matching the supplied RunnerRoot; found $($resolvedRunnerServices.Count). No state permissions were changed."
 }
 
 # Do not touch ACLs or services when any Runner job is active.
@@ -98,7 +101,7 @@ $setupFailure = $null
 try {
     # Stop listeners before changing the shared ACL, then re-check workers to
     # close the race where a job starts between process discovery and service stop.
-    foreach ($runner in $resolvedRunnerServices) {
+    foreach ($runner in $allRunnerServices) {
         $service = Get-Service -Name $runner.Service.Name -ErrorAction Stop
         if ($service.Status -eq "Running") {
             Stop-Service -Name $service.Name -ErrorAction Stop
