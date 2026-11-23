@@ -341,3 +341,20 @@ The current `main` SHA `2a5c83bf0ba924f4a2c8f206338a04872562d72d` has completed 
 - PR #846 remains Draft; temporary verification PR #847 was closed without merge and its branch retained.
 
 ---
+
+
+## 2026-11-24 — Broker provisioning and startup side-effect remediation (PR #863, Draft)
+
+| Gate | وضعیت | شواهد/محدودیت |
+|---|---|---|
+| Target compiler independence | implementation در PR #863 | CI package prebuilt است؛ target به `csc.exe`، .NET SDK یا Visual Studio نیاز ندارد. .NET Framework 4.8+ runtime همچنان لازم است. |
+| PowerShell version independence | implementation در PR #863؛ exact-head Windows CI pending | Core و Desktop با capability probe انتخاب می‌شوند و numeric major-version gate ندارند. مسیر native/PowerShell-free هنوز پیاده‌سازی نشده است. |
+| Broker package integrity | workflow بازسازی شده؛ exact-head CI pending | CI package و SHA-256 manifest می‌سازد، attestation صادر می‌کند، live service tests را اجرا می‌کند و binary را idempotently به PR branch commit می‌کند؛ اجرای دوم باید deterministic hash را تأیید کند. Installer فعلاً attestation را verify نمی‌کند و فقط SHA-256 را می‌سنجد. |
+| Explicit privileged setup | implementation و regression definitions در PR #863 | startup read-only است؛ نصب/ترمیم فقط با دکمهٔ UI و POST loopback-protected شروع می‌شود. UAC cancellation/timeout/health failures کدهای مجزا دارند. Windows target هنوز NOT RUN است. |
+| Runner independence | implementation در PR #863 | Broker با LocalService و صفر Runner باید نصب شود؛ Runner فقط برای remote Workflow لازم است. آزمون target host با Runner absent/present pending است. |
+| Ollama startup consent | implementation و regression definitions در PR #863 | startup فقط CLI/API و مدل‌های موجود را بررسی می‌کند؛ install/start/pull خودکار حذف شده‌اند. Target-host runtime acceptance pending است. |
+| Exact-head CI | pending | Linux/Windows full tests، Windows storage، Browser E2E، CodeQL و dependency audit باید روی SHA نهایی و پس از commit binary موفق شوند. |
+| Windows target-host acceptance | pending | non-admin launch، UAC explicit، LocalService، دو حساب مستقل، named pipe، Runner absent/present، restart و checkpoint preservation لازم است. |
+| Native portability / OS matrix | open | PowerShell-free Windows service-control/ACL helper، Linux/macOS، معماری‌های دیگر، relocation، upgrade/rollback و soak هنوز تکمیل نشده‌اند. |
+
+این جدول فقط وضعیت branch را ثبت می‌کند؛ هیچ gateای به‌خاطر وجود کد یا تست تعریف‌شده passed محسوب نمی‌شود. PR #863 Draft می‌ماند و merge/deploy تا exact-head CI و target-host/owner acceptance ممنوع است. Issue #290 و independent security review Issue #52 همچنان باز می‌مانند.
