@@ -224,7 +224,8 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
 
     # Existing installations must receive the same least-privilege enforcement as
     # newly provisioned ones. A service keeps its old access token until restarted.
-    $administratorsGroup = Get-LocalGroup -SID "S-1-5-32-544"
+    $administratorsSid = Get-AutonomousWindowsWellKnownSid -SidType BuiltinAdministratorsSid
+    $administratorsGroup = Get-LocalGroup -SID $administratorsSid
     $runnerIsDirectAdministrator = @(
         Get-LocalGroupMember -Group $administratorsGroup.Name -ErrorAction Stop |
             Where-Object { $_.SID -and $_.SID.Value -eq (Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity) }
@@ -330,7 +331,7 @@ try {
     Start-Service -Name $services[0].Name
     if ((Get-Service -Name $services[0].Name).Status -ne "Running") { throw "Runner service did not start." }
     Install-AutonomousStateBrokerService
-    Write-Host "Runner registered and running as $runnerIdentity; model $Model verified. The state broker runs as the restricted LocalService identity; app users do not receive filesystem ACLs."
+    Write-Host "Runner registered and running as $runnerIdentity; model $Model verified. The state broker runs under a restricted OS-managed service identity; app users do not receive filesystem ACLs."
 } finally {
     $token = $null
     if ($archive -and (Test-Path -LiteralPath $archive)) { Remove-Item -LiteralPath $archive -Force -ErrorAction SilentlyContinue }
