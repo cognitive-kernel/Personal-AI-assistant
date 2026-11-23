@@ -259,6 +259,11 @@ if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     } finally {
         Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid
     }
+    [Environment]::SetEnvironmentVariable(
+        "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS",
+        (@($runnerSid, $brokerServiceSid) | Select-Object -Unique | Sort-Object) -join ";",
+        "Machine"
+    )
     Install-AutonomousStateBrokerService
     $serviceState = (Get-CimInstance Win32_Service | Where-Object { $_.Name -eq $services[0].Name }).State
     if ($serviceState -ne "Running") { Start-Service -Name $services[0].Name -ErrorAction Stop }
@@ -329,6 +334,11 @@ try {
     if ($services[0].StartMode -eq "Disabled") { Set-Service -Name $services[0].Name -StartupType Automatic }
     Start-Service -Name $services[0].Name
     if ((Get-Service -Name $services[0].Name).Status -ne "Running") { throw "Runner service did not start." }
+    [Environment]::SetEnvironmentVariable(
+        "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS",
+        (@($runnerSid, $brokerServiceSid) | Select-Object -Unique | Sort-Object) -join ";",
+        "Machine"
+    )
     Install-AutonomousStateBrokerService
     Write-Host "Runner registered and running as $runnerIdentity; model $Model verified. The state broker runs as the restricted LocalService identity; app users do not receive filesystem ACLs."
 } finally {
