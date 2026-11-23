@@ -2729,6 +2729,12 @@ def test_cancel_prefers_running_workflow_over_a_newer_queued_run(monkeypatch):
             return subprocess.CompletedProcess(command, 0, "", "")
         if command[1:3] == ["run", "list"]:
             return subprocess.CompletedProcess(command, 0, json.dumps(runs), "")
+        if command[1:3] == ["run", "view"]:
+            run_id = command[3]
+            state = "queued" if run_id == "222" else "in_progress"
+            return subprocess.CompletedProcess(
+                command, 0, json.dumps({"jobs": [{"name": "codex", "status": state}]}), ""
+            )
         if command[1:3] == ["run", "cancel"]:
             return subprocess.CompletedProcess(command, 0, "", "")
         raise AssertionError(command)
@@ -2756,6 +2762,10 @@ def test_cancel_falls_back_to_queued_run_when_no_run_is_in_progress(monkeypatch)
             return subprocess.CompletedProcess(command, 0, "", "")
         if command[1:3] == ["run", "list"]:
             return subprocess.CompletedProcess(command, 0, json.dumps(runs), "")
+        if command[1:3] == ["run", "view"]:
+            return subprocess.CompletedProcess(
+                command, 0, json.dumps({"jobs": [{"name": "codex", "status": "queued"}]}), ""
+            )
         if command[1:3] == ["run", "cancel"]:
             return subprocess.CompletedProcess(command, 0, "", "")
         raise AssertionError(command)
