@@ -927,6 +927,7 @@ def _ensure_ollama_server(
 
 
 def _ensure_ollama() -> None:
+    """Read-only Ollama preflight; installation, startup, and model pulls are user actions."""
     active_providers = [
         _configured_llm_provider(name)
         for name in ("chat", "research_plan", "learning", "programming", "embedding")
@@ -935,93 +936,34 @@ def _ensure_ollama() -> None:
     if factual_review_model and _configured_llm_provider("factual_review") == "ollama":
         active_providers.append("ollama")
     if "ollama" not in active_providers:
-        print("همهٔ مسیرهای LLM و embedding روی provider جایگزین تنظیم شده‌اند؛ نصب و اجرای Ollama لازم نیست.", flush=True)
-        return
-    system = platform.system()
-    # Detect an existing installation before downloading anything. The installer
-    # is only needed when Ollama cannot be found on this machine.
-    executable = _find_ollama()
-    installer: Path | None = None
-    release: dict[str, Any] | None = None
-    if not executable:
-        asset_name = {
-            "Windows": "OllamaSetup.exe",
-            "Linux": "install.sh",
-            "Darwin": "Ollama-darwin.zip",
-        }.get(system)
-        if asset_name is None:
-            raise RuntimeError(f"نصب خودکار Ollama برای سیستم‌عامل {system} پشتیبانی نمی‌شود.")
-        release = _latest_ollama_release_assets()
-        if system == "Linux":
-            machine = platform.machine().lower()
-            architecture = {"x86_64": "amd64", "aarch64": "arm64", "arm64": "arm64"}.get(machine)
-            if architecture is None:
-                raise RuntimeError(f"معماری Linux پشتیبانی نمی‌شود: {machine}")
-            base_asset = f"ollama-linux-{architecture}.tar.zst"
-            if base_asset not in release["assets"]:
-                raise RuntimeError(
-                    f"انتشار {release['tag']} بستهٔ Linux تأییدپذیر {base_asset} را ندارد."
-                )
-        asset = release["assets"].get(asset_name)
-        if asset is None:
-            raise RuntimeError(
-                f"نسخهٔ {release['tag']} دارایی نصب {asset_name} را ندارد؛ نصب متوقف شد."
-            )
-        installer_name = {
-            "Windows": "OllamaSetup.exe",
-            "Linux": "ollama-install.sh",
-            "Darwin": "Ollama-darwin.zip",
-        }[system]
-        installer = _download_once(
-            asset["url"],
-            INSTALLERS / installer_name,
-            expected_sha256=asset["sha256"],
-            expected_size=asset["size"],
-            opener=_ollama_asset_opener(),
-        )
         print(
-            f"دارایی رسمی Ollama {release['tag']} با SHA-256 تأیید شد.",
+            "همهٔ مسیرهای LLM و embedding روی provider جایگزین تنظیم شده‌اند؛ "
+            "بررسی یا راه‌اندازی Ollama لازم نیست.",
             flush=True,
         )
-    if not executable and installer:
-        print("Ollama نصب نیست؛ اجرای نصب‌کننده ذخیره‌شده در prerequisites/installers ...", flush=True)
-        if system == "Windows":
-            result = _run([str(installer)])
-        elif system == "Linux":
-            if release is None:
-                raise RuntimeError("اطلاعات انتشار تأییدشده برای نصب Linux موجود نیست.")
-            verified_installer = _patch_linux_install_script(installer)
-            install_env = os.environ.copy()
-            install_env.update({
-                "OLLAMA_VERSION": release["tag"].lstrip("v"),
-                "OLLAMA_VERIFIED_RELEASE_ASSETS_JSON": json.dumps(
-                    release, ensure_ascii=True, separators=(",", ":")
-                ),
-                "OLLAMA_VERIFIED_ASSET_DIR": str(INSTALLERS / "ollama-release-assets"),
-                "OLLAMA_VERIFIED_PYTHON": sys.executable,
-                "OLLAMA_VERIFIED_RUNNER": str(Path(__file__).resolve()),
-            })
-            result = _run(["sh", str(verified_installer)], env=install_env)
-        else:
-            # macOS app installation is intentionally left interactive; opening the
-            # cached archive lets the user complete the signed app installation.
-            _run(["open", str(installer)])
-            raise RuntimeError(
-                "بسته رسمی Ollama در prerequisites/installers ذخیره و باز شد. نصب برنامه را کامل کنید و دوباره run.py را اجرا کنید."
-            )
-        if result.returncode != 0:
-            raise RuntimeError("نصب خودکار Ollama ناموفق بود؛ نصب‌کننده در prerequisites/installers باقی مانده است.")
-        executable = _find_ollama()
-    if not executable:
-        raise RuntimeError("Ollama در PATH یا مسیرهای نصب متداول پیدا نشد؛ نصب‌کننده در prerequisites/installers قرار دارد.")
+        return
 
-    listed = _ensure_ollama_server(executable)
-    if listed.stdout:
-        print(listed.stdout, end="" if listed.stdout.endswith("\n") else "\n", flush=True)
-    if listed.stderr:
-        print(listed.stderr, file=sys.stderr, flush=True)
+    executable = _find_ollama()
+    if not executable:
+        raise RuntimeError(
+            "Ollama نصب نیست. برنامه در startup هیچ نصب‌کننده یا دانلودی اجرا نمی‌کند؛ "
+            "Ollama را جداگانه نصب و اجرا کنید."
+        )
+
+    try:
+        listed = _ollama_list(executable)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError(
+            f"Ollama پیدا شد اما API آن پاسخ نمی‌دهد؛ سرویس را جداگانه اجرا کنید ({type(exc).__name__})."
+        ) from exc
+    if listed.returncode != 0:
+        raise RuntimeError(
+            "Ollama نصب است اما سرویس آن آماده نیست؛ startup سرویس را خودکار اجرا یا تغییر نمی‌دهد."
+        )
+
     installed_models = {
-        line.split()[0] for line in (listed.stdout or "").splitlines()
+        line.split()[0]
+        for line in (listed.stdout or "").splitlines()
         if line.strip() and not line.lstrip().startswith("NAME ")
     }
     required_models: list[tuple[str, str]] = []
@@ -1029,42 +971,35 @@ def _ensure_ollama() -> None:
         required_models.append((
             "مدل گفتگو",
             _configured_model_setting(
-                "chat_ollama_model", "CHAT_OLLAMA_MODEL",
+                "chat_ollama_model",
+                "CHAT_OLLAMA_MODEL",
                 os.environ.get("OLLAMA_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL,
             ),
         ))
     if _configured_llm_provider("research_plan") == "ollama":
         required_models.append((
             "مدل برنامه‌ریزی پژوهش",
-            _configured_model_setting("research_plan_ollama_model", "RESEARCH_PLAN_OLLAMA_MODEL", DEFAULT_MODEL),
+            _configured_model_setting(
+                "research_plan_ollama_model",
+                "RESEARCH_PLAN_OLLAMA_MODEL",
+                DEFAULT_MODEL,
+            ),
         ))
     if _configured_llm_provider("learning") == "ollama":
         required_models.append(("مدل یادگیری", _configured_learning_model()))
     if factual_review_model and _configured_llm_provider("factual_review") == "ollama":
         required_models.append(("مدل بازبینی factual", factual_review_model))
-    missing_models: list[str] = []
-    for role, model in required_models:
-        if model in installed_models or model in missing_models:
-            continue
-        print(f"{role} {model} نصب نیست؛ دریافت مدل شروع می‌شود ...", flush=True)
-        pulled = _run([executable, "pull", model])
-        if pulled.returncode != 0:
-            raise RuntimeError(f"دریافت {role} {model} ناموفق بود؛ برنامه اجرا نشد.")
-        missing_models.append(model)
 
-    if missing_models:
-        verified = subprocess.run(
-            [executable, "list"], cwd=ROOT, text=True, capture_output=True, check=False
+    missing = [
+        f"{role}: {model}"
+        for role, model in required_models
+        if model not in installed_models
+    ]
+    if missing:
+        raise RuntimeError(
+            "مدل‌های انتخاب‌شده نصب نیستند؛ startup دانلود انجام نمی‌دهد. "
+            "مدل را از کنترل دریافت مدل در UI نصب کنید: " + "؛ ".join(missing)
         )
-        if verified.returncode != 0:
-            raise RuntimeError("تأیید مدل‌های دریافت‌شده از Ollama ناموفق بود.")
-        verified_models = {
-            line.split()[0] for line in (verified.stdout or "").splitlines()
-            if line.strip() and not line.lstrip().startswith("NAME ")
-        }
-        absent = [model for model in missing_models if model not in verified_models]
-        if absent:
-            raise RuntimeError("مدل‌های موردنیاز پس از دریافت در Ollama دیده نشدند: " + ", ".join(absent))
 
 
 def _powershell_candidates() -> list[str]:
