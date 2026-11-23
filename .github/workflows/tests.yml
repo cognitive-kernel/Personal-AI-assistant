@@ -478,14 +478,9 @@ jobs:
 
   commit-broker-package:
     if: >-
-      always() &&
-      !cancelled() &&
-      (
-        (github.event_name == 'pull_request' &&
-          github.event.pull_request.head.repo.full_name == github.repository) ||
-        (github.event_name == 'push' &&
-          github.ref == 'refs/heads/fix/autonomous-engineering-broker-final-ci-20261123')
-      )
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository)
     needs: windows-storage-regressions
     runs-on: ubuntu-latest
     permissions:
