@@ -945,8 +945,13 @@ def main() -> int:
                     raise RuntimeError("Recovery attempt metadata is invalid; no task will start.") from exc
                 if recovery_attempt < 0:
                     raise RuntimeError("Recovery attempt metadata is invalid; no task will start.")
+                manual_task = os.environ.get("AUTONOMOUS_ENGINEERING_MANUAL_TASK", "").strip()
+                resume_once = os.environ.get("AUTONOMOUS_ENGINEERING_RESUME_ONCE", "false").strip().lower() == "true"
+                unmarked_empty_dispatch = (
+                    event_name == "workflow_dispatch" and not manual_task and not resume_once
+                )
                 if live_mode == "scheduled" and (
-                    event_name in {"push", "schedule"} or recovery_attempt > 0
+                    event_name in {"push", "schedule"} or recovery_attempt > 0 or unmarked_empty_dispatch
                 ):
                     print("Live execution mode is scheduled; this automatic/recovery trigger will not start a task.")
                     return 0
