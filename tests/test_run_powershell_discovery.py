@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import subprocess
 
+import pytest
+
 import run
 
 
@@ -185,3 +187,62 @@ def test_powershell_discovery_rejects_prerelease_runtime(monkeypatch):
 
     assert run._find_compatible_powershell() is None
     assert "$PSVersionTable.Prerelease" in captured["probe"]
+
+
+def test_windows_discovery_supports_a_desktop_only_host(monkeypatch):
+    desktop = r"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    monkeypatch.setattr(run.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(
+        run.shutil,
+        "which",
+        lambda name: desktop if name in ("powershell.exe", "powershell") else None,
+    )
+    monkeypatch.setattr(
+        run.subprocess,
+        "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(
+            command, 0, "PAA_PS|Desktop|5.1.26100.1\n", ""
+        ),
+    )
+
+    assert run._find_compatible_powershell() == (desktop, "Desktop 5.1.26100.1")
+
+
+def test_windows_discovery_supports_a_core_only_host(monkeypatch):
+    core = r"C:\\Custom\\PowerShell\\8.0\\pwsh.exe"
+    monkeypatch.setattr(run.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(
+        run.shutil,
+        "which",
+        lambda name: core if name in ("pwsh.exe", "pwsh") else None,
+    )
+    monkeypatch.setattr(
+        run.subprocess,
+        "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(
+            command, 0, "PAA_PS|Core|8.0.1\n", ""
+        ),
+    )
+
+    assert run._find_compatible_powershell() == (core, "Core 8.0.1")
+
+
+def test_windows_discovery_reports_no_host_when_no_supported_shell_exists(monkeypatch):
+    monkeypatch.setattr(run.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(run.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(
+        "app.windows_powershell.os.path.isfile",
+        lambda _path: False,
+    )
+    monkeypatch.setattr("app.windows_powershell.os.environ", {})
+
+    assert run._powershell_candidates() == []
+    assert run._find_compatible_powershell() is None
+
+
+@pytest.mark.skipif(run.platform.system() != "Windows", reason="requires a real Windows host")
+def test_windows_discovery_selects_an_installed_compatible_host():
+    selected = run._find_compatible_powershell()
+
+    assert selected is not None
+    assert selected[1].startswith(("Core ", "Desktop "))
