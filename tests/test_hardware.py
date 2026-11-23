@@ -277,6 +277,7 @@ def test_ram_safety_reserve_is_applied_during_context_selection(monkeypatch):
 def test_detect_gpu_uses_generic_windows_telemetry_for_single_adapter(monkeypatch):
     import json
     monkeypatch.setattr(hardware.os, "name", "nt")
+    monkeypatch.setattr(hardware.shutil, "which", lambda name: r"C:\Program Files\PowerShell\7\pwsh.exe" if name == "pwsh.exe" else None)
     payload = {
         "Adapters": [{"Name": "Intel(R) UHD Graphics 730", "PNPDeviceID": "PCI\\VEN_8086&DEV_4692", "AdapterRAM": 2147483648}],
         "Counters": [
@@ -296,6 +297,34 @@ def test_detect_gpu_uses_generic_windows_telemetry_for_single_adapter(monkeypatc
     assert result[0]["shared_memory_used_mb"] == 512
     assert result[0]["shared_memory_total_mb"] == 4096
     assert result[0]["usable_memory_free_mb"] == 5376
+
+
+def test_windows_powershell_discovery_prefers_powerShell_7(monkeypatch):
+    candidates = {
+        "pwsh.exe": r"C:\Program Files\PowerShell\7\pwsh.exe",
+        "pwsh": None,
+        "powershell.exe": r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+        "powershell": None,
+    }
+    monkeypatch.setattr(hardware.shutil, "which", lambda name: candidates.get(name))
+    assert hardware._find_windows_powershell() == candidates["pwsh.exe"]
+
+
+def test_windows_powershell_discovery_falls_back_to_windows_powershell_5_1(monkeypatch):
+    candidates = {
+        "pwsh.exe": None,
+        "pwsh": None,
+        "powershell.exe": r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+        "powershell": None,
+    }
+    monkeypatch.setattr(hardware.shutil, "which", lambda name: candidates.get(name))
+    assert hardware._find_windows_powershell() == candidates["powershell.exe"]
+
+
+def test_windows_powershell_discovery_returns_none_when_missing(monkeypatch):
+    monkeypatch.setattr(hardware.shutil, "which", lambda _name: None)
+    assert hardware._find_windows_powershell() is None
+
 
 
 def test_detect_gpu_keeps_discovered_device_when_metrics_are_unknown(monkeypatch):
