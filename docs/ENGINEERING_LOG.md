@@ -1,3 +1,23 @@
+## 2026-11-23 — Runner-independent Windows state broker bootstrap
+
+### Root cause
+- The core dashboard bootstrap delegated broker installation to a Windows script that required exactly one registered GitHub Runner service and readable `.runner` metadata. This made an optional remote execution capability a hard prerequisite for the local UI and caused protected registration metadata to block broker repair.
+- The previous ACL reconciliation stopped only the selected Runner listener. With multiple installed Runner services, an unselected listener could start a worker during shared-state ACL mutation. A stop-wait timeout could also leave a service stopped because it was recorded for restart only after the wait completed.
+
+### Correction
+- Broker installation now accepts zero or more Runner services. It resolves each installed service identity from `Win32_Service.StartName`, without opening `.runner`; no Runner means LocalService alone is granted Modify access.
+- All discovered Runner listeners are stopped before ACL mutation and active workers are checked again. Stopped services are recorded immediately after Stop-Service succeeds, before waiting for the Stopped state, so the finally block can restart them after a wait timeout.
+- An unresolvable Runner executable path or an invalid explicit `RunnerRoot` fails closed before ACL changes. No broad Users/Everyone ACE is introduced and no task/checkpoint data is deleted.
+- Added Windows portability and bootstrap regression assertions, including no-Runner readiness and duplicate Codex completion-marker rejection.
+
+### Evidence boundary
+- PR #846 is Draft on a dedicated branch. Exact-head tests, Browser E2E, CodeQL, dependency audit, PowerShell parsing, broker compilation, ACL checks, and live broker checks are required on the final SHA.
+- A first exact-head Windows storage run exposed an outdated static assertion that still expected the removed `$runner.Service.StartName` expression. The test was updated to assert the new service-discovery contract; that failed run is not counted as passing evidence.
+- No Windows target-host Runner, Ollama, Codex, local UI, user task, checkpoint, database, or ACL was changed during this repository-only pass. Target-host acceptance remains open.
+- The current code does not yet prove ACL drift detection when the broker health probe is already successful; this remains a documented follow-up risk rather than a claimed fix.
+
+---
+
 ## 2026-11-22 — Autonomous Engineering UI inventory و hardening
 
 - PR #837 با head 80c126734123a5e84596d320ff625278495764e0 در main با squash commit 9d97d2e3fa8f72429e6bb5510192ba70a6d376d8 ادغام شد؛ Linux 2511/14/69 و Windows 2509/16/69، Windows storage، Browser/dashboard smoke، Docker sandbox، CodeQL و dependency audit موفق.
