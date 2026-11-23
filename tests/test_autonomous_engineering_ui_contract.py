@@ -12,3 +12,5 @@ def test_broker_readiness_guidance_does_not_require_a_runner_or_fixed_shell_vers
     assert "در صورت ردشدن UAC یا نبود Runner" not in source
     assert "نسخهٔ 5.1 یا 7" not in source
     assert "به‌صورت خودکار شناسایی می‌کند" in source
+    assert "فقط قابلیت Broker غیرفعال می‌ماند" in source
+    assert "داشبورد در حالت محدود ادامه می‌دهد" in source
