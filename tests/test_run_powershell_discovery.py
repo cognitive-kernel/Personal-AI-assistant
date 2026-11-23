@@ -123,3 +123,45 @@ def test_powershell_discovery_uses_bounded_noninteractive_probe(monkeypatch):
     assert captured["kwargs"]["timeout"] == 6
     assert captured["kwargs"]["shell"] is False
     assert captured["kwargs"]["check"] is False
+
+
+def test_powershell_discovery_uses_registered_install_locations_without_major_version_path(monkeypatch):
+    import sys
+    import types
+
+    class FakeKey:
+        def __init__(self, kind):
+            self.kind = kind
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    fake_winreg = types.SimpleNamespace(
+        HKEY_LOCAL_MACHINE=1,
+        HKEY_CURRENT_USER=2,
+        KEY_READ=0x20019,
+        KEY_WOW64_64KEY=0,
+        KEY_WOW64_32KEY=0,
+        OpenKey=lambda parent, path, *_args: FakeKey("root" if isinstance(path, str) and "InstalledVersions" in path else "entry"),
+        QueryInfoKey=lambda _key: (1, 0, 0),
+        EnumKey=lambda _key, _index: "registered-install",
+        QueryValueEx=lambda _key, name: (
+            (r"E:\\Custom\\PowerShell\\8.0" if name == "InstallLocation" else "8.0.0"),
+            1,
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "winreg", fake_winreg)
+    monkeypatch.setattr(run.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(run.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(
+        "app.windows_powershell.os.path.isfile",
+        lambda path: str(path).lower().endswith(("pwsh.exe", "powershell.exe")),
+    )
+
+    candidates = run._powershell_candidates()
+
+    assert candidates
+    assert candidates[0].lower().endswith(r"custom\powershell\8.0\\pwsh.exe".lower())
