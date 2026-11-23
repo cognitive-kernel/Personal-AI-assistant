@@ -164,3 +164,23 @@ def test_powershell_discovery_uses_registered_install_locations_without_major_ve
     assert "custom" in candidates[0].lower()
     assert "8.0" in candidates[0]
     assert candidates[0].lower().endswith("pwsh.exe")
+
+
+def test_powershell_discovery_rejects_prerelease_runtime(monkeypatch):
+    executable = r"C:\\Program Files\\PowerShell\\8\\pwsh.exe"
+    _mock_windows(monkeypatch, {
+        "pwsh.exe": executable,
+        "pwsh": None,
+        "powershell.exe": None,
+        "powershell": None,
+    })
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["probe"] = command[-1]
+        return subprocess.CompletedProcess(command, 41, "", "prerelease runtime")
+
+    monkeypatch.setattr(run.subprocess, "run", fake_run)
+
+    assert run._find_compatible_powershell() is None
+    assert "$PSVersionTable.Prerelease" in captured["probe"]
