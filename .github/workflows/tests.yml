@@ -6,7 +6,7 @@ env:
 
 on:
   push:
-    branches: [main, feat/autonomous-engineering-complete-20261112, fix/autonomous-engineering-broker-final-ci-20261123]
+    branches: [main, feat/autonomous-engineering-complete-20261112]
   pull_request:
   workflow_dispatch:
 
@@ -478,9 +478,8 @@ jobs:
 
   commit-broker-package:
     if: >-
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-        github.event.pull_request.head.repo.full_name == github.repository)
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     needs: windows-storage-regressions
     runs-on: ubuntu-latest
     permissions:
@@ -488,7 +487,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/download-artifact@v4
         with:
@@ -497,7 +496,7 @@ jobs:
       - name: Commit the reproducible broker package to this PR branch
         shell: bash
         env:
-          PR_HEAD_REF: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
           artifact_root="${{ runner.temp }}/state-broker-package"
