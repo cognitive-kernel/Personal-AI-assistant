@@ -1143,7 +1143,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "[string]$RunnerAccount" in acl_script
     assert "AppAccount" not in acl_script
     assert "Set-AutonomousDirectoryTreeAcl" in acl_script
-    assert '"S-1-5-19"' in acl_script
+    assert "Get-AutonomousWindowsWellKnownSid -SidType LocalServiceSid" in acl_script
     assert "PersonalAIAssistantStateBroker" in runner_check
     assert "core.startPolling({" in orchestrator
     assert "intervalMs: 5000" in orchestrator
