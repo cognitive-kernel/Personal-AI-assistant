@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import subprocess
-from types import SimpleNamespace
-
 import run
 
 
