@@ -132,24 +132,41 @@ def find_compatible_powershell(
     run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
     cwd: str | os.PathLike[str] | None = None,
 ) -> tuple[str, str] | None:
-    """Return an installed engine after probing its actual edition and version.
+    """Return a host only when the Windows capabilities required by Broker exist.
 
-    Supported contracts are Windows PowerShell Desktop 5.1+ and PowerShell
-    Core 7.0+. Future releases remain eligible when their runtime reports the
-    same compatible edition contract.
+    Edition and version are reported for diagnostics, not used as a compatibility
+    gate. A host that provides the required modules, cmdlets, registry API and
+    Windows tools is eligible regardless of its numeric major/minor version.
     """
     probe = (
         "$edition = [string]$PSVersionTable.PSEdition; "
-        "$version = [version]$PSVersionTable.PSVersion; "
-        "$prerelease = [string]$PSVersionTable.Prerelease; "
-        "if ([string]::IsNullOrWhiteSpace($prerelease) -and "
-        "(($edition -eq 'Desktop' -and $version -ge [version]'5.1') -or "
-        "($edition -eq 'Core' -and $version -ge [version]'7.0'))) { "
-        "Write-Output ('PAA_PS|' + $edition + '|' + $version.ToString()) "
+        "$version = [string]$PSVersionTable.PSVersion; "
+        "$previousModulePath = $env:PSModulePath; "
+        "try { "
+        "$env:PSModulePath = Join-Path $PSHOME 'Modules'; "
+        "Import-Module Microsoft.PowerShell.Management -ErrorAction Stop; "
+        "Import-Module Microsoft.PowerShell.Utility -ErrorAction Stop; "
+        "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop; "
+        "Import-Module CimCmdlets -ErrorAction Stop; "
+        "} catch { exit 42 } finally { $env:PSModulePath = $previousModulePath }; "
+        "$required = @('Get-Acl','Set-Acl','Get-Service','New-Service','Stop-Service',"
+        "'Start-Service','Get-CimInstance','Get-FileHash','Start-Process','Get-Process'); "
+        "$missing = @($required | Where-Object { -not (Get-Command $_ -ErrorAction SilentlyContinue) }); "
+        "$startProcess = Get-Command Start-Process -ErrorAction SilentlyContinue; "
+        "$hostPath = [string](Get-Process -Id $PID -ErrorAction Stop).Path; "
+        "$registry = [Microsoft.Win32.RegistryKey]::OpenBaseKey("
+        "[Microsoft.Win32.RegistryHive]::LocalMachine,[Microsoft.Win32.RegistryView]::Registry32); "
+        "$registry.Close(); "
+        "$missingTools = @('sc.exe','icacls.exe' | Where-Object { -not (Get-Command $_ -ErrorAction SilentlyContinue) }); "
+        "if (($edition -eq 'Desktop' -or $edition -eq 'Core') -and "
+        "$missing.Count -eq 0 -and $missingTools.Count -eq 0 -and "
+        "$startProcess.Parameters.ContainsKey('Verb') -and "
+        "-not [string]::IsNullOrWhiteSpace($hostPath)) { "
+        "Write-Output ('PAA_PS|' + $edition + '|' + $version) "
         "} else { exit 41 }"
     )
     report_pattern = re.compile(
-        r"^PAA_PS\|(Desktop|Core)\|([0-9]+\.[0-9]+(?:\.[0-9]+){0,2})$"
+        r"^PAA_PS\\|(Desktop|Core)\\|([0-9]+\\.[0-9]+(?:\\.[0-9]+){0,2})$"
     )
     for executable in candidates:
         try:
