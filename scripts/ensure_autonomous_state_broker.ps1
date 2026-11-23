@@ -105,12 +105,12 @@ try {
         $service = Get-Service -Name $runner.Service.Name -ErrorAction Stop
         if ($service.Status -eq "Running") {
             Stop-Service -Name $service.Name -ErrorAction Stop
+            $stoppedRunnerServices += $service.Name
             $service = Get-Service -Name $service.Name -ErrorAction Stop
             $service.WaitForStatus(
                 [System.ServiceProcess.ServiceControllerStatus]::Stopped,
                 [TimeSpan]::FromSeconds(30)
             )
-            $stoppedRunnerServices += $service.Name
         }
     }
 
