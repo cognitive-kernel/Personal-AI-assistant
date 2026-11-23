@@ -159,9 +159,11 @@ def _select_service_python(service_uid: int, suggested: str) -> Path:
         if found:
             candidates.append(Path(found))
     home_roots = {
-        Path(entry.pw_dir).resolve()
+        resolved_home
         for entry in pwd.getpwall()
         if isinstance(entry.pw_dir, str) and entry.pw_dir.strip()
+        for resolved_home in (Path(entry.pw_dir).resolve(),)
+        if resolved_home != resolved_home.parent
     }
     seen: set[str] = set()
     for candidate in candidates:
