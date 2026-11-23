@@ -282,7 +282,7 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 | UI status refresh | دو mutation می‌توانستند پس از یک poll مشترک، درخواست‌های status هم‌زمان بفرستند و snapshot قدیمی‌تر را جایگزین کنند | PR #864 این refreshها را سریالی می‌کند؛ exact-head CI کامل موفق است |
 | Broker provisioning | timeout پردازهٔ Python/PowerShell والد، تضمین نمی‌کند UAC-elevated child متوقف شود؛ قفل والد ممکن است آزاد شود درحالی‌که فرزند هنوز ACL/service را تغییر می‌دهد | finding در review PR #863 ثبت شد؛ PR #865 قفل machine-wide را داخل child اضافه کرده؛ exact-head CI و Windows integration هنوز pending هستند |
 | Safe Pause | مرحلهٔ پیش از task مقدار vars.AUTONOMOUS_ENGINEERING_PAUSED را از workflow context می‌خواند؛ run منتظر concurrency ممکن است snapshot قدیمی داشته باشد | PR #866 مقدار جاری را از Actions Variables API پس از گرفتن concurrency slot می‌خواند؛ exact-head CI pending است |
-| Emergency Cancel | انتخاب اولین run فعال از فهرست newest-first ممکن بود run تازه‌صف‌شده را لغو کند و run قدیمی‌ترِ درحال‌اجرا را باقی بگذارد | PR #867 اولویت را به in_progress می‌دهد؛ exact-head CI pending است |
+| Emergency Cancel | انتخاب اولین run فعال از فهرست newest-first ممکن بود run تازه‌صف‌شده را لغو کند و run قدیمی‌ترِ درحال‌اجرا را باقی بگذارد | PR #867 وضعیت job واقعی codex را با gh run view بررسی می‌کند و اجرای دارای job درحال‌اجرا را انتخاب می‌کند؛ exact-head CI pending است |
 
 ### وضعیت Gateها
 
