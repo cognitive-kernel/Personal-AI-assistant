@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [switch]$ElevatedChild,
-    [string]$RunnerRoot = ""
+    [string]$RunnerRoot = "",
+    [switch]$AcknowledgeAbandonedSetup
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,6 +18,9 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     $argumentLine = '-NoProfile -ExecutionPolicy Bypass -File "' + $scriptPath + '" -ElevatedChild'
     if (-not [string]::IsNullOrWhiteSpace($RunnerRoot)) {
         $argumentLine += ' -RunnerRoot "' + $RunnerRoot.Replace('"', '""') + '"'
+    }
+    if ($AcknowledgeAbandonedSetup) {
+        $argumentLine += " -AcknowledgeAbandonedSetup"
     }
     # The elevated child inherits the parent environment. In particular, a
     # A child host can otherwise load modules from a different PowerShell
@@ -44,16 +48,20 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 $setupMutexName = "Global\PersonalAIAssistant.StateBrokerSetup"
 $setupMutex = $null
 $setupMutexAcquired = $false
+$setupMutexAbandonedUnacknowledged = $false
 try {
     $setupMutex = [System.Threading.Mutex]::new($false, $setupMutexName)
     try {
         $setupMutexAcquired = $setupMutex.WaitOne(0)
     } catch [System.Threading.AbandonedMutexException] {
-        # Windows grants ownership when this exception is raised. Release it,
-        # then fail closed: the previous elevated process may have stopped
-        # midway through the ACL/service transaction.
-        $setupMutex.ReleaseMutex()
-        throw "A previous elevated state-broker setup terminated while holding the machine-wide lock. Inspect broker health, service state, and ACL integrity before retrying."
+        # WaitOne grants ownership when this exception is raised. Without an
+        # explicit operator acknowledgement, keep ownership until this child
+        # exits so every retry continues to detect the interrupted transaction.
+        if (-not $AcknowledgeAbandonedSetup) {
+            $setupMutexAbandonedUnacknowledged = $true
+            throw "A previous elevated state-broker setup terminated while holding the machine-wide lock. Inspect broker health, service state, and ACL integrity, then rerun with -AcknowledgeAbandonedSetup."
+        }
+        $setupMutexAcquired = $true
     }
     if (-not $setupMutexAcquired) {
         throw "Another elevated state-broker setup is already running. No service or ACL changes were started."
@@ -299,7 +307,7 @@ Write-Host "Shared state root: $stateRoot"
             $setupMutexAcquired = $false
         }
     }
-    if ($null -ne $setupMutex) {
+    if ($null -ne $setupMutex -and -not $setupMutexAbandonedUnacknowledged) {
         $setupMutex.Dispose()
     }
 }
