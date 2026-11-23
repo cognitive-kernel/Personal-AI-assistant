@@ -2449,3 +2449,11 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 
 - The runtime probe no longer requires Desktop 5.1 or Core 7.0 by numeric comparison and no longer rejects prerelease labels by themselves. It reports Edition/Version for diagnostics, then verifies the actual required modules/cmdlets, `Start-Process -Verb`, process executable path, registry API, `sc.exe`, and `icacls.exe`.
 - Core remains preferred over Desktop, but any Core/Desktop version that passes the capability probe is eligible. Unit coverage explicitly accepts Core 6.2 when the probe succeeds, and separately falls back when Core fails a required capability. This directly removes the fixed PowerShell major-version dependency.
+
+
+### 2026-11-23 — Capability-only host probe and signed build provenance
+
+- Removed the hard-coded PowerShell Core 7.0 floor and prerelease rejection. The host probe now checks required modules/cmdlets, `Start-Process -Verb`, current executable path, registry API, `sc.exe`, and `icacls.exe`; Edition/Version are diagnostic only. Core 6.2 is explicitly accepted by a unit test when the capability probe succeeds.
+- The Windows live broker test no longer compiles source with `csc.exe`; it verifies the CI package and staged copy by SHA-256, then exercises that exact binary under both PowerShell Core and Windows PowerShell Desktop. The Desktop step also verifies same-host process relaunch.
+- CI now requests GitHub artifact attestations for the broker executable. This establishes signed build provenance; the target installer still verifies the committed SHA-256 manifest and does not independently verify the GitHub attestation.
+- The Windows storage job timeout was increased to accommodate checkpoint fault injection plus both live PowerShell-host broker runs.
