@@ -401,6 +401,9 @@ def test_broker_setup_rolls_back_acl_and_manifest_when_install_fails():
 
     assert "[switch]$PassThru" in identity
     assert "function Restore-AutonomousDirectoryTreeAcl" in identity
+    assert "InstallerSid = $InstallerSid" in identity
+    assert "& $takeown.Source /F $entryPath" in identity
+    assert "& $icacls.Source $entryPath /grant:r $grant /C /Q" in identity
     assert "Restore-AutonomousDirectoryTreeAcl -Snapshot $aclTransaction" in ensure
     assert "$previousStateModifySids" in ensure
     assert "if (-not $setupCommitted)" in ensure
