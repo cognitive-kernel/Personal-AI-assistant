@@ -150,24 +150,26 @@ try {
         Set-Acl -LiteralPath $aclProbeRoot -AclObject $probeAcl -ErrorAction Stop
 
         Set-AutonomousDirectoryTreeAcl -Path $aclProbeRoot -ModifySids @("S-1-5-20", $brokerSid) -OwnerSid $brokerSid -InstallerSid $currentSid
-        $installerCanReadFinalProbeAcl = $false
-        try {
-            Get-Acl -LiteralPath $aclProbeRoot -ErrorAction Stop | Out-Null
-            $installerCanReadFinalProbeAcl = $true
-        } catch {
-            $installerCanReadFinalProbeAcl = $false
-        }
-        if ($installerCanReadFinalProbeAcl) {
-            throw "The protected ACL probe unexpectedly retained installer read access after finalization."
+        $probeFinalAcl = Get-Acl -LiteralPath $aclProbeRoot -ErrorAction Stop
+        $probeFinalSids = @(
+            $probeFinalAcl.Access | ForEach-Object {
+                $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+            } | Select-Object -Unique
+        )
+        if ($probeFinalSids.Count -ne 2 -or $probeFinalSids -notcontains "S-1-5-20" -or $probeFinalSids -notcontains $brokerSid) {
+            throw "The protected ACL probe did not finish with exactly the requested service identities."
         }
     } finally {
         $probeEntry = Get-ChildItem -LiteralPath (Split-Path -Parent $aclProbeRoot) -Force -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -ceq (Split-Path -Leaf $aclProbeRoot) } |
+            Where-Object { $_.Name -ieq (Split-Path -Leaf $aclProbeRoot) } |
             Select-Object -First 1
         if ($probeEntry -and $probeEntry.PSIsContainer) {
-            & takeown.exe /F $aclProbeRoot /R /A | Out-Null
-            & icacls.exe $aclProbeRoot /grant ("*$($currentSid):(OI)(CI)F") /T /C /Q | Out-Null
-            Remove-Item -LiteralPath $aclProbeRoot -Recurse -Force -ErrorAction SilentlyContinue
+            Set-AutonomousDirectoryTreeAcl -Path $aclProbeRoot -ModifySids @($currentSid) -OwnerSid $currentSid -InstallerSid $currentSid
+            $preservedProbeData = [System.IO.File]::ReadAllText((Join-Path $aclProbeNested "existing-state.json"))
+            if ($preservedProbeData -ne '{"preserve":true}') {
+                throw "Protected ACL repair changed existing state data."
+            }
+            Remove-Item -LiteralPath $aclProbeRoot -Recurse -Force -ErrorAction Stop
         }
     }
 
