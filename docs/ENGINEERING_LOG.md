@@ -2421,3 +2421,9 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - The first Browser E2E run correctly failed the new regression, but the failure was in test setup rather than the product fix: the test replaced `fetch` after page load without proving the initial status poll had completed. The test could therefore await an existing request that bypassed the controlled fetch stub and time out.
 - Corrected the harness to stub status/runs/progress before navigation, wait for the authoritative limited-readiness state, then stop pollers and start the controlled in-flight request. The test now deterministically owns all status responses used by the race scenario.
 - The initial run also confirmed CodeQL and Windows storage regressions passed; Browser E2E failed only this new test. The revised exact-head CI is pending; no test failure was suppressed or skipped.
+
+
+### 2026-11-24 — browser regression syntax failure and correction
+
+- The second Browser E2E attempt failed during Python test collection: one line of the multi-line `page.wait_for_function` predicate was missing its opening quote. No product code executed in that run.
+- Corrected the predicate string. The next exact-head run must pass Python collection and execute the controlled Playwright race test; this failure remains recorded rather than hidden.
