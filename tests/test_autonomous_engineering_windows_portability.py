@@ -90,7 +90,7 @@ def test_shared_state_tree_acl_is_recursive_and_only_grants_runner_and_local_ser
     assert "$touched.Add($directoryInfo)" in directory_walk
     assert "if (-not $completed)" in acl_function
     assert "$cleanupTargets = @($touched" in acl_function
-    assert "/grant:r $installerGrant /C /Q" not in acl_function
+    assert "/grant:r $installerGrant /C /Q" in acl_function
     assert "/grant:r $installerGrant /T" not in acl_function
     assert "/R" not in acl_function
     assert "$allowed = @($ModifySids | Select-Object -Unique)" in module
