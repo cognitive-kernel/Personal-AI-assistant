@@ -446,7 +446,7 @@ jobs:
       always() &&
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      needs.windows-storage-regressions.result != 'cancelled'
+      needs['windows-storage-regressions'].result != 'cancelled'
     needs: windows-storage-regressions
     runs-on: ubuntu-latest
     permissions:
