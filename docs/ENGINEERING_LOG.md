@@ -2414,3 +2414,10 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Branch: `fix/autonomous-engineering-status-refresh-serialization-20261124`, based on main `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`.
 - Browser E2E and exact-head CI have not yet run on the updated branch. The fix is not considered verified until those checks pass.
 - No workflow, task, checkpoint, Runner service, database, or durable user state was changed.
+
+
+### 2026-11-24 — Playwright regression harness correction
+
+- The first Browser E2E run correctly failed the new regression, but the failure was in test setup rather than the product fix: the test replaced `fetch` after page load without proving the initial status poll had completed. The test could therefore await an existing request that bypassed the controlled fetch stub and time out.
+- Corrected the harness to stub status/runs/progress before navigation, wait for the authoritative limited-readiness state, then stop pollers and start the controlled in-flight request. The test now deterministically owns all status responses used by the race scenario.
+- The initial run also confirmed CodeQL and Windows storage regressions passed; Browser E2E failed only this new test. The revised exact-head CI is pending; no test failure was suppressed or skipped.
