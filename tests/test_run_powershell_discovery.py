@@ -228,6 +228,9 @@ def test_windows_discovery_supports_a_core_only_host(monkeypatch):
 
 
 def test_windows_discovery_reports_no_host_when_no_supported_shell_exists(monkeypatch):
+    import sys
+
+    monkeypatch.setitem(sys.modules, "winreg", None)
     monkeypatch.setattr(run.platform, "system", lambda: "Windows")
     monkeypatch.setattr(run.shutil, "which", lambda _name: None)
     monkeypatch.setattr(
