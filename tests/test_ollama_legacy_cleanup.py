@@ -196,7 +196,7 @@ def test_cleanup_rechecks_runtime_before_deleting_an_alias_that_becomes_loaded()
     api = FakeOllama(
         [alias],
         modelfiles={
-            alias: "FROM /blob/base\\nPARAMETER num_ctx 8192\\n",
+            alias: "FROM /blob/base\nPARAMETER num_ctx 8192\n",
         },
         load_on_show=[alias],
     )
