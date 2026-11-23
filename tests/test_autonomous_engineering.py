@@ -2706,3 +2706,52 @@ def test_posix_cleanup_lock_order_is_repository_then_state_then_checkpoint(monke
 
     assert response.status_code == 200
     assert calls == ["repository", "durable-state", "checkpoint"]
+
+
+def test_broker_setup_route_returns_verified_success(monkeypatch):
+    expected = {
+        "ready": True,
+        "already_ready": False,
+        "runtime": "Core capability adapter",
+        "message": "Broker ready",
+    }
+    monkeypatch.setattr(
+        "app.autonomous_engineering_broker_setup.setup_state_broker",
+        lambda: expected,
+    )
+
+    assert agent.autonomous_engineering_setup_broker() == expected
+
+
+def test_broker_setup_route_preserves_structured_safe_failure(monkeypatch):
+    from app.autonomous_engineering_broker_setup import BrokerSetupError
+
+    def fail():
+        raise BrokerSetupError(
+            "UAC cancelled",
+            code="STATE_BROKER_ELEVATION_CANCELLED",
+            status_code=403,
+            safe_details={"runtime": "Desktop"},
+        )
+
+    monkeypatch.setattr("app.autonomous_engineering_broker_setup.setup_state_broker", fail)
+
+    with pytest.raises(HTTPException) as error:
+        agent.autonomous_engineering_setup_broker()
+
+    assert error.value.status_code == 403
+    assert error.value.headers["X-Error-Code"] == "STATE_BROKER_ELEVATION_CANCELLED"
+    assert error.value.headers["X-Retryable"] == "false"
+    assert error.value.safe_details == {"runtime": "Desktop"}
+
+
+def test_broker_setup_is_a_loopback_protected_post_route():
+    route = next(
+        item for item in agent.router.routes
+        if getattr(item, "path", None) == "/api/autonomous-engineering/broker/setup"
+    )
+
+    assert "POST" in route.methods
+    assert agent.require_loopback_client in [
+        dependency.dependency for dependency in agent.router.dependencies
+    ]
