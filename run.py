@@ -1110,7 +1110,7 @@ def main() -> int:
     check_only = "--check-only" in sys.argv[1:]
     try:
         _ensure_dependencies(dev)
-    except (RuntimeError, OSError, urllib.error.URLError) as exc:
+    except (RuntimeError, OSError, urllib.error.URLError, subprocess.SubprocessError) as exc:
         print(f"وابستگی‌های ضروری برنامه آماده نیستند: {exc}", file=sys.stderr)
         return 2
 
@@ -1123,13 +1123,13 @@ def main() -> int:
     try:
         if not _ensure_state_broker():
             unavailable_prerequisites.append("State Broker")
-    except (RuntimeError, OSError, urllib.error.URLError) as exc:
+    except (RuntimeError, OSError, urllib.error.URLError, subprocess.SubprocessError) as exc:
         unavailable_prerequisites.append("State Broker")
         print(f"فضای پیشرفت مشترک آماده نیست: {exc}", file=sys.stderr, flush=True)
 
     try:
         _ensure_ollama()
-    except (RuntimeError, OSError, urllib.error.URLError) as exc:
+    except (RuntimeError, OSError, urllib.error.URLError, subprocess.SubprocessError) as exc:
         unavailable_prerequisites.append("Ollama")
         print(f"Ollama آماده نیست: {exc}", file=sys.stderr, flush=True)
 
