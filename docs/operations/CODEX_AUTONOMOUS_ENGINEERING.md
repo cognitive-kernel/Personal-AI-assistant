@@ -233,3 +233,16 @@ checkpoint files. No human login name, group name, home directory, or fixed hard
 identifier is configured by the operator. Model context is selected from runtime
 metadata and available memory/compute resources, not a hard-coded GPU/CPU model.
 State-root resolution does not require a login home directory. The current home is consulted only to discover a legacy per-user state tree for one-time migration; if the service identity has no home, the shared site-data root still resolves normally.
+
+## Recovering an abandoned elevated State Broker setup lock
+
+The installer uses a machine-wide named mutex owned by the elevated PowerShell child. If that child exits unexpectedly during setup, the next attempt detects an abandoned mutex and refuses to mutate services or ACLs. Do not repeatedly click the UI repair button or delete arbitrary lock/state files.
+
+1. Inspect `%ProgramData%\PersonalAIAssistant\Logs\state-broker-setup.log` and identify whether the prior setup stopped during Runner service handling, ACL reconciliation, service installation, or final health verification.
+2. Confirm no `Runner.Worker.exe` job is active. Inspect every installed Runner service and confirm its expected running/stopped state.
+3. Run the read-only broker health/ACL verification using `scripts/test_autonomous_state_broker_service.ps1`. Preserve all task, checkpoint, and shared-state files.
+4. Only after reviewing the service state and ACL integrity, rerun the installer in a new elevated PowerShell process with `-AcknowledgeAbandonedSetup`. The switch is an explicit operator acknowledgement; the normal UI/Python setup path never supplies it automatically.
+5. Verify the broker health endpoint, LocalService identity, shared-state ACL manifest, and Runner service restoration after the repair.
+
+If the state tree or service identity is ambiguous, stop and preserve the state for manual recovery; do not broaden ACLs or delete the mutex marker/state directory.
+
