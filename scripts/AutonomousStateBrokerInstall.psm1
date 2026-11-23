@@ -112,6 +112,22 @@ function Install-AutonomousStateBrokerService {
         }
 
         $existing = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+        if ($existing -and $existing.Status -eq "StartPending") {
+            $existing.WaitForStatus(
+                [System.ServiceProcess.ServiceControllerStatus]::Running,
+                [TimeSpan]::FromSeconds(30)
+            )
+            $existing = Get-Service -Name $serviceName -ErrorAction Stop
+        } elseif ($existing -and $existing.Status -eq "StopPending") {
+            $existing.WaitForStatus(
+                [System.ServiceProcess.ServiceControllerStatus]::Stopped,
+                [TimeSpan]::FromSeconds(30)
+            )
+            $existing = Get-Service -Name $serviceName -ErrorAction Stop
+        }
+        if ($existing -and $existing.Status -notin @("Running", "Stopped")) {
+            throw "The existing state broker is in an unsupported service transition; refusing to replace its executable."
+        }
         $wasRunning = ($null -ne $existing -and $existing.Status -eq "Running")
         if ($existing) {
             $existingCim = Get-CimInstance Win32_Service -Filter "Name='$serviceName'" -ErrorAction Stop
