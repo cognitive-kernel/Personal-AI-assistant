@@ -20,24 +20,46 @@ Local-first describes the preferred execution and data path, not a promise that 
 
 1. **No identity-name assumptions.** Resolve the active account and service principals at runtime. Persist stable Windows SIDs or POSIX numeric UID/GID values where authorization requires identity; never assume a username, group name, domain, or machine name.
 2. **No fixed installation paths.** Derive the application root from the installed executable/package location. Resolve shared state and logs through platform known-folder APIs or standard OS directory services. Support an explicit absolute override, validate it, and never silently fall back to a per-user directory for machine-wide state.
-3. **No shell-version coupling.** Core installation, service control, ACL changes, path discovery, and health checks must not require Windows PowerShell, PowerShell 7, .NET Framework compiler tools, a particular shell profile, or inherited module paths. During transition, any remaining PowerShell launcher must sanitize inherited module discovery before spawning an elevated child and restore the parent environment afterward.
-4. **No runtime compilation on the target host.** Build native/service artifacts in CI for declared OS/architecture targets. Installation must not require csc.exe, a local SDK, compiler, or developer toolchain.
-5. **Capability detection over version guessing.** Probe the exact API/service-manager/filesystem capability needed. Use OS version and architecture only to select a tested adapter/package, not to infer that a feature exists.
+3. **No single-shell or exact-version lock-in.** The application must not require one specific shell/version (for example, PowerShell 7 only) when a compatible implementation exists through another supported runtime or a bundled/native helper. Prefer the application's own implementation for core behavior. When a system tool is useful, discover its actual executable, version, architecture and required capabilities, then select a compatible adapter/script. Do not assume `pwsh` and Windows PowerShell are interchangeable; keep version-specific paths isolated and tested. Never depend on an interactive shell profile or inherited module paths.
+4. **No target-host developer toolchain requirement.** Prefer bundled, prebuilt and integrity-verified components for functionality owned by the application. Do not require csc.exe, a local SDK, compiler, IDE or developer toolchain merely to install/run. Use OS-provided tools when they are genuinely appropriate and available, but discover and validate them instead of assuming their presence.
+5. **Capability detection plus version-aware adapters.** Probe the exact API/service-manager/filesystem/runtime capability needed. Use versions and architecture to select a tested implementation when APIs differ, then verify the capability at runtime. Do not reject a newer/older runtime solely because its version string differs when a tested compatible path exists.
 6. **Dependencies are scoped to capabilities.** Discover local and remote integrations independently. A dependency may be required by the specific feature that uses it (for example, ChatGPT access for ChatGPT-based learning or GitHub access for remote PR operations), but it must not become a global startup requirement. Missing dependencies pause or disable only the affected capability; unrelated local features remain available.
 7. **Relocatable and Unicode-safe.** Test paths containing spaces, non-ASCII characters, long paths, different drive letters, and install locations outside default folders. Quote process arguments structurally; do not build unsafe command strings.
 8. **Safe upgrades and migrations.** Preserve user data and existing configuration. Use additive, versioned migrations, backups/rollback for replaced binaries, atomic writes, and explicit preflight. Never delete or overwrite existing state as an installation side effect.
 9. **Least privilege by resolved identity.** Do not grant access to broad groups as a portability shortcut. Build and verify ACLs using resolved SIDs/UIDs and preserve unrelated data outside the managed state root.
 10. **Explicit support matrix.** Publish tested OS families/versions and CPU architectures. Unknown combinations must fail with a clear diagnostic before mutation, not proceed on optimistic assumptions.
 
+## Adaptive runtime and compatibility policy
+
+Use this preference order for each capability, without turning a feature-specific prerequisite into a global application prerequisite:
+
+1. **Application-owned implementation:** use code and tools shipped with the application whenever they can perform the task safely and reliably.
+2. **Compatible local runtime/tool:** if an operating-system tool is the right implementation, discover installed candidates and inspect their real version, architecture and capabilities. Select a compatible path instead of requiring one exact release.
+3. **Alternate adapter:** when behavior differs between versions or platforms, use a tested adapter or script for that runtime. Keep version-specific code behind a stable internal interface.
+4. **Approved acquisition:** only when the selected feature needs a missing component, and no supported local path exists, offer or perform a verified download according to that feature's configuration and consent. Cache the component locally for later runs.
+5. **Scoped degradation:** if no supported path is available, mark only that capability unavailable and explain the exact missing requirement. Keep the application core and unrelated modules running.
+
+Examples and requirements:
+
+- **PowerShell:** detect Windows PowerShell (`powershell.exe`, commonly 5.1) and PowerShell (`pwsh.exe`, 7.x) separately. Query `$PSVersionTable` and required commands/modules before choosing an implementation. Use a common implementation only when its APIs are genuinely compatible; otherwise choose a tested version-specific adapter. If PowerShell is absent or unsuitable, use the bundled/native implementation where available. Never make one PowerShell major version a prerequisite for unrelated application features.
+- **Python and packages:** ship or provision a verified compatible runtime and dependency set as part of the application installation workflow. Do not rely on whichever Python happens to be first on PATH. Support declared runtime ranges where tests prove compatibility; pin exact versions only for reproducible build inputs or a demonstrated compatibility/security requirement, not as an arbitrary user-machine restriction.
+- **Operating system and CPU:** prefer portable application code. Where native components or wheels differ, detect OS/ABI/CPU architecture and select a matching prebuilt artifact. A 32-bit/64-bit or x64/ARM distinction is handled by packaging/adapter selection, not by hard-coded assumptions about the user's machine. Publish only combinations actually tested.
+- **Fonts and UI resources:** include application-owned resources where licensing permits and provide system-font fallbacks. A particular optional font must not prevent startup.
+- **Identity and privilege:** resolve the current identity and required service identity dynamically. Do not bind normal execution to one username, domain, group or Administrator account. Elevation is requested only for the specific operation that truly requires machine-wide privileges.
+- **Paths:** derive executable and resource paths from the installed application location; resolve data/cache/log/config locations through OS facilities or explicit configuration. Do not assume the working directory, user profile, drive letter or installation folder.
+- **Tooling:** optional tools such as Git, browser automation, Docker, Runner, GPU runtimes and model servers are feature capabilities. Discover them independently and do not block unrelated modules when they are absent.
+
+A version check alone is not enough: select by the capabilities actually used, test the chosen adapter, and report the selected implementation in diagnostics. Do not silently fall back to a less secure implementation.
+
 ## Target architecture
 
 - Keep the application and domain logic in the existing Python package.
 - Define one versioned, platform-neutral broker protocol and shared conformance tests.
 - Implement privileged broker provisioning behind platform adapters:
-  - Windows: native Win32 service-control and security-descriptor APIs; no PowerShell module imports and no .NET Framework compiler at install time.
-  - Linux: systemd adapter when available, with a documented non-service fallback only where security requirements permit.
-  - macOS: launchd adapter when available, with the same protocol and fail-closed security checks.
-- Build and sign/package platform-specific broker binaries in CI for each supported OS/architecture. Do not compile on user machines.
+  - Windows: prefer the bundled, prebuilt broker/native Win32 service-control and security-descriptor implementation. A PowerShell adapter may be used where it is the best supported path, but it must detect 5.1/7 capabilities and select compatible code; neither version is a global prerequisite. Do not compile on the target host.
+  - Linux: use systemd when available, with a documented non-service fallback only where security requirements permit; detect the actual service manager and capabilities.
+  - macOS: use launchd when available, with the same protocol and fail-closed security checks.
+- Build and integrity-check/package platform-specific broker binaries in CI for each supported OS/architecture. Use the matching artifact at install time; never require a compiler on user machines.
 - Resolve app/state/log/cache/config paths through OS APIs and support relocation without relying on the current working directory or a particular user profile.
 - At startup, run a read-only capability preflight and report which optional capabilities are available before requesting privileged changes.
 
@@ -47,9 +69,9 @@ Local-first describes the preferred execution and data path, not a promise that 
 
 Before creating an elevated child, restrict its module search path to the active PowerShell host's own inbox modules. Restore the parent process environment in finally. Add regression coverage that asserts the environment is sanitized before process creation. This is a containment fix only; it does not complete the shell-independence goal.
 
-### Stage 2 — remove Windows PowerShell and runtime compiler dependencies
+### Stage 2 — remove fixed shell/compiler assumptions
 
-Move Windows broker installation, service registration, identity resolution, ACL management, and health verification into a prebuilt native Windows helper. Replace PowerShell-specific behavior with explicit Win32 calls. Keep the Python installer as the orchestrator and invoke the helper with a structured, versioned request/response contract.
+Move security-sensitive broker installation, service registration, identity resolution, ACL management, and health verification into the bundled prebuilt native helper where that is the most reliable implementation. Keep the Python installer as orchestrator and use a structured, versioned request/response contract. Retain PowerShell only where it provides a useful supported OS integration; discover 5.1/7 separately and select the tested adapter for the detected runtime. Neither a fixed PowerShell version nor a compiler on the target host is allowed to become a core prerequisite.
 
 ### Stage 3 — package and relocate
 
@@ -61,9 +83,10 @@ Run conformance tests across supported OS versions, x64/ARM64 where applicable, 
 
 ## Acceptance criteria
 
-- A clean target machine does not need PowerShell, .NET Framework SDK/compiler, Visual Studio, or a developer toolchain to install the Windows broker.
+- A clean target machine does not need a particular PowerShell major version, .NET Framework SDK/compiler, Visual Studio, or a developer toolchain to install/run the core application.
+- If PowerShell is used, the installer detects the installed edition/version and selects a tested compatible adapter; PowerShell 5.1-only, PowerShell 7-only and no-PowerShell environments are covered wherever a bundled/native path is available.
 - Changing the Windows account name, domain, local group membership, machine name, install drive, or install directory does not require source edits or hard-coded configuration.
-- PowerShell 5.1 and 7, if present, are irrelevant to core installation.
+- Supported runtime versions are expressed as tested compatibility ranges; exact-version pins are reserved for build reproducibility or proven technical/security constraints.
 - Supported Linux/macOS installations use the same broker protocol and pass the same conformance suite.
 - Missing Runner/Ollama/Git/browser/GPU capability does not prevent unrelated core features from starting.
 - An unsupported OS/architecture or missing required security primitive is detected before services, ACLs, or existing state are changed.
