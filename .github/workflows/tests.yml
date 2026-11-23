@@ -206,8 +206,8 @@ jobs:
       - name: Build and package the Windows machine state broker
         shell: pwsh
         run: |
-          $project = Join-Path $env:GITHUB_WORKSPACE "scripts\\AutonomousStateBrokerService.csproj"
-          $packageRoot = Join-Path $env:GITHUB_WORKSPACE "scripts\\bin"
+          $project = Join-Path $env:GITHUB_WORKSPACE "scripts\AutonomousStateBrokerService.csproj"
+          $packageRoot = Join-Path $env:GITHUB_WORKSPACE "scripts\bin"
           New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
           Write-Host "CI .NET SDK:"
           dotnet --info
