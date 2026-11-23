@@ -409,6 +409,23 @@ def test_broker_setup_rolls_back_acl_and_manifest_when_install_fails():
     assert "Restore-AutonomousDirectoryTreeAcl -Snapshot $aclSnapshot" in workflow
 
 
+def test_broker_installer_cleans_staging_and_restores_existing_service_on_stop_failure():
+    installer = _read("scripts/AutonomousStateBrokerInstall.psm1")
+    install = installer.split("function Install-AutonomousStateBrokerService", 1)[1]
+
+    stage_start = install.index("try {")
+    stop_service = install.index("Stop-Service -Name $serviceName", stage_start)
+    stage_catch = install.index("} catch {", stop_service)
+    cleanup = install.index("Remove-Item -LiteralPath $temporaryExe", stage_catch)
+
+    assert stage_start < stop_service < stage_catch < cleanup
+    assert "if ($wasRunning)" in install[stage_catch:cleanup]
+    assert "Start-Service -Name $serviceName -ErrorAction SilentlyContinue" in install[stage_catch:cleanup]
+    assert "$previousServicePath" in install
+    assert "The previous state-broker service configuration" in install
+    assert "'binPath=' $binaryPath" in install
+
+
 def test_broker_installer_preflights_net48_and_service_control_before_mutation():
     installer = _read("scripts/AutonomousStateBrokerInstall.psm1")
     release_check = installer.index("$frameworkRelease = Get-AutonomousDotNetFrameworkRelease")
