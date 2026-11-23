@@ -5,18 +5,97 @@ loopback API action from the Autonomous Engineering UI or an operator.
 """
 from __future__ import annotations
 
+import errno
 import os
 import platform
 import shutil
+import stat
 import subprocess
 import sys
+import tempfile
 import threading
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 _SETUP_LOCK = threading.Lock()
 _SETUP_TIMEOUT_SECONDS = 240
 _HEALTH_TIMEOUT_MS = 30_000
+
+
+@contextmanager
+def _setup_process_lock():
+    """Acquire a same-user cross-process OS lock for setup serialization."""
+    if not _SETUP_LOCK.acquire(blocking=False):
+        yield False
+        return
+
+    descriptor: int | None = None
+    os_locked = False
+    try:
+        lock_path = Path(tempfile.gettempdir()) / "PersonalAIAssistant.StateBrokerSetup.lock"
+        if os.name == "nt" and lock_path.is_symlink():
+            raise BrokerSetupError(
+                "فایل قفل نصب Broker معتبر نیست؛ مسیر قفل را بررسی کنید.",
+                code="STATE_BROKER_SETUP_LOCK_INVALID",
+                status_code=503,
+            )
+        flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(str(lock_path), flags, 0o600)
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise BrokerSetupError(
+                "فایل قفل نصب Broker یک فایل معمولی نیست؛ عملیات برای ایمنی متوقف شد.",
+                code="STATE_BROKER_SETUP_LOCK_INVALID",
+                status_code=503,
+            )
+        if os.fstat(descriptor).st_size < 1:
+            os.write(descriptor, b"\\0")
+            os.fsync(descriptor)
+        os.lseek(descriptor, 0, os.SEEK_SET)
+
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            os_locked = True
+        except OSError as exc:
+            if exc.errno not in {errno.EACCES, errno.EAGAIN, errno.EDEADLK, errno.EDEADLOCK}:
+                raise
+            yield False
+            return
+
+        yield True
+    except BrokerSetupError:
+        raise
+    except OSError as exc:
+        raise BrokerSetupError(
+            "قفل بین‌پردازه‌ای نصب Broker قابل ایجاد یا اخذ نیست؛ عملیات تغییردهنده اجرا نشد.",
+            code="STATE_BROKER_SETUP_LOCK_UNAVAILABLE",
+            status_code=503,
+            safe_details={"exception_type": type(exc).__name__},
+        ) from exc
+    finally:
+        if descriptor is not None:
+            if os_locked:
+                try:
+                    os.lseek(descriptor, 0, os.SEEK_SET)
+                    if os.name == "nt":
+                        import msvcrt
+
+                        msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+                    else:
+                        import fcntl
+
+                        fcntl.flock(descriptor, fcntl.LOCK_UN)
+                except OSError:
+                    pass
+            os.close(descriptor)
+        _SETUP_LOCK.release()
 
 
 class BrokerSetupError(RuntimeError):
@@ -104,19 +183,19 @@ def _posix_setup_command(root: Path) -> tuple[list[str], str]:
 
 def setup_state_broker() -> dict[str, Any]:
     """Install/repair the broker only after an explicit user action."""
-    if _broker_is_healthy():
-        return {
-            "ready": True,
-            "already_ready": True,
-            "message": "سرویس فضای ثبت پیشرفت از قبل آماده است.",
-        }
-
-    if not _SETUP_LOCK.acquire(blocking=False):
-        raise BrokerSetupError(
-            "عملیات نصب یا ترمیم Broker دیگری در حال اجراست؛ پس از پایان آن وضعیت را دوباره بررسی کنید.",
-            code="STATE_BROKER_SETUP_IN_PROGRESS",
-            status_code=409,
-        )
+    with _setup_process_lock() as acquired:
+        if not acquired:
+            raise BrokerSetupError(
+                "عملیات نصب یا ترمیم Broker دیگری در حال اجراست؛ پس از پایان آن وضعیت را دوباره بررسی کنید.",
+                code="STATE_BROKER_SETUP_IN_PROGRESS",
+                status_code=409,
+            )
+        if _broker_is_healthy():
+            return {
+                "ready": True,
+                "already_ready": True,
+                "message": "سرویس فضای ثبت پیشرفت از قبل آماده است.",
+            }
 
     try:
         root = _repository_root()
