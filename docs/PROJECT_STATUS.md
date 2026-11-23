@@ -584,3 +584,9 @@ The subsequent documentation-only evidence update does not change runtime code a
 - پذیرش روی Windows واقعی کاربر هنوز pending است: اجرای عادی از حساب غیرادمین، UAC، Broker با Runner موجود و فایل .runner غیرقابل‌خواندن، نبود Runner، UI محلی، Ollama/Codex و dispatch واقعی. تا ثبت این شواهد، PR #846 merge نمی‌شود.
 
 ---
+
+
+### 2026-11-24 — regression harness correction
+
+- PR #864 first Browser E2E attempt failed in the newly added status-refresh regression because the test intercepted `fetch` after initial page polling had already started; the controlled resolver did not own that pre-existing request. This was a test-harness defect, not evidence that the serialization fix failed.
+- The test now stubs API responses before navigation and waits for the initial status snapshot before starting the controlled race. A new exact-head CI run is required; prior Browser E2E failure remains in the audit trail.
