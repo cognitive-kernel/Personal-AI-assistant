@@ -64,7 +64,7 @@ def _setup_process_lock():
                 fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
             os_locked = True
         except OSError as exc:
-            if exc.errno not in {errno.EACCES, errno.EAGAIN, errno.EDEADLK, errno.EDEADLOCK}:
+            if exc.errno not in {errno.EACCES, errno.EAGAIN, errno.EDEADLK, getattr(errno, "EDEADLOCK", errno.EDEADLK)}:
                 raise
             yield False
             return
@@ -196,105 +196,107 @@ def setup_state_broker() -> dict[str, Any]:
                 "already_ready": True,
                 "message": "سرویس فضای ثبت پیشرفت از قبل آماده است.",
             }
+        return _setup_state_broker_locked()
+
+
+def _setup_state_broker_locked() -> dict[str, Any]:
+    """Run the provisioning operation while the cross-process lock is held."""
+    root = _repository_root()
+    system = platform.system()
+    if system == "Windows":
+        command, runtime = _windows_setup_command(root)
+    elif system in {"Linux", "Darwin"}:
+        command, runtime = _posix_setup_command(root)
+    else:
+        raise BrokerSetupError(
+            f"نصب Broker برای سیستم‌عامل {system} پشتیبانی نشده است.",
+            code="STATE_BROKER_PLATFORM_UNSUPPORTED",
+            status_code=501,
+        )
 
     try:
-        root = _repository_root()
-        system = platform.system()
-        if system == "Windows":
-            command, runtime = _windows_setup_command(root)
-        elif system in {"Linux", "Darwin"}:
-            command, runtime = _posix_setup_command(root)
-        else:
-            raise BrokerSetupError(
-                f"نصب Broker برای سیستم‌عامل {system} پشتیبانی نشده است.",
-                code="STATE_BROKER_PLATFORM_UNSUPPORTED",
-                status_code=501,
-            )
+        result = subprocess.run(
+            command,
+            cwd=root,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            timeout=_SETUP_TIMEOUT_SECONDS,
+            check=False,
+            shell=False,
+            stdin=subprocess.DEVNULL,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise BrokerSetupError(
+            "راه‌اندازی Broker از مهلت مجاز عبور کرد. وضعیت سرویس و گزارش نصب را بررسی کنید؛ "
+            "درخواست نصب به‌صورت خودکار تکرار نمی‌شود.",
+            code="STATE_BROKER_SETUP_TIMEOUT",
+            status_code=504,
+            safe_details={"timeout_seconds": _SETUP_TIMEOUT_SECONDS, "runtime": runtime},
+        ) from exc
+    except OSError as exc:
+        raise BrokerSetupError(
+            "اجرای میزبان نصب Broker ممکن نشد. مسیر و دسترسی ابزار انتخاب‌شده را بررسی کنید.",
+            code="STATE_BROKER_SETUP_EXECUTION_FAILED",
+            status_code=503,
+            safe_details={"exception_type": type(exc).__name__, "runtime": runtime},
+        ) from exc
 
-        try:
-            result = subprocess.run(
-                command,
-                cwd=root,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                capture_output=True,
-                timeout=_SETUP_TIMEOUT_SECONDS,
-                check=False,
-                shell=False,
-                stdin=subprocess.DEVNULL,
-            )
-        except subprocess.TimeoutExpired as exc:
+    if result.returncode != 0:
+        combined = ((result.stdout or "") + "\n" + (result.stderr or "")).casefold()
+        if system == "Windows" and any(
+            phrase in combined
+            for phrase in ("canceled by the user", "cancelled by the user", "operation was canceled", "1223", "0x4c7")
+        ):
             raise BrokerSetupError(
-                "راه‌اندازی Broker از مهلت مجاز عبور کرد. وضعیت سرویس و گزارش نصب را بررسی کنید؛ "
-                "درخواست نصب به‌صورت خودکار تکرار نمی‌شود.",
-                code="STATE_BROKER_SETUP_TIMEOUT",
-                status_code=504,
-                safe_details={"timeout_seconds": _SETUP_TIMEOUT_SECONDS, "runtime": runtime},
-            ) from exc
-        except OSError as exc:
-            raise BrokerSetupError(
-                "اجرای میزبان نصب Broker ممکن نشد. مسیر و دسترسی ابزار انتخاب‌شده را بررسی کنید.",
-                code="STATE_BROKER_SETUP_EXECUTION_FAILED",
-                status_code=503,
-                safe_details={"exception_type": type(exc).__name__, "runtime": runtime},
-            ) from exc
-
-        if result.returncode != 0:
-            combined = ((result.stdout or "") + "\n" + (result.stderr or "")).casefold()
-            if system == "Windows" and any(
-                phrase in combined
-                for phrase in ("canceled by the user", "cancelled by the user", "operation was canceled", "1223", "0x4c7")
-            ):
-                raise BrokerSetupError(
-                    "درخواست مجوز مدیر لغو شد؛ هیچ موفقیتی برای نصب Broker ثبت نشده است. "
-                    "در صورت تمایل، همین عملیات را دوباره از دکمهٔ راه‌اندازی اجرا کنید.",
-                    code="STATE_BROKER_ELEVATION_CANCELLED",
-                    status_code=403,
-                    safe_details={"runtime": runtime, "exit_code": result.returncode},
-                )
-            if system != "Windows" and any(
-                phrase in combined
-                for phrase in ("a password is required", "a terminal is required", "no tty present")
-            ):
-                raise BrokerSetupError(
-                    "ترمینال برای ورود رمز sudo در دسترس نیست؛ اسکریپت ensure_autonomous_state_broker_posix.py "
-                    "را از ترمینال مدیر سیستم اجرا کنید.",
-                    code="STATE_BROKER_ELEVATION_REQUIRED",
-                    status_code=403,
-                    safe_details={"runtime": runtime, "exit_code": result.returncode},
-                )
-            log_path = (
-                str(Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "PersonalAIAssistant" / "Logs" / "state-broker-setup.log")
-                if system == "Windows"
-                else None
-            )
-            raise BrokerSetupError(
-                "نصب یا ترمیم Broker ناموفق بود؛ گزارش امن نصب را بررسی کنید. "
-                "وضعیت وظیفه و checkpoint حذف یا بازنویسی نشده است.",
-                code="STATE_BROKER_SETUP_FAILED",
-                status_code=503,
-                safe_details={
-                    "runtime": runtime,
-                    "exit_code": result.returncode,
-                    "log_path": log_path,
-                },
-            )
-
-        if not _broker_is_healthy():
-            raise BrokerSetupError(
-                "اسکریپت نصب پایان یافت اما سرویس Broker پاسخ سلامت معتبر نداد؛ "
-                "شروع چرخه تا تأیید وضعیت پایدار متوقف می‌ماند.",
-                code="STATE_BROKER_POST_INSTALL_HEALTH_FAILED",
-                status_code=503,
+                "درخواست مجوز مدیر لغو شد؛ هیچ موفقیتی برای نصب Broker ثبت نشده است. "
+                "در صورت تمایل، همین عملیات را دوباره از دکمهٔ راه‌اندازی اجرا کنید.",
+                code="STATE_BROKER_ELEVATION_CANCELLED",
+                status_code=403,
                 safe_details={"runtime": runtime, "exit_code": result.returncode},
             )
+        if system != "Windows" and any(
+            phrase in combined
+            for phrase in ("a password is required", "a terminal is required", "no tty present")
+        ):
+            raise BrokerSetupError(
+                "ترمینال برای ورود رمز sudo در دسترس نیست؛ اسکریپت ensure_autonomous_state_broker_posix.py "
+                "را از ترمینال مدیر سیستم اجرا کنید.",
+                code="STATE_BROKER_ELEVATION_REQUIRED",
+                status_code=403,
+                safe_details={"runtime": runtime, "exit_code": result.returncode},
+            )
+        log_path = (
+            str(Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "PersonalAIAssistant" / "Logs" / "state-broker-setup.log")
+            if system == "Windows"
+            else None
+        )
+        raise BrokerSetupError(
+            "نصب یا ترمیم Broker ناموفق بود؛ گزارش امن نصب را بررسی کنید. "
+            "وضعیت وظیفه و checkpoint حذف یا بازنویسی نشده است.",
+            code="STATE_BROKER_SETUP_FAILED",
+            status_code=503,
+            safe_details={
+                "runtime": runtime,
+                "exit_code": result.returncode,
+                "log_path": log_path,
+            },
+        )
 
-        return {
-            "ready": True,
-            "already_ready": False,
-            "runtime": runtime,
-            "message": "سرویس فضای ثبت پیشرفت نصب/ترمیم شد و آزمون سلامت آن موفق بود.",
-        }
-    finally:
-        _SETUP_LOCK.release()
+    if not _broker_is_healthy():
+        raise BrokerSetupError(
+            "اسکریپت نصب پایان یافت اما سرویس Broker پاسخ سلامت معتبر نداد؛ "
+            "شروع چرخه تا تأیید وضعیت پایدار متوقف می‌ماند.",
+            code="STATE_BROKER_POST_INSTALL_HEALTH_FAILED",
+            status_code=503,
+            safe_details={"runtime": runtime, "exit_code": result.returncode},
+        )
+
+    return {
+        "ready": True,
+        "already_ready": False,
+        "runtime": runtime,
+        "message": "سرویس فضای ثبت پیشرفت نصب/ترمیم شد و آزمون سلامت آن موفق بود.",
+    }
+
