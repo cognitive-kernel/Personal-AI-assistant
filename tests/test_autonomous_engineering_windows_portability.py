@@ -356,7 +356,7 @@ def test_windows_broker_installer_uses_verified_prebuilt_binary_without_target_c
     assert 'Get-FileHash -LiteralPath $serviceExe -Algorithm SHA256' in live_test
     assert 'Copy-Item -LiteralPath $servicePackage -Destination $serviceExe' in live_test
     assert 'csc.exe' not in live_test
-    build_step = workflow.split('Build and verify the Windows machine state broker', 1)[1].split(
+    build_step = workflow.split('Build and stage the Windows machine state broker', 1)[1].split(
         'Upload the prebuilt Windows state broker package', 1
     )[0]
     assert 'dotnet build $project' in build_step
