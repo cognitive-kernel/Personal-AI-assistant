@@ -1,3 +1,18 @@
+## 2026-11-24 — cancel the executing workflow before newer queued runs
+
+### Root cause
+- `gh run list` returns recent runs first. The cancel endpoint selected the first run in any active state, so a newer queued run could be cancelled while an older `in_progress` workflow continued executing the actual engineering task.
+
+### Correction
+- The endpoint now selects an `in_progress` workflow run first and only falls back to queued/waiting/requested/pending work when no run is executing.
+- Added a regression where the newest run is queued and the older run is in progress; cancellation must target the in-progress run.
+
+### Validation boundary
+- Exact-head tests and Windows/browser CI are required. This selection is based on workflow-run status; if GitHub reports multiple in-progress runs, the endpoint still chooses the first in list order and a later audit should inspect job-level concurrency state.
+- No workflow was cancelled and no task/checkpoint/durable state was modified by this source update.
+
+---
+
 ## 2026-11-23 — State Broker startup diagnostics and Ollama legacy cleanup
 
 ### Findings
