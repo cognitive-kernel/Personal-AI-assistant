@@ -328,3 +328,20 @@ def test_broker_health_exposes_only_safe_acl_failure_reason_codes():
     ]
     assert '"state_directory"' not in health_details
     assert '"state_path"' not in health_details
+
+
+def test_windows_broker_installer_uses_verified_prebuilt_binary_without_target_compiler():
+    installer = _read("scripts/AutonomousStateBrokerInstall.psm1")
+    workflow = _read(".github/workflows/tests.yml")
+
+    assert 'Join-Path $PSScriptRoot "bin"' in installer
+    assert 'PersonalAIAssistant.StateBroker.exe' in installer
+    assert 'PersonalAIAssistant.StateBroker.exe.sha256' in installer
+    assert 'Get-FileHash -LiteralPath $packagedExe -Algorithm SHA256' in installer
+    assert 'Get-FileHash -LiteralPath $temporaryExe -Algorithm SHA256' in installer
+    assert 'Copy-Item -LiteralPath $packagedExe -Destination $temporaryExe' in installer
+    assert 'csc.exe' not in installer
+    assert 'Microsoft.NET' not in installer
+    assert 'Build and package the Windows machine state broker' in workflow
+    assert 'upload-artifact@v4' in workflow
+    assert 'windows-state-broker-package' in workflow
