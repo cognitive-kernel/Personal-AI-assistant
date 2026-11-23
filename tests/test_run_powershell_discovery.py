@@ -80,7 +80,7 @@ def test_powershell_discovery_skips_broken_candidate_and_checks_the_next(monkeyp
 
 def test_powershell_discovery_returns_unavailable_when_no_supported_engine_exists(monkeypatch):
     monkeypatch.setattr(run.platform, "system", lambda: "Linux")
-    monkeypatch.setattr(run.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(run.shutil, "which", lambda name: r"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" if name == "powershell.exe" else None)
 
     assert run._powershell_candidates() == []
     assert run._find_compatible_powershell() is None
@@ -160,10 +160,11 @@ def test_powershell_discovery_uses_registered_install_locations_without_major_ve
 
     candidates = run._powershell_candidates()
 
-    assert candidates
+    assert len(candidates) >= 2
     assert "custom" in candidates[0].lower()
     assert "8.0" in candidates[0]
     assert candidates[0].lower().endswith("pwsh.exe")
+    assert candidates[1].lower().endswith("powershell.exe")
 
 
 def test_powershell_discovery_rejects_prerelease_runtime(monkeypatch):
