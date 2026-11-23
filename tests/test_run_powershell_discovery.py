@@ -12,7 +12,7 @@ def _mock_windows(monkeypatch, candidates):
     monkeypatch.setattr(run.shutil, "which", lambda name: candidates.get(name))
 
 
-def test_powershell_discovery_prefers_a_verified_powerShell_7_runtime(monkeypatch):
+def test_powershell_discovery_prefers_a_verified_core_runtime(monkeypatch):
     candidates = {
         "pwsh.exe": r"C:\Program Files\PowerShell\8\pwsh.exe",
         "pwsh": None,
@@ -33,10 +33,16 @@ def test_powershell_discovery_prefers_a_verified_powerShell_7_runtime(monkeypatc
     assert calls[0][0] == candidates["pwsh.exe"]
     assert calls[0][1:4] == ["-NoLogo", "-NoProfile", "-NonInteractive"]
     assert calls[0][4] == "-Command"
-    assert calls[0][-1].find("[version]'7.0'") >= 0
+    probe = calls[0][-1]
+    assert "Get-Acl" in probe and "Set-Acl" in probe
+    assert "Get-CimInstance" in probe
+    assert "sc.exe" in probe and "icacls.exe" in probe
+    assert "RegistryKey" in probe
+    assert "[version]'7.0'" not in probe
+    assert "PSVersionTable.Prerelease" not in probe
 
 
-def test_powershell_discovery_falls_back_to_windows_powershell_5_1(monkeypatch):
+def test_powershell_discovery_falls_back_when_core_lacks_required_capabilities(monkeypatch):
     candidates = {
         "pwsh.exe": r"C:\Program Files\PowerShell\8\pwsh.exe",
         "pwsh": None,
@@ -49,7 +55,7 @@ def test_powershell_discovery_falls_back_to_windows_powershell_5_1(monkeypatch):
     def fake_run(command, **kwargs):
         calls.append(command[0])
         if command[0] == candidates["pwsh.exe"]:
-            return subprocess.CompletedProcess(command, 41, "PAA_PS|Core|6.2.0\n", "unsupported runtime")
+            return subprocess.CompletedProcess(command, 41, "", "required Windows capability missing")
         return subprocess.CompletedProcess(command, 0, "PAA_PS|Desktop|5.1.26100.1\n", "")
 
     monkeypatch.setattr(run.subprocess, "run", fake_run)
@@ -169,8 +175,8 @@ def test_powershell_discovery_uses_registered_install_locations_without_major_ve
     assert candidates[1].lower().endswith("powershell.exe")
 
 
-def test_powershell_discovery_rejects_prerelease_runtime(monkeypatch):
-    executable = r"C:\\Program Files\\PowerShell\\8\\pwsh.exe"
+def test_powershell_discovery_accepts_older_core_when_capability_probe_succeeds(monkeypatch):
+    executable = r"C:\\Program Files\\PowerShell\\6\\pwsh.exe"
     _mock_windows(monkeypatch, {
         "pwsh.exe": executable,
         "pwsh": None,
@@ -181,12 +187,13 @@ def test_powershell_discovery_rejects_prerelease_runtime(monkeypatch):
 
     def fake_run(command, **kwargs):
         captured["probe"] = command[-1]
-        return subprocess.CompletedProcess(command, 41, "", "prerelease runtime")
+        return subprocess.CompletedProcess(command, 0, "PAA_PS|Core|6.2.0\\n", "")
 
     monkeypatch.setattr(run.subprocess, "run", fake_run)
 
-    assert run._find_compatible_powershell() is None
-    assert "$PSVersionTable.Prerelease" in captured["probe"]
+    assert run._find_compatible_powershell() == (executable, "Core 6.2.0")
+    assert "[version]'7.0'" not in captured["probe"]
+    assert "PSVersionTable.Prerelease" not in captured["probe"]
 
 
 def test_windows_discovery_supports_a_desktop_only_host(monkeypatch):
