@@ -148,3 +148,30 @@
 - هنگام hidden شدن صفحه timer حذف می‌شود و با visible شدن refresh فوری انجام می‌شود؛ `stop()` و `pagehide` timer و listenerهای visibility را پاک می‌کنند و `pageshow` در بازگشت از bfcache polling را دوباره فعال می‌کند.
 - refreshهای Status/Runs/Progress و monitor وضعیت دانلود مدل نتیجهٔ موفق/ناموفق را به polling controller بازمی‌گردانند تا backoff واقعی اعمال شود. خطای GET مدل حداکثر پنج بار متوالی با backoff محدود retry می‌شود و job دانلود سمت سرور لغو نمی‌شود. timer قفل visibility در Status و monitor مدل در teardown صریح پاک می‌شوند؛ timeout هر درخواست از helper مشترک حفظ شده است.
 - رگرسیون Chromium زمان‌بندی hidden/visible، backoff، jitter و عدم اجرای refresh پس از cleanup را می‌سنجد. تا پایان exact-head CI این مورد پذیرفته‌شده محسوب نمی‌شود.
+
+
+## 2026-11-24 addendum — Broker readiness root cause and explicit setup UX
+
+### یافته‌های تأییدشده از کد
+
+1. installer قبلی روی Windows مقصد به `csc.exe` وابسته بود؛ حذف این وابستگی مستلزم package واقعی بود، نه صرفاً حذف compile command.
+2. draft prebuilt package به binary و manifestی ارجاع می‌داد که هنوز در repository نبودند. workflow Windows نیز یک بلوک ناقص و duplicate/orphaned job content داشت؛ بنابراین شواهد CI آن head معتبر نبود.
+3. discovery اولیه فقط `powershell.exe` را می‌دید؛ نصب PowerShell Core-only را تشخیص نمی‌داد. UI نیز Runner را به‌اشتباه prerequisite نصب Broker نمایش می‌داد.
+4. startup به‌صورت ضمنی UAC/نصب Broker را آغاز می‌کرد و `run.py` مسیرهای auto-install/start/pull برای Ollama داشت؛ این رفتار با اصل preflight خواندنی و اقدام privileged صریح ناسازگار بود.
+
+### اصلاحات پیاده‌سازی‌شده در Draft PR #863
+
+- Windows Broker از CI به‌صورت executable از پیش‌ساخته‌شده تولید می‌شود؛ target compiler/SDK لازم ندارد. SHA-256 package و staged copy پیش از service mutation بررسی می‌شود؛ runtime .NET Framework 4.8+ و ابزارهای service/ACL پیش از توقف Runner یا تغییر ACL preflight می‌شوند.
+- workflow ساخت package بازسازی شد: package اولیه stage و upload می‌شود، provenance attestation صادر می‌شود، تست LocalService/named pipe/ACL اجرا می‌شود و job commit package به‌صورت idempotent است. exact-head دوم باید hash build تازه را با binary commitشده تطبیق دهد.
+- Core و Desktop از PATH و registry کشف می‌شوند؛ انتخاب با capability واقعی است، نه major-version floor. همان executable برای UAC relaunch استفاده می‌شود.
+- startup فقط health check خواندنی Broker و بررسی خواندنی Ollama/مدل‌ها انجام می‌دهد. نصب Broker فقط از دکمهٔ UI و endpoint loopback-protected انجام می‌شود. Ollama install/start/model pull خودکار حذف شده است.
+- Broker مستقل از Runner است؛ نبود Runner فقط اجرای Workflow remote را غیرفعال می‌کند.
+- setup endpoint خطاهای host missing، UAC cancel، timeout، install failure و post-install health failure را تفکیک می‌کند؛ setup lock بین‌پردازه‌ای OS از نصب هم‌زمان جلوگیری می‌کند.
+
+### شواهد و محدودیت‌ها
+
+- regressionهای unit/API/Browser برای startup read-only، setup action، lock process boundary، خطاها و refresh اضافه شده‌اند؛ این‌ها تا تکمیل exact-head CI صرفاً test definitions هستند، نه نتیجهٔ موفق.
+- Windows PowerShell Desktop و Core در CI باید روی package واقعی تست شوند. نسخه‌ها در کد gate عددی ندارند؛ .NET Framework 4.8+ runtime و میزبان PowerShell دارای capabilityهای لازم هنوز پیش‌نیاز Windows Broker هستند.
+- مسیر native/PowerShell-free برای service-control و ACL هنوز پیاده‌سازی نشده است.
+- Browser E2E با API stubbed جایگزین اجرای واقعی UAC، سرویس LocalService، دو حساب غیرادمین، Runner حاضر/غایب، restart و checkpoint preservation روی Windows target نیست. Gateهای G/H/J همچنان pending هستند.
+- هیچ task، checkpoint، database، ACL، Runner registration یا دادهٔ کاربر تغییر داده نشده است؛ PR Draft می‌ماند و merge مجاز نیست تا تمام gateها تأیید شوند.
