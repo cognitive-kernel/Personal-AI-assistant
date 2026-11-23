@@ -187,7 +187,7 @@ def test_powershell_discovery_accepts_older_core_when_capability_probe_succeeds(
 
     def fake_run(command, **kwargs):
         captured["probe"] = command[-1]
-        return subprocess.CompletedProcess(command, 0, "PAA_PS|Core|6.2.0\\n", "")
+        return subprocess.CompletedProcess(command, 0, "PAA_PS|Core|6.2.0\n", "")
 
     monkeypatch.setattr(run.subprocess, "run", fake_run)
 
