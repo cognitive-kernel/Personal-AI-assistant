@@ -52,6 +52,8 @@ def test_windows_broker_setup_discovers_runner_identity_and_path():
     assert ensure.index("$stoppedRunnerServices += $service.Name") < ensure.index("$service.WaitForStatus(")
     assert "activeWorkersAfterStop" in ensure
     assert "Start-Service -Name $serviceNameToRestart" in ensure
+    assert 'if ($restarted.Status -eq "StopPending")' in ensure
+    assert 'if ($restarted.Status -eq "Stopped")' in ensure
 
 
 def test_posix_broker_setup_uses_dynamic_service_identity_and_native_service_manager():
