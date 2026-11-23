@@ -1,3 +1,21 @@
+## 2026-11-24 — read the live safe-pause flag after workflow concurrency admission
+
+### Root cause
+- The pre-task pause step used `vars.AUTONOMOUS_ENGINEERING_PAUSED`, which is a workflow-context snapshot. A run queued behind the job-level concurrency group could therefore observe the value from when that run was created, not a pause change made while it waited.
+- The step was named as a recheck but did not fetch the current repository variable.
+
+### Correction
+- The pre-task gate now reads the repository variable through the GitHub Actions Variables API after the `codex` job has acquired its concurrency slot.
+- An absent variable (HTTP 404) retains the documented default `false`; malformed values, authorization failures, rate limits, and network/API failures stop the job before a new task starts.
+- The existing task execution step remains conditional on the live gate output.
+
+### Validation boundary
+- Added a workflow contract regression asserting that the live API read occurs after the concurrency declaration and that all non-404 read failures fail closed.
+- Exact-head CI is required. The remaining race between the final API read and the actual task start is bounded to that short interval; this check closes the much larger queued-run stale-snapshot window.
+- No workflow was dispatched and no task/checkpoint state was changed by this source update.
+
+---
+
 ## 2026-11-23 — State Broker startup diagnostics and Ollama legacy cleanup
 
 ### Findings
