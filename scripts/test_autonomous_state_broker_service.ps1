@@ -254,6 +254,43 @@ try {
         throw "The broker did not become healthy after restoring the expected state ACL."
     }
 
+    # A regular UI polling health request uses the short cache, but the
+    # explicit startup-verification endpoint must bypass it immediately.
+    $cachedDriftAcl = Get-Acl -LiteralPath $stateRoot -ErrorAction Stop
+    $usersRule = [Security.AccessControl.FileSystemAccessRule]::new(
+        [Security.Principal.SecurityIdentifier]"S-1-5-32-545",
+        [Security.AccessControl.FileSystemRights]::Modify,
+        [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit,
+        [Security.AccessControl.PropagationFlags]::None,
+        [Security.AccessControl.AccessControlType]::Allow
+    )
+    $cachedDriftAcl.SetAccessRule($usersRule)
+    Set-Acl -LiteralPath $stateRoot -AclObject $cachedDriftAcl -ErrorAction Stop
+    $cachedHealth = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health" -TimeoutMilliseconds 30000
+    if ($cachedHealth.ready -ne $true) {
+        throw "The normal UI health endpoint did not reuse its bounded health cache."
+    }
+    $forcedDriftDetected = $false
+    try {
+        Invoke-AutonomousStateBroker -Method GET -Path "/v1/health/verify" -TimeoutMilliseconds 30000 | Out-Null
+    } catch {
+        if ($_.Exception.Message -match "503") {
+            $forcedDriftDetected = $true
+        } else {
+            throw
+        }
+    }
+    if (-not $forcedDriftDetected) {
+        throw "The forced startup health endpoint did not bypass cache to detect ACL drift."
+    }
+    Set-AutonomousDirectoryTreeAcl -Path $stateRoot -ModifySids @(
+        $currentSid, $brokerSid
+    ) -OwnerSid $brokerSid -InstallerSid $currentSid
+    $finalHealth = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health/verify" -TimeoutMilliseconds 30000
+    if ($finalHealth.ready -ne $true -or $finalHealth.acl_ready -ne $true) {
+        throw "The forced health endpoint did not recover after restoring the expected ACL."
+    }
+
     $probe = @'
 from app import autonomous_engineering_state_broker as broker
 from app.autonomous_engineering_state_broker import StateBrokerConflict
