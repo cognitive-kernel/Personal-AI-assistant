@@ -957,7 +957,6 @@ def dispatch_autonomous_engineering(
     payload: ManualTaskRequest | None = None,
     request: Request = None,
 ) -> dict[str, Any]:
-    global _LAST_DISPATCH_ACCEPTED_AT
     request_state = getattr(request, "state", None)
     correlation_id = getattr(request_state, "correlation_id", None)
     if not isinstance(correlation_id, str) or not _CORRELATION_ID_PATTERN.fullmatch(correlation_id):
@@ -965,30 +964,40 @@ def dispatch_autonomous_engineering(
     if not _DISPATCH_REQUEST_LOCK.acquire(blocking=False):
         raise HTTPException(
             status_code=409,
-            detail="درخواست اجرای دیگری در حال ثبت است؛ از ارسال هم‌زمان در چند زبانه خودداری کنید.",
+            detail="درخواست اجرای دیگری در همین پردازه در حال ثبت است؛ از ارسال هم‌زمان خودداری کنید.",
             headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "AUTONOMOUS_DISPATCH_IN_PROGRESS", "X-Retryable": "false"},
         )
     try:
-        if (
-            _LAST_DISPATCH_ACCEPTED_AT
-            and time.monotonic() - _LAST_DISPATCH_ACCEPTED_AT < _DISPATCH_VISIBILITY_GRACE_SECONDS
-        ):
-            raise HTTPException(
-                status_code=409,
-                detail="درخواست اجرای قبلی تازه پذیرفته شده یا نتیجهٔ آن نامشخص است؛ پیش از ارسال دوباره، سوابق اجرا را بازخوانی کنید.",
-                headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "AUTONOMOUS_DISPATCH_RECENTLY_ACCEPTED", "X-Retryable": "false"},
-            )
         try:
-            result = _dispatch_autonomous_engineering_locked(payload, correlation_id=correlation_id)
+            with _dispatch_admission_lock() as state_dir:
+                return _dispatch_autonomous_engineering_locked(
+                    payload,
+                    correlation_id=correlation_id,
+                    admission_state_dir=state_dir,
+                )
         except HTTPException as exc:
             exc.headers = dict(exc.headers or {})
             exc.headers.setdefault("X-Correlation-ID", correlation_id)
-            if exc.headers.get("X-Error-Code") == "WORKFLOW_DISPATCH_OUTCOME_UNKNOWN":
-                _LAST_DISPATCH_ACCEPTED_AT = time.monotonic()
             raise
-        if result.get("accepted") is True:
-            _LAST_DISPATCH_ACCEPTED_AT = time.monotonic()
-        return result
+        except (OSError, RuntimeError, ValueError) as exc:
+            _STATUS_LOGGER.error(
+                "Dispatch admission storage could not be verified; correlation_id=%s error_type=%s",
+                correlation_id,
+                type(exc).__name__,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "قفل یا نشانگر پایدار پذیرش Dispatch قابل بررسی نیست؛ برای جلوگیری از اجرای تکراری "
+                    "درخواست جدید ارسال نشد. سوابق GitHub Actions را بررسی کنید. شناسهٔ پیگیری: "
+                    + correlation_id
+                ),
+                headers={
+                    "X-Correlation-ID": correlation_id,
+                    "X-Error-Code": "DISPATCH_ADMISSION_STATE_UNAVAILABLE",
+                    "X-Retryable": "false",
+                },
+            ) from exc
     finally:
         _DISPATCH_REQUEST_LOCK.release()
 
@@ -997,9 +1006,12 @@ def _dispatch_autonomous_engineering_locked(
     payload: ManualTaskRequest | None = None,
     *,
     correlation_id: str | None = None,
+    admission_state_dir: Path | None = None,
 ) -> dict[str, Any]:
     if not isinstance(correlation_id, str) or not _CORRELATION_ID_PATTERN.fullmatch(correlation_id):
         correlation_id = uuid.uuid4().hex
+    if admission_state_dir is not None:
+        _raise_if_recent_dispatch(admission_state_dir)
     manual_task = payload.task.strip() if payload else ""
     if "\x00" in manual_task:
         raise HTTPException(status_code=422, detail="متن وظیفه شامل نویسهٔ نامعتبر است.")
@@ -1067,6 +1079,13 @@ def _dispatch_autonomous_engineering_locked(
             status_code=409,
             detail="یک PR مهندسی خودکار هنوز باز است؛ ابتدا همان PR را بازبینی و تعیین‌تکلیف کنید.",
         )
+    if admission_state_dir is not None:
+        _write_dispatch_admission_marker(
+            admission_state_dir,
+            correlation_id,
+            "dispatching",
+            ttl_seconds=_DISPATCH_UNKNOWN_GRACE_SECONDS,
+        )
     try:
         result = _run(
             [
@@ -1078,6 +1097,8 @@ def _dispatch_autonomous_engineering_locked(
             raise_os_error=True,
         )
     except OSError:
+        if admission_state_dir is not None:
+            _clear_dispatch_admission_marker(admission_state_dir, correlation_id)
         _STATUS_LOGGER.error(
             "Autonomous workflow dispatch could not start; correlation_id=%s",
             correlation_id,
@@ -1095,6 +1116,13 @@ def _dispatch_autonomous_engineering_locked(
             },
         )
     if result is None:
+        if admission_state_dir is not None:
+            _write_dispatch_admission_marker(
+                admission_state_dir,
+                correlation_id,
+                "unknown",
+                ttl_seconds=_DISPATCH_UNKNOWN_GRACE_SECONDS,
+            )
         _STATUS_LOGGER.warning(
             "Autonomous workflow dispatch outcome is unknown; correlation_id=%s",
             correlation_id,
@@ -1113,6 +1141,13 @@ def _dispatch_autonomous_engineering_locked(
             },
         )
     if result.returncode != 0:
+        if admission_state_dir is not None:
+            _write_dispatch_admission_marker(
+                admission_state_dir,
+                correlation_id,
+                "unknown",
+                ttl_seconds=_DISPATCH_UNKNOWN_GRACE_SECONDS,
+            )
         safe_stderr = _sanitize_workflow_log(str(result.stderr or ""))
         stderr_fingerprint = (
             hashlib.sha256(safe_stderr.encode("utf-8")).hexdigest()[:16]
@@ -1136,6 +1171,13 @@ def _dispatch_autonomous_engineering_locked(
                 "X-Error-Code": "WORKFLOW_DISPATCH_FAILED",
                 "X-Retryable": "false",
             },
+        )
+    if admission_state_dir is not None:
+        _write_dispatch_admission_marker(
+            admission_state_dir,
+            correlation_id,
+            "accepted",
+            ttl_seconds=_DISPATCH_ACCEPTED_GRACE_SECONDS,
         )
     return {
         "accepted": True,
