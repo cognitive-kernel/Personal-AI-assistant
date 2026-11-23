@@ -452,6 +452,7 @@ def test_linux_startup_does_not_download_or_run_an_ollama_installer(tmp_path, mo
     monkeypatch.setattr(installer.platform, "system", lambda: "Linux")
     monkeypatch.setattr(installer, "_configured_llm_provider", lambda _purpose: "ollama")
     monkeypatch.setattr(installer, "_read_saved_setting", lambda _key, default: default)
+    monkeypatch.setattr(installer, "_configured_model_setting", lambda _key, _env, fallback: fallback)
     monkeypatch.setattr(installer, "_find_ollama", lambda: None)
     monkeypatch.setattr(
         installer,
