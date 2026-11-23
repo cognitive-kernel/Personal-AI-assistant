@@ -4,6 +4,7 @@ import math
 import os
 import re
 import subprocess
+import shutil
 from typing import Any
 try:
     import psutil
@@ -137,6 +138,15 @@ def _detect_rocm_gpus() -> list[dict[str, Any]]:
     return devices
 
 
+def _find_windows_powershell() -> str | None:
+    """Find either supported Windows PowerShell engine for optional GPU telemetry."""
+    for command_name in ("pwsh.exe", "pwsh", "powershell.exe", "powershell"):
+        executable = shutil.which(command_name)
+        if executable:
+            return executable
+    return None
+
+
 def _detect_windows_gpus() -> list[dict[str, Any]]:
     """Use Windows WMI plus generic GPU performance counters (works across vendors)."""
     if os.name != "nt":
@@ -162,7 +172,10 @@ try {
 } catch {}
 [pscustomobject]@{Adapters=$adapters; Counters=$counters} | ConvertTo-Json -Depth 5 -Compress
 """
-    output = _run_gpu_command(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script], timeout=4.0)
+    powershell = _find_windows_powershell()
+    if not powershell:
+        return []
+    output = _run_gpu_command([powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script], timeout=4.0)
     if not output:
         return []
     try:
