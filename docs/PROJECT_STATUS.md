@@ -1,3 +1,15 @@
+## 2026-11-24 — snapshot زنده و اصلاح race در UI ماژول مهندسی
+
+- مبنای main با PR #863 تأیید شد: `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`.
+- PR #863 با عنوان اصلاح portability مربوط به Windows State Broker باز و Draft است؛ آخرین head مشاهده‌شده `5a4c5a37acc45b63d0cf00e7b1102a4c4ff66226` در حال اجرای Browser E2E، CodeQL و dependency audit بود. این runها به‌عنوان نتیجهٔ موفق تلقی نمی‌شوند و branch آن دست‌نخورده باقی مانده است.
+- ممیزی UI ماژول مهندسی یک race را در `refreshAfterMutation()` اثبات کرد: دو mutation که منتظر یک poll مشترک بودند، می‌توانستند هم‌زمان دو درخواست status ایجاد کنند و پاسخ‌ها با ترتیب نامطمئن UI را overwrite کنند.
+- اصلاح در branch مستقل `fix/autonomous-engineering-status-refresh-serialization-20261124` از main انجام شد: serialization درخواست‌های authoritative پس از mutation و افزودن regression Playwright برای سناریوی دو mutation روی poll معلق.
+- فایل‌های اجرایی تغییرکرده: `app/static/autonomous-engineering-status.js` و `tests/test_browser_e2e.py`. گزارش در `docs/ENGINEERING_LOG.md` و inventory UI ثبت شده است.
+- Browser E2E، full test suite، CodeQL، dependency audit و exact-head CI برای branch اصلاحی هنوز اجرا/تأیید نشده‌اند. PR باید Draft بماند؛ merge ممنوع است تا همهٔ گیت‌های لازم پاس شوند.
+- هیچ run فعال، task، checkpoint، branch قبلی، Runner، database، ACL یا durable state حذف/لغو/تغییر داده نشده است.
+
+---
+
 ## 2026-11-23 — snapshot زنده و ادامهٔ مهندسی Autonomous Engineering
 
 - main با مقایسهٔ مستقیم روی SHA 31349a99b197fe702e11e8a5dd53d52ba924575c تأیید شد؛ این snapshot جایگزین وضعیت‌های تاریخی قدیمی‌تر در ادامهٔ فایل است.
