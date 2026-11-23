@@ -33,7 +33,6 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
     private bool _lastHealth;
     private bool _lastStorageHealth;
     private bool _lastAclHealth;
-    private DateTime _lastHealthAt = DateTime.MinValue;
     private Thread[] _workers;
 
     public AutonomousStateBrokerService()
@@ -874,7 +873,6 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             _lastStorageHealth = VerifyStorageAccess();
             _lastAclHealth = _lastStorageHealth && VerifyStateAclIntegrity();
             _lastHealth = _lastStorageHealth && _lastAclHealth;
-            _lastHealthAt = DateTime.UtcNow;
             return _lastHealth;
         }
     }
