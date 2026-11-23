@@ -14,12 +14,17 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
         throw "The elevated state-broker setup process is not running as an administrator."
     }
     $scriptPath = $PSCommandPath
-    $argumentLine = '-NoProfile -ExecutionPolicy Bypass -File "' + $scriptPath + '" -ElevatedChild'
+    $hostExecutableName = if ($PSVersionTable.PSEdition -eq "Core") { "pwsh.exe" } else { "powershell.exe" }
+    $hostExecutable = Join-Path $PSHOME $hostExecutableName
+    if (-not (Test-Path -LiteralPath $hostExecutable -PathType Leaf)) {
+        throw "The current PowerShell host executable could not be resolved from PSHOME ($PSHOME)."
+    }
+    $argumentLine = '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $scriptPath + '" -ElevatedChild'
     if (-not [string]::IsNullOrWhiteSpace($RunnerRoot)) {
         $argumentLine += ' -RunnerRoot "' + $RunnerRoot.Replace('"', '""') + '"'
     }
     try {
-        $child = Start-Process -FilePath (Join-Path $PSHOME "powershell.exe") -Verb RunAs -ArgumentList $argumentLine -Wait -PassThru -ErrorAction Stop
+        $child = Start-Process -FilePath $hostExecutable -Verb RunAs -ArgumentList $argumentLine -Wait -PassThru -ErrorAction Stop
         exit $child.ExitCode
     } catch {
         Write-Error "Administrator approval is required to install the machine state broker. $($_.Exception.Message)"
