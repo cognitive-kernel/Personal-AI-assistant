@@ -1,3 +1,18 @@
+## 2026-11-23 — UI-originated correlation ID through dispatch and timeout
+
+### Root cause
+- The API already generated/propagated a correlation ID, and the workflow stored it with run/job/progress/task-owner records, but the browser request helper did not send an ID before dispatch. If the response was lost or timed out, the UI could not show the identifier needed to find a possibly accepted run.
+
+### Correction
+- Generate a cryptographically random 32-character lowercase hexadecimal ID in the UI core for every API request, using `crypto.randomUUID()` or `crypto.getRandomValues`.
+- Send it as `X-Correlation-ID`; retain it from success/error responses and expose it in timeout and ambiguous network errors.
+- Add browser regressions for manual dispatch round-trip, timeout, and network failure, plus a module contract test.
+
+### Evidence boundary
+- This closes the browser-originating correlation gap in code, but exact-head Browser E2E/full CI and a real target-host dispatch are still required. The PR remains Draft; no dispatch, task, or user state was created during this source-only change.
+
+---
+
 ## 2026-11-23 — Runner-independent Windows state broker bootstrap
 
 ### Root cause
