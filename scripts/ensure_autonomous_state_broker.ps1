@@ -19,8 +19,8 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
         $argumentLine += ' -RunnerRoot "' + $RunnerRoot.Replace('"', '""') + '"'
     }
     # The elevated child inherits the parent environment. In particular, a
-    # Windows PowerShell 5.1 child can otherwise load PowerShell 7 modules from
-    # WindowsApps before this script gets control, corrupting ObjectSecurity
+    # A child host can otherwise load modules from a different PowerShell
+    # edition/installation before this script gets control, corrupting type data.
     # extended type data. Restrict module discovery to the active host's own
     # inbox modules for the child only; restore the caller environment always.
     $previousModulePath = $env:PSModulePath
