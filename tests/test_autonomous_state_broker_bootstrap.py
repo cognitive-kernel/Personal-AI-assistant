@@ -109,3 +109,19 @@ def test_windows_acl_module_loads_security_cmdlets_in_its_own_scope():
     assert module.index(security_import) < module.index("function Set-AutonomousDirectoryAcl")
     assert "Get-Acl -LiteralPath" in module
     assert "Set-Acl -LiteralPath" in module
+
+
+def test_windows_acl_module_filters_inherited_powershell7_paths_before_security_import():
+    module = (ROOT / "scripts" / "AutonomousWindowsIdentity.psm1").read_text(encoding="utf-8")
+    pre_import = module[:module.index("Import-Module Microsoft.PowerShell.Security")]
+
+    assert '$PSVersionTable.PSEdition -eq "Desktop"' in pre_import
+    assert r"'*\Documents\PowerShell\Modules'" in pre_import
+    assert r"'*\Program Files\PowerShell\Modules'" in pre_import
+    assert r"'*\Program Files\PowerShell\*\Modules'" in pre_import
+    assert r"'*\Program Files (x86)\PowerShell\Modules'" in pre_import
+    assert "$env:PSModulePath = $compatibleModulePaths -join [IO.Path]::PathSeparator" in pre_import
+    assert pre_import.index("$env:PSModulePath =") < module.index(
+        "Import-Module Microsoft.PowerShell.Security"
+    )
+    assert "SetEnvironmentVariable" not in pre_import
