@@ -50,113 +50,7 @@ function Get-AutonomousStateBrokerPackage {
     }
 
     $expectedHash = (Get-Content -LiteralPath $hashFile -Raw -ErrorAction Stop).Trim()
-    if ($expectedHash -notmatch '^[0-9a-fA-F]{64}function Install-AutonomousStateBrokerService {
-    $serviceName = "PersonalAIAssistantStateBroker"
-    # Revalidate immediately before installation to prevent a package swap
-    # between the setup script's read-only preflight and service mutation.
-    $package = Get-AutonomousStateBrokerPackage
-    $serviceRoot = $package.ServiceRoot
-    $packagedExe = $package.Path
-    $expectedHash = $package.Sha256
-    $scCommand = Get-Command $package.ScCommand -ErrorAction Stop
-
-    New-Item -ItemType Directory -Path $serviceRoot -Force | Out-Null
-    $serviceExe = Join-Path $serviceRoot "PersonalAIAssistant.StateBroker.exe"
-    $temporaryExe = Join-Path $serviceRoot ("broker-stage-" + [guid]::NewGuid().ToString("N") + ".exe")
-    $existing = $null
-    $wasRunning = $false
-    try {
-        Copy-Item -LiteralPath $packagedExe -Destination $temporaryExe -Force -ErrorAction Stop
-        $copiedHash = (Get-FileHash -LiteralPath $temporaryExe -Algorithm SHA256 -ErrorAction Stop).Hash
-        if (-not [string]::Equals($copiedHash, $expectedHash, [StringComparison]::OrdinalIgnoreCase)) {
-            throw "The staged Windows state broker binary failed SHA-256 verification."
-        }
-
-        $existing = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-        $wasRunning = ($null -ne $existing -and $existing.Status -eq "Running")
-        if ($wasRunning) {
-            Stop-Service -Name $serviceName -Force -ErrorAction Stop
-            $existing = Get-Service -Name $serviceName -ErrorAction Stop
-            $existing.WaitForStatus(
-                [System.ServiceProcess.ServiceControllerStatus]::Stopped,
-                [TimeSpan]::FromSeconds(30)
-            )
-        }
-    } catch {
-        Remove-Item -LiteralPath $temporaryExe -Force -ErrorAction SilentlyContinue
-        if ($wasRunning) {
-            Start-Service -Name $serviceName -ErrorAction SilentlyContinue
-        }
-        throw
-    }
-
-    $backupExe = $null
-    $newServiceCreated = $false
-    try {
-        if (Test-Path -LiteralPath $serviceExe -PathType Leaf) {
-            $backupExe = Join-Path $serviceRoot ("broker-previous-" + [guid]::NewGuid().ToString("N") + ".exe")
-            [System.IO.File]::Replace($temporaryExe, $serviceExe, $backupExe, $true)
-        } else {
-            [System.IO.File]::Move($temporaryExe, $serviceExe)
-        }
-        if (-not $existing) {
-            New-Service -Name $serviceName -BinaryPathName ('"' + $serviceExe + '"') -DisplayName "Personal AI Assistant State Broker" -Description "Mediates allow-listed local access to protected autonomous-engineering state." -StartupType Automatic | Out-Null
-            $newServiceCreated = $true
-        }
-        & $scCommand.Source config $serviceName 'binPath=' $serviceExe 'obj=' 'NT AUTHORITY\LocalService' 'start=' 'auto' | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "Could not configure the state broker to run under its restricted LocalService identity."
-        }
-        $service = Get-CimInstance Win32_Service -Filter "Name='$serviceName'" -ErrorAction Stop
-        if ($service.StartName -ne "NT AUTHORITY\LocalService") {
-            throw "The state broker must run under NT AUTHORITY\LocalService."
-        }
-        Start-Service -Name $serviceName -ErrorAction Stop
-        $running = Get-Service -Name $serviceName -ErrorAction Stop
-        $running.WaitForStatus(
-            [System.ServiceProcess.ServiceControllerStatus]::Running,
-            [TimeSpan]::FromSeconds(30)
-        )
-
-        Import-Module (Join-Path $PSScriptRoot "AutonomousStateBroker.psm1") -Force
-        $health = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health/verify" -TimeoutMilliseconds 30000
-        if ($null -eq $health -or $health.ready -ne $true -or
-            $health.storage_ready -ne $true -or $health.acl_ready -ne $true -or
-            $health.schema_version -ne 1) {
-            throw "The state broker service started but failed its protected storage and ACL health checks."
-        }
-        if ($backupExe -and (Test-Path -LiteralPath $backupExe)) {
-            Remove-Item -LiteralPath $backupExe -Force -ErrorAction Stop
-        }
-        Write-Host "Machine state broker installed and verified at $serviceRoot."
-    } catch {
-        $failure = $_
-        $serviceAfterFailure = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-        if ($serviceAfterFailure -and $serviceAfterFailure.Status -eq "Running") {
-            Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
-        }
-        if ($backupExe -and (Test-Path -LiteralPath $backupExe)) {
-            try {
-                [System.IO.File]::Replace($backupExe, $serviceExe, $null, $true)
-            } catch {
-                Write-Warning "The previous state-broker binary backup remains at $backupExe; do not delete it until the service is restored."
-            }
-        } elseif ($newServiceCreated) {
-            Remove-Item -LiteralPath $serviceExe -Force -ErrorAction SilentlyContinue
-            sc.exe delete $serviceName | Out-Null
-        }
-        if ($wasRunning) {
-            Start-Service -Name $serviceName -ErrorAction SilentlyContinue
-        }
-        if (Test-Path -LiteralPath $temporaryExe) {
-            Remove-Item -LiteralPath $temporaryExe -Force -ErrorAction SilentlyContinue
-        }
-        throw $failure
-    }
-}
-
-Export-ModuleMember -Function Get-AutonomousStateBrokerPackage, Install-AutonomousStateBrokerService, Test-AutonomousDotNetFramework48
-) {
+    if ($expectedHash -notmatch '^[0-9a-fA-F]{64}$') {
         throw "The packaged Windows state broker SHA-256 manifest is malformed."
     }
     $packageHash = (Get-FileHash -LiteralPath $packagedExe -Algorithm SHA256 -ErrorAction Stop).Hash
@@ -181,73 +75,83 @@ Export-ModuleMember -Function Get-AutonomousStateBrokerPackage, Install-Autonomo
 
 function Install-AutonomousStateBrokerService {
     $serviceName = "PersonalAIAssistantStateBroker"
-    $serviceRoot = Join-Path $env:ProgramData "PersonalAIAssistant\StateBroker"
-    $serviceSource = Join-Path $PSScriptRoot "AutonomousStateBrokerService.cs"
-    if (-not (Test-Path -LiteralPath $serviceSource -PathType Leaf)) {
-        throw "AutonomousStateBrokerService.cs is missing from the provisioning package."
-    }
-    $frameworkRelease = Get-AutonomousDotNetFrameworkRelease
-    if ($frameworkRelease -lt 528040) {
-        throw "The Windows state broker requires .NET Framework 4.8 or later (Release >= 528040). No service or state changes were made."
-    }
-    $scCommand = Get-Command sc.exe -ErrorAction Stop
+    # Revalidate immediately before installation to prevent a package swap
+    # between the setup script's read-only preflight and service mutation.
+    $package = Get-AutonomousStateBrokerPackage
+    $serviceRoot = $package.ServiceRoot
+    $packagedExe = $package.Path
+    $expectedHash = $package.Sha256
+    $scCommand = Get-Command $package.ScCommand -ErrorAction Stop
 
-
-    # The target host receives a prebuilt, CI-produced broker. Never require a
-    # C# compiler, SDK, IDE, or developer toolchain during installation.
-    $packageRoot = Join-Path $PSScriptRoot "bin"
-    $packagedExe = Join-Path $packageRoot "PersonalAIAssistant.StateBroker.exe"
-    $hashFile = $packagedExe + ".sha256"
-    if (-not (Test-Path -LiteralPath $packagedExe -PathType Leaf) -or
-        -not (Test-Path -LiteralPath $hashFile -PathType Leaf)) {
-        throw "The prebuilt Windows state broker package or its SHA-256 manifest is missing."
-    }
-    $expectedHash = (Get-Content -LiteralPath $hashFile -Raw -ErrorAction Stop).Trim()
-    if ($expectedHash -notmatch '^[0-9a-fA-F]{64}$') {
-        throw "The packaged Windows state broker SHA-256 manifest is malformed."
-    }
-    $packageHash = (Get-FileHash -LiteralPath $packagedExe -Algorithm SHA256 -ErrorAction Stop).Hash
-    if (-not [string]::Equals($packageHash, $expectedHash, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "The packaged Windows state broker failed SHA-256 verification; installation was refused."
-    }
     New-Item -ItemType Directory -Path $serviceRoot -Force | Out-Null
     $serviceExe = Join-Path $serviceRoot "PersonalAIAssistant.StateBroker.exe"
     $temporaryExe = Join-Path $serviceRoot ("broker-stage-" + [guid]::NewGuid().ToString("N") + ".exe")
+    $existing = $null
+    $existingServicePath = $null
+    $existingServiceStartMode = "Auto"
+    $wasRunning = $false
+
+    # Stage and verify the new binary before stopping or reconfiguring the
+    # existing service. Any failure in this block leaves the old service intact.
     try {
         Copy-Item -LiteralPath $packagedExe -Destination $temporaryExe -Force -ErrorAction Stop
         $copiedHash = (Get-FileHash -LiteralPath $temporaryExe -Algorithm SHA256 -ErrorAction Stop).Hash
         if (-not [string]::Equals($copiedHash, $expectedHash, [StringComparison]::OrdinalIgnoreCase)) {
             throw "The staged Windows state broker binary failed SHA-256 verification."
         }
+
+        $existing = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+        $wasRunning = ($null -ne $existing -and $existing.Status -eq "Running")
+        if ($existing) {
+            $existingCim = Get-CimInstance Win32_Service -Filter "Name='$serviceName'" -ErrorAction Stop
+            if ($existingCim.StartName -ne "NT AUTHORITY\LocalService") {
+                throw "The existing state broker is not running as NT AUTHORITY\LocalService; refusing an unsafe in-place upgrade."
+            }
+            $existingServicePath = [string]$existingCim.PathName
+            $existingServiceStartMode = [string]$existingCim.StartMode
+            if ([string]::IsNullOrWhiteSpace($existingServicePath)) {
+                throw "The existing state broker service has no recoverable executable path."
+            }
+        }
+
+        if ($wasRunning) {
+            Stop-Service -Name $serviceName -Force -ErrorAction Stop
+            $existing = Get-Service -Name $serviceName -ErrorAction Stop
+            $existing.WaitForStatus(
+                [System.ServiceProcess.ServiceControllerStatus]::Stopped,
+                [TimeSpan]::FromSeconds(30)
+            )
+        }
     } catch {
         Remove-Item -LiteralPath $temporaryExe -Force -ErrorAction SilentlyContinue
+        if ($wasRunning) {
+            Start-Service -Name $serviceName -ErrorAction SilentlyContinue
+        }
         throw
     }
 
-    $existing = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-    $wasRunning = ($null -ne $existing -and $existing.Status -eq "Running")
-    if ($wasRunning) {
-        Stop-Service -Name $serviceName -Force -ErrorAction Stop
-        $existing = Get-Service -Name $serviceName -ErrorAction Stop
-        $existing.WaitForStatus(
-            [System.ServiceProcess.ServiceControllerStatus]::Stopped,
-            [TimeSpan]::FromSeconds(30)
-        )
-    }
+    $hadServiceExe = Test-Path -LiteralPath $serviceExe -PathType Leaf
     $backupExe = $null
+    $binaryInstalled = $false
     $newServiceCreated = $false
+    $newServiceAttempted = $false
     try {
-        if (Test-Path -LiteralPath $serviceExe -PathType Leaf) {
+        if ($hadServiceExe) {
             $backupExe = Join-Path $serviceRoot ("broker-previous-" + [guid]::NewGuid().ToString("N") + ".exe")
             [System.IO.File]::Replace($temporaryExe, $serviceExe, $backupExe, $true)
         } else {
             [System.IO.File]::Move($temporaryExe, $serviceExe)
         }
+        $binaryInstalled = $true
+
         if (-not $existing) {
+            $newServiceAttempted = $true
             New-Service -Name $serviceName -BinaryPathName ('"' + $serviceExe + '"') -DisplayName "Personal AI Assistant State Broker" -Description "Mediates allow-listed local access to protected autonomous-engineering state." -StartupType Automatic | Out-Null
             $newServiceCreated = $true
         }
-        & $scCommand.Source config $serviceName 'binPath=' $serviceExe 'obj=' 'NT AUTHORITY\LocalService' 'start=' 'auto' | Out-Null
+
+        $binaryPath = '"' + $serviceExe + '"'
+        & $scCommand.Source config $serviceName 'binPath=' $binaryPath 'obj=' 'NT AUTHORITY\LocalService' 'start=' 'auto' | Out-Null
         if ($LASTEXITCODE -ne 0) {
             throw "Could not configure the state broker to run under its restricted LocalService identity."
         }
@@ -255,6 +159,10 @@ function Install-AutonomousStateBrokerService {
         if ($service.StartName -ne "NT AUTHORITY\LocalService") {
             throw "The state broker must run under NT AUTHORITY\LocalService."
         }
+        if ([string]$service.PathName -notlike ('"' + $serviceExe + '"*')) {
+            throw "The state broker service executable path was not persisted exactly."
+        }
+
         Start-Service -Name $serviceName -ErrorAction Stop
         $running = Get-Service -Name $serviceName -ErrorAction Stop
         $running.WaitForStatus(
@@ -269,8 +177,12 @@ function Install-AutonomousStateBrokerService {
             $health.schema_version -ne 1) {
             throw "The state broker service started but failed its protected storage and ACL health checks."
         }
+
         if ($backupExe -and (Test-Path -LiteralPath $backupExe)) {
-            Remove-Item -LiteralPath $backupExe -Force -ErrorAction Stop
+            Remove-Item -LiteralPath $backupExe -Force -ErrorAction SilentlyContinue
+            if (Test-Path -LiteralPath $backupExe) {
+                Write-Warning "The previous state-broker binary backup remains at $backupExe."
+            }
         }
         Write-Host "Machine state broker installed and verified at $serviceRoot."
     } catch {
@@ -279,16 +191,35 @@ function Install-AutonomousStateBrokerService {
         if ($serviceAfterFailure -and $serviceAfterFailure.Status -eq "Running") {
             Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
         }
+
         if ($backupExe -and (Test-Path -LiteralPath $backupExe)) {
             try {
                 [System.IO.File]::Replace($backupExe, $serviceExe, $null, $true)
             } catch {
                 Write-Warning "The previous state-broker binary backup remains at $backupExe; do not delete it until the service is restored."
             }
-        } elseif ($newServiceCreated) {
+        } elseif ($binaryInstalled -and -not $hadServiceExe) {
             Remove-Item -LiteralPath $serviceExe -Force -ErrorAction SilentlyContinue
-            sc.exe delete $serviceName | Out-Null
         }
+
+        if ($newServiceAttempted -or $newServiceCreated) {
+            $createdService = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+            if ($createdService) {
+                & $scCommand.Source delete $serviceName | Out-Null
+            }
+        } elseif ($existing -and $existingServicePath) {
+            $previousStart = switch ($existingServiceStartMode) {
+                "Auto" { "auto" }
+                "Manual" { "demand" }
+                "Disabled" { "disabled" }
+                default { "auto" }
+            }
+            & $scCommand.Source config $serviceName 'binPath=' $existingServicePath 'obj=' 'NT AUTHORITY\LocalService' 'start=' $previousStart | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "Could not restore the previous state-broker service configuration."
+            }
+        }
+
         if ($wasRunning) {
             Start-Service -Name $serviceName -ErrorAction SilentlyContinue
         }
@@ -299,4 +230,4 @@ function Install-AutonomousStateBrokerService {
     }
 }
 
-Export-ModuleMember -Function Install-AutonomousStateBrokerService, Test-AutonomousDotNetFramework48
+Export-ModuleMember -Function Get-AutonomousStateBrokerPackage, Install-AutonomousStateBrokerService, Test-AutonomousDotNetFramework48
