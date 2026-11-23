@@ -61,16 +61,24 @@ def test_posix_broker_setup_uses_dynamic_service_identity_and_native_service_man
     assert "CapabilityBoundingSet=" in installer
     assert "RestrictAddressFamilies=AF_UNIX" in installer
     assert 'sys.executable,\n            "-I",\n            "-S",' in installer
-    assert '"/home"' in installer and '"/Users"' in installer
-    assert "_assert_no_active_runner_worker(sys.platform)" in installer
+    assert "pwd.getpwall()" in installer
+    assert 'Path("/usr/bin/python3")' not in installer
+    assert 'Path("/usr/local/bin/python3")' not in installer
+    assert 'Path("/opt/homebrew/bin/python3")' not in installer
+    assert 'Path("/opt/local/bin/python3")' not in installer
+    assert 'Path("/home")' not in installer and 'Path("/Users")' not in installer
+    assert "_assert_no_active_runner_worker()" in installer
+    assert '["-axo", "pid=,command="]' in installer
     assert "sys.path.insert(0, str(project_root))" in installer
     assert "def _prepare_socket_path" in service
     assert "AccessControl" not in service
     assert "MARKERS" in service and "CLEANUP_NAMES" in service
     assert "/v1/progress" in client
     assert "configured_socket_path" in client
-    assert 'Path("/etc/xdg")' in config
-    assert 'Path("/Library/Application Support")' in config
+    assert "platformdirs" in config
+    assert 'site_config_path("PersonalAIAssistant", appauthor=False)' in config
+    assert 'Path("/etc/xdg")' not in config
+    assert 'Path("/Library/Application Support")' not in config
     assert "process_override" not in config
 
 
@@ -87,3 +95,21 @@ def test_posix_state_migration_does_not_rewrite_existing_tree_permissions():
     assert "for root, directories, files in os.walk(state_dir" not in migration
     assert "os.chmod(directory, 0o700)" not in migration
     assert "both copies were preserved" in migration
+
+def test_posix_machine_config_directory_uses_platformdirs(monkeypatch, tmp_path):
+    import platformdirs
+
+    from app import autonomous_engineering_state_broker_config as config
+
+    expected = tmp_path / "machine-config" / "PersonalAIAssistant"
+    calls = []
+
+    def resolve_site_config(appname, *, appauthor=False):
+        calls.append((appname, appauthor))
+        return expected
+
+    monkeypatch.setattr(platformdirs, "site_config_path", resolve_site_config)
+
+    assert config.config_directory() == expected
+    assert calls == [("PersonalAIAssistant", False)]
+
