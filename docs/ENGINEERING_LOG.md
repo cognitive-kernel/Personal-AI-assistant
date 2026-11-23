@@ -1,3 +1,22 @@
+## 2026-11-24 — serialize elevated State Broker setup across parent timeout
+
+### Root cause
+- Python holds a same-user cross-process setup lock, but the Windows installer launches a separate UAC-elevated PowerShell child with `Start-Process -Wait`.
+- If the Python timeout terminates the non-elevated parent, the elevated child may continue. The Python lock is released while the child can still stop Runner services or reconcile machine ACLs.
+
+### Correction
+- The elevated child now acquires a machine-wide named mutex before importing installer modules, querying Runner services, or changing service/ACL state.
+- A concurrent elevated setup fails closed without starting mutations.
+- An abandoned mutex is treated as an interrupted machine-state transaction and fails closed for explicit inspection; it is not silently treated as a clean lock release.
+- The child releases and disposes the mutex in a script-level `finally`, while Windows also releases ownership if the child process terminates.
+
+### Validation boundary
+- Added a static portability regression contract proving mutex acquisition precedes all service/ACL mutation paths and that abandoned-owner and release paths remain present.
+- This source-level regression does not replace execution on a Windows target host. Exact-head Windows CI and a real parent-timeout/elevated-child integration test remain required.
+- No Runner service, ACL, task, checkpoint, database, or durable state was modified by this source change.
+
+---
+
 ## 2026-11-23 — State Broker startup diagnostics and Ollama legacy cleanup
 
 ### Findings
