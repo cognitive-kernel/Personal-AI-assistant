@@ -176,6 +176,7 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert "Remove-LegacyCodexContextVariants -BaseModel $baseModel -CurrentModel $codexModel" in context_script
     assert "if (-not $VerifyOnly)" in context_script
     assert '$baseUrl/api/delete' in context_script
+    assert '-Uri "$baseUrl/api/delete" -Method Delete -ContentType "application/json" -Body $deleteBody' in context_script
     assert "Preserving loaded legacy Codex model" in context_script
     assert context_script.index('if ($allocated -ne $selectedContext)') < context_script.index('Remove-LegacyCodexContextVariants -BaseModel $baseModel')
     assert context_script.index('Remove-LegacyCodexContextVariants -BaseModel $baseModel') < context_script.index('OLLAMA_RUNTIME_CONTEXT_OK')
