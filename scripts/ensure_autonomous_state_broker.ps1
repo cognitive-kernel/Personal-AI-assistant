@@ -26,7 +26,11 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     $previousModulePath = $env:PSModulePath
     try {
         $env:PSModulePath = Join-Path $PSHOME "Modules"
-        $hostExecutable = Join-Path $PSHOME "powershell.exe"
+        $hostExecutable = [string](Get-Process -Id $PID -ErrorAction Stop).Path
+        if ([string]::IsNullOrWhiteSpace($hostExecutable) -or
+            -not (Test-Path -LiteralPath $hostExecutable -PathType Leaf)) {
+            throw "Could not resolve the executable path of the active PowerShell host."
+        }
         $child = Start-Process -FilePath $hostExecutable -Verb RunAs -ArgumentList $argumentLine -Wait -PassThru -ErrorAction Stop
         exit $child.ExitCode
     } catch {
