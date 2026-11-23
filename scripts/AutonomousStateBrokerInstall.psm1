@@ -134,7 +134,6 @@ function Install-AutonomousStateBrokerService {
     $backupExe = $null
     $binaryInstalled = $false
     $newServiceCreated = $false
-    $newServiceAttempted = $false
     try {
         if ($hadServiceExe) {
             $backupExe = Join-Path $serviceRoot ("broker-previous-" + [guid]::NewGuid().ToString("N") + ".exe")
@@ -145,7 +144,6 @@ function Install-AutonomousStateBrokerService {
         $binaryInstalled = $true
 
         if (-not $existing) {
-            $newServiceAttempted = $true
             New-Service -Name $serviceName -BinaryPathName ('"' + $serviceExe + '"') -DisplayName "Personal AI Assistant State Broker" -Description "Mediates allow-listed local access to protected autonomous-engineering state." -StartupType Automatic | Out-Null
             $newServiceCreated = $true
         }
@@ -202,7 +200,7 @@ function Install-AutonomousStateBrokerService {
             Remove-Item -LiteralPath $serviceExe -Force -ErrorAction SilentlyContinue
         }
 
-        if ($newServiceAttempted -or $newServiceCreated) {
+        if ($newServiceCreated) {
             $createdService = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
             if ($createdService) {
                 & $scCommand.Source delete $serviceName | Out-Null
