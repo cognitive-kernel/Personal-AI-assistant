@@ -129,8 +129,8 @@ function Set-AutonomousDirectoryTreeAcl {
     $icacls = Get-Command icacls.exe -ErrorAction Stop
     $items = New-Object 'System.Collections.Generic.List[System.IO.FileSystemInfo]'
     $touched = New-Object 'System.Collections.Generic.List[System.IO.FileSystemInfo]'
-    $pendingDirectories = New-Object 'System.Collections.Generic.Stack[string]'
-    $pendingDirectories.Push($root)
+    $pendingDirectories = New-Object 'System.Collections.Generic.Stack[object]'
+    $pendingDirectories.Push([pscustomobject]@{ Path = $root; Attributes = $rootEntry.Attributes })
     $completed = $false
 
     $applyFinalAcl = {
@@ -158,19 +158,16 @@ function Set-AutonomousDirectoryTreeAcl {
             $acl.SetAccessRule($newRule)
         }
         $acl.SetOwner([Security.Principal.SecurityIdentifier]$OwnerSid)
-        Set-Acl -LiteralPath $Item.FullName -AclObject $acl -ErrorAction Stop
-
-        $verified = Get-Acl -LiteralPath $Item.FullName -ErrorAction Stop
-        $verifiedOwnerSid = ([Security.Principal.NTAccount]$verified.Owner).Translate([Security.Principal.SecurityIdentifier]).Value
-        if ($verifiedOwnerSid -ne $OwnerSid) {
-            throw "Could not transfer ownership of '$($Item.FullName)' to the broker service identity."
-        }
-        foreach ($rule in $verified.Access) {
+        # Validate the ACL object while the installer still owns the path.
+        # After Set-Acl, the installer is intentionally removed from the DACL
+        # and cannot reliably read the protected descriptor again.
+        foreach ($rule in $acl.Access) {
             $sid = $rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
             if ($sid -notin $allowed -or $rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow) {
-                throw "Unexpected principal or access rule remains on '$($Item.FullName)' ACL: $sid."
+                throw "Unexpected principal or access rule was constructed for '$($Item.FullName)': $sid."
             }
         }
+        Set-Acl -LiteralPath $Item.FullName -AclObject $acl -ErrorAction Stop
     }
 
     try {
@@ -181,8 +178,9 @@ function Set-AutonomousDirectoryTreeAcl {
         # descended into. The temporary installer ACE is removed by the final
         # least-privilege ACL pass (or by the failure cleanup below).
         while ($pendingDirectories.Count -gt 0) {
-            $directory = $pendingDirectories.Pop()
-            $attributes = [System.IO.File]::GetAttributes($directory)
+            $directoryEntry = $pendingDirectories.Pop()
+            $directory = [string]$directoryEntry.Path
+            $attributes = [IO.FileAttributes]$directoryEntry.Attributes
             if (($attributes -band [IO.FileAttributes]::Directory) -eq 0 -or
                 ($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
                 throw "The shared state tree contains a non-directory or reparse point; refusing to descend."
@@ -192,15 +190,15 @@ function Set-AutonomousDirectoryTreeAcl {
             if ($LASTEXITCODE -ne 0) {
                 throw "Could not take temporary ownership of directory '$directory' for ACL repair."
             }
+            $directoryInfo = [System.IO.DirectoryInfo]::new($directory)
+            $items.Add($directoryInfo)
+            $touched.Add($directoryInfo)
+
             $installerGrant = "*$($InstallerSid):(OI)(CI)M"
             & $icacls.Source $directory /grant:r $installerGrant /C /Q | Out-Null
             if ($LASTEXITCODE -ne 0) {
                 throw "Could not grant temporary installer access to directory '$directory'."
             }
-
-            $directoryInfo = [System.IO.DirectoryInfo]::new($directory)
-            $items.Add($directoryInfo)
-            $touched.Add($directoryInfo)
 
             foreach ($entry in [System.IO.Directory]::EnumerateFileSystemEntries($directory)) {
                 $entryAttributes = [System.IO.File]::GetAttributes($entry)
@@ -208,7 +206,7 @@ function Set-AutonomousDirectoryTreeAcl {
                     throw "The shared state tree contains a reparse point; refusing to change permissions."
                 }
                 if (($entryAttributes -band [IO.FileAttributes]::Directory) -ne 0) {
-                    $pendingDirectories.Push($entry)
+                    $pendingDirectories.Push([pscustomobject]@{ Path = $entry; Attributes = $entryAttributes })
                 } else {
                     $items.Add([System.IO.FileInfo]::new($entry))
                 }
@@ -222,16 +220,17 @@ function Set-AutonomousDirectoryTreeAcl {
             if ($LASTEXITCODE -ne 0) {
                 throw "Could not take temporary ownership of file '$($item.FullName)' for ACL repair."
             }
+            $touched.Add($item)
             & $icacls.Source $item.FullName /grant:r ("*$($InstallerSid):M") /C /Q | Out-Null
             if ($LASTEXITCODE -ne 0) {
                 throw "Could not grant temporary installer access to file '$($item.FullName)'."
             }
-            $touched.Add($item)
         }
 
         $targets = @($items | Sort-Object -Property @{ Expression = { $_.FullName.Length }; Descending = $true })
         foreach ($item in $targets) {
             & $applyFinalAcl $item
+            [void]$touched.Remove($item)
         }
         $completed = $true
     } finally {
@@ -244,6 +243,7 @@ function Set-AutonomousDirectoryTreeAcl {
             foreach ($item in $cleanupTargets) {
                 try {
                     & $applyFinalAcl $item
+                    [void]$touched.Remove($item)
                 } catch {
                     Write-Warning "Could not finalize least-privilege ACL on '$($item.FullName)' after setup failure: $($_.Exception.Message)"
                 }
