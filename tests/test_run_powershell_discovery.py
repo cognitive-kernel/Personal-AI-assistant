@@ -36,7 +36,7 @@ def test_powershell_discovery_prefers_a_verified_core_runtime(monkeypatch):
     probe = calls[0][-1]
     assert "Get-Acl" in probe and "Set-Acl" in probe
     assert "Get-CimInstance" in probe
-    assert "sc.exe" in probe and "icacls.exe" in probe
+    assert "sc.exe" in probe and "icacls.exe" in probe and "takeown.exe" in probe
     assert "RegistryKey" in probe
     assert "[version]'7.0'" not in probe
     assert "PSVersionTable.Prerelease" not in probe
