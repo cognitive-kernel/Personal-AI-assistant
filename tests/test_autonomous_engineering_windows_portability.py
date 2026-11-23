@@ -345,3 +345,10 @@ def test_windows_broker_installer_uses_verified_prebuilt_binary_without_target_c
     assert 'Build and package the Windows machine state broker' in workflow
     assert 'upload-artifact@v4' in workflow
     assert 'windows-state-broker-package' in workflow
+    build_step = workflow.split('Build and package the Windows machine state broker', 1)[1].split(
+        'Upload the prebuilt Windows state broker package', 1
+    )[0]
+    assert 'dotnet $compiler @arguments' in build_step
+    assert '/deterministic+' in build_step
+    assert 'System.IO.Pipes.AccessControl.dll' in build_step
+    assert 'csc.exe' not in build_step
