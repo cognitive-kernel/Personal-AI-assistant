@@ -155,8 +155,11 @@ def test_machine_state_broker_uses_a_local_allowlisted_pipe_not_a_network_file_a
     assert "Install-AutonomousStateBrokerService" in provision
     assert "PersonalAIAssistantStateBroker" in installer
     assert "'obj=' 'NT AUTHORITY\\LocalService' 'start=' 'auto'" in installer
-    assert 'Join-Path $env:ProgramData "PersonalAIAssistant\\StateBroker"' in installer
-    assert "AutonomousStateBrokerService.cs" in installer
+    assert '$programData = [string]$env:ProgramData' in installer
+    assert 'ServiceRoot = Join-Path $programData ("PersonalAIAssistant" + [char]92 + "StateBroker")' in installer
+    assert "AutonomousStateBrokerService.cs" not in installer
+    assert "csc.exe" not in installer
+    assert "Get-AutonomousStateBrokerPackage" in installer
     assert "Invoke-AutonomousStateBroker" in installer
     assert "Start-Process" in ensure and "-Verb RunAs" in ensure
     assert "Runner.Worker.exe" in ensure
@@ -196,7 +199,7 @@ def test_machine_state_broker_health_checks_the_full_state_tree_acl_manifest():
     assert 'Path "/v1/health/verify"' in _read("scripts/AutonomousStateBrokerInstall.psm1")
     assert '"/v1/health/verify"' in _read("scripts/AutonomousStateBroker.psm1")
     assert 'value.get("acl_ready") is True' in client
-    assert run.count('health(timeout_ms=30000, verify=True)') == 2
+    assert run.count('health(timeout_ms=30000, verify=True)') == 1
     assert 'TimeoutMilliseconds 30000' in ensure
     assert '$currentSid, $brokerSid, "S-1-5-32-545"' in runtime_test
     assert 'Path "/v1/health" -TimeoutMilliseconds 30000' in runtime_test
@@ -434,10 +437,11 @@ def test_broker_installer_cleans_staging_and_restores_existing_service_on_stop_f
     stop_service = install.index("Stop-Service -Name $serviceName", stage_start)
     stage_catch = install.index("} catch {", stop_service)
     cleanup = install.index("Remove-Item -LiteralPath $temporaryExe", stage_catch)
+    stage_catch_end = install.index("\\n    }\\n\\n    $hadServiceExe", stage_catch)
 
-    assert stage_start < stop_service < stage_catch < cleanup
-    assert "if ($wasRunning)" in install[stage_catch:cleanup]
-    assert "Start-Service -Name $serviceName -ErrorAction SilentlyContinue" in install[stage_catch:cleanup]
+    assert stage_start < stop_service < stage_catch < cleanup < stage_catch_end
+    assert "if ($wasRunning)" in install[stage_catch:stage_catch_end]
+    assert "Start-Service -Name $serviceName -ErrorAction SilentlyContinue" in install[stage_catch:stage_catch_end]
     assert "$existingServicePath" in install
     assert "The previous state-broker service configuration" in install
     assert "'binPath=' $binaryPath" in install
