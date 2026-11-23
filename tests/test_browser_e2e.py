@@ -3641,6 +3641,20 @@ def test_autonomous_engineering_manual_task_form_dispatches_bounded_input():
         "events": [], "available": False, "storage_configured": True,
     }
     browser_errors = []
+    dispatch_state = {}
+
+    def accept_dispatch(route):
+        correlation_id = route.request.headers.get("x-correlation-id", "")
+        dispatch_state["correlation_id"] = correlation_id
+        route.fulfill(
+            status=202,
+            headers={"X-Correlation-ID": correlation_id},
+            json={
+                "accepted": True, "manual_task_submitted": True,
+                "message": "وظیفهٔ دستی ارسال شد.",
+            },
+        )
+
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
@@ -3653,13 +3667,7 @@ def test_autonomous_engineering_manual_task_form_dispatches_bounded_input():
             "**/api/autonomous-engineering/progress**",
             lambda route: route.fulfill(status=200, json=progress_payload),
         )
-        page.route(
-            "**/api/autonomous-engineering/dispatch",
-            lambda route: route.fulfill(status=202, json={
-                "accepted": True, "manual_task_submitted": True,
-                "message": "وظیفهٔ دستی ارسال شد.",
-            }),
-        )
+        page.route("**/api/autonomous-engineering/dispatch", accept_dispatch)
         response = page.goto(
             base_url.rstrip("/") + "/autonomous-engineering",
             wait_until="domcontentloaded",
@@ -3674,10 +3682,14 @@ def test_autonomous_engineering_manual_task_form_dispatches_bounded_input():
         with page.expect_request("**/api/autonomous-engineering/dispatch") as request_info:
             page.locator("#send-agent-task").click()
         assert request_info.value.post_data_json == {"task": task}
+        correlation_id = request_info.value.headers.get("x-correlation-id", "")
+        assert len(correlation_id) == 32 and all(char in "0123456789abcdef" for char in correlation_id)
+        assert dispatch_state["correlation_id"] == correlation_id
         page.wait_for_function(
             "() => document.querySelector('#agent-message')?.textContent.includes('وظیفهٔ دستی ارسال شد.')",
             timeout=10000,
         )
+        assert correlation_id in page.locator("#agent-message").inner_text()
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
 
@@ -6154,8 +6166,10 @@ def test_autonomous_engineering_custom_request_timeout_and_trace_artifact():
               const originalFetch = window.fetch;
               let aborted = false;
               let forwardedTimeoutOption = null;
+              let sentCorrelationId = null;
               window.fetch = (_url, options) => {
                 forwardedTimeoutOption = Object.prototype.hasOwnProperty.call(options, "timeoutMs");
+                sentCorrelationId = options.headers.get("X-Correlation-ID");
                 return new Promise((_resolve, reject) => {
                   options.signal.addEventListener("abort", () => {
                     aborted = true;
@@ -6168,19 +6182,28 @@ def test_autonomous_engineering_custom_request_timeout_and_trace_artifact():
                 "models/pull/timeout-probe", {timeoutMs: 40}
               ).then(
                 () => ({completed: true, error: null}),
-                error => ({completed: true, error: {ambiguous: error.ambiguous === true, message: error.message}})
+                error => ({completed: true, error: {
+                  ambiguous: error.ambiguous === true,
+                  message: error.message,
+                  correlationId: error.correlationId || null
+                }})
               );
               const outcome = await Promise.race([
                 request,
                 new Promise(resolve => window.setTimeout(() => resolve({completed: false}), 1000))
               ]);
               window.fetch = originalFetch;
-              return {...outcome, aborted, forwardedTimeoutOption, elapsedMs: performance.now() - started};
+              return {...outcome, aborted, forwardedTimeoutOption, sentCorrelationId, elapsedMs: performance.now() - started};
             }""")
             assert result["completed"] is True, "The custom request timeout was ignored."
             assert result["aborted"] is True, "The request AbortController did not fire."
             assert result["forwardedTimeoutOption"] is False, "timeoutMs leaked into Fetch RequestInit."
             assert result["error"] and result["error"]["ambiguous"] is True
+            correlation_id = result["sentCorrelationId"]
+            assert isinstance(correlation_id, str) and len(correlation_id) == 32
+            assert all(char in "0123456789abcdef" for char in correlation_id)
+            assert result["error"]["correlationId"] == correlation_id
+            assert correlation_id in result["error"]["message"]
             assert result["elapsedMs"] < 500
             assert diagnostics["page_errors"] == []
             page.screenshot(path=str(screenshot_path), full_page=True)
