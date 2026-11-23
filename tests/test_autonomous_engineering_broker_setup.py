@@ -155,7 +155,7 @@ def test_broker_setup_lock_excludes_a_second_process(monkeypatch, tmp_path):
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows named-mutex ownership is platform-specific")
-def test_elevated_child_mutex_survives_parent_exit_and_reports_abandoned_owner(tmp_path):
+def test_named_mutex_excludes_other_process_and_reports_abandoned_owner(tmp_path):
     powershell = shutil.which("powershell") or shutil.which("pwsh")
     if not powershell:
         pytest.skip("A supported PowerShell host is unavailable")
@@ -200,8 +200,8 @@ def test_elevated_child_mutex_survives_parent_exit_and_reports_abandoned_owner(t
         )
         assert competing.returncode == 2, competing.stdout + competing.stderr
 
-        # Terminating the non-owner test process cannot release the child-owned
-        # mutex. Only terminating the owner makes the next acquisition abandoned.
+        # A different process cannot release the child-owned mutex. Only
+        # terminating the owner makes the next acquisition abandoned.
         child.terminate()
         child.wait(timeout=5)
         abandoned_script = (
