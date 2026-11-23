@@ -361,6 +361,7 @@ jobs:
             }
           } finally {
             if (Test-Path -LiteralPath $rollbackRoot) {
+              & takeown.exe /F $rollbackRoot /R /D Y | Out-Null
               & icacls.exe $rollbackRoot /grant:r "*$($currentSid):(OI)(CI)F" /T /C /Q | Out-Null
               Remove-Item -LiteralPath $rollbackRoot -Recurse -Force -ErrorAction SilentlyContinue
             }
