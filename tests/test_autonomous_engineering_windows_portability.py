@@ -344,6 +344,8 @@ def test_windows_broker_installer_uses_verified_prebuilt_binary_without_target_c
     assert 'Microsoft.NET' not in installer
     assert 'Build and package the Windows machine state broker' in workflow
     assert 'upload-artifact@v4' in workflow
+    assert 'actions/attest-build-provenance@v3' in workflow
+    assert 'attestations: write' in workflow
     assert 'windows-state-broker-package' in workflow
     assert 'Exercise the packaged broker under Windows PowerShell Desktop' in workflow
     assert workflow.count('Test-AutonomousDotNetFramework48') >= 2
