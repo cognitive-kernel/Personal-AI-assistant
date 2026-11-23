@@ -61,6 +61,8 @@ def test_autonomous_engineering_transport_sends_secure_correlation_ids_and_keeps
     assert 'requestHeaders.set("X-Correlation-ID", correlationId)' in core
     assert "failure.correlationId = payload.correlation_id || response.headers.get(\"X-Correlation-ID\") || correlationId" in core
     assert "timeoutError.correlationId = correlationId" in core
+    assert 'if (error && typeof error === "object" && !Number.isInteger(error.status))' in core
+    assert 'error.message = (errorMessage ? errorMessage + " · " : "") + "شناسهٔ پیگیری: " + correlationId' in core
     assert "شناسهٔ پیگیری: " in core
 
 
