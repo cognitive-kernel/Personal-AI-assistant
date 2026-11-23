@@ -356,3 +356,17 @@ def test_windows_broker_installer_uses_verified_prebuilt_binary_without_target_c
     assert 'Microsoft.NETFramework.ReferenceAssemblies.net48' in broker_project
     assert 'Version="1.0.3"' in broker_project
     assert '<Reference Include="System.IO.Pipes.AccessControl" />' in broker_project
+
+
+def test_broker_installer_preflights_net48_and_service_control_before_mutation():
+    installer = _read("scripts/AutonomousStateBrokerInstall.psm1")
+    release_check = installer.index("$frameworkRelease = Get-AutonomousDotNetFrameworkRelease")
+    service_root_creation = installer.index("New-Item -ItemType Directory -Path $serviceRoot")
+    service_lookup = installer.index("Get-Service -Name $serviceName")
+
+    assert "RegistryView]::Registry64" in installer
+    assert "RegistryView]::Registry32" in installer
+    assert "$frameworkRelease -lt 528040" in installer
+    assert release_check < service_root_creation < service_lookup
+    assert "$scCommand = Get-Command sc.exe -ErrorAction Stop" in installer
+    assert installer.index("$scCommand = Get-Command sc.exe") < service_root_creation
