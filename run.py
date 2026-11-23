@@ -841,6 +841,91 @@ def _find_ollama() -> str | None:
     return str(next((item for item in candidates if item.is_file()), "")) or None
 
 
+def _start_ollama_runtime(executable: str) -> subprocess.Popen[Any]:
+    """Start the installed Ollama runtime in the current user context without creating a service."""
+    system = platform.system()
+    command = [executable, "serve"]
+    if system == "Windows":
+        desktop_app = Path(executable).resolve().with_name("ollama app.exe")
+        if desktop_app.is_file():
+            # The official Windows desktop app owns the background server and
+            # supports hidden fast startup; standalone CLI installs use "serve".
+            command = [str(desktop_app), "--hide", "--fast-startup"]
+
+    child_env = dict(os.environ)
+    child_env.pop("PYTHONHOME", None)
+    process_options: dict[str, Any] = {
+        "cwd": ROOT,
+        "env": child_env,
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "close_fds": True,
+    }
+    if system == "Windows":
+        process_options["creationflags"] = (
+            getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            | getattr(subprocess, "DETACHED_PROCESS", 0)
+        )
+    else:
+        process_options["start_new_session"] = True
+
+    try:
+        return subprocess.Popen(command, **process_options)
+    except OSError as exc:
+        raise RuntimeError(
+            f"Could not start the installed Ollama runtime ({type(exc).__name__})."
+        ) from exc
+
+
+def _ollama_list(executable: str, *, timeout: float = 5.0) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [executable, "list"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=timeout,
+    )
+
+
+def _ensure_ollama_server(
+    executable: str,
+    *,
+    wait_seconds: float = 45.0,
+    poll_interval: float = 1.0,
+) -> subprocess.CompletedProcess[str]:
+    """Use the existing server when ready; otherwise start it once and wait boundedly."""
+    command = [executable, "list"]
+    try:
+        initial = _ollama_list(executable)
+    except subprocess.TimeoutExpired:
+        initial = subprocess.CompletedProcess(command, 124, "", "Ollama did not answer the initial readiness check.")
+    if initial.returncode == 0:
+        return initial
+
+    print("Ollama نصب است اما API آن پاسخ نمی‌دهد؛ تلاش برای راه‌اندازی runtime موجود ...", flush=True)
+    _start_ollama_runtime(executable)
+    deadline = time.monotonic() + max(1.0, wait_seconds)
+    last_error = (initial.stderr or "").strip()
+    while time.monotonic() < deadline:
+        try:
+            result = _ollama_list(executable, timeout=min(5.0, max(1.0, deadline - time.monotonic())))
+        except subprocess.TimeoutExpired:
+            result = subprocess.CompletedProcess(command, 124, "", "Ollama readiness check timed out.")
+        if result.returncode == 0:
+            print("Ollama API پس از راه‌اندازی آماده شد.", flush=True)
+            return result
+        last_error = (result.stderr or "").strip() or (result.stdout or "").strip() or last_error
+        time.sleep(min(max(0.0, poll_interval), max(0.0, deadline - time.monotonic())))
+
+    detail = f" جزئیات: {last_error[:500]}" if last_error else ""
+    raise RuntimeError(
+        "Ollama نصب است و راه‌اندازی آن آغاز شد، اما API در مهلت ۴۵ ثانیه آماده نشد."
+        + detail
+    )
+
+
 def _ensure_ollama() -> None:
     active_providers = [
         _configured_llm_provider(name)
@@ -930,15 +1015,11 @@ def _ensure_ollama() -> None:
     if not executable:
         raise RuntimeError("Ollama در PATH یا مسیرهای نصب متداول پیدا نشد؛ نصب‌کننده در prerequisites/installers قرار دارد.")
 
-    listed = subprocess.run(
-        [executable, "list"], cwd=ROOT, text=True, capture_output=True, check=False
-    )
+    listed = _ensure_ollama_server(executable)
     if listed.stdout:
         print(listed.stdout, end="" if listed.stdout.endswith("\n") else "\n", flush=True)
     if listed.stderr:
         print(listed.stderr, file=sys.stderr, flush=True)
-    if listed.returncode != 0:
-        raise RuntimeError("Ollama نصب است اما سرویس آن در دسترس نیست. سرویس Ollama را اجرا کنید و دوباره تلاش کنید.")
     installed_models = {
         line.split()[0] for line in (listed.stdout or "").splitlines()
         if line.strip() and not line.lstrip().startswith("NAME ")
