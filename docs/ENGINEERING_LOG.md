@@ -1,3 +1,22 @@
+## 2026-11-23 — Ollama legacy cleanup HTTP method and recovery diagnostics
+
+### Evidence and root cause
+- Exact-head workflow run [45121090691](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45121090691) successfully inspected the selected base model, calculated a hardware-safe context of 17,292 tokens, created/warmed the stable `gpt-oss:20b-codex-ctx` tag, and verified that Ollama allocated exactly 17,292 tokens.
+- The first legacy numeric-suffix cleanup request failed with HTTP 405 because the script used `POST /api/delete`. Ollama documents model deletion as `DELETE /api/delete` with a JSON `model` body.
+- The recovery classifier correctly excluded this preflight failure from the task-execution retry streak. Its user-visible diagnostic incorrectly described every non-execution failure as a schedule-gate failure.
+
+### Correction
+- Changed the cleanup request to the documented HTTP DELETE method and added a regression assertion for the method and JSON body.
+- Generalized the recovery diagnostic to identify schedule admission, preflight, and postcondition failures without changing the fail-closed behavior or dispatching a duplicate task.
+- Preserved the cleanup safety checks: exact selected base-model prefix, generated `num_ctx` parameter, and unloaded runtime status are required before deletion. Base and stable tags remain excluded.
+
+### Validation boundary
+- Changes are in Draft PR #845. Exact-head CI and local Windows/Ollama acceptance are pending.
+- No Ollama model, task, checkpoint, or durable state was deleted by this change.
+- The local startup log separately reports a broker provisioning/limited-mode condition and a port-8000 bind collision; these are tracked as independent unresolved gates.
+ 
+---
+
 ## 2026-11-22 — Autonomous Engineering UI inventory و hardening
 
 - PR #837 با head 80c126734123a5e84596d320ff625278495764e0 در main با squash commit 9d97d2e3fa8f72429e6bb5510192ba70a6d376d8 ادغام شد؛ Linux 2511/14/69 و Windows 2509/16/69، Windows storage، Browser/dashboard smoke، Docker sandbox، CodeQL و dependency audit موفق.
