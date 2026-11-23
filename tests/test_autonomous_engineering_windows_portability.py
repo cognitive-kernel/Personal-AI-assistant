@@ -496,3 +496,5 @@ def test_state_broker_abandoned_mutex_requires_explicit_operator_acknowledgement
     assert "rerun with -AcknowledgeAbandonedSetup" in abandoned
     assert "$setupMutex.ReleaseMutex()" not in abandoned
     assert "$setupMutexAbandonedUnacknowledged" in ensure
+    python_setup = _read("app/autonomous_engineering_broker_setup.py")
+    assert "-AcknowledgeAbandonedSetup" not in python_setup
