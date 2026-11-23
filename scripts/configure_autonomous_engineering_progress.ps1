@@ -32,14 +32,21 @@ $ensureScript = Join-Path $PSScriptRoot "ensure_autonomous_state_broker.ps1"
 if (-not (Test-Path -LiteralPath $ensureScript -PathType Leaf)) {
     throw "The canonical state-broker reconciliation script is missing: $ensureScript"
 }
-$powershell = Join-Path $PSHOME "powershell.exe"
-if (-not (Test-Path -LiteralPath $powershell -PathType Leaf)) {
-    $powershell = Get-Command powershell.exe -ErrorAction Stop | Select-Object -ExpandProperty Source
+$hostExecutableName = if ($PSVersionTable.PSEdition -eq "Core") { "pwsh.exe" } else { "powershell.exe" }
+$hostExecutable = Join-Path $PSHOME $hostExecutableName
+if (-not (Test-Path -LiteralPath $hostExecutable -PathType Leaf)) {
+    throw "The current PowerShell host executable could not be resolved from PSHOME ($PSHOME)."
 }
 
 Write-Host "Delegating shared-state ACL and broker repair to the canonical fail-closed setup."
-& $powershell -NoProfile -ExecutionPolicy Bypass -File $ensureScript
-if ($LASTEXITCODE -ne 0) {
-    throw "The canonical state-broker reconciliation failed with exit code $LASTEXITCODE."
+$previousModulePath = $env:PSModulePath
+try {
+    $env:PSModulePath = Join-Path $PSHOME "Modules"
+    & $hostExecutable -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $ensureScript
+    if ($LASTEXITCODE -ne 0) {
+        throw "The canonical state-broker reconciliation failed with exit code $LASTEXITCODE."
+    }
+} finally {
+    $env:PSModulePath = $previousModulePath
 }
 Write-Output "Shared progress ACLs and broker health are reconciled for the installed Runner service identities."
