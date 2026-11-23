@@ -9,7 +9,7 @@ if ($PSVersionTable.PSEdition -eq "Desktop") {
     $compatibleModulePaths = @(
         $env:PSModulePath -split [IO.Path]::PathSeparator |
             ForEach-Object {
-                $candidate = $_.Trim().TrimEnd([char]'\', [char]'/')
+                $candidate = $_.Trim().TrimEnd([char[]]@('\', '/'))
                 if (
                     $candidate -and
                     $candidate -notlike '*\Documents\PowerShell\Modules' -and
