@@ -91,3 +91,12 @@ Run conformance tests across supported OS versions, x64/ARM64 where applicable, 
 - Missing Runner/Ollama/Git/browser/GPU capability does not prevent unrelated core features from starting.
 - An unsupported OS/architecture or missing required security primitive is detected before services, ACLs, or existing state are changed.
 - Upgrade tests prove that existing state and configuration are retained and rollback is possible.
+
+## Implementation status — 2026-11-23
+
+- **Stage 1 — implemented in draft PR #862:** active-host module-path isolation, PowerShell Core/Desktop discovery, capability-only selection without a numeric version gate, and regression coverage for Core-only, Desktop-only, no-host, and host relaunch paths.
+- **Stage 2 — partial in draft PR #862:** the target host no longer compiles the Broker; a prebuilt .NET Framework 4.8+ service binary is verified and staged with SHA-256. The PowerShell adapter is capability-probed and tested under both editions. A PowerShell-free native service-control/ACL installer remains outstanding; without a compatible PowerShell host, Broker provisioning is unavailable while the dashboard remains in limited mode.
+- **Stage 3 — partial:** CI uses a pinned .NET SDK and pinned .NET Framework reference package, uploads the binary and SHA-256 manifest, and creates a GitHub build-provenance attestation. The executable still needs to be committed and CI changed to compare a fresh build against that committed package. Only the Windows package is in scope here; Linux/macOS and architecture matrix coverage remain outstanding. The target installer verifies SHA-256 but does not independently verify GitHub attestation.
+- **Stage 4 — pending:** broad OS/architecture, relocation, identity, upgrade, and migration conformance matrix has not been completed.
+
+This status is not a declaration that the full portability contract is complete. Merge remains gated on exact-head CI, committed-package verification, and target-host acceptance.
