@@ -173,6 +173,36 @@ jobs:
           $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($probe))
           & $windowsPowerShell -NoProfile -EncodedCommand $encoded
           if ($LASTEXITCODE -ne 0) { throw "Windows PowerShell 5.1 rejected the inherited PowerShell 7 module-path probe." }
+
+      - name: Verify PowerShell Core broker modules and active-host relaunch
+        shell: pwsh
+        run: |
+          if ($PSVersionTable.PSEdition -ne "Core" -or $PSVersionTable.PSVersion -lt [version]"7.0") {
+            throw "This CI probe requires a supported PowerShell Core runtime."
+          }
+          $activeHost = [string](Get-Process -Id $PID -ErrorAction Stop).Path
+          if ([string]::IsNullOrWhiteSpace($activeHost) -or -not (Test-Path -LiteralPath $activeHost -PathType Leaf)) {
+            throw "The active PowerShell Core executable could not be resolved."
+          }
+          $modules = @(
+            "AutonomousWindowsIdentity.psm1",
+            "AutonomousWindowsPaths.psm1",
+            "AutonomousStateBroker.psm1",
+            "AutonomousStateBrokerInstall.psm1"
+          )
+          foreach ($module in $modules) {
+            Import-Module (Join-Path $env:GITHUB_WORKSPACE "scripts\\$module") -Force -ErrorAction Stop
+          }
+          if (-not (Get-Command Get-Acl -ErrorAction SilentlyContinue)) { throw "Get-Acl is unavailable under PowerShell Core." }
+          if (-not (Get-Command Set-Acl -ErrorAction SilentlyContinue)) { throw "Set-Acl is unavailable under PowerShell Core." }
+          $probe = '$PSVersionTable.PSEdition + "|" + $PSVersionTable.PSVersion.ToString()'
+          $childVersion = & $activeHost -NoLogo -NoProfile -NonInteractive -Command $probe
+          $expectedChildVersion = "Core|" + $PSVersionTable.PSVersion.ToString()
+          if ($LASTEXITCODE -ne 0 -or $childVersion -ne $expectedChildVersion) {
+            throw "The active PowerShell Core host did not start a same-engine child process."
+          }
+          Write-Host "PowerShell Core broker module imports and active-host child launch passed: $childVersion"
+
       - name: Compile the Windows machine state broker against .NET Framework
         shell: pwsh
         run: |
