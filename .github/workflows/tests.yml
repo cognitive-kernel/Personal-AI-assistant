@@ -188,7 +188,7 @@ jobs:
           try {
             $acl = Get-Acl -LiteralPath $root
             $legacy = [Security.AccessControl.FileSystemAccessRule]::new(
-              "BUILTIN\Users",
+              ([Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::BuiltinUsersSid, $null)),
               [Security.AccessControl.FileSystemRights]::FullControl,
               [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit,
               [Security.AccessControl.PropagationFlags]::None,
