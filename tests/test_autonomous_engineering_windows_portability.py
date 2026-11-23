@@ -85,10 +85,10 @@ def test_shared_state_tree_acl_is_recursive_and_only_grants_runner_and_local_ser
     assert "Get-Item -LiteralPath $root" not in acl_function
     assert "$pendingDirectories.Push([pscustomobject]@{ Path = $root; Attributes = $rootEntry.Attributes })" in acl_function
     assert "$items.Add($directoryInfo)" in acl_function
-    assert "EnumerateFileSystemEntries" in acl_function
+    assert "Get-ChildItem -LiteralPath $directory" in acl_function
     directory_walk = acl_function[acl_function.index("while ($pendingDirectories"):acl_function.index("# Files are touched")]
     assert directory_walk.index("ReparsePoint") < directory_walk.index("& $takeown.Source /F $directory")
-    assert directory_walk.index("& $takeown.Source /F $directory") < directory_walk.index("EnumerateFileSystemEntries")
+    assert directory_walk.index("& $takeown.Source /F $directory") < directory_walk.index("Get-ChildItem -LiteralPath $directory")
     assert "$touched.Add($directoryInfo)" in directory_walk
     assert "if (-not $completed)" in acl_function
     assert "$cleanupTargets = @($touched" in acl_function
