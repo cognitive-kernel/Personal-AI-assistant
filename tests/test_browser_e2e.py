@@ -3658,10 +3658,27 @@ def test_autonomous_engineering_broker_failure_reason_is_visible_and_dashboard_s
         browser = playwright.chromium.launch()
         page = browser.new_page()
         page.on("pageerror", lambda error: browser_errors.append(str(error)))
-        page.route(
-            "**/api/autonomous-engineering/status",
-            lambda route: route.fulfill(status=200, json=status_payload),
-        )
+        setup_calls = []
+
+        def serve_status(route):
+            route.fulfill(status=200, json=status_payload)
+
+        def setup_broker(route):
+            assert route.request.method == "POST"
+            setup_calls.append(route.request.headers.get("x-correlation-id", ""))
+            status_payload["checks"]["progress_storage_accessible"] = True
+            status_payload["checks"]["durable_state_available"] = True
+            status_payload["pending_work"]["available"] = True
+            status_payload["pending_work"]["blocked"] = False
+            status_payload["pending_work"]["reason"] = None
+            route.fulfill(status=200, json={
+                "ready": True,
+                "already_ready": False,
+                "message": "Broker ready after explicit setup",
+            })
+
+        page.route("**/api/autonomous-engineering/broker/setup", setup_broker)
+        page.route("**/api/autonomous-engineering/status", serve_status)
         page.route(
             "**/api/autonomous-engineering/runs**",
             lambda route: route.fulfill(status=200, json={"runs": []}),
@@ -3686,6 +3703,16 @@ def test_autonomous_engineering_broker_failure_reason_is_visible_and_dashboard_s
             timeout=10000,
         )
         assert page.locator("#dispatch-agent").is_disabled()
+        setup_button = page.locator("#setup-state-broker")
+        assert setup_button.is_visible()
+        setup_button.click()
+        page.wait_for_function(
+            "() => document.querySelector('#setup-state-broker')?.hidden === true",
+            timeout=10000,
+        )
+        assert len(setup_calls) == 1
+        assert len(setup_calls[0]) == 32
+        assert "Broker ready after explicit setup" in page.locator("#agent-message").text_content()
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
 
