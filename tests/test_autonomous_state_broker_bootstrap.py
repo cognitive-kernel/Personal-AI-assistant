@@ -97,3 +97,12 @@ def test_posix_state_migration_does_not_rewrite_existing_tree_permissions():
     assert "for root, directories, files in os.walk(state_dir" not in migration
     assert "os.chmod(directory, 0o700)" not in migration
     assert "both copies were preserved" in migration
+
+def test_windows_acl_module_loads_security_cmdlets_in_its_own_scope():
+    module = (ROOT / "scripts" / "AutonomousWindowsIdentity.psm1").read_text(encoding="utf-8")
+
+    security_import = "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop"
+    assert security_import in module
+    assert module.index(security_import) < module.index("function Set-AutonomousDirectoryAcl")
+    assert "Get-Acl -LiteralPath" in module
+    assert "Set-Acl -LiteralPath" in module
