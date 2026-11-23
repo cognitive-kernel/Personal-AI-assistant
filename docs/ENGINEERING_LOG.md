@@ -2427,3 +2427,9 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Windows CI builds the service from `AutonomousStateBrokerService.cs` and uploads the binary plus manifest. The first attempt used the inbox .NET Framework `csc.exe` with `/deterministic+`; the actual Windows runner rejected that option (CS2007). The CI-only build was changed to use Roslyn `csc.dll` from the installed .NET SDK against .NET Framework reference assemblies.
 - The generated artifact is not yet committed in this log's current state. The final package must be committed, CI must compare its hash with a fresh source build, and the live LocalService/named-pipe regression must pass before the installer change is considered complete.
 - Target-host installation and preservation acceptance remain pending; no user machine service, ACL, Runner, task, checkpoint, or durable data was modified.
+
+
+### 2026-11-23 — CI build correction: use SDK-style net48 project
+
+- The manual Roslyn invocation could not reliably locate a complete .NET Framework reference directory on the hosted Windows image. The build now uses `scripts/AutonomousStateBrokerService.csproj`, targets `.NET Framework 4.8`, and pins `Microsoft.NETFramework.ReferenceAssemblies.net48` to `1.0.3` as a CI build input.
+- The target host still receives only the verified executable and SHA-256 manifest; no SDK, compiler, or reference-assembly package is required there. Exact-head CI must still prove the project builds and the live LocalService broker starts successfully.
