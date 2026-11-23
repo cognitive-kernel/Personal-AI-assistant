@@ -18,12 +18,22 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     if (-not [string]::IsNullOrWhiteSpace($RunnerRoot)) {
         $argumentLine += ' -RunnerRoot "' + $RunnerRoot.Replace('"', '""') + '"'
     }
+    # The elevated child inherits the parent environment. In particular, a
+    # Windows PowerShell 5.1 child can otherwise load PowerShell 7 modules from
+    # WindowsApps before this script gets control, corrupting ObjectSecurity
+    # extended type data. Restrict module discovery to the active host's own
+    # inbox modules for the child only; restore the caller environment always.
+    $previousModulePath = $env:PSModulePath
     try {
-        $child = Start-Process -FilePath (Join-Path $PSHOME "powershell.exe") -Verb RunAs -ArgumentList $argumentLine -Wait -PassThru -ErrorAction Stop
+        $env:PSModulePath = Join-Path $PSHOME "Modules"
+        $hostExecutable = Join-Path $PSHOME "powershell.exe"
+        $child = Start-Process -FilePath $hostExecutable -Verb RunAs -ArgumentList $argumentLine -Wait -PassThru -ErrorAction Stop
         exit $child.ExitCode
     } catch {
         Write-Error "Administrator approval is required to install the machine state broker. $($_.Exception.Message)"
         exit 1
+    } finally {
+        $env:PSModulePath = $previousModulePath
     }
 }
 
