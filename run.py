@@ -831,13 +831,16 @@ def _find_ollama() -> str | None:
     if found:
         return found
     if os.name == "nt":
+        # Search only machine-wide install roots; a different service account
+        # must not depend on the interactive user's LOCALAPPDATA profile.
         candidates = [
-            Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Ollama" / "ollama.exe",
-            Path(os.environ.get("LOCALAPPDATA", "")) / "Ollama" / "ollama.exe",
-            Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Ollama" / "ollama.exe",
+            Path(root) / "Ollama" / "ollama.exe"
+            for root in (os.environ.get("ProgramFiles"), os.environ.get("ProgramW6432"))
+            if root
         ]
     else:
-        candidates = [Path.home() / ".local" / "bin" / "ollama", Path("/usr/local/bin/ollama"), Path("/usr/bin/ollama")]
+        # These are machine-wide executable locations, not login-home paths.
+        candidates = [Path("/usr/local/bin/ollama"), Path("/usr/bin/ollama")]
     return str(next((item for item in candidates if item.is_file()), "")) or None
 
 
