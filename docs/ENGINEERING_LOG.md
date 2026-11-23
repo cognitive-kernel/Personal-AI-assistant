@@ -1,3 +1,10 @@
+## 2026-11-24 — write the live Pause output without a PowerShell 5.1 BOM
+
+- The live Pause workflow step now appends its output using .NET UTF-8 without BOM. This avoids PowerShell 5.1 `Out-File -Encoding utf8` potentially prefixing the first GitHub Actions output key with a BOM.
+- Added a workflow contract assertion for the BOM-free writer.
+
+---
+
 ## 2026-11-24 — read the live safe-pause flag after workflow concurrency admission
 
 ### Root cause
