@@ -2723,5 +2723,8 @@ def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admi
     assert 'Authorization = "Bearer $env:GH_TOKEN"' in gate
     assert 'if ($statusCode -eq 404)' in gate
     assert "Failing closed; no new task will start." in gate
+    assert "[System.IO.File]::AppendAllText" in gate
+    assert "[System.Text.UTF8Encoding]::new($false)" in gate
+    assert "Out-File" not in gate
     assert "PAUSED: ${{ vars.AUTONOMOUS_ENGINEERING_PAUSED" not in gate
     assert "if: steps.pause.outputs.paused != 'true'" in workflow[end:end + 300]
