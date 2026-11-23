@@ -127,6 +127,12 @@ foreach ($runner in $resolvedRunnerServices) {
 
 $stoppedRunnerServices = @()
 $setupFailure = $null
+$aclTransaction = $null
+$setupCommitted = $false
+$previousStateModifySids = [Environment]::GetEnvironmentVariable(
+    "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS",
+    "Machine"
+)
 try {
     # Stop listeners before changing the shared ACL, then re-check workers to
     # close the race where a job starts between process discovery and service stop.
@@ -151,7 +157,7 @@ try {
     }
 
     New-Item -ItemType Directory -Path $stateRoot -Force | Out-Null
-    Set-AutonomousDirectoryTreeAcl -Path $stateRoot -ModifySids $modifySids -OwnerSid $brokerServiceSid -InstallerSid $installerSid
+    $aclTransaction = Set-AutonomousDirectoryTreeAcl -Path $stateRoot -ModifySids $modifySids -OwnerSid $brokerServiceSid -InstallerSid $installerSid -PassThru
     $expectedModifySids = @($modifySids | Select-Object -Unique | Sort-Object)
     if ($expectedModifySids -notcontains $brokerServiceSid) {
         throw "The state ACL manifest must include the LocalService broker identity."
@@ -171,6 +177,9 @@ try {
     }
 
     Install-AutonomousStateBrokerService
+    # The installer has completed its own service, LocalService, storage and ACL
+    # health checks. This is the commit point for the state ACL transaction.
+    $setupCommitted = $true
 
     $verified = Get-Service -Name $serviceName -ErrorAction Stop
     if ($verified.Status -ne "Running") {
@@ -187,6 +196,37 @@ try {
     }
 } catch {
     $setupFailure = $_
+    if (-not $setupCommitted) {
+        $rollbackFailures = @()
+        if ($null -ne $aclTransaction) {
+            try {
+                Restore-AutonomousDirectoryTreeAcl -Snapshot $aclTransaction
+            } catch {
+                $rollbackFailures += "ACL restore ($($_.Exception.GetType().Name))"
+            }
+        }
+        try {
+            [Environment]::SetEnvironmentVariable(
+                "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS",
+                $previousStateModifySids,
+                "Machine"
+            )
+            $restoredManifest = [Environment]::GetEnvironmentVariable(
+                "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS",
+                "Machine"
+            )
+            if ($restoredManifest -ne $previousStateModifySids) {
+                throw "The previous machine ACL identity manifest could not be restored."
+            }
+        } catch {
+            $rollbackFailures += "machine ACL manifest restore ($($_.Exception.GetType().Name))"
+        }
+        if ($rollbackFailures.Count -gt 0) {
+            $setupFailure = [System.Exception]::new(
+                $setupFailure.Exception.Message + "; rollback failures: " + ($rollbackFailures -join ", ")
+            )
+        }
+    }
 } finally {
     $restartFailures = @()
     foreach ($serviceNameToRestart in $stoppedRunnerServices) {
