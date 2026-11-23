@@ -99,7 +99,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         security.SetAccessRuleProtection(true, false);
         // Network logons are denied at the pipe ACL before they can occupy workers.
         security.AddAccessRule(new PipeAccessRule(
-            new SecurityIdentifier("S-1-5-2"),
+            new SecurityIdentifier(WellKnownSidType.NetworkSid, null),
             PipeAccessRights.ReadWrite,
             AccessControlType.Deny
         ));
@@ -108,22 +108,22 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         // LocalService owns the server process and must be allowed to create
         // named-pipe instances. ReadWrite alone does not include CreateNewInstance.
         security.AddAccessRule(new PipeAccessRule(
-            new SecurityIdentifier("S-1-5-19"),
+            new SecurityIdentifier(WellKnownSidType.LocalServiceSid, null),
             PipeAccessRights.CreateNewInstance | PipeAccessRights.ReadWrite,
             AccessControlType.Allow
         ));
         security.AddAccessRule(new PipeAccessRule(
-            new SecurityIdentifier("S-1-5-11"),
+            new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null),
             PipeAccessRights.ReadWrite,
             AccessControlType.Allow
         ));
         security.AddAccessRule(new PipeAccessRule(
-            new SecurityIdentifier("S-1-5-18"),
+            new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
             PipeAccessRights.FullControl,
             AccessControlType.Allow
         ));
         security.AddAccessRule(new PipeAccessRule(
-            new SecurityIdentifier("S-1-5-32-544"),
+            new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
             PipeAccessRights.FullControl,
             AccessControlType.Allow
         ));
