@@ -72,7 +72,9 @@ def test_shared_state_tree_acl_is_recursive_and_only_grants_runner_and_local_ser
     module = _read("scripts/AutonomousWindowsIdentity.psm1")
 
     assert 'Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid -InstallerSid $installerSid' in script
-    assert 'Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid -InstallerSid $installerSid' in configure
+    assert "ensure_autonomous_state_broker.ps1" in configure
+    assert "Get-AutonomousWindowsAccountSid -AccountName $service.StartName" in configure
+    assert "Set-AutonomousDirectoryTreeAcl" not in configure
     assert "Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid" in script
     assert "Set-AutonomousDirectoryTreeAcl" in module
     assert "$acl.SetAccessRuleProtection($true, $false)" in module
@@ -181,7 +183,8 @@ def test_machine_state_broker_health_checks_the_full_state_tree_acl_manifest():
     assert '"acl_ready", _lastAclHealth' in service
     assert 'SetEnvironmentVariable(\n        "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS"' in ensure
     assert 'SetEnvironmentVariable(\n        "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS"' in provision
-    assert 'SetEnvironmentVariable(\n    "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS"' in configure
+    assert "ensure_autonomous_state_broker.ps1" in configure
+    assert "Set-AutonomousDirectoryTreeAcl" not in configure
     assert 'health(timeout_ms: int = 3500, verify: bool = False)' in client
     assert '"/v1/health/verify"' in client
     assert 'path == "/v1/health/verify"' in service
