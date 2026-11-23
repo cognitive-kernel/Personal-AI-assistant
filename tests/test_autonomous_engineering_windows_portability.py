@@ -175,6 +175,8 @@ def test_machine_state_broker_health_checks_the_full_state_tree_acl_manifest():
     assert "VerifyStateAclIntegrity()" in service
     assert "Directory.EnumerateFileSystemEntries(directory)" in service
     assert "FileSystemRights.Modify" in service
+    assert "owner == null || !expected.Contains(owner.Value)" in service
+    assert "String.Equals(owner.Value, BrokerOwnerSid, StringComparison.OrdinalIgnoreCase)" in service
     assert "MaxAclEntries = 100000" in service
     assert '"acl_ready", _lastAclHealth' in service
     assert 'SetEnvironmentVariable(\n        "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS"' in ensure
