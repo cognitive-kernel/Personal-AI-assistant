@@ -2443,3 +2443,9 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - The final CI build is pinned to .NET SDK `10.0.404` and `Microsoft.NETFramework.ReferenceAssemblies.net48` `1.0.3`. The generated binary must be committed, then CI must compare a fresh deterministic build with the committed package hash.
 - The target machine requires .NET Framework 4.8 or later and a supported PowerShell host for service installation; it does not require a compiler or SDK. A PowerShell-free native installer and signed build provenance remain explicit future portability gaps.
 - No user machine service, ACL, Runner, task, checkpoint, or durable data was modified.
+
+
+### 2026-11-23 — Remove the PowerShell major-version gate
+
+- The runtime probe no longer requires Desktop 5.1 or Core 7.0 by numeric comparison and no longer rejects prerelease labels by themselves. It reports Edition/Version for diagnostics, then verifies the actual required modules/cmdlets, `Start-Process -Verb`, process executable path, registry API, `sc.exe`, and `icacls.exe`.
+- Core remains preferred over Desktop, but any Core/Desktop version that passes the capability probe is eligible. Unit coverage explicitly accepts Core 6.2 when the probe succeeds, and separately falls back when Core fails a required capability. This directly removes the fixed PowerShell major-version dependency.
