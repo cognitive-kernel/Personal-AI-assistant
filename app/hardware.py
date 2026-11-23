@@ -138,13 +138,14 @@ def _detect_rocm_gpus() -> list[dict[str, Any]]:
     return devices
 
 
-def _find_windows_powershell() -> str | None:
-    """Find either supported Windows PowerShell engine for optional GPU telemetry."""
+def _windows_powershell_candidates() -> list[str]:
+    """Find installed PowerShell engines in preference order for optional GPU telemetry."""
+    candidates: list[str] = []
     for command_name in ("pwsh.exe", "pwsh", "powershell.exe", "powershell"):
         executable = shutil.which(command_name)
-        if executable:
-            return executable
-    return None
+        if executable and executable not in candidates:
+            candidates.append(executable)
+    return candidates
 
 
 def _detect_windows_gpus() -> list[dict[str, Any]]:
@@ -172,10 +173,14 @@ try {
 } catch {}
 [pscustomobject]@{Adapters=$adapters; Counters=$counters} | ConvertTo-Json -Depth 5 -Compress
 """
-    powershell = _find_windows_powershell()
-    if not powershell:
-        return []
-    output = _run_gpu_command([powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script], timeout=4.0)
+    output = None
+    for powershell in _windows_powershell_candidates():
+        output = _run_gpu_command(
+            [powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script],
+            timeout=4.0,
+        )
+        if output:
+            break
     if not output:
         return []
     try:
