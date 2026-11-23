@@ -356,6 +356,7 @@ def test_autonomous_recovery_uses_the_durable_policy_module():
 
     assert "workflow_run:" in recovery
     assert "AUTONOMOUS_ENGINEERING_PAUSED" in policy
+    assert "AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT:" in workflow
     assert "PAUSED:" not in recovery
     assert "scripts/autonomous_engineering_recovery.py" in recovery
     assert "EXECUTION_MODE:" not in recovery
