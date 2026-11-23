@@ -2489,3 +2489,25 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Exact-head Linux/Windows tests, browser E2E, CodeQL, dependency audit, artifact attestation, package commit, and subsequent deterministic hash comparison must pass on the final PR head.
 - Windows target acceptance remains pending: elevated installation, service LocalService identity, named-pipe health, Runner present/absent, non-admin UI, restart/recovery, and preservation of existing durable state.
 - No target machine service, ACL, Runner, task, checkpoint, or durable state was modified by these source changes.
+
+
+## 2026-11-24 — Broker portability, explicit provisioning, and startup safety
+
+### Confirmed code-level blockers
+- The previous `main` installer compiled the Windows Broker on the target host through `csc.exe`; this made a developer/compiler tool an installation dependency.
+- The first prebuilt-installer draft removed that compiler dependency but referenced `scripts/bin/PersonalAIAssistant.StateBroker.exe` and its manifest before either file existed in the repository. The Windows workflow's build block was also syntactically truncated, so it could not reliably produce or commit the package.
+- The old bootstrap searched only for Windows PowerShell's `powershell.exe`, and the UI incorrectly suggested that a missing Runner could prevent Broker setup.
+
+### Corrections in draft PR #863
+- Repaired the Windows workflow: it builds the service with the pinned CI SDK, verifies a fresh SHA-256, stages a package when none is committed, uploads/attests it, and runs the real service/ACL/named-pipe tests. The separate artifact commit job is idempotent. A subsequent exact-head run must prove the fresh build matches the committed binary.
+- Added capability-based discovery for PowerShell Core and Windows PowerShell Desktop. Edition/version are diagnostics; a numeric major-version floor is not used. The same discovered executable is reused for UAC elevation.
+- Changed application startup to a read-only Broker health check. It no longer requests UAC, runs a service installer, stops Runner listeners, or changes ACLs automatically.
+- Added a loopback-protected `POST /api/autonomous-engineering/broker/setup` and a dashboard button. Privileged provisioning begins only after the user clicks the button. UAC cancellation, missing PowerShell, timeout, install failure, and failed post-install health checks have structured error codes.
+- Runner provisioning remains a separate optional capability. No Runner is required to install the LocalService Broker or to open the local dashboard.
+- Added tests for setup locking, capability host selection, no-auto-elevation startup, explicit API action, structured failures, UI action/refresh, and five-minute request timeout.
+
+### Remaining gaps and evidence boundary
+- A native/PowerShell-free Windows service-control and ACL helper is not implemented. Windows Broker provisioning still requires a capability-compatible PowerShell host and the .NET Framework 4.8+ runtime; it does not require the SDK/compiler on the target.
+- The POSIX setup path uses non-interactive `sudo -n`; when credentials require a terminal, the operator must run the platform setup script from a terminal.
+- Exact-head Linux/Windows full suites, Windows storage regressions, Browser E2E, CodeQL, dependency audit, deterministic committed-package comparison, and target-host acceptance have not yet been recorded for the final branch head. Earlier green runs do not cover these changes.
+- No user machine service, ACL, Runner, task, checkpoint, database, or durable state was modified.
