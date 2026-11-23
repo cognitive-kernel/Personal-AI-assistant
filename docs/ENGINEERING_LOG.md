@@ -1,3 +1,19 @@
+## 2026-11-23 — keep the local dashboard available when runtime prerequisites fail
+
+### Root cause
+- Startup treated Python dependencies, the machine State Broker, and Ollama as one fatal prerequisite block. If Ollama was installed but unavailable, model preparation failed, or the Broker could not be repaired, run.py returned before Uvicorn started. The user could not open the UI to inspect readiness or recover the runtime service.
+
+### Correction
+- Python environment/dependency failures remain fatal because the application cannot import without them.
+- Broker and Ollama readiness are checked independently. A missing/unavailable runtime service is recorded and normal startup continues in limited mode so the local UI can report readiness and diagnostics.
+- --check-only remains strict and returns exit code 2 when any runtime prerequisite is unavailable; it never starts Uvicorn.
+- Added tests proving limited-mode UI startup and strict check-only behavior.
+
+### Evidence boundary
+- This is a startup contract change, not proof that Ollama or the Runner is running. Exact-head CI and Windows target-host UI acceptance remain mandatory.
+
+---
+
 ## 2026-11-23 — UI-originated correlation ID through dispatch and timeout
 
 ### Root cause
