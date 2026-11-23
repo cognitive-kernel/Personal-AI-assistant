@@ -1,3 +1,12 @@
+## 2026-11-24 — suppress continuous chaining when live Pause or mode changes
+
+- A task can finish and receive owner merge after the Pause or execution mode changed while it was running. The cycle controller previously used the workflow-start mode snapshot to decide whether to dispatch the next cycle.
+- The post-merge chaining path now re-reads live execution mode and Pause immediately before dispatch. It suppresses the next cycle if mode is scheduled, Pause is active, or either setting cannot be verified.
+- Automatic chaining does not set resume_once; therefore a stale continuous snapshot cannot turn an explicit one-shot resume into an ongoing chain in scheduled mode.
+- Added tests for scheduled mode, active Pause, API failure, and successful chaining only when live mode is continuous and unpaused.
+
+---
+
 ## 2026-11-24 — mark explicit resume separately from automatic workflow chaining
 
 - Scheduled mode must allow an owner-requested one-shot resume without allowing a continuous-mode workflow snapshot to create an automatic chain.
