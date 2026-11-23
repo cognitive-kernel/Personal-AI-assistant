@@ -531,19 +531,19 @@ jobs:
             exit 1
           fi
           mkdir -p scripts/bin
-          if [[ -f "scripts/bin/$exe" ]]; then
-            committed="$(sha256sum "scripts/bin/$exe" | awk '{print $1}')"
-            committed_manifest="$(tr -d '\r\n' < "scripts/bin/$manifest")"
-            if [[ "$committed" != "$actual" || "$committed_manifest" != "$actual" ]]; then
-              echo "Committed broker package differs from the CI artifact; refusing to overwrite it." >&2
-              exit 1
-            fi
-            echo "Committed broker package already matches the CI artifact."
+          if [[ -f "scripts/bin/$exe" && -f "scripts/bin/$manifest" ]] &&
+             cmp -s "$artifact_root/$exe" "scripts/bin/$exe" &&
+             cmp -s "$artifact_root/$manifest" "scripts/bin/$manifest"; then
+            echo "The reproducible broker package is already committed; no branch update is needed."
             exit 0
           fi
-          cp "$artifact_root/$exe" "scripts/bin/$exe"
-          cp "$artifact_root/$manifest" "scripts/bin/$manifest"
+          install -m 0644 "$artifact_root/$exe" "scripts/bin/$exe"
+          install -m 0644 "$artifact_root/$manifest" "scripts/bin/$manifest"
           git add "scripts/bin/$exe" "scripts/bin/$manifest"
+          if git diff --cached --quiet; then
+            echo "No broker package changes to commit."
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "Add reproducible Windows state broker package"
