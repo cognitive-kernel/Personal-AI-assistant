@@ -1,3 +1,19 @@
+## 2026-11-24 — select the actual Codex job when cancelling queued workflow runs
+
+### Additional root cause
+- Workflow-run status can be `in_progress` while a newer run is still executing its schedule gate and its `codex` job is queued behind the job-level concurrency group. Workflow-run status alone can therefore still select the wrong run.
+
+### Correction
+- The cancel endpoint now inspects `gh run view --json jobs` and selects the run whose `codex` job is actually `in_progress`.
+- If no Codex job is executing, it falls back to a queued Codex job, then to the first active preflight run.
+- Failure to retrieve or parse job state fails closed; the endpoint does not guess which workflow to cancel.
+- Added a regression with two workflow runs both reported `in_progress`, where the newer run has a queued Codex job and the older run owns the active Codex job.
+
+### Validation boundary
+- Exact-head Linux/Windows tests and target-host GitHub CLI behavior remain required. No workflow was cancelled by this source change.
+
+---
+
 ## 2026-11-24 — cancel the executing workflow before newer queued runs
 
 ### Root cause
