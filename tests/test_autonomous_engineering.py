@@ -17,6 +17,19 @@ from app import autonomous_engineering as agent
 from app import main as main_module
 
 
+def _hold_dispatch_admission_lock_in_child(state_dir: str, ready, release) -> None:
+    from pathlib import Path
+    from app import autonomous_engineering as child_agent
+
+    child_agent._dispatch_admission_directory = lambda: Path(state_dir)
+    with child_agent._dispatch_admission_lock():
+        ready.set()
+        if not release.wait(15):
+            raise RuntimeError("Parent did not release the dispatch admission lock in time.")
+
+
+
+
 @pytest.fixture(autouse=True)
 def _stub_durable_pending_work_status(monkeypatch, tmp_path):
     monkeypatch.setattr(agent, "_dispatch_admission_directory", lambda: tmp_path / "dispatch-state")
@@ -2739,3 +2752,96 @@ def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admi
     assert "PAUSED: ${{ vars.AUTONOMOUS_ENGINEERING_PAUSED" not in gate
     assert "EXECUTION_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE" not in gate
     assert "if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'" in workflow[end:end + 300]
+
+
+def test_dispatch_admission_lock_excludes_a_second_process(monkeypatch, tmp_path):
+    import multiprocessing
+
+    state_dir = tmp_path / "shared-dispatch-state"
+    monkeypatch.setattr(agent, "_dispatch_admission_directory", lambda: state_dir)
+    context = multiprocessing.get_context("spawn")
+    ready = context.Event()
+    release = context.Event()
+    process = context.Process(
+        target=_hold_dispatch_admission_lock_in_child,
+        args=(str(state_dir), ready, release),
+    )
+    process.start()
+    try:
+        assert ready.wait(15), "Child process did not acquire the OS dispatch lock."
+        with pytest.raises(HTTPException) as error:
+            with agent._dispatch_admission_lock():
+                pytest.fail("A second process must not enter the dispatch admission section.")
+        assert error.value.status_code == 409
+        assert error.value.headers["X-Error-Code"] == "AUTONOMOUS_ENGINEERING_DISPATCH_IN_PROGRESS"
+    finally:
+        release.set()
+        process.join(15)
+        if process.is_alive():
+            process.terminate()
+            process.join(5)
+    assert process.exitcode == 0
+
+
+def test_dispatch_marker_blocks_duplicate_after_unknown_workflow_outcome(monkeypatch, tmp_path):
+    state_dir = tmp_path / "dispatch-state"
+    monkeypatch.setattr(agent, "_dispatch_admission_directory", lambda: state_dir)
+    readiness = {
+        "ready": True,
+        "paused": False,
+        "github": {"runs_available": True, "recent_runs": []},
+        "pending_work": {
+            "available": True,
+            "blocked": False,
+            "checkpoint": {"available": False, "verified": True},
+        },
+    }
+    monkeypatch.setattr(agent, "collect_status", lambda: readiness)
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    calls = []
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["workflow", "run"]:
+            marker = agent._read_dispatch_admission_marker(state_dir)
+            assert marker is not None
+            assert marker["status"] == "dispatching"
+            return None
+        raise AssertionError(command)
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    request = SimpleNamespace(state=SimpleNamespace(correlation_id="a" * 32))
+
+    with pytest.raises(HTTPException) as first:
+        agent.dispatch_autonomous_engineering(None, request)
+    assert first.value.status_code == 502
+    assert first.value.headers["X-Error-Code"] == "WORKFLOW_DISPATCH_OUTCOME_UNKNOWN"
+    marker = agent._read_dispatch_admission_marker(state_dir)
+    assert marker is not None and marker["status"] == "unknown"
+    call_count = len(calls)
+
+    with pytest.raises(HTTPException) as second:
+        agent.dispatch_autonomous_engineering(None, request)
+    assert second.value.status_code == 409
+    assert second.value.headers["X-Error-Code"] == "AUTONOMOUS_ENGINEERING_DISPATCH_RECENTLY_ACCEPTED"
+    assert len(calls) == call_count
+
+
+def test_malformed_dispatch_admission_marker_fails_closed(monkeypatch, tmp_path):
+    state_dir = tmp_path / "dispatch-state"
+    monkeypatch.setattr(agent, "_dispatch_admission_directory", lambda: state_dir)
+    state_dir.mkdir(parents=True)
+    (state_dir / agent._DISPATCH_ADMISSION_MARKER_NAME).write_text("{broken", encoding="utf-8")
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    calls = []
+    monkeypatch.setattr(agent, "_run", lambda command, **kwargs: calls.append(command))
+
+    request = SimpleNamespace(state=SimpleNamespace(correlation_id="b" * 32))
+    with pytest.raises(HTTPException) as error:
+        agent.dispatch_autonomous_engineering(None, request)
+
+    assert error.value.status_code == 503
+    assert error.value.headers["X-Error-Code"] == "DISPATCH_ADMISSION_STATE_UNAVAILABLE"
+    assert calls == []
