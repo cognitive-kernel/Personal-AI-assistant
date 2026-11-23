@@ -171,15 +171,13 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert context_script.count('OLLAMA_RUNTIME_CONTEXT_OK') == 1
     assert 'if ($allocated -ne $selectedContext)' in context_script
     assert 'if ($allocated -lt $selectedContext)' not in context_script
-    assert "function Remove-LegacyCodexContextVariants" in context_script
-    assert "[regex]::Escape($BaseModel) + '-codex-ctx[0-9]+$'" in context_script
-    assert "Remove-LegacyCodexContextVariants -BaseModel $baseModel -CurrentModel $codexModel" in context_script
+    assert "function Invoke-LegacyCodexContextCleanup" in context_script
+    assert 'Join-Path $PSScriptRoot "ollama_legacy_cleanup.py"' in context_script
+    assert "& python $cleanupScript --current-model $CurrentModel 2>&1" in context_script
+    assert "Invoke-LegacyCodexContextCleanup -CurrentModel $codexModel" in context_script
     assert "if (-not $VerifyOnly)" in context_script
-    assert '$baseUrl/api/delete' in context_script
-    assert '-Uri "$baseUrl/api/delete" -Method Delete -ContentType "application/json" -Body $deleteBody' in context_script
-    assert "Preserving loaded legacy Codex model" in context_script
-    assert context_script.index('if ($allocated -ne $selectedContext)') < context_script.index('Remove-LegacyCodexContextVariants -BaseModel $baseModel')
-    assert context_script.index('Remove-LegacyCodexContextVariants -BaseModel $baseModel') < context_script.index('OLLAMA_RUNTIME_CONTEXT_OK')
+    assert context_script.index('if ($allocated -ne $selectedContext)') < context_script.index('Invoke-LegacyCodexContextCleanup -CurrentModel $codexModel')
+    assert context_script.index('Invoke-LegacyCodexContextCleanup -CurrentModel $codexModel') < context_script.index('OLLAMA_RUNTIME_CONTEXT_OK')
     assert '-le 0' in context_script
     assert 'AUTONOMOUS_ENGINEERING_MODEL=$codexModel' in context_script
     assert '-VerifyOnly' in diagnostic

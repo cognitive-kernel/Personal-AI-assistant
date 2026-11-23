@@ -2391,3 +2391,11 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - owner JSON به محدودهٔ بعد از byte صفر منتقل شد؛ byte صفر همچنان primitive مشترک قفل Python/C# باقی می‌ماند.
 - دو failure لینوکس مربوط به تست‌ها بود: patch نشدن execution_state_directory در ماژول lock برای تست cleanup و assertion متنی قدیمی دربارهٔ compatibility facade checkpoint lock؛ هر دو تست اصلاح شدند.
 - تغییرات در branch جایگزین fix/autonomous-engineering-first-module-validation-20261122 آماده شده‌اند. هنوز CI دقیق روی branch جدید اجرا نشده و merge ممنوع است تا CI کامل و پذیرش Windows target انجام شود.
+
+### Cross-model Ollama legacy Codex alias cleanup (2026-11-23)
+
+- Replaced the selected-base-only PowerShell cleanup with `scripts/ollama_legacy_cleanup.py`, which audits numeric Codex context aliases across every installed model family.
+- A candidate must match the reserved `<base>-codex-ctxN` name shape and Ollama `/api/show` must independently declare the same positive `num_ctx=N`. Base models, stable `-codex-ctx` aliases, `-codex-64k` aliases, unverified tags, and aliases currently loaded by `/api/ps` are preserved.
+- Uses the documented Ollama `DELETE /api/delete` method and verifies each deletion by re-reading `/api/tags`; a tag still present after bounded verification fails the preflight.
+- Added an audit-only mode and tests with multiple model families, including Qwen legacy aliases, loaded-model preservation, marker mismatches, and post-delete verification.
+- This changes cleanup behavior only on a normal verified preflight; `-VerifyOnly` never deletes models. No user-host model was removed during this change. Exact-head CI and target-host audit remain required.
