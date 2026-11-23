@@ -6,6 +6,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_machine_state_broker_is_checked_before_app_startup():
     source = (ROOT / "run.py").read_text(encoding="utf-8")
+    powershell_discovery = source[
+        source.index("def _powershell_candidates"):source.index("def _ensure_state_broker")
+    ]
     bootstrap = source[source.index("def _ensure_state_broker"):source.index("\ndef main()")]
     main = source[source.index("def main()"):]
 
@@ -17,12 +20,12 @@ def test_machine_state_broker_is_checked_before_app_startup():
     assert 'ROOT / "scripts" / "ensure_autonomous_state_broker_posix.py"' in bootstrap
     assert '"-ExecutionPolicy"' in bootstrap
     assert '"-File"' in bootstrap
-    assert 'def _powershell_candidates() -> list[str]:' in bootstrap
-    assert 'def _find_compatible_powershell() -> tuple[str, str] | None:' in bootstrap
-    assert '("pwsh.exe", "pwsh", "powershell.exe", "powershell")' in bootstrap
-    assert "$PSVersionTable.PSEdition" in bootstrap
-    assert "'Desktop' -and $version -ge [version]'5.1'" in bootstrap
-    assert "'Core' -and $version -ge [version]'7.0'" in bootstrap
+    assert 'def _powershell_candidates() -> list[str]:' in powershell_discovery
+    assert 'def _find_compatible_powershell() -> tuple[str, str] | None:' in powershell_discovery
+    assert '("pwsh.exe", "pwsh", "powershell.exe", "powershell")' in powershell_discovery
+    assert "$PSVersionTable.PSEdition" in powershell_discovery
+    assert "'Desktop' -and $version -ge [version]'5.1'" in powershell_discovery
+    assert "'Core' -and $version -ge [version]'7.0'" in powershell_discovery
     assert "executable, runtime = powershell" in bootstrap
     assert 'f"بررسی فضای پیشرفت مشترک: Broker آماده نیست؛ راه‌اندازی امن با {runtime} "' in bootstrap
     assert "shell=False" in bootstrap
