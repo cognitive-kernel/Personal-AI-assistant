@@ -159,7 +159,6 @@ jobs:
       AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT: ${{ inputs.recovery_attempt || 0 }}
       AUTONOMOUS_ENGINEERING_RESUME_ONCE: ${{ inputs.resume_once || false }}
       AUTONOMOUS_ENGINEERING_MANUAL_TASK: ${{ inputs.manual_task || '' }}
-      AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT: ${{ inputs.recovery_attempt || 0 }}
     steps:
       - name: Check out trusted main branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
