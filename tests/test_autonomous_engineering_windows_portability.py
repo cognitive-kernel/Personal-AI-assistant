@@ -342,7 +342,7 @@ def test_windows_broker_installer_uses_verified_prebuilt_binary_without_target_c
     assert 'Copy-Item -LiteralPath $packagedExe -Destination $temporaryExe' in installer
     assert 'csc.exe' not in installer
     assert 'Microsoft.NET' not in installer
-    assert 'Build and package the Windows machine state broker' in workflow
+    assert 'Build and verify the Windows machine state broker' in workflow
     assert 'upload-artifact@v4' in workflow
     assert 'actions/attest-build-provenance@v3' in workflow
     assert 'attestations: write' in workflow
@@ -356,11 +356,17 @@ def test_windows_broker_installer_uses_verified_prebuilt_binary_without_target_c
     assert 'Get-FileHash -LiteralPath $serviceExe -Algorithm SHA256' in live_test
     assert 'Copy-Item -LiteralPath $servicePackage -Destination $serviceExe' in live_test
     assert 'csc.exe' not in live_test
-    build_step = workflow.split('Build and package the Windows machine state broker', 1)[1].split(
+    build_step = workflow.split('Build and verify the Windows machine state broker', 1)[1].split(
         'Upload the prebuilt Windows state broker package', 1
     )[0]
     assert 'dotnet build $project' in build_step
     assert 'csc.exe' not in build_step
+    assert '--output $buildRoot' in build_step
+    assert '$freshHash' in build_step and '$committedHash' in build_step
+    assert 'fresh deterministic broker build differs' in build_step
+    assert 'commit-broker-package:' in workflow
+    assert 'contents: write' in workflow
+    assert 'git push origin' in workflow
     broker_project = _read("scripts/AutonomousStateBrokerService.csproj")
     assert '<TargetFramework>net48</TargetFramework>' in broker_project
     assert '<Deterministic>true</Deterministic>' in broker_project
