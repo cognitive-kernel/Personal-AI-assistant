@@ -33,17 +33,22 @@ def test_windows_broker_setup_discovers_runner_identity_and_path():
 
     assert "Get-CimInstance Win32_Service" in ensure
     assert "StartName" in ensure
-    assert "Get-AutonomousWindowsAccountSid -AccountName $runner.Service.StartName" in ensure
-    assert r"RunnerService\.exe" in ensure
+    assert "Get-AutonomousWindowsAccountSid -AccountName $candidate.StartName" in ensure
+    assert r"RunnerService\\.exe" in ensure
     assert "Runner.Worker.exe" in ensure
-    assert r"C:\actions-runner" not in ensure + provision
+    assert r"C:\\actions-runner" not in ensure + provision
     assert "runner-svc" not in ensure + provision
     assert '[string]$RunnerAccount = ""' in provision
     assert '[string]$RunnerRoot = ""' in provision
     assert "Start-Process" in ensure and "-Verb RunAs" in ensure
-    assert ensure.index("Stop-Service -Name $runnerService.Name") < ensure.index("Set-AutonomousDirectoryTreeAcl")
+    assert "$modifySids = @($brokerServiceSid)" in ensure
+    assert "$modifySids += $runner.Sid" in ensure
+    assert "if ($resolvedRunnerServices.Count -eq 1)" not in ensure
+    assert "No GitHub Runner is installed; the core application broker is ready." in ensure
+    assert 'Join-Path $runner.Root ".runner"' not in ensure
+    assert ensure.index("Stop-Service -Name $service.Name") < ensure.index("Set-AutonomousDirectoryTreeAcl")
     assert "activeWorkersAfterStop" in ensure
-    assert "Start-Service -Name $runnerService.Name" in ensure
+    assert "Start-Service -Name $serviceNameToRestart" in ensure
 
 
 def test_posix_broker_setup_uses_dynamic_service_identity_and_native_service_manager():
