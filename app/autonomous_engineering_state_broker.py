@@ -208,6 +208,8 @@ def request(method: str, path: str, *, timeout_ms: int = 3500, body: dict[str, A
     allowed = (
         method == "GET" and path in {"/v1/health", "/v1/pending-work", "/v1/progress"}
     ) or (
+        _WINDOWS and method == "GET" and path == "/v1/health/verify"
+    ) or (
         method == "GET" and re.fullmatch(r"/v1/diagnostics/[0-9]{1,20}", path) is not None
     ) or (
         method == "POST" and path == "/v1/cleanup"
@@ -290,14 +292,15 @@ def request(method: str, path: str, *, timeout_ms: int = 3500, body: dict[str, A
         kernel32.CloseHandle(handle)
 
 
-def health(*, timeout_ms: int = 3500) -> bool:
+def health(*, timeout_ms: int = 3500, verify: bool = False) -> bool:
     try:
-        value = request("GET", "/v1/health", timeout_ms=timeout_ms)
+        # The application bootstrap requests a fresh Windows ACL scan once per
+        # process start. Runtime UI polling uses the broker's short-lived cache.
+        # POSIX uses its native health endpoint for both modes.
+        path = "/v1/health/verify" if verify and _WINDOWS else "/v1/health"
+        value = request("GET", path, timeout_ms=timeout_ms)
         if not isinstance(value, dict) or value.get("ready") is not True:
             return False
-        # Windows extends the broker health contract with a full NTFS ACL scan.
-        # POSIX retains its native service health contract and must not be gated
-        # on Windows-only response fields.
         if _WINDOWS:
             return value.get("storage_ready") is True and value.get("acl_ready") is True
         return True
