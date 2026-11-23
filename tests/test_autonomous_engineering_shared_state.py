@@ -72,34 +72,36 @@ def test_posix_shared_state_migration_refuses_conflicts_without_overwriting_eith
     assert (shared / "pending-manual-task.txt").read_text(encoding="utf-8") == "different shared task"
 
 
-def test_posix_programdata_override_is_shared_and_migrates_legacy_state(monkeypatch, tmp_path: Path):
+def test_posix_ignores_windows_programdata_and_uses_platform_shared_root(monkeypatch, tmp_path: Path):
     home = tmp_path / "legacy-home"
-    program_data = tmp_path / "shared-program-data"
+    site_root = tmp_path / "system-data"
     legacy = home / ".personal-ai-assistant" / "autonomous-engineering"
     legacy.mkdir(parents=True)
     (legacy / "checkpoint.patch").write_bytes(b"checkpoint")
-    _configure_posix_state(monkeypatch, home, tmp_path / "unused-site-data")
-    monkeypatch.setenv("PROGRAMDATA", str(program_data))
+    _configure_posix_state(monkeypatch, home, site_root)
+    monkeypatch.setenv("PROGRAMDATA", str(tmp_path / "windows-program-data"))
 
     resolved = state.execution_state_directory(
         is_windows_fn=lambda: False,
         machine_state_fn=lambda: "",
     )
 
-    assert resolved == program_data / "PersonalAIAssistant" / "autonomous-engineering"
+    assert resolved == site_root / "autonomous-engineering"
     assert (resolved / "checkpoint.patch").read_bytes() == b"checkpoint"
 
 
-def test_posix_programdata_override_rejects_per_user_home(monkeypatch, tmp_path: Path):
+def test_posix_ignores_windows_programdata_even_when_it_points_inside_home(monkeypatch, tmp_path: Path):
     home = tmp_path / "legacy-home"
-    _configure_posix_state(monkeypatch, home, tmp_path / "system-data")
+    site_root = tmp_path / "system-data"
+    _configure_posix_state(monkeypatch, home, site_root)
     monkeypatch.setenv("PROGRAMDATA", str(home))
 
-    with pytest.raises(RuntimeError, match="inside a per-user home"):
-        state.execution_state_directory(
-            is_windows_fn=lambda: False,
-            machine_state_fn=lambda: "",
-        )
+    resolved = state.execution_state_directory(
+        is_windows_fn=lambda: False,
+        machine_state_fn=lambda: "",
+    )
+
+    assert resolved == site_root / "autonomous-engineering"
 
 
 def test_posix_shared_state_resolution_works_without_a_home_directory(monkeypatch, tmp_path: Path):
