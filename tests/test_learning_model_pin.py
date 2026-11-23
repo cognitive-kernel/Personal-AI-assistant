@@ -242,3 +242,40 @@ def test_startup_skips_ollama_when_all_llm_and_embedding_profiles_are_external(m
     bootstrap._ensure_ollama()
 
     assert "Ollama" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("missing_key", "missing_model"),
+    [
+        ("programming_ollama_model", "qwen3:14b"),
+        ("ollama_embedding_model", "nomic-embed-text"),
+    ],
+)
+def test_startup_checks_programming_and_embedding_models_without_pulling(missing_key, missing_model, monkeypatch):
+    bootstrap = _load_bootstrap()
+    monkeypatch.setattr(bootstrap, "_configured_llm_provider", lambda _purpose: "ollama")
+    monkeypatch.setattr(bootstrap, "_read_saved_setting", lambda _key, default: default)
+    monkeypatch.setattr(bootstrap, "_find_ollama", lambda: "ollama")
+
+    def configured_model(key, _env_key, fallback):
+        if key == missing_key:
+            return missing_model
+        return "qwen2.5:7b" if key != "factual_review_ollama_model" else fallback
+
+    monkeypatch.setattr(bootstrap, "_configured_model_setting", configured_model)
+    monkeypatch.setattr(bootstrap, "_configured_learning_model", lambda: "qwen2.5:7b")
+    monkeypatch.setattr(
+        bootstrap,
+        "_ollama_list",
+        lambda _executable: subprocess.CompletedProcess(
+            ["ollama", "list"], 0, "NAME ID SIZE\\nqwen2.5:7b abc 4GB\\n", ""
+        ),
+    )
+    monkeypatch.setattr(
+        bootstrap,
+        "_run",
+        lambda *_args, **_kwargs: pytest.fail("Startup must not pull a missing purpose-specific model."),
+    )
+
+    with pytest.raises(RuntimeError, match=missing_model):
+        bootstrap._ensure_ollama()
