@@ -328,3 +328,40 @@ def test_broker_health_exposes_only_safe_acl_failure_reason_codes():
     ]
     assert '"state_directory"' not in health_details
     assert '"state_path"' not in health_details
+
+
+def test_live_pause_workflow_powershell_parses_on_windows():
+    import base64
+    import os
+    import shutil
+    import subprocess
+    import pytest
+
+    if os.name != "nt":
+        pytest.skip("PowerShell parser validation runs on Windows.")
+    powershell = shutil.which("powershell") or shutil.which("pwsh")
+    if not powershell:
+        pytest.skip("A supported PowerShell host is unavailable.")
+
+    workflow = _read(".github/workflows/autonomous-codex-engineering.yml")
+    start = workflow.index("- name: Recheck live durable pause state after concurrency admission")
+    run_marker = workflow.index("        run: |", start)
+    step_end = workflow.index("\n      - name:", run_marker)
+    script_lines = workflow[run_marker:step_end].splitlines()[1:]
+    script = "\n".join(line[10:] for line in script_lines if line.strip())
+    encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+    command = (
+        "$source = [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('"
+        + encoded
+        + "')); $tokens = $null; $errors = $null; "
+        "[System.Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors) | Out-Null; "
+        "if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }"
+    )
+    result = subprocess.run(
+        [powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
