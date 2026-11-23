@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import multiprocessing
 import subprocess
 
 import pytest
 
 from app import autonomous_engineering_broker_setup as setup
+
+
+
+def _try_setup_process_lock_from_child(result_queue):
+    with setup._setup_process_lock() as acquired:
+        result_queue.put(acquired)
 
 
 def test_broker_setup_is_idempotent_when_health_check_is_already_ready(monkeypatch):
@@ -115,3 +122,29 @@ def test_broker_setup_does_not_claim_success_when_post_install_health_fails(monk
 
     assert error.value.code == "STATE_BROKER_POST_INSTALL_HEALTH_FAILED"
     assert error.value.status_code == 503
+
+
+def test_broker_setup_lock_excludes_a_second_process(monkeypatch, tmp_path):
+    for key in ("TMP", "TEMP", "TMPDIR"):
+        monkeypatch.setenv(key, str(tmp_path))
+    monkeypatch.setattr(setup.tempfile, "tempdir", None)
+    context = multiprocessing.get_context("spawn")
+    result_queue = context.Queue()
+
+    with setup._setup_process_lock() as acquired:
+        assert acquired is True
+        child = context.Process(
+            target=_try_setup_process_lock_from_child,
+            args=(result_queue,),
+        )
+        child.start()
+        try:
+            assert result_queue.get(timeout=20) is False
+        finally:
+            child.join(timeout=20)
+            if child.is_alive():
+                child.terminate()
+                child.join(timeout=5)
+            result_queue.close()
+            result_queue.join_thread()
+        assert child.exitcode == 0
