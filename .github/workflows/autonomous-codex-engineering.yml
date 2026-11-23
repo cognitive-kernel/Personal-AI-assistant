@@ -838,10 +838,11 @@ jobs:
             }
             $paused = $value -eq "true"
           } catch {
+            $requestError = $_
             $statusCode = 0
             try {
-              if ($null -ne $_.Exception.Response -and $null -ne $_.Exception.Response.StatusCode) {
-                $statusCode = [int]$_.Exception.Response.StatusCode
+              if ($null -ne $requestError.Exception.Response -and $null -ne $requestError.Exception.Response.StatusCode) {
+                $statusCode = [int]$requestError.Exception.Response.StatusCode
               }
             } catch {}
             if ($statusCode -eq 404) {
