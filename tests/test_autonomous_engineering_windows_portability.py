@@ -344,7 +344,7 @@ def test_live_pause_workflow_powershell_parses_on_windows():
         pytest.skip("A supported PowerShell host is unavailable.")
 
     workflow = _read(".github/workflows/autonomous-codex-engineering.yml")
-    start = workflow.index("- name: Recheck live durable pause state after concurrency admission")
+    start = workflow.index("- name: Recheck live Pause and execution mode after concurrency admission")
     run_marker = workflow.index("        run: |", start)
     step_end = workflow.index("\n      - name:", run_marker)
     script_lines = workflow[run_marker:step_end].splitlines()[1:]
