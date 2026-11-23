@@ -1984,3 +1984,36 @@ def test_cycle_controller_blocks_unmarked_empty_dispatch_in_scheduled_mode(monke
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_MANUAL_TASK", "")
 
     assert cycle.main() == 0
+
+
+def test_cycle_controller_allows_manual_task_in_scheduled_mode(monkeypatch):
+    from contextlib import contextmanager
+
+    @contextmanager
+    def fake_lock(run_id, run_attempt):
+        yield
+
+    def fake_api(token, repo, method, path):
+        if path.endswith("AUTONOMOUS_ENGINEERING_PAUSED"):
+            return {"value": "false"}
+        if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
+            return {"value": "scheduled"}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(cycle, "repository_execution_lock", fake_lock)
+    monkeypatch.setattr(cycle, "api", fake_api)
+    monkeypatch.setattr(cycle, "run_cycle", lambda args: 29)
+    monkeypatch.setattr(cycle.sys, "argv", [
+        "autonomous_engineering_cycle.py", "run",
+        "--run-id", "123", "--run-attempt", "1",
+        "--correlation-id", "e" * 32,
+        "--model", "test-model", "--prompt", "prompt.md", "--mode", "continuous",
+    ])
+    monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("GH_REPO", "owner/repository")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT", "0")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_RESUME_ONCE", "false")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_MANUAL_TASK", "Fix a specific bug")
+
+    assert cycle.main() == 29
