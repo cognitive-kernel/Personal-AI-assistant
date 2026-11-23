@@ -52,6 +52,8 @@ def test_main_blocks_admission_rejection_without_dispatch(monkeypatch):
             return 0
 
         def request(self, *args, **kwargs):
+        if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
+            return {"value": "false"}
             calls.append((args, kwargs))
 
     monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
@@ -85,6 +87,8 @@ def test_main_does_not_dispatch_for_a_preflight_failure(monkeypatch):
             return 0
 
         def request(self, *args, **kwargs):
+        if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
+            return {"value": "false"}
             calls.append((args, kwargs))
 
     monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
@@ -111,6 +115,8 @@ def test_main_opens_breaker_as_a_failed_recovery_result(monkeypatch):
             return 3
 
         def request(self, *args, **kwargs):
+        if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
+            return {"value": "false"}
             calls.append((args, kwargs))
 
     monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
@@ -137,6 +143,8 @@ def test_main_dispatches_only_an_empty_recovery_task_below_threshold(monkeypatch
             return 1
 
         def request(self, method, path, payload=None):
+            if method == "GET" and path == "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED":
+                return {"value": "false"}
             calls.append((method, path, payload))
             return {}
 
@@ -163,7 +171,17 @@ def test_main_honors_scheduled_mode_and_durable_pause_before_api_access(monkeypa
     assert recovery.main() == 0
 
     monkeypatch.setenv("EXECUTION_MODE", "continuous")
-    monkeypatch.setenv("PAUSED", "true")
+
+    class PausedClient:
+        def __init__(self, repository, token):
+            pass
+
+        def request(self, method, path, payload=None):
+            assert method == "GET"
+            assert path == "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"
+            return {"value": "true"}
+
+    monkeypatch.setattr(recovery, "GitHubActionsClient", PausedClient)
     assert recovery.main() == 0
 
 
@@ -231,6 +249,8 @@ def test_current_admission_rejection_does_not_hide_an_already_open_breaker(monke
             return 3
 
         def request(self, *args, **kwargs):
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
+                return {"value": "false"}
             raise AssertionError("An open breaker must not dispatch.")
 
     monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
@@ -275,6 +295,8 @@ def test_main_does_not_dispatch_for_a_superseded_recovery_event(monkeypatch):
             raise recovery.RecoverySuperseded("A newer main-branch workflow run exists.")
 
         def request(self, *args, **kwargs):
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
+                return {"value": "false"}
             raise AssertionError("A superseded event must not dispatch.")
 
     monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
@@ -303,6 +325,8 @@ def test_main_rechecks_ownership_after_backoff_before_dispatch(monkeypatch):
             raise recovery.RecoverySuperseded("A newer main-branch workflow run appeared during backoff.")
 
         def request(self, *args, **kwargs):
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
+                return {"value": "false"}
             calls.append((args, kwargs))
 
     monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
@@ -327,3 +351,22 @@ def test_report_appends_summaries_and_emits_truthful_annotations(monkeypatch, tm
     assert "::error title=Circuit breaker OPEN::" in output
     assert "## Recovery scheduled" in saved
     assert "## Circuit breaker OPEN" in saved
+
+
+def test_live_pause_missing_variable_defaults_false():
+    class MissingVariableClient:
+        def request(self, method, path, payload=None):
+            raise RuntimeError("GitHub Actions API failed: HTTP 404: not found")
+
+    assert recovery._live_pause_enabled(MissingVariableClient()) is False
+
+
+def test_live_pause_api_failure_fails_closed():
+    import pytest
+
+    class DeniedClient:
+        def request(self, method, path, payload=None):
+            raise RuntimeError("GitHub Actions API failed: HTTP 403: forbidden")
+
+    with pytest.raises(RuntimeError, match="Could not verify the live durable Pause setting"):
+        recovery._live_pause_enabled(DeniedClient())
