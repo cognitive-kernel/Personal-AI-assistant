@@ -41,6 +41,27 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     }
 }
 
+$setupMutexName = "Global\PersonalAIAssistant.StateBrokerSetup"
+$setupMutex = $null
+$setupMutexAcquired = $false
+try {
+    $setupMutex = [System.Threading.Mutex]::new($false, $setupMutexName)
+    try {
+        $setupMutexAcquired = $setupMutex.WaitOne(0)
+    } catch [System.Threading.AbandonedMutexException] {
+        # Windows grants ownership when this exception is raised. Release it,
+        # then fail closed: the previous elevated process may have stopped
+        # midway through the ACL/service transaction.
+        $setupMutex.ReleaseMutex()
+        throw "A previous elevated state-broker setup terminated while holding the machine-wide lock. Inspect broker health, service state, and ACL integrity before retrying."
+    }
+    if (-not $setupMutexAcquired) {
+        throw "Another elevated state-broker setup is already running. No service or ACL changes were started."
+    }
+
+    # The lock belongs to this elevated child, not the Python/PowerShell parent.
+    # If the parent times out or is terminated, this child continues to own the
+    # mutex until the setup exits, preventing a second mutation from overlapping.
 $brokerLogDirectory = Join-Path $env:ProgramData "PersonalAIAssistant\Logs"
 $brokerLogPath = Join-Path $brokerLogDirectory "state-broker-setup.log"
 try {
@@ -269,3 +290,16 @@ if ($resolvedRunnerServices.Count -gt 0) {
     Write-Host "No GitHub Runner is installed; the core application broker is ready. Autonomous dispatch remains unavailable until Runner provisioning is completed."
 }
 Write-Host "Shared state root: $stateRoot"
+
+} finally {
+    if ($setupMutexAcquired) {
+        try {
+            $setupMutex.ReleaseMutex()
+        } finally {
+            $setupMutexAcquired = $false
+        }
+    }
+    if ($null -ne $setupMutex) {
+        $setupMutex.Dispose()
+    }
+}
