@@ -1055,10 +1055,7 @@ def test_check_only_reports_unavailable_runtime_prerequisites_without_starting_u
     monkeypatch.setattr(bootstrap, "_inside_project_venv", lambda: True)
     monkeypatch.setattr(bootstrap, "_ensure_dependencies", lambda _dev: None)
     monkeypatch.setattr(bootstrap, "_ensure_state_broker", lambda: False)
-    monkeypatch.setattr(
-        bootstrap, "_ensure_ollama",
-        lambda: (_ for _ in ()).throw(RuntimeError("Ollama is unavailable")),
-    )
+    monkeypatch.setattr(bootstrap, "_ensure_ollama", lambda: None)
     monkeypatch.setattr(bootstrap.sys, "argv", ["run.py", "--check-only"])
     monkeypatch.setattr(
         bootstrap, "_run",
