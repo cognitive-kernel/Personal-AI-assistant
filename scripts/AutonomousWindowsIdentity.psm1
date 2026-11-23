@@ -117,7 +117,8 @@ function Set-AutonomousDirectoryTreeAcl {
         [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$Path,
         [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string[]]$ModifySids,
         [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string]$OwnerSid,
-        [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string]$InstallerSid
+        [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string]$InstallerSid,
+        [switch]$PassThru
     )
 
     $root = [System.IO.Path]::GetFullPath($Path)
@@ -290,6 +291,41 @@ function Set-AutonomousDirectoryTreeAcl {
             }
         }
     }
+    if ($PassThru) {
+        return ,([pscustomobject]@{
+            Root = $root
+            Entries = @($snapshots.ToArray())
+        })
+    }
+
 }
 
-Export-ModuleMember -Function ConvertTo-AutonomousWindowsAccountName, Get-AutonomousLocalAccountName, Get-AutonomousWindowsAccountSid, Set-AutonomousDirectoryAcl, Set-AutonomousDirectoryTreeAcl
+function Restore-AutonomousDirectoryTreeAcl {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)][ValidateNotNull()][object]$Snapshot
+    )
+
+    $entries = @($Snapshot.Entries)
+    if ($entries.Count -eq 0) { return }
+
+    $restoreTargets = @(
+        $entries | Sort-Object -Property @{ Expression = { $_.Item.FullName.Length }; Descending = $false }
+    )
+    $failures = New-Object 'System.Collections.Generic.List[string]'
+    foreach ($entry in $restoreTargets) {
+        try {
+            if ($null -eq $entry.Item -or $null -eq $entry.Acl) {
+                throw "The ACL rollback journal contains an invalid entry."
+            }
+            Set-Acl -LiteralPath $entry.Item.FullName -AclObject $entry.Acl -ErrorAction Stop
+        } catch {
+            $failures.Add("$($entry.Item.FullName) ($($_.Exception.GetType().Name))")
+        }
+    }
+    if ($failures.Count -gt 0) {
+        throw "Could not restore every original shared-state ACL: $($failures -join ', ')"
+    }
+}
+
+Export-ModuleMember -Function ConvertTo-AutonomousWindowsAccountName, Get-AutonomousLocalAccountName, Get-AutonomousWindowsAccountSid, Set-AutonomousDirectoryAcl, Set-AutonomousDirectoryTreeAcl, Restore-AutonomousDirectoryTreeAcl
