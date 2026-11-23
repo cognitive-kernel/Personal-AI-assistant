@@ -247,3 +247,12 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 | J owner acceptance | pending؛ PR #836 Draft می‌ماند |
 
 در زمان ممیزی workflow فعال main شماره 44995223588 در حال اجرای یک task مستقل بود؛ لغو یا دستکاری نشد. دسترسی به فایل‌سیستم میزبان شخصی، pause variable، Broker محلی و نصب واقعی Ollama/Codex در این اتصال وجود ندارد؛ این موارد NOT RUN هستند.
+
+
+## 2026-11-23 addendum — browser-originated correlation identity
+
+- مبنای بررسی کد: main `31349a99b197fe702e11e8a5dd53d52ba924575c`؛ اصلاح در PR #846 انجام می‌شود.
+- Core transport اکنون برای هر درخواست API یک شناسهٔ تصادفی امن ۳۲ کاراکتری hex تولید می‌کند (`crypto.randomUUID()` با fallback مبتنی بر `crypto.getRandomValues`) و آن را در `X-Correlation-ID` می‌فرستد.
+- پاسخ موفق/ناموفق، timeout و خطای شبکه همان شناسه را در payload/error و متن feedback UI نگه می‌دارند؛ در نتیجه timeout مبهم dispatch نیز شناسهٔ قابل جست‌وجو دارد.
+- API آن را به ورودی workflow منتقل می‌کند؛ workflow run/job، progress diagnostics و durable task owner metadata همان correlation ID را ثبت می‌کنند.
+- Regressionهای مرورگر برای dispatch دستی و round-trip شناسه، timeout و خطای شبکه اضافه شده‌اند. exact-head CI و target-host پذیرش هنوز معیار نهایی هستند.
