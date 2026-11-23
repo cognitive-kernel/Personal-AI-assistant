@@ -2762,10 +2762,6 @@ def test_cancel_falls_back_to_queued_run_when_no_run_is_in_progress(monkeypatch)
             return subprocess.CompletedProcess(command, 0, "", "")
         if command[1:3] == ["run", "list"]:
             return subprocess.CompletedProcess(command, 0, json.dumps(runs), "")
-        if command[1:3] == ["run", "view"]:
-            return subprocess.CompletedProcess(
-                command, 0, json.dumps({"jobs": [{"name": "codex", "status": "queued"}]}), ""
-            )
         if command[1:3] == ["run", "cancel"]:
             return subprocess.CompletedProcess(command, 0, "", "")
         raise AssertionError(command)
@@ -2775,6 +2771,7 @@ def test_cancel_falls_back_to_queued_run_when_no_run_is_in_progress(monkeypatch)
     result = agent.cancel_autonomous_engineering()
 
     assert result["run_id"] == 333
+    assert not any(command[1:3] == ["run", "view"] for command in calls)
     assert calls[-1][3] == "333"
 
 
@@ -2809,3 +2806,22 @@ def test_cancel_inspects_codex_job_when_newer_workflow_run_is_only_at_schedule_g
     assert result["run_id"] == 111
     assert [command[3] for command in calls if command[1:3] == ["run", "view"]] == ["222", "111"]
     assert calls[-1][3] == "111"
+
+
+def test_cancel_fails_closed_when_too_many_workflow_runs_are_in_progress(monkeypatch):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    runs = [{"databaseId": index + 1, "status": "in_progress"} for index in range(6)]
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "list"]:
+            return subprocess.CompletedProcess(command, 0, json.dumps(runs), "")
+        raise AssertionError("Job inspection and cancellation must not start beyond the bound.")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    with pytest.raises(HTTPException) as error:
+        agent.cancel_autonomous_engineering()
+
+    assert error.value.status_code == 409
