@@ -1,4 +1,5 @@
 $ErrorActionPreference = "Stop"
+Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsIdentity.psm1") -Force
 
 $serviceName = "PersonalAIAssistantStateBroker"
 $testTempRoot = if (-not [String]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
@@ -46,7 +47,9 @@ $oldMachineStatePath = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEE
 $oldProcessStatePath = $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR
 $oldDiagnosticsSetting = [Environment]::GetEnvironmentVariable("AUTONOMOUS_STATE_BROKER_DIAGNOSTICS", "Machine")
 $currentSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-$brokerSid = "S-1-5-19"
+$brokerSid = Get-AutonomousWindowsWellKnownSid -SidType LocalServiceSid
+$networkServiceSid = Get-AutonomousWindowsWellKnownSid -SidType NetworkServiceSid
+$localServiceAccount = Get-AutonomousWindowsWellKnownAccountName -SidType LocalServiceSid
 $serviceCreated = $false
 
 try {
@@ -63,7 +66,7 @@ try {
     New-Item -ItemType Directory -Path $serviceRoot, $stateRoot, (Join-Path $stateRoot "run-diagnostics") -Force | Out-Null
     Copy-Item -LiteralPath $serviceSource -Destination $serviceExe -Force
     & icacls.exe $serviceRoot /grant:r "*$($brokerSid):(OI)(CI)RX" /T /C /Q | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "Could not grant LocalService read/execute access to the test service binary." }
+    if ($LASTEXITCODE -ne 0) { throw "Could not grant restricted broker service read/execute access to the test service binary." }
     [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", $stateRoot, "Machine")
     $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR = $stateRoot
     [Environment]::SetEnvironmentVariable("AUTONOMOUS_STATE_BROKER_DIAGNOSTICS", "1", "Machine")
@@ -129,9 +132,9 @@ try {
     New-Service -Name $serviceName -BinaryPathName ('"' + $serviceExe + '"') -DisplayName "Personal AI Assistant State Broker CI" -StartupType Manual | Out-Null
     $serviceCreated = $true
     $sc = Get-Command sc.exe -ErrorAction Stop
-    $serviceConfigOutput = & $sc.Source config $serviceName 'obj=' 'NT AUTHORITY\LocalService' 'start=' 'demand' 2>&1
+    $serviceConfigOutput = & $sc.Source config $serviceName 'obj=' $localServiceAccount 'start=' 'demand' 2>&1
     if ($LASTEXITCODE -ne 0) {
-        throw "Could not configure the test broker to run as LocalService: $($serviceConfigOutput -join ' ')"
+        throw "Could not configure the test broker to run under its restricted service identity: $($serviceConfigOutput -join ' ')"
     }
     Start-Service -Name $serviceName -ErrorAction Stop
     $service = Get-Service -Name $serviceName -ErrorAction Stop
@@ -715,7 +718,7 @@ assert request("GET", "/v1/tasks/archived")["tasks"][0]["status"] == "restored"
         $fakeServer.Dispose()
     }
 
-    Write-Host "Live LocalService broker, Python overlapped pipe client, progress, diagnostics, pending-work conflict, safe cleanup, and PowerShell timeout tests passed."
+    Write-Host "Live restricted broker service, Python overlapped pipe client, progress, diagnostics, pending-work conflict, safe cleanup, and PowerShell timeout tests passed."
 } finally {
     $running = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
     if ($running -and $running.Status -eq "Running") {
