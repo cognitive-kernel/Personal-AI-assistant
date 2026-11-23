@@ -58,6 +58,11 @@ def test_windows_broker_setup_discovers_runner_identity_and_path():
     assert '$hostExecutable = Join-Path $PSHOME $hostExecutableName' in ensure
     assert 'Start-Process -FilePath $hostExecutable' in ensure
     assert '"The current PowerShell host executable could not be resolved from PSHOME' in ensure
+    assert '$previousModulePath = $env:PSModulePath' in ensure
+    assert '$env:PSModulePath = Join-Path $PSHOME "Modules"' in ensure
+    assert '$env:PSModulePath = $previousModulePath' in ensure
+    assert ensure.index('$env:PSModulePath = Join-Path $PSHOME "Modules"') < ensure.index('Start-Process -FilePath $hostExecutable')
+    assert ensure.index('Start-Process -FilePath $hostExecutable') < ensure.index('$env:PSModulePath = $previousModulePath')
     assert "$modifySids = @($brokerServiceSid)" in ensure
     assert "$modifySids += $runner.Sid" in ensure
     assert "foreach ($runner in $allRunnerServices)" in ensure
