@@ -817,13 +817,40 @@ jobs:
           or complete for project progress until its PR is merged and post-merge evidence is recorded.
           '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\codex-prompt.md"
 
-      - name: Recheck durable pause state immediately before task start
+      - name: Recheck live durable pause state after concurrency admission
         id: pause
         env:
-          PAUSED: ${{ vars.AUTONOMOUS_ENGINEERING_PAUSED || 'false' }}
+          GH_TOKEN: ${{ github.token }}
         shell: powershell
         run: |
-          $paused = ([string]$env:PAUSED).ToLowerInvariant() -eq "true"
+          $ErrorActionPreference = "Stop"
+          $headers = @{
+            Accept = "application/vnd.github+json"
+            Authorization = "Bearer $env:GH_TOKEN"
+            "X-GitHub-Api-Version" = "2022-11-28"
+          }
+          $uri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"
+          try {
+            $variable = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers -TimeoutSec 15
+            $value = ([string]$variable.value).ToLowerInvariant()
+            if ($value -notin @("true", "false")) {
+              throw "The durable pause variable returned an invalid value."
+            }
+            $paused = $value -eq "true"
+          } catch {
+            $statusCode = 0
+            try {
+              if ($null -ne $_.Exception.Response -and $null -ne $_.Exception.Response.StatusCode) {
+                $statusCode = [int]$_.Exception.Response.StatusCode
+              }
+            } catch {}
+            if ($statusCode -eq 404) {
+              # An unset repository variable has the documented default false.
+              $paused = $false
+            } else {
+              throw "Could not verify the current durable pause state (HTTP $statusCode). Failing closed; no new task will start."
+            }
+          }
           "paused=$($paused.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           if ($paused) { Write-Host "Safe pause is active; no new engineering task will start." }
 
