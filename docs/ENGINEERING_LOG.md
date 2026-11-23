@@ -2463,3 +2463,8 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 
 - Consolidated the capability-only PowerShell probe, net48 prebuilt Broker package, .NET 4.8+ preflight, package-based live service test under Desktop/Core, and CI provenance attestation into the final validation branch.
 - The exact-head workflow is being retriggered from a unique PR head so its Windows package artifact can be committed and compared against a fresh deterministic build. The PR remains Draft; no merge or target-host mutation is authorized by this validation step.
+
+
+### 2026-11-23 — Pin released .NET 11 SDK to match the validated package build
+
+- The earlier successful package build used SDK `11.0.100`, which is the released .NET 11 SDK (not a preview). The CI pin and `scripts/global.json` now use `11.0.100` so the committed executable can be compared byte-for-byte with the same compiler output. .NET 11.0 was released on November 10, 2026 and is supported as an STS release through November 2028. <https://dotnet.microsoft.com/en-us/download/dotnet/latest>
