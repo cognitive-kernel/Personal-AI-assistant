@@ -155,8 +155,7 @@ function Set-AutonomousDirectoryTreeAcl {
         Set-Acl -LiteralPath $Item.FullName -AclObject $acl -ErrorAction Stop
 
         $verified = Get-Acl -LiteralPath $Item.FullName -ErrorAction Stop
-        $verifiedOwnerSid = ([Security.Principal.NTAccount]$verified.Owner).
-            Translate([Security.Principal.SecurityIdentifier]).Value
+        $verifiedOwnerSid = ([Security.Principal.NTAccount]$verified.Owner).Translate([Security.Principal.SecurityIdentifier]).Value
         if ($verifiedOwnerSid -ne $OwnerSid) {
             throw "Could not transfer ownership of '$($Item.FullName)' to the broker service identity."
         }
