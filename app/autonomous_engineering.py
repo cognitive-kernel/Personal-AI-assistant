@@ -1014,7 +1014,7 @@ def resume_autonomous_engineering(request: Request = None) -> dict[str, Any]:
         raise HTTPException(status_code=502, detail="ثبت ادامه در GitHub ناموفق بود.")
     try:
         dispatched = _run(
-            [gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main", "--field", f"correlation_id={correlation_id}"],
+            [gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main", "--field", f"correlation_id={correlation_id}", "--field", "resume_once=true"],
             timeout=20,
             raise_os_error=True,
         )
