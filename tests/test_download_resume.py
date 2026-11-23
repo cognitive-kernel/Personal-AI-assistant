@@ -447,67 +447,31 @@ def test_github_asset_redirect_handler_allows_github_release_asset_host():
     assert redirected.full_url.startswith("https://release-assets.githubusercontent.com/")
 
 
-def test_linux_installer_is_pinned_to_the_verified_release_tag(tmp_path, monkeypatch):
-    installer_path = tmp_path / "ollama-install.sh"
+def test_linux_startup_does_not_download_or_run_an_ollama_installer(tmp_path, monkeypatch):
     monkeypatch.setenv("SETTINGS_DB_PATH", str(tmp_path / "missing-settings.db"))
-    release = {
-        "tag": "v0.40.13",
-        "assets": {
-            "install.sh": {
-                "url": "https://github.com/ollama/ollama/releases/download/v0.40.13/install.sh",
-                "sha256": "a" * 64,
-                "size": 15902,
-            },
-            "ollama-linux-amd64.tar.zst": {
-                "url": "https://github.com/ollama/ollama/releases/download/v0.40.13/ollama-linux-amd64.tar.zst",
-                "sha256": "b" * 64,
-                "size": 123456,
-            },
-        },
-    }
-    calls = []
-    find_results = iter([None, "/usr/bin/ollama"])
-
-    verified_installer_path = tmp_path / "ollama-install-verified.sh"
     monkeypatch.setattr(installer.platform, "system", lambda: "Linux")
-    monkeypatch.setattr(installer.platform, "machine", lambda: "x86_64")
-    monkeypatch.setattr(installer, "_patch_linux_install_script", lambda _path: verified_installer_path)
-    monkeypatch.setattr(installer, "_find_ollama", lambda: next(find_results))
-    monkeypatch.setattr(installer, "_latest_ollama_release_assets", lambda: release)
+    monkeypatch.setattr(installer, "_configured_llm_provider", lambda _purpose: "ollama")
+    monkeypatch.setattr(installer, "_read_saved_setting", lambda _key, default: default)
+    monkeypatch.setattr(installer, "_find_ollama", lambda: None)
+    monkeypatch.setattr(
+        installer,
+        "_latest_ollama_release_assets",
+        lambda: pytest.fail("Startup must not retrieve release metadata."),
+    )
     monkeypatch.setattr(
         installer,
         "_download_once",
-        lambda url, destination, **kwargs: (
-            calls.append((url, destination, kwargs)) or installer_path
-        ),
+        lambda *_args, **_kwargs: pytest.fail("Startup must not download an installer."),
     )
-
-    def fake_run(command, *, cwd=installer.ROOT, env=None):
-        calls.append((command, env))
-        return subprocess.CompletedProcess(command, 0, "", "")
-
-    monkeypatch.setattr(installer, "_run", fake_run)
     monkeypatch.setattr(
-        installer.subprocess,
-        "run",
-        lambda command, **kwargs: subprocess.CompletedProcess(
-            command, 0, "NAME ID SIZE\nqwen2.5:7b abc 1GB\ngpt-oss:20b def 13GB\n", ""
-        ),
+        installer,
+        "_run",
+        lambda *_args, **_kwargs: pytest.fail("Startup must not run an installer."),
     )
 
-    installer._ensure_ollama()
+    with pytest.raises(RuntimeError, match="Ollama نصب نیست"):
+        installer._ensure_ollama()
 
-    install_call = next(item for item in calls if isinstance(item[0], list))
-    assert install_call[0] == ["sh", str(verified_installer_path)]
-    assert install_call[1]["OLLAMA_VERSION"] == "0.40.13"
-    assert install_call[1]["OLLAMA_VERIFIED_ASSET_DIR"].endswith("ollama-release-assets")
-    assert install_call[1]["OLLAMA_VERIFIED_PYTHON"] == installer.sys.executable
-    pinned = json.loads(install_call[1]["OLLAMA_VERIFIED_RELEASE_ASSETS_JSON"])
-    assert pinned["tag"] == "v0.40.13"
-    assert "ollama-linux-amd64.tar.zst" in pinned["assets"]
-    download_call = next(item for item in calls if isinstance(item[0], str))
-    assert download_call[2]["expected_sha256"] == "a" * 64
-    assert download_call[2]["expected_size"] == 15902
 
 @pytest.mark.skipif(shutil.which("sh") is None, reason="POSIX shell is required for Linux installer syntax validation")
 def test_linux_installer_patch_replaces_second_stage_curl_with_verified_helper(tmp_path):
