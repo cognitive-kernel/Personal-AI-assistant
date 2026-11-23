@@ -50,7 +50,9 @@ The autonomous-engineering status API preserves the installed-model inventory fr
 5. From an elevated PowerShell window in the repository checkout, provision the Runner and machine state broker in one operation:
 
    ```powershell
-   powershell -ExecutionPolicy Bypass -File .\\scripts\\provision_autonomous_runner.ps1 -Repository "cognitive-kernel/Personal-AI-assistant"
+   $powerShellHost = (Get-Process -Id $PID -ErrorAction Stop).Path
+   if ([string]::IsNullOrWhiteSpace($powerShellHost)) { throw "Could not resolve the active PowerShell host executable." }
+   & $powerShellHost -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\\scripts\\provision_autonomous_runner.ps1 -Repository "cognitive-kernel/Personal-AI-assistant"
    ```
 
    For an existing installation, the script discovers the registered Runner service, reads its actual `StartName`, and derives its installation root from `RunnerService.exe`; `-RunnerAccount`, `-RunnerName`, and `-RunnerRoot` are optional overrides, not required fixed values. If no Runner exists, it generates a machine/repository-scoped non-admin local service-account name and uses the operating system's shared application-data root rather than a hard-coded drive path. If more than one Runner installation is detected, it stops and asks for an explicit `-RunnerRoot` rather than selecting one arbitrarily.
@@ -64,14 +66,18 @@ The autonomous-engineering status API preserves the installed-model inventory fr
 7. From any Windows account that will launch the application, run the app-side readiness check:
 
    ```powershell
-   powershell -ExecutionPolicy Bypass -File .\\scripts\\check_autonomous_agent.ps1
+   $powerShellHost = (Get-Process -Id $PID -ErrorAction Stop).Path
+   if ([string]::IsNullOrWhiteSpace($powerShellHost)) { throw "Could not resolve the active PowerShell host executable." }
+   & $powerShellHost -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\\scripts\\check_autonomous_agent.ps1
    ```
 
    This checks the local Ollama endpoint/model, that account's GitHub CLI authentication, Runner.Listener visibility, and the machine broker's storage health. No app-account filesystem ACL or fixed application username is required. Pass the exact saved model via `-SelectedModel <saved-model>`. It intentionally does not require Codex CLI to be installed in the application session.
 8. From the Runner service account, run the Runner-side check from its checked-out workspace:
 
    ```powershell
-   powershell -ExecutionPolicy Bypass -File .\\scripts\\check_autonomous_runner.ps1
+   $powerShellHost = (Get-Process -Id $PID -ErrorAction Stop).Path
+   if ([string]::IsNullOrWhiteSpace($powerShellHost)) { throw "Could not resolve the active PowerShell host executable." }
+   & $powerShellHost -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\\scripts\\check_autonomous_runner.ps1
    ```
 
    This checks that the Runner account is non-administrator, plus Codex CLI, the Ollama loopback API and selected model, Runner.Listener, the Runner's direct write access to the state root, and the LocalService broker's health. Ollama CLI installation and PATH visibility are not Runner prerequisites. Pass the exact saved model via `-SelectedModel <saved-model>`. It does not require or use GitHub CLI authentication. The workflow repeats the critical Runner checks before every Codex session.
