@@ -109,7 +109,7 @@ Browser E2E از APIهای deterministic/stubbed استفاده می‌کند و
 - [x] Broker installation is a separate loopback-protected POST action initiated by the dashboard button. The button remains hidden when health is verified and reports structured outcomes for missing host, UAC cancellation, timeout, install failure, and post-install health failure.
 - [x] Runner is not a prerequisite for Broker or local dashboard readiness; it remains a separate capability for remote Workflow execution.
 - [x] Ollama startup preflight is read-only; it does not download/run the installer, start the service, or pull models. The dashboard remains available in limited mode when Ollama or a configured model is missing.
-- [x] UI and API regressions cover the explicit setup action, readiness refresh, error metadata, and long bounded request timeout.
+- [x] UI and API regressions cover the explicit setup action, readiness refresh, structured errors, long bounded request timeout, and OS-level cross-process setup lock.
 - [ ] Exact-head Linux/Windows full suite, Windows storage package/LocalService/named-pipe/ACL/checkpoint regressions, Browser E2E, CodeQL and dependency audit for the final branch head.
 - [ ] Windows target-host acceptance: non-admin launch, explicit UAC install/repair, LocalService health, two independent non-admin app accounts, Runner present/absent, restart, and durable checkpoint preservation.
 - [ ] PowerShell-free native service-control/ACL helper and Linux/macOS/architecture/relocation conformance remain open; the current Windows adapter still requires a capability-compatible PowerShell host and .NET Framework 4.8+ runtime.
