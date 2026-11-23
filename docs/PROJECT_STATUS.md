@@ -557,3 +557,18 @@ The subsequent documentation-only evidence update does not change runtime code a
 - اصلاح Windows byte-range lock و دو اصلاح تست در branch جایگزین `fix/autonomous-engineering-first-module-validation-20261122` از همان head آماده شده‌اند؛ قبل از بازکردن PR جایگزین، CI دقیق اجرا نشده است.
 - PR #823 نیز اصلاح نهایی pause/cancel هنگام ثبت وضعیت discovery را در branch خود دارد؛ CI دقیق آن اجرا نشده است.
 - هیچ‌یک از این تغییرات merge نشده‌اند. اجرای Runner/Ollama/Codex واقعی، crash/restart و تأیید Windows target و مالک همچنان gateهای باز هستند.
+
+
+## 2026-11-23 — exact-head CI نتیجه و وضعیت پذیرش محلی
+
+- کد اصلاح‌شده در SHA `d993038033d5d15cca4a4a6c63c979c081c89aad` روی PR #846 بررسی شد؛ همهٔ workflowهای CI روی همین SHA موفق شدند.
+- Ubuntu: 2,555 passed، 14 skipped، 78 deselected در 285.03 ثانیه؛ run #45131387511.
+- Windows: 2,550 passed، 19 skipped، 78 deselected در 677.79 ثانیه؛ run #45131387511.
+- Windows storage regressions: موفق؛ parse همهٔ PowerShellها، کامپایل Broker، ACL بازگشتی، LocalService named-pipe، هویت Windows، checkpoint/lock و SQLite restore؛ run #45131387511.
+- Browser E2E: موفق؛ صفحه و ۶ فایل UI با HTTP 200، بدون console/page/failed-request/unexpected-HTTP errors؛ run #45131387286، artifact #14797757907.
+- CodeQL: موفق، run #45131387204. Dependency audit: موفق، run #45131387210. Python bootstrap در Windows/Ubuntu/macOS نیز موفق، run #45131387511.
+- PR #847 صرفاً mirror موقت برای اجرای workflowهای PR بود؛ پس از تکمیل بررسی بسته شد و branch آن حذف نشد. PR اصلی #846 همچنان Draft و باز است.
+- این به‌روزرسانی مستندات پس از CI فقط وضعیت و شواهد را ثبت می‌کند؛ هیچ کد اجرایی پس از SHA d993 تغییر نکرده است.
+- پذیرش روی Windows واقعی کاربر هنوز pending است: اجرای عادی از حساب غیرادمین، UAC، Broker با Runner موجود و فایل .runner غیرقابل‌خواندن، نبود Runner، UI محلی، Ollama/Codex و dispatch واقعی. تا ثبت این شواهد، PR #846 merge نمی‌شود.
+
+---
