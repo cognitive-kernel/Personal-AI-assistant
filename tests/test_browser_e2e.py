@@ -6324,8 +6324,23 @@ def test_autonomous_engineering_custom_request_timeout_and_trace_artifact():
                   message: error.message
                 })
               );
+              let longTimeoutAccepted = false;
+              let longTimeoutOptionForwarded = null;
+              window.fetch = async (_url, options) => {
+                longTimeoutOptionForwarded = Object.prototype.hasOwnProperty.call(options, "timeoutMs");
+                return {
+                  ok: true,
+                  headers: new Headers(),
+                  json: async () => ({ready: true})
+                };
+              };
+              await window.autonomousEngineeringCore.request(
+                "broker/setup", {method: "POST", timeoutMs: 300000}
+              );
+              longTimeoutAccepted = true;
               window.fetch = originalFetch;
-              return {...outcome, aborted, forwardedTimeoutOption, sentCorrelationId, networkFailure, elapsedMs: performance.now() - started};
+              return {...outcome, aborted, forwardedTimeoutOption, sentCorrelationId, networkFailure,
+                longTimeoutAccepted, longTimeoutOptionForwarded, elapsedMs: performance.now() - started};
             }""")
             assert result["completed"] is True, "The custom request timeout was ignored."
             assert result["aborted"] is True, "The request AbortController did not fire."
@@ -6341,6 +6356,8 @@ def test_autonomous_engineering_custom_request_timeout_and_trace_artifact():
             assert isinstance(network_failure["correlationId"], str) and len(network_failure["correlationId"]) == 32
             assert network_failure["correlationId"] in network_failure["message"]
             assert result["elapsedMs"] < 500
+            assert result["longTimeoutAccepted"] is True
+            assert result["longTimeoutOptionForwarded"] is False
             assert diagnostics["page_errors"] == []
             page.screenshot(path=str(screenshot_path), full_page=True)
         finally:
