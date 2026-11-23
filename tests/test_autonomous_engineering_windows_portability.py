@@ -346,7 +346,7 @@ def test_windows_broker_installer_uses_verified_prebuilt_binary_without_target_c
     assert 'upload-artifact@v4' in workflow
     assert 'windows-state-broker-package' in workflow
     assert 'Exercise the packaged broker under Windows PowerShell Desktop' in workflow
-    assert workflow.count('Get-AutonomousDotNetFrameworkRelease') >= 2
+    assert workflow.count('Test-AutonomousDotNetFramework48') >= 2
     assert '$PSVersionTable.PSEdition' in workflow
     live_test = _read("scripts/test_autonomous_state_broker_service.ps1")
     assert 'PersonalAIAssistant.StateBroker.exe' in live_test
