@@ -1,5 +1,10 @@
 Set-StrictMode -Version Latest
 
+# Get-Acl and Set-Acl are exported by this built-in module. Import it in this
+# module scope so scriptblocks used during protected ACL reconciliation do
+# not depend on implicit module auto-loading in an elevated PowerShell process.
+Import-Module Microsoft.PowerShell.Security -ErrorAction Stop
+
 function ConvertTo-AutonomousWindowsAccountName {
     [CmdletBinding()]
     param([Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$AccountName)
