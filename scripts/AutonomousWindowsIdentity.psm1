@@ -38,6 +38,21 @@ function Get-AutonomousWindowsAccountSid {
     }
 }
 
+function Get-AutonomousWindowsWellKnownSid {
+    [CmdletBinding()]
+    param([Parameter(Mandatory=$true)][Security.Principal.WellKnownSidType]$SidType)
+
+    return ([Security.Principal.SecurityIdentifier]::new($SidType, $null)).Value
+}
+
+function Get-AutonomousWindowsWellKnownAccountName {
+    [CmdletBinding()]
+    param([Parameter(Mandatory=$true)][Security.Principal.WellKnownSidType]$SidType)
+
+    $sid = [Security.Principal.SecurityIdentifier]::new($SidType, $null)
+    return $sid.Translate([Security.Principal.NTAccount]).Value
+}
+
 function Set-AutonomousDirectoryAcl {
     [CmdletBinding()]
     param(
@@ -204,4 +219,4 @@ function Set-AutonomousDirectoryTreeAcl {
     }
 }
 
-Export-ModuleMember -Function ConvertTo-AutonomousWindowsAccountName, Get-AutonomousLocalAccountName, Get-AutonomousWindowsAccountSid, Set-AutonomousDirectoryAcl, Set-AutonomousDirectoryTreeAcl
+Export-ModuleMember -Function ConvertTo-AutonomousWindowsAccountName, Get-AutonomousLocalAccountName, Get-AutonomousWindowsAccountSid, Get-AutonomousWindowsWellKnownSid, Get-AutonomousWindowsWellKnownAccountName, Set-AutonomousDirectoryAcl, Set-AutonomousDirectoryTreeAcl
