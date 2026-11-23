@@ -11,31 +11,32 @@ function Install-AutonomousStateBrokerService {
     $serviceExe = Join-Path $serviceRoot "PersonalAIAssistant.StateBroker.exe"
     $temporaryExe = Join-Path $serviceRoot ("broker-build-" + [guid]::NewGuid().ToString("N") + ".exe")
 
-    $frameworkCandidates = @(
-        (Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319"),
-        (Join-Path $env:WINDIR "Microsoft.NET\Framework\v4.0.30319")
-    )
-    $frameworkRoot = $frameworkCandidates | Where-Object {
-        Test-Path -LiteralPath (Join-Path $_ "csc.exe") -PathType Leaf
-    } | Select-Object -First 1
-    if (-not $frameworkRoot) {
-        throw ".NET Framework C# compiler is required to install the local state broker."
+    # The target host receives a prebuilt, CI-produced broker. Never require a
+    # C# compiler, SDK, IDE, or developer toolchain during installation.
+    $packageRoot = Join-Path $PSScriptRoot "bin"
+    $packagedExe = Join-Path $packageRoot "PersonalAIAssistant.StateBroker.exe"
+    $hashFile = $packagedExe + ".sha256"
+    if (-not (Test-Path -LiteralPath $packagedExe -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $hashFile -PathType Leaf)) {
+        throw "The prebuilt Windows state broker package or its SHA-256 manifest is missing."
     }
-    $compiler = Join-Path $frameworkRoot "csc.exe"
-    $references = @("System.ServiceProcess.dll", "System.Core.dll", "System.Web.Extensions.dll")
-    $pipeAccessAssembly = Join-Path $frameworkRoot "System.IO.Pipes.AccessControl.dll"
-    if (Test-Path -LiteralPath $pipeAccessAssembly -PathType Leaf) {
-        $references += "System.IO.Pipes.AccessControl.dll"
+    $expectedHash = (Get-Content -LiteralPath $hashFile -Raw -ErrorAction Stop).Trim()
+    if ($expectedHash -notmatch '^[0-9a-fA-F]{64}$') {
+        throw "The packaged Windows state broker SHA-256 manifest is malformed."
     }
-    $compileArguments = @("/nologo", "/target:exe", "/out:$temporaryExe")
-    foreach ($reference in $references) {
-        $compileArguments += "/reference:" + (Join-Path $frameworkRoot $reference)
+    $packageHash = (Get-FileHash -LiteralPath $packagedExe -Algorithm SHA256 -ErrorAction Stop).Hash
+    if (-not [string]::Equals($packageHash, $expectedHash, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "The packaged Windows state broker failed SHA-256 verification; installation was refused."
     }
-    $compileArguments += $serviceSource
-    & $compiler @compileArguments
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $temporaryExe -PathType Leaf)) {
+    try {
+        Copy-Item -LiteralPath $packagedExe -Destination $temporaryExe -Force -ErrorAction Stop
+        $copiedHash = (Get-FileHash -LiteralPath $temporaryExe -Algorithm SHA256 -ErrorAction Stop).Hash
+        if (-not [string]::Equals($copiedHash, $expectedHash, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "The staged Windows state broker binary failed SHA-256 verification."
+        }
+    } catch {
         Remove-Item -LiteralPath $temporaryExe -Force -ErrorAction SilentlyContinue
-        throw "Could not compile the local Windows state broker; the Runner and existing state were not replaced."
+        throw
     }
 
     $existing = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
