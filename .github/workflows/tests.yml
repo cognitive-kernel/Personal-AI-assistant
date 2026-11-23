@@ -167,8 +167,7 @@ jobs:
           if (`$PSVersionTable.PSEdition -ne "Desktop") { throw "The probe must run under Windows PowerShell 5.1." }
           Import-Module '$repo\scripts\AutonomousWindowsIdentity.psm1' -Force -ErrorAction Stop
           Import-Module '$repo\scripts\AutonomousStateBrokerInstall.psm1' -Force -ErrorAction Stop
-          $frameworkRelease = Get-AutonomousDotNetFrameworkRelease
-          if ($frameworkRelease -lt 528040) { throw "The Windows runner must expose .NET Framework 4.8 or later." }
+          if (-not (Test-AutonomousDotNetFramework48)) { throw "The Windows runner must expose .NET Framework 4.8 or later." }
           if (-not (Get-Command Get-Acl -ErrorAction SilentlyContinue)) { throw "Get-Acl was not imported." }
           if (-not (Get-Command Set-Acl -ErrorAction SilentlyContinue)) { throw "Set-Acl was not imported." }
           Write-Output "Windows PowerShell 5.1 security module import passed with inherited PowerShell 7 paths."
