@@ -1090,112 +1090,29 @@ def _find_compatible_powershell() -> tuple[str, str] | None:
 
 
 def _ensure_state_broker() -> bool:
-    """Check/install the machine broker through the native platform adapter."""
-    system = platform.system()
-    from app.autonomous_engineering_state_broker import health, request
-
-    if health(timeout_ms=30000, verify=True):
-        return True
-
-    if system == "Windows":
-        script = ROOT / "scripts" / "ensure_autonomous_state_broker.ps1"
-        if not script.is_file():
-            print(
-                "فضای پیشرفت مشترک در دسترس نیست؛ اسکریپت نصب Broker پیدا نشد.",
-                file=sys.stderr,
-                flush=True,
-            )
-            return False
-        powershell = _find_compatible_powershell()
-        if not powershell:
-            print(
-                "PowerShell سازگار پیدا نشد؛ Broker نصب نشد و برنامه در حالت محدود ادامه می‌یابد.",
-                file=sys.stderr,
-                flush=True,
-            )
-            return False
-        executable, runtime = powershell
-        print(
-            f"بررسی فضای پیشرفت مشترک: Broker آماده نیست؛ راه‌اندازی امن با {runtime} "
-            "و درخواست مجوز مدیر ...",
-            flush=True,
-        )
-        command = [
-            executable, "-NoLogo", "-NoProfile", "-NonInteractive",
-            "-ExecutionPolicy", "Bypass", "-File", str(script)
-        ]
-        capture_output = True
-    elif system in {"Linux", "Darwin"}:
-        script = ROOT / "scripts" / "ensure_autonomous_state_broker_posix.py"
-        if not script.is_file():
-            print("راه‌انداز Broker بومی POSIX پیدا نشد؛ برنامه در حالت محدود اجرا می‌شود.", file=sys.stderr, flush=True)
-            return False
-        print(
-            "بررسی فضای پیشرفت مشترک: Broker آماده نیست؛ راه‌اندازی سرویس محلی با تأیید مدیر سیستم ...",
-            flush=True,
-        )
-        command = [sys.executable, str(script)]
-        # sudo may need to prompt in the terminal; do not capture or suppress it.
-        capture_output = False
-    else:
-        print(
-            f"Broker مشترک برای سیستم‌عامل {system} پیاده‌سازی نشده است؛ برنامه در حالت محدود اجرا می‌شود.",
-            file=sys.stderr,
-            flush=True,
-        )
-        return False
+    """Perform a read-only broker health check; never elevate or mutate at startup."""
+    from app.autonomous_engineering_state_broker import health
 
     try:
-        result = subprocess.run(
-            command,
-            cwd=ROOT,
-            text=True,
-            capture_output=capture_output,
-            timeout=300,
-            check=False,
-            shell=False,
-        )
-    except subprocess.TimeoutExpired:
-        print("راه‌اندازی Broker در مهلت ۵ دقیقه کامل نشد؛ برنامه در حالت محدود اجرا می‌شود.", file=sys.stderr, flush=True)
-        return False
-    except OSError as exc:
-        print(f"اجرای راه‌انداز Broker ناموفق بود: {type(exc).__name__}؛ برنامه در حالت محدود اجرا می‌شود.", file=sys.stderr, flush=True)
-        return False
-
-    if capture_output:
-        if result.stdout:
-            print(result.stdout, end="" if result.stdout.endswith("\n") else "\n", flush=True)
-        if result.stderr:
-            print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n", flush=True)
-    if result.returncode != 0:
-        if system == "Windows":
-            log_path = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "PersonalAIAssistant" / "Logs" / "state-broker-setup.log"
-            print(f"گزارش تشخیصی Broker (در صورت ایجادشدن): {log_path}", file=sys.stderr, flush=True)
+        ready = health(timeout_ms=30000, verify=True)
+    except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
         print(
-            "سرویس فضای پیشرفت مشترک نصب/ترمیم نشد؛ برنامه در حالت محدود اجرا می‌شود. "
-            "تأیید مجوز مدیر و گزارش راه‌انداز را بررسی کنید.",
+            f"فضای ثبت پیشرفت پایدار آماده نیست ({type(exc).__name__})؛ "
+            "رابط محلی در حالت محدود اجرا می‌شود. برای نصب/ترمیم، اقدام صریح را از صفحهٔ مهندسی اجرا کنید.",
             file=sys.stderr,
             flush=True,
         )
         return False
-    if not health(timeout_ms=30000, verify=True):
-        try:
-            detail = request("GET", "/v1/health/verify", timeout_ms=30000)
-            safe_fields = {
-                key: detail.get(key)
-                for key in ("ready", "storage_ready", "acl_ready", "acl_reason", "schema_version")
-                if isinstance(detail, dict) and key in detail
-            }
-            print(f"جزئیات سلامت Broker: {safe_fields}", file=sys.stderr, flush=True)
-        except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
-            print(
-                f"Broker پس از نصب از Named Pipe پاسخ نداد: {type(exc).__name__}: {str(exc)[:240]}",
-                file=sys.stderr,
-                flush=True,
-            )
-        print("Broker پس از نصب از کانال محلی پاسخ سالم نداد؛ برنامه در حالت محدود اجرا می‌شود.", file=sys.stderr, flush=True)
+    if not ready:
+        print(
+            "سرویس Broker آماده نیست؛ هیچ نصب، تغییر ACL یا درخواست UAC در زمان شروع برنامه انجام نشد. "
+            "برای راه‌اندازی، از کنترل صریح صفحهٔ مهندسی استفاده کنید.",
+            file=sys.stderr,
+            flush=True,
+        )
         return False
     return True
+
 
 def main() -> int:
     if sys.version_info < MIN_PYTHON:
