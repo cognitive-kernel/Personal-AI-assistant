@@ -163,8 +163,8 @@
 6. dispatch چرخهٔ بدون task و task دستی معتبر/نامعتبر/طولانی.
 7. double click، refresh حین dispatch، دو tab و concurrent dispatch.
 8. پاسخ‌های 400/401/403/409/422/429/500/502/503، timeout و قطع شبکه.
-10. نبود اینترنت، GitHub credential، Runner، Ollama، مدل، ChatGPT/browser، Docker، GPU و هر integration به‌صورت مستقل؛ اثبات ادامهٔ کار core و featureهای نامرتبط.
-9. اجرای فعال، queued، waiting، completed، failed و cancelled.
+9. نبود اینترنت، GitHub credential، Runner، Ollama، مدل، ChatGPT/browser، Docker، GPU و هر integration به‌صورت مستقل؛ اثبات ادامهٔ کار core و featureهای نامرتبط.
+10. اجرای فعال، queued، waiting، completed، failed و cancelled.
 11. progress eventهای متوالی، ناقص، تکراری و out-of-order.
 12. pause/resume/cancel با state مجاز و غیرمجاز.
 13. run history، pagination/empty/error، لینک GitHub و stale run.
