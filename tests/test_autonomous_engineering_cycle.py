@@ -1954,8 +1954,6 @@ def test_cycle_controller_allows_explicit_one_shot_resume_in_scheduled_mode(monk
 def test_cycle_controller_blocks_unmarked_empty_dispatch_in_scheduled_mode(monkeypatch):
     from contextlib import contextmanager
 
-    events = []
-
     @contextmanager
     def fake_lock(run_id, run_attempt):
         yield
