@@ -332,3 +332,12 @@ The current `main` SHA `2a5c83bf0ba924f4a2c8f206338a04872562d72d` has completed 
 - D: modular UI و stale-response/polling protections در #836؛ exact-head CI پس از follow-up pending.
 - E: Chromium deterministic coverage و trace/screenshot/diagnostic artifact در head جدید؛ CI pending.
 - G/H/J: Windows target-host، crash/restart و owner acceptance pending؛ CI به‌تنهایی تکمیل عملیاتی نیست.
+
+
+## 2026-11-23 — CI evidence update
+
+- PR #846 code SHA `d993038033d5d15cca4a4a6c63c979c081c89aad` passed Ubuntu full tests (2,555 passed), Windows full tests (2,550 passed), Windows storage regressions, Browser E2E, CodeQL, dependency audit, and Python bootstrap on Windows/Ubuntu/macOS.
+- This closes repository CI validation for the current implementation, not local-host acceptance. The real Windows non-admin UI, protected Runner registration, no-Runner install, real Ollama/Codex, workflow dispatch, pause/resume/cancel and crash/restart gates remain open.
+- PR #846 remains Draft; temporary verification PR #847 was closed without merge and its branch retained.
+
+---
