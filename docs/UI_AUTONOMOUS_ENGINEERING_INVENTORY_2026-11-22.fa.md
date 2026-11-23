@@ -57,12 +57,13 @@ UI مستقیماً فایل‌های durable، checkpoint یا Runner را تغ
 |---|---|---|
 | Ready + no pending work | dispatch task جدید یا چرخهٔ صف | queued/in_progress پس از تأیید GitHub |
 | Active workflow | مشاهده progress/log؛ cancel اضطراری | completed یا cancelled |
-| Paused | dispatch جدید ممنوع | resume، که pause variable را پاک و workflow را dispatch می‌کند |
+| Paused | dispatch جدید و recovery ممنوع؛ task جاری تا مرز امن ادامه می‌یابد | resume، که pause variable را پاک و workflow را با resume_once=true dispatch می‌کند |
 | Pending task/owner/PR/cleanup | task جدید ممنوع؛ فقط reconcile/ادامهٔ همان کار | پس از تعیین‌تکلیف durable blocker به Ready |
 | Verified checkpoint | فقط ادامهٔ همان task | restore همان worktree/diff و ادامه |
 | Unverified checkpoint | هیچ dispatch جدیدی مجاز نیست | بررسی مالک/یکپارچگی؛ fail-closed |
 | Completed run | logs و حذف run قدیمی با تأیید | history حذف می‌شود؛ task state مستقل است |
 | Cleanup blocked | cleanup ممنوع | رفع blocker با مالک state broker |
+| Scheduled mode | push/schedule، recovery و empty workflow_dispatch بدون resume_once ممنوع؛ task دستی مجاز | task دستی یا Resume یک‌باره با resume_once=true؛ چرخهٔ بعدی فقط پس از تغییر mode به continuous |
 
 ## 4. reproduction و regressionهای موجود
 
