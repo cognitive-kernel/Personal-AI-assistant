@@ -49,7 +49,7 @@ def _setup_process_lock():
                 status_code=503,
             )
         if os.fstat(descriptor).st_size < 1:
-            os.write(descriptor, b"\\0")
+            os.write(descriptor, b"\0")
             os.fsync(descriptor)
         os.lseek(descriptor, 0, os.SEEK_SET)
 
