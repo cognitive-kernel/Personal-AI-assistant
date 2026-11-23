@@ -2724,6 +2724,10 @@ def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admi
     assert "actions/variables/AUTONOMOUS_ENGINEERING_PAUSED" in gate
     assert "actions/variables/AUTONOMOUS_ENGINEERING_MODE" in gate
     assert "EVENT_NAME" in gate and "RECOVERY_ATTEMPT" in gate
+    assert "RESUME_ONCE" in gate and "unmarkedEmptyDispatch" in gate
+    assert "resume_once:" in workflow
+    assert "AUTONOMOUS_ENGINEERING_RESUME_ONCE:" in workflow
+    assert "AUTONOMOUS_ENGINEERING_MANUAL_TASK:" in workflow
     assert "modeValue -eq \"scheduled\"" in gate
     assert "Invoke-RestMethod -Method Get" in gate
     assert 'Authorization = "Bearer $env:GH_TOKEN"' in gate
