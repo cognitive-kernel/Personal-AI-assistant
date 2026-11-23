@@ -21,16 +21,22 @@ def windows_powershell_candidates(
     which: Callable[[str], str | None] | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> list[str]:
-    """Discover PowerShell executables without pinning an installation version/path."""
+    """Discover Core first, then Desktop, without pinning a major version."""
     system = system or platform.system()
     if system != "Windows":
         return []
 
     which = which or shutil.which
     environ = environ or os.environ
-    candidates: list[str] = []
+    core_candidates: list[str] = []
+    desktop_candidates: list[str] = []
 
-    def add(candidate: str | os.PathLike[str] | None, *, require_file: bool = True) -> None:
+    def add(
+        target: list[str],
+        candidate: str | os.PathLike[str] | None,
+        *,
+        require_file: bool = True,
+    ) -> None:
         if not candidate:
             return
         raw = os.fspath(candidate)
@@ -42,17 +48,21 @@ def windows_powershell_candidates(
         )
         value = raw if is_windows_absolute else os.path.abspath(raw)
         key = os.path.normcase(value)
-        if (not require_file or os.path.isfile(value)) and all(os.path.normcase(item) != key for item in candidates):
-            candidates.append(value)
+        if (
+            (not require_file or os.path.isfile(value))
+            and all(os.path.normcase(item) != key for item in core_candidates + desktop_candidates)
+        ):
+            target.append(value)
 
-    # Prefer PowerShell Core, then the inbox Windows PowerShell compatibility host.
-    for command_name in ("pwsh.exe", "pwsh", "powershell.exe", "powershell"):
+    # PATH is searched separately by edition so a Desktop host on PATH cannot
+    # outrank a Core host registered at a custom installation location.
+    for command_name in ("pwsh.exe", "pwsh"):
         try:
-            add(which(command_name), require_file=False)
+            add(core_candidates, which(command_name), require_file=False)
         except (OSError, ValueError):
             continue
 
-    # Discover all registered PowerShell Core installations. Do not assume
+    # Discover every registered PowerShell Core installation. Do not assume
     # the current major version is installed in a directory named "7".
     try:
         import winreg  # type: ignore[import-not-found]
@@ -61,7 +71,10 @@ def windows_powershell_candidates(
 
     if winreg is not None:
         registry_locations: list[tuple[tuple[int, ...], str]] = []
-        views = [getattr(winreg, "KEY_WOW64_64KEY", 0), getattr(winreg, "KEY_WOW64_32KEY", 0)]
+        views = [
+            getattr(winreg, "KEY_WOW64_64KEY", 0),
+            getattr(winreg, "KEY_WOW64_32KEY", 0),
+        ]
         for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
             for view in dict.fromkeys(views):
                 try:
@@ -81,7 +94,10 @@ def windows_powershell_candidates(
                                         winreg.QueryValueEx(entry, "SemanticVersion")[0]
                                     )
                                 version_match = re.match(r"^(\d+(?:\.\d+)*)", semantic_version)
-                                version = tuple(int(part) for part in version_match.group(1).split(".")) if version_match else ()
+                                version = (
+                                    tuple(int(part) for part in version_match.group(1).split("."))
+                                    if version_match else ()
+                                )
                                 if isinstance(install_location, str) and install_location.strip():
                                     registry_locations.append((version, install_location.strip()))
                             except (OSError, ValueError, TypeError):
@@ -89,16 +105,25 @@ def windows_powershell_candidates(
                 except OSError:
                     continue
         for _version, install_location in sorted(registry_locations, reverse=True):
-            add(Path(install_location) / "pwsh.exe")
+            add(core_candidates, Path(install_location) / "pwsh.exe")
+
+    for command_name in ("powershell.exe", "powershell"):
+        try:
+            add(desktop_candidates, which(command_name), require_file=False)
+        except (OSError, ValueError):
+            continue
 
     # Windows PowerShell is an OS component. Sysnative avoids WOW64
     # redirection when the application itself is 32-bit on 64-bit Windows.
     windir = environ.get("WINDIR") or environ.get("SystemRoot")
     if windir:
         for system_directory in ("Sysnative", "System32", "SysWOW64"):
-            add(Path(windir) / system_directory / "WindowsPowerShell" / "v1.0" / "powershell.exe")
+            add(
+                desktop_candidates,
+                Path(windir) / system_directory / "WindowsPowerShell" / "v1.0" / "powershell.exe",
+            )
 
-    return candidates
+    return core_candidates + desktop_candidates
 
 
 def find_compatible_powershell(
