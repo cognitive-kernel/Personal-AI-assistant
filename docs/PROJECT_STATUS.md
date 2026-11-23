@@ -1,12 +1,13 @@
-## 2026-11-23 — اصلاح portability ماژول مهندسی و Broker (در حال اعتبارسنجی)
+## 2026-11-23 — اصلاح portability ماژول مهندسی و Broker (در انتظار اعتبارسنجی نهایی)
 
-- شاخهٔ نهایی کاری: `fix/autonomous-engineering-broker-portability-final-20261123`؛ مبنا: `main` در SHA `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`. تغییرات هنوز merge نشده‌اند.
-- Stage 1: کشف PowerShell Core از PATH و رجیستری، probe قابلیت/نسخه، fallback به Windows PowerShell، استفاده از executable میزبان جاری برای UAC و repair، ایزوله‌سازی موقت `PSModulePath`، اصلاح GPU telemetry و پیام UI مربوط به Runner.
-- Stage 2: نصب Broker دیگر نباید روی میزبان مصرف‌کننده compile کند. `AutonomousStateBrokerInstall.psm1` اکنون executable بسته‌بندی‌شده را از `scripts/bin` با manifest و تطبیق SHA-256 اعتبارسنجی و stage می‌کند؛ منطق توقف سرویس، جایگزینی اتمیک، rollback، identity و health check حفظ شده است.
-- CI در حال ساخت artifact از `AutonomousStateBrokerService.cs` با پروژهٔ SDK-style هدف `net48` و بستهٔ reference assemblies نسخهٔ ثابت `Microsoft.NETFramework.ReferenceAssemblies.net48` نسخهٔ `1.0.3` است؛ SDK/کامپایلر فقط در CI استفاده می‌شود. artifact و manifest باید پس از ساخت به repository اضافه شوند و سپس CI باید hash بستهٔ commitشده را با build منبع تطبیق دهد.
-- تلاش نخست با `csc.exe` قدیمی .NET Framework به‌علت پشتیبانی‌نکردن از `/deterministic+` شکست خورد؛ تلاش دوم در تشخیص مسیر reference assemblies سخت‌گیرانه بود؛ build اکنون به پروژهٔ SDK-style و بستهٔ NuGet مرجع ثابت منتقل شده است. تا اجرای exact-head CI روی شاخهٔ نهایی و commit شدن artifact، نصب Broker هنوز قابل‌استفاده تلقی نمی‌شود.
-- تست‌های اضافه‌شده/به‌روزشده: کشف PATH و رجیستری، اولویت Core بر Desktop، fallback و رد prerelease، میزبان فعال، module path، UI، GPU fallback، نصب binary hash-verified و CI Windows برای هر دو Edition.
-- پذیرش میزبان واقعی هنوز انجام نشده: نصب elevated، سرویس LocalService، named pipe، حالت Runner حاضر/غایب، اجرای داشبورد non-admin و حفظ Checkpoint/داده پس از restart باید روی Windows هدف تأیید شوند.
+- شاخهٔ انتشار: `fix/autonomous-engineering-broker-portability-release-20261123`؛ مبنا: `main` در SHA `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`. تغییرات هنوز merge نشده‌اند.
+- Stage 1: کشف PowerShell Core از PATH و رجیستری، probe واقعی Edition/Version، رد prerelease، اولویت Core حتی در نصب رجیستری‌شدهٔ خارج از PATH، fallback به Windows PowerShell، استفاده از executable میزبان جاری برای UAC/repair، ایزوله‌سازی موقت `PSModulePath` و اصلاح GPU telemetry و UI.
+- Stage 2: نصب‌کنندهٔ Broker روی میزبان مصرف‌کننده دیگر compile نمی‌کند؛ فقط executable بسته‌بندی‌شده را با SHA-256 اعتبارسنجی و stage می‌کند. قبل از هر تغییر سرویس، وجود .NET Framework 4.8+ و `sc.exe` بررسی می‌شود. جایگزینی اتمیک، rollback، LocalService identity، health check و حفظ state باقی مانده‌اند.
+- Build CI: پروژهٔ SDK-style با هدف `net48`، بستهٔ ثابت `Microsoft.NETFramework.ReferenceAssemblies.net48 1.0.3` و SDK دقیق `10.0.404` (از طریق `scripts/global.json`)؛ هیچ SDK یا compiler روی میزبان مصرف‌کننده لازم نیست. CI artifact و SHA-256 manifest را می‌سازد؛ binary هنوز در repository commit نشده و باید پس از build نهایی اضافه شود. CI نهایی باید build تازه را با hash binary commitشده تطبیق دهد.
+- شواهد CI اولیه: ساخت و upload artifact، تست startup/stop/recovery و fault-injection مربوط به Checkpoint Watcher، probeهای PowerShell 5.1 و Core، ACL و اجرای LocalService broker/named-pipe موفق شدند. دو job تست فقط به‌علت assertion قدیمی دربارهٔ شکل نوشتن مسیر manifest شکست خوردند؛ assertion اصلاح شده است. این runها قبل از شاخهٔ انتشار و SDK pin نهایی بوده‌اند و جایگزین exact-head CI نیستند.
+- تست‌های اضافه‌شده/به‌روزشده: مسیر Core-only، Desktop-only، no-host، کشف رجیستری و اولویت Core، رد prerelease، میزبان واقعی Windows، preflight .NET، UI محدود، package/hash و اجرای همان package زیر هر دو PowerShell Edition.
+- محدودیت‌های صریح: .NET Framework 4.8+ runtime و یک PowerShell سازگار برای نصب سرویس لازم‌اند؛ در نبود PowerShell فقط قابلیت Broker غیرفعال می‌ماند و داشبورد در حالت محدود ادامه می‌دهد. مسیر native/PowerShell-free برای نصب سرویس و امضای provenance artifact هنوز پیاده‌سازی/اعتبارسنجی نشده‌اند.
+- پذیرش میزبان واقعی هنوز انجام نشده: نصب elevated، سرویس LocalService، named pipe، Runner حاضر/غایب، اجرای داشبورد non-admin و حفظ Checkpoint/داده پس از restart باید روی Windows هدف تأیید شوند.
 - هیچ سرویس، ACL، Runner، دیتابیس، task، checkpoint یا دادهٔ durable روی میزبان کاربر تغییر نکرده است.
 
 
