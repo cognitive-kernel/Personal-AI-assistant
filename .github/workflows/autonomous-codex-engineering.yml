@@ -152,6 +152,7 @@ jobs:
       AUTONOMOUS_ENGINEERING_REQUIRE_MACHINE_STATE_DIR: 'true'
       AUTONOMOUS_ENGINEERING_CORRELATION_ID: ${{ inputs.correlation_id || '' }}
       AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT: ${{ inputs.recovery_attempt || 0 }}
+      AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT: ${{ inputs.recovery_attempt || 0 }}
     steps:
       - name: Check out trusted main branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
