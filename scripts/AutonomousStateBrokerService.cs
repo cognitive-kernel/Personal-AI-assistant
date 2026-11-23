@@ -33,6 +33,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
     private bool _lastHealth;
     private bool _lastStorageHealth;
     private bool _lastAclHealth;
+    private string _lastAclFailureReason = "not_checked";
     private DateTime _lastHealthAt = DateTime.MinValue;
     private Thread[] _workers;
 
@@ -240,6 +241,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                 { "ready", ready },
                 { "storage_ready", _lastStorageHealth },
                 { "acl_ready", _lastAclHealth },
+                { "acl_reason", _lastAclFailureReason },
                 { "service", ServiceName },
                 { "schema_version", 1 }
             });
@@ -909,11 +911,17 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             EnvironmentVariableTarget.Machine
         );
         if (String.IsNullOrWhiteSpace(configured))
+        {
+            _lastAclFailureReason = "expected_sid_manifest_missing";
             return null;
+        }
 
         string[] entries = configured.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
         if (entries.Length < 1 || entries.Length > 64)
+        {
+            _lastAclFailureReason = "expected_sid_manifest_invalid";
             return null;
+        }
         foreach (string entry in entries)
         {
             try
@@ -921,7 +929,11 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                 SecurityIdentifier sid = new SecurityIdentifier(entry.Trim());
                 expected.Add(sid.Value);
             }
-            catch { return null; }
+            catch
+            {
+                _lastAclFailureReason = "expected_sid_manifest_invalid";
+                return null;
+            }
         }
         return expected;
     }
@@ -938,20 +950,32 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
 
             SecurityIdentifier owner = security.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
             if (owner == null || !expected.Contains(owner.Value))
+            {
+                _lastAclFailureReason = "state_entry_owner_unexpected";
                 return false;
+            }
             if (isRoot)
             {
                 if (!String.Equals(owner.Value, BrokerOwnerSid, StringComparison.OrdinalIgnoreCase))
+                {
+                    _lastAclFailureReason = "state_root_owner_not_local_service";
                     return false;
+                }
                 if (!security.AreAccessRulesProtected)
+                {
+                    _lastAclFailureReason = "state_root_acl_inheritance_enabled";
                     return false;
+                }
             }
 
             AuthorizationRuleCollection rules = security.GetAccessRules(
                 true, true, typeof(SecurityIdentifier)
             );
             if (rules.Count != expected.Count)
+            {
+                _lastAclFailureReason = "state_entry_ace_count_mismatch";
                 return false;
+            }
 
             HashSet<string> observed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (AuthorizationRule candidate in rules)
@@ -959,23 +983,49 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                 FileSystemAccessRule rule = candidate as FileSystemAccessRule;
                 if (rule == null || rule.AccessControlType != AccessControlType.Allow ||
                     rule.FileSystemRights != FileSystemRights.Modify)
+                {
+                    _lastAclFailureReason = "state_entry_ace_rights_or_type_mismatch";
                     return false;
+                }
                 SecurityIdentifier sid = rule.IdentityReference as SecurityIdentifier;
-                if (sid == null || !expected.Contains(sid.Value) || !observed.Add(sid.Value))
+                if (sid == null)
+                {
+                    _lastAclFailureReason = "state_entry_ace_identity_unreadable";
                     return false;
+                }
+                if (!expected.Contains(sid.Value) || !observed.Add(sid.Value))
+                {
+                    _lastAclFailureReason = "state_entry_ace_identity_unexpected_or_duplicate";
+                    return false;
+                }
             }
-            return observed.SetEquals(expected);
+            if (!observed.SetEquals(expected))
+            {
+                _lastAclFailureReason = "state_entry_expected_identity_missing";
+                return false;
+            }
+            return true;
         }
-        catch { return false; }
+        catch
+        {
+            _lastAclFailureReason = "state_entry_acl_unreadable";
+            return false;
+        }
     }
 
     private bool VerifyStateAclIntegrity()
     {
+        _lastAclFailureReason = "none";
         try
         {
             HashSet<string> expected = GetExpectedStateModifySids();
-            if (expected == null || !Directory.Exists(_stateDirectory))
+            if (expected == null)
                 return false;
+            if (!Directory.Exists(_stateDirectory))
+            {
+                _lastAclFailureReason = "state_root_missing";
+                return false;
+            }
 
             Stack<string> pending = new Stack<string>();
             pending.Push(_stateDirectory);
@@ -984,20 +1034,31 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             {
                 string directory = pending.Pop();
                 DirectoryInfo info = new DirectoryInfo(directory);
-                if ((info.Attributes & FileAttributes.ReparsePoint) != 0 ||
-                    !HasExpectedStateAcl(directory, true, expected, String.Equals(
-                        directory, _stateDirectory, StringComparison.OrdinalIgnoreCase
-                    )))
+                if ((info.Attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    _lastAclFailureReason = "state_tree_reparse_point";
+                    return false;
+                }
+                bool isRoot = String.Equals(
+                    directory, _stateDirectory, StringComparison.OrdinalIgnoreCase
+                );
+                if (!HasExpectedStateAcl(directory, true, expected, isRoot))
                     return false;
 
                 foreach (string entry in Directory.EnumerateFileSystemEntries(directory))
                 {
                     checkedEntries++;
                     if (checkedEntries > MaxAclEntries)
+                    {
+                        _lastAclFailureReason = "state_tree_entry_limit_exceeded";
                         return false;
+                    }
                     FileAttributes attributes = File.GetAttributes(entry);
                     if ((attributes & FileAttributes.ReparsePoint) != 0)
+                    {
+                        _lastAclFailureReason = "state_tree_reparse_point";
                         return false;
+                    }
                     if ((attributes & FileAttributes.Directory) != 0)
                     {
                         pending.Push(entry);
@@ -1010,7 +1071,11 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             }
             return true;
         }
-        catch { return false; }
+        catch
+        {
+            _lastAclFailureReason = "state_acl_scan_failed";
+            return false;
+        }
     }
 
     private static bool IsSafeCheckpointRunId(string value)
