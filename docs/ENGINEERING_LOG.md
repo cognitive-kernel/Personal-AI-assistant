@@ -1,3 +1,19 @@
+## 2026-11-23 — exact-head CI green for Autonomous Engineering UI resilience
+
+### CI evidence
+- Source code SHA: `d993038033d5d15cca4a4a6c63c979c081c89aad`.
+- Ubuntu full suite: 2,555 passed, 14 skipped, 78 deselected (285.03s).
+- Windows full suite: 2,550 passed, 19 skipped, 78 deselected (677.79s).
+- Windows storage regressions: all steps passed, including PowerShell parsing, .NET Framework Broker compilation, recursive ACLs, live LocalService named-pipe client, Windows identity portability, checkpoint/lock and SQLite recovery.
+- Browser E2E: passed; UI route and six modules returned HTTP 200; zero browser console errors, page errors, failed requests, or unexpected HTTP errors. Artifact #14797757907, SHA-256 `11fea6cbd0107a57634c6e5af7300f4a0df5fa2e3c1d953f72d4a68a412d3261`.
+- CodeQL and dependency audit passed; Python bootstrap passed on Windows, Ubuntu, and macOS.
+- Temporary verification PR #847 was closed after the exact-head workflows passed; its branch was retained. Canonical PR #846 remains Draft.
+
+### Remaining acceptance
+- CI validates repository behavior, not the user's Windows installation. Non-admin startup/UAC, existing protected Runner registration, no-Runner bootstrap, local UI status, real Ollama/Codex and real workflow dispatch remain owner-run acceptance gates. No task, Runner registration, checkpoint, database, or local ACL was modified during CI.
+
+---
+
 ## 2026-11-23 — keep the local dashboard available when runtime prerequisites fail
 
 ### Root cause
