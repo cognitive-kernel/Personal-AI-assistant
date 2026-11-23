@@ -81,6 +81,8 @@ def test_shared_state_tree_acl_is_recursive_and_only_grants_runner_and_local_ser
     assert "ReparsePoint" in module
     assert "takeown.exe" in module
     acl_function = module[module.index("function Set-AutonomousDirectoryTreeAcl"):]
+    assert "Get-ChildItem -LiteralPath $rootParent" in acl_function
+    assert "Get-Item -LiteralPath $root" not in acl_function
     assert "$pendingDirectories.Push($root)" in acl_function
     assert "$items.Add($directoryInfo)" in acl_function
     assert "EnumerateFileSystemEntries" in acl_function
