@@ -27,6 +27,16 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     }
 }
 
+$brokerLogDirectory = Join-Path $env:ProgramData "PersonalAIAssistant\Logs"
+$brokerLogPath = Join-Path $brokerLogDirectory "state-broker-setup.log"
+try {
+    New-Item -ItemType Directory -Path $brokerLogDirectory -Force | Out-Null
+    Start-Transcript -Path $brokerLogPath -Append -Force | Out-Null
+    Write-Host "State Broker setup diagnostics: $brokerLogPath"
+} catch {
+    Write-Warning "Could not start the State Broker setup transcript ($($_.Exception.GetType().Name))."
+}
+
 $scriptRoot = Split-Path -Parent $PSCommandPath
 Import-Module (Join-Path $scriptRoot "AutonomousWindowsIdentity.psm1") -Force
 Import-Module (Join-Path $scriptRoot "AutonomousWindowsPaths.psm1") -Force
