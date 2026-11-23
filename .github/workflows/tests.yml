@@ -345,7 +345,7 @@ jobs:
             $originalDescriptors[$path] = (Get-Acl -LiteralPath $path).Sddl
           }
           try {
-            $aclSnapshot = Set-AutonomousDirectoryTreeAcl -Path $rollbackRoot -ModifySids @($currentSid, $brokerSid) -OwnerSid $currentSid -InstallerSid $currentSid -PassThru
+            $aclSnapshot = Set-AutonomousDirectoryTreeAcl -Path $rollbackRoot -ModifySids @($brokerSid) -OwnerSid $brokerSid -InstallerSid $currentSid -PassThru
             if ($null -eq $aclSnapshot -or @($aclSnapshot.Entries).Count -ne 3) {
               throw "The ACL transaction did not return a complete rollback journal."
             }
