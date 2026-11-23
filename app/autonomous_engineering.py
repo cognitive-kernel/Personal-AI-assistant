@@ -73,9 +73,14 @@ def _dispatch_admission_directory() -> Path:
 @contextmanager
 def _dispatch_admission_lock():
     state_dir = _dispatch_admission_directory()
+    if state_dir.is_symlink():
+        raise RuntimeError("The dispatch admission state directory is a symbolic link; dispatch is blocked safely.")
+    lock_path = state_dir / _DISPATCH_ADMISSION_LOCK_NAME
+    if lock_path.is_symlink() or (lock_path.exists() and not lock_path.is_file()):
+        raise RuntimeError("The dispatch admission lock path is not a regular file; dispatch is blocked safely.")
     try:
         with exclusive_file_lock(
-            state_dir / _DISPATCH_ADMISSION_LOCK_NAME,
+            lock_path,
             timeout_seconds=_DISPATCH_ADMISSION_LOCK_TIMEOUT_SECONDS,
             timeout_message="Another process is already admitting an autonomous-engineering dispatch.",
         ):
@@ -993,9 +998,12 @@ def _dispatch_autonomous_engineering_locked(
     payload: ManualTaskRequest | None = None,
     *,
     correlation_id: str | None = None,
+    admission_state_dir: Path | None = None,
 ) -> dict[str, Any]:
     if not isinstance(correlation_id, str) or not _CORRELATION_ID_PATTERN.fullmatch(correlation_id):
         correlation_id = uuid.uuid4().hex
+    if admission_state_dir is not None:
+        _raise_if_recent_dispatch(admission_state_dir)
     manual_task = payload.task.strip() if payload else ""
     if "\x00" in manual_task:
         raise HTTPException(status_code=422, detail="متن وظیفه شامل نویسهٔ نامعتبر است.")
@@ -1063,6 +1071,13 @@ def _dispatch_autonomous_engineering_locked(
             status_code=409,
             detail="یک PR مهندسی خودکار هنوز باز است؛ ابتدا همان PR را بازبینی و تعیین‌تکلیف کنید.",
         )
+    if admission_state_dir is not None:
+        _write_dispatch_admission_marker(
+            admission_state_dir,
+            correlation_id,
+            "dispatching",
+            ttl_seconds=_DISPATCH_UNKNOWN_GRACE_SECONDS,
+        )
     try:
         result = _run(
             [
@@ -1074,6 +1089,8 @@ def _dispatch_autonomous_engineering_locked(
             raise_os_error=True,
         )
     except OSError:
+        if admission_state_dir is not None:
+            _clear_dispatch_admission_marker(admission_state_dir, correlation_id)
         _STATUS_LOGGER.error(
             "Autonomous workflow dispatch could not start; correlation_id=%s",
             correlation_id,
@@ -1091,6 +1108,13 @@ def _dispatch_autonomous_engineering_locked(
             },
         )
     if result is None:
+        if admission_state_dir is not None:
+            _write_dispatch_admission_marker(
+                admission_state_dir,
+                correlation_id,
+                "unknown",
+                ttl_seconds=_DISPATCH_UNKNOWN_GRACE_SECONDS,
+            )
         _STATUS_LOGGER.warning(
             "Autonomous workflow dispatch outcome is unknown; correlation_id=%s",
             correlation_id,
@@ -1109,6 +1133,13 @@ def _dispatch_autonomous_engineering_locked(
             },
         )
     if result.returncode != 0:
+        if admission_state_dir is not None:
+            _write_dispatch_admission_marker(
+                admission_state_dir,
+                correlation_id,
+                "unknown",
+                ttl_seconds=_DISPATCH_UNKNOWN_GRACE_SECONDS,
+            )
         safe_stderr = _sanitize_workflow_log(str(result.stderr or ""))
         stderr_fingerprint = (
             hashlib.sha256(safe_stderr.encode("utf-8")).hexdigest()[:16]
@@ -1132,6 +1163,13 @@ def _dispatch_autonomous_engineering_locked(
                 "X-Error-Code": "WORKFLOW_DISPATCH_FAILED",
                 "X-Retryable": "false",
             },
+        )
+    if admission_state_dir is not None:
+        _write_dispatch_admission_marker(
+            admission_state_dir,
+            correlation_id,
+            "accepted",
+            ttl_seconds=_DISPATCH_ACCEPTED_GRACE_SECONDS,
         )
     return {
         "accepted": True,
