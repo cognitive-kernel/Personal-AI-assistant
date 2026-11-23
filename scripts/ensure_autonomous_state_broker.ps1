@@ -57,6 +57,11 @@ Import-Module (Join-Path $scriptRoot "AutonomousWindowsPaths.psm1") -Force
 Import-Module (Join-Path $scriptRoot "AutonomousStateBroker.psm1") -Force
 Import-Module (Join-Path $scriptRoot "AutonomousStateBrokerInstall.psm1") -Force
 
+# Complete every broker/package/runtime/service-manager preflight before
+# stopping Runner services or changing the shared-state ACL.
+$brokerPackage = Get-AutonomousStateBrokerPackage
+Write-Host ("Verified state broker package SHA-256: " + $brokerPackage.Sha256)
+
 $serviceName = "PersonalAIAssistantStateBroker"
 $brokerServiceSid = "S-1-5-19"
 
