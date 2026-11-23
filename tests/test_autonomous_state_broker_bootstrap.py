@@ -131,3 +131,15 @@ def test_windows_acl_module_filters_inherited_powershell7_paths_before_security_
         "Import-Module Microsoft.PowerShell.Security"
     )
     assert "SetEnvironmentVariable" not in pre_import
+
+
+def test_windows_broker_relaunches_the_current_host_without_pinning_powershell_exe():
+    ensure = (ROOT / "scripts" / "ensure_autonomous_state_broker.ps1").read_text(encoding="utf-8")
+    compatibility = (ROOT / "scripts" / "configure_autonomous_engineering_progress.ps1").read_text(encoding="utf-8")
+
+    assert '$hostExecutable = [string](Get-Process -Id $PID -ErrorAction Stop).Path' in ensure
+    assert 'Start-Process -FilePath $hostExecutable -Verb RunAs' in ensure
+    assert 'Join-Path $PSHOME "powershell.exe"' not in ensure
+    assert '$powershell = [string](Get-Process -Id $PID -ErrorAction Stop).Path' in compatibility
+    assert '& $powershell -NoLogo -NoProfile -NonInteractive' in compatibility
+    assert 'Get-Command powershell.exe' not in compatibility
