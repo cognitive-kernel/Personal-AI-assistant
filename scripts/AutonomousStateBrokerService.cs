@@ -33,6 +33,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
     private bool _lastHealth;
     private bool _lastStorageHealth;
     private bool _lastAclHealth;
+    private DateTime _lastHealthAt = DateTime.MinValue;
     private Thread[] _workers;
 
     public AutonomousStateBrokerService()
@@ -230,9 +231,10 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             return;
         }
 
-        if (method == "GET" && path == "/v1/health")
+        if (method == "GET" && (path == "/v1/health" || path == "/v1/health/verify"))
         {
-            bool ready = VerifyStorageAccessCached();
+            bool forceVerification = path == "/v1/health/verify";
+            bool ready = VerifyStorageAccessCached(forceVerification);
             WriteResponse(pipe, ready ? 200 : 503, new Dictionary<string, object> {
                 { "ok", true },
                 { "ready", ready },
@@ -863,16 +865,17 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         return new Dictionary<string, object> { { "error", code } };
     }
 
-    private bool VerifyStorageAccessCached()
+    private bool VerifyStorageAccessCached(bool forceVerification)
     {
         lock (_healthGate)
         {
-            // A health request is issued at application startup. Do not reuse a
-            // previous positive result: out-of-band ACL changes must be detected
-            // on every new startup, even when the last probe was recent.
+            if (!forceVerification && DateTime.UtcNow - _lastHealthAt < TimeSpan.FromSeconds(15))
+                return _lastHealth;
+
             _lastStorageHealth = VerifyStorageAccess();
             _lastAclHealth = _lastStorageHealth && VerifyStateAclIntegrity();
             _lastHealth = _lastStorageHealth && _lastAclHealth;
+            _lastHealthAt = DateTime.UtcNow;
             return _lastHealth;
         }
     }
