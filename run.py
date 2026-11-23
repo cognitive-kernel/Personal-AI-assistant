@@ -932,7 +932,9 @@ def _ensure_ollama() -> None:
         _configured_llm_provider(name)
         for name in ("chat", "research_plan", "learning", "programming", "embedding")
     ]
-    factual_review_model = _configured_model_setting(\n        "factual_review_ollama_model", "FACTUAL_REVIEW_OLLAMA_MODEL", ""\n    )
+    factual_review_model = _configured_model_setting(
+        "factual_review_ollama_model", "FACTUAL_REVIEW_OLLAMA_MODEL", ""
+    )
     if factual_review_model and _configured_llm_provider("factual_review") == "ollama":
         active_providers.append("ollama")
     if "ollama" not in active_providers:
