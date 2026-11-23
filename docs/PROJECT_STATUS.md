@@ -4,7 +4,7 @@
 - PRهای باز و مرتبط:
   - [#863](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/863) — اصلاح startup و Windows State Broker؛ Draft، head `30b0141d8cfbff5f5e9b5354313335f5cd90528f`.
   - [#864](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/864) — سریالی‌سازی refresh وضعیت UI بعد از mutation؛ Draft، head `8303afa5d44f104c6e9a5d569868f3db248023b0`.
-  - [#865](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/865) — PR پیرو #863 برای قفل machine-wide در پردازهٔ Elevated؛ Draft و بر پایهٔ branch مربوط به #863، head `dce3af2c45ec8667f9cdb01ede3169bd68e0486f`.
+  - [#865](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/865) — PR پیرو #863 برای قفل machine-wide در پردازهٔ Elevated و بازیابی کنترل‌شدهٔ mutex abandoned؛ Draft و بر پایهٔ branch مربوط به #863، شاخهٔ `fix/state-broker-elevated-child-mutex-20261124` (head در حال تکمیل آزمون Windows).
   - [#866](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/866) — خواندن زندهٔ Pause flag پس از گرفتن concurrency slot؛ Draft و بر پایهٔ main، شاخهٔ `fix/autonomous-engineering-live-pause-gate-20261124` (head در حال تغییر با ثبت همین snapshot).
   - [#867](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/867) — اولویت‌دادن به لغو اجرای درحال‌اجرا نسبت به اجرای تازه‌صف‌شده؛ Draft و بر پایهٔ main، شاخهٔ `fix/autonomous-engineering-cancel-running-first-20261124` (head در حال تغییر با تکمیل regression).
 - شواهد PR #864 روی head فوق: Browser E2E، CodeQL، Dependency Audit، تست اصلی، Windows storage regressions و bootstrapهای Python روی Windows/Ubuntu/macOS موفق‌اند؛ Full test suite ویندوز هنگام ثبت این snapshot هنوز در حال اجرا بود. هیچ‌کدام از این شواهد جایگزین پذیرش روی میزبان واقعی کاربر نیست.
