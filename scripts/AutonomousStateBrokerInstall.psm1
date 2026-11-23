@@ -1,5 +1,35 @@
 Set-StrictMode -Version Latest
 
+function Get-AutonomousDotNetFrameworkRelease {
+    $highestRelease = 0
+    foreach ($view in @(
+        [Microsoft.Win32.RegistryView]::Registry64,
+        [Microsoft.Win32.RegistryView]::Registry32
+    )) {
+        $baseKey = $null
+        $frameworkKey = $null
+        try {
+            $baseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+                [Microsoft.Win32.RegistryHive]::LocalMachine,
+                $view
+            )
+            $frameworkKey = $baseKey.OpenSubKey("SOFTWARE\\Microsoft\\NET Framework Setup\\NDP\\v4\\Full")
+            if ($null -ne $frameworkKey) {
+                $releaseValue = $frameworkKey.GetValue("Release", $null)
+                if ($null -ne $releaseValue -and [int]$releaseValue -gt $highestRelease) {
+                    $highestRelease = [int]$releaseValue
+                }
+            }
+        } catch {
+            # The unavailable registry view is expected on 32-bit Windows.
+        } finally {
+            if ($null -ne $frameworkKey) { $frameworkKey.Dispose() }
+            if ($null -ne $baseKey) { $baseKey.Dispose() }
+        }
+    }
+    return $highestRelease
+}
+
 function Install-AutonomousStateBrokerService {
     $serviceName = "PersonalAIAssistantStateBroker"
     $serviceRoot = Join-Path $env:ProgramData "PersonalAIAssistant\StateBroker"
@@ -7,9 +37,12 @@ function Install-AutonomousStateBrokerService {
     if (-not (Test-Path -LiteralPath $serviceSource -PathType Leaf)) {
         throw "AutonomousStateBrokerService.cs is missing from the provisioning package."
     }
-    New-Item -ItemType Directory -Path $serviceRoot -Force | Out-Null
-    $serviceExe = Join-Path $serviceRoot "PersonalAIAssistant.StateBroker.exe"
-    $temporaryExe = Join-Path $serviceRoot ("broker-build-" + [guid]::NewGuid().ToString("N") + ".exe")
+    $frameworkRelease = Get-AutonomousDotNetFrameworkRelease
+    if ($frameworkRelease -lt 528040) {
+        throw "The Windows state broker requires .NET Framework 4.8 or later (Release >= 528040). No service or state changes were made."
+    }
+    $scCommand = Get-Command sc.exe -ErrorAction Stop
+
 
     # The target host receives a prebuilt, CI-produced broker. Never require a
     # C# compiler, SDK, IDE, or developer toolchain during installation.
@@ -28,6 +61,9 @@ function Install-AutonomousStateBrokerService {
     if (-not [string]::Equals($packageHash, $expectedHash, [StringComparison]::OrdinalIgnoreCase)) {
         throw "The packaged Windows state broker failed SHA-256 verification; installation was refused."
     }
+    New-Item -ItemType Directory -Path $serviceRoot -Force | Out-Null
+    $serviceExe = Join-Path $serviceRoot "PersonalAIAssistant.StateBroker.exe"
+    $temporaryExe = Join-Path $serviceRoot ("broker-stage-" + [guid]::NewGuid().ToString("N") + ".exe")
     try {
         Copy-Item -LiteralPath $packagedExe -Destination $temporaryExe -Force -ErrorAction Stop
         $copiedHash = (Get-FileHash -LiteralPath $temporaryExe -Algorithm SHA256 -ErrorAction Stop).Hash
@@ -62,8 +98,7 @@ function Install-AutonomousStateBrokerService {
             New-Service -Name $serviceName -BinaryPathName ('"' + $serviceExe + '"') -DisplayName "Personal AI Assistant State Broker" -Description "Mediates allow-listed local access to protected autonomous-engineering state." -StartupType Automatic | Out-Null
             $newServiceCreated = $true
         }
-        $sc = Get-Command sc.exe -ErrorAction Stop
-        & $sc.Source config $serviceName 'binPath=' $serviceExe 'obj=' 'NT AUTHORITY\LocalService' 'start=' 'auto' | Out-Null
+        & $scCommand.Source config $serviceName 'binPath=' $serviceExe 'obj=' 'NT AUTHORITY\LocalService' 'start=' 'auto' | Out-Null
         if ($LASTEXITCODE -ne 0) {
             throw "Could not configure the state broker to run under its restricted LocalService identity."
         }
