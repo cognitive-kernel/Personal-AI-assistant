@@ -36,12 +36,13 @@ def _run(command: list[str], *, timeout: int = 30) -> subprocess.CompletedProces
     )
 
 
-def _assert_no_active_runner_worker(system: str) -> None:
+def _assert_no_active_runner_worker() -> None:
     ps = shutil.which("ps")
     if not ps:
         raise RuntimeError("Cannot safely verify whether a GitHub Runner job is active; the ps utility is unavailable.")
-    arguments = ["-axo", "pid=,command="] if system == "darwin" else ["-eo", "pid=,args="]
-    result = _run([ps, *arguments], timeout=10)
+    # Both supported POSIX process-list implementations accept this portable
+    # output format; no platform-specific ps dialect is needed.
+    result = _run([ps, "-axo", "pid=,command="], timeout=10)
     if result.returncode != 0:
         raise RuntimeError("Cannot safely inspect running processes before state ACL or service changes.")
     import re
@@ -149,20 +150,19 @@ def _path_is_secure_executable(path: Path, service_uid: int) -> bool:
 
 
 def _select_service_python(service_uid: int, suggested: str) -> Path:
-    # Prefer OS-managed interpreter locations. A venv below /home or /Users is
-    # intentionally rejected: systemd/launchd must not depend on a login home.
-    candidates = [
-        Path("/usr/bin/python3"),
-        Path("/usr/local/bin/python3"),
-        Path("/opt/homebrew/bin/python3"),
-        Path("/opt/local/bin/python3"),
-        Path(suggested),
-    ]
+    # Discover interpreters from the runtime environment, then reject every
+    # registered account home dynamically instead of assuming home-directory
+    # roots or package-manager installation paths.
+    candidates = [Path(suggested)] if suggested else []
     for name in ("python3", "python"):
         found = shutil.which(name)
         if found:
             candidates.append(Path(found))
-    home_roots = (Path("/home"), Path("/Users"))
+    home_roots = {
+        Path(entry.pw_dir).resolve()
+        for entry in pwd.getpwall()
+        if isinstance(entry.pw_dir, str) and entry.pw_dir.strip()
+    }
     seen: set[str] = set()
     for candidate in candidates:
         try:
@@ -461,7 +461,7 @@ def _elevated_setup(
 ) -> None:
     if os.geteuid() != 0:
         raise RuntimeError("POSIX broker installation requires administrator privileges.")
-    _assert_no_active_runner_worker(sys.platform)
+    _assert_no_active_runner_worker()
     if not state_dir.is_absolute() or not config_dir.is_absolute():
         raise RuntimeError("State and configuration paths must be absolute.")
     if not state_dir.is_absolute():
