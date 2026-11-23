@@ -294,6 +294,7 @@ function Set-AutonomousDirectoryTreeAcl {
     if ($PassThru) {
         return ,([pscustomobject]@{
             Root = $root
+            InstallerSid = $InstallerSid
             Entries = @($snapshots.ToArray())
         })
     }
@@ -308,25 +309,58 @@ function Restore-AutonomousDirectoryTreeAcl {
 
     $entries = @($Snapshot.Entries)
     if ($entries.Count -eq 0) { return }
+    $installerSid = [string]$Snapshot.InstallerSid
+    if ($installerSid -notmatch '^S-1-') {
+        throw "The ACL rollback journal has no valid installer SID."
+    }
 
-    $restoreTargets = @(
-        $entries | Sort-Object -Property @{ Expression = { $_.Item.FullName.Length }; Descending = $false }
-    )
+    $takeown = Get-Command takeown.exe -ErrorAction Stop
+    $icacls = Get-Command icacls.exe -ErrorAction Stop
+    $prepared = New-Object 'System.Collections.Generic.List[object]'
     $failures = New-Object 'System.Collections.Generic.List[string]'
-    foreach ($entry in $restoreTargets) {
+
+    # The final protected DACL intentionally excludes the elevated installer.
+    # Reacquire temporary ownership/access for every journaled entry before
+    # restoring parent descriptors, so a parent restore cannot strand children.
+    foreach ($entry in $entries) {
         $entryPath = if ($null -ne $entry.Item) { [string]$entry.Item.FullName } else { "<unknown>" }
+        $prepared.Add($entry)
         try {
             if ($null -eq $entry.Item -or $null -eq $entry.Acl -or
                 [string]::IsNullOrWhiteSpace($entryPath)) {
                 throw "The ACL rollback journal contains an invalid entry."
             }
+            & $takeown.Source /F $entryPath | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw "takeown failed"
+            }
+            $grant = if ($entry.Item -is [System.IO.DirectoryInfo]) {
+                "*$($installerSid):(OI)(CI)M"
+            } else {
+                "*$($installerSid):M"
+            }
+            & $icacls.Source $entryPath /grant:r $grant /C /Q | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw "icacls failed"
+            }
+        } catch {
+            $failures.Add("temporary access ($($_.Exception.GetType().Name))")
+        }
+    }
+
+    $restoreTargets = @(
+        $prepared | Sort-Object -Property @{ Expression = { $_.Item.FullName.Length }; Descending = $false }
+    )
+    foreach ($entry in $restoreTargets) {
+        $entryPath = [string]$entry.Item.FullName
+        try {
             Set-Acl -LiteralPath $entryPath -AclObject $entry.Acl -ErrorAction Stop
         } catch {
-            $failures.Add("$entryPath ($($_.Exception.GetType().Name))")
+            $failures.Add("descriptor restore ($($_.Exception.GetType().Name))")
         }
     }
     if ($failures.Count -gt 0) {
-        throw "Could not restore every original shared-state ACL: $($failures -join ', ')"
+        throw "Shared-state ACL rollback was incomplete ($($failures.Count) operation(s) failed)."
     }
 }
 
