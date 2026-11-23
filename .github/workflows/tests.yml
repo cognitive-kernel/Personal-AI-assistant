@@ -201,8 +201,9 @@ jobs:
           }
           if (-not (Get-Command Get-Acl -ErrorAction SilentlyContinue)) { throw "Get-Acl is unavailable under PowerShell Core." }
           if (-not (Get-Command Set-Acl -ErrorAction SilentlyContinue)) { throw "Set-Acl is unavailable under PowerShell Core." }
-          $frameworkRelease = Get-AutonomousDotNetFrameworkRelease
-          if ($frameworkRelease -lt 528040) { throw "The Windows runner must expose .NET Framework 4.8 or later." }
+          if (-not (Test-AutonomousDotNetFramework48)) {
+            throw "The Windows runner must expose the .NET Framework 4.8 runtime capability."
+          }
           $probe = '$PSVersionTable.PSEdition + "|" + $PSVersionTable.PSVersion.ToString()'
           $childVersion = & $activeHost -NoLogo -NoProfile -NonInteractive -Command $probe
           $expectedChildVersion = "Core|" + $PSVersionTable.PSVersion.ToString()
