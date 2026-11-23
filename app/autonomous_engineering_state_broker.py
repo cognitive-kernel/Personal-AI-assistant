@@ -289,10 +289,15 @@ def request(method: str, path: str, *, timeout_ms: int = 3500, body: dict[str, A
         kernel32.CloseHandle(handle)
 
 
-def health() -> bool:
+def health(*, timeout_ms: int = 3500) -> bool:
     try:
-        value = request("GET", "/v1/health")
-        return isinstance(value, dict) and value.get("ready") is True
+        value = request("GET", "/v1/health", timeout_ms=timeout_ms)
+        return (
+            isinstance(value, dict)
+            and value.get("ready") is True
+            and value.get("storage_ready") is True
+            and value.get("acl_ready") is True
+        )
     except (OSError, RuntimeError, ValueError):
         return False
 
