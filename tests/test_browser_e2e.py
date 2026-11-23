@@ -5467,7 +5467,12 @@ def test_autonomous_dashboard_pause_and_resume_controls_follow_server_state():
             timeout=10000,
         )
         assert page.locator("#agent-readiness").inner_text() == "آمادهٔ ارسال Workflow"
-        assert page.locator("#agent-message").inner_text() == "resume confirmed"
+        resume_message = page.locator("#agent-message").inner_text()
+        assert resume_message.startswith("resume confirmed")
+        assert "شناسهٔ پیگیری: " in resume_message
+        resume_correlation_id = resume_message.split("شناسهٔ پیگیری: ", 1)[1]
+        assert len(resume_correlation_id) == 32
+        assert all(char in "0123456789abcdef" for char in resume_correlation_id)
         assert state["pause_calls"] == 1
         assert state["resume_calls"] == 1
         assert state["status_reads"] >= 3
