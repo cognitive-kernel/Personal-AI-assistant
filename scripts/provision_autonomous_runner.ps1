@@ -300,6 +300,15 @@ New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
 $installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid -AdditionalModifySid $installerSid
 Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid -InstallerSid $installerSid
+$stateAclManifest = (@($runnerSid, $brokerServiceSid) | Select-Object -Unique | Sort-Object) -join ";"
+[Environment]::SetEnvironmentVariable(
+    "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS",
+    $stateAclManifest,
+    "Machine"
+)
+if ([Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS", "Machine") -ne $stateAclManifest) {
+    throw "Could not persist the expected state-broker ACL identities."
+}
 $token = (& $gh.Source api --method POST "repos/$Repository/actions/runners/registration-token" --jq ".token")
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($token)) { throw "Could not obtain registration token; verify Administration: write permission." }
 $archive = $null
