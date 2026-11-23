@@ -188,13 +188,18 @@
         : !checks.github_runs_available
           ? "دریافت وضعیت اجراهای GitHub ناموفق است؛ دسترسی Actions را بررسی کنید."
           : "GitHub CLI احراز هویت شده و وضعیت اجراها قابل دریافت است.";
-      labels.storage.textContent = stateText(checks.progress_storage_accessible);
-      $("storage-detail").textContent = checks.progress_storage_accessible
-        ? "سرویس Broker محلی آماده است؛ حساب برنامه از کانال محدود محلی استفاده می‌کند و به مجوز مستقیم پوشه نیاز ندارد."
-        : "سرویس Broker فضای پیشرفت آماده نیست. برنامه هنگام شروع برای نصب یا ترمیم آن درخواست مجوز مدیر می‌کند؛ اگر UAC رد شد، اسکریپت ensure_autonomous_state_broker.ps1 را از میزبان PowerShell سازگاری که برنامه به‌صورت خودکار شناسایی می‌کند، در پنجرهٔ مدیر اجرا کنید. نبود Runner مانع نصب Broker نیست؛ Runner فقط برای اجرای Workflow مهندسی لازم است. اگر هیچ میزبان PowerShell سازگاری موجود نباشد، فقط قابلیت Broker غیرفعال می‌ماند و داشبورد در حالت محدود ادامه می‌دهد.";
       lastPendingWork = data.pending_work && typeof data.pending_work === "object"
         ? data.pending_work
         : {available: false, blocked: true, checkpoint: {available: true, verified: false}};
+      const brokerDiagnostic = typeof lastPendingWork.reason === "string"
+        ? lastPendingWork.reason.slice(0, 240)
+        : "";
+      labels.storage.textContent = stateText(checks.progress_storage_accessible);
+      $("storage-detail").textContent = checks.progress_storage_accessible
+        ? "سرویس Broker محلی آماده است؛ حساب برنامه از کانال محدود محلی استفاده می‌کند و به مجوز مستقیم پوشه نیاز ندارد."
+        : "سرویس Broker فضای پیشرفت آماده نیست. " +
+          (brokerDiagnostic ? "علت تشخیص‌داده‌شده: " + brokerDiagnostic + " " : "") +
+          "برنامه هنگام شروع برای نصب یا ترمیم آن درخواست مجوز مدیر می‌کند؛ اگر UAC رد شد، اسکریپت ensure_autonomous_state_broker.ps1 را از میزبان PowerShell سازگاری که برنامه به‌صورت خودکار شناسایی می‌کند، در پنجرهٔ مدیر اجرا کنید. نبود Runner مانع نصب Broker نیست؛ Runner فقط برای اجرای Workflow مهندسی لازم است. اگر هیچ میزبان PowerShell سازگاری موجود نباشد، فقط قابلیت Broker غیرفعال می‌ماند و داشبورد در حالت محدود ادامه می‌دهد.";
       const checkpoint = lastPendingWork.checkpoint && typeof lastPendingWork.checkpoint === "object"
         ? lastPendingWork.checkpoint
         : null;
@@ -202,7 +207,7 @@
       const checkpointDetail = $("checkpoint-detail");
       if (!lastPendingWork.available) {
         checkpointState.textContent = "قابل بررسی نیست";
-        checkpointDetail.textContent = "سرویس وضعیت پایدار پاسخ معتبر نداد؛ شروع هر چرخه تا بازیابی اتصال متوقف است.";
+        checkpointDetail.textContent = brokerDiagnostic || "سرویس وضعیت پایدار پاسخ معتبر نداد؛ شروع هر چرخه تا بازیابی اتصال متوقف است.";
       } else if (checkpoint && checkpoint.available === true && checkpoint.verified === true) {
         checkpointState.textContent = "ذخیره‌شده و قابل بازیابی";
         checkpointDetail.textContent = "وظیفهٔ " + String(checkpoint.task || 1) +
