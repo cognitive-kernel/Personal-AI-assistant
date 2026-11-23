@@ -1076,7 +1076,7 @@ def _powershell_candidates() -> list[str]:
             candidates.append(executable)
 
     if platform.system() == "Windows":
-        windir = os.environ.get("WINDIR", r"C:\\Windows").strip()
+        windir = os.environ.get("WINDIR", r"C:\Windows").strip()
         program_roots = [
             os.environ.get("ProgramW6432", "").strip(),
             os.environ.get("ProgramFiles", "").strip(),
@@ -1113,7 +1113,7 @@ def _find_compatible_powershell() -> tuple[str, str] | None:
         "Write-Output ('PAA_PS|' + $edition + '|' + $version.ToString()) "
         "} else { exit 41 }"
     )
-    report_pattern = re.compile(r"^PAA_PS\\|(Desktop|Core)\\|([0-9]+\\.[0-9]+(?:\\.[0-9]+){0,2})$")
+    report_pattern = re.compile(r"^PAA_PS\|(Desktop|Core)\|([0-9]+\.[0-9]+(?:\.[0-9]+){0,2})$")
     for executable in _powershell_candidates():
         try:
             result = subprocess.run(
