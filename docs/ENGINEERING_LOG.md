@@ -2511,3 +2511,9 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - The POSIX setup path uses non-interactive `sudo -n`; when credentials require a terminal, the operator must run the platform setup script from a terminal.
 - Exact-head Linux/Windows full suites, Windows storage regressions, Browser E2E, CodeQL, dependency audit, deterministic committed-package comparison, and target-host acceptance have not yet been recorded for the final branch head. Earlier green runs do not cover these changes.
 - No user machine service, ACL, Runner, task, checkpoint, database, or durable state was modified.
+
+### Additional startup policy correction — Ollama
+
+- The previous `run.py` startup path could download and execute the Ollama installer, start an existing Ollama runtime, and pull configured models without a fresh user action. This contradicted the local-first/explicit-consent policy.
+- Startup now only discovers the installed Ollama CLI, performs a bounded read-only `ollama list` readiness check, and verifies that the configured models already exist. Missing Ollama, a stopped service, or missing models marks only the Ollama capability unavailable; the local dashboard still starts. The user installs/starts Ollama separately and uses the dashboard's explicit model-download action when needed.
+- Regression tests now assert that startup never downloads an installer, starts a service, or pulls a model.
