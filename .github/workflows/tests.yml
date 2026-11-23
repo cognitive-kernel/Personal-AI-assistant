@@ -55,6 +55,10 @@ jobs:
 
   windows-storage-regressions:
     runs-on: windows-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -243,6 +247,11 @@ jobs:
             scripts/bin/PersonalAIAssistant.StateBroker.exe.sha256
           if-no-files-found: error
           retention-days: 7
+
+      - name: Attest the Windows state broker package
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: scripts/bin/PersonalAIAssistant.StateBroker.exe
 
       - name: Exercise recursive protected state ACLs on Windows
         shell: pwsh
