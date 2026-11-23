@@ -350,6 +350,7 @@ def test_windows_broker_installer_uses_verified_prebuilt_binary_without_target_c
     live_test = _read("scripts/test_autonomous_state_broker_service.ps1")
     assert 'PersonalAIAssistant.StateBroker.exe' in live_test
     assert 'Get-FileHash -LiteralPath $servicePackage -Algorithm SHA256' in live_test
+    assert 'Get-FileHash -LiteralPath $serviceExe -Algorithm SHA256' in live_test
     assert 'Copy-Item -LiteralPath $servicePackage -Destination $serviceExe' in live_test
     assert 'csc.exe' not in live_test
     build_step = workflow.split('Build and package the Windows machine state broker', 1)[1].split(
