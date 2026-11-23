@@ -851,7 +851,7 @@ jobs:
               throw "Could not verify the current durable pause state (HTTP $statusCode). Failing closed; no new task will start."
             }
           }
-          "paused=$($paused.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "paused=$($paused.ToString().ToLowerInvariant())`n", [System.Text.UTF8Encoding]::new($false))
           if ($paused) { Write-Host "Safe pause is active; no new engineering task will start." }
 
       - name: Execute one isolated task, validate, and publish for owner review
