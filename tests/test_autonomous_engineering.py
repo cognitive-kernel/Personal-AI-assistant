@@ -356,7 +356,6 @@ def test_autonomous_recovery_uses_the_durable_policy_module():
 
     assert "workflow_run:" in recovery
     assert "AUTONOMOUS_ENGINEERING_PAUSED" in policy
-    assert "AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT:" in workflow
     assert "PAUSED:" not in recovery
     assert "scripts/autonomous_engineering_recovery.py" in recovery
     assert "EXECUTION_MODE:" not in recovery
@@ -2714,6 +2713,7 @@ def test_posix_cleanup_lock_order_is_repository_then_state_then_checkpoint(monke
 
 def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admission():
     workflow = _read(".github/workflows/autonomous-codex-engineering.yml")
+    assert "AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT:" in workflow
     start = workflow.index("- name: Recheck live Pause and execution mode after concurrency admission")
     end = workflow.index("- name: Execute one isolated task, validate, and publish for owner review", start)
     gate = workflow[start:end]
