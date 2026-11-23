@@ -73,7 +73,7 @@ def test_posix_broker_setup_uses_dynamic_service_identity_and_native_service_man
     assert 'Path("/opt/local/bin/python3")' not in installer
     assert 'Path("/home")' not in installer and 'Path("/Users")' not in installer
     assert "_assert_no_active_runner_worker()" in installer
-    assert '["-axo", "pid=,command="]' in installer
+    assert '_run([ps, "-axo", "pid=,command="]' in installer
     assert "sys.path.insert(0, str(project_root))" in installer
     assert "def _prepare_socket_path" in service
     assert "AccessControl" not in service
