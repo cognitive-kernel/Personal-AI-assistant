@@ -139,6 +139,7 @@ def find_compatible_powershell(
     Windows tools is eligible regardless of its numeric major/minor version.
     """
     probe = (
+        "$ErrorActionPreference = 'Stop'; "
         "$edition = [string]$PSVersionTable.PSEdition; "
         "$version = [string]$PSVersionTable.PSVersion; "
         "$previousModulePath = $env:PSModulePath; "
@@ -154,19 +155,22 @@ def find_compatible_powershell(
         "$missing = @($required | Where-Object { -not (Get-Command $_ -ErrorAction SilentlyContinue) }); "
         "$startProcess = Get-Command Start-Process -ErrorAction SilentlyContinue; "
         "$hostPath = [string](Get-Process -Id $PID -ErrorAction Stop).Path; "
+        "$registrySupported = $false; try { "
         "$registry = [Microsoft.Win32.RegistryKey]::OpenBaseKey("
         "[Microsoft.Win32.RegistryHive]::LocalMachine,[Microsoft.Win32.RegistryView]::Registry32); "
-        "$registry.Close(); "
-        "$missingTools = @('sc.exe','icacls.exe' | Where-Object { -not (Get-Command $_ -ErrorAction SilentlyContinue) }); "
+        "$registry.Close(); $registrySupported = $true "
+        "} catch { $registrySupported = $false }; "
+        "$toolNames = @('sc.exe','icacls.exe'); "
+        "$missingTools = @($toolNames | Where-Object { -not (Get-Command $_ -ErrorAction SilentlyContinue) }); "
         "if (($edition -eq 'Desktop' -or $edition -eq 'Core') -and "
-        "$missing.Count -eq 0 -and $missingTools.Count -eq 0 -and "
+        "$missing.Count -eq 0 -and $missingTools.Count -eq 0 -and $registrySupported -and "
         "$startProcess.Parameters.ContainsKey('Verb') -and "
         "-not [string]::IsNullOrWhiteSpace($hostPath)) { "
         "Write-Output ('PAA_PS|' + $edition + '|' + $version) "
         "} else { exit 41 }"
     )
     report_pattern = re.compile(
-        r"^PAA_PS\\|(Desktop|Core)\\|([0-9]+\\.[0-9]+(?:\\.[0-9]+){0,2})$"
+        r"^PAA_PS\|(Desktop|Core)\|([0-9]+\.[0-9]+(?:\.[0-9]+){0,2})$"
     )
     for executable in candidates:
         try:
