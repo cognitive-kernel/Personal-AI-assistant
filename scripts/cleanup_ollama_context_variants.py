@@ -18,10 +18,10 @@ _LEGACY_NAME = re.compile(
     re.IGNORECASE,
 )
 _MODFILE_NUM_CTX = re.compile(
-    r"(?im)^\\s*PARAMETER\\s+num_ctx\\s+([0-9]+)\\s*$"
+    r"(?im)^\s*PARAMETER\s+num_ctx\s+([0-9]+)\s*$"
 )
 _PARAMETERS_NUM_CTX = re.compile(
-    r"(?im)^\\s*num_ctx\\s+([0-9]+)\\s*$"
+    r"(?im)^\s*num_ctx\s+([0-9]+)\s*$"
 )
 
 RequestJson = Callable[[str, str, dict[str, Any] | None, float], dict[str, Any]]
