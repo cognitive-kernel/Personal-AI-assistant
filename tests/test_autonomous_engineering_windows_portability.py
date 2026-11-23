@@ -140,11 +140,12 @@ def test_machine_state_broker_uses_a_local_allowlisted_pipe_not_a_network_file_a
     assert "NetworkStream" not in service
     assert '"version", 1' in service
     assert 'method == "GET" and path in {"/v1/health", "/v1/pending-work", "/v1/progress"}' in python_client
+    assert '_WINDOWS and method == "GET" and path == "/v1/health/verify"' in python_client
     assert 'method == "POST" and path == "/v1/cleanup"' in python_client
     assert 're.fullmatch(r"/v1/diagnostics/[0-9]{1,20}", path)' in python_client
     assert "Unsupported state-broker endpoint" in python_client
     assert "ValidateSet(" in powershell_client
-    assert '"/v1/health", "/v1/pending-work", "/v1/progress"' in powershell_client
+    assert '"/v1/health", "/v1/health/verify", "/v1/pending-work", "/v1/progress"' in powershell_client
     assert "[System.IO.Pipes.PipeOptions]::Asynchronous" in powershell_client
     assert "WriteLineAsync" in powershell_client and "ReadLineAsync" in powershell_client
     assert "GetAwaiter().GetResult()" in powershell_client
@@ -185,7 +186,7 @@ def test_machine_state_broker_health_checks_the_full_state_tree_acl_manifest():
     assert 'SetEnvironmentVariable(\n        "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS"' in provision
     assert "ensure_autonomous_state_broker.ps1" in configure
     assert "Set-AutonomousDirectoryTreeAcl" not in configure
-    assert 'health(timeout_ms: int = 3500, verify: bool = False)' in client
+    assert 'health(*, timeout_ms: int = 3500, verify: bool = False)' in client
     assert '"/v1/health/verify"' in client
     assert 'path == "/v1/health/verify"' in service
     assert 'TimeSpan.FromSeconds(15)' in service
@@ -322,4 +323,8 @@ def test_broker_health_exposes_only_safe_acl_failure_reason_codes():
         assert reason in service
     assert '"acl_reason"' in powershell_client
     assert '"acl_reason"' in powershell_client[powershell_client.index('foreach ($fieldName'):powershell_client.index('$detail = if')]
-    assert 'path' not in powershell_client.lower()
+    health_details = powershell_client[
+        powershell_client.index('foreach ($fieldName'):powershell_client.index('$detail = if')
+    ]
+    assert '"state_directory"' not in health_details
+    assert '"state_path"' not in health_details
