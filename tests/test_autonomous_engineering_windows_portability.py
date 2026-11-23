@@ -81,14 +81,23 @@ def test_shared_state_tree_acl_is_recursive_and_only_grants_runner_and_local_ser
     assert "ReparsePoint" in module
     assert "takeown.exe" in module
     acl_function = module[module.index("function Set-AutonomousDirectoryTreeAcl"):]
-    assert "$pendingDirectories.Push($root)" in acl_function
+    assert "Get-ChildItem -LiteralPath $rootParent" in acl_function
+    assert "Get-Item -LiteralPath $root" not in acl_function
+    assert "$pendingDirectories.Push([pscustomobject]@{ Path = $root; Attributes = $rootEntry.Attributes })" in acl_function
     assert "$items.Add($directoryInfo)" in acl_function
-    assert "EnumerateFileSystemEntries" in acl_function
-    assert acl_function.index("EnumerateFileSystemEntries") < acl_function.index("takeown.exe")
-    assert acl_function.index("EnumerateFileSystemEntries") < acl_function.index("icacls.exe")
+    assert "Get-ChildItem -LiteralPath $directory" in acl_function
+    directory_walk = acl_function[acl_function.index("while ($pendingDirectories"):acl_function.index("# Files are touched")]
+    assert directory_walk.index("ReparsePoint") < directory_walk.index("& $takeown.Source /F $directory")
+    assert directory_walk.index("& $takeown.Source /F $directory") < directory_walk.index("Get-ChildItem -LiteralPath $directory")
+    assert "$snapshots.Add([pscustomobject]@{ Item = $directoryInfo; Acl = $originalAcl })" in directory_walk
+    assert "if (-not $completed)" in acl_function
+    assert "$restoreTargets = @($snapshots" in acl_function
+    assert "$restoreOriginalAcl $snapshot" in acl_function
+    assert acl_function.index("Get-Acl -LiteralPath $Item.FullName") < acl_function.index("Set-Acl -LiteralPath $Item.FullName")
+    assert acl_function.count("Get-Acl -LiteralPath $Item.FullName") == 1
     assert "/grant:r $installerGrant /C /Q" in acl_function
     assert "/grant:r $installerGrant /T" not in acl_function
-    assert "/F $root /R" not in acl_function
+    assert "/R" not in acl_function
     assert "$allowed = @($ModifySids | Select-Object -Unique)" in module
     assert "$acl.SetOwner([Security.Principal.SecurityIdentifier]$OwnerSid)" in module
     assert "OwnerSid" in script and '"S-1-5-19"' in script

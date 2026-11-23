@@ -124,7 +124,72 @@ try {
     )
 
     Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsIdentity.psm1") -Force
+
+    # Reproduce a prior installation whose protected root grants no access to
+    # the elevated installer. The repair must bootstrap traversal one directory
+    # at a time, without recursive takeown or broadening the final ACL.
+    $aclProbeRoot = Join-Path $env:ProgramData ("PersonalAIAssistant\Broker-ACL-Probe-" + [guid]::NewGuid().ToString("N"))
+    $aclProbeNested = Join-Path $aclProbeRoot "nested"
+    try {
+        New-Item -ItemType Directory -Path $aclProbeNested -Force | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $aclProbeNested "existing-state.json"), '{"preserve":true}')
+        $probeAcl = Get-Acl -LiteralPath $aclProbeRoot
+        $probeAcl.SetAccessRuleProtection($true, $false)
+        foreach ($rule in @($probeAcl.Access)) { $probeAcl.RemoveAccessRuleSpecific($rule) }
+        foreach ($sid in @("S-1-5-20", $brokerSid)) {
+            $probeRule = [Security.AccessControl.FileSystemAccessRule]::new(
+                [Security.Principal.SecurityIdentifier]$sid,
+                [Security.AccessControl.FileSystemRights]::Modify,
+                [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit,
+                [Security.AccessControl.PropagationFlags]::None,
+                [Security.AccessControl.AccessControlType]::Allow
+            )
+            $probeAcl.SetAccessRule($probeRule)
+        }
+        $probeAcl.SetOwner([Security.Principal.SecurityIdentifier]$brokerSid)
+        Set-Acl -LiteralPath $aclProbeRoot -AclObject $probeAcl -ErrorAction Stop
+
+        Set-AutonomousDirectoryTreeAcl -Path $aclProbeRoot -ModifySids @("S-1-5-20", $brokerSid) -OwnerSid $brokerSid -InstallerSid $currentSid
+        $probeFinalAcl = $null
+        try {
+            $probeFinalAcl = Get-Acl -LiteralPath $aclProbeRoot -ErrorAction Stop
+        } catch {
+            if ($_.Exception.Message -notmatch "(?i)access is denied|unauthorized") { throw }
+        }
+        if ($probeFinalAcl) {
+            $probeFinalSids = @(
+                $probeFinalAcl.Access | ForEach-Object {
+                    $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+                } | Select-Object -Unique
+            )
+            if ($probeFinalSids.Count -ne 2 -or $probeFinalSids -notcontains "S-1-5-20" -or $probeFinalSids -notcontains $brokerSid) {
+                throw "The protected ACL probe did not finish with exactly the requested service identities."
+            }
+        }
+    } finally {
+        $probeEntry = Get-ChildItem -LiteralPath (Split-Path -Parent $aclProbeRoot) -Force -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -ieq (Split-Path -Leaf $aclProbeRoot) } |
+            Select-Object -First 1
+        if ($probeEntry -and $probeEntry.PSIsContainer) {
+            Set-AutonomousDirectoryTreeAcl -Path $aclProbeRoot -ModifySids @($currentSid) -OwnerSid $currentSid -InstallerSid $currentSid
+            $preservedProbeData = [System.IO.File]::ReadAllText((Join-Path $aclProbeNested "existing-state.json"))
+            if ($preservedProbeData -ne '{"preserve":true}') {
+                throw "Protected ACL repair changed existing state data."
+            }
+            Remove-Item -LiteralPath $aclProbeRoot -Recurse -Force -ErrorAction Stop
+        }
+    }
+
     Set-AutonomousDirectoryTreeAcl -Path $stateRoot -ModifySids @($currentSid, $brokerSid) -OwnerSid $brokerSid -InstallerSid $currentSid
+    $stateAcl = Get-Acl -LiteralPath $stateRoot -ErrorAction Stop
+    $stateAclSids = @(
+        $stateAcl.Access | ForEach-Object {
+            $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+        } | Select-Object -Unique
+    )
+    if ($stateAclSids.Count -ne 2 -or $stateAclSids -notcontains $currentSid -or $stateAclSids -notcontains $brokerSid) {
+        throw "The final shared-state ACL does not contain exactly the Runner and broker identities."
+    }
 
     New-Service -Name $serviceName -BinaryPathName ('"' + $serviceExe + '"') -DisplayName "Personal AI Assistant State Broker CI" -StartupType Manual | Out-Null
     $serviceCreated = $true
