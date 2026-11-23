@@ -2457,3 +2457,9 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - The Windows live broker test no longer compiles source with `csc.exe`; it verifies the CI package and staged copy by SHA-256, then exercises that exact binary under both PowerShell Core and Windows PowerShell Desktop. The Desktop step also verifies same-host process relaunch.
 - CI now requests GitHub artifact attestations for the broker executable. This establishes signed build provenance; the target installer still verifies the committed SHA-256 manifest and does not independently verify the GitHub attestation.
 - The Windows storage job timeout was increased to accommodate checkpoint fault injection plus both live PowerShell-host broker runs.
+
+
+### 2026-11-23 — Consolidated exact-head validation branch
+
+- Consolidated the capability-only PowerShell probe, net48 prebuilt Broker package, .NET 4.8+ preflight, package-based live service test under Desktop/Core, and CI provenance attestation into the final validation branch.
+- The exact-head workflow is being retriggered from a unique PR head so its Windows package artifact can be committed and compared against a fresh deterministic build. The PR remains Draft; no merge or target-host mutation is authorized by this validation step.
