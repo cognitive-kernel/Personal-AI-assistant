@@ -2419,3 +2419,11 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - No exact-head CI or target-host installation result is claimed in this entry; both remain pending.
 - The broker installer still compiles `AutonomousStateBrokerService.cs` at install time using .NET Framework `csc.exe`. This consumer-machine compiler dependency remains an open portability defect and must be removed before claiming the Windows broker bootstrap fully portable.
 - No user machine service, ACL, Runner, database, task, checkpoint, or durable state was modified.
+
+
+## 2026-11-23 — Broker packaging: remove target-host compiler dependency
+
+- The portability contract explicitly forbids requiring `csc.exe` or a developer toolchain on the target host. `AutonomousStateBrokerInstall.psm1` now verifies the packaged `scripts/bin/PersonalAIAssistant.StateBroker.exe` against its SHA-256 manifest, stages a verified copy, and retains the existing atomic replacement/rollback flow. It no longer searches for or invokes a compiler.
+- Windows CI builds the service from `AutonomousStateBrokerService.cs` and uploads the binary plus manifest. The first attempt used the inbox .NET Framework `csc.exe` with `/deterministic+`; the actual Windows runner rejected that option (CS2007). The CI-only build was changed to use Roslyn `csc.dll` from the installed .NET SDK against .NET Framework reference assemblies.
+- The generated artifact is not yet committed in this log's current state. The final package must be committed, CI must compare its hash with a fresh source build, and the live LocalService/named-pipe regression must pass before the installer change is considered complete.
+- Target-host installation and preservation acceptance remain pending; no user machine service, ACL, Runner, task, checkpoint, or durable data was modified.
