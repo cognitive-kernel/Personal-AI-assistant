@@ -1,17 +1,16 @@
-## 2026-11-23 — وضعیت اصلاح ریشه‌ای Broker و ماژول مهندسی (PR #863، Draft)
+## 2026-11-24 — اصلاح Broker و تکمیل کنترل‌های ماژول مهندسی (PR #863، Draft)
 
-- شاخهٔ فعال: `fix/autonomous-engineering-broker-final-ci-20261123`؛ مبنا: `main` در SHA `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`. هیچ تغییری هنوز به main ادغام نشده است.
-- **علت قطعی باقی‌ماندن خطا روی main:** مسیر نصب Broker هنوز برای کامپایل سرویس در میزبان مصرف‌کننده به `csc.exe` متکی بود. بنابراین داشتن PowerShell به‌تنهایی کافی نبود و نصب Broker می‌توانست شکست بخورد؛ در نتیجه health و pending-work هر دو unavailable می‌شدند.
-- **نقص دوم در شاخهٔ اصلاحی قبلی:** Installer به فایل اجرایی prebuilt و manifest نیاز داشت، اما binary در مخزن commit نشده بود؛ در نتیجه حذف compiler به‌تنهایی نصب واقعی را ممکن نمی‌کرد.
-- **اصلاحات این شاخه:** حذف وابستگی نصب به compiler، ساخت package در CI با SDK دقیق `11.0.100` و reference package ثابت `Microsoft.NETFramework.ReferenceAssemblies.net48 1.0.3`، مقایسهٔ build تازه با binary commitشده، تولید provenance attestation، و commit خودکار package تأییدشده به شاخهٔ PR. SDK pin فقط برای reproducible build در CI است و روی میزبان کاربر نصب نمی‌شود.
-- **ایمنی نصب:** بررسی وجود package، SHA-256، .NET Framework 4.8+ runtime و `sc.exe` اکنون پیش از توقف Runner یا تغییر ACL انجام می‌شود. نصب‌کننده package را دوباره پیش از تغییر سرویس اعتبارسنجی می‌کند. این کار شکست ناشی از package ناقص را قبل از تغییر state متوقف می‌کند.
-- **تشخیص‌پذیری UI:** علت امن و محدودشدهٔ خطای Broker (از جمله WinError) در کارت فضای ذخیره‌سازی و وضعیت Checkpoint نمایش داده می‌شود؛ داشبورد در حالت محدود بالا می‌آید و dispatch تا تأیید durable state مسدود می‌ماند.
-- **حذف قفل نسخهٔ PowerShell:** Edition/Version صرفاً برای گزارش ثبت می‌شوند؛ انتخاب میزبان با capability probe انجام می‌شود، نه شرط عددی 5.1 یا 7.x. Core در صورت سازگاری اولویت دارد و Desktop fallback است.
-- **محدودیت‌های باز:** Broker همچنان برای provisioning به یک میزبان PowerShell سازگار و runtime .NET Framework 4.8+ نیاز دارد؛ مسیر native/PowerShell-free هنوز پیاده‌سازی نشده است. Linux/macOS و ماتریس x86/ARM64 نیز در این PR پوشش کامل ندارند.
-- **CI:** build و تست exact-head این نسخه هنوز باید کامل و سبز شوند؛ commit package به شاخه و اجرای دوبارهٔ مقایسهٔ deterministic نیز باید تأیید شود. هیچ نتیجهٔ قبلی به‌عنوان CI نهایی این head محسوب نمی‌شود.
-- **پذیرش میزبان واقعی هنوز انجام نشده:** UAC، نصب/ترمیم از حساب non-admin، LocalService، named pipe، Runner حاضر/غایب، restart و حفظ Checkpoint/داده باید روی Windows هدف آزمایش شوند.
+- شاخهٔ کاری: `fix/autonomous-engineering-broker-final-ci-20261123`؛ مبنا: `main` در SHA `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`. هیچ تغییری به main ادغام نشده است.
+- **نقص‌های قطعی در کد قبلی:** نصب‌کنندهٔ main برای ساخت Broker به `csc.exe` روی میزبان کاربر متکی بود. در شاخهٔ prebuilt نیز فایل اجرایی و manifest هنوز در repository موجود نبودند؛ بنابراین حذف compiler بدون تولید و بسته‌بندی واقعی binary کافی نبود. workflow ساخت package هم یک بلوک PowerShell/YAML ناقص داشت که قبل از اجرای CI باید اصلاح می‌شد.
+- **اصلاح package:** workflow اکنون Broker را با SDK ثابت CI می‌سازد، SHA-256 را کنترل می‌کند، در صورت نبود package آن را برای تست stage می‌کند، artifact و attestation می‌سازد و job جداگانه package را idempotently به branch PR commit می‌کند. اجرای بعدی باید build تازه را با binary commitشده مقایسه کند. SDK و reference assemblies فقط build inputs در CI هستند، نه نیاز توسعه روی رایانهٔ کاربر.
+- **حذف قفل نسخهٔ PowerShell:** PowerShell Core و Windows PowerShell Desktop جداگانه کشف می‌شوند؛ انتخاب بر اساس وجود cmdlet/module/API و ابزارهای لازم است، نه شرط عددی 5.1 یا 7.x. میزبان انتخاب‌شده برای UAC relaunch نیز همان executable فعال است.
+- **حذف UAC خودکار از startup:** شروع برنامه فقط health check خواندنی انجام می‌دهد. نصب/ترمیم Broker فقط با دکمهٔ صریح UI و درخواست POST loopback-protected شروع می‌شود. لغو UAC، نبود میزبان سازگار، timeout و شکست health هرکدام کد خطای جدا دارند. نبود Runner مانع نصب Broker نیست؛ Runner فقط برای Workflow مهندسی لازم است.
+- **حفظ حالت محدود و داده:** در نبود Broker، داشبورد بالا می‌آید اما اجرای چرخه و پذیرش task جدید تا بررسی durable state مسدود می‌ماند. نصب‌کننده package، hash، runtime و service manager را پیش از توقف Runner یا تغییر ACL بررسی می‌کند؛ هیچ task/checkpoint/database روی میزبان کاربر تغییر داده نشده است.
+- **آزمون‌های اضافه‌شده:** انتخاب PowerShell بر اساس capability، عدم نصب خودکار هنگام startup، endpoint نصب Broker، خطای UAC/timeout، قفل درخواست هم‌زمان، health پس از نصب، دکمهٔ UI و refresh وضعیت پس از نصب.
+- **محدودیت‌های باز:** مسیر native/PowerShell-free برای service-control و ACL هنوز پیاده‌سازی نشده؛ Windows target همچنان به میزبان PowerShell سازگار و .NET Framework 4.8+ runtime نیاز دارد. Linux/macOS و ماتریس معماری/relocation هنوز پذیرش کامل ندارند.
+- **CI نهایی هنوز تأیید نشده است:** اصلاح workflow و تست‌ها commit شده‌اند، اما تا ثبت نتیجهٔ کامل exact-head برای Linux، Windows، Windows storage، Browser E2E، CodeQL و dependency audit، موفقیت ادعا نمی‌شود. پس از commit شدن binary باید یک اجرای تازه روی همان head انجام شود.
+- پذیرش روی Windows واقعی کاربر هنوز pending است: نصب/ترمیم از حساب non-admin، UAC، LocalService، named pipe، Runner حاضر/غایب، restart و حفظ Checkpoint باید آزمایش شوند.
 - هیچ سرویس، ACL، Runner، دیتابیس، task، checkpoint یا دادهٔ durable روی میزبان کاربر تغییر نکرده است.
-
 
 
 ---
