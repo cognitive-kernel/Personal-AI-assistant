@@ -157,7 +157,26 @@ def test_machine_state_broker_uses_a_local_allowlisted_pipe_not_a_network_file_a
     assert "Invoke-AutonomousStateBroker" in installer
     assert "Start-Process" in ensure and "-Verb RunAs" in ensure
     assert "Runner.Worker.exe" in ensure
-    assert "Get-AutonomousWindowsAccountSid -AccountName $runner.Service.StartName" in ensure
+    assert "Get-AutonomousWindowsAccountSid -AccountName $candidate.StartName" in ensure
+
+
+
+def test_machine_state_broker_bootstrap_is_independent_of_runner_registration():
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+
+    assert "$brokerServiceSid = \"S-1-5-19\"" in ensure
+    assert "$modifySids = @($brokerServiceSid)" in ensure
+    assert "$modifySids += $runner.Sid" in ensure
+    assert "if (-not [string]::IsNullOrWhiteSpace($RunnerRoot) -and $resolvedRunnerServices.Count -ne 1)" in ensure
+    assert "Expected exactly one installed Runner service matching the supplied RunnerRoot" in ensure
+    assert "if ($resolvedRunnerServices.Count -ne 1)" not in ensure
+    assert 'Join-Path $runner.Root ".runner"' not in ensure
+    assert "No GitHub Runner is installed; the core application broker is ready." in ensure
+    assert "foreach ($runner in $allRunnerServices)" in ensure
+    assert "Get-AutonomousWindowsAccountSid -AccountName $candidate.StartName" in ensure
+    assert ensure.index("Stop-Service -Name $service.Name") < ensure.index("Set-AutonomousDirectoryTreeAcl")
+    assert "activeWorkersAfterStop" in ensure
+    assert "Start-Service -Name $serviceNameToRestart" in ensure
 
 
 def test_runner_provisioning_discovers_existing_path_and_service_identity():
