@@ -394,6 +394,21 @@ def test_broker_setup_preflights_package_before_runner_or_acl_mutation():
     assert "csc.exe" not in installer
 
 
+def test_broker_setup_rolls_back_acl_and_manifest_when_install_fails():
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+    identity = _read("scripts/AutonomousWindowsIdentity.psm1")
+    workflow = _read(".github/workflows/tests.yml")
+
+    assert "[switch]$PassThru" in identity
+    assert "function Restore-AutonomousDirectoryTreeAcl" in identity
+    assert "Restore-AutonomousDirectoryTreeAcl -Snapshot $aclTransaction" in ensure
+    assert "$previousStateModifySids" in ensure
+    assert "if (-not $setupCommitted)" in ensure
+    assert ensure.index("Install-AutonomousStateBrokerService") < ensure.index("$setupCommitted = $true")
+    assert "Transactional ACL snapshot and exact rollback passed." in workflow
+    assert "Restore-AutonomousDirectoryTreeAcl -Snapshot $aclSnapshot" in workflow
+
+
 def test_broker_installer_preflights_net48_and_service_control_before_mutation():
     installer = _read("scripts/AutonomousStateBrokerInstall.psm1")
     release_check = installer.index("$frameworkRelease = Get-AutonomousDotNetFrameworkRelease")
