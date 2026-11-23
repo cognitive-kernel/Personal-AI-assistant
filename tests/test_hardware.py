@@ -318,12 +318,12 @@ def test_windows_powershell_discovery_falls_back_to_windows_powershell_5_1(monke
         "powershell": None,
     }
     monkeypatch.setattr(hardware.shutil, "which", lambda name: candidates.get(name))
-    assert hardware._find_windows_powershell() == candidates["powershell.exe"]
+    assert hardware._windows_powershell_candidates() == [candidates["powershell.exe"]]
 
 
 def test_windows_powershell_discovery_returns_none_when_missing(monkeypatch):
     monkeypatch.setattr(hardware.shutil, "which", lambda _name: None)
-    assert hardware._find_windows_powershell() is None
+    assert hardware._windows_powershell_candidates() == []
 
 
 
