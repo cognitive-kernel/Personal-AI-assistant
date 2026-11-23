@@ -2706,3 +2706,21 @@ def test_posix_cleanup_lock_order_is_repository_then_state_then_checkpoint(monke
 
     assert response.status_code == 200
     assert calls == ["repository", "durable-state", "checkpoint"]
+
+
+
+def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admission():
+    workflow = _read(".github/workflows/autonomous-codex-engineering.yml")
+    start = workflow.index("- name: Recheck live durable pause state after concurrency admission")
+    end = workflow.index("- name: Execute one isolated task, validate, and publish for owner review", start)
+    gate = workflow[start:end]
+    concurrency = workflow.index("group: autonomous-local-engineering-${{ github.repository }}")
+
+    assert concurrency < start
+    assert "actions/variables/AUTONOMOUS_ENGINEERING_PAUSED" in gate
+    assert "Invoke-RestMethod -Method Get" in gate
+    assert 'Authorization = "Bearer $env:GH_TOKEN"' in gate
+    assert 'if ($statusCode -eq 404)' in gate
+    assert "Failing closed; no new task will start." in gate
+    assert "PAUSED: ${{ vars.AUTONOMOUS_ENGINEERING_PAUSED" not in gate
+    assert "if: steps.pause.outputs.paused != 'true'" in workflow[end:end + 300]
