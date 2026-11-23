@@ -2019,13 +2019,13 @@ def test_cycle_controller_allows_manual_task_in_scheduled_mode(monkeypatch):
 
 def test_next_cycle_dispatch_is_suppressed_by_live_scheduled_mode(monkeypatch):
     calls = []
-    monkeypatch.setattr(
-        cycle, "api",
-        lambda token, repo, method, path, payload=None: (
-            calls.append((method, path, payload)) or
-            {"value": "scheduled"} if path.endswith("AUTONOMOUS_ENGINEERING_MODE") else {}
-        ),
-    )
+    def fake_api(token, repo, method, path, payload=None):
+        calls.append((method, path, payload))
+        if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
+            return {"value": "scheduled"}
+        return {}
+
+    monkeypatch.setattr(cycle, "api", fake_api)
     args = type("Args", (), {"mode": "continuous", "correlation_id": "a" * 32})()
 
     assert cycle._dispatch_next_cycle_if_enabled("token", "owner/repository", args) is False
