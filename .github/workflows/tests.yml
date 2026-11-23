@@ -376,7 +376,7 @@ jobs:
             foreach ($path in $rollbackPaths) {
               $restoredDescriptor = (Get-Acl -LiteralPath $path).Sddl
               if ($restoredDescriptor -ne $originalDescriptors[$path]) {
-                throw "The original ACL descriptor was not restored for $path."
+                throw "The original ACL descriptor was not restored for $path. Expected=[$($originalDescriptors[$path])] Actual=[$restoredDescriptor]"
               }
             }
             if ([System.IO.File]::ReadAllText($rollbackFile) -ne '{"rollback":true}') {
