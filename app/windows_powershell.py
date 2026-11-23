@@ -160,7 +160,7 @@ def find_compatible_powershell(
         "[Microsoft.Win32.RegistryHive]::LocalMachine,[Microsoft.Win32.RegistryView]::Registry32); "
         "$registry.Close(); $registrySupported = $true "
         "} catch { $registrySupported = $false }; "
-        "$toolNames = @('sc.exe','icacls.exe'); "
+        "$toolNames = @('sc.exe','icacls.exe','takeown.exe'); "
         "$missingTools = @($toolNames | Where-Object { -not (Get-Command $_ -ErrorAction SilentlyContinue) }); "
         "if (($edition -eq 'Desktop' -or $edition -eq 'Core') -and "
         "$missing.Count -eq 0 -and $missingTools.Count -eq 0 -and $registrySupported -and "
