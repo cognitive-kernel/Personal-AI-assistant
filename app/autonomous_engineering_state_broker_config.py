@@ -12,18 +12,14 @@ _MAX_CONFIG_BYTES = 8192
 
 
 def config_directory() -> Path:
-    # Use the OS-defined system configuration root, never XDG_CONFIG_HOME or
-    # another account's profile. These are machine-wide service locations.
-    import sys
+    # Ask the platform abstraction for a machine-wide configuration location.
+    # Do not read XDG_CONFIG_HOME or a login profile.
+    from platformdirs import site_config_path
 
-    if sys.platform == "darwin":
-        root = Path("/Library/Application Support")
-    elif sys.platform.startswith("linux"):
-        root = Path("/etc/xdg")
-    else:
-        raise RuntimeError("Machine state broker configuration is not supported on this POSIX platform.")
-    return root / "PersonalAIAssistant"
-
+    root = Path(site_config_path("PersonalAIAssistant", appauthor=False))
+    if not root.is_absolute():
+        raise RuntimeError("The platform machine configuration directory is not absolute.")
+    return root
 
 def config_file() -> Path:
     return config_directory() / _CONFIG_NAME
