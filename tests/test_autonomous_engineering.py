@@ -220,7 +220,7 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert "checkpoint.verified" in status_script
     assert "function canStartManualTask()" in status_script
     assert "taskButton.disabled = !canStartManualTask()" in status_script
-    assert "فقط Runner و Broker به فایل‌های محافظت‌شده دسترسی مستقیم دارند" in agent_page
+    assert "فقط LocalService و Runner نصب‌شده به پوشهٔ محافظت‌شده دسترسی Modify مستقیم دارند" in agent_page
     assert "حساب‌های برنامه از کانال محلی محدود استفاده می‌کنند" in agent_page
     assert "checks.github_runs_available" in status_script
     assert 'id="interval-hours"' in page
@@ -1973,7 +1973,7 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
 
     assert "new AbortController()" in core
     assert 'const defaultTimeoutMs = path === "status" ? 40000' in core
-    assert "requestedTimeoutMs > 120000" in core
+    assert "requestedTimeoutMs > 300000" in core
     assert "const timeoutMs = requestedTimeoutMs === undefined ? defaultTimeoutMs : requestedTimeoutMs" in core
     assert 'path.startsWith("progress") ? 20000 : 120000' in core
     assert "timeoutError.ambiguous = true" in core
