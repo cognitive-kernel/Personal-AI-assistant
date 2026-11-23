@@ -172,11 +172,24 @@ def _live_pause_enabled(client: GitHubActionsClient) -> bool:
     return value == "true"
 
 
+def _live_execution_mode(client: GitHubActionsClient) -> str:
+    try:
+        setting = client.request("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE")
+    except RuntimeError as exc:
+        if "HTTP 404" in str(exc):
+            return "continuous"
+        raise RuntimeError(
+            "Could not verify the live execution mode; automatic recovery fails closed."
+        ) from exc
+    if not isinstance(setting, dict):
+        raise RuntimeError("GitHub returned an invalid execution mode; automatic recovery fails closed.")
+    value = str(setting.get("value") or "").strip().lower()
+    if value not in {"continuous", "scheduled"}:
+        raise RuntimeError("GitHub returned an invalid execution mode; automatic recovery fails closed.")
+    return value
+
+
 def main() -> int:
-    mode = os.getenv("EXECUTION_MODE", "continuous").strip().lower()
-    if mode != "continuous":
-        report("Recovery not enabled", "Scheduled mode does not automatically retry failed runs.")
-        return 0
     repository = os.environ.get("GH_REPO", "").strip()
     token = os.environ.get("GH_TOKEN", "").strip()
     try:
@@ -189,6 +202,9 @@ def main() -> int:
 
     try:
         client = GitHubActionsClient(repository, token)
+        if _live_execution_mode(client) != "continuous":
+            report("Recovery not enabled", "The live execution mode is scheduled; automatic recovery is disabled.")
+            return 0
         if _live_pause_enabled(client):
             report("Recovery paused", "The live durable Pause setting is active; no run was dispatched.")
             return 0
@@ -246,6 +262,9 @@ def main() -> int:
         # Re-check ownership and the live Pause flag after backoff; either may
         # have changed while this recovery job was sleeping.
         client.retryable_failure_streak(failed_run_id, current_jobs)
+        if _live_execution_mode(client) != "continuous":
+            report("Recovery not enabled", "The live execution mode changed to scheduled during backoff; no run was dispatched.")
+            return 0
         if _live_pause_enabled(client):
             report("Recovery paused", "The live durable Pause setting became active during backoff; no run was dispatched.")
             return 0
