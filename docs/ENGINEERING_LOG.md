@@ -1,3 +1,22 @@
+## 2026-11-24 — recheck live Pause at controller and recovery admission boundaries
+
+### Root cause
+- A live workflow-step check still left a narrow interval before the Python controller acquired the repository execution lock and entered task recovery.
+- The automatic recovery coordinator previously relied on a PAUSED value passed through workflow context, and could wait through backoff while Pause changed.
+
+### Correction
+- The cycle controller reads the current repository Actions variable after acquiring the repository execution lock and before calling run_cycle.
+- Recovery reads the live variable before classifying the failed run and again after backoff immediately before workflow dispatch.
+- Missing variable (HTTP 404) means default false. Other API failures and malformed values fail closed.
+- Recovery no longer receives a PAUSED snapshot in its workflow environment.
+- Added unit tests for the controller lock ordering, missing-variable default, API failure, and Pause activation during recovery backoff.
+
+### Validation boundary
+- Exact-head Linux/Windows CI and Windows PowerShell parser validation remain pending.
+- No task, checkpoint, workflow run, or repository variable was modified by these checks.
+
+---
+
 ## 2026-11-24 — write the live Pause output without a PowerShell 5.1 BOM
 
 - The live Pause workflow step now appends its output using .NET UTF-8 without BOM. This avoids PowerShell 5.1 `Out-File -Encoding utf8` potentially prefixing the first GitHub Actions output key with a BOM.
