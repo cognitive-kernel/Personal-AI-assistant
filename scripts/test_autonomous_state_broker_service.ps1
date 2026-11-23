@@ -210,7 +210,7 @@ try {
 
     Import-Module (Join-Path $PSScriptRoot "AutonomousStateBroker.psm1") -Force
     try {
-        $health = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health" -TimeoutMilliseconds 30000
+        $health = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health/verify" -TimeoutMilliseconds 30000
     } catch {
         $diagnosticPath = Join-Path $stateRoot "service-errors.log"
         $diagnosticText = if (Test-Path -LiteralPath $diagnosticPath) {
@@ -232,7 +232,7 @@ try {
     Start-Sleep -Seconds 2
     $driftDetected = $false
     try {
-        Invoke-AutonomousStateBroker -Method GET -Path "/v1/health" -TimeoutMilliseconds 30000 | Out-Null
+        Invoke-AutonomousStateBroker -Method GET -Path "/v1/health/verify" -TimeoutMilliseconds 30000 | Out-Null
     } catch {
         if ($_.Exception.Message -match "503") {
             $driftDetected = $true
@@ -249,7 +249,7 @@ try {
         $currentSid, $brokerSid
     ) -OwnerSid $brokerSid -InstallerSid $currentSid
     Start-Sleep -Seconds 2
-    $repairedHealth = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health" -TimeoutMilliseconds 30000
+    $repairedHealth = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health/verify" -TimeoutMilliseconds 30000
     if ($repairedHealth.ready -ne $true -or $repairedHealth.acl_ready -ne $true) {
         throw "The broker did not become healthy after restoring the expected state ACL."
     }
@@ -806,7 +806,7 @@ assert request("GET", "/v1/tasks/archived")["tasks"][0]["status"] == "restored"
     try {
         $timeoutObserved = $false
         try {
-            Invoke-AutonomousStateBroker -Method GET -Path "/v1/health" -TimeoutMilliseconds 500 | Out-Null
+            Invoke-AutonomousStateBroker -Method GET -Path "/v1/health/verify" -TimeoutMilliseconds 500 | Out-Null
         } catch {
             if ($_.Exception.Message -like "*timed out*") { $timeoutObserved = $true } else { throw }
         }
