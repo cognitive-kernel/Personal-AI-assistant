@@ -932,10 +932,15 @@ def _ensure_ollama() -> None:
         _configured_llm_provider(name)
         for name in ("chat", "research_plan", "learning", "programming", "embedding")
     ]
-    factual_review_model = _configured_model_setting(
-        "factual_review_ollama_model", "FACTUAL_REVIEW_OLLAMA_MODEL", ""
+    factual_review_provider = _configured_llm_provider("factual_review")
+    factual_review_model = (
+        _configured_model_setting(
+            "factual_review_ollama_model", "FACTUAL_REVIEW_OLLAMA_MODEL", ""
+        )
+        if factual_review_provider == "ollama"
+        else ""
     )
-    if factual_review_model and _configured_llm_provider("factual_review") == "ollama":
+    if factual_review_model:
         active_providers.append("ollama")
     if "ollama" not in active_providers:
         print(
@@ -1007,7 +1012,7 @@ def _ensure_ollama() -> None:
                 "nomic-embed-text",
             ),
         ))
-    if factual_review_model and _configured_llm_provider("factual_review") == "ollama":
+    if factual_review_model:
         required_models.append(("مدل بازبینی factual", factual_review_model))
 
     missing = [
