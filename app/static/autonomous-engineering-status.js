@@ -191,7 +191,7 @@
       labels.storage.textContent = stateText(checks.progress_storage_accessible);
       $("storage-detail").textContent = checks.progress_storage_accessible
         ? "سرویس Broker محلی آماده است؛ حساب برنامه از کانال محدود محلی استفاده می‌کند و به مجوز مستقیم پوشه نیاز ندارد."
-        : "سرویس Broker فضای پیشرفت آماده نیست. برنامه هنگام شروع برای نصب آن درخواست مجوز مدیر می‌کند؛ در صورت ردشدن UAC یا نبود Runner، اسکریپت ensure_autonomous_state_broker.ps1 را از PowerShell مدیر اجرا کنید.";
+        : "سرویس Broker فضای پیشرفت آماده نیست. برنامه هنگام شروع برای نصب آن درخواست مجوز مدیر می‌کند؛ اگر UAC رد شد، اسکریپت ensure_autonomous_state_broker.ps1 را با PowerShell سازگار (نسخهٔ 5.1 یا 7) در پنجرهٔ مدیر اجرا کنید. نصب Broker به Runner وابسته نیست؛ Runner فقط برای اجرای Workflow مهندسی لازم است.";
       lastPendingWork = data.pending_work && typeof data.pending_work === "object"
         ? data.pending_work
         : {available: false, blocked: true, checkpoint: {available: true, verified: false}};
