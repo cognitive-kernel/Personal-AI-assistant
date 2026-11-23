@@ -63,6 +63,15 @@ def test_windows_broker_setup_discovers_runner_identity_and_path():
     assert '$env:PSModulePath = $previousModulePath' in ensure
     assert ensure.index('$env:PSModulePath = Join-Path $PSHOME "Modules"') < ensure.index('Start-Process -FilePath $hostExecutable')
     assert ensure.index('Start-Process -FilePath $hostExecutable') < ensure.index('$env:PSModulePath = $previousModulePath')
+    compatibility = (ROOT / "scripts" / "configure_autonomous_engineering_progress.ps1").read_text(encoding="utf-8")
+    assert '$hostExecutableName = if ($PSVersionTable.PSEdition -eq "Core") { "pwsh.exe" } else { "powershell.exe" }' in compatibility
+    assert '$hostExecutable = Join-Path $PSHOME $hostExecutableName' in compatibility
+    assert '& $hostExecutable -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $ensureScript' in compatibility
+    assert '$previousModulePath = $env:PSModulePath' in compatibility
+    assert '$env:PSModulePath = Join-Path $PSHOME "Modules"' in compatibility
+    assert '$env:PSModulePath = $previousModulePath' in compatibility
+    assert compatibility.index('$env:PSModulePath = Join-Path $PSHOME "Modules"') < compatibility.index('& $hostExecutable')
+    assert compatibility.index('& $hostExecutable') < compatibility.index('$env:PSModulePath = $previousModulePath')
     assert "$modifySids = @($brokerServiceSid)" in ensure
     assert "$modifySids += $runner.Sid" in ensure
     assert "foreach ($runner in $allRunnerServices)" in ensure
