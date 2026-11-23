@@ -585,6 +585,26 @@ def autonomous_engineering_status() -> dict[str, Any]:
     return collect_status()
 
 
+@router.post("/broker/setup")
+def autonomous_engineering_setup_broker() -> dict[str, Any]:
+    """Provision the durable-state broker only after an explicit UI/operator action."""
+    from .autonomous_engineering_broker_setup import BrokerSetupError, setup_state_broker
+
+    try:
+        return setup_state_broker()
+    except BrokerSetupError as exc:
+        error = HTTPException(
+            status_code=exc.status_code,
+            detail=str(exc),
+            headers={
+                "X-Error-Code": exc.code,
+                "X-Retryable": "true" if exc.retryable else "false",
+            },
+        )
+        error.safe_details = exc.safe_details
+        raise error from exc
+
+
 @router.post("/models/pull", status_code=202)
 def autonomous_engineering_pull_model(payload: ModelPullRequest) -> dict[str, Any]:
     try:
