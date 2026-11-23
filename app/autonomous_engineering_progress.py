@@ -47,6 +47,18 @@ def cleanup_shared_progress_data() -> dict[str, Any]:
     return cleanup()
 
 
+def _safe_state_broker_error_detail(exc: Exception) -> str:
+    """Expose bounded broker diagnostics without leaking arbitrary exception data."""
+    try:
+        from .autonomous_engineering_state_broker import StateBrokerError
+    except ImportError:
+        return type(exc).__name__
+    if not isinstance(exc, StateBrokerError):
+        return type(exc).__name__
+    detail = " ".join(str(exc).split())
+    return detail[:240] if detail else type(exc).__name__
+
+
 def pending_work_status() -> dict[str, Any]:
     """Inspect durable ownership markers without reading or changing task data."""
     state_files = {
@@ -63,7 +75,7 @@ def pending_work_status() -> dict[str, Any]:
             "available": False,
             "blocked": True,
             "markers": {},
-            "reason": f"Durable task state cannot be verified safely: {type(exc).__name__}",
+            "reason": f"Durable task state cannot be verified safely: {_safe_state_broker_error_detail(exc)}",
         }
 
 
@@ -215,7 +227,7 @@ def get_progress(
             "events": [],
             "available": False,
             "storage_configured": False,
-            "error": f"Shared progress storage is unavailable: {type(exc).__name__}",
+            "error": f"Shared progress storage is unavailable: {_safe_state_broker_error_detail(exc)}",
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
     current = snapshot.get("current")

@@ -226,7 +226,7 @@ function Remove-LegacyCodexContextVariants {
 
         $deleteBody = @{ model = $legacyName } | ConvertTo-Json -Compress
         try {
-            $null = Invoke-RestMethod -Uri "$baseUrl/api/delete" -Method Post -ContentType "application/json" -Body $deleteBody -TimeoutSec 30 -MaximumRedirection 0
+            $null = Invoke-RestMethod -Uri "$baseUrl/api/delete" -Method Delete -ContentType "application/json" -Body $deleteBody -TimeoutSec 30 -MaximumRedirection 0
             Write-Host "Removed obsolete Codex context variant: $legacyName"
         } catch {
             throw "Ollama could not remove obsolete Codex context variant '$legacyName'. $($_.Exception.Message)"

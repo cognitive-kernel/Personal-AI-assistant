@@ -1,3 +1,18 @@
+## 2026-11-23 — State Broker startup diagnostics and Ollama legacy cleanup
+
+### Findings
+- The local readiness API collapsed named-pipe failures into the generic `StateBrokerError` type, hiding fixed diagnostics such as a missing local service (WinError 2). Only the broker client's bounded diagnostic text is now exposed; unrelated exception text remains type-only.
+- The elevated PowerShell provisioning process runs as a separate UAC child, so its failure details were not reliably available in the parent Python console. The installer now writes a transcript to `%ProgramData%\\PersonalAIAssistant\\Logs\\state-broker-setup.log`, and startup reports that location.
+- If the installer exits successfully but the broker pipe/health check still fails, startup performs a bounded direct health probe and reports safe health fields or a bounded IPC error.
+- Ollama legacy cleanup used POST against `/api/delete`, which returns HTTP 405. It now uses HTTP DELETE with an exact regression assertion. Existing guards continue to preserve base/stable tags, loaded variants, and tags without the generated `num_ctx` marker.
+- Recovery diagnostics now distinguish schedule admission, preflight, and postcondition failures without changing the no-duplicate-dispatch policy.
+
+### Safety and validation boundary
+- No local Ollama models, Runner services, task/checkpoint files, or durable state were changed by these source updates.
+- The installer continues to fail closed if a Runner worker is active; target-host execution and inspection of the generated transcript remain required before declaring the local Broker ready.
+
+---
+
 ## 2026-11-23 — exact-head CI green for Autonomous Engineering UI resilience
 
 ### CI evidence

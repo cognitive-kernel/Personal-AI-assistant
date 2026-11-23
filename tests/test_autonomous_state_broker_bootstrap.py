@@ -21,6 +21,8 @@ def test_machine_state_broker_is_checked_before_app_startup():
     assert "capture_output = False" in bootstrap
     assert "if health(timeout_ms=30000, verify=True):" in bootstrap
     assert "if not health(timeout_ms=30000, verify=True):" in bootstrap
+    assert "state-broker-setup.log" in bootstrap
+    assert 'request("GET", "/v1/health/verify", timeout_ms=30000)' in bootstrap
     assert main.index("_ensure_dependencies(dev)") < main.index("from dotenv import load_dotenv")
     assert main.index("load_dotenv(ROOT / \".env\", override=False)") < main.index("_ensure_state_broker()")
     assert main.index("_ensure_state_broker()") < main.index("_ensure_ollama()")
@@ -51,6 +53,7 @@ def test_windows_broker_setup_discovers_runner_identity_and_path():
     assert ensure.index("Stop-Service -Name $service.Name") < ensure.index("Set-AutonomousDirectoryTreeAcl")
     assert ensure.index("$stoppedRunnerServices += $service.Name") < ensure.index("$service.WaitForStatus(")
     assert "activeWorkersAfterStop" in ensure
+    assert "Start-Transcript -Path $brokerLogPath -Append -Force" in ensure
     assert "Start-Service -Name $serviceNameToRestart" in ensure
     assert 'if ($restarted.Status -eq "StopPending")' in ensure
     assert 'if ($restarted.Status -eq "Stopped")' in ensure

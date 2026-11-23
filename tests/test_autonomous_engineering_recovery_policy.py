@@ -119,6 +119,21 @@ def test_triggering_run_must_exist_in_main_history():
         retryable_failure_streak([], {}, failed_run_id=123)
 
 
+def test_recovery_message_covers_preflight_failures_without_mislabeling_them_as_schedule_gate():
+    from pathlib import Path
+
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "autonomous_engineering_recovery.py"
+    ).read_text(encoding="utf-8")
+
+    assert "schedule admission" in source
+    assert "preflight" in source
+    assert "postcondition check" in source
+    assert "failed in the schedule gate before task execution" not in source
+
+
 def test_classifier_names_match_the_autonomous_workflow_contract():
     from pathlib import Path
 

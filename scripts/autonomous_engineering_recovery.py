@@ -206,8 +206,9 @@ def main() -> int:
                 )
             else:
                 message = (
-                    "The triggering run failed in the schedule gate before task execution. "
-                    "It is excluded from the execution-failure streak; no retry was dispatched."
+                    "The triggering run failed before task execution (during schedule admission, "
+                    "preflight, or a postcondition check). It is excluded from the execution-failure "
+                    "streak; no duplicate task was dispatched and durable task/checkpoint state was preserved."
                 )
             report("Recovery blocked before task execution", message, error=True)
             return 1
