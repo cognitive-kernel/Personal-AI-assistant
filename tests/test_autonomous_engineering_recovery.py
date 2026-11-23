@@ -52,8 +52,8 @@ def test_main_blocks_admission_rejection_without_dispatch(monkeypatch):
             return 0
 
         def request(self, *args, **kwargs):
-        if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
-            return {"value": "false"}
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
+                return {"value": "false"}
             calls.append((args, kwargs))
 
     monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
@@ -87,8 +87,8 @@ def test_main_does_not_dispatch_for_a_preflight_failure(monkeypatch):
             return 0
 
         def request(self, *args, **kwargs):
-        if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
-            return {"value": "false"}
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
+                return {"value": "false"}
             calls.append((args, kwargs))
 
     monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
@@ -115,8 +115,8 @@ def test_main_opens_breaker_as_a_failed_recovery_result(monkeypatch):
             return 3
 
         def request(self, *args, **kwargs):
-        if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
-            return {"value": "false"}
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
+                return {"value": "false"}
             calls.append((args, kwargs))
 
     monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
