@@ -144,7 +144,17 @@ try {
     $restartFailures = @()
     foreach ($serviceNameToRestart in $stoppedRunnerServices) {
         try {
-            Start-Service -Name $serviceNameToRestart -ErrorAction Stop
+            $restarted = Get-Service -Name $serviceNameToRestart -ErrorAction Stop
+            if ($restarted.Status -eq "StopPending") {
+                $restarted.WaitForStatus(
+                    [System.ServiceProcess.ServiceControllerStatus]::Stopped,
+                    [TimeSpan]::FromSeconds(30)
+                )
+                $restarted = Get-Service -Name $serviceNameToRestart -ErrorAction Stop
+            }
+            if ($restarted.Status -eq "Stopped") {
+                Start-Service -Name $serviceNameToRestart -ErrorAction Stop
+            }
             $restarted = Get-Service -Name $serviceNameToRestart -ErrorAction Stop
             $restarted.WaitForStatus(
                 [System.ServiceProcess.ServiceControllerStatus]::Running,
