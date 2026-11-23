@@ -1,7 +1,10 @@
 Set-StrictMode -Version Latest
+Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsIdentity.psm1") -Force
 
 function Install-AutonomousStateBrokerService {
     $serviceName = "PersonalAIAssistantStateBroker"
+    $localServiceSid = Get-AutonomousWindowsWellKnownSid -SidType LocalServiceSid
+    $localServiceAccount = Get-AutonomousWindowsWellKnownAccountName -SidType LocalServiceSid
     $serviceRoot = Join-Path $env:ProgramData "PersonalAIAssistant\StateBroker"
     $serviceSource = Join-Path $PSScriptRoot "AutonomousStateBrokerService.cs"
     if (-not (Test-Path -LiteralPath $serviceSource -PathType Leaf)) {
@@ -62,13 +65,14 @@ function Install-AutonomousStateBrokerService {
             $newServiceCreated = $true
         }
         $sc = Get-Command sc.exe -ErrorAction Stop
-        & $sc.Source config $serviceName 'binPath=' $serviceExe 'obj=' 'NT AUTHORITY\LocalService' 'start=' 'auto' | Out-Null
+        & $sc.Source config $serviceName 'binPath=' $serviceExe 'obj=' $localServiceAccount 'start=' 'auto' | Out-Null
         if ($LASTEXITCODE -ne 0) {
-            throw "Could not configure the state broker to run under its restricted LocalService identity."
+            throw "Could not configure the state broker to run under its restricted Windows service identity."
         }
         $service = Get-CimInstance Win32_Service -Filter "Name='$serviceName'" -ErrorAction Stop
-        if ($service.StartName -ne "NT AUTHORITY\LocalService") {
-            throw "The state broker must run under NT AUTHORITY\LocalService."
+        $configuredServiceSid = Get-AutonomousWindowsAccountSid -AccountName $service.StartName
+        if ($configuredServiceSid -ne $localServiceSid) {
+            throw "The state broker is not running under the expected restricted Windows service identity."
         }
         Start-Service -Name $serviceName -ErrorAction Stop
         $running = Get-Service -Name $serviceName -ErrorAction Stop
