@@ -18,7 +18,7 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 }
 $runnerIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $RunnerAccount
 $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
-$brokerServiceSid = "S-1-5-19"
+$brokerServiceSid = Get-AutonomousWindowsWellKnownSid -SidType LocalServiceSid
 
 $machineStatePath = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")
 $processStatePath = $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR
