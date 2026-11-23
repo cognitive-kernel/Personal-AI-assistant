@@ -203,32 +203,47 @@ jobs:
           }
           Write-Host "PowerShell Core broker module imports and active-host child launch passed: $childVersion"
 
-      - name: Compile the Windows machine state broker against .NET Framework
+      - name: Build and package the Windows machine state broker
         shell: pwsh
         run: |
           $frameworkCandidates = @(
-            (Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319"),
-            (Join-Path $env:WINDIR "Microsoft.NET\Framework\v4.0.30319")
+            (Join-Path $env:WINDIR "Microsoft.NET\\Framework64\\v4.0.30319"),
+            (Join-Path $env:WINDIR "Microsoft.NET\\Framework\\v4.0.30319")
           )
           $frameworkRoot = $frameworkCandidates | Where-Object {
             Test-Path -LiteralPath (Join-Path $_ "csc.exe") -PathType Leaf
           } | Select-Object -First 1
-          if (-not $frameworkRoot) { throw ".NET Framework C# compiler was not found." }
-          $source = Join-Path $env:GITHUB_WORKSPACE "scripts\AutonomousStateBrokerService.cs"
-          $output = Join-Path $env:RUNNER_TEMP "AutonomousStateBrokerService.exe"
+          if (-not $frameworkRoot) { throw "The Windows CI build image has no .NET Framework compiler." }
+          $source = Join-Path $env:GITHUB_WORKSPACE "scripts\\AutonomousStateBrokerService.cs"
+          $packageRoot = Join-Path $env:GITHUB_WORKSPACE "scripts\\bin"
+          New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
+          $output = Join-Path $packageRoot "PersonalAIAssistant.StateBroker.exe"
+          $hashFile = $output + ".sha256"
           $references = @("System.Core.dll", "System.ServiceProcess.dll", "System.Web.Extensions.dll")
           $pipeAccess = Join-Path $frameworkRoot "System.IO.Pipes.AccessControl.dll"
           if (Test-Path -LiteralPath $pipeAccess) { $references += "System.IO.Pipes.AccessControl.dll" }
-          $arguments = @("/nologo", "/target:exe", "/out:$output")
+          $arguments = @("/nologo", "/target:exe", "/platform:anycpu", "/deterministic+", "/out:$output")
           foreach ($reference in $references) {
             $arguments += "/reference:" + (Join-Path $frameworkRoot $reference)
           }
           $arguments += $source
           & (Join-Path $frameworkRoot "csc.exe") @arguments
-          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $output)) {
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $output -PathType Leaf)) {
             throw "Windows state broker did not compile."
           }
-          Write-Host "Windows state broker compiled successfully."
+          $digest = (Get-FileHash -LiteralPath $output -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -LiteralPath $hashFile -Value $digest -NoNewline -Encoding ascii
+          Write-Host "Windows state broker package built: SHA256 $digest"
+
+      - name: Upload the prebuilt Windows state broker package
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-state-broker-package
+          path: |
+            scripts/bin/PersonalAIAssistant.StateBroker.exe
+            scripts/bin/PersonalAIAssistant.StateBroker.exe.sha256
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Exercise recursive protected state ACLs on Windows
         shell: pwsh
