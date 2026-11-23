@@ -91,7 +91,7 @@ def test_shared_state_tree_acl_is_recursive_and_only_grants_runner_and_local_ser
     assert "/F $root /R" not in acl_function
     assert "$allowed = @($ModifySids | Select-Object -Unique)" in module
     assert "$acl.SetOwner([Security.Principal.SecurityIdentifier]$OwnerSid)" in module
-    assert "OwnerSid" in script and '"S-1-5-19"' in script
+    assert "OwnerSid" in script and "Get-AutonomousWindowsWellKnownSid -SidType LocalServiceSid" in script
     assert "AppAccount" not in configure
     assert "Authenticated Users" not in configure
     assert "S-1-5-32-545" not in script + configure + module
@@ -113,8 +113,8 @@ def test_machine_state_broker_uses_a_local_allowlisted_pipe_not_a_network_file_a
     assert "WaitForPipeIo" in service
     assert "ReadTimeout" not in service and "WriteTimeout" not in service
     assert "PipeSecurity" in service
-    assert 'new SecurityIdentifier("S-1-5-2")' in service
-    assert 'new SecurityIdentifier("S-1-5-11")' in service
+    assert "new SecurityIdentifier(WellKnownSidType.NetworkSid, null)" in service
+    assert "new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null)" in service
     assert "AccessControlType.Deny" in service
     assert "GetNamedPipeClientComputerName" in service
     assert "ErrorPipeLocal = 229" in service
@@ -142,7 +142,8 @@ def test_machine_state_broker_uses_a_local_allowlisted_pipe_not_a_network_file_a
     assert "AutonomousStateBrokerInstall.psm1" in provision
     assert "Install-AutonomousStateBrokerService" in provision
     assert "PersonalAIAssistantStateBroker" in installer
-    assert "'obj=' 'NT AUTHORITY\\LocalService' 'start=' 'auto'" in installer
+    assert "Get-AutonomousWindowsWellKnownAccountName -SidType LocalServiceSid" in installer
+    assert "'obj=' $localServiceAccount 'start=' 'auto'" in installer
     assert 'Join-Path $env:ProgramData "PersonalAIAssistant\\StateBroker"' in installer
     assert "AutonomousStateBrokerService.cs" in installer
     assert "Invoke-AutonomousStateBroker" in installer
@@ -205,7 +206,7 @@ def test_windows_provisioning_uses_the_runtime_shared_state_path_contract():
 def test_windows_provisioning_keeps_runner_least_privilege_as_a_role_invariant():
     script = _read("scripts/provision_autonomous_runner.ps1")
 
-    assert 'Get-LocalGroup -SID "S-1-5-32-544"' in script
+    assert "Get-LocalGroup -SID $administratorsSid" in script
     assert "Runner account is a direct member of the local Administrators group" in script
     # Runner identity is discovered or generated; it is no longer a required
     # caller-supplied account name. Preserve the least-privilege role guard.
