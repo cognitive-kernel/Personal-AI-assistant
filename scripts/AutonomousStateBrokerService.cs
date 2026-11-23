@@ -26,8 +26,13 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
     private readonly object _healthGate = new object();
     private readonly JavaScriptSerializer _json = new JavaScriptSerializer { MaxJsonLength = 12 * 1024 * 1024 };
     private volatile bool _stopping;
+    private const string BrokerOwnerSid = "S-1-5-19";
+    private const string ModifySidsMachineVariable = "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS";
+    private const int MaxAclEntries = 100000;
     private string _stateDirectory;
     private bool _lastHealth;
+    private bool _lastStorageHealth;
+    private bool _lastAclHealth;
     private DateTime _lastHealthAt = DateTime.MinValue;
     private Thread[] _workers;
 
@@ -230,7 +235,12 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         {
             bool ready = VerifyStorageAccessCached();
             WriteResponse(pipe, ready ? 200 : 503, new Dictionary<string, object> {
-                { "ok", true }, { "ready", ready }, { "service", ServiceName }, { "schema_version", 1 }
+                { "ok", true },
+                { "ready", ready },
+                { "storage_ready", _lastStorageHealth },
+                { "acl_ready", _lastAclHealth },
+                { "service", ServiceName },
+                { "schema_version", 1 }
             });
             return;
         }
@@ -860,7 +870,9 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         {
             if (DateTime.UtcNow - _lastHealthAt < TimeSpan.FromSeconds(15))
                 return _lastHealth;
-            _lastHealth = VerifyStorageAccess();
+            _lastStorageHealth = VerifyStorageAccess();
+            _lastAclHealth = _lastStorageHealth && VerifyStateAclIntegrity();
+            _lastHealth = _lastStorageHealth && _lastAclHealth;
             _lastHealthAt = DateTime.UtcNow;
             return _lastHealth;
         }
@@ -880,6 +892,118 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                 file.Flush(true);
             }
             File.Delete(probe);
+            return true;
+        }
+        catch { return false; }
+    }
+
+    private HashSet<string> GetExpectedStateModifySids()
+    {
+        HashSet<string> expected = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+            BrokerOwnerSid
+        };
+        string configured = Environment.GetEnvironmentVariable(
+            ModifySidsMachineVariable,
+            EnvironmentVariableTarget.Machine
+        );
+        if (String.IsNullOrWhiteSpace(configured))
+            return null;
+
+        string[] entries = configured.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+        if (entries.Length < 1 || entries.Length > 64)
+            return null;
+        foreach (string entry in entries)
+        {
+            try
+            {
+                SecurityIdentifier sid = new SecurityIdentifier(entry.Trim());
+                expected.Add(sid.Value);
+            }
+            catch { return null; }
+        }
+        return expected;
+    }
+
+    private bool HasExpectedStateAcl(string path, bool isDirectory, HashSet<string> expected, bool isRoot)
+    {
+        try
+        {
+            FileSystemSecurity security = isDirectory
+                ? (FileSystemSecurity)Directory.GetAccessControl(
+                    path, AccessControlSections.Owner | AccessControlSections.Access
+                )
+                : File.GetAccessControl(path, AccessControlSections.Owner | AccessControlSections.Access);
+
+            if (isRoot)
+            {
+                SecurityIdentifier owner = security.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
+                if (owner == null || !String.Equals(owner.Value, BrokerOwnerSid, StringComparison.OrdinalIgnoreCase))
+                    return false;
+                if (!security.AreAccessRulesProtected)
+                    return false;
+            }
+
+            AuthorizationRuleCollection rules = security.GetAccessRules(
+                true, true, typeof(SecurityIdentifier)
+            );
+            if (rules.Count != expected.Count)
+                return false;
+
+            HashSet<string> observed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (AuthorizationRule candidate in rules)
+            {
+                FileSystemAccessRule rule = candidate as FileSystemAccessRule;
+                if (rule == null || rule.AccessControlType != AccessControlType.Allow ||
+                    rule.FileSystemRights != FileSystemRights.Modify)
+                    return false;
+                SecurityIdentifier sid = rule.IdentityReference as SecurityIdentifier;
+                if (sid == null || !expected.Contains(sid.Value) || !observed.Add(sid.Value))
+                    return false;
+            }
+            return observed.SetEquals(expected);
+        }
+        catch { return false; }
+    }
+
+    private bool VerifyStateAclIntegrity()
+    {
+        try
+        {
+            HashSet<string> expected = GetExpectedStateModifySids();
+            if (expected == null || !Directory.Exists(_stateDirectory))
+                return false;
+
+            Stack<string> pending = new Stack<string>();
+            pending.Push(_stateDirectory);
+            int checkedEntries = 0;
+            while (pending.Count > 0)
+            {
+                string directory = pending.Pop();
+                DirectoryInfo info = new DirectoryInfo(directory);
+                if ((info.Attributes & FileAttributes.ReparsePoint) != 0 ||
+                    !HasExpectedStateAcl(directory, true, expected, String.Equals(
+                        directory, _stateDirectory, StringComparison.OrdinalIgnoreCase
+                    )))
+                    return false;
+
+                foreach (string entry in Directory.EnumerateFileSystemEntries(directory))
+                {
+                    checkedEntries++;
+                    if (checkedEntries > MaxAclEntries)
+                        return false;
+                    FileAttributes attributes = File.GetAttributes(entry);
+                    if ((attributes & FileAttributes.ReparsePoint) != 0)
+                        return false;
+                    if ((attributes & FileAttributes.Directory) != 0)
+                    {
+                        pending.Push(entry);
+                    }
+                    else if (!HasExpectedStateAcl(entry, false, expected, false))
+                    {
+                        return false;
+                    }
+                }
+            }
             return true;
         }
         catch { return false; }
