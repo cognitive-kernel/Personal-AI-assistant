@@ -1,4 +1,9 @@
+import importlib.util
+import os
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -112,4 +117,37 @@ def test_posix_machine_config_directory_uses_platformdirs(monkeypatch, tmp_path)
 
     assert config.config_directory() == expected
     assert calls == [("PersonalAIAssistant", False)]
+
+@pytest.mark.skipif(os.name == "nt", reason="The POSIX broker installer is not importable on Windows.")
+def test_posix_service_python_selection_discovers_account_homes_dynamically(monkeypatch, tmp_path):
+    installer_path = ROOT / "scripts" / "ensure_autonomous_state_broker_posix.py"
+    spec = importlib.util.spec_from_file_location("paa_posix_broker_installer_test", installer_path)
+    assert spec is not None and spec.loader is not None
+    installer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(installer)
+
+    home = tmp_path / "registered-account-home"
+    user_python = home / "venv" / "bin" / "python3"
+    machine_python = tmp_path / "machine-runtime" / "bin" / "python3"
+    user_python.parent.mkdir(parents=True)
+    machine_python.parent.mkdir(parents=True)
+    user_python.write_text("", encoding="utf-8")
+    machine_python.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(installer.pwd, "getpwall", lambda: [SimpleNamespace(pw_dir=str(home))])
+    monkeypatch.setattr(
+        installer.shutil,
+        "which",
+        lambda name: str(user_python if name == "python3" else machine_python),
+    )
+    monkeypatch.setattr(installer, "_path_is_secure_executable", lambda path, service_uid: True)
+    monkeypatch.setattr(
+        installer.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="311"),
+    )
+
+    selected = installer._select_service_python(os.getuid(), str(user_python))
+
+    assert selected == machine_python.resolve()
 
