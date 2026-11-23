@@ -336,7 +336,7 @@ def test_windows_broker_installer_uses_verified_prebuilt_binary_without_target_c
 
     assert 'Join-Path $PSScriptRoot "bin"' in installer
     assert 'PersonalAIAssistant.StateBroker.exe' in installer
-    assert 'PersonalAIAssistant.StateBroker.exe.sha256' in installer
+    assert '$hashFile = $packagedExe + ".sha256"' in installer
     assert 'Get-FileHash -LiteralPath $packagedExe -Algorithm SHA256' in installer
     assert 'Get-FileHash -LiteralPath $temporaryExe -Algorithm SHA256' in installer
     assert 'Copy-Item -LiteralPath $packagedExe -Destination $temporaryExe' in installer
