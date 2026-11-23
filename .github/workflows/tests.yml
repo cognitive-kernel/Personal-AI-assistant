@@ -214,9 +214,10 @@ jobs:
           )
           $referenceRoot = $referenceRootCandidates | Where-Object {
             (Test-Path -LiteralPath (Join-Path $_ "mscorlib.dll") -PathType Leaf) -and
+            (Test-Path -LiteralPath (Join-Path $_ "System.dll") -PathType Leaf) -and
+            (Test-Path -LiteralPath (Join-Path $_ "System.Core.dll") -PathType Leaf) -and
             (Test-Path -LiteralPath (Join-Path $_ "System.ServiceProcess.dll") -PathType Leaf) -and
-            (Test-Path -LiteralPath (Join-Path $_ "System.Web.Extensions.dll") -PathType Leaf) -and
-            (Test-Path -LiteralPath (Join-Path $_ "System.IO.Pipes.AccessControl.dll") -PathType Leaf)
+            (Test-Path -LiteralPath (Join-Path $_ "System.Web.Extensions.dll") -PathType Leaf)
           } | Select-Object -First 1
           if (-not $referenceRoot) { throw ".NET Framework reference assemblies were not found on the Windows CI image." }
 
@@ -237,9 +238,12 @@ jobs:
             "System.dll",
             "System.Core.dll",
             "System.ServiceProcess.dll",
-            "System.Web.Extensions.dll",
-            "System.IO.Pipes.AccessControl.dll"
+            "System.Web.Extensions.dll"
           )
+          $pipeAccess = Join-Path $referenceRoot "System.IO.Pipes.AccessControl.dll"
+          if (Test-Path -LiteralPath $pipeAccess -PathType Leaf) {
+            $references += "System.IO.Pipes.AccessControl.dll"
+          }
           $arguments = @("/noconfig", "/nostdlib+", "/nologo", "/target:exe", "/platform:anycpu", "/langversion:latest", "/deterministic+", "/out:$output")
           foreach ($reference in $references) {
             $arguments += "/reference:" + (Join-Path $referenceRoot $reference)
