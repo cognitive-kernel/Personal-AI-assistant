@@ -289,3 +289,12 @@ def test_windows_provisioning_keeps_runner_least_privilege_as_a_role_invariant()
     assert "Runner account is a direct member of the local Administrators group" in script
     assert "^[A-Za-z0-9_.-]+$" not in script
     assert "runnerLocalName.Length -gt 20" in script
+
+
+def test_powershell_broker_client_reports_health_payload_without_missing_error_property():
+    client = _read("scripts/AutonomousStateBroker.psm1")
+
+    assert '$payload.PSObject.Properties["error"]' in client
+    assert '$payload.PSObject.Properties[$fieldName]' in client
+    assert 'Health: " + ($healthDetails -join ", ")' in client
+    assert '$envelope.payload.error' not in client
