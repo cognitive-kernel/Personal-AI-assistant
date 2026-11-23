@@ -4,6 +4,18 @@
 
 The application should survive ordinary changes to machine identity, account names, group membership, installation directory, drive layout, OS patch level, CPU architecture, and optional developer tooling. Absolute independence from an operating system or hardware is impossible for privileged service installation; platform-specific operations must be isolated behind small, capability-detected adapters rather than leaking into application logic.
 
+## Local-first is not offline-only
+
+Local-first describes the preferred execution and data path, not a promise that every feature works without a network.
+
+- Prefer usable local services, installed tools, local models, caches, and local data before reaching external services.
+- Use the network when a selected capability intrinsically needs it or when a required resource is not available locally and the user-approved setup/fallback policy permits retrieval.
+- Web research, ChatGPT-driven learning, remote GitHub operations, and initial retrieval of missing runtimes/packages/models may therefore require internet, an account, credentials, or a remote service. These are explicit dependencies of those capabilities, not dependencies of the entire application.
+- A missing network connection, account, credential, or optional integration must disable or pause only the affected capability. Core startup, local storage, local task processing, and unrelated local modules must remain usable.
+- Never silently upload local data merely because a remote service is available. Each module must define what it sends, why it needs the connection, and which consent/configuration gates apply.
+- A remote dependency that is truly intrinsic to a feature may be mandatory when that feature is enabled; it must not become an unconditional prerequisite for installing or running the whole application.
+
+
 ## Non-negotiable design rules
 
 1. **No identity-name assumptions.** Resolve the active account and service principals at runtime. Persist stable Windows SIDs or POSIX numeric UID/GID values where authorization requires identity; never assume a username, group name, domain, or machine name.
@@ -11,7 +23,7 @@ The application should survive ordinary changes to machine identity, account nam
 3. **No shell-version coupling.** Core installation, service control, ACL changes, path discovery, and health checks must not require Windows PowerShell, PowerShell 7, .NET Framework compiler tools, a particular shell profile, or inherited module paths. During transition, any remaining PowerShell launcher must sanitize inherited module discovery before spawning an elevated child and restore the parent environment afterward.
 4. **No runtime compilation on the target host.** Build native/service artifacts in CI for declared OS/architecture targets. Installation must not require csc.exe, a local SDK, compiler, or developer toolchain.
 5. **Capability detection over version guessing.** Probe the exact API/service-manager/filesystem capability needed. Use OS version and architecture only to select a tested adapter/package, not to infer that a feature exists.
-6. **Optional integrations remain optional.** Git, GitHub Runner, Ollama, browser automation, and GPU acceleration must be discovered independently. Missing optional tools disable only their feature and must not block core startup.
+6. **Dependencies are scoped to capabilities.** Discover local and remote integrations independently. A dependency may be required by the specific feature that uses it (for example, ChatGPT access for ChatGPT-based learning or GitHub access for remote PR operations), but it must not become a global startup requirement. Missing dependencies pause or disable only the affected capability; unrelated local features remain available.
 7. **Relocatable and Unicode-safe.** Test paths containing spaces, non-ASCII characters, long paths, different drive letters, and install locations outside default folders. Quote process arguments structurally; do not build unsafe command strings.
 8. **Safe upgrades and migrations.** Preserve user data and existing configuration. Use additive, versioned migrations, backups/rollback for replaced binaries, atomic writes, and explicit preflight. Never delete or overwrite existing state as an installation side effect.
 9. **Least privilege by resolved identity.** Do not grant access to broad groups as a portability shortcut. Build and verify ACLs using resolved SIDs/UIDs and preserve unrelated data outside the managed state root.
