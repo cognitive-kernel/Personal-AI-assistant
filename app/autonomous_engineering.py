@@ -188,7 +188,7 @@ def _write_dispatch_admission_marker(
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             json.dump(marker, handle, ensure_ascii=False, sort_keys=True)
-            handle.write("\\n")
+            handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
         try:
