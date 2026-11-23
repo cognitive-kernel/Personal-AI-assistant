@@ -94,7 +94,10 @@ def _setup_process_lock():
                         fcntl.flock(descriptor, fcntl.LOCK_UN)
                 except OSError:
                     pass
-            os.close(descriptor)
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
         _SETUP_LOCK.release()
 
 
