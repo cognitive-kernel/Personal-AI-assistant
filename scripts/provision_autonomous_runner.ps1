@@ -285,7 +285,8 @@ if ($runnerIsLocal) {
     Write-Host "Using externally managed Runner identity $runnerIdentity; no local account is created or modified."
 }
 $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
-$administratorsGroup = Get-LocalGroup -SID "S-1-5-32-544"
+$administratorsSid = Get-AutonomousWindowsWellKnownSid -SidType BuiltinAdministratorsSid
+$administratorsGroup = Get-LocalGroup -SID $administratorsSid
 $runnerIsAdministrator = @(
     Get-LocalGroupMember -Group $administratorsGroup.Name -ErrorAction Stop |
         Where-Object { $_.SID -and $_.SID.Value -eq $runnerSid }
