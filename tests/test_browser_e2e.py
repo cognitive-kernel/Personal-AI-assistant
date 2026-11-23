@@ -5979,7 +5979,7 @@ def test_autonomous_engineering_status_mutation_refreshes_are_serialized():
         page.wait_for_function(
             "() => window.autonomousEngineeringApp?.stop && "
             "window.autonomousEngineeringStatus?.refresh && "
-            document.querySelector('#agent-readiness')?.textContent.trim() === 'راه‌اندازی ناقص'",
+            "document.querySelector('#agent-readiness')?.textContent.trim() === 'راه‌اندازی ناقص'",
             timeout=10000,
         )
         result = page.evaluate("""async () => {
