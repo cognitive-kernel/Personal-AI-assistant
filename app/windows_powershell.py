@@ -30,18 +30,18 @@ def windows_powershell_candidates(
     environ = environ or os.environ
     candidates: list[str] = []
 
-    def add(candidate: str | os.PathLike[str] | None) -> None:
+    def add(candidate: str | os.PathLike[str] | None, *, require_file: bool = True) -> None:
         if not candidate:
             return
         value = os.path.abspath(os.fspath(candidate))
         key = os.path.normcase(value)
-        if os.path.isfile(value) and all(os.path.normcase(item) != key for item in candidates):
+        if (not require_file or os.path.isfile(value)) and all(os.path.normcase(item) != key for item in candidates):
             candidates.append(value)
 
     # Prefer PowerShell Core, then the inbox Windows PowerShell compatibility host.
     for command_name in ("pwsh.exe", "pwsh", "powershell.exe", "powershell"):
         try:
-            add(which(command_name))
+            add(which(command_name), require_file=False)
         except (OSError, ValueError):
             continue
 
