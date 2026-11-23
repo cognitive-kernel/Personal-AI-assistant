@@ -62,13 +62,24 @@ function Get-AutonomousStateBrokerPackage {
     if ($frameworkRelease -lt 528040) {
         throw "The Windows state broker requires the .NET Framework 4.8 runtime capability (Release >= 528040). No service or state changes were made."
     }
+    $requiredCommands = @(
+        "Get-Acl", "Set-Acl", "Get-CimInstance", "Get-Service", "Stop-Service",
+        "Start-Service", "New-Service", "Get-FileHash"
+    )
+    foreach ($commandName in $requiredCommands) {
+        Get-Command $commandName -ErrorAction Stop | Out-Null
+    }
     $scCommand = Get-Command sc.exe -ErrorAction Stop
+    $icaclsCommand = Get-Command icacls.exe -ErrorAction Stop
+    $takeownCommand = Get-Command takeown.exe -ErrorAction Stop
 
     return [pscustomobject]@{
         Path = $packagedExe
         Sha256 = $expectedHash.ToLowerInvariant()
         ServiceRoot = Join-Path $programData ("PersonalAIAssistant" + [char]92 + "StateBroker")
         ScCommand = $scCommand.Source
+        IcaclsCommand = $icaclsCommand.Source
+        TakeownCommand = $takeownCommand.Source
         FrameworkRelease = $frameworkRelease
     }
 }
