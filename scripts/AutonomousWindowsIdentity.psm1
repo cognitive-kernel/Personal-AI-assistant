@@ -324,12 +324,13 @@ function Restore-AutonomousDirectoryTreeAcl {
     # restoring parent descriptors, so a parent restore cannot strand children.
     foreach ($entry in $entries) {
         $entryPath = if ($null -ne $entry.Item) { [string]$entry.Item.FullName } else { "<unknown>" }
+        if ($null -eq $entry.Item -or $null -eq $entry.Acl -or
+            [string]::IsNullOrWhiteSpace($entryPath)) {
+            $failures.Add("invalid rollback journal entry")
+            continue
+        }
         $prepared.Add($entry)
         try {
-            if ($null -eq $entry.Item -or $null -eq $entry.Acl -or
-                [string]::IsNullOrWhiteSpace($entryPath)) {
-                throw "The ACL rollback journal contains an invalid entry."
-            }
             & $takeown.Source /F $entryPath | Out-Null
             if ($LASTEXITCODE -ne 0) {
                 throw "takeown failed"
