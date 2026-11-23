@@ -389,6 +389,10 @@ def test_broker_setup_preflights_package_before_runner_or_acl_mutation():
 
     assert package_preflight < runner_discovery < runner_stop < state_acl_change
     assert "Get-AutonomousStateBrokerPackage" in installer
+    assert 'Get-Command "Get-Acl" -ErrorAction Stop' in installer
+    assert "Get-Command takeown.exe -ErrorAction Stop" in installer
+    assert "Get-Command icacls.exe -ErrorAction Stop" in installer
+    assert "Get-Command sc.exe -ErrorAction Stop" in installer
     assert "$serviceSource" not in installer
     assert "AutonomousStateBrokerService.cs is missing" not in installer
     assert "csc.exe" not in installer
