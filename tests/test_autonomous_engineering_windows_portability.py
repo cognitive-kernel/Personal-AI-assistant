@@ -83,7 +83,7 @@ def test_shared_state_tree_acl_is_recursive_and_only_grants_runner_and_local_ser
     acl_function = module[module.index("function Set-AutonomousDirectoryTreeAcl"):]
     assert "Get-ChildItem -LiteralPath $rootParent" in acl_function
     assert "Get-Item -LiteralPath $root" not in acl_function
-    assert "$pendingDirectories.Push($root)" in acl_function
+    assert "$pendingDirectories.Push([pscustomobject]@{ Path = $root; Attributes = $rootEntry.Attributes })" in acl_function
     assert "$items.Add($directoryInfo)" in acl_function
     assert "EnumerateFileSystemEntries" in acl_function
     directory_walk = acl_function[acl_function.index("while ($pendingDirectories"):acl_function.index("# Files are touched")]
@@ -92,6 +92,8 @@ def test_shared_state_tree_acl_is_recursive_and_only_grants_runner_and_local_ser
     assert "$touched.Add($directoryInfo)" in directory_walk
     assert "if (-not $completed)" in acl_function
     assert "$cleanupTargets = @($touched" in acl_function
+    assert acl_function.index("Get-Acl -LiteralPath $Item.FullName") < acl_function.index("Set-Acl -LiteralPath $Item.FullName")
+    assert acl_function.count("Get-Acl -LiteralPath $Item.FullName") == 1
     assert "/grant:r $installerGrant /C /Q" in acl_function
     assert "/grant:r $installerGrant /T" not in acl_function
     assert "/R" not in acl_function
