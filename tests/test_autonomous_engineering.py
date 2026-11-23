@@ -1301,6 +1301,10 @@ def test_autonomous_cycle_requires_one_exact_completion_marker(tmp_path):
     with pytest.raises(RuntimeError, match="exactly one"):
         cycle.task_marker(report)
 
+    report.write_text("TASK_COMPLETE\nTASK_COMPLETE\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="exactly one"):
+        cycle.task_marker(report)
+
 
 def test_autonomous_cycle_rejects_protected_and_non_allowlisted_paths():
     from scripts import autonomous_engineering_cycle as cycle
