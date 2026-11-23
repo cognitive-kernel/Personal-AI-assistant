@@ -152,7 +152,7 @@ def test_powershell_discovery_uses_registered_install_locations_without_major_ve
     )
     monkeypatch.setitem(sys.modules, "winreg", fake_winreg)
     monkeypatch.setattr(run.platform, "system", lambda: "Windows")
-    monkeypatch.setattr(run.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(run.shutil, "which", lambda name: r"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" if name == "powershell.exe" else None)
     monkeypatch.setattr(
         "app.windows_powershell.os.path.isfile",
         lambda path: str(path).lower().endswith(("pwsh.exe", "powershell.exe")),
