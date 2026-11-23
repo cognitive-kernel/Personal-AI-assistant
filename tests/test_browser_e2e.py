@@ -6071,7 +6071,11 @@ def test_autonomous_engineering_status_mutation_refreshes_are_serialized():
           for (let index = 0; index < 3; index += 1) {
             await waitForPending();
             pending.shift()();
-            await wait(0);
+            if (index < 2) {
+              // Wait until the next serialized request is actually issued;
+              // a zero-delay timer does not guarantee async continuations ran.
+              await waitForPending();
+            }
             callsAfterEachRelease.push(calls);
           }
           await Promise.all([initial, mutationOne, mutationTwo]);
