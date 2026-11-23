@@ -204,6 +204,19 @@ def cleanup_legacy_context_variants(
             summary["would_remove_models"].append(name)
             continue
 
+        # Re-check immediately before deletion to narrow the race where a user
+        # loads a legacy alias after the initial inventory snapshot.
+        latest_loaded_names = {
+            value.casefold()
+            for value in _model_names(
+                api("GET", "/api/ps", None, 10.0),
+                "/api/ps",
+            )
+        }
+        if folded_name in latest_loaded_names:
+            summary["preserved_loaded"].append(name)
+            continue
+
         try:
             api("DELETE", "/api/delete", {"model": name}, 30.0)
         except OllamaCleanupError as exc:
