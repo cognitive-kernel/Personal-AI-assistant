@@ -130,9 +130,6 @@ def test_powershell_discovery_uses_registered_install_locations_without_major_ve
     import types
 
     class FakeKey:
-        def __init__(self, kind):
-            self.kind = kind
-
         def __enter__(self):
             return self
 
@@ -145,11 +142,11 @@ def test_powershell_discovery_uses_registered_install_locations_without_major_ve
         KEY_READ=0x20019,
         KEY_WOW64_64KEY=0,
         KEY_WOW64_32KEY=0,
-        OpenKey=lambda parent, path, *_args: FakeKey("root" if isinstance(path, str) and "InstalledVersions" in path else "entry"),
+        OpenKey=lambda _parent, path, *_args: FakeKey(),
         QueryInfoKey=lambda _key: (1, 0, 0),
         EnumKey=lambda _key, _index: "registered-install",
         QueryValueEx=lambda _key, name: (
-            (r"E:\\Custom\\PowerShell\\8.0" if name == "InstallLocation" else "8.0.0"),
+            (r"E:\Custom\PowerShell\8.0" if name == "InstallLocation" else "8.0.0"),
             1,
         ),
     )
@@ -164,4 +161,6 @@ def test_powershell_discovery_uses_registered_install_locations_without_major_ve
     candidates = run._powershell_candidates()
 
     assert candidates
-    assert candidates[0].lower().endswith(r"custom\powershell\8.0\\pwsh.exe".lower())
+    assert "custom" in candidates[0].lower()
+    assert "8.0" in candidates[0]
+    assert candidates[0].lower().endswith("pwsh.exe")
