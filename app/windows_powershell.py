@@ -37,8 +37,8 @@ def windows_powershell_candidates(
         # Preserve Windows absolute paths when this module is exercised by
         # cross-platform tests; resolve relative candidates against this host.
         is_windows_absolute = (
-            (len(raw) > 2 and raw[1] == ":" and raw[2] in "\\\\/")
-            or raw.startswith("\\\\\\\\")
+            (len(raw) > 2 and raw[1] == ":" and raw[2] in (chr(92), "/"))
+            or raw.startswith(chr(92) * 2)
         )
         value = raw if is_windows_absolute else os.path.abspath(raw)
         key = os.path.normcase(value)
