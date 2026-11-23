@@ -173,6 +173,34 @@ jobs:
           $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($probe))
           & $windowsPowerShell -NoProfile -EncodedCommand $encoded
           if ($LASTEXITCODE -ne 0) { throw "Windows PowerShell 5.1 rejected the inherited PowerShell 7 module-path probe." }
+      - name: Verify PowerShell 7 broker modules and active-host relaunch
+        shell: pwsh
+        run: |
+          if ($PSVersionTable.PSEdition -ne "Core" -or $PSVersionTable.PSVersion -lt [version]"7.0") {
+            throw "This probe must run under PowerShell 7 or newer."
+          }
+          $activeHost = Join-Path $PSHOME "pwsh.exe"
+          if (-not (Test-Path -LiteralPath $activeHost -PathType Leaf)) {
+            throw "PowerShell 7 host executable was not found under PSHOME."
+          }
+          $modules = @(
+            "AutonomousWindowsIdentity.psm1",
+            "AutonomousWindowsPaths.psm1",
+            "AutonomousStateBroker.psm1",
+            "AutonomousStateBrokerInstall.psm1"
+          )
+          foreach ($module in $modules) {
+            Import-Module (Join-Path $env:GITHUB_WORKSPACE "scripts\\$module") -Force -ErrorAction Stop
+          }
+          if (-not (Get-Command Get-Acl -ErrorAction SilentlyContinue)) { throw "Get-Acl is unavailable under PowerShell 7." }
+          if (-not (Get-Command Set-Acl -ErrorAction SilentlyContinue)) { throw "Set-Acl is unavailable under PowerShell 7." }
+          $probe = '$PSVersionTable.PSEdition + "|" + $PSVersionTable.PSVersion.ToString()'
+          $childVersion = & $activeHost -NoLogo -NoProfile -NonInteractive -Command $probe
+          if ($LASTEXITCODE -ne 0 -or $childVersion -notmatch '^Core\\|7\\.') {
+            throw "The PowerShell 7 host selected from PSHOME did not start a compatible child process."
+          }
+          Write-Host "PowerShell 7 broker module imports and same-engine child launch passed: $childVersion"
+
       - name: Compile the Windows machine state broker against .NET Framework
         shell: pwsh
         run: |
