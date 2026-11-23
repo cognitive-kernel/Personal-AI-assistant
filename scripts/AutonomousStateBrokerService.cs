@@ -981,8 +981,17 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             foreach (AuthorizationRule candidate in rules)
             {
                 FileSystemAccessRule rule = candidate as FileSystemAccessRule;
+                // NTFS commonly returns the Synchronize standard right
+                // together with Modify, even when the ACE was created with
+                // FileSystemRights.Modify. Accept only that documented extra bit;
+                // any other additional permission remains a readiness failure.
+                FileSystemRights actualRights = rule == null
+                    ? 0
+                    : rule.FileSystemRights;
+                FileSystemRights allowedRights = FileSystemRights.Modify | FileSystemRights.Synchronize;
                 if (rule == null || rule.AccessControlType != AccessControlType.Allow ||
-                    rule.FileSystemRights != FileSystemRights.Modify)
+                    (actualRights & FileSystemRights.Modify) != FileSystemRights.Modify ||
+                    (actualRights & ~allowedRights) != 0)
                 {
                     _lastAclFailureReason = "state_entry_ace_rights_or_type_mismatch";
                     return false;
