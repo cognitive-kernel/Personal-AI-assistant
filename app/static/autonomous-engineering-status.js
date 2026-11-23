@@ -196,10 +196,12 @@
         : "";
       labels.storage.textContent = stateText(checks.progress_storage_accessible);
       $("storage-detail").textContent = checks.progress_storage_accessible
-        ? "سرویس Broker محلی آماده است؛ حساب برنامه از کانال محدود محلی استفاده می‌کند و به مجوز مستقیم پوشه نیاز ندارد."
-        : "سرویس Broker فضای پیشرفت آماده نیست. " +
-          (brokerDiagnostic ? "علت تشخیص‌داده‌شده: " + brokerDiagnostic + " " : "") +
-          "برنامه هنگام شروع برای نصب یا ترمیم آن درخواست مجوز مدیر می‌کند؛ اگر UAC رد شد، اسکریپت ensure_autonomous_state_broker.ps1 را از میزبان PowerShell سازگاری که برنامه به‌صورت خودکار شناسایی می‌کند، در پنجرهٔ مدیر اجرا کنید. نبود Runner مانع نصب Broker نیست؛ Runner فقط برای اجرای Workflow مهندسی لازم است. اگر هیچ میزبان PowerShell سازگاری موجود نباشد، فقط قابلیت Broker غیرفعال می‌ماند و داشبورد در حالت محدود ادامه می‌دهد.";
+        ? "سرویس Broker محلی آماده است؛ وضعیت پایدار از کانال محدود محلی قابل خواندن است."
+        : "سرویس Broker آماده نیست. نصب یا ترمیم آن فقط پس از فشردن دکمهٔ زیر و تأیید مجوز مدیر انجام می‌شود. Runner برای نصب Broker لازم نیست؛ Runner فقط قابلیت اجرای Workflow را فراهم می‌کند." +
+          (brokerDiagnostic ? " تشخیص فعلی: " + brokerDiagnostic : "");
+      const setupBrokerButton = $("setup-state-broker");
+      setupBrokerButton.hidden = checks.progress_storage_accessible === true;
+      setupBrokerButton.disabled = checks.progress_storage_accessible === true;
       const checkpoint = lastPendingWork.checkpoint && typeof lastPendingWork.checkpoint === "object"
         ? lastPendingWork.checkpoint
         : null;
