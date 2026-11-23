@@ -312,5 +312,5 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 - کنترلر Python پس از گرفتن repository execution lock و پیش از durable-state recovery یا شروع task هر دو مقدار را دوباره می‌خواند.
 - Recovery نیز mode و Pause را پیش از طبقه‌بندی retry و بار دیگر پس از backoff، درست پیش از dispatch، بررسی می‌کند.
 - نبود متغیر Pause (HTTP 404) به معنی false و نبود متغیر mode به معنی continuous است؛ خطای API یا مقدار نامعتبر fail-closed است.
-- در حالت scheduled، runهای خودکار push/schedule و recovery که پشت concurrency منتظر مانده‌اند اجرا نمی‌شوند؛ task دستی و resume یک‌باره مجاز است. Pause پس از شروع task، task جاری را قطع نمی‌کند؛ فقط شروع task/recovery بعدی را متوقف می‌کند. exact-head CI این تغییرات هنوز pending است.
+- در حالت scheduled، runهای خودکار push/schedule و recovery که پشت concurrency منتظر مانده‌اند اجرا نمی‌شوند؛ task دستی مجاز است و Resume فقط با ورودی صریح resume_once یک اجرای خالی را مجاز می‌کند. Pause پس از شروع task، task جاری را قطع نمی‌کند؛ فقط شروع task/recovery بعدی را متوقف می‌کند. exact-head CI این تغییرات هنوز pending است.
 
