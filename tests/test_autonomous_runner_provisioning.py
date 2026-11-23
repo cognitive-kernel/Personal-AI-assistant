@@ -9,7 +9,7 @@ def test_existing_runner_provisioning_enforces_least_privilege_and_restarts_serv
     existing_branch = script.split('if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {', 1)[1].split(
         '\nif ((Test-Path -LiteralPath $RunnerRoot)', 1
     )[0]
-    assert 'Get-LocalGroup -SID "S-1-5-32-544"' in existing_branch
+    assert "Get-LocalGroup -SID $administratorsSid" in existing_branch
     assert "Get-LocalGroupMember" in existing_branch
     assert "Stop-Service" in existing_branch
     assert "WaitForStatus" in existing_branch
