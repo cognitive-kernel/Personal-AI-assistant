@@ -161,6 +161,36 @@ def test_machine_state_broker_uses_a_local_allowlisted_pipe_not_a_network_file_a
 
 
 
+
+def test_machine_state_broker_health_checks_the_full_state_tree_acl_manifest():
+    service = _read("scripts/AutonomousStateBrokerService.cs")
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+    provision = _read("scripts/provision_autonomous_runner.ps1")
+    configure = _read("scripts/configure_autonomous_engineering_progress.ps1")
+    runtime_test = _read("scripts/test_autonomous_state_broker_service.ps1")
+    client = _read("app/autonomous_engineering_state_broker.py")
+    run = _read("run.py")
+
+    assert 'ModifySidsMachineVariable = "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS"' in service
+    assert "VerifyStateAclIntegrity()" in service
+    assert "Directory.EnumerateFileSystemEntries(directory)" in service
+    assert "FileSystemRights.Modify" in service
+    assert "MaxAclEntries = 100000" in service
+    assert '"acl_ready", _lastAclHealth' in service
+    assert 'SetEnvironmentVariable(\n        "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS"' in ensure
+    assert 'SetEnvironmentVariable(\n        "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS"' in provision
+    assert 'SetEnvironmentVariable(\n    "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS"' in configure
+    assert 'health(timeout_ms: int = 3500)' in client
+    assert 'value.get("acl_ready") is True' in client
+    assert 'health(timeout_ms=30000)' in run
+    assert 'TimeoutMilliseconds 30000' in ensure
+    assert '$currentSid, $brokerSid, "S-1-5-32-545"' in runtime_test
+    assert '$driftDetected = $false' in runtime_test
+    assert 'if ($_.Exception.Message -match "503")' in runtime_test
+    assert '$repairedHealth.acl_ready -ne $true' in runtime_test
+
+
+
 def test_machine_state_broker_bootstrap_is_independent_of_runner_registration():
     ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
 
