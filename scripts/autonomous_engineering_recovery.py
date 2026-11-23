@@ -243,8 +243,12 @@ def main() -> int:
             f"Observed {streak} consecutive task-execution failure(s); retrying after {delay_seconds} seconds.",
         )
         time.sleep(delay_seconds)
-        # Re-check ownership after backoff; a newer run may have superseded this event.
+        # Re-check ownership and the live Pause flag after backoff; either may
+        # have changed while this recovery job was sleeping.
         client.retryable_failure_streak(failed_run_id, current_jobs)
+        if _live_pause_enabled(client):
+            report("Recovery paused", "The live durable Pause setting became active during backoff; no run was dispatched.")
+            return 0
         client.request(
             "POST",
             f"/actions/workflows/{WORKFLOW_FILE}/dispatches",
