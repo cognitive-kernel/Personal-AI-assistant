@@ -1146,7 +1146,7 @@ def _ensure_state_broker() -> bool:
             print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n", flush=True)
     if result.returncode != 0:
         if system == "Windows":
-            log_path = Path(os.environ.get("ProgramData", r"C:\\ProgramData")) / "PersonalAIAssistant" / "Logs" / "state-broker-setup.log"
+            log_path = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "PersonalAIAssistant" / "Logs" / "state-broker-setup.log"
             print(f"گزارش تشخیصی Broker (در صورت ایجادشدن): {log_path}", file=sys.stderr, flush=True)
         print(
             "سرویس فضای پیشرفت مشترک نصب/ترمیم نشد؛ برنامه در حالت محدود اجرا می‌شود. "
