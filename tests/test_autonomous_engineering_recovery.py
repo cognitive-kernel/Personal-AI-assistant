@@ -30,7 +30,6 @@ def _failed_execution_jobs():
 
 def _configure_environment(monkeypatch):
     monkeypatch.setenv("EXECUTION_MODE", "continuous")
-    monkeypatch.setenv("PAUSED", "false")
     monkeypatch.setenv("GH_REPO", "cognitive-kernel/Personal-AI-assistant")
     monkeypatch.setenv("GH_TOKEN", "test-token")
     monkeypatch.setenv("FAILED_RUN_ID", "123")
@@ -162,7 +161,7 @@ def test_main_dispatches_only_an_empty_recovery_task_below_threshold(monkeypatch
     ]
 
 
-def test_main_honors_scheduled_mode_and_durable_pause_before_api_access(monkeypatch):
+def test_main_honors_scheduled_mode_and_live_durable_pause(monkeypatch):
     _configure_environment(monkeypatch)
     monkeypatch.setenv("EXECUTION_MODE", "scheduled")
     monkeypatch.setattr(recovery, "GitHubActionsClient", lambda *args: (_ for _ in ()).throw(AssertionError("API must not be called")))
