@@ -105,7 +105,7 @@ def test_progress_reader_returns_degraded_payload_when_broker_is_unavailable(mon
     assert result["storage_configured"] is False
     assert result["current"] is None
     assert result["history"] == []
-    assert "StateBrokerError" in result["error"]
+    assert result["error"] == "Shared progress storage is unavailable: pipe unavailable"
 
 
 def test_broker_pipe_io_uses_overlapped_handles_and_a_shared_deadline():
