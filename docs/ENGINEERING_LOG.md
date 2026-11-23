@@ -1,3 +1,20 @@
+## 2026-11-24 — recheck live execution mode across queued automatic and recovery runs
+
+### Root cause
+- The execution-mode repository variable was passed through workflow context to both the main and recovery workflows. A run queued behind concurrency could therefore use the old continuous/scheduled value after the owner changed the setting.
+
+### Correction
+- The main workflow's post-concurrency admission gate now reads both live Pause and execution-mode repository variables. In scheduled mode, queued push/schedule runs and automatic recovery attempts are skipped; explicit manual tasks and a one-shot resume dispatch remain allowed.
+- The cycle controller rechecks both values after acquiring the repository execution lock and before durable-state recovery/task start.
+- The recovery coordinator reads live mode and Pause before classifying a failure and again after backoff immediately before dispatch. It no longer consumes workflow-context mode/Pause snapshots.
+- Missing Pause variable defaults false; missing mode variable defaults continuous. All other API failures and invalid values fail closed.
+- Added regression coverage for mode changes during recovery backoff and for controller admission after the repository lock.
+
+### Validation boundary
+- Exact-head Linux/Windows CI and the Windows PowerShell parser test remain pending. No workflow was dispatched and no repository variable was changed.
+
+---
+
 ## 2026-11-24 — recheck live Pause at controller and recovery admission boundaries
 
 ### Root cause
