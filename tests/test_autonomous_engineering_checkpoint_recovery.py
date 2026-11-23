@@ -134,13 +134,11 @@ def test_checkpoint_watcher_real_process_stops_before_restore(
         ["git", "rev-parse", "HEAD"], cwd=root, check=True,
         capture_output=True, text=True,
     ).stdout.strip()
-    program_data = shared_state_tmp_path / "ProgramData"
-    state = program_data / "PersonalAIAssistant" / "autonomous-engineering"
-    monkeypatch.setenv("PROGRAMDATA", str(program_data))
-    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", raising=False)
+    state = shared_state_tmp_path / "autonomous-engineering"
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(state))
     env = os.environ.copy()
-    env.pop("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", None)
-    env["PROGRAMDATA"] = str(program_data)
+    env["AUTONOMOUS_ENGINEERING_PROGRESS_DIR"] = str(state)
+    env.pop("PROGRAMDATA", None)
     executable = getattr(sys, "_base_executable", sys.executable)
     process = subprocess.Popen(
         [
