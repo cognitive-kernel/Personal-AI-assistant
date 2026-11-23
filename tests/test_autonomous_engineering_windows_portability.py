@@ -192,9 +192,13 @@ def test_machine_state_broker_health_checks_the_full_state_tree_acl_manifest():
     assert 'Path "/v1/health/verify"' in _read("scripts/AutonomousStateBrokerInstall.psm1")
     assert '"/v1/health/verify"' in _read("scripts/AutonomousStateBroker.psm1")
     assert 'value.get("acl_ready") is True' in client
-    assert 'health(timeout_ms=30000)' in run
+    assert run.count('health(timeout_ms=30000, verify=True)') == 2
     assert 'TimeoutMilliseconds 30000' in ensure
     assert '$currentSid, $brokerSid, "S-1-5-32-545"' in runtime_test
+    assert 'Path "/v1/health" -TimeoutMilliseconds 30000' in runtime_test
+    assert 'Path "/v1/health/verify" -TimeoutMilliseconds 30000' in runtime_test
+    assert "normal UI health endpoint did not reuse its bounded health cache" in runtime_test
+    assert "forced startup health endpoint did not bypass cache" in runtime_test
     assert '$driftDetected = $false' in runtime_test
     assert 'if ($_.Exception.Message -match "503")' in runtime_test
     assert '$repairedHealth.acl_ready -ne $true' in runtime_test
