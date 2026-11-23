@@ -1023,6 +1023,116 @@ def test_gpu_disabled_forces_cpu_option_on_inference_payload(monkeypatch):
     assert captured["payload"]["options"]["num_gpu"] == 0
 
 
+
+def test_windows_ollama_start_prefers_the_installed_desktop_app(monkeypatch, tmp_path):
+    import subprocess
+
+    bootstrap = _load_startup_bootstrap()
+    install_dir = tmp_path / "Ollama"
+    install_dir.mkdir()
+    executable = install_dir / "ollama.exe"
+    executable.write_bytes(b"test")
+    desktop_app = install_dir / "ollama app.exe"
+    desktop_app.write_bytes(b"test")
+    captured = {}
+    process = object()
+
+    monkeypatch.setattr(bootstrap.platform, "system", lambda: "Windows")
+
+    def fake_popen(command, **kwargs):
+        captured["command"] = command
+        captured["kwargs"] = kwargs
+        return process
+
+    monkeypatch.setattr(bootstrap.subprocess, "Popen", fake_popen)
+
+    assert bootstrap._start_ollama_runtime(str(executable)) is process
+    assert captured["command"] == [str(desktop_app), "--hide", "--fast-startup"]
+    assert captured["kwargs"]["stdin"] is subprocess.DEVNULL
+    assert captured["kwargs"]["stdout"] is subprocess.DEVNULL
+    assert captured["kwargs"]["stderr"] is subprocess.DEVNULL
+    assert captured["kwargs"]["creationflags"] == (
+        getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        | getattr(subprocess, "DETACHED_PROCESS", 0)
+    )
+
+
+def test_windows_ollama_cli_only_install_starts_serve_without_desktop_app(monkeypatch, tmp_path):
+    bootstrap = _load_startup_bootstrap()
+    executable = tmp_path / "ollama.exe"
+    executable.write_bytes(b"test")
+    captured = {}
+    monkeypatch.setattr(bootstrap.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(
+        bootstrap.subprocess, "Popen",
+        lambda command, **kwargs: captured.update(command=command, kwargs=kwargs) or object(),
+    )
+
+    bootstrap._start_ollama_runtime(str(executable))
+
+    assert captured["command"] == [str(executable), "serve"]
+
+
+def test_posix_ollama_start_uses_a_detached_user_process(monkeypatch, tmp_path):
+    bootstrap = _load_startup_bootstrap()
+    executable = tmp_path / "ollama"
+    executable.write_bytes(b"test")
+    captured = {}
+    monkeypatch.setattr(bootstrap.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(
+        bootstrap.subprocess, "Popen",
+        lambda command, **kwargs: captured.update(command=command, kwargs=kwargs) or object(),
+    )
+
+    bootstrap._start_ollama_runtime(str(executable))
+
+    assert captured["command"] == [str(executable), "serve"]
+    assert captured["kwargs"]["start_new_session"] is True
+
+
+def test_ollama_readiness_starts_runtime_once_and_waits_for_api(monkeypatch):
+    import subprocess
+
+    bootstrap = _load_startup_bootstrap()
+    attempts = []
+    starts = []
+    responses = iter([
+        subprocess.CompletedProcess(["ollama", "list"], 1, "", "server unavailable"),
+        subprocess.CompletedProcess(["ollama", "list"], 0, "NAME ID SIZE\n", ""),
+    ])
+    monkeypatch.setattr(
+        bootstrap, "_ollama_list",
+        lambda _executable, **_kwargs: attempts.append(True) or next(responses),
+    )
+    monkeypatch.setattr(
+        bootstrap, "_start_ollama_runtime",
+        lambda _executable: starts.append(True) or object(),
+    )
+    monkeypatch.setattr(bootstrap.time, "sleep", lambda _seconds: None)
+
+    result = bootstrap._ensure_ollama_server("ollama", wait_seconds=2, poll_interval=0)
+
+    assert result.returncode == 0
+    assert len(attempts) == 2
+    assert len(starts) == 1
+
+
+def test_ollama_readiness_fails_closed_when_started_runtime_never_becomes_ready(monkeypatch):
+    import subprocess
+
+    bootstrap = _load_startup_bootstrap()
+    monkeypatch.setattr(
+        bootstrap, "_ollama_list",
+        lambda _executable, **_kwargs: subprocess.CompletedProcess(
+            ["ollama", "list"], 1, "", "server unavailable"
+        ),
+    )
+    monkeypatch.setattr(bootstrap, "_start_ollama_runtime", lambda _executable: object())
+    monkeypatch.setattr(bootstrap.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(RuntimeError, match="API"):
+        bootstrap._ensure_ollama_server("ollama", wait_seconds=0.02, poll_interval=0)
+
 def test_startup_keeps_local_ui_available_when_runtime_prerequisites_are_unavailable(monkeypatch, capsys):
     import subprocess
 
