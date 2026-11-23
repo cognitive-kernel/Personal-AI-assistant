@@ -49,6 +49,7 @@ def test_windows_broker_setup_discovers_runner_identity_and_path():
     assert "No GitHub Runner is installed; the core application broker is ready." in ensure
     assert 'Join-Path $runner.Root ".runner"' not in ensure
     assert ensure.index("Stop-Service -Name $service.Name") < ensure.index("Set-AutonomousDirectoryTreeAcl")
+    assert ensure.index("$stoppedRunnerServices += $service.Name") < ensure.index("$service.WaitForStatus(")
     assert "activeWorkersAfterStop" in ensure
     assert "Start-Service -Name $serviceNameToRestart" in ensure
 
