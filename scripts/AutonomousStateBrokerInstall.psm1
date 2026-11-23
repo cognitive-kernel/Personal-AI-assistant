@@ -13,7 +13,7 @@ function Get-AutonomousDotNetFrameworkRelease {
                 [Microsoft.Win32.RegistryHive]::LocalMachine,
                 $view
             )
-            $frameworkKey = $baseKey.OpenSubKey("SOFTWARE\\Microsoft\\NET Framework Setup\\NDP\\v4\\Full")
+            $frameworkKey = $baseKey.OpenSubKey(("SOFTWARE" + [char]92 + "Microsoft" + [char]92 + "NET Framework Setup" + [char]92 + "NDP" + [char]92 + "v4" + [char]92 + "Full"))
             if ($null -ne $frameworkKey) {
                 $releaseValue = $frameworkKey.GetValue("Release", $null)
                 if ($null -ne $releaseValue -and [int]$releaseValue -gt $highestRelease) {
