@@ -80,7 +80,7 @@ def test_powershell_discovery_skips_broken_candidate_and_checks_the_next(monkeyp
 
 def test_powershell_discovery_returns_unavailable_when_no_supported_engine_exists(monkeypatch):
     monkeypatch.setattr(run.platform, "system", lambda: "Linux")
-    monkeypatch.setattr(run.shutil, "which", lambda name: r"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" if name == "powershell.exe" else None)
+    monkeypatch.setattr(run.shutil, "which", lambda _name: None)
 
     assert run._powershell_candidates() == []
     assert run._find_compatible_powershell() is None
