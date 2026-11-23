@@ -89,7 +89,7 @@ function Invoke-AutonomousStateBroker {
             } else {
                 ""
             }
-            throw "State broker request failed ($status: $code).$detail"
+            throw "State broker request failed (${status}: $code).$detail"
         }
         return $payload
     } finally {
