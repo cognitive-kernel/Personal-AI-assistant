@@ -147,6 +147,32 @@ jobs:
           }
           Write-Host "Parsed $($files.Count) PowerShell scripts/modules successfully."
 
+      - name: Verify Windows PowerShell 5.1 with inherited PowerShell 7 module paths
+        shell: pwsh
+        run: |
+          $windowsPowerShell = Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\powershell.exe"
+          if (-not (Test-Path -LiteralPath $windowsPowerShell -PathType Leaf)) { throw "Windows PowerShell 5.1 executable was not found." }
+          $repo = $env:GITHUB_WORKSPACE.Replace("'", "''")
+          $modulePaths = @(
+            (Join-Path $env:USERPROFILE "Documents\WindowsPowerShell\Modules"),
+            (Join-Path $env:USERPROFILE "Documents\PowerShell\Modules"),
+            (Join-Path $env:ProgramFiles "WindowsPowerShell\Modules"),
+            (Join-Path $env:ProgramFiles "PowerShell\Modules"),
+            (Join-Path $env:ProgramFiles "PowerShell\7\Modules"),
+            (Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\Modules")
+          )
+          $env:PSModulePath = $modulePaths -join [IO.Path]::PathSeparator
+          $probe = @"
+          `$ErrorActionPreference = "Stop"
+          if (`$PSVersionTable.PSEdition -ne "Desktop") { throw "The probe must run under Windows PowerShell 5.1." }
+          Import-Module '$repo\scripts\AutonomousWindowsIdentity.psm1' -Force -ErrorAction Stop
+          if (-not (Get-Command Get-Acl -ErrorAction SilentlyContinue)) { throw "Get-Acl was not imported." }
+          if (-not (Get-Command Set-Acl -ErrorAction SilentlyContinue)) { throw "Set-Acl was not imported." }
+          Write-Output "Windows PowerShell 5.1 security module import passed with inherited PowerShell 7 paths."
+          "@
+          $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($probe))
+          & $windowsPowerShell -NoProfile -EncodedCommand $encoded
+          if ($LASTEXITCODE -ne 0) { throw "Windows PowerShell 5.1 rejected the inherited PowerShell 7 module-path probe." }
       - name: Compile the Windows machine state broker against .NET Framework
         shell: pwsh
         run: |

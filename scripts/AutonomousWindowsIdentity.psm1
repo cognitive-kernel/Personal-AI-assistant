@@ -1,5 +1,35 @@
 Set-StrictMode -Version Latest
 
+# Windows PowerShell 5.1 can inherit PowerShell 7 module directories from a
+# parent process (for example, a VS Code terminal). Loading the PowerShell 7
+# Security module into the 5.1 runtime adds duplicate ObjectSecurity type data
+# and aborts module import. Filter those paths only in this process; do not
+# change the machine/user environment permanently.
+if ($PSVersionTable.PSEdition -eq "Desktop") {
+    $compatibleModulePaths = @(
+        $env:PSModulePath -split [IO.Path]::PathSeparator |
+            ForEach-Object {
+                $candidate = $_.Trim().TrimEnd([char[]]@('\', '/'))
+                if (
+                    $candidate -and
+                    $candidate -notlike '*\Documents\PowerShell\Modules' -and
+                    $candidate -notlike '*\Program Files\PowerShell\Modules' -and
+                    $candidate -notlike '*\Program Files\PowerShell\*\Modules' -and
+                    $candidate -notlike '*\Program Files (x86)\PowerShell\Modules' -and
+                    $candidate -notlike '*\Program Files (x86)\PowerShell\*\Modules'
+                ) {
+                    $candidate
+                }
+            } |
+            Select-Object -Unique
+    )
+    if ($compatibleModulePaths.Count -eq 0) {
+        throw "No compatible Windows PowerShell module paths remain; refusing to load security cmdlets."
+    }
+    $env:PSModulePath = $compatibleModulePaths -join [IO.Path]::PathSeparator
+}
+
+
 # Get-Acl and Set-Acl are exported by this built-in module. Import it in this
 # module scope so scriptblocks used during protected ACL reconciliation do
 # not depend on implicit module auto-loading in an elevated PowerShell process.
