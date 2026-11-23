@@ -868,8 +868,9 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
     {
         lock (_healthGate)
         {
-            if (DateTime.UtcNow - _lastHealthAt < TimeSpan.FromSeconds(1))
-                return _lastHealth;
+            // A health request is issued at application startup. Do not reuse a
+            // previous positive result: out-of-band ACL changes must be detected
+            // on every new startup, even when the last probe was recent.
             _lastStorageHealth = VerifyStorageAccess();
             _lastAclHealth = _lastStorageHealth && VerifyStateAclIntegrity();
             _lastHealth = _lastStorageHealth && _lastAclHealth;
