@@ -30,6 +30,10 @@ function Get-AutonomousDotNetFrameworkRelease {
     return $highestRelease
 }
 
+function Test-AutonomousDotNetFramework48 {
+    return (Get-AutonomousDotNetFrameworkRelease) -ge 528040
+}
+
 function Install-AutonomousStateBrokerService {
     $serviceName = "PersonalAIAssistantStateBroker"
     $serviceRoot = Join-Path $env:ProgramData "PersonalAIAssistant\StateBroker"
@@ -150,4 +154,4 @@ function Install-AutonomousStateBrokerService {
     }
 }
 
-Export-ModuleMember -Function Install-AutonomousStateBrokerService
+Export-ModuleMember -Function Install-AutonomousStateBrokerService, Test-AutonomousDotNetFramework48
