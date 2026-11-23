@@ -184,7 +184,7 @@ jobs:
           $file = Join-Path $nested "existing-state.json"
           [System.IO.File]::WriteAllText($file, '{"preserve":true}')
           $currentSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-          $brokerSid = "S-1-5-19"
+          $brokerSid = Get-AutonomousWindowsWellKnownSid -SidType LocalServiceSid
           try {
             $acl = Get-Acl -LiteralPath $root
             $legacy = [Security.AccessControl.FileSystemAccessRule]::new(
@@ -322,8 +322,8 @@ jobs:
           New-Item -ItemType Directory -Path $aclProbe | Out-Null
           try {
             $runnerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-            Set-AutonomousDirectoryAcl -Path $aclProbe -RunnerSid $runnerSid -AdditionalModifySid "S-1-5-19"
-            $allowedSids = @($runnerSid, "S-1-5-19")
+            Set-AutonomousDirectoryAcl -Path $aclProbe -RunnerSid $runnerSid -AdditionalModifySid $brokerSid
+            $allowedSids = @($runnerSid, $brokerSid)
             $actualSids = @((Get-Acl -LiteralPath $aclProbe).Access | ForEach-Object { $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value } | Select-Object -Unique)
             if ($actualSids.Count -ne $allowedSids.Count -or @($actualSids | Where-Object { $_ -notin $allowedSids }).Count -gt 0) {
               throw "The generated ACL contains missing or unexpected principals: $($actualSids -join ', ')."
