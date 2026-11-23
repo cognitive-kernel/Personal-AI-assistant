@@ -1067,6 +1067,28 @@ def _ensure_ollama() -> None:
             raise RuntimeError("مدل‌های موردنیاز پس از دریافت در Ollama دیده نشدند: " + ", ".join(absent))
 
 
+def _powershell_candidates() -> list[str]:
+    """Discover installed PowerShell engines without pinning a major version."""
+    from app.windows_powershell import windows_powershell_candidates
+
+    return windows_powershell_candidates(
+        system=platform.system(),
+        which=shutil.which,
+        environ=os.environ,
+    )
+
+
+def _find_compatible_powershell() -> tuple[str, str] | None:
+    """Return an installed PowerShell host after probing its real capabilities."""
+    from app.windows_powershell import find_compatible_powershell
+
+    return find_compatible_powershell(
+        _powershell_candidates(),
+        run=subprocess.run,
+        cwd=ROOT,
+    )
+
+
 def _ensure_state_broker() -> bool:
     """Check/install the machine broker through the native platform adapter."""
     system = platform.system()
@@ -1084,22 +1106,23 @@ def _ensure_state_broker() -> bool:
                 flush=True,
             )
             return False
-        powershell = shutil.which("powershell.exe") or shutil.which("powershell")
+        powershell = _find_compatible_powershell()
         if not powershell:
-            windir = os.environ.get("WINDIR")
-            if windir:
-                candidate = Path(windir) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
-                if candidate.is_file():
-                    powershell = str(candidate)
-        if not powershell:
-            print("Windows PowerShell در دسترس نیست؛ Broker نصب نشد.", file=sys.stderr, flush=True)
+            print(
+                "PowerShell سازگار پیدا نشد؛ Broker نصب نشد و برنامه در حالت محدود ادامه می‌یابد.",
+                file=sys.stderr,
+                flush=True,
+            )
             return False
+        executable, runtime = powershell
         print(
-            "بررسی فضای پیشرفت مشترک: Broker آماده نیست؛ راه‌اندازی امن با درخواست مجوز مدیر ...",
+            f"بررسی فضای پیشرفت مشترک: Broker آماده نیست؛ راه‌اندازی امن با {runtime} "
+            "و درخواست مجوز مدیر ...",
             flush=True,
         )
         command = [
-            powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)
+            executable, "-NoLogo", "-NoProfile", "-NonInteractive",
+            "-ExecutionPolicy", "Bypass", "-File", str(script)
         ]
         capture_output = True
     elif system in {"Linux", "Darwin"}:
