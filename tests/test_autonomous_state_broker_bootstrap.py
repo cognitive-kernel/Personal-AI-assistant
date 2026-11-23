@@ -17,6 +17,14 @@ def test_machine_state_broker_is_checked_before_app_startup():
     assert 'ROOT / "scripts" / "ensure_autonomous_state_broker_posix.py"' in bootstrap
     assert '"-ExecutionPolicy"' in bootstrap
     assert '"-File"' in bootstrap
+    assert 'def _powershell_candidates() -> list[str]:' in bootstrap
+    assert 'def _find_compatible_powershell() -> tuple[str, str] | None:' in bootstrap
+    assert '("pwsh.exe", "pwsh", "powershell.exe", "powershell")' in bootstrap
+    assert "$PSVersionTable.PSEdition" in bootstrap
+    assert "'Desktop' -and $version -ge [version]'5.1'" in bootstrap
+    assert "'Core' -and $version -ge [version]'7.0'" in bootstrap
+    assert "executable, runtime = powershell" in bootstrap
+    assert 'f"بررسی فضای پیشرفت مشترک: Broker آماده نیست؛ راه‌اندازی امن با {runtime} "' in bootstrap
     assert "shell=False" in bootstrap
     assert "capture_output = False" in bootstrap
     assert "if health(timeout_ms=30000, verify=True):" in bootstrap
@@ -43,6 +51,10 @@ def test_windows_broker_setup_discovers_runner_identity_and_path():
     assert '[string]$RunnerAccount = ""' in provision
     assert '[string]$RunnerRoot = ""' in provision
     assert "Start-Process" in ensure and "-Verb RunAs" in ensure
+    assert '$hostExecutableName = if ($PSVersionTable.PSEdition -eq "Core") { "pwsh.exe" } else { "powershell.exe" }' in ensure
+    assert '$hostExecutable = Join-Path $PSHOME $hostExecutableName' in ensure
+    assert 'Start-Process -FilePath $hostExecutable' in ensure
+    assert '"The current PowerShell host executable could not be resolved from PSHOME' in ensure
     assert "$modifySids = @($brokerServiceSid)" in ensure
     assert "$modifySids += $runner.Sid" in ensure
     assert "foreach ($runner in $allRunnerServices)" in ensure
