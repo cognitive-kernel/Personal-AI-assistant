@@ -117,21 +117,22 @@ def test_windows_acl_module_loads_security_cmdlets_in_its_own_scope():
     assert "Set-Acl -LiteralPath" in module
 
 
-def test_windows_acl_module_filters_inherited_powershell7_paths_before_security_import():
+def test_windows_acl_module_import_isolated_to_active_host_and_restores_module_path():
     module = (ROOT / "scripts" / "AutonomousWindowsIdentity.psm1").read_text(encoding="utf-8")
-    pre_import = module[:module.index("Import-Module Microsoft.PowerShell.Security")]
+    import_block = module[:module.index("function ConvertTo-AutonomousWindowsAccountName")]
 
-    assert '$PSVersionTable.PSEdition -eq "Desktop"' in pre_import
-    assert r"'*\Documents\PowerShell\Modules'" in pre_import
-    assert r"'*\Program Files\PowerShell\Modules'" in pre_import
-    assert r"'*\Program Files\PowerShell\*\Modules'" in pre_import
-    assert r"'*\Program Files (x86)\PowerShell\Modules'" in pre_import
-    assert "$env:PSModulePath = $compatibleModulePaths -join [IO.Path]::PathSeparator" in pre_import
-    assert pre_import.index("$env:PSModulePath =") < module.index(
+    assert '$previousModulePath = $env:PSModulePath' in import_block
+    assert '$env:PSModulePath = Join-Path $PSHOME "Modules"' in import_block
+    assert "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop" in import_block
+    assert import_block.index('$env:PSModulePath = Join-Path $PSHOME "Modules"') < import_block.index(
         "Import-Module Microsoft.PowerShell.Security"
     )
-    assert "SetEnvironmentVariable" not in pre_import
-
+    assert import_block.index("Import-Module Microsoft.PowerShell.Security") < import_block.index(
+        "$env:PSModulePath = $previousModulePath"
+    )
+    assert "finally {" in import_block
+    assert "SetEnvironmentVariable" not in import_block
+    assert "Program Files\\\\PowerShell" not in import_block
 
 def test_windows_broker_relaunches_the_current_host_without_pinning_powershell_exe():
     ensure = (ROOT / "scripts" / "ensure_autonomous_state_broker.ps1").read_text(encoding="utf-8")
