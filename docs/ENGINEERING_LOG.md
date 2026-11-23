@@ -2433,3 +2433,13 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 
 - The manual Roslyn invocation could not reliably locate a complete .NET Framework reference directory on the hosted Windows image. The build now uses `scripts/AutonomousStateBrokerService.csproj`, targets `.NET Framework 4.8`, and pins `Microsoft.NETFramework.ReferenceAssemblies.net48` to `1.0.3` as a CI build input.
 - The target host still receives only the verified executable and SHA-256 manifest; no SDK, compiler, or reference-assembly package is required there. Exact-head CI must still prove the project builds and the live LocalService broker starts successfully.
+
+
+## 2026-11-23 — Exact package test and portability gates
+
+- The CI build produced and uploaded `PersonalAIAssistant.StateBroker.exe` plus its SHA-256 manifest. The Windows checkpoint watcher startup/stop/recovery and fault-injection tests passed; PowerShell 5.1 and Core module probes, protected ACL test, and the live LocalService/named-pipe test also passed in that run.
+- The Linux suite reported 2,587 passed and one failure; the Windows account-identity portability test had the same single failure. Both failures were a stale static assertion expecting a literal `.exe.sha256` path even though the installer correctly constructs it as `$packagedExe + ".sha256"`. The assertion has been corrected; the exact-head rerun remains required.
+- The live service test is being changed to consume the exact hash-verified CI package rather than independently compiling the C# source. Both PowerShell Desktop and Core will exercise that package.
+- The final CI build is pinned to .NET SDK `10.0.404` and `Microsoft.NETFramework.ReferenceAssemblies.net48` `1.0.3`. The generated binary must be committed, then CI must compare a fresh deterministic build with the committed package hash.
+- The target machine requires .NET Framework 4.8 or later and a supported PowerShell host for service installation; it does not require a compiler or SDK. A PowerShell-free native installer and signed build provenance remain explicit future portability gaps.
+- No user machine service, ACL, Runner, task, checkpoint, or durable data was modified.
