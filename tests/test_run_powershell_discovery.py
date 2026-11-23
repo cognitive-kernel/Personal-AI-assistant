@@ -256,3 +256,25 @@ def test_windows_discovery_selects_an_installed_compatible_host():
 
     assert selected is not None
     assert selected[1].startswith(("Core ", "Desktop "))
+
+
+def test_broker_startup_preflight_never_launches_elevation_or_installer(monkeypatch):
+    from app import autonomous_engineering_state_broker as broker
+
+    monkeypatch.setattr(run.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(broker, "health", lambda **kwargs: False)
+    monkeypatch.setattr(
+        run,
+        "_find_compatible_powershell",
+        lambda: pytest.fail("Startup must not discover a shell or request elevation."),
+    )
+
+    assert run._ensure_state_broker() is False
+
+
+def test_broker_startup_preflight_returns_when_health_is_ready(monkeypatch):
+    from app import autonomous_engineering_state_broker as broker
+
+    monkeypatch.setattr(broker, "health", lambda **kwargs: True)
+
+    assert run._ensure_state_broker() is True
