@@ -240,9 +240,9 @@ The installer uses a machine-wide named mutex owned by the elevated PowerShell c
 
 1. Inspect `%ProgramData%\PersonalAIAssistant\Logs\state-broker-setup.log` and identify whether the prior setup stopped during Runner service handling, ACL reconciliation, service installation, or final health verification.
 2. Confirm no `Runner.Worker.exe` job is active. Inspect every installed Runner service and confirm its expected running/stopped state.
-3. Run the read-only broker health/ACL verification using `scripts/test_autonomous_state_broker_service.ps1`. Preserve all task, checkpoint, and shared-state files.
+3. Run the read-only broker health/ACL verification by importing `scripts/AutonomousStateBroker.psm1` and calling `Invoke-AutonomousStateBroker -Method GET -Path "/v1/health/verify" -TimeoutMilliseconds 30000`. For cross-account access, use `scripts/test_autonomous_state_broker.ps1` with a second non-admin credential; it creates and removes only its temporary probe files. Do **not** use `scripts/test_autonomous_state_broker_service.ps1` for this inspection: that CI integration script creates/removes a test service and changes test ACLs and machine environment variables. Preserve all task, checkpoint, and shared-state files.
 4. Only after reviewing the service state and ACL integrity, rerun the installer in a new elevated PowerShell process with `-AcknowledgeAbandonedSetup`. The switch is an explicit operator acknowledgement; the normal UI/Python setup path never supplies it automatically.
 5. Verify the broker health endpoint, LocalService identity, shared-state ACL manifest, and Runner service restoration after the repair.
 
-If the state tree or service identity is ambiguous, stop and preserve the state for manual recovery; do not broaden ACLs or delete the mutex marker/state directory.
+If the state tree or service identity is ambiguous, stop and preserve the state for manual recovery; do not broaden ACLs, delete the shared-state directory, or manually rewrite the machine ACL manifest.
 
