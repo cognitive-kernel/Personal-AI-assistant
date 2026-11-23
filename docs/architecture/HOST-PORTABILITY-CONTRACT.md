@@ -45,13 +45,13 @@ The following portability corrections are in the current work branches:
 - POSIX broker configuration now asks platformdirs for the machine configuration root instead of embedding Linux/macOS configuration paths in application code.
 - POSIX broker Python discovery now uses runtime discovery and the system account database instead of fixed interpreter paths and assumed home-directory roots.
 - POSIX state resolution no longer interprets the Windows-only PROGRAMDATA variable as a POSIX path.
+- Ollama executable discovery no longer searches LOCALAPPDATA or the current user's home directory; it uses PATH and machine-wide install roots.
 - A separate broker ACL repair change addresses an elevated installer being unable to enumerate a service-protected state root, while retaining reparse-point rejection and rollback.
 
 ## Known remaining audit items
 
 These are not considered solved until code and tests prove them:
 
-- run.py Ollama discovery still contains per-user LOCALAPPDATA and home-directory candidates.
 - Runtime handling of process-scoped AUTONOMOUS_ENGINEERING_PROGRESS_DIR must be reconciled with the machine-wide broker configuration so one login environment cannot split durable state.
 - Windows built-in service and IPC principals are still represented by literal well-known SIDs in some adapter code; consolidate their resolution in the Windows adapter.
 - Several modules still contain direct os.name or sys.platform branches for locks, process control, and hardware discovery; continue moving these behind explicit adapters.
