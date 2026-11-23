@@ -868,7 +868,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
     {
         lock (_healthGate)
         {
-            if (DateTime.UtcNow - _lastHealthAt < TimeSpan.FromSeconds(15))
+            if (DateTime.UtcNow - _lastHealthAt < TimeSpan.FromSeconds(1))
                 return _lastHealth;
             _lastStorageHealth = VerifyStorageAccess();
             _lastAclHealth = _lastStorageHealth && VerifyStateAclIntegrity();
