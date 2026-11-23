@@ -207,10 +207,10 @@ jobs:
         shell: pwsh
         run: |
           $referenceRootCandidates = @(
-            (Join-Path ${env:ProgramFiles(x86)} "Reference Assemblies\\Microsoft\\Framework\\.NETFramework\\v4.8"),
-            (Join-Path ${env:ProgramFiles(x86)} "Reference Assemblies\\Microsoft\\Framework\\.NETFramework\\v4.7.2"),
-            (Join-Path $env:WINDIR "Microsoft.NET\\Framework64\\v4.0.30319"),
-            (Join-Path $env:WINDIR "Microsoft.NET\\Framework\\v4.0.30319")
+            (Join-Path ${env:ProgramFiles(x86)} "Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8"),
+            (Join-Path ${env:ProgramFiles(x86)} "Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.2"),
+            (Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319"),
+            (Join-Path $env:WINDIR "Microsoft.NET\Framework\v4.0.30319")
           )
           $referenceRoot = $referenceRootCandidates | Where-Object {
             (Test-Path -LiteralPath (Join-Path $_ "mscorlib.dll") -PathType Leaf) -and
@@ -219,15 +219,15 @@ jobs:
           } | Select-Object -First 1
           if (-not $referenceRoot) { throw ".NET Framework reference assemblies were not found on the Windows CI image." }
 
-          $sdkLine = dotnet --list-sdks | Where-Object { $_ -match '^\\d+\\.\\d+\\.\\d+' } | Select-Object -Last 1
+          $sdkLine = dotnet --list-sdks | Where-Object { $_ -match '^\d+\.\d+\.\d+' } | Select-Object -Last 1
           if (-not $sdkLine) { throw "A .NET SDK is required on CI to build the broker package." }
-          $sdkMatch = [regex]::Match($sdkLine, '^(?<version>[^ ]+) \\[(?<root>.+)\\]$')
+          $sdkMatch = [regex]::Match($sdkLine, '^(?<version>[^ ]+) \[(?<root>.+)\]$')
           if (-not $sdkMatch.Success) { throw "Could not resolve the installed .NET SDK directory." }
-          $compiler = Join-Path $sdkMatch.Groups["root"].Value (Join-Path $sdkMatch.Groups["version"].Value "Roslyn\\bincore\\csc.dll")
+          $compiler = Join-Path $sdkMatch.Groups["root"].Value (Join-Path $sdkMatch.Groups["version"].Value "Roslyn\bincore\csc.dll")
           if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) { throw "The .NET SDK Roslyn compiler was not found." }
 
-          $source = Join-Path $env:GITHUB_WORKSPACE "scripts\\AutonomousStateBrokerService.cs"
-          $packageRoot = Join-Path $env:GITHUB_WORKSPACE "scripts\\bin"
+          $source = Join-Path $env:GITHUB_WORKSPACE "scripts\AutonomousStateBrokerService.cs"
+          $packageRoot = Join-Path $env:GITHUB_WORKSPACE "scripts\bin"
           New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
           $output = Join-Path $packageRoot "PersonalAIAssistant.StateBroker.exe"
           $hashFile = $output + ".sha256"
