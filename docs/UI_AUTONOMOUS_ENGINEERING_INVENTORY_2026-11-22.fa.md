@@ -33,10 +33,10 @@ UI مستقیماً فایل‌های durable، checkpoint یا Runner را تغ
 | بازخوانی وضعیت | `GET /status` | فقط read؛ readiness و GitHub state باید قابل تأیید باشند | بدون mutation؛ status و pending-work snapshot |
 | ذخیره تنظیمات | `POST /settings` | مدل نصب‌شده، Context، tools، Ollama و GitHub CLI معتبر | متغیرهای repository برای model/interval/mode تغییر می‌کنند؛ خطا باید بدون ذخیرهٔ ناقص گزارش شود |
 | دانلود مدل | `POST /models/pull` سپس `GET /models/pull/{job_id}` | تأیید صریح کاربر و سرویس محلی Ollama | job دانلود به حالت queued/running/completed/failed می‌رود؛ مدل موجود حذف یا جایگزین نمی‌شود |
-| ارسال task دستی | `POST /dispatch` با `task` | readiness کامل، نبود run فعال، نبود task/PR/cleanup مسدودکننده و checkpoint معتبر | workflow به GitHub ارسال می‌شود؛ نتیجهٔ timeout مبهم است و نباید کورکورانه retry شود |
+| ارسال task دستی | `POST /dispatch` با `task` | readiness کامل، نبود run فعال، نبود task/PR/cleanup مسدودکننده و checkpoint معتبر؛ در mode=scheduled نیز task صریح مجاز است | workflow به GitHub ارسال می‌شود؛ ورودی `resume_once` تنظیم نمی‌شود؛ نتیجهٔ timeout مبهم است و نباید کورکورانه retry شود |
 | اجرای چرخه از صف | `POST /dispatch` بدون body | همان readiness؛ اگر checkpoint وجود دارد فقط همان task ادامه می‌یابد | dispatch/reconcile؛ task جدید ساخته نمی‌شود مگر admission آن مجاز باشد |
 | توقف ایمن | `POST /pause` | GitHub CLI authenticated | `AUTONOMOUS_ENGINEERING_PAUSED=true`؛ اجرای جاری تا مرز امن/پایان workflow ادامه دارد و چرخهٔ جدید شروع نمی‌شود؛ این توقف، suspend لحظه‌ای process نیست |
-| ادامه | `POST /resume` | GitHub CLI authenticated | pause variable برابر false و workflow dispatch می‌شود؛ نتیجهٔ dispatch باید جداگانه از Runs تأیید شود |
+| ادامه | `POST /resume` | GitHub CLI authenticated؛ Resume صریح مالک | pause variable برابر false و workflow dispatch با ورودی `resume_once=true` می‌شود؛ در mode=scheduled فقط همین اجرای خالی یک‌باره مجاز است؛ نتیجهٔ dispatch باید جداگانه از Runs تأیید شود |
 | لغو اضطراری | `POST /cancel` | اجرای active از GitHub پیدا شود | GitHub run فعال cancel می‌شود؛ checkpoint/task durable پاک نمی‌شود |
 | بازخوانی سوابق | `GET /runs` | GitHub API قابل دسترسی | read-only؛ stale response باید کنار گذاشته شود |
 | مشاهده گزارش | `GET /runs/{run_id}/logs` | run ID باید متعلق به repository/workflow مورد انتظار باشد | job/step failure، diagnostic ذخیره‌شده و log sanitize‌شده نمایش داده می‌شود |
@@ -313,4 +313,20 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 - Recovery نیز mode و Pause را پیش از طبقه‌بندی retry و بار دیگر پس از backoff، درست پیش از dispatch، بررسی می‌کند.
 - نبود متغیر Pause (HTTP 404) به معنی false و نبود متغیر mode به معنی continuous است؛ خطای API یا مقدار نامعتبر fail-closed است.
 - در حالت scheduled، runهای خودکار push/schedule و recovery که پشت concurrency منتظر مانده‌اند اجرا نمی‌شوند؛ task دستی مجاز است و Resume فقط با ورودی صریح resume_once یک اجرای خالی را مجاز می‌کند. Pause پس از شروع task، task جاری را قطع نمی‌کند؛ فقط شروع task/recovery بعدی را متوقف می‌کند. exact-head CI این تغییرات هنوز pending است.
+
+
+
+## 2026-11-24 — live admission transition table (ADR-024)
+
+| Trigger / event | Live precondition read | State transition / permitted action |
+|---|---|---|
+| Push / schedule queued behind Codex concurrency | Workflow reads live Pause and execution mode after the Codex slot; cycle controller repeats after repository lock | Pause=true blocks. mode=scheduled blocks. mode=continuous + Pause=false permits one task only when the current UTC schedule gate admitted it. |
+| Explicit manual task | Live Pause and mode; manual task payload is non-empty | Pause=true blocks. mode=scheduled does not block an explicit manual task. No resume_once marker is sent. |
+| Owner Resume | POST /resume clears Pause and dispatches workflow_dispatch with resume_once=true | In scheduled mode one empty-task run is permitted. The marker is not inherited by the next cycle. |
+| Automatic continuous chaining after owner merge | Cycle controller re-reads live mode and Pause immediately before dispatch | Dispatch next cycle only when live mode=continuous and Pause=false. Otherwise the accepted task remains complete and no next cycle is dispatched. |
+| Automatic recovery | Recovery coordinator reads live mode/Pause before retry classification and after backoff; main workflow gate reads them again after concurrency | mode=scheduled or Pause=true blocks recovery. Recovery dispatch never sets resume_once. |
+| Unmarked empty workflow_dispatch | Live gate checks mode, recovery_attempt, manual_task, and resume_once | In scheduled mode it is rejected; continuous mode may proceed if Pause=false and other admission checks pass. |
+| Emergency cancel | POST /cancel; inspect run status and actual Codex job with gh run view --json jobs | Select the run whose Codex job is in_progress; fail closed on ambiguous/unreadable job state or excessive simultaneous in-progress runs. No task/checkpoint data is deleted. |
+
+The implementation and rationale are recorded in [ADR-024](architecture/ADR-024-live-pause-and-execution-mode-admission.md). Exact-head CI and target-host acceptance remain pending; this table records the intended and tested contract, not a claim of end-to-end completion.
 
