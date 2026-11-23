@@ -108,13 +108,19 @@ function Set-AutonomousDirectoryTreeAcl {
     )
 
     $root = [System.IO.Path]::GetFullPath($Path)
-    if (-not (Test-Path -LiteralPath $root -PathType Container)) {
-        throw "The shared autonomous state root must be an existing directory."
+    # Inspect the directory entry through its accessible parent. Opening the
+    # protected root itself for metadata can be denied to the elevated
+    # installer before it has taken ownership.
+    $rootParent = Split-Path -Parent $root
+    $rootLeaf = Split-Path -Leaf $root
+    $rootEntry = Get-ChildItem -LiteralPath $rootParent -Force -ErrorAction Stop |
+        Where-Object { $_.Name -ceq $rootLeaf } |
+        Select-Object -First 1
+    if (-not $rootEntry -or -not $rootEntry.PSIsContainer -or
+        ($rootEntry.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        throw "The shared autonomous state root must be an existing, real directory."
     }
-    $rootItem = Get-Item -LiteralPath $root -Force -ErrorAction Stop
-    if (-not $rootItem.PSIsContainer -or ($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
-        throw "The shared autonomous state root must be a real directory."
-    }
+    $rootItem = [System.IO.DirectoryInfo]::new($root)
 
     $allowed = @($ModifySids | Select-Object -Unique)
     if ($allowed.Count -lt 1) { throw "At least one state-owner SID is required." }
