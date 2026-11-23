@@ -155,16 +155,28 @@ def report(title: str, message: str, *, error: bool = False) -> None:
             summary.write(f"## {title}\n\n{message}\n")
 
 
+def _live_pause_enabled(client: GitHubActionsClient) -> bool:
+    try:
+        setting = client.request("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED")
+    except RuntimeError as exc:
+        if "HTTP 404" in str(exc):
+            return False
+        raise RuntimeError(
+            "Could not verify the live durable Pause setting; recovery fails closed."
+        ) from exc
+    if not isinstance(setting, dict):
+        raise RuntimeError("GitHub returned an invalid durable Pause setting; recovery fails closed.")
+    value = str(setting.get("value") or "").strip().lower()
+    if value not in {"true", "false"}:
+        raise RuntimeError("GitHub returned an invalid durable Pause value; recovery fails closed.")
+    return value == "true"
+
+
 def main() -> int:
     mode = os.getenv("EXECUTION_MODE", "continuous").strip().lower()
-    paused = os.getenv("PAUSED", "false").strip().lower() == "true"
     if mode != "continuous":
         report("Recovery not enabled", "Scheduled mode does not automatically retry failed runs.")
         return 0
-    if paused:
-        report("Recovery paused", "The durable Pause setting is active; no run was dispatched.")
-        return 0
-
     repository = os.environ.get("GH_REPO", "").strip()
     token = os.environ.get("GH_TOKEN", "").strip()
     try:
@@ -177,6 +189,9 @@ def main() -> int:
 
     try:
         client = GitHubActionsClient(repository, token)
+        if _live_pause_enabled(client):
+            report("Recovery paused", "The live durable Pause setting is active; no run was dispatched.")
+            return 0
         current_jobs = client.jobs(failed_run_id)
         current_classification = classify_failed_run(current_jobs)
         if current_classification == UNKNOWN:
