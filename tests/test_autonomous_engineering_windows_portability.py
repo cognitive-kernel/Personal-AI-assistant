@@ -461,3 +461,23 @@ def test_broker_installer_preflights_net48_and_service_control_before_mutation()
     assert release_check < service_root_creation < service_lookup
     assert "$scCommand = Get-Command sc.exe -ErrorAction Stop" in installer
     assert installer.index("$scCommand = Get-Command sc.exe") < service_root_creation
+
+
+
+def test_state_broker_elevated_child_holds_machine_mutex_before_mutations():
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+
+    mutex = ensure.index('$setupMutexName = "Global\\PersonalAIAssistant.StateBrokerSetup"')
+    assert mutex > ensure.index("Start-Process -FilePath $hostExecutable -Verb RunAs -ArgumentList $argumentLine -Wait")
+    assert mutex < ensure.index('$brokerLogDirectory =')
+    assert mutex < ensure.index('Import-Module (Join-Path $scriptRoot "AutonomousWindowsIdentity.psm1")')
+    assert mutex < ensure.index("Get-CimInstance Win32_Service")
+    assert mutex < ensure.index("Stop-Service -Name $service.Name")
+    assert mutex < ensure.index("Set-AutonomousDirectoryTreeAcl -Path $stateRoot")
+    assert "$setupMutex.WaitOne(0)" in ensure
+    assert "Another elevated state-broker setup is already running" in ensure
+    assert "catch [System.Threading.AbandonedMutexException]" in ensure
+    assert "fail closed" in ensure
+    finalizer = ensure[ensure.rfind("} finally {"):]
+    assert "$setupMutex.ReleaseMutex()" in finalizer
+    assert "$setupMutex.Dispose()" in finalizer
