@@ -34,9 +34,9 @@ def test_windows_broker_setup_discovers_runner_identity_and_path():
     assert "Get-CimInstance Win32_Service" in ensure
     assert "StartName" in ensure
     assert "Get-AutonomousWindowsAccountSid -AccountName $candidate.StartName" in ensure
-    assert r"RunnerService\\.exe" in ensure
+    assert r"RunnerService\.exe" in ensure
     assert "Runner.Worker.exe" in ensure
-    assert r"C:\\actions-runner" not in ensure + provision
+    assert r"C:\actions-runner" not in ensure + provision
     assert "runner-svc" not in ensure + provision
     assert '[string]$RunnerAccount = ""' in provision
     assert '[string]$RunnerRoot = ""' in provision
