@@ -1,14 +1,17 @@
-## 2026-11-23 — اصلاح portability ماژول مهندسی و Broker (در انتظار اعتبارسنجی نهایی)
+## 2026-11-23 — وضعیت اصلاح ریشه‌ای Broker و ماژول مهندسی (PR #863، Draft)
 
-- شاخهٔ انتشار: `fix/autonomous-engineering-broker-portability-release-20261123`؛ مبنا: `main` در SHA `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`. تغییرات هنوز merge نشده‌اند.
-- Stage 1: کشف PowerShell Core از PATH و رجیستری، probe واقعی capabilityها با ثبت Edition/Version صرفاً برای تشخیص، بدون gate عددی نسخه یا prerelease، اولویت Core حتی در نصب رجیستری‌شدهٔ خارج از PATH، fallback به Windows PowerShell، استفاده از executable میزبان جاری برای UAC/repair، ایزوله‌سازی موقت `PSModulePath` و اصلاح GPU telemetry و UI.
-- Stage 2: نصب‌کنندهٔ Broker روی میزبان مصرف‌کننده دیگر compile نمی‌کند؛ فقط executable بسته‌بندی‌شده را با SHA-256 اعتبارسنجی و stage می‌کند. قبل از هر تغییر سرویس، وجود .NET Framework 4.8+ و `sc.exe` بررسی می‌شود. جایگزینی اتمیک، rollback، LocalService identity، health check و حفظ state باقی مانده‌اند.
-- Build CI: پروژهٔ SDK-style با هدف `net48`، بستهٔ ثابت `Microsoft.NETFramework.ReferenceAssemblies.net48 1.0.3` و SDK دقیق `11.0.100` (از طریق `scripts/global.json`)؛ هیچ SDK یا compiler روی میزبان مصرف‌کننده لازم نیست. CI artifact و SHA-256 manifest را می‌سازد و با GitHub build-provenance attestation امضا می‌کند؛ binary هنوز در repository commit نشده و باید پس از build نهایی اضافه شود. CI نهایی باید build تازه را با hash binary commitشده تطبیق دهد.
-- شواهد CI اولیه: ساخت و upload artifact، تست startup/stop/recovery و fault-injection مربوط به Checkpoint Watcher، probeهای PowerShell 5.1 و Core، ACL و اجرای LocalService broker/named-pipe موفق شدند. دو job تست فقط به‌علت assertion قدیمی دربارهٔ شکل نوشتن مسیر manifest شکست خوردند؛ assertion اصلاح شده است. این runها قبل از شاخهٔ انتشار و SDK pin نهایی بوده‌اند و جایگزین exact-head CI نیستند.
-- تست‌های اضافه‌شده/به‌روزشده: مسیر Core-only، Desktop-only، no-host، کشف رجیستری و اولویت Core، رد prerelease، میزبان واقعی Windows، preflight .NET، UI محدود، package/hash و اجرای همان package زیر هر دو PowerShell Edition.
-- محدودیت‌های صریح: .NET Framework 4.8+ runtime و یک PowerShell سازگار برای نصب سرویس لازم‌اند؛ در نبود PowerShell فقط قابلیت Broker غیرفعال می‌ماند و داشبورد در حالت محدود ادامه می‌دهد. مسیر native/PowerShell-free برای نصب سرویس هنوز پیاده‌سازی نشده است؛ attestation در CI تولید می‌شود اما نصب‌کننده روی میزبان فقط SHA-256 را بررسی می‌کند و attestation را مستقلاً verify نمی‌کند.
-- پذیرش میزبان واقعی هنوز انجام نشده: نصب elevated، سرویس LocalService، named pipe، Runner حاضر/غایب، اجرای داشبورد non-admin و حفظ Checkpoint/داده پس از restart باید روی Windows هدف تأیید شوند.
+- شاخهٔ فعال: `fix/autonomous-engineering-broker-final-ci-20261123`؛ مبنا: `main` در SHA `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`. هیچ تغییری هنوز به main ادغام نشده است.
+- **علت قطعی باقی‌ماندن خطا روی main:** مسیر نصب Broker هنوز برای کامپایل سرویس در میزبان مصرف‌کننده به `csc.exe` متکی بود. بنابراین داشتن PowerShell به‌تنهایی کافی نبود و نصب Broker می‌توانست شکست بخورد؛ در نتیجه health و pending-work هر دو unavailable می‌شدند.
+- **نقص دوم در شاخهٔ اصلاحی قبلی:** Installer به فایل اجرایی prebuilt و manifest نیاز داشت، اما binary در مخزن commit نشده بود؛ در نتیجه حذف compiler به‌تنهایی نصب واقعی را ممکن نمی‌کرد.
+- **اصلاحات این شاخه:** حذف وابستگی نصب به compiler، ساخت package در CI با SDK دقیق `11.0.100` و reference package ثابت `Microsoft.NETFramework.ReferenceAssemblies.net48 1.0.3`، مقایسهٔ build تازه با binary commitشده، تولید provenance attestation، و commit خودکار package تأییدشده به شاخهٔ PR. SDK pin فقط برای reproducible build در CI است و روی میزبان کاربر نصب نمی‌شود.
+- **ایمنی نصب:** بررسی وجود package، SHA-256، .NET Framework 4.8+ runtime و `sc.exe` اکنون پیش از توقف Runner یا تغییر ACL انجام می‌شود. نصب‌کننده package را دوباره پیش از تغییر سرویس اعتبارسنجی می‌کند. این کار شکست ناشی از package ناقص را قبل از تغییر state متوقف می‌کند.
+- **تشخیص‌پذیری UI:** علت امن و محدودشدهٔ خطای Broker (از جمله WinError) در کارت فضای ذخیره‌سازی و وضعیت Checkpoint نمایش داده می‌شود؛ داشبورد در حالت محدود بالا می‌آید و dispatch تا تأیید durable state مسدود می‌ماند.
+- **حذف قفل نسخهٔ PowerShell:** Edition/Version صرفاً برای گزارش ثبت می‌شوند؛ انتخاب میزبان با capability probe انجام می‌شود، نه شرط عددی 5.1 یا 7.x. Core در صورت سازگاری اولویت دارد و Desktop fallback است.
+- **محدودیت‌های باز:** Broker همچنان برای provisioning به یک میزبان PowerShell سازگار و runtime .NET Framework 4.8+ نیاز دارد؛ مسیر native/PowerShell-free هنوز پیاده‌سازی نشده است. Linux/macOS و ماتریس x86/ARM64 نیز در این PR پوشش کامل ندارند.
+- **CI:** build و تست exact-head این نسخه هنوز باید کامل و سبز شوند؛ commit package به شاخه و اجرای دوبارهٔ مقایسهٔ deterministic نیز باید تأیید شود. هیچ نتیجهٔ قبلی به‌عنوان CI نهایی این head محسوب نمی‌شود.
+- **پذیرش میزبان واقعی هنوز انجام نشده:** UAC، نصب/ترمیم از حساب non-admin، LocalService، named pipe، Runner حاضر/غایب، restart و حفظ Checkpoint/داده باید روی Windows هدف آزمایش شوند.
 - هیچ سرویس، ACL، Runner، دیتابیس، task، checkpoint یا دادهٔ durable روی میزبان کاربر تغییر نکرده است.
+
 
 
 ---
