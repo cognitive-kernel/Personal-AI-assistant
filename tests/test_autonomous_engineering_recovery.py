@@ -29,7 +29,6 @@ def _failed_execution_jobs():
 
 
 def _configure_environment(monkeypatch):
-    monkeypatch.setenv("EXECUTION_MODE", "continuous")
     monkeypatch.setenv("GH_REPO", "cognitive-kernel/Personal-AI-assistant")
     monkeypatch.setenv("GH_TOKEN", "test-token")
     monkeypatch.setenv("FAILED_RUN_ID", "123")
@@ -51,6 +50,8 @@ def test_main_blocks_admission_rejection_without_dispatch(monkeypatch):
             return 0
 
         def request(self, *args, **kwargs):
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE"):
+                return {"value": "continuous"}
             if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
                 return {"value": "false"}
             calls.append((args, kwargs))
@@ -86,6 +87,8 @@ def test_main_does_not_dispatch_for_a_preflight_failure(monkeypatch):
             return 0
 
         def request(self, *args, **kwargs):
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE"):
+                return {"value": "continuous"}
             if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
                 return {"value": "false"}
             calls.append((args, kwargs))
@@ -114,6 +117,8 @@ def test_main_opens_breaker_as_a_failed_recovery_result(monkeypatch):
             return 3
 
         def request(self, *args, **kwargs):
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE"):
+                return {"value": "continuous"}
             if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
                 return {"value": "false"}
             calls.append((args, kwargs))
@@ -142,6 +147,8 @@ def test_main_dispatches_only_an_empty_recovery_task_below_threshold(monkeypatch
             return 1
 
         def request(self, method, path, payload=None):
+            if method == "GET" and path == "/actions/variables/AUTONOMOUS_ENGINEERING_MODE":
+                return {"value": "continuous"}
             if method == "GET" and path == "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED":
                 return {"value": "false"}
             calls.append((method, path, payload))
@@ -161,15 +168,21 @@ def test_main_dispatches_only_an_empty_recovery_task_below_threshold(monkeypatch
     ]
 
 
-def test_main_honors_scheduled_mode_and_live_durable_pause(monkeypatch):
+def test_main_honors_live_scheduled_mode_and_durable_pause(monkeypatch):
     _configure_environment(monkeypatch)
-    monkeypatch.setenv("EXECUTION_MODE", "scheduled")
-    monkeypatch.setattr(recovery, "GitHubActionsClient", lambda *args: (_ for _ in ()).throw(AssertionError("API must not be called")))
     monkeypatch.setattr(recovery, "report", lambda *args, **kwargs: None)
 
-    assert recovery.main() == 0
+    class ScheduledClient:
+        def __init__(self, repository, token):
+            pass
 
-    monkeypatch.setenv("EXECUTION_MODE", "continuous")
+        def request(self, method, path, payload=None):
+            assert method == "GET"
+            assert path == "/actions/variables/AUTONOMOUS_ENGINEERING_MODE"
+            return {"value": "scheduled"}
+
+    monkeypatch.setattr(recovery, "GitHubActionsClient", ScheduledClient)
+    assert recovery.main() == 0
 
     class PausedClient:
         def __init__(self, repository, token):
@@ -177,8 +190,11 @@ def test_main_honors_scheduled_mode_and_live_durable_pause(monkeypatch):
 
         def request(self, method, path, payload=None):
             assert method == "GET"
-            assert path == "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"
-            return {"value": "true"}
+            if path == "/actions/variables/AUTONOMOUS_ENGINEERING_MODE":
+                return {"value": "continuous"}
+            if path == "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED":
+                return {"value": "true"}
+            raise AssertionError(path)
 
     monkeypatch.setattr(recovery, "GitHubActionsClient", PausedClient)
     assert recovery.main() == 0
@@ -248,6 +264,8 @@ def test_current_admission_rejection_does_not_hide_an_already_open_breaker(monke
             return 3
 
         def request(self, *args, **kwargs):
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE"):
+                return {"value": "continuous"}
             if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
                 return {"value": "false"}
             raise AssertionError("An open breaker must not dispatch.")
@@ -294,6 +312,8 @@ def test_main_does_not_dispatch_for_a_superseded_recovery_event(monkeypatch):
             raise recovery.RecoverySuperseded("A newer main-branch workflow run exists.")
 
         def request(self, *args, **kwargs):
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE"):
+                return {"value": "continuous"}
             if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
                 return {"value": "false"}
             raise AssertionError("A superseded event must not dispatch.")
@@ -324,6 +344,8 @@ def test_main_rechecks_ownership_after_backoff_before_dispatch(monkeypatch):
             raise recovery.RecoverySuperseded("A newer main-branch workflow run appeared during backoff.")
 
         def request(self, *args, **kwargs):
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE"):
+                return {"value": "continuous"}
             if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
                 return {"value": "false"}
             calls.append((args, kwargs))
@@ -381,6 +403,8 @@ def test_main_rechecks_live_pause_after_backoff_before_dispatch(monkeypatch):
             self.pause_reads = 0
 
         def request(self, method, path, payload=None):
+            if method == "GET" and path == "/actions/variables/AUTONOMOUS_ENGINEERING_MODE":
+                return {"value": "continuous"}
             if method == "GET" and path == "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED":
                 self.pause_reads += 1
                 return {"value": "false" if self.pause_reads == 1 else "true"}
@@ -401,3 +425,56 @@ def test_main_rechecks_live_pause_after_backoff_before_dispatch(monkeypatch):
     assert calls == []
     assert reports[-1][0][0] == "Recovery paused"
     assert "became active during backoff" in reports[-1][0][1]
+
+
+def test_live_execution_mode_missing_variable_defaults_continuous():
+    class MissingVariableClient:
+        def request(self, method, path, payload=None):
+            raise RuntimeError("GitHub Actions API failed: HTTP 404: not found")
+
+    assert recovery._live_execution_mode(MissingVariableClient()) == "continuous"
+
+
+def test_live_execution_mode_api_failure_fails_closed():
+    import pytest
+
+    class DeniedClient:
+        def request(self, method, path, payload=None):
+            raise RuntimeError("GitHub Actions API failed: HTTP 403: forbidden")
+
+    with pytest.raises(RuntimeError, match="Could not verify the live execution mode"):
+        recovery._live_execution_mode(DeniedClient())
+
+
+def test_main_rechecks_live_execution_mode_after_backoff_before_dispatch(monkeypatch):
+    _configure_environment(monkeypatch)
+    calls = []
+    reports = []
+
+    class FakeClient:
+        def __init__(self, repository, token):
+            self.mode_reads = 0
+
+        def request(self, method, path, payload=None):
+            if method == "GET" and path == "/actions/variables/AUTONOMOUS_ENGINEERING_MODE":
+                self.mode_reads += 1
+                return {"value": "continuous" if self.mode_reads == 1 else "scheduled"}
+            if method == "GET" and path == "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED":
+                return {"value": "false"}
+            calls.append((method, path, payload))
+            return {}
+
+        def jobs(self, run_id):
+            return _failed_execution_jobs()
+
+        def retryable_failure_streak(self, run_id, jobs):
+            return 1
+
+    monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
+    monkeypatch.setattr(recovery.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(recovery, "report", lambda *args, **kwargs: reports.append((args, kwargs)))
+
+    assert recovery.main() == 0
+    assert calls == []
+    assert reports[-1][0][0] == "Recovery not enabled"
+    assert "changed to scheduled during backoff" in reports[-1][0][1]
