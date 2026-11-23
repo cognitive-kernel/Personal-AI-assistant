@@ -43,6 +43,8 @@ def test_windows_broker_setup_discovers_runner_identity_and_path():
     assert "Start-Process" in ensure and "-Verb RunAs" in ensure
     assert "$modifySids = @($brokerServiceSid)" in ensure
     assert "$modifySids += $runner.Sid" in ensure
+    assert "foreach ($runner in $allRunnerServices)" in ensure
+    assert "Expected exactly one installed Runner service matching the supplied RunnerRoot" in ensure
     assert "if ($resolvedRunnerServices.Count -eq 1)" not in ensure
     assert "No GitHub Runner is installed; the core application broker is ready." in ensure
     assert 'Join-Path $runner.Root ".runner"' not in ensure
