@@ -8,41 +8,38 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsIdentity.psm1") -Force
-Import-Module (Join-Path $PSScriptRoot "AutonomousWindowsPaths.psm1") -Force
 
-$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-$installerSid = $identity.User.Value
-$principal = [Security.Principal.WindowsPrincipal]::new($identity)
-if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    throw "Run this configuration from elevated PowerShell."
-}
+# Keep this compatibility entry point aligned with the canonical broker repair
+# path. It must never rewrite the shared ACL independently while a Runner job
+# may be active.
 $runnerIdentity = ConvertTo-AutonomousWindowsAccountName -AccountName $RunnerAccount
 $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runnerIdentity
-$brokerServiceSid = "S-1-5-19"
-
-$machineStatePath = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")
-$processStatePath = $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR
-if (-not [string]::IsNullOrWhiteSpace($processStatePath) -and [string]::IsNullOrWhiteSpace($machineStatePath)) {
-    throw "AUTONOMOUS_ENGINEERING_PROGRESS_DIR is process/user-scoped; configure it at machine scope."
+$runnerServices = @(Get-CimInstance Win32_Service -ErrorAction Stop | Where-Object {
+    $_.PathName -match '(?i)RunnerService\.exe'
+})
+$matchingRunnerServices = @()
+foreach ($service in $runnerServices) {
+    $serviceSid = Get-AutonomousWindowsAccountSid -AccountName $service.StartName
+    if ($serviceSid -eq $runnerSid) {
+        $matchingRunnerServices += $service
+    }
 }
-if (-not [string]::IsNullOrWhiteSpace($processStatePath)) {
-    # Machine scope is authoritative; user-scoped overrides are not consulted.
+if ($matchingRunnerServices.Count -eq 0) {
+    throw "No installed GitHub Runner service uses the requested account '$runnerIdentity'. No state ACLs were changed."
 }
-$progressPath = Resolve-AutonomousStateDirectory -ConfiguredPath $machineStatePath -ProgramDataPath $env:ProgramData
-New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
 
-# Remove stale app-user ACEs recursively. Only the dedicated Runner role and
-# the LocalService broker retain direct filesystem access to this data tree.
-Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid -InstallerSid $installerSid
-[Environment]::SetEnvironmentVariable(
-    "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS",
-    (@($runnerSid, $brokerServiceSid) | Select-Object -Unique | Sort-Object) -join ";",
-    "Machine"
-)
-
-$broker = Get-Service -Name "PersonalAIAssistantStateBroker" -ErrorAction SilentlyContinue
-if (-not $broker -or $broker.Status -ne "Running") {
-    throw "The machine state broker is not installed or running; rerun provision_autonomous_runner.ps1."
+$ensureScript = Join-Path $PSScriptRoot "ensure_autonomous_state_broker.ps1"
+if (-not (Test-Path -LiteralPath $ensureScript -PathType Leaf)) {
+    throw "The canonical state-broker reconciliation script is missing: $ensureScript"
 }
-Write-Output "Shared progress storage is protected for Runner and LocalService broker access."
-Write-Output "Application sessions use the named-pipe broker and do not need filesystem ACL entries."
+$powershell = Join-Path $PSHOME "powershell.exe"
+if (-not (Test-Path -LiteralPath $powershell -PathType Leaf)) {
+    $powershell = Get-Command powershell.exe -ErrorAction Stop | Select-Object -ExpandProperty Source
+}
+
+Write-Host "Delegating shared-state ACL and broker repair to the canonical fail-closed setup."
+& $powershell -NoProfile -ExecutionPolicy Bypass -File $ensureScript
+if ($LASTEXITCODE -ne 0) {
+    throw "The canonical state-broker reconciliation failed with exit code $LASTEXITCODE."
+}
+Write-Output "Shared progress ACLs and broker health are reconciled for the installed Runner service identities."
