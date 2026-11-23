@@ -1,3 +1,20 @@
+## 2026-11-24 — وضعیت زندهٔ Autonomous Engineering و اصلاحات در حال اعتبارسنجی
+
+- SHA فعلی `main`: `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`. این snapshot بر snapshotهای قدیمی‌تر همین فایل مقدم است؛ تاریخچهٔ پایین فایل برای ردیابی حفظ شده است.
+- PRهای باز و مرتبط:
+  - [#863](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/863) — اصلاح startup و Windows State Broker؛ Draft، head `30b0141d8cfbff5f5e9b5354313335f5cd90528f`.
+  - [#864](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/864) — سریالی‌سازی refresh وضعیت UI بعد از mutation؛ Draft، head `8303afa5d44f104c6e9a5d569868f3db248023b0`.
+  - [#865](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/865) — PR پیرو #863 برای قفل machine-wide در پردازهٔ Elevated؛ Draft و بر پایهٔ branch مربوط به #863، head `dce3af2c45ec8667f9cdb01ede3169bd68e0486f`.
+  - [#866](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/866) — خواندن زندهٔ Pause flag پس از گرفتن concurrency slot؛ Draft و بر پایهٔ main، head `08a8f55eee3d498a629c57921603638ff095d24e`.
+- شواهد PR #864 روی head فوق: Browser E2E، CodeQL، Dependency Audit، تست اصلی، Windows storage regressions و bootstrapهای Python روی Windows/Ubuntu/macOS موفق‌اند؛ Full test suite ویندوز هنگام ثبت این snapshot هنوز در حال اجرا بود. هیچ‌کدام از این شواهد جایگزین پذیرش روی میزبان واقعی کاربر نیست.
+- نقص تکمیلی #863: قفل Python والد در صورت timeout، پردازهٔ UAC-elevated فرزند را پوشش نمی‌دهد. این finding به‌صورت review ثبت شده و #865 برای قفل named mutex در خود فرزند ایجاد شده است. exact-head CI و آزمون Windows برای سناریوی زنده‌ماندن فرزند پس از timeout هنوز لازم است.
+- نقص تکمیلی Workflow: مرحلهٔ قبلی Pause را از `vars` در context اجرا می‌خواند و ممکن بود برای job منتظرمانده پشت concurrency قدیمی باشد. #866 مقدار جاری repository variable را از Actions Variables API بعد از گرفتن concurrency slot می‌خواند؛ خطاهای غیر 404 fail-closed هستند. exact-head CI هنوز لازم است.
+- CI دقیق #865 و #866 هنگام ثبت snapshot در صف بود؛ نتیجهٔ CI برای آن‌ها هنوز قابل ادعا نیست. PR #863 نیز تا بررسی exact-head و target-host acceptance باز می‌ماند.
+- هیچ PRی merge نشده و هیچ branchی حذف نشده است. هیچ workflow اجرایی، متغیر Pause، task، owner metadata، checkpoint، database، ACL، Runner registration یا دادهٔ پایدار تغییر نکرده است.
+- گیت‌های باز: Windows target-host integration برای UAC و mutex، pause/resume/cancel واقعی، Runner موجود/ناموجود، Ollama و Codex واقعی، crash/restart و بازیابی checkpoint، exact-head CI تمام PRها، و بازبینی نهایی امنیت/دسترسی. تا تکمیل شواهد، همهٔ PRها Draft می‌مانند.
+
+---
+
 ## 2026-11-23 — snapshot زنده و ادامهٔ مهندسی Autonomous Engineering
 
 - main با مقایسهٔ مستقیم روی SHA 31349a99b197fe702e11e8a5dd53d52ba924575c تأیید شد؛ این snapshot جایگزین وضعیت‌های تاریخی قدیمی‌تر در ادامهٔ فایل است.
