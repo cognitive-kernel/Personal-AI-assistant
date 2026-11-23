@@ -3605,6 +3605,91 @@ def test_autonomous_engineering_console_renders_and_reports_local_status():
         browser.close()
 
 
+def test_autonomous_engineering_broker_failure_reason_is_visible_and_dashboard_stays_available():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    broker_reason = (
+        "Durable task state cannot be verified safely: "
+        "Windows state broker is unavailable (WinError 2)."
+    )
+    status_payload = {
+        "ready": False,
+        "checks": {
+            "ollama_online": False,
+            "model_installed": False,
+            "codex_installed": False,
+            "runner_running": False,
+            "github_cli_authenticated": False,
+            "github_runs_available": False,
+            "progress_storage_accessible": False,
+            "durable_state_available": False,
+        },
+        "model": "gpt-oss:20b",
+        "models": [],
+        "runs_per_day": 1,
+        "codex": {"installed": False, "version": None},
+        "github": {"recent_runs": [], "settings": {"model": "gpt-oss:20b", "runs_per_day": 1}},
+        "pending_work": {
+            "available": False,
+            "blocked": True,
+            "markers": {},
+            "checkpoint": {"available": False, "verified": False},
+            "reason": broker_reason,
+        },
+        "can_dispatch": False,
+        "local_only_inference": True,
+        "paused": False,
+        "execution_mode": "continuous",
+        "interval_hours": 24,
+    }
+    progress_payload = {
+        "current": None,
+        "history": [],
+        "latest_snapshot": None,
+        "events": [],
+        "available": False,
+        "storage_configured": False,
+    }
+    browser_errors = []
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route(
+            "**/api/autonomous-engineering/status",
+            lambda route: route.fulfill(status=200, json=status_payload),
+        )
+        page.route(
+            "**/api/autonomous-engineering/runs**",
+            lambda route: route.fulfill(status=200, json={"runs": []}),
+        )
+        page.route(
+            "**/api/autonomous-engineering/progress**",
+            lambda route: route.fulfill(status=200, json=progress_payload),
+        )
+
+        response = page.goto(
+            base_url.rstrip("/") + "/autonomous-engineering",
+            wait_until="domcontentloaded",
+        )
+        assert response is not None and response.status == 200
+        assert page.get_by_role("heading", name="عامل مهندسی خودکار").is_visible()
+        page.wait_for_function(
+            "() => document.querySelector('#storage-detail')?.textContent.includes('WinError 2')",
+            timeout=10000,
+        )
+        page.wait_for_function(
+            "() => document.querySelector('#checkpoint-detail')?.textContent.includes('WinError 2')",
+            timeout=10000,
+        )
+        assert page.locator("#dispatch-agent").is_disabled()
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
 def test_autonomous_engineering_manual_task_form_dispatches_bounded_input():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
