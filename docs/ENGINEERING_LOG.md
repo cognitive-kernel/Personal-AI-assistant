@@ -2399,3 +2399,23 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Uses the documented Ollama `DELETE /api/delete` method and verifies each deletion by re-reading `/api/tags`; a tag still present after bounded verification fails the preflight.
 - Added an audit-only mode and tests with multiple model families, including Qwen legacy aliases, loaded-model preservation, marker mismatches, and post-delete verification.
 - This changes cleanup behavior only on a normal verified preflight; `-VerifyOnly` never deletes models. No user-host model was removed during this change. Exact-head CI and target-host audit remain required.
+
+
+## 2026-11-23 — Autonomous Engineering: PowerShell runtime portability
+
+### Root cause
+- The Windows broker bootstrap in `run.py` only searched for `powershell.exe`; it could not use an otherwise compatible PowerShell Core-only installation.
+- The elevated relaunch in `ensure_autonomous_state_broker.ps1` constructed `$PSHOME\\powershell.exe`, which is not the PowerShell Core executable. The legacy progress-repair entry point and optional Windows GPU telemetry also hard-coded `powershell.exe`.
+- Broker status UI text incorrectly suggested that an absent Runner was a reason to run broker setup, even though the broker is intentionally independent of Runner registration.
+
+### Changes prepared on `fix/autonomous-engineering-powershell-portability-20261123`
+- Added shared, capability-based PowerShell discovery: PATH plus registered Core installation locations; runtime edition/version is probed before use, and broken candidates are skipped.
+- Reused the current PowerShell process executable for elevated and compatibility relaunches instead of reconstructing a host filename from `$PSHOME`.
+- Scoped `PSModulePath` to the active host's inbox modules only while importing `Microsoft.PowerShell.Security`, then restored the caller environment.
+- Made optional Windows GPU telemetry try the discovered hosts in order and fall back when a candidate cannot execute the query.
+- Corrected broker setup guidance and added focused regression tests plus a Windows PowerShell Core CI probe.
+
+### Verification and residual risk
+- No exact-head CI or target-host installation result is claimed in this entry; both remain pending.
+- The broker installer still compiles `AutonomousStateBrokerService.cs` at install time using .NET Framework `csc.exe`. This consumer-machine compiler dependency remains an open portability defect and must be removed before claiming the Windows broker bootstrap fully portable.
+- No user machine service, ACL, Runner, database, task, checkpoint, or durable state was modified.
