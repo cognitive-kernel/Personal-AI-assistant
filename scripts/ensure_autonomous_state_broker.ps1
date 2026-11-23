@@ -50,7 +50,9 @@ foreach ($candidate in $runnerServiceCandidates) {
     if (-not $match.Success) {
         $match = [regex]::Match($rawPath, '^\s*(?<exe>.+?RunnerService\.exe)(?:\s|$)')
     }
-    if (-not $match.Success) { continue }
+    if (-not $match.Success) {
+        throw "Could not safely resolve an installed Runner service executable path; refusing to rewrite shared-state ACLs."
+    }
     $executable = [System.IO.Path]::GetFullPath($match.Groups["exe"].Value)
     $root = [System.IO.Path]::GetFullPath((Split-Path -Parent (Split-Path -Parent $executable)))
     if ([string]::IsNullOrWhiteSpace($RunnerRoot) -or
