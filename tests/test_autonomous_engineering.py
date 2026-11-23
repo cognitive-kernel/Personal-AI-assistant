@@ -358,7 +358,8 @@ def test_autonomous_recovery_uses_the_durable_policy_module():
     assert "AUTONOMOUS_ENGINEERING_PAUSED" in policy
     assert "PAUSED:" not in recovery
     assert "scripts/autonomous_engineering_recovery.py" in recovery
-    assert "EXECUTION_MODE:" in recovery
+    assert "EXECUTION_MODE:" not in recovery
+    assert "AUTONOMOUS_ENGINEERING_MODE" in policy
     assert "FAILED_RUN_ID:" in recovery
     assert "AUTONOMOUS_ENGINEERING_FAILURE_STREAK" not in policy
     assert "manual_task" in policy
@@ -2712,13 +2713,16 @@ def test_posix_cleanup_lock_order_is_repository_then_state_then_checkpoint(monke
 
 def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admission():
     workflow = _read(".github/workflows/autonomous-codex-engineering.yml")
-    start = workflow.index("- name: Recheck live durable pause state after concurrency admission")
+    start = workflow.index("- name: Recheck live Pause and execution mode after concurrency admission")
     end = workflow.index("- name: Execute one isolated task, validate, and publish for owner review", start)
     gate = workflow[start:end]
     concurrency = workflow.index("group: autonomous-local-engineering-${{ github.repository }}")
 
     assert concurrency < start
     assert "actions/variables/AUTONOMOUS_ENGINEERING_PAUSED" in gate
+    assert "actions/variables/AUTONOMOUS_ENGINEERING_MODE" in gate
+    assert "EVENT_NAME" in gate and "RECOVERY_ATTEMPT" in gate
+    assert "modeValue -eq \"scheduled\"" in gate
     assert "Invoke-RestMethod -Method Get" in gate
     assert 'Authorization = "Bearer $env:GH_TOKEN"' in gate
     assert 'if ($statusCode -eq 404)' in gate
@@ -2727,4 +2731,5 @@ def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admi
     assert "[System.Text.UTF8Encoding]::new($false)" in gate
     assert "Out-File" not in gate
     assert "PAUSED: ${{ vars.AUTONOMOUS_ENGINEERING_PAUSED" not in gate
-    assert "if: steps.pause.outputs.paused != 'true'" in workflow[end:end + 300]
+    assert "EXECUTION_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE" not in gate
+    assert "if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'" in workflow[end:end + 300]
