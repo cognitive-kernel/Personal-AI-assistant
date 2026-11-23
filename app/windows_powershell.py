@@ -33,7 +33,14 @@ def windows_powershell_candidates(
     def add(candidate: str | os.PathLike[str] | None, *, require_file: bool = True) -> None:
         if not candidate:
             return
-        value = os.path.abspath(os.fspath(candidate))
+        raw = os.fspath(candidate)
+        # Preserve Windows absolute paths when this module is exercised by
+        # cross-platform tests; resolve relative candidates against this host.
+        is_windows_absolute = (
+            (len(raw) > 2 and raw[1] == ":" and raw[2] in "\\\\/")
+            or raw.startswith("\\\\\\\\")
+        )
+        value = raw if is_windows_absolute else os.path.abspath(raw)
         key = os.path.normcase(value)
         if (not require_file or os.path.isfile(value)) and all(os.path.normcase(item) != key for item in candidates):
             candidates.append(value)
