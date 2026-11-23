@@ -151,7 +151,7 @@ try {
     if ($brokerCim.StartName -ne "NT AUTHORITY\LocalService") {
         throw "The state broker must run under NT AUTHORITY\LocalService."
     }
-    $health = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health" -TimeoutMilliseconds 30000
+    $health = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health/verify" -TimeoutMilliseconds 30000
     if ($health.ready -ne $true -or $health.storage_ready -ne $true -or
         $health.acl_ready -ne $true -or $health.schema_version -ne 1) {
         throw "The installed state broker did not pass its storage and ACL integrity checks."
