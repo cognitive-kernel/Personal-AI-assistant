@@ -63,27 +63,33 @@ function Get-AutonomousStateBrokerPackage {
     New-Item -ItemType Directory -Path $serviceRoot -Force | Out-Null
     $serviceExe = Join-Path $serviceRoot "PersonalAIAssistant.StateBroker.exe"
     $temporaryExe = Join-Path $serviceRoot ("broker-stage-" + [guid]::NewGuid().ToString("N") + ".exe")
+    $existing = $null
+    $wasRunning = $false
     try {
         Copy-Item -LiteralPath $packagedExe -Destination $temporaryExe -Force -ErrorAction Stop
         $copiedHash = (Get-FileHash -LiteralPath $temporaryExe -Algorithm SHA256 -ErrorAction Stop).Hash
         if (-not [string]::Equals($copiedHash, $expectedHash, [StringComparison]::OrdinalIgnoreCase)) {
             throw "The staged Windows state broker binary failed SHA-256 verification."
         }
+
+        $existing = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+        $wasRunning = ($null -ne $existing -and $existing.Status -eq "Running")
+        if ($wasRunning) {
+            Stop-Service -Name $serviceName -Force -ErrorAction Stop
+            $existing = Get-Service -Name $serviceName -ErrorAction Stop
+            $existing.WaitForStatus(
+                [System.ServiceProcess.ServiceControllerStatus]::Stopped,
+                [TimeSpan]::FromSeconds(30)
+            )
+        }
     } catch {
         Remove-Item -LiteralPath $temporaryExe -Force -ErrorAction SilentlyContinue
+        if ($wasRunning) {
+            Start-Service -Name $serviceName -ErrorAction SilentlyContinue
+        }
         throw
     }
 
-    $existing = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-    $wasRunning = ($null -ne $existing -and $existing.Status -eq "Running")
-    if ($wasRunning) {
-        Stop-Service -Name $serviceName -Force -ErrorAction Stop
-        $existing = Get-Service -Name $serviceName -ErrorAction Stop
-        $existing.WaitForStatus(
-            [System.ServiceProcess.ServiceControllerStatus]::Stopped,
-            [TimeSpan]::FromSeconds(30)
-        )
-    }
     $backupExe = $null
     $newServiceCreated = $false
     try {
