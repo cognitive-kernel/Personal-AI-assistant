@@ -200,15 +200,18 @@ function Set-AutonomousDirectoryTreeAcl {
                 throw "Could not grant temporary installer access to directory '$directory'."
             }
 
-            foreach ($entry in [System.IO.Directory]::EnumerateFileSystemEntries($directory)) {
-                $entryAttributes = [System.IO.File]::GetAttributes($entry)
+            foreach ($entryInfo in Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop) {
+                $entryAttributes = $entryInfo.Attributes
                 if (($entryAttributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
                     throw "The shared state tree contains a reparse point; refusing to change permissions."
                 }
-                if (($entryAttributes -band [IO.FileAttributes]::Directory) -ne 0) {
-                    $pendingDirectories.Push([pscustomobject]@{ Path = $entry; Attributes = $entryAttributes })
+                if ($entryInfo -is [System.IO.DirectoryInfo]) {
+                    $pendingDirectories.Push([pscustomobject]@{
+                        Path = $entryInfo.FullName
+                        Attributes = $entryAttributes
+                    })
                 } else {
-                    $items.Add([System.IO.FileInfo]::new($entry))
+                    $items.Add($entryInfo)
                 }
             }
         }
