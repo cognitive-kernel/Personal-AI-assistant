@@ -481,3 +481,18 @@ def test_state_broker_elevated_child_holds_machine_mutex_before_mutations():
     finalizer = ensure[ensure.rfind("} finally {"):]
     assert "$setupMutex.ReleaseMutex()" in finalizer
     assert "$setupMutex.Dispose()" in finalizer
+
+
+def test_state_broker_abandoned_mutex_requires_explicit_operator_acknowledgement():
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+    parameters = ensure[:ensure.index("$ErrorActionPreference")]
+    parent = ensure[:ensure.index("$setupMutexName")]
+    abandoned = ensure[ensure.index("catch [System.Threading.AbandonedMutexException]"):ensure.index("if (-not $setupMutexAcquired)")]
+
+    assert "[switch]$AcknowledgeAbandonedSetup" in parameters
+    assert '$argumentLine += " -AcknowledgeAbandonedSetup"' in parent
+    assert "if (-not $AcknowledgeAbandonedSetup)" in abandoned
+    assert "$setupMutexAbandonedUnacknowledged = $true" in abandoned
+    assert "rerun with -AcknowledgeAbandonedSetup" in abandoned
+    assert "$setupMutex.ReleaseMutex()" not in abandoned
+    assert "$setupMutexAbandonedUnacknowledged" in ensure
