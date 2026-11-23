@@ -1033,7 +1033,7 @@ def test_startup_keeps_local_ui_available_when_runtime_prerequisites_are_unavail
     monkeypatch.setattr(bootstrap, "_ensure_state_broker", lambda: False)
 
     def fail_ollama():
-        raise RuntimeError("Ollama is unavailable")
+        raise subprocess.TimeoutExpired("ollama list", timeout=30)
 
     monkeypatch.setattr(bootstrap, "_ensure_ollama", fail_ollama)
     monkeypatch.setattr(bootstrap.sys, "argv", ["run.py"])
