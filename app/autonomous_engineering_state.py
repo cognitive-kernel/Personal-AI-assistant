@@ -235,26 +235,19 @@ def execution_state_directory(
             )
         return expanded
 
-    program_data = os.getenv("PROGRAMDATA", "").strip()
-    if program_data:
+    if is_windows():
+        # PROGRAMDATA is a Windows machine-known folder. Never interpret this
+        # Windows environment variable as a POSIX data-directory override.
+        program_data = os.getenv("PROGRAMDATA", "").strip()
+        if not program_data:
+            raise RuntimeError(
+                "PROGRAMDATA is unavailable; refusing to fall back to a per-user "
+                "autonomous-engineering state directory on Windows."
+            )
         shared_root = Path(os.path.expandvars(program_data))
         if not shared_root.is_absolute():
             raise RuntimeError("PROGRAMDATA must resolve to an absolute shared path.")
-        state_root = shared_root / "PersonalAIAssistant" / "autonomous-engineering"
-        if not is_windows():
-            if home is not None and _is_path_within(state_root, home):
-                raise RuntimeError("The configured shared state root cannot be inside a per-user home directory.")
-            _migrate_legacy_posix_state(
-                home / ".personal-ai-assistant" / "autonomous-engineering" if home is not None else None,
-                state_root,
-                home,
-            )
-        return state_root
-    if is_windows():
-        raise RuntimeError(
-            "PROGRAMDATA is unavailable; refusing to fall back to a per-user "
-            "autonomous-engineering state directory on Windows."
-        )
+        return shared_root / "PersonalAIAssistant" / "autonomous-engineering"
 
     shared_root = _shared_site_state_directory(home)
     _migrate_legacy_posix_state(
