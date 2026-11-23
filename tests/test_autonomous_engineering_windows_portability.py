@@ -432,6 +432,8 @@ def test_broker_installer_cleans_staging_and_restores_existing_service_on_stop_f
     assert "$existingServicePath" in install
     assert "The previous state-broker service configuration" in install
     assert "'binPath=' $binaryPath" in install
+    assert '"StartPending"' in install and '"StopPending"' in install
+    assert 'refusing to replace its executable' in install
 
 
 def test_broker_installer_preflights_net48_and_service_control_before_mutation():
