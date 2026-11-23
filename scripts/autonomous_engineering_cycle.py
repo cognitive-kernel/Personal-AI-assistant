@@ -868,6 +868,25 @@ def run_cycle(args: argparse.Namespace) -> int:
     print(f"Task {task} passed exact-head checks and is awaiting owner review; no automatic merge or queue advance: {pr_url}")
     return 0
 
+def _live_pause_enabled(token: str, repo: str) -> bool:
+    if not token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
+        raise RuntimeError("A valid workflow token and repository are required to verify the live Pause setting.")
+    try:
+        setting = api(token, repo, "GET", "actions/variables/AUTONOMOUS_ENGINEERING_PAUSED")
+    except RuntimeError as exc:
+        if "failed (404)" in str(exc):
+            return False
+        raise RuntimeError(
+            "Could not verify the live durable Pause setting; no new task will start."
+        ) from exc
+    if not isinstance(setting, dict):
+        raise RuntimeError("GitHub returned an invalid durable Pause setting; no new task will start.")
+    value = str(setting.get("value") or "").strip().lower()
+    if value not in {"true", "false"}:
+        raise RuntimeError("GitHub returned an invalid durable Pause value; no new task will start.")
+    return value == "true"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     subs = parser.add_subparsers(dest="command", required=True)
@@ -894,6 +913,12 @@ def main() -> int:
     with repository_execution_lock(args.run_id, args.run_attempt):
         with timed_stage("cycle_total"):
             try:
+                if _live_pause_enabled(
+                    os.environ.get("GH_TOKEN", "").strip(),
+                    os.environ.get("GH_REPO", "").strip(),
+                ):
+                    print("Safe pause became active after repository execution admission; no task was started.")
+                    return 0
                 return run_cycle(args)
             except Exception as exc:
                 persist_run_diagnostic(
