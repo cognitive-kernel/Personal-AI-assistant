@@ -1100,14 +1100,25 @@ def cancel_autonomous_engineering() -> dict[str, Any]:
         runs = json.loads(result.stdout)
     except ValueError as exc:
         raise HTTPException(status_code=502, detail="پاسخ GitHub معتبر نیست.") from exc
+    # GitHub lists workflow runs newest-first. A newer queued run may be
+    # waiting behind the job-level concurrency group while an older run owns
+    # the actual Codex execution. Prefer the executing run over queued work.
     active = next(
         (
             item for item in runs
-            if isinstance(item, dict)
-            and item.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"}
+            if isinstance(item, dict) and item.get("status") == "in_progress"
         ),
         None,
     )
+    if active is None:
+        active = next(
+            (
+                item for item in runs
+                if isinstance(item, dict)
+                and item.get("status") in {"queued", "waiting", "requested", "pending"}
+            ),
+            None,
+        )
     if not active or not isinstance(active.get("databaseId"), int):
         raise HTTPException(status_code=409, detail="اجرای فعالی برای لغو وجود ندارد.")
     cancelled = _run(
