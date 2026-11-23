@@ -2468,3 +2468,24 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 ### 2026-11-23 — Pin released .NET 11 SDK to match the validated package build
 
 - The earlier successful package build used SDK `11.0.100`, which is the released .NET 11 SDK (not a preview). The CI pin and `scripts/global.json` now use `11.0.100` so the committed executable can be compared byte-for-byte with the same compiler output. .NET 11.0 was released on November 10, 2026 and is supported as an STS release through November 2028. <https://dotnet.microsoft.com/en-us/download/dotnet/latest>
+
+
+## 2026-11-23 — Root-cause follow-up for Broker readiness and Checkpoint UI
+
+### Confirmed causes
+- The user's reported status persists on `main` because the merged commits #851–#853 did not change the Broker installer. The mainline installer still compiled the C# service on the target host via `csc.exe`; this is a developer-toolchain dependency and can prevent service installation. The dashboard then reports storage unavailable and blocks cycle admission because the durable pending-work state cannot be verified.
+- The first portability branch removed target-host compilation but did not commit `scripts/bin/PersonalAIAssistant.StateBroker.exe` and its hash manifest. Without that package, the installer still cannot provision the service. PR #863 adds a CI package bootstrap/commit job and a fresh-build-versus-committed-binary hash gate; this must complete before merge.
+- The setup script previously verified the package only when it reached service installation, after Runner stop and shared-state ACL changes. A missing or corrupt package could therefore fail late. `Get-AutonomousStateBrokerPackage` now performs read-only checks for the package, SHA-256, .NET Framework 4.8+ runtime capability, ProgramData path, and `sc.exe`; setup calls it before Runner discovery/stop and ACL mutation. Installation revalidates immediately before service changes.
+
+### Changes and validation gates
+- Removed the stale requirement for the C# source file in the provisioning package; the target host consumes the prebuilt executable only.
+- Added a regression asserting package preflight precedes Runner service stop and ACL mutation.
+- Updated CI to build into a temporary directory, verify the committed executable against its manifest, and compare the fresh deterministic build byte-for-byte. If the package is not yet committed, the Windows job creates and uploads it; a dependent job commits the verified artifact to this PR branch, after which a new exact-head run must verify it.
+- Fixed the duplicate Windows job timeout key in the workflow and added a browser regression for visible Broker failure reasons.
+- The UI now displays the bounded reason already returned by `pending_work_status` (for example, a safe WinError) in both storage and checkpoint details. It continues to disable dispatch while durable state is unavailable; no fail-open behavior was introduced.
+- PowerShell Edition/Version remain diagnostic only; capability checks select a supported host. This does not yet provide a native no-PowerShell installer. The .NET Framework 4.8+ runtime remains a documented service runtime prerequisite; SDK `11.0.100` is build-only.
+
+### Not yet proven
+- Exact-head Linux/Windows tests, browser E2E, CodeQL, dependency audit, artifact attestation, package commit, and subsequent deterministic hash comparison must pass on the final PR head.
+- Windows target acceptance remains pending: elevated installation, service LocalService identity, named-pipe health, Runner present/absent, non-admin UI, restart/recovery, and preservation of existing durable state.
+- No target machine service, ACL, Runner, task, checkpoint, or durable state was modified by these source changes.
