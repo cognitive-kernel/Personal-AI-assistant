@@ -322,3 +322,25 @@ def test_broker_cleanup_enforces_repository_state_and_checkpoint_lock_order():
     assert "FileShare.Read | FileShare.Delete" in service
     assert '"progress_writer_active"' in service
     assert "A progress writer is active" in service
+
+
+def test_python_broker_health_requires_storage_and_acl_integrity(monkeypatch):
+    captured = {}
+
+    def healthy_request(method, path, **kwargs):
+        captured.update(method=method, path=path, kwargs=kwargs)
+        return {"ready": True, "storage_ready": True, "acl_ready": True}
+
+    monkeypatch.setattr(broker, "request", healthy_request)
+    assert broker.health(timeout_ms=30000) is True
+    assert captured == {
+        "method": "GET",
+        "path": "/v1/health",
+        "kwargs": {"timeout_ms": 30000},
+    }
+
+    monkeypatch.setattr(
+        broker, "request",
+        lambda *_args, **_kwargs: {"ready": True, "storage_ready": True, "acl_ready": False},
+    )
+    assert broker.health(timeout_ms=30000) is False
