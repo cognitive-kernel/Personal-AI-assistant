@@ -1,3 +1,15 @@
+## 2026-11-23 — اصلاح قابلیت کشف و اجرای PowerShell برای Broker (در حال اعتبارسنجی)
+
+- شاخهٔ کاری: `fix/autonomous-engineering-powershell-portability-20261123`؛ مبنا: `main` در SHA `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`. این تغییرات هنوز در main ادغام نشده‌اند.
+- علت ریشه‌ای تأییدشده در کد: `run.py` فقط `powershell.exe` را جست‌وجو می‌کرد؛ مسیر ارتقای دسترسی در `ensure_autonomous_state_broker.ps1` و مسیر repair نیز نام executable را به `powershell.exe` ثابت می‌کردند. GPU telemetry اختیاری نیز همین نام ثابت را اجرا می‌کرد.
+- اصلاحات این شاخه: کشف PowerShell Core از PATH و رجیستری نصب، probe واقعی Edition/Version، fallback به Windows PowerShell در صورت نامعتبر بودن میزبان ترجیحی، relaunch با مسیر executable فرایند جاری، محدودسازی موقت `PSModulePath` هنگام import امنیتی و بازگردانی آن، fallback برای GPU telemetry و اصلاح پیام UI که به‌اشتباه نبود Runner را علت نصب Broker معرفی می‌کرد.
+- تست‌های افزوده‌شده: انتخاب Core سازگار، fallback به Desktop 5.1، رد میزبان خراب/ناسازگار، کشف مسیر نصب سفارشی از رجیستری، fallback تله‌متری GPU و قرارداد متن UI. Windows CI نیز import ماژول‌ها و اجرای child با میزبان Core را بررسی می‌کند.
+- وضعیت شواهد: هنوز exact-head CI و نصب elevated واقعی روی میزبان Windows کاربر اجرا/تأیید نشده‌اند؛ تا آن زمان این اصلاحات پذیرفته‌شده یا آمادهٔ merge محسوب نمی‌شوند.
+- محدودیت باقی‌مانده: `scripts/AutonomousStateBrokerInstall.psm1` همچنان برای ساخت Broker به `.NET Framework csc.exe` روی میزبان مصرف‌کننده وابسته است. این پیش‌نیاز توسعه‌ای هنوز حذف نشده و باید به‌صورت کار مستقل با بسته‌بندی/تأمین artifact قابل‌اعتماد حل شود؛ بنابراین این شاخه به‌تنهایی ادعای رفع کامل portability ندارد.
+- هیچ سرویس، ACL، Runner، دیتابیس، task، checkpoint یا فایل durable روی میزبان کاربر تغییر نکرده است.
+
+---
+
 ## 2026-11-23 — snapshot زنده و ادامهٔ مهندسی Autonomous Engineering
 
 - main با مقایسهٔ مستقیم روی SHA 31349a99b197fe702e11e8a5dd53d52ba924575c تأیید شد؛ این snapshot جایگزین وضعیت‌های تاریخی قدیمی‌تر در ادامهٔ فایل است.
