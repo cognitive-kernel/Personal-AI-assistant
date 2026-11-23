@@ -304,3 +304,13 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 - هیچ task، owner metadata، checkpoint، database، ACL، Runner registration یا workflow پایدار حذف یا بازنویسی نشده است.
 - پیش از merge باید تمام checkها روی exact head سبز باشند و گیت‌های target-host/owner acceptance تکمیل شوند.
 
+
+
+### حاقیهٔ Safe Pause — 2026-11-24
+
+- کنترل workflow پس از گرفتن concurrency slot مقدار زندهٔ Actions Variable را می‌خواند.
+- کنترلر Python پس از گرفتن repository execution lock و پیش از durable-state recovery یا شروع task همان مقدار را دوباره می‌خواند.
+- Recovery نیز پیش از طبقه‌بندی retry و بار دیگر پس از backoff، درست پیش از dispatch، مقدار زنده را بررسی می‌کند.
+- نبود متغیر (HTTP 404) به معنی مقدار پیش‌فرض false است؛ خطای API یا مقدار نامعتبر fail-closed است.
+- Pause پس از شروع task، task جاری را قطع نمی‌کند؛ فقط شروع task/recovery بعدی را متوقف می‌کند. exact-head CI این تغییرات هنوز pending است.
+
