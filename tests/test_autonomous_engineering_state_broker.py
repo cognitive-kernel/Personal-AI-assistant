@@ -333,26 +333,30 @@ def test_python_broker_health_preserves_posix_and_extends_windows_contract(monke
 
     monkeypatch.setattr(broker, "request", healthy_request)
     monkeypatch.setattr(broker, "_WINDOWS", False)
-    assert broker.health(timeout_ms=30000) is True
+    assert broker.health(timeout_ms=30000, verify=True) is True
     assert captured == {
         "method": "GET",
         "path": "/v1/health",
         "kwargs": {"timeout_ms": 30000},
     }
 
-    monkeypatch.setattr(
-        broker,
-        "request",
-        lambda *_args, **_kwargs: {
-            "ready": True, "storage_ready": True, "acl_ready": True,
-        },
-    )
     monkeypatch.setattr(broker, "_WINDOWS", True)
-    assert broker.health(timeout_ms=30000) is True
+    captured.clear()
+    monkeypatch.setattr(
+        broker, "request",
+        lambda method, path, **kwargs: captured.update(
+            method=method, path=path, kwargs=kwargs
+        ) or {"ready": True, "storage_ready": True, "acl_ready": True},
+    )
+    assert broker.health(timeout_ms=30000, verify=True) is True
+    assert captured == {
+        "method": "GET",
+        "path": "/v1/health/verify",
+        "kwargs": {"timeout_ms": 30000},
+    }
 
     monkeypatch.setattr(
-        broker,
-        "request",
+        broker, "request",
         lambda *_args, **_kwargs: {
             "ready": True, "storage_ready": True, "acl_ready": False,
         },
@@ -360,8 +364,7 @@ def test_python_broker_health_preserves_posix_and_extends_windows_contract(monke
     assert broker.health(timeout_ms=30000) is False
 
     monkeypatch.setattr(
-        broker,
-        "request",
+        broker, "request",
         lambda *_args, **_kwargs: {
             "ready": True, "storage_ready": False, "acl_ready": True,
         },
