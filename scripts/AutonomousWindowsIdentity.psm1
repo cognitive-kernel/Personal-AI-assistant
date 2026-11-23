@@ -109,18 +109,16 @@ function Set-AutonomousDirectoryTreeAcl {
 
     $root = [System.IO.Path]::GetFullPath($Path)
     # Inspect the directory entry through its accessible parent. Opening the
-    # protected root itself for metadata can be denied to the elevated
-    # installer before it has taken ownership.
+    # protected root itself for metadata can be denied to the elevated installer.
     $rootParent = Split-Path -Parent $root
     $rootLeaf = Split-Path -Leaf $root
     $rootEntry = Get-ChildItem -LiteralPath $rootParent -Force -ErrorAction Stop |
-        Where-Object { $_.Name -ceq $rootLeaf } |
+        Where-Object { $_.Name -ieq $rootLeaf } |
         Select-Object -First 1
     if (-not $rootEntry -or -not $rootEntry.PSIsContainer -or
         ($rootEntry.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
         throw "The shared autonomous state root must be an existing, real directory."
     }
-    $rootItem = [System.IO.DirectoryInfo]::new($root)
 
     $allowed = @($ModifySids | Select-Object -Unique)
     if ($allowed.Count -lt 1) { throw "At least one state-owner SID is required." }
@@ -128,7 +126,7 @@ function Set-AutonomousDirectoryTreeAcl {
     $takeown = Get-Command takeown.exe -ErrorAction Stop
     $icacls = Get-Command icacls.exe -ErrorAction Stop
     $items = New-Object 'System.Collections.Generic.List[System.IO.FileSystemInfo]'
-    $touched = New-Object 'System.Collections.Generic.List[System.IO.FileSystemInfo]'
+    $snapshots = New-Object 'System.Collections.Generic.List[object]'
     $pendingDirectories = New-Object 'System.Collections.Generic.Stack[object]'
     $pendingDirectories.Push([pscustomobject]@{ Path = $root; Attributes = $rootEntry.Attributes })
     $completed = $false
@@ -158,25 +156,20 @@ function Set-AutonomousDirectoryTreeAcl {
             $acl.SetAccessRule($newRule)
         }
         $acl.SetOwner([Security.Principal.SecurityIdentifier]$OwnerSid)
-        # Validate the ACL object while the installer still owns the path.
-        # After Set-Acl, the installer is intentionally removed from the DACL
-        # and cannot reliably read the protected descriptor again.
-        foreach ($rule in $acl.Access) {
-            $sid = $rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
-            if ($sid -notin $allowed -or $rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow) {
-                throw "Unexpected principal or access rule was constructed for '$($Item.FullName)': $sid."
-            }
-        }
+        # Do not read the descriptor after this call: the installer is
+        # intentionally excluded from the final protected DACL.
         Set-Acl -LiteralPath $Item.FullName -AclObject $acl -ErrorAction Stop
     }
 
+    $restoreOriginalAcl = {
+        param([Parameter(Mandatory=$true)]$Snapshot)
+        Set-Acl -LiteralPath $Snapshot.Item.FullName -AclObject $Snapshot.Acl -ErrorAction Stop
+    }
+
     try {
-        # The installer may not be able to enumerate a previously protected
-        # state root. Take ownership and grant temporary access one directory
-        # at a time; never use recursive takeown/icacls on an untrusted tree.
-        # Every entry is checked for reparse points before it is opened or
-        # descended into. The temporary installer ACE is removed by the final
-        # least-privilege ACL pass (or by the failure cleanup below).
+        # Preflight and repair directory access one level at a time. Temporary
+        # access is journaled so a reparse point or other failure can restore
+        # every descriptor reached so far. No recursive takeown/icacls is used.
         while ($pendingDirectories.Count -gt 0) {
             $directoryEntry = $pendingDirectories.Pop()
             $directory = [string]$directoryEntry.Path
@@ -186,13 +179,30 @@ function Set-AutonomousDirectoryTreeAcl {
                 throw "The shared state tree contains a non-directory or reparse point; refusing to descend."
             }
 
+            $directoryInfo = [System.IO.DirectoryInfo]::new($directory)
+            $originalOwnerSid = $OwnerSid
+            $originalAcl = $null
+            try {
+                $originalAcl = Get-Acl -LiteralPath $directory -ErrorAction Stop
+                $originalOwnerSid = ([Security.Principal.NTAccount]$originalAcl.Owner).Translate(
+                    [Security.Principal.SecurityIdentifier]
+                ).Value
+            } catch {
+                # A protected tree may deny the installer READ_CONTROL. Its
+                # intended owner is the broker identity; capture the unchanged
+                # DACL immediately after taking ownership below.
+            }
+
             & $takeown.Source /F $directory | Out-Null
             if ($LASTEXITCODE -ne 0) {
                 throw "Could not take temporary ownership of directory '$directory' for ACL repair."
             }
-            $directoryInfo = [System.IO.DirectoryInfo]::new($directory)
+            if ($null -eq $originalAcl) {
+                $originalAcl = Get-Acl -LiteralPath $directory -ErrorAction Stop
+                $originalAcl.SetOwner([Security.Principal.SecurityIdentifier]$originalOwnerSid)
+            }
+            $snapshots.Add([pscustomobject]@{ Item = $directoryInfo; Acl = $originalAcl })
             $items.Add($directoryInfo)
-            $touched.Add($directoryInfo)
 
             $installerGrant = "*$($InstallerSid):(OI)(CI)M"
             & $icacls.Source $directory /grant:r $installerGrant /C /Q | Out-Null
@@ -219,11 +229,28 @@ function Set-AutonomousDirectoryTreeAcl {
         # Files are touched only after the complete directory tree has passed
         # the reparse-point preflight.
         foreach ($item in @($items | Where-Object { $_ -is [System.IO.FileInfo] })) {
+            $originalOwnerSid = $OwnerSid
+            $originalAcl = $null
+            try {
+                $originalAcl = Get-Acl -LiteralPath $item.FullName -ErrorAction Stop
+                $originalOwnerSid = ([Security.Principal.NTAccount]$originalAcl.Owner).Translate(
+                    [Security.Principal.SecurityIdentifier]
+                ).Value
+            } catch {
+                # Use the broker owner when the protected file descriptor is
+                # not readable before temporary ownership is acquired.
+            }
+
             & $takeown.Source /F $item.FullName | Out-Null
             if ($LASTEXITCODE -ne 0) {
                 throw "Could not take temporary ownership of file '$($item.FullName)' for ACL repair."
             }
-            $touched.Add($item)
+            if ($null -eq $originalAcl) {
+                $originalAcl = Get-Acl -LiteralPath $item.FullName -ErrorAction Stop
+                $originalAcl.SetOwner([Security.Principal.SecurityIdentifier]$originalOwnerSid)
+            }
+            $snapshots.Add([pscustomobject]@{ Item = $item; Acl = $originalAcl })
+
             & $icacls.Source $item.FullName /grant:r ("*$($InstallerSid):M") /C /Q | Out-Null
             if ($LASTEXITCODE -ne 0) {
                 throw "Could not grant temporary installer access to file '$($item.FullName)'."
@@ -233,22 +260,19 @@ function Set-AutonomousDirectoryTreeAcl {
         $targets = @($items | Sort-Object -Property @{ Expression = { $_.FullName.Length }; Descending = $true })
         foreach ($item in $targets) {
             & $applyFinalAcl $item
-            [void]$touched.Remove($item)
         }
         $completed = $true
     } finally {
         if (-not $completed) {
-            # If preflight or an ACL operation fails, do not leave the
-            # installer identity with residual access to any path already
-            # opened. Restore the intended owner and least-privilege ACE set
-            # for every path that was safely reached.
-            $cleanupTargets = @($touched | Sort-Object -Property @{ Expression = { $_.FullName.Length }; Descending = $true })
-            foreach ($item in $cleanupTargets) {
+            # Restore original descriptors and owners if preflight or final ACL
+            # application fails. Parent paths are restored before children so
+            # inherited ACLs are re-established from their original source.
+            $restoreTargets = @($snapshots | Sort-Object -Property @{ Expression = { $_.Item.FullName.Length }; Descending = $false })
+            foreach ($snapshot in $restoreTargets) {
                 try {
-                    & $applyFinalAcl $item
-                    [void]$touched.Remove($item)
+                    & $restoreOriginalAcl $snapshot
                 } catch {
-                    Write-Warning "Could not finalize least-privilege ACL on '$($item.FullName)' after setup failure: $($_.Exception.Message)"
+                    Write-Warning "Could not restore original ACL on '$($snapshot.Item.FullName)' after setup failure: $($_.Exception.Message)"
                 }
             }
         }
