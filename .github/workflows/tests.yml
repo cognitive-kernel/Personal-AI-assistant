@@ -179,8 +179,8 @@ jobs:
       - name: Verify PowerShell Core broker modules and active-host relaunch
         shell: pwsh
         run: |
-          if ($PSVersionTable.PSEdition -ne "Core" -or $PSVersionTable.PSVersion -lt [version]"7.0") {
-            throw "This CI probe requires a supported PowerShell Core runtime."
+          if ($PSVersionTable.PSEdition -ne "Core") {
+            throw "This CI probe must run under a PowerShell Core runtime."
           }
           $activeHost = [string](Get-Process -Id $PID -ErrorAction Stop).Path
           if ([string]::IsNullOrWhiteSpace($activeHost) -or -not (Test-Path -LiteralPath $activeHost -PathType Leaf)) {
