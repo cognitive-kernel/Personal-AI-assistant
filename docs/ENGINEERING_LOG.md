@@ -1,3 +1,12 @@
+## 2026-11-24 — bound job-level inspection during emergency cancellation
+
+- The job-level Codex ownership check now inspects only workflow runs reported in_progress, not every queued run.
+- If more than five workflow runs are simultaneously reported in_progress, cancellation fails closed with 409 rather than making an unbounded series of GitHub CLI calls.
+- When no Codex job is executing, the endpoint falls back to a queued Codex candidate found among preflight runs, then to the newest queued workflow.
+- Per-run job inspection has a five-second command deadline. Regression coverage verifies queued-only fallback and the fail-closed inspection bound.
+
+---
+
 ## 2026-11-24 — select the actual Codex job when cancelling queued workflow runs
 
 ### Additional root cause
