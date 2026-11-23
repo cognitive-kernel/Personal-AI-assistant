@@ -93,7 +93,7 @@ $statePathBoundary = $progressPath.TrimEnd([char[]]@([System.IO.Path]::Directory
 if ($RunnerRoot.Equals($progressPath, [StringComparison]::OrdinalIgnoreCase) -or $progressPath.StartsWith($runnerRootBoundary, [StringComparison]::OrdinalIgnoreCase) -or $RunnerRoot.StartsWith($statePathBoundary, [StringComparison]::OrdinalIgnoreCase)) {
     throw "RunnerRoot and shared autonomous state directory must be separate, non-nested paths."
 }
-$brokerServiceSid = "S-1-5-19"
+$brokerServiceSid = Get-AutonomousWindowsWellKnownSid -SidType LocalServiceSid
 
 # Node.js/npm and Python are provisioned inside each autonomous workflow job.
 # Do not require global copies during machine provisioning.
