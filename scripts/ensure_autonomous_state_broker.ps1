@@ -36,26 +36,14 @@ Import-Module (Join-Path $scriptRoot "AutonomousStateBrokerInstall.psm1") -Force
 $serviceName = "PersonalAIAssistantStateBroker"
 $brokerServiceSid = "S-1-5-19"
 
-# Do not touch ACLs or stop services when a Runner job is active.
-$activeWorkers = @(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object { $_.Name -ieq "Runner.Worker.exe" })
-if ($activeWorkers.Count -gt 0) {
-    throw "A GitHub Runner job is currently executing. State-broker setup was deferred without changing ACLs or services."
-}
-
-$brokerService = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-if ($brokerService -and $brokerService.Status -eq "Running") {
-    try {
-        $health = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health" -TimeoutMilliseconds 5000
-        if ($health.ready -eq $true -and $health.schema_version -eq 1) {
-            Write-Host "Machine state broker is already installed and healthy."
-            exit 0
-        }
-    } catch {
-        Write-Warning "The installed broker is not healthy; attempting an idempotent repair."
-    }
-}
-
-$runnerServiceCandidates = @(Get-CimInstance Win32_Service -ErrorAction Stop | Where-Object { $_.PathName -match '(?i)RunnerService\.exe' })
+# The machine broker is a core application prerequisite. A GitHub Runner is an
+# optional execution capability and must never be required to install the broker.
+# Discover every installed Runner service by its registered executable path; do
+# not inspect .runner because its ACL may intentionally deny the app/admin account.
+$runnerServiceCandidates = @(Get-CimInstance Win32_Service -ErrorAction Stop | Where-Object {
+    $_.PathName -match '(?i)RunnerService\.exe'
+})
+$allRunnerServices = @()
 $resolvedRunnerServices = @()
 foreach ($candidate in $runnerServiceCandidates) {
     $rawPath = [string]$candidate.PathName
@@ -63,63 +51,95 @@ foreach ($candidate in $runnerServiceCandidates) {
     if (-not $match.Success) {
         $match = [regex]::Match($rawPath, '^\s*(?<exe>.+?RunnerService\.exe)(?:\s|$)')
     }
-    if (-not $match.Success) { continue }
+    if (-not $match.Success) {
+        throw "Could not safely resolve an installed Runner service executable path; refusing to rewrite shared-state ACLs."
+    }
     $executable = [System.IO.Path]::GetFullPath($match.Groups["exe"].Value)
     $root = [System.IO.Path]::GetFullPath((Split-Path -Parent (Split-Path -Parent $executable)))
-    if ([string]::IsNullOrWhiteSpace($RunnerRoot) -or $root.Equals([System.IO.Path]::GetFullPath($RunnerRoot), [StringComparison]::OrdinalIgnoreCase)) {
-        $resolvedRunnerServices += [pscustomobject]@{
-            Service = $candidate
-            Executable = $executable
-            Root = $root
-        }
+    $runnerSid = Get-AutonomousWindowsAccountSid -AccountName $candidate.StartName
+    $discoveredRunner = [pscustomobject]@{
+        Service = $candidate
+        Executable = $executable
+        Root = $root
+        Sid = $runnerSid
+    }
+    $allRunnerServices += $discoveredRunner
+    if ([string]::IsNullOrWhiteSpace($RunnerRoot) -or
+        $root.Equals([System.IO.Path]::GetFullPath($RunnerRoot), [StringComparison]::OrdinalIgnoreCase)) {
+        $resolvedRunnerServices += $discoveredRunner
     }
 }
 
-if (-not [string]::IsNullOrWhiteSpace($RunnerRoot) -and $resolvedRunnerServices.Count -eq 0) {
-    throw "No installed Runner service matches the supplied RunnerRoot. No state permissions were changed."
-}
-if ($resolvedRunnerServices.Count -ne 1) {
-    throw "Expected exactly one installed GitHub Runner service for this machine; found $($resolvedRunnerServices.Count). Specify RunnerRoot only when multiple Runner services are installed."
+if (-not [string]::IsNullOrWhiteSpace($RunnerRoot) -and $resolvedRunnerServices.Count -ne 1) {
+    throw "Expected exactly one installed Runner service matching the supplied RunnerRoot; found $($resolvedRunnerServices.Count). No state permissions were changed."
 }
 
-$runner = $resolvedRunnerServices[0]
-if (-not (Test-Path -LiteralPath (Join-Path $runner.Root ".runner") -PathType Leaf)) {
-    throw "The discovered Runner service has no .runner registration metadata. No state permissions were changed."
+# Do not touch ACLs or services when any Runner job is active.
+$activeWorkers = @(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
+    $_.Name -ieq "Runner.Worker.exe"
+})
+if ($activeWorkers.Count -gt 0) {
+    throw "A GitHub Runner job is currently executing. State-broker setup was deferred without changing ACLs or services."
 }
-$runnerSid = Get-AutonomousWindowsAccountSid -AccountName $runner.Service.StartName
 
 $machineStateDirectory = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")
 $processStateDirectory = $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR
-if (-not [string]::IsNullOrWhiteSpace($processStateDirectory) -and [string]::IsNullOrWhiteSpace($machineStateDirectory)) {
+if (-not [string]::IsNullOrWhiteSpace($processStateDirectory) -and
+    [string]::IsNullOrWhiteSpace($machineStateDirectory)) {
     throw "AUTONOMOUS_ENGINEERING_PROGRESS_DIR is process/user-scoped; configure a machine-level path before broker setup."
 }
-# When a machine value exists it is authoritative; ignore per-process overrides.
 $stateRoot = Resolve-AutonomousStateDirectory -ConfiguredPath $machineStateDirectory -ProgramDataPath $env:ProgramData
 $installerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-$runnerService = Get-Service -Name $runner.Service.Name -ErrorAction Stop
-$runnerWasRunning = ($runnerService.Status -eq "Running")
 
-if ($runnerWasRunning) {
-    Stop-Service -Name $runnerService.Name -ErrorAction Stop
-    $runnerService = Get-Service -Name $runnerService.Name -ErrorAction Stop
-    $runnerService.WaitForStatus(
-        [System.ServiceProcess.ServiceControllerStatus]::Stopped,
-        [TimeSpan]::FromSeconds(30)
-    )
+$modifySids = @($brokerServiceSid)
+foreach ($runner in $resolvedRunnerServices) {
+    if ($runner.Sid -notin $modifySids) { $modifySids += $runner.Sid }
 }
 
+$stoppedRunnerServices = @()
 $setupFailure = $null
 try {
-    # Stop the listener first, then re-check for a worker that may have started
-    # between the initial process preflight and the service stop.
-    $activeWorkersAfterStop = @(Get-CimInstance Win32_Process -ErrorAction Stop |
-        Where-Object { $_.Name -ieq "Runner.Worker.exe" })
+    # Stop listeners before changing the shared ACL, then re-check workers to
+    # close the race where a job starts between process discovery and service stop.
+    foreach ($runner in $allRunnerServices) {
+        $service = Get-Service -Name $runner.Service.Name -ErrorAction Stop
+        if ($service.Status -eq "Running") {
+            Stop-Service -Name $service.Name -ErrorAction Stop
+            $stoppedRunnerServices += $service.Name
+            $service = Get-Service -Name $service.Name -ErrorAction Stop
+            $service.WaitForStatus(
+                [System.ServiceProcess.ServiceControllerStatus]::Stopped,
+                [TimeSpan]::FromSeconds(30)
+            )
+        }
+    }
+
+    $activeWorkersAfterStop = @(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
+        $_.Name -ieq "Runner.Worker.exe"
+    })
     if ($activeWorkersAfterStop.Count -gt 0) {
-        throw "A Runner worker remained active after stopping the listener. No ACL or state files were changed."
+        throw "A Runner worker remained active after stopping Runner listeners. No ACL or state files were changed."
     }
 
     New-Item -ItemType Directory -Path $stateRoot -Force | Out-Null
-    Set-AutonomousDirectoryTreeAcl -Path $stateRoot -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid -InstallerSid $installerSid
+    Set-AutonomousDirectoryTreeAcl -Path $stateRoot -ModifySids $modifySids -OwnerSid $brokerServiceSid -InstallerSid $installerSid
+    $expectedModifySids = @($modifySids | Select-Object -Unique | Sort-Object)
+    if ($expectedModifySids -notcontains $brokerServiceSid) {
+        throw "The state ACL manifest must include the LocalService broker identity."
+    }
+    $stateModifySidsManifest = $expectedModifySids -join ";"
+    [Environment]::SetEnvironmentVariable(
+        "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS",
+        $stateModifySidsManifest,
+        "Machine"
+    )
+    $manifestReadBack = [Environment]::GetEnvironmentVariable(
+        "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS",
+        "Machine"
+    )
+    if ($manifestReadBack -ne $stateModifySidsManifest) {
+        throw "Could not persist the expected machine state ACL identities."
+    }
 
     Install-AutonomousStateBrokerService
 
@@ -127,34 +147,56 @@ try {
     if ($verified.Status -ne "Running") {
         throw "The state broker service did not reach Running state."
     }
-    $health = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health" -TimeoutMilliseconds 5000
-    if ($health.ready -ne $true -or $health.schema_version -ne 1) {
-        throw "The installed state broker did not pass its health check."
+    $brokerCim = Get-CimInstance Win32_Service -Filter "Name='$serviceName'" -ErrorAction Stop
+    if ($brokerCim.StartName -ne "NT AUTHORITY\LocalService") {
+        throw "The state broker must run under NT AUTHORITY\LocalService."
+    }
+    $health = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health/verify" -TimeoutMilliseconds 30000
+    if ($health.ready -ne $true -or $health.storage_ready -ne $true -or
+        $health.acl_ready -ne $true -or $health.schema_version -ne 1) {
+        throw "The installed state broker did not pass its storage and ACL integrity checks."
     }
 } catch {
     $setupFailure = $_
 } finally {
-    if ($runnerWasRunning) {
+    $restartFailures = @()
+    foreach ($serviceNameToRestart in $stoppedRunnerServices) {
         try {
-            Start-Service -Name $runnerService.Name -ErrorAction Stop
-            $restartedRunner = Get-Service -Name $runnerService.Name -ErrorAction Stop
-            $restartedRunner.WaitForStatus(
+            $restarted = Get-Service -Name $serviceNameToRestart -ErrorAction Stop
+            if ($restarted.Status -eq "StopPending") {
+                $restarted.WaitForStatus(
+                    [System.ServiceProcess.ServiceControllerStatus]::Stopped,
+                    [TimeSpan]::FromSeconds(30)
+                )
+                $restarted = Get-Service -Name $serviceNameToRestart -ErrorAction Stop
+            }
+            if ($restarted.Status -eq "Stopped") {
+                Start-Service -Name $serviceNameToRestart -ErrorAction Stop
+            }
+            $restarted = Get-Service -Name $serviceNameToRestart -ErrorAction Stop
+            $restarted.WaitForStatus(
                 [System.ServiceProcess.ServiceControllerStatus]::Running,
                 [TimeSpan]::FromSeconds(30)
             )
         } catch {
-            if ($setupFailure) {
-                throw "Broker setup failed: $($setupFailure.Exception.Message). Runner service restart also failed: $($_.Exception.Message)"
-            }
-            throw
+            $restartFailures += "$serviceNameToRestart ($($_.Exception.GetType().Name))"
         }
     }
-}
-if ($setupFailure) {
-    throw $setupFailure
+    if ($restartFailures.Count -gt 0) {
+        $restartMessage = "Runner service restart failed: " + ($restartFailures -join ", ")
+        if ($setupFailure) {
+            throw "Broker setup failed: $($setupFailure.Exception.Message). $restartMessage"
+        }
+        throw $restartMessage
+    }
 }
 
+if ($setupFailure) { throw $setupFailure }
+
 Write-Host "Machine state broker is installed and healthy."
-Write-Host "Runner service identity: $($runner.Service.StartName)"
-Write-Host "Runner installation root: $($runner.Root)"
+if ($resolvedRunnerServices.Count -gt 0) {
+    Write-Host "Runner service identities configured: $($resolvedRunnerServices.Count)"
+} else {
+    Write-Host "No GitHub Runner is installed; the core application broker is ready. Autonomous dispatch remains unavailable until Runner provisioning is completed."
+}
 Write-Host "Shared state root: $stateRoot"

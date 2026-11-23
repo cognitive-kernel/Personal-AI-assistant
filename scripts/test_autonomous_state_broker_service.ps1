@@ -45,6 +45,7 @@ $stateRoot = Join-Path $env:ProgramData ("PersonalAIAssistant\Broker-CI-" + [gui
 $oldMachineStatePath = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "Machine")
 $oldProcessStatePath = $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR
 $oldDiagnosticsSetting = [Environment]::GetEnvironmentVariable("AUTONOMOUS_STATE_BROKER_DIAGNOSTICS", "Machine")
+$oldMachineModifySids = [Environment]::GetEnvironmentVariable("AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS", "Machine")
 $currentSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $brokerSid = "S-1-5-19"
 $serviceCreated = $false
@@ -65,6 +66,11 @@ try {
     & icacls.exe $serviceRoot /grant:r "*$($brokerSid):(OI)(CI)RX" /T /C /Q | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Could not grant LocalService read/execute access to the test service binary." }
     [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", $stateRoot, "Machine")
+    [Environment]::SetEnvironmentVariable(
+        "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS",
+        (@($currentSid, $brokerSid) | Select-Object -Unique | Sort-Object) -join ";",
+        "Machine"
+    )
     $env:AUTONOMOUS_ENGINEERING_PROGRESS_DIR = $stateRoot
     [Environment]::SetEnvironmentVariable("AUTONOMOUS_STATE_BROKER_DIAGNOSTICS", "1", "Machine")
 
@@ -204,7 +210,7 @@ try {
 
     Import-Module (Join-Path $PSScriptRoot "AutonomousStateBroker.psm1") -Force
     try {
-        $health = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health" -TimeoutMilliseconds 5000
+        $health = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health/verify" -TimeoutMilliseconds 30000
     } catch {
         $diagnosticPath = Join-Path $stateRoot "service-errors.log"
         $diagnosticText = if (Test-Path -LiteralPath $diagnosticPath) {
@@ -214,7 +220,76 @@ try {
         }
         throw "PowerShell could not read live broker health: $($_.Exception.Message) Worker diagnostic: $diagnosticText"
     }
-    if ($health.ready -ne $true) { throw "PowerShell could not read live broker health." }
+    if ($health.ready -ne $true -or $health.acl_ready -ne $true -or $health.storage_ready -ne $true) {
+        throw "PowerShell could not read live broker health and ACL integrity."
+    }
+
+    # Simulate an ACL drift only inside this unique disposable CI state root.
+    # The broker must report unhealthy even though LocalService can still write.
+    Set-AutonomousDirectoryTreeAcl -Path $stateRoot -ModifySids @(
+        $currentSid, $brokerSid, "S-1-5-32-545"
+    ) -OwnerSid $brokerSid -InstallerSid $currentSid
+    Start-Sleep -Seconds 2
+    $driftDetected = $false
+    try {
+        Invoke-AutonomousStateBroker -Method GET -Path "/v1/health/verify" -TimeoutMilliseconds 30000 | Out-Null
+    } catch {
+        if ($_.Exception.Message -match "503") {
+            $driftDetected = $true
+        } else {
+            throw
+        }
+    }
+    if (-not $driftDetected) {
+        throw "The broker health probe did not detect an unexpected Users ACE on the state tree."
+    }
+
+    # Restore the exact service allow-list and prove that health returns to ready.
+    Set-AutonomousDirectoryTreeAcl -Path $stateRoot -ModifySids @(
+        $currentSid, $brokerSid
+    ) -OwnerSid $brokerSid -InstallerSid $currentSid
+    Start-Sleep -Seconds 2
+    $repairedHealth = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health/verify" -TimeoutMilliseconds 30000
+    if ($repairedHealth.ready -ne $true -or $repairedHealth.acl_ready -ne $true) {
+        throw "The broker did not become healthy after restoring the expected state ACL."
+    }
+
+    # A regular UI polling health request uses the short cache, but the
+    # explicit startup-verification endpoint must bypass it immediately.
+    $cachedDriftAcl = Get-Acl -LiteralPath $stateRoot -ErrorAction Stop
+    $usersRule = [Security.AccessControl.FileSystemAccessRule]::new(
+        [Security.Principal.SecurityIdentifier]"S-1-5-32-545",
+        [Security.AccessControl.FileSystemRights]::Modify,
+        [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit,
+        [Security.AccessControl.PropagationFlags]::None,
+        [Security.AccessControl.AccessControlType]::Allow
+    )
+    $cachedDriftAcl.SetAccessRule($usersRule)
+    Set-Acl -LiteralPath $stateRoot -AclObject $cachedDriftAcl -ErrorAction Stop
+    $cachedHealth = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health" -TimeoutMilliseconds 30000
+    if ($cachedHealth.ready -ne $true) {
+        throw "The normal UI health endpoint did not reuse its bounded health cache."
+    }
+    $forcedDriftDetected = $false
+    try {
+        Invoke-AutonomousStateBroker -Method GET -Path "/v1/health/verify" -TimeoutMilliseconds 30000 | Out-Null
+    } catch {
+        if ($_.Exception.Message -match "503") {
+            $forcedDriftDetected = $true
+        } else {
+            throw
+        }
+    }
+    if (-not $forcedDriftDetected) {
+        throw "The forced startup health endpoint did not bypass cache to detect ACL drift."
+    }
+    Set-AutonomousDirectoryTreeAcl -Path $stateRoot -ModifySids @(
+        $currentSid, $brokerSid
+    ) -OwnerSid $brokerSid -InstallerSid $currentSid
+    $finalHealth = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health/verify" -TimeoutMilliseconds 30000
+    if ($finalHealth.ready -ne $true -or $finalHealth.acl_ready -ne $true) {
+        throw "The forced health endpoint did not recover after restoring the expected ACL."
+    }
 
     $probe = @'
 from app import autonomous_engineering_state_broker as broker
@@ -768,7 +843,7 @@ assert request("GET", "/v1/tasks/archived")["tasks"][0]["status"] == "restored"
     try {
         $timeoutObserved = $false
         try {
-            Invoke-AutonomousStateBroker -Method GET -Path "/v1/health" -TimeoutMilliseconds 500 | Out-Null
+            Invoke-AutonomousStateBroker -Method GET -Path "/v1/health/verify" -TimeoutMilliseconds 500 | Out-Null
         } catch {
             if ($_.Exception.Message -like "*timed out*") { $timeoutObserved = $true } else { throw }
         }
@@ -799,6 +874,11 @@ assert request("GET", "/v1/tasks/archived")["tasks"][0]["status"] == "restored"
     [Environment]::SetEnvironmentVariable(
         "AUTONOMOUS_STATE_BROKER_DIAGNOSTICS",
         $oldDiagnosticsSetting,
+        "Machine"
+    )
+    [Environment]::SetEnvironmentVariable(
+        "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS",
+        $oldMachineModifySids,
         "Machine"
     )
     foreach ($cleanupRoot in @($stateRoot, $serviceRoot)) {

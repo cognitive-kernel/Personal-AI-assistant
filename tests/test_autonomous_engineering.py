@@ -1142,8 +1142,9 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "actions/variables" not in workflow
     assert "[string]$RunnerAccount" in acl_script
     assert "AppAccount" not in acl_script
-    assert "Set-AutonomousDirectoryTreeAcl" in acl_script
-    assert '"S-1-5-19"' in acl_script
+    assert "ensure_autonomous_state_broker.ps1" in acl_script
+    assert "Get-AutonomousWindowsAccountSid -AccountName $service.StartName" in acl_script
+    assert "Set-AutonomousDirectoryTreeAcl" not in acl_script
     assert "PersonalAIAssistantStateBroker" in runner_check
     assert "core.startPolling({" in orchestrator
     assert "intervalMs: 5000" in orchestrator
@@ -1298,6 +1299,10 @@ def test_autonomous_cycle_requires_one_exact_completion_marker(tmp_path):
     assert cycle.task_marker(report) == "TASK_COMPLETE"
 
     report.write_text("TASK_COMPLETE\nQUEUE_EMPTY\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="exactly one"):
+        cycle.task_marker(report)
+
+    report.write_text("TASK_COMPLETE\nTASK_COMPLETE\n", encoding="utf-8")
     with pytest.raises(RuntimeError, match="exactly one"):
         cycle.task_marker(report)
 

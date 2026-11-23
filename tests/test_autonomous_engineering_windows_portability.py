@@ -72,7 +72,9 @@ def test_shared_state_tree_acl_is_recursive_and_only_grants_runner_and_local_ser
     module = _read("scripts/AutonomousWindowsIdentity.psm1")
 
     assert 'Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid -InstallerSid $installerSid' in script
-    assert 'Set-AutonomousDirectoryTreeAcl -Path $progressPath -ModifySids @($runnerSid, $brokerServiceSid) -OwnerSid $brokerServiceSid -InstallerSid $installerSid' in configure
+    assert "ensure_autonomous_state_broker.ps1" in configure
+    assert "Get-AutonomousWindowsAccountSid -AccountName $service.StartName" in configure
+    assert "Set-AutonomousDirectoryTreeAcl" not in configure
     assert "Set-AutonomousDirectoryAcl -Path $RunnerRoot -RunnerSid $runnerSid" in script
     assert "Set-AutonomousDirectoryTreeAcl" in module
     assert "$acl.SetAccessRuleProtection($true, $false)" in module
@@ -138,11 +140,12 @@ def test_machine_state_broker_uses_a_local_allowlisted_pipe_not_a_network_file_a
     assert "NetworkStream" not in service
     assert '"version", 1' in service
     assert 'method == "GET" and path in {"/v1/health", "/v1/pending-work", "/v1/progress"}' in python_client
+    assert '_WINDOWS and method == "GET" and path == "/v1/health/verify"' in python_client
     assert 'method == "POST" and path == "/v1/cleanup"' in python_client
     assert 're.fullmatch(r"/v1/diagnostics/[0-9]{1,20}", path)' in python_client
     assert "Unsupported state-broker endpoint" in python_client
     assert "ValidateSet(" in powershell_client
-    assert '"/v1/health", "/v1/pending-work", "/v1/progress"' in powershell_client
+    assert '"/v1/health", "/v1/health/verify", "/v1/pending-work", "/v1/progress"' in powershell_client
     assert "[System.IO.Pipes.PipeOptions]::Asynchronous" in powershell_client
     assert "WriteLineAsync" in powershell_client and "ReadLineAsync" in powershell_client
     assert "GetAwaiter().GetResult()" in powershell_client
@@ -157,7 +160,71 @@ def test_machine_state_broker_uses_a_local_allowlisted_pipe_not_a_network_file_a
     assert "Invoke-AutonomousStateBroker" in installer
     assert "Start-Process" in ensure and "-Verb RunAs" in ensure
     assert "Runner.Worker.exe" in ensure
-    assert "Get-AutonomousWindowsAccountSid -AccountName $runner.Service.StartName" in ensure
+    assert "Get-AutonomousWindowsAccountSid -AccountName $candidate.StartName" in ensure
+
+
+
+
+def test_machine_state_broker_health_checks_the_full_state_tree_acl_manifest():
+    service = _read("scripts/AutonomousStateBrokerService.cs")
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+    provision = _read("scripts/provision_autonomous_runner.ps1")
+    configure = _read("scripts/configure_autonomous_engineering_progress.ps1")
+    runtime_test = _read("scripts/test_autonomous_state_broker_service.ps1")
+    client = _read("app/autonomous_engineering_state_broker.py")
+    run = _read("run.py")
+
+    assert 'ModifySidsMachineVariable = "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS"' in service
+    assert "VerifyStateAclIntegrity()" in service
+    assert "Directory.EnumerateFileSystemEntries(directory)" in service
+    assert "FileSystemRights.Modify" in service
+    assert "owner == null || !expected.Contains(owner.Value)" in service
+    assert "String.Equals(owner.Value, BrokerOwnerSid, StringComparison.OrdinalIgnoreCase)" in service
+    assert "MaxAclEntries = 100000" in service
+    assert '"acl_ready", _lastAclHealth' in service
+    assert 'SetEnvironmentVariable(\n        "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS"' in ensure
+    assert 'SetEnvironmentVariable(\n        "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS"' in provision
+    assert "ensure_autonomous_state_broker.ps1" in configure
+    assert "Set-AutonomousDirectoryTreeAcl" not in configure
+    assert 'health(*, timeout_ms: int = 3500, verify: bool = False)' in client
+    assert '"/v1/health/verify"' in client
+    assert 'path == "/v1/health/verify"' in service
+    assert 'TimeSpan.FromSeconds(15)' in service
+    assert 'VerifyStorageAccessCached(forceVerification)' in service
+    assert 'health(timeout_ms=30000, verify=True)' in run
+    assert 'Path "/v1/health/verify"' in ensure
+    assert 'Path "/v1/health/verify"' in _read("scripts/AutonomousStateBrokerInstall.psm1")
+    assert '"/v1/health/verify"' in _read("scripts/AutonomousStateBroker.psm1")
+    assert 'value.get("acl_ready") is True' in client
+    assert run.count('health(timeout_ms=30000, verify=True)') == 2
+    assert 'TimeoutMilliseconds 30000' in ensure
+    assert '$currentSid, $brokerSid, "S-1-5-32-545"' in runtime_test
+    assert 'Path "/v1/health" -TimeoutMilliseconds 30000' in runtime_test
+    assert 'Path "/v1/health/verify" -TimeoutMilliseconds 30000' in runtime_test
+    assert "normal UI health endpoint did not reuse its bounded health cache" in runtime_test
+    assert "forced startup health endpoint did not bypass cache" in runtime_test
+    assert '$driftDetected = $false' in runtime_test
+    assert 'if ($_.Exception.Message -match "503")' in runtime_test
+    assert '$repairedHealth.acl_ready -ne $true' in runtime_test
+
+
+
+def test_machine_state_broker_bootstrap_is_independent_of_runner_registration():
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+
+    assert "$brokerServiceSid = \"S-1-5-19\"" in ensure
+    assert "$modifySids = @($brokerServiceSid)" in ensure
+    assert "$modifySids += $runner.Sid" in ensure
+    assert "if (-not [string]::IsNullOrWhiteSpace($RunnerRoot) -and $resolvedRunnerServices.Count -ne 1)" in ensure
+    assert "Expected exactly one installed Runner service matching the supplied RunnerRoot" in ensure
+    assert "if ($resolvedRunnerServices.Count -ne 1)" not in ensure
+    assert 'Join-Path $runner.Root ".runner"' not in ensure
+    assert "No GitHub Runner is installed; the core application broker is ready." in ensure
+    assert "foreach ($runner in $allRunnerServices)" in ensure
+    assert "Get-AutonomousWindowsAccountSid -AccountName $candidate.StartName" in ensure
+    assert ensure.index("Stop-Service -Name $service.Name") < ensure.index("Set-AutonomousDirectoryTreeAcl")
+    assert "activeWorkersAfterStop" in ensure
+    assert "Start-Service -Name $serviceNameToRestart" in ensure
 
 
 def test_runner_provisioning_discovers_existing_path_and_service_identity():
@@ -223,3 +290,41 @@ def test_windows_provisioning_keeps_runner_least_privilege_as_a_role_invariant()
     assert "Runner account is a direct member of the local Administrators group" in script
     assert "^[A-Za-z0-9_.-]+$" not in script
     assert "runnerLocalName.Length -gt 20" in script
+
+
+def test_powershell_broker_client_reports_health_payload_without_missing_error_property():
+    client = _read("scripts/AutonomousStateBroker.psm1")
+
+    assert '$payload.PSObject.Properties["error"]' in client
+    assert '$payload.PSObject.Properties[$fieldName]' in client
+    assert 'Health: " + ($healthDetails -join ", ")' in client
+    assert '$envelope.payload.error' not in client
+
+
+def test_broker_health_exposes_only_safe_acl_failure_reason_codes():
+    service = _read("scripts/AutonomousStateBrokerService.cs")
+    powershell_client = _read("scripts/AutonomousStateBroker.psm1")
+
+    assert '"acl_reason", _lastAclFailureReason' in service
+    for reason in (
+        "expected_sid_manifest_missing",
+        "expected_sid_manifest_invalid",
+        "state_entry_owner_unexpected",
+        "state_root_owner_not_local_service",
+        "state_root_acl_inheritance_enabled",
+        "state_entry_ace_count_mismatch",
+        "state_entry_ace_rights_or_type_mismatch",
+        "state_entry_ace_identity_unexpected_or_duplicate",
+        "state_entry_expected_identity_missing",
+        "state_tree_reparse_point",
+        "state_tree_entry_limit_exceeded",
+        "state_acl_scan_failed",
+    ):
+        assert reason in service
+    assert '"acl_reason"' in powershell_client
+    assert '"acl_reason"' in powershell_client[powershell_client.index('foreach ($fieldName'):powershell_client.index('$detail = if')]
+    health_details = powershell_client[
+        powershell_client.index('foreach ($fieldName'):powershell_client.index('$detail = if')
+    ]
+    assert '"state_directory"' not in health_details
+    assert '"state_path"' not in health_details

@@ -7,6 +7,19 @@
     message.textContent = text;
     message.dataset.kind = kind || "";
   }
+  function createCorrelationId() {
+    const cryptoApi = window.crypto;
+    if (cryptoApi && typeof cryptoApi.randomUUID === "function") {
+      return cryptoApi.randomUUID().replace(/-/g, "").toLowerCase();
+    }
+    if (!cryptoApi || typeof cryptoApi.getRandomValues !== "function") {
+      throw new Error("مرورگر امکان تولید شناسهٔ امن برای درخواست را ندارد.");
+    }
+    const bytes = new Uint8Array(16);
+    cryptoApi.getRandomValues(bytes);
+    return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+  }
+
   async function request(path, options) {
     const controller = new AbortController();
     const defaultTimeoutMs = path === "status" ? 40000 : path.startsWith("progress") ? 20000 : 120000;
@@ -18,15 +31,18 @@
     const timeoutMs = requestedTimeoutMs === undefined ? defaultTimeoutMs : requestedTimeoutMs;
     const requestOptions = {...(options || {})};
     delete requestOptions.timeoutMs;
+    const correlationId = createCorrelationId();
+    const requestHeaders = new Headers(requestOptions.headers || {});
+    requestHeaders.set("Accept", "application/json");
+    if (requestOptions.body && !requestHeaders.has("Content-Type")) {
+      requestHeaders.set("Content-Type", "application/json");
+    }
+    requestHeaders.set("X-Correlation-ID", correlationId);
     const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch("/api/autonomous-engineering/" + path, {
         ...requestOptions,
-        headers: {
-          "Accept": "application/json",
-          ...(requestOptions.body ? {"Content-Type": "application/json"} : {}),
-          ...(requestOptions.headers || {})
-        },
+        headers: requestHeaders,
         signal: controller.signal
       });
       let payload = {};
@@ -38,7 +54,7 @@
         const failure = new Error(detail);
         failure.status = response.status;
         failure.code = payload.code || response.headers.get("X-Error-Code") || null;
-        failure.correlationId = payload.correlation_id || response.headers.get("X-Correlation-ID") || null;
+        failure.correlationId = payload.correlation_id || response.headers.get("X-Correlation-ID") || correlationId;
         failure.retryable = payload.retryable === true || response.headers.get("X-Retryable") === "true";
         failure.safeDetails = payload.safe_details && typeof payload.safe_details === "object"
           ? payload.safe_details
@@ -49,18 +65,26 @@
         if (diagnostics.length) failure.message += " · " + diagnostics.join(" · ");
         throw failure;
       }
-      const responseCorrelationId = response.headers.get("X-Correlation-ID");
+      const responseCorrelationId = response.headers.get("X-Correlation-ID") || correlationId;
       if (responseCorrelationId && payload && typeof payload === "object" && !Array.isArray(payload) && !payload.correlation_id) {
         payload.correlation_id = responseCorrelationId;
       }
       return payload;
     } catch (error) {
       if (error && error.name === "AbortError") {
-        const timeoutError = new Error("پاسخ سرویس در مهلت " + (timeoutMs / 1000) + " ثانیه دریافت نشد؛ وضعیت سرور و لاگ‌ها را بررسی کنید.");
+        const timeoutError = new Error("پاسخ سرویس در مهلت " + (timeoutMs / 1000) + " ثانیه دریافت نشد؛ وضعیت سرور و لاگ‌ها را بررسی کنید. · شناسهٔ پیگیری: " + correlationId);
         timeoutError.ambiguous = true;
+        timeoutError.correlationId = correlationId;
         throw timeoutError;
       }
-      if (error && !Number.isInteger(error.status)) error.ambiguous = true;
+      if (error && typeof error === "object" && !Number.isInteger(error.status)) {
+        error.ambiguous = true;
+        if (!error.correlationId) error.correlationId = correlationId;
+        const errorMessage = typeof error.message === "string" ? error.message : "";
+        if (!errorMessage.includes(correlationId)) {
+          error.message = (errorMessage ? errorMessage + " · " : "") + "شناسهٔ پیگیری: " + correlationId;
+        }
+      }
       throw error;
     } finally {
       window.clearTimeout(timeoutId);

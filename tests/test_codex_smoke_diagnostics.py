@@ -448,6 +448,9 @@ def test_jsonl_report_recovery_requires_a_successful_completed_turn(tmp_path):
     assert not progress.recover_final_agent_message_report(
         report, "TASK_COMPLETE\nQUEUE_EMPTY", turn_completed=True, turn_failed=False,
     )
+    assert not progress.recover_final_agent_message_report(
+        report, "TASK_COMPLETE\nTASK_COMPLETE", turn_completed=True, turn_failed=False,
+    )
     assert not report.exists()
 
 

@@ -1,3 +1,23 @@
+## 2026-11-23 — snapshot زنده و ادامهٔ مهندسی Autonomous Engineering
+
+- main با مقایسهٔ مستقیم روی SHA 31349a99b197fe702e11e8a5dd53d52ba924575c تأیید شد؛ این snapshot جایگزین وضعیت‌های تاریخی قدیمی‌تر در ادامهٔ فایل است.
+- PRهای باز: #844، #845 و #846؛ هر سه Draft هستند. هیچ PRی در این مرحله merge نشده و هیچ branchی حذف نشده است.
+- #844: branch refactor/portable-host-discovery-20261123 هنوز از base قدیمی 481abd62b90a4fd1f209e6015d476225dbfbcc منشعب است و کامل نیست؛ فقط پس از بررسی و rebase مستقل قابل تعیین تکلیف است.
+- #845: اصلاح DELETE Ollama و recovery diagnostics؛ CI قبلی روی head 794e9583de3978268d050d74f46353a922472f5d سبز بوده، اما PR همچنان Draft است و ادغام آن به پذیرش هدف وابسته است.
+- #846: اصلاحات Broker مستقل از Runner، startup محدود UI، correlation از مرورگر تا task، و regressionهای Codex/browser در branch fix/autonomous-engineering-core-broker-bootstrap-20261123 انجام شده‌اند. code head پیش از این snapshot 94306bf381e169574f56d8012c448e3c32b0465a است؛ exact-head CI کامل هنوز اثبات نشده است.
+- در CIهای قبلی #846، یک assertion قدیمی Windows هنوز متغیر $runner.Service.StartName را انتظار داشت؛ assertion به کشف هویت از $candidate.StartName اصلاح شد. Browser E2E نیز به‌درستی شناسهٔ correlation را به پیام موفقیت Resume اضافه کرد، اما تست قدیمی متن را با برابری کامل می‌سنجید؛ تست اصلاح شد تا شناسه را نیز اعتبارسنجی کند. هیچ‌یک از این runهای قدیمی به‌عنوان CI سبز head نهایی شمرده نمی‌شوند.
+- وضعیت اصلاحات #846:
+  - Broker هسته‌ای بدون Runner قابل نصب است؛ اگر Runner موجود باشد هویت آن از Win32_Service.StartName کشف می‌شود و فایل .runner خوانده نمی‌شود.
+  - تمام Runner listenerهای کشف‌شده پیش از ACL reconciliation متوقف و پس از آن در finally بازیابی می‌شوند؛ worker فعال باعث توقف امن عملیات می‌شود.
+  - UI برای هر درخواست شناسهٔ امن ۳۲ کاراکتری می‌فرستد؛ timeout و خطای شبکه نیز همان شناسه را به کاربر نشان می‌دهند.
+  - اگر Broker یا Ollama آماده نباشند، اجرای عادی باید UI را در حالت محدود بالا بیاورد؛ --check-only همچنان کد خروج غیرصفر می‌دهد. شکست نصب وابستگی‌های Python همچنان مانع اجرا است.
+  - ADR-016، راهنمای عملیات، inventory UI، UI acceptance و engineering log در branch به‌روزرسانی شده‌اند.
+- Issues #769، #290 و #52 باز هستند. #769 برای ممیزی branchهای قدیمی حفظ می‌شود؛ هیچ branch قدیمی یا دادهٔ durable حذف نشده است.
+- شواهد هنوز لازم: exact-head tests/Windows full suite/storage/Browser E2E/CodeQL/dependency audit؛ سپس تست روی میزبان واقعی Windows با حساب غیرادمین UI، Runner موجود با .runner محدود، نبود Runner، Ollama/Codex واقعی، pause/resume/cancel، crash/restart و حفظ checkpoint.
+- هیچ task، owner metadata، checkpoint، database، ACL یا Runner registration روی سیستم محلی کاربر در این مرحله تغییر نکرده است. PR #846 تا تکمیل CI و پذیرش میزبان Draft می‌ماند.
+
+---
+
 ## 2026-11-22 — وضعیت جاری پس از تعیین تکلیف PRها
 
 - main روی 9d97d2e3fa8f72429e6bb5510192ba70a6d376d8 است. PR #837 از head 80c126734123a5e84596d320ff625278495764e0 با squash ادغام شد؛ Linux 2511/14/69، Windows 2509/16/69، Windows storage، Browser/dashboard smoke، real Docker sandbox، CodeQL و dependency audit موفق.
@@ -537,3 +557,18 @@ The subsequent documentation-only evidence update does not change runtime code a
 - اصلاح Windows byte-range lock و دو اصلاح تست در branch جایگزین `fix/autonomous-engineering-first-module-validation-20261122` از همان head آماده شده‌اند؛ قبل از بازکردن PR جایگزین، CI دقیق اجرا نشده است.
 - PR #823 نیز اصلاح نهایی pause/cancel هنگام ثبت وضعیت discovery را در branch خود دارد؛ CI دقیق آن اجرا نشده است.
 - هیچ‌یک از این تغییرات merge نشده‌اند. اجرای Runner/Ollama/Codex واقعی، crash/restart و تأیید Windows target و مالک همچنان gateهای باز هستند.
+
+
+## 2026-11-23 — exact-head CI نتیجه و وضعیت پذیرش محلی
+
+- کد اصلاح‌شده در SHA `d993038033d5d15cca4a4a6c63c979c081c89aad` روی PR #846 بررسی شد؛ همهٔ workflowهای CI روی همین SHA موفق شدند.
+- Ubuntu: 2,555 passed، 14 skipped، 78 deselected در 285.03 ثانیه؛ run #45131387511.
+- Windows: 2,550 passed، 19 skipped، 78 deselected در 677.79 ثانیه؛ run #45131387511.
+- Windows storage regressions: موفق؛ parse همهٔ PowerShellها، کامپایل Broker، ACL بازگشتی، LocalService named-pipe، هویت Windows، checkpoint/lock و SQLite restore؛ run #45131387511.
+- Browser E2E: موفق؛ صفحه و ۶ فایل UI با HTTP 200، بدون console/page/failed-request/unexpected-HTTP errors؛ run #45131387286، artifact #14797757907.
+- CodeQL: موفق، run #45131387204. Dependency audit: موفق، run #45131387210. Python bootstrap در Windows/Ubuntu/macOS نیز موفق، run #45131387511.
+- PR #847 صرفاً mirror موقت برای اجرای workflowهای PR بود؛ پس از تکمیل بررسی بسته شد و branch آن حذف نشد. PR اصلی #846 همچنان Draft و باز است.
+- این به‌روزرسانی مستندات پس از CI فقط وضعیت و شواهد را ثبت می‌کند؛ هیچ کد اجرایی پس از SHA d993 تغییر نکرده است.
+- پذیرش روی Windows واقعی کاربر هنوز pending است: اجرای عادی از حساب غیرادمین، UAC، Broker با Runner موجود و فایل .runner غیرقابل‌خواندن، نبود Runner، UI محلی، Ollama/Codex و dispatch واقعی. تا ثبت این شواهد، PR #846 merge نمی‌شود.
+
+---

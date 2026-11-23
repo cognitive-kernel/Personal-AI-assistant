@@ -1,3 +1,70 @@
+## 2026-11-23 — exact-head CI green for Autonomous Engineering UI resilience
+
+### CI evidence
+- Source code SHA: `d993038033d5d15cca4a4a6c63c979c081c89aad`.
+- Ubuntu full suite: 2,555 passed, 14 skipped, 78 deselected (285.03s).
+- Windows full suite: 2,550 passed, 19 skipped, 78 deselected (677.79s).
+- Windows storage regressions: all steps passed, including PowerShell parsing, .NET Framework Broker compilation, recursive ACLs, live LocalService named-pipe client, Windows identity portability, checkpoint/lock and SQLite recovery.
+- Browser E2E: passed; UI route and six modules returned HTTP 200; zero browser console errors, page errors, failed requests, or unexpected HTTP errors. Artifact #14797757907, SHA-256 `11fea6cbd0107a57634c6e5af7300f4a0df5fa2e3c1d953f72d4a68a412d3261`.
+- CodeQL and dependency audit passed; Python bootstrap passed on Windows, Ubuntu, and macOS.
+- Temporary verification PR #847 was closed after the exact-head workflows passed; its branch was retained. Canonical PR #846 remains Draft.
+
+### Remaining acceptance
+- CI validates repository behavior, not the user's Windows installation. Non-admin startup/UAC, existing protected Runner registration, no-Runner bootstrap, local UI status, real Ollama/Codex and real workflow dispatch remain owner-run acceptance gates. No task, Runner registration, checkpoint, database, or local ACL was modified during CI.
+
+---
+
+## 2026-11-23 — keep the local dashboard available when runtime prerequisites fail
+
+### Root cause
+- Startup treated Python dependencies, the machine State Broker, and Ollama as one fatal prerequisite block. If Ollama was installed but unavailable, model preparation failed, or the Broker could not be repaired, run.py returned before Uvicorn started. The user could not open the UI to inspect readiness or recover the runtime service.
+
+### Correction
+- Python environment/dependency failures remain fatal because the application cannot import without them.
+- Broker and Ollama readiness are checked independently. A missing/unavailable runtime service is recorded and normal startup continues in limited mode so the local UI can report readiness and diagnostics.
+- --check-only remains strict and returns exit code 2 when any runtime prerequisite is unavailable; it never starts Uvicorn.
+- Added tests proving limited-mode UI startup and strict check-only behavior.
+
+### Evidence boundary
+- This is a startup contract change, not proof that Ollama or the Runner is running. Exact-head CI and Windows target-host UI acceptance remain mandatory.
+
+---
+
+## 2026-11-23 — UI-originated correlation ID through dispatch and timeout
+
+### Root cause
+- The API already generated/propagated a correlation ID, and the workflow stored it with run/job/progress/task-owner records, but the browser request helper did not send an ID before dispatch. If the response was lost or timed out, the UI could not show the identifier needed to find a possibly accepted run.
+
+### Correction
+- Generate a cryptographically random 32-character lowercase hexadecimal ID in the UI core for every API request, using `crypto.randomUUID()` or `crypto.getRandomValues`.
+- Send it as `X-Correlation-ID`; retain it from success/error responses and expose it in timeout and ambiguous network errors.
+- Add browser regressions for manual dispatch round-trip, timeout, and network failure, plus a module contract test.
+
+### Evidence boundary
+- This closes the browser-originating correlation gap in code, but exact-head Browser E2E/full CI and a real target-host dispatch are still required. The PR remains Draft; no dispatch, task, or user state was created during this source-only change.
+
+---
+
+## 2026-11-23 — Runner-independent Windows state broker bootstrap
+
+### Root cause
+- The core dashboard bootstrap delegated broker installation to a Windows script that required exactly one registered GitHub Runner service and readable `.runner` metadata. This made an optional remote execution capability a hard prerequisite for the local UI and caused protected registration metadata to block broker repair.
+- The previous ACL reconciliation stopped only the selected Runner listener. With multiple installed Runner services, an unselected listener could start a worker during shared-state ACL mutation. A stop-wait timeout could also leave a service stopped because it was recorded for restart only after the wait completed.
+
+### Correction
+- Broker installation now accepts zero or more Runner services. It resolves each installed service identity from `Win32_Service.StartName`, without opening `.runner`; no Runner means LocalService alone is granted Modify access.
+- All discovered Runner listeners are stopped before ACL mutation and active workers are checked again. Stopped services are recorded immediately after Stop-Service succeeds, before waiting for the Stopped state, so the finally block can restart them after a wait timeout.
+- An unresolvable Runner executable path or an invalid explicit `RunnerRoot` fails closed before ACL changes. No broad Users/Everyone ACE is introduced and no task/checkpoint data is deleted.
+- Added Windows portability and bootstrap regression assertions, including no-Runner readiness and duplicate Codex completion-marker rejection.
+
+### Evidence boundary
+- PR #846 is Draft on a dedicated branch. Exact-head tests, Browser E2E, CodeQL, dependency audit, PowerShell parsing, broker compilation, ACL checks, and live broker checks are required on the final SHA.
+- A first exact-head Windows storage run exposed an outdated static assertion that still expected the removed `$runner.Service.StartName` expression. The test was updated to assert the new service-discovery contract; that failed run is not counted as passing evidence.
+- No Windows target-host Runner, Ollama, Codex, local UI, user task, checkpoint, database, or ACL was changed during this repository-only pass. Target-host acceptance remains open.
+- The current code does not yet prove ACL drift detection when the broker health probe is already successful; this remains a documented follow-up risk rather than a claimed fix.
+
+---
+
 ## 2026-11-22 — Autonomous Engineering UI inventory و hardening
 
 - PR #837 با head 80c126734123a5e84596d320ff625278495764e0 در main با squash commit 9d97d2e3fa8f72429e6bb5510192ba70a6d376d8 ادغام شد؛ Linux 2511/14/69 و Windows 2509/16/69، Windows storage، Browser/dashboard smoke، Docker sandbox، CodeQL و dependency audit موفق.

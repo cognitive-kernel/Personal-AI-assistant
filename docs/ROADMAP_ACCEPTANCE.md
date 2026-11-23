@@ -1,3 +1,14 @@
+## 2026-11-23 — Autonomous Engineering UI local-readiness addendum
+
+- main baseline: 31349a99b197fe702e11e8a5dd53d52ba924575c.
+- PR #846 (Draft) implements Runner-independent Windows Broker provisioning, browser-originated correlation IDs, and limited-mode UI startup when Broker/Ollama runtime services are unavailable.
+- Core Broker installation no longer depends on Runner registration metadata. Runner is an optional execution capability; if absent, the local UI can still start and report dispatch readiness as unavailable.
+- The UI sends a secure correlation ID on each API request and preserves it on dispatch success, timeout, and ambiguous network failure. Workflow/run/job/progress/task-owner records continue the same ID.
+- Python dependency/bootstrap failures remain fatal because the application cannot import without them. Missing/unavailable runtime services should not prevent the local dashboard from opening; --check-only returns non-zero for unavailable runtime prerequisites.
+- No acceptance gate is marked complete from static inspection alone. Exact-head CI and Windows target-host evidence (non-admin UI, protected .runner metadata, Runner absent/present, Ollama/Codex, dispatch/pause/resume/cancel, crash/restart and checkpoint preservation) remain required before merge.
+
+---
+
 # Project acceptance gates
 
 This file is the release-gate ledger for tracking issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290). It distinguishes repository implementation and CI evidence from target-host operations, live-model evaluation, human adjudication, and independent review. A merged PR is not by itself proof that an acceptance gate passed.
@@ -321,3 +332,12 @@ The current `main` SHA `2a5c83bf0ba924f4a2c8f206338a04872562d72d` has completed 
 - D: modular UI و stale-response/polling protections در #836؛ exact-head CI پس از follow-up pending.
 - E: Chromium deterministic coverage و trace/screenshot/diagnostic artifact در head جدید؛ CI pending.
 - G/H/J: Windows target-host، crash/restart و owner acceptance pending؛ CI به‌تنهایی تکمیل عملیاتی نیست.
+
+
+## 2026-11-23 — CI evidence update
+
+- PR #846 code SHA `d993038033d5d15cca4a4a6c63c979c081c89aad` passed Ubuntu full tests (2,555 passed), Windows full tests (2,550 passed), Windows storage regressions, Browser E2E, CodeQL, dependency audit, and Python bootstrap on Windows/Ubuntu/macOS.
+- This closes repository CI validation for the current implementation, not local-host acceptance. The real Windows non-admin UI, protected Runner registration, no-Runner install, real Ollama/Codex, workflow dispatch, pause/resume/cancel and crash/restart gates remain open.
+- PR #846 remains Draft; temporary verification PR #847 was closed without merge and its branch retained.
+
+---

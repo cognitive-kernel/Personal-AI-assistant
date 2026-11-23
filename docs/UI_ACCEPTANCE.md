@@ -77,3 +77,27 @@ Mark repository-level items complete only after the exact PR head CI passes. Bro
 - [ ] Windows target-host UI/Runner/Ollama/Codex، crash/restart، restore/rollback و owner approval.
 
 Browser E2E از APIهای deterministic/stubbed استفاده می‌کند و جایگزین پذیرش واقعی میزبان نیست.
+
+
+## 2026-11-23 — بازاعتبارسنجی Autonomous Engineering و correlation end-to-end
+
+- مبنای `main`: `31349a99b197fe702e11e8a5dd53d52ba924575c`؛ PR فعال برای این اصلاحات: [#846](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/846)، Draft.
+- **Gate A:** inventory کنترل→API→مالک state→transition در `docs/UI_AUTONOMOUS_ENGINEERING_INVENTORY_2026-11-22.fa.md` موجود است؛ این addendum مسیر correlation مرورگر را هم ثبت می‌کند. بازتولید روی میزبان محلی هنوز pending است.
+- **Gate B:** lease epoch/fencing و ownership قبلی در main حفظ شده‌اند. PR #846 وابستگی نصب Broker به Runner را حذف می‌کند؛ Broker با LocalService حتی در نبود Runner نصب می‌شود و Runner فقط قابلیت اجرای اختیاری است. exact-head CI و آزمون Windows واقعی pending است.
+- **Gate C:** API structured errors و JSONL recovery در main هستند. PR #846 شناسهٔ correlation را از مرورگر در header درخواست می‌فرستد و در timeout/network failure هم به UI بازمی‌گرداند؛ تست browser round-trip اضافه شده است.
+- **Gate D/E:** ماژول‌های مستقل UI، stale-response guard، polling و کنترل‌های fail-closed در main موجودند؛ regression جدید dispatch/timeout باید در Browser E2E exact-head بگذرد.
+- **Gate F:** فقط نتایج workflow روی SHA نهایی PR قابل قبول‌اند؛ هیچ نتیجه‌ای از SHA قدیمی به head جدید تعمیم داده نمی‌شود.
+- **Gate G/H/J:** اجرای UI با حساب غیرادمین، Runner واقعی، Ollama/Codex، crash/restart، restore/rollback و پذیرش مالک هنوز pending هستند؛ CI hosted جایگزین این شواهد نیست. در اجرای عادی، خطای Broker/Ollama دیگر نباید مانع بازشدن UI شود؛ حالت محدود باید وضعیت ناقص را نشان دهد و --check-only باید کد خروج غیرصفر بدهد.
+- هیچ task، owner metadata، checkpoint، database، Runner registration یا دادهٔ محلی حذف/بازنویسی نشده است. PR #846 Draft می‌ماند و merge انجام نمی‌شود تا CI و پذیرش میزبان تکمیل شوند.
+
+
+## 2026-11-23 — CI exact-head تکمیل شد
+
+- کد PR #846 در SHA `d993038033d5d15cca4a4a6c63c979c081c89aad` تمام CI را گذراند.
+- Gate E: Browser E2E موفق؛ صفحهٔ Autonomous Engineering و شش فایل UI بارگذاری شدند؛ diagnostics مرورگر صفر خطا گزارش کرد. run #45131387286، artifact #14797757907.
+- Gate F: کامل؛ Ubuntu 2,555 passed / 14 skipped / 78 deselected، Windows 2,550 passed / 19 skipped / 78 deselected، Windows storage regressions موفق، Python bootstrap در سه سیستم‌عامل موفق، CodeQL و Dependency Audit موفق.
+- Gate B/C: پیاده‌سازی Broker مستقل از Runner، startup محدود UI و correlation از مرورگر تا task در کد و regressionها پوشش داده شده‌اند؛ این مورد به‌معنای پذیرش Runner واقعی یا dispatch واقعی روی میزبان کاربر نیست.
+- Gate G/H/J: هنوز pending؛ آزمون روی Windows واقعی با حساب غیرادمین، Runner واقعی و protected .runner، نبود Runner، Ollama/Codex واقعی، dispatch، pause/resume/cancel، crash/restart و checkpoint preservation باید انجام شود.
+- PR #846 Draft می‌ماند تا Gateهای میزبان واقعی تأیید شوند؛ PR #847 mirror بسته شده و branch آن حفظ شده است.
+
+---
