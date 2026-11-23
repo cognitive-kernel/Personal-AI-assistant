@@ -123,7 +123,7 @@ Browser E2E از APIهای deterministic/stubbed استفاده می‌کند و
 
 ### Live Pause and execution-mode admission hardening — 2026-11-24
 
-- The pre-task workflow gate now reads live Pause and execution-mode variables after concurrency admission; the cycle controller repeats both checks after acquiring the repository execution lock and before durable-state recovery/task start.
+- The pre-task workflow gate now reads live Pause and execution-mode variables after concurrency admission; the cycle controller repeats both checks after acquiring the repository execution lock and again before dispatching the next continuous cycle after an owner merge.
 - Automatic recovery no longer trusts workflow-context PAUSED or EXECUTION_MODE snapshots. It reads live mode/Pause before retry classification and again after backoff immediately before dispatch.
 - Missing Pause variable (404) means false; missing mode variable means continuous. API errors and malformed values fail closed. Scheduled mode suppresses queued automatic and recovery runs, while explicit manual tasks and one-shot resume remain allowed.
 - PR #866 contains these changes. Its exact-head CI is pending; no real task/recovery workflow was dispatched for this validation.
