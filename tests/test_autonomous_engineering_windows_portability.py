@@ -437,7 +437,7 @@ def test_broker_installer_cleans_staging_and_restores_existing_service_on_stop_f
     stop_service = install.index("Stop-Service -Name $serviceName", stage_start)
     stage_catch = install.index("} catch {", stop_service)
     cleanup = install.index("Remove-Item -LiteralPath $temporaryExe", stage_catch)
-    stage_catch_end = install.index("\\n    }\\n\\n    $hadServiceExe", stage_catch)
+    stage_catch_end = install.index("\n    }\n\n    $hadServiceExe", stage_catch)
 
     assert stage_start < stop_service < stage_catch < cleanup < stage_catch_end
     assert "if ($wasRunning)" in install[stage_catch:stage_catch_end]
