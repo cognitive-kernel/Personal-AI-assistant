@@ -56,7 +56,7 @@ try {
     } catch [System.Threading.AbandonedMutexException] {
         # WaitOne grants ownership when this exception is raised. Without an
         # explicit operator acknowledgement, keep ownership until this child
-        # exits so every retry continues to detect the interrupted transaction.
+        # exits so every retry continues to detect the interrupted transaction; fail closed.
         if (-not $AcknowledgeAbandonedSetup) {
             $setupMutexAbandonedUnacknowledged = $true
             throw "A previous elevated state-broker setup terminated while holding the machine-wide lock. Inspect broker health, service state, and ACL integrity, then rerun with -AcknowledgeAbandonedSetup."
