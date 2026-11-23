@@ -933,10 +933,12 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                 )
                 : File.GetAccessControl(path, AccessControlSections.Owner | AccessControlSections.Access);
 
+            SecurityIdentifier owner = security.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
+            if (owner == null || !expected.Contains(owner.Value))
+                return false;
             if (isRoot)
             {
-                SecurityIdentifier owner = security.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
-                if (owner == null || !String.Equals(owner.Value, BrokerOwnerSid, StringComparison.OrdinalIgnoreCase))
+                if (!String.Equals(owner.Value, BrokerOwnerSid, StringComparison.OrdinalIgnoreCase))
                     return false;
                 if (!security.AreAccessRulesProtected)
                     return false;
