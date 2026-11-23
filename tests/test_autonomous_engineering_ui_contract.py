@@ -14,7 +14,7 @@ def test_broker_setup_is_explicit_and_does_not_require_a_runner_or_fixed_shell_v
     assert 'request("broker/setup"' in controls
     assert "timeoutMs: 300000" in controls
     assert "فقط پس از فشردن دکمهٔ زیر" in status
-    assert "نبود Runner مانع نصب Broker نیست" in status
+    assert "Runner برای نصب Broker لازم نیست" in status
     assert "Runner فقط برای اجرای Workflow مهندسی لازم است" in status
     assert "در صورت ردشدن UAC یا نبود Runner" not in status
     assert "powershell.exe" not in status
