@@ -705,13 +705,11 @@ def test_checkpoint_watcher_real_process_publishes_run_scoped_readiness(
         ["git", "rev-parse", "HEAD"], cwd=root, check=True,
         capture_output=True, text=True,
     ).stdout.strip()
-    program_data = shared_state_tmp_path / "ProgramData"
-    state = program_data / "PersonalAIAssistant" / "autonomous-engineering"
-    monkeypatch.setenv("PROGRAMDATA", str(program_data))
-    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", raising=False)
+    state = shared_state_tmp_path / "autonomous-engineering"
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(state))
     env = os.environ.copy()
-    env.pop("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", None)
-    env["PROGRAMDATA"] = str(program_data)
+    env["AUTONOMOUS_ENGINEERING_PROGRESS_DIR"] = str(state)
+    env.pop("PROGRAMDATA", None)
     run_id = f"integration-{os.getpid()}"
     task = 91
     # Match the production launch path: on Windows, bypass the venv launcher
@@ -818,10 +816,11 @@ def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pyt
     from types import SimpleNamespace
     from scripts import autonomous_engineering_checkpoint as checkpoint
 
-    state = shared_state_tmp_path / "ProgramData" / "PersonalAIAssistant" / "autonomous-engineering"
+    state = shared_state_tmp_path / "shared-state"
     monkeypatch.setattr(checkpoint, "store_dir", lambda: state)
+    monkeypatch.setattr(cycle, "execution_state_directory", lambda: state)
     state.mkdir(parents=True)
-    monkeypatch.setenv("PROGRAMDATA", str(shared_state_tmp_path / "ProgramData"))
+    monkeypatch.delenv("PROGRAMDATA", raising=False)
     monkeypatch.delenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", raising=False)
     monkeypatch.setattr(
         cycle, "os",
@@ -1000,9 +999,10 @@ def test_checkpoint_watcher_uses_base_interpreter_with_venv_dependencies(
     from scripts import autonomous_engineering_checkpoint as checkpoint
     from scripts import autonomous_engineering_cycle as cycle
 
-    state = shared_state_tmp_path / "ProgramData" / "PersonalAIAssistant" / "autonomous-engineering"
+    state = shared_state_tmp_path / "shared-state"
     monkeypatch.setattr(checkpoint, "store_dir", lambda: state)
-    monkeypatch.setenv("PROGRAMDATA", str(shared_state_tmp_path / "ProgramData"))
+    monkeypatch.setattr(cycle, "execution_state_directory", lambda: state)
+    monkeypatch.delenv("PROGRAMDATA", raising=False)
     monkeypatch.delenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", raising=False)
     monkeypatch.setattr(
         cycle, "os",
