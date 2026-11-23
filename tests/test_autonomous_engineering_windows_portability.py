@@ -348,7 +348,11 @@ def test_windows_broker_installer_uses_verified_prebuilt_binary_without_target_c
     build_step = workflow.split('Build and package the Windows machine state broker', 1)[1].split(
         'Upload the prebuilt Windows state broker package', 1
     )[0]
-    assert 'dotnet $compiler @arguments' in build_step
-    assert '/deterministic+' in build_step
-    assert 'System.IO.Pipes.AccessControl.dll' in build_step
+    assert 'dotnet build $project' in build_step
     assert 'csc.exe' not in build_step
+    broker_project = _read("scripts/AutonomousStateBrokerService.csproj")
+    assert '<TargetFramework>net48</TargetFramework>' in broker_project
+    assert '<Deterministic>true</Deterministic>' in broker_project
+    assert 'Microsoft.NETFramework.ReferenceAssemblies.net48' in broker_project
+    assert 'Version="1.0.3"' in broker_project
+    assert '<Reference Include="System.IO.Pipes.AccessControl" />' in broker_project
