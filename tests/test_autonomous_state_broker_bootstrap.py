@@ -19,8 +19,8 @@ def test_machine_state_broker_is_checked_before_app_startup():
     assert '"-File"' in bootstrap
     assert "shell=False" in bootstrap
     assert "capture_output = False" in bootstrap
-    assert "if health(timeout_ms=30000):" in bootstrap
-    assert "if not health(timeout_ms=30000):" in bootstrap
+    assert "if health(timeout_ms=30000, verify=True):" in bootstrap
+    assert "if not health(timeout_ms=30000, verify=True):" in bootstrap
     assert main.index("_ensure_dependencies(dev)") < main.index("from dotenv import load_dotenv")
     assert main.index("load_dotenv(ROOT / \".env\", override=False)") < main.index("_ensure_state_broker()")
     assert main.index("_ensure_state_broker()") < main.index("_ensure_ollama()")
