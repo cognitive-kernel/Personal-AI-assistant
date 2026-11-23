@@ -368,8 +368,8 @@ def test_windows_broker_installer_uses_verified_prebuilt_binary_without_target_c
     assert 'Version="1.0.3"' in broker_project
     assert '<Reference Include="System.IO.Pipes.AccessControl" />' in broker_project
     sdk_pin = _read("scripts/global.json")
-    assert '"version": "10.0.404"' in sdk_pin
-    assert 'dotnet-version: 10.0.404' in workflow
+    assert '"version": "11.0.100"' in sdk_pin
+    assert 'dotnet-version: 11.0.100' in workflow
 
 
 def test_broker_installer_preflights_net48_and_service_control_before_mutation():
