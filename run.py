@@ -832,7 +832,7 @@ def _find_ollama() -> str | None:
         return found
     if os.name == "nt":
         # Search only machine-wide install roots; a different service account
-        # must not depend on the interactive user's LOCALAPPDATA profile.
+        # must not depend on the interactive user's profile.
         candidates = [
             Path(root) / "Ollama" / "ollama.exe"
             for root in (os.environ.get("ProgramFiles"), os.environ.get("ProgramW6432"))
