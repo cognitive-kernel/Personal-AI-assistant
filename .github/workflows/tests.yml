@@ -206,56 +206,23 @@ jobs:
       - name: Build and package the Windows machine state broker
         shell: pwsh
         run: |
-          $referenceRootCandidates = @(
-            (Join-Path ${env:ProgramFiles(x86)} "Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8"),
-            (Join-Path ${env:ProgramFiles(x86)} "Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.2"),
-            (Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319"),
-            (Join-Path $env:WINDIR "Microsoft.NET\Framework\v4.0.30319")
-          )
-          $referenceRoot = $referenceRootCandidates | Where-Object {
-            (Test-Path -LiteralPath (Join-Path $_ "mscorlib.dll") -PathType Leaf) -and
-            (Test-Path -LiteralPath (Join-Path $_ "System.dll") -PathType Leaf) -and
-            (Test-Path -LiteralPath (Join-Path $_ "System.Core.dll") -PathType Leaf) -and
-            (Test-Path -LiteralPath (Join-Path $_ "System.ServiceProcess.dll") -PathType Leaf) -and
-            (Test-Path -LiteralPath (Join-Path $_ "System.Web.Extensions.dll") -PathType Leaf)
-          } | Select-Object -First 1
-          if (-not $referenceRoot) { throw ".NET Framework reference assemblies were not found on the Windows CI image." }
-
-          $sdkLine = dotnet --list-sdks | Where-Object { $_ -match '^\d+\.\d+\.\d+' } | Select-Object -Last 1
-          if (-not $sdkLine) { throw "A .NET SDK is required on CI to build the broker package." }
-          $sdkMatch = [regex]::Match($sdkLine, '^(?<version>[^ ]+) \[(?<root>.+)\]$')
-          if (-not $sdkMatch.Success) { throw "Could not resolve the installed .NET SDK directory." }
-          $compiler = Join-Path $sdkMatch.Groups["root"].Value (Join-Path $sdkMatch.Groups["version"].Value "Roslyn\bincore\csc.dll")
-          if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) { throw "The .NET SDK Roslyn compiler was not found." }
-
-          $source = Join-Path $env:GITHUB_WORKSPACE "scripts\AutonomousStateBrokerService.cs"
-          $packageRoot = Join-Path $env:GITHUB_WORKSPACE "scripts\bin"
+          $project = Join-Path $env:GITHUB_WORKSPACE "scripts\\AutonomousStateBrokerService.csproj"
+          $packageRoot = Join-Path $env:GITHUB_WORKSPACE "scripts\\bin"
           New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
+          Write-Host "CI .NET SDK:"
+          dotnet --info
+          dotnet build $project --configuration Release --output $packageRoot -p:Deterministic=true -p:DebugType=None -p:DebugSymbols=false
+          if ($LASTEXITCODE -ne 0) {
+            throw "The Windows state broker did not build against the pinned .NET Framework reference package."
+          }
           $output = Join-Path $packageRoot "PersonalAIAssistant.StateBroker.exe"
+          if (-not (Test-Path -LiteralPath $output -PathType Leaf)) {
+            throw "The CI build did not produce PersonalAIAssistant.StateBroker.exe."
+          }
           $hashFile = $output + ".sha256"
-          $references = @(
-            "mscorlib.dll",
-            "System.dll",
-            "System.Core.dll",
-            "System.ServiceProcess.dll",
-            "System.Web.Extensions.dll"
-          )
-          $pipeAccess = Join-Path $referenceRoot "System.IO.Pipes.AccessControl.dll"
-          if (Test-Path -LiteralPath $pipeAccess -PathType Leaf) {
-            $references += "System.IO.Pipes.AccessControl.dll"
-          }
-          $arguments = @("/noconfig", "/nostdlib+", "/nologo", "/target:exe", "/platform:anycpu", "/langversion:latest", "/deterministic+", "/out:$output")
-          foreach ($reference in $references) {
-            $arguments += "/reference:" + (Join-Path $referenceRoot $reference)
-          }
-          $arguments += $source
-          dotnet $compiler @arguments
-          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $output -PathType Leaf)) {
-            throw "Windows state broker did not compile against the .NET Framework reference assemblies."
-          }
           $digest = (Get-FileHash -LiteralPath $output -Algorithm SHA256).Hash.ToLowerInvariant()
           Set-Content -LiteralPath $hashFile -Value $digest -NoNewline -Encoding ascii
-          Write-Host "Windows state broker package built with CI Roslyn: SHA256 $digest"
+          Write-Host "Windows state broker package built: SHA256 $digest"
 
       - name: Upload the prebuilt Windows state broker package
         uses: actions/upload-artifact@v4
