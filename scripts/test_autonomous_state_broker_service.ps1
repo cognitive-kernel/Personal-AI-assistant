@@ -9,7 +9,7 @@ $testTempRoot = if (-not [String]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
     Join-Path ([IO.Path]::GetTempPath()) "PersonalAIAssistant-StateBrokerTest"
 }
 New-Item -ItemType Directory -Path $testTempRoot -Force | Out-Null
-$servicePackage = Join-Path $PSScriptRoot "bin\\PersonalAIAssistant.StateBroker.exe"
+$servicePackage = Join-Path $PSScriptRoot "bin\PersonalAIAssistant.StateBroker.exe"
 $serviceHashFile = $servicePackage + ".sha256"
 if (-not (Test-Path -LiteralPath $servicePackage -PathType Leaf) -or
     -not (Test-Path -LiteralPath $serviceHashFile -PathType Leaf)) {
