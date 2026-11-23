@@ -343,6 +343,10 @@ def test_windows_broker_installer_uses_verified_prebuilt_binary_without_target_c
     assert 'csc.exe' not in installer
     assert 'Microsoft.NET' not in installer
     assert 'Build and stage the Windows machine state broker' in workflow
+    assert workflow.count("\\n  windows-storage-regressions:\\n") == 1
+    assert workflow.count("\\n  runtime-bootstrap:\\n") == 1
+    runtime_job = workflow.split("\\n  runtime-bootstrap:\\n", 1)[1]
+    assert "-or $committedHash -ne $expectedHash) {" not in runtime_job
     assert 'upload-artifact@v4' in workflow
     assert 'actions/attest-build-provenance@v3' in workflow
     assert 'attestations: write' in workflow
