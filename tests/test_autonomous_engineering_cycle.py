@@ -2015,3 +2015,74 @@ def test_cycle_controller_allows_manual_task_in_scheduled_mode(monkeypatch):
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_MANUAL_TASK", "Fix a specific bug")
 
     assert cycle.main() == 29
+
+
+def test_next_cycle_dispatch_is_suppressed_by_live_scheduled_mode(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        cycle, "api",
+        lambda token, repo, method, path, payload=None: (
+            calls.append((method, path, payload)) or
+            {"value": "scheduled"} if path.endswith("AUTONOMOUS_ENGINEERING_MODE") else {}
+        ),
+    )
+    args = type("Args", (), {"mode": "continuous", "correlation_id": "a" * 32})()
+
+    assert cycle._dispatch_next_cycle_if_enabled("token", "owner/repository", args) is False
+    assert len(calls) == 1
+    assert calls[0][1].endswith("AUTONOMOUS_ENGINEERING_MODE")
+
+
+def test_next_cycle_dispatch_is_suppressed_by_live_pause(monkeypatch):
+    calls = []
+
+    def fake_api(token, repo, method, path, payload=None):
+        calls.append((method, path, payload))
+        if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
+            return {"value": "continuous"}
+        if path.endswith("AUTONOMOUS_ENGINEERING_PAUSED"):
+            return {"value": "true"}
+        return {}
+
+    monkeypatch.setattr(cycle, "api", fake_api)
+    args = type("Args", (), {"mode": "continuous", "correlation_id": "b" * 32})()
+
+    assert cycle._dispatch_next_cycle_if_enabled("token", "owner/repository", args) is False
+    assert len(calls) == 2
+    assert all(method == "GET" for method, _, _ in calls)
+
+
+def test_next_cycle_dispatch_occurs_only_when_live_mode_is_continuous_and_unpaused(monkeypatch):
+    calls = []
+
+    def fake_api(token, repo, method, path, payload=None):
+        calls.append((method, path, payload))
+        if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
+            return {"value": "continuous"}
+        if path.endswith("AUTONOMOUS_ENGINEERING_PAUSED"):
+            return {"value": "false"}
+        if method == "POST" and path.endswith("/dispatches"):
+            return {"accepted": True}
+        raise AssertionError((method, path, payload))
+
+    monkeypatch.setattr(cycle, "api", fake_api)
+    args = type("Args", (), {"mode": "continuous", "correlation_id": "c" * 32})()
+
+    assert cycle._dispatch_next_cycle_if_enabled("token", "owner/repository", args) is True
+    assert calls[-1][0] == "POST"
+    assert calls[-1][2]["inputs"]["manual_task"] == ""
+    assert "resume_once" not in calls[-1][2]["inputs"]
+
+
+def test_next_cycle_dispatch_fails_closed_when_live_settings_cannot_be_read(monkeypatch):
+    calls = []
+
+    def denied(token, repo, method, path, payload=None):
+        calls.append((method, path, payload))
+        raise RuntimeError("HTTP 403")
+
+    monkeypatch.setattr(cycle, "api", denied)
+    args = type("Args", (), {"mode": "continuous", "correlation_id": "d" * 32})()
+
+    assert cycle._dispatch_next_cycle_if_enabled("token", "owner/repository", args) is False
+    assert len(calls) == 1
