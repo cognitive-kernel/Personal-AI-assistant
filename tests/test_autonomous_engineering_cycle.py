@@ -1048,6 +1048,7 @@ def test_checkpoint_watcher_uses_base_interpreter_with_venv_dependencies(
     assert cycle.start_checkpoint_watcher("a" * 40, "107", 1) is not None
     assert captured["command"][0] == str(tmp_path / "python.exe")
     assert captured["env"]["PYTHONPATH"].split(os.pathsep) == [
+        str(cycle.ROOT.resolve()),
         str(tmp_path / ".venv" / "Lib" / "site-packages"),
         "existing-python-path",
     ]
