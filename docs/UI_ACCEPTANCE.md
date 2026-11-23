@@ -87,5 +87,5 @@ Browser E2E از APIهای deterministic/stubbed استفاده می‌کند و
 - **Gate C:** API structured errors و JSONL recovery در main هستند. PR #846 شناسهٔ correlation را از مرورگر در header درخواست می‌فرستد و در timeout/network failure هم به UI بازمی‌گرداند؛ تست browser round-trip اضافه شده است.
 - **Gate D/E:** ماژول‌های مستقل UI، stale-response guard، polling و کنترل‌های fail-closed در main موجودند؛ regression جدید dispatch/timeout باید در Browser E2E exact-head بگذرد.
 - **Gate F:** فقط نتایج workflow روی SHA نهایی PR قابل قبول‌اند؛ هیچ نتیجه‌ای از SHA قدیمی به head جدید تعمیم داده نمی‌شود.
-- **Gate G/H/J:** اجرای UI با حساب غیرادمین، Runner واقعی، Ollama/Codex، crash/restart، restore/rollback و پذیرش مالک هنوز pending هستند؛ CI hosted جایگزین این شواهد نیست.
+- **Gate G/H/J:** اجرای UI با حساب غیرادمین، Runner واقعی، Ollama/Codex، crash/restart، restore/rollback و پذیرش مالک هنوز pending هستند؛ CI hosted جایگزین این شواهد نیست. در اجرای عادی، خطای Broker/Ollama دیگر نباید مانع بازشدن UI شود؛ حالت محدود باید وضعیت ناقص را نشان دهد و --check-only باید کد خروج غیرصفر بدهد.
 - هیچ task، owner metadata، checkpoint، database، Runner registration یا دادهٔ محلی حذف/بازنویسی نشده است. PR #846 Draft می‌ماند و merge انجام نمی‌شود تا CI و پذیرش میزبان تکمیل شوند.
