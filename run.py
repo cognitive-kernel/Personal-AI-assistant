@@ -1110,18 +1110,47 @@ def main() -> int:
     check_only = "--check-only" in sys.argv[1:]
     try:
         _ensure_dependencies(dev)
-        # Load machine/shared-state overrides before the broker resolves its state root.
-        # The same environment is inherited by the elevated setup process.
-        from dotenv import load_dotenv
-        load_dotenv(ROOT / ".env", override=False)
-        _ensure_state_broker()
+    except (RuntimeError, OSError, urllib.error.URLError) as exc:
+        print(f"وابستگی‌های ضروری برنامه آماده نیستند: {exc}", file=sys.stderr)
+        return 2
+
+    # Load machine/shared-state overrides before the broker resolves its state root.
+    # The same environment is inherited by the elevated setup process.
+    from dotenv import load_dotenv
+    load_dotenv(ROOT / ".env", override=False)
+
+    unavailable_prerequisites: list[str] = []
+    try:
+        if not _ensure_state_broker():
+            unavailable_prerequisites.append("State Broker")
+    except (RuntimeError, OSError, urllib.error.URLError) as exc:
+        unavailable_prerequisites.append("State Broker")
+        print(f"فضای پیشرفت مشترک آماده نیست: {exc}", file=sys.stderr, flush=True)
+
+    try:
         _ensure_ollama()
     except (RuntimeError, OSError, urllib.error.URLError) as exc:
-        print(f"پیش‌نیاز آماده نیست: {exc}", file=sys.stderr)
-        return 2
+        unavailable_prerequisites.append("Ollama")
+        print(f"Ollama آماده نیست: {exc}", file=sys.stderr, flush=True)
+
     if check_only:
+        if unavailable_prerequisites:
+            print(
+                "پیش‌نیازهای آماده‌نشده: " + ", ".join(unavailable_prerequisites),
+                file=sys.stderr,
+                flush=True,
+            )
+            return 2
         print("بررسی و آماده‌سازی پیش‌نیازها کامل شد.")
         return 0
+
+    if unavailable_prerequisites:
+        print(
+            "برنامه در حالت محدود اجرا می‌شود؛ رابط محلی در دسترس خواهد بود و وضعیت پیش‌نیازهای ناقص را نمایش می‌دهد: "
+            + ", ".join(unavailable_prerequisites),
+            file=sys.stderr,
+            flush=True,
+        )
     print("اجرای دستیار ...", flush=True)
     return _run([
         sys.executable, "-m", "uvicorn", "app.main:app",
