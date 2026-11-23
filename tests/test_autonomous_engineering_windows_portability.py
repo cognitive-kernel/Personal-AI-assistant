@@ -298,3 +298,28 @@ def test_powershell_broker_client_reports_health_payload_without_missing_error_p
     assert '$payload.PSObject.Properties[$fieldName]' in client
     assert 'Health: " + ($healthDetails -join ", ")' in client
     assert '$envelope.payload.error' not in client
+
+
+def test_broker_health_exposes_only_safe_acl_failure_reason_codes():
+    service = _read("scripts/AutonomousStateBrokerService.cs")
+    powershell_client = _read("scripts/AutonomousStateBroker.psm1")
+
+    assert '"acl_reason", _lastAclFailureReason' in service
+    for reason in (
+        "expected_sid_manifest_missing",
+        "expected_sid_manifest_invalid",
+        "state_entry_owner_unexpected",
+        "state_root_owner_not_local_service",
+        "state_root_acl_inheritance_enabled",
+        "state_entry_ace_count_mismatch",
+        "state_entry_ace_rights_or_type_mismatch",
+        "state_entry_ace_identity_unexpected_or_duplicate",
+        "state_entry_expected_identity_missing",
+        "state_tree_reparse_point",
+        "state_tree_entry_limit_exceeded",
+        "state_acl_scan_failed",
+    ):
+        assert reason in service
+    assert '"acl_reason"' in powershell_client
+    assert '"acl_reason"' in powershell_client[powershell_client.index('foreach ($fieldName'):powershell_client.index('$detail = if')]
+    assert 'path' not in powershell_client.lower()
