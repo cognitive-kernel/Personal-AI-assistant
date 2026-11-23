@@ -61,11 +61,37 @@ function Invoke-AutonomousStateBroker {
             throw "State broker returned an empty response."
         }
         $envelope = $responseLine | ConvertFrom-Json -ErrorAction Stop
-        if ($null -eq $envelope -or $envelope.version -ne 1 -or $envelope.status -lt 200 -or $envelope.status -ge 300) {
-            $code = if ($envelope.payload.error) { [string]$envelope.payload.error } else { "invalid_response" }
-            throw "State broker request failed ($($envelope.status): $code)."
+        if ($null -eq $envelope -or $envelope.version -ne 1) {
+            throw "State broker returned an invalid response envelope."
         }
-        return $envelope.payload
+        $status = [int]$envelope.status
+        $payload = $envelope.payload
+        if ($status -lt 200 -or $status -ge 300) {
+            $code = "invalid_response"
+            if ($null -ne $payload) {
+                $errorProperty = $payload.PSObject.Properties["error"]
+                if ($null -ne $errorProperty -and -not [string]::IsNullOrWhiteSpace([string]$errorProperty.Value)) {
+                    $code = [string]$errorProperty.Value
+                }
+            }
+
+            $healthDetails = @()
+            foreach ($fieldName in @("ready", "storage_ready", "acl_ready", "schema_version")) {
+                if ($null -ne $payload) {
+                    $field = $payload.PSObject.Properties[$fieldName]
+                    if ($null -ne $field) {
+                        $healthDetails += ($fieldName + "=" + [string]$field.Value)
+                    }
+                }
+            }
+            $detail = if ($healthDetails.Count -gt 0) {
+                " Health: " + ($healthDetails -join ", ") + "."
+            } else {
+                ""
+            }
+            throw "State broker request failed ($status: $code).$detail"
+        }
+        return $payload
     } finally {
         # The service closes its pipe instance after each response. Disposing a
         # writer after that close can surface a harmless broken-pipe flush error.
