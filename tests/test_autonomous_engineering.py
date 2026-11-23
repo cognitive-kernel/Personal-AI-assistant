@@ -2706,3 +2706,31 @@ def test_posix_cleanup_lock_order_is_repository_then_state_then_checkpoint(monke
 
     assert response.status_code == 200
     assert calls == ["repository", "durable-state", "checkpoint"]
+
+
+def test_cancel_prefers_running_workflow_over_a_newer_queued_run(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    # gh run list is newest-first: the queued run is newer than the active run.
+    runs = [
+        {"databaseId": 222, "status": "queued"},
+        {"databaseId": 111, "status": "in_progress"},
+    ]
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "list"]:
+            return subprocess.CompletedProcess(command, 0, json.dumps(runs), "")
+        if command[1:3] == ["run", "cancel"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    result = agent.cancel_autonomous_engineering()
+
+    assert result["run_id"] == 111
+    assert calls[-1][1:3] == ["run", "cancel"]
+    assert calls[-1][3] == "111"
