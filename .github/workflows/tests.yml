@@ -215,7 +215,7 @@ jobs:
       - name: Set up pinned .NET SDK for broker packaging
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.404
+          dotnet-version: 11.0.100
 
       - name: Build and package the Windows machine state broker
         shell: pwsh
