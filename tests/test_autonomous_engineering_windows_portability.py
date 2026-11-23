@@ -372,6 +372,22 @@ def test_windows_broker_installer_uses_verified_prebuilt_binary_without_target_c
     assert 'dotnet-version: 11.0.100' in workflow
 
 
+def test_broker_setup_preflights_package_before_runner_or_acl_mutation():
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+    installer = _read("scripts/AutonomousStateBrokerInstall.psm1")
+
+    package_preflight = ensure.index("$brokerPackage = Get-AutonomousStateBrokerPackage")
+    runner_discovery = ensure.index("$runnerServiceCandidates")
+    runner_stop = ensure.index("Stop-Service -Name $service.Name")
+    state_acl_change = ensure.index("Set-AutonomousDirectoryTreeAcl -Path $stateRoot")
+
+    assert package_preflight < runner_discovery < runner_stop < state_acl_change
+    assert "Get-AutonomousStateBrokerPackage" in installer
+    assert "$serviceSource" not in installer
+    assert "AutonomousStateBrokerService.cs is missing" not in installer
+    assert "csc.exe" not in installer
+
+
 def test_broker_installer_preflights_net48_and_service_control_before_mutation():
     installer = _read("scripts/AutonomousStateBrokerInstall.psm1")
     release_check = installer.index("$frameworkRelease = Get-AutonomousDotNetFrameworkRelease")
