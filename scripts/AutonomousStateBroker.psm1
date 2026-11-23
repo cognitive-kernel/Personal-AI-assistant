@@ -76,7 +76,7 @@ function Invoke-AutonomousStateBroker {
             }
 
             $healthDetails = @()
-            foreach ($fieldName in @("ready", "storage_ready", "acl_ready", "schema_version")) {
+            foreach ($fieldName in @("ready", "storage_ready", "acl_ready", "acl_reason", "schema_version")) {
                 if ($null -ne $payload) {
                     $field = $payload.PSObject.Properties[$fieldName]
                     if ($null -ne $field) {
