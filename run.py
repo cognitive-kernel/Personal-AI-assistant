@@ -1070,7 +1070,7 @@ def _ensure_ollama() -> None:
 def _ensure_state_broker() -> bool:
     """Check/install the machine broker through the native platform adapter."""
     system = platform.system()
-    from app.autonomous_engineering_state_broker import health
+    from app.autonomous_engineering_state_broker import health, request
 
     if health(timeout_ms=30000, verify=True):
         return True
@@ -1145,6 +1145,9 @@ def _ensure_state_broker() -> bool:
         if result.stderr:
             print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n", flush=True)
     if result.returncode != 0:
+        if system == "Windows":
+            log_path = Path(os.environ.get("ProgramData", r"C:\\ProgramData")) / "PersonalAIAssistant" / "Logs" / "state-broker-setup.log"
+            print(f"گزارش تشخیصی Broker (در صورت ایجادشدن): {log_path}", file=sys.stderr, flush=True)
         print(
             "سرویس فضای پیشرفت مشترک نصب/ترمیم نشد؛ برنامه در حالت محدود اجرا می‌شود. "
             "تأیید مجوز مدیر و گزارش راه‌انداز را بررسی کنید.",
@@ -1153,6 +1156,20 @@ def _ensure_state_broker() -> bool:
         )
         return False
     if not health(timeout_ms=30000, verify=True):
+        try:
+            detail = request("GET", "/v1/health/verify", timeout_ms=30000)
+            safe_fields = {
+                key: detail.get(key)
+                for key in ("ready", "storage_ready", "acl_ready", "acl_reason", "schema_version")
+                if isinstance(detail, dict) and key in detail
+            }
+            print(f"جزئیات سلامت Broker: {safe_fields}", file=sys.stderr, flush=True)
+        except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
+            print(
+                f"Broker پس از نصب از Named Pipe پاسخ نداد: {type(exc).__name__}: {str(exc)[:240]}",
+                file=sys.stderr,
+                flush=True,
+            )
         print("Broker پس از نصب از کانال محلی پاسخ سالم نداد؛ برنامه در حالت محدود اجرا می‌شود.", file=sys.stderr, flush=True)
         return False
     return True
