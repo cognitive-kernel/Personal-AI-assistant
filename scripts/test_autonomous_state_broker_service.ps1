@@ -40,6 +40,10 @@ try {
 
     New-Item -ItemType Directory -Path $serviceRoot, $stateRoot, (Join-Path $stateRoot "run-diagnostics") -Force | Out-Null
     Copy-Item -LiteralPath $servicePackage -Destination $serviceExe -Force
+    $stagedHash = (Get-FileHash -LiteralPath $serviceExe -Algorithm SHA256 -ErrorAction Stop).Hash
+    if (-not [string]::Equals($stagedHash, $expectedHash, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "The staged CI broker binary failed SHA-256 verification."
+    }
     & icacls.exe $serviceRoot /grant:r "*$($brokerSid):(OI)(CI)RX" /T /C /Q | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Could not grant LocalService read/execute access to the test service binary." }
     [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", $stateRoot, "Machine")
