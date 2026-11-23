@@ -9,7 +9,7 @@ function Invoke-AutonomousStateBroker {
     )
 
     $allowed = (
-        $Method -eq "GET" -and $Path -in @("/v1/health", "/v1/pending-work", "/v1/progress")
+        $Method -eq "GET" -and $Path -in @("/v1/health", "/v1/health/verify", "/v1/pending-work", "/v1/progress")
     ) -or (
         $Method -eq "GET" -and $Path -match "^/v1/diagnostics/[0-9]{1,20}$"
     ) -or (
