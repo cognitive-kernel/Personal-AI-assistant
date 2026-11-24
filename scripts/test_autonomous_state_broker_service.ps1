@@ -88,7 +88,7 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
     }
     "busy" {
         try {
-            $lock = Enter-AutonomousStateBrokerSetupMutex -Name $env:STATE_BROKER_LOCK_NAME
+            $lock = Enter-AutonomousStateBrokerSetupMutex -Name $env:STATE_BROKER_LOCK_NAME -MarkerRegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY
             Exit-AutonomousStateBrokerSetupMutex -Lock $lock
             throw "A second process acquired the State Broker setup mutex while the owner was alive."
         } catch {
