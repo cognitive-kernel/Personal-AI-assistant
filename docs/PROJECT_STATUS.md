@@ -1,3 +1,14 @@
+## 2026-11-24 — اصلاح مجوز خواندن زندهٔ Pause و Execution Mode
+
+- مبنای فعلی بررسی‌شدهٔ `main`: `ff90d2e3745cb8b2d8dfb08d7b9baddef903d1f1`.
+- PRهای مرتبط در زمان این snapshot: #863، #866، #869 و #870 باز هستند؛ #864 و #868 بسته شده‌اند. وضعیت بسته‌شدن به‌تنهایی به‌عنوان ادغام یا پذیرش عملیاتی تفسیر نمی‌شود.
+- نقص جدید در stack مربوط به #866/#870: مرحلهٔ live gate از `github.token` برای خواندن `/actions/variables/{name}` استفاده می‌کرد؛ اما فهرست رسمی permissionهای `GITHUB_TOKEN` شامل `Variables: read` نیست. API خواندن متغیرهای repository به این permission نیاز دارد؛ بنابراین این مسیر نمی‌تواند مبنای قابل اتکای live Pause/Mode باشد.
+- اصلاح در branch `fix/recovered-pr-chain-live-pause-gate-20261124`: مرحلهٔ post-concurrency اکنون credential احرازشدهٔ GitHub CLI حساب سرویس Runner را فقط برای GET هویت repository و متغیرهای Actions به‌کار می‌برد. `GITHUB_TOKEN` برای عملیات workflow/controller جدا می‌ماند. نبودن احراز هویت یا مجوز خواندن متغیرها fail-closed است.
+- regression contract تست، منبع token را از `gh auth token --hostname github.com` الزام می‌کند و استفاده از `github.token` در Authorization این gate را رد می‌کند.
+- exact-head CI و تأیید روی Runner واقعی برای `gh auth token` و خواندن دو متغیر هنوز pending است؛ تا آن زمان PR #870 Draft می‌ماند و هیچ merge مجاز نیست. هیچ workflow یا task واقعی اجرا نشده و هیچ متغیر Pause/Mode، task، checkpoint، PR، Runner، ACL، database یا دادهٔ کاربر تغییر نکرده است.
+
+---
+
 ## 2026-11-24 — وضعیت زندهٔ Autonomous Engineering و اصلاحات در حال اعتبارسنجی
 
 - SHA فعلی `main`: `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`.
