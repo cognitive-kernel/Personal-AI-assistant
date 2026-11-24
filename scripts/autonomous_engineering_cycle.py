@@ -499,11 +499,16 @@ def run_cycle(args: argparse.Namespace) -> int:
                 status="completed",
             )
             snapshot(args.run_id, args.run_attempt)
-            if args.mode == "continuous":
-                api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {
-                    "ref": "main",
-                    "inputs": {"manual_task": "", "correlation_id": getattr(args, "correlation_id", "")},
-                })
+            if _dispatch_next_cycle_if_enabled(token, repo, args):
+                print(
+                    f"Recovered owner-merged PR #{recovered['number']}; "
+                    "next cycle dispatched after live Pause/mode verification."
+                )
+            elif args.mode == "continuous":
+                print(
+                    f"Recovered owner-merged PR #{recovered['number']}; "
+                    "no next cycle was dispatched because live mode/Pause blocked it or could not be verified."
+                )
             return 0
         if current_pending.get("state") == "open":
             record(
