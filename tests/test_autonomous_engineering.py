@@ -40,6 +40,58 @@ def _stub_durable_pending_work_status(monkeypatch):
     })
 
 
+
+def test_dispatch_admission_lock_persists_timestamp_and_excludes_overlap(monkeypatch, tmp_path):
+    from app import autonomous_engineering_dispatch_lock as dispatch_lock
+
+    monkeypatch.setattr(dispatch_lock, "execution_state_directory", lambda: tmp_path)
+    with dispatch_lock.dispatch_admission_lock() as state:
+        assert state["last_accepted_at"] == 0
+        state["last_accepted_at"] = 1_800_000_000.0
+        with pytest.raises(RuntimeError, match="Another process"):
+            with dispatch_lock.dispatch_admission_lock():
+                pytest.fail("A second admission owner must not enter")
+    with dispatch_lock.dispatch_admission_lock() as restored:
+        assert restored["last_accepted_at"] == 1_800_000_000.0
+
+
+def test_maintenance_lock_excludes_new_repository_execution(monkeypatch, tmp_path):
+    from app import autonomous_engineering_maintenance_lock as maintenance_lock
+    from app import autonomous_engineering_execution_lock as execution_lock
+
+    monkeypatch.setattr(maintenance_lock, "execution_state_directory", lambda: tmp_path)
+    monkeypatch.setattr(execution_lock, "execution_state_directory", lambda: tmp_path)
+    with maintenance_lock.maintenance_admission_lock():
+        with pytest.raises(RuntimeError, match="Another autonomous execution owns"):
+            with maintenance_lock.maintenance_admission_lock(timeout_seconds=0):
+                pytest.fail("Concurrent maintenance must be excluded")
+
+
+def test_dispatch_grace_window_is_shared_by_separate_requests(monkeypatch):
+    state = {"last_accepted_at": 0.0}
+    calls = []
+    @contextmanager
+    def shared_lock():
+        yield state
+
+    monkeypatch.setattr(agent, "dispatch_admission_lock", shared_lock)
+    monkeypatch.setattr(agent, "collect_status", lambda: {
+        "ready": True, "paused": False,
+        "github": {"runs_available": True, "recent_runs": []},
+        "pending_work": {"available": True, "blocked": False, "checkpoint": {"available": False}},
+    })
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "_run", lambda command, timeout=8, **kwargs: (
+        calls.append(command) or subprocess.CompletedProcess(command, 0, "[]", "")
+    ))
+    first = agent.dispatch_autonomous_engineering()
+    assert first["accepted"] is True
+    with pytest.raises(HTTPException) as error:
+        agent.dispatch_autonomous_engineering()
+    assert error.value.status_code == 409
+    assert error.value.headers["X-Error-Code"] == "AUTONOMOUS_DISPATCH_RECENTLY_ACCEPTED"
+    assert sum(command[1:3] == ["workflow", "run"] for command in calls) == 1
+
 @pytest.mark.parametrize(
     ("status_code", "expected_code"),
     [
