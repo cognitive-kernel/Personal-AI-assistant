@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from enum import Enum
 from pathlib import Path
 
 
@@ -13,17 +14,48 @@ def snapshot(run_id: str, attempt: str, *, checked, python_executable: str) -> N
     ])
 
 
-def task_marker(report: Path, markers) -> str:
+class TaskReportFailureKind(str, Enum):
+    NO_LAST_AGENT_MESSAGE = "no_last_agent_message"
+    MISSING_TERMINAL_MARKER = "missing_terminal_marker"
+    MARKER_NOT_FINAL_LINE = "marker_not_final_line"
+
+
+class TaskReportError(RuntimeError):
+    def __init__(self, kind: TaskReportFailureKind, message: str):
+        super().__init__(message)
+        self.kind = kind
+
+
+_TERMINAL_MARKER = re.compile(r"(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)", re.IGNORECASE)
+_ANY_MARKER = re.compile(r"(?i)\b(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)\b")
+
+
+def task_marker(report: Path, markers=None) -> str:
     try:
-        matches = markers.findall(report.read_text(encoding="utf-8-sig"))
+        content = report.read_text(encoding="utf-8-sig")
     except (OSError, UnicodeError) as exc:
-        raise RuntimeError("Codex did not produce a readable final task report.") from exc
-    if len(matches) != 1:
-        raise RuntimeError(
-            "Codex report must contain exactly one valid completion marker "
-            f"(found {len(matches)})."
+        raise TaskReportError(
+            TaskReportFailureKind.NO_LAST_AGENT_MESSAGE,
+            "Codex produced no readable final agent message for this task.",
+        ) from exc
+    lines = [line.strip() for line in content.splitlines() if line.strip()]
+    if not lines:
+        raise TaskReportError(
+            TaskReportFailureKind.NO_LAST_AGENT_MESSAGE,
+            "Codex produced no final agent message; the output-last-message report is empty.",
         )
-    return matches[0].upper()
+    terminal = _TERMINAL_MARKER.fullmatch(lines[-1])
+    if terminal:
+        return terminal.group(1).upper()
+    if _ANY_MARKER.search(content):
+        raise TaskReportError(
+            TaskReportFailureKind.MARKER_NOT_FINAL_LINE,
+            "Codex completion marker must be the final non-empty report line with no Markdown or punctuation.",
+        )
+    raise TaskReportError(
+        TaskReportFailureKind.MISSING_TERMINAL_MARKER,
+        "Codex final report is present but has no valid terminal completion marker.",
+    )
 
 
 def changed_paths(*, checked, runtime_files) -> list[str]:

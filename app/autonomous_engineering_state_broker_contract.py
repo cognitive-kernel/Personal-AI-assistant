@@ -39,3 +39,28 @@ def validate_task_request(method: Any, path: Any, body: Any = None) -> dict[str,
     if not isinstance(revision, str) or not REVISION_PATTERN.fullmatch(revision):
         raise ValueError("Invalid pending-task revision token.")
     return {"task_id": task_id, "revision": revision}
+
+
+
+DISPATCH_REQUEST_ID_PATTERN = re.compile(r"^[a-f0-9]{32}$")
+
+
+def validate_dispatch_admission_request(method: Any, path: Any, body: Any) -> dict[str, Any]:
+    """Validate the two-phase dispatch reservation contract."""
+    if method != "POST" or path not in {
+        "/v1/dispatch-admission/acquire",
+        "/v1/dispatch-admission/complete",
+    }:
+        raise ValueError("Unsupported dispatch-admission operation.")
+    expected = {"request_id"} if path.endswith("/acquire") else {"request_id", "accepted"}
+    if not isinstance(body, dict) or set(body) != expected:
+        raise ValueError("Invalid dispatch-admission request body.")
+    request_id = body.get("request_id")
+    if not isinstance(request_id, str) or not DISPATCH_REQUEST_ID_PATTERN.fullmatch(request_id):
+        raise ValueError("Invalid dispatch-admission request identifier.")
+    if path.endswith("/complete"):
+        accepted = body.get("accepted")
+        if not isinstance(accepted, bool):
+            raise ValueError("Dispatch-admission completion requires a boolean accepted value.")
+        return {"request_id": request_id, "accepted": accepted}
+    return {"request_id": request_id}

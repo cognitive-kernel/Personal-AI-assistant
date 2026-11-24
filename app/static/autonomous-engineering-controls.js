@@ -166,7 +166,7 @@
       await status.refresh(true);
       setMessage((result.message || "وظیفه برای عامل ارسال شد.") + (result.correlation_id ? " · شناسهٔ پیگیری: " + result.correlation_id : ""), "success");
     } catch (error) {
-      if (error.ambiguous || error.retryable || error.status >= 500) status.lockDispatchVisibilityWindow();
+      if (error.ambiguous || (error.status >= 500 && !error.retryable)) status.lockDispatchVisibilityWindow();
       const detail = error.message || "ارسال وظیفه ناموفق بود.";
       await status.refresh(true);
       setMessage(detail, "error");
@@ -187,7 +187,7 @@
       await status.refresh(true);
       setMessage((result.message || "درخواست ارسال شد.") + (result.correlation_id ? " · شناسهٔ پیگیری: " + result.correlation_id : ""), "success");
     } catch (error) {
-      if (error.ambiguous || error.retryable || error.status >= 500) status.lockDispatchVisibilityWindow();
+      if (error.ambiguous || (error.status >= 500 && !error.retryable)) status.lockDispatchVisibilityWindow();
       const detail = error.message || "ارسال درخواست ناموفق بود.";
       await status.refresh(true);
       setMessage(detail, "error");
@@ -216,21 +216,29 @@
       await status.refresh(true);
       setMessage((result.message || "ادامهٔ صف درخواست شد.") + (result.correlation_id ? " · شناسهٔ پیگیری: " + result.correlation_id : ""), "success");
     } catch (error) {
-      if (error.ambiguous || error.retryable || error.status >= 500) status.lockDispatchVisibilityWindow();
+      if (error.ambiguous || (error.status >= 500 && !error.retryable)) status.lockDispatchVisibilityWindow();
       const detail = error.message || "ادامهٔ صف ثبت نشد.";
       await status.refresh(true);
       setMessage(detail, "error");
     }
   });
   cancelButton.addEventListener("click", async () => {
-    if (!window.confirm("اجرای فعال عامل در GitHub Actions لغو شود؟")) return;
+    const runId = status.getActiveRunId();
+    if (!Number.isSafeInteger(runId) || runId <= 0) {
+      setMessage("شناسهٔ اجرای فعال در snapshot معتبر نیست؛ ابتدا وضعیت را بازخوانی کنید.", "error");
+      return;
+    }
+    if (!window.confirm("فقط اجرای فعال #" + runId + " در GitHub Actions لغو شود؟")) return;
     cancelButton.disabled = true;
     try {
-      const result = await request("cancel", {method: "POST"});
+      const result = await request("cancel", {
+        method: "POST",
+        body: JSON.stringify({run_id: runId})
+      });
       await status.refresh(true);
-      setMessage(result.message || "درخواست لغو ارسال شد.", "success");
+      setMessage(result.message || ("درخواست لغو اجرای #" + runId + " ارسال شد."), "success");
     } catch (error) {
-      const detail = error.message || "لغو اجرای فعال ناموفق بود.";
+      const detail = error.message || "لغو اجرای انتخاب‌شده ناموفق بود.";
       await status.refresh(true);
       setMessage(detail, "error");
     }

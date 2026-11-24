@@ -49,3 +49,17 @@ def test_sandbox_smoke_keeps_its_strict_short_stream_profile(monkeypatch, tmp_pa
     assert "model_providers.ollama-local.stream_max_retries=0" in overrides
     assert "model_providers.ollama-local.request_max_retries=0" in overrides
     assert not any("stream_idle_timeout_ms=900000" in value for value in overrides)
+
+
+
+def test_report_only_codex_attempt_can_override_runner_timeout():
+    command = config.codex_command("codex", ["exec", "--output-last-message", "report.md"], timeout_seconds=600)
+    assert command[command.index("--timeout-seconds") + 1] == "600"
+
+
+def test_codex_runner_rejects_invalid_timeout_override():
+    import pytest
+
+    for invalid in (0, -1, True, "600"):
+        with pytest.raises(ValueError, match="positive integer"):
+            config.codex_command("codex", ["exec"], timeout_seconds=invalid)

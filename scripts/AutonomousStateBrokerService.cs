@@ -218,7 +218,9 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             ? rawBody as Dictionary<string, object> : null;
         bool taskEndpoint = path == "/v1/tasks/pending" || path == "/v1/tasks/archived" ||
             path == "/v1/tasks/archive" || path == "/v1/tasks/restore";
-        if (request.ContainsKey("body") && (!taskEndpoint || body == null))
+        bool dispatchAdmissionEndpoint = path == "/v1/dispatch-admission/acquire" ||
+            path == "/v1/dispatch-admission/complete";
+        if (request.ContainsKey("body") && ((!taskEndpoint && !dispatchAdmissionEndpoint) || body == null))
         {
             WriteResponse(pipe, 400, Error("request_body_not_supported"));
             return;
@@ -229,6 +231,14 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             int taskStatus;
             HandlePendingTaskRequest(method, path, body, out taskStatus, out taskResult);
             WriteResponse(pipe, taskStatus, taskResult);
+            return;
+        }
+        if (dispatchAdmissionEndpoint)
+        {
+            object admissionResult;
+            int admissionStatus;
+            HandleDispatchAdmission(method, path, body, out admissionStatus, out admissionResult);
+            WriteResponse(pipe, admissionStatus, admissionResult);
             return;
         }
 
@@ -1407,6 +1417,163 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             };
         }
         catch { return null; }
+    }
+
+    private static bool TryFiniteNumber(object value, out double number)
+    {
+        number = 0;
+        if (value == null || value is Boolean) return false;
+        try { number = Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture); }
+        catch { return false; }
+        return !Double.IsNaN(number) && !Double.IsInfinity(number) && number >= 0;
+    }
+
+    private static double UtcUnixSeconds()
+    {
+        return (DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds;
+    }
+
+    private void HandleDispatchAdmission(
+        string method, string path, Dictionary<string, object> body,
+        out int status, out object result)
+    {
+        status = 400;
+        result = Error("invalid_dispatch_admission_request");
+        if (!String.Equals(method, "POST", StringComparison.OrdinalIgnoreCase) || body == null) return;
+        string[] expected = path == "/v1/dispatch-admission/acquire"
+            ? new[] { "request_id" }
+            : path == "/v1/dispatch-admission/complete"
+                ? new[] { "request_id", "accepted" }
+                : new string[0];
+        if (expected.Length == 0 || body.Count != expected.Length || expected.Any(key => !body.ContainsKey(key))) return;
+        string requestId = body["request_id"] as string;
+        if (String.IsNullOrEmpty(requestId) || requestId.Length != 32 ||
+            requestId.Any(ch => !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')))) return;
+        bool accepted = false;
+        if (path.EndsWith("/complete", StringComparison.Ordinal))
+        {
+            if (!(body["accepted"] is Boolean)) return;
+            accepted = (Boolean)body["accepted"];
+        }
+
+        try
+        {
+            result = WithStateLock(delegate
+            {
+                string statePath = Path.Combine(_stateDirectory, "workflow-dispatch-admission.json");
+                Dictionary<string, object> state = null;
+                if (SafeFileExists(statePath))
+                {
+                    state = ReadJsonFile("workflow-dispatch-admission.json", 4096) as Dictionary<string, object>;
+                    if (state == null) return new Dictionary<string, object> { { "error", "dispatch_admission_state_invalid" } };
+                }
+                if (state == null)
+                    state = new Dictionary<string, object> {
+                        { "schema_version", 1 }, { "last_accepted_at", 0.0 }, { "pending", null }
+                    };
+                object rawSchema, rawLast, rawPending;
+                double lastAccepted;
+                if (state.Count != 3 || !state.TryGetValue("schema_version", out rawSchema) || Convert.ToInt32(rawSchema) != 1 ||
+                    !state.TryGetValue("last_accepted_at", out rawLast) || !TryFiniteNumber(rawLast, out lastAccepted) ||
+                    !state.TryGetValue("pending", out rawPending))
+                    return new Dictionary<string, object> { { "error", "dispatch_admission_state_invalid" } };
+                Dictionary<string, object> pending = rawPending as Dictionary<string, object>;
+                if (rawPending != null && pending == null)
+                    return new Dictionary<string, object> { { "error", "dispatch_admission_state_invalid" } };
+
+                double now = UtcUnixSeconds();
+                if (path.EndsWith("/acquire", StringComparison.Ordinal))
+                {
+                    if (pending != null)
+                    {
+                        double createdAt, expiresAt;
+                        object rawCreated, rawExpires, rawId;
+                        if (pending.Count != 3 ||
+                            !pending.TryGetValue("request_id", out rawId) ||
+                            !pending.TryGetValue("created_at", out rawCreated) || !TryFiniteNumber(rawCreated, out createdAt) ||
+                            !pending.TryGetValue("lease_expires_at", out rawExpires) || !TryFiniteNumber(rawExpires, out expiresAt) ||
+                            !(rawId is string) || ((string)rawId).Length != 32 ||
+                            ((string)rawId).Any(ch => !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'))) ||
+                            expiresAt <= createdAt)
+                            return new Dictionary<string, object> { { "error", "dispatch_admission_state_invalid" } };
+                        if (now < expiresAt)
+                        {
+                            status = 409;
+                            return new Dictionary<string, object> {
+                                { "conflict", true }, { "message", "dispatch_admission_conflict" },
+                                { "blockers", new[] { "dispatch_reservation_active" } }
+                            };
+                        }
+                        // An expired caller may have dispatched before it died.
+                        // Start a fresh grace interval from lease recovery.
+                        lastAccepted = Math.Max(lastAccepted, now);
+                        pending = null;
+                        WriteAtomic(statePath, Encoding.UTF8.GetBytes(_json.Serialize(new Dictionary<string, object> {
+                            { "schema_version", 1 }, { "last_accepted_at", lastAccepted }, { "pending", null }
+                        })));
+                    }
+                    if (lastAccepted > 0 && (now < lastAccepted || now - lastAccepted < 30.0))
+                    {
+                        status = 409;
+                        return new Dictionary<string, object> {
+                            { "conflict", true }, { "message", "dispatch_admission_conflict" },
+                            { "blockers", new[] { "dispatch_recently_accepted" } }
+                        };
+                    }
+                    Dictionary<string, object> next = new Dictionary<string, object> {
+                        { "schema_version", 1 },
+                        { "last_accepted_at", lastAccepted },
+                        { "pending", new Dictionary<string, object> {
+                            { "request_id", requestId }, { "created_at", now }, { "lease_expires_at", now + 120.0 }
+                        } }
+                    };
+                    WriteAtomic(statePath, Encoding.UTF8.GetBytes(_json.Serialize(next)));
+                    status = 200;
+                    return new Dictionary<string, object> { { "acquired", true }, { "last_accepted_at", lastAccepted }, { "lease_seconds", 120 } };
+                }
+
+                if (pending == null || !String.Equals(Convert.ToString(pending.ContainsKey("request_id") ? pending["request_id"] : null), requestId, StringComparison.Ordinal))
+                {
+                    status = 409;
+                    return new Dictionary<string, object> {
+                        { "conflict", true }, { "message", "dispatch_admission_lease_not_owned" },
+                        { "blockers", new[] { "dispatch_admission_lease_not_owned" } }
+                    };
+                }
+                if (accepted) lastAccepted = now;
+                Dictionary<string, object> completed = new Dictionary<string, object> {
+                    { "schema_version", 1 }, { "last_accepted_at", lastAccepted }, { "pending", null }
+                };
+                WriteAtomic(statePath, Encoding.UTF8.GetBytes(_json.Serialize(completed)));
+                status = 200;
+                return new Dictionary<string, object> { { "completed", true }, { "last_accepted_at", lastAccepted } };
+            }, 2000);
+            if (result is Dictionary<string, object>)
+            {
+                Dictionary<string, object> response = (Dictionary<string, object>)result;
+                if (response.ContainsKey("error"))
+                {
+                    status = 503;
+                }
+                else if (response.ContainsKey("conflict") && Convert.ToBoolean(response["conflict"]))
+                {
+                    status = 409;
+                }
+            }
+        }
+        catch (System.TimeoutException)
+        {
+            status = 409;
+            result = new Dictionary<string, object> {
+                { "conflict", true }, { "message", "dispatch_admission_state_busy" },
+                { "blockers", new[] { "dispatch_admission_state_busy" } }
+            };
+        }
+        catch (Exception)
+        {
+            status = 503;
+            result = Error("dispatch_admission_state_unavailable");
+        }
     }
 
     private object CleanupProgress()

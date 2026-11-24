@@ -50,6 +50,39 @@ def test_task_marker_rejects_missing_or_ambiguous_marker(tmp_path: Path, report:
         cycle.task_marker(path)
 
 
+def test_task_marker_classifies_empty_report_missing_marker_and_nonterminal_marker(tmp_path: Path):
+    from scripts.autonomous_engineering_cycle_workspace import TaskReportError, TaskReportFailureKind
+
+    report = tmp_path / "report.md"
+    report.write_text("", encoding="utf-8")
+    with pytest.raises(TaskReportError) as empty:
+        cycle.task_marker(report)
+    assert empty.value.kind == TaskReportFailureKind.NO_LAST_AGENT_MESSAGE
+
+    report.write_text("Implementation summary without a marker.\n", encoding="utf-8")
+    with pytest.raises(TaskReportError) as missing:
+        cycle.task_marker(report)
+    assert missing.value.kind == TaskReportFailureKind.MISSING_TERMINAL_MARKER
+
+    report.write_text("TASK_COMPLETE\nMore prose after the marker.\n", encoding="utf-8")
+    with pytest.raises(TaskReportError) as misplaced:
+        cycle.task_marker(report)
+    assert misplaced.value.kind == TaskReportFailureKind.MARKER_NOT_FINAL_LINE
+
+    report.write_text("- quoted marker: TASK_COMPLETE\nMore prose after the quote.\n", encoding="utf-8")
+    with pytest.raises(TaskReportError) as quoted:
+        cycle.task_marker(report)
+    assert quoted.value.kind == TaskReportFailureKind.MARKER_NOT_FINAL_LINE
+
+    report.write_text("TASK_COMPLETE.\n", encoding="utf-8")
+    with pytest.raises(TaskReportError) as punctuation:
+        cycle.task_marker(report)
+    assert punctuation.value.kind == TaskReportFailureKind.MARKER_NOT_FINAL_LINE
+
+    report.write_text("- quoted marker: TASK_COMPLETE\nTASK_BLOCKED\n", encoding="utf-8")
+    assert cycle.task_marker(report) == "TASK_BLOCKED"
+
+
 def test_validate_paths_accepts_only_reviewable_project_paths():
     cycle.validate_paths(["app/example.py", "tests/test_example.py", "docs/example.md", "scripts/example.py"])
 
@@ -207,9 +240,11 @@ def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
         lambda *args: (_ for _ in ()).throw(AssertionError("invalid report must not clear the task checkpoint")),
     )
     calls = {"codex": 0}
+    codex_invocations = []
 
     def fake_run(command, *, env=None, capture=False, timeout_seconds=None):
         assert any("autonomous_engineering_progress.py" in str(part) for part in command)
+        codex_invocations.append((command, capture, timeout_seconds))
         calls["codex"] += 1
         if calls["codex"] == 1:
             report = Path(command[command.index("--report") + 1])
@@ -229,18 +264,85 @@ def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
     retry_prompt = tmp_path / "codex-retry-prompt-1-2.md"
     retry_text = retry_prompt.read_text(encoding="utf-8")
     assert calls["codex"] == 2
-    assert "exactly one valid completion marker" in retry_text
+    assert codex_invocations[0][1] is True
+    assert "--timeout-seconds" not in codex_invocations[0][0]
+    assert codex_invocations[1][1] is True
+    timeout_index = codex_invocations[1][0].index("--timeout-seconds")
+    assert 1 <= int(codex_invocations[1][0][timeout_index + 1]) <= 600
+    assert codex_invocations[1][2] <= 630
+    assert "valid terminal completion marker" in retry_text
     assert "do not reset or discard the existing worktree/checkpoint" in retry_text
     assert "do not repeat implementation or rerun broad tests" in retry_text
     assert "Fix the root cause, add or update regression tests" not in retry_text
     assert cycle.CODEX_RETRY_POLICY.max_elapsed_seconds == 45 * 60
     assert cycle.TASK_RETRY_POLICY.max_elapsed_seconds == 90 * 60
-    assert "on its own final line" in retry_text
+    assert "last non-empty line is exactly one plain marker" in retry_text
     assert "TASK_COMPLETE, QUEUE_EMPTY, TASK_BLOCKED" in retry_text
     assert "Continue the SAME task" in retry_text
     assert len(stopped) == 2
     assert prompt.read_text(encoding="utf-8") == "Complete the selected task."
     assert cycle.load_pending_pr() is None
+
+
+def test_run_cycle_stops_without_blind_retry_when_codex_has_no_final_agent_message(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path,
+):
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("Complete the selected task.", encoding="utf-8")
+    monkeypatch.setattr(cycle, "ROOT", tmp_path)
+    monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
+    monkeypatch.setenv("GH_REPO", "owner/repository")
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
+    state_root = shared_state_tmp_path / "autonomous-state"
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(state_root))
+    monkeypatch.setattr(cycle, "start_checkpoint_watcher", lambda *args: None)
+    stopped = []
+    monkeypatch.setattr(cycle, "stop_checkpoint_watcher", lambda *args: stopped.append(args))
+    monkeypatch.setattr(cycle, "record", lambda *args, **kwargs: None)
+    monkeypatch.setattr(cycle, "snapshot", lambda *args: None)
+    monkeypatch.setattr(cycle, "api", lambda *args, **kwargs: [])
+    monkeypatch.setattr(cycle, "find_open_autonomous_pr", lambda *args: None)
+    monkeypatch.setattr(cycle, "restore_checkpoint", lambda *args: False)
+    monkeypatch.setattr(cycle, "checked", lambda command, **kwargs: (
+        "base-sha" if command[:3] == ["git", "rev-parse", "HEAD"]
+        else "codex/local-engineering-123-1-task-1" if command[1:3] == ["branch", "--show-current"]
+        else ""
+    ))
+    calls = []
+
+    def fake_run(command, *, env=None, capture=False, timeout_seconds=None):
+        calls.append(command)
+        report = Path(command[command.index("--report") + 1])
+        report.with_suffix(report.suffix + ".status.json").write_text(json.dumps({
+            "schema_version": 1,
+            "final_agent_message_present": False,
+            "missing_message_reason": "turn_failed_or_tool_error",
+            "turn_completed": False,
+            "turn_failed": True,
+            "jsonl_event_count": 19,
+            "process_exit_code": 1,
+        }), encoding="utf-8")
+        return subprocess.CompletedProcess(command, 1, "", "tool call did not complete")
+
+    monkeypatch.setattr(cycle, "run", fake_run)
+    args = type("Args", (), {
+        "run_id": "123", "run_attempt": "1", "model": "test-model",
+        "prompt": str(prompt), "mode": "continuous",
+    })()
+    with pytest.raises(RuntimeError, match="no final agent message"):
+        cycle.run_cycle(args)
+
+    assert len(calls) == 1
+    assert len(stopped) == 1
+    saved = json.loads((state_root / "run-diagnostics" / "123.json").read_text(encoding="utf-8"))
+    entry = saved["diagnostics"][-1]
+    assert entry["category"] == "no_last_agent_message"
+    assert "reason=turn_failed_or_tool_error" in entry["summary"]
+    assert "turn_failed=True" in entry["summary"]
+    assert "jsonl_event_count=19" in entry["summary"]
+    assert "tool call did not complete" in entry["detail"]
+    assert prompt.read_text(encoding="utf-8") == "Complete the selected task."
 
 
 def test_run_cycle_bounds_failed_codex_attempts_and_preserves_task(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path):
@@ -291,6 +393,11 @@ def test_run_cycle_bounds_failed_codex_attempts_and_preserves_task(monkeypatch: 
 
     assert calls["codex"] == 2
     assert len(stopped) == 2
+    retry_prompt = tmp_path / "codex-retry-prompt-1-2.md"
+    retry_text = retry_prompt.read_text(encoding="utf-8")
+    assert "Codex process exited with code 1" in retry_text
+    assert "simulated Codex failure" in retry_text
+    assert "Sanitized diagnostic from the failed Codex attempt" in retry_text
     assert prompt.read_text(encoding="utf-8") == "Complete the selected task."
 
 
@@ -1697,7 +1804,7 @@ def test_persist_run_diagnostic_appends_redacted_report_details(
         "12345", "1", task=1, attempt=2,
         stage="codex_decision", category="task_blocked",
         summary="Codex marked task 1 as blocked.",
-        detail="The sandbox policy rejected the requested operation. Bearer bearer-secret-value ghp_0123456789abcdefghijklmnopqrstuvwxyz password=hunter2 OPENAI_API_KEY=sk-test-value CLIENT_SECRET=client-secret-value",
+        detail="The sandbox policy rejected the requested operation. Bearer bearer-secret-value Authorization: Basic dXNlcjpwYXNzd29yZA== ghp_0123456789abcdefghijklmnopqrstuvwxyz sk-proj-0123456789abcdefghijklmnopqrstuv eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.signaturelongtoken password=hunter2 OPENAI_API_KEY=sk-test-value CLIENT_SECRET=client-secret-value",
     )
     assert cycle.persist_run_diagnostic(
         "12345", "1", task=1, attempt=2,
@@ -1717,6 +1824,10 @@ def test_persist_run_diagnostic_appends_redacted_report_details(
     detail = saved["diagnostics"][0]["detail"]
     assert "sandbox policy rejected" in detail
     assert "bearer-secret-value" not in detail
+    assert "dXNlcjpwYXNzd29yZA==" not in detail
+    assert "sk-proj-0123456789abcdefghijklmnopqrstuv" not in detail
+    assert "eyJhbGciOiJIUzI1NiJ9" not in detail
+    assert "signaturelongtoken" not in detail
     assert "ghp_0123456789abcdefghijklmnopqrstuvwxyz" not in detail
     assert "hunter2" not in detail
     assert "sk-test-value" not in detail

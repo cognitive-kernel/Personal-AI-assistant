@@ -240,3 +240,14 @@ The workflow-context Pause and execution-mode values are only early admission hi
 
 An absent Pause variable (HTTP 404) means the documented default false; an absent execution-mode variable means continuous. Any other API failure, malformed response, or unsupported value fails closed and prevents a new task/recovery dispatch. When live mode is scheduled, queued push/schedule runs and automatic recovery runs are skipped; explicit manual tasks remain allowed; the Resume endpoint marks its single empty-task dispatch with the explicit resume_once input so an automatic chain cannot masquerade as a one-shot resume. A pause received after a task has already begun does not terminate that task; it prevents the next task from starting after the current safe boundary.
 
+## Dashboard dispatch and cleanup admission
+
+The dashboard passes workflow-dispatch inputs with GitHub CLI --raw-field, never --field. Manual task text and correlation IDs are opaque strings; they must not be expanded as local @path files or coerced into typed field values.
+
+Both /dispatch and /resume use the protected State Broker's two-phase dispatch reservation. POST /v1/dispatch-admission/acquire reserves a short-lived request ID under the broker durable-state lock; the caller then reports accepted/ambiguous or definitive failure through POST /v1/dispatch-admission/complete. The broker persists the last accepted timestamp, prevents overlapping reservations across app workers and restarts, and applies a 30-second grace window. An abandoned 120-second lease is recovered conservatively as an ambiguous dispatch and starts a fresh grace interval. The application account never reads or writes the protected Windows state directory directly.
+
+Resume reuses the same readiness, active-run, pending-work, checkpoint-integrity and admission checks as dispatch. It marks the workflow input resume_once=true and clears AUTONOMOUS_ENGINEERING_PAUSED only after GitHub accepts the one-shot workflow dispatch. An unknown dispatch result remains non-retryable and leaves Pause enabled.
+
+The Cancel action submits the run ID from the UI's last successful snapshot. The API fetches that exact run, verifies the expected workflow path and confirms it is still active before sending the cancel request for the same ID.
+
+On Windows, cleanup delegates admission to the protected Broker. The Broker acquires repository, durable-state and checkpoint-store locks and checks active/unknown progress before removing files; the dashboard does not use an unlocked GitHub run-list preflight as its safety authority. POSIX performs the active-run check again while holding the repository execution lock.
