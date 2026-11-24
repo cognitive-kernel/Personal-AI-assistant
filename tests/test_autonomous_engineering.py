@@ -407,6 +407,56 @@ def test_resume_unpauses_existing_active_run_without_dispatching_duplicate(monke
     assert pause_update[3:6] == ["AUTONOMOUS_ENGINEERING_PAUSED", "--body", "false"]
 
 
+def test_resume_lock_conflict_fails_before_github_or_pause_mutation(monkeypatch):
+    @contextmanager
+    def busy_lock():
+        raise RuntimeError("dispatch_admission_conflict")
+        yield {"accepted": False}
+
+    monkeypatch.setattr(agent, "dispatch_admission_lock", busy_lock)
+    monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot())
+    monkeypatch.setattr(agent, "_run", lambda *args, **kwargs: pytest.fail("GitHub must not be called without admission"))
+    with pytest.raises(HTTPException) as error:
+        agent.resume_autonomous_engineering()
+    assert error.value.status_code == 409
+    assert error.value.headers["X-Error-Code"] == "AUTONOMOUS_DISPATCH_RECENTLY_ACCEPTED"
+
+
+def test_resume_unexpected_preflight_error_fails_closed_without_pause_mutation(monkeypatch):
+    monkeypatch.setattr(agent, "collect_status", lambda: (_ for _ in ()).throw(RuntimeError("status unavailable")))
+    monkeypatch.setattr(agent, "_run", lambda *args, **kwargs: pytest.fail("GitHub must not be called after failed preflight"))
+    with pytest.raises(HTTPException) as error:
+        agent.resume_autonomous_engineering()
+    assert error.value.status_code == 503
+    assert error.value.headers["X-Retryable"] == "false"
+
+
+def test_resume_acceptance_suppresses_following_manual_dispatch(monkeypatch):
+    state = {"accepted": False}
+    @contextmanager
+    def shared_lock():
+        if state["accepted"]:
+            raise RuntimeError("dispatch_admission_conflict")
+        yield state
+
+    monkeypatch.setattr(agent, "dispatch_admission_lock", shared_lock)
+    monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot())
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    calls = []
+    def fake_run(command, timeout=8, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    resumed = agent.resume_autonomous_engineering()
+    assert resumed["accepted"] is True
+    assert state["accepted"] is True
+    with pytest.raises(HTTPException) as error:
+        agent.dispatch_autonomous_engineering()
+    assert error.value.status_code == 409
+    assert sum(command[1:3] == ["workflow", "run"] for command in calls) == 1
+
+
 def test_resume_dispatch_timeout_is_ambiguous_and_non_retryable(monkeypatch):
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
     monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot())
@@ -1591,6 +1641,45 @@ def test_resume_preflight_failure_keeps_pause_enabled(monkeypatch):
         agent.resume_autonomous_engineering()
     assert error.value.status_code == 409
     assert calls == []
+
+
+def test_cancel_fails_closed_when_selected_run_has_multiple_codex_jobs(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_github_api_json", lambda *args, **kwargs: {
+        "id": 1002,
+        "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main",
+        "status": "in_progress",
+    })
+    def fake_run(command, timeout=8, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, json.dumps({
+            "jobs": [
+                {"name": "Codex", "status": "in_progress"},
+                {"name": "Codex", "status": "queued"},
+            ]
+        }), "")
+    monkeypatch.setattr(agent, "_run", fake_run)
+    with pytest.raises(HTTPException) as error:
+        agent.cancel_autonomous_engineering(agent.CancelRequest(run_id=1002))
+    assert error.value.status_code == 502
+    assert not any(command[1:3] == ["run", "cancel"] for command in calls)
+
+
+def test_cancel_can_cancel_the_exact_queued_snapshot_run(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_github_api_json", lambda *args, **kwargs: {
+        "id": 1003,
+        "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main",
+        "status": "queued",
+    })
+    monkeypatch.setattr(agent, "_run", lambda command, timeout=8, **kwargs: (
+        calls.append(command) or subprocess.CompletedProcess(command, 0, "", "")
+    ))
+    result = agent.cancel_autonomous_engineering(agent.CancelRequest(run_id=1003))
+    assert result["run_id"] == 1003
+    assert calls[-1][1:4] == ["run", "cancel", "1003"]
 
 
 def test_cancel_rejects_snapshot_run_that_is_no_longer_active(monkeypatch):
