@@ -2333,6 +2333,21 @@ def test_cleanup_removes_only_ephemeral_progress_files_and_preserves_durable_sta
     assert (tmp_path / "worktree-checkpoint-123-1.patch").is_file()
 
 
+def test_cleanup_failure_paths_are_reduced_to_logical_filenames(monkeypatch):
+    monkeypatch.setattr(agent, "_is_windows", lambda: True)
+    monkeypatch.setattr(agent, "cleanup_shared_progress_data", lambda: {
+        "cleaned": False,
+        "files_removed": 0,
+        "bytes_removed": 0,
+        "failed_files": [r"C:\\Users\\ExampleUser\\AppData\\Local\\state\\events.jsonl"],
+        "preserved": [],
+    })
+    result = agent._cleanup_autonomous_engineering_temporary_data_locked()
+    assert result["cleaned"] is False
+    assert result["failed_files"] == ["events.jsonl"]
+    assert "ExampleUser" not in json.dumps(result)
+
+
 def test_cleanup_refuses_active_run_or_pending_task(monkeypatch, tmp_path):
     from app import autonomous_engineering_execution_lock as execution_lock
 
