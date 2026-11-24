@@ -145,8 +145,10 @@
       $("overall-progress").textContent = overallPercent !== null && overallPercent !== undefined &&
         Number.isFinite(Number(overallPercent)) && Number(overallPercent) >= 0 && Number(overallPercent) <= 100
         ? Number(overallPercent).toFixed(2) + "%" : "—";
-      $("progress-updated").textContent = current && current.updated_at
-        ? "آخرین رویداد: " + new Date(current.updated_at).toLocaleTimeString()
+      const updatedAt = current && current.updated_at ? new Date(current.updated_at) : null;
+      const updatedAtValid = updatedAt && !Number.isNaN(updatedAt.getTime());
+      $("progress-updated").textContent = updatedAtValid
+        ? "آخرین رویداد: " + updatedAt.toLocaleTimeString()
         : data.storage_configured
           ? "فضای ثبت آماده است؛ در انتظار اجرای عامل"
           : "فضای ثبت پیشرفت آماده نیست؛ راه‌اندازی یک‌باره لازم است";
