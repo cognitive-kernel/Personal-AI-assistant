@@ -2782,7 +2782,16 @@ def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admi
     assert "Out-File" not in gate
     assert "PAUSED: ${{ vars.AUTONOMOUS_ENGINEERING_PAUSED" not in gate
     assert "EXECUTION_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE" not in gate
-    assert "if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'" in workflow[end:end + 300]
+    execute_step = workflow[end:workflow.index("- name: Verify persistent Ollama context after autonomous Codex task", end)]
+    assert "AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN: ${{ secrets.AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN }}" in execute_step
+    assert "if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'" in execute_step
+    cycle_policy = (
+        Path(__file__).resolve().parents[1]
+        / "scripts" / "autonomous_engineering_cycle.py"
+    ).read_text(encoding="utf-8")
+    assert 'os.environ.pop("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "")' in cycle_policy
+    assert "_live_pause_enabled(settings_token, repo)" in cycle_policy
+    assert "_live_execution_mode(settings_token, repo)" in cycle_policy
 
 
 def test_one_shot_resume_bypasses_only_stale_pause_snapshot_before_live_gate():
