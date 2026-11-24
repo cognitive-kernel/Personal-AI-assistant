@@ -2173,6 +2173,7 @@ def test_next_cycle_dispatch_uses_live_mode_instead_of_stale_workflow_snapshot(m
         "workflow-token", "owner/repository", args, settings_token="settings-token"
     ) is True
     assert all(call[0] == "settings-token" for call in calls if call[2] == "" or "actions/variables/" in call[2])
+    assert all(call[1] == "GET" for call in calls if call[0] == "settings-token")
     assert calls[-1][0] == "workflow-token"
     assert calls[-1][1] == "POST"
 
