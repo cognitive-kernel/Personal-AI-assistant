@@ -286,6 +286,7 @@ if ($setupFailure) { throw $setupFailure }
 # A recovery marker is cleared only after the complete setup and live health
 # verification succeed. Failed acknowledgement attempts leave it in place.
 Clear-AutonomousStateBrokerSetupRecoveryMarker -RegistrySubKey $setupMarkerRegistrySubKey
+Remove-Item Env:AUTONOMOUS_STATE_BROKER_SETUP_RECOVERY_BLOCKED -ErrorAction SilentlyContinue
 Write-Host "Machine state broker is installed and healthy."
 if ($resolvedRunnerServices.Count -gt 0) {
     Write-Host "Runner service identities configured: $($resolvedRunnerServices.Count)"
