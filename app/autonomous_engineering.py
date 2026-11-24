@@ -36,6 +36,7 @@ from .autonomous_engineering_progress import (
 from .ollama_context import maximum_context_tokens, resolve_model_architecture, supports_tool_calling
 from .autonomous_engineering_state import durable_state_lock, execution_state_directory
 from .autonomous_engineering_dispatch_lock import dispatch_admission_lock
+from .autonomous_engineering_state_broker import StateBrokerConflict
 from .autonomous_engineering_checkpoint_lock import checkpoint_store_lock
 from .autonomous_engineering_execution_lock import repository_execution_lock
 from .autonomous_engineering_model_pull import get_model_pull, start_model_pull
@@ -1443,9 +1444,8 @@ def _cleanup_autonomous_engineering_temporary_data_locked() -> dict[str, Any]:
 
 @router.post("/cleanup")
 def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
-    gh = _authenticated_gh()
-
     def ensure_no_active_workflow() -> None:
+        gh = _authenticated_gh()
         runs = _workflow_runs(gh)
         if any(item.get("status") in _ACTIVE_RUN_STATES for item in runs):
             raise HTTPException(
@@ -1466,6 +1466,17 @@ def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
         with repository_execution_lock("ui-cleanup", "1"):
             ensure_no_active_workflow()
             return _cleanup_autonomous_engineering_temporary_data_locked()
+    except StateBrokerConflict as exc:
+        blockers = set(getattr(exc, "blockers", []) or [])
+        if blockers.intersection({"active_progress_run", "repository_execution_active", "pending_checkpoint", "checkpoint_store_busy"}):
+            raise HTTPException(
+                status_code=409,
+                detail="Broker وضعیت اجرای فعال یا checkpoint را زیر قفل تأیید کرد؛ پاک‌سازی انجام نشد.",
+            ) from exc
+        raise HTTPException(
+            status_code=503,
+            detail="Broker نتوانست وضعیت پاک‌سازی را به‌صورت امن تأیید کند.",
+        ) from exc
     except RuntimeError as exc:
         if "Another autonomous execution owns this repository worktree" in str(exc) or "repository lock busy" in str(exc):
             raise HTTPException(
