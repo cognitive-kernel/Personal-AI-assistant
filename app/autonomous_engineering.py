@@ -35,8 +35,8 @@ from .autonomous_engineering_progress import (
 )
 from .ollama_context import maximum_context_tokens, resolve_model_architecture, supports_tool_calling
 from .autonomous_engineering_state import durable_state_lock, execution_state_directory
-from .autonomous_engineering_dispatch_lock import dispatch_admission_lock
-from .autonomous_engineering_state_broker import StateBrokerConflict
+from .autonomous_engineering_dispatch_lock import DispatchAdmissionError, dispatch_admission_lock
+from .autonomous_engineering_state_broker import StateBrokerConflict, StateBrokerError
 from .autonomous_engineering_checkpoint_lock import checkpoint_store_lock
 from .autonomous_engineering_execution_lock import repository_execution_lock
 from .autonomous_engineering_model_pull import get_model_pull, start_model_pull
@@ -820,12 +820,19 @@ def _dispatch_with_admission(payload: ManualTaskRequest | None, *, correlation_i
                 detail="درخواست اجرای دیگری در حال ثبت است یا پنجرهٔ جلوگیری از اجرای تکراری هنوز فعال است؛ وضعیت را بازخوانی کنید.",
                 headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "AUTONOMOUS_DISPATCH_RECENTLY_ACCEPTED", "X-Retryable": "false"},
             ) from exc
-        except RuntimeError as exc:
+        except (StateBrokerError, DispatchAdmissionError) as exc:
             _STATUS_LOGGER.error("Persistent dispatch admission unavailable; correlation_id=%s", correlation_id)
             raise HTTPException(
                 status_code=503,
                 detail="قفل پایدار کنترل ارسال در دسترس یا معتبر نیست؛ برای جلوگیری از اجرای تکراری، درخواست متوقف شد.",
                 headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "AUTONOMOUS_DISPATCH_ADMISSION_UNAVAILABLE", "X-Retryable": "false"},
+            ) from exc
+        except RuntimeError as exc:
+            _STATUS_LOGGER.error("Autonomous dispatch preflight failed closed; correlation_id=%s", correlation_id)
+            raise HTTPException(
+                status_code=503,
+                detail="پیش‌بررسی اجرای عامل قابل تأیید نیست؛ هیچ Workflow جدیدی ارسال نشد.",
+                headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "AUTONOMOUS_DISPATCH_PREFLIGHT_FAILED", "X-Retryable": "false"},
             ) from exc
     finally:
         _DISPATCH_REQUEST_LOCK.release()
