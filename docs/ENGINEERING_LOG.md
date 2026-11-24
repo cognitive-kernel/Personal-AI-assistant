@@ -1,3 +1,13 @@
+## 2026-11-24 — Cache failed-run diagnostics during dashboard polling
+
+- The runs endpoint already limited diagnostic reads to completed failed runs, but repeated dashboard polls could still re-read every failed run in the 100-run GitHub page.
+- Added a bounded 60-second in-process cache keyed by workflow run ID, including negative results, with a 256-entry cap and expiry pruning.
+- Added a regression test that calls the runs endpoint twice and proves the same failed-run diagnostic is read only once while the summary remains available.
+- This cache is an optimization only; the protected State Broker remains the authoritative diagnostic store.
+- Exact-head CI is required for the updated PR SHA; no target-host acceptance is claimed by this change.
+
+---
+
 ## 2026-11-24 — PR #872 regression-harness correction and Resume idempotency follow-up
 
 ### Exact-head CI evidence
