@@ -1135,6 +1135,34 @@ def _github_api_json(gh: str, path: str, *, timeout: int = 15) -> dict[str, Any]
     return value
 
 
+_RUN_DIAGNOSTICS_CACHE: dict[int, tuple[float, dict[str, Any] | None]] = {}
+_RUN_DIAGNOSTICS_CACHE_LOCK = threading.Lock()
+_RUN_DIAGNOSTICS_CACHE_TTL_SECONDS = 60.0
+_RUN_DIAGNOSTICS_CACHE_MAX_ENTRIES = 256
+
+
+def _cached_run_diagnostics(run_id: int) -> dict[str, Any] | None:
+    """Avoid repeating broker reads while the dashboard polls the same failed runs."""
+    now = time.monotonic()
+    with _RUN_DIAGNOSTICS_CACHE_LOCK:
+        cached = _RUN_DIAGNOSTICS_CACHE.get(run_id)
+        if cached is not None and now - cached[0] < _RUN_DIAGNOSTICS_CACHE_TTL_SECONDS:
+            return cached[1]
+    diagnostic = _read_run_diagnostics(run_id)
+    now = time.monotonic()
+    with _RUN_DIAGNOSTICS_CACHE_LOCK:
+        _RUN_DIAGNOSTICS_CACHE[run_id] = (now, diagnostic)
+        expired = [
+            key for key, (cached_at, _value) in _RUN_DIAGNOSTICS_CACHE.items()
+            if now - cached_at >= _RUN_DIAGNOSTICS_CACHE_TTL_SECONDS
+        ]
+        for key in expired:
+            _RUN_DIAGNOSTICS_CACHE.pop(key, None)
+        while len(_RUN_DIAGNOSTICS_CACHE) > _RUN_DIAGNOSTICS_CACHE_MAX_ENTRIES:
+            _RUN_DIAGNOSTICS_CACHE.pop(next(iter(_RUN_DIAGNOSTICS_CACHE)))
+    return diagnostic
+
+
 def _workflow_runs(gh: str) -> list[dict[str, Any]]:
     # Keep the CLI/API command shape fixed. HTTP query parameters must never
     # become command-line arguments through the GitHub CLI wrapper.
@@ -1151,7 +1179,7 @@ def _workflow_runs(gh: str) -> list[dict[str, Any]]:
         if not isinstance(item, dict) or not isinstance(item.get("id"), int):
             continue
         diagnostic = (
-            _read_run_diagnostics(item["id"])
+            _cached_run_diagnostics(item["id"])
             if item.get("status") == "completed" and item.get("conclusion") in {"failure", "cancelled", "timed_out", "action_required", "startup_failure", "stale"}
             else None
         )
